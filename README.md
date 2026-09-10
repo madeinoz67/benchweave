@@ -21,6 +21,8 @@ The first PoC is simulator-first. The planned hardware MVP targets the **FNIRSI 
 - [Delivery plan](docs/implementation-planning/01-delivery-plan.md)
 - [Architecture](docs/smart-test-gateway-architecture-v1.5.md)
 - [Documentation index](docs/project-index.md)
+- [Device developer guide — human and AI authors](docs/device-developer-guide.md)
+- [AI device reviewer role and checklist](docs/ai-device-reviewer.md)
 - [Development and CI](docs/development.md)
 - [Architecture validation](docs/architecture-validation.md)
 

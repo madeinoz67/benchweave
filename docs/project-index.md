@@ -22,4 +22,8 @@ This repository is currently a Python project skeleton plus the frozen architect
 
 ## Development
 
+Use the [AI device reviewer](ai-device-reviewer.md) to assess candidate integrations against the contracts and their evidence.
+
+Start with the [Device developer guide](device-developer-guide.md) for device creation, gateway hosting and shared packages, including an AI task template and human review checklist.
+
 See [Development and CI](development.md) for uv setup, local checks and GitHub workflows.

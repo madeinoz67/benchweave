@@ -1,5 +1,7 @@
 # Development and CI
 
+For integration authoring and hosting, see the [Device developer guide](device-developer-guide.md).
+
 Use Python 3.13 (as pinned in `.python-version`) and uv. CI pins uv 0.11.16.
 From the project root:
 
