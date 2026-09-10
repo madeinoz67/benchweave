@@ -1,0 +1,2 @@
+# Preserve the exact document bytes used by contract digest fixtures on every OS.
+* text=auto eol=lf

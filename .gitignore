@@ -1,0 +1,35 @@
+# Local operating-system files
+.DS_Store
+Thumbs.db
+
+# Python environments and caches
+.venv/
+venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.uv-cache/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Build and test output
+build/
+dist/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+junit*.xml
+
+# Local configuration and credentials; keep shareable templates
+.env
+.env.*
+!.env.example
+!.env.template
+
+# Editor state
+.idea/
+.vscode/
+*.swp
+*.swo

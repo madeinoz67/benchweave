@@ -1,0 +1,59 @@
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[project]
+name = "benchweave"
+version = "0.1.0"
+description = "Local test-bench gateway for reusable instrument and DUT plugins."
+readme = "docs/project-index.md"
+requires-python = ">=3.13"
+license = { text = "Proprietary" }
+authors = [
+  { name = "Stephen Eaton" }
+]
+keywords = [
+  "test automation",
+  "embedded systems",
+  "instrumentation",
+  "hardware-in-the-loop"
+]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.13",
+  "Typing :: Typed"
+]
+dependencies = []
+
+[dependency-groups]
+dev = [
+  "pytest>=8.0",
+  "ruff>=0.6",
+  "mypy>=1.11",
+  "jsonschema>=4.23",
+  "referencing>=0.35",
+]
+
+[project.scripts]
+benchweave = "benchweave.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/benchweave"]
+
+[tool.pytest.ini_options]
+addopts = "-q -p no:cacheprovider"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+extend-exclude = ["docs"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+files = ["src/benchweave", "tests"]
