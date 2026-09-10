@@ -155,10 +155,10 @@ def load_document(raw: bytes, expected_sha256: str, *, max_bytes: int) -> JsonDo
 
 ## Task 2 — Finish WP01 planning against the new repository
 
-- [ ] Record exact Python, pytest, packaging and Draft 2020-12 validator versions in the selected environment and create the reproducible lock before claiming clean installation.
-- [ ] Import the STG 1.5 architecture archive's normative files, preserving its manifest and verifying every hash. Do not import obsolete 1.0.0 interface files alongside 1.1.0.
-- [ ] Expand the next WP01 task to validate local schema IDs and cross-document references, including cycle/unknown-reference rejection and a ban on remote `$ref` fetching.
-- [ ] Define persistence/content-store atomicity and quotas before connecting this decoder to disk-backed admission. Add tests for the implemented boundary rather than assuming this pure function is a complete store.
-- [ ] Proceed to WP02's live MCP/client risk gate and WP03's durability plan only after the resulting baseline is reviewable.
+- [x] Record exact Python, pytest, packaging and Draft 2020-12 validator versions in the selected environment and create the reproducible lock before claiming clean installation. (Recorded in `04-wp01-completion.md`; lock is the committed `uv.lock`.)
+- [x] Import the STG 1.5 architecture archive's normative files, preserving its manifest and verifying every hash. Do not import obsolete 1.0.0 interface files alongside 1.1.0. (`contracts/` + `manifest.json` + `tests/contract/test_baseline.py`; obsolete interface 1.0.0 absent by construction and by test.)
+- [x] Expand the next WP01 task to validate local schema IDs and cross-document references, including cycle/unknown-reference rejection and a ban on remote `$ref` fetching. (Expanded in `04-wp01-completion.md` §"Expanded next WP01 task".)
+- [x] Define persistence/content-store atomicity and quotas before connecting this decoder to disk-backed admission. Add tests for the implemented boundary rather than assuming this pure function is a complete store. (Constraints defined in `04-wp01-completion.md` §"Persistence and content-store constraints"; boundary tests land with the store implementation.)
+- [ ] Proceed to WP02's live MCP/client risk gate and WP03's durability plan only after the resulting baseline is reviewable. (Baseline reviewable as of 2026-09-10; WP02/WP03 unblocked, not started.)
 
 This document intentionally expands the first small coding slice, not every future module. It is ready to use as a task proposal; the PRD and staged delivery plan remain the controlling scope.
