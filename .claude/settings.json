@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "_comment": "Project-owned guards, adopted from the muninndb repository's memory system (see .claude/memory-protocol.md for the protocol and its measured history). ledger-guard.mjs rejects a malformed memory proposal in the session that can still fix it. memory-drain.mjs moves proposals into the `benchweave` MuninnDB vault (PreCompact leads because long sessions never fire SessionEnd; Stop covers crash/kill, debounced against the receipt). memory-freshness.mjs reads the drain receipt at SessionStart so a wedged or never-run drain reports itself. drain credentials: ~/.muninn/flush-keys/benchweave.token.",
+  "permissions": {
+    "allow": [
+      "mcp__gortex__analyze",
+      "mcp__gortex__capabilities",
+      "mcp__gortex__change",
+      "mcp__gortex__explore",
+      "mcp__gortex__read",
+      "mcp__gortex__recall",
+      "mcp__gortex__relations",
+      "mcp__gortex__response",
+      "mcp__gortex__search",
+      "mcp__gortex__trace",
+      "mcp__gortex__workspace",
+      "mcp__github__issue_read",
+      "mcp__muninndb__muninn_recall",
+      "mcp__muninndb__muninn_find_by_entity",
+      "mcp__muninndb__muninn_where_left_off",
+      "mcp__muninndb__muninn_read",
+      "mcp__muninndb__muninn_status",
+      "mcp__muninndb__muninn_session",
+      "mcp__muninndb__muninn_remember",
+      "mcp__muninndb__muninn_guide",
+      "mcp__muninndb__muninn_evolve",
+      "mcp__muninndb__muninn_link"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/ledger-guard.mjs\""
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 60,
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/memory-drain.mjs\" --hook --trigger PreCompact --base http://127.0.0.1:8125/mcp"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 60,
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/memory-drain.mjs\" --hook --trigger SessionEnd --base http://127.0.0.1:8125/mcp"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 60,
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/memory-drain.mjs\" --hook --trigger Stop --debounce 20 --base http://127.0.0.1:8125/mcp"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 10,
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/memory-freshness.mjs\""
+          }
+        ]
+      }
+    ]
+  }
+}
