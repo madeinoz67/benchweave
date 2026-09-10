@@ -50,12 +50,19 @@ Enforcement point in the spike server: `initialize` open, `tools/*` gated —
 recorded as a decision to revisit when the interface contract grows an auth
 vocabulary (it has none today; checked, not assumed).
 
-## Environment note (uv editable install)
+## Environment note (venv editable install — ROOT CAUSE)
 
-uv 0.11.16 exhibited an intermittent editable-install failure on this machine
-(2026-09-10, 4 occurrences): `import benchweave` → `ModuleNotFoundError` with
-`_editable_impl_benchweave.pth` present and correct, between consecutive
-`uv run` invocations. Cheap heal: `uv sync --reinstall-package benchweave`.
-Full heal: `rm -rf .venv && uv sync`. After upgrading to uv 0.12.12 the
-environment survived repeated consecutive runs with no recurrence; the spike
-baseline above is verified on 0.12.12.
+The intermittent `import benchweave` → `ModuleNotFoundError` (2026-09-10, 5
+occurrences across uv 0.11.16 AND 0.12.12) is NOT a uv bug: the venv's `.pth`
+files were carrying the macOS `UF_HIDDEN` file flag, and CPython's site.py
+refuses hidden `.pth` files (`python -v` shows `Skipping hidden .pth file`),
+silently disabling the editable install while `.pth` + dist-info look intact.
+Proof: `stat -f '%Sf'` showed `flags=hidden`; `python -v` showed the skip.
+
+**Heal (instant):** `chflags nohidden .venv/lib/python3.13/site-packages/*.pth`
+then re-run. (`uv sync --reinstall-package benchweave` also works; it rewrites
+the file without the flag.) The actor setting the flag between runs is
+UNIDENTIFIED — on recurrence, run `ls -lO .venv/lib/python3.13/site-packages/*.pth`
+immediately and check holders via `lsof +D .venv`. An earlier draft of this
+section attributed the failures to the uv 0.11.16 → 0.12.12 upgrade; the
+recurrence on 0.12.12 disproved that and prompted this correction.
