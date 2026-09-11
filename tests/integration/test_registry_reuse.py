@@ -292,6 +292,11 @@ def test_second_clean_install_reuses_same_digests_and_runs(tmp_path: Path) -> No
         release.manifest_sha256,
         entry_relpath="plugin/plugin.py",
     )
+    # Regression pin: the loader imports the entry under a module name
+    # suffixed with the manifest sha (registry.activation.load_plugin), so
+    # this instance is provably the cache-loaded module, not a same-bytes
+    # in-repo import that would pass every behavioral assertion below.
+    assert type(plugin).__module__.endswith(release.manifest_sha256)
     assert plugin.simulation.simulated is True
     plugin.plugin_open(_NullServices())
     try:
@@ -355,6 +360,10 @@ def test_control_stack_run_on_cached_plugin(
         release.manifest_sha256,
         entry_relpath="plugin/plugin.py",
     )
+    # Regression pin, same as the PRD-02 run leg: the module name carries
+    # the manifest sha, proving the coordinator runs the cache-loaded
+    # plugin rather than a same-bytes import from the plugins tree.
+    assert type(cached_psu).__module__.endswith(release.manifest_sha256)
     # The seam is load-bearing: a deadline one tick below the TestClock
     # reading is already expired for this plugin. On the loader's default
     # zero-based clock the same deadline would sit far in the future.
