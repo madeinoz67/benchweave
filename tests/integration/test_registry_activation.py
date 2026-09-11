@@ -9,6 +9,7 @@ are real time observed only through deadlines generous by construction.
 """
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 from datetime import UTC, datetime
@@ -322,12 +323,51 @@ def test_load_refuses_traversing_entry(
 def test_load_refuses_module_without_factory(tmp_path: Path) -> None:
     """Fix 7a M1: a cache module that parses but exposes no factory is refused."""
     sha = "ff" * 32
+    payload = b"x = 1\n"
     entry = tmp_path / "cache" / sha / "payload.py"
     entry.parent.mkdir(parents=True)
-    entry.write_text("x = 1\n", encoding="utf-8")
+    entry.write_bytes(payload)
     manifest = {
-        "payload": {"files": [{"path": "payload.py", "role": "implementation"}]}
+        "payload": {
+            "files": [
+                {
+                    "path": "payload.py",
+                    "role": "implementation",
+                    "bytes": len(payload),
+                    "sha256": hashlib.sha256(payload).hexdigest(),
+                }
+            ]
+        }
     }
     with pytest.raises(ActivationRejected) as exc:
         load_plugin(tmp_path / "cache", manifest, sha, entry_relpath="payload.py")
     assert exc.value.reason == "unsupported_plugin_module"
+
+
+def test_load_rejects_tampered_cache_entry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Final-fix wave 2: exec-time integrity — the entry file's on-disk bytes
+    are re-hashed against the manifest inventory's pinned digest BEFORE
+    importlib executes anything; a cache tampered after admission is refused
+    and nothing is imported."""
+    closure = _resolve()
+    _admit(closure, tmp_path)
+    release = _sim_psu_release(closure)
+    entry = tmp_path / "cache" / release.manifest_sha256 / "plugin" / "plugin.py"
+    honest = entry.read_bytes()
+    entry.write_bytes(honest + b"# tampered after admission\n")
+
+    imports: list[tuple[object, ...]] = []
+    monkeypatch.setattr(
+        importlib.util, "spec_from_file_location", lambda *args: imports.append(args)
+    )
+    with pytest.raises(ActivationRejected) as exc:
+        load_plugin(
+            tmp_path / "cache",
+            release.manifest,
+            release.manifest_sha256,
+            entry_relpath="plugin/plugin.py",
+        )
+    assert exc.value.reason == "file_hash_mismatch"
+    assert imports == []  # the import machinery was never reached

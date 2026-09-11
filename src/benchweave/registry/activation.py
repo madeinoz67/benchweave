@@ -17,6 +17,7 @@ from a source tree — when the host activates a configuration. Two surfaces:
 """
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import os
@@ -132,7 +133,10 @@ def load_plugin(
     admission's authority to a path escaping
     ``<cache_root>/<manifest_sha256>/`` — and must appear in the manifest
     inventory with role ``implementation`` (``entry_not_implementation``
-    otherwise). The module is imported by explicit
+    otherwise). Before anything executes, the entry file's on-disk bytes are
+    re-hashed against the inventory's pinned ``bytes``/``sha256`` for that
+    path (``file_hash_mismatch``) — a cache tampered after admission never
+    reaches the import machinery. The module is imported by explicit
     location under a name suffixed with the manifest sha, so two cache
     versions of one package never collide in ``sys.modules``. Construction
     goes through the module's ``create_plugin(now_fn, monotonic_ns_fn)``
@@ -152,6 +156,16 @@ def load_plugin(
     entry_path = cache_root / manifest_sha256 / entry_relpath
     if not entry_path.is_file():
         raise FileNotFoundError(f"admitted cache entry missing: {entry_path}")
+
+    # Exec-time integrity: re-hash the entry bytes on disk against the
+    # manifest inventory's pinned digest BEFORE importlib executes anything —
+    # the interval between admission and activation is not trusted.
+    entry_bytes = entry_path.read_bytes()
+    if (
+        entry.get("bytes") != len(entry_bytes)
+        or entry.get("sha256") != hashlib.sha256(entry_bytes).hexdigest()
+    ):
+        raise ActivationRejected("file_hash_mismatch")
 
     module_name = f"{entry_relpath.replace('/', '_').replace('.', '_')}_{manifest_sha256}"
     spec = importlib.util.spec_from_file_location(module_name, entry_path)
