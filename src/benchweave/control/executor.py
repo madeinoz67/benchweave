@@ -4,16 +4,36 @@ Executes an admitted procedure body against bound device plugins under a
 fixed monotonic body deadline, appending one step event per occurrence and
 answering every re-entry from the occurrence ledger without re-dispatching.
 
-Task 7 seam — ``resolve_value``: every invoke input and every write value
-flows through the module-level :func:`resolve_value` hook before the policy
-check and before dispatch. This task the hook is the identity for literal
-JSON and raises ``NotImplementedError`` for the reserved ``$stg_ref`` /
-``$stg_channel`` / ``$stg_issue`` reference objects, so a reference-bearing
-procedure fails loudly instead of dispatching unresolved directives. The
-integration tests therefore drive a reduced literal-input variant of the
-fixture procedure (``configuration_id`` literal ``cfg-test-1``, channel
-literal ``ch1``) built through ``readmit_mutated``. Sample freshness,
-uncertainty and three-valued predicates land in Task 7 on the same seam.
+Task 7 seam — ``resolve_value``: every invoke input, every write value and
+every read parameter flows through the module-level :func:`resolve_value`
+before the policy check and before dispatch. Literals pass through as a
+fresh tree; the three reserved ``$stg_`` forms resolve against earlier
+successful results (``$stg_ref``, RFC 6901 pointer with exact types), the
+role's channel binding (``$stg_channel``) and the occurrence-scoped
+issued-id registry (``$stg_issue``). Any unresolvable directive raises
+:class:`ScopeError`, which the executor maps to ``execution_error`` with an
+``unresolved_reference:`` reason — the body ends before dispatch. Read
+parameters are literals by schema (a plain string); the runtime rejects
+``$stg_`` directives in that position through the same seam rather than
+trusting admission alone.
+
+Issued ids: ``$stg_issue`` mints
+``f"{field}-{run_id}-{step_id}{occurrence_suffix}"`` once per occurrence
+and retains it in the occurrence-ledger entry under ``issued_ids``; a step
+whose operation does not succeed invalidates every id it issued, and a
+replayed occurrence reuses the recorded result without minting again.
+
+Trustworthy samples and three-valued predicates (§4): a ``sample`` step
+selects one scalar from an earlier invoke's dataset through
+:func:`select_sample` — exact unit equality, exactly one finite value,
+empty dimensions, valid status, freshness measured from acquisition
+(``started_at``) at selection time, and known uncertainty when required —
+and ``assert`` / ``if`` predicates evaluate through
+:func:`evaluate_predicate`. INVALID evidence is ``execution_error``, never
+the false branch and never a passing assertion; a false assert is
+``assertion_failed``; a false if takes the else branch; and a known
+uncertainty decides by the conservative interval ``[v-|u|, v+|u|]`` inside
+the inclusive bounds rather than by the nominal value.
 
 Deadline discipline: the body deadline is fixed by the caller (it is
 acceptance-time state); each dispatched ``deadline_ns`` is
@@ -53,6 +73,7 @@ import json
 import math
 from collections import ChainMap
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 
 from benchweave.control.binding import ResolvedBinding
@@ -110,23 +131,343 @@ def _sha256_hex(value: Any) -> str:
     return hashlib.sha256(canonical_json(value).encode("utf-8")).hexdigest()
 
 
-def resolve_value(value: Any, scope: ChainMap[str, Any], role: str) -> Any:
-    """Resolve one input position; identity for literals (Task 7 seam).
+class ScopeError(Exception):
+    """A reserved ``$stg_`` directive could not be resolved (§3).
 
-    Reserved ``$stg_*`` reference objects are recognised but not implemented
-    this task — they raise ``NotImplementedError`` rather than dispatching an
-    unresolved directive. Objects and lists are resolved recursively so the
-    resolved input is a fresh literal tree with no shared mutable aliases.
+    Raised before policy and before dispatch; the executor maps it to
+    ``execution_error`` with the ``unresolved_reference:`` reason prefix, so
+    a body never dispatches a directive it could not fully resolve.
+    """
+
+
+#: Invalid-sample reason codes (§4): evidence that is not a trustworthy
+#: scalar can never satisfy a predicate — it terminates the body instead.
+SAMPLE_MISSING = "missing"
+SAMPLE_WRONG_UNIT = "wrong_unit"
+SAMPLE_NOT_SCALAR = "not_scalar"
+SAMPLE_STALE = "stale"
+SAMPLE_UNKNOWN_UNCERTAINTY = "unknown_uncertainty"
+
+_RESERVED_KEYS = ("$stg_ref", "$stg_channel", "$stg_issue")
+
+
+@dataclass(frozen=True)
+class SampleOutcome:
+    """One sampled scalar: a TRUE_VALUE payload or an INVALID reason.
+
+    ``invalid_reason`` is ``None`` exactly when the sample is trustworthy;
+    otherwise it is one of the ``SAMPLE_*`` codes and ``value`` is ``None``.
+    ``uncertainty`` carries the known absolute uncertainty (``None`` when
+    unknown but permitted) and ``configuration_id`` retains the dataset's
+    provenance.
+    """
+
+    value: float | None
+    uncertainty: float | None
+    configuration_id: str | None
+    invalid_reason: str | None
+
+
+@dataclass(frozen=True)
+class ResolveContext:
+    """Per-occurrence resolution inputs: bound channels and issued ids.
+
+    ``channels`` is the role's alias-to-actual channel map from the resolved
+    binding; ``issued_ids`` is the executor's occurrence-keyed registry the
+    ``$stg_issue`` resolver mints into and invalidation writes back to.
+    """
+
+    run_id: str
+    step_id: str
+    index_path: tuple[int, ...]
+    channels: dict[str, str]
+    issued_ids: dict[Occurrence, dict[str, dict[str, str]]]
+
+
+def _invalid_sample(reason: str) -> SampleOutcome:
+    return SampleOutcome(
+        value=None, uncertainty=None, configuration_id=None, invalid_reason=reason
+    )
+
+
+def _parse_wall(text: Any) -> datetime | None:
+    """Parse an ISO-8601 wall timestamp, treating a naive value as UTC."""
+    if not isinstance(text, str):
+        return None
+    try:
+        moment = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=UTC)
+    return moment
+
+
+def _reserved_key(value: dict[Any, Any]) -> str | None:
+    """Return the first ``$stg_``-prefixed key in ``value``, if any."""
+    for key in value:
+        if str(key).startswith("$stg_"):
+            return str(key)
+    return None
+
+
+def _contains_stg_directive(value: Any) -> bool:
+    """True when any dict under ``value`` carries a ``$stg_``-prefixed key."""
+    if isinstance(value, dict):
+        return _reserved_key(value) is not None or any(
+            _contains_stg_directive(item) for item in value.values()
+        )
+    if isinstance(value, list):
+        return any(_contains_stg_directive(item) for item in value)
+    return False
+
+
+def resolve_value(
+    value: Any,
+    scope: ChainMap[str, Any],
+    role: str,
+    *,
+    context: ResolveContext | None = None,
+) -> Any:
+    """Resolve one input position against the visible scope (§3).
+
+    Literals pass through unchanged (recursively, as fresh containers); a
+    dict whose single key is a reserved ``$stg_`` form resolves that
+    reference: ``$stg_ref`` walks the earlier step's recorded result by
+    RFC 6901 pointer with exact types (invoke results start at
+    ``data["result"]``, scalar core operation results at ``data``),
+    ``$stg_channel`` maps the role's alias through the binding, and
+    ``$stg_issue`` mints or reuses the occurrence's issued id. Any other
+    ``$stg_`` shape, a missing or wrongly typed target, or a reference to a
+    step that is not visible raises :class:`ScopeError` — there are no
+    defaults, coercions, interpolation or arithmetic.
     """
     if isinstance(value, dict):
-        if any(str(key).startswith("$stg_") for key in value):
-            raise NotImplementedError(
-                f"$stg_* reference resolution arrives in Task 7: {value!r}"
-            )
-        return {key: resolve_value(item, scope, role) for key, item in value.items()}
+        reserved = _reserved_key(value)
+        if reserved is not None:
+            if len(value) != 1 or reserved not in _RESERVED_KEYS:
+                raise ScopeError(
+                    f"malformed_reference: {value!r} is not a single reserved form"
+                )
+            if reserved == "$stg_ref":
+                return _resolve_ref(value["$stg_ref"], scope)
+            if reserved == "$stg_channel":
+                return _resolve_channel(value["$stg_channel"], role, context)
+            return _resolve_issue(value["$stg_issue"], role, context)
+        return {
+            key: resolve_value(item, scope, role, context=context)
+            for key, item in value.items()
+        }
     if isinstance(value, list):
-        return [resolve_value(item, scope, role) for item in value]
+        return [resolve_value(item, scope, role, context=context) for item in value]
     return value
+
+
+def _resolve_ref(directive: Any, scope: ChainMap[str, Any]) -> Any:
+    if (
+        not isinstance(directive, dict)
+        or set(directive) != {"step", "pointer"}
+        or not isinstance(directive["step"], str)
+        or not isinstance(directive["pointer"], str)
+    ):
+        raise ScopeError(f"malformed_reference: $stg_ref directive {directive!r}")
+    step_id = directive["step"]
+    if step_id not in scope:
+        raise ScopeError(f"scope: step {step_id!r} is not visible at this point")
+    source = scope[step_id]
+    if not isinstance(source, OperationResult) or source.status is not OperationStatus.OK:
+        raise ScopeError(f"scope: step {step_id!r} has no successful operation result")
+    data = source.data
+    if isinstance(data, dict) and "result" in data:
+        data = data["result"]  # invoke envelope; scalar core ops walk data itself
+    return _walk_pointer(data, directive["pointer"], step_id)
+
+
+def _walk_pointer(base: Any, pointer: str, step_id: str) -> Any:
+    """RFC 6901 walk with exact types; every miss raises :class:`ScopeError`."""
+    current = base
+    if pointer != "":
+        for raw_token in pointer.split("/")[1:]:
+            token = raw_token.replace("~1", "/").replace("~0", "~")
+            if isinstance(current, dict):
+                if token not in current:
+                    raise ScopeError(
+                        f"pointer: {pointer!r} key {token!r} missing in "
+                        f"result of {step_id!r}"
+                    )
+                current = current[token]
+            elif isinstance(current, list):
+                if (
+                    not (token.isascii() and token.isdigit())
+                    or (len(token) > 1 and token.startswith("0"))
+                ):
+                    raise ScopeError(
+                        f"pointer: {pointer!r} token {token!r} is not an array index"
+                    )
+                index = int(token)
+                if index >= len(current):
+                    raise ScopeError(
+                        f"pointer: {pointer!r} index {index} out of range in "
+                        f"{step_id!r}"
+                    )
+                current = current[index]
+            else:
+                raise ScopeError(
+                    f"pointer: {pointer!r} cannot descend through "
+                    f"{type(current).__name__} in result of {step_id!r}"
+                )
+    if isinstance(current, (dict, list, bool, int, float, str)) or current is None:
+        return current
+    raise ScopeError(
+        f"pointer: {pointer!r} selects a non-JSON {type(current).__name__} "
+        f"in result of {step_id!r}"
+    )
+
+
+def _resolve_channel(
+    alias: Any, role: str, context: ResolveContext | None
+) -> str:
+    if not isinstance(alias, str):
+        raise ScopeError(f"malformed_reference: $stg_channel alias {alias!r}")
+    if context is None:
+        raise ScopeError(f"channel: no binding context for role {role!r}")
+    if alias not in context.channels:
+        raise ScopeError(f"channel: alias {alias!r} is not bound for role {role!r}")
+    return context.channels[alias]
+
+
+def _resolve_issue(field: Any, role: str, context: ResolveContext | None) -> str:
+    if not isinstance(field, str):
+        raise ScopeError(f"malformed_reference: $stg_issue field {field!r}")
+    if context is None:
+        raise ScopeError(f"issue: no resolution context for role {role!r}")
+    occurrence: Occurrence = (context.run_id, context.step_id, context.index_path)
+    bucket = context.issued_ids.setdefault(occurrence, {})
+    record = bucket.get(field)
+    if record is None:
+        suffix = "".join(f".{index}" for index in context.index_path)
+        record = {
+            "id": f"{field}-{context.run_id}-{context.step_id}{suffix}",
+            "status": "issued",
+        }
+        bucket[field] = record
+    return record["id"]
+
+
+def select_sample(
+    step: dict[str, Any], invoke_result: object, *, evaluated_at_wall: str
+) -> SampleOutcome:
+    """Select one trustworthy scalar from an earlier invoke's dataset (§4).
+
+    The source must be a successful invoke result holding a ``scalar_set``
+    dataset whose named variable carries the exact unit, exactly one finite
+    numeric inline value, empty dimensions and valid status. Freshness is
+    measured from acquisition (``started_at``) to ``evaluated_at_wall`` —
+    never from fetch time — and unknown timing cannot satisfy a finite
+    ``max_age_ms``. A known uncertainty is retained for the conservative
+    interval; ``require_known_uncertainty`` rejects an unknown one. Dataset
+    ``configuration_id`` provenance is retained in the outcome.
+    """
+    variable_id = str(step["variable_id"])
+    unit = str(step["unit"])
+    result = invoke_result
+    if not isinstance(result, OperationResult) or result.status is not OperationStatus.OK:
+        return _invalid_sample(SAMPLE_MISSING)
+    data = result.data
+    if not isinstance(data, dict) or not isinstance(data.get("result"), dict):
+        return _invalid_sample(SAMPLE_MISSING)
+    dataset: dict[str, Any] = data["result"]
+    if dataset.get("kind") != "scalar_set":
+        return _invalid_sample(SAMPLE_NOT_SCALAR)
+    variables = dataset.get("variables")
+    if not isinstance(variables, list):
+        return _invalid_sample(SAMPLE_MISSING)
+    variable = next(
+        (
+            candidate
+            for candidate in variables
+            if isinstance(candidate, dict) and candidate.get("id") == variable_id
+        ),
+        None,
+    )
+    if variable is None:
+        return _invalid_sample(SAMPLE_MISSING)
+    if variable.get("unit") != unit:  # exact equality: no conversion
+        return _invalid_sample(SAMPLE_WRONG_UNIT)
+    values = variable.get("values")
+    raw = values[0] if isinstance(values, list) and len(values) == 1 else None
+    if (
+        raw is None
+        or isinstance(raw, bool)
+        or not isinstance(raw, (int, float))
+        or not math.isfinite(raw)
+        or variable.get("dimensions") != []
+        or variable.get("status") != "valid"
+    ):
+        return _invalid_sample(SAMPLE_NOT_SCALAR)
+    max_age_ms = step.get("max_age_ms")
+    if isinstance(max_age_ms, int) and not isinstance(max_age_ms, bool):
+        started = _parse_wall(dataset.get("started_at"))
+        evaluated = _parse_wall(evaluated_at_wall)
+        if started is None or evaluated is None:
+            return _invalid_sample(SAMPLE_STALE)
+        age_ms = (evaluated - started).total_seconds() * 1000.0
+        if age_ms > float(max_age_ms):
+            return _invalid_sample(SAMPLE_STALE)
+    uncertainty: float | None = None
+    declared = variable.get("uncertainty")
+    if isinstance(declared, dict) and declared.get("status") == "known":
+        absolute = declared.get("absolute")
+        if (
+            isinstance(absolute, (int, float))
+            and not isinstance(absolute, bool)
+            and math.isfinite(absolute)
+        ):
+            uncertainty = abs(float(absolute))
+    if step.get("require_known_uncertainty", False) and uncertainty is None:
+        return _invalid_sample(SAMPLE_UNKNOWN_UNCERTAINTY)
+    configuration_id = dataset.get("configuration_id")
+    return SampleOutcome(
+        value=float(raw),
+        uncertainty=uncertainty,
+        configuration_id=(
+            configuration_id if isinstance(configuration_id, str) else None
+        ),
+        invalid_reason=None,
+    )
+
+
+def evaluate_predicate(
+    predicate: dict[str, Any], samples: dict[str, SampleOutcome]
+) -> bool | None:
+    """Three-valued predicate over sampled evidence (§4).
+
+    Returns ``None`` (INVALID) when the named sample is absent or carries an
+    INVALID reason — INVALID evidence is never a false branch or a passing
+    assertion. With a known uncertainty the conservative interval
+    ``[value - |u|, value + |u|]`` must fit inside the inclusive bounds for
+    BOTH ``assert`` and ``if``; when uncertainty is unknown and explicitly
+    permitted, the nominal value is compared alone.
+    """
+    outcome = samples.get(str(predicate["sample"]))
+    if not isinstance(outcome, SampleOutcome):
+        return None
+    if outcome.invalid_reason is not None or outcome.value is None:
+        return None
+    minimum = predicate["minimum"]
+    maximum = predicate["maximum"]
+    if (
+        isinstance(minimum, bool)
+        or not isinstance(minimum, (int, float))
+        or isinstance(maximum, bool)
+        or not isinstance(maximum, (int, float))
+    ):
+        return None
+    if outcome.uncertainty is not None:
+        low = outcome.value - outcome.uncertainty
+        high = outcome.value + outcome.uncertainty
+        return bool(low >= minimum and high <= maximum)
+    return bool(minimum <= outcome.value <= maximum)
 
 
 def _operation_id(run_id: str, step_id: str, index_path: tuple[int, ...]) -> str:
@@ -171,6 +512,10 @@ class Executor:
         self._ledger: dict[Occurrence, dict[str, Any]] = (
             {} if occurrence_ledger is None else occurrence_ledger
         )
+        # Occurrence-keyed issued-id registry: minted by $stg_issue during
+        # resolution, invalidated when the issuing step's operation fails,
+        # and copied into the occurrence-ledger entry for observability.
+        self._issued: dict[Occurrence, dict[str, dict[str, str]]] = {}
 
     def run_body(
         self, procedure: dict[str, Any], run_id: str, body_deadline_ns: int
@@ -258,7 +603,7 @@ class Executor:
         if kind == "invoke":
             result = self._step_invoke(step, scope, index_path, body, event)
         elif kind == "read":
-            result = self._step_read(step, index_path, body, event)
+            result = self._step_read(step, scope, index_path, body, event)
         elif kind == "write":
             result = self._step_write(step, scope, index_path, body, event)
         elif kind == "delay":
@@ -269,9 +614,22 @@ class Executor:
         elif kind == "assert":
             result = self._step_assert(step, scope, body, event)
         else:
-            body.terminate(BODY_EXECUTION_ERROR, f"unknown step kind {kind!r} at {step_id}")
+            body.terminate(
+                BODY_EXECUTION_ERROR, f"unknown step kind {kind!r} at {step_id}"
+            )
             return None
+        issued_here = self._issued.get(occurrence)
         entry: dict[str, Any] = {"event": event, "result": result}
+        if issued_here:
+            if kind in ("invoke", "read", "write") and not (
+                isinstance(result, OperationResult)
+                and result.status is OperationStatus.OK
+            ):
+                for record in issued_here.values():
+                    record["status"] = "invalidated"
+            entry["issued_ids"] = {
+                field: dict(record) for field, record in issued_here.items()
+            }
         if body.outcome is not None:
             # This step ended the body (outcome was clear when it started);
             # replay must terminate the same way.
@@ -281,6 +639,45 @@ class Executor:
         return result
 
     # -- operation kinds --------------------------------------------------------
+
+    def _resolve_context(
+        self, role: str, step_id: str, index_path: tuple[int, ...], body: _Body
+    ) -> ResolveContext:
+        """Everything reference resolution needs for one occurrence."""
+        return ResolveContext(
+            run_id=body.run_id,
+            step_id=step_id,
+            index_path=index_path,
+            channels=self._binding.channels_by_role.get(role, {}),
+            issued_ids=self._issued,
+        )
+
+    def _resolve_input(
+        self,
+        value: Any,
+        scope: ChainMap[str, Any],
+        role: str,
+        step_id: str,
+        index_path: tuple[int, ...],
+        body: _Body,
+        event: dict[str, Any],
+    ) -> tuple[bool, Any]:
+        """Resolve one dispatch input; an unresolvable one ends the body."""
+        try:
+            resolved = resolve_value(
+                value,
+                scope,
+                role,
+                context=self._resolve_context(role, step_id, index_path, body),
+            )
+            return True, resolved
+        except ScopeError as error:
+            event["status"] = "error"
+            event["error_code"] = "UNRESOLVED_REFERENCE"
+            body.terminate(
+                BODY_EXECUTION_ERROR, f"unresolved_reference: {step_id}: {error}"
+            )
+            return False, None
 
     def _step_invoke(
         self,
@@ -294,7 +691,11 @@ class Executor:
         role = str(step["role"])
         action_id = str(step["action_id"])
         device_id = self._binding.device_by_role[role]
-        resolved_input = resolve_value(step["input"], scope, role)
+        resolved, resolved_input = self._resolve_input(
+            step["input"], scope, role, step_id, index_path, body, event
+        )
+        if not resolved:
+            return None
         event["resolved_input_sha256"] = _sha256_hex(resolved_input)
         operation_id = _operation_id(body.run_id, step_id, index_path)
         event["operation_id"] = operation_id
@@ -315,14 +716,40 @@ class Executor:
     def _step_read(
         self,
         step: dict[str, Any],
+        scope: ChainMap[str, Any],
         index_path: tuple[int, ...],
         body: _Body,
         event: dict[str, Any],
-    ) -> OperationResult:
-        parameter = str(step["parameter"])
-        device_id = self._binding.device_by_role[str(step["role"])]
+    ) -> OperationResult | None:
+        step_id = str(step["id"])
+        role = str(step["role"])
+        try:
+            # Read parameters are literals by schema (a declared parameter
+            # name); the runtime rejects references in that position through
+            # the same seam instead of trusting admission alone.
+            if _contains_stg_directive(step["parameter"]):
+                raise ScopeError("read parameter must be a literal parameter name")
+            parameter = resolve_value(
+                step["parameter"],
+                scope,
+                role,
+                context=self._resolve_context(role, step_id, index_path, body),
+            )
+            if not isinstance(parameter, str):
+                raise ScopeError(
+                    f"read parameter must resolve to a string, got "
+                    f"{type(parameter).__name__}"
+                )
+        except ScopeError as error:
+            event["status"] = "error"
+            event["error_code"] = "UNRESOLVED_REFERENCE"
+            body.terminate(
+                BODY_EXECUTION_ERROR, f"unresolved_reference: {step_id}: {error}"
+            )
+            return None
+        device_id = self._binding.device_by_role[role]
         event["resolved_input_sha256"] = _sha256_hex({"parameter": parameter})
-        operation_id = _operation_id(body.run_id, str(step["id"]), index_path)
+        operation_id = _operation_id(body.run_id, step_id, index_path)
         event["operation_id"] = operation_id
         # Core reads are non-state-changing observation: no allow rule applies.
         request = OperationRequest.read(operation_id, parameter=parameter)
@@ -340,7 +767,11 @@ class Executor:
         role = str(step["role"])
         parameter = str(step["parameter"])
         device_id = self._binding.device_by_role[role]
-        resolved_value = resolve_value(step["value"], scope, role)
+        resolved, resolved_value = self._resolve_input(
+            step["value"], scope, role, step_id, index_path, body, event
+        )
+        if not resolved:
+            return None
         event["resolved_input_sha256"] = _sha256_hex(resolved_value)
         operation_id = _operation_id(body.run_id, step_id, index_path)
         event["operation_id"] = operation_id
@@ -406,85 +837,58 @@ class Executor:
         scope: ChainMap[str, Any],
         body: _Body,
         event: dict[str, Any],
-    ) -> float | None:
+    ) -> SampleOutcome:
         step_id = str(step["id"])
         source_id = str(step["source_step"])
-        variable_id = str(step["variable_id"])
-        unit = str(step["unit"])
         event["resolved_input_sha256"] = _sha256_hex(
-            {"source_step": source_id, "variable_id": variable_id, "unit": unit}
+            {
+                "source_step": source_id,
+                "variable_id": step["variable_id"],
+                "unit": step["unit"],
+                "max_age_ms": step.get("max_age_ms"),
+                "require_known_uncertainty": step.get("require_known_uncertainty", False),
+            }
         )
-        value, failure = self._extract_sample(step, scope)
-        if failure is not None:
+        outcome = select_sample(
+            step, scope.get(source_id), evaluated_at_wall=self._wall.now_iso()
+        )
+        if outcome.invalid_reason is not None:
             event["status"] = "error"
             event["error_code"] = "INVALID_SAMPLE"
-            body.terminate(BODY_EXECUTION_ERROR, f"sample {step_id}: {failure}")
-            return None
-        return value
-
-    def _extract_sample(
-        self, step: dict[str, Any], scope: ChainMap[str, Any]
-    ) -> tuple[float | None, str | None]:
-        """Extract one scalar from an earlier invoke's dataset; no new I/O.
-
-        Task 6 performs the structural part of the scalar selection contract
-        (§4): a successful invoke result holding a ``scalar_set`` dataset,
-        exactly one finite numeric inline value, exact unit equality.
-        Freshness-from-acquisition, known-uncertainty and provenance checks
-        arrive with Task 7's trustworthy samples on this same seam.
-        """
-        source_id = str(step["source_step"])
-        variable_id = str(step["variable_id"])
-        unit = str(step["unit"])
-        source = scope.get(source_id)
-        if not isinstance(source, OperationResult) or source.status is not OperationStatus.OK:
-            return None, f"source step {source_id!r} has no successful operation result"
-        data = source.data
-        if not isinstance(data, dict) or not isinstance(data.get("result"), dict):
-            return None, f"source step {source_id!r} produced no class dataset"
-        dataset: dict[str, Any] = data["result"]
-        if dataset.get("kind") != "scalar_set":
-            return None, f"dataset of {source_id!r} is {dataset.get('kind')!r}, not scalar_set"
-        variables = dataset.get("variables")
-        if not isinstance(variables, list):
-            return None, f"dataset of {source_id!r} has no variables list"
-        variable = next(
-            (
-                candidate
-                for candidate in variables
-                if isinstance(candidate, dict) and candidate.get("id") == variable_id
-            ),
-            None,
-        )
-        if variable is None:
-            return None, f"variable {variable_id!r} missing from dataset of {source_id!r}"
-        if variable.get("unit") != unit:
-            return None, (
-                f"variable {variable_id!r} unit {variable.get('unit')!r} does not "
-                f"equal {unit!r}"
+            body.terminate(
+                BODY_EXECUTION_ERROR,
+                f"sample {step_id}: INVALID ({outcome.invalid_reason})",
             )
-        values = variable.get("values")
-        if not isinstance(values, list) or len(values) != 1:
-            return None, f"variable {variable_id!r} must hold exactly one inline value"
-        raw = values[0]
-        if (
-            isinstance(raw, bool)
-            or not isinstance(raw, (int, float))
-            or not math.isfinite(raw)
-        ):
-            return None, f"variable {variable_id!r} value is not one finite number"
-        return float(raw), None
+        return outcome
 
-    def _predicate_value(
+    def _predicate_samples(
         self, predicate: dict[str, Any], scope: ChainMap[str, Any]
-    ) -> tuple[float | None, str | None]:
+    ) -> dict[str, SampleOutcome]:
         sample_id = str(predicate["sample"])
-        value = scope.get(sample_id)
-        if isinstance(value, bool) or not isinstance(value, (int, float)):
-            return None, f"sample {sample_id!r} is not a numeric sample"
-        if not math.isfinite(value):
-            return None, f"sample {sample_id!r} is not finite"
-        return float(value), None
+        sample = scope.get(sample_id)
+        if isinstance(sample, SampleOutcome):
+            return {sample_id: sample}
+        return {}
+
+    def _assertion_failure_reason(
+        self, predicate: dict[str, Any], scope: ChainMap[str, Any], step_id: str
+    ) -> str:
+        minimum = predicate["minimum"]
+        maximum = predicate["maximum"]
+        outcome = scope.get(str(predicate["sample"]))
+        value = outcome.value if isinstance(outcome, SampleOutcome) else None
+        if (
+            value is not None
+            and isinstance(outcome, SampleOutcome)
+            and outcome.uncertainty is not None
+        ):
+            low = value - outcome.uncertainty
+            high = value + outcome.uncertainty
+            return (
+                f"assert {step_id}: conservative interval [{low}, {high}] escapes "
+                f"[{minimum}, {maximum}]"
+            )
+        return f"assert {step_id}: {value} outside [{minimum}, {maximum}]"
 
     def _step_assert(
         self,
@@ -496,19 +900,20 @@ class Executor:
         step_id = str(step["id"])
         predicate = step["predicate"]
         event["resolved_input_sha256"] = _sha256_hex(predicate)
-        value, failure = self._predicate_value(predicate, scope)
-        if failure is not None:
+        held = evaluate_predicate(predicate, self._predicate_samples(predicate, scope))
+        if held is None:
             event["status"] = "error"
             event["error_code"] = "INVALID_SAMPLE"
-            body.terminate(BODY_EXECUTION_ERROR, f"assert {step_id}: {failure}")
+            body.terminate(
+                BODY_EXECUTION_ERROR,
+                f"assert {step_id}: sample {str(predicate['sample'])!r} is INVALID",
+            )
             return None
-        minimum, maximum = predicate["minimum"], predicate["maximum"]
-        held: bool = bool(minimum <= value <= maximum)
         if not held:
             event["status"] = "failed"
             body.terminate(
                 BODY_ASSERTION_FAILED,
-                f"assert {step_id}: {value} outside [{minimum}, {maximum}]",
+                self._assertion_failure_reason(predicate, scope, step_id),
             )
         return held
 
@@ -533,11 +938,15 @@ class Executor:
             event = self._new_event(body, step_id, "if", index_path)
             event["resolved_input_sha256"] = _sha256_hex(step["predicate"])
             body.events.append(event)
-            value, failure = self._predicate_value(step["predicate"], scope)
-            if failure is not None:
+            predicate = step["predicate"]
+            held = evaluate_predicate(predicate, self._predicate_samples(predicate, scope))
+            if held is None:
                 event["status"] = "error"
                 event["error_code"] = "INVALID_SAMPLE"
-                body.terminate(BODY_EXECUTION_ERROR, f"if {step_id}: {failure}")
+                body.terminate(
+                    BODY_EXECUTION_ERROR,
+                    f"if {step_id}: sample {str(predicate['sample'])!r} is INVALID",
+                )
                 self._ledger[occurrence] = {
                     "event": event,
                     "result": None,
@@ -545,8 +954,6 @@ class Executor:
                     "reason": body.reasons[-1],
                 }
                 return None
-            predicate = step["predicate"]
-            held = bool(predicate["minimum"] <= value <= predicate["maximum"])
             self._ledger[occurrence] = {"event": event, "result": held}
         # Exactly one statically declared branch, scoped to this block; the
         # replay re-walks the recorded decision so nested occurrences replay.

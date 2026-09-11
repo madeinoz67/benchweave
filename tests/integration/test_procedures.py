@@ -39,7 +39,7 @@ import pytest
 from benchweave.control.binding import BindingError, release, reserve, resolve_binding
 from benchweave.control.clocking import SystemClock, TestClock
 from benchweave.control.documents import AdmissionRejected, AdmittedDocuments, admit_documents
-from benchweave.control.executor import Executor, canonical_json
+from benchweave.control.executor import Executor, SampleOutcome, canonical_json, evaluate_predicate
 from benchweave.control.policy import (
     PolicyDenied,
     SignalValue,
@@ -1046,7 +1046,20 @@ def _literalize_inputs(graph: dict[str, Any]) -> None:
 
 
 def _admit_literal(tmp_path: Path) -> AdmittedDocuments:
-    return readmit_mutated(tmp_path, _literalize_inputs)
+    """Literal-input variant of the fixture, admitted through the pins.
+
+    Task 7's conservative-interval predicates made the fixture's own
+    ``check-current`` bounds (``[0.0, 0.5]`` vs current ``0.0 ± 0.01``)
+    honestly unsatisfiable, so the reduced variant also widens that one
+    predicate (see ``_widen_check_current``) to keep the completing-body
+    shape these tests assert.
+    """
+
+    def mutate(graph: dict[str, Any]) -> None:
+        _literalize_inputs(graph)
+        _widen_check_current(graph)
+
+    return readmit_mutated(tmp_path, mutate)
 
 
 def _plugins_for(clock: TestClock) -> dict[str, DevicePlugin]:
@@ -1324,3 +1337,578 @@ def test_shared_occurrence_ledger_replays_without_redispatch(tmp_path: Path) -> 
     assert clock.waits == waits_after_first  # the delay was not re-waited either
     assert set(ledger) == occurrences_after_first  # occurrence identity is stable
     assert second.step_events == first.step_events
+
+
+# --- Task 7: references, issued ids, trustworthy samples ----------------------
+
+
+def _stub_variable(
+    variable_id: str,
+    unit: str,
+    value: float,
+    *,
+    uncertainty: dict[str, Any] | None = None,
+    dimensions: list[str] | None = None,
+    values: list[Any] | None = None,
+    status: str = "valid",
+) -> dict[str, Any]:
+    """One scalar_set variable, shape-compatible with sim_psu's measure."""
+    return {
+        "id": variable_id,
+        "quantity": variable_id,
+        "unit": unit,
+        "channel_ids": ["ch1"],
+        "dtype": "float64",
+        "dimensions": [] if dimensions is None else dimensions,
+        "values": [value] if values is None else values,
+        "uncertainty": (
+            {"status": "known", "absolute": 0.05} if uncertainty is None else uncertainty
+        ),
+        "calibration": {"status": "unknown"},
+        "status": status,
+    }
+
+
+def _stub_dataset(started_at: str, variables: list[dict[str, Any]]) -> dict[str, Any]:
+    """A scalar_set dataset envelope, shape-compatible with sim_psu's measure."""
+    return {
+        "dataset_id": "dataset-stub-1",
+        "kind": "scalar_set",
+        "configuration_id": "cfg-stub-1",
+        "acquisition_id": None,
+        "started_at": started_at,
+        "clock": {
+            "domain_id": "stub",
+            "timestamp_source": "device",
+            "synchronisation": "unknown",
+            "uncertainty_s": None,
+        },
+        "axes": [],
+        "variables": variables,
+        "trigger": {"source": "unknown", "time_relative_s": None},
+        "status": "complete",
+        "context": {"direction": "delivered_to_dut"},
+    }
+
+
+def _override_first_measure(
+    clock: TestClock, variables: list[dict[str, Any]]
+) -> Callable[[OperationRequest], OperationResult | None]:
+    """Hook replacing the ROOT measure result with a crafted stub dataset.
+
+    Loop ``remeasure`` occurrences still hit the real plugin, so stub-driven
+    root samples and real loop samples coexist in one body.
+    """
+    fired = [False]
+
+    def hook(request: OperationRequest) -> OperationResult | None:
+        if (
+            request.verb is OperationVerb.INVOKE
+            and request.arguments.get("action_id") == PSU_MEASURE
+            and not fired[0]
+        ):
+            fired[0] = True
+            return OperationResult.ok(
+                request.operation_id,
+                request.verb,
+                {"result": _stub_dataset(clock.now_iso(), variables)},
+            )
+        return None
+
+    return hook
+
+
+def _psu_inputs(psu_calls: _RecordingPlugin) -> list[dict[str, Any]]:
+    return [request.arguments["input"] for request, _ in psu_calls.calls]
+
+
+def _events_by_step(result: Any) -> dict[str, dict[str, Any]]:
+    return {event["occurrence"][1]: event for event in result.step_events}
+
+
+def _widen_check_current(graph: dict[str, Any]) -> None:
+    """Make the fixture's then-branch assert satisfiable by honest evidence.
+
+    The fixture bounds ``check-current`` at ``[0.0, 0.5]`` while current
+    measures ``0.0 ± 0.01``: the conservative interval ``[-0.01, 0.01]``
+    dips below the zero minimum, so the pristine fixture cannot complete
+    under §4 semantics (pinned separately below). Tests that need a
+    completing body widen this one predicate; everything else stays
+    original.
+    """
+    then_branch = _root_step(graph["procedure"], "branch")["then"]
+    check_current = next(s for s in then_branch if s["id"] == "check-current")
+    check_current["predicate"] = {"sample": "recheck", "minimum": -0.1, "maximum": 0.5}
+
+
+def test_reference_fixture_resolves_all_three_forms(tmp_path: Path) -> None:
+    clock = TestClock()
+    plugins = _plugins_for(clock)
+    psu_calls = _wrapped_psu(plugins)
+    ledger: dict[tuple[str, str, tuple[int, ...]], dict[str, Any]] = {}
+    docs = readmit_mutated(tmp_path, _widen_check_current)
+    executor = _executor_for(docs, plugins, clock, ledger)
+
+    result = executor.run_body(
+        docs.procedure, run_id=RUN_ID, body_deadline_ns=_body_deadline(clock, docs)
+    )
+
+    assert result.body_outcome == "completed"
+    assert result.reasons == []
+    assert len(result.step_events) == 21  # same shape as the literal variant
+    inputs = _psu_inputs(psu_calls)
+    issued_id = inputs[0]["configuration_id"]
+    assert issued_id == f"configuration_id-{RUN_ID}-configure"
+    # $stg_ref fed every later consumer with configure's echoed configuration_id
+    for later_input in inputs[1:]:
+        assert later_input["configuration_id"] == issued_id
+    configure_result = ledger[(RUN_ID, "configure", ())]["result"]
+    assert configure_result.data["result"]["configuration_id"] == issued_id
+    assert ledger[(RUN_ID, "configure", ())]["issued_ids"] == {
+        "configuration_id": {"id": issued_id, "status": "issued"}
+    }
+
+    # Replay on the shared ledger: references resolve from the recorded
+    # results on re-entry, with no new dispatch and no new issued id.
+    dispatches_after_first = list(psu_calls.calls)
+    second = executor.run_body(
+        docs.procedure, run_id=RUN_ID, body_deadline_ns=_body_deadline(clock, docs)
+    )
+    assert second.body_outcome == "completed"
+    assert psu_calls.calls == dispatches_after_first
+    assert second.step_events == result.step_events
+    assert ledger[(RUN_ID, "configure", ())]["issued_ids"] == {
+        "configuration_id": {"id": issued_id, "status": "issued"}
+    }
+
+
+def test_pristine_fixture_then_branch_is_interval_honest(tmp_path: Path) -> None:
+    """Finding: the fixture's check-current bounds assume nominal comparison.
+
+    On the untouched fixture, current measures 0.0 ± 0.01 while
+    ``check-current`` demands ``[0.0, 0.5]``. The conservative interval
+    ``[-0.01, 0.01]`` dips below the zero minimum, so under §4 semantics
+    the body ends ``assertion_failed`` there — honestly, not as an error.
+    The nominal value 0.0 is inside the bounds; the interval is what
+    decides. Fixture owners may want bounds of ``[-0.01, 0.5]`` for a
+    completing body.
+    """
+    clock = TestClock()
+    plugins = _plugins_for(clock)
+    docs = admit()  # the untouched reference-bearing fixture
+    executor = _executor_for(docs, plugins, clock)
+
+    result = executor.run_body(
+        docs.procedure, run_id=RUN_ID, body_deadline_ns=_body_deadline(clock, docs)
+    )
+
+    assert result.body_outcome == "assertion_failed"
+    assert any("escapes" in reason for reason in result.reasons)
+    by_step = _events_by_step(result)
+    assert by_step["check-current"]["status"] == "failed"
+    assert "recheck" in by_step  # the then branch ran on real interval evidence
+    assert "loop" not in by_step  # the body ended at the failed assert
+
+
+def test_stg_channel_resolves_output_alias_via_binding(tmp_path: Path) -> None:
+    clock = TestClock()
+    plugins = _plugins_for(clock)
+    psu_calls = _wrapped_psu(plugins)
+    docs = admit()
+    executor = _executor_for(docs, plugins, clock)
+
+    executor.run_body(
+        docs.procedure, run_id=RUN_ID, body_deadline_ns=_body_deadline(clock, docs)
+    )
+
+    inputs = _psu_inputs(psu_calls)
+    assert inputs[0]["channel"] == "ch1"  # alias "output" never reaches the device
+    assert inputs[2]["channels"] == ["ch1"]
+
+
+def test_stg_ref_missing_key_fails_before_dispatch(tmp_path: Path) -> None:
+    def mutate(graph: dict[str, Any]) -> None:
+        enable = _root_step(graph["procedure"], "enable")
+        enable["input"]["configuration_id"]["$stg_ref"]["pointer"] = "/nonexistent"
+
+    clock = TestClock()
+    plugins = _plugins_for(clock)
+    psu_calls = _wrapped_psu(plugins)
+    docs = readmit_mutated(tmp_path, mutate)
+    executor = _executor_for(docs, plugins, clock)
+
+    result = executor.run_body(
+        docs.procedure, run_id=RUN_ID, body_deadline_ns=_body_deadline(clock, docs)
+    )
+
+    assert result.body_outcome == "execution_error"
+    assert result.reasons[0].startswith("unresolved_reference:")
+    assert "nonexistent" in result.reasons[0]
+    # configure dispatched; enable — the consuming step — never did
+    assert [request.arguments["action_id"] for request, _ in psu_calls.calls] == [
+        PSU_CONFIGURE
+    ]
+    by_step = _events_by_step(result)
+    assert by_step["enable"]["status"] == "error"
+    assert by_step["enable"]["error_code"] == "UNRESOLVED_REFERENCE"
+    assert "settle" not in by_step  # the body ended at enable
+
+
+def test_stg_issue_mints_fresh_id_per_run(tmp_path: Path) -> None:
+    clock = TestClock()
+    plugins = _plugins_for(clock)
+    psu_calls = _wrapped_psu(plugins)
+    docs = admit()
+    executor = _executor_for(docs, plugins, clock)
+
+    executor.run_body(
+        docs.procedure, run_id="run-1", body_deadline_ns=_body_deadline(clock, docs)
+    )
+    executor.run_body(
+        docs.procedure, run_id="run-2", body_deadline_ns=_body_deadline(clock, docs)
+    )
+
+    issued = [
+        request.arguments["input"]["configuration_id"]
+        for request, _ in psu_calls.calls
+        if request.arguments["action_id"] == PSU_CONFIGURE
+    ]
+    assert issued == [
+        "configuration_id-run-1-configure",
+        "configuration_id-run-2-configure",
+    ]
+
+
+def test_failed_configure_invalidates_issued_id_without_remint(tmp_path: Path) -> None:
+    clock = TestClock()
+    plugins = _plugins_for(clock)
+    psu_calls = _wrapped_psu(plugins)
+    attempts = [0]
+
+    def reject_configure_once(request: OperationRequest) -> OperationResult | None:
+        if (
+            request.verb is OperationVerb.INVOKE
+            and request.arguments.get("action_id") == PSU_CONFIGURE
+        ):
+            attempts[0] += 1
+            if attempts[0] == 1:
+                return OperationResult.failure(
+                    request.operation_id,
+                    request.verb,
+                    code=ErrorCode.DEVICE_REJECTED,
+                    message="configuration rejected",
+                    dispatch_state=DispatchState.NOT_DISPATCHED,
+                )
+        return None
+
+    psu_calls.hook = reject_configure_once
+    ledger: dict[tuple[str, str, tuple[int, ...]], dict[str, Any]] = {}
+    docs = admit()
+    executor = _executor_for(docs, plugins, clock, ledger)
+
+    first = executor.run_body(
+        docs.procedure, run_id=RUN_ID, body_deadline_ns=_body_deadline(clock, docs)
+    )
+
+    assert first.body_outcome == "execution_error"
+    assert attempts[0] == 1
+    issued_id = psu_calls.calls[0][0].arguments["input"]["configuration_id"]
+    assert ledger[(RUN_ID, "configure", ())]["issued_ids"] == {
+        "configuration_id": {"id": issued_id, "status": "invalidated"}
+    }
+
+    second = executor.run_body(
+        docs.procedure, run_id=RUN_ID, body_deadline_ns=_body_deadline(clock, docs)
+    )
+
+    assert second.body_outcome == "execution_error"
+    assert attempts[0] == 1  # replayed occurrence: no re-dispatch, no re-mint
+    assert len(psu_calls.calls) == 1
+    assert ledger[(RUN_ID, "configure", ())]["issued_ids"] == {
+        "configuration_id": {"id": issued_id, "status": "invalidated"}
+    }
+
+
+def test_loop_results_do_not_leak_past_iteration_frames(tmp_path: Path) -> None:
+    """Runtime counterpart of admission's loop-scope rejection.
+
+    A result visible inside a repeat iteration must be unresolvable outside
+    the loop: each iteration executes in a fresh scope frame and nothing is
+    written back to the enclosing scope. Admission rejects this shape
+    statically (Task 3); this proves the executor agrees when handed the
+    procedure directly.
+    """
+    clock = TestClock()
+    plugins = _plugins_for(clock)
+    psu_calls = _wrapped_psu(plugins)
+    docs = readmit_mutated(tmp_path, _widen_check_current)
+    procedure = copy.deepcopy(docs.procedure)
+    procedure["steps"].append(
+        {
+            "id": "after",
+            "kind": "invoke",
+            "role": "supply",
+            "action_id": PSU_MEASURE,
+            "input": {
+                "configuration_id": {
+                    "$stg_ref": {"step": "remeasure", "pointer": "/configuration_id"}
+                },
+                "channels": [{"$stg_channel": "output"}],
+            },
+            "timeout_ms": 500,
+        }
+    )
+    executor = _executor_for(docs, plugins, clock)
+
+    result = executor.run_body(
+        procedure, run_id=RUN_ID, body_deadline_ns=_body_deadline(clock, docs)
+    )
+
+    assert result.body_outcome == "execution_error"
+    assert result.reasons[0].startswith("unresolved_reference:")
+    assert "remeasure" in result.reasons[0]
+    measure_dispatches = [
+        request
+        for request, _ in psu_calls.calls
+        if request.arguments.get("action_id") == PSU_MEASURE
+    ]
+    # root measure + three loop remeasures; `after` never dispatched
+    assert len(measure_dispatches) == 4
+
+
+def test_wrong_unit_sample_is_execution_error(tmp_path: Path) -> None:
+    def mutate(graph: dict[str, Any]) -> None:
+        _root_step(graph["procedure"], "voltage")["unit"] = "mV"
+
+    clock = TestClock()
+    plugins = _plugins_for(clock)
+    docs = readmit_mutated(tmp_path, mutate)
+    executor = _executor_for(docs, plugins, clock)
+
+    result = executor.run_body(
+        docs.procedure, run_id=RUN_ID, body_deadline_ns=_body_deadline(clock, docs)
+    )
+
+    assert result.body_outcome == "execution_error"
+    assert "wrong_unit" in result.reasons[0]
+    by_step = _events_by_step(result)
+    assert by_step["voltage"]["status"] == "error"
+    assert by_step["voltage"]["error_code"] == "INVALID_SAMPLE"
+    assert "check" not in by_step  # INVALID never reaches the predicate
+
+
+def test_stale_sample_is_execution_error(tmp_path: Path) -> None:
+    def mutate(graph: dict[str, Any]) -> None:
+        steps = graph["procedure"]["steps"]
+        index = next(i for i, step in enumerate(steps) if step["id"] == "measure")
+        steps.insert(
+            index + 1, {"id": "age", "kind": "delay", "duration_ms": 600}
+        )
+
+    clock = TestClock()
+    plugins = _plugins_for(clock)
+    docs = readmit_mutated(tmp_path, mutate)
+    executor = _executor_for(docs, plugins, clock)
+
+    result = executor.run_body(
+        docs.procedure, run_id=RUN_ID, body_deadline_ns=_body_deadline(clock, docs)
+    )
+
+    assert result.body_outcome == "execution_error"
+    assert "stale" in result.reasons[0]
+    by_step = _events_by_step(result)
+    assert by_step["voltage"]["error_code"] == "INVALID_SAMPLE"
+    # freshness is measured from acquisition: 600 ms elapsed vs max_age 500
+    assert 600_000_000 in clock.waits
+
+
+def test_multi_value_dataset_is_not_scalar(tmp_path: Path) -> None:
+    clock = TestClock()
+    plugins = _plugins_for(clock)
+    psu_calls = _wrapped_psu(plugins)
+    psu_calls.hook = _override_first_measure(
+        clock,
+        [_stub_variable("voltage", "V", 5.0, values=[5.0, 5.1])],
+    )
+    docs = admit()
+    executor = _executor_for(docs, plugins, clock)
+
+    result = executor.run_body(
+        docs.procedure, run_id=RUN_ID, body_deadline_ns=_body_deadline(clock, docs)
+    )
+
+    assert result.body_outcome == "execution_error"
+    assert "not_scalar" in result.reasons[0]
+    assert _events_by_step(result)["voltage"]["error_code"] == "INVALID_SAMPLE"
+
+
+def test_nonempty_dimensions_is_not_scalar(tmp_path: Path) -> None:
+    clock = TestClock()
+    plugins = _plugins_for(clock)
+    psu_calls = _wrapped_psu(plugins)
+    psu_calls.hook = _override_first_measure(
+        clock,
+        [_stub_variable("voltage", "V", 5.0, dimensions=["sweep"])],
+    )
+    docs = admit()
+    executor = _executor_for(docs, plugins, clock)
+
+    result = executor.run_body(
+        docs.procedure, run_id=RUN_ID, body_deadline_ns=_body_deadline(clock, docs)
+    )
+
+    assert result.body_outcome == "execution_error"
+    assert "not_scalar" in result.reasons[0]
+
+
+def test_unknown_required_uncertainty_is_invalid(tmp_path: Path) -> None:
+    clock = TestClock()
+    plugins = _plugins_for(clock)
+    psu_calls = _wrapped_psu(plugins)
+    psu_calls.hook = _override_first_measure(
+        clock,
+        [_stub_variable("voltage", "V", 5.0, uncertainty={"status": "unknown"})],
+    )
+    docs = admit()
+    executor = _executor_for(docs, plugins, clock)
+
+    result = executor.run_body(
+        docs.procedure, run_id=RUN_ID, body_deadline_ns=_body_deadline(clock, docs)
+    )
+
+    assert result.body_outcome == "execution_error"
+    assert "unknown_uncertainty" in result.reasons[0]
+    assert _events_by_step(result)["voltage"]["error_code"] == "INVALID_SAMPLE"
+
+
+def test_conservative_interval_escape_is_assertion_failed(tmp_path: Path) -> None:
+    """Headline truthfulness: the interval decides, not the nominal value."""
+    clock = TestClock()
+    plugins = _plugins_for(clock)
+    psu_calls = _wrapped_psu(plugins)
+    # Nominal 5.08 is INSIDE [4.9, 5.1]; the interval [5.03, 5.13] escapes.
+    psu_calls.hook = _override_first_measure(
+        clock, [_stub_variable("voltage", "V", 5.08)]
+    )
+    docs = admit()
+    executor = _executor_for(docs, plugins, clock)
+
+    result = executor.run_body(
+        docs.procedure, run_id=RUN_ID, body_deadline_ns=_body_deadline(clock, docs)
+    )
+
+    assert result.body_outcome == "assertion_failed"  # not completed, not an error
+    by_step = _events_by_step(result)
+    assert by_step["check"]["status"] == "failed"
+    assert any("escapes" in reason for reason in result.reasons)
+    assert "branch" not in by_step  # the body ended at the assert
+
+    # Unit-level pin of the three-valued comparison on the same numbers.
+    predicate = {"sample": "v", "minimum": 4.9, "maximum": 5.1}
+    conservative = SampleOutcome(5.08, 0.05, None, None)
+    nominal_only = SampleOutcome(5.08, None, None, None)
+    passing = SampleOutcome(5.0, 0.05, None, None)
+    invalid = SampleOutcome(None, None, None, "stale")
+    assert evaluate_predicate(predicate, {"v": conservative}) is False
+    assert evaluate_predicate(predicate, {"v": nominal_only}) is True
+    assert evaluate_predicate(predicate, {"v": passing}) is True
+    assert evaluate_predicate(predicate, {"v": invalid}) is None
+    assert evaluate_predicate(predicate, {}) is None
+
+
+def test_if_false_runs_else_branch_only(tmp_path: Path) -> None:
+    def mutate(graph: dict[str, Any]) -> None:
+        _root_step(graph["procedure"], "check")["predicate"] = {
+            "sample": "voltage",
+            "minimum": 0.0,
+            "maximum": 10.0,
+        }
+        _root_step(graph["procedure"], "branch")["else"] = [
+            {"id": "fallback", "kind": "delay", "duration_ms": 10}
+        ]
+
+    clock = TestClock()
+    plugins = _plugins_for(clock)
+    psu_calls = _wrapped_psu(plugins)
+    # 5.6 ± 0.05 → interval [5.55, 5.65] escapes the branch bounds [0.1, 5.5]
+    psu_calls.hook = _override_first_measure(
+        clock, [_stub_variable("voltage", "V", 5.6)]
+    )
+    docs = readmit_mutated(tmp_path, mutate)
+    executor = _executor_for(docs, plugins, clock)
+
+    result = executor.run_body(
+        docs.procedure, run_id=RUN_ID, body_deadline_ns=_body_deadline(clock, docs)
+    )
+
+    assert result.body_outcome == "completed"
+    step_ids = [event["occurrence"][1] for event in result.step_events]
+    assert "fallback" in step_ids  # else branch executed
+    assert "recheck" not in step_ids  # then branch did not
+    assert "check-current" not in step_ids
+    assert clock.waits.count(10_000_000) == 1  # the fallback delay ran once
+
+
+def test_read_parameter_reference_rejected_before_dispatch(tmp_path: Path) -> None:
+    """Read parameters are literals by schema; the runtime seam agrees."""
+    clock = TestClock()
+    plugins = _plugins_for(clock)
+    controller_calls = _RecordingPlugin(plugins["controller"])
+    plugins["controller"] = controller_calls
+    docs = admit()
+    procedure = copy.deepcopy(docs.procedure)
+    model = next(step for step in procedure["steps"] if step["id"] == "model")
+    model["parameter"] = {
+        "$stg_ref": {"step": "configure", "pointer": "/configuration_id"}
+    }
+    executor = _executor_for(docs, plugins, clock)
+
+    result = executor.run_body(
+        procedure, run_id=RUN_ID, body_deadline_ns=_body_deadline(clock, docs)
+    )
+
+    assert result.body_outcome == "execution_error"
+    assert result.reasons[0].startswith("unresolved_reference:")
+    # only the note write reached the controller; the model read never dispatched
+    assert [request.verb for request, _ in controller_calls.calls] == [
+        OperationVerb.WRITE
+    ]
+    by_step = _events_by_step(result)
+    assert by_step["model"]["error_code"] == "UNRESOLVED_REFERENCE"
+
+
+def test_nested_if_inside_repeat_composes(tmp_path: Path) -> None:
+    def mutate(graph: dict[str, Any]) -> None:
+        _widen_check_current(graph)
+        _root_step(graph["procedure"], "loop")["steps"].append(
+            {
+                "id": "loop-branch",
+                "kind": "if",
+                "predicate": {"sample": "voltage-again", "minimum": 0.1, "maximum": 5.5},
+                "then": [{"id": "loop-note", "kind": "delay", "duration_ms": 5}],
+                "else": [],
+            }
+        )
+
+    clock = TestClock()
+    plugins = _plugins_for(clock)
+    docs = readmit_mutated(tmp_path, mutate)
+    executor = _executor_for(docs, plugins, clock)
+
+    result = executor.run_body(
+        docs.procedure, run_id=RUN_ID, body_deadline_ns=_body_deadline(clock, docs)
+    )
+
+    assert result.body_outcome == "completed"
+    assert result.reasons == []
+    loop_notes = [
+        event["occurrence"]
+        for event in result.step_events
+        if event["occurrence"][1] == "loop-note"
+    ]
+    assert loop_notes == [
+        [RUN_ID, "loop-note", [0]],
+        [RUN_ID, "loop-note", [1]],
+        [RUN_ID, "loop-note", [2]],
+    ]
+    assert clock.waits.count(5_000_000) == 3  # nested then-branch ran per iteration
