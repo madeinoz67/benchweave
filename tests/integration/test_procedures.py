@@ -13,21 +13,33 @@ binding completeness belong to later stages and are not exercised here. The
 policy evaluator is exercised against the admitted fixture policy:
 deny-by-default allow rules with conjunctive constraint checking, and
 conservative continuous-condition evaluation over hand-built signal snapshots.
+Task 6 adds the execution engine core: the eight-kind interpreter over both
+sim plugins on an injected ``TestClock`` — happy path over a literal-input
+variant of the fixture procedure, per-step deadline clamping against the
+fixed body deadline, no-retry uncertainty after a dispatched failure,
+post-dispatch timeout honesty, body expiry, policy-gated dispatch and the
+shared occurrence ledger across ``run_body`` calls.
 """
 
 from __future__ import annotations
 
 import copy
 import hashlib
+import importlib.util
 import json
-from collections.abc import Callable
+import sys
+from collections.abc import Callable, Iterator
+from datetime import datetime
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 import pytest
 
 from benchweave.control.binding import BindingError, release, reserve, resolve_binding
+from benchweave.control.clocking import SystemClock, TestClock
 from benchweave.control.documents import AdmissionRejected, AdmittedDocuments, admit_documents
+from benchweave.control.executor import Executor, canonical_json
 from benchweave.control.policy import (
     PolicyDenied,
     SignalValue,
@@ -35,6 +47,15 @@ from benchweave.control.policy import (
     evaluate_conditions,
 )
 from benchweave.control.semantics import check_semantics, worst_case_body_ms
+from benchweave.host.plugin import DevicePlugin
+from benchweave.host.services import HostServices
+from benchweave.host.types import (
+    DispatchState,
+    ErrorCode,
+    OperationRequest,
+    OperationResult,
+    OperationVerb,
+)
 from benchweave.state.store import Store
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "execution"
@@ -916,3 +937,390 @@ def test_conditions_product_skew_at_bound_passes() -> None:
         _signal("dut-voltage", 5.0, age_ms=100), _current(0.5, age_ms=200)
     )
     assert evaluate_conditions(admit().policy, snapshot) == []
+
+
+# --- Task 6: clocking + execution engine core ---------------------------------
+
+PLUGINS_ROOT = Path(__file__).resolve().parents[2] / "plugins"
+RUN_ID = "run-1"
+LITERAL_CONFIGURATION_ID = "cfg-test-1"
+PSU_MEASURE = "otdp.dc_psu.measure/1.0.0"
+CONFIGURE_LITERAL_INPUT = {
+    "configuration_id": LITERAL_CONFIGURATION_ID,
+    "channel": "ch1",
+    "voltage_v": 5.0,
+    "current_limit_a": 0.5,
+    "ovp_v": 5.5,
+    "ocp_a": 0.5,
+}
+
+
+def _load_plugin(name: str) -> ModuleType:
+    path = PLUGINS_ROOT / name / "plugin.py"
+    assert path.is_file(), f"plugin file missing: {path}"
+    spec = importlib.util.spec_from_file_location(name.replace("-", "_"), path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+class _NullServices:
+    """Scoped-services stand-in; the sim plugins only store the reference."""
+
+    def resolve_content(self, content_id: str) -> bytes:
+        return b"{}"
+
+    def retain_evidence(self, key: str, payload: bytes) -> str:
+        return f"evidence-{key}"
+
+    def emit_event(self, kind: str, body: dict[str, Any]) -> None:
+        pass
+
+    def quota_state(self) -> dict[str, int]:
+        return {"dataset_bytes_used": 0, "evidence_entries_used": 0, "events_emitted": 0}
+
+    def register_reading_sink(self, sink: Any) -> None:
+        pass
+
+
+class _RecordingPlugin:
+    """DevicePlugin wrapper capturing every dispatched request and deadline.
+
+    The optional ``hook`` intercepts a dispatch and returns an override
+    OperationResult (a fault injection), or None to delegate to the inner
+    plugin.
+    """
+
+    def __init__(self, inner: DevicePlugin) -> None:
+        self._inner = inner
+        self.calls: list[tuple[OperationRequest, int]] = []
+        self.hook: Callable[[OperationRequest], OperationResult | None] | None = None
+
+    @property
+    def simulation(self) -> Any:
+        return self._inner.simulation
+
+    def plugin_open(self, services: HostServices) -> None:
+        self._inner.plugin_open(services)
+
+    def plugin_close(self) -> None:
+        self._inner.plugin_close()
+
+    def dispatch(self, request: OperationRequest, *, deadline_ns: int) -> OperationResult:
+        self.calls.append((request, deadline_ns))
+        override = None if self.hook is None else self.hook(request)
+        if override is not None:
+            return override
+        return self._inner.dispatch(request, deadline_ns=deadline_ns)
+
+
+def _walk_all_steps(steps: list[dict[str, Any]]) -> Iterator[dict[str, Any]]:
+    for step in steps:
+        yield step
+        if step["kind"] == "if":
+            yield from _walk_all_steps(step["then"])
+            yield from _walk_all_steps(step.get("else", []))
+        elif step["kind"] == "repeat":
+            yield from _walk_all_steps(step["steps"])
+
+
+def _literalize_inputs(graph: dict[str, Any]) -> None:
+    """Replace the three $stg reference forms with literals (Task 6 seam).
+
+    Reference resolution, issued IDs and trustworthy samples arrive in Task 7;
+    until then the engine under test runs a reduced literal-input variant of
+    the fixture procedure, admitted through the normal pin lattice.
+    """
+    for step in _walk_all_steps(graph["procedure"]["steps"]):
+        if step["kind"] != "invoke":
+            continue
+        step_input = step["input"]
+        if isinstance(step_input.get("configuration_id"), dict):
+            step_input["configuration_id"] = LITERAL_CONFIGURATION_ID
+        if isinstance(step_input.get("channel"), dict):
+            step_input["channel"] = "ch1"
+        if isinstance(step_input.get("channels"), list):
+            step_input["channels"] = ["ch1" for _ in step_input["channels"]]
+
+
+def _admit_literal(tmp_path: Path) -> AdmittedDocuments:
+    return readmit_mutated(tmp_path, _literalize_inputs)
+
+
+def _plugins_for(clock: TestClock) -> dict[str, DevicePlugin]:
+    """Both sim plugins on the SAME clock the executor will use."""
+    plugins: dict[str, DevicePlugin] = {}
+    for device_id, name in (("psu", "sim_psu"), ("controller", "sim_controller")):
+        plugin = _load_plugin(name).create_plugin(
+            now_fn=clock.now_iso, monotonic_ns_fn=clock.now_ns
+        )
+        plugin.plugin_open(_NullServices())
+        plugins[device_id] = plugin
+    return plugins
+
+
+def _executor_for(
+    docs: AdmittedDocuments,
+    plugins: dict[str, DevicePlugin],
+    clock: TestClock,
+    ledger: dict[tuple[str, str, tuple[int, ...]], dict[str, Any]] | None = None,
+) -> Executor:
+    return Executor(
+        plugins=plugins,
+        binding=resolve_binding(docs),
+        policy=docs.policy,
+        clock=clock,
+        wall=clock,
+        occurrence_ledger=ledger,
+    )
+
+
+def _body_deadline(clock: TestClock, docs: AdmittedDocuments) -> int:
+    return clock.now_ns() + int(docs.procedure["max_body_ms"]) * 1_000_000
+
+
+def _wrapped_psu(plugins: dict[str, DevicePlugin]) -> _RecordingPlugin:
+    recorder = _RecordingPlugin(plugins["psu"])
+    plugins["psu"] = recorder
+    return recorder
+
+
+def test_test_clock_advances_waits_and_stamps_wall_time() -> None:
+    clock = TestClock(start_ns=1_000)
+    assert clock.now_ns() == 1_000
+    assert clock.now_iso() == "2026-09-11T00:00:00Z"
+    clock.advance(5)
+    clock.wait_ns(100_000_000)
+    assert clock.now_ns() == 100_001_005  # waits advance instantly, never sleep
+    assert clock.waits == [100_000_000]
+    assert clock.now_iso() == "2026-09-11T00:00:00.100000Z"
+
+
+def test_system_clock_satisfies_both_ports() -> None:
+    clock = SystemClock()
+    before = clock.now_ns()
+    clock.wait_ns(0)
+    assert before > 0
+    assert clock.now_ns() >= before
+    stamp = datetime.fromisoformat(clock.now_iso().replace("Z", "+00:00"))
+    assert stamp.tzinfo is not None
+
+
+def test_run_body_happy_path_executes_all_eight_kinds(tmp_path: Path) -> None:
+    clock = TestClock()
+    plugins = _plugins_for(clock)
+    psu_calls = _wrapped_psu(plugins)
+    ledger: dict[tuple[str, str, tuple[int, ...]], dict[str, Any]] = {}
+    docs = _admit_literal(tmp_path)
+    executor = _executor_for(docs, plugins, clock, ledger)
+
+    result = executor.run_body(
+        docs.procedure, run_id=RUN_ID, body_deadline_ns=_body_deadline(clock, docs)
+    )
+
+    assert result.body_outcome == "completed"
+    assert result.reasons == []
+    assert {event["kind"] for event in result.step_events} == {
+        "invoke", "read", "write", "delay", "sample", "assert", "if", "repeat"
+    }
+    assert all(event["status"] == "ok" for event in result.step_events)
+    # 10 root steps (the repeat parent included) + 2 then-branch steps
+    # + 3 x 3 loop children.
+    assert len(result.step_events) == 21
+    by_step = {event["occurrence"][1]: event for event in result.step_events}
+    assert by_step["configure"]["occurrence"] == [RUN_ID, "configure", []]
+    assert by_step["loop"]["occurrence"] == [RUN_ID, "loop", []]
+    assert by_step["recheck"]["occurrence"] == [RUN_ID, "recheck", []]
+    assert [event["occurrence"] for event in result.step_events
+            if event["occurrence"][1] == "remeasure"] == [
+        [RUN_ID, "remeasure", [0]],
+        [RUN_ID, "remeasure", [1]],
+        [RUN_ID, "remeasure", [2]],
+    ]
+    assert by_step["configure"]["operation_id"] == f"op:{RUN_ID}:configure"
+    assert {event["operation_id"] for event in result.step_events} >= {
+        f"op:{RUN_ID}:remeasure.0",
+        f"op:{RUN_ID}:remeasure.1",
+        f"op:{RUN_ID}:remeasure.2",
+    }
+    assert by_step["configure"]["resolved_input_sha256"] == hashlib.sha256(
+        canonical_json(CONFIGURE_LITERAL_INPUT).encode("utf-8")
+    ).hexdigest()
+    configure_result = ledger[(RUN_ID, "configure", ())]["result"]
+    assert configure_result.data["result"]["configuration_id"] == LITERAL_CONFIGURATION_ID
+    assert clock.waits == [100_000_000]  # the settle delay, through the injected clock
+    assert len(psu_calls.calls) == 6  # configure + enable + measure + 3 remeasure
+
+
+def test_step_deadline_clamped_to_remaining_body_budget(tmp_path: Path) -> None:
+    def mutate(graph: dict[str, Any]) -> None:
+        _literalize_inputs(graph)
+        graph["procedure"]["max_body_ms"] = 1
+
+    clock = TestClock()
+    plugins = _plugins_for(clock)
+    psu_calls = _wrapped_psu(plugins)
+    docs = readmit_mutated(tmp_path, mutate)
+    executor = _executor_for(docs, plugins, clock)
+    start_ns = clock.now_ns()
+    body_deadline_ns = start_ns + 1_000_000
+
+    result = executor.run_body(
+        docs.procedure, run_id=RUN_ID, body_deadline_ns=body_deadline_ns
+    )
+
+    # The 1 ms body budget is shorter than every step timeout: the body ends
+    # at its deadline and every dispatched deadline is clamped to the budget.
+    assert result.body_outcome == "timed_out"
+    assert psu_calls.calls
+    for _request, dispatched_deadline_ns in psu_calls.calls:
+        assert start_ns <= dispatched_deadline_ns <= body_deadline_ns
+        assert dispatched_deadline_ns < start_ns + 500_000_000
+    assert psu_calls.calls[0][1] == body_deadline_ns
+
+
+def test_uncertain_operation_is_never_retried(tmp_path: Path) -> None:
+    clock = TestClock()
+    plugins = _plugins_for(clock)
+    psu_calls = _wrapped_psu(plugins)
+    attempts = [0]
+
+    def fail_measure_once(request: OperationRequest) -> OperationResult | None:
+        if (
+            request.verb is OperationVerb.INVOKE
+            and request.arguments.get("action_id") == PSU_MEASURE
+        ):
+            attempts[0] += 1
+            if attempts[0] == 1:
+                return OperationResult.failure(
+                    request.operation_id,
+                    request.verb,
+                    code=ErrorCode.TRANSPORT_ERROR,
+                    message="transport dropped after dispatch",
+                    dispatch_state=DispatchState.DISPATCHED,
+                )
+        return None
+
+    psu_calls.hook = fail_measure_once
+    docs = _admit_literal(tmp_path)
+    executor = _executor_for(docs, plugins, clock)
+
+    result = executor.run_body(
+        docs.procedure, run_id=RUN_ID, body_deadline_ns=_body_deadline(clock, docs)
+    )
+
+    assert result.body_outcome == "outcome_unknown"
+    assert any(
+        "measure" in reason and "TRANSPORT_ERROR" in reason for reason in result.reasons
+    )
+    measure_events = [
+        event for event in result.step_events if event["occurrence"][1] == "measure"
+    ]
+    assert len(measure_events) == 1
+    # The event mirrors the operation status; the uncertainty lives in the
+    # body outcome above.
+    assert measure_events[0]["status"] == "error"
+    assert measure_events[0]["error_code"] == "TRANSPORT_ERROR"
+    assert attempts[0] == 1  # the failed occurrence was never re-dispatched
+    assert all(
+        event["occurrence"][1] not in ("voltage", "check", "branch", "loop")
+        for event in result.step_events
+    )
+
+
+def test_post_dispatch_timeout_is_outcome_unknown(tmp_path: Path) -> None:
+    clock = TestClock()
+    plugins = _plugins_for(clock)
+    psu_calls = _wrapped_psu(plugins)
+
+    def timeout_measure(request: OperationRequest) -> OperationResult | None:
+        if (
+            request.verb is OperationVerb.INVOKE
+            and request.arguments.get("action_id") == PSU_MEASURE
+        ):
+            return OperationResult.indeterminate(
+                request.operation_id,
+                request.verb,
+                code=ErrorCode.TIMEOUT,
+                message="no answer before the deadline",
+            )
+        return None
+
+    psu_calls.hook = timeout_measure
+    docs = _admit_literal(tmp_path)
+    executor = _executor_for(docs, plugins, clock)
+
+    result = executor.run_body(
+        docs.procedure, run_id=RUN_ID, body_deadline_ns=_body_deadline(clock, docs)
+    )
+
+    assert result.body_outcome == "outcome_unknown"
+    assert any("measure" in reason and "TIMEOUT" in reason for reason in result.reasons)
+
+
+def test_body_deadline_already_expired_times_out(tmp_path: Path) -> None:
+    clock = TestClock()
+    plugins = _plugins_for(clock)
+    docs = _admit_literal(tmp_path)
+    executor = _executor_for(docs, plugins, clock)
+    clock.advance(10_000_000_000)
+
+    result = executor.run_body(
+        docs.procedure, run_id=RUN_ID, body_deadline_ns=clock.now_ns() - 1_000_000
+    )
+
+    assert result.body_outcome == "timed_out"
+    assert result.step_events == []
+    assert len(result.reasons) == 1
+    assert result.reasons[0].startswith("body_deadline_exceeded:")
+
+
+def test_policy_denial_is_execution_error_and_blocks_dispatch(tmp_path: Path) -> None:
+    def mutate(graph: dict[str, Any]) -> None:
+        _literalize_inputs(graph)
+        _procedure_step(graph, "configure")["input"]["voltage_v"] = 5.6  # > policy 5.5
+
+    clock = TestClock()
+    plugins = _plugins_for(clock)
+    psu_calls = _wrapped_psu(plugins)
+    docs = readmit_mutated(tmp_path, mutate)
+    executor = _executor_for(docs, plugins, clock)
+
+    result = executor.run_body(
+        docs.procedure, run_id=RUN_ID, body_deadline_ns=_body_deadline(clock, docs)
+    )
+
+    assert result.body_outcome == "execution_error"
+    assert any("input_constraint" in reason for reason in result.reasons)
+    assert psu_calls.calls == []  # denied before dispatch: zero plugin calls
+    assert [event["occurrence"][1] for event in result.step_events] == ["configure"]
+    configure_event = result.step_events[0]
+    assert configure_event["status"] == "error"
+    assert configure_event["error_code"] == "POLICY_DENIED"
+
+
+def test_shared_occurrence_ledger_replays_without_redispatch(tmp_path: Path) -> None:
+    clock = TestClock()
+    plugins = _plugins_for(clock)
+    psu_calls = _wrapped_psu(plugins)
+    ledger: dict[tuple[str, str, tuple[int, ...]], dict[str, Any]] = {}
+    docs = _admit_literal(tmp_path)
+    executor = _executor_for(docs, plugins, clock, ledger)
+    body_deadline_ns = _body_deadline(clock, docs)
+
+    first = executor.run_body(docs.procedure, run_id=RUN_ID, body_deadline_ns=body_deadline_ns)
+    assert first.body_outcome == "completed"
+    dispatches_after_first = list(psu_calls.calls)
+    waits_after_first = list(clock.waits)
+    occurrences_after_first = set(ledger)
+
+    second = executor.run_body(docs.procedure, run_id=RUN_ID, body_deadline_ns=body_deadline_ns)
+
+    assert second.body_outcome == "completed"
+    assert second.reasons == []
+    assert psu_calls.calls == dispatches_after_first  # no physical work repeated
+    assert clock.waits == waits_after_first  # the delay was not re-waited either
+    assert set(ledger) == occurrences_after_first  # occurrence identity is stable
+    assert second.step_events == first.step_events
