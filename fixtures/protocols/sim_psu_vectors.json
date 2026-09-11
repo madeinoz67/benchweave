@@ -1,0 +1,88 @@
+{
+  "plugin": "sim_psu",
+  "meta": {
+    "clock": "injected-monotonic",
+    "note": "Protocol vectors replayed verbatim by tests/contract/test_fault_matrix.py"
+  },
+  "vectors": [
+    {
+      "name": "identify_returns_device_identity",
+      "setup": [],
+      "request": {"verb": "identify", "arguments": {}},
+      "expect": {"status": "ok", "data_manufacturer": "benchweave-sim"}
+    },
+    {
+      "name": "read_voltage_while_off",
+      "setup": [],
+      "request": {"verb": "read", "arguments": {"parameter": "output_voltage_v"}},
+      "expect": {"status": "ok", "data_value": 0.0}
+    },
+    {
+      "name": "write_setpoint_in_bounds",
+      "setup": [],
+      "request": {"verb": "write", "arguments": {"parameter": "voltage_setpoint_v", "value": 12.0}},
+      "expect": {"status": "ok"}
+    },
+    {
+      "name": "write_setpoint_out_of_bounds",
+      "setup": [],
+      "request": {"verb": "write", "arguments": {"parameter": "voltage_setpoint_v", "value": 999.0}},
+      "expect": {"status": "error", "error_code": "DEVICE_REJECTED", "dispatch_state": "not_dispatched"}
+    },
+    {
+      "name": "read_unknown_parameter_invalid_argument",
+      "setup": [],
+      "request": {"verb": "read", "arguments": {"parameter": "no_such_parameter"}},
+      "expect": {"status": "error", "error_code": "INVALID_ARGUMENT", "dispatch_state": "not_dispatched"}
+    },
+    {
+      "name": "read_missing_parameter_invalid_framing",
+      "setup": [],
+      "request": {"verb": "read", "arguments": {}},
+      "expect": {"status": "error", "error_code": "INVALID_ARGUMENT", "dispatch_state": "not_dispatched"}
+    },
+    {
+      "name": "write_missing_value_partial_delivery",
+      "setup": [],
+      "request": {"verb": "write", "arguments": {"parameter": "voltage_setpoint_v"}},
+      "expect": {"status": "error", "error_code": "INVALID_ARGUMENT", "dispatch_state": "not_dispatched"}
+    },
+    {
+      "name": "write_wrong_type_invalid_framing",
+      "setup": [],
+      "request": {"verb": "write", "arguments": {"parameter": "voltage_setpoint_v", "value": "twelve"}},
+      "expect": {"status": "error", "error_code": "DEVICE_REJECTED", "dispatch_state": "not_dispatched"}
+    },
+    {
+      "name": "ovp_trip_latches_and_reports",
+      "setup": [
+        {"verb": "write", "arguments": {"parameter": "output_enabled", "value": true}},
+        {"verb": "write", "arguments": {"parameter": "ovp_threshold_v", "value": 10.0}}
+      ],
+      "request": {"verb": "write", "arguments": {"parameter": "voltage_setpoint_v", "value": 12.0}},
+      "expect": {"status": "error", "error_code": "DEVICE_REJECTED", "dispatch_state": "not_dispatched"}
+    },
+    {
+      "name": "errors_after_ovp_trip_list_entry",
+      "setup": [
+        {"verb": "write", "arguments": {"parameter": "output_enabled", "value": true}},
+        {"verb": "write", "arguments": {"parameter": "ovp_threshold_v", "value": 10.0}},
+        {"verb": "write", "arguments": {"parameter": "voltage_setpoint_v", "value": 12.0}}
+      ],
+      "request": {"verb": "get_errors", "arguments": {}},
+      "expect": {"status": "ok", "error_entry_code": "OVP_TRIP"}
+    },
+    {
+      "name": "unsupported_verb_rejected",
+      "setup": [],
+      "request": {"verb": "capture", "arguments": {"capture_id": "c", "format": "raw_binary", "sample_count": 1, "max_bytes": 8}},
+      "expect": {"status": "error", "error_code": "UNSUPPORTED", "dispatch_state": "not_dispatched"}
+    },
+    {
+      "name": "reset_acknowledged",
+      "setup": [],
+      "request": {"verb": "reset", "arguments": {}},
+      "expect": {"status": "ok"}
+    }
+  ]
+}

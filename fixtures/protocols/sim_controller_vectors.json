@@ -1,0 +1,52 @@
+{
+  "plugin": "sim_controller",
+  "meta": {
+    "clock": "injected-monotonic",
+    "note": "Protocol vectors replayed verbatim by tests/contract/test_fault_matrix.py"
+  },
+  "vectors": [
+    {
+      "name": "identify_returns_device_identity",
+      "setup": [],
+      "request": {"verb": "identify", "arguments": {}},
+      "expect": {"status": "ok", "data_manufacturer": "benchweave-sim"}
+    },
+    {
+      "name": "uptime_zero_at_boot",
+      "setup": [],
+      "request": {"verb": "read", "arguments": {"parameter": "uptime_s"}},
+      "expect": {"status": "ok", "data_value": 0}
+    },
+    {
+      "name": "uptime_tracks_advanced_clock",
+      "setup": [],
+      "advance_ns": 5000000000,
+      "request": {"verb": "read", "arguments": {"parameter": "uptime_s"}},
+      "expect": {"status": "ok", "data_value": 5}
+    },
+    {
+      "name": "write_note_in_bounds",
+      "setup": [],
+      "request": {"verb": "write", "arguments": {"parameter": "operator_note", "value": "checked"}},
+      "expect": {"status": "ok"}
+    },
+    {
+      "name": "write_non_note_parameter_invalid_argument",
+      "setup": [],
+      "request": {"verb": "write", "arguments": {"parameter": "setpoint", "value": 1}},
+      "expect": {"status": "error", "error_code": "INVALID_ARGUMENT", "dispatch_state": "not_dispatched"}
+    },
+    {
+      "name": "write_note_too_long_device_rejected",
+      "setup": [],
+      "request": {"verb": "write", "arguments": {"parameter": "operator_note", "value": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}},
+      "expect": {"status": "error", "error_code": "DEVICE_REJECTED", "dispatch_state": "not_dispatched"}
+    },
+    {
+      "name": "read_missing_parameter_invalid_framing",
+      "setup": [],
+      "request": {"verb": "read", "arguments": {}},
+      "expect": {"status": "error", "error_code": "INVALID_ARGUMENT", "dispatch_state": "not_dispatched"}
+    }
+  ]
+}
