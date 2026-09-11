@@ -49,3 +49,20 @@ junit*.xml
 # Gortex daemon state and generated skill shims (regenerated locally)
 .gortex/
 .claude/skills/generated/
+
+# Gortex-generated cross-harness instruction shims (regenerated locally)
+GEMINI.md
+opencode.json
+.agents/
+.continue/
+.gemini/
+.opencode/
+.pi/
+.github/copilot-instructions.md
+.github/skills/
+
+# Executing-plans checkpoint state (transient)
+.checkpoint-state.json
+
+# Rendered ISA artifact (regenerated from ISA.md)
+ISA.html
