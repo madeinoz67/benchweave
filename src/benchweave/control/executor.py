@@ -89,6 +89,8 @@ from benchweave.host.types import (
     OperationResult,
     OperationStatus,
     OperationVerb,
+    Reading,
+    WriteReceipt,
 )
 
 #: One step occurrence: (run_id, step_id, loop index path). The loop index
@@ -258,8 +260,10 @@ def resolve_value(
     Literals pass through unchanged (recursively, as fresh containers); a
     dict whose single key is a reserved ``$stg_`` form resolves that
     reference: ``$stg_ref`` walks the earlier step's recorded result by
-    RFC 6901 pointer with exact types (invoke results start at
-    ``data["result"]``, scalar core operation results at ``data``),
+    RFC 6901 pointer with exact types (invoke results start at the
+    declared ``data["result"]`` envelope; read results walk the projected
+    ``Reading`` fields and write results the projected ``WriteReceipt``
+    fields — scalar core operations walk their own typed payload),
     ``$stg_channel`` maps the role's alias through the binding, and
     ``$stg_issue`` mints or reuses the occurrence's issued id. Any other
     ``$stg_`` shape, a missing or wrongly typed target, or a reference to a
@@ -287,6 +291,49 @@ def resolve_value(
     return value
 
 
+def _reading_projection(step_id: str, data: Any) -> dict[str, Any]:
+    """Project one READ result's :class:`Reading` into a JSON-walkable dict.
+
+    execution-contract §3 makes read results referable by later action
+    input: every field of the OTDP Reading is projected, so a
+    contract-conformant pointer can name any of them (``/value``, ``/unit``,
+    ``/parameter``, ...). A read result that is not a Reading fails
+    honestly as a :class:`ScopeError`.
+    """
+    if not isinstance(data, Reading):
+        raise ScopeError(f"pointer: result of {step_id!r} is not a Reading")
+    return {
+        "parameter": data.parameter,
+        "value": data.value,
+        "unit": data.unit,
+        "observed_at": data.observed_at,
+        "age_ms": data.age_ms,
+        "quality": data.quality.value,
+        "source": data.source.value,
+    }
+
+
+def _write_receipt_projection(step_id: str, data: Any) -> dict[str, Any]:
+    """Project one WRITE result's :class:`WriteReceipt` likewise (§3).
+
+    Every receipt field is projected, ``verification`` included (it is a
+    :class:`Reading` or ``None``), so pointers can name ``/requested_value``,
+    ``/effective_value``, ``/assurance`` and the verification's own fields.
+    """
+    if not isinstance(data, WriteReceipt):
+        raise ScopeError(f"pointer: result of {step_id!r} is not a WriteReceipt")
+    verification = data.verification
+    return {
+        "parameter": data.parameter,
+        "requested_value": data.requested_value,
+        "effective_value": data.effective_value,
+        "assurance": data.assurance.value,
+        "verification": (
+            None if verification is None else _reading_projection(step_id, verification)
+        ),
+    }
+
+
 def _resolve_ref(directive: Any, scope: ChainMap[str, Any]) -> Any:
     if (
         not isinstance(directive, dict)
@@ -301,10 +348,26 @@ def _resolve_ref(directive: Any, scope: ChainMap[str, Any]) -> Any:
     source = scope[step_id]
     if not isinstance(source, OperationResult) or source.status is not OperationStatus.OK:
         raise ScopeError(f"scope: step {step_id!r} has no successful operation result")
-    data = source.data
-    if isinstance(data, dict) and "result" in data:
-        data = data["result"]  # invoke envelope; scalar core ops walk data itself
-    return _walk_pointer(data, directive["pointer"], step_id)
+    # Verb-based envelope discrimination (the OperationResult carries the
+    # verb): invoke walks the declared ``data["result"]`` envelope, while
+    # the scalar core operations walk the projection of their own typed
+    # payload — a Reading's fields for read, a WriteReceipt's for write.
+    if source.verb is OperationVerb.INVOKE:
+        data = source.data
+        if not isinstance(data, dict) or "result" not in data:
+            raise ScopeError(
+                f"pointer: invoke result of {step_id!r} carries no 'result' envelope"
+            )
+        return _walk_pointer(data["result"], directive["pointer"], step_id)
+    if source.verb is OperationVerb.READ:
+        projection = _reading_projection(step_id, source.data)
+        return _walk_pointer(projection, directive["pointer"], step_id)
+    if source.verb is OperationVerb.WRITE:
+        projection = _write_receipt_projection(step_id, source.data)
+        return _walk_pointer(projection, directive["pointer"], step_id)
+    raise ScopeError(
+        f"pointer: results of verb {source.verb.value!r} are not referable"
+    )
 
 
 def _walk_pointer(base: Any, pointer: str, step_id: str) -> Any:
@@ -503,11 +566,21 @@ def evaluate_predicate(
         or not isinstance(maximum, (int, float))
     ):
         return None
-    if outcome.uncertainty is not None:
-        low = outcome.value - outcome.uncertainty
-        high = outcome.value + outcome.uncertainty
-        return bool(low >= minimum and high <= maximum)
-    return bool(minimum <= outcome.value <= maximum)
+    low, high = _conservative_interval(outcome.value, outcome.uncertainty)
+    return bool(low >= minimum and high <= maximum)
+
+
+def _conservative_interval(value: float, uncertainty: float | None) -> tuple[float, float]:
+    """The §4 conservative interval ``[value - |u|, value + |u|]``.
+
+    An unknown (and explicitly permitted) uncertainty degenerates to the
+    nominal point ``[value, value]``. One derivation shared by predicate
+    evaluation and the assertion-failure reason so the two can never drift
+    apart.
+    """
+    if uncertainty is None:
+        return value, value
+    return value - uncertainty, value + uncertainty
 
 
 def _operation_id(run_id: str, step_id: str, index_path: tuple[int, ...]) -> str:
@@ -948,8 +1021,7 @@ class Executor:
             and isinstance(outcome, SampleOutcome)
             and outcome.uncertainty is not None
         ):
-            low = value - outcome.uncertainty
-            high = value + outcome.uncertainty
+            low, high = _conservative_interval(value, outcome.uncertainty)
             return (
                 f"assert {step_id}: conservative interval [{low}, {high}] escapes "
                 f"[{minimum}, {maximum}]"

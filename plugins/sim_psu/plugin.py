@@ -276,6 +276,9 @@ class SimPsuPlugin:
     def _reset(self, request: OperationRequest) -> OperationResult:
         self._tripped = None
         self._error_entries.clear()
+        # Token/state coherence at the reset boundary: the configuration the
+        # token names did not survive the reset, so the token must not either.
+        self._configuration_id = None
         self._state["output_enabled"] = False
         self._state["voltage_setpoint_v"] = 0.0
         return OperationResult.ok(

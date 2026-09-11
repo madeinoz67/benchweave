@@ -29,7 +29,7 @@ from benchweave.control.clocking import TestClock
 from benchweave.control.coordinator import RunCoordinator
 from benchweave.control.documents import AdmittedDocuments, admit_documents
 from benchweave.control.executor import Executor
-from benchweave.control.protection import ProtectionEngine
+from benchweave.control.protection import ProtectionEngine, read_signal_values
 from benchweave.host.plugin import DevicePlugin
 from benchweave.host.services import HostServices
 from benchweave.host.types import (
@@ -111,6 +111,13 @@ def _iso_minus_ms(stamp: str, milliseconds: int) -> str:
     return (moment - timedelta(milliseconds=milliseconds)).isoformat().replace("+00:00", "Z")
 
 
+def _iso_plus_ms(stamp: str, milliseconds: int) -> str:
+    moment = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=UTC)
+    return (moment + timedelta(milliseconds=milliseconds)).isoformat().replace("+00:00", "Z")
+
+
 class _FaultPsu:
     """PSU wrapper for fault injection.
 
@@ -126,6 +133,8 @@ class _FaultPsu:
         self._now = now_fn
         self.force_voltage_v: float | None = None
         self.stale_ms: int = 0
+        self.future_ms: int = 0
+        self.buffer_age_ms: int = 0
         self.enable_sets_force: float | None = None
         self.clear_force_on_disable: bool = True
         self.force_measure_voltage_v: float | None = None
@@ -180,6 +189,8 @@ class _FaultPsu:
                 observed = self._now()
                 if self.stale_ms:
                     observed = _iso_minus_ms(observed, self.stale_ms)
+                if self.future_ms:
+                    observed = _iso_plus_ms(observed, self.future_ms)
                 return OperationResult.ok(
                     request.operation_id,
                     request.verb,
@@ -188,7 +199,7 @@ class _FaultPsu:
                         value=forced,
                         unit="V",
                         observed_at=observed,
-                        age_ms=0,
+                        age_ms=self.buffer_age_ms,
                         quality=Quality.VALID,
                         source=ReadingSource.DEVICE,
                     ),
@@ -313,6 +324,82 @@ def test_stale_signal_trips_protectively(tmp_path: Path) -> None:
     _validate_record(record)
 
 
+def test_future_stamped_signal_trips_protectively(tmp_path: Path) -> None:
+    """A future-stamped observed_at is impossible timing, not freshness (F2).
+
+    The host cannot compute a negative age and call the signal maximally
+    fresh: unknown timing cannot satisfy a finite max_age_ms (§4), so the
+    signal is INVALID and the protective response fires exactly as for a
+    stale one.
+    """
+    clock, fault, coordinator, store, _ = _harness(tmp_path)
+    fault.force_voltage_v = 0.0  # in bounds: only the impossible timing trips
+    fault.future_ms = 600
+
+    record = coordinator.start_run("run-future", "principal-a")
+
+    assert record["body_outcome"] == "tripped"
+    assert any("signal_invalid" in reason for reason in record["reasons"])
+    assert record["safe_state"] == "verified"
+    _validate_record(record)
+
+
+def test_read_signal_values_future_stamp_is_invalid_not_fresh() -> None:
+    """Unit pin: a future stamp invalidates; it never reads as age 0."""
+    clock = TestClock()
+    plugins = _plugins(clock)
+    fault = _FaultPsu(plugins["psu"], clock.now_iso)
+    fault.force_voltage_v = 0.0
+    fault.future_ms = 600
+    plugins["psu"] = fault
+    docs = _admit()
+
+    snapshot = read_signal_values(
+        plugins,
+        docs.bench,
+        deadline_ns=clock.now_ns() + 1_000_000,
+        wall_now=clock.now_iso(),
+    )
+
+    assert snapshot["dut-voltage"].valid is False
+    assert snapshot["dut-current"].valid is True  # the unforced signal stays fresh
+
+
+def test_read_signal_values_device_reported_age_governs() -> None:
+    """Unit pin: effective age is the older of host-computed and device age.
+
+    Host receive time alone cannot refresh an old device buffer: a Reading
+    reporting 800 ms of buffer age against a host-computed 0 is stale at
+    800 ms (max_age_ms is 500).
+    """
+    clock = TestClock()
+    plugins = _plugins(clock)
+    fault = _FaultPsu(plugins["psu"], clock.now_iso)
+    fault.force_voltage_v = 0.0
+    fault.buffer_age_ms = 800
+    plugins["psu"] = fault
+    docs = _admit()
+
+    stale = read_signal_values(
+        plugins,
+        docs.bench,
+        deadline_ns=clock.now_ns() + 1_000_000,
+        wall_now=clock.now_iso(),
+    )
+    assert stale["dut-voltage"].age_ms == 800  # the device age governs
+    assert stale["dut-voltage"].valid is False
+
+    fault.buffer_age_ms = 0  # an honest device buffer keeps host-computed age
+    fresh = read_signal_values(
+        plugins,
+        docs.bench,
+        deadline_ns=clock.now_ns() + 1_000_000,
+        wall_now=clock.now_iso(),
+    )
+    assert fresh["dut-voltage"].age_ms == 0
+    assert fresh["dut-voltage"].valid is True
+
+
 def test_monitor_from_acceptance_trips_before_any_body_dispatch(tmp_path: Path) -> None:
     """A pre-energised violated condition stops the body at its first dispatch."""
     clock, fault, coordinator, store, _ = _harness(tmp_path)
@@ -352,6 +439,47 @@ def test_second_fault_escalates_reasons_and_never_extends_deadline(tmp_path: Pat
     assert engine.protection_deadline_ns == entered_ns + max_protection_ns  # never extended
     assert "fault-1" in second.reasons and "fault-2" in second.reasons
     assert second.safe_state == "unknown"
+
+
+def test_failed_safe_action_does_not_suppress_remaining_actions(tmp_path: Path) -> None:
+    """Forge F3: one failing safe action never suppresses the rest.
+
+    The mutated policy carries two safe actions whose FIRST targets an
+    unreachable device: the failure is recorded as a reason, the second
+    action still dispatches IN ORDER, and safe_state reflects only the
+    verify conjunction outcome — never the action failure.
+    """
+    clock = TestClock()
+    plugins = _plugins(clock)
+    fault = _FaultPsu(plugins["psu"], clock.now_iso)
+    plugins["psu"] = fault
+    docs = _admit()
+    policy = copy.deepcopy(docs.policy)
+    disable = dict(policy["safe_transition"]["actions"][0])
+    policy["safe_transition"]["actions"] = [
+        {  # first in order, and it cannot reach any device
+            "id": "dead-relay",
+            "device_id": "ghost-relay",
+            "kind": "invoke",
+            "action_id": PSU_OUTPUT,
+            "input": {"channel": "ch1", "enabled": False},
+            "timeout_ms": 500,
+        },
+        disable,
+    ]
+    engine = ProtectionEngine(plugins, policy, docs.bench, clock, clock)
+
+    result = engine.enter(["fault-1"], clock.now_ns())
+
+    assert [action["id"] for action in result.actions] == ["dead-relay", "disable"]
+    assert result.actions[0]["status"] == "error"
+    assert result.actions[0]["error"] == "unknown_device"
+    assert result.actions[1]["status"] == "ok"
+    assert "safe_action dead-relay: error" in result.reasons
+    assert "fault-1" in result.reasons
+    # The verify conjunction — not the action failure — decides safety.
+    assert result.safe_state == "verified"
+    assert fault.disable_dispatches(), "the second action physically dispatched"
 
 
 def test_budget_lapse_is_outcome_unknown_despite_terminal_body(tmp_path: Path) -> None:
@@ -650,7 +778,7 @@ def test_crashed_run_recovers_interrupted_and_suppresses_replay(tmp_path: Path) 
     assert terminal is not None
     assert terminal["body_outcome"] == "interrupted"
     assert terminal["safe_state"] == "unknown"
-    assert terminal["outcome"] == "outcome_unknown"
+    assert terminal["outcome"] == "interrupted"
     _validate_record(terminal)
     assert store_b.get_active_lease(BENCH_ID) is None, "the dead lease is released"
 

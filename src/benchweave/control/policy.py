@@ -18,7 +18,9 @@ snapshot and returns one description per failed condition aspect, each
 formatted ``"<condition_id>: <reason>..."``; an empty list means all clear.
 Numeric bounds are conservative: the whole error interval ``[v - e, v + e]``
 must fit inside ``[minimum, maximum]``. Products bound
-``(abs(v1) + e1) * (abs(v2) + e2)`` and additionally cap the sample skew.
+``(abs(v1) + e1) * (abs(v2) + e2)`` and additionally cap the sample skew;
+a W-valued product requires its two factors' units to be exactly ``V`` and
+``A`` in either order, and any other pairing is itself a violation.
 Freshness is not checked here: whoever builds the snapshot marks a signal
 past its bench ``max_age`` as invalid, and invalid or absent signals make
 their condition INVALID and are reported as violations.
@@ -171,12 +173,11 @@ def _boolean_violation(
 def _product_violation(
     condition: dict[str, Any], snapshot: dict[str, SignalValue]
 ) -> list[str]:
-    # The condition unit (W) is the product's unit, not the factors': the
-    # individual signals keep their own units and are not unit-checked here.
     condition_id = condition["id"]
     values: list[float] = []
     errors: list[float] = []
     ages: list[int] = []
+    units: list[str] = []
     for signal_id in condition["signals"]:
         signal = snapshot.get(signal_id)
         if signal is None:
@@ -191,6 +192,18 @@ def _product_violation(
         values.append(signal.value)
         errors.append(error)
         ages.append(signal.age_ms)
+        units.append(signal.unit)
+    # §7: the product condition is V x A -> W. The condition's unit (W) is
+    # the PRODUCT's unit, but the factors must still be exactly one V and
+    # one A in either order — anything else (two same-unit signals, a kV-
+    # scaled factor) is an INVALID condition, reported so the caller can
+    # trigger the protective response rather than let a mis-unitized
+    # product silently pass the bound.
+    if condition["unit"] == "W" and set(units) != {"V", "A"}:
+        return [
+            f"{condition_id}: factor_unit_mismatch: expected V and A factors, "
+            f"have {units[0]} and {units[1]}"
+        ]
     violations: list[str] = []
     bound = (abs(values[0]) + errors[0]) * (abs(values[1]) + errors[1])
     maximum = condition["maximum"]

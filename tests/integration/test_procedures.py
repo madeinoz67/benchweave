@@ -875,8 +875,12 @@ def test_conditions_missing_signal_violates() -> None:
 
 def test_conditions_unit_mismatch_violates() -> None:
     snapshot = _live_snapshot(_signal("dut-voltage", 5.0, unit="A"), _current(0.5))
+    # Both factors carry "A": the numeric condition unit-mismatches AND the
+    # product condition is an INVALID V x A pairing (Forge F1 — the pairing
+    # itself is a violation, not silent pass-through).
     assert evaluate_conditions(admit().policy, snapshot) == [
-        "dut-voltage-bounds: unit_mismatch: expected V, have A"
+        "dut-voltage-bounds: unit_mismatch: expected V, have A",
+        "dut-power: factor_unit_mismatch: expected V and A factors, have A and A",
     ]
 
 
@@ -939,6 +943,30 @@ def test_conditions_product_skew_at_bound_passes() -> None:
         _signal("dut-voltage", 5.0, age_ms=100), _current(0.5, age_ms=200)
     )
     assert evaluate_conditions(admit().policy, snapshot) == []
+
+
+def test_conditions_product_factor_units_must_be_v_and_a() -> None:
+    """§7: the product condition is V x A -> W; mis-unitized factors are INVALID.
+
+    A kV-scaled factor would slip through the numeric bound (0.005 reads as
+    tiny) — the factor units themselves must make the condition a violation
+    the caller acts on, in either signal order (Forge F1).
+    """
+    snapshot = _live_snapshot(_signal("dut-voltage", 0.005, unit="kV"), _current(0.5))
+    assert evaluate_conditions(admit().policy, snapshot) == [
+        "dut-voltage-bounds: unit_mismatch: expected V, have kV",
+        "dut-power: factor_unit_mismatch: expected V and A factors, have kV and A",
+    ]
+    reversed_policy = copy.deepcopy(admit().policy)
+    product = next(
+        condition
+        for condition in reversed_policy["continuous_conditions"]
+        if condition["id"] == "dut-power"
+    )
+    product["signals"] = ["dut-current", "dut-voltage"]
+    assert evaluate_conditions(
+        reversed_policy, _live_snapshot(_signal("dut-voltage", 5.0), _current(0.5))
+    ) == []
 
 
 # --- Task 6: clocking + execution engine core ---------------------------------
@@ -1910,6 +1938,123 @@ def test_read_parameter_reference_rejected_before_dispatch(tmp_path: Path) -> No
     ]
     by_step = _events_by_step(result)
     assert by_step["model"]["error_code"] == "UNRESOLVED_REFERENCE"
+
+
+def _procedure_with_model_before_note(docs: AdmittedDocuments) -> dict[str, Any]:
+    """Fixture copy with the model read reordered ahead of the note write.
+
+    Admission's lexical scope rejects a note→model reference as a future
+    reference (correctly), so the read/write ``$stg_ref`` tests reorder the
+    two steps in an in-memory copy and hand it straight to the executor —
+    the established executor-direct pattern; admission is not re-run.
+    """
+    procedure = copy.deepcopy(docs.procedure)
+    steps = procedure["steps"]
+    model = next(step for step in steps if step["id"] == "model")
+    steps.remove(model)
+    note_index = next(i for i, step in enumerate(steps) if step["id"] == "note")
+    steps.insert(note_index, model)
+    return procedure
+
+
+def test_stg_ref_to_read_step_resolves_into_later_write(tmp_path: Path) -> None:
+    """execution-contract §3: a read step's Reading is referable downstream.
+
+    ``$stg_ref`` walks the projected Reading fields (``/value`` here) into a
+    later write's value: the controller receives exactly the string it
+    reported, and the body completes.
+    """
+    clock = TestClock()
+    plugins = _plugins_for(clock)
+    controller_calls = _RecordingPlugin(plugins["controller"])
+    plugins["controller"] = controller_calls
+    docs = admit()
+    procedure = _procedure_with_model_before_note(docs)
+    note = next(step for step in procedure["steps"] if step["id"] == "note")
+    note["value"] = {"$stg_ref": {"step": "model", "pointer": "/value"}}
+    executor = _executor_for(docs, plugins, clock)
+
+    result = executor.run_body(
+        procedure, run_id=RUN_ID, body_deadline_ns=_body_deadline(clock, docs)
+    )
+
+    assert result.body_outcome == "completed"
+    assert result.reasons == []
+    writes = [
+        request.arguments["value"]
+        for request, _ in controller_calls.calls
+        if request.verb is OperationVerb.WRITE
+    ]
+    assert writes == ["sim-controller-1"]
+
+
+def test_stg_ref_to_write_receipt_resolves(tmp_path: Path) -> None:
+    """§3: a write step's WriteReceipt is referable by later action input."""
+    clock = TestClock()
+    plugins = _plugins_for(clock)
+    controller_calls = _RecordingPlugin(plugins["controller"])
+    plugins["controller"] = controller_calls
+    docs = admit()
+    procedure = copy.deepcopy(docs.procedure)
+    steps = procedure["steps"]
+    note_index = next(i for i, step in enumerate(steps) if step["id"] == "note")
+    steps.insert(
+        note_index + 1,
+        {
+            "id": "echo-note",
+            "kind": "write",
+            "role": "dut",
+            "parameter": "operator_note",
+            "value": {"$stg_ref": {"step": "note", "pointer": "/requested_value"}},
+            "timeout_ms": 200,
+        },
+    )
+    executor = _executor_for(docs, plugins, clock)
+
+    result = executor.run_body(
+        procedure, run_id=RUN_ID, body_deadline_ns=_body_deadline(clock, docs)
+    )
+
+    assert result.body_outcome == "completed"
+    assert result.reasons == []
+    writes = [
+        request.arguments["value"]
+        for request, _ in controller_calls.calls
+        if request.verb is OperationVerb.WRITE
+    ]
+    assert writes == ["wp05 run", "wp05 run"]
+
+
+def test_stg_ref_into_absent_reading_field_fails_honestly(tmp_path: Path) -> None:
+    """A pointer to a field the Reading projection lacks is a ScopeError.
+
+    The projection carries every Reading field, so ``/no_such_field`` is a
+    genuine miss — the body ends ``execution_error`` before dispatch, never
+    silently defaulting.
+    """
+    clock = TestClock()
+    plugins = _plugins_for(clock)
+    controller_calls = _RecordingPlugin(plugins["controller"])
+    plugins["controller"] = controller_calls
+    docs = admit()
+    procedure = _procedure_with_model_before_note(docs)
+    note = next(step for step in procedure["steps"] if step["id"] == "note")
+    note["value"] = {"$stg_ref": {"step": "model", "pointer": "/no_such_field"}}
+    executor = _executor_for(docs, plugins, clock)
+
+    result = executor.run_body(
+        procedure, run_id=RUN_ID, body_deadline_ns=_body_deadline(clock, docs)
+    )
+
+    assert result.body_outcome == "execution_error"
+    assert result.reasons[0].startswith("unresolved_reference:")
+    assert "no_such_field" in result.reasons[0]
+    writes = [
+        request.arguments["value"]
+        for request, _ in controller_calls.calls
+        if request.verb is OperationVerb.WRITE
+    ]
+    assert writes == []  # the consuming write never dispatched
 
 
 def test_nested_if_inside_repeat_composes(tmp_path: Path) -> None:

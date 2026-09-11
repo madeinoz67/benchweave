@@ -48,6 +48,23 @@ SAFE_UNKNOWN = "unknown"
 _DEFAULT_POLL_MS = 10
 
 
+def bench_poll_ns(bench: dict[str, Any]) -> int:
+    """The bench's fastest declared signal poll period, as nanoseconds.
+
+    One derivation for every consumer — the run monitor's tick budget, the
+    coordinator's sliced waits and the verifier's stability sampling — so
+    the cadence can never drift between them: the minimum declared
+    ``poll_ms`` over the bench's signals, floored at the 10 ms default when
+    no signal declares one.
+    """
+    polls = [
+        int(signal["poll_ms"])
+        for signal in bench["signals"]
+        if isinstance(signal.get("poll_ms"), int)
+    ]
+    return max(1, min(polls, default=_DEFAULT_POLL_MS)) * 1_000_000
+
+
 @dataclass(frozen=True)
 class ProtectionResult:
     """One protective transition's truth: safe state, reasons, actions.
@@ -100,10 +117,14 @@ def read_signal_values(
     Each bench signal's ``parameter`` source is read through the bound
     plugin (a non-state-changing observation, so no allow rule applies).
     Freshness is decided HERE, where the snapshot is built: the reading's
-    age is measured from its own ``observed_at`` stamp against the bench
-    signal's ``max_age_ms`` — host receive time alone cannot refresh an old
-    device buffer. A missing device, failed read, non-numeric value, bad
-    quality or lapsed freshness marks the signal invalid, which makes its
+    effective age is the OLDER of the host-computed age (measured from the
+    reading's own ``observed_at`` stamp) and the device-reported buffer age
+    (the OTDP Reading's ``age_ms``) — host receive time alone cannot
+    refresh an old device buffer. A ``observed_at`` stamped in the future
+    is physically impossible timing: unknown timing cannot satisfy a
+    finite ``max_age_ms``, so the signal is INVALID, never maximally
+    fresh. A missing device, failed read, non-numeric value, bad quality
+    or lapsed freshness marks the signal invalid, which makes its
     conditions INVALID downstream.
     """
     snapshot: dict[str, SignalValue] = {}
@@ -127,18 +148,25 @@ def read_signal_values(
         if reading is not None and now is not None:
             unit = reading.unit if isinstance(reading.unit, str) else None
             observed = _parse_wall(reading.observed_at)
+            computed_ms: int | None = None
             if observed is not None:
-                age_ms = max(0, int((now - observed).total_seconds() * 1000.0))
-            raw = reading.value
-            if (
-                isinstance(raw, (int, float))
-                and not isinstance(raw, bool)
-                and reading.quality is Quality.VALID
-                and observed is not None
-                and age_ms <= int(signal["max_age_ms"])
-            ):
-                valid = True
-                value = float(raw)
+                elapsed_ms = int((now - observed).total_seconds() * 1000.0)
+                # A future-stamped observed_at is impossible timing (§4):
+                # the age is unknown, not zero — the signal is INVALID.
+                computed_ms = elapsed_ms if elapsed_ms >= 0 else None
+            if computed_ms is not None:
+                # Effective age: the older of the host-computed age and the
+                # device-reported buffer age.
+                age_ms = max(computed_ms, int(reading.age_ms))
+                raw = reading.value
+                if (
+                    isinstance(raw, (int, float))
+                    and not isinstance(raw, bool)
+                    and reading.quality is Quality.VALID
+                    and age_ms <= int(signal["max_age_ms"])
+                ):
+                    valid = True
+                    value = float(raw)
         error = signal.get("absolute_error")
         snapshot[signal_id] = SignalValue(
             signal_id=signal_id,
@@ -281,14 +309,7 @@ class ProtectionEngine:
         if reason not in self._reasons:
             self._reasons.append(reason)
 
-    def _poll_ns(self) -> int:
-        """The fastest declared signal poll period, as nanoseconds."""
-        polls = [
-            int(signal["poll_ms"])
-            for signal in self._bench["signals"]
-            if isinstance(signal.get("poll_ms"), int)
-        ]
-        return max(1, min(polls, default=_DEFAULT_POLL_MS)) * 1_000_000
+
 
     def _verify(self, transition: dict[str, Any]) -> str:
         """Poll the verify conjunction until continuously stable or budget end.
@@ -303,7 +324,7 @@ class ProtectionEngine:
         """
         verify = list(transition.get("verify", []))
         stable_ns = int(transition.get("stable_for_ms", 0)) * 1_000_000
-        poll_ns = self._poll_ns()
+        poll_ns = bench_poll_ns(self._bench)
         protection_deadline = self._fixed_deadline()
         stable_since: int | None = None
         while True:

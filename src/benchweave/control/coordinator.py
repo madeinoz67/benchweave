@@ -33,11 +33,11 @@ the durable stream, so the stored evidence can never be mutated through the
 live ledger alias.
 
 Restart recovery: durable runs left without a terminal record are finalised
-``interrupted`` with ``unknown`` physical assurance and their leases
-released; body execution never resumes. Occurrence identities are rebuilt
-from the crashed run's durable events into the coordinator's ledger so the
-recorded occurrences can never dispatch again — suppression of replay, not
-a promise of exactly-once physical execution.
+with terminal outcome ``interrupted`` and ``unknown`` physical assurance,
+and their leases released; body execution never resumes. Occurrence
+identities are rebuilt from the crashed run's durable events into the
+coordinator's ledger so the recorded occurrences can never dispatch again —
+suppression of replay, not a promise of exactly-once physical execution.
 """
 
 from __future__ import annotations
@@ -57,7 +57,11 @@ from benchweave.control.clocking import MonotonicClock, WallClock
 from benchweave.control.documents import AdmittedDocuments
 from benchweave.control.executor import Executor, Occurrence, canonical_json
 from benchweave.control.policy import evaluate_conditions
-from benchweave.control.protection import ProtectionEngine, read_signal_values
+from benchweave.control.protection import (
+    ProtectionEngine,
+    bench_poll_ns,
+    read_signal_values,
+)
 from benchweave.control.semantics import check_semantics
 from benchweave.host.plugin import DevicePlugin
 from benchweave.host.services import HostServices
@@ -90,9 +94,13 @@ def terminal_outcome(body_outcome: str, safe_state: str) -> str:
 
     An uncertain body stays ``outcome_unknown`` and an unverified safe state
     forces ``outcome_unknown`` regardless of the body — uncertainty is never
-    erased by later safety. Everything else maps from the body outcome once
-    the safe condition is verified.
+    erased by later safety. One exception: restart recovery records
+    ``interrupted`` with ``unknown`` physical assurance, which the run-record
+    schema's allOf sanctions exactly (restart → interrupted). Everything
+    else maps from the body outcome once the safe condition is verified.
     """
+    if body_outcome == "interrupted":
+        return "interrupted"
     if body_outcome == "outcome_unknown" or safe_state != "verified":
         return "outcome_unknown"
     return _OUTCOME_BY_BODY.get(body_outcome, body_outcome)
@@ -229,14 +237,7 @@ class _RunMonitor:
         self.run_id = run_id
         self._lease_sequence = lease_sequence
         self.phase = "idle"
-        self._poll_ns = max(1, min(
-            (
-                int(signal["poll_ms"])
-                for signal in bench["signals"]
-                if isinstance(signal.get("poll_ms"), int)
-            ),
-            default=10,
-        )) * 1_000_000
+        self._poll_ns = bench_poll_ns(bench)
         self.in_tick = False
         self.violations: list[str] = []
         self.cause: str | None = None
@@ -539,15 +540,7 @@ class RunCoordinator:
             device_id: _MonitoringPlugin(plugin, monitor)
             for device_id, plugin in self._plugins.items()
         }
-        poll_ns = max(1, min(
-            (
-                int(signal["poll_ms"])
-                for signal in self._docs.bench["signals"]
-                if isinstance(signal.get("poll_ms"), int)
-            ),
-            default=10,
-        )) * 1_000_000
-        wrapped_clock = _MonitoringClock(self._clock, monitor, poll_ns)
+        wrapped_clock = _MonitoringClock(self._clock, monitor, bench_poll_ns(self._docs.bench))
         monitor.phase = "body"
         self._active_monitor = monitor
         monitor.tick()  # monitoring applies from acceptance (§7)

@@ -290,6 +290,45 @@ def test_psu_ovp_trip_latches_until_reset(psu: Any) -> None:
     assert recovered.status is OperationStatus.OK
 
 
+def test_psu_reset_clears_configuration_token(psu: Any) -> None:
+    """Reset clears the stored configuration_id: the old token is dead (M1).
+
+    The trip latch already forces a reset boundary; the configuration token
+    must not survive it — a post-reset measure under the pre-reset token is
+    device-rejected, so stale configuration state can never leak into a new
+    configuration's measurements.
+    """
+    configured = psu.dispatch(
+        _invoke(
+            "otdp.dc_psu.configure/1.0.0",
+            {
+                "configuration_id": "cfg-1",
+                "channel": "ch1",
+                "voltage_v": 5.0,
+                "current_limit_a": 0.5,
+                "ovp_v": 5.5,
+                "ocp_a": 0.5,
+            },
+        ),
+        deadline_ns=10**12,
+    )
+    assert configured.status.value == "ok"
+
+    reset = psu.dispatch(OperationRequest("op-2", OperationVerb.RESET), deadline_ns=10**12)
+    assert reset.status.value == "ok"
+
+    stale = psu.dispatch(
+        _invoke(
+            "otdp.dc_psu.measure/1.0.0",
+            {"configuration_id": "cfg-1", "channels": ["ch1"]},
+        ),
+        deadline_ns=10**12,
+    )
+    assert stale.status.value == "error"
+    assert stale.error.code.value == "DEVICE_REJECTED"
+    assert "configuration" in stale.error.message
+
+
 # --- WP05 class actions (INVOKE: configure / output / measure) ----------------
 
 
