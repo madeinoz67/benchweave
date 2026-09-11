@@ -24,14 +24,15 @@ classifiers = [
   "Programming Language :: Python :: 3.13",
   "Typing :: Typed"
 ]
-dependencies = []
+dependencies = [
+  "jsonschema>=4.23",
+]
 
 [dependency-groups]
 dev = [
   "pytest>=8.0",
   "ruff>=0.6",
   "mypy>=1.11",
-  "jsonschema>=4.23",
   "referencing>=0.35",
 ]
 
