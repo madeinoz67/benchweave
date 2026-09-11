@@ -13,6 +13,7 @@ import argparse
 import hashlib
 import io
 import json
+import shutil
 import zipfile
 from pathlib import Path
 from typing import Any, TypedDict
@@ -65,11 +66,12 @@ def _sha(data: bytes) -> str:
 
 
 def _zip_bytes(members: list[tuple[str, bytes]]) -> bytes:
+    """ZIP_STORED throughout: zlib-independent reproducibility (final-fix 3a)."""
     buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED) as zf:
         for path, data in sorted(members):
             info = zipfile.ZipInfo(path, date_time=FIXED_ZIP_TIME)
-            info.compress_type = zipfile.ZIP_DEFLATED
+            info.compress_type = zipfile.ZIP_STORED
             zf.writestr(info, data)
     return buf.getvalue()
 
@@ -228,7 +230,11 @@ def _emit_release(
     status = _status(registry_id, package_id, _sha(mraw), sequence=1)
     sraw = _canonical(status)
     d = out / origin_dir / package_id / "1.0.0"
-    d.mkdir(parents=True, exist_ok=True)
+    # Fresh dir per release: files a previous build left inside a reused
+    # version dir must not survive into the new catalogue.
+    if d.exists():
+        shutil.rmtree(d)
+    d.mkdir(parents=True)
     (d / "manifest.json").write_bytes(mraw)
     (d / "manifest.sig").write_bytes(key.sign(mraw))
     (d / "status.json").write_bytes(sraw)
@@ -322,6 +328,38 @@ def _load_key(name: str) -> Ed25519PrivateKey:
     return key
 
 
+def _prune_stale_release_dirs(out: Path, keep: set[Path]) -> None:
+    """Remove release dirs not in the current build set (final-fix 3b).
+
+    Renames/deletions upstream must not leave validly-signed ghosts under
+    ``--out``. Descent is ancestor-aware rather than depth-based — package
+    ids are multi-segment (``benchweave/sim-psu``) — so any directory on the
+    path to a kept release is descended into, never removed, and any
+    directory no kept release lives beneath is removed wholesale. ``keys/``
+    and non-directory entries are never touched.
+    """
+    preserved = {out / "keys"}
+
+    def kept_ancestor(path: Path) -> bool:
+        return any(path == kept or path in kept.parents for kept in keep)
+
+    def prune(level: Path) -> None:
+        for child in sorted(level.iterdir()):
+            if child in keep or child in preserved:
+                continue
+            if not child.is_dir():
+                continue
+            if kept_ancestor(child):
+                prune(child)
+            else:
+                shutil.rmtree(child)
+
+    for top in sorted(out.iterdir()):
+        if top in preserved or not top.is_dir():
+            continue
+        prune(top)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, required=True)
@@ -358,8 +396,13 @@ def main() -> None:
             )
         )
 
-    def sha_of(package_id: str) -> str:
-        return next(r["manifest_sha256"] for r in releases if r["package_id"] == package_id)
+    def sha_of(origin: str, package_id: str) -> str:
+        """Origin-scoped lookup: origin-b re-emits origin-main package ids."""
+        return next(
+            r["manifest_sha256"]
+            for r in releases
+            if r["origin"] == origin and r["package_id"] == package_id
+        )
 
     # 1. profile — no dependencies.
     emit(
@@ -372,7 +415,7 @@ def main() -> None:
         deps=[],
         members=_common_members() + [_profile_member()],
     )
-    pm_sha = sha_of("benchweave/dc-psu-profile")
+    pm_sha = sha_of("origin-main", "benchweave/dc-psu-profile")
 
     # 2. descriptors — deps pinned to the profile manifest sha.
     for name, src in (
@@ -411,7 +454,7 @@ def main() -> None:
             "implementation",
             provides={"profile_ids": [], "descriptor_ids": [descriptor_id]},
             device_targets=[_device_target(pkg.rsplit("/", 1)[1], descriptor_id)],
-            deps=[_dep("origin-main", desc_pkg, sha_of(desc_pkg))],
+            deps=[_dep("origin-main", desc_pkg, sha_of("origin-main", desc_pkg))],
             members=_common_members() + _impl_extras() + _plugin_members(plugin_dir),
         )
 
@@ -425,13 +468,13 @@ def main() -> None:
         device_targets=[_device_target("sim-psu-clone", "benchweave:sim-psu:1.0.0")],
         deps=[
             _dep("origin-main", "benchweave/sim-psu-descriptor",
-                 sha_of("benchweave/sim-psu-descriptor"))
+                 sha_of("origin-main", "benchweave/sim-psu-descriptor"))
         ],
         members=_common_members() + _impl_extras() + _plugin_members("sim_psu"),
     )
 
     # 5. fault statuses: signed drop-in replacements targeting sim-psu-descriptor.
-    desc_sha = sha_of("benchweave/sim-psu-descriptor")
+    desc_sha = sha_of("origin-main", "benchweave/sim-psu-descriptor")
     faults: list[tuple[str, dict[str, Any]]] = [
         ("revoked", {"lifecycle": "revoked", "reason": "fixture revocation"}),
         ("expired", {"expires": "2026-09-11T00:00:01Z"}),
@@ -441,10 +484,23 @@ def main() -> None:
     for fault_name, kwargs in faults:
         status = _status("origin-main", "benchweave/sim-psu-descriptor", desc_sha, **kwargs)
         fd = out / "faults" / fault_name / "benchweave/sim-psu-descriptor" / "1.0.0"
-        fd.mkdir(parents=True, exist_ok=True)
+        if fd.exists():
+            shutil.rmtree(fd)
+        fd.mkdir(parents=True)
         sraw = _canonical(status)
         (fd / "status.json").write_bytes(sraw)
         (fd / "status.sig").write_bytes(main_key.sign(sraw))
+
+    # Prune stale release dirs (and stale fault dirs) before the catalogue is
+    # written: anything under --out that this build did not emit must go.
+    keep: set[Path] = {
+        out / entry["origin"] / entry["package_id"] / entry["version"] for entry in releases
+    }
+    keep |= {
+        out / "faults" / fault_name / "benchweave/sim-psu-descriptor" / "1.0.0"
+        for fault_name, _kwargs in faults
+    }
+    _prune_stale_release_dirs(out, keep)
 
     (out / "catalogue.json").write_bytes(_canonical({"releases": releases}))
     print(f"wrote {len(releases)} releases to {out}")
