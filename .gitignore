@@ -64,5 +64,7 @@ opencode.json
 # Executing-plans checkpoint state (transient)
 .checkpoint-state.json
 
-# Rendered ISA artifact (regenerated from ISA.md)
-ISA.html
+# In-progress planning, design and ISA docs — kept local by default so half-formed state
+# doesn't ship (muninndb convention). `git add -f` a doc here if it documents something
+# that landed. ISA.html render lives here alongside its source.
+docs/superpowers/
