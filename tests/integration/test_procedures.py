@@ -873,6 +873,27 @@ def test_conditions_nonfinite_value_violates() -> None:
     )
 
 
+def test_conditions_boolean_match_passes() -> None:
+    policy = copy.deepcopy(admit().policy)
+    policy["continuous_conditions"].append(
+        {"id": "psu-output-on", "kind": "boolean", "signal": "dut-voltage", "expected": True}
+    )
+    snapshot = _live_snapshot(_signal("dut-voltage", 5.0), _current(0.5))
+    assert evaluate_conditions(policy, snapshot) == []
+
+
+def test_conditions_boolean_mismatch_violates() -> None:
+    policy = copy.deepcopy(admit().policy)
+    policy["continuous_conditions"].append(
+        {"id": "psu-output-on", "kind": "boolean", "signal": "dut-voltage", "expected": True}
+    )
+    # A zero reading is falsy, so expecting True on it mismatches.
+    snapshot = _live_snapshot(_signal("dut-voltage", 0.0), _current(0.5))
+    assert evaluate_conditions(policy, snapshot) == [
+        "psu-output-on: boolean_mismatch: dut-voltage is 0, expected True"
+    ]
+
+
 def test_conditions_product_bound_exceeded() -> None:
     # (5.0 + 0.05) x (0.7 + 0.01) = 3.5855 > 3 W.
     snapshot = _live_snapshot(_signal("dut-voltage", 5.0), _current(0.7))
