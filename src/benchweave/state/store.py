@@ -47,6 +47,9 @@ def accept_result(result: AcceptResult) -> str:
 
 
 class Store:
+    """Single-writer: SQLite permits one writer; every write serialises through
+    this store's connection. Callers must never open a second write path."""
+
     def __init__(self, connection: sqlite3.Connection) -> None:
         self._conn = connection
 

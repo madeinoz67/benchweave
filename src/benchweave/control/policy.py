@@ -8,7 +8,8 @@ allow rule matches the actual device and the exact action id (invoke) or
 parameter (write), and every matching rule's constraints then hold
 conjunctively — there are no order-dependent overrides. Invoke inputs are
 JSON-Schema-validated against each matching rule's ``input_constraints``
-(an empty schema ``{}`` imposes no extra constraint); write values against
+(an empty schema ``{}`` imposes no extra constraint but warns
+``vacuous_constraint:``); write values against
 ``value_constraints``. Rejections carry a machine-matchable prefix:
 ``no_matching_rule:`` (deny by default), ``input_constraint:`` or
 ``value_constraint:``.
@@ -29,6 +30,7 @@ their condition INVALID and are reported as violations.
 from __future__ import annotations
 
 import math
+import warnings
 from dataclasses import dataclass
 from typing import Any
 
@@ -110,6 +112,16 @@ def check_allowed(
     failures: list[str] = []
     failing: list[str] = []
     for rule_id, rule in matching:
+        if not rule[constraints_key]:
+            # An empty schema validates every payload, so a matching rule
+            # carrying one constrains nothing — flag it rather than stay
+            # silent about what is almost certainly an admission mistake.
+            warnings.warn(
+                f"vacuous_constraint: {rule_id} ({kind} {target} on device "
+                f"{device_id}) matched with an empty {constraints_key} schema, "
+                "so the rule constrains nothing",
+                stacklevel=2,
+            )
         error = next(
             iter(Draft202012Validator(rule[constraints_key]).iter_errors(payload)), None
         )

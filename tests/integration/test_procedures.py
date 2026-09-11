@@ -28,6 +28,7 @@ import hashlib
 import importlib.util
 import json
 import sys
+import warnings
 from collections.abc import Callable, Iterator
 from datetime import datetime
 from pathlib import Path
@@ -832,6 +833,30 @@ def test_policy_conjunctive_rules_all_must_pass() -> None:
     check_allowed(
         policy, "psu", "invoke", PSU_CONFIGURE, {**CONFIGURE_INPUT, "voltage_v": 4.0}
     )
+
+
+def test_policy_vacuous_constraint_rule_warns() -> None:
+    policy = copy.deepcopy(admit().policy)
+    policy["allow_rules"].append(
+        {
+            "device_id": "psu",
+            "kind": "invoke",
+            "action_id": PSU_CONFIGURE,
+            "input_constraints": {},
+        }
+    )
+    # An empty schema validates every payload: the appended rule matches yet
+    # constrains nothing, which is almost certainly an admission mistake.
+    with pytest.warns(UserWarning, match=r"vacuous_constraint: allow_rules\[4\]"):
+        check_allowed(policy, "psu", "invoke", PSU_CONFIGURE, CONFIGURE_INPUT)
+
+
+def test_policy_constrained_rule_stays_silent() -> None:
+    with warnings.catch_warnings():
+        # The fixture rule carries a real constraint schema; any warning
+        # escaping it here would be noise, not signal.
+        warnings.simplefilter("error")
+        check_allowed(admit().policy, "psu", "invoke", PSU_CONFIGURE, CONFIGURE_INPUT)
 
 
 def test_conditions_all_clear() -> None:
