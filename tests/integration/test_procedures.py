@@ -9,11 +9,15 @@ execution-v1.0.0 schemas. On top of structure, the semantic stage enforces
 step-ID uniqueness, lexical scoping of result references, ``$stg_issue``
 placement at descriptor-marked issued fields, and the budget bounds (worst-case
 body, energised time, commissioning deadline). Profile satisfaction and
-binding completeness belong to later stages and are not exercised here.
+binding completeness belong to later stages and are not exercised here. The
+policy evaluator is exercised against the admitted fixture policy:
+deny-by-default allow rules with conjunctive constraint checking, and
+conservative continuous-condition evaluation over hand-built signal snapshots.
 """
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 from collections.abc import Callable
@@ -24,6 +28,12 @@ import pytest
 
 from benchweave.control.binding import BindingError, release, reserve, resolve_binding
 from benchweave.control.documents import AdmissionRejected, AdmittedDocuments, admit_documents
+from benchweave.control.policy import (
+    PolicyDenied,
+    SignalValue,
+    check_allowed,
+    evaluate_conditions,
+)
 from benchweave.control.semantics import check_semantics, worst_case_body_ms
 from benchweave.state.store import Store
 
@@ -683,3 +693,205 @@ def test_release_is_idempotent(tmp_path: Path) -> None:
         assert store.get_active_lease("sim-bench") is None
     finally:
         store.close()
+
+
+# --- Task 5: safety policy allow rules and continuous conditions ------------
+
+PSU_CONFIGURE = "otdp.dc_psu.configure/1.0.0"
+PSU_OUTPUT = "otdp.dc_psu.output/1.0.0"
+CONFIGURE_INPUT = {
+    "channel": "ch1",
+    "voltage_v": 5.0,
+    "current_limit_a": 0.4,
+    "ovp_v": 5.8,
+    "ocp_a": 0.45,
+}
+
+
+def _signal(
+    signal_id: str,
+    value: float,
+    unit: str = "V",
+    *,
+    age_ms: int = 100,
+    valid: bool = True,
+    absolute_error: float | None = 0.05,
+) -> SignalValue:
+    return SignalValue(
+        signal_id=signal_id,
+        value=value,
+        unit=unit,
+        age_ms=age_ms,
+        valid=valid,
+        absolute_error=absolute_error,
+    )
+
+
+def _current(value: float, *, age_ms: int = 100) -> SignalValue:
+    return _signal("dut-current", value, "A", age_ms=age_ms, absolute_error=0.01)
+
+
+def _live_snapshot(
+    voltage: SignalValue | None = None, current: SignalValue | None = None
+) -> dict[str, SignalValue]:
+    """Snapshot of the two fixture signals; ``None`` omits the key entirely."""
+    snapshot: dict[str, SignalValue] = {}
+    if voltage is not None:
+        snapshot["dut-voltage"] = voltage
+    if current is not None:
+        snapshot["dut-current"] = current
+    return snapshot
+
+
+def test_policy_no_matching_rule_denied() -> None:
+    # Rules exist for psu configure but none for the controller: deny by default.
+    with pytest.raises(PolicyDenied, match=r"^no_matching_rule:") as raised:
+        check_allowed(
+            admit().policy,
+            "controller",
+            "invoke",
+            PSU_CONFIGURE,
+            {"channel": "ch1", "voltage_v": 5.0},
+        )
+    assert raised.value.rule_ids == ()
+
+
+def test_policy_input_constraint_denied() -> None:
+    with pytest.raises(PolicyDenied, match=r"^input_constraint:") as raised:
+        check_allowed(
+            admit().policy,
+            "psu",
+            "invoke",
+            PSU_CONFIGURE,
+            {**CONFIGURE_INPUT, "voltage_v": 5.6},
+        )
+    assert raised.value.rule_ids == ("allow_rules[0]",)
+    assert "5.6 is greater than the maximum of 5.5" in raised.value.reason
+
+
+def test_policy_matched_invoke_allowed() -> None:
+    # Returning without raising is the allow verdict.
+    check_allowed(admit().policy, "psu", "invoke", PSU_CONFIGURE, CONFIGURE_INPUT)
+
+
+def test_policy_invoke_payload_must_be_object() -> None:
+    # A bare scalar slips past "properties" (it only applies to objects), so
+    # the payload being an object is itself a constraint.
+    with pytest.raises(PolicyDenied, match=r"^input_constraint:.*not an object"):
+        check_allowed(admit().policy, "psu", "invoke", PSU_OUTPUT, "ch1")
+
+
+def test_policy_write_value_constraint_denied() -> None:
+    with pytest.raises(PolicyDenied, match=r"^value_constraint:") as raised:
+        check_allowed(admit().policy, "controller", "write", "operator_note", "x" * 201)
+    assert raised.value.rule_ids == ("allow_rules[3]",)
+
+
+def test_policy_write_within_constraint_allowed() -> None:
+    check_allowed(admit().policy, "controller", "write", "operator_note", "x" * 200)
+
+
+def test_policy_conjunctive_rules_all_must_pass() -> None:
+    policy = copy.deepcopy(admit().policy)
+    policy["allow_rules"].append(
+        {
+            "device_id": "psu",
+            "kind": "invoke",
+            "action_id": PSU_CONFIGURE,
+            "input_constraints": {"properties": {"voltage_v": {"maximum": 4.5}}},
+        }
+    )
+    # Rule 0 passes at 5.0 V but the stricter duplicate does not: matching
+    # rules apply conjunctively, with no order-dependent overrides.
+    with pytest.raises(PolicyDenied, match=r"^input_constraint:") as raised:
+        check_allowed(policy, "psu", "invoke", PSU_CONFIGURE, CONFIGURE_INPUT)
+    assert raised.value.rule_ids == ("allow_rules[4]",)
+    check_allowed(
+        policy, "psu", "invoke", PSU_CONFIGURE, {**CONFIGURE_INPUT, "voltage_v": 4.0}
+    )
+
+
+def test_conditions_all_clear() -> None:
+    # (5.0 + 0.05) x (0.5 + 0.01) = 2.5755 <= 3 W, equal ages, bounds hold.
+    snapshot = _live_snapshot(_signal("dut-voltage", 5.0), _current(0.5))
+    assert evaluate_conditions(admit().policy, snapshot) == []
+
+
+def test_conditions_numeric_interval_escape() -> None:
+    # 5.4 alone is inside [-0.1, 5.5]; the error interval [5.2, 5.6] is not.
+    snapshot = _live_snapshot(
+        _signal("dut-voltage", 5.4, absolute_error=0.2), _current(0.5)
+    )
+    assert evaluate_conditions(admit().policy, snapshot) == [
+        "dut-voltage-bounds: interval_escape: [5.2, 5.6] escapes [-0.1, 5.5]"
+    ]
+
+
+def test_conditions_numeric_at_bound_passes() -> None:
+    # [5.4, 5.5] touches both endpoints: containment is inclusive.
+    snapshot = _live_snapshot(_signal("dut-voltage", 5.45), _current(0.5))
+    assert evaluate_conditions(admit().policy, snapshot) == []
+
+
+def test_conditions_stale_signal_violates() -> None:
+    # The snapshot builder marks age 600 > bench max_age 500 as invalid.
+    snapshot = _live_snapshot(
+        _signal("dut-voltage", 5.0, age_ms=600, valid=False), _current(0.5)
+    )
+    violations = evaluate_conditions(admit().policy, snapshot)
+    assert "dut-voltage-bounds: signal_invalid: dut-voltage" in violations
+    assert "dut-power: signal_invalid: dut-voltage" in violations
+
+
+def test_conditions_missing_signal_violates() -> None:
+    snapshot = _live_snapshot(current=_current(0.5))
+    violations = evaluate_conditions(admit().policy, snapshot)
+    assert "dut-voltage-bounds: signal_missing: dut-voltage" in violations
+    assert "dut-power: signal_missing: dut-voltage" in violations
+
+
+def test_conditions_unit_mismatch_violates() -> None:
+    snapshot = _live_snapshot(_signal("dut-voltage", 5.0, unit="A"), _current(0.5))
+    assert evaluate_conditions(admit().policy, snapshot) == [
+        "dut-voltage-bounds: unit_mismatch: expected V, have A"
+    ]
+
+
+def test_conditions_unknown_error_violates() -> None:
+    snapshot = _live_snapshot(
+        _signal("dut-voltage", 5.0, absolute_error=None), _current(0.5)
+    )
+    assert "dut-voltage-bounds: unknown_error" in evaluate_conditions(
+        admit().policy, snapshot
+    )
+
+
+def test_conditions_nonfinite_value_violates() -> None:
+    snapshot = _live_snapshot(_signal("dut-voltage", float("nan")), _current(0.5))
+    assert "dut-voltage-bounds: nonfinite_value: dut-voltage" in evaluate_conditions(
+        admit().policy, snapshot
+    )
+
+
+def test_conditions_product_bound_exceeded() -> None:
+    # (5.0 + 0.05) x (0.7 + 0.01) = 3.5855 > 3 W.
+    snapshot = _live_snapshot(_signal("dut-voltage", 5.0), _current(0.7))
+    assert evaluate_conditions(admit().policy, snapshot) == [
+        "dut-power: bound_exceeded: 3.5855 > maximum 3"
+    ]
+
+
+def test_conditions_product_skew_exceeded() -> None:
+    snapshot = _live_snapshot(
+        _signal("dut-voltage", 5.0, age_ms=100), _current(0.5, age_ms=250)
+    )
+    assert evaluate_conditions(admit().policy, snapshot) == [
+        "dut-power: skew_exceeded: 150 > max_skew_ms 100"
+    ]
+
+
+def test_conditions_product_skew_at_bound_passes() -> None:
+    snapshot = _live_snapshot(
+        _signal("dut-voltage", 5.0, age_ms=100), _current(0.5, age_ms=200)
+    )
+    assert evaluate_conditions(admit().policy, snapshot) == []
