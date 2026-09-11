@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "muninndb": {
+    "muninndb-benchweave": {
       "type": "http",
       "url": "http://localhost:8125/mcp",
       "headers": {
