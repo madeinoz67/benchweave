@@ -9,6 +9,7 @@ is part of what this proves. Deterministic: clocks are injected.
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from collections.abc import Iterator
 from pathlib import Path
@@ -16,6 +17,7 @@ from types import ModuleType
 from typing import Any
 
 import pytest
+from jsonschema import Draft202012Validator  # type: ignore[import-untyped]
 
 from benchweave.host import (
     DispatchState,
@@ -29,6 +31,7 @@ from benchweave.host import (
 
 ROOT = Path(__file__).resolve().parents[2]
 PLUGINS = ROOT / "plugins"
+CONTRACTS = ROOT / "contracts" / "otdp-v0.3.0"
 NOW = "2026-09-11T00:00:00Z"
 TICK = 1_000_000
 
@@ -88,12 +91,11 @@ def make_sim_psu(clock: Clock) -> Any:
 
 
 @pytest.fixture()
-def psu() -> Iterator[tuple[Any, Clock, NullServices]]:
+def psu() -> Iterator[Any]:
     clock = Clock()
     plugin = make_sim_psu(clock)
-    services = NullServices()
-    plugin.plugin_open(services)
-    yield plugin, clock, services
+    plugin.plugin_open(NullServices())
+    yield plugin
     plugin.plugin_close()
 
 
@@ -225,8 +227,8 @@ def test_expired_deadline_times_out_not_dispatched() -> None:
 # --- sim_psu behaviour --------------------------------------------------------
 
 
-def test_psu_voltage_follows_output_state(psu: tuple[Any, Clock, NullServices]) -> None:
-    plugin, _, _ = psu
+def test_psu_voltage_follows_output_state(psu: Any) -> None:
+    plugin = psu
     off = plugin.dispatch(
         OperationRequest.read("op-1", parameter="output_voltage_v"), deadline_ns=TICK
     )
@@ -245,10 +247,8 @@ def test_psu_voltage_follows_output_state(psu: tuple[Any, Clock, NullServices]) 
     assert on.data.value == 12.0
 
 
-def test_psu_write_out_of_bounds_is_device_rejected(
-    psu: tuple[Any, Clock, NullServices],
-) -> None:
-    plugin, _, _ = psu
+def test_psu_write_out_of_bounds_is_device_rejected(psu: Any) -> None:
+    plugin = psu
     result = plugin.dispatch(
         OperationRequest.write("op-1", parameter="voltage_setpoint_v", value=999.0),
         deadline_ns=TICK,
@@ -257,8 +257,8 @@ def test_psu_write_out_of_bounds_is_device_rejected(
     assert result.error is not None and result.error.code is ErrorCode.DEVICE_REJECTED
 
 
-def test_psu_ovp_trip_latches_until_reset(psu: tuple[Any, Clock, NullServices]) -> None:
-    plugin, _, _ = psu
+def test_psu_ovp_trip_latches_until_reset(psu: Any) -> None:
+    plugin = psu
     plugin.dispatch(
         OperationRequest.write("op-1", parameter="output_enabled", value=True),
         deadline_ns=TICK,
@@ -288,3 +288,233 @@ def test_psu_ovp_trip_latches_until_reset(psu: tuple[Any, Clock, NullServices]) 
         deadline_ns=TICK,
     )
     assert recovered.status is OperationStatus.OK
+
+
+# --- WP05 class actions (INVOKE: configure / output / measure) ----------------
+
+
+def _invoke(action_id: str, input_: dict[str, Any]) -> OperationRequest:
+    return OperationRequest(
+        operation_id="op-1",
+        verb=OperationVerb.INVOKE,
+        arguments={"action_id": action_id, "input": input_},
+    )
+
+
+def test_invoke_configure_applies_and_echoes(psu: Any) -> None:
+    result = psu.dispatch(
+        _invoke(
+            "otdp.dc_psu.configure/1.0.0",
+            {
+                "configuration_id": "cfg-1",
+                "channel": "ch1",
+                "voltage_v": 5.0,
+                "current_limit_a": 0.5,
+                "ovp_v": 5.5,
+                "ocp_a": 0.5,
+            },
+        ),
+        deadline_ns=10**12,
+    )
+    assert result.status.value == "ok"
+    assert result.data["result"]["configuration_id"] == "cfg-1"
+    reading = psu.dispatch(
+        OperationRequest.read("op-2", parameter="voltage_setpoint_v"),
+        deadline_ns=10**12,
+    )
+    assert reading.data.value == 5.0
+
+
+def test_invoke_measure_returns_admitted_scalar_set(psu: Any) -> None:
+    psu.dispatch(
+        _invoke(
+            "otdp.dc_psu.configure/1.0.0",
+            {
+                "configuration_id": "cfg-1",
+                "channel": "ch1",
+                "voltage_v": 5.0,
+                "current_limit_a": 0.5,
+                "ovp_v": 5.5,
+                "ocp_a": 0.5,
+            },
+        ),
+        deadline_ns=10**12,
+    )
+    psu.dispatch(
+        _invoke(
+            "otdp.dc_psu.output/1.0.0",
+            {"channel": "ch1", "enabled": True, "configuration_id": "cfg-1"},
+        ),
+        deadline_ns=10**12,
+    )
+    result = psu.dispatch(
+        _invoke(
+            "otdp.dc_psu.measure/1.0.0",
+            {"configuration_id": "cfg-1", "channels": ["ch1"]},
+        ),
+        deadline_ns=10**12,
+    )
+    dataset = result.data["result"]
+    assert dataset["kind"] == "scalar_set"
+    ids = [v["id"] for v in dataset["variables"]]
+    assert ids == ["voltage", "current", "power"]
+    voltage = dataset["variables"][0]
+    assert voltage["unit"] == "V" and voltage["values"] == [5.0]
+    assert voltage["dimensions"] == [] and voltage["status"] == "valid"
+    assert voltage["uncertainty"] == {"status": "known", "absolute": 0.05}
+
+
+def test_invoke_unknown_action_rejected_not_dispatched(psu: Any) -> None:
+    result = psu.dispatch(_invoke("otdp.dc_psu.nope/1.0.0", {}), deadline_ns=10**12)
+    assert result.status.value == "error"
+    assert result.error.code.value == "UNSUPPORTED"
+    assert result.error.dispatch_state is DispatchState.NOT_DISPATCHED
+
+
+def test_invoke_measure_requires_current_configuration(psu: Any) -> None:
+    result = psu.dispatch(
+        _invoke(
+            "otdp.dc_psu.measure/1.0.0",
+            {"configuration_id": "cfg-wrong", "channels": ["ch1"]},
+        ),
+        deadline_ns=10**12,
+    )
+    assert result.status.value == "error"
+    assert result.error.code.value == "DEVICE_REJECTED"
+
+
+def test_invoke_measure_dataset_matches_otdp_schema(psu: Any) -> None:
+    psu.dispatch(
+        _invoke(
+            "otdp.dc_psu.configure/1.0.0",
+            {
+                "configuration_id": "cfg-1",
+                "channel": "ch1",
+                "voltage_v": 5.0,
+                "current_limit_a": 0.5,
+                "ovp_v": 5.5,
+                "ocp_a": 0.5,
+            },
+        ),
+        deadline_ns=10**12,
+    )
+    psu.dispatch(
+        _invoke(
+            "otdp.dc_psu.output/1.0.0",
+            {"channel": "ch1", "enabled": True, "configuration_id": "cfg-1"},
+        ),
+        deadline_ns=10**12,
+    )
+    result = psu.dispatch(
+        _invoke(
+            "otdp.dc_psu.measure/1.0.0",
+            {"configuration_id": "cfg-1", "channels": ["ch1"]},
+        ),
+        deadline_ns=10**12,
+    )
+    dataset = result.data["result"]
+    schema = json.loads(
+        (CONTRACTS / "otdp-measurement.schema.json").read_text(encoding="utf-8")
+    )
+    Draft202012Validator(schema).validate(dataset)
+
+
+def test_invoke_output_without_configuration_id_is_allowed(psu: Any) -> None:
+    """Safe transitions must not depend on a configuration token (exec contract §7)."""
+    result = psu.dispatch(
+        _invoke("otdp.dc_psu.output/1.0.0", {"channel": "ch1", "enabled": False}),
+        deadline_ns=10**12,
+    )
+    assert result.status.value == "ok"
+    assert result.data["result"]["enabled"] is False
+
+
+def test_invoke_output_with_stale_configuration_id_is_device_rejected(psu: Any) -> None:
+    result = psu.dispatch(
+        _invoke(
+            "otdp.dc_psu.output/1.0.0",
+            {"channel": "ch1", "enabled": True, "configuration_id": "cfg-stale"},
+        ),
+        deadline_ns=10**12,
+    )
+    assert result.status.value == "error"
+    assert result.error.code.value == "DEVICE_REJECTED"
+
+
+def test_invoke_configure_rejects_bad_channel_and_non_numeric_fields(psu: Any) -> None:
+    bad_channel = psu.dispatch(
+        _invoke(
+            "otdp.dc_psu.configure/1.0.0",
+            {
+                "configuration_id": "cfg-1",
+                "channel": "ch9",
+                "voltage_v": 5.0,
+                "current_limit_a": 0.5,
+                "ovp_v": 5.5,
+                "ocp_a": 0.5,
+            },
+        ),
+        deadline_ns=10**12,
+    )
+    assert bad_channel.status.value == "error"
+    assert bad_channel.error.code.value == "INVALID_ARGUMENT"
+    non_numeric = psu.dispatch(
+        _invoke(
+            "otdp.dc_psu.configure/1.0.0",
+            {
+                "configuration_id": "cfg-1",
+                "channel": "ch1",
+                "voltage_v": "five",
+                "current_limit_a": 0.5,
+                "ovp_v": 5.5,
+                "ocp_a": 0.5,
+            },
+        ),
+        deadline_ns=10**12,
+    )
+    assert non_numeric.status.value == "error"
+    assert non_numeric.error.code.value == "INVALID_ARGUMENT"
+
+
+def test_invoke_configure_trip_surfaces_as_device_rejected(psu: Any) -> None:
+    psu.dispatch(
+        _invoke(
+            "otdp.dc_psu.configure/1.0.0",
+            {
+                "configuration_id": "cfg-1",
+                "channel": "ch1",
+                "voltage_v": 3.0,
+                "current_limit_a": 0.5,
+                "ovp_v": 10.0,
+                "ocp_a": 0.5,
+            },
+        ),
+        deadline_ns=10**12,
+    )
+    psu.dispatch(
+        _invoke(
+            "otdp.dc_psu.output/1.0.0",
+            {"channel": "ch1", "enabled": True, "configuration_id": "cfg-1"},
+        ),
+        deadline_ns=10**12,
+    )
+    result = psu.dispatch(
+        _invoke(
+            "otdp.dc_psu.configure/1.0.0",
+            {
+                "configuration_id": "cfg-2",
+                "channel": "ch1",
+                "voltage_v": 12.0,
+                "current_limit_a": 0.5,
+                "ovp_v": 10.0,
+                "ocp_a": 0.5,
+            },
+        ),
+        deadline_ns=10**12,
+    )
+    assert result.status.value == "error"
+    assert result.error.code.value == "DEVICE_REJECTED"
+    errors = psu.dispatch(
+        OperationRequest("op-9", OperationVerb.GET_ERRORS), deadline_ns=10**12
+    )
+    assert any(entry.code == "OVP_TRIP" for entry in errors.data.entries)

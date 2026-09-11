@@ -83,6 +83,100 @@
       "setup": [],
       "request": {"verb": "reset", "arguments": {}},
       "expect": {"status": "ok"}
+    },
+    {
+      "name": "invoke_configure_applies",
+      "setup": [],
+      "request": {
+        "verb": "invoke",
+        "arguments": {
+          "action_id": "otdp.dc_psu.configure/1.0.0",
+          "input": {
+            "configuration_id": "cfg-1",
+            "channel": "ch1",
+            "voltage_v": 5.0,
+            "current_limit_a": 0.5,
+            "ovp_v": 5.5,
+            "ocp_a": 0.5
+          }
+        }
+      },
+      "expect": {"status": "ok"}
+    },
+    {
+      "name": "invoke_measure_returns_scalar_set",
+      "setup": [
+        {
+          "verb": "invoke",
+          "arguments": {
+            "action_id": "otdp.dc_psu.configure/1.0.0",
+            "input": {
+              "configuration_id": "cfg-1",
+              "channel": "ch1",
+              "voltage_v": 5.0,
+              "current_limit_a": 0.5,
+              "ovp_v": 5.5,
+              "ocp_a": 0.5
+            }
+          }
+        },
+        {
+          "verb": "invoke",
+          "arguments": {
+            "action_id": "otdp.dc_psu.output/1.0.0",
+            "input": {"channel": "ch1", "enabled": true, "configuration_id": "cfg-1"}
+          }
+        }
+      ],
+      "request": {
+        "verb": "invoke",
+        "arguments": {
+          "action_id": "otdp.dc_psu.measure/1.0.0",
+          "input": {"configuration_id": "cfg-1", "channels": ["ch1"]}
+        }
+      },
+      "expect": {"status": "ok"}
+    },
+    {
+      "name": "invoke_unknown_action_rejected",
+      "setup": [],
+      "request": {
+        "verb": "invoke",
+        "arguments": {"action_id": "otdp.dc_psu.nope/1.0.0", "input": {}}
+      },
+      "expect": {"status": "error", "error_code": "UNSUPPORTED", "dispatch_state": "not_dispatched"}
+    },
+    {
+      "name": "invoke_measure_requires_current_configuration",
+      "setup": [],
+      "request": {
+        "verb": "invoke",
+        "arguments": {
+          "action_id": "otdp.dc_psu.measure/1.0.0",
+          "input": {"configuration_id": "cfg-wrong", "channels": ["ch1"]}
+        }
+      },
+      "expect": {"status": "error", "error_code": "DEVICE_REJECTED", "dispatch_state": "not_dispatched"}
+    },
+    {
+      "name": "invoke_deadline_already_passed_times_out",
+      "setup": [],
+      "advance_ns": 1000000000000,
+      "request": {
+        "verb": "invoke",
+        "arguments": {
+          "action_id": "otdp.dc_psu.configure/1.0.0",
+          "input": {
+            "configuration_id": "cfg-1",
+            "channel": "ch1",
+            "voltage_v": 5.0,
+            "current_limit_a": 0.5,
+            "ovp_v": 5.5,
+            "ocp_a": 0.5
+          }
+        }
+      },
+      "expect": {"status": "error", "error_code": "TIMEOUT", "dispatch_state": "not_dispatched"}
     }
   ]
 }
