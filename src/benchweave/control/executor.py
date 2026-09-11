@@ -29,7 +29,10 @@ selects one scalar from an earlier invoke's dataset through
 empty dimensions, valid status, freshness measured from acquisition
 (``started_at``) at selection time, and known uncertainty when required —
 and ``assert`` / ``if`` predicates evaluate through
-:func:`evaluate_predicate`. INVALID evidence is ``execution_error``, never
+:func:`evaluate_predicate`. Freshness is rechecked at predicate evaluation
+against a fresh wall read: a sample fresh at selection but older than its
+``max_age_ms`` by predicate time is INVALID. INVALID evidence is
+``execution_error``, never
 the false branch and never a passing assertion; a false assert is
 ``assertion_failed``; a false if takes the else branch; and a known
 uncertainty decides by the conservative interval ``[v-|u|, v+|u|]`` inside
@@ -159,13 +162,17 @@ class SampleOutcome:
     otherwise it is one of the ``SAMPLE_*`` codes and ``value`` is ``None``.
     ``uncertainty`` carries the known absolute uncertainty (``None`` when
     unknown but permitted) and ``configuration_id`` retains the dataset's
-    provenance.
+    provenance. ``acquired_at`` / ``max_age_ms`` retain the freshness
+    contract so predicate evaluation can recheck it against a fresh wall
+    read (§4: freshness is rechecked at predicate evaluation).
     """
 
     value: float | None
     uncertainty: float | None
     configuration_id: str | None
     invalid_reason: str | None
+    acquired_at: str | None = None
+    max_age_ms: int | None = None
 
 
 @dataclass(frozen=True)
@@ -182,6 +189,23 @@ class ResolveContext:
     index_path: tuple[int, ...]
     channels: dict[str, str]
     issued_ids: dict[Occurrence, dict[str, dict[str, str]]]
+
+
+def _recheck_stale(outcome: SampleOutcome, evaluated_at_wall: str) -> bool:
+    """True when a finite freshness contract is violated at evaluation time.
+
+    §4: freshness is rechecked at predicate evaluation. A sample that was
+    fresh at selection but has aged past ``max_age_ms`` by the time its
+    predicate runs is INVALID evidence. Unknown timing cannot satisfy a
+    finite bound, so an unparseable timestamp also reads as stale.
+    """
+    if outcome.max_age_ms is None:
+        return False
+    acquired = _parse_wall(outcome.acquired_at)
+    evaluated = _parse_wall(evaluated_at_wall)
+    if acquired is None or evaluated is None:
+        return True
+    return (evaluated - acquired).total_seconds() * 1000.0 > float(outcome.max_age_ms)
 
 
 def _invalid_sample(reason: str) -> SampleOutcome:
@@ -406,13 +430,19 @@ def select_sample(
     ):
         return _invalid_sample(SAMPLE_NOT_SCALAR)
     max_age_ms = step.get("max_age_ms")
-    if isinstance(max_age_ms, int) and not isinstance(max_age_ms, bool):
-        started = _parse_wall(dataset.get("started_at"))
+    freshness_bound = (
+        max_age_ms
+        if isinstance(max_age_ms, int) and not isinstance(max_age_ms, bool)
+        else None
+    )
+    started_at = dataset.get("started_at")
+    if freshness_bound is not None:
+        started = _parse_wall(started_at)
         evaluated = _parse_wall(evaluated_at_wall)
         if started is None or evaluated is None:
             return _invalid_sample(SAMPLE_STALE)
         age_ms = (evaluated - started).total_seconds() * 1000.0
-        if age_ms > float(max_age_ms):
+        if age_ms > float(freshness_bound):
             return _invalid_sample(SAMPLE_STALE)
     uncertainty: float | None = None
     declared = variable.get("uncertainty")
@@ -434,17 +464,25 @@ def select_sample(
             configuration_id if isinstance(configuration_id, str) else None
         ),
         invalid_reason=None,
+        acquired_at=started_at if isinstance(started_at, str) else None,
+        max_age_ms=freshness_bound,
     )
 
 
 def evaluate_predicate(
-    predicate: dict[str, Any], samples: dict[str, SampleOutcome]
+    predicate: dict[str, Any],
+    samples: dict[str, SampleOutcome],
+    *,
+    evaluated_at_wall: str | None = None,
 ) -> bool | None:
     """Three-valued predicate over sampled evidence (§4).
 
     Returns ``None`` (INVALID) when the named sample is absent or carries an
     INVALID reason — INVALID evidence is never a false branch or a passing
-    assertion. With a known uncertainty the conservative interval
+    assertion. Freshness is rechecked at predicate evaluation: when
+    ``evaluated_at_wall`` is supplied and the outcome carries a finite
+    ``max_age_ms``, a sample fresh at selection but stale at evaluation is
+    INVALID. With a known uncertainty the conservative interval
     ``[value - |u|, value + |u|]`` must fit inside the inclusive bounds for
     BOTH ``assert`` and ``if``; when uncertainty is unknown and explicitly
     permitted, the nominal value is compared alone.
@@ -453,6 +491,8 @@ def evaluate_predicate(
     if not isinstance(outcome, SampleOutcome):
         return None
     if outcome.invalid_reason is not None or outcome.value is None:
+        return None
+    if evaluated_at_wall is not None and _recheck_stale(outcome, evaluated_at_wall):
         return None
     minimum = predicate["minimum"]
     maximum = predicate["maximum"]
@@ -870,6 +910,27 @@ class Executor:
             return {sample_id: sample}
         return {}
 
+    def _evaluate_predicate(
+        self, predicate: dict[str, Any], scope: ChainMap[str, Any]
+    ) -> tuple[bool | None, str]:
+        """Evaluate one predicate with a fresh wall read (§4 recheck).
+
+        Returns ``(verdict, invalid_detail)``: the detail is non-empty when
+        the verdict is INVALID because the evidence went stale between
+        selection and evaluation.
+        """
+        sample = scope.get(str(predicate["sample"]))
+        wall_now = self._wall.now_iso()
+        held = evaluate_predicate(
+            predicate,
+            self._predicate_samples(predicate, scope),
+            evaluated_at_wall=wall_now,
+        )
+        if held is not None:
+            return held, ""
+        stale_now = isinstance(sample, SampleOutcome) and _recheck_stale(sample, wall_now)
+        return None, " (stale at evaluation)" if stale_now else ""
+
     def _assertion_failure_reason(
         self, predicate: dict[str, Any], scope: ChainMap[str, Any], step_id: str
     ) -> str:
@@ -900,13 +961,14 @@ class Executor:
         step_id = str(step["id"])
         predicate = step["predicate"]
         event["resolved_input_sha256"] = _sha256_hex(predicate)
-        held = evaluate_predicate(predicate, self._predicate_samples(predicate, scope))
+        held, invalid_detail = self._evaluate_predicate(predicate, scope)
         if held is None:
             event["status"] = "error"
             event["error_code"] = "INVALID_SAMPLE"
             body.terminate(
                 BODY_EXECUTION_ERROR,
-                f"assert {step_id}: sample {str(predicate['sample'])!r} is INVALID",
+                f"assert {step_id}: sample {str(predicate['sample'])!r} is "
+                f"INVALID{invalid_detail}",
             )
             return None
         if not held:
@@ -939,13 +1001,14 @@ class Executor:
             event["resolved_input_sha256"] = _sha256_hex(step["predicate"])
             body.events.append(event)
             predicate = step["predicate"]
-            held = evaluate_predicate(predicate, self._predicate_samples(predicate, scope))
+            held, invalid_detail = self._evaluate_predicate(predicate, scope)
             if held is None:
                 event["status"] = "error"
                 event["error_code"] = "INVALID_SAMPLE"
                 body.terminate(
                     BODY_EXECUTION_ERROR,
-                    f"if {step_id}: sample {str(predicate['sample'])!r} is INVALID",
+                    f"if {step_id}: sample {str(predicate['sample'])!r} is "
+                    f"INVALID{invalid_detail}",
                 )
                 self._ledger[occurrence] = {
                     "event": event,

@@ -1697,6 +1697,38 @@ def test_wrong_unit_sample_is_execution_error(tmp_path: Path) -> None:
     assert "check" not in by_step  # INVALID never reaches the predicate
 
 
+def test_stale_at_predicate_time_is_execution_error(tmp_path: Path) -> None:
+    """§4: freshness is rechecked at predicate evaluation, not just selection.
+
+    A sample fresh when selected but older than ``max_age_ms`` by the time
+    its assert runs is INVALID evidence — ``execution_error``, never a
+    passing assertion and never the false branch.
+    """
+    def mutate(graph: dict[str, Any]) -> None:
+        steps = graph["procedure"]["steps"]
+        index = next(i for i, step in enumerate(steps) if step["id"] == "voltage")
+        steps.insert(
+            index + 1, {"id": "age-at-assert", "kind": "delay", "duration_ms": 600}
+        )
+
+    clock = TestClock()
+    plugins = _plugins_for(clock)
+    docs = readmit_mutated(tmp_path, mutate)
+    executor = _executor_for(docs, plugins, clock)
+
+    result = executor.run_body(
+        docs.procedure, run_id=RUN_ID, body_deadline_ns=_body_deadline(clock, docs)
+    )
+
+    assert result.body_outcome == "execution_error"  # not assertion_failed
+    assert any("stale" in reason for reason in result.reasons)
+    by_step = _events_by_step(result)
+    assert by_step["voltage"]["status"] == "ok"  # fresh at selection time
+    assert by_step["check"]["status"] == "error"  # stale at predicate time
+    assert by_step["check"]["error_code"] == "INVALID_SAMPLE"
+    assert "recheck" not in by_step  # the body ended at the assert, not later
+
+
 def test_stale_sample_is_execution_error(tmp_path: Path) -> None:
     def mutate(graph: dict[str, Any]) -> None:
         steps = graph["procedure"]["steps"]
