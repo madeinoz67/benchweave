@@ -43,7 +43,7 @@
                "variable_id": "current", "unit": "A", "max_age_ms": 500,
                "require_known_uncertainty": true},
               {"id": "check-current", "kind": "assert",
-               "predicate": {"sample": "recheck", "minimum": 0.0, "maximum": 0.5}}],
+               "predicate": {"sample": "recheck", "minimum": -0.01, "maximum": 0.5}}],
      "else": []},
     {"id": "loop", "kind": "repeat", "count": 3, "steps": [
       {"id": "remeasure", "kind": "invoke", "role": "supply",

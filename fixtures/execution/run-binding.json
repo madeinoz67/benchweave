@@ -1,11 +1,11 @@
 {
   "contract_version": "1.0.0",
   "request_id": "req-voltage-check-1",
-  "procedure": {"id": "voltage-check", "version": "1.0.0", "sha256": "d3511dcd7a775ae013f5b2e34befaf543f19a9888fdbdd16d434d559087dedeb"},
+  "procedure": {"id": "voltage-check", "version": "1.0.0", "sha256": "39bc93c37a5c7a3c9ba7b701b3bc57ab37f8e308f1ad32d1460b9b80cb918a29"},
   "bench": {"id": "sim-bench", "version": "1.0.0", "sha256": "9d3dca89f3939ad232cc1692288db27da113199e679f25e29e2b3ac5e3a5606f"},
   "policy": {"id": "sim-policy", "version": "1.0.0", "sha256": "b97f9f1526619b611be94eb759cceca512da538ecfdcc0376b3902f2bd470364"},
   "package_lock": {"id": "sim-lock", "version": "1.0.0", "sha256": "1f1ec92fa8ea299e4d36a89f4e28e9adc8362e10e79019f4dbdf6d77ad3e893c"},
-  "commissioning": {"id": "sim-commissioning", "version": "1.0.0", "sha256": "fd54eeac49d01ccd6a8a2a24585624b4b0afb4011947ea448bfe78b9103bb23e"},
+  "commissioning": {"id": "sim-commissioning", "version": "1.0.0", "sha256": "4f7e26f0642d36c53457b788adaf7773ff5096a7c55a43c174be671047af8516"},
   "bindings": [
     {"role": "supply", "device_id": "psu", "channels": {"output": "ch1"}},
     {"role": "dut", "device_id": "controller", "channels": {}}

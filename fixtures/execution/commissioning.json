@@ -7,7 +7,7 @@
   "policy": {"id": "sim-policy", "version": "1.0.0", "sha256": "b97f9f1526619b611be94eb759cceca512da538ecfdcc0376b3902f2bd470364"},
   "package_lock": {"id": "sim-lock", "version": "1.0.0", "sha256": "1f1ec92fa8ea299e4d36a89f4e28e9adc8362e10e79019f4dbdf6d77ad3e893c"},
   "procedure_refs": [
-    {"id": "voltage-check", "version": "1.0.0", "sha256": "d3511dcd7a775ae013f5b2e34befaf543f19a9888fdbdd16d434d559087dedeb"}
+    {"id": "voltage-check", "version": "1.0.0", "sha256": "39bc93c37a5c7a3c9ba7b701b3bc57ab37f8e308f1ad32d1460b9b80cb918a29"}
   ],
   "dut_class": "low_voltage_embedded",
   "modes": ["supervised"],

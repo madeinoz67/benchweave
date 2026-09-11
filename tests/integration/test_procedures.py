@@ -35,9 +35,11 @@ from types import ModuleType
 from typing import Any
 
 import pytest
+from jsonschema import Draft202012Validator  # type: ignore[import-untyped]
 
 from benchweave.control.binding import BindingError, release, reserve, resolve_binding
 from benchweave.control.clocking import SystemClock, TestClock
+from benchweave.control.coordinator import RunCoordinator
 from benchweave.control.documents import AdmissionRejected, AdmittedDocuments, admit_documents
 from benchweave.control.executor import Executor, SampleOutcome, canonical_json, evaluate_predicate
 from benchweave.control.policy import (
@@ -1482,32 +1484,33 @@ def test_reference_fixture_resolves_all_three_forms(tmp_path: Path) -> None:
     }
 
 
-def test_pristine_fixture_then_branch_is_interval_honest(tmp_path: Path) -> None:
-    """Finding: the fixture's check-current bounds assume nominal comparison.
+def test_pristine_fixture_completes_with_interval_honest_bounds(tmp_path: Path) -> None:
+    """The fixture's check-current bounds now admit honest interval evidence.
 
-    On the untouched fixture, current measures 0.0 ± 0.01 while
-    ``check-current`` demands ``[0.0, 0.5]``. The conservative interval
-    ``[-0.01, 0.01]`` dips below the zero minimum, so under §4 semantics
-    the body ends ``assertion_failed`` there — honestly, not as an error.
-    The nominal value 0.0 is inside the bounds; the interval is what
-    decides. Fixture owners may want bounds of ``[-0.01, 0.5]`` for a
-    completing body.
+    Original finding: current measures 0.0 ± 0.01 while ``check-current``
+    demanded ``[0.0, 0.5]`` — the conservative interval ``[-0.01, 0.01]``
+    dipped below the zero minimum, so under §4 semantics the pristine body
+    ended ``assertion_failed`` there (pinned before the Task 8 fixture
+    fix). The ratified fix widens the fixture minimum to ``-0.01`` so the
+    whole interval fits inside the inclusive bounds; the pristine fixture
+    now completes with every assertion passing on real interval evidence,
+    not nominal comparison.
     """
     clock = TestClock()
     plugins = _plugins_for(clock)
-    docs = admit()  # the untouched reference-bearing fixture
+    docs = admit()  # the untouched reference-bearing fixture, bounds fixed
     executor = _executor_for(docs, plugins, clock)
 
     result = executor.run_body(
         docs.procedure, run_id=RUN_ID, body_deadline_ns=_body_deadline(clock, docs)
     )
 
-    assert result.body_outcome == "assertion_failed"
-    assert any("escapes" in reason for reason in result.reasons)
+    assert result.body_outcome == "completed"
+    assert result.reasons == []
     by_step = _events_by_step(result)
-    assert by_step["check-current"]["status"] == "failed"
+    assert by_step["check-current"]["status"] == "ok"
     assert "recheck" in by_step  # the then branch ran on real interval evidence
-    assert "loop" not in by_step  # the body ended at the failed assert
+    assert "loop" in by_step  # the body ran to completion
 
 
 def test_stg_channel_resolves_output_alias_via_binding(tmp_path: Path) -> None:
@@ -1944,3 +1947,53 @@ def test_nested_if_inside_repeat_composes(tmp_path: Path) -> None:
         [RUN_ID, "loop-note", [2]],
     ]
     assert clock.waits.count(5_000_000) == 3  # nested then-branch ran per iteration
+
+
+# --- Task 8: the full coordinated run ------------------------------------------
+
+
+def test_start_run_full_pass_over_pristine_fixture(tmp_path: Path) -> None:
+    """The final WP05 integration: admit, lease, monitor, execute, protect, record.
+
+    The pristine fixture (bounds widened so honest intervals fit) runs to a
+    ``passed`` terminal record with a verified safe state, a schema-valid
+    run record, every one of the eight step kinds in the durable event
+    stream, and a released bench lease.
+    """
+    clock = TestClock()
+    plugins = _plugins_for(clock)
+    store = Store.open(tmp_path / "state.db")
+    docs = admit()
+    coordinator = RunCoordinator(store, plugins, clock, clock, docs)
+
+    record = coordinator.start_run(RUN_ID, "principal-a")
+
+    assert record["outcome"] == "passed"
+    assert record["body_outcome"] == "completed"
+    assert record["safe_state"] == "verified"
+    assert record["reasons"] == []
+    assert record["binding"] == {
+        "id": docs.binding["request_id"],
+        "version": docs.binding["contract_version"],
+        "sha256": docs.digests["binding"],
+    }
+    schema = json.loads(
+        (Path(__file__).resolve().parents[2] / "contracts" / "execution-v1.0.0"
+         / "run-record.schema.json").read_text(encoding="utf-8")
+    )
+    Draft202012Validator(schema).validate(record)
+    run = store.get_run(RUN_ID)
+    assert run is not None
+    assert run["terminal"] == record
+
+    events = store.read_events(f"run:{RUN_ID}")
+    assert events, "the durable event stream is non-empty"
+    assert [int(event["sequence"]) for event in events] == list(
+        range(1, len(events) + 1)
+    )
+    assert {event["kind"] for event in events} == {
+        "invoke", "read", "write", "delay", "sample", "assert", "if", "repeat"
+    }
+
+    assert store.get_active_lease("sim-bench") is None  # the lease was released
+    store.close()

@@ -845,7 +845,12 @@ class Executor:
         if error is None:  # defensive: the result type guarantees an error
             body.terminate(BODY_EXECUTION_ERROR, f"step {step_id}: result carries no error")
             return result
-        event["status"] = "error" if result.status is OperationStatus.ERROR else "unknown"
+        if result.status is OperationStatus.CANCELLED:
+            event["status"] = "cancelled"  # honest bucket: a real cancellation
+        elif result.status is OperationStatus.ERROR:
+            event["status"] = "error"
+        else:
+            event["status"] = "unknown"
         event["error_code"] = error.code.value
         if error.dispatch_state is DispatchState.NOT_DISPATCHED:
             body.terminate(
