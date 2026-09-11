@@ -97,9 +97,45 @@ def psu() -> Iterator[tuple[Any, Clock, NullServices]]:
     plugin.plugin_close()
 
 
+# --- sim_controller behaviour -------------------------------------------------
+
+
+def make_sim_controller(clock: Clock) -> Any:
+    module = load_plugin_module("sim_controller")
+    return module.create_plugin(now_fn=clock.iso, monotonic_ns_fn=clock.monotonic_ns)
+
+
+def test_controller_uptime_tracks_injected_clock() -> None:
+    clock = Clock()
+    plugin = make_sim_controller(clock)
+    plugin.plugin_open(NullServices())
+    first = plugin.dispatch(
+        OperationRequest.read("op-1", parameter="uptime_s"), deadline_ns=10**12
+    )
+    assert first.data.value == 0
+    clock.advance(5_000_000_000)
+    second = plugin.dispatch(
+        OperationRequest.read("op-2", parameter="uptime_s"), deadline_ns=10**15
+    )
+    assert second.data.value == 5
+    plugin.plugin_close()
+
+
+def test_controller_rejects_non_note_writes() -> None:
+    clock = Clock()
+    plugin = make_sim_controller(clock)
+    plugin.plugin_open(NullServices())
+    result = plugin.dispatch(
+        OperationRequest.write("op-1", parameter="setpoint", value=1), deadline_ns=10**12
+    )
+    assert result.status is OperationStatus.ERROR
+    assert result.error is not None and result.error.code is ErrorCode.INVALID_ARGUMENT
+    plugin.plugin_close()
+
+
 # --- shared ABI conformance (parametrized over plugins; S3 extends) ----------
 
-CONFORMING_PLUGINS: list[str] = ["sim_psu"]
+CONFORMING_PLUGINS: list[str] = ["sim_psu", "sim_controller"]
 
 
 @pytest.fixture(params=CONFORMING_PLUGINS)
