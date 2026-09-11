@@ -49,5 +49,11 @@ JSON
   rule; brief them with it.
 - The bar for what merits a proposal, and the do-not-propose list: `.claude/memory-protocol.md`.
 - The drain moves the queue into the `benchweave` vault on PreCompact / SessionEnd / Stop.
+- **Vault routing:** every memory for this project belongs in the `benchweave` vault — never the
+  LifeOS default vault. Direct `muninn_remember`/`muninn_recall` over MCP only through the
+  project-scoped server (`.mcp.json`, needs its one-time `/mcp` approval; the global LifeOS
+  connection is key-scoped to `default` and CANNOT address `benchweave` — verified 2026-09-11).
+  Until that server is approved, route session-level memories (handoffs, project state) through
+  the proposal ledger above; the drain delivers them.
 
 <!-- gortex:communities:end -->
