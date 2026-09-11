@@ -12,7 +12,12 @@ sequence is normative (each step runs for the whole closure before the next):
    clock, so a closure resolved earlier cannot be admitted after its statuses
    expired (``expired_status``) or against a regressing sequence view
    (``stale_sequence``); resolve already enforces both, admission re-checks
-   to stay honest on re-admission paths.
+   to stay honest on re-admission paths. The rollback view is persisted: the
+   highest authenticated sequence per release lives in
+   ``<cache_root>/high-water.json``, is read and merged with any in-memory
+   expectations at start, and is written back atomically on success — the
+   highest authenticated status sequence is persisted and enforced against
+   rollback across process restarts.
 2. **Limits gate** — archive size and manifest file count are checked against
    :class:`AdmissionLimits` BEFORE extraction, as is the declared unpacked
    total (``archive_too_large`` / ``too_many_files`` / ``unpacked_too_large``).
@@ -25,6 +30,10 @@ sequence is normative (each step runs for the whole closure before the next):
    manifest inventory (``extra_file`` / ``file_hash_mismatch``); the actual
    unpacked total is re-checked against the limit. Only verified bytes are
    written, via a staging directory, under ``cache_root/<manifest_sha256>/``.
+   A pre-existing ``<manifest_sha256>/`` directory is itself re-verified
+   against the manifest inventory — every on-disk file re-checked for bytes
+   and sha, and any unlisted file rejected — so a pre-seeded or poisoned
+   cache directory can never be admitted on trust.
 4. **Package lock** — canonical JSON (sorted keys, compact separators,
    trailing newline — mirroring the fixture builder), validated through
    :func:`~benchweave.registry.schemas.load_lock_document` before being
@@ -38,10 +47,11 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import os
 import shutil
 import stat
 import zipfile
-from collections.abc import Mapping
+from collections.abc import Mapping, MutableMapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -57,6 +67,9 @@ from benchweave.registry.schemas import load_lock_document
 
 #: Document budget for the generated package lock (bytes).
 _LOCK_MAX_BYTES = 1_000_000
+
+#: Name of the persisted high-water map inside ``cache_root``.
+_HIGH_WATER_FILENAME = "high-water.json"
 
 #: Authenticity reasons admission translates into its own rejections. Any other
 #: reason (``future_updated_at`` today) propagates unchanged so the layer that
@@ -126,10 +139,23 @@ def _release_row(release: ResolvedRelease) -> dict[str, str]:
 
 
 def _gate_lifecycle(
-    closure: ResolvedClosure, *, now_ns: int, roots: Mapping[str, TrustRoot]
+    closure: ResolvedClosure,
+    *,
+    now_ns: int,
+    roots: Mapping[str, TrustRoot],
+    water: dict[Key, int],
 ) -> None:
-    """Step 1: lifecycle and status re-check, before anything is written."""
-    water: dict[Key, int] = {}
+    """Step 1: lifecycle and status re-check, before anything is written.
+
+    ``water`` is the merged rollback view — the persisted high-water map
+    overlaid on any in-memory expectations — and every release's status
+    sequence must not fall below it (``stale_sequence``). The per-call session
+    map handed to :func:`check_status` keeps its strictly-increasing
+    within-call semantics; the merged view is the persisted-layer gate, where
+    replaying the SAME authenticated sequence (idempotent re-admission) is
+    allowed and only a lower one is rollback.
+    """
+    session: dict[Key, int] = {}
     for release in closure.releases:
         lifecycle = release.status["lifecycle"]
         if lifecycle == "revoked":
@@ -141,13 +167,17 @@ def _gate_lifecycle(
                 release.status,
                 root=roots[release.registry_id],
                 now_ns=now_ns,
-                high_water=water,
+                high_water=session,
             )
         except AuthenticityRejected as exc:
             if exc.reason in _WRAPPED_STATUS_REASONS:
                 raise AdmissionRejected(exc.reason) from exc
             raise
-        water[_release_key(release)] = sequence
+        key = _release_key(release)
+        if sequence < water.get(key, 0):
+            raise AdmissionRejected("stale_sequence")
+        session[key] = sequence
+        water[key] = max(sequence, water.get(key, sequence))
 
 
 def _gate_limits(closure: ResolvedClosure, limits: AdmissionLimits) -> None:
@@ -208,13 +238,46 @@ def _verify_members(release: ResolvedRelease, limits: AdmissionLimits) -> dict[s
     return verified
 
 
+def _verify_cached_dir(target: Path, release: ResolvedRelease) -> None:
+    """Re-verify a pre-existing ``<manifest_sha256>/`` dir, never trust it.
+
+    Every on-disk file is re-checked against the bytes+sha the manifest's
+    signature authenticated, any unlisted file is ``extra_file``, a listed
+    file with no on-disk counterpart fails its match, and a symlink — which
+    extraction can never produce — is ``path_unsafe``.
+    """
+    inventory: dict[str, dict[str, Any]] = {
+        entry["path"]: entry for entry in release.manifest["payload"]["files"]
+    }
+    seen: set[str] = set()
+    for path in sorted(target.rglob("*")):
+        if path.is_symlink():
+            raise AdmissionRejected("path_unsafe")
+        if not path.is_file():
+            continue
+        rel = path.relative_to(target).as_posix()
+        seen.add(rel)
+        entry = inventory.get(rel)
+        if entry is None:
+            raise AdmissionRejected("extra_file")
+        data = path.read_bytes()
+        if len(data) != entry["bytes"] or _sha256(data) != entry["sha256"]:
+            raise AdmissionRejected("file_hash_mismatch")
+    if set(inventory) - seen:
+        # A listed file with no on-disk counterpart fails its bytes-and-hash match.
+        raise AdmissionRejected("file_hash_mismatch")
+
+
 def _write_members(
     release: ResolvedRelease, members: Mapping[str, bytes], *, cache_root: Path
 ) -> Path:
     """Step 3 (write half): verified bytes into ``cache_root/<manifest_sha256>/``."""
     target = cache_root / release.manifest_sha256
     if target.is_dir():
-        # Content-addressed: same digest, same bytes — nothing to redo.
+        # Content-addressed, but never trusted on the address alone: the
+        # pre-existing directory is re-verified against the manifest
+        # inventory before admission rides it.
+        _verify_cached_dir(target, release)
         return target
     staging = cache_root / f".{release.manifest_sha256}.staging"
     if staging.exists():
@@ -264,6 +327,49 @@ def _lock_document(closure: ResolvedClosure, approval: Approval) -> bytes:
     return raw
 
 
+def _load_persisted_high_water(cache_root: Path) -> dict[Key, int]:
+    """Read ``<cache_root>/high-water.json``; an absent file is an empty map.
+
+    The file is admission's own canonical-JSON state, so a file that will
+    not parse into the expected shape refuses admission
+    (``high_water_invalid``) rather than silently disarming the rollback gate.
+    """
+    path = cache_root / _HIGH_WATER_FILENAME
+    if not path.is_file():
+        return {}
+    try:
+        rows = json.loads(path.read_bytes())["releases"]
+        water = {
+            (row["registry_id"], row["package_id"], row["version"]): row["sequence"]
+            for row in rows
+        }
+    except (json.JSONDecodeError, UnicodeDecodeError, KeyError, TypeError, ValueError) as exc:
+        raise AdmissionRejected("high_water_invalid") from exc
+    if any(
+        isinstance(sequence, bool) or not isinstance(sequence, int) or sequence < 1
+        for sequence in water.values()
+    ):
+        raise AdmissionRejected("high_water_invalid")
+    return water
+
+
+def _write_persisted_high_water(cache_root: Path, water: Mapping[Key, int]) -> None:
+    """Persist the merged high-water map atomically (tmp + :func:`os.replace`)."""
+    rows = [
+        {
+            "registry_id": registry,
+            "package_id": package,
+            "version": version,
+            "sequence": sequence,
+        }
+        for (registry, package, version), sequence in sorted(water.items())
+    ]
+    path = cache_root / _HIGH_WATER_FILENAME
+    staged = path.with_name(path.name + ".tmp")
+    staged.write_bytes(_canonical({"releases": rows}))
+    os.replace(staged, path)
+
+
 def admit(
     closure: ResolvedClosure,
     *,
@@ -273,6 +379,7 @@ def admit(
     approval: Approval,
     now_ns: int,
     roots: Mapping[str, TrustRoot],
+    high_water: MutableMapping[Key, int] | None = None,
 ) -> Admitted:
     """Admit a resolved closure: gate, verify, extract, lock, record.
 
@@ -280,10 +387,19 @@ def admit(
     ``registry_id`` to the trust root that authenticated it — both feed the
     step-1 status re-check, and ``roots`` must cover every registry id present
     in the closure. ``cache_root`` and ``lock_path`` are caller-supplied and
-    are only touched after every gate has passed. Raises
-    :class:`AdmissionRejected` with the refusing gate's reason.
+    are only touched after every gate has passed. ``high_water`` optionally
+    carries in-memory rollback expectations (for example the resolver
+    session's map); the persisted map under
+    ``<cache_root>/high-water.json`` is read at start and merged with — never
+    replaced by — it, and the merged map is written back atomically once
+    admission succeeds, so the highest authenticated status sequence survives
+    process restarts and is enforced against rollback on re-admission.
+    Raises :class:`AdmissionRejected` with the refusing gate's reason.
     """
-    _gate_lifecycle(closure, now_ns=now_ns, roots=roots)
+    water = _load_persisted_high_water(cache_root)
+    for key, sequence in (high_water or {}).items():
+        water[key] = max(sequence, water.get(key, sequence))
+    _gate_lifecycle(closure, now_ns=now_ns, roots=roots, water=water)
     _gate_limits(closure, limits)
     # Verify every release before writing any: a member failure anywhere
     # leaves the cache untouched, not partially populated.
@@ -301,6 +417,10 @@ def admit(
         "cache_paths": [str(cache_root / sha) for sha in manifest_sha256s],
     }
     lock_path.with_suffix(".admission.json").write_bytes(_canonical(record))
+    _write_persisted_high_water(cache_root, water)
+    if high_water is not None:
+        for key, sequence in water.items():
+            high_water[key] = sequence
     return Admitted(
         lock_path=lock_path,
         lock_sha256=lock_sha256,

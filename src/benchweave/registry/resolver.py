@@ -33,13 +33,20 @@ _STATUS_MAX_BYTES = 100_000
 
 
 class PackageSource(Protocol):
-    """Byte-level access to one origin's release files."""
+    """Byte-level access to one origin's release files.
+
+    ``payload_bytes`` may be handed ``max_archive_bytes`` by the resolver
+    (threaded from :class:`OriginConfig`); sources that can cheaply know a
+    payload's size MUST reject before reading it into memory.
+    """
 
     def manifest_bytes(self, package_id: str, version: str) -> tuple[bytes, str]: ...
 
     def status_bytes(self, package_id: str, version: str) -> tuple[bytes, str]: ...
 
-    def payload_bytes(self, package_id: str, version: str) -> bytes: ...
+    def payload_bytes(
+        self, package_id: str, version: str, *, max_archive_bytes: int | None = None
+    ) -> bytes: ...
 
     def manifest_signature(self, package_id: str, version: str) -> bytes: ...
 
@@ -69,7 +76,19 @@ class LocalDirectorySource:
     def status_bytes(self, package_id: str, version: str) -> tuple[bytes, str]:
         return self._pair(package_id, version, "status.json")
 
-    def payload_bytes(self, package_id: str, version: str) -> bytes:
+    def payload_bytes(
+        self,
+        package_id: str,
+        version: str,
+        *,
+        max_archive_bytes: int | None = None,
+    ) -> bytes:
+        path = self._root / package_id / version / "payload.zip"
+        if max_archive_bytes is not None and path.stat().st_size > max_archive_bytes:
+            # Size-gated on stat alone: an oversized archive is refused
+            # before it is ever read into memory. Admission's own limit
+            # stays as the second, independent gate.
+            raise RegistryRejected("archive_too_large")
         return self._read(package_id, version, "payload.zip")
 
     def manifest_signature(self, package_id: str, version: str) -> bytes:
@@ -85,6 +104,10 @@ class OriginConfig:
     root: TrustRoot
     source: PackageSource
     namespaces: tuple[str, ...]
+    #: Optional origin-level payload cap handed to the source's
+    #: ``payload_bytes`` so an oversized archive is refused before it is
+    #: read into memory; ``None`` (the default) defers to admission's limit.
+    max_archive_bytes: int | None = None
 
 
 @dataclass(frozen=True)
@@ -190,7 +213,9 @@ class Resolver:
             )
             status_sig = source.status_signature(package_id, version)
             verify_document(status_doc, status_sig, origin.root)
-            payload = source.payload_bytes(package_id, version)
+            payload = source.payload_bytes(
+                package_id, version, max_archive_bytes=origin.max_archive_bytes
+            )
         except FileNotFoundError as exc:
             reason = "unknown_release" if is_root else "missing_dependency"
             raise RegistryRejected(reason) from exc

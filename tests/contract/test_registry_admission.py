@@ -75,8 +75,10 @@ class _OverlaySource:
             return raw, _sha(raw)
         return pair[0], _sha(pair[0])
 
-    def payload_bytes(self, package_id: str, version: str) -> bytes:
-        return self.base.payload_bytes(package_id, version)
+    def payload_bytes(
+        self, package_id: str, version: str, *, max_archive_bytes: int | None = None
+    ) -> bytes:
+        return self.base.payload_bytes(package_id, version, max_archive_bytes=max_archive_bytes)
 
     def manifest_signature(self, package_id: str, version: str) -> bytes:
         return self.base.manifest_signature(package_id, version)
@@ -137,7 +139,7 @@ def _admit(
 
 def _drop_in_fault(origin: Path, fault: str) -> None:
     """Copy the committed origin tree, then overlay a fault status drop-in."""
-    shutil.copytree(REG / "origin-main", origin)
+    shutil.copytree(REG / "origin-main", origin, dirs_exist_ok=True)
     fault_dir = REG / "faults" / fault / "benchweave/sim-psu-descriptor/1.0.0"
     target = origin / "benchweave/sim-psu-descriptor/1.0.0"
     shutil.copy2(fault_dir / "status.json", target / "status.json")
@@ -229,9 +231,12 @@ def test_admit_happy_path(tmp_path: Path) -> None:
         "policy_version": "1.0.0",
     }
 
-    # Cache: one content-addressed directory per release, payload extracted.
+    # Cache: one content-addressed directory per release (plus the persisted
+    # high-water map), payload extracted.
     cache_root = tmp_path / "cache"
-    assert sorted(p.name for p in cache_root.iterdir()) == sorted(shas.values())
+    assert sorted(p.name for p in cache_root.iterdir()) == sorted(
+        [*shas.values(), "high-water.json"]
+    )
     plugin = cache_root / shas["benchweave/sim-psu"] / "plugin" / "plugin.py"
     assert plugin.read_bytes() == (REPO / "plugins/sim_psu/plugin.py").read_bytes()
 
@@ -380,3 +385,64 @@ def test_unpacked_limit_before_extraction(tmp_path: Path) -> None:
         _admit(closure, tmp_path, limits=tight)
     assert exc.value.reason == "unpacked_too_large"
     assert not (tmp_path / "cache").exists()
+
+
+def test_prepoisoned_cache_member_rejected_on_readmission(tmp_path: Path) -> None:
+    """Final-fix 1a: a pre-existing cache dir is re-verified, never trusted.
+
+    A poisoned member byte inside an already-admitted content-addressed dir
+    must refuse re-admission with the member-layer reason, not ride the
+    content-address skip.
+    """
+    closure = _resolve()
+    _admit(closure, tmp_path)
+    sim_psu = _sim_psu(closure)
+    target = tmp_path / "cache" / sim_psu.manifest_sha256 / "plugin" / "plugin.py"
+    honest = target.read_bytes()
+    target.write_bytes(honest[:-1] + bytes([honest[-1] ^ 1]))
+    with pytest.raises(AdmissionRejected) as exc:
+        _admit(closure, tmp_path)
+    assert exc.value.reason == "file_hash_mismatch"
+    # The refusal wrote nothing: the poisoned byte is still on disk.
+    assert target.read_bytes() != honest
+
+
+def test_prepoisoned_cache_extra_file_rejected_on_readmission(tmp_path: Path) -> None:
+    """Final-fix 1a: an unlisted file inside an admitted cache dir is extra."""
+    closure = _resolve()
+    _admit(closure, tmp_path)
+    sim_psu = _sim_psu(closure)
+    ghost = tmp_path / "cache" / sim_psu.manifest_sha256 / "ghost.txt"
+    ghost.write_bytes(b"unlisted\n")
+    with pytest.raises(AdmissionRejected) as exc:
+        _admit(closure, tmp_path)
+    assert exc.value.reason == "extra_file"
+
+
+def test_persisted_high_water_blocks_rollback(tmp_path: Path) -> None:
+    """Final-fix 1b: the persisted high-water map survives a fresh process.
+
+    First install replays the descriptor's sequence-2 status and persists
+    the map. The registry then rolls back to sequence 1; a fresh process
+    (fresh in-memory expectations at both resolve and admit) can only be
+    caught by the persisted layer.
+    """
+    origin = tmp_path / "origin"
+    _drop_in_fault(origin, "rollback-seq2")
+    closure = _resolve(LocalDirectorySource(origin))
+    _admit(closure, tmp_path)
+
+    water_path = tmp_path / "cache" / "high-water.json"
+    assert water_path.is_file()
+    rows = {
+        (row["registry_id"], row["package_id"], row["version"]): row["sequence"]
+        for row in json.loads(water_path.read_bytes())["releases"]
+    }
+    desc_key = ("origin-main", "benchweave/sim-psu-descriptor", "1.0.0")
+    assert rows[desc_key] == 2
+
+    _drop_in_fault(origin, "rollback-seq1")
+    rolled = _resolve(LocalDirectorySource(origin))  # fresh resolver session
+    with pytest.raises(AdmissionRejected) as exc:
+        _admit(rolled, tmp_path)  # fresh in-memory map — persisted layer only
+    assert exc.value.reason == "stale_sequence"

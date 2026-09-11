@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -76,9 +77,11 @@ class _OverlaySource:
             return self.base.status_bytes(package_id, version)
         return pair[0], _sha(pair[0])
 
-    def payload_bytes(self, package_id: str, version: str) -> bytes:
+    def payload_bytes(
+        self, package_id: str, version: str, *, max_archive_bytes: int | None = None
+    ) -> bytes:
         self._check(package_id, version)
-        return self.base.payload_bytes(package_id, version)
+        return self.base.payload_bytes(package_id, version, max_archive_bytes=max_archive_bytes)
 
     def manifest_signature(self, package_id: str, version: str) -> bytes:
         pair = self.manifests.get((package_id, version))
@@ -350,3 +353,37 @@ def test_dependency_digest_disagreement_rejected() -> None:
             "origin-main", "benchweave/sim-psu", "1.0.0", now_ns=NOW, high_water={}
         )
     assert exc.value.reason == "digest_disagreement"
+
+
+def test_payload_size_limit_rejects_before_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Final-fix 1c: an origin-level archive cap refuses on stat alone.
+
+    The oversized payload is never read into memory — the read seam explodes
+    if the source reaches for ``payload.zip`` before rejecting.
+    """
+    origin = tmp_path / "origin"
+    shutil.copytree(REG / "origin-main", origin)
+    (origin / "benchweave/sim-psu/1.0.0/payload.zip").write_bytes(b"\x00" * 5000)
+    source = LocalDirectorySource(origin)
+
+    def _no_payload_read(package_id: str, version: str, filename: str) -> bytes:
+        assert filename != "payload.zip", "oversized payload read into memory"
+        return (origin / package_id / version / filename).read_bytes()
+
+    monkeypatch.setattr(source, "_read", _no_payload_read)
+    origins: dict[str, OriginConfig] = {
+        "origin-main": OriginConfig(
+            registry_id="origin-main",
+            root=MAIN_ROOT,
+            source=source,
+            namespaces=("benchweave",),
+            max_archive_bytes=1_000,
+        )
+    }
+    with pytest.raises(RegistryRejected) as exc:
+        Resolver(origins).resolve(
+            "origin-main", "benchweave/sim-psu", "1.0.0", now_ns=NOW, high_water={}
+        )
+    assert exc.value.reason == "archive_too_large"

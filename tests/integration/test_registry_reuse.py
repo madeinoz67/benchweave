@@ -279,8 +279,8 @@ def test_second_clean_install_reuses_same_digests_and_runs(tmp_path: Path) -> No
         (tmp_path / "install-b", install_b),
     ):
         assert (work / "packages.lock.json").is_file()
-        assert sorted(p.name for p in (work / "cache").iterdir()) == list(
-            admitted.manifest_sha256s
+        assert sorted(p.name for p in (work / "cache").iterdir()) == sorted(
+            [*admitted.manifest_sha256s, "high-water.json"]
         )
 
     # ...and runs: the second installation's plugin loads from ITS cache and
