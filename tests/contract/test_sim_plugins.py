@@ -17,7 +17,7 @@ from types import ModuleType
 from typing import Any
 
 import pytest
-from jsonschema import Draft202012Validator  # type: ignore[import-untyped]
+from jsonschema import Draft202012Validator
 
 from benchweave.host import (
     DispatchState,

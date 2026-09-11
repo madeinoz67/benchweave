@@ -1,0 +1,76 @@
+# src/benchweave/registry/schemas.py
+"""Strict loading of registry documents against the vendored 1.0.0 schemas.
+
+Structural validity never establishes trust (schema descriptions say so);
+authenticity and lifecycle checks live in authenticity.py / admission.py.
+"""
+from __future__ import annotations
+
+import json
+from functools import cache
+from pathlib import Path
+
+from jsonschema import Draft202012Validator, FormatChecker
+
+from benchweave.content.json_document import JsonDocument, load_document
+
+#: Vendored registry schemas, resolved exactly as ``control/documents.py``
+#: resolves its vendored execution-v1.0.0 schemas: module-relative to the
+#: repository root (``parents[3]``), one directory per contract family. The
+#: schema bytes are pinned in ``contracts/manifest.json`` and verified by
+#: ``tests/contract/test_baseline.py``.
+_CONTRACTS = Path(__file__).resolve().parents[3] / "contracts" / "registry-v1.0.0"
+
+
+class RegistryRejected(ValueError):
+    """A registry document failed structure or schema validation."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+def _load_schema_bytes(schema_filename: str) -> bytes:
+    return (_CONTRACTS / schema_filename).read_bytes()
+
+
+@cache
+def _make_validator(schema_filename: str) -> Draft202012Validator:
+    schema = json.loads(_load_schema_bytes(schema_filename))
+    validator = Draft202012Validator(schema, format_checker=FormatChecker())
+    validator.check_schema(schema)
+    return validator
+
+
+def _load_validated(
+    raw: bytes, expected_sha256: str, *, max_bytes: int, schema_filename: str
+) -> JsonDocument:
+    doc = load_document(raw, expected_sha256, max_bytes=max_bytes)
+    errors = sorted(
+        _make_validator(schema_filename).iter_errors(doc.content),
+        key=lambda error: error.json_path,
+    )
+    if errors:
+        raise RegistryRejected("schema_invalid")
+    return doc
+
+
+def load_manifest_document(raw: bytes, expected_sha256: str, *, max_bytes: int) -> JsonDocument:
+    """Decode one release-manifest document and validate it against its schema."""
+    return _load_validated(
+        raw, expected_sha256, max_bytes=max_bytes, schema_filename="release-manifest.schema.json"
+    )
+
+
+def load_status_document(raw: bytes, expected_sha256: str, *, max_bytes: int) -> JsonDocument:
+    """Decode one release-status document and validate it against its schema."""
+    return _load_validated(
+        raw, expected_sha256, max_bytes=max_bytes, schema_filename="release-status.schema.json"
+    )
+
+
+def load_lock_document(raw: bytes, expected_sha256: str, *, max_bytes: int) -> JsonDocument:
+    """Decode one package-lock document and validate it against its schema."""
+    return _load_validated(
+        raw, expected_sha256, max_bytes=max_bytes, schema_filename="package-lock.schema.json"
+    )

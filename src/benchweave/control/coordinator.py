@@ -50,7 +50,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from jsonschema import Draft202012Validator  # type: ignore[import-untyped]
+from jsonschema import Draft202012Validator
 
 from benchweave.control.binding import Reservation, release, reserve, resolve_binding
 from benchweave.control.clocking import MonotonicClock, WallClock

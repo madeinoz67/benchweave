@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from jsonschema import Draft202012Validator, FormatChecker  # type: ignore[import-untyped]
+from jsonschema import Draft202012Validator, FormatChecker
 
 from benchweave.content.json_document import DocumentRejected, load_document
 

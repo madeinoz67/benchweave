@@ -25,6 +25,7 @@ classifiers = [
   "Typing :: Typed"
 ]
 dependencies = [
+  "cryptography>=50.0.1",
   "jsonschema>=4.23",
 ]
 
@@ -34,6 +35,7 @@ dev = [
   "ruff>=0.6",
   "mypy>=1.11",
   "referencing>=0.35",
+  "types-jsonschema>=4.26.0.20260518",
 ]
 
 [project.scripts]
