@@ -446,3 +446,27 @@ def test_persisted_high_water_blocks_rollback(tmp_path: Path) -> None:
     with pytest.raises(AdmissionRejected) as exc:
         _admit(rolled, tmp_path)  # fresh in-memory map — persisted layer only
     assert exc.value.reason == "stale_sequence"
+
+
+def test_malformed_persisted_high_water_refuses_admission(tmp_path: Path) -> None:
+    """Final-wave: malformed persisted state refuses admission, not disarm.
+
+    A ``high-water.json`` that will not parse into the expected shape (here a
+    flat key→sequence map instead of ``releases`` rows) rejects with
+    ``high_water_invalid`` before any gate or write runs, and the refusal
+    leaves the malformed bytes and the rest of the cache untouched.
+    """
+    closure = _resolve()
+    cache_root = tmp_path / "cache"
+    cache_root.mkdir()
+    malformed = b'{"origin-main|benchweave/sim-psu|1.0.0": 0}\n'
+    (cache_root / "high-water.json").write_bytes(malformed)
+    with pytest.raises(AdmissionRejected) as exc:
+        _admit(closure, tmp_path)
+    assert exc.value.reason == "high_water_invalid"
+    # The refusal wrote nothing: malformed bytes intact, nothing else in the
+    # cache, no lock and no admission record.
+    assert (cache_root / "high-water.json").read_bytes() == malformed
+    assert sorted(p.name for p in cache_root.iterdir()) == ["high-water.json"]
+    assert not (tmp_path / "packages.lock.json").exists()
+    assert not (tmp_path / "packages.lock.admission.json").exists()
