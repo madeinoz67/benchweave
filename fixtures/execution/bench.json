@@ -1,0 +1,42 @@
+{
+  "contract_version": "1.0.0",
+  "id": "sim-bench",
+  "version": "1.0.0",
+  "description": "Executable simulator bench. Not hardware-qualified.",
+  "gateway_id": "sim-gateway",
+  "fixture": {"id": "sim-fixture", "revision": "1", "identity_record_id": "ident-fixture"},
+  "dut_class": "low_voltage_embedded",
+  "policy": {"id": "sim-policy", "version": "1.0.0", "sha256": "b97f9f1526619b611be94eb759cceca512da538ecfdcc0376b3902f2bd470364"},
+  "package_lock": {"id": "sim-lock", "version": "1.0.0", "sha256": "1f1ec92fa8ea299e4d36a89f4e28e9adc8362e10e79019f4dbdf6d77ad3e893c"},
+  "commissioning_id": "sim-commissioning",
+  "dut_ids": ["controller"],
+  "protection_mechanisms": [],
+  "devices": [
+    {"id": "psu", "generation": 1,
+     "descriptor": {"id": "descriptor-sim-psu", "version": "1.0.0", "sha256": "06e5b51b7ebfacd4e26b076c997c6717e9fa07ad647c906d22badd2c7da5bc34"},
+     "identity_record_id": "ident-psu", "connection_key": "sim_psu_local", "channels": ["ch1"]},
+    {"id": "controller", "generation": 1,
+     "descriptor": {"id": "descriptor-sim-controller", "version": "1.0.0", "sha256": "03d7fab91000a9165d9608ec947e41522f58512135c6dcc3ea926ca2bb863435"},
+     "identity_record_id": "ident-controller", "connection_key": "sim_controller_local", "channels": ["ch1"]}
+  ],
+  "resources": [
+    {"id": "dut-net", "device_ids": ["psu", "controller"], "depends_on": []}
+  ],
+  "terminals": [
+    {"id": "psu-out", "owner_kind": "device", "owner_id": "psu", "channel_id": "ch1",
+     "name": "out", "domain_id": "dut"},
+    {"id": "ctl-vin", "owner_kind": "device", "owner_id": "controller", "channel_id": "ch1",
+     "name": "vin", "domain_id": "dut"}
+  ],
+  "nets": [
+    {"id": "n1", "terminal_ids": ["psu-out", "ctl-vin"]}
+  ],
+  "signals": [
+    {"id": "dut-voltage", "quantity": "voltage", "unit": "V", "poll_ms": 50, "max_age_ms": 500,
+     "absolute_error": 0.05, "resource_id": "dut-net",
+     "source": {"kind": "parameter", "device_id": "psu", "parameter": "output_voltage_v"}},
+    {"id": "dut-current", "quantity": "current", "unit": "A", "poll_ms": 50, "max_age_ms": 500,
+     "absolute_error": 0.01, "resource_id": "dut-net",
+     "source": {"kind": "parameter", "device_id": "psu", "parameter": "output_current_a"}}
+  ]
+}

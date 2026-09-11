@@ -1,0 +1,11 @@
+{
+  "id": "descriptor-sim-controller",
+  "version": "1.0.0",
+  "profiles": [],
+  "actions": [],
+  "parameters": [
+    "uptime_s",
+    "identity_model",
+    "operator_note"
+  ]
+}
