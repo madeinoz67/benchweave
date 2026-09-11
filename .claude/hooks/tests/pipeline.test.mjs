@@ -49,6 +49,7 @@ function proposal(n, extra = {}) {
     content: `Synthetic finding number ${n}, written long enough to clear the forty-character self-containment floor.`,
     summary: `synthetic ${n}`,
     type: 'fact',
+    tags: ['synthetic'],
     ...extra,
   }
 }
@@ -308,6 +309,17 @@ test('op_id is content-derived and stable across tag/importance refinement', () 
 })
 
 // ── D4: the schema is enforced at the producer ────────────────────────────────────────────
+test('tags are required — a tag-less proposal is rejected (observed on the benchweave vault 2026-09-11)', () => {
+  const noTags = proposal(1, { tags: undefined })
+  const bad = validate(noTags)
+  assert.equal(bad.ok, false, 'tag-less proposal must not validate')
+  assert.ok(bad.problems.some((x) => x.includes("'tags'")), `problems should name 'tags': ${JSON.stringify(bad.problems)}`)
+  const emptyTags = validate(proposal(2, { tags: [] }))
+  assert.equal(emptyTags.ok, false, 'empty tags array must not validate')
+  const okTags = validate(proposal(3, { tags: ['gotcha'] }))
+  assert.equal(okTags.ok, true, `tagged proposal should validate: ${JSON.stringify(okTags.problems)}`)
+})
+
 test('D4: the validator rejects every shape the real ledger actually drifted into', () => {
   // Copied from the observed contiguous runs. Content is synthetic; the shapes are not.
   const observed = [
@@ -362,7 +374,7 @@ test('migration repairs the observed drift and leaves the genuinely broken for d
   const { root, ledger } = makeRepo([
     { concept: 'missing vault only', content: 'x'.repeat(60), type: 'fact', issue: 825 },
     { type: 'fact', title: 'title/body', body: 'y'.repeat(60), tags: ['t'] },
-    { vault: 'v', concept: 'ok already', content: 'z'.repeat(60) },
+    { vault: 'v', concept: 'ok already', content: 'z'.repeat(60), tags: ['drift'] },
     { vault: 'v', concept: 'unfixable', content: 'nope' },
   ])
   const r = await runNode(MIGRATE, ['--vault', 'testvault'], { root })
@@ -655,7 +667,7 @@ test('F5: a re-proposal whose non-identity fields changed is reported, never sil
   assert.match(r.out, /NOT APPLIED/)
   assert.match(r.out, /summary/)
   const arch = JSON.parse(lines(join(root, '.claude', 'memory-proposals.drained.jsonl'))[0])
-  assert.deepEqual(arch.annotations_not_applied, ['summary', 'type', 'entities'])
+  assert.deepEqual(arch.annotations_not_applied, ['summary', 'type', 'tags', 'entities'])
   assert.equal(arch.summary, 'a corrected summary', 'the correction is recoverable from the archive')
 })
 
@@ -686,7 +698,7 @@ test('a half-written trailing line is left for the next run, never dead-lettered
   assert.equal(rc.ledger.partial_tail_bytes, torn.length)
 
   // …and once the writer finishes the line, it drains normally.
-  appendFileSync(ledger, 'ent":"The rest of the line arrives on the second write, which is what makes it transient."}\n')
+  appendFileSync(ledger, 'ent":"The rest of the line arrives on the second write, which is what makes it transient.","tags":["transient"]}\n')
   await runNode(DRAIN, ['--base', srv.base], { root })
   assert.equal(lines(ledger).length, 0)
   assert.ok(srv.calls.some((c) => c.name === 'muninn_remember' && c.args.concept === 'torn'))

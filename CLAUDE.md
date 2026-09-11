@@ -32,4 +32,22 @@ These are not suggestions — run each step at the trigger.
 7. For any refactor, **call** `get_edit_plan` then `batch_edit` to apply atomically.
 8. Verify with the project's real build/test. Reserve `check_guards` for guard-relevant changes and `get_test_targets` to find the tests covering a substantive change — not mechanically after every edit.
 
+## Findings that outlive the session
+
+Durable, non-obvious findings (measured numbers, decisions and why, defect *patterns*, traps
+that look safe) go through the proposal ledger rather than ad-hoc `muninn_remember`:
+
+```sh
+node .claude/hooks/memory-propose.mjs <<'JSON'
+{"concept":"short label","content":"the fact itself, self-contained","summary":"one line","type":"fact","tags":["gotcha"],"source":"main"}
+JSON
+```
+
+- **Tags are required (>= 1) on every vault write**, ledger or direct MCP — untagged memories
+  are invisible to tag-filtered recall. The validator rejects tag-less proposals.
+- Subagents that write findings over MCP (code-reviewer, adversary probes) follow the same
+  rule; brief them with it.
+- The bar for what merits a proposal, and the do-not-propose list: `.claude/memory-protocol.md`.
+- The drain moves the queue into the `benchweave` vault on PreCompact / SessionEnd / Stop.
+
 <!-- gortex:communities:end -->

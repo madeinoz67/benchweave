@@ -30,6 +30,11 @@ export const REQUIRED = ['vault', 'concept', 'content']
 // A memory too short to be self-contained is a note to self, not a memory.
 export const MIN_CONTENT = 40
 
+// Tags are required, not decorative: the recall tag-filter lane and the console's tag
+// chips are the retrieval surface an untagged memory never reaches (observed on the
+// benchweave vault 2026-09-11 — three tag-less memories, invisible to tag-scoped recall).
+export const MIN_TAGS = 1
+
 // Fields the drain forwards to muninn_remember. Anything else on a proposal is carried in
 // the archive but not written — listed here so producers can see what actually lands.
 export const WRITTEN_FIELDS = [
@@ -43,7 +48,7 @@ export const CANONICAL_SHAPE = [
   `  "content":    "the fact itself",     // required — self-contained, >= ${MIN_CONTENT} chars`,
   '  "summary":    "one line",            // strongly preferred',
   '  "type":       "fact",                // fact|decision|observation|issue|procedure|constraint',
-  '  "tags":       ["..."],',
+  '  "tags":       ["..."],              // required — >= 1; feeds the recall tag-filter lane',
   '  "entities":   ["..."],',
   '  "importance": 0.8,                   // 0.7+ is protected from capacity pruning',
   '  "source":     "which agent proposed it"',
@@ -92,9 +97,12 @@ export function validate(p) {
   if (p.importance !== undefined && (typeof p.importance !== 'number' || p.importance < 0 || p.importance > 1)) {
     problems.push(`'importance' must be a number in [0,1], got ${JSON.stringify(p.importance)}`)
   }
-  for (const f of ['tags', 'entities']) {
-    if (p[f] !== undefined && !Array.isArray(p[f])) problems.push(`'${f}' must be an array`)
+  if (p.tags !== undefined && !Array.isArray(p.tags)) {
+    problems.push(`'tags' must be an array`)
+  } else if (!Array.isArray(p.tags) || p.tags.filter((t) => typeof t === 'string' && t.trim()).length < MIN_TAGS) {
+    problems.push(`'tags' must include at least ${MIN_TAGS} non-empty entry — untagged memories are invisible to tag-filtered recall`)
   }
+  if (p.entities !== undefined && !Array.isArray(p.entities)) problems.push(`'entities' must be an array`)
   return { ok: problems.length === 0, problems }
 }
 

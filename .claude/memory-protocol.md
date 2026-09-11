@@ -46,7 +46,10 @@ collapsed the analysis that depended on them. A drain with no bar is a pollution
 ## How to append
 
 **Use the helper.** It validates before it writes, fills in `vault`, and refuses a batch
-rather than queueing a bad line:
+rather than queueing a bad line. Every proposal carries **at least one tag** — tags are the
+recall tag-filter lane, and an untagged memory is invisible to tag-scoped recall and reads
+as bare in the console (observed on this vault 2026-09-11). The validator rejects tag-less
+proposals:
 
 ```sh
 node .claude/hooks/memory-propose.mjs <<'JSON'
