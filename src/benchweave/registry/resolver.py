@@ -5,6 +5,10 @@ Routing is namespace-based and exclusive: a release is served only by the
 origin the caller names, and that origin must route the release's namespace
 (``package_id.split("/")[0]``) — a dependency pinned to another registry is
 rejected as ``cross_origin_fallback``, never redirected.
+
+Payload bytes are returned as served — NOT digest-verified at resolve time;
+the consumer must check them against ``manifest["payload"]["sha256"]`` (Task 6
+admission owns that check).
 """
 from __future__ import annotations
 
@@ -129,15 +133,21 @@ class Resolver:
         # Queue entries carry the manifest digest pinned by the dependent (None for the root).
         queue: deque[tuple[Key, str | None]] = deque([(start, None)])
         manifests: dict[Key, dict[str, Any]] = {}
+        digests: dict[Key, str] = {}
         releases: list[ResolvedRelease] = []
         while queue:
             key, pinned = queue.popleft()
             if key in manifests:
+                # A revisited key is only sound when every dependent agrees on
+                # the digest: digest disagreements are errors, never last-wins.
+                if pinned is not None and pinned != digests[key]:
+                    raise RegistryRejected("digest_disagreement")
                 continue
             release, manifest = self._resolve_release(
                 key, pinned=pinned, is_root=key == start, now_ns=now_ns, high_water=high_water
             )
             manifests[key] = manifest
+            digests[key] = release.manifest_sha256
             releases.append(release)
             for dep in manifest["dependencies"]:
                 dep_key: Key = (dep["registry_id"], dep["package_id"], dep["version"])
@@ -164,6 +174,16 @@ class Resolver:
             )
             manifest_sig = source.manifest_signature(package_id, version)
             verify_document(manifest_doc, manifest_sig, origin.root)
+            # The signature proves the bytes are authentic, not that they are
+            # the release asked for: recheck the manifest's self-declared
+            # identity against the requested key (contract §6/§10).
+            declared = (
+                manifest_doc.content["registry_id"],
+                manifest_doc.content["package_id"],
+                manifest_doc.content["version"],
+            )
+            if declared != key:
+                raise RegistryRejected("identity_mismatch")
             status_raw, status_digest = source.status_bytes(package_id, version)
             status_doc = load_status_document(
                 status_raw, status_digest, max_bytes=_STATUS_MAX_BYTES

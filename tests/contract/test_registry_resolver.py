@@ -123,8 +123,9 @@ def _fault_status(fault: str) -> tuple[bytes, bytes]:
 
 
 def test_resolve_full_closure() -> None:
+    high_water: dict[Key, int] = {}
     closure = Resolver(_origins()).resolve(
-        "origin-main", "benchweave/sim-psu", "1.0.0", now_ns=NOW, high_water={}
+        "origin-main", "benchweave/sim-psu", "1.0.0", now_ns=NOW, high_water=high_water
     )
     catalogue = {
         row["package_id"]: row
@@ -142,6 +143,11 @@ def test_resolve_full_closure() -> None:
         assert release.manifest_sha256 == catalogue[release.package_id]["manifest_sha256"]
         assert release.manifest and release.status and release.payload
         assert release.manifest_sig and release.status_sig
+    assert high_water == {
+        ("origin-main", "benchweave/sim-psu", "1.0.0"): 1,
+        DESC_KEY: 1,
+        ("origin-main", "benchweave/dc-psu-profile", "1.0.0"): 1,
+    }
 
 
 def test_second_resolve_identical_digests() -> None:
@@ -246,10 +252,16 @@ def test_wrong_origin_signature_rejected() -> None:
     assert exc.value.reason == "bad_signature"
 
 
-def test_closure_admission_runs_on_assembled_set() -> None:
+def test_cycle_fixture_caught_by_pin_conflict() -> None:
     # Re-sign the descriptor with a back-edge to its dependent and re-pin that
-    # digest in the dependent: the BFS ends (visited set) and Task 4 admission
-    # must reject the assembled cycle.
+    # digest in the dependent. A resolver-level cycle can never carry
+    # consistent pins — each manifest's bytes embed the digest of the next
+    # manifest in the cycle, so a consistent cycle would be a mutual-hash
+    # fixed point — and the back-edge necessarily pins a digest that
+    # disagrees with the re-signed root it revisits. The §10 pin-conflict
+    # guard therefore rejects during the BFS, one check before admission;
+    # ``cycle`` admission itself is pinned at the semantics level
+    # (tests/contract/test_registry_semantics.py::test_cycle).
     sim_dir = REG / "origin-main/benchweave/sim-psu/1.0.0"
     impl: dict[str, Any] = json.loads((sim_dir / "manifest.json").read_bytes())
     desc: dict[str, Any] = json.loads(
@@ -277,7 +289,7 @@ def test_closure_admission_runs_on_assembled_set() -> None:
         Resolver(_origins(source)).resolve(
             "origin-main", "benchweave/sim-psu", "1.0.0", now_ns=NOW, high_water={}
         )
-    assert exc.value.reason == "cycle"
+    assert exc.value.reason == "digest_disagreement"
 
 
 def test_missing_dependency_file() -> None:
@@ -290,3 +302,51 @@ def test_missing_dependency_file() -> None:
             "origin-main", "benchweave/sim-psu", "1.0.0", now_ns=NOW, high_water={}
         )
     assert exc.value.reason == "missing_dependency"
+
+
+def test_root_served_manifest_identity_mismatch() -> None:
+    # A mis-serving origin returns sim-controller's genuine, validly-signed
+    # manifest+sig pair for the sim-psu request: signature verification alone
+    # passes, so the resolver must recheck the served manifest's self-declared
+    # registry_id/package_id/version against the requested key.
+    controller = REG / "origin-main/benchweave/sim-controller/1.0.0"
+    source = _OverlaySource(
+        base=LocalDirectorySource(REG / "origin-main"),
+        manifests={
+            ("benchweave/sim-psu", "1.0.0"): (
+                (controller / "manifest.json").read_bytes(),
+                (controller / "manifest.sig").read_bytes(),
+            )
+        },
+    )
+    with pytest.raises(RegistryRejected) as exc:
+        Resolver(_origins(source)).resolve(
+            "origin-main", "benchweave/sim-psu", "1.0.0", now_ns=NOW, high_water={}
+        )
+    assert exc.value.reason == "identity_mismatch"
+
+
+def test_dependency_digest_disagreement_rejected() -> None:
+    # Two dependents pin the same release key at different digests: the first
+    # edge resolves against the true digest, and the revisit must compare the
+    # disagreeing pin against the stored release instead of skipping it.
+    sim_dir = REG / "origin-main/benchweave/sim-psu/1.0.0"
+    impl: dict[str, Any] = json.loads((sim_dir / "manifest.json").read_bytes())
+    impl["dependencies"].append(
+        {
+            "registry_id": "origin-main",
+            "package_id": "benchweave/sim-psu-descriptor",
+            "version": "1.0.0",
+            "manifest_sha256": _sha(b"disagreeing pin"),
+        }
+    )
+    impl_raw = _canonical(impl)
+    source = _OverlaySource(
+        base=LocalDirectorySource(REG / "origin-main"),
+        manifests={("benchweave/sim-psu", "1.0.0"): (impl_raw, _sign_with_main(impl_raw))},
+    )
+    with pytest.raises(RegistryRejected) as exc:
+        Resolver(_origins(source)).resolve(
+            "origin-main", "benchweave/sim-psu", "1.0.0", now_ns=NOW, high_water={}
+        )
+    assert exc.value.reason == "digest_disagreement"
