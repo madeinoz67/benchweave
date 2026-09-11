@@ -11,6 +11,7 @@ vendored run-record schema, not hand-rolled shape checks.
 
 from __future__ import annotations
 
+import copy
 import importlib.util
 import json
 import sys
@@ -53,6 +54,7 @@ DESCRIPTORS = {
     "controller": FIXTURES / "descriptor-sim-controller.json",
 }
 PSU_OUTPUT = "otdp.dc_psu.output/1.0.0"
+PSU_MEASURE = "otdp.dc_psu.measure/1.0.0"
 BENCH_ID = "sim-bench"
 
 _RECORD_VALIDATOR = Draft202012Validator(json.loads(RUN_RECORD_SCHEMA.read_text(encoding="utf-8")))
@@ -128,6 +130,16 @@ class _FaultPsu:
         self.clear_force_on_disable: bool = True
         self.force_measure_voltage_v: float | None = None
         self.fail_configure_not_dispatched = False
+        #: Reads of output_voltage_v serving a forced 5.9 V at exactly these
+        #: zero-based read indices (one-poll transients for verify testing).
+        self.bad_read_indices: set[int] = set()
+        self.read_index = 0
+        #: Measure returns an UNKNOWN dispatch AND arms the voltage fault
+        #: (uncertain body + post-body condition violation).
+        self.unknown_measure_and_trip = False
+        #: A successful measure both tampers the voltage dataset (assertion
+        #: failure) and arms the voltage fault (post-body violation).
+        self.trip_after_measure = False
         self.on_invoke: Callable[[OperationRequest], None] | None = None
         self.dispatches: list[OperationRequest] = []
 
@@ -157,25 +169,30 @@ class _FaultPsu:
         if (
             request.verb is OperationVerb.READ
             and request.arguments.get("parameter") == "output_voltage_v"
-            and self.force_voltage_v is not None
         ):
+            index = self.read_index
+            self.read_index += 1
+            forced = self.force_voltage_v
+            if index in self.bad_read_indices:
+                forced = 5.9  # exactly one dirty poll
             self.dispatches.append(request)
-            observed = self._now()
-            if self.stale_ms:
-                observed = _iso_minus_ms(observed, self.stale_ms)
-            return OperationResult.ok(
-                request.operation_id,
-                request.verb,
-                Reading(
-                    parameter="output_voltage_v",
-                    value=self.force_voltage_v,
-                    unit="V",
-                    observed_at=observed,
-                    age_ms=0,
-                    quality=Quality.VALID,
-                    source=ReadingSource.DEVICE,
-                ),
-            )
+            if forced is not None:
+                observed = self._now()
+                if self.stale_ms:
+                    observed = _iso_minus_ms(observed, self.stale_ms)
+                return OperationResult.ok(
+                    request.operation_id,
+                    request.verb,
+                    Reading(
+                        parameter="output_voltage_v",
+                        value=forced,
+                        unit="V",
+                        observed_at=observed,
+                        age_ms=0,
+                        quality=Quality.VALID,
+                        source=ReadingSource.DEVICE,
+                    ),
+                )
         self.dispatches.append(request)
         if (
             self.fail_configure_not_dispatched
@@ -188,6 +205,18 @@ class _FaultPsu:
                 code=ErrorCode.DEVICE_REJECTED,
                 message="fault injected: configure rejected before dispatch",
                 dispatch_state=DispatchState.NOT_DISPATCHED,
+            )
+        if (
+            self.unknown_measure_and_trip
+            and request.verb is OperationVerb.INVOKE
+            and str(request.arguments.get("action_id")) == PSU_MEASURE
+        ):
+            self.force_voltage_v = 5.9  # the condition violates right after
+            return OperationResult.indeterminate(
+                request.operation_id,
+                request.verb,
+                code=ErrorCode.TIMEOUT,
+                message="fault injected: dispatch state unknown",
             )
         result = self._inner.dispatch(request, deadline_ns=deadline_ns)
         if request.verb is OperationVerb.INVOKE and self.on_invoke is not None:
@@ -205,16 +234,15 @@ class _FaultPsu:
                 self.force_voltage_v = None
             elif enabled is True and self.enable_sets_force is not None:
                 self.force_voltage_v = self.enable_sets_force
-        elif (
-            action_id == "otdp.dc_psu.measure/1.0.0"
-            and self.force_measure_voltage_v is not None
-            and isinstance(result.data, dict)
-        ):
-            dataset = result.data.get("result")
-            if isinstance(dataset, dict):
-                for variable in dataset.get("variables", []):
-                    if variable.get("id") == "voltage":
-                        variable["values"] = [self.force_measure_voltage_v]
+        elif action_id == PSU_MEASURE:
+            if self.trip_after_measure:
+                self.force_voltage_v = 5.9  # violates the condition post-body
+            if self.force_measure_voltage_v is not None and isinstance(result.data, dict):
+                dataset = result.data.get("result")
+                if isinstance(dataset, dict):
+                    for variable in dataset.get("variables", []):
+                        if variable.get("id") == "voltage":
+                            variable["values"] = [self.force_measure_voltage_v]
 
 
 def _plugins(clock: TestClock) -> dict[str, DevicePlugin]:
@@ -342,6 +370,54 @@ def test_budget_lapse_is_outcome_unknown_despite_terminal_body(tmp_path: Path) -
     _validate_record(record)
 
 
+def test_mid_window_transient_resets_the_stability_window(tmp_path: Path) -> None:
+    """One dirty poll inside the window resets stability; two endpoints lie.
+
+    Poll cadence 50 ms, stable_for 100 ms. The conjunction is dirty at
+    exactly read #2 (t+100 ms, inside the first window): a continuously
+    sampled window must reset and verify only at t+250 ms — never at the
+    two-endpoint t+100 ms a blind wait would report.
+    """
+    clock = TestClock()
+    plugins = _plugins(clock)
+    fault = _FaultPsu(plugins["psu"], clock.now_iso)
+    plugins["psu"] = fault
+    docs = _admit()
+    fault.bad_read_indices = {2}
+    engine = ProtectionEngine(plugins, docs.policy, docs.bench, clock, clock)
+
+    entered_ns = clock.now_ns()
+    result = engine.enter(["fault-1"], entered_ns)
+
+    assert result.safe_state == "verified"
+    assert clock.now_ns() == entered_ns + 250_000_000  # reset cost a full window
+
+
+def test_mid_window_transient_then_budget_lapse_is_unknown(tmp_path: Path) -> None:
+    """A transient whose reset outruns the budget ends unknown, not verified.
+
+    A tighter commissioned budget (150 ms) admits the first stability window
+    (clean polls at t+0/t+50) but not a second one: the dirty poll at t+100
+    resets the window, the budget lapses at t+150 mid-restart, and the
+    honest answer is ``unknown``.
+    """
+    clock = TestClock()
+    plugins = _plugins(clock)
+    fault = _FaultPsu(plugins["psu"], clock.now_iso)
+    plugins["psu"] = fault
+    docs = _admit()
+    policy = copy.deepcopy(docs.policy)
+    policy["safe_transition"]["max_duration_ms"] = 150
+    fault.bad_read_indices = {2}  # dirty at t+100 ms, inside the first window
+    engine = ProtectionEngine(plugins, policy, docs.bench, clock, clock)
+
+    entered_ns = clock.now_ns()
+    result = engine.enter(["fault-1"], entered_ns)
+
+    assert result.safe_state == "unknown"
+    assert clock.now_ns() == entered_ns + 150_000_000  # lapsed mid-restart, exactly
+
+
 # --- cancel ---------------------------------------------------------------------
 
 
@@ -465,6 +541,49 @@ def test_no_false_passed_when_verification_fails(tmp_path: Path) -> None:
     assert record["safe_state"] == "unknown"
     assert record["outcome"] == "outcome_unknown"
     assert any("dut-voltage-bounds" in reason for reason in record["reasons"])
+    _validate_record(record)
+
+
+def test_uncertain_body_is_never_reclassified_to_tripped(tmp_path: Path) -> None:
+    """An uncertain dispatch stays outcome_unknown even with a live violation.
+
+    The measure dispatch returns UNKNOWN (uncertain, never retried) and the
+    voltage condition violates right after it. The monitor's cause may not
+    downgrade the body: the record keeps the executor's uncertainty reasons
+    AND appends the violation, and the outcome stays ``outcome_unknown``.
+    """
+    clock, fault, coordinator, store, _ = _harness(tmp_path)
+    fault.unknown_measure_and_trip = True
+
+    record = coordinator.start_run("run-uncertain", "principal-a")
+
+    assert record["body_outcome"] == "outcome_unknown"
+    assert record["outcome"] == "outcome_unknown"
+    assert any("outcome uncertain" in reason for reason in record["reasons"])
+    assert any("dut-voltage-bounds" in reason for reason in record["reasons"])
+    assert fault.disable_dispatches()
+    _validate_record(record)
+
+
+def test_assertion_failed_body_is_never_reclassified_to_tripped(tmp_path: Path) -> None:
+    """A failed assertion keeps its §5 row; the violation rides as a reason.
+
+    The measure dataset is tampered so ``check`` fails honestly while the
+    voltage condition violates at the same moment. The body ended on its
+    own assertion failure — no monitor block reclassifies it — so the
+    terminal is ``assertion_failed`` with both reasons retained.
+    """
+    clock, fault, coordinator, store, _ = _harness(tmp_path)
+    fault.force_measure_voltage_v = 4.0
+    fault.trip_after_measure = True
+
+    record = coordinator.start_run("run-assert-trip", "principal-a")
+
+    assert record["body_outcome"] == "assertion_failed"
+    assert record["outcome"] == "assertion_failed"
+    assert any("escapes" in reason for reason in record["reasons"])
+    assert any("dut-voltage-bounds" in reason for reason in record["reasons"])
+    assert fault.disable_dispatches()
     _validate_record(record)
 
 

@@ -21,7 +21,10 @@ Terminal truth (§5, one function): the body outcome plus the verified safe
 state decide the terminal outcome; an uncertain body or an unverifiable safe
 state forces ``outcome_unknown`` — uncertainty is never erased by later
 safety, and no report may say ``passed`` while final safety is unknown. The
-body outcome is recorded independently alongside it.
+body outcome is recorded independently alongside it. A monitor cause
+(trip/cancel) replaces the body outcome only when its block terminated the
+body; a cause observed alongside a body that ended on its own outcome is
+appended to the reasons and never downgrades an uncertain or failed body.
 
 Event aliasing: the executor returns step events whose dicts it also retains
 inside the shared occurrence ledger. This coordinator treats retained
@@ -238,6 +241,7 @@ class _RunMonitor:
         self.violations: list[str] = []
         self.cause: str | None = None
         self.cause_reasons: list[str] = []
+        self.blocked = False
         self._cancelled = False
         self.on_violation: Callable[[list[str], int], Any] | None = None
 
@@ -303,6 +307,7 @@ class _RunMonitor:
         """
         if self.phase != "body" or self.cause is None:
             return None
+        self.blocked = True  # this cause terminated the body (the §5 latch)
         if self.cause == "cancelled":
             return _cancel_result(
                 request, f"run {self.run_id} cancelled before dispatch"
@@ -623,17 +628,25 @@ class RunCoordinator:
     def _body_truth(self, prepared: _PreparedRun, body: Any) -> tuple[str, list[str]]:
         """The body outcome this run will record, per the monitor's cause.
 
-        The executor reports the blocking failure as its own artifact
-        (execution_error with the trip/cancel message); the coordinator owns
-        the trip/cancel truth and replaces that artifact with the actual
-        cause reasons — the blocked step event itself remains in the stream.
+        Reclassification to ``tripped``/``cancelled`` exists for exactly one
+        case: the monitor's block TERMINATED the body, so the executor's
+        terminal ``execution_error`` is the blocking proxy and the
+        coordinator replaces it with the real cause. When the body ended on
+        its own outcome — uncertain dispatch, failed assertion, deadline,
+        completion — a cause observed alongside or after it may never
+        downgrade the body: the executor's reasons are preserved and the
+        cause reasons are APPENDED (uncertainty is never erased by a trip).
         """
         monitor = prepared.monitor
-        if monitor.cause == "tripped":
+        if monitor.blocked and monitor.cause == "tripped":
             return "tripped", list(monitor.cause_reasons)
-        if monitor.cause == "cancelled":
+        if monitor.blocked and monitor.cause == "cancelled":
             return "cancelled", list(monitor.cause_reasons)
-        return body.body_outcome, list(body.reasons)
+        reasons = list(body.reasons)
+        for reason in monitor.cause_reasons:
+            if reason not in reasons:
+                reasons.append(reason)
+        return body.body_outcome, reasons
 
     def _evidence_refs(self, run_id: str) -> list[dict[str, str]]:
         """The pinned evidence set, including the event-stream digest."""

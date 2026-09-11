@@ -293,10 +293,13 @@ class ProtectionEngine:
     def _verify(self, transition: dict[str, Any]) -> str:
         """Poll the verify conjunction until continuously stable or budget end.
 
-        Continuity is observed at the bench's declared poll cadence: while
-        the conjunction holds, only the stability remainder is waited; any
-        violated or INVALID condition resets the window. The loop ends with
-        ``verified`` only inside the fixed budget, else ``unknown``.
+        ``stable_for_ms`` means HELD continuously, observed at the bench's
+        declared poll cadence — never two clean endpoints with a blind wait
+        between them. Every wait, clean or dirty, is sliced to at most one
+        poll period (clamped to the stability remainder and the remaining
+        budget), so a transient excursion at any poll inside the window
+        resets it; ``verified`` requires ``stable_for_ms`` of unbroken
+        clean polls within the fixed protection budget, else ``unknown``.
         """
         verify = list(transition.get("verify", []))
         stable_ns = int(transition.get("stable_for_ms", 0)) * 1_000_000
@@ -321,7 +324,12 @@ class ProtectionEngine:
                 held_ns = now - stable_since
                 if held_ns >= stable_ns:
                     return SAFE_VERIFIED
-                self._clock.wait_ns(min(stable_ns - held_ns, remaining))
+                # Sample the conjunction again after at most one poll
+                # period: the window is proven by unbroken clean polls,
+                # never by waiting through it blind.
+                self._clock.wait_ns(
+                    min(poll_ns, stable_ns - held_ns, remaining)
+                )
             else:
                 stable_since = None
                 self._clock.wait_ns(min(poll_ns, remaining))
