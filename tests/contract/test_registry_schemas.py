@@ -92,6 +92,27 @@ def test_manifest_unknown_field_rejected() -> None:
     assert exc.value.reason == "schema_invalid"
 
 
+@pytest.mark.parametrize(
+    "bad_url",
+    [
+        # Fails both the schema's ^https:// pattern and the uri format:
+        "not-a-url",
+        # Passes the ^https:// pattern — ONLY the live format check (rfc3987
+        # behind jsonschema's FormatChecker) can reject it:
+        "https://bad uri",
+    ],
+)
+def test_manifest_bad_uri_rejected_by_format_check(bad_url: str) -> None:
+    """Final-fix 4a: with rfc3987 as a runtime dep the uri format assertion
+    actually fires (before it was registered-but-inert and these passed)."""
+    doc = _valid_manifest()
+    doc["support_url"] = bad_url
+    raw = _dump(doc)
+    with pytest.raises(RegistryRejected) as exc:
+        load_manifest_document(raw, _digest(raw), max_bytes=1_000_000)
+    assert exc.value.reason == "schema_invalid"
+
+
 def test_manifest_kind_conditional_enforced() -> None:
     doc = _valid_manifest()  # profile must carry zero device targets and >=1 profile id
     doc["device_targets"] = [

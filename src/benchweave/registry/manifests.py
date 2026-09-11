@@ -11,7 +11,10 @@ closure-level semantics the schema cannot express. Reason codes raised via
 - ``conflict`` — the same provided profile/descriptor id from unrelated packages
 - ``path_unsafe`` / ``duplicate_path`` / ``case_fold_collision`` — payload path hygiene
 - ``invalid_spdx`` — licence expression is not a token/operator expression
-- ``mutable_source_revision`` — source revision names a mutable branch or tag
+- ``mutable_source_revision`` — source revision is EXACTLY one of the denied
+  mutable names (``main``/``master``/``HEAD``/``latest``). This is a denylist,
+  not a ref model: other branch or tag names are NOT recognized as mutable
+  (real tag/ref semantics are carried to WP07)
 """
 from __future__ import annotations
 
@@ -25,7 +28,8 @@ from benchweave.registry.schemas import RegistryRejected
 #: Closure key: ``(registry_id, package_id, version)``.
 Key = tuple[str, str, str]
 
-#: Bare branch/tag names never identify immutable source content (contract §10).
+#: Exact revision names denied as mutable (contract §10). A denylist, not a
+#: ref model — any other branch/tag name passes (WP07 carry).
 _MUTABLE_REVISIONS = frozenset({"main", "master", "HEAD", "latest"})
 
 #: PoC SPDX licence-expression shape: licence and exception ids are short
