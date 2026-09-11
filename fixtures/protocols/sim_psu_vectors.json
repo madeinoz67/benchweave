@@ -159,6 +159,47 @@
       "expect": {"status": "error", "error_code": "DEVICE_REJECTED", "dispatch_state": "not_dispatched"}
     },
     {
+      "name": "invoke_configure_trip_reports_dispatched",
+      "setup": [
+        {
+          "verb": "invoke",
+          "arguments": {
+            "action_id": "otdp.dc_psu.configure/1.0.0",
+            "input": {
+              "configuration_id": "cfg-1",
+              "channel": "ch1",
+              "voltage_v": 3.0,
+              "current_limit_a": 0.5,
+              "ovp_v": 10.0,
+              "ocp_a": 0.5
+            }
+          }
+        },
+        {
+          "verb": "invoke",
+          "arguments": {
+            "action_id": "otdp.dc_psu.output/1.0.0",
+            "input": {"channel": "ch1", "enabled": true, "configuration_id": "cfg-1"}
+          }
+        }
+      ],
+      "request": {
+        "verb": "invoke",
+        "arguments": {
+          "action_id": "otdp.dc_psu.configure/1.0.0",
+          "input": {
+            "configuration_id": "cfg-2",
+            "channel": "ch1",
+            "voltage_v": 12.0,
+            "current_limit_a": 0.5,
+            "ovp_v": 10.0,
+            "ocp_a": 0.5
+          }
+        }
+      },
+      "expect": {"status": "error", "error_code": "DEVICE_REJECTED", "dispatch_state": "dispatched"}
+    },
+    {
       "name": "invoke_deadline_already_passed_times_out",
       "setup": [],
       "advance_ns": 1000000000000,

@@ -306,7 +306,11 @@ class SimPsuPlugin:
     def _write_parameter(
         self, request: OperationRequest, parameter: str, value: object
     ) -> OperationResult:
-        """Apply one write through the full write path, re-homed to the invoke."""
+        """Apply one write through the full write path, re-homed to the invoke.
+
+        Failures are reported DISPATCHED: by the time an inner write fails, the
+        invoke has been dispatched and earlier writes may already be applied.
+        """
         write = self._write(
             OperationRequest(
                 operation_id=request.operation_id,
@@ -317,11 +321,15 @@ class SimPsuPlugin:
         if write.status is OperationStatus.OK:
             return write
         error = write.error
-        if error is None:  # unreachable: non-ok results always carry an error
-            return self._reject(
-                request, ErrorCode.INTERNAL_ERROR, "write failed without error"
-            )
-        return self._reject(request, error.code, error.message)
+        code = error.code if error is not None else ErrorCode.INTERNAL_ERROR
+        message = error.message if error is not None else "write failed without error"
+        return OperationResult.failure(
+            request.operation_id,
+            request.verb,
+            code=code,
+            message=message,
+            dispatch_state=DispatchState.DISPATCHED,
+        )
 
     def _action_configure(
         self, request: OperationRequest, action_input: dict[str, Any]

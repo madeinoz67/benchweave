@@ -514,7 +514,34 @@ def test_invoke_configure_trip_surfaces_as_device_rejected(psu: Any) -> None:
     )
     assert result.status.value == "error"
     assert result.error.code.value == "DEVICE_REJECTED"
+    assert result.error.dispatch_state is DispatchState.DISPATCHED
     errors = psu.dispatch(
         OperationRequest("op-9", OperationVerb.GET_ERRORS), deadline_ns=10**12
     )
     assert any(entry.code == "OVP_TRIP" for entry in errors.data.entries)
+
+
+def test_invoke_configure_bounds_rejection_mid_apply_reports_dispatched(psu: Any) -> None:
+    """A bounds rejection lands after thresholds applied — the invoke was sent."""
+    result = psu.dispatch(
+        _invoke(
+            "otdp.dc_psu.configure/1.0.0",
+            {
+                "configuration_id": "cfg-1",
+                "channel": "ch1",
+                "voltage_v": 999.0,
+                "current_limit_a": 0.5,
+                "ovp_v": 5.5,
+                "ocp_a": 0.5,
+            },
+        ),
+        deadline_ns=10**12,
+    )
+    assert result.status.value == "error"
+    assert result.error.code.value == "DEVICE_REJECTED"
+    assert result.error.dispatch_state is DispatchState.DISPATCHED
+    thresholds = psu.dispatch(
+        OperationRequest.read("op-3", parameter="ovp_threshold_v"),
+        deadline_ns=10**12,
+    )
+    assert thresholds.data.value == 5.5
