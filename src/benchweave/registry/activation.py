@@ -19,12 +19,13 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import sys
 import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, cast
 
 from benchweave.host.plugin import DevicePlugin
@@ -70,9 +71,13 @@ def activate(
     lease is live. Otherwise writes ``<records_dir>/activation-<n>.json``
     where ``<n>`` is the new generation — the record's identity, so
     sequential activations never collide — as canonical JSON carrying exactly
-    the :class:`ActivationRecord` fields. The store owns generation
-    monotonicity; re-activating the same ``bench_generation`` overwrites that
-    generation's record (single-operator bench).
+    the :class:`ActivationRecord` fields. A record already present for the
+    new generation means the caller regressed ``bench_generation``; refused
+    with ``generation_conflict`` rather than silently overwritten (the
+    store owns generation monotonicity, so the audit trail stays
+    append-only in practice). The bytes go to a temporary sibling first and
+    are moved onto the record path with :func:`os.replace`, so a crash
+    mid-write can never leave truncated JSON in the audit trail.
     """
     if bench_has_live_lease:
         raise ActivationRejected("not_idle")
@@ -83,9 +88,12 @@ def activate(
         activated_at=activated_at,
     )
     records_dir.mkdir(parents=True, exist_ok=True)
-    (records_dir / f"activation-{record.new_generation}.json").write_bytes(
-        _canonical(asdict(record))
-    )
+    record_path = records_dir / f"activation-{record.new_generation}.json"
+    if record_path.exists():
+        raise ActivationRejected("generation_conflict")
+    staged = record_path.with_name(record_path.name + ".tmp")
+    staged.write_bytes(_canonical(asdict(record)))
+    os.replace(staged, record_path)
     return record
 
 
@@ -118,11 +126,13 @@ def load_plugin(
 ) -> DevicePlugin:
     """Import and construct the plugin from its admitted cache copy.
 
-    ``entry_relpath`` must appear in the manifest inventory with role
-    ``implementation`` (``entry_not_implementation`` otherwise); matching a
-    listed path is also what contains the load — inventory paths already
-    passed the §4 path rules at admission, so no unlisted (and no traversing)
-    path can ever reach the filesystem. The module is imported by explicit
+    ``entry_relpath`` must be relative and free of ``..`` parts — the
+    structural containment guard, raised as ``entry_not_implementation``
+    before the manifest is consulted, so even a forged manifest cannot lend
+    admission's authority to a path escaping
+    ``<cache_root>/<manifest_sha256>/`` — and must appear in the manifest
+    inventory with role ``implementation`` (``entry_not_implementation``
+    otherwise). The module is imported by explicit
     location under a name suffixed with the manifest sha, so two cache
     versions of one package never collide in ``sys.modules``. Construction
     goes through the module's ``create_plugin(now_fn, monotonic_ns_fn)``
@@ -130,6 +140,10 @@ def load_plugin(
     conforming suite exercises. The instance is returned without
     ``plugin_open``: the host opens it.
     """
+    entry_p = PurePosixPath(entry_relpath)
+    if entry_p.is_absolute() or ".." in entry_p.parts:
+        raise ActivationRejected("entry_not_implementation")
+
     files = manifest.get("payload", {}).get("files", [])
     entry = next((f for f in files if f.get("path") == entry_relpath), None)
     if entry is None or entry.get("role") != IMPLEMENTATION_ROLE:

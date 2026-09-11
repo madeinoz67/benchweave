@@ -9,6 +9,7 @@ are real time observed only through deadlines generous by construction.
 """
 from __future__ import annotations
 
+import importlib.util
 import json
 from datetime import UTC, datetime
 from pathlib import Path
@@ -187,6 +188,55 @@ def test_activation_writes_generation_record(tmp_path: Path) -> None:
         "new_generation": 4,
         "activated_at": ACTIVATED_AT,
     }
+    # Atomic write (fix 7a M3): a successful activate leaves exactly the
+    # record on disk — no staging sibling survives.
+    assert list(records.iterdir()) == [path]
+
+
+def test_activation_refuses_generation_overwrite(tmp_path: Path) -> None:
+    """Fix 7a M2: a regressed generation must not overwrite its record."""
+    records = tmp_path / "records"
+    first = activate(
+        _synthetic_admitted(tmp_path),
+        bench_generation=3,
+        bench_has_live_lease=False,
+        records_dir=records,
+        activated_at=ACTIVATED_AT,
+    )
+    assert first.new_generation == 4
+
+    later = Admitted(
+        lock_path=tmp_path / "packages-other.lock.json",
+        lock_sha256="ef" * 32,
+        manifest_sha256s=("cd" * 32,),
+    )
+    with pytest.raises(ActivationRejected) as exc:
+        activate(
+            later,
+            bench_generation=3,  # regressed — activation-4.json already exists
+            bench_has_live_lease=False,
+            records_dir=records,
+            activated_at="2026-09-12T01:00:00Z",
+        )
+    assert exc.value.reason == "generation_conflict"
+    # The first record survived the refused overwrite byte-for-byte.
+    raw = (records / "activation-4.json").read_bytes()
+    assert json.loads(raw) == {
+        "lock_sha256": LOCK_SHA,
+        "previous_generation": 3,
+        "new_generation": 4,
+        "activated_at": ACTIVATED_AT,
+    }
+    # Forward activations are unaffected: the next generation still lands.
+    third = activate(
+        later,
+        bench_generation=4,
+        bench_has_live_lease=False,
+        records_dir=records,
+        activated_at="2026-09-12T01:00:00Z",
+    )
+    assert third.new_generation == 5
+    assert (records / "activation-5.json").is_file()
 
 
 # --- load_plugin: the "runs" leg at ABI level ---------------------------------
@@ -241,3 +291,43 @@ def test_load_refuses_non_implementation_entry(tmp_path: Path) -> None:
             entry_relpath="LICENSE",
         )
     assert exc.value.reason == "entry_not_implementation"
+
+
+@pytest.mark.parametrize(
+    "offender",
+    ["../../plugins/sim_psu/plugin.py", "/abs/plugin.py"],
+)
+def test_load_refuses_traversing_entry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, offender: str
+) -> None:
+    """Fix 7a I1: containment is structural — a forged manifest cannot un-gate it.
+
+    The forged manifest lists the offending path with role ``implementation``
+    (what admission would never produce). The guard must reject before the
+    manifest is trusted and before any importlib call — the sentinel asserts
+    the load never reached the import machinery, so the resolve join can
+    never escape ``<cache_root>/<manifest_sha256>/``.
+    """
+    forged = {"payload": {"files": [{"path": offender, "role": "implementation"}]}}
+    imports: list[tuple[object, ...]] = []
+    monkeypatch.setattr(
+        importlib.util, "spec_from_file_location", lambda *args: imports.append(args)
+    )
+    with pytest.raises(ActivationRejected) as exc:
+        load_plugin(tmp_path / "cache", forged, "aa" * 32, entry_relpath=offender)
+    assert exc.value.reason == "entry_not_implementation"
+    assert imports == []
+
+
+def test_load_refuses_module_without_factory(tmp_path: Path) -> None:
+    """Fix 7a M1: a cache module that parses but exposes no factory is refused."""
+    sha = "ff" * 32
+    entry = tmp_path / "cache" / sha / "payload.py"
+    entry.parent.mkdir(parents=True)
+    entry.write_text("x = 1\n", encoding="utf-8")
+    manifest = {
+        "payload": {"files": [{"path": "payload.py", "role": "implementation"}]}
+    }
+    with pytest.raises(ActivationRejected) as exc:
+        load_plugin(tmp_path / "cache", manifest, sha, entry_relpath="payload.py")
+    assert exc.value.reason == "unsupported_plugin_module"
