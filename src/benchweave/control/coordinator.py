@@ -245,6 +245,10 @@ class _RunMonitor:
         self.blocked = False
         self._cancelled = False
         self.on_violation: Callable[[list[str], int], Any] | None = None
+        #: Optional per-tick snapshot retention (WP07 monitor evidence).
+        self.retain: Callable[[dict[str, Any]], str] | None = None
+        self.snapshot_evidence: list[str] = []
+        self.retention_failures = 0
 
     def request_cancel(self) -> None:
         self._cancelled = True
@@ -267,6 +271,11 @@ class _RunMonitor:
                 deadline_ns=self._clock.now_ns() + self._poll_ns,
                 wall_now=self._wall.now_iso(),
             )
+            if self.retain is not None:
+                try:
+                    self.snapshot_evidence.append(self.retain(dict(snapshot)))
+                except Exception:
+                    self.retention_failures += 1  # caller emits evidence_gap (Task 6)
             fresh = [
                 violation
                 for violation in evaluate_conditions(self._policy, snapshot)
