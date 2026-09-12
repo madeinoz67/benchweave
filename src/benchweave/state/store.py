@@ -26,6 +26,10 @@ class Conflict(Exception):
     """Same key, different body: not a replay, a client bug or a race."""
 
 
+class LeaseNotActive(ValueError):
+    """A lease operation targeted a sequence that is not active."""
+
+
 @dataclass(frozen=True)
 class AcceptResult:
     outcome: str  # "accepted" | "duplicate"
@@ -52,6 +56,11 @@ class Store:
 
     def __init__(self, connection: sqlite3.Connection) -> None:
         self._conn = connection
+
+    @property
+    def connection(self) -> sqlite3.Connection:
+        """The single writer connection (shared with ContentStore, WP07)."""
+        return self._conn
 
     # --- lifecycle ---------------------------------------------------------
 
@@ -120,6 +129,21 @@ class Store:
             raise
         self._conn.execute("COMMIT")
         return AcceptResult(outcome="accepted", run_id=run_id)
+
+    def find_request(self, key: str) -> dict[str, Any] | None:
+        row = self._conn.execute(
+            "SELECT idempotency_key, body_sha256, run_id, accepted_at"
+            " FROM requests WHERE idempotency_key = ?",
+            (key,),
+        ).fetchone()
+        if row is None:
+            return None
+        return {
+            "idempotency_key": row[0],
+            "body_sha256": row[1],
+            "run_id": row[2],
+            "accepted_at": row[3],
+        }
 
     # --- runs -----------------------------------------------------------------
 
@@ -207,7 +231,7 @@ class Store:
             (now, bench_id, sequence),
         )
         if cursor.rowcount != 1:
-            raise ValueError(f"no active lease {sequence} on bench {bench_id!r}")
+            raise LeaseNotActive(f"no active lease {sequence} on bench {bench_id!r}")
 
     def get_active_lease(self, bench_id: str) -> Lease | None:
         row = self._conn.execute(
@@ -264,6 +288,273 @@ class Store:
             (stream_id,),
         ).fetchall()
         return [json.loads(row[0]) for row in rows]
+
+    # --- generation authority (WP07) -----------------------------------------
+
+    def current_generation(self, bench_id: str) -> int:
+        row = self._conn.execute(
+            "SELECT generation FROM generations WHERE bench_id = ?", (bench_id,)
+        ).fetchone()
+        return int(row[0]) if row else 0
+
+    def bump_generation(self, bench_id: str, now: str) -> int:
+        self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            row = self._conn.execute(
+                "SELECT generation FROM generations WHERE bench_id = ?", (bench_id,)
+            ).fetchone()
+            generation = int(row[0]) + 1 if row else 1
+            self._conn.execute(
+                "INSERT INTO generations (bench_id, generation, updated_at) VALUES (?, ?, ?) "
+                "ON CONFLICT(bench_id) DO UPDATE SET generation = excluded.generation, "
+                "updated_at = excluded.updated_at",
+                (bench_id, generation, now),
+            )
+        except BaseException:
+            self._conn.execute("ROLLBACK")
+            raise
+        self._conn.execute("COMMIT")
+        return generation
+
+    # --- bench inventory (WP07) --------------------------------------------------
+
+    def put_bench(
+        self,
+        bench_id: str,
+        generation: int,
+        qualification: str,
+        configuration_json: str,
+        licence: str,
+        now: str,
+    ) -> None:
+        self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            self._conn.execute(
+                "INSERT INTO benches (bench_id, generation, qualification, configuration_json,"
+                " licence, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
+                " ON CONFLICT(bench_id) DO UPDATE SET generation = excluded.generation,"
+                " qualification = excluded.qualification,"
+                " configuration_json = excluded.configuration_json,"
+                " licence = excluded.licence, updated_at = excluded.updated_at",
+                (bench_id, generation, qualification, configuration_json, licence, now),
+            )
+        except BaseException:
+            self._conn.execute("ROLLBACK")
+            raise
+        self._conn.execute("COMMIT")
+
+    def get_bench(self, bench_id: str) -> dict[str, Any] | None:
+        row = self._conn.execute(
+            "SELECT bench_id, generation, qualification, configuration_json, licence, updated_at"
+            " FROM benches WHERE bench_id = ?",
+            (bench_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return {
+            "bench_id": row[0],
+            "generation": int(row[1]),
+            "qualification": row[2],
+            "configuration_json": row[3],
+            "licence": row[4],
+            "updated_at": row[5],
+        }
+
+    def list_benches(self, limit: int, offset: int) -> tuple[list[dict[str, Any]], bool]:
+        rows = self._conn.execute(
+            "SELECT bench_id, generation, qualification, configuration_json, licence, updated_at"
+            " FROM benches ORDER BY bench_id LIMIT ? OFFSET ?",
+            (limit + 1, offset),
+        ).fetchall()
+        has_more = len(rows) > limit
+        items = [
+            {
+                "bench_id": row[0],
+                "generation": int(row[1]),
+                "qualification": row[2],
+                "configuration_json": row[3],
+                "licence": row[4],
+                "updated_at": row[5],
+            }
+            for row in rows[:limit]
+        ]
+        return items, has_more
+
+    # --- device inventory (WP07) -----------------------------------------------------
+
+    def put_device(
+        self,
+        device_id: str,
+        bench_id: str,
+        generation: int,
+        profiles_json: str,
+        descriptor_json: str,
+        identity_state: str,
+        licence: str,
+        now: str,
+    ) -> None:
+        self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            self._conn.execute(
+                "INSERT INTO devices (device_id, bench_id, generation, profiles_json,"
+                " descriptor_json, identity_state, licence, updated_at)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+                " ON CONFLICT(device_id) DO UPDATE SET bench_id = excluded.bench_id,"
+                " generation = excluded.generation, profiles_json = excluded.profiles_json,"
+                " descriptor_json = excluded.descriptor_json,"
+                " identity_state = excluded.identity_state, licence = excluded.licence,"
+                " updated_at = excluded.updated_at",
+                (
+                    device_id,
+                    bench_id,
+                    generation,
+                    profiles_json,
+                    descriptor_json,
+                    identity_state,
+                    licence,
+                    now,
+                ),
+            )
+        except BaseException:
+            self._conn.execute("ROLLBACK")
+            raise
+        self._conn.execute("COMMIT")
+
+    def get_device(self, device_id: str) -> dict[str, Any] | None:
+        row = self._conn.execute(
+            "SELECT device_id, bench_id, generation, profiles_json, descriptor_json,"
+            " identity_state, licence, updated_at FROM devices WHERE device_id = ?",
+            (device_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return {
+            "device_id": row[0],
+            "bench_id": row[1],
+            "generation": int(row[2]),
+            "profiles_json": row[3],
+            "descriptor_json": row[4],
+            "identity_state": row[5],
+            "licence": row[6],
+            "updated_at": row[7],
+        }
+
+    def list_devices(
+        self, bench_id: str, limit: int, offset: int
+    ) -> tuple[list[dict[str, Any]], bool]:
+        rows = self._conn.execute(
+            "SELECT device_id, bench_id, generation, profiles_json, descriptor_json,"
+            " identity_state, licence, updated_at FROM devices WHERE bench_id = ?"
+            " ORDER BY device_id LIMIT ? OFFSET ?",
+            (bench_id, limit + 1, offset),
+        ).fetchall()
+        has_more = len(rows) > limit
+        items = [
+            {
+                "device_id": row[0],
+                "bench_id": row[1],
+                "generation": int(row[2]),
+                "profiles_json": row[3],
+                "descriptor_json": row[4],
+                "identity_state": row[5],
+                "licence": row[6],
+                "updated_at": row[7],
+            }
+            for row in rows[:limit]
+        ]
+        return items, has_more
+
+    # --- run-state projection (WP07) ---------------------------------------------
+
+    def put_run_state(self, run_id: str, bench_id: str, state: str, now: str) -> None:
+        self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            self._conn.execute(
+                "INSERT INTO run_states (run_id, bench_id, state, revision, updated_at)"
+                " VALUES (?, ?, ?, 1, ?)"
+                " ON CONFLICT(run_id) DO UPDATE SET bench_id = excluded.bench_id,"
+                " state = excluded.state, revision = revision + 1,"
+                " updated_at = excluded.updated_at",
+                (run_id, bench_id, state, now),
+            )
+        except BaseException:
+            self._conn.execute("ROLLBACK")
+            raise
+        self._conn.execute("COMMIT")
+
+    def get_run_state(self, run_id: str) -> dict[str, Any] | None:
+        row = self._conn.execute(
+            "SELECT run_id, bench_id, state, revision, updated_at FROM run_states"
+            " WHERE run_id = ?",
+            (run_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return {
+            "run_id": row[0],
+            "bench_id": row[1],
+            "state": row[2],
+            "revision": int(row[3]),
+            "updated_at": row[4],
+        }
+
+    # --- admin change records (WP07) ------------------------------------------------
+
+    def put_change(
+        self,
+        change_id: str,
+        bench_id: str,
+        kind: str,
+        target_ref_json: str,
+        expected_generation: int,
+        reason: str,
+        now: str,
+    ) -> None:
+        self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            self._conn.execute(
+                "INSERT INTO changes (change_id, bench_id, kind, target_ref_json,"
+                " expected_generation, reason, state, reasons_json, created_at, updated_at)"
+                " VALUES (?, ?, ?, ?, ?, ?, 'proposed', '[]', ?, ?)",
+                (change_id, bench_id, kind, target_ref_json, expected_generation, reason,
+                 now, now),
+            )
+        except BaseException:
+            self._conn.execute("ROLLBACK")
+            raise
+        self._conn.execute("COMMIT")
+
+    def get_change(self, change_id: str) -> dict[str, Any] | None:
+        row = self._conn.execute(
+            "SELECT change_id, bench_id, kind, target_ref_json, expected_generation, reason,"
+            " state, reasons_json, created_at, updated_at FROM changes WHERE change_id = ?",
+            (change_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return {
+            "change_id": row[0],
+            "bench_id": row[1],
+            "kind": row[2],
+            "target_ref_json": row[3],
+            "expected_generation": int(row[4]),
+            "reason": row[5],
+            "state": row[6],
+            "reasons": json.loads(row[7]),
+            "created_at": row[8],
+            "updated_at": row[9],
+        }
+
+    def set_change_state(
+        self, change_id: str, state: str, reasons: list[str], now: str
+    ) -> None:
+        cursor = self._conn.execute(
+            "UPDATE changes SET state = ?, reasons_json = ?, updated_at = ?"
+            " WHERE change_id = ?",
+            (state, json.dumps(reasons), now, change_id),
+        )
+        if cursor.rowcount != 1:
+            raise ValueError(f"change {change_id!r} not found")
 
     # --- fault-injection window (test support) --------------------------------------
 

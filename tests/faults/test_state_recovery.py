@@ -17,6 +17,7 @@ from typing import Any
 
 import pytest
 
+from benchweave.state.migrations import MIGRATIONS
 from benchweave.state.store import (
     Conflict,
     Store,
@@ -166,10 +167,10 @@ def test_event_sequences_are_per_stream(store: Store) -> None:
 
 
 def test_migrations_apply_once_and_are_idempotent(store: Store, tmp_path: Path) -> None:
-    assert store.schema_version() == 1
+    assert store.schema_version() == MIGRATIONS[-1].version
     store.close()
     reopened = Store.open(str(tmp_path / "state.db"))
-    assert reopened.schema_version() == 1
+    assert reopened.schema_version() == MIGRATIONS[-1].version
     reopened.close()
 
 
@@ -215,7 +216,7 @@ def test_kill_before_commit_loses_nothing_partial(tmp_path: Path) -> None:
     assert store.list_leases("kill-bench") == [], "uncommitted lease must vanish"
     store.close()
     survivor = Store.open(str(path))  # db still usable after the kill
-    assert survivor.schema_version() == 1
+    assert survivor.schema_version() == MIGRATIONS[-1].version
     survivor.close()
 
 
