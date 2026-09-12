@@ -2,11 +2,19 @@
 
 Create, host and share BenchWeave device integrations, whether you are a human developer or an AI coding agent.
 
-For a simple five-step workflow with reusable AI prompts, start with [Develop your device with AI](develop-your-device.md).
+For simple five-step workflows with reusable AI prompts, start with [Develop your device with AI](develop-your-device.md): build a device plugin or custom firmware.
+
+A **device** is the physical hardware; **firmware** runs on that hardware. A **device plugin** is the software and metadata that integrate it with BenchWeave: a descriptor plus an adapter and protocol code where required. A declarative plugin can need no executable code. Integrating an existing instrument means developing its device plugin.
+
+Prefer independent repositories and externally hosted releases for new device plugins, so authors can develop and maintain them separately from BenchWeave. This is an authoring recommendation, not a new protocol requirement. See the [external plugin layout](develop-your-device.md#where-the-plugin-lives). Bundled plugins follow the same applicable contracts; the DPS-150 integration below is a bundled device plugin. The registry kinds remain profile, descriptor and implementation.
+
+External hosting distributes source and release files. Admitted executable plugins run on the bench gateway through scoped host services. Hosting a repository does not provide registry admission, hardware commissioning or remote execution.
 
 **Baseline:** architecture 1.5 · OTDP 0.3.0 · adapter API 1.1 · registry 1.0.0 · execution 1.0.0 · interface 1.1.0.
 
 **Current status:** the repository provides architecture contracts, synthetic fixtures, a Python scaffold, architecture CI, and the **gateway side of the registry contract**: strict schema loaders, an ed25519-authenticated fixture catalogue, configured-origin resolution, admission with a content-addressed package cache and package lock, idle-boundary activation, and a cache plugin loader — plus an **unsigned development loop** (see §10). The registry *service* side (search, submission, review pipeline, TUF distribution, public endpoints), the device-install command and the production SDK do not yet exist. You can develop descriptors, adapters and deterministic tests against the published ABI now, package and run them locally through the dev loop, and exercise admission against the committed signed catalogue. Host hardware qualification requires the corresponding implementation and bench evidence.
+
+**External plugin runtime status:** package admission, activation records and the cache loader are components, not a complete live installation workflow. The current cache loader/host interface uses clock-injected factories and `plugin_open`/`dispatch`/`plugin_close`, while the normative OTDP adapter API 1.1 below uses a no-argument factory and async `open`/`execute`/`next_event`/`close`. A reviewed bridge or implementation alignment and integration tests are required before claiming general external-adapter compatibility. See [package formats, current gaps and Docker deployment](develop-your-device.md#package-format-and-gateway-installation). The recommended Docker model persists verified packages and bench configuration outside the container image; it does not grant device access or resolve dependencies automatically.
 
 This guide explains the workflow; it introduces no new protocol requirements. The linked specifications and schemas define the contracts. If prose and schema disagree, record a contract defect and resolve it explicitly before relying on the disputed behaviour.
 
@@ -115,7 +123,7 @@ instrument-integration/
     └── limitations.md
 ```
 
-This is a proposed package organisation, not an implemented BenchWeave loader convention. The integration contract requires a package README, descriptor and referenced evidence; executable integrations also need their Python package and tests. In the BenchWeave source repository, device placeholders are under `plugins/`, and controller firmware has a placeholder under `firmware/esp32_reference/`. Packaging and plugin discovery still need implementation.
+This is a proposed package organisation, not an implemented BenchWeave loader convention. The integration contract requires a package README, descriptor and referenced evidence; executable integrations also need their Python package and tests. In the BenchWeave source repository, device placeholders are under `plugins/`, and controller firmware has a placeholder under `firmware/esp32_reference/`. Local development packaging and cache loading are available as described in §10; general external-plugin installation and activation still require the integration work noted above.
 
 Use uv for Python dependencies. Retain its lockfile and the exact tested runtime/dependency evidence. The registry's `package-lock.schema.json` describes a different lock: registry package identities, versions and manifest digests. An implementation release needs both its executable dependency closure and its registry dependency closure; neither substitutes for the other.
 
