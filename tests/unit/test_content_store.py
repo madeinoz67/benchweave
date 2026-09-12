@@ -32,6 +32,17 @@ def test_document_roundtrip_is_byte_exact(content: tuple[ContentStore, Store]) -
     assert got is not None and got["raw_bytes"] == raw and got["schema_id"] == "urn:x:doc"
 
 
+def test_put_document_rejects_digest_mismatch(content: tuple[ContentStore, Store]) -> None:
+    cs, _ = content
+    raw = b'{"id": "doc-x", "version": "1.0.0"}'
+    wrong_sha = hashlib.sha256(b"other").hexdigest()  # not the digest of raw
+    with pytest.raises(ValueError):
+        cs.put_document(
+            raw, wrong_sha, {"id": "doc-x"}, "urn:x:doc", "2026-09-12T00:00:00Z"
+        )
+    assert cs.get_document(wrong_sha) is None
+
+
 def test_artifact_chunk_reassembly_reproduces_digest(
     content: tuple[ContentStore, Store],
 ) -> None:
