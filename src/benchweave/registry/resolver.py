@@ -122,8 +122,7 @@ class LocalDirectorySource:
 class OriginConfig:
     registry_id: str
     #: Trust root that authenticates this origin's documents; ``None`` is
-    #: valid ONLY under ``signature_policy="dev-unsigned"`` (a ``required``
-    #: origin without a root is rejected at Resolver construction).
+    #: valid ONLY under ``signature_policy="dev-unsigned"``.
     root: TrustRoot | None
     source: PackageSource
     namespaces: tuple[str, ...]
@@ -135,6 +134,23 @@ class OriginConfig:
     #: manifest and status signatures against ``root``; ``"dev-unsigned"``
     #: skips exactly those two authenticity checks.
     signature_policy: Literal["required", "dev-unsigned"] = "required"
+
+    def __post_init__(self) -> None:
+        """Identity fence: refuse an inverted posture at construction.
+
+        ``required`` needs a trust root to authenticate with, and
+        ``dev-unsigned`` is reserved for ``dev-``-prefixed origins that
+        carry none — so config assembly can never silently ship an
+        unsigned origin under a signed registry's identity
+        (:class:`RegistryRejected` ``invalid_origin_config``, itself a
+        :class:`ValueError`). The resolver's map-level check is the same
+        rule one layer up (belt and braces).
+        """
+        if self.signature_policy == "required":
+            if self.root is None:
+                raise RegistryRejected("invalid_origin_config")
+        elif self.root is not None or not self.registry_id.startswith("dev-"):
+            raise RegistryRejected("invalid_origin_config")
 
 
 @dataclass(frozen=True)

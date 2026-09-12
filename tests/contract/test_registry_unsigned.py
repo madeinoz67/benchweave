@@ -1,9 +1,23 @@
-"""Origin-level signature policy: dev-unsigned skips authenticity only."""
+# tests/contract/test_registry_unsigned.py
+"""Origin-level signature policy: dev-unsigned skips authenticity only.
+
+The dev origin is built by the Task 2 publisher (fresh manifests under
+registry id ``dev-local``) and resolved through the DESIGNED mixed-policy
+origin map: a ``dev-unsigned`` dev origin (``root=None``, ``dev``
+namespace) alongside the fail-closed signed ``origin-main`` — an unsigned
+implementation over its signed production descriptor/profile closure. The
+dev origin can no longer borrow a signed registry's identity:
+``OriginConfig`` construction itself rejects a ``dev-unsigned`` origin
+whose id is not ``dev-``-prefixed (or that carries a root), so the
+single-entry ``origin-main`` + ``dev-unsigned`` impersonation is
+structurally impossible, not merely untested.
+"""
 from __future__ import annotations
 
 import hashlib
 import json
-import shutil
+import subprocess
+import sys
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -19,7 +33,6 @@ from benchweave.registry.admission import (
 )
 from benchweave.registry.authenticity import (
     AuthenticityRejected,
-    TrustRoot,
     load_trust_root,
 )
 from benchweave.registry.manifests import Key
@@ -33,50 +46,76 @@ from benchweave.registry.schemas import RegistryRejected
 
 REPO = Path(__file__).resolve().parents[2]
 REG = REPO / "fixtures" / "registry"
-# Fixed admission/resolve clock, same date the WP06 contract suite freezes.
+PUBLISH_DEV = REPO / "scripts" / "registry" / "publish_dev.py"
+# Fixed admission/resolve clock, same date the WP06 contract suite freezes
+# (never a hand-typed nanosecond literal — see the Task 1 review ruling).
 NOW_NS = int(datetime(2026, 9, 12, tzinfo=UTC).timestamp() * 1_000_000_000)
+#: A fixed instant strictly before NOW_NS, for the dev expiry drill.
+EXPIRED_AT = datetime(2026, 9, 11, tzinfo=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 MAIN_ROOT = load_trust_root("origin-main", REG / "keys" / "main.pub.pem")
 
-# The dev origin serves a byte-for-byte copy of the signed origin-main tree
-# with the *.sig files stripped, and its manifests self-declare registry_id
-# "origin-main" — the identity recheck and the dependency pins both key on
-# that id, so the dev copy resolves under the same id (rewriting manifests to
-# a fresh dev id is the publisher's job, not the resolver's).
-DEV_ID = "origin-main"
-ROOT_KEY: Key = (DEV_ID, "benchweave/sim-psu", "1.0.0")
-DESC_KEY: Key = (DEV_ID, "benchweave/sim-psu-descriptor", "1.0.0")
-PROFILE_KEY: Key = (DEV_ID, "benchweave/dc-psu-profile", "1.0.0")
+ORIGIN_MAIN = "origin-main"
+DEV_ID = "dev-local"
+DEV_IMPL_PACKAGE = "dev/sim_psu"
+DEV_IMPL_VERSION = "0.0.0"
+ROOT_KEY: Key = (DEV_ID, DEV_IMPL_PACKAGE, DEV_IMPL_VERSION)
+DESC_KEY: Key = (ORIGIN_MAIN, "benchweave/sim-psu-descriptor", "1.0.0")
+PROFILE_KEY: Key = (ORIGIN_MAIN, "benchweave/dc-psu-profile", "1.0.0")
 
 
 def _sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def _build_dev_origin(tmp_path: Path) -> Path:
-    """Copy the signed origin-main tree and strip the .sig files => a dev origin."""
-    dev = tmp_path / "dev-origin"
-    shutil.copytree(REG / "origin-main", dev)
-    for sig in dev.rglob("*.sig"):
-        sig.unlink()
-    return dev
+def _canonical(obj: object) -> bytes:
+    return json.dumps(obj, sort_keys=True, separators=(",", ":")).encode() + b"\n"
+
+
+def _publish(*args: str) -> subprocess.CompletedProcess[bytes]:
+    """Run the dev publisher exactly as a developer would, from the repo
+    root (mirroring ``tests/integration/test_registry_dev_publish.py``)."""
+    return subprocess.run(
+        [sys.executable, str(PUBLISH_DEV), *args],
+        cwd=REPO,
+        capture_output=True,
+    )
+
+
+def _dev_reg(tmp_path: Path) -> Path:
+    """A freshly published unsigned dev registry under ``tmp_path``."""
+    reg = tmp_path / "reg"
+    published = _publish("plugins/sim_psu", "--out", str(reg))
+    assert published.returncode == 0, published.stderr.decode()
+    return reg
 
 
 def _resolver(
-    source_root: Path,
+    reg_root: Path,
     *,
-    policy: Literal["required", "dev-unsigned"] = "dev-unsigned",
-    root: TrustRoot | None = None,
+    policy: Literal["required", "dev-unsigned"] = "required",
 ) -> Resolver:
+    """The designed mixed-policy origin map; the helper default is fail-closed.
+
+    The dev origin's policy defaults to ``required`` (dev-posture tests opt
+    in explicitly) and under ``required`` it carries the main root so the
+    construction itself is well-formed.
+    """
     return Resolver(
         {
             DEV_ID: OriginConfig(
                 registry_id=DEV_ID,
-                root=root,
-                source=LocalDirectorySource(source_root),
-                namespaces=("benchweave",),
+                root=MAIN_ROOT if policy == "required" else None,
+                source=LocalDirectorySource(reg_root / DEV_ID),
+                namespaces=("dev",),
                 signature_policy=policy,
-            )
+            ),
+            ORIGIN_MAIN: OriginConfig(
+                registry_id=ORIGIN_MAIN,
+                root=MAIN_ROOT,
+                source=LocalDirectorySource(REG / ORIGIN_MAIN),
+                namespaces=("benchweave",),
+            ),
         }
     )
 
@@ -96,10 +135,7 @@ def _approval() -> Approval:
     )
 
 
-def _admit(
-    closure: ResolvedClosure,
-    work: Path,
-) -> None:
+def _admit(closure: ResolvedClosure, work: Path) -> None:
     admit(
         closure,
         cache_root=work / "cache",
@@ -107,76 +143,121 @@ def _admit(
         limits=_limits(),
         approval=_approval(),
         now_ns=NOW_NS,
-        roots={DEV_ID: None},
+        roots={DEV_ID: None, ORIGIN_MAIN: MAIN_ROOT},
     )
 
 
 def test_dev_unsigned_closure_resolves(tmp_path: Path) -> None:
-    dev = _build_dev_origin(tmp_path)
+    reg = _dev_reg(tmp_path)
     high_water: dict[Key, int] = {}
-    closure = _resolver(dev).resolve(
-        DEV_ID, "benchweave/sim-psu", "1.0.0", now_ns=NOW_NS, high_water=high_water
+    closure = _resolver(reg, policy="dev-unsigned").resolve(
+        DEV_ID, DEV_IMPL_PACKAGE, DEV_IMPL_VERSION, now_ns=NOW_NS, high_water=high_water
     )
+    # The designed dev closure: the unsigned implementation over its two
+    # signed origin-main dependencies.
     assert {r.package_id for r in closure.releases} == {
-        "benchweave/sim-psu",
+        DEV_IMPL_PACKAGE,
         "benchweave/sim-psu-descriptor",
         "benchweave/dc-psu-profile",
     }
+    impl = next(r for r in closure.releases if r.package_id == DEV_IMPL_PACKAGE)
+    # No signature was fetched for the dev release; the origin-main
+    # dependencies stay signature-verified.
+    assert impl.manifest_sig == b""
+    assert impl.status_sig == b""
     for release in closure.releases:
-        assert release.registry_id == DEV_ID
-        assert release.version == "1.0.0"
-        assert release.manifest and release.status and release.payload
-        # No signature was fetched under dev-unsigned.
-        assert release.manifest_sig == b""
-        assert release.status_sig == b""
-        # Digests and identity stay live: the manifest bytes are the copied
-        # fixture bytes, pinned by the manifest sha — unmutated.
-        fixture = dev / release.package_id / "1.0.0" / "manifest.json"
-        assert release.manifest_sha256 == _sha(fixture.read_bytes())
-    # Sequence honesty stays live: every release pinned its status sequence.
+        if release.registry_id == ORIGIN_MAIN:
+            assert release.manifest_sig and release.status_sig
+    # Digests and identity stay live: the dev manifest bytes are the
+    # publisher's fresh output, pinned by the manifest sha.
+    published = reg / DEV_ID / DEV_IMPL_PACKAGE / DEV_IMPL_VERSION / "manifest.json"
+    assert impl.manifest_sha256 == _sha(published.read_bytes())
+    # Sequence honesty stays live across the whole mixed closure.
     assert high_water == {ROOT_KEY: 1, DESC_KEY: 1, PROFILE_KEY: 1}
 
 
 def test_unsigned_bytes_under_required_origin_reject(tmp_path: Path) -> None:
-    dev = _build_dev_origin(tmp_path)
+    reg = _dev_reg(tmp_path)
     with pytest.raises(AuthenticityRejected) as exc:
-        _resolver(dev, policy="required", root=MAIN_ROOT).resolve(
-            DEV_ID, "benchweave/sim-psu", "1.0.0", now_ns=NOW_NS, high_water={}
+        _resolver(reg).resolve(  # fail-closed default
+            DEV_ID, DEV_IMPL_PACKAGE, DEV_IMPL_VERSION, now_ns=NOW_NS, high_water={}
         )
     # A missing signature file under `required` is bad_signature, never an
     # OS error (and never misread as an unknown release).
     assert exc.value.reason == "bad_signature"
 
 
-def test_required_with_none_root_rejects_at_config(tmp_path: Path) -> None:
+def test_required_with_none_root_rejects_at_config() -> None:
     with pytest.raises(RegistryRejected) as exc:
-        _resolver(tmp_path, policy="required", root=None)
+        OriginConfig(
+            registry_id=DEV_ID,
+            root=None,
+            source=LocalDirectorySource(REG / "origin-main"),
+            namespaces=("dev",),
+            signature_policy="required",
+        )
     assert exc.value.reason == "invalid_origin_config"
+
+
+def test_dev_unsigned_fence_rejects_signed_identity_impersonation() -> None:
+    """The fence: dev-unsigned is structurally reserved for dev- identities.
+
+    A single-entry ``origin-main`` dev-unsigned origin — the impersonation
+    the earlier revision of this file accidentally blessed — must be
+    impossible to CONSTRUCT, so config assembly can never silently ship an
+    inverted origin (cross-vendor audit Important).
+    """
+    with pytest.raises(ValueError):
+        OriginConfig(
+            registry_id=ORIGIN_MAIN,
+            root=None,
+            source=LocalDirectorySource(REG / "origin-main"),
+            namespaces=("benchweave",),
+            signature_policy="dev-unsigned",
+        )
+
+
+def test_dev_unsigned_fence_rejects_root_on_dev_unsigned() -> None:
+    # dev-unsigned WITH a root is an inverted posture (nothing to verify
+    # against, yet authenticity is claimed by carrying a root): reject at
+    # construction, one violation at a time.
+    with pytest.raises(ValueError):
+        OriginConfig(
+            registry_id=DEV_ID,
+            root=MAIN_ROOT,
+            source=LocalDirectorySource(REG / "origin-main"),
+            namespaces=("dev",),
+            signature_policy="dev-unsigned",
+        )
 
 
 def test_default_policy_is_required() -> None:
     config = OriginConfig(
-        registry_id=DEV_ID,
+        registry_id=ORIGIN_MAIN,
         root=MAIN_ROOT,
-        source=LocalDirectorySource(REG / "origin-main"),
+        source=LocalDirectorySource(REG / ORIGIN_MAIN),
         namespaces=("benchweave",),
     )
     assert config.signature_policy == "required"
     # Byte-identical WP06 behaviour: the signed fixture tree resolves exactly
     # as before, signatures attached.
     high_water: dict[Key, int] = {}
-    closure = Resolver({DEV_ID: config}).resolve(
-        DEV_ID, "benchweave/sim-psu", "1.0.0", now_ns=NOW_NS, high_water=high_water
+    closure = Resolver({ORIGIN_MAIN: config}).resolve(
+        ORIGIN_MAIN, "benchweave/sim-psu", "1.0.0", now_ns=NOW_NS, high_water=high_water
     )
     assert len(closure.releases) == 3
     assert all(r.manifest_sig and r.status_sig for r in closure.releases)
-    assert high_water == {ROOT_KEY: 1, DESC_KEY: 1, PROFILE_KEY: 1}
+    assert high_water == {
+        (ORIGIN_MAIN, "benchweave/sim-psu", "1.0.0"): 1,
+        DESC_KEY: 1,
+        PROFILE_KEY: 1,
+    }
 
 
 def test_tampered_dev_payload_rejects_at_admission(tmp_path: Path) -> None:
-    dev = _build_dev_origin(tmp_path)
-    closure = _resolver(dev).resolve(
-        DEV_ID, "benchweave/sim-psu", "1.0.0", now_ns=NOW_NS, high_water={}
+    reg = _dev_reg(tmp_path)
+    closure = _resolver(reg, policy="dev-unsigned").resolve(
+        DEV_ID, DEV_IMPL_PACKAGE, DEV_IMPL_VERSION, now_ns=NOW_NS, high_water={}
     )
     releases = []
     for release in closure.releases:
@@ -186,8 +267,8 @@ def test_tampered_dev_payload_rejects_at_admission(tmp_path: Path) -> None:
         releases.append(release)
     with pytest.raises(AdmissionRejected) as exc:
         _admit(ResolvedClosure(releases=tuple(releases)), tmp_path)
-    # Integrity without authenticity: no signature was ever checked, and the
-    # payload still fails its declared digest at admission.
+    # Integrity without authenticity: no signature was ever checked for the
+    # dev release, and the payload still fails its declared digest at admission.
     assert exc.value.reason == "payload_digest_mismatch"
     assert not (tmp_path / "cache").exists()
 
@@ -195,20 +276,22 @@ def test_tampered_dev_payload_rejects_at_admission(tmp_path: Path) -> None:
 def test_dev_rollback_rejects_via_persisted_high_water(tmp_path: Path) -> None:
     """The persisted rollback gate stays armed on the dev path.
 
-    First install replays the descriptor's sequence-2 status (a writable dev
-    root makes the rollback drill possible without keys) and persists the
-    high-water map. The origin then rolls back to sequence 1: a fresh resolver
-    session — empty in-memory expectations — cannot catch it; only the
-    persisted ``<cache_root>/high-water.json`` layer does.
+    The dev root is writable without keys, so the rollback drill runs on the
+    dev release itself: first install replays a hand-bumped sequence-2
+    status and persists the high-water map; the origin then rolls back to
+    the published sequence 1. A fresh resolver session — empty in-memory
+    expectations — cannot catch it; only the persisted
+    ``<cache_root>/high-water.json`` layer does.
     """
-    dev = _build_dev_origin(tmp_path)
-    resolver = _resolver(dev)
-    desc_status = dev / "benchweave" / "sim-psu-descriptor" / "1.0.0" / "status.json"
-    fault = REG / "faults" / "rollback-seq2" / DESC_KEY[1] / DESC_KEY[2] / "status.json"
+    reg = _dev_reg(tmp_path)
+    status_path = reg / DEV_ID / DEV_IMPL_PACKAGE / DEV_IMPL_VERSION / "status.json"
+    status = json.loads(status_path.read_bytes())
+    status["sequence"] = 2
+    status_path.write_bytes(_canonical(status))
 
-    desc_status.write_bytes(fault.read_bytes())
+    resolver = _resolver(reg, policy="dev-unsigned")
     closure = resolver.resolve(
-        DEV_ID, "benchweave/sim-psu", "1.0.0", now_ns=NOW_NS, high_water={}
+        DEV_ID, DEV_IMPL_PACKAGE, DEV_IMPL_VERSION, now_ns=NOW_NS, high_water={}
     )
     _admit(closure, tmp_path)
 
@@ -218,13 +301,32 @@ def test_dev_rollback_rejects_via_persisted_high_water(tmp_path: Path) -> None:
         (row["registry_id"], row["package_id"], row["version"]): row["sequence"]
         for row in json.loads(water_path.read_bytes())["releases"]
     }
-    assert rows[DESC_KEY] == 2
+    assert rows[ROOT_KEY] == 2
 
-    rolled_fault = REG / "faults" / "rollback-seq1" / DESC_KEY[1] / DESC_KEY[2] / "status.json"
-    desc_status.write_bytes(rolled_fault.read_bytes())
+    status["sequence"] = 1
+    status_path.write_bytes(_canonical(status))
     rolled = resolver.resolve(
-        DEV_ID, "benchweave/sim-psu", "1.0.0", now_ns=NOW_NS, high_water={}
+        DEV_ID, DEV_IMPL_PACKAGE, DEV_IMPL_VERSION, now_ns=NOW_NS, high_water={}
     )
     with pytest.raises(AdmissionRejected) as exc:
         _admit(rolled, tmp_path)
     assert exc.value.reason == "stale_sequence"
+
+
+def test_expired_dev_status_rejects(tmp_path: Path) -> None:
+    """F4: expiry stays enforced on unsigned dev statuses.
+
+    The dev root is writable, so a stale status is served by simply writing
+    one — no signature exists to re-verify, the process-honesty gate itself
+    must refuse it.
+    """
+    reg = _dev_reg(tmp_path)
+    status_path = reg / DEV_ID / DEV_IMPL_PACKAGE / DEV_IMPL_VERSION / "status.json"
+    status = json.loads(status_path.read_bytes())
+    status["expires_at"] = EXPIRED_AT  # strictly before the fixed NOW_NS
+    status_path.write_bytes(_canonical(status))
+    with pytest.raises(AuthenticityRejected) as exc:
+        _resolver(reg, policy="dev-unsigned").resolve(
+            DEV_ID, DEV_IMPL_PACKAGE, DEV_IMPL_VERSION, now_ns=NOW_NS, high_water={}
+        )
+    assert exc.value.reason == "expired_status"
