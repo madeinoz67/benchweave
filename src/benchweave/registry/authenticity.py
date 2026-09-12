@@ -65,10 +65,18 @@ def _ns(dt: datetime) -> int:
 def check_status(
     status: dict[str, Any],
     *,
-    root: TrustRoot,
+    root: TrustRoot | None,
     now_ns: int,
     high_water: Mapping[tuple[str, str, str], int],
 ) -> int:
+    """Enforce a status document's expiry, freshness, and sequence honesty.
+
+    ``root`` authenticates nothing here — signature verification happens
+    before these gates run — and is carried (as ``None`` under a
+    ``dev-unsigned`` origin) for interface parity with :func:`verify_document`
+    and future role-aware checks; every gate below is root-independent and
+    stays on for dev origins.
+    """
     release = status["release"]
     key = (release["registry_id"], release["package_id"], release["version"])
     if _ns(_parse_utc(status["expires_at"])) <= now_ns:

@@ -142,7 +142,7 @@ def _gate_lifecycle(
     closure: ResolvedClosure,
     *,
     now_ns: int,
-    roots: Mapping[str, TrustRoot],
+    roots: Mapping[str, TrustRoot | None],
     water: dict[Key, int],
 ) -> None:
     """Step 1: lifecycle and status re-check, before anything is written.
@@ -378,15 +378,16 @@ def admit(
     limits: AdmissionLimits,
     approval: Approval,
     now_ns: int,
-    roots: Mapping[str, TrustRoot],
+    roots: Mapping[str, TrustRoot | None],
     high_water: MutableMapping[Key, int] | None = None,
 ) -> Admitted:
     """Admit a resolved closure: gate, verify, extract, lock, record.
 
     ``now_ns`` is the admission clock and ``roots`` maps each release's
-    ``registry_id`` to the trust root that authenticated it — both feed the
-    step-1 status re-check, and ``roots`` must cover every registry id present
-    in the closure. ``cache_root`` and ``lock_path`` are caller-supplied and
+    ``registry_id`` to the trust root that authenticated it (``None`` for a
+    ``dev-unsigned`` origin, whose status gates are root-independent) — both
+    feed the step-1 status re-check, and ``roots`` must cover every registry
+    id present in the closure. ``cache_root`` and ``lock_path`` are caller-supplied and
     are only touched after every gate has passed. ``high_water`` optionally
     carries in-memory rollback expectations (for example the resolver
     session's map); the persisted map under

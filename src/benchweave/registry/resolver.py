@@ -9,6 +9,19 @@ rejected as ``cross_origin_fallback``, never redirected.
 Payload bytes are returned as served — NOT digest-verified at resolve time;
 the consumer must check them against ``manifest["payload"]["sha256"]`` (Task 6
 admission owns that check).
+
+Signature posture is per origin (``OriginConfig.signature_policy``). The
+default ``"required"`` is fail-closed: manifests and statuses are verified
+against the origin's trust root, and a missing signature file is
+``bad_signature`` — never an OS error. ``"dev-unsigned"`` is the honest dev
+posture: it skips exactly those two authenticity verifications (no signature
+fetch at all, ``root`` is ``None``) while every integrity and
+process-honesty check stays on — schema validation, the served-manifest
+identity recheck, dependency digest pinning, status expiry/future-time, and
+monotonic sequences against the high-water view. A dev origin's status
+bytes are unauthenticated by design: a local process that can write the
+dev root can forge lifecycle state. That limitation is accepted and
+documented, not hidden.
 """
 from __future__ import annotations
 
@@ -17,9 +30,14 @@ from collections import deque
 from collections.abc import Mapping, MutableMapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
-from benchweave.registry.authenticity import TrustRoot, check_status, verify_document
+from benchweave.registry.authenticity import (
+    AuthenticityRejected,
+    TrustRoot,
+    check_status,
+    verify_document,
+)
 from benchweave.registry.manifests import Key, check_closure
 from benchweave.registry.schemas import (
     RegistryRejected,
@@ -101,13 +119,20 @@ class LocalDirectorySource:
 @dataclass(frozen=True)
 class OriginConfig:
     registry_id: str
-    root: TrustRoot
+    #: Trust root that authenticates this origin's documents; ``None`` is
+    #: valid ONLY under ``signature_policy="dev-unsigned"`` (a ``required``
+    #: origin without a root is rejected at Resolver construction).
+    root: TrustRoot | None
     source: PackageSource
     namespaces: tuple[str, ...]
     #: Optional origin-level payload cap handed to the source's
     #: ``payload_bytes`` so an oversized archive is refused before it is
     #: read into memory; ``None`` (the default) defers to admission's limit.
     max_archive_bytes: int | None = None
+    #: Signature posture: ``"required"`` (the fail-closed default) verifies
+    #: manifest and status signatures against ``root``; ``"dev-unsigned"``
+    #: skips exactly those two authenticity checks.
+    signature_policy: Literal["required", "dev-unsigned"] = "required"
 
 
 @dataclass(frozen=True)
@@ -132,6 +157,11 @@ class Resolver:
     """Resolve dependency closures from configured origins under strict routing."""
 
     def __init__(self, origins: Mapping[str, OriginConfig]) -> None:
+        for cfg in origins.values():
+            if cfg.signature_policy == "required" and cfg.root is None:
+                # Fail-closed: an origin that must authenticate has no root
+                # to authenticate with.
+                raise RegistryRejected("invalid_origin_config")
         self._origins: dict[str, OriginConfig] = dict(origins)
 
     def _origin_for(self, registry_id: str, package_id: str) -> OriginConfig:
@@ -190,13 +220,29 @@ class Resolver:
         registry_id, package_id, version = key
         origin = self._origin_for(registry_id, package_id)
         source = origin.source
+        root = origin.root  # TrustRoot under `required` (validated at __init__)
         try:
             raw, digest = source.manifest_bytes(package_id, version)
             manifest_doc = load_manifest_document(
                 raw, pinned if pinned is not None else digest, max_bytes=_MANIFEST_MAX_BYTES
             )
-            manifest_sig = source.manifest_signature(package_id, version)
-            verify_document(manifest_doc, manifest_sig, origin.root)
+            if origin.signature_policy == "dev-unsigned":
+                # Honest dev posture: no signature fetch, no verify call —
+                # the release records the absence instead of faking bytes.
+                manifest_sig = b""
+            else:
+                if root is None:
+                    # Unreachable past __init__ validation; keeps the verify
+                    # call below typed against a real root.
+                    raise RegistryRejected("invalid_origin_config")
+                try:
+                    manifest_sig = source.manifest_signature(package_id, version)
+                except FileNotFoundError as exc:
+                    # A missing signature is bad authenticity, not a missing
+                    # release: under `required` the signature is part of the
+                    # release, never an optional extra file.
+                    raise AuthenticityRejected("bad_signature") from exc
+                verify_document(manifest_doc, manifest_sig, root)
             # The signature proves the bytes are authentic, not that they are
             # the release asked for: recheck the manifest's self-declared
             # identity against the requested key (contract §6/§10).
@@ -211,8 +257,16 @@ class Resolver:
             status_doc = load_status_document(
                 status_raw, status_digest, max_bytes=_STATUS_MAX_BYTES
             )
-            status_sig = source.status_signature(package_id, version)
-            verify_document(status_doc, status_sig, origin.root)
+            if origin.signature_policy == "dev-unsigned":
+                status_sig = b""
+            else:
+                if root is None:
+                    raise RegistryRejected("invalid_origin_config")
+                try:
+                    status_sig = source.status_signature(package_id, version)
+                except FileNotFoundError as exc:
+                    raise AuthenticityRejected("bad_signature") from exc
+                verify_document(status_doc, status_sig, root)
             payload = source.payload_bytes(
                 package_id, version, max_archive_bytes=origin.max_archive_bytes
             )
