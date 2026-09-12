@@ -219,8 +219,17 @@ class SimPsuPlugin:
         self._state[parameter] = typed_value
         trip = self._check_trips(parameter)
         if trip is not None:
-            return self._reject(
-                request, ErrorCode.DEVICE_REJECTED, f"protective trip: {trip}"
+            # The write landed in device state before the trip fired (the
+            # trip is detected from the applied state and latches until
+            # reset), so this is a partially-applied dispatch, not a refusal.
+            # Same compound-action honesty the invoke path pins via
+            # _write_parameter.
+            return OperationResult.failure(
+                request.operation_id,
+                request.verb,
+                code=ErrorCode.DEVICE_REJECTED,
+                message=f"write applied; protective trip: {trip}",
+                dispatch_state=DispatchState.DISPATCHED,
             )
         receipt = WriteReceipt(
             parameter=parameter,

@@ -60,7 +60,7 @@
         {"verb": "write", "arguments": {"parameter": "ovp_threshold_v", "value": 10.0}}
       ],
       "request": {"verb": "write", "arguments": {"parameter": "voltage_setpoint_v", "value": 12.0}},
-      "expect": {"status": "error", "error_code": "DEVICE_REJECTED", "dispatch_state": "not_dispatched"}
+      "expect": {"status": "error", "error_code": "DEVICE_REJECTED", "dispatch_state": "dispatched"}
     },
     {
       "name": "errors_after_ovp_trip_list_entry",

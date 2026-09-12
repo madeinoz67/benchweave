@@ -290,6 +290,37 @@ def test_psu_ovp_trip_latches_until_reset(psu: Any) -> None:
     assert recovered.status is OperationStatus.OK
 
 
+def test_psu_ovp_trip_raw_write_reports_dispatched(psu: Any) -> None:
+    """A raw WRITE that trips reports DISPATCHED, like the invoke path.
+
+    The write is applied to device state before the trip check runs (the
+    trip is detected *from* the applied state and the latch persists until
+    reset), so claiming not_dispatched would deny work the device did. This
+    is the same compound-action honesty the invoke path pins for configure.
+    """
+    plugin = psu
+    plugin.dispatch(
+        OperationRequest.write("op-1", parameter="output_enabled", value=True),
+        deadline_ns=TICK,
+    )
+    plugin.dispatch(
+        OperationRequest.write("op-2", parameter="ovp_threshold_v", value=10.0),
+        deadline_ns=TICK,
+    )
+    trip = plugin.dispatch(
+        OperationRequest.write("op-3", parameter="voltage_setpoint_v", value=12.0),
+        deadline_ns=TICK,
+    )
+    assert trip.status is OperationStatus.ERROR
+    assert trip.error is not None and trip.error.code is ErrorCode.DEVICE_REJECTED
+    assert trip.error.dispatch_state is DispatchState.DISPATCHED
+    applied = plugin.dispatch(
+        OperationRequest.read("op-4", parameter="voltage_setpoint_v"),
+        deadline_ns=TICK,
+    )
+    assert applied.data.value == 12.0
+
+
 def test_psu_reset_clears_configuration_token(psu: Any) -> None:
     """Reset clears the stored configuration_id: the old token is dead (M1).
 
