@@ -20,6 +20,37 @@ This guide explains the workflow; it introduces no new protocol requirements. Th
 
 Read the [core specification](otdp-v0.3.0/otdp-specification.md), [profile/adapter extension](otdp-v0.3.0/extension-contract.md), [device classes](otdp-v0.3.0/device-classes.md) and [measurement model](otdp-v0.3.0/measurement-model.md) before writing a class-capable integration. The [documentation index](project-index.md) links the remaining contracts.
 
+### Repository layout for bundled devices
+
+Place bundled device integrations under `src/benchweave/devices/<manufacturer>/<model>/`, using lowercase Python package names. Mirror that layout under `tests/devices/<manufacturer>/<model>/`. For example:
+
+```text
+src/benchweave/devices/fnirsi/dps150/
+    __init__.py
+    client.py                 # Injectable protocol client; no host dependency
+    codec.py                  # Protocol framing and value decoding
+    adapter.py                # Documented OTDP adapter API boundary
+    descriptor.py             # Exact supported descriptor definition
+    descriptor.json
+    adapter-vectors.json
+    adapter-failure-vectors.json
+    LICENSE
+    README.md
+
+tests/devices/fnirsi/dps150/
+    __init__.py
+    test_protocol.py
+    test_adapter.py
+```
+
+Keep the protocol, adapter, descriptor, licence and packaged evidence together. Group by manufacturer/model, since one instrument may support several device profiles. Package initialisers must not eagerly import other devices or perform I/O. Extract shared vendor protocol code only when another model demonstrates compatible reuse; do not infer compatibility from branding alone.
+
+The DPS-150 import is `benchweave.devices.fnirsi.dps150`; its factory is `benchweave.devices.fnirsi.dps150.adapter:create_plugin`. The packaged `src/benchweave/devices/fnirsi/dps150/README.md` and [protocol evidence](dps150-protocol.md) document the supported subset. Run its mock tests with `uv run --no-sync pytest tests/devices/fnirsi/dps150`.
+
+When relocating an unpublished bundled integration, update Python imports, descriptor factory declarations, test resource paths and documentation together. Preserve its logical descriptor ID unless the integration identity changes. The BenchWeave wheel includes `src/benchweave`; verify the built wheel contains device descriptors, licences and referenced vectors. Test packages should include `__init__.py` so different models can reuse names such as `test_adapter.py` without module-name collisions.
+
+This convention organises bundled source; it does not change OTDP contracts or create a plugin loader. Separately distributed integrations and synthetic fixtures may retain their own package layouts. Use independent distributions when dependencies or release lifecycles justify them, under the registry contract. Source location and passing mocks do not establish hardware qualification or authorise publication.
+
 ## 2. Establish the device facts first
 
 Create a device evidence sheet before implementing commands. Record:

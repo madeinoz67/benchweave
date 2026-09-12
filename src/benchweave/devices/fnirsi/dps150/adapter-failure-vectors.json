@@ -1,0 +1,12 @@
+[
+  {"id":"unsupported-write","verb":"write","arguments":{"parameter":"output_enabled","value":true},"response_hex":"","fault":null,"request_hex":null,"status":"error","code":"UNSUPPORTED","dispatch_state":"not_dispatched"},
+  {"id":"invalid-parameter-type","verb":"read","arguments":{"parameter":true},"response_hex":"","fault":null,"request_hex":null,"status":"error","code":"INVALID_ARGUMENT","dispatch_state":"not_dispatched"},
+  {"id":"bad-checksum","verb":"read","arguments":{"parameter":"voltage"},"response_hex":"f0a1c30c0000803f000000400000004081","fault":null,"request_hex":"f1a1c300c3","status":"unknown","code":"PROTOCOL_ERROR","dispatch_state":"dispatched"},
+  {"id":"truncated-header","verb":"read","arguments":{"parameter":"voltage"},"response_hex":"f0a1c3","fault":null,"request_hex":"f1a1c300c3","status":"unknown","code":"PROTOCOL_ERROR","dispatch_state":"dispatched"},
+  {"id":"timeout-before-send","verb":"read","arguments":{"parameter":"voltage"},"response_hex":"","fault":"deadline","request_hex":null,"status":"error","code":"TIMEOUT","dispatch_state":"not_dispatched"},
+  {"id":"timeout-after-send","verb":"read","arguments":{"parameter":"voltage"},"response_hex":"","fault":"receive_timeout","request_hex":"f1a1c300c3","status":"unknown","code":"TIMEOUT","dispatch_state":"dispatched"},
+  {"id":"cancel-before-send","verb":"read","arguments":{"parameter":"voltage"},"response_hex":"","fault":"cancel","request_hex":null,"status":"cancelled","code":"CANCELLED","dispatch_state":"not_dispatched"},
+  {"id":"cancel-after-send","verb":"read","arguments":{"parameter":"voltage"},"response_hex":"","fault":"cancel_after_send","request_hex":"f1a1c300c3","status":"unknown","code":"CANCELLED","dispatch_state":"dispatched"},
+  {"id":"partial-send","verb":"read","arguments":{"parameter":"voltage"},"response_hex":"","fault":"send_loss","request_hex":"f1a1c300c3","status":"unknown","code":"TRANSPORT_ERROR","dispatch_state":"unknown"},
+  {"id":"model-mismatch","verb":"identify","arguments":{},"response_hex":"f0a1de014120","fault":null,"request_hex":"f1a1de00de","status":"unknown","code":"IDENTITY_MISMATCH","dispatch_state":"dispatched"}
+]
