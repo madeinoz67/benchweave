@@ -333,13 +333,17 @@ def release(store: Store, reservation: Reservation, now_wall: str) -> None:
     """Release the reservation's bench lease; idempotent.
 
     The store only releases a lease in state ``active`` and raises
-    :class:`ValueError` otherwise; for ``release`` that outcome means the
-    lease is already gone (released, superseded or never durably active),
-    which is the desired end state, so it is swallowed rather than surfaced.
+    :class:`ValueError` otherwise; for ``release`` the documented
+    no-active-lease outcome means the lease is already gone (released,
+    superseded or never durably active), which is the desired end state, so
+    exactly that error is swallowed. Any other :class:`ValueError` from the
+    store is a defect and surfaces unchanged.
     """
     try:
         store.release_lease(
             reservation.lease.bench_id, reservation.lease.sequence, now_wall
         )
-    except ValueError:
-        return
+    except ValueError as error:
+        if str(error).startswith("no active lease"):
+            return
+        raise

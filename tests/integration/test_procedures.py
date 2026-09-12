@@ -450,6 +450,32 @@ def test_semantics_invalid_now_wall_rejected() -> None:
         check_semantics(admit(), now_wall="not-a-timestamp")
 
 
+def test_semantics_invalid_expires_at_rejected() -> None:
+    # In-memory mutation: the commissioning schema's date-time format fence
+    # normally rejects this earlier, but that fence rides the optional
+    # rfc3339-validator dependency — the semantics-stage parse is the
+    # unconditional one under test here.
+    docs = admit()
+    docs.commissioning["expires_at"] = "not-a-timestamp"
+    with pytest.raises(AdmissionRejected, match=r"^expired: commissioning.expires_at"):
+        check_semantics(docs, now_wall=NOW_WALL)
+
+
+def test_semantics_timestamp_parse_is_eager_before_other_checks() -> None:
+    """An unparseable deadline input surfaces before any other semantic work.
+
+    The document set carries BOTH a duplicate step id and a garbage
+    expires_at: the eager parse must reject on the timestamp, not on the
+    duplicate — the deadline is admission input, not a value to fail on at
+    first use after everything else has run.
+    """
+    docs = admit()
+    docs.procedure["steps"].append({"id": "settle", "kind": "delay", "duration_ms": 50})
+    docs.commissioning["expires_at"] = "not-a-timestamp"
+    with pytest.raises(AdmissionRejected, match=r"^expired: commissioning.expires_at"):
+        check_semantics(docs, now_wall=NOW_WALL)
+
+
 def test_worst_case_bound_exact() -> None:
     steps = json.loads((FIXTURES / "procedure-voltage-check.json").read_text())["steps"]
     # Hand computation from the fixture step list:
@@ -866,6 +892,31 @@ def test_release_is_idempotent(tmp_path: Path) -> None:
         store.close()
 
 
+def test_release_reraises_undocumented_value_errors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only the documented not-active outcome is idempotent success.
+
+    A ValueError from the store that is NOT the no-active-lease condition is
+    a defect and must surface, never be swallowed by the idempotence guard.
+    """
+    store = _open_store(tmp_path)
+    try:
+        reservation = reserve(
+            store, admit(), bench_id="sim-bench", holder="run:run-1",
+            expires_at=LEASE_EXPIRES, now_wall=NOW_WALL,
+        )
+
+        def boom(bench_id: str, sequence: int, now: str) -> None:
+            raise ValueError("programming error: connection closed")
+
+        monkeypatch.setattr(store, "release_lease", boom)
+        with pytest.raises(ValueError, match="programming error"):
+            release(store, reservation, now_wall=LEASE_RELEASED_AT)
+    finally:
+        store.close()
+
+
 # --- Task 5: safety policy allow rules and continuous conditions ------------
 
 PSU_CONFIGURE = "otdp.dc_psu.configure/1.0.0"
@@ -1099,6 +1150,21 @@ def test_conditions_product_bound_exceeded() -> None:
     assert evaluate_conditions(admit().policy, snapshot) == [
         "dut-power: bound_exceeded: 3.5855 > maximum 3"
     ]
+
+
+def test_conditions_unknown_kind_raises_value_error() -> None:
+    """An unknown condition kind is a typed fence, not a KeyError.
+
+    The dict dispatch is the admission boundary for condition kinds: an
+    unexpected kind raises ValueError naming the offender, mirroring the
+    registry fence pattern.
+    """
+    policy = copy.deepcopy(admit().policy)
+    policy["continuous_conditions"].append(
+        {"id": "bad-condition", "kind": "quantum", "signal": "dut-voltage"}
+    )
+    with pytest.raises(ValueError, match="unknown condition kind"):
+        evaluate_conditions(policy, _live_snapshot(_signal("dut-voltage", 5.0), _current(0.5)))
 
 
 def test_conditions_product_at_exact_bound_passes() -> None:

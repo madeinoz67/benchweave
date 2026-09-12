@@ -246,10 +246,13 @@ def _parse_utc(text: str, label: str) -> datetime:
     return moment
 
 
-def _check_deadline(docs: AdmittedDocuments, now_wall: str) -> None:
-    now = _parse_utc(now_wall, "now_wall")
-    expires_at = str(docs.commissioning["expires_at"])
-    deadline = _parse_utc(expires_at, "commissioning.expires_at")
+def _check_deadline(
+    docs: AdmittedDocuments,
+    now: datetime,
+    now_wall: str,
+    deadline: datetime,
+    expires_at: str,
+) -> None:
     horizon = int(docs.procedure["max_body_ms"]) + int(docs.procedure["max_protection_ms"])
     if now + timedelta(milliseconds=horizon) > deadline:
         raise AdmissionRejected(
@@ -266,7 +269,16 @@ def check_semantics(docs: AdmittedDocuments, *, now_wall: str) -> None:
     duplicate step IDs, out-of-scope references, misplaced ``$stg_issue``
     directives, and the three budget bounds — worst-case body, energised time
     and the commissioning deadline measured from ``now_wall``.
+
+    Both deadline timestamps are parsed EAGERLY, before any other semantic
+    work: an unparseable admission input is a defect in its own right and
+    must surface here, not at first use after the other checks have run (the
+    schema's ``date-time`` format fence rides an optional validator
+    dependency, so this parse is the unconditional one).
     """
+    now = _parse_utc(now_wall, "now_wall")
+    expires_at = str(docs.commissioning["expires_at"])
+    deadline = _parse_utc(expires_at, "commissioning.expires_at")
     steps = docs.procedure["steps"]
     _check_unique_ids(steps)
     device_by_role = {
@@ -276,4 +288,4 @@ def check_semantics(docs: AdmittedDocuments, *, now_wall: str) -> None:
         _check_step(step, visible, block_id, docs.descriptors, device_by_role)
     _check_body_budget(docs)
     _check_energised(docs)
-    _check_deadline(docs, now_wall)
+    _check_deadline(docs, now, now_wall, deadline, expires_at)

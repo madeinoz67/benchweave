@@ -251,5 +251,13 @@ def evaluate_conditions(
 
     violations: list[str] = []
     for condition in policy["continuous_conditions"]:
-        violations.extend(_CHECKERS[condition["kind"]](condition, snapshot))
+        checker = _CHECKERS.get(str(condition["kind"]))
+        if checker is None:
+            # The dict dispatch is the admission boundary for condition
+            # kinds: an unexpected one is a typed fence, not a KeyError.
+            raise ValueError(
+                f"unknown condition kind {condition['kind']!r} "
+                f"for condition {condition.get('id')!r}"
+            )
+        violations.extend(checker(condition, snapshot))
     return violations
