@@ -31,6 +31,7 @@ from benchweave.host.plugin import DevicePlugin
 from benchweave.interfaces.bootstrap import admit_startup_bench
 from benchweave.interfaces.mcp import build_mcp
 from benchweave.interfaces.operations import Operations
+from benchweave.interfaces.rest import build_router
 from benchweave.interfaces.worker import RunWorker
 from benchweave.state.store import Store
 
@@ -263,6 +264,11 @@ def create_app(
             worker.join(timeout=5.0)
 
     app = FastAPI(title="BenchWeave gateway", version="1.1.0", lifespan=_lifespan)
+    # Task 9: the REST router is included BEFORE the "/" mount — a mount at
+    # "/" swallows every route included after it, so /v1 must land first.
+    app.include_router(
+        build_router(operations, gate, secret=secret, limits=limits, now_epoch=now_epoch)
+    )
     # Mounted at "/" so FastMCP's internal "/mcp" route lands at /mcp; the
     # REST router (Task 9) is included BEFORE this mount so /v1 wins.
     app.mount("/", mcp_app)
