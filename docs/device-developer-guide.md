@@ -2,6 +2,8 @@
 
 Create, host and share BenchWeave device integrations, whether you are a human developer or an AI coding agent.
 
+For a simple five-step workflow with reusable AI prompts, start with [Develop your device with AI](develop-your-device.md).
+
 **Baseline:** architecture 1.5 · OTDP 0.3.0 · adapter API 1.1 · registry 1.0.0 · execution 1.0.0 · interface 1.1.0.
 
 **Current status:** the repository provides architecture contracts, synthetic fixtures, a Python scaffold, architecture CI, and the **gateway side of the registry contract**: strict schema loaders, an ed25519-authenticated fixture catalogue, configured-origin resolution, admission with a content-addressed package cache and package lock, idle-boundary activation, and a cache plugin loader — plus an **unsigned development loop** (see §10). The registry *service* side (search, submission, review pipeline, TUF distribution, public endpoints), the device-install command and the production SDK do not yet exist. You can develop descriptors, adapters and deterministic tests against the published ABI now, package and run them locally through the dev loop, and exercise admission against the committed signed catalogue. Host hardware qualification requires the corresponding implementation and bench evidence.

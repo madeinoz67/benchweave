@@ -22,6 +22,8 @@ This repository is currently a Python project skeleton plus the frozen architect
 
 ## Development
 
+Start with [Develop your device with AI](develop-your-device.md) for five-step paths to build custom device firmware or integrate an existing instrument, with reusable prompts covering development, BenchWeave integration, qualification and release preparation.
+
 Use the [AI device reviewer](ai-device-reviewer.md) to assess candidate integrations against the contracts and their evidence.
 
 Start with the [Device developer guide](device-developer-guide.md) for device creation, gateway hosting and shared packages, including an AI task template and human review checklist.
