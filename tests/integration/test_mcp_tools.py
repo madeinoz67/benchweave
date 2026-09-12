@@ -427,6 +427,21 @@ def test_adapter_limit_clamped_to_max_page_size(tmp_path: Path) -> None:
         assert events["ok"] is True, events
         assert len(events["data"]["events"]) == 1  # 2 events exist on the stream
 
+        # The floor at 1: a schema-ignoring client may send a negative or
+        # zero limit — SQLite reads LIMIT < 0 as UNLIMITED, so the clamp
+        # must cover the lower bound too, not only the ceiling.
+        for request_id, bad_limit in ((5, -1), (6, 0)):
+            floored = _tools_call(
+                url,
+                session,
+                token,
+                request_id,
+                "stg_v1_bench_list",
+                {"limit": bad_limit, "cursor": None},
+            )
+            assert floored["ok"] is True, floored
+            assert len(floored["data"]["items"]) == 1, bad_limit
+
 
 def test_adapter_length_clamped_to_max_chunk_bytes(tmp_path: Path) -> None:
     """length=10**9 reads exactly one chunk: the tool layer clamps to
@@ -455,6 +470,22 @@ def test_adapter_length_clamped_to_max_chunk_bytes(tmp_path: Path) -> None:
         assert chunk["data"]["bytes"] == 8  # clamped to max_chunk_bytes, not 20
         assert chunk["data"]["total_bytes"] == 20
         assert chunk["data"]["eof"] is False
+
+        # The floor at 1: zero/negative lengths otherwise reach the store's
+        # own "< 1" rejection (an app-visible error); the clamp must floor
+        # them, not error.
+        for request_id, bad_length in ((3, 0), (4, -3)):
+            floored = _tools_call(
+                url,
+                session,
+                token,
+                request_id,
+                "stg_v1_artifact_read",
+                {"artifact_id": artifact_id, "offset": 0, "length": bad_length},
+            )
+            assert floored["ok"] is True, floored
+            assert floored["data"]["bytes"] == 1, bad_length
+            assert floored["data"]["eof"] is False
 
 
 def test_live_run_through_app_reaches_truthful_terminal(tmp_path: Path) -> None:

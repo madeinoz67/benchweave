@@ -106,7 +106,10 @@ def build_mcp(
     ``max_page_size`` and artifact chunk lengths to ``max_chunk_bytes``
     HERE, before the seam's unbounded SQL LIMIT / chunk window sees them
     (the vendored schemas declare the same bounds declaratively; the
-    adapter enforces them imperatively for clients that ignore them).
+    adapter enforces them imperatively for clients that ignore them —
+    including the floor at 1: SQLite reads ``LIMIT < 0`` as UNLIMITED, so
+    a negative page size must never reach it, and the store rejects chunk
+    lengths below 1).
     """
     mcp = FastMCP(
         name="benchweave-gateway",
@@ -185,7 +188,7 @@ def build_mcp(
     @_register
     async def bench_list(limit: int = 1, cursor: str | None = None) -> dict[str, Any]:
         identity = await _identity()
-        page = min(limit, max_page_size)
+        page = max(1, min(limit, max_page_size))
         return _paged(lambda: operations.bench_list(identity, limit=page, cursor=cursor))
 
     @_register
@@ -198,7 +201,7 @@ def build_mcp(
         bench_id: str = "", limit: int = 1, cursor: str | None = None
     ) -> dict[str, Any]:
         identity = await _identity()
-        page = min(limit, max_page_size)
+        page = max(1, min(limit, max_page_size))
         return _paged(
             lambda: operations.device_list(identity, bench_id, limit=page, cursor=cursor)
         )
@@ -218,7 +221,7 @@ def build_mcp(
         bench_id: str = "", after: str | None = None, limit: int = 1
     ) -> dict[str, Any]:
         identity = await _identity()
-        page = min(limit, max_page_size)
+        page = max(1, min(limit, max_page_size))
         return _dispatch(
             lambda: operations.events_get(identity, bench_id, after=after, limit=page)
         )
@@ -233,7 +236,7 @@ def build_mcp(
         artifact_id: str = "", offset: int = 0, length: int = 1
     ) -> dict[str, Any]:
         identity = await _identity()
-        chunk = min(length, max_chunk_bytes)
+        chunk = max(1, min(length, max_chunk_bytes))
         return _dispatch(
             lambda: operations.artifact_read(identity, artifact_id, offset, chunk)
         )
