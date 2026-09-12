@@ -228,7 +228,7 @@ class _RecordingPlugin:
 
 def _load_plugin_module(name: str) -> ModuleType:
     """Explicit-path module loader, mirrored from test_procedures/_sim_plugins."""
-    path = PLUGINS_ROOT / name / "plugin.py"
+    path = PLUGINS_ROOT / "benchweave" / name / "src" / f"benchweave_{name}" / "plugin.py"
     assert path.is_file(), f"plugin file missing: {path}"
     spec = importlib.util.spec_from_file_location(name.replace("-", "_"), path)
     assert spec is not None and spec.loader is not None

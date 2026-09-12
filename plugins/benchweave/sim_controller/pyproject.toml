@@ -1,0 +1,25 @@
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "benchweave-sim-controller"
+version = "0.1.0"
+description = "BenchWeave deterministic controller simulator (private host API)"
+readme = "README.md"
+requires-python = ">=3.13"
+license = {text = "Proprietary"}
+dependencies = ["benchweave==0.1.0"]
+
+[project.optional-dependencies]
+test = ["pytest==9.1.1"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/benchweave_sim_controller"]
+
+[tool.hatch.build.targets.sdist]
+include = ["/src", "/tests", "/README.md", "/pyproject.toml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q -p no:cacheprovider --import-mode=importlib"

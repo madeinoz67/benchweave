@@ -155,8 +155,11 @@ def publish(
     plugin_dir = plugin_dir_arg.resolve()
     if not plugin_dir.is_dir():
         raise PublishError(f"plugin directory not found: {plugin_dir_arg}")
+    source_dir = plugin_dir / "src" / f"benchweave_{plugin_dir.name}"
+    if not source_dir.is_dir():
+        source_dir = plugin_dir
     for entry in ("plugin.py", "__init__.py"):
-        if not (plugin_dir / entry).is_file():
+        if not (source_dir / entry).is_file():
             raise PublishError(f"plugin entry missing: {plugin_dir / entry}")
     dirname = plugin_dir.name
     dashed = dirname.replace("_", "-")
@@ -203,8 +206,8 @@ def publish(
         members=_common_members()
         + _impl_extras()
         + [
-            ("plugin/__init__.py", (plugin_dir / "__init__.py").read_bytes()),
-            ("plugin/plugin.py", (plugin_dir / "plugin.py").read_bytes()),
+            ("plugin/__init__.py", (source_dir / "__init__.py").read_bytes()),
+            ("plugin/plugin.py", (source_dir / "plugin.py").read_bytes()),
         ],
         version=version,
     )
@@ -226,7 +229,9 @@ def publish(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("plugin_dir", type=Path, help="plugin directory, e.g. plugins/sim_psu")
+    parser.add_argument(
+        "plugin_dir", type=Path, help="plugin project, e.g. plugins/benchweave/sim_psu"
+    )
     parser.add_argument(
         "--descriptor",
         type=Path,

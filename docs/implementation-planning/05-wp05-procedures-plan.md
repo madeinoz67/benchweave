@@ -25,8 +25,8 @@
 
 | File | Responsibility |
 |---|---|
-| `plugins/sim_psu/plugin.py` (modify) | Add the three dc_psu class actions (configure/output/measure) as INVOKE verbs returning typed results incl. an admitted `scalar_set` |
-| `fixtures/protocols/sim_psu_vectors.json` (modify) | Invoke + invoke-fault vectors |
+| `plugins/benchweave/sim_psu/src/benchweave_sim_psu/plugin.py` (modify) | Add the three dc_psu class actions (configure/output/measure) as INVOKE verbs returning typed results incl. an admitted `scalar_set` |
+| `plugins/benchweave/sim_psu/src/benchweave_sim_psu/vectors.json` (modify) | Invoke + invoke-fault vectors |
 | `fixtures/execution/*.json` (create) | Executable procedure, safety-policy, bench, run-binding, commissioning + two device descriptors — genuinely runnable, real sha256 pins |
 | `src/benchweave/control/__init__.py` (create) | Package surface re-exports |
 | `src/benchweave/control/clocking.py` | `MonotonicClock`/`WallClock` ports + `TestClock` (virtual, deterministic) |
@@ -47,8 +47,8 @@ Decomposition rationale: each control module maps to one contract seam (document
 ### Task 1: sim_psu class actions (configure / output / measure)
 
 **Files:**
-- Modify: `plugins/sim_psu/plugin.py`
-- Modify: `fixtures/protocols/sim_psu_vectors.json`
+- Modify: `plugins/benchweave/sim_psu/src/benchweave_sim_psu/plugin.py`
+- Modify: `plugins/benchweave/sim_psu/src/benchweave_sim_psu/vectors.json`
 - Test: `tests/contract/test_sim_plugins.py`
 
 **Interfaces:**
@@ -152,11 +152,11 @@ Route `OperationVerb.INVOKE` in the handler map to `_invoke(request)`. `_invoke`
 - `output`: require `channel` ∈ `CHANNELS`, bool `enabled`, `configuration_id` equal to the stored one (else `DEVICE_REJECTED`). Write `output_enabled` through the write path (a trip on enable surfaces as the trip error). Ok payload `{"result": {"channel": channel, "enabled": <observed output_enabled>}}`.
 - `measure`: require `configuration_id` matching the stored one and `channels` ⊆ `CHANNELS`. Build the dataset with `voltage=self._output_voltage()`, `current=self._output_current()`, `power=round(v*i, 6)`, `started_at=self._now()`, `dataset_id=f"dataset-psu-{self._monotonic_ns()}"`, `clock={"domain_id": "sim-psu", "timestamp_source": "device", "synchronisation": "unknown", "uncertainty_s": None}`. Ok payload `{"result": dataset}`.
 
-Extend `fixtures/protocols/sim_psu_vectors.json` with the four tests above as replay vectors (the fault-matrix suite picks them up; post-dispatch timeout vector: set `deadline_ns` already passed → existing TIMEOUT-not-dispatched path stays honest).
+Extend `plugins/benchweave/sim_psu/src/benchweave_sim_psu/vectors.json` with the four tests above as replay vectors (the fault-matrix suite picks them up; post-dispatch timeout vector: set `deadline_ns` already passed → existing TIMEOUT-not-dispatched path stays honest).
 
 - [ ] **Step 4: Run to verify GREEN** — `set -o pipefail; uv run pytest tests/contract/test_sim_plugins.py tests/contract/test_fault_matrix.py -v`
 - [ ] **Step 5: Gates + commit** — `set -o pipefail; uv run pytest && uv run ruff check . && uv run mypy` then
-  `git add plugins/sim_psu/plugin.py fixtures/protocols/sim_psu_vectors.json tests/contract/test_sim_plugins.py && git commit -m "feat: sim_psu dc_psu class actions over the host ABI"`
+  `git add plugins/benchweave/sim_psu/src/benchweave_sim_psu/plugin.py plugins/benchweave/sim_psu/src/benchweave_sim_psu/vectors.json tests/contract/test_sim_plugins.py && git commit -m "feat: sim_psu dc_psu class actions over the host ABI"`
 
 ---
 
