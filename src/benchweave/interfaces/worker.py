@@ -8,6 +8,10 @@ delegates execution to a coordinator built by ``build_run`` — Task 8 wires
 the real ``RunCoordinator`` (spooling the binding-ref documents into a
 run-scoped tmp dir, admitting them, constructing the sim plugins, hooking
 retention); Task 5 tests inject a fake with the same public API.
+``build_run`` receives the worker thread's OWN re-opened ``Store`` as its
+fourth argument — sqlite3 connections are thread-affine, so the whole
+coordinator stack (including any ``ContentStore`` built over it) must be
+constructed and used on this thread.
 
 sqlite3 connections are thread-affine, so the worker re-opens the store's
 database on its own connection (WAL plus the store's busy timeout keep the
@@ -23,6 +27,7 @@ from typing import Any
 
 from benchweave.content.store import ContentStore
 from benchweave.control.clocking import SystemClock
+from benchweave.interfaces.operations import append_bench_event
 from benchweave.state.store import Store
 
 
@@ -34,15 +39,20 @@ class RunWorker:
         store: Store,
         content: ContentStore,
         *,
-        build_run: Callable[[str, str, dict[str, Any]], Any],
+        build_run: Callable[[str, str, dict[str, Any], Store], Any],
         now_iso: Callable[[], str] | None = None,
+        limits: dict[str, int] | None = None,
     ) -> None:
         self._store = store
-        # Content is the landed constructor surface; Task 8's build_run
-        # wiring closes over it (spooling reads documents from the store).
-        self._content = content
+        # ``content`` stays on the landed constructor surface; build_run
+        # derives its ContentStore from the worker-thread Store it receives.
+        del content
         self._build_run = build_run
         self._now_iso = now_iso if now_iso is not None else SystemClock().now_iso
+        # Task 6: retention window for drain-side bench events. None = the
+        # worker appends untrimmed; the seam's next emit re-trims the stream
+        # (worker slack is bounded at three events per completed run).
+        self._emit_keep = limits["max_page_size"] * 10 if limits is not None else None
         self._queue: queue.Queue[tuple[str, str, dict[str, Any], str]] = queue.Queue()
         self._thread = threading.Thread(target=self._drain, name="stg-run-worker", daemon=True)
         self._stopping = threading.Event()
@@ -73,8 +83,16 @@ class RunWorker:
         self._stopping.set()
 
     def join(self, timeout: float | None = None) -> None:
-        """Wait for the queue to drain, then for the thread to exit."""
+        """Wait for the queue to drain.
+
+        Fast path: without :meth:`stop`, once every submitted run is done
+        the worker is parked on its next poll — return immediately instead
+        of burning the full thread-join timeout. After :meth:`stop`, wait
+        for the thread to actually exit.
+        """
         self._queue.join()
+        if not self._stopping.is_set() and self._done == self._submitted_count:
+            return
         self._thread.join(timeout=timeout)
 
     def cancel(self, run_id: str, principal_id: str) -> None:
@@ -99,7 +117,7 @@ class RunWorker:
                 continue
             try:
                 store.put_run_state(run_id, bench_id, "running", self._now_iso())
-                coordinator = self._build_run(run_id, principal_id, binding_ref)
+                coordinator = self._build_run(run_id, principal_id, binding_ref, store)
                 with self._active_lock:
                     self._active = (run_id, coordinator)
                 try:
@@ -112,6 +130,29 @@ class RunWorker:
                 raise
             else:
                 store.put_run_state(run_id, bench_id, "terminal", self._now_iso())
+                self._emit_completion(store, coordinator, run_id, bench_id)
             finally:
                 self._done += 1
                 self._queue.task_done()
+
+    def _emit_completion(
+        self, store: Store, coordinator: Any, run_id: str, bench_id: str
+    ) -> None:
+        """Task 6: honest drain-side bench events, appended on the worker's
+        own (thread-affine) store. The durable terminal record decides the
+        ``trip`` emission; the coordinator's monitor retention counter
+        decides the single ``evidence_gap`` — neither is inferred from the
+        in-memory return value."""
+        run = store.get_run(run_id)
+        terminal = run["terminal"] if run is not None else None
+        append_bench_event(store, "run_changed", bench_id, run_id, None,
+                           keep=self._emit_keep, now_iso=self._now_iso)
+        if terminal is not None and str(terminal.get("outcome")) == "tripped":
+            append_bench_event(store, "trip", bench_id, run_id, None,
+                               keep=self._emit_keep, now_iso=self._now_iso)
+        monitor = getattr(coordinator, "monitor", None)
+        failures = int(getattr(monitor, "retention_failures", 0)) if monitor else 0
+        if failures > 0:
+            append_bench_event(store, "evidence_gap", bench_id, run_id,
+                               {"retention_failures": failures},
+                               keep=self._emit_keep, now_iso=self._now_iso)

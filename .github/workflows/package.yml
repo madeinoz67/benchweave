@@ -4,19 +4,25 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+  release:
+    types: [published]
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event_name != 'release' }}
 
 jobs:
   build:
-    name: Build and install distribution
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+    name: Installed gateway and SDK (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -25,15 +31,42 @@ jobs:
         with:
           version: "0.11.16"
           enable-cache: true
-      - run: uv python install
+      - run: uv python install 3.13
       - run: uv lock --check
-      # The default builds the wheel from the sdist, exercising both artefacts.
-      - run: uv build
-      - name: Smoke-test installed wheel outside the checkout
-        shell: bash
-        run: |
-          uv venv "$RUNNER_TEMP/benchweave-smoke"
-          uv pip install --python "$RUNNER_TEMP/benchweave-smoke/bin/python" dist/*.whl
-          cd "$RUNNER_TEMP"
-          "$RUNNER_TEMP/benchweave-smoke/bin/benchweave"
-          "$RUNNER_TEMP/benchweave-smoke/bin/python" -c 'from importlib.resources import files; assert files("benchweave").joinpath("py.typed").is_file()'
+      - name: Build sdists and wheels; test installed SDK and external adapter
+        run: >-
+          uv run --no-project --python 3.13 scripts/sdk_smoke.py
+          --out-dir dist/packages
+
+  release-sdk:
+    name: Attach tested SDK distributions to published release
+    if: github.event_name == 'release'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.11.16"
+          enable-cache: true
+      - run: uv python install 3.13
+      - name: Rebuild and verify the exact release assets
+        run: >-
+          uv run --no-project --python 3.13 scripts/sdk_smoke.py
+          --out-dir dist/packages
+      - name: Attach SDK wheel, sdist and verification report
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        # Existing assets are never overwritten. Publishing the release is the
+        # owner's explicit distribution action; pushes and PRs cannot reach here.
+        run: >-
+          gh release upload "$RELEASE_TAG"
+          dist/packages/sdk/*.whl dist/packages/sdk/*.tar.gz
+          dist/packages/sdk-smoke.json

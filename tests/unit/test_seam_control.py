@@ -90,7 +90,8 @@ class FakeCoordinator:
         *,
         release: threading.Event,
     ) -> None:
-        del store, plugins, clock, wall, docs  # constructor-shape parity only
+        self.store_arg = store  # the worker-thread Store build_run received
+        del plugins, clock, wall, docs  # constructor-shape parity only
         self._release = release
         self.entered = threading.Event()
         self.started: list[tuple[str, str]] = []
@@ -121,6 +122,7 @@ class SeamControl:
     ops: Operations
     worker: RunWorker
     release: threading.Event
+    store: Store
     binding_ref: dict[str, Any]
     coordinators: list[FakeCoordinator]
 
@@ -146,9 +148,11 @@ def seam_control(tmp_path: Path) -> Iterator[SeamControl]:
     release = threading.Event()
     coordinators: list[FakeCoordinator] = []
 
-    def build_run(run_id: str, principal_id: str, binding: dict[str, Any]) -> FakeCoordinator:
+    def build_run(
+        run_id: str, principal_id: str, binding: dict[str, Any], run_store: Store
+    ) -> FakeCoordinator:
         del run_id, principal_id, binding
-        coordinator = FakeCoordinator(store, {}, None, None, None, release=release)
+        coordinator = FakeCoordinator(run_store, {}, None, None, None, release=release)
         coordinators.append(coordinator)
         return coordinator
 
@@ -162,7 +166,7 @@ def seam_control(tmp_path: Path) -> Iterator[SeamControl]:
         worker=worker,
         now_iso=lambda: NOW,
     )
-    yield SeamControl(ops, worker, release, binding_ref, coordinators)
+    yield SeamControl(ops, worker, release, store, binding_ref, coordinators)
     release.set()  # unblock any in-flight fake before draining and joining
     worker.stop()
     worker.join(timeout=10)
@@ -211,6 +215,22 @@ def test_expected_generation_mismatch_conflicts(seam_control: SeamControl) -> No
     assert exc.value.failure.code == "conflict"
 
 
+def test_generation_fence_reads_canonical_authority(seam_control: SeamControl) -> None:
+    """Decision 4: the generations table is THE authority. A bare
+    bump_generation (no bench-row refresh) must fence a stale client —
+    run_start and lease_create both bite on expected_generation=1."""
+    ops, _, _ = seam_control
+    seam_control.store.bump_generation(BENCH_ID, NOW)  # authority now 2
+    with pytest.raises(errors.OperationFailure) as exc:
+        ops.run_start(
+            _control("p1"), BENCH_ID, "req-g", seam_control.binding_ref, 1, None
+        )
+    assert exc.value.failure.code == "conflict"
+    with pytest.raises(errors.OperationFailure) as exc:
+        ops.lease_create(_control("p1"), BENCH_ID, "lease-req-g", 1, 1000)
+    assert exc.value.failure.code == "conflict"
+
+
 def test_run_start_reused_request_with_different_body_conflicts(
     seam_control: SeamControl,
 ) -> None:
@@ -244,7 +264,10 @@ def test_run_state_reaches_terminal_after_worker_drains(seam_control: SeamContro
     assert run["outcome"] is None and run["safe_state"] is None
     coordinator = _await_coordinator(coordinators)
     release.set()
-    worker.join(timeout=10)
+    joined_at = time.monotonic()
+    worker.join(timeout=10)  # no stop() yet: the fast path must return now
+    assert time.monotonic() - joined_at < 5, "join burned the full thread timeout"
+    assert coordinator.store_arg is not seam_control.store  # worker-thread Store
     final = ops.run_get(ident, run["run_id"])
     assert final["state"] == "terminal"
     assert final["revision"] == 3  # accepted → running → terminal

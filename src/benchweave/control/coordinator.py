@@ -419,6 +419,13 @@ class RunCoordinator:
         self.occurrence_ledger: dict[Occurrence, dict[str, Any]] = {}
         self._active_monitor: _RunMonitor | None = None
 
+    @property
+    def monitor(self) -> _RunMonitor | None:
+        """Read-only view of the armed monitor (WP07 Task 6: the run
+        worker reads ``retention_failures`` off it for the drain-side
+        ``evidence_gap`` emission)."""
+        return self._active_monitor
+
     # -- public API -----------------------------------------------------------
 
     def start_run(self, run_id: str, principal_id: str) -> dict[str, Any]:

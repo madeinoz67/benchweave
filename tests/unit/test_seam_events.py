@@ -1,0 +1,80 @@
+"""WP07 Task 6: bench streams, kinds, cursor paging, retention overtake."""
+
+from __future__ import annotations
+
+from collections.abc import Iterator
+from pathlib import Path
+
+import pytest
+
+from benchweave.content.store import ContentStore
+from benchweave.interfaces import errors, operations
+from benchweave.interfaces.bootstrap import admit_startup_bench
+from benchweave.interfaces.identity import Identity
+from benchweave.interfaces.operations import Operations
+from benchweave.state.store import Store
+
+FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "execution"
+NOW = "2026-09-12T00:00:00Z"
+Seam = tuple[Operations, Store]
+
+IDENT = Identity("p1", "stg", frozenset({"stg:observe", "stg:control"}), 2**31)
+
+
+@pytest.fixture()
+def seam(tmp_path: Path) -> Iterator[Seam]:
+    store = Store.open(tmp_path / "state.db")
+    content = ContentStore(store)
+    admit_startup_bench(store, content, FIXTURES, now=NOW)
+    ops = operations.Operations(
+        store, content, gateway_id="gw-test",
+        limits={"max_json_bytes": 1048576, "max_page_size": 1000,
+                "max_chunk_bytes": 65536, "max_lease_ms": 600000,
+                "min_poll_ms": 100, "max_admission_ms": 5000},
+        now_iso=lambda: NOW,
+    )
+    yield ops, store
+    store.close()
+
+
+def test_events_get_returns_kinds_and_watermarks(seam: Seam) -> None:
+    ops, store = seam
+    ops._emit("run_changed", "bench-1", "run-1")
+    ops._emit("lease_changed", "bench-1", None)
+    data = ops.events_get(IDENT, "bench-1", after=None, limit=10)
+    assert [e["kind"] for e in data["events"]] == ["run_changed", "lease_changed"]
+    assert data["stream_id"] == "bench:bench-1"
+    assert data["oldest_sequence"] == "1" and data["current_sequence"] == "2"
+
+
+def test_cursor_pages_and_is_principal_bound(seam: Seam) -> None:
+    ops, _ = seam
+    for _ in range(5):
+        ops._emit("bench_changed", "bench-1", None)
+    page1 = ops.events_get(IDENT, "bench-1", after=None, limit=2)
+    assert len(page1["events"]) == 2
+    page2 = ops.events_get(IDENT, "bench-1", after=page1["cursor"], limit=2)
+    assert page2["events"][0]["sequence"] == "3"
+    stranger = Identity("p2", "stg", frozenset({"stg:observe"}), 2**31)
+    with pytest.raises(errors.OperationFailure):
+        ops.events_get(stranger, "bench-1", after=page1["cursor"], limit=2)
+
+
+def test_retention_overtake_yields_cursor_expired(seam: Seam) -> None:
+    ops, store = seam
+    for _ in range(6):
+        ops._emit("run_changed", "bench-1", "run-1")
+    keep = 3
+    store.trim_stream("bench:bench-1", keep)
+    stale = operations.encode_cursor("bench:bench-1", "1", "p1")
+    with pytest.raises(errors.OperationFailure) as exc:
+        ops.events_get(IDENT, "bench-1", after=stale, limit=10)
+    assert exc.value.failure.code == "cursor_expired"
+
+
+def test_evidence_gap_emitted_when_retention_fails(seam: Seam) -> None:
+    ops, store = seam
+    ops._emit_evidence_gap("bench-1", "run-1", 2)
+    data = ops.events_get(IDENT, "bench-1", after=None, limit=10)
+    assert data["events"][-1]["kind"] == "evidence_gap"
+    assert data["events"][-1]["evidence"]["retention_failures"] == 2

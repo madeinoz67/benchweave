@@ -2,7 +2,7 @@
 
 Create, host and share BenchWeave device integrations, whether you are a human developer or an AI coding agent.
 
-For simple five-step workflows with reusable AI prompts, start with [Develop your device with AI](develop-your-device.md): build a device plugin or custom firmware.
+For simple five-step workflows with reusable AI prompts, start with [Develop your device with AI](develop-your-device.md): build a device plugin or custom firmware. For SDK installation, generating the manufacturer/name project layout, testing and packaging, use the separate [plugin SDK guide](plugin-sdk.md).
 
 A **device** is the physical hardware; **firmware** runs on that hardware. A **device plugin** is the software and metadata that integrate it with BenchWeave: a descriptor plus an adapter and protocol code where required. A declarative plugin can need no executable code. Integrating an existing instrument means developing its device plugin.
 
@@ -12,9 +12,9 @@ External hosting distributes source and release files. Admitted executable plugi
 
 **Baseline:** architecture 1.5 · OTDP 0.3.0 · adapter API 1.1 · registry 1.0.0 · execution 1.0.0 · interface 1.1.0.
 
-**Current status:** the repository provides architecture contracts, synthetic fixtures, a Python scaffold, architecture CI, and the **gateway side of the registry contract**: strict schema loaders, an ed25519-authenticated fixture catalogue, configured-origin resolution, admission with a content-addressed package cache and package lock, idle-boundary activation, and a cache plugin loader — plus an **unsigned development loop** (see §10). The registry *service* side (search, submission, review pipeline, TUF distribution, public endpoints), the device-install command and the production SDK do not yet exist. You can develop descriptors, adapters and deterministic tests against the published ABI now, package and run them locally through the dev loop, and exercise admission against the committed signed catalogue. Host hardware qualification requires the corresponding implementation and bench evidence.
+**Current status:** the repository provides architecture contracts, synthetic fixtures, a Python scaffold, architecture CI, and the **gateway side of the registry contract**: strict schema loaders, an ed25519-authenticated fixture catalogue, configured-origin resolution, admission with a content-addressed package cache and package lock, idle-boundary activation, and a cache plugin loader — plus an **unsigned development loop** (see §10). The registry *service* side (search, submission, review pipeline, TUF distribution, public endpoints) and the device-install command do not yet exist. A minimal [plugin developer SDK](plugin-sdk.md) now provides offline authoring tools, packaged contracts, a standalone starter and mock checks; it is not a hardware-qualified production SDK. You can develop descriptors, adapters and deterministic tests against the published ABI now, package and run them locally through the dev loop, and exercise admission against the committed signed catalogue. Host hardware qualification requires the corresponding implementation and bench evidence.
 
-**External plugin runtime status:** package admission, activation records and the cache loader are components, not a complete live installation workflow. The current cache loader/host interface uses clock-injected factories and `plugin_open`/`dispatch`/`plugin_close`, while the normative OTDP adapter API 1.1 below uses a no-argument factory and async `open`/`execute`/`next_event`/`close`. A reviewed bridge or implementation alignment and integration tests are required before claiming general external-adapter compatibility. See [package formats, current gaps and Docker deployment](develop-your-device.md#package-format-and-gateway-installation). The recommended Docker model persists verified packages and bench configuration outside the container image; it does not grant device access or resolve dependencies automatically.
+**External plugin runtime status:** package admission, activation records and cache loaders are components, not a complete live installation workflow. The legacy simulator interface uses clock-injected factories and `plugin_open`/`dispatch`/`plugin_close`. The new `load_otdp_plugin` loader and `OTDPBridge` support no-argument factories and async adapter API 1.1 for identify, scalar read and scalar write. They verify cached inventory and isolate package versions, while the caller supplies admitted scoped services and a matching monotonic clock. Profile actions, capture/streaming and automatic activation through a live gateway are not provided by this bridge. The [SDK guide](plugin-sdk.md) explains the tested scope. See [package formats, current gaps and Docker deployment](develop-your-device.md#package-format-and-gateway-installation). The recommended Docker model persists verified packages and bench configuration outside the container image; it does not grant device access or resolve dependencies automatically.
 
 This guide explains the workflow; it introduces no new protocol requirements. The linked specifications and schemas define the contracts. If prose and schema disagree, record a contract defect and resolve it explicitly before relying on the disputed behaviour.
 
@@ -29,6 +29,10 @@ This guide explains the workflow; it introduces no new protocol requirements. Th
 | Share an integration | Registry contract and compatible existing packages | Immutable package, release metadata, provenance and conformance evidence |
 
 Read the [core specification](otdp-v0.3.0/otdp-specification.md), [profile/adapter extension](otdp-v0.3.0/extension-contract.md), [device classes](otdp-v0.3.0/device-classes.md) and [measurement model](otdp-v0.3.0/measurement-model.md) before writing a class-capable integration. The [documentation index](project-index.md) links the remaining contracts.
+
+### Repository layout for device plugins
+
+Create new independently maintained plugins at `plugins/<manufacturer>/<name>/`, with `src/<python_package>/`, tests and release metadata inside that project. The name normally identifies the device model. The manufacturer/name project can be copied into its own external repository. The [SDK guide](plugin-sdk.md) shows the generation command and full layout; existing bundled integrations retain their layout below until separately migrated.
 
 ### Repository layout for bundled devices
 
@@ -147,7 +151,7 @@ Validate all applicable **S01–S18**, **C01–C12** and **M01–M14** obligatio
 
 ## 5. Implement the adapter lifecycle
 
-The normative factory and methods are in [core specification §8](otdp-v0.3.0/otdp-specification.md#8-python-adapter-abi-11). They use structural Python interfaces; there is no supplied SDK to import.
+The normative factory and methods are in [core specification §8](otdp-v0.3.0/otdp-specification.md#8-python-adapter-abi-11). They use structural Python interfaces. The optional [plugin SDK](plugin-sdk.md) supplies typing protocols, offline validation and mocks for development; plugin runtime code need not import it.
 
 | Entry point | Required behaviour |
 |---|---|
@@ -215,7 +219,7 @@ See the [measurement model](otdp-v0.3.0/measurement-model.md) for all M01–M14 
 
 ## 8. Test before hardware qualification
 
-Build a deterministic mock host implementing the documented clocks, context, transport and relevant evidence/dataset services. Drive it with captured or explicitly synthetic exchanges. Assert exact outbound bytes, results and retained evidence; invalid-input tests should also assert that no transfer occurred.
+Start with the SDK's `MockContext`, scripted `MockHost` and generated tests for core transport operations. Extend them or build a deterministic mock host for the relevant evidence/dataset services. Drive it with captured or explicitly synthetic exchanges. Assert exact outbound bytes, results and retained evidence; invalid-input tests should also assert that no transfer occurred.
 
 | Surface | Minimum evidence |
 |---|---|
@@ -238,7 +242,7 @@ uv run ruff format --check .
 uv run mypy
 ```
 
-These commands validate the current repository. They do **not** automatically discover or certify a new standalone plugin. Add its own conformance tests and wire them into its CI. If contributing under `plugins/`, explicitly include its tests in repository test discovery; the current pytest configuration starts at `tests/`. The current mypy target also needs extending to cover new plugin source.
+These commands validate the current repository. They do **not** automatically discover or certify a new standalone plugin. Add its own conformance tests and wire them into its CI. For an independent project under `plugins/`, run its own locked environment and checks from its model directory, and add an explicit repository CI job. Core test discovery is not a substitute for independently testing the plugin. Keep contract fixtures inside the plugin or obtain them through an explicit hash-verified bootstrap; tests must not reach into the core checkout.
 
 Use the [architecture validation guide](architecture-validation.md) to understand existing coverage. Keep checks read-only and add rejection cases when extending a contract. Report evidence as **structural**, **simulated** or **hardware**, with exact source revision, model/firmware, backend/runtime, method, result and limitations. Passing mocks means ready for the next qualification gate, not ready for unattended control.
 

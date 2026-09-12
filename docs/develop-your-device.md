@@ -11,7 +11,7 @@ This quickstart adds no protocol requirements. The [device developer guide](devi
 - **[Build a BenchWeave plugin](#build-a-benchweave-plugin):** start with the device functions you want to expose, then design, build, test, review and package the plugin.
 - **[Build my own device firmware](#build-my-own-device-firmware):** start with your board and intended behaviour, then develop firmware, integrate, prove and package it.
 
-Both paths use the [shared AI session instruction](#start-the-ai-session). Use only the stage prompts for your selected path.
+Both paths use the [shared AI session instruction](#start-the-ai-session). Use only the stage prompts for your selected path. For a Python adapter, the [plugin SDK quickstart](plugin-sdk.md) can generate an external project with tests and a five-step `AI-GUIDE.md`.
 
 ## What you are building
 
@@ -32,7 +32,7 @@ BenchWeave → adapter → Python protocol library → device
 
 The library encodes device commands and parses responses. The adapter maps BenchWeave operations to that library and supplies the required lifecycle, validation and results. Transport is supplied by the caller: inside BenchWeave, communication uses admitted, scoped host services. A library that opens ports itself, silently retries commands or reconnects automatically needs adapting.
 
-Keep the library and adapter in one repository and Python distribution if that is simplest. A reusable library without device descriptors is an ordinary Python dependency, not a separate BenchWeave registry package kind.
+Keep the device-specific library and adapter together in the plugin's independently buildable project and Python distribution. For custom devices, keep maintained firmware in that same project under `firmware/`, with its own toolchain and tests. A reusable library without device descriptors is an ordinary Python dependency, not a separate BenchWeave registry package kind.
 
 For an existing instrument, build a device plugin implementing its documented protocol; changing its firmware to speak OTDP is usually unnecessary. Simple devices may suit a declarative integration and need no Python library. Standard class actions require adapter mode in this baseline. For your own controller firmware, follow [Build my own device firmware](#build-my-own-device-firmware).
 
@@ -81,9 +81,9 @@ The repository contains package admission and cache-loading components, but thes
 - `load_plugin` in the same module checks an implementation entry's cached bytes against the manifest, dynamically loads the verified Python code and calls its factory. The host still has to open and attach the instance.
 - `admit_startup_bench` in `src/benchweave/interfaces/bootstrap.py` populates bench inventory from startup fixtures. This is not a general runtime plugin installer.
 
-**Runtime compatibility remains a blocker for general external OTDP adapters.** The documented [OTDP API 1.1](otdp-v0.3.0/otdp-specification.md#8-python-adapter-abi-11) uses `create_plugin()` and async `open`/`execute`/`next_event`/`close`. The inspected cache loader calls `create_plugin(now_fn=..., monotonic_ns_fn=...)`, and the current host plugin interface (`src/benchweave/host/plugin.py`) uses `plugin_open`/`dispatch`/`plugin_close`. These interfaces are not interchangeable. Target the normative contract, record the runtime mismatch, and require a reviewed bridge or aligned implementation with tests before claiming the package can run on that gateway. Passing simulator-loader tests does not establish compatibility for the DPS-150 adapter or arbitrary external packages.
+**External OTDP support is limited to the tested bridge scope.** The documented [OTDP API 1.1](otdp-v0.3.0/otdp-specification.md#8-python-adapter-abi-11) uses `create_plugin()` and async `open`/`execute`/`next_event`/`close`. The new `load_otdp_plugin` in `src/benchweave/registry/otdp_loading.py` verifies cached package files and uses `OTDPBridge` to adapt identify, scalar read and scalar write to the host. It supports package-relative and standard-library imports and requires caller-supplied scoped services. Profile actions, capture/streaming and arbitrary third-party dependencies need further integration. The legacy `load_plugin` path still uses clock-injected factories and the synchronous simulator interface; choose the correct loader. Passing the SDK example does not establish compatibility or hardware qualification for every external package.
 
-An SDK is not required to author against the documented contract. A production SDK is not currently supplied, and an SDK alone would not resolve the runtime mismatch. Copying a folder or running `pip install` does not complete admission, bench configuration and activation.
+The optional [plugin SDK](plugin-sdk.md) now provides offline contracts, types, mocks, conformance helpers and an independently buildable starter. It is a minimal authoring SDK, not a complete production host. Copying a folder or running `pip install` does not complete admission, bench configuration and activation.
 
 ### Recommended Docker deployment model
 
@@ -112,7 +112,7 @@ The gateway-managed flow to implement is:
 4. **Activate:** wait for the affected bench to be idle, coordinate the new configuration generation, load/open the compatible plugin and verify identity before ordinary control.
 5. **Retain:** persist the approved lock and configuration across container replacement. On restart, revalidate and recreate instances through the qualified startup path; never replay previous physical operations automatically.
 
-Until that orchestration and the interface alignment are implemented, neither live installation nor a restart alone is a documented general solution for adding an arbitrary external plugin. Report activation failures without marking a partially configured instrument ready. Keep package versions fixed during a run.
+Until that orchestration and support for the plugin's required operations are implemented, neither live installation nor a restart alone is a documented general solution for adding an arbitrary external plugin. Report activation failures without marking a partially configured instrument ready. Keep package versions fixed during a run.
 
 Persistent volumes keep approved files outside the disposable container layer; they do not preserve live Python objects or prove those files are still trusted. Protect cache writes and retain integrity checks. A download host distributes files; plugin code executes inside the gateway container. In-process plugins are not isolated from each other merely because the gateway uses Docker.
 
@@ -187,7 +187,7 @@ the actual tooling; do not invent a registry URL or publication command.
 
 **Ready to share:** release metadata and evidence match the exact candidate, with the required accountable review complete. A simulated-only release must be labelled accordingly.
 
-The current developer guide documents local dev packaging and gateway registry admission, but the public registry service, submission/review pipeline, device-install command and production SDK are not yet available. Prepare the release now; public registry publication requires that service and its review/distribution process. Sharing source or publishing an ordinary Python library is separate from BenchWeave registry publication. See the [registry specification](registry-v1.0.0/registry-specification.md).
+The current developer guide documents local dev packaging and gateway registry admission, but the public registry service, submission/review pipeline, and device-install command are not yet available. A minimal [authoring SDK](plugin-sdk.md) is available in source and built by the release workflow. Prepare the release now; public registry publication requires that service and its review/distribution process. Sharing source or publishing an ordinary Python library is separate from BenchWeave registry publication. See the [registry specification](registry-v1.0.0/registry-specification.md).
 
 Installing and activating an integration on a physical bench is also separate: resolve and admit the package, bind local connections, qualify the bench and activate at an approved idle boundary. Package publication alone does not commission a device.
 
@@ -402,9 +402,11 @@ Here, an executable plugin means a device adapter targeting API 1.1. A declarati
 Give the AI the accepted design and ask it to implement only that scope.
 
 ```text
-Build the agreed device plugin in its own repository using src/<plugin_package>/
-and tests/ unless we explicitly chose a bundled contribution. Keep the plugin
-independently versioned and avoid relying on undocumented BenchWeave internals.
+Build the agreed device plugin as an independent project using src/<plugin_package>/
+and tests/. In the BenchWeave repository, its root is plugins/<manufacturer>/<name>/.
+Keep its protocol implementation with the adapter, and custom-device firmware in
+firmware/ within that same project. Keep the plugin independently versioned, with
+its own dependency lock and pinned contract inputs; do not import core internals.
 Include its descriptor and referenced evidence in the built release.
 Reuse a verified protocol library where suitable; otherwise implement bounded
 encoding/parsing with caller-supplied transport and deterministic protocol tests.
@@ -413,7 +415,9 @@ firmware support, units, bounds, permissions and pinned contract references.
 Keep private connection details, wiring and DUT limits in bench configuration.
 
 For adapter mode, implement API 1.1 create_plugin, open, execute, next_event
-and close using the documented structural interfaces; do not invent an SDK.
+and close using the documented structural interfaces. Use the supplied plugin
+SDK's generator, types and mock checks where helpful; keep it a development
+dependency and do not invent additional SDK or host APIs.
 Use only scoped host services for transport. Import/construction must perform
 no I/O. Open must not reset, self-test or enable outputs. Close must be bounded
 and idempotent, including after failed open. Use fresh instances on reopen.
