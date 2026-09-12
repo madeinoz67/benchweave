@@ -431,19 +431,26 @@ def test_unknown_trust_root_rejects_before_activation(tmp_path: Path) -> None:
     # The origin-main releases verified against origin-b's key: every honest
     # signature fails, exactly as a mis-trusted origin must.
     imposter_root = load_trust_root("origin-main", REG / "keys" / "originb.pub.pem")
+    # Wave-1 item 9: mkdir the cache root so "untouched" is falsifiable —
+    # the rejection must leave an EMPTY cache, not a never-created one.
+    cache_root = tmp_path / "cache"
+    cache_root.mkdir()
     with pytest.raises(AuthenticityRejected) as exc:
         Resolver(_origins(main_root=imposter_root)).resolve(
             "origin-main", SIM_PSU, "1.0.0", now_ns=NOW_NS, high_water={}
         )
     assert exc.value.reason == "bad_signature"
-    # Rejected at resolve: nothing was ever cached or locked.
-    assert not (tmp_path / "cache").exists()
+    # Rejected at resolve: nothing was ever cached or locked — the cache the
+    # test created stays EMPTY (falsifiable, wave-1 item 9).
+    assert list(cache_root.iterdir()) == []
     assert not (tmp_path / "packages.lock.json").exists()
 
 
 def test_tampered_manifest_rejects(tmp_path: Path) -> None:
     origin = tmp_path / "origin"
     shutil.copytree(REG / "origin-main", origin)
+    cache_root = tmp_path / "cache"
+    cache_root.mkdir()  # wave-1 item 9: "untouched" must be falsifiable
     manifest_path = origin / SIM_PSU / "1.0.0" / "manifest.json"
     raw = manifest_path.read_bytes()
     assert b"origin-main" in raw
@@ -453,7 +460,7 @@ def test_tampered_manifest_rejects(tmp_path: Path) -> None:
     with pytest.raises(AuthenticityRejected) as exc:
         _resolve(LocalDirectorySource(origin))
     assert exc.value.reason == "bad_signature"
-    assert not (tmp_path / "cache").exists()
+    assert list(cache_root.iterdir()) == []  # empty, not never-created
     assert not (tmp_path / "packages.lock.json").exists()
 
 

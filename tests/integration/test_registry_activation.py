@@ -400,3 +400,55 @@ def test_load_pops_sys_modules_on_exec_failure(tmp_path: Path) -> None:
     with pytest.raises(RuntimeError, match="boom at import"):
         load_plugin(tmp_path / "cache", manifest, sha, entry_relpath="plugin.py")
     assert module_name not in sys.modules
+
+
+def test_load_executes_verified_bytes_not_a_reread(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Wave-1 item 4: the loader's check-then-exec window is closed.
+
+    The on-disk entry is swapped immediately after the loader's verified
+    read (the TOCTOU window simulated at the read seam): whatever a re-read
+    from disk would deliver is the TAMPERED copy, and the module executed
+    from the verified in-memory bytes still reports the honest marker."""
+    sha = "dd" * 32
+    verified = (
+        b"PLUGIN_MARKER = 'verified'\n"
+        b"def create_plugin(now_fn, monotonic_ns_fn):\n"
+        b"    return object()\n"
+    )
+    tampered = verified.replace(b"'verified'", b"'tampered'")
+    entry = tmp_path / "cache" / sha / "plugin.py"
+    entry.parent.mkdir(parents=True)
+    entry.write_bytes(verified)
+    manifest = {
+        "payload": {
+            "files": [
+                {
+                    "path": "plugin.py",
+                    "role": "implementation",
+                    "bytes": len(verified),
+                    "sha256": hashlib.sha256(verified).hexdigest(),
+                }
+            ]
+        }
+    }
+
+    real_read = Path.read_bytes
+    swapped: list[bool] = [False]
+
+    def _swap_after_verified_read(self: Path) -> bytes:
+        data = real_read(self)
+        if self == entry and not swapped[0]:
+            # The race: the disk copy changes right after the verified read.
+            swapped[0] = True
+            entry.write_bytes(tampered)
+        return data
+
+    monkeypatch.setattr(Path, "read_bytes", _swap_after_verified_read)
+    load_plugin(tmp_path / "cache", manifest, sha, entry_relpath="plugin.py")
+    assert swapped[0] is True  # the window was really exercised
+    module_name = f"plugin_py_{sha}"
+    loaded: Any = sys.modules[module_name]
+    assert loaded.PLUGIN_MARKER == "verified"
+    assert entry.read_bytes() == tampered  # disk really was tampered

@@ -136,9 +136,12 @@ def load_plugin(
     otherwise). Before anything executes, the entry file's on-disk bytes are
     re-hashed against the inventory's pinned ``bytes``/``sha256`` for that
     path (``file_hash_mismatch``) — a cache tampered after admission never
-    reaches the import machinery. The module is imported by explicit
-    location under a name suffixed with the manifest sha, so two cache
-    versions of one package never collide in ``sys.modules``. Construction
+    reaches the import machinery, and the module then executes exactly those
+    verified bytes — the spec supplies module identity only, never a second
+    disk read, so nothing can change on disk between the check and the
+    execution (surface-audit wave 1, item 4). The module is imported by
+    explicit location under a name suffixed with the manifest sha, so two
+    cache versions of one package never collide in ``sys.modules``. Construction
     goes through the module's ``create_plugin(now_fn, monotonic_ns_fn)``
     factory — the construction seam every plugin module exposes and the
     conforming suite exercises. An import that raises is rolled back out of
@@ -169,12 +172,15 @@ def load_plugin(
         raise ActivationRejected("file_hash_mismatch")
 
     module_name = f"{entry_relpath.replace('/', '_').replace('.', '_')}_{manifest_sha256}"
+    # Module identity from the spec; execution from the VERIFIED bytes — the
+    # loader never re-reads the file, so a swap on disk after the hash check
+    # above cannot change what executes (surface-audit wave 1, item 4).
     spec = importlib.util.spec_from_file_location(module_name, entry_path)
-    assert spec is not None and spec.loader is not None
+    assert spec is not None
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     try:
-        spec.loader.exec_module(module)
+        exec(compile(entry_bytes, str(entry_path), "exec"), module.__dict__)
     except BaseException:
         # A module whose body raised never leaves a half-initialized entry
         # in sys.modules; the plugin's own error is the honest surface

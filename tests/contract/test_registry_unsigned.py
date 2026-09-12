@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import subprocess
 import sys
 from dataclasses import replace
@@ -311,6 +312,28 @@ def test_dev_rollback_rejects_via_persisted_high_water(tmp_path: Path) -> None:
     with pytest.raises(AdmissionRejected) as exc:
         _admit(rolled, tmp_path)
     assert exc.value.reason == "stale_sequence"
+
+
+def test_dev_status_swap_rejects_status_release_mismatch(tmp_path: Path) -> None:
+    """Wave-1 item 10: the direct dev-path pin for the status-release binding.
+
+    Two publisher-built dev releases of one package; the 0.0.0 status file
+    is dropped onto the 0.1.0 release. Both statuses are honest unsigned
+    documents — no signature layer exists to refuse the swap, so only the
+    binding (the status must name the release it rides AND pin the served
+    manifest's digest) rejects it."""
+    reg = tmp_path / "reg"
+    for version in ("0.0.0", "0.1.0"):
+        published = _publish("plugins/sim_psu", "--out", str(reg), "--version", version)
+        assert published.returncode == 0, published.stderr.decode()
+    older = reg / DEV_ID / DEV_IMPL_PACKAGE / "0.0.0" / "status.json"
+    target = reg / DEV_ID / DEV_IMPL_PACKAGE / "0.1.0" / "status.json"
+    shutil.copy2(older, target)
+    with pytest.raises(RegistryRejected) as exc:
+        _resolver(reg, policy="dev-unsigned").resolve(
+            DEV_ID, DEV_IMPL_PACKAGE, "0.1.0", now_ns=NOW_NS, high_water={}
+        )
+    assert exc.value.reason == "status_release_mismatch"
 
 
 def test_expired_dev_status_rejects(tmp_path: Path) -> None:

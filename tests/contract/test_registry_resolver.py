@@ -434,6 +434,25 @@ def test_dependency_digest_disagreement_rejected() -> None:
     assert exc.value.reason == "digest_disagreement"
 
 
+@pytest.mark.parametrize("fetch", ["manifest_signature", "status_signature"])
+def test_unreadable_signature_is_bad_signature(
+    monkeypatch: pytest.MonkeyPatch, fetch: str
+) -> None:
+    """Wave-1 item 7: a `.sig` the process cannot READ (PermissionError) is
+    bad authenticity at BOTH fetch sites, same as a missing one — never an
+    OS error leaking to the caller."""
+
+    def _denied(self: LocalDirectorySource, package_id: str, version: str) -> bytes:
+        raise PermissionError(f"{package_id}/{version} {fetch} unreadable")
+
+    monkeypatch.setattr(LocalDirectorySource, fetch, _denied)
+    with pytest.raises(AuthenticityRejected) as exc:
+        Resolver(_origins()).resolve(
+            "origin-main", "benchweave/sim-psu", "1.0.0", now_ns=NOW, high_water={}
+        )
+    assert exc.value.reason == "bad_signature"
+
+
 def test_payload_size_limit_rejects_before_read(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

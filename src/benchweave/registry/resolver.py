@@ -12,8 +12,8 @@ admission owns that check).
 
 Signature posture is per origin (``OriginConfig.signature_policy``). The
 default ``"required"`` is fail-closed: manifests and statuses are verified
-against the origin's trust root, and a missing signature file is
-``bad_signature`` — never an OS error. ``"dev-unsigned"`` is the honest dev
+against the origin's trust root, and a missing or unreadable signature file
+is ``bad_signature`` — never an OS error. ``"dev-unsigned"`` is the honest dev
 posture: it skips exactly those two authenticity verifications (no signature
 fetch at all, ``root`` is ``None``) while every integrity and
 process-honesty check stays on — schema validation, the served-manifest
@@ -254,10 +254,11 @@ class Resolver:
                     raise RegistryRejected("invalid_origin_config")
                 try:
                     manifest_sig = source.manifest_signature(package_id, version)
-                except FileNotFoundError as exc:
-                    # A missing signature is bad authenticity, not a missing
-                    # release: under `required` the signature is part of the
-                    # release, never an optional extra file.
+                except (FileNotFoundError, PermissionError) as exc:
+                    # A missing or unreadable signature is bad authenticity,
+                    # not a missing release: under `required` the signature is
+                    # part of the release, never an optional extra file — and
+                    # never an OS error surfacing to the caller.
                     raise AuthenticityRejected("bad_signature") from exc
                 verify_document(manifest_doc, manifest_sig, root)
             # The signature proves the bytes are authentic, not that they are
@@ -281,7 +282,7 @@ class Resolver:
                     raise RegistryRejected("invalid_origin_config")
                 try:
                     status_sig = source.status_signature(package_id, version)
-                except FileNotFoundError as exc:
+                except (FileNotFoundError, PermissionError) as exc:
                     raise AuthenticityRejected("bad_signature") from exc
                 verify_document(status_doc, status_sig, root)
             # The status signature proves the bytes are authentic, not that
