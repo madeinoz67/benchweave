@@ -482,6 +482,55 @@ def test_failed_safe_action_does_not_suppress_remaining_actions(tmp_path: Path) 
     assert fault.disable_dispatches(), "the second action physically dispatched"
 
 
+def test_safe_action_beyond_device_bound_is_rejected_not_clamped() -> None:
+    """A safe action whose value exceeds a device bound is rejected, never clamped.
+
+    Safe actions carry literal commissioned arguments and dispatch without
+    allow-rule re-evaluation — but the device's own hard bounds still apply.
+    The engine records the rejection as a reason, the value reaches the
+    device UNCHANGED (no silent clamping to the bound), and verification
+    still decides the safe state on its own. This also pins the write-kind
+    safe action request path, which only invoke-kind actions had covered.
+    """
+    clock = TestClock()
+    plugins = _plugins(clock)
+    fault = _FaultPsu(plugins["psu"], clock.now_iso)
+    plugins["psu"] = fault
+    docs = _admit()
+    policy = copy.deepcopy(docs.policy)
+    policy["safe_transition"]["actions"] = [
+        {
+            "id": "over-voltage-write",
+            "device_id": "psu",
+            "kind": "write",
+            "parameter": "voltage_setpoint_v",
+            "value": 999.0,  # beyond the simulated PSU's 30 V hard bound
+            "timeout_ms": 500,
+        }
+    ]
+    engine = ProtectionEngine(plugins, policy, docs.bench, clock, clock)
+
+    result = engine.enter(["fault-1"], clock.now_ns())
+
+    assert [action["id"] for action in result.actions] == ["over-voltage-write"]
+    assert result.actions[0]["status"] == "error"
+    error = result.actions[0]["error"]
+    assert error is not None and "DEVICE_REJECTED" in error
+    assert "safe_action over-voltage-write: error" in result.reasons
+    # No clamping: the device saw the commissioned literal, out of bounds.
+    writes = [
+        request
+        for request in fault.dispatches
+        if request.verb is OperationVerb.WRITE
+        and request.arguments.get("parameter") == "voltage_setpoint_v"
+    ]
+    assert len(writes) == 1
+    assert writes[0].arguments["value"] == 999.0
+    # The verify conjunction — not the action failure — decides safety:
+    # output was never enabled, so voltage reads 0 V and verifies.
+    assert result.safe_state == "verified"
+
+
 def test_budget_lapse_is_outcome_unknown_despite_terminal_body(tmp_path: Path) -> None:
     """An unverifiable safe condition forces outcome_unknown even on a clean body."""
     clock, fault, coordinator, store, _ = _harness(tmp_path)

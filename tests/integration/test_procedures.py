@@ -201,6 +201,118 @@ def test_missing_descriptor_pin_rejected() -> None:
         )
 
 
+def test_extra_descriptor_pin_rejected() -> None:
+    # The pin_absent rule is two-directional: a descriptor no bench device
+    # names is as fatal as a missing one.
+    with pytest.raises(AdmissionRejected, match=r"^pin_absent: bench pins no descriptor"):
+        admit_documents(
+            procedure_path=FIXTURES / "procedure-voltage-check.json",
+            policy_path=FIXTURES / "safety-policy.json",
+            bench_path=FIXTURES / "bench.json",
+            binding_path=FIXTURES / "run-binding.json",
+            commissioning_path=FIXTURES / "commissioning.json",
+            descriptor_paths={**DESCRIPTORS, "ghost": DESCRIPTORS["psu"]},
+        )
+
+
+def _descriptor_id_empty(graph: dict[str, Any]) -> None:
+    graph["descriptors"]["psu"]["id"] = ""
+
+
+def _descriptor_profiles_scalar(graph: dict[str, Any]) -> None:
+    graph["descriptors"]["psu"]["profiles"] = "otdp:dc_psu/1.0.0"
+
+
+def _descriptor_actions_scalar(graph: dict[str, Any]) -> None:
+    graph["descriptors"]["psu"]["actions"] = "configure"
+
+
+def _descriptor_action_not_object(graph: dict[str, Any]) -> None:
+    graph["descriptors"]["psu"]["actions"] = ["configure"]
+
+
+def _descriptor_action_missing_id(graph: dict[str, Any]) -> None:
+    graph["descriptors"]["psu"]["actions"] = [{"issued": ["configuration_id"]}]
+
+
+def _descriptor_action_issued_scalar(graph: dict[str, Any]) -> None:
+    graph["descriptors"]["psu"]["actions"] = [
+        {"action_id": "otdp.dc_psu.configure/1.0.0", "issued": "configuration_id"}
+    ]
+
+
+DESCRIPTOR_FAULTS: list[tuple[Callable[[dict[str, Any]], None], str]] = [
+    (_descriptor_id_empty, r"schema: descriptor\[psu\] requires non-empty string id"),
+    (_descriptor_profiles_scalar, r"requires profiles to be a list of strings"),
+    (_descriptor_actions_scalar, r"requires actions to be a list"),
+    (_descriptor_action_not_object, r"requires each action to be an object"),
+    (_descriptor_action_missing_id, r"action requires non-empty string action_id"),
+    (_descriptor_action_issued_scalar, r"requires issued to be a list of strings"),
+]
+
+
+@pytest.mark.parametrize(("mutate", "message"), DESCRIPTOR_FAULTS)
+def test_descriptor_structural_rejection(
+    tmp_path: Path, mutate: Callable[[dict[str, Any]], None], message: str
+) -> None:
+    """Descriptors have no vendored schema: every _check_descriptor branch
+    is the only structural fence, and each rejects at admission."""
+    with pytest.raises(AdmissionRejected, match=message):
+        readmit_mutated(tmp_path, mutate)
+
+
+def test_package_lock_structural_rejection(tmp_path: Path) -> None:
+    # The lock's id must be a non-empty string; the bench sits beside the
+    # tampered lock so the lock decode is the one under test (its structural
+    # check runs before any pin in the lattice is verified).
+    lock = json.loads((FIXTURES / "package-lock.json").read_text())
+    lock["id"] = 5
+    (tmp_path / "package-lock.json").write_text(json.dumps(lock, indent=2))
+    (tmp_path / "bench.json").write_bytes((FIXTURES / "bench.json").read_bytes())
+    with pytest.raises(
+        AdmissionRejected, match=r"^schema: package_lock requires non-empty string id"
+    ):
+        admit_documents(
+            procedure_path=FIXTURES / "procedure-voltage-check.json",
+            policy_path=FIXTURES / "safety-policy.json",
+            bench_path=tmp_path / "bench.json",
+            binding_path=FIXTURES / "run-binding.json",
+            commissioning_path=FIXTURES / "commissioning.json",
+            descriptor_paths=DESCRIPTORS,
+        )
+
+
+def test_pin_names_wrong_document_identity_rejected(tmp_path: Path) -> None:
+    # A pin may carry the right digest yet name the wrong id: identity and
+    # bytes must agree, not just bytes.
+    def mutate(graph: dict[str, Any]) -> None:
+        graph["binding"]["procedure"]["id"] = "not-voltage-check"
+
+    with pytest.raises(
+        AdmissionRejected,
+        match=r"digest_mismatch: binding pins procedure as not-voltage-check@",
+    ):
+        readmit_mutated(tmp_path, mutate)
+
+
+def test_bench_commissioning_name_mismatch_rejected(tmp_path: Path) -> None:
+    def mutate(graph: dict[str, Any]) -> None:
+        graph["bench"]["commissioning_id"] = "wrong-commissioning"
+
+    with pytest.raises(AdmissionRejected, match=r"digest_mismatch: bench.commissioning_id"):
+        readmit_mutated(tmp_path, mutate)
+
+
+def test_procedure_policy_name_mismatch_rejected(tmp_path: Path) -> None:
+    def mutate(graph: dict[str, Any]) -> None:
+        graph["procedure"]["safety_policy"]["version"] = "9.9.9"
+
+    with pytest.raises(
+        AdmissionRejected, match=r"digest_mismatch: procedure.safety_policy names"
+    ):
+        readmit_mutated(tmp_path, mutate)
+
+
 def test_semantics_admit() -> None:
     check_semantics(admit(), now_wall=NOW_WALL)
 
@@ -301,6 +413,41 @@ def test_energised_budget_rejected(tmp_path: Path) -> None:
 def test_expired_commissioning_rejected() -> None:
     with pytest.raises(AdmissionRejected, match=r"^expired:"):
         check_semantics(admit(), now_wall="2031-01-01T00:00:00Z")
+
+
+def test_write_value_reference_scope_rejected(tmp_path: Path) -> None:
+    def mutate(procedure: dict[str, Any]) -> None:
+        note = _root_step(procedure, "note")
+        note["value"] = {"$stg_ref": {"step": "model", "pointer": "/value"}}
+
+    docs = readmit_with_procedure(tmp_path, mutate)
+    with pytest.raises(AdmissionRejected, match=r"^scope: .*model"):
+        check_semantics(docs, now_wall=NOW_WALL)
+
+
+def test_sample_source_scope_rejected(tmp_path: Path) -> None:
+    def mutate(procedure: dict[str, Any]) -> None:
+        _root_step(procedure, "voltage")["source_step"] = "remeasure"
+
+    docs = readmit_with_procedure(tmp_path, mutate)
+    with pytest.raises(AdmissionRejected, match=r"^scope: .*remeasure"):
+        check_semantics(docs, now_wall=NOW_WALL)
+
+
+def test_issue_in_write_value_rejected(tmp_path: Path) -> None:
+    def mutate(procedure: dict[str, Any]) -> None:
+        _root_step(procedure, "note")["value"] = {"$stg_issue": "configuration_id"}
+
+    docs = readmit_with_procedure(tmp_path, mutate)
+    with pytest.raises(
+        AdmissionRejected, match=r"^issue_placement: .*outside an invoke input"
+    ):
+        check_semantics(docs, now_wall=NOW_WALL)
+
+
+def test_semantics_invalid_now_wall_rejected() -> None:
+    with pytest.raises(AdmissionRejected, match=r"^expired: now_wall"):
+        check_semantics(admit(), now_wall="not-a-timestamp")
 
 
 def test_worst_case_bound_exact() -> None:
@@ -952,6 +1099,17 @@ def test_conditions_product_bound_exceeded() -> None:
     assert evaluate_conditions(admit().policy, snapshot) == [
         "dut-power: bound_exceeded: 3.5855 > maximum 3"
     ]
+
+
+def test_conditions_product_at_exact_bound_passes() -> None:
+    # (4.9 + 0.1) x (0.6 + 0) = 5.0 x 0.6 = 3.0 W exactly at the maximum:
+    # the product bound is inclusive at the bound, like the numeric interval
+    # and the skew bound. (4.9 ± 0.1 stays inside [-0.1, 5.5].)
+    snapshot = _live_snapshot(
+        _signal("dut-voltage", 4.9, absolute_error=0.1),
+        _signal("dut-current", 0.6, "A", absolute_error=0.0),
+    )
+    assert evaluate_conditions(admit().policy, snapshot) == []
 
 
 def test_conditions_product_skew_exceeded() -> None:
@@ -1937,6 +2095,45 @@ def test_if_false_runs_else_branch_only(tmp_path: Path) -> None:
     assert clock.waits.count(10_000_000) == 1  # the fallback delay ran once
 
 
+def test_if_side_interval_escape_selects_else_end_to_end(tmp_path: Path) -> None:
+    """The if predicate decides by the conservative interval, not the nominal.
+
+    5.45 V is nominally INSIDE [0.1, 5.5], but 5.45 ± 0.1 gives [5.35, 5.55]
+    whose top escapes the branch bound: a nominal-only comparison would run
+    the then-branch; the honest conservative one runs else. This is the
+    if-side end-to-end twin of the assert-side headline pin.
+    """
+    def mutate(graph: dict[str, Any]) -> None:
+        _root_step(graph["procedure"], "check")["predicate"] = {
+            "sample": "voltage",
+            "minimum": 0.0,
+            "maximum": 10.0,
+        }
+        _root_step(graph["procedure"], "branch")["else"] = [
+            {"id": "fallback", "kind": "delay", "duration_ms": 10}
+        ]
+
+    clock = TestClock()
+    plugins = _plugins_for(clock)
+    psu_calls = _wrapped_psu(plugins)
+    interval_escape = _stub_variable(
+        "voltage", "V", 5.45, uncertainty={"status": "known", "absolute": 0.1}
+    )
+    psu_calls.hook = _override_first_measure(clock, [interval_escape])
+    docs = readmit_mutated(tmp_path, mutate)
+    executor = _executor_for(docs, plugins, clock)
+
+    result = executor.run_body(
+        docs.procedure, run_id=RUN_ID, body_deadline_ns=_body_deadline(clock, docs)
+    )
+
+    assert result.body_outcome == "completed"
+    step_ids = [event["occurrence"][1] for event in result.step_events]
+    assert "fallback" in step_ids  # the interval escaped: else ran
+    assert "recheck" not in step_ids  # a nominal-only predicate would have run then
+    assert clock.waits.count(10_000_000) == 1  # the fallback delay ran once
+
+
 def test_read_parameter_reference_rejected_before_dispatch(tmp_path: Path) -> None:
     """Read parameters are literals by schema; the runtime seam agrees."""
     clock = TestClock()
@@ -2117,6 +2314,57 @@ def test_nested_if_inside_repeat_composes(tmp_path: Path) -> None:
         [RUN_ID, "loop-note", [2]],
     ]
     assert clock.waits.count(5_000_000) == 3  # nested then-branch ran per iteration
+
+
+def test_nested_if_in_repeat_replays_from_shared_ledger(tmp_path: Path) -> None:
+    """Occurrence identity survives re-entered nested control flow on replay.
+
+    A second run_body over the shared ledger must answer the loop's nested
+    if decisions and their then-branch occurrences from the ledger: no new
+    dispatch, no new wait, and an identical event stream. (The single-run
+    composition is pinned by the test above; the ledger-replay test near the
+    top of this section covers root + repeat but no if nested in a repeat.)
+    """
+    def mutate(graph: dict[str, Any]) -> None:
+        _widen_check_current(graph)
+        _root_step(graph["procedure"], "loop")["steps"].append(
+            {
+                "id": "loop-branch",
+                "kind": "if",
+                "predicate": {"sample": "voltage-again", "minimum": 0.1, "maximum": 5.5},
+                "then": [{"id": "loop-note", "kind": "delay", "duration_ms": 5}],
+                "else": [],
+            }
+        )
+
+    clock = TestClock()
+    plugins = _plugins_for(clock)
+    psu_calls = _wrapped_psu(plugins)
+    ledger: dict[tuple[str, str, tuple[int, ...]], dict[str, Any]] = {}
+    docs = readmit_mutated(tmp_path, mutate)
+    executor = _executor_for(docs, plugins, clock, ledger)
+    body_deadline_ns = _body_deadline(clock, docs)
+
+    first = executor.run_body(
+        docs.procedure, run_id=RUN_ID, body_deadline_ns=body_deadline_ns
+    )
+    assert first.body_outcome == "completed"
+    dispatches_after_first = list(psu_calls.calls)
+    waits_after_first = list(clock.waits)
+    occurrences_after_first = set(ledger)
+
+    second = executor.run_body(
+        docs.procedure, run_id=RUN_ID, body_deadline_ns=body_deadline_ns
+    )
+
+    assert second.body_outcome == "completed"
+    assert psu_calls.calls == dispatches_after_first  # no physical work repeated
+    assert clock.waits == waits_after_first  # the nested delays were not re-waited
+    assert set(ledger) == occurrences_after_first  # occurrence identity is stable
+    assert second.step_events == first.step_events
+    # The nested control-flow occurrences themselves are in the ledger: the
+    # per-iteration if decisions and their then-branch steps.
+    assert {key[1] for key in ledger} >= {"loop-branch", "loop-note"}
 
 
 # --- Task 8: the full coordinated run ------------------------------------------
