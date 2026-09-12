@@ -63,6 +63,20 @@ enforce the stale claim.** A doc that is confidently wrong is worse than none.
    `contracts/interface-v1.1.0/mcp-tools.json` and any tool schema it references;
    UI-visible behaviour → the console/UI docs, once that surface exists — when a UI stage
    lands, name its doc home here**;
+   **fixture/builder lockstep — `fixtures/registry/` ↔ `scripts/registry/build_fixtures.py`
+   ↔ `catalogue.json` ↔ digest-pinning tests must move together (fixtures without the
+   builder, or a rebuilt lattice without regenerated digests, is silent drift);
+   CI contract — `.github/workflows/ci.yml` ↔ test reality: any test whose outcome
+   depends on repo secrets or environment must match the workflow's materialisation, and
+   workflow changes get a cold full-suite run, not a warm local one;
+   vendoring manifest — `contracts/manifest.json` byte-pins move with any vendored
+   contract change;
+   security-posture docs — key/secret handling docs track the real key paths and secret
+   names (rule 5 catches leaks; this catches drift between the posture text and the
+   posture)**;
+   **reserved for later stages — deploy/packaging (`deploy/`, service permissions) →
+   operator docs when WP08 lands; hardware-evidence docs when WP10+ commissioning lands:
+   name their doc homes here at that time**;
    contract semantics → the contract doc. A diff that adds or changes developer-,
    operator-, API-, or MCP-visible behaviour **without** a matching doc/interface change
    is a cross-surface finding ("you changed X but didn't update Y" — name the Y file and
