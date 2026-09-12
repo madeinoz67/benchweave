@@ -18,14 +18,23 @@ PERMISSION_SCOPES = {
     "control": "stg:control",
     "admin": "stg:admin",
 }
+# Permission tiers are a hierarchy: a permission name is the MINIMUM tier.
+# An identity passes iff it holds any scope at or above that tier
+# (observe ⊆ control ⊆ admin).
+TIER_SATISFIES: dict[str, frozenset[str]] = {
+    "observe": frozenset({"stg:observe", "stg:control", "stg:admin"}),
+    "control": frozenset({"stg:control", "stg:admin"}),
+    "admin": frozenset({"stg:admin"}),
+}
 _CURSOR_SECRET = b"wp07-cursor-v1"  # principal-binding only, not an auth secret
 
 
 def require_permission(identity: Identity, permission: str) -> None:
-    scope = PERMISSION_SCOPES[permission]
-    if scope not in identity.scopes and "stg:admin" not in identity.scopes:
+    if identity.scopes.isdisjoint(TIER_SATISFIES[permission]):
         raise errors.OperationFailure(
-            errors.failure("forbidden", f"missing scope {scope}", retry="never")
+            errors.failure(
+                "forbidden", f"missing scope {PERMISSION_SCOPES[permission]}", retry="never"
+            )
         )
 
 
@@ -212,4 +221,9 @@ class Operations:
                 errors.failure("invalid_request", "cursor is not valid for this request")
             )
         _, raw = decoded
-        return int(raw)
+        try:
+            return int(raw)
+        except ValueError:
+            raise errors.OperationFailure(
+                errors.failure("invalid_request", "cursor sequence is not numeric")
+            ) from None

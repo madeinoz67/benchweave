@@ -55,11 +55,41 @@ def test_gateway_info_shape(seam: Seam) -> None:
     assert data["limits"]["max_chunk_bytes"] == 65536
 
 
-def test_observe_rejects_control_only_identity(seam: Seam) -> None:
+def test_observe_rejects_unknown_scope(seam: Seam) -> None:
     ops, _ = seam
     with pytest.raises(errors.OperationFailure) as exc:
         ops.gateway_info(_identity(frozenset({"stg:other"})))
     assert exc.value.failure.code == "forbidden"
+    assert exc.value.failure.message == "missing scope stg:observe"
+
+
+def test_observe_permits_control_tier_identity(seam: Seam) -> None:
+    ops, _ = seam
+    data = ops.gateway_info(CONTROL)  # control tier satisfies observe permission
+    assert data["gateway_id"] == "gw-test"
+
+
+def test_observe_permits_admin_tier_identity(seam: Seam) -> None:
+    ops, _ = seam
+    assert ops.gateway_info(ADMIN)["gateway_id"] == "gw-test"
+
+
+def test_permission_tiers_form_a_hierarchy() -> None:
+    operations.require_permission(CONTROL, "control")
+    operations.require_permission(ADMIN, "control")
+    operations.require_permission(ADMIN, "admin")
+    with pytest.raises(errors.OperationFailure):
+        operations.require_permission(OBSERVE, "control")
+    with pytest.raises(errors.OperationFailure):
+        operations.require_permission(CONTROL, "admin")
+
+
+def test_non_numeric_cursor_sequence_rejected(seam: Seam) -> None:
+    ops, _ = seam
+    token = operations.encode_cursor("benches", "not-a-number", "tester")
+    with pytest.raises(errors.OperationFailure) as exc:
+        ops.bench_list(OBSERVE, limit=10, cursor=token)
+    assert exc.value.failure.code == "invalid_request"
 
 
 def test_bootstrap_admitted_bench_and_devices(seam: Seam) -> None:
