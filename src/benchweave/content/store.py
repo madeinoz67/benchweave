@@ -26,10 +26,11 @@ class EvidenceQuotaExceeded(RuntimeError):
 class ContentStore:
     """Stores and serves rows on the store v2 content tables.
 
-    Documents and artifacts are content-addressed (the id IS the digest of
-    the bytes, so re-putting identical bytes is a no-op); evidence rows are
-    one-per-retention so the per-context quota counts retentions, not
-    distinct contents.
+    Documents and artifacts are content-addressed (the id is a type tag plus
+    the digest of the bytes, so re-putting identical bytes is a no-op);
+    evidence rows are one-per-retention so the per-context quota counts
+    retentions, not distinct contents. All ids match the contract id shape
+    ^[a-z][a-z0-9_.-]*$ (no colons).
     """
 
     def __init__(self, store: Store) -> None:
@@ -67,7 +68,8 @@ class ContentStore:
     # --- artifacts -----------------------------------------------------------
 
     def put_artifact(self, data: bytes, now: str) -> str:
-        artifact_id = "sha256:" + hashlib.sha256(data).hexdigest()
+        # Contract id shape ^[a-z][a-z0-9_.-]*$ forbids colons: tag, not scheme.
+        artifact_id = "art-" + hashlib.sha256(data).hexdigest()
         self._conn.execute(
             "INSERT OR REPLACE INTO artifacts (artifact_id, data, stored_at) VALUES (?, ?, ?)",
             (artifact_id, data, now),
@@ -120,7 +122,7 @@ class ContentStore:
         # One evidence id per retention: the quota counts retentions per
         # context key, so identical payloads must still occupy distinct rows.
         # Content addressing lives in artifact_id and content_ref's digest.
-        evidence_id = "ev:" + uuid.uuid4().hex
+        evidence_id = "ev-" + uuid.uuid4().hex
         self._conn.execute(
             "INSERT OR REPLACE INTO evidence"
             " (evidence_id, kind, content_ref_json, artifact_id, context_key, stored_at)"

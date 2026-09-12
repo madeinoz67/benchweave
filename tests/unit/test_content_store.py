@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -76,6 +77,23 @@ def test_evidence_quota_raises(content: tuple[ContentStore, Store]) -> None:
     with pytest.raises(EvidenceQuotaExceeded):
         cs.put_evidence("dataset", {"id": "e", "version": "1", "sha256": "0" * 64},
                         None, "run:r1", "2026-09-12T00:00:00Z", quota=2)
+
+
+def test_artifact_and_evidence_ids_match_contract_pattern(
+    content: tuple[ContentStore, Store],
+) -> None:
+    cs, _ = content
+    artifact_id = cs.put_artifact(b"contract", "2026-09-12T00:00:00Z")
+    evidence_id = cs.put_evidence(
+        "dataset",
+        {"id": "e", "version": "1", "sha256": "0" * 64},
+        None,
+        "run:r1",
+        "2026-09-12T00:00:00Z",
+    )
+    pattern = r"^[a-z][a-z0-9_.-]*$"
+    assert re.fullmatch(pattern, artifact_id) is not None
+    assert re.fullmatch(pattern, evidence_id) is not None
 
 
 def test_retaining_services_implements_host_protocol(
