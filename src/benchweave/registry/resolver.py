@@ -160,8 +160,11 @@ class ResolvedRelease:
     manifest_sha256: str
     status: dict[str, Any]
     payload: bytes
-    manifest_sig: bytes
-    status_sig: bytes
+    #: Detached signature bytes; ``None`` on a ``dev-unsigned`` resolve —
+    #: the absence is recorded honestly, never faked as empty bytes
+    #: (surface-audit wave 1, item 6).
+    manifest_sig: bytes | None
+    status_sig: bytes | None
     registry_id: str
     package_id: str
     version: str
@@ -245,8 +248,8 @@ class Resolver:
             )
             if origin.signature_policy == "dev-unsigned":
                 # Honest dev posture: no signature fetch, no verify call —
-                # the release records the absence instead of faking bytes.
-                manifest_sig = b""
+                # the release records the absence as None, never fake bytes.
+                manifest_sig = None
             else:
                 if root is None:
                     # Unreachable past the OriginConfig fence; keeps the
@@ -276,7 +279,7 @@ class Resolver:
                 status_raw, status_digest, max_bytes=_STATUS_MAX_BYTES
             )
             if origin.signature_policy == "dev-unsigned":
-                status_sig = b""
+                status_sig = None
             else:
                 if root is None:
                     raise RegistryRejected("invalid_origin_config")

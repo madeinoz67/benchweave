@@ -162,12 +162,15 @@ def test_dev_unsigned_closure_resolves(tmp_path: Path) -> None:
         "benchweave/dc-psu-profile",
     }
     impl = next(r for r in closure.releases if r.package_id == DEV_IMPL_PACKAGE)
-    # No signature was fetched for the dev release; the origin-main
-    # dependencies stay signature-verified.
-    assert impl.manifest_sig == b""
-    assert impl.status_sig == b""
+    # No signature was fetched for the dev release: the absence is recorded
+    # as None — never a fake empty-bytes signature (wave-1 item 6) — while
+    # the origin-main dependencies stay signature-verified with real bytes.
+    assert impl.manifest_sig is None
+    assert impl.status_sig is None
     for release in closure.releases:
         if release.registry_id == ORIGIN_MAIN:
+            assert isinstance(release.manifest_sig, bytes)
+            assert isinstance(release.status_sig, bytes)
             assert release.manifest_sig and release.status_sig
     # Digests and identity stay live: the dev manifest bytes are the
     # publisher's fresh output, pinned by the manifest sha.
