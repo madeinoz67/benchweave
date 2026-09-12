@@ -73,7 +73,43 @@ def decode_cursor(token: str, principal: str) -> tuple[str, str] | None:
     return stream, sequence
 
 
+def append_bench_event(
+    store: Store,
+    kind: str,
+    bench_id: str,
+    run_id: str | None,
+    evidence: dict[str, Any] | None = None,
+    *,
+    keep: int | None,
+    now_iso: Callable[[], str],
+) -> None:
+    """Append one bench-stream event and apply retention (Task 6).
+
+    Shared by the seam (main-thread store) and the run worker (its own
+    thread-affine store) so both writers produce the identical envelope
+    under the same seven-kind fence. ``keep`` is the per-stream retention
+    window; ``None`` appends untrimmed — the next seam-side emit re-trims.
+    """
+    if kind not in Operations.EVENT_KINDS:
+        raise ValueError(f"unknown event kind {kind!r}")
+    stream_id = f"bench:{bench_id}"
+    envelope = {
+        "stream_id": stream_id,
+        "at": now_iso(),
+        "kind": kind,
+        "run_id": run_id,
+        "evidence": evidence or {},
+    }
+    store.append_event(stream_id, envelope)
+    if keep is not None:
+        store.trim_stream(stream_id, keep)
+
+
 class Operations:
+    EVENT_KINDS = {
+        "run_changed", "lease_changed", "bench_changed", "trip",
+        "authority_changed", "registry_status_changed", "evidence_gap",
+    }
     def __init__(
         self,
         store: Store,
@@ -193,6 +229,48 @@ class Operations:
             "kind": row["kind"],
             "content_ref": row["content_ref"],
             "artifact_id": row["artifact_id"],
+        }
+
+    def events_get(
+        self, identity: Identity, bench_id: str, *, after: str | None, limit: int
+    ) -> dict[str, Any]:
+        """Bench event stream read (observe): principal-bound cursor
+        paging with honest watermarks. A cursor the retention window has
+        overtaken is ``cursor_expired`` — never a silent truncation."""
+        require_permission(identity, "observe")
+        stream = f"bench:{bench_id}"
+        oldest, current = self._store.stream_watermarks(stream)
+        if oldest is None and self._store.get_bench(bench_id) is None:
+            raise errors.OperationFailure(errors.failure("not_found", f"bench {bench_id}"))
+        after_sequence: str | None = None
+        if after is not None:
+            decoded = decode_cursor(after, identity.principal)
+            if decoded is None or decoded[0] != stream:
+                raise errors.OperationFailure(
+                    errors.failure("invalid_request", "cursor does not address this stream")
+                )
+            try:
+                after_int = int(decoded[1])
+            except ValueError:
+                raise errors.OperationFailure(
+                    errors.failure("invalid_request", "cursor sequence is not numeric")
+                ) from None
+            if oldest is not None and after_int < int(oldest) - 1:
+                raise errors.OperationFailure(errors.failure(
+                    "cursor_expired", f"retention overtook sequence {decoded[1]}"))
+            after_sequence = decoded[1]
+        events = self._store.read_events_after(stream, after_sequence, limit)
+        cursor = (
+            encode_cursor(stream, str(int(events[-1]["sequence"])), identity.principal)
+            if events
+            else (after or encode_cursor(stream, "0", identity.principal))
+        )
+        return {
+            "events": events,
+            "cursor": cursor,
+            "stream_id": stream,
+            "oldest_sequence": oldest or "0",
+            "current_sequence": current or "0",
         }
 
     # --- control: runs ---------------------------------------------------------
@@ -354,13 +432,15 @@ class Operations:
         if self._worker is not None:
             self._worker.cancel(run_id, identity.principal)
         state = self._store.get_run_state(run_id)
-        self._emit(
-            "run_changed",
-            state["bench_id"] if state else "",
-            run_id,
-            reason=reason,
-            request_id=request_id,
-        )
+        if state is not None:
+            # A run row without a queue state has no bench to name; a
+            # bench-less event would mint a junk ``bench:`` stream.
+            self._emit(
+                "run_changed",
+                state["bench_id"],
+                run_id,
+                evidence={"reason": reason, "request_id": request_id},
+            )
         return self._run_projection(run_id)
 
     # --- control: leases --------------------------------------------------------
@@ -401,7 +481,8 @@ class Operations:
             holder=identity.principal,
             expires_at=_iso_plus_ms(now, duration_ms),
         )
-        self._emit("lease_changed", bench_id, lease.lease_id, request_id=request_id)
+        self._emit("lease_changed", bench_id, lease.lease_id,
+                   evidence={"request_id": request_id})
         return self._lease_projection(lease)
 
     def lease_renew(
@@ -438,9 +519,8 @@ class Operations:
             expires_at=_iso_plus_ms(now, duration_ms),
         )
         self._store.release_lease(lease.bench_id, lease.sequence, now)
-        self._emit(
-            "lease_changed", lease.bench_id, lease.lease_id, request_id=request_id
-        )
+        self._emit("lease_changed", lease.bench_id, lease.lease_id,
+                   evidence={"request_id": request_id})
         return self._lease_projection(successor)
 
     def lease_release(
@@ -467,8 +547,7 @@ class Operations:
             "lease_changed",
             lease.bench_id,
             lease.lease_id,
-            reason=reason,
-            request_id=request_id,
+            evidence={"reason": reason, "request_id": request_id},
         )
         return self._lease_projection(replace(lease, state="released"))
 
@@ -530,9 +609,20 @@ class Operations:
 
     # --- control helpers --------------------------------------------------------
 
-    def _emit(self, kind: str, bench_id: str, subject_id: str, **details: Any) -> None:
-        """Event seam (Task 6): durable bench event streams land there; a
-        no-op hook now so call sites are final."""
+    def _emit(self, kind: str, bench_id: str, run_id: str | None,
+              evidence: dict[str, Any] | None = None) -> None:
+        """Durable bench event stream (Task 6): kind from the seven, append
+        to ``bench:{bench_id}``, retention-trimmed after every emit."""
+        append_bench_event(
+            self._store, kind, bench_id, run_id, evidence,
+            keep=self._limits["max_page_size"] * 10, now_iso=self._now_iso,
+        )
+
+    def _emit_evidence_gap(self, bench_id: str, run_id: str, failures: int) -> None:
+        """One ``evidence_gap`` per drain when monitor retention failed —
+        evidence write failures are loud, never dropped (invariant 6)."""
+        self._emit("evidence_gap", bench_id, run_id,
+                   {"retention_failures": failures})
 
     def _run_projection(self, run_id: str) -> dict[str, Any]:
         """Contract ``run`` object (interface-v1.1.0 ``run`` def: closed,

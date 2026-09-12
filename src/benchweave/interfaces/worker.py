@@ -27,6 +27,7 @@ from typing import Any
 
 from benchweave.content.store import ContentStore
 from benchweave.control.clocking import SystemClock
+from benchweave.interfaces.operations import append_bench_event
 from benchweave.state.store import Store
 
 
@@ -40,6 +41,7 @@ class RunWorker:
         *,
         build_run: Callable[[str, str, dict[str, Any], Store], Any],
         now_iso: Callable[[], str] | None = None,
+        limits: dict[str, int] | None = None,
     ) -> None:
         self._store = store
         # ``content`` stays on the landed constructor surface; build_run
@@ -47,6 +49,10 @@ class RunWorker:
         del content
         self._build_run = build_run
         self._now_iso = now_iso if now_iso is not None else SystemClock().now_iso
+        # Task 6: retention window for drain-side bench events. None = the
+        # worker appends untrimmed; the seam's next emit re-trims the stream
+        # (worker slack is bounded at three events per completed run).
+        self._emit_keep = limits["max_page_size"] * 10 if limits is not None else None
         self._queue: queue.Queue[tuple[str, str, dict[str, Any], str]] = queue.Queue()
         self._thread = threading.Thread(target=self._drain, name="stg-run-worker", daemon=True)
         self._stopping = threading.Event()
@@ -124,6 +130,29 @@ class RunWorker:
                 raise
             else:
                 store.put_run_state(run_id, bench_id, "terminal", self._now_iso())
+                self._emit_completion(store, coordinator, run_id, bench_id)
             finally:
                 self._done += 1
                 self._queue.task_done()
+
+    def _emit_completion(
+        self, store: Store, coordinator: Any, run_id: str, bench_id: str
+    ) -> None:
+        """Task 6: honest drain-side bench events, appended on the worker's
+        own (thread-affine) store. The durable terminal record decides the
+        ``trip`` emission; the coordinator's monitor retention counter
+        decides the single ``evidence_gap`` — neither is inferred from the
+        in-memory return value."""
+        run = store.get_run(run_id)
+        terminal = run["terminal"] if run is not None else None
+        append_bench_event(store, "run_changed", bench_id, run_id, None,
+                           keep=self._emit_keep, now_iso=self._now_iso)
+        if terminal is not None and str(terminal.get("outcome")) == "tripped":
+            append_bench_event(store, "trip", bench_id, run_id, None,
+                               keep=self._emit_keep, now_iso=self._now_iso)
+        monitor = getattr(coordinator, "monitor", None)
+        failures = int(getattr(monitor, "retention_failures", 0)) if monitor else 0
+        if failures > 0:
+            append_bench_event(store, "evidence_gap", bench_id, run_id,
+                               {"retention_failures": failures},
+                               keep=self._emit_keep, now_iso=self._now_iso)

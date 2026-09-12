@@ -289,6 +289,60 @@ class Store:
         ).fetchall()
         return [json.loads(row[0]) for row in rows]
 
+    def read_events_after(
+        self, stream_id: str, after: str | None, limit: int
+    ) -> list[dict[str, Any]]:
+        """Windowed read for cursor paging: the ``limit`` events after
+        sequence ``after`` (whole-stream head when ``after`` is None),
+        ordered — no silent reordering, no silent truncation beyond limit."""
+        if after is None:
+            rows = self._conn.execute(
+                "SELECT event_json FROM events WHERE stream_id = ? ORDER BY sequence LIMIT ?",
+                (stream_id, limit),
+            ).fetchall()
+        else:
+            rows = self._conn.execute(
+                "SELECT event_json FROM events WHERE stream_id = ? AND sequence > ?"
+                " ORDER BY sequence LIMIT ?",
+                (stream_id, int(after), limit),
+            ).fetchall()
+        return [json.loads(row[0]) for row in rows]
+
+    def stream_watermarks(self, stream_id: str) -> tuple[str | None, str | None]:
+        """(oldest, current) sequence as decimal strings; (None, None) when
+        the stream is empty — retention arithmetic needs both bounds."""
+        row = self._conn.execute(
+            "SELECT MIN(sequence), MAX(sequence) FROM events WHERE stream_id = ?",
+            (stream_id,),
+        ).fetchone()
+        if row is None or row[0] is None:
+            return None, None
+        return str(row[0]), str(row[1])
+
+    def trim_stream(self, stream_id: str, keep: int) -> int:
+        """Delete the oldest events beyond ``keep``; return the deleted
+        count. Trimming is the only event deletion, and callers surface it
+        as ``cursor_expired`` — never silent truncation."""
+        self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            cursor = self._conn.execute(
+                "SELECT sequence FROM events WHERE stream_id = ? ORDER BY sequence DESC"
+                " LIMIT 1 OFFSET ?",
+                (stream_id, keep - 1),
+            ).fetchone()
+            if cursor is None:
+                self._conn.execute("ROLLBACK")
+                return 0
+            deleted = self._conn.execute(
+                "DELETE FROM events WHERE stream_id = ? AND sequence < ?",
+                (stream_id, cursor[0]),
+            ).rowcount
+        except BaseException:
+            self._conn.execute("ROLLBACK")
+            raise
+        self._conn.execute("COMMIT")
+        return int(deleted)
+
     # --- generation authority (WP07) -----------------------------------------
 
     def current_generation(self, bench_id: str) -> int:
