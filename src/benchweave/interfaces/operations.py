@@ -423,7 +423,10 @@ class Operations:
         return projection
 
     def run_get(self, identity: Identity, run_id: str) -> dict[str, Any]:
-        require_permission(identity, "control")
+        # Catalog authority (operation-catalog.json declares run_get observe,
+        # interface-v1.1.0): the read tier, with control/admin admitted via
+        # the hierarchy — the Task 10 parity ledger's tier-drift fix.
+        require_permission(identity, "observe")
         return self._run_projection(run_id)
 
     def run_find(self, identity: Identity, request_id: str) -> dict[str, Any]:

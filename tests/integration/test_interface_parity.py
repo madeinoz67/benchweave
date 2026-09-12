@@ -1,0 +1,1053 @@
+"""WP07 Task 10 parity suite: REST and MCP are the same instrument, per-op.
+
+One live gateway (real store/content/bootstrap/app/worker via ``create_app``,
+uvicorn on a real loopback port — Task 8's pattern; REST rides the same port's
+``/v1`` routes) serves BOTH transports. Every shared operation is fired with
+the same logical request on each transport and the FULL contract envelope is
+compared: MCP ``structuredContent`` must equal the REST body field-for-field
+(the adapters wrap the one seam in the one envelope), and each reachable
+failure class must surface the same error code at REST's
+``error_http_status`` and inside the MCP envelope.
+
+Deviation register — what this suite PINS as documented deviations (each has
+a test; none is silent) versus what it proves equal:
+
+- D1 ``run_get`` tier (catalog is authority): the seam required ``control``
+  while the catalog declares ``observe``. The seam was FIXED to observe; the
+  suite pins both tiers (observe passes directly, control passes via the
+  observe ⊆ control ⊆ admin hierarchy).
+- D2 ``change_apply`` body: the catalog's REST input schema does not declare
+  ``approver_token``, but the REST adapter forwards it as a seam kwarg
+  (Task 9 disclosure). CATALOG-AMENDMENT note: the vendored catalog is frozen
+  authority and is NOT edited here — the suite pins the behavior end-to-end
+  (authenticated apply over REST succeeds; apply without the detached token
+  fails closed ``forbidden``/``missing_token``) and records the amendment for
+  WP08. The three admin ops are REST-only by catalog: no MCP twin exists.
+- D3 required-vs-defaulted params: catalog input schemas declare paging/
+  chunk params REQUIRED; REST rejects an absent param as 400
+  ``invalid_request``. The MCP tool signatures carry dummy defaults (the
+  Task 8 fidelity workaround — the signature is only the callable, the
+  vendored schema is pinned for ``tools/list``), and fastmcp 4.0.3 does NOT
+  enforce the pinned schema's ``required`` at dispatch: a tools/call
+  omitting a required argument SUCCEEDS through the default. Pinned
+  honestly below (empirical), WP08 reconciliation item.
+- D4 event evidence shape: the seam emits free-form evidence dicts
+  (``{retention_failures}``, ``{reason, request_id}``, ``{request_id}``)
+  while the contract's event ``evidence`` def is a closed document ref
+  ``{id, version, sha256}``. The CURRENT wire shape is pinned (events_get
+  carries the free-form dict on both transports); payloads are NOT reshaped
+  here. WP08 reconciliation item.
+- D5 wire ``tools/list`` schemas are vendored-minus-``$defs`` (Task 1's
+  accepted serve-time dereference deviation) — pinned here at the wire
+  level, alongside the exactly-17 tool set with no admin twin.
+- D6 failure-class expressibility: token-shaped rejections collapse to a
+  transport 401 on MCP (no envelope can exist pre-auth — the WP02 map's 403
+  semantics surface only at REST), and ``payload_too_large`` is REST-only
+  (no MCP transport body ceiling is wired).
+- Write-op equivalence: ``run_start`` is compared via its §9 idempotent
+  replay (byte-identical envelope); the lease lifecycle's monotone fields
+  are compared with exactly the mutating field masked (``sequence`` for
+  create/renew — same lease identity via the §9 key; ``lease_id`` for
+  release — two fixture-seeded leases, one released per transport).
+- Unreachable failure classes, named and not faked: ``policy_denied``
+  (``_bench_projection`` has no tripped source yet — the flag is hardcoded
+  False until the WP08 hardware surface), ``gone``/``event_gap``/
+  ``rate_limited``/``unavailable``/``internal_error`` (no emitting path is
+  reachable through a healthy app: event_gap needs monitor retention
+  failures, unavailable needs an undecided apply crash or a worker-less
+  gateway, internal_error needs an unexpected exception).
+"""
+
+from __future__ import annotations
+
+import base64
+import hashlib
+import json
+import threading
+import time
+import urllib.error
+import urllib.request
+from collections.abc import Iterator
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
+
+import httpx
+import pytest
+import uvicorn
+from fastapi import FastAPI
+
+from benchweave.content.store import ContentStore
+from benchweave.interfaces.app import create_app
+from benchweave.interfaces.identity import issue
+from benchweave.state.store import Store
+
+FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "execution"
+CONTRACTS = Path(__file__).resolve().parents[2] / "contracts" / "interface-v1.1.0"
+CATALOG = json.loads((CONTRACTS / "operation-catalog.json").read_text(encoding="utf-8"))
+VENDORED_TOOLS = {
+    t["name"]: t
+    for t in json.loads((CONTRACTS / "mcp-tools.json").read_text(encoding="utf-8"))[
+        "tools"
+    ]
+}
+OPS = {op["name"]: op for op in CATALOG["operations"]}
+SHARED_OPS = [op for op in CATALOG["operations"] if op["mcp_tool"]]
+REST_ONLY_OPS = [op for op in CATALOG["operations"] if not op["mcp_tool"]]
+
+SECRET = b"wp07-task-ten-secret"
+NOW_ISO = "2026-09-12T00:00:00Z"
+NOW_EPOCH = 1_800_000_000
+LIMITS: dict[str, int] = {
+    "max_json_bytes": 1048576,
+    "max_page_size": 1000,
+    "max_chunk_bytes": 65536,
+    "max_lease_ms": 600000,
+    "min_poll_ms": 100,
+    "max_admission_ms": 5000,
+}
+BENCH = "sim-bench"
+DEVICE = "descriptor-sim-controller"  # bootstrap keys rows by descriptor id
+BINDING_SHA = hashlib.sha256((FIXTURES / "run-binding.json").read_bytes()).hexdigest()
+BINDING_REF = {"id": "req-voltage-check-1", "version": "1.0.0", "sha256": BINDING_SHA}
+ARTIFACT_BYTES = b"0123456789abcdefghij"  # 20 bytes — chunk reassembly target
+TARGET_REF = {"id": "t10", "version": "1", "sha256": "0" * 64}
+RUN_REQUEST = "req-parity-run"
+
+
+def _token(
+    principal: str, scopes: set[str], *, audience: str = "stg"
+) -> str:
+    return issue(
+        SECRET,
+        principal=principal,
+        audience=audience,
+        scopes=scopes,
+        expires_at=NOW_EPOCH + 3600,
+    )
+
+
+# One principal owns the seeded §9 keys; tiers differ only by scope.
+OBSERVE = _token("parity", {"stg:observe"})
+CONTROL = _token("parity", {"stg:control"})
+ADMIN = _token("parity", {"stg:admin"})
+
+
+def _bearer(token: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {token}"}
+
+
+# --- module gateway: one live app, both transports, seeded state -------------
+
+
+def _boot(app: FastAPI) -> tuple[uvicorn.Server, threading.Thread, int]:
+    """Task 8's loopback boot: real port, lifespan-run (worker + bootstrap)."""
+    config = uvicorn.Config(app, host="127.0.0.1", port=0, log_level="error")
+    server = uvicorn.Server(config)
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    for _ in range(200):
+        if getattr(server, "started", False):
+            break
+        time.sleep(0.05)
+    assert getattr(server, "started", False), "uvicorn did not start"
+    servers = server.servers
+    assert servers is not None, "uvicorn did not bind within 10s"
+    return server, thread, servers[0].sockets[0].getsockname()[1]
+
+
+def _store_approval(
+    content: ContentStore, change_id: str, expected_generation: int
+) -> dict[str, str]:
+    """One approval document binding ``change_id`` at one generation (Task 7)."""
+    body = {
+        "change_id": change_id,
+        "expected_generation": expected_generation,
+        "approver_principal": "approver-10",
+        "policy_version": "1",
+    }
+    raw = json.dumps(body, sort_keys=True).encode()
+    sha = hashlib.sha256(raw).hexdigest()
+    content.put_document(raw, sha, body, "urn:stg:approval", NOW_ISO)
+    return {"id": f"approval-{change_id}", "version": "1", "sha256": sha}
+
+
+APPROVER_TOKEN = _token("approver-10", {"stg:admin"}, audience="gateway-admin")
+
+
+@pytest.fixture(scope="module")
+def gateway(tmp_path_factory: pytest.TempPathFactory) -> Iterator[SimpleNamespace]:
+    """Seed the whole inventory the matrix reads, in generation-fence order.
+
+    Pre-boot (content store): one artifact + one evidence row. Post-boot via
+    REST (admin principal ``parity``): one run driven to a truthful terminal
+    by the app's real worker (the run_start replay case and run_get/run_find/
+    run_cancel all compare its STABLE terminal projection), plus three leases
+    at generation 1 — one for the renew case, two to be released one per
+    transport. Generation stays 1 until the admin pins late in the module.
+    """
+    tmp_path = tmp_path_factory.mktemp("task10-parity")
+    store = Store.open(tmp_path / "state.db", check_same_thread=False)
+    content = ContentStore(store)
+    artifact_id = content.put_artifact(ARTIFACT_BYTES, NOW_ISO)
+    evidence_id = content.put_evidence(
+        "document",
+        {"id": "ev-doc", "version": "1", "sha256": "0" * 64},
+        artifact_id,
+        None,
+        NOW_ISO,
+    )
+    app = create_app(
+        store=store,
+        content=content,
+        secret=SECRET,
+        limits=LIMITS,
+        gateway_id="gw-task10",
+        fixtures_dir=FIXTURES,
+        now_iso=lambda: NOW_ISO,
+        now_epoch=lambda: NOW_EPOCH,
+    )
+    server, thread, port = _boot(app)
+    base = f"http://127.0.0.1:{port}"
+    with httpx.Client(base_url=base, timeout=10.0) as client:
+        started = client.post(
+            f"/v1/benches/{BENCH}/runs",
+            headers=_bearer(ADMIN),
+            json={
+                "request_id": RUN_REQUEST,
+                "binding_ref": BINDING_REF,
+                "expected_generation": 1,
+                "lease_id": None,
+            },
+        )
+        assert started.status_code == 202, started.text
+        run_id = started.json()["data"]["run_id"]
+        final = _poll_terminal(client, run_id)
+        assert final["outcome"] == "passed", final
+
+        leases: dict[str, str] = {}
+        for name, request in (
+            ("renew", "req-parity-lease-renew"),
+            ("rel_a", "req-parity-lease-rel-a"),
+            ("rel_b", "req-parity-lease-rel-b"),
+        ):
+            created = client.post(
+                f"/v1/benches/{BENCH}/leases",
+                headers=_bearer(CONTROL),
+                json={
+                    "request_id": request,
+                    "expected_generation": 1,
+                    "duration_ms": 60000,
+                },
+            )
+            assert created.status_code == 201, created.text
+            leases[name] = created.json()["data"]["lease_id"]
+
+        yield SimpleNamespace(
+            client=client,
+            base=base,
+            port=port,
+            store=store,
+            content=content,
+            run_id=run_id,
+            leases=leases,
+            artifact_id=artifact_id,
+            evidence_id=evidence_id,
+        )
+    server.should_exit = True
+    thread.join(timeout=5)
+    store.close()
+
+
+def _poll_terminal(client: httpx.Client, run_id: str) -> dict[str, Any]:
+    """Poll run_get to a terminal projection (the stable read parity needs)."""
+    deadline = time.monotonic() + 60.0
+    while True:
+        resp = client.get(f"/v1/runs/{run_id}", headers=_bearer(ADMIN))
+        assert resp.status_code == 200, resp.text
+        data: dict[str, Any] = resp.json()["data"]
+        if data["state"] == "terminal":
+            return data
+        assert time.monotonic() < deadline, f"run never reached terminal: {data}"
+        time.sleep(0.2)
+
+
+# --- MCP client (Task 8's frame pattern: session + SSE-aware post) ----------
+
+
+def _post(
+    port: int, payload: dict[str, Any], headers: dict[str, str] | None = None
+) -> tuple[int, dict[str, Any] | None]:
+    """POST one JSON-RPC frame; parse JSON or SSE framing; status always kept."""
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{port}/mcp",
+        data=json.dumps(payload).encode(),
+        headers={
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream",
+            **(headers or {}),
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            status = response.status
+            raw = response.read().decode("utf-8")
+            content_type = response.headers.get("Content-Type", "")
+    except urllib.error.HTTPError as error:  # transport-level rejections (401)
+        return error.code, None
+    if not raw.strip():
+        return status, None
+    if content_type.startswith("text/event-stream"):
+        data_line = next(line for line in raw.splitlines() if line.startswith("data:"))
+        raw = data_line[5:]
+    return status, json.loads(raw)
+
+
+def _initialize(
+    port: int, headers: dict[str, str]
+) -> tuple[int, str | None]:
+    """One MCP initialize frame -> (status, session id); a rejected token
+    surfaces as HTTP 401 with no session (the transport's only expression)."""
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{port}/mcp",
+        data=json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2025-11-25",
+                    "capabilities": {},
+                    "clientInfo": {"name": "task10", "version": "0"},
+                },
+            }
+        ).encode(),
+        headers={
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream",
+            **headers,
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            return response.status, response.headers.get("mcp-session-id")
+    except urllib.error.HTTPError as error:
+        return error.code, None
+
+
+def _call(
+    port: int, tool: str, arguments: dict[str, Any], token: str
+) -> dict[str, Any]:
+    """One tools/call on a fresh session -> the contract envelope."""
+    headers = _bearer(token)
+    status, session = _initialize(port, headers)
+    assert status == 200 and session is not None, (status, session)
+    ack = _post(
+        port,
+        {"jsonrpc": "2.0", "method": "notifications/initialized"},
+        {"Mcp-Session-Id": session, **headers},
+    )
+    assert ack[0] in (200, 202), ack
+    status, body = _post(
+        port,
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {"name": tool, "arguments": arguments},
+        },
+        {"Mcp-Session-Id": session, **headers},
+    )
+    assert status == 200, (status, body)
+    assert body is not None and "result" in body, body
+    result = body["result"]
+    structured = result.get("structuredContent")
+    if isinstance(structured, dict):
+        found: dict[str, Any] = structured
+        return found
+    envelope: dict[str, Any] = json.loads(result["content"][0]["text"])
+    return envelope
+
+
+def _rest(
+    gw: SimpleNamespace,
+    method: str,
+    path: str,
+    body: dict[str, Any] | None,
+    token: str,
+) -> tuple[int, dict[str, Any]]:
+    resp = gw.client.request(method, path, json=body, headers=_bearer(token))
+    return resp.status_code, resp.json()
+
+
+def _fill(value: Any, ids: dict[str, Any]) -> Any:
+    """Resolve ``"{name}"`` sentinels from ``ids`` (Task 9's matrix pattern)."""
+    if isinstance(value, str) and value.startswith("{") and value.endswith("}"):
+        return ids[value[1:-1]]
+    if isinstance(value, dict):
+        return {key: _fill(item, ids) for key, item in value.items()}
+    return value
+
+
+# --- wire tools/list: exactly 17, no admin twin, vendored-minus-$defs (D5) ---
+
+
+def test_wire_tools_list_exact_set_and_schemas(gateway: SimpleNamespace) -> None:
+    headers = _bearer(OBSERVE)
+    status, session = _initialize(gateway.port, headers)
+    assert status == 200 and session is not None
+    status, body = _post(
+        gateway.port,
+        {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+        {"Mcp-Session-Id": session, **headers},
+    )
+    assert status == 200 and body is not None, body
+    wire_tools = body["result"]["tools"]
+    names = {tool["name"] for tool in wire_tools}
+    assert names == {op["mcp_tool"] for op in SHARED_OPS}
+    assert len(names) == 17
+    for op in REST_ONLY_OPS:
+        assert f"stg_v1_{op['name']}" not in names  # admin ops have no MCP twin
+    for tool in wire_tools:
+        vendored = VENDORED_TOOLS[tool["name"]]["inputSchema"]
+        assert tool["inputSchema"] == {
+            key: value for key, value in vendored.items() if key != "$defs"
+        }, f"{tool['name']} wire schema drifted (D5 pin: vendored minus $defs)"
+
+
+# --- per-operation success parity: FULL envelope equality --------------------
+
+
+EXACT_CASES: dict[str, dict[str, Any]] = {
+    # op -> rest (method, path, body), mcp tool arguments, token tier.
+    # Every read compares a stable projection; run_cancel's response is the
+    # terminal projection (worker cancel on a finished run is a documented
+    # no-op), so firing it on both transports is byte-comparable.
+    "gateway_info": {
+        "rest": ("get", "/v1", None),
+        "mcp": {},
+        "token": OBSERVE,
+    },
+    "bench_list": {
+        "rest": ("get", "/v1/benches?limit=10&cursor=", None),
+        "mcp": {"limit": 10, "cursor": None},
+        "token": OBSERVE,
+    },
+    "bench_get": {
+        "rest": ("get", f"/v1/benches/{BENCH}", None),
+        "mcp": {"bench_id": BENCH},
+        "token": OBSERVE,
+    },
+    "device_list": {
+        "rest": ("get", f"/v1/benches/{BENCH}/devices?limit=10&cursor=", None),
+        "mcp": {"bench_id": BENCH, "limit": 10, "cursor": None},
+        "token": OBSERVE,
+    },
+    "device_get": {
+        "rest": ("get", f"/v1/benches/{BENCH}/devices/{DEVICE}", None),
+        "mcp": {"bench_id": BENCH, "device_id": DEVICE},
+        "token": OBSERVE,
+    },
+    "document_get": {
+        "rest": ("get", "/v1/documents/{sha}", None),
+        "mcp": {"sha256": "{sha}"},
+        "token": OBSERVE,
+    },
+    "run_check": {
+        "rest": ("post", f"/v1/benches/{BENCH}/run-checks", {"binding_ref": BINDING_REF}),
+        "mcp": {"bench_id": BENCH, "binding_ref": BINDING_REF},
+        "token": CONTROL,
+    },
+    # OBSERVE is the tier pin (D1): the catalog declares run_get observe.
+    "run_get": {
+        "rest": ("get", "/v1/runs/{run_id}", None),
+        "mcp": {"run_id": "{run_id}"},
+        "token": OBSERVE,
+    },
+    "run_find": {
+        "rest": ("get", f"/v1/requests/{RUN_REQUEST}", None),
+        "mcp": {"request_id": RUN_REQUEST},
+        "token": CONTROL,
+    },
+    "run_cancel": {
+        "rest": (
+            "post",
+            "/v1/runs/{run_id}/cancellations",
+            {"request_id": "req-parity-cancel", "reason": "parity"},
+        ),
+        "mcp": {
+            "run_id": "{run_id}",
+            "request_id": "req-parity-cancel",
+            "reason": "parity",
+        },
+        "token": CONTROL,
+    },
+    "events_get": {
+        "rest": ("get", f"/v1/benches/{BENCH}/events?after=&limit=10", None),
+        "mcp": {"bench_id": BENCH, "after": None, "limit": 10},
+        "token": OBSERVE,
+    },
+    "evidence_get": {
+        "rest": ("get", "/v1/evidence/{evidence_id}", None),
+        "mcp": {"evidence_id": "{evidence_id}"},
+        "token": OBSERVE,
+    },
+    "artifact_read": {
+        "rest": ("get", "/v1/artifacts/{artifact_id}/chunks?offset=0&length=64", None),
+        "mcp": {"artifact_id": "{artifact_id}", "offset": 0, "length": 64},
+        "token": OBSERVE,
+    },
+}
+WRITE_LIFECYCLE_OPS = {"lease_create", "lease_release", "lease_renew", "run_start"}
+assert set(EXACT_CASES) == {op["name"] for op in SHARED_OPS} - WRITE_LIFECYCLE_OPS, (
+    "matrix must cover every shared op except the four write-lifecycle ops"
+)
+
+
+@pytest.mark.parametrize("op_name", sorted(EXACT_CASES))
+def test_rest_and_mcp_agree_per_operation(
+    gateway: SimpleNamespace, op_name: str
+) -> None:
+    case = EXACT_CASES[op_name]
+    seed = {
+        "sha": BINDING_SHA,
+        "run_id": gateway.run_id,
+        "evidence_id": gateway.evidence_id,
+        "artifact_id": gateway.artifact_id,
+    }
+    method, path, body = case["rest"]
+    status, rest_json = _rest(
+        gateway, method, path.format(**seed), _fill(body, seed), case["token"]
+    )
+    assert status == OPS[op_name]["success_status"], (op_name, rest_json)
+    assert rest_json["ok"] is True, op_name
+    mcp_json = _call(
+        gateway.port,
+        OPS[op_name]["mcp_tool"],
+        _fill(case["mcp"], seed),
+        case["token"],
+    )
+    # Contract §2: MCP structuredContent carries the same STG result — the
+    # FULL data envelope, field for field, not a shape sample.
+    assert mcp_json == rest_json, op_name
+
+
+# --- D1: run_get tier pinned at observe (catalog authority) ------------------
+
+
+def test_run_get_catalog_tier_observe_control_hierarchy(
+    gateway: SimpleNamespace,
+) -> None:
+    """Catalog declares observe; the hierarchy still admits control/admin."""
+    for token in (OBSERVE, CONTROL, ADMIN):
+        status, rest_json = _rest(gateway, "get", f"/v1/runs/{gateway.run_id}", None, token)
+        assert status == 200 and rest_json["ok"] is True, (token, rest_json)
+        assert _call(gateway.port, "stg_v1_run_get", {"run_id": gateway.run_id}, token) == (
+            rest_json
+        )
+
+
+# --- write-lifecycle parity ---------------------------------------------------
+
+
+def test_run_start_replay_parity(gateway: SimpleNamespace) -> None:
+    """§9 replay: the same request id + binding pin returns the ORIGINAL run
+    (no second enqueue), so both transports answer byte-identically."""
+    status, rest_json = _rest(
+        gateway,
+        "post",
+        f"/v1/benches/{BENCH}/runs",
+        {
+            "request_id": RUN_REQUEST,
+            "binding_ref": BINDING_REF,
+            "expected_generation": 1,
+            "lease_id": None,
+        },
+        CONTROL,
+    )
+    assert status == 202, rest_json
+    assert rest_json["data"]["run_id"] == gateway.run_id
+    assert rest_json["data"]["state"] == "terminal"
+    mcp_json = _call(
+        gateway.port,
+        "stg_v1_run_start",
+        {
+            "bench_id": BENCH,
+            "request_id": RUN_REQUEST,
+            "binding_ref": BINDING_REF,
+            "expected_generation": 1,
+            "lease_id": None,
+        },
+        CONTROL,
+    )
+    assert mcp_json == rest_json
+
+
+def test_lease_create_parity(gateway: SimpleNamespace) -> None:
+    """Same §9 key on both transports names the SAME lease identity; only the
+    monotone fencing ``sequence`` differs (masked — the one mutating field)."""
+    body = {
+        "request_id": "req-parity-lease-create",
+        "expected_generation": 1,
+        "duration_ms": 60000,
+    }
+    rest_status, rest_json = _rest(
+        gateway, "post", f"/v1/benches/{BENCH}/leases", body, CONTROL
+    )
+    mcp_json = _call(
+        gateway.port,
+        "stg_v1_lease_create",
+        {"bench_id": BENCH, **body},
+        CONTROL,
+    )
+    assert rest_status == 201 and rest_json["ok"] and mcp_json["ok"]
+    assert rest_json["data"]["lease_id"] == mcp_json["data"]["lease_id"]
+    masked = [{**env["data"], "sequence": None} for env in (rest_json, mcp_json)]
+    assert masked[0] == masked[1]
+    assert rest_json["data"]["sequence"] != mcp_json["data"]["sequence"]
+
+
+def test_lease_release_parity(gateway: SimpleNamespace) -> None:
+    """Two fixture-seeded leases, one released per transport: identical
+    released-envelope shape; only the §9-derived ``lease_id`` differs."""
+    rest_status, rest_json = _rest(
+        gateway,
+        "post",
+        f"/v1/leases/{gateway.leases['rel_a']}/releases",
+        {"request_id": "req-parity-release-rest", "reason": "done"},
+        CONTROL,
+    )
+    mcp_json = _call(
+        gateway.port,
+        "stg_v1_lease_release",
+        {
+            "lease_id": gateway.leases["rel_b"],
+            "request_id": "req-parity-release-mcp",
+            "reason": "done",
+        },
+        CONTROL,
+    )
+    assert rest_status == 200 and rest_json["ok"] and mcp_json["ok"]
+    assert rest_json["data"]["state"] == mcp_json["data"]["state"] == "released"
+    # Both fields differ by construction: §9-derived lease ids name different
+    # leases, and bench-wide fencing sequences are monotone per issue.
+    masked = [
+        {**env["data"], "lease_id": None, "sequence": None}
+        for env in (rest_json, mcp_json)
+    ]
+    assert masked[0] == masked[1]
+
+
+def test_lease_renew_parity(gateway: SimpleNamespace) -> None:
+    """Renew twice (REST at sequence S, MCP at S+1): same lease identity and
+    frozen-clock expiry; only the fencing ``sequence`` advances (masked).
+    The live sequence is read from the store — the fixture run's coordinator
+    reservation consumed sequence 1, so no sequence is positionally knowable."""
+    current = next(
+        lease.sequence
+        for lease in gateway.store.list_leases(BENCH)
+        if lease.lease_id == gateway.leases["renew"] and lease.state == "active"
+    )
+    rest_status, rest_json = _rest(
+        gateway,
+        "post",
+        f"/v1/leases/{gateway.leases['renew']}/renewals",
+        {
+            "request_id": "req-parity-renew-rest",
+            "sequence": current,
+            "duration_ms": 60000,
+        },
+        CONTROL,
+    )
+    assert rest_status == 200, rest_json
+    next_sequence = rest_json["data"]["sequence"]
+    mcp_json = _call(
+        gateway.port,
+        "stg_v1_lease_renew",
+        {
+            "lease_id": gateway.leases["renew"],
+            "request_id": "req-parity-renew-mcp",
+            "sequence": next_sequence,
+            "duration_ms": 60000,
+        },
+        CONTROL,
+    )
+    assert mcp_json["ok"], mcp_json
+    assert mcp_json["data"]["lease_id"] == rest_json["data"]["lease_id"]
+    masked = [{**env["data"], "sequence": None} for env in (rest_json, mcp_json)]
+    assert masked[0] == masked[1]
+    assert mcp_json["data"]["sequence"] == next_sequence + 1
+
+
+# --- failure-class parity ------------------------------------------------------
+
+FAILURE_CASES: list[tuple[str, str]] = [
+    # code, how the two sides compare (see the assertion block for levels):
+    # "full" = the seam produced the identical failure on both transports.
+    ("unauthenticated", "transport"),
+    ("forbidden", "code"),
+    ("not_found", "full"),
+    ("conflict", "full"),
+]
+
+
+@pytest.mark.parametrize("code,level", FAILURE_CASES)
+def test_failure_classes_match_on_both_transports(
+    gateway: SimpleNamespace, code: str, level: str
+) -> None:
+    if code == "unauthenticated":
+        # REST: 401 + contract envelope for a MISSING token; MCP: the
+        # transport can only reject 401 pre-auth (D6, pinned honestly).
+        resp = gateway.client.get("/v1")  # no Authorization header at all
+        assert resp.status_code == 401
+        assert resp.json()["error"]["code"] == "unauthenticated"
+        status, session = _initialize(gateway.port, {})
+        assert status == 401 and session is None  # transport-level reject
+        return
+
+    if code == "forbidden":
+        # Insufficient tier on each transport's own surface: observe token on
+        # the admin REST route / on the control-tier MCP tool.
+        status, rest_json = _rest(
+            gateway, "get", "/v1/admin/changes/none", None, OBSERVE
+        )
+        mcp_json = _call(
+            gateway.port,
+            "stg_v1_run_check",
+            {"bench_id": BENCH, "binding_ref": BINDING_REF},
+            OBSERVE,
+        )
+    elif code == "not_found":
+        status, rest_json = _rest(gateway, "get", "/v1/benches/nope-bench", None, OBSERVE)
+        mcp_json = _call(
+            gateway.port, "stg_v1_bench_get", {"bench_id": "nope-bench"}, OBSERVE
+        )
+    else:  # conflict: stale expected_generation, never enqueued
+        body = {
+            "request_id": "req-parity-conflict",
+            "binding_ref": BINDING_REF,
+            "expected_generation": 999,
+            "lease_id": None,
+        }
+        status, rest_json = _rest(
+            gateway, "post", f"/v1/benches/{BENCH}/runs", body, CONTROL
+        )
+        mcp_json = _call(
+            gateway.port,
+            "stg_v1_run_start",
+            {"bench_id": BENCH, **body},
+            CONTROL,
+        )
+
+    assert status == CATALOG["error_http_status"][code], (code, rest_json)
+    assert rest_json["ok"] is False and mcp_json["ok"] is False
+    assert rest_json["error"]["code"] == mcp_json["error"]["code"] == code
+    assert rest_json["error"]["retry"] == mcp_json["error"]["retry"]
+    if level == "full":
+        assert rest_json["error"] == mcp_json["error"], code
+
+
+def test_invalid_request_required_param_rest_vs_mcp_default(
+    gateway: SimpleNamespace,
+) -> None:
+    """D3 pin (empirical): REST rejects an absent required param (400
+    invalid_request); fastmcp 4.0.3 does NOT enforce the pinned schema's
+    ``required`` at dispatch — the signature's dummy default fires and the
+    call SUCCEEDS. Both behaviors pinned honestly; WP08 reconciliation."""
+    status, rest_json = _rest(gateway, "get", "/v1/benches", None, OBSERVE)
+    assert status == 400
+    assert rest_json["error"]["code"] == "invalid_request"
+
+    status, rest_json = _rest(gateway, "get", "/v1/benches?limit=abc&cursor=", None, OBSERVE)
+    assert status == 400
+    assert rest_json["error"]["code"] == "invalid_request"
+
+    mcp_json = _call(gateway.port, "stg_v1_bench_list", {}, OBSERVE)
+    assert mcp_json["ok"] is True, mcp_json  # limit/cursor defaulted, not rejected
+
+
+def test_payload_too_large_rest_only(gateway: SimpleNamespace) -> None:
+    """D6 pin: the REST adapter enforces ``max_json_bytes`` (413); no MCP
+    transport body ceiling is wired, so the class is REST-reachable only."""
+    padding = "x" * (LIMITS["max_json_bytes"] + 1)
+    resp = gateway.client.post(
+        f"/v1/benches/{BENCH}/run-checks",
+        headers=_bearer(ADMIN),
+        json={"binding_ref": {"id": padding, "version": "1", "sha256": BINDING_SHA}},
+    )
+    assert resp.status_code == 413
+    assert resp.json()["error"]["code"] == "payload_too_large"
+
+
+# --- D4: event evidence wire shape ---------------------------------------------
+
+
+def test_event_evidence_shape_deviation(gateway: SimpleNamespace) -> None:
+    """D4 pin: the seam's free-form evidence dict rides the wire on both
+    transports (the contract's event def declares a closed doc-ref — the
+    divergence is pinned, not reshaped; WP08 reconciliation item).
+
+    Runs BEFORE the retention-trim case: the run_cancel evidence rows this
+    asserts over are exactly what the trim deletes.
+    """
+    _, rest_json = _rest(
+        gateway, "get", f"/v1/benches/{BENCH}/events?after=&limit=100", None, OBSERVE
+    )
+    mcp_json = _call(
+        gateway.port,
+        "stg_v1_events_get",
+        {"bench_id": BENCH, "after": None, "limit": 100},
+        OBSERVE,
+    )
+    assert mcp_json == rest_json
+    evidences = [event["evidence"] for event in rest_json["data"]["events"]]
+    # The matrix's run_cancel emitted {reason, request_id} — free-form, and
+    # demonstrably not the closed {id, version, sha256} doc-ref.
+    assert {"reason": "parity", "request_id": "req-parity-cancel"} in evidences
+    assert not any(set(ev) == {"id", "version", "sha256"} for ev in evidences)
+
+
+def test_cursor_expired_after_retention_trim(gateway: SimpleNamespace) -> None:
+    """cursor_expired on both transports: a valid held cursor the retention
+    window has overtaken is refused, never silently truncated (Task 6). The
+    trim is seeded directly on the fixture's store; both adapters then read
+    the same retained stream."""
+    stream = f"bench:{BENCH}"
+    page = _rest(
+        gateway, "get", f"/v1/benches/{BENCH}/events?after=&limit=1", None, OBSERVE
+    )
+    assert page[1]["ok"] is True
+    held = page[1]["data"]["cursor"]
+    assert held is not None
+    gateway.store.trim_stream(stream, 1)  # retention overtakes the held cursor
+    status, rest_json = _rest(
+        gateway, "get", f"/v1/benches/{BENCH}/events?after={held}&limit=10", None, OBSERVE
+    )
+    mcp_json = _call(
+        gateway.port,
+        "stg_v1_events_get",
+        {"bench_id": BENCH, "after": held, "limit": 10},
+        OBSERVE,
+    )
+    assert status == 410
+    assert rest_json["error"]["code"] == "cursor_expired"
+    assert mcp_json["error"] == rest_json["error"]
+
+
+# --- §9 isolation (ledger item 7) ----------------------------------------------
+
+
+def test_cross_principal_request_id_isolation(gateway: SimpleNamespace) -> None:
+    """§9 (ledger item 7) over the SEEDED run: discovery is principal-scoped —
+    a foreign principal replaying the request id finds nothing on either
+    transport; the owning principal's retry returns the same run on both.
+
+    No second run is started here by design: the coordinator's acceptance
+    key is the BINDING document's own request id ("run ids are never
+    reusable"), so a fresh run_start on the same binding would crash in the
+    worker instead of proving anything about §9 — Task 9's matrix replays for
+    the same reason. Principal scoping is exactly what run_find proves."""
+    owner = _token("parity", {"stg:control"})  # the seeded run's principal
+    foreign = _token("parity-b", {"stg:control"})
+
+    status, rest_json = _rest(gateway, "get", f"/v1/requests/{RUN_REQUEST}", None, foreign)
+    assert status == 404
+    mcp_json = _call(
+        gateway.port, "stg_v1_run_find", {"request_id": RUN_REQUEST}, foreign
+    )
+    assert mcp_json["ok"] is False
+    assert mcp_json["error"] == rest_json["error"]
+
+    status, rest_json = _rest(gateway, "get", f"/v1/requests/{RUN_REQUEST}", None, owner)
+    assert status == 200 and rest_json["data"]["run_id"] == gateway.run_id
+    assert _call(
+        gateway.port, "stg_v1_run_find", {"request_id": RUN_REQUEST}, owner
+    ) == rest_json
+
+
+# --- document bytes + chunk digests through both transports --------------------
+
+
+def test_document_bytes_and_chunk_digests(gateway: SimpleNamespace) -> None:
+    raw = (FIXTURES / "run-binding.json").read_bytes()
+    _, rest_json = _rest(
+        gateway, "get", f"/v1/documents/{BINDING_SHA}", None, OBSERVE
+    )
+    assert base64.b64decode(rest_json["data"]["original_utf8_base64"]) == raw
+    mcp_json = _call(
+        gateway.port, "stg_v1_document_get", {"sha256": BINDING_SHA}, OBSERVE
+    )
+    assert mcp_json == rest_json
+    assert base64.b64decode(mcp_json["data"]["original_utf8_base64"]) == raw
+
+    # Interleaved chunk reads reassemble to the whole-artifact digest; every
+    # response's sha256 is the WHOLE artifact's (Task 3 invariant).
+    _, whole = _rest(
+        gateway,
+        "get",
+        f"/v1/artifacts/{gateway.artifact_id}/chunks?offset=0&length=64",
+        None,
+        OBSERVE,
+    )
+    whole_sha = whole["data"]["sha256"]
+    assert whole["data"]["total_bytes"] == len(ARTIFACT_BYTES)
+    assert whole["data"]["eof"] is True
+    reassembled = b""
+    for offset, via_mcp in ((0, False), (7, True), (14, False)):
+        if via_mcp:
+            chunk = _call(
+                gateway.port,
+                "stg_v1_artifact_read",
+                {"artifact_id": gateway.artifact_id, "offset": offset, "length": 7},
+                OBSERVE,
+            )["data"]
+        else:
+            chunk = _rest(
+                gateway,
+                "get",
+                f"/v1/artifacts/{gateway.artifact_id}/chunks?offset={offset}&length=7",
+                None,
+                OBSERVE,
+            )[1]["data"]
+        assert chunk["sha256"] == whole_sha
+        assert chunk["bytes"] == min(7, len(ARTIFACT_BYTES) - offset)
+        reassembled += base64.b64decode(chunk["base64"])
+    assert reassembled == ARTIFACT_BYTES
+    assert hashlib.sha256(reassembled).hexdigest() == whole_sha
+
+
+# --- admin pins (D2 + stored-generation fence + not_ready) ---------------------
+
+
+def test_change_apply_approver_token_end_to_end(gateway: SimpleNamespace) -> None:
+    """D2 CATALOG-AMENDMENT pin (REST-only surface): the catalog body omits
+    ``approver_token`` yet REST forwards it as a seam kwarg — apply without
+    the detached token fails closed; apply with it succeeds end-to-end."""
+    submitted = gateway.client.post(
+        "/v1/admin/changes",
+        headers=_bearer(ADMIN),
+        json={
+            "request_id": "req-pin-notoken",
+            "bench_id": BENCH,
+            "kind": "trip_reset",
+            "target_ref": TARGET_REF,
+            "expected_generation": 1,
+            "reason": "pin: fail closed without approver token",
+        },
+    )
+    assert submitted.status_code == 201, submitted.text
+    change_id = submitted.json()["data"]["change_id"]
+
+    denied = gateway.client.post(
+        f"/v1/admin/changes/{change_id}/apply",
+        headers=_bearer(ADMIN),
+        json={
+            "request_id": "req-pin-notoken-apply",
+            "expected_generation": 1,
+            "approval_ref": _store_approval(gateway.content, change_id, 1),
+        },
+    )
+    assert denied.status_code == 403, denied.text
+    assert denied.json()["error"]["code"] == "forbidden"
+    assert "missing_token" in denied.json()["error"]["message"]
+    _, failed = _rest(gateway, "get", f"/v1/admin/changes/{change_id}", None, ADMIN)
+    assert failed["data"]["state"] == "failed"
+
+    ok = gateway.client.post(
+        "/v1/admin/changes",
+        headers=_bearer(ADMIN),
+        json={
+            "request_id": "req-pin-apply-ok",
+            "bench_id": BENCH,
+            "kind": "trip_reset",
+            "target_ref": TARGET_REF,
+            "expected_generation": 1,
+            "reason": "pin: apply with detached approver token",
+        },
+    )
+    assert ok.status_code == 201, ok.text
+    applied_change = ok.json()["data"]["change_id"]
+    applied = gateway.client.post(
+        f"/v1/admin/changes/{applied_change}/apply",
+        headers=_bearer(ADMIN),
+        json={
+            "request_id": "req-pin-apply-ok-apply",
+            "expected_generation": 1,
+            "approval_ref": _store_approval(gateway.content, applied_change, 1),
+            "approver_token": APPROVER_TOKEN,
+        },
+    )
+    assert applied.status_code == 200, applied.text
+    assert applied.json()["data"]["state"] == "applied"
+
+
+def test_change_apply_stored_generation_fence(gateway: SimpleNamespace) -> None:
+    """Ledger item 5: right token, wrong stored generation — the change record
+    was proposed at generation 2; apply presenting 3 (with a matching approval
+    binding) is a conflict and records ``failed``, not a silent apply."""
+    submitted = gateway.client.post(
+        "/v1/admin/changes",
+        headers=_bearer(ADMIN),
+        json={
+            "request_id": "req-pin-stale",
+            "bench_id": BENCH,
+            "kind": "trip_reset",
+            "target_ref": TARGET_REF,
+            "expected_generation": 2,  # stored generation (post first apply)
+            "reason": "pin: stored-generation fence",
+        },
+    )
+    assert submitted.status_code == 201, submitted.text
+    change_id = submitted.json()["data"]["change_id"]
+    conflicted = gateway.client.post(
+        f"/v1/admin/changes/{change_id}/apply",
+        headers=_bearer(ADMIN),
+        json={
+            "request_id": "req-pin-stale-apply",
+            "expected_generation": 3,  # approval binds 3 so verification passes
+            "approval_ref": _store_approval(gateway.content, change_id, 3),
+            "approver_token": APPROVER_TOKEN,
+        },
+    )
+    assert conflicted.status_code == 409, conflicted.text
+    assert conflicted.json()["error"]["code"] == "conflict"
+    assert "proposed at generation 2" in conflicted.json()["error"]["message"]
+    _, record = _rest(gateway, "get", f"/v1/admin/changes/{change_id}", None, ADMIN)
+    assert record["data"]["state"] == "failed"
+    assert record["data"]["reasons"]
+
+
+def test_not_ready_configuration_activation_under_live_lease(
+    gateway: SimpleNamespace,
+) -> None:
+    """not_ready pin (REST-only admin surface): the idle boundary refuses a
+    configuration_activation while the renew-parity lease is still live."""
+    submitted = gateway.client.post(
+        "/v1/admin/changes",
+        headers=_bearer(ADMIN),
+        json={
+            "request_id": "req-pin-notready",
+            "bench_id": BENCH,
+            "kind": "configuration_activation",
+            "target_ref": TARGET_REF,
+            "expected_generation": 2,
+            "reason": "pin: activation under live lease",
+        },
+    )
+    assert submitted.status_code == 201, submitted.text
+    change_id = submitted.json()["data"]["change_id"]
+    refused = gateway.client.post(
+        f"/v1/admin/changes/{change_id}/apply",
+        headers=_bearer(ADMIN),
+        json={
+            "request_id": "req-pin-notready-apply",
+            "expected_generation": 2,
+            "approval_ref": _store_approval(gateway.content, change_id, 2),
+            "approver_token": APPROVER_TOKEN,
+        },
+    )
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["error"]["code"] == "not_ready"
+    assert "live lease" in refused.json()["error"]["message"]
+    _, record = _rest(gateway, "get", f"/v1/admin/changes/{change_id}", None, ADMIN)
+    assert record["data"]["state"] == "failed"
