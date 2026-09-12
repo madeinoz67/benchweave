@@ -53,12 +53,17 @@ my-device-plugin/
         client.py          # Optional protocol client
         codec.py           # Optional framing/parsing
         vectors/
+    contracts/             # Pinned local test inputs
+    docs/
     tests/
+    firmware/              # Custom devices: source, toolchain, tests, recovery docs
 ```
 
 Declare a factory such as `my_device_plugin.adapter:create_plugin` in the descriptor. Include the descriptor and its referenced evidence in the built package and verify their paths in the release bundle. This is a suggested source layout, not a new discovery convention. A declarative plugin needs no Python `src/` tree unless it contains Python tooling.
 
-Bundled plugins use `src/benchweave/devices/<manufacturer>/<model>/` and matching `tests/devices/<manufacturer>/<model>/`. The existing DPS-150 integration is a **bundled device plugin**. It is not moved or made independently releasable by this documentation change. Both distribution choices follow the same applicable OTDP contracts; bundling does not grant extra authority or hardware qualification.
+In this repository, use `plugins/<manufacturer>/<name>/` as the independent project root, containing the complete layout above. For DPS-150 this is `plugins/fnirsi/dps150/`, distribution `benchweave-fnirsi-dps150`, import `benchweave_fnirsi_dps150`, and factory `benchweave_fnirsi_dps150.adapter:create_plugin`. The core wheel does not bundle it. The model directory must build and test unchanged outside the core checkout. See the [complete directory structure](device-developer-guide.md#repository-layout-for-device-plugins), including optional custom-device firmware.
+
+For custom hardware, put firmware source, board configuration, toolchain locks, firmware tests and flashing/recovery documentation in `firmware/` alongside the plugin. Maintain an explicit firmware/plugin compatibility record. Existing vendor devices need no firmware subtree without maintained source. Co-location does not combine Python installation with flashing; firmware operations remain separately authorised.
 
 **Hosting a plugin means hosting its source or release files.** The admitted plugin runs on the bench gateway using scoped host services; it does not run on the public download host. Authors can maintain public or private repositories, but a source host alone is not a compliant registry. [Package and share](#5-package-and-share) explains current tooling and release requirements.
 
@@ -66,7 +71,7 @@ Bundled plugins use `src/benchweave/devices/<manufacturer>/<model>/` and matchin
 
 | Item | What is shipped |
 |---|---|
-| Bundled Python plugin | Python source, descriptor and supporting files inside the BenchWeave wheel (`.whl`) |
+| Python device plugin | Its own wheel (`.whl`) containing protocol code, adapter, descriptor and supporting files; separate from the core wheel |
 | External registry release | ZIP payload containing the plugin files, a separate JSON manifest and associated status/authentication metadata |
 | Source repository | Editable source, tests, documentation and build configuration |
 | Device firmware | A separate board-specific image produced by the firmware toolchain |
