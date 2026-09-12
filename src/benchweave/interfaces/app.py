@@ -11,7 +11,9 @@ mount so its ``/v1`` routes win.
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
+import json
 import sys
 import tempfile
 import threading
@@ -30,7 +32,7 @@ from benchweave.control.documents import AdmittedDocuments, admit_documents
 from benchweave.host.plugin import DevicePlugin
 from benchweave.interfaces.bootstrap import admit_startup_bench
 from benchweave.interfaces.mcp import build_mcp
-from benchweave.interfaces.operations import Operations
+from benchweave.interfaces.operations import Operations, append_bench_event
 from benchweave.interfaces.rest import build_router
 from benchweave.interfaces.worker import RunWorker
 from benchweave.state.store import Store
@@ -42,6 +44,10 @@ _SIM_PLUGINS: tuple[tuple[str, str], ...] = (
     ("psu", "sim_psu"),
     ("controller", "sim_controller"),
 )
+
+#: Bench-stream evidence reason on the recovery ``run_changed`` (Task 11
+#: wiring). Free-form evidence joins the Task 10 parity ledger's D4 family.
+RECOVERY_RUN_CHANGED_REASON = "gateway restart recovery: run finalised as interrupted"
 
 
 class WriteGate:
@@ -124,6 +130,81 @@ def _spool_documents(
         ),
         "descriptor_paths": descriptor_paths,
     }
+
+
+def _recovery_documents(fixtures_dir: Path) -> AdmittedDocuments:
+    """Admit the startup lattice for recovery (Task 11 wiring).
+
+    ``RunCoordinator.recover_interrupted`` only reads the admitted bench's
+    identity, but recovery holds itself to the same admission standard as
+    execution: the fixture lattice is fully admitted and pin-verified. The
+    procedure is the binding-pinned one (the lattice may carry a family).
+    """
+    binding = json.loads((fixtures_dir / "run-binding.json").read_bytes())
+    procedure_sha = str(binding["procedure"]["sha256"])
+    procedure_path = next(
+        (
+            path
+            for path in sorted(fixtures_dir.glob("procedure-*.json"))
+            if hashlib.sha256(path.read_bytes()).hexdigest() == procedure_sha
+        ),
+        None,
+    )
+    if procedure_path is None:
+        raise FileNotFoundError("binding-pinned procedure not found under fixtures")
+    bench = json.loads((fixtures_dir / "bench.json").read_bytes())
+    by_sha = {
+        hashlib.sha256(path.read_bytes()).hexdigest(): path
+        for path in sorted(fixtures_dir.glob("descriptor-*.json"))
+    }
+    descriptor_paths = {
+        str(device["id"]): by_sha[str(device["descriptor"]["sha256"])]
+        for device in bench["devices"]
+    }
+    return admit_documents(
+        procedure_path=procedure_path,
+        policy_path=fixtures_dir / "safety-policy.json",
+        bench_path=fixtures_dir / "bench.json",
+        binding_path=fixtures_dir / "run-binding.json",
+        commissioning_path=fixtures_dir / "commissioning.json",
+        descriptor_paths=descriptor_paths,
+    )
+
+
+def _recover_interrupted_runs(
+    store: Store,
+    fixtures_dir: Path,
+    *,
+    emit_keep: int,
+    now_iso: Callable[[], str],
+) -> list[str]:
+    """Startup recovery (Task 11 wiring): close what a dead process left open.
+
+    ``RunCoordinator.recover_interrupted`` finalises durable runs left
+    without a terminal record as ``interrupted``/``unknown`` (rebuilding
+    their occurrence identities from the durable event stream so nothing
+    re-dispatches) and releases their leases. The interface owns the queue
+    projection, so each recovered run's state closes ``terminal`` and one
+    ``run_changed`` makes the gap visible on the bench stream — nothing
+    else is invented. No plugins are constructed: recovery never touches a
+    device.
+    """
+    docs = _recovery_documents(fixtures_dir)
+    coordinator = RunCoordinator(store, {}, SystemClock(), SystemClock(), docs)
+    recovered = coordinator.recover_interrupted()
+    bench_id = str(docs.bench["id"])
+    for run_id in recovered:
+        store.put_run_state(run_id, bench_id, "terminal", now_iso())
+        append_bench_event(
+            store,
+            "run_changed",
+            bench_id,
+            run_id,
+            {"reason": RECOVERY_RUN_CHANGED_REASON},
+            keep=emit_keep,
+            now_iso=now_iso,
+        )
+    return recovered
 
 
 class _RetainingCoordinator(RunCoordinator):
@@ -255,6 +336,11 @@ def create_app(
     async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         with gate:
             admit_startup_bench(store, content, fixtures_dir, now=now_iso())
+            # Task 11 wiring: a restarted gateway closes what a dead process
+            # left open before it serves or executes anything new.
+            _recover_interrupted_runs(
+                store, fixtures_dir, emit_keep=quota, now_iso=now_iso
+            )
         worker.start()
         try:
             async with mcp_app.lifespan(app):

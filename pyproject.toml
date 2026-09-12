@@ -53,6 +53,9 @@ packages = ["src/benchweave"]
 [tool.pytest.ini_options]
 addopts = "-q -p no:cacheprovider"
 testpaths = ["tests"]
+markers = [
+  "slow: real child-process orchestration (kill-mid-run); deselect in CI with -m 'not slow'",
+]
 
 [tool.ruff]
 line-length = 100

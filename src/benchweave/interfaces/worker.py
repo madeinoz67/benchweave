@@ -32,7 +32,14 @@ from benchweave.state.store import Store
 
 
 class RunWorker:
-    """Drains the accepted-run queue FIFO; exactly one run is ever active."""
+    """Drains the accepted-run queue FIFO; exactly one run is ever active.
+
+    A job whose construction or execution raises is contained per job
+    (Task 11 poison guard): the queue state closes terminal without a
+    terminal record — honest ``outcome_unknown`` through the projection —
+    a ``run_changed`` carries the worker error, and the drain continues
+    with the next queued run.
+    """
 
     def __init__(
         self,
@@ -125,9 +132,20 @@ class RunWorker:
                 finally:
                     with self._active_lock:
                         self._active = None
-            except BaseException:
+            except BaseException as error:
+                # Task 11 poison guard: one poisoned job must never kill the
+                # worker (a dead thread hangs every later run). Truth stays
+                # with the run's own lifecycle: the queue state closes
+                # terminal WITHOUT a terminal record, so the projection
+                # reports outcome_unknown — honest uncertainty, never a
+                # fabricated outcome. The bench stream carries the worker
+                # error so the gap is visible, and the drain continues.
                 store.put_run_state(run_id, bench_id, "terminal", self._now_iso())
-                raise
+                append_bench_event(
+                    store, "run_changed", bench_id, run_id,
+                    {"worker_error": f"{type(error).__name__}: {error}"},
+                    keep=self._emit_keep, now_iso=self._now_iso,
+                )
             else:
                 store.put_run_state(run_id, bench_id, "terminal", self._now_iso())
                 self._emit_completion(store, coordinator, run_id, bench_id)
