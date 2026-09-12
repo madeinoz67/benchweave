@@ -143,8 +143,9 @@ class OriginConfig:
         carry none — so config assembly can never silently ship an
         unsigned origin under a signed registry's identity
         (:class:`RegistryRejected` ``invalid_origin_config``, itself a
-        :class:`ValueError`). The resolver's map-level check is the same
-        rule one layer up (belt and braces).
+        :class:`ValueError`). This fence owns the rule outright — the
+        resolver performs no map-level re-check (the once-duplicated branch
+        was pruned; surface-audit wave 1, item 5).
         """
         if self.signature_policy == "required":
             if self.root is None:
@@ -175,11 +176,9 @@ class Resolver:
     """Resolve dependency closures from configured origins under strict routing."""
 
     def __init__(self, origins: Mapping[str, OriginConfig]) -> None:
-        for cfg in origins.values():
-            if cfg.signature_policy == "required" and cfg.root is None:
-                # Fail-closed: an origin that must authenticate has no root
-                # to authenticate with.
-                raise RegistryRejected("invalid_origin_config")
+        # No map-level posture re-check: OriginConfig.__post_init__ owns the
+        # required-root / dev-unsigned fence at construction, so an inverted
+        # posture cannot reach the map (surface-audit wave 1, item 5).
         self._origins: dict[str, OriginConfig] = dict(origins)
 
     def _origin_for(self, registry_id: str, package_id: str) -> OriginConfig:
@@ -238,7 +237,7 @@ class Resolver:
         registry_id, package_id, version = key
         origin = self._origin_for(registry_id, package_id)
         source = origin.source
-        root = origin.root  # TrustRoot under `required` (validated at __init__)
+        root = origin.root  # TrustRoot under `required` (guaranteed by the fence)
         try:
             raw, digest = source.manifest_bytes(package_id, version)
             manifest_doc = load_manifest_document(
@@ -250,8 +249,8 @@ class Resolver:
                 manifest_sig = b""
             else:
                 if root is None:
-                    # Unreachable past __init__ validation; keeps the verify
-                    # call below typed against a real root.
+                    # Unreachable past the OriginConfig fence; keeps the
+                    # verify call below typed against a real root.
                     raise RegistryRejected("invalid_origin_config")
                 try:
                     manifest_sig = source.manifest_signature(package_id, version)

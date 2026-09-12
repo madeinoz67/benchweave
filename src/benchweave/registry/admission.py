@@ -26,8 +26,11 @@ sequence is normative (each step runs for the whole closure before the next):
    total (``archive_too_large`` / ``too_many_files`` / ``unpacked_too_large``).
 3. **Verified extraction** — the archive digest AND the declared archive size
    are verified against the actual payload bytes before any extraction
-   (``payload_digest_mismatch``); every zip member's name re-runs the §4 path
-   rules and its type is asserted regular (symlinks and other non-regular
+   (``payload_digest_mismatch``); a payload that is not a well-formed zip
+   archive rejects as ``archive_invalid``; every zip member's name re-runs
+   the §4 path rules (single-sourced in
+   :func:`~benchweave.registry.manifests.check_payload_path`) and its type is
+   asserted regular (symlinks and other non-regular
    members are ``path_unsafe``; regular-file writes cannot create links);
    each member is read bounded by its declared size and verified against the
    manifest inventory (``extra_file`` / ``file_hash_mismatch``); the actual
@@ -64,9 +67,9 @@ from benchweave.registry.authenticity import (
     TrustRoot,
     check_status,
 )
-from benchweave.registry.manifests import Key
+from benchweave.registry.manifests import Key, check_payload_path
 from benchweave.registry.resolver import ResolvedClosure, ResolvedRelease
-from benchweave.registry.schemas import load_lock_document
+from benchweave.registry.schemas import RegistryRejected, load_lock_document
 
 #: Document budget for the generated package lock (bytes).
 _LOCK_MAX_BYTES = 1_000_000
@@ -212,11 +215,6 @@ def _gate_limits(closure: ResolvedClosure, limits: AdmissionLimits) -> None:
             raise AdmissionRejected("unpacked_too_large")
 
 
-def _member_path_unsafe(name: str) -> bool:
-    """The §4 path rules from ``manifests._check_payload_paths``, on real names."""
-    return name.startswith("/") or ".." in name.split("/") or "\\" in name
-
-
 def _verify_members(release: ResolvedRelease, limits: AdmissionLimits) -> dict[str, bytes]:
     """Step 3 (verification half): archive and member checks, all in memory."""
     declared = release.manifest["payload"]
@@ -227,30 +225,41 @@ def _verify_members(release: ResolvedRelease, limits: AdmissionLimits) -> dict[s
     inventory: dict[str, dict[str, Any]] = {entry["path"]: entry for entry in declared["files"]}
     verified: dict[str, bytes] = {}
     unpacked = 0
-    with zipfile.ZipFile(io.BytesIO(release.payload)) as archive:
-        for info in archive.infolist():
-            name = info.filename
-            if _member_path_unsafe(name):
-                raise AdmissionRejected("path_unsafe")
-            mode = info.external_attr >> 16
-            # File-type field only: zip writers commonly store permission bits
-            # without S_IFREG (the builder's members are 0o600), so an absent
-            # type is regular by construction — but a declared symlink,
-            # directory or device type is never admitted.
-            if stat.S_IFMT(mode) not in (0, stat.S_IFREG):
-                raise AdmissionRejected("path_unsafe")
-            entry = inventory.get(name)
-            if entry is None:
-                raise AdmissionRejected("extra_file")
-            # Bounded read: a member cannot deliver more than it declares.
-            with archive.open(info) as member:
-                data = member.read(entry["bytes"] + 1)
-            if len(data) != entry["bytes"] or _sha256(data) != entry["sha256"]:
-                raise AdmissionRejected("file_hash_mismatch")
-            unpacked += len(data)
-            if unpacked > limits.max_unpacked_bytes:
-                raise AdmissionRejected("unpacked_too_large")
-            verified[name] = data
+    try:
+        with zipfile.ZipFile(io.BytesIO(release.payload)) as archive:
+            for info in archive.infolist():
+                name = info.filename
+                # The §4 rule single-sourced in manifests: the same check the
+                # closure layer ran on declared inventory paths, re-run on
+                # the real member names before the inventory is consulted.
+                try:
+                    check_payload_path(name)
+                except RegistryRejected as exc:
+                    raise AdmissionRejected(exc.reason) from exc
+                mode = info.external_attr >> 16
+                # File-type field only: zip writers commonly store permission bits
+                # without S_IFREG (the builder's members are 0o600), so an absent
+                # type is regular by construction — but a declared symlink,
+                # directory or device type is never admitted.
+                if stat.S_IFMT(mode) not in (0, stat.S_IFREG):
+                    raise AdmissionRejected("path_unsafe")
+                entry = inventory.get(name)
+                if entry is None:
+                    raise AdmissionRejected("extra_file")
+                # Bounded read: a member cannot deliver more than it declares.
+                with archive.open(info) as member:
+                    data = member.read(entry["bytes"] + 1)
+                if len(data) != entry["bytes"] or _sha256(data) != entry["sha256"]:
+                    raise AdmissionRejected("file_hash_mismatch")
+                unpacked += len(data)
+                if unpacked > limits.max_unpacked_bytes:
+                    raise AdmissionRejected("unpacked_too_large")
+                verified[name] = data
+    except zipfile.BadZipFile as exc:
+        # A payload that is not a well-formed archive — at opening, or at any
+        # member the zip layer cannot decode — is an admission rejection,
+        # never a raw zipfile error leaking to the caller.
+        raise AdmissionRejected("archive_invalid") from exc
     if set(inventory) - set(verified):
         # A listed file with no archive member fails its bytes-and-hash match.
         raise AdmissionRejected("file_hash_mismatch")

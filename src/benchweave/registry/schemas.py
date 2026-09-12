@@ -23,10 +23,15 @@ _CONTRACTS = Path(__file__).resolve().parents[3] / "contracts" / "registry-v1.0.
 
 
 class RegistryRejected(ValueError):
-    """A registry document failed structure or schema validation."""
+    """A registry document failed structure or schema validation.
 
-    def __init__(self, reason: str) -> None:
-        super().__init__(reason)
+    ``detail`` (optional) widens the human-readable message — e.g. the first
+    failing schema path — without touching ``reason``; callers match on
+    ``reason`` alone.
+    """
+
+    def __init__(self, reason: str, detail: str | None = None) -> None:
+        super().__init__(reason if detail is None else f"{reason} ({detail})")
         self.reason = reason
 
 
@@ -51,7 +56,13 @@ def _load_validated(
         key=lambda error: error.json_path,
     )
     if errors:
-        raise RegistryRejected("schema_invalid")
+        # Diagnostic pointer only: ``reason`` stays exactly ``schema_invalid``;
+        # the message carries the first sorted error's JSON path so a schema
+        # rejection points at its subject (surface-audit wave 1, item 8).
+        first = errors[0]
+        raise RegistryRejected(
+            "schema_invalid", detail=f"first failing path: {first.json_path}"
+        )
     return doc
 
 

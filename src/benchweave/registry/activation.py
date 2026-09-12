@@ -141,8 +141,9 @@ def load_plugin(
     versions of one package never collide in ``sys.modules``. Construction
     goes through the module's ``create_plugin(now_fn, monotonic_ns_fn)``
     factory — the construction seam every plugin module exposes and the
-    conforming suite exercises. The instance is returned without
-    ``plugin_open``: the host opens it.
+    conforming suite exercises. An import that raises is rolled back out of
+    ``sys.modules`` before the error propagates. The instance is returned
+    without ``plugin_open``: the host opens it.
     """
     entry_p = PurePosixPath(entry_relpath)
     if entry_p.is_absolute() or ".." in entry_p.parts:
@@ -172,7 +173,14 @@ def load_plugin(
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
+    try:
+        spec.loader.exec_module(module)
+    except BaseException:
+        # A module whose body raised never leaves a half-initialized entry
+        # in sys.modules; the plugin's own error is the honest surface
+        # (surface-audit wave 1, item 3).
+        sys.modules.pop(spec.name, None)
+        raise
 
     create = getattr(module, "create_plugin", None)
     if not callable(create):

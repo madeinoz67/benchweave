@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -371,3 +372,31 @@ def test_load_rejects_tampered_cache_entry(
         )
     assert exc.value.reason == "file_hash_mismatch"
     assert imports == []  # the import machinery was never reached
+
+
+def test_load_pops_sys_modules_on_exec_failure(tmp_path: Path) -> None:
+    """Wave-1 item 3: an import-time failure leaves no half-initialized
+    module in ``sys.modules``. The plugin's own error is the honest surface —
+    ``ActivationRejected`` is not invented for a module body that raises —
+    but the loader's namespace hygiene must hold regardless."""
+    sha = "ee" * 32
+    payload = b"raise RuntimeError('boom at import')\n"
+    entry = tmp_path / "cache" / sha / "plugin.py"
+    entry.parent.mkdir(parents=True)
+    entry.write_bytes(payload)
+    manifest = {
+        "payload": {
+            "files": [
+                {
+                    "path": "plugin.py",
+                    "role": "implementation",
+                    "bytes": len(payload),
+                    "sha256": hashlib.sha256(payload).hexdigest(),
+                }
+            ]
+        }
+    }
+    module_name = f"plugin_py_{sha}"
+    with pytest.raises(RuntimeError, match="boom at import"):
+        load_plugin(tmp_path / "cache", manifest, sha, entry_relpath="plugin.py")
+    assert module_name not in sys.modules

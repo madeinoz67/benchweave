@@ -38,14 +38,26 @@ _SPDX_TOKEN = re.compile(r"[A-Za-z0-9.+-]+")
 _SPDX_OPERATORS = frozenset({"AND", "OR", "WITH"})
 
 
+def check_payload_path(path: str) -> None:
+    """Contract §4 payload-path rule, single-sourced for every consumer.
+
+    Raises ``RegistryRejected("path_unsafe")`` on an absolute path, a ``..``
+    segment, or a backslash. Both layers that enforce §4 call this one
+    function — ``_check_payload_paths`` on declared inventory paths at
+    closure admission, and admission's verified extraction on real zip
+    member names — so the two can never drift.
+    """
+    if path.startswith("/") or ".." in path.split("/") or "\\" in path:
+        raise RegistryRejected("path_unsafe")
+
+
 def _check_payload_paths(manifest: Mapping[str, Any]) -> None:
     """Defence in depth for contract §4 path rules the schema regex mostly covers."""
     seen: set[str] = set()
     seen_folded: set[str] = set()
     for entry in manifest["payload"]["files"]:
         path = entry["path"]
-        if path.startswith("/") or ".." in path.split("/") or "\\" in path:
-            raise RegistryRejected("path_unsafe")
+        check_payload_path(path)
         if path in seen:
             raise RegistryRejected("duplicate_path")
         folded = path.casefold()

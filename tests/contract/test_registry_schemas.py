@@ -90,6 +90,12 @@ def test_manifest_unknown_field_rejected() -> None:
     with pytest.raises(RegistryRejected) as exc:
         load_manifest_document(raw, _digest(raw), max_bytes=1_000_000)
     assert exc.value.reason == "schema_invalid"
+    # Wave-1 item 8: the message is diagnostic — it carries the first sorted
+    # error's JSON path so a schema rejection points at its subject. For an
+    # unknown top-level property jsonschema's additionalProperties error
+    # sits at the document root ($); the exact-path pin is on the bad-uri
+    # test below, whose first error carries a real property path.
+    assert "first failing path: $" in str(exc.value)
 
 
 @pytest.mark.parametrize(
@@ -111,6 +117,9 @@ def test_manifest_bad_uri_rejected_by_format_check(bad_url: str) -> None:
     with pytest.raises(RegistryRejected) as exc:
         load_manifest_document(raw, _digest(raw), max_bytes=1_000_000)
     assert exc.value.reason == "schema_invalid"
+    # Wave-1 item 8, exact-path pin: the first sorted error's JSON path
+    # (``$.support_url``) rides the rejection message.
+    assert "$.support_url" in str(exc.value)
 
 
 def test_manifest_kind_conditional_enforced() -> None:

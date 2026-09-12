@@ -353,6 +353,42 @@ def test_tampered_payload_digest_mismatch_cache_untouched(tmp_path: Path) -> Non
     assert not (tmp_path / "cache").exists()
 
 
+def test_corrupt_archive_rejected_as_archive_invalid(tmp_path: Path) -> None:
+    """Wave-1 item 2: a payload that is not a zip at all is an admission
+    rejection (``archive_invalid``), never a raw ``zipfile.BadZipFile``
+    leaking to the caller. The manifest is archive-consistent — the declared
+    digest and size match the corrupt bytes — so the archive layer is the
+    only gate left to refuse."""
+    closure = _resolve()
+    releases = []
+    for release in closure.releases:
+        if release.package_id != "benchweave/sim-psu":
+            releases.append(release)
+            continue
+        payload = b"this is not a zip archive\n"
+        manifest = json.loads(_canonical(release.manifest))
+        manifest["payload"]["sha256"] = _sha(payload)
+        manifest["payload"]["bytes"] = len(payload)
+        releases.append(replace(release, manifest=manifest, payload=payload))
+    with pytest.raises(AdmissionRejected) as exc:
+        _admit(ResolvedClosure(releases=tuple(releases)), tmp_path)
+    assert exc.value.reason == "archive_invalid"
+    assert not (tmp_path / "cache").exists()
+
+
+def test_member_path_unsafe_rejected(tmp_path: Path) -> None:
+    """Wave-1 item 1 pin: the §4 path rule single-sourced in manifests applies
+    to real zip member names — a traversing member is ``path_unsafe`` before
+    the inventory is consulted."""
+    closure = _resolve()
+    members = _members_of(_sim_psu(closure).payload) + [("../evil.txt", b"evil\n")]
+    mutated = _with_sim_psu_payload(closure, members, fix_entry_sizes=False)
+    with pytest.raises(AdmissionRejected) as exc:
+        _admit(mutated, tmp_path)
+    assert exc.value.reason == "path_unsafe"
+    assert not (tmp_path / "cache").exists()
+
+
 def test_extra_zip_member_rejected(tmp_path: Path) -> None:
     closure = _resolve()
     members = _members_of(_sim_psu(closure).payload) + [("extra.txt", b"unsigned\n")]
