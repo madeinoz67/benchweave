@@ -65,8 +65,15 @@ class Store:
     # --- lifecycle ---------------------------------------------------------
 
     @classmethod
-    def open(cls, path: str | Path) -> Store:
-        connection = sqlite3.connect(str(path), isolation_level=None)
+    def open(cls, path: str | Path, *, check_same_thread: bool = True) -> Store:
+        # ``check_same_thread=False`` is the ASGI-app posture (WP07 Task 8):
+        # the gateway serves from the event-loop thread while the store was
+        # opened on the caller's thread; usage stays serialised by design
+        # (single serving loop + the app write gate + WAL busy timeout), and
+        # the run worker keeps its own thread-affine connection.
+        connection = sqlite3.connect(
+            str(path), isolation_level=None, check_same_thread=check_same_thread
+        )
         connection.execute("PRAGMA journal_mode=WAL")
         connection.execute("PRAGMA synchronous=FULL")
         connection.execute("PRAGMA busy_timeout=5000")
