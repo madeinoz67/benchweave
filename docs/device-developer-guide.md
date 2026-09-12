@@ -4,7 +4,7 @@ Create, host and share BenchWeave device integrations, whether you are a human d
 
 **Baseline:** architecture 1.5 · OTDP 0.3.0 · adapter API 1.1 · registry 1.0.0 · execution 1.0.0 · interface 1.1.0.
 
-**Current status:** the repository provides architecture contracts, synthetic fixtures, a Python scaffold and architecture CI. It does not yet provide a working gateway host, plugin loader, public registry, device-install command or production SDK. You can develop descriptors, adapters and deterministic tests against the published ABI now. Host activation and hardware qualification require the corresponding implementation and bench evidence.
+**Current status:** the repository provides architecture contracts, synthetic fixtures, a Python scaffold, architecture CI, and the **gateway side of the registry contract**: strict schema loaders, an ed25519-authenticated fixture catalogue, configured-origin resolution, admission with a content-addressed package cache and package lock, idle-boundary activation, and a cache plugin loader — plus an **unsigned development loop** (see §10). The registry *service* side (search, submission, review pipeline, TUF distribution, public endpoints), the device-install command and the production SDK do not yet exist. You can develop descriptors, adapters and deterministic tests against the published ABI now, package and run them locally through the dev loop, and exercise admission against the committed signed catalogue. Host hardware qualification requires the corresponding implementation and bench evidence.
 
 This guide explains the workflow; it introduces no new protocol requirements. The linked specifications and schemas define the contracts. If prose and schema disagree, record a contract defect and resolve it explicitly before relying on the disputed behaviour.
 
@@ -33,7 +33,7 @@ Create a device evidence sheet before implementing commands. Record:
 
 Keep per-instance endpoints, credentials, serial selection, wiring and DUT limits in local bench configuration. They do not belong in a reusable descriptor. A device's maximum capability is not a safe limit for the attached DUT.
 
-Search existing source projects and configured registries before creating a duplicate. Compare exact firmware, profiles, host requirements, licence, permissions, evidence and maintenance status. Reuse a compatible release, contribute a fix, or fork with attribution. BenchWeave's registry is planned; there is currently no project registry endpoint or search command to use.
+Search existing source projects and configured registries before creating a duplicate. Compare exact firmware, profiles, host requirements, licence, permissions, evidence and maintenance status. Reuse a compatible release, contribute a fix, or fork with attribution. There is no public registry service yet; locally, resolve/admit runs against configured origins (the committed signed fixture catalogue today — see §10).
 
 ### Example: the first hardware target
 
@@ -221,6 +221,21 @@ The host owns protective priority independently of ordinary plugin work. Device 
 ## 10. Share packages and host a registry
 
 Hosting an integration on a bench and hosting its downloadable release are different responsibilities. A registry distributes packages and evidence; it never controls the bench.
+
+### Develop and test locally: the unsigned dev loop
+
+Signed releases are for production. For development and testing, package your plugin **unsigned** into a local dev origin — no signing keys, no ceremony:
+
+```sh
+uv run python scripts/registry/publish_dev.py plugins/sim_psu \
+  [--descriptor path/to/descriptor.json] [--out .dev-registry] [--version 0.0.0]
+```
+
+- The publisher emits `manifest.json`, `status.json` and `payload.zip` under `<out>/dev-local/dev/<plugin-dirname>/<version>/`, deterministic for identical inputs (canonical JSON, uncompressed zips). Dependencies default to the committed origin-main pins, so the normal dev closure is your unsigned implementation over signed production descriptor/profile packages; `--descriptor` publishes your descriptor unsigned alongside and repins.
+- A dev origin is configured with `signature_policy="dev-unsigned"`, a `dev-`-prefixed registry id (`dev-local`) and no trust root. **Unsigned skips authenticity only**: schema validation, the served-manifest identity check, dependency digest pinning, payload hashing, status expiry, the persisted sequence high-water, and lifecycle gates (revocation/yanked) all still run. A dev status file is unauthenticated by design — anything that can write the dev root can forge lifecycle state; keep dev roots local and disposable (`.dev-registry/` is gitignored).
+- Dev releases can never enter a production-graded closure: routing requires registry-id match, so a dev release resolves only through the dev origin, and every lock records origin ids — a dev-graded closure is visible by construction.
+- Admission works identically: resolve → admit into a content-addressed cache → `load_plugin` → dispatch. The signed path (`signature_policy="required"`, the default) verifies ed25519 signatures over manifest and status against the origin's trust root; under it, missing or invalid signatures reject `bad_signature`.
+- In this repository, catalogue signing keys live as GitHub repo secrets (`BENCHWEAVE_FIXTURE_KEY_MAIN`/`_ORIGINB`), materialised by CI; only public halves are committed. The committed fixture catalogue is the working example of a signed origin.
 
 ### Package author
 
