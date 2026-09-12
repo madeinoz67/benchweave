@@ -85,6 +85,64 @@ def test_conflicting_provided_id() -> None:
     assert exc.value.reason == "conflict"
 
 
+def test_wrapper_descriptor_sharing_implementation_id_conflicts() -> None:
+    """§11: the id-sharing exemption is ownership-direction-only.
+
+    A wrapper DESCRIPTOR that depends on the implementation (and on the
+    original descriptor, so every sharing pair is edge-joined) and
+    re-expresses their descriptor id is NOT an exemption: only the dependent
+    being an implementation re-expressing its depended-upon descriptor's id
+    is. Wrappers need distinct ids. Today's either-direction edge exemption
+    would admit this closure.
+    """
+    manifests = _base_closure()
+    wrapper = _load("benchweave/sim-psu-descriptor")
+    wrapper["package_id"] = "benchweave/sim-psu-wrapper"
+    # Depend on BOTH the original descriptor and the implementation, so
+    # every id-sharing pair is edge-joined: under the old either-direction
+    # exemption this closure admits; under the ownership-direction rule the
+    # wrapper (a descriptor, not an implementation) can never own the id.
+    wrapper["dependencies"].extend(
+        [
+            {
+                "registry_id": "origin-main",
+                "package_id": "benchweave/sim-psu-descriptor",
+                "version": "1.0.0",
+                "manifest_sha256": "0" * 64,
+            },
+            {
+                "registry_id": "origin-main",
+                "package_id": "benchweave/sim-psu",
+                "version": "1.0.0",
+                "manifest_sha256": "0" * 64,
+            },
+        ]
+    )
+    manifests[_key(wrapper)] = wrapper
+    with pytest.raises(RegistryRejected) as exc:
+        check_closure(manifests)
+    assert exc.value.reason == "conflict"
+
+
+def test_cross_kind_same_string_provides_do_not_conflict() -> None:
+    """Profile ids and descriptor ids are separate namespaces (§11).
+
+    A package providing the string "benchweave:sim-psu:1.0.0" as a PROFILE
+    id does not collide with the descriptor packages providing the same
+    string as a DESCRIPTOR id: the per-kind provider maps are distinct, so
+    cross-kind equality is not conflated into a conflict.
+    """
+    manifests = _base_closure()
+    stranger = _load("benchweave/dc-psu-profile")
+    stranger["package_id"] = "benchweave/stranger-profile"
+    stranger["provides"] = {
+        "profile_ids": ["benchweave:sim-psu:1.0.0"],
+        "descriptor_ids": [],
+    }
+    manifests[_key(stranger)] = stranger
+    check_closure(manifests)  # no raise
+
+
 def test_path_unsafe() -> None:
     manifests = _base_closure()
     impl = manifests[_key(_load("benchweave/sim-psu"))]

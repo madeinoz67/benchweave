@@ -8,7 +8,10 @@ closure-level semantics the schema cannot express. Reason codes raised via
 - ``duplicate_package`` — one ``(registry_id, package_id)`` twice in a closure
 - ``missing_dependency`` — a declared dependency absent from the closure
 - ``cycle`` — the dependency graph is not acyclic
-- ``conflict`` — the same provided profile/descriptor id from unrelated packages
+- ``conflict`` — the same provided profile/descriptor id (per kind) from
+  packages outside the §3 ownership direction (only an implementation
+  re-expressing the id its direct descriptor dependency provides is exempt;
+  profile ids and descriptor ids are separate namespaces)
 - ``path_unsafe`` / ``duplicate_path`` / ``case_fold_collision`` — payload path hygiene
 - ``invalid_spdx`` — licence expression is not a token/operator expression
 - ``mutable_source_revision`` — source revision is EXACTLY one of the denied
@@ -90,15 +93,34 @@ def _spdx_parses(expression: str) -> bool:
     return not expect_token
 
 
+def _re_expresses(
+    manifests: Mapping[Key, dict[str, Any]],
+    dependencies: Mapping[Key, set[Key]],
+    dependent: Key,
+    depended_upon: Key,
+) -> bool:
+    """Contract §3 ownership: ``dependent`` is an implementation re-expressing
+    an id its direct dependency ``depended_upon`` — a descriptor — provides.
+    The direction is fixed: only the implementation side of the edge can own
+    the re-expressed id.
+    """
+    return (
+        manifests[dependent]["kind"] == "implementation"
+        and manifests[depended_upon]["kind"] == "descriptor"
+        and depended_upon in dependencies[dependent]
+    )
+
+
 def check_closure(manifests: Mapping[Key, dict[str, Any]]) -> None:
     """Admit a schema-valid dependency closure or raise ``RegistryRejected``.
 
     ``manifests`` maps ``(registry_id, package_id, version)`` to already
     schema-valid manifest dicts and is not modified.
     """
-    # Pass 1 — per-manifest checks; index packages and provided ids.
+    # Pass 1 — per-manifest checks; index packages and provided ids per kind.
     by_package: dict[tuple[str, str], Key] = {}
-    providers: dict[str, set[Key]] = {}
+    profile_providers: dict[str, set[Key]] = {}
+    descriptor_providers: dict[str, set[Key]] = {}
     for key, manifest in manifests.items():
         package = (manifest["registry_id"], manifest["package_id"])
         if package in by_package:
@@ -109,9 +131,10 @@ def check_closure(manifests: Mapping[Key, dict[str, Any]]) -> None:
             raise RegistryRejected("invalid_spdx")
         if manifest["source"]["revision"] in _MUTABLE_REVISIONS:
             raise RegistryRejected("mutable_source_revision")
-        for ids in (manifest["provides"]["profile_ids"], manifest["provides"]["descriptor_ids"]):
-            for ident in ids:
-                providers.setdefault(ident, set()).add(key)
+        for ident in manifest["provides"]["profile_ids"]:
+            profile_providers.setdefault(ident, set()).add(key)
+        for ident in manifest["provides"]["descriptor_ids"]:
+            descriptor_providers.setdefault(ident, set()).add(key)
 
     dependencies: dict[Key, set[Key]] = {
         key: {
@@ -127,14 +150,23 @@ def check_closure(manifests: Mapping[Key, dict[str, Any]]) -> None:
             if dep_key not in manifests:
                 raise RegistryRejected("missing_dependency")
 
-    # Pass 3 — one owning definition per provided id. An implementation
-    # re-expresses the descriptor id of the descriptor package it depends on
-    # (contract §3: "executable adapter and its supported descriptors"), so a
-    # direct dependency edge between two providers establishes ownership;
-    # unrelated packages claiming the same provided id conflict (contract §10).
-    for keys in providers.values():
-        for left, right in combinations(sorted(keys), 2):
-            if right not in dependencies[left] and left not in dependencies[right]:
+    # Pass 3 — one owning definition per provided id, PER KIND. Profile ids
+    # and descriptor ids live in separate namespaces, so the same string
+    # provided as different kinds never collides. Within a kind, an
+    # implementation re-expresses the descriptor id of the descriptor package
+    # it depends on (contract §3: "executable adapter and its supported
+    # descriptors") — the ONLY exemption, and it is ownership-direction-only:
+    # the DEPENDENT must be the implementation and the DEPENDED-UPON the
+    # descriptor. A wrapper descriptor sharing its implementation's id is
+    # not exempt (wrappers need distinct ids), and anything else claiming
+    # the same provided id conflicts (contract §10/§11).
+    for providers in (profile_providers, descriptor_providers):
+        for keys in providers.values():
+            for left, right in combinations(sorted(keys), 2):
+                if _re_expresses(manifests, dependencies, left, right) or _re_expresses(
+                    manifests, dependencies, right, left
+                ):
+                    continue
                 raise RegistryRejected("conflict")
 
     # Pass 4 — the dependency graph is acyclic (depth-first search).
