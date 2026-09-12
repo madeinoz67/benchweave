@@ -86,7 +86,7 @@ def _publish(*args: str) -> subprocess.CompletedProcess[bytes]:
 def _dev_reg(tmp_path: Path) -> Path:
     """A freshly published unsigned dev registry under ``tmp_path``."""
     reg = tmp_path / "reg"
-    published = _publish("plugins/sim_psu", "--out", str(reg))
+    published = _publish("plugins/benchweave/sim_psu", "--out", str(reg))
     assert published.returncode == 0, published.stderr.decode()
     return reg
 
@@ -327,7 +327,7 @@ def test_dev_status_swap_rejects_status_release_mismatch(tmp_path: Path) -> None
     manifest's digest) rejects it."""
     reg = tmp_path / "reg"
     for version in ("0.0.0", "0.1.0"):
-        published = _publish("plugins/sim_psu", "--out", str(reg), "--version", version)
+        published = _publish("plugins/benchweave/sim_psu", "--out", str(reg), "--version", version)
         assert published.returncode == 0, published.stderr.decode()
     older = reg / DEV_ID / DEV_IMPL_PACKAGE / "0.0.0" / "status.json"
     target = reg / DEV_ID / DEV_IMPL_PACKAGE / "0.1.0" / "status.json"

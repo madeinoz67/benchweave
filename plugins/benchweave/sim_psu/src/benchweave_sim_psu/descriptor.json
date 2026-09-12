@@ -1,0 +1,34 @@
+{
+  "id": "descriptor-sim-psu",
+  "version": "1.0.0",
+  "profiles": [
+    "otdp.dc_psu/1.0.0"
+  ],
+  "actions": [
+    {
+      "action_id": "otdp.dc_psu.configure/1.0.0",
+      "issued": [
+        "configuration_id"
+      ]
+    },
+    {
+      "action_id": "otdp.dc_psu.output/1.0.0"
+    },
+    {
+      "action_id": "otdp.dc_psu.measure/1.0.0"
+    }
+  ],
+  "parameters": [
+    "voltage_setpoint_v",
+    "current_limit_a",
+    "ovp_threshold_v",
+    "ocp_threshold_a",
+    "load_a",
+    "output_enabled",
+    "operator_note",
+    "output_voltage_v",
+    "output_current_a",
+    "output_power_w",
+    "identity_model"
+  ]
+}

@@ -1,0 +1,10 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+# Verified development dependencies; reproducible from contracts/lock.json.
+contracts/otdp-v0.3.0/

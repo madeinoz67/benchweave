@@ -1,6 +1,6 @@
 """WP04 S4 — the fault matrix and protocol fixtures (closes gate G1).
 
-Replays every strict-JSON vector in fixtures/protocols/ against the real
+Replays every strict-JSON vector owned by plugins/benchweave/ against the real
 plugins, and proves the timeout-after-dispatch rule at the ABI layer: a
 result observed after its deadline expired may never claim ok — the slow
 device is modelled by advancing the injected clock inside dispatch, and the
@@ -29,7 +29,7 @@ from benchweave.host import (
 )
 
 ROOT = Path(__file__).resolve().parents[2]
-FIXTURES = ROOT / "fixtures" / "protocols"
+FIXTURES = ROOT / "plugins" / "benchweave"
 TICK = 10**9
 
 
@@ -80,7 +80,7 @@ class NullServices:
 
 
 def load_plugin_module(name: str) -> ModuleType:
-    path = ROOT / "plugins" / name / "plugin.py"
+    path = ROOT / "plugins" / "benchweave" / name / "src" / f"benchweave_{name}" / "plugin.py"
     spec = importlib.util.spec_from_file_location(f"fixture_{name}", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -127,7 +127,7 @@ def assert_expect(result: OperationResult, expect: dict[str, Any]) -> None:
 
 @pytest.mark.parametrize(
     "fixture_name",
-    sorted(path.name for path in FIXTURES.glob("*_vectors.json")),
+    sorted(str(path.relative_to(FIXTURES)) for path in FIXTURES.glob("*/src/*/vectors.json")),
 )
 def test_protocol_vectors_replay(fixture_name: str) -> None:
     document = _strict_loads((FIXTURES / fixture_name).read_text(encoding="utf-8"))

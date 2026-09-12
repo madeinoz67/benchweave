@@ -1,0 +1,17 @@
+{
+  "repository": "https://github.com/madeinoz67/benchweave",
+  "revision": "ddcc3203f16a6e3b5d2fb3f4a0db184005f48993",
+  "directory": "docs/otdp-v0.3.0",
+  "otdp_version": "0.3.0",
+  "adapter_api_version": "1.1",
+  "sha256": {
+    "otdp-device-descriptor.schema.json": "65471b43b2d27fd5fe851ef9bccb07880130e39134a21121a307bb20c61fc5ca",
+    "otdp-runtime.schema.json": "960ee0d3982c9a5389d47cf69e737997f69d7060ef123e59d08d0ffa6a6eeff5",
+    "otdp-specification.md": "b3b5754435af6d92950eee427fa000f144ea592e89313b2b5a6c001448d6af6b",
+    "extension-contract.md": "98a89967adf11ab49b73ccef26ab339337c55e5de6c6cd11822c774115b4a850",
+    "device-classes.md": "2278c08ba82874fd4e4c7c74c737af2fe4f431cf148b8291d4ff229d88d0898d",
+    "measurement-model.md": "336adcf191bd5914c7123569924056635c8e43d541d2d172340d457e5bcbd77a",
+    "otdp-measurement.schema.json": "b202b54c4dfe4b1e48b151a063a434a0e505fcf727c25d362fa9199a7637fca1",
+    "device-profile-catalog.json": "47c601753ffc7eb3aae6eeb9468638ce8ff64f530843479554ffe5b92a91ea08"
+  }
+}

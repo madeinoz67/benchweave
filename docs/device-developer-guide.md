@@ -6,7 +6,7 @@ For simple five-step workflows with reusable AI prompts, start with [Develop you
 
 A **device** is the physical hardware; **firmware** runs on that hardware. A **device plugin** is the software and metadata that integrate it with BenchWeave: a descriptor plus an adapter and protocol code where required. A declarative plugin can need no executable code. Integrating an existing instrument means developing its device plugin.
 
-Prefer independent repositories and externally hosted releases for new device plugins, so authors can develop and maintain them separately from BenchWeave. This is an authoring recommendation, not a new protocol requirement. See the [external plugin layout](develop-your-device.md#where-the-plugin-lives). Bundled plugins follow the same applicable contracts; the DPS-150 integration below is a bundled device plugin. The registry kinds remain profile, descriptor and implementation.
+Prefer independent repositories and externally hosted releases for new device plugins, so authors can develop and maintain them separately from BenchWeave. This is an authoring recommendation, not a new protocol requirement. See the [external plugin layout](develop-your-device.md#where-the-plugin-lives). Plugins maintained in this repository are independent projects under `plugins/<manufacturer>/<name>/`; the DPS-150 integration follows that layout and is not part of the core wheel. The registry kinds remain profile, descriptor and implementation.
 
 External hosting distributes source and release files. Admitted executable plugins run on the bench gateway through scoped host services. Hosting a repository does not provide registry admission, hardware commissioning or remote execution.
 
@@ -32,38 +32,43 @@ Read the [core specification](otdp-v0.3.0/otdp-specification.md), [profile/adapt
 
 ### Repository layout for device plugins
 
-Create new independently maintained plugins at `plugins/<manufacturer>/<name>/`, with `src/<python_package>/`, tests and release metadata inside that project. The name normally identifies the device model. The manufacturer/name project can be copied into its own external repository. The [SDK guide](plugin-sdk.md) shows the generation command and full layout; existing bundled integrations retain their layout below until separately migrated.
-
-### Repository layout for bundled devices
-
-Place bundled device integrations under `src/benchweave/devices/<manufacturer>/<model>/`, using lowercase Python package names. Mirror that layout under `tests/devices/<manufacturer>/<model>/`. For example:
+Each device plugin is a self-contained project at `plugins/<manufacturer>/<name>/`. The manufacturer directory organises projects; the name normally identifies the device model. That manufacturer/name directory is the independent build, test and release root and must work when copied into a separate repository without the BenchWeave core checkout.
 
 ```text
-src/benchweave/devices/fnirsi/dps150/
-    __init__.py
-    client.py                 # Injectable protocol client; no host dependency
-    codec.py                  # Protocol framing and value decoding
-    adapter.py                # Documented OTDP adapter API boundary
-    descriptor.py             # Exact supported descriptor definition
-    descriptor.json
-    adapter-vectors.json
-    adapter-failure-vectors.json
-    LICENSE
-    README.md
-
-tests/devices/fnirsi/dps150/
-    __init__.py
-    test_protocol.py
-    test_adapter.py
+plugins/
+└── fnirsi/
+    └── dps150/                         # Independent project root
+        ├── pyproject.toml
+        ├── uv.lock
+        ├── README.md
+        ├── LICENSE
+        ├── src/benchweave_fnirsi_dps150/
+        │   ├── __init__.py
+        │   ├── client.py              # Injectable protocol client
+        │   ├── codec.py               # Framing and value decoding
+        │   ├── adapter.py             # Documented OTDP boundary
+        │   ├── descriptor.py
+        │   ├── descriptor.json
+        │   └── vectors/               # Or adjacent named vector files
+        ├── contracts/                 # Pinned conformance inputs
+        ├── docs/
+        │   └── protocol-evidence.md
+        ├── tests/
+        │   ├── test_protocol.py
+        │   └── test_adapter.py
+        └── firmware/                  # For custom devices we maintain
+            ├── README.md
+            ├── src/
+            └── tests/
 ```
 
-Keep the protocol, adapter, descriptor, licence and packaged evidence together. Group by manufacturer/model, since one instrument may support several device profiles. Package initialisers must not eagerly import other devices or perform I/O. Extract shared vendor protocol code only when another model demonstrates compatible reuse; do not infer compatibility from branding alone.
+Keep device-specific protocol code, adapter, descriptor, evidence, tests and documentation together. Firmware is the plugin developer's responsibility, not a BenchWeave core component. For a custom device, keep its firmware here too, with its own board configuration, toolchain/dependency locks, build instructions and tests. Core installation, builds and tests must not acquire firmware source, require board toolchains or run flashing tasks. Track exact plugin/firmware compatibility even when their release versions differ. Firmware is optional for existing vendor instruments: the DPS-150 project has no firmware source or flashing implementation. Do not fabricate a firmware tree or redistribute vendor binaries without rights. Flashing and hardware operation remain separately authorised.
 
-The DPS-150 import is `benchweave.devices.fnirsi.dps150`; its factory is `benchweave.devices.fnirsi.dps150.adapter:create_plugin`. The packaged `src/benchweave/devices/fnirsi/dps150/README.md` and [protocol evidence](dps150-protocol.md) document the supported subset. Run its mock tests with `uv run --no-sync pytest tests/devices/fnirsi/dps150`.
+Use lowercase manufacturer/model directory names. For this example the Python distribution is `benchweave-fnirsi-dps150`, import package `benchweave_fnirsi_dps150`, and descriptor factory `benchweave_fnirsi_dps150.adapter:create_plugin`. Preserve descriptor ID `org.benchweave.fnirsi-dps150`. Group by manufacturer/model rather than device class: one model can implement multiple profiles.
 
-When relocating an unpublished bundled integration, update Python imports, descriptor factory declarations, test resource paths and documentation together. Preserve its logical descriptor ID unless the integration identity changes. The BenchWeave wheel includes `src/benchweave`; verify the built wheel contains device descriptors, licences and referenced vectors. Test packages should include `__init__.py` so different models can reuse names such as `test_adapter.py` without module-name collisions.
+The plugin owns its protocol implementation. BenchWeave core owns hosting, admission, scheduling and policy. A plugin must not import core implementation modules, rely on a parent checkout's dependency lock, or locate test contracts by walking into the core repository. Use documented structural host interfaces, its own dependency lock and pinned local contract inputs. Initialisers perform no I/O or eager imports of other devices.
 
-This convention organises bundled source; it does not change OTDP contracts or create a plugin loader. Separately distributed integrations and synthetic fixtures may retain their own package layouts. Use independent distributions when dependencies or release lifecycles justify them, under the registry contract. Source location and passing mocks do not establish hardware qualification or authorise publication.
+The core wheel does not include device plugins. Build each plugin's own wheel and source distribution, verify its descriptor and referenced evidence are included, and run tests in an isolated environment outside the core checkout. Repository CI should invoke the plugin's own checks explicitly. This source convention does not introduce a discovery API or replace registry admission. A wheel, registry payload and firmware image are separate release artefacts; none authorises installation, flashing or publication.
 
 ## 2. Establish the device facts first
 
@@ -101,33 +106,9 @@ An image or IQ dataset representation does not establish camera or RF-receiver c
 
 ## 4. Assemble the integration package
 
-An illustrative adapter package layout is:
+Use the [independent device project layout](#repository-layout-for-device-plugins). Keep descriptors and their referenced vectors in the Python package so the wheel contains them; keep project tests, pinned conformance inputs and development documentation at the model project root. Include firmware for custom devices in that same project, with a separate firmware build rather than an automatic Python installation hook.
 
-```text
-instrument-integration/
-├── descriptor.json
-├── README.md
-├── pyproject.toml
-├── uv.lock
-├── src/
-│   └── instrument_adapter/
-│       ├── __init__.py
-│       └── plugin.py
-├── contracts/
-│   ├── device-profile-catalog.json
-│   └── otdp-measurement.schema.json
-├── vectors/
-│   └── exchanges.json
-├── tests/
-│   ├── test_descriptor.py
-│   ├── test_protocol.py
-│   └── test_lifecycle.py
-└── docs/
-    ├── protocol-evidence.md
-    └── limitations.md
-```
-
-This is a proposed package organisation, not an implemented BenchWeave loader convention. The integration contract requires a package README, descriptor and referenced evidence; executable integrations also need their Python package and tests. In the BenchWeave source repository, device placeholders are under `plugins/`, and controller firmware has a placeholder under `firmware/esp32_reference/`. Local development packaging and cache loading are available as described in §10; general external-plugin installation and activation still require the integration work noted above.
+The integration contract requires a package README, descriptor and referenced evidence; executable integrations also need their Python package and tests. The simulator projects now live at `plugins/benchweave/sim_psu/` and `plugins/benchweave/sim_controller/`; `benchweave` denotes their maintainer, not a physical manufacturer. Each owns its `src/benchweave_sim_*/` package, execution descriptor projection, replay vectors, tests and `pyproject.toml`. These legacy test plugins are an explicit exception to the external-plugin boundary: they still require the private synchronous API in `benchweave==0.1.0`. Their wheels can be tested outside this checkout with a supplied gateway wheel, but they are not yet independent of core at runtime or qualified API 1.1 adapters. The current public bridge lacks their profile actions. Preserve that distinction until the bridge and simulator API migration are reviewed together. Core execution descriptors remain integration snapshots checked against the project-owned projections. The existing `firmware/esp32_reference/` placeholder is outside this simulator cleanup. Local development packaging and cache loading are described in §10; a source layout alone does not establish runtime compatibility.
 
 Use uv for Python dependencies. Retain its lockfile and the exact tested runtime/dependency evidence. The registry's `package-lock.schema.json` describes a different lock: registry package identities, versions and manifest digests. An implementation release needs both its executable dependency closure and its registry dependency closure; neither substitutes for the other.
 
@@ -272,7 +253,7 @@ Hosting an integration on a bench and hosting its downloadable release are diffe
 Signed releases are for production. For development and testing, package your plugin **unsigned** into a local dev origin — no signing keys, no ceremony:
 
 ```sh
-uv run python scripts/registry/publish_dev.py plugins/sim_psu \
+uv run python scripts/registry/publish_dev.py plugins/benchweave/sim_psu \
   [--descriptor path/to/descriptor.json] [--out .dev-registry] [--version 0.0.0]
 ```
 
