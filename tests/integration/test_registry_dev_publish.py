@@ -1,5 +1,6 @@
 # tests/integration/test_registry_dev_publish.py
-"""WP06 acceptance: the unsigned dev publisher and the keyless developer loop.
+"""unsigned-dev-plugins slice (WP06 follow-up): the unsigned dev publisher
+and the keyless developer loop.
 
 ``scripts/registry/publish_dev.py`` packages a plugin directory into a local
 dev registry — fresh manifests under registry id ``dev-local``, no ``.sig``

@@ -71,11 +71,12 @@ def check_status(
 ) -> int:
     """Enforce a status document's expiry, freshness, and sequence honesty.
 
-    ``root`` authenticates nothing here — signature verification happens
-    before these gates run — and is carried (as ``None`` under a
-    ``dev-unsigned`` origin) for interface parity with :func:`verify_document`
-    and future role-aware checks; every gate below is root-independent and
-    stays on for dev origins.
+    ``root`` authenticates nothing here — when signatures apply,
+    verification happens in the resolver before these gates run; on
+    ``dev-unsigned`` origins nothing is authenticated — and is carried
+    (as ``None`` under such an origin) for interface parity with
+    :func:`verify_document` and future role-aware checks; every gate
+    below is root-independent and stays on for dev origins.
     """
     release = status["release"]
     key = (release["registry_id"], release["package_id"], release["version"])

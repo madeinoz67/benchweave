@@ -412,7 +412,7 @@ def admit(
     session's map); the persisted map under
     ``<cache_root>/high-water.json`` is read at start and merged with — never
     replaced by — it, and the merged map is written back atomically once
-    admission succeeds, so the highest authenticated status sequence survives
+    admission succeeds, so the highest enforced status sequence survives
     process restarts and is enforced against rollback on re-admission.
     Raises :class:`AdmissionRejected` with the refusing gate's reason.
     """
