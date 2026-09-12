@@ -22,8 +22,11 @@ implementation's dependency repinned to the dev descriptor's digest.
 
 Output is byte-reproducible for identical inputs: canonical JSON, ZIP_STORED
 payloads with fixed timestamps, sorted members, and FIXED status dates
-mirroring ``build_fixtures`` (``RELEASED_AT``/``STATUS_EXPIRES``) — no clock
-is read, no key is touched, no network is consulted. Nothing is written
+mirroring the fixture catalogue (``registry_common``: ``RELEASED_AT``/
+``STATUS_EXPIRES``) — no clock is read, no key is touched, no network is
+consulted. The publisher imports only the keyless ``registry_common``
+builders: nothing in the dev loop transitively loads the signing stack
+(``cryptography``), which a fresh-interpreter test pins. Nothing is written
 until every release has been built in memory, so a bad input leaves no
 partial output tree.
 """
@@ -37,7 +40,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from build_fixtures import (
+from registry_common import (
     ROLE_BY_SUFFIX,
     _canonical,
     _common_members,

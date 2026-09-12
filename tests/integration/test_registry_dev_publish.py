@@ -98,6 +98,27 @@ def _publish(*args: str) -> subprocess.CompletedProcess[bytes]:
     )
 
 
+def test_publish_dev_transitively_imports_no_cryptography() -> None:
+    """The keyless dev loop must not pull in the signing stack.
+
+    A fresh interpreter imports publish_dev; ``cryptography`` must stay out
+    of ``sys.modules``: the dev loop neither signs nor verifies, and the
+    publisher's builders are keyless by design (registry_common carries them;
+    build_fixtures keeps only the signing bits).
+    """
+    code = (
+        "import sys; sys.path.insert(0, sys.argv[1]); import publish_dev; "
+        "print('CLEAN' if 'cryptography' not in sys.modules else 'CRYPTO')"
+    )
+    probe = subprocess.run(
+        [sys.executable, "-c", code, str(PUBLISH_DEV.parent)],
+        capture_output=True,
+        cwd=REPO,
+    )
+    assert probe.returncode == 0, probe.stderr
+    assert probe.stdout.strip() == b"CLEAN"
+
+
 def _dev_origins(reg_root: Path) -> dict[str, OriginConfig]:
     """The developer's origin map: an unsigned dev origin plus signed origin-main.
 
