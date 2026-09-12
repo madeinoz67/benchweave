@@ -44,6 +44,15 @@ a test; none is silent) versus what it proves equal:
   transport 401 on MCP (no envelope can exist pre-auth — the WP02 map's 403
   semantics surface only at REST), and ``payload_too_large`` is REST-only
   (no MCP transport body ceiling is wired).
+- D7 token-shape probes (backfilled after review — the initial suite DROPPED
+  the brief's one-expired + one-wrong-audience tokens; the omission is
+  disclosed here and closed by tests): an expired token is 401
+  ``unauthenticated`` with reason ``expired`` at REST and the D6
+  transport-401 collapse on MCP; a wrong-audience token is 403 ``forbidden``
+  at REST (the WP02 map carries audience rejections with the 403 semantics,
+  not 401) and the same D6 collapse on MCP; and an stg-audience token used
+  as ``approver_token`` fails closed 403 — approval authentication requires
+  the detached ``gateway-admin`` audience (D2).
 - Write-op equivalence: ``run_start`` is compared via its §9 idempotent
   replay (byte-identical envelope); the lease lifecycle's monotone fields
   are compared with exactly the mutating field masked (``sequence`` for
@@ -116,14 +125,18 @@ RUN_REQUEST = "req-parity-run"
 
 
 def _token(
-    principal: str, scopes: set[str], *, audience: str = "stg"
+    principal: str,
+    scopes: set[str],
+    *,
+    audience: str = "stg",
+    expires: int = NOW_EPOCH + 3600,
 ) -> str:
     return issue(
         SECRET,
         principal=principal,
         audience=audience,
         scopes=scopes,
-        expires_at=NOW_EPOCH + 3600,
+        expires_at=expires,
     )
 
 
@@ -131,6 +144,9 @@ def _token(
 OBSERVE = _token("parity", {"stg:observe"})
 CONTROL = _token("parity", {"stg:control"})
 ADMIN = _token("parity", {"stg:admin"})
+# D7 probes (review backfill): the brief's expired + wrong-audience tokens.
+EXPIRED = _token("parity-late", {"stg:admin"}, expires=NOW_EPOCH - 1)
+FOREIGN_AUDIENCE = _token("parity-elsewhere", {"stg:admin"}, audience="gateway-admin")
 
 
 def _bearer(token: str) -> dict[str, str]:
@@ -779,6 +795,33 @@ def test_payload_too_large_rest_only(gateway: SimpleNamespace) -> None:
     assert resp.json()["error"]["code"] == "payload_too_large"
 
 
+def test_expired_token_probe(gateway: SimpleNamespace) -> None:
+    """D7 pin: an expired token is 401 ``unauthenticated`` carrying the
+    reason string ``expired`` at REST, and the D6 transport-401 collapse
+    (no envelope, no session) on MCP."""
+    status, rest_json = _rest(gateway, "get", "/v1", None, EXPIRED)
+    assert status == 401
+    assert rest_json["error"]["code"] == "unauthenticated"
+    assert "expired" in rest_json["error"]["message"]
+    transport_status, session = _initialize(gateway.port, _bearer(EXPIRED))
+    assert transport_status == 401 and session is None  # D6 collapse
+
+
+def test_wrong_audience_token_probe(gateway: SimpleNamespace) -> None:
+    """D7 pin: a token minted for another audience never reaches an stg
+    surface — 403 ``forbidden`` at REST (the WP02 map carries audience
+    rejections with the 403 semantics, not 401; pinned as the map yields),
+    and the same D6 transport-401 collapse on MCP."""
+    status, rest_json = _rest(gateway, "get", "/v1", None, FOREIGN_AUDIENCE)
+    assert status == 403
+    assert rest_json["error"]["code"] == "forbidden"
+    assert "wrong_audience" in rest_json["error"]["message"]
+    transport_status, session = _initialize(
+        gateway.port, _bearer(FOREIGN_AUDIENCE)
+    )
+    assert transport_status == 401 and session is None  # D6 collapse
+
+
 # --- D4: event evidence wire shape ---------------------------------------------
 
 
@@ -1049,5 +1092,43 @@ def test_not_ready_configuration_activation_under_live_lease(
     assert refused.status_code == 409, refused.text
     assert refused.json()["error"]["code"] == "not_ready"
     assert "live lease" in refused.json()["error"]["message"]
+    _, record = _rest(gateway, "get", f"/v1/admin/changes/{change_id}", None, ADMIN)
+    assert record["data"]["state"] == "failed"
+
+
+def test_approver_token_requires_gateway_admin_audience(
+    gateway: SimpleNamespace,
+) -> None:
+    """D7 twist on the D2 flow: an stg-audience admin token as
+    ``approver_token`` fails closed 403 — approval authentication validates
+    against the detached ``gateway-admin`` audience, so gateway scope alone
+    authorizes nothing; the change records ``failed``."""
+    submitted = gateway.client.post(
+        "/v1/admin/changes",
+        headers=_bearer(ADMIN),
+        json={
+            "request_id": "req-pin-approver-audience",
+            "bench_id": BENCH,
+            "kind": "trip_reset",
+            "target_ref": TARGET_REF,
+            "expected_generation": 2,
+            "reason": "pin: approver token must be gateway-admin audience",
+        },
+    )
+    assert submitted.status_code == 201, submitted.text
+    change_id = submitted.json()["data"]["change_id"]
+    refused = gateway.client.post(
+        f"/v1/admin/changes/{change_id}/apply",
+        headers=_bearer(ADMIN),
+        json={
+            "request_id": "req-pin-approver-audience-apply",
+            "expected_generation": 2,
+            "approval_ref": _store_approval(gateway.content, change_id, 2),
+            "approver_token": ADMIN,  # stg audience + admin scope: not an approver
+        },
+    )
+    assert refused.status_code == 403, refused.text
+    assert refused.json()["error"]["code"] == "forbidden"
+    assert "wrong_audience" in refused.json()["error"]["message"]
     _, record = _rest(gateway, "get", f"/v1/admin/changes/{change_id}", None, ADMIN)
     assert record["data"]["state"] == "failed"
