@@ -247,7 +247,8 @@ class Operations:
                     )
         return {
             "valid": not findings,
-            "generation": bench["generation"],
+            # Report the same canonical authority the run_start fence reads.
+            "generation": self._store.current_generation(bench_id),
             "findings": findings,
         }
 
@@ -270,14 +271,16 @@ class Operations:
         commissioned takeover (Task 7); it takes no part in acceptance.
         """
         require_permission(identity, "control")
-        bench = self._store.get_bench(bench_id)
-        if bench is None:
+        if self._store.get_bench(bench_id) is None:
             raise errors.OperationFailure(errors.failure("not_found", f"bench {bench_id}"))
-        if expected_generation != bench["generation"]:
+        # Decision 4: the generations table is the canonical authority — the
+        # bench row's copy can lag a bare bump until Task 7 syncs them.
+        generation = self._store.current_generation(bench_id)
+        if expected_generation != generation:
             raise errors.OperationFailure(
                 errors.failure(
                     "conflict",
-                    f"bench {bench_id} is at generation {bench['generation']},"
+                    f"bench {bench_id} is at generation {generation},"
                     f" not {expected_generation}",
                 )
             )
@@ -378,11 +381,13 @@ class Operations:
         bench = self._store.get_bench(bench_id)
         if bench is None:
             raise errors.OperationFailure(errors.failure("not_found", f"bench {bench_id}"))
-        if expected_generation != bench["generation"]:
+        # Same canonical fence as run_start (Decision 4).
+        generation = self._store.current_generation(bench_id)
+        if expected_generation != generation:
             raise errors.OperationFailure(
                 errors.failure(
                     "conflict",
-                    f"bench {bench_id} is at generation {bench['generation']},"
+                    f"bench {bench_id} is at generation {generation},"
                     f" not {expected_generation}",
                 )
             )
