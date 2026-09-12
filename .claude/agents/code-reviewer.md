@@ -52,16 +52,19 @@ enforce the stale claim.** A doc that is confidently wrong is worse than none.
    *cannot/never/may only* claims structural unrepresentability and needs the structural
    reason inline, otherwise it says *is refused unless* and states its residual.
 
-3b. **Documentation coverage is a per-change gate, not a routing bucket.** For every
-   change, map it to its audience-facing surfaces and check the matching doc actually
-   moved: plugin/device-visible capability (new packaging, loading, policy, or lifecycle
-   behaviour) → `docs/device-developer-guide.md`; operator-visible behaviour (CLI, service,
-   config, CI) → the operator/CLI docs and `README.md`; contract semantics → the contract
-   doc. A diff that adds or changes developer-/operator-visible behaviour **without** a
-   matching doc change is a cross-surface finding ("you changed X but didn't update Y" —
-   name the Y file and the section it needs), severity Important by default. Absence of
-   the doc update is the finding; do not limit docs checks to diffs that happen to touch
-   `docs/`.
+3b. **Documentation and interface-contract coverage is a per-change gate, not a routing
+   bucket.** For every change, map it to its audience-facing surfaces and check the
+   matching doc/interface definition actually moved: plugin/device-visible capability (new
+   packaging, loading, policy, or lifecycle behaviour) → `docs/device-developer-guide.md`;
+   operator-visible behaviour (CLI, service, config, CI) → the operator/CLI docs and
+   `README.md`; **API-visible behaviour → the OpenAPI spec in lockstep (`contracts/interface-v1.1.0/`
+   AND `docs/interface-v1.1.0/` must move together); MCP-visible behaviour →
+   `contracts/interface-v1.1.0/mcp-tools.json` and any tool schema it references**;
+   contract semantics → the contract doc. A diff that adds or changes developer-,
+   operator-, API-, or MCP-visible behaviour **without** a matching doc/interface change
+   is a cross-surface finding ("you changed X but didn't update Y" — name the Y file and
+   the section it needs), severity Important by default. Absence of the update is the
+   finding; do not limit these checks to diffs that happen to touch `docs/`.
 
 4. **Verify claims, don't trust the PR description.** If it says "all green" / "no behavior
    change" / "backwards compatible," confirm it yourself.
