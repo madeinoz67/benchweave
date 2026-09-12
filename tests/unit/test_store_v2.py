@@ -65,3 +65,63 @@ def test_lease_not_active_is_typed(store: Store) -> None:
     store.next_lease("bench-x", "lease-1", "run:r1", "2026-09-12T00:01:00Z")
     with pytest.raises(LeaseNotActive):
         store.release_lease("bench-x", 99, "2026-09-12T00:02:00Z")
+
+
+def test_device_roundtrip_returns_all_fields(store: Store) -> None:
+    store.put_device(
+        "dev-1",
+        "bench-1",
+        4,
+        '["profile-a"]',
+        '{"model": "dmm-1"}',
+        "activated",
+        "MIT",
+        "2026-09-12T00:00:00Z",
+    )
+    device = store.get_device("dev-1")
+    assert device is not None
+    assert device == {
+        "device_id": "dev-1",
+        "bench_id": "bench-1",
+        "generation": 4,
+        "profiles_json": '["profile-a"]',
+        "descriptor_json": '{"model": "dmm-1"}',
+        "identity_state": "activated",
+        "licence": "MIT",
+        "updated_at": "2026-09-12T00:00:00Z",
+    }
+
+
+def test_list_devices_pages_beyond_limit_and_completes(store: Store) -> None:
+    for index in range(3):
+        store.put_device(
+            f"dev-{index}",
+            "bench-1",
+            1,
+            "[]",
+            "{}",
+            "activated",
+            "MIT",
+            "2026-09-12T00:00:00Z",
+        )
+    first_page, has_more = store.list_devices("bench-1", limit=2, offset=0)
+    assert [d["device_id"] for d in first_page] == ["dev-0", "dev-1"] and has_more
+    second_page, has_more = store.list_devices("bench-1", limit=2, offset=2)
+    assert [d["device_id"] for d in second_page] == ["dev-2"] and not has_more
+
+
+def test_getters_return_none_for_unknown_ids(store: Store) -> None:
+    assert store.get_device("nope") is None
+    assert store.get_bench("nope") is None
+    assert store.get_run_state("nope") is None
+
+
+def test_list_benches_has_more_beyond_limit(store: Store) -> None:
+    for index in range(3):
+        store.put_bench(
+            f"bench-{index}", 1, "observation", "{}", "Apache-2.0", "2026-09-12T00:00:00Z"
+        )
+    items, has_more = store.list_benches(limit=2, offset=0)
+    assert [b["bench_id"] for b in items] == ["bench-0", "bench-1"] and has_more
+    rest, rest_has_more = store.list_benches(limit=2, offset=2)
+    assert [b["bench_id"] for b in rest] == ["bench-2"] and not rest_has_more
