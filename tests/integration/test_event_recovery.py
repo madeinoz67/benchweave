@@ -74,6 +74,7 @@ import pytest
 import uvicorn
 
 from benchweave.content.store import ContentStore
+from benchweave.control.executor import canonical_json
 from benchweave.host.plugin import DevicePlugin
 from benchweave.host.services import HostServices
 from benchweave.host.types import (
@@ -736,13 +737,49 @@ def test_evidence_storage_failure_emits_evidence_gap(tmp_path: Path) -> None:
     store must hold exactly the quota-bound rows, and the terminal record
     survives with its evidence refs intact (§152: the gap is loud; the
     record's own refs — pinned documents plus the event-stream digest —
-    are not the missing snapshots).
+    are not the missing snapshots). The refs are pinned EXACTLY (review
+    backfill): every pinned document ref plus the ``events:{run_id}``
+    stream digest, recomputed over the surviving stream, so a dropped or
+    corrupted ref goes red.
     """
     gateway = _launch(tmp_path, limits=SMALL_LIMITS)
     try:
         run_id = _start_run(gateway, "req-evidence-gap", BINDING_REF)
         final = _poll_run(gateway, run_id, want="terminal", timeout=30.0)
         assert final["terminal_record"] is not None
+
+        def _doc_ref(path: Path) -> dict[str, str]:
+            raw = path.read_bytes()
+            doc = json.loads(raw)
+            return {
+                "id": str(doc["id"]),
+                "version": str(doc["version"]),
+                "sha256": hashlib.sha256(raw).hexdigest(),
+            }
+
+        run = gateway.store.get_run(run_id)
+        assert run is not None and run["terminal"] is not None
+        record: dict[str, Any] = dict(run["terminal"])
+        binding_doc = json.loads((FIXTURES / "run-binding.json").read_bytes())
+        expected_refs = [
+            {
+                "id": str(binding_doc["request_id"]),
+                "version": str(binding_doc["contract_version"]),
+                "sha256": BINDING_SHA,
+            },
+            _doc_ref(FIXTURES / "procedure-voltage-check.json"),
+            _doc_ref(FIXTURES / "bench.json"),
+            _doc_ref(FIXTURES / "safety-policy.json"),
+            _doc_ref(FIXTURES / "commissioning.json"),
+            {
+                "id": f"events:{run_id}",
+                "version": "1",
+                "sha256": hashlib.sha256(
+                    canonical_json(gateway.store.read_events(f"run:{run_id}")).encode()
+                ).hexdigest(),
+            },
+        ]
+        assert record["evidence_refs"] == expected_refs, record["evidence_refs"]
 
         events = _bench_events(gateway)
         gaps = [e for e in events if e["kind"] == "evidence_gap" and e.get("run_id") == run_id]
