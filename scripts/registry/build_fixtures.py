@@ -38,9 +38,10 @@ from registry_common import (
 
 
 def _plugin_members(plugin_dir: str) -> list[tuple[str, bytes]]:
+    source = REPO / "plugins" / "benchweave" / plugin_dir / "src" / f"benchweave_{plugin_dir}"
     return [
-        ("plugin/__init__.py", (REPO / "plugins" / plugin_dir / "__init__.py").read_bytes()),
-        ("plugin/plugin.py", (REPO / "plugins" / plugin_dir / "plugin.py").read_bytes()),
+        ("plugin/__init__.py", (source / "__init__.py").read_bytes()),
+        ("plugin/plugin.py", (source / "plugin.py").read_bytes()),
     ]
 
 

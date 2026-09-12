@@ -238,7 +238,8 @@ def test_admit_happy_path(tmp_path: Path) -> None:
         [*shas.values(), "high-water.json"]
     )
     plugin = cache_root / shas["benchweave/sim-psu"] / "plugin" / "plugin.py"
-    assert plugin.read_bytes() == (REPO / "plugins/sim_psu/plugin.py").read_bytes()
+    source = REPO / "plugins/benchweave/sim_psu/src/benchweave_sim_psu/plugin.py"
+    assert plugin.read_bytes() == source.read_bytes()
 
     # Local admission record binds lock digest, manifest digests, cache paths.
     record_path = tmp_path / "packages.lock.admission.json"

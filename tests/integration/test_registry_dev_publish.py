@@ -213,7 +213,7 @@ def _invoke(action_id: str, input_: dict[str, Any]) -> OperationRequest:
 
 def test_publish_admit_load_dispatch_roundtrip(tmp_path: Path) -> None:
     reg_root = tmp_path / "reg"
-    published = _publish("plugins/sim_psu", "--out", str(reg_root))
+    published = _publish("plugins/benchweave/sim_psu", "--out", str(reg_root))
     assert published.returncode == 0, published.stderr.decode()
     release_dir = reg_root / DEV_ID / DEV_IMPL_PACKAGE / "0.0.0"
     assert sorted(path.name for path in release_dir.iterdir()) == list(RELEASE_FILES)
@@ -260,7 +260,7 @@ def test_publish_admit_load_dispatch_roundtrip(tmp_path: Path) -> None:
 def test_publisher_is_deterministic(tmp_path: Path) -> None:
     outputs: list[dict[str, bytes]] = []
     for root in (tmp_path / "first", tmp_path / "second"):
-        published = _publish("plugins/sim_psu", "--out", str(root))
+        published = _publish("plugins/benchweave/sim_psu", "--out", str(root))
         assert published.returncode == 0, published.stderr.decode()
         release = root / DEV_ID / DEV_IMPL_PACKAGE / "0.0.0"
         outputs.append({name: (release / name).read_bytes() for name in RELEASE_FILES})
@@ -270,7 +270,7 @@ def test_publisher_is_deterministic(tmp_path: Path) -> None:
 def test_descriptor_override_repins_dep(tmp_path: Path) -> None:
     reg_root = tmp_path / "reg"
     published = _publish(
-        "plugins/sim_psu",
+        "plugins/benchweave/sim_psu",
         "--descriptor",
         str(REPO / "fixtures" / "execution" / "descriptor-sim-psu.json"),
         "--out",

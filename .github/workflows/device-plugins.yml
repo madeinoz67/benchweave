@@ -1,0 +1,62 @@
+name: device-plugins
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  dps150-independent:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
+      - name: Isolate the device project from the core checkout
+        run: cp -R plugins/fnirsi/dps150 "$RUNNER_TEMP/dps150"
+      - name: Install the plugin development environment
+        working-directory: ${{ runner.temp }}/dps150
+        run: uv sync --locked --dev
+      - name: Fetch pinned contract test dependencies
+        working-directory: ${{ runner.temp }}/dps150
+        run: uv run --locked python scripts/fetch_contracts.py
+      - name: Offline conformance and quality checks
+        working-directory: ${{ runner.temp }}/dps150
+        run: |
+          uv run --locked --offline python scripts/fetch_contracts.py --check
+          uv run --locked --offline pytest
+          uv run --locked --offline ruff check .
+          uv run --locked --offline ruff format --check .
+          uv run --locked --offline mypy
+      - name: Build independent release candidates without publishing
+        working-directory: ${{ runner.temp }}/dps150
+        run: uv build
+
+  legacy-simulator-packages:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        model: [sim_psu, sim_controller]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
+      - name: Build the explicit private-API gateway dependency
+        run: uv build --wheel --out-dir "$RUNNER_TEMP/gateway"
+      - name: Isolate the simulator project
+        run: cp -R "plugins/benchweave/${{ matrix.model }}" "$RUNNER_TEMP/simulator"
+      - name: Build the simulator wheel from its source distribution
+        working-directory: ${{ runner.temp }}/simulator
+        run: uv build --out-dir "$RUNNER_TEMP/simulator-dist"
+      - name: Replay synthetic vectors with installed wheels outside the checkout
+        working-directory: ${{ runner.temp }}/simulator
+        run: |
+          uv run --isolated --no-project \
+            --with "$RUNNER_TEMP/gateway/benchweave-0.1.0-py3-none-any.whl" \
+            --with "$RUNNER_TEMP/simulator-dist/benchweave_${{ matrix.model }}-0.1.0-py3-none-any.whl" \
+            --with pytest==9.1.1 python -m pytest tests

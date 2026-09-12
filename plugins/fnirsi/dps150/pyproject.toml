@@ -1,0 +1,49 @@
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "benchweave-fnirsi-dps150"
+version = "0.1.0"
+description = "Mock-qualified FNIRSI DPS-150 protocol and OTDP 1.1 adapter"
+readme = "README.md"
+requires-python = ">=3.13"
+license = { text = "Proprietary; reused cho45 algorithms retain their MIT licence" }
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "pytest==9.1.1",
+    "jsonschema[format]==4.26.0",
+    "types-jsonschema==4.26.0.20260518",
+    "ruff==0.16.6",
+    "mypy==2.3.1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/benchweave_fnirsi_dps150"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"LICENSE" = "benchweave_fnirsi_dps150/LICENSE"
+"README.md" = "benchweave_fnirsi_dps150/README.md"
+"docs/protocol-evidence.md" = "benchweave_fnirsi_dps150/protocol-evidence.md"
+
+[tool.hatch.build.targets.sdist]
+include = ["/src", "/tests", "/scripts", "/contracts", "/docs", "/README.md", "/LICENSE", "/pyproject.toml", "/uv.lock", "/.gitignore"]
+
+[tool.pytest.ini_options]
+addopts = "-q -p no:cacheprovider --import-mode=importlib"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+exclude = ["contracts", ".venv", "venv", "dist"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+files = ["src", "tests", "scripts"]
