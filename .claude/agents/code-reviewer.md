@@ -56,10 +56,13 @@ enforce the stale claim.** A doc that is confidently wrong is worse than none.
    bucket.** For every change, map it to its audience-facing surfaces and check the
    matching doc/interface definition actually moved: plugin/device-visible capability (new
    packaging, loading, policy, or lifecycle behaviour) → `docs/device-developer-guide.md`;
-   operator-visible behaviour (CLI, service, config, CI) → the operator/CLI docs and
-   `README.md`; **API-visible behaviour → the OpenAPI spec in lockstep (`contracts/interface-v1.1.0/`
+   operator-visible behaviour (service, config, CI) → the operator docs and `README.md`;
+   **CLI-visible behaviour (`src/benchweave/cli/`) → the CLI reference in the operator
+   docs; API-visible behaviour → the OpenAPI spec in lockstep (`contracts/interface-v1.1.0/`
    AND `docs/interface-v1.1.0/` must move together); MCP-visible behaviour →
-   `contracts/interface-v1.1.0/mcp-tools.json` and any tool schema it references**;
+   `contracts/interface-v1.1.0/mcp-tools.json` and any tool schema it references;
+   UI-visible behaviour → the console/UI docs, once that surface exists — when a UI stage
+   lands, name its doc home here**;
    contract semantics → the contract doc. A diff that adds or changes developer-,
    operator-, API-, or MCP-visible behaviour **without** a matching doc/interface change
    is a cross-surface finding ("you changed X but didn't update Y" — name the Y file and
