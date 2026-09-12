@@ -50,6 +50,11 @@ junit*.xml
 .gortex/
 .claude/skills/generated/
 
+# Registry fixture SIGNING KEYS: public halves committed, private halves are
+# GitHub repo secrets (materialised by CI) or local untracked copies — never committed.
+fixtures/registry/keys/main.pem
+fixtures/registry/keys/originb.pem
+
 # Gortex-generated cross-harness instruction shims (regenerated locally)
 GEMINI.md
 opencode.json

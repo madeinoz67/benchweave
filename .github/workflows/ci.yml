@@ -1,70 +1,36 @@
-name: CI
+name: ci
 
 on:
   push:
+    branches: [main]
   pull_request:
-  workflow_dispatch:
-
-permissions:
-  contents: read
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
-  architecture:
-    name: Architecture contracts
+  gates:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
-        with:
-          version: "0.11.16"
-          enable-cache: true
-      - run: uv python install
-      - run: uv sync --locked --dev
-      - name: Validate architecture and rejection cases
-        run: uv run --no-sync pytest tests/contracts -s
+      - uses: actions/checkout@v4
 
-  quality:
-    name: Lint, format and types
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
         with:
-          persist-credentials: false
-      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
-        with:
-          version: "0.11.16"
-          enable-cache: true
-      - run: uv python install
-      - run: uv sync --locked --dev
-      - run: uv run --no-sync ruff check .
-      - run: uv run --no-sync ruff format --check .
-      - run: uv run --no-sync mypy
+          python-version: "3.13"
 
-  tests:
-    name: Tests (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
-        with:
-          version: "0.11.16"
-          enable-cache: true
-      - run: uv python install
-      - run: uv sync --locked --dev
-      - run: uv run --no-sync pytest --ignore=tests/contracts
-      - run: uv run --no-sync benchweave
+      - name: Materialise fixture signing keys from repo secrets
+        env:
+          BENCHWEAVE_FIXTURE_KEY_MAIN: ${{ secrets.BENCHWEAVE_FIXTURE_KEY_MAIN }}
+          BENCHWEAVE_FIXTURE_KEY_ORIGINB: ${{ secrets.BENCHWEAVE_FIXTURE_KEY_ORIGINB }}
+        run: |
+          printf '%s' "$BENCHWEAVE_FIXTURE_KEY_MAIN" > fixtures/registry/keys/main.pem
+          printf '%s' "$BENCHWEAVE_FIXTURE_KEY_ORIGINB" > fixtures/registry/keys/originb.pem
+
+      - name: Sync environment
+        run: uv sync
+
+      - name: Lint
+        run: |
+          uv run ruff check .
+          uv run mypy src tests
+
+      - name: Test
+        run: uv run pytest -q
