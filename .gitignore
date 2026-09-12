@@ -55,6 +55,9 @@ junit*.xml
 fixtures/registry/keys/main.pem
 fixtures/registry/keys/originb.pem
 
+# Dev registry output (publish_dev.py): unsigned local releases, never committed
+.dev-registry/
+
 # Gortex-generated cross-harness instruction shims (regenerated locally)
 GEMINI.md
 opencode.json
