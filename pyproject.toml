@@ -64,4 +64,4 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 [tool.mypy]
 python_version = "3.13"
 strict = true
-files = ["src/benchweave", "tests", "plugins", "scripts/registry"]
+files = ["src/benchweave", "tests", "plugins", "scripts/registry", "packages/sdk/src", "scripts/sdk_smoke.py"]

@@ -6,6 +6,7 @@ import base64
 import hashlib
 import hmac
 import json
+import time
 import uuid
 from collections.abc import Callable
 from dataclasses import replace
@@ -15,7 +16,7 @@ from benchweave.content.store import ContentStore
 from benchweave.control.clocking import SystemClock
 from benchweave.control.coordinator import _iso_plus_ms
 from benchweave.interfaces import errors
-from benchweave.interfaces.identity import Identity
+from benchweave.interfaces.identity import Identity, IdentityRejected, validate
 from benchweave.state.store import Conflict, Lease, LeaseNotActive, Store
 
 if TYPE_CHECKING:
@@ -73,6 +74,12 @@ def decode_cursor(token: str, principal: str) -> tuple[str, str] | None:
     return stream, sequence
 
 
+def _default_now_epoch() -> int:
+    """Wall-clock epoch default for approval-token validation; deployments
+    inject their own clock (WP08 wiring), tests inject a fixed one."""
+    return int(time.time())
+
+
 def append_bench_event(
     store: Store,
     kind: str,
@@ -110,6 +117,11 @@ class Operations:
         "run_changed", "lease_changed", "bench_changed", "trip",
         "authority_changed", "registry_status_changed", "evidence_gap",
     }
+
+    # The three admin change kinds (contract §9); submit rejects others.
+    CHANGE_KINDS = frozenset(
+        {"package_admission", "configuration_activation", "trip_reset"}
+    )
     def __init__(
         self,
         store: Store,
@@ -119,6 +131,8 @@ class Operations:
         limits: dict[str, int],
         worker: RunWorker | None = None,
         now_iso: Callable[[], str] | None = None,
+        issuer_secret: bytes | None = None,
+        now_epoch: Callable[[], int] | None = None,
     ) -> None:
         self._store = store
         self._content = content
@@ -126,6 +140,12 @@ class Operations:
         self._limits = limits
         self._worker = worker
         self._now_iso = now_iso if now_iso is not None else SystemClock().now_iso
+        # Approval-issuer wiring (Task 7): the test issuer's secret and the
+        # epoch clock token validation reads. A ``None`` secret disables
+        # approval verification entirely (fail-closed ``not_ready``);
+        # production deployment config is the WP08 surface.
+        self._issuer_secret = issuer_secret
+        self._now_epoch = now_epoch if now_epoch is not None else _default_now_epoch
 
     # --- observe -------------------------------------------------------------
 
@@ -550,6 +570,350 @@ class Operations:
             evidence={"reason": reason, "request_id": request_id},
         )
         return self._lease_projection(replace(lease, state="released"))
+
+    # --- admin: two-phase changes (Task 7) --------------------------------------
+
+    def change_submit(
+        self,
+        identity: Identity,
+        request_id: str,
+        bench_id: str,
+        kind: str,
+        target_ref: dict[str, Any],
+        expected_generation: int,
+        reason: str,
+    ) -> dict[str, Any]:
+        """Phase 1 (contract §9): record a proposed change, nothing else.
+
+        No fence fires here — a proposal made against a stale generation
+        view is simply a change that can never apply; the fence belongs to
+        ``change_apply``. §9 idempotency: the scoped key is principal +
+        operation + request id and the request body is the whole change
+        candidate — a replay returns the original change; the same key with
+        a different candidate is a conflict.
+        """
+        require_permission(identity, "admin")
+        if kind not in self.CHANGE_KINDS:
+            raise errors.OperationFailure(
+                errors.failure("invalid_request", f"unknown change kind {kind!r}")
+            )
+        if self._store.get_bench(bench_id) is None:
+            raise errors.OperationFailure(errors.failure("not_found", f"bench {bench_id}"))
+        now = self._now_iso()
+        change_id = f"chg-{uuid.uuid4().hex[:16]}"
+        key = scoped_request_key(identity.principal, "change_submit", request_id)
+        body_sha = hashlib.sha256(
+            json.dumps(
+                [bench_id, kind, target_ref, expected_generation, reason],
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
+        ).hexdigest()
+        try:
+            accepted = self._store.accept_request(key, body_sha, change_id, now)
+        except Conflict:
+            raise errors.OperationFailure(
+                errors.failure(
+                    "conflict", f"request_id {request_id!r} reused with a different change"
+                )
+            ) from None
+        if accepted.outcome == "duplicate":
+            return self._change_projection(str(accepted.run_id))
+        self._store.put_change(
+            change_id,
+            bench_id,
+            kind,
+            json.dumps(target_ref, sort_keys=True, separators=(",", ":")),
+            expected_generation,
+            reason,
+            now,
+        )
+        return self._change_projection(change_id)
+
+    def change_apply(
+        self,
+        identity: Identity,
+        request_id: str,
+        change_id: str,
+        expected_generation: int,
+        approval_ref: dict[str, Any],
+        approver_token: str | None = None,
+    ) -> dict[str, Any]:
+        """Phase 2: verify the independent approval, then apply once.
+
+        The order is load-bearing: permission, the change record, the
+        approval (the approver is authenticated independently of the
+        applier's admin identity), the two-phase state check, the canonical
+        generation fences, the per-kind checks — only then the commit
+        (bump + bench-row refresh + ``applied`` + event). Every decided
+        failure records ``failed``; an undecided crash records ``unknown``
+        and surfaces as ``unavailable`` (uncertainty is never erased).
+        """
+        require_permission(identity, "admin")
+        change = self._store.get_change(change_id)
+        if change is None:
+            raise errors.OperationFailure(errors.failure("not_found", f"change {change_id}"))
+        now = self._now_iso()
+        try:
+            approver = self.verify_approval(
+                approval_ref,
+                change_id=change_id,
+                expected_generation=expected_generation,
+                approver_token=approver_token,
+            )
+            if approver.principal == identity.principal:
+                raise errors.OperationFailure(
+                    errors.failure(
+                        "forbidden",
+                        "approval must be authenticated by a principal"
+                        " other than the applier",
+                    )
+                )
+            if change["state"] != "proposed":
+                raise errors.OperationFailure(
+                    errors.failure(
+                        "conflict",
+                        f"change {change_id} is {change['state']}, not proposed",
+                    )
+                )
+            stored_generation = int(change["expected_generation"])
+            if expected_generation != stored_generation:
+                raise errors.OperationFailure(
+                    errors.failure(
+                        "conflict",
+                        f"change {change_id} was proposed at generation"
+                        f" {stored_generation}, not {expected_generation}",
+                    )
+                )
+            bench_id = str(change["bench_id"])
+            current = self._store.current_generation(bench_id)
+            if expected_generation != current:
+                raise errors.OperationFailure(
+                    errors.failure(
+                        "conflict",
+                        f"bench {bench_id} is at generation {current},"
+                        f" not {expected_generation}",
+                    )
+                )
+            self._dispatch_change(change, request_id, now)
+        except errors.OperationFailure as fail:
+            self._record_change_outcome(change_id, "failed", fail.failure.message, now)
+            raise
+        except BaseException as crash:
+            self._record_change_outcome(
+                change_id,
+                "unknown",
+                f"apply crashed before a decision was recorded: {crash!r}",
+                now,
+            )
+            raise errors.OperationFailure(
+                errors.failure(
+                    "unavailable",
+                    f"change {change_id} apply did not complete; state is unknown",
+                    retry="same_request",
+                )
+            ) from crash
+        return self._change_projection(change_id)
+
+    def change_get(self, identity: Identity, change_id: str) -> dict[str, Any]:
+        """Admin-tier read of one change record in any state."""
+        require_permission(identity, "admin")
+        return self._change_projection(change_id)
+
+    def verify_approval(
+        self,
+        approval_ref: dict[str, Any],
+        *,
+        change_id: str,
+        expected_generation: int,
+        approver_token: str | None = None,
+    ) -> Identity:
+        """Independent approval authentication (PRD-12; design Decision 7).
+
+        An approval is two things that must agree: a stored, sha-pinned
+        document binding {change_id, expected_generation, approver_principal,
+        policy_version}, and a detached HMAC token issued to the named
+        approver (audience ``gateway-admin``, scope ``stg:admin``). The
+        applier's own admin identity authorizes nothing here — a stored
+        document without its token, a token without its document, a token
+        for anyone other than the documented approver, or a binding for any
+        other change+generation all fail closed. Rejections map per WP02:
+        a missing token is ``forbidden`` (a document alone is not approval,
+        contract §3); malformed/bad-signature/expired tokens are
+        ``unauthenticated``; wrong audience or scope is ``forbidden``.
+        """
+        if self._issuer_secret is None:
+            raise errors.OperationFailure(
+                errors.failure("not_ready", "no approval issuer is configured")
+            )
+        sha = str(approval_ref.get("sha256", ""))
+        doc = self._content.get_document(sha)
+        if doc is None:
+            raise errors.OperationFailure(
+                errors.failure("not_found", "approval document not stored")
+            )
+        if hashlib.sha256(doc["raw_bytes"]).hexdigest() != sha:
+            raise errors.OperationFailure(
+                errors.failure("forbidden", "approval document bytes do not match its digest")
+            )
+        body = doc["content"]
+        if (
+            body.get("change_id") != change_id
+            or body.get("expected_generation") != expected_generation
+        ):
+            raise errors.OperationFailure(
+                errors.failure("forbidden", "approval does not bind this change+generation")
+            )
+        if approver_token is None:
+            raise errors.OperationFailure(
+                errors.failure("forbidden", "approval token rejected: missing_token")
+            )
+        try:
+            approver = validate(
+                self._issuer_secret,
+                approver_token,
+                audience="gateway-admin",
+                required_scopes=("stg:admin",),
+                now=self._now_epoch(),
+            )
+        except IdentityRejected as rejected:
+            code = (
+                "forbidden"
+                if rejected.reason in {"wrong_audience", "insufficient_scope"}
+                else "unauthenticated"
+            )
+            raise errors.OperationFailure(
+                errors.failure(code, f"approval token rejected: {rejected.reason}")
+            ) from None
+        if approver.principal != str(body.get("approver_principal", "")):
+            raise errors.OperationFailure(
+                errors.failure(
+                    "forbidden", "approval token principal is not the documented approver"
+                )
+            )
+        return approver
+
+    def _dispatch_change(
+        self, change: dict[str, Any], request_id: str, now: str
+    ) -> None:
+        """Run the kind's checks, then commit exactly once: bump the
+        canonical generation, refresh the bench-row projection (Task-5
+        mandate — observe must never lag the authority), mark the change
+        applied, and emit the kind's event (Task 6)."""
+        kind = str(change["kind"])
+        bench_id = str(change["bench_id"])
+        handler: Callable[[dict[str, Any], str], str] = {
+            "package_admission": self._apply_package_admission,
+            "configuration_activation": self._apply_configuration_activation,
+            "trip_reset": self._apply_trip_reset,
+        }[kind]
+        event_kind = handler(change, bench_id)
+        new_generation = self._store.bump_generation(bench_id, now)
+        row = self._store.get_bench(bench_id)
+        if row is not None:
+            self._store.put_bench(
+                bench_id,
+                new_generation,
+                row["qualification"],
+                row["configuration_json"],
+                row["licence"],
+                now,
+            )
+        self._store.set_change_state(str(change["change_id"]), "applied", [], now)
+        self._emit(
+            event_kind,
+            bench_id,
+            None,
+            evidence={
+                "change_id": str(change["change_id"]),
+                "kind": kind,
+                "request_id": request_id,
+                "generation": new_generation,
+            },
+        )
+
+    def _apply_trip_reset(self, change: dict[str, Any], bench_id: str) -> str:
+        """Trip reset requires no live trip condition on the bench projection
+        (contract: reset cannot re-arm or restart a test — reconciled
+        physical state); a tripped bench is ``policy_denied``."""
+        bench = self._store.get_bench(bench_id)
+        if bench is None:
+            raise errors.OperationFailure(errors.failure("not_found", f"bench {bench_id}"))
+        if self._bench_projection(bench)["tripped"]:
+            raise errors.OperationFailure(
+                errors.failure(
+                    "policy_denied", f"bench {bench_id} is tripped; reset is refused"
+                )
+            )
+        return "bench_changed"
+
+    def _apply_configuration_activation(
+        self, change: dict[str, Any], bench_id: str
+    ) -> str:
+        """Idle boundary first: a live bench lease refuses activation —
+        registry.activation.activate's ``not_idle``, surfaced as
+        ``not_ready``.
+
+        WP07 disclosure: the registry leg — ``activate(admitted, *,
+        bench_generation, bench_has_live_lease, records_dir, activated_at)
+        -> ActivationRecord`` — needs an ``Admitted`` closure only a
+        configured registry session can produce; this gateway runs the PoC
+        fixture bench with no registry session (WP08 deployment surface), so
+        an otherwise-valid idle activation records ``failed``/``not_ready``
+        rather than fabricating an activation record."""
+        if self._store.get_active_lease(bench_id) is not None:
+            raise errors.OperationFailure(
+                errors.failure("not_ready", f"bench {bench_id} holds a live lease; not idle")
+            )
+        raise errors.OperationFailure(
+            errors.failure("not_ready", "registry activation is not configured")
+        )
+
+    def _apply_package_admission(self, change: dict[str, Any], bench_id: str) -> str:
+        """package_admission: registry admission of the target package.
+
+        WP07 disclosure: ``registry.admission.admit(closure, *, cache_root,
+        lock_path, limits: AdmissionLimits, approval: Approval(principal_id,
+        approved_at, policy_id, policy_version), now_ns, roots,
+        high_water=None) -> Admitted`` consumes a ``ResolvedClosure`` from
+        the resolver session plus per-release trust roots. No registry
+        session is configured on this gateway (the PoC fixture bench
+        bypasses the registry), so the kind records ``failed``/
+        ``not_ready`` instead of admitting anything; WP08 wires the resolver
+        session and this becomes a real admit + ``registry_status_changed``."""
+        raise errors.OperationFailure(
+            errors.failure("not_ready", "registry admission is not configured")
+        )
+
+    def _record_change_outcome(
+        self, change_id: str, state: str, reason: str, now: str
+    ) -> None:
+        """Record a failed/unknown outcome — never over an already-applied
+        change (a post-commit crash leaves the applied record truthful)."""
+        change = self._store.get_change(change_id)
+        if change is not None and change["state"] != "applied":
+            self._store.set_change_state(change_id, state, [reason], now)
+
+    def _change_projection(self, change_id: str) -> dict[str, Any]:
+        """Contract change object; ``get_change`` returns the target ref as
+        stored JSON text and the reasons as a parsed list (Task 2 pins)."""
+        change = self._store.get_change(change_id)
+        if change is None:
+            raise errors.OperationFailure(
+                errors.failure("not_found", f"change {change_id}")
+            )
+        return {
+            "change_id": change["change_id"],
+            "bench_id": change["bench_id"],
+            "kind": change["kind"],
+            "target_ref": json.loads(str(change["target_ref_json"])),
+            "expected_generation": int(change["expected_generation"]),
+            "reason": change["reason"],
+            "state": change["state"],
+            "reasons": change["reasons"],
+            "created_at": change["created_at"],
+            "updated_at": change["updated_at"],
+        }
 
     # --- projections and helpers ---------------------------------------------
 
