@@ -533,10 +533,15 @@ class RunCoordinator:
             now_wall=acceptance_iso,
         )
         try:
-            self._store.create_run(
-                run_id, binding=self._binding_pin(), principal_id=principal_id,
-                now=acceptance_iso,
-            )
+            # WP07 Task 8: the seam pre-creates the run row before enqueueing
+            # (202 semantics — the run must read back before the worker
+            # starts); adopt that row — only a fresh run id creates one.
+            # The queue handoff orders the seam's write before this check.
+            if self._store.get_run(run_id) is None:
+                self._store.create_run(
+                    run_id, binding=self._binding_pin(), principal_id=principal_id,
+                    now=acceptance_iso,
+                )
         except BaseException:
             release(self._store, reservation, self._wall.now_iso())
             raise

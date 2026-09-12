@@ -245,7 +245,9 @@ def create_app(
         now_epoch=now_epoch,
     )
 
-    mcp_server = build_mcp(operations, secret=secret, now_epoch=now_epoch)
+    mcp_server = build_mcp(
+        operations, secret=secret, now_epoch=now_epoch, limits=limits
+    )
     mcp_app = mcp_server.http_app(path="/mcp")
 
     @asynccontextmanager

@@ -15,12 +15,13 @@ surfaces the contract ``forbidden`` envelope.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import threading
 import time
 import urllib.error
 import urllib.request
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
@@ -34,7 +35,7 @@ from benchweave.content.store import ContentStore
 from benchweave.interfaces.app import create_app
 from benchweave.interfaces.identity import issue
 from benchweave.interfaces.mcp import build_mcp
-from benchweave.interfaces.operations import Operations
+from benchweave.interfaces.operations import Operations, append_bench_event
 from benchweave.state.store import Store
 
 VENDORED = json.loads(
@@ -88,7 +89,9 @@ def seam_app(tmp_path: Path) -> Iterator[FastMCP]:
         issuer_secret=SECRET,
         now_epoch=lambda: NOW_EPOCH,
     )
-    yield build_mcp(operations, secret=SECRET, now_epoch=lambda: NOW_EPOCH)
+    yield build_mcp(
+        operations, secret=SECRET, now_epoch=lambda: NOW_EPOCH, limits=LIMITS
+    )
     store.close()
 
 
@@ -227,20 +230,29 @@ def _call_envelope(body: dict[str, Any]) -> dict[str, Any]:
 
 
 @contextmanager
-def _live_app(tmp_path: Path) -> Iterator[str]:
+def _live_app(
+    tmp_path: Path,
+    *,
+    limits: dict[str, int] | None = None,
+    prep: Callable[[Store, ContentStore], None] | None = None,
+) -> Iterator[str]:
     """create_app on a fresh file-backed store; boot over real loopback.
 
     The store is opened ``check_same_thread=False``: the ASGI app serves
     from the event-loop thread while the store was opened on the test
     thread (usage stays serialised — single serving loop, no REST yet).
+    ``prep`` runs on the store before the app boots (second bench, events,
+    artifacts for the clamp fixtures).
     """
     store = Store.open(tmp_path / "state.db", check_same_thread=False)
     content = ContentStore(store)
+    if prep is not None:
+        prep(store, content)
     app = create_app(
         store=store,
         content=content,
         secret=SECRET,
-        limits=LIMITS,
+        limits=limits or LIMITS,
         gateway_id="gw-task8",
         fixtures_dir=FIXTURES,
         now_iso=lambda: NOW_ISO,
@@ -339,3 +351,159 @@ def test_live_mount_auth_rejections(tmp_path: Path) -> None:
         envelope = _call_envelope(body)
         assert envelope["ok"] is False
         assert envelope["error"]["code"] == "forbidden"
+
+
+# --- fix wave: adapter limit/length clamping + first run-through-app test ----
+
+
+def _tools_call(
+    url: str, session: str, token: str, request_id: int, name: str, arguments: dict[str, Any]
+) -> dict[str, Any]:
+    status, body, _ = _post(
+        url,
+        {
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "method": "tools/call",
+            "params": {"name": name, "arguments": arguments},
+        },
+        {"Mcp-Session-Id": session, "Authorization": f"Bearer {token}"},
+    )
+    assert status == 200
+    assert body is not None
+    return _call_envelope(body)
+
+
+SMALL_LIMITS: dict[str, int] = {**LIMITS, "max_page_size": 1, "max_chunk_bytes": 8}
+
+
+def _prep_two_benches_two_devices_two_events(store: Store, content: ContentStore) -> None:
+    """Clamp-fixture inventory: 2 benches, 2 devices on sim-bench, 2 events."""
+    del content  # pages need no content-store rows
+    generation = store.bump_generation("bench-two", NOW_ISO)
+    store.put_bench("bench-two", generation, "observation", "{}", "proprietary", NOW_ISO)
+    for _ in range(2):
+        append_bench_event(
+            store, "bench_changed", "sim-bench", None, keep=None, now_iso=lambda: NOW_ISO
+        )
+
+
+def test_adapter_limit_clamped_to_max_page_size(tmp_path: Path) -> None:
+    """limit=10**9 arrives as one page: the tool layer clamps to
+    max_page_size before the seam's unbounded SQL LIMIT sees it."""
+    with _live_app(
+        tmp_path, limits=SMALL_LIMITS, prep=_prep_two_benches_two_devices_two_events
+    ) as url:
+        token = _token({"stg:observe"})
+        session = _session(url, token)
+
+        benches = _tools_call(
+            url, session, token, 2, "stg_v1_bench_list", {"limit": 10**9, "cursor": None}
+        )
+        assert benches["ok"] is True, benches
+        assert len(benches["data"]["items"]) == 1  # 2 benches exist
+        assert benches["data"]["next_cursor"] is not None
+
+        devices = _tools_call(
+            url,
+            session,
+            token,
+            3,
+            "stg_v1_device_list",
+            {"bench_id": "sim-bench", "limit": 10**9, "cursor": None},
+        )
+        assert devices["ok"] is True, devices
+        assert len(devices["data"]["items"]) == 1  # 2 devices exist on sim-bench
+        assert devices["data"]["next_cursor"] is not None
+
+        events = _tools_call(
+            url,
+            session,
+            token,
+            4,
+            "stg_v1_events_get",
+            {"bench_id": "sim-bench", "after": None, "limit": 10**9},
+        )
+        assert events["ok"] is True, events
+        assert len(events["data"]["events"]) == 1  # 2 events exist on the stream
+
+
+def test_adapter_length_clamped_to_max_chunk_bytes(tmp_path: Path) -> None:
+    """length=10**9 reads exactly one chunk: the tool layer clamps to
+    max_chunk_bytes (the store would otherwise serve up to its own hard
+    ceiling of 65536 in one response)."""
+    artifact_id = ""
+
+    def prep(store: Store, content: ContentStore) -> None:
+        nonlocal artifact_id
+        del store
+        artifact_id = content.put_artifact(b"0123456789abcdefghij", NOW_ISO)  # 20 bytes
+
+    with _live_app(tmp_path, limits=SMALL_LIMITS, prep=prep) as url:
+        token = _token({"stg:observe"})
+        session = _session(url, token)
+
+        chunk = _tools_call(
+            url,
+            session,
+            token,
+            2,
+            "stg_v1_artifact_read",
+            {"artifact_id": artifact_id, "offset": 0, "length": 10**9},
+        )
+        assert chunk["ok"] is True, chunk
+        assert chunk["data"]["bytes"] == 8  # clamped to max_chunk_bytes, not 20
+        assert chunk["data"]["total_bytes"] == 20
+        assert chunk["data"]["eof"] is False
+
+
+def test_live_run_through_app_reaches_truthful_terminal(tmp_path: Path) -> None:
+    """The whole run path over the app: run_start enqueues, the worker's
+    build_run spools+admits+executes on its own thread, and run_get polls
+    to a terminal state whose outcome comes from the durable record (the
+    disclosed worker-death mode would land here as outcome_unknown)."""
+    binding_sha = hashlib.sha256(
+        (FIXTURES / "run-binding.json").read_bytes()
+    ).hexdigest()
+    with _live_app(tmp_path) as url:
+        token = _token({"stg:control"})
+        session = _session(url, token)
+
+        started = _tools_call(
+            url,
+            session,
+            token,
+            2,
+            "stg_v1_run_start",
+            {
+                "bench_id": "sim-bench",
+                "request_id": "req-task8-live-1",
+                "binding_ref": {
+                    "id": "req-voltage-check-1",
+                    "version": "1.0.0",
+                    "sha256": binding_sha,
+                },
+                "expected_generation": 1,
+                "lease_id": None,
+            },
+        )
+        assert started["ok"] is True, started
+        run = started["data"]
+        assert run["state"] == "accepted"  # 202 semantics: read before submit
+
+        final: dict[str, Any] = {}
+        deadline = time.monotonic() + 60.0
+        while True:
+            current = _tools_call(
+                url, session, token, 3, "stg_v1_run_get", {"run_id": run["run_id"]}
+            )
+            assert current["ok"] is True, current
+            final = current["data"]
+            if final["state"] == "terminal":
+                break
+            assert time.monotonic() < deadline, f"run never reached terminal: {final}"
+            time.sleep(0.2)
+
+        assert final["outcome"] == "passed"
+        assert final["safe_state"] == "verified"
+        assert final["terminal_record"] is not None
