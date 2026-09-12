@@ -17,7 +17,9 @@ against the origin's trust root, and a missing signature file is
 posture: it skips exactly those two authenticity verifications (no signature
 fetch at all, ``root`` is ``None``) while every integrity and
 process-honesty check stays on — schema validation, the served-manifest
-identity recheck, dependency digest pinning, status expiry/future-time, and
+identity recheck, the status-release binding (``status_release_mismatch``:
+a served status must name the requested release and pin the served
+manifest's digest), dependency digest pinning, status expiry/future-time, and
 monotonic sequences against the high-water view. A dev origin's status
 bytes are unauthenticated by design: a local process that can write the
 dev root can forge lifecycle state. That limitation is accepted and
@@ -267,6 +269,20 @@ class Resolver:
                 except FileNotFoundError as exc:
                     raise AuthenticityRejected("bad_signature") from exc
                 verify_document(status_doc, status_sig, root)
+            # The status signature proves the bytes are authentic, not that
+            # they describe THIS release: bind the served status to the
+            # release it accompanies — its release block must name the
+            # requested key AND pin the served manifest digest (contract
+            # §6/§10). A validly-signed status swapped between release
+            # directories rejects as ``status_release_mismatch`` here, so a
+            # foreign "published" status cannot mask a real revocation.
+            status_release = status_doc.content["release"]
+            if (
+                status_release["registry_id"],
+                status_release["package_id"],
+                status_release["version"],
+            ) != key or status_release["manifest_sha256"] != manifest_doc.sha256:
+                raise RegistryRejected("status_release_mismatch")
             payload = source.payload_bytes(
                 package_id, version, max_archive_bytes=origin.max_archive_bytes
             )

@@ -6,7 +6,10 @@ extracted payload bytes in a content-addressed cache, an explicit package lock
 at a caller-supplied path, and a local admission record binding the two. The
 sequence is normative (each step runs for the whole closure before the next):
 
-1. **Lifecycle gate** — any release status ``revoked`` or ``yanked`` rejects
+1. **Lifecycle gate** — the status-release binding is re-checked first: the
+   status's release block must name the release it rides and pin its
+   manifest digest (``status_release_mismatch``). Any release status
+   ``revoked`` or ``yanked`` then rejects
    before anything is written. Every status is then re-checked through
    :func:`~benchweave.registry.authenticity.check_status` with the admission
    clock, so a closure resolved earlier cannot be admitted after its statuses
@@ -157,6 +160,22 @@ def _gate_lifecycle(
     """
     session: dict[Key, int] = {}
     for release in closure.releases:
+        # Bind before trusting: the status's release block must name this
+        # release and pin its manifest digest — the same binding the resolver
+        # enforces on served bytes. Whatever the closure now carries is
+        # re-bound here, so a status swapped onto a release after resolve
+        # (both signatures real, the swap the attack) refuses before the
+        # lifecycle gate reads it — a foreign "published" status cannot
+        # mask this release's real lifecycle.
+        declared = release.status["release"]
+        if (
+            declared["registry_id"],
+            declared["package_id"],
+            declared["version"],
+        ) != _release_key(release) or declared["manifest_sha256"] != (
+            release.manifest_sha256
+        ):
+            raise AdmissionRejected("status_release_mismatch")
         lifecycle = release.status["lifecycle"]
         if lifecycle == "revoked":
             raise AdmissionRejected("revoked")

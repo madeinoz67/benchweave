@@ -293,6 +293,33 @@ def test_yanked_rejected_before_any_cache(tmp_path: Path) -> None:
     assert not (tmp_path / "cache").exists()
 
 
+def test_swapped_status_release_rejected_at_admission(tmp_path: Path) -> None:
+    """A validly-signed status for another release never rides a release record.
+
+    The resolver binds a served status to its release
+    (``status_release_mismatch``); the lifecycle gate re-binds before
+    trusting status state, so a closure mutated after resolve — here
+    sim-controller's genuine signed status carried on the sim-psu release,
+    both signatures real, the swap is the attack — refuses instead of
+    letting a foreign "published" status mask this release's real
+    lifecycle (the revocation-fails-to-bite shape).
+    """
+    closure = _resolve()
+    controller_status = json.loads(
+        (REG / "origin-main/benchweave/sim-controller/1.0.0/status.json").read_bytes()
+    )
+    releases = []
+    for release in closure.releases:
+        if release.package_id == "benchweave/sim-psu":
+            releases.append(replace(release, status=controller_status))
+        else:
+            releases.append(release)
+    with pytest.raises(AdmissionRejected) as exc:
+        _admit(ResolvedClosure(releases=tuple(releases)), tmp_path)
+    assert exc.value.reason == "status_release_mismatch"
+    assert not (tmp_path / "cache").exists()
+
+
 def test_expired_rejected_at_resolve_layer(tmp_path: Path) -> None:
     origin = tmp_path / "origin"
     _drop_in_fault(origin, "expired")

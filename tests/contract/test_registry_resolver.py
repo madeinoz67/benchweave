@@ -125,6 +125,21 @@ def _fault_status(fault: str) -> tuple[bytes, bytes]:
     return (d / "status.json").read_bytes(), (d / "status.sig").read_bytes()
 
 
+def _restatus(package_id: str, version: str, manifest_sha: str) -> tuple[bytes, bytes]:
+    """Re-pin a release's status to a mutated manifest's digest (re-signed).
+
+    A served status is bound to the release it accompanies
+    (``status_release_mismatch``): a test that serves a MUTATED manifest must
+    serve the status re-pinned to that manifest's digest, or the binding
+    rejects before the behavior under test is reached.
+    """
+    d = REG / "origin-main" / package_id / version
+    status = json.loads((d / "status.json").read_bytes())
+    status["release"]["manifest_sha256"] = manifest_sha
+    raw = _canonical(status)
+    return raw, _sign_with_main(raw)
+
+
 def test_resolve_full_closure() -> None:
     high_water: dict[Key, int] = {}
     closure = Resolver(_origins()).resolve(
@@ -183,6 +198,11 @@ def test_cross_origin_fallback_rejected() -> None:
     source = _OverlaySource(
         base=LocalDirectorySource(REG / "origin-main"),
         manifests={("benchweave/sim-psu", "1.0.0"): (mutated, _sign_with_main(mutated))},
+        statuses={
+            ("benchweave/sim-psu", "1.0.0"): _restatus(
+                "benchweave/sim-psu", "1.0.0", _sha(mutated)
+            )
+        },
     )
     with pytest.raises(RegistryRejected) as exc:
         Resolver(_origins(source, include_origin_b=True)).resolve(
@@ -287,6 +307,14 @@ def test_cycle_fixture_caught_by_pin_conflict() -> None:
             ("benchweave/sim-psu", "1.0.0"): (impl_raw, _sign_with_main(impl_raw)),
             ("benchweave/sim-psu-descriptor", "1.0.0"): (desc_raw, _sign_with_main(desc_raw)),
         },
+        statuses={
+            ("benchweave/sim-psu", "1.0.0"): _restatus(
+                "benchweave/sim-psu", "1.0.0", _sha(impl_raw)
+            ),
+            ("benchweave/sim-psu-descriptor", "1.0.0"): _restatus(
+                "benchweave/sim-psu-descriptor", "1.0.0", _sha(desc_raw)
+            ),
+        },
     )
     with pytest.raises(RegistryRejected) as exc:
         Resolver(_origins(source)).resolve(
@@ -329,6 +357,52 @@ def test_root_served_manifest_identity_mismatch() -> None:
     assert exc.value.reason == "identity_mismatch"
 
 
+def test_root_served_status_release_mismatch() -> None:
+    # A mis-serving origin returns sim-controller's genuine, validly-signed
+    # status.json+status.sig pair for the sim-psu request: both signature
+    # checks pass (the bytes are real and main-signed), so the resolver must
+    # bind the served status to the release it accompanies — its release
+    # block must name the requested key AND pin the served manifest digest —
+    # before any lifecycle or sequence gate can trust it. Without the
+    # binding, a swapped "published" status dodges a real revocation.
+    controller = REG / "origin-main/benchweave/sim-controller/1.0.0"
+    source = _OverlaySource(
+        base=LocalDirectorySource(REG / "origin-main"),
+        statuses={
+            ("benchweave/sim-psu", "1.0.0"): (
+                (controller / "status.json").read_bytes(),
+                (controller / "status.sig").read_bytes(),
+            )
+        },
+    )
+    with pytest.raises(RegistryRejected) as exc:
+        Resolver(_origins(source)).resolve(
+            "origin-main", "benchweave/sim-psu", "1.0.0", now_ns=NOW, high_water={}
+        )
+    assert exc.value.reason == "status_release_mismatch"
+
+
+def test_status_manifest_pin_mismatch() -> None:
+    # Identity-correct status whose release block pins a DIFFERENT manifest
+    # digest (re-signed with main, so authenticity passes): a status is bound
+    # to the release bytes it accompanies, not just to the release's name
+    # (contract §6/§10).
+    status = json.loads(
+        (REG / "origin-main/benchweave/sim-psu/1.0.0/status.json").read_bytes()
+    )
+    status["release"]["manifest_sha256"] = _sha(b"not the served manifest")
+    raw = _canonical(status)
+    source = _OverlaySource(
+        base=LocalDirectorySource(REG / "origin-main"),
+        statuses={("benchweave/sim-psu", "1.0.0"): (raw, _sign_with_main(raw))},
+    )
+    with pytest.raises(RegistryRejected) as exc:
+        Resolver(_origins(source)).resolve(
+            "origin-main", "benchweave/sim-psu", "1.0.0", now_ns=NOW, high_water={}
+        )
+    assert exc.value.reason == "status_release_mismatch"
+
+
 def test_dependency_digest_disagreement_rejected() -> None:
     # Two dependents pin the same release key at different digests: the first
     # edge resolves against the true digest, and the revisit must compare the
@@ -347,6 +421,11 @@ def test_dependency_digest_disagreement_rejected() -> None:
     source = _OverlaySource(
         base=LocalDirectorySource(REG / "origin-main"),
         manifests={("benchweave/sim-psu", "1.0.0"): (impl_raw, _sign_with_main(impl_raw))},
+        statuses={
+            ("benchweave/sim-psu", "1.0.0"): _restatus(
+                "benchweave/sim-psu", "1.0.0", _sha(impl_raw)
+            )
+        },
     )
     with pytest.raises(RegistryRejected) as exc:
         Resolver(_origins(source)).resolve(
