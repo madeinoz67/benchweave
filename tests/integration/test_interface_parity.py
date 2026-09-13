@@ -1143,9 +1143,12 @@ def test_mcp_is_error_flag_on_failure_and_success(gateway: SimpleNamespace) -> N
 
 
 def test_event_evidence_shape_deviation(gateway: SimpleNamespace) -> None:
-    """D4 pin: the seam's free-form evidence dict rides the wire on both
-    transports (the contract's event def declares a closed doc-ref — the
-    divergence is pinned, not reshaped; WP08 reconciliation item).
+    """D4 pin, realigned by D12: the seam's free-form evidence dict still
+    rides the wire on both transports for the legacy kinds (the contract's
+    event def declares a closed doc-ref — that half of the divergence is
+    pinned, not reshaped; the remaining free-form kinds stay a WP08
+    reconciliation item), while ``authority_changed`` — D12's first
+    emitters — conforms to the def's closed ref exactly.
 
     Runs BEFORE the retention-trim case: the run_cancel evidence rows this
     asserts over are exactly what the trim deletes.
@@ -1164,7 +1167,14 @@ def test_event_evidence_shape_deviation(gateway: SimpleNamespace) -> None:
     # The matrix's run_cancel emitted {reason, request_id} — free-form, and
     # demonstrably not the closed {id, version, sha256} doc-ref.
     assert {"reason": "parity", "request_id": "req-parity-cancel"} in evidences
-    assert not any(set(ev) == {"id", "version", "sha256"} for ev in evidences)
+    # D12: wherever the matrix emitted authority_changed, its evidence IS
+    # the closed doc-ref (the def's shape) — the first kind reconciled.
+    authority = [
+        event["evidence"]
+        for event in rest_json["data"]["events"]
+        if event["kind"] == "authority_changed"
+    ]
+    assert all(set(ev) == {"id", "version", "sha256"} for ev in authority), authority
 
 
 def test_event_gap_after_retention_trim(gateway: SimpleNamespace) -> None:

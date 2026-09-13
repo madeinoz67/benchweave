@@ -524,6 +524,13 @@ class RunCoordinator:
         horizon_ms = int(self._docs.procedure["max_body_ms"]) + int(
             self._docs.procedure["max_protection_ms"]
         )
+        # D12 commissioned-takeover handoff: a run accepted against a named
+        # manual lease arrives with that lease already consumed at the seam
+        # (validated there: active, on this bench, unexpired, §6
+        # owner-or-admin), so reserve's one-active check sees an idle bench
+        # and the takeover run takes its OWN lease exactly as a
+        # gateway-owned start does — one ownership path through the WP05
+        # core, no takeover-specific coordinator state.
         reservation = reserve(
             self._store,
             self._docs,

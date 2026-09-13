@@ -73,6 +73,7 @@ from typing import Any, cast
 import httpx
 import pytest
 import uvicorn
+from jsonschema import Draft202012Validator
 
 from benchweave.content.store import ContentStore
 from benchweave.control.executor import canonical_json
@@ -795,6 +796,114 @@ def test_evidence_storage_failure_emits_evidence_gap(tmp_path: Path) -> None:
             "SELECT COUNT(*) FROM evidence WHERE context_key = ?", (f"run:{run_id}",)
         ).fetchone()
         assert row is not None and int(row[0]) == quota, row
+    finally:
+        _shutdown(gateway)
+
+
+# --- D12 commissioned takeover (WP08 Task 3) -------------------------------------
+
+_TAKEOVER_EVENT_DEF = json.loads(
+    (REPO_ROOT / "contracts" / "interface-v1.1.0" / "interface.schema.json").read_bytes()
+)["$defs"]["event"]
+# stream_id's colon-less pattern forbids the seam's "bench:{id}" naming —
+# a pre-existing corpus divergence affecting every kind (see the takeover
+# suite); neutralised here so the rest validates verbatim.
+_TAKEOVER_EVENT_DEF["properties"]["stream_id"] = {"type": "string", "minLength": 1}
+_TAKEOVER_EVENT_VALIDATOR = Draft202012Validator(_TAKEOVER_EVENT_DEF)
+
+
+def test_run_start_with_lease_takeover_over_http(tmp_path: Path) -> None:
+    """D12 wire pin: ``lease_id`` is honored as a takeover assertion.
+
+    Over the real composed app (real worker, real coordinator): a run
+    started against the caller's active manual lease is accepted (202) and
+    reaches ``passed`` — proving the manual lease was consumed at accept
+    time, before the coordinator's ``reserve`` could see it as
+    ``bench_busy`` — the bench stream carries exactly one
+    ``authority_changed`` in the vendored event shape (closed
+    ``{id, version, sha256}`` evidence ref pinning the binding document),
+    a same-request replay returns the SAME run, and a NEW request
+    re-presenting the consumed lease fails closed 404 ``not_found``.
+    """
+    seed = Store.open(tmp_path / "state.db", check_same_thread=False)
+    seed_content = ContentStore(seed)
+    seed_content.put_document(
+        SECOND_BINDING_BYTES,
+        SECOND_BINDING_SHA,
+        _variant_binding,
+        "urn:stg:binding",
+        NOW_ISO,
+    )
+    seed.close()
+
+    gateway = _launch(tmp_path)
+    try:
+        lease = gateway.client.post(
+            f"/v1/benches/{BENCH}/leases",
+            headers=_bearer(),
+            json={
+                "request_id": "req-takeover-lease",
+                "expected_generation": 1,
+                "duration_ms": 60000,
+            },
+        )
+        assert lease.status_code == 201, lease.text
+        lease_id = str(lease.json()["data"]["lease_id"])
+
+        started = gateway.client.post(
+            f"/v1/benches/{BENCH}/runs",
+            headers=_bearer(),
+            json={
+                "request_id": "req-voltage-check-1",
+                "binding_ref": BINDING_REF,
+                "expected_generation": 1,
+                "lease_id": lease_id,
+            },
+        )
+        assert started.status_code == 202, started.text
+        run_id = str(started.json()["data"]["run_id"])
+        final = _poll_run(gateway, run_id, want="terminal", timeout=30.0)
+        assert final["outcome"] == "passed", final  # reserve() survived
+
+        events = _bench_events(gateway)
+        matches = [e for e in events if e["kind"] == "authority_changed"]
+        assert len(matches) == 1, events
+        event = matches[0]
+        assert event["run_id"] == run_id
+        assert event["evidence"] == {
+            "id": BINDING_REF["id"],
+            "version": BINDING_REF["version"],
+            "sha256": BINDING_REF["sha256"],
+        }
+        assert not list(_TAKEOVER_EVENT_VALIDATOR.iter_errors(event))
+
+        # §9 replay of the same request: the SAME run, never a re-takeover.
+        replay = gateway.client.post(
+            f"/v1/benches/{BENCH}/runs",
+            headers=_bearer(),
+            json={
+                "request_id": "req-voltage-check-1",
+                "binding_ref": BINDING_REF,
+                "expected_generation": 1,
+                "lease_id": lease_id,
+            },
+        )
+        assert replay.status_code == 202, replay.text
+        assert replay.json()["data"]["run_id"] == run_id
+
+        # A NEW request re-presenting the consumed lease fails closed.
+        again = gateway.client.post(
+            f"/v1/benches/{BENCH}/runs",
+            headers=_bearer(),
+            json={
+                "request_id": "req-voltage-check-2",
+                "binding_ref": SECOND_REF,
+                "expected_generation": 1,
+                "lease_id": lease_id,
+            },
+        )
+        assert again.status_code == 404, again.text
+        assert again.json()["error"]["code"] == "not_found"
     finally:
         _shutdown(gateway)
 

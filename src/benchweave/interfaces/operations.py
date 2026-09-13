@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any
 
 from benchweave.content.store import ContentStore
 from benchweave.control.clocking import SystemClock
-from benchweave.control.coordinator import _iso_plus_ms
+from benchweave.control.coordinator import _iso_plus_ms, _parse_utc
 from benchweave.interfaces import errors
 from benchweave.interfaces.identity import Identity, IdentityRejected, validate
 from benchweave.interfaces.validation import SeamValidator
@@ -57,6 +57,18 @@ def scoped_request_key(principal: str, operation: str, request_id: str) -> str:
     """§9 request scoping: identical request ids in different principal
     namespaces (or under different operations) never collide."""
     return hashlib.sha256(f"{principal}|{operation}|{request_id}".encode()).hexdigest()
+
+
+def is_owner_or_admin(identity: Identity, owner: str) -> bool:
+    """§6 owner-or-admin: the resource owner, or any admin-tier identity.
+
+    The ONE predicate behind both §6 non-holder denials on this seam —
+    run_cancel's scoping and the D12 takeover holder check — shared, never
+    forked, so the two can never drift apart.
+    """
+    return identity.principal == owner or not identity.scopes.isdisjoint(
+        TIER_SATISFIES["admin"]
+    )
 
 
 def encode_cursor(stream: str, sequence: str, principal: str) -> str:
@@ -423,9 +435,12 @@ class Operations:
         body is the binding pin — a replay returns the original run and
         NEVER enqueues again (even while that run keeps the bench busy);
         the same key with a different binding is a conflict. ``lease_id``
-        names a pre-held lease for commissioned takeover (Task 3); beyond
-        the authority it records on the run row it takes no part in
-        acceptance.
+        names a pre-held ACTIVE lease and asserts commissioned takeover of
+        the bench (D12): it is validated and CONSUMED inside the §5
+        pre-check flow — resolution, bench identity, expiry and §6
+        owner-or-admin holder identity — so a run only ever reaches
+        acceptance behind a real validated lease, and the run row's
+        ``authority='lease'`` is exactly that evidence.
         """
         require_permission(identity, "control")
         self._validator.validate("run_start", {
@@ -475,7 +490,9 @@ class Operations:
                     )
                 )
             return self._run_projection(str(filed["run_id"]))  # replay: never enqueue
-        self._assert_bench_acceptable(bench_id, binding_ref, request_id)
+        self._assert_bench_acceptable(
+            bench_id, binding_ref, request_id, identity, lease_id
+        )
         try:
             accepted = self._store.accept_request(key, body_sha, run_id, now)
         except Conflict:
@@ -497,12 +514,29 @@ class Operations:
             now=now,
         )
         self._store.put_run_state(run_id, bench_id, "accepted", now)
-        # D9 lease-authority modeling: record where authority came from —
-        # a named lease (manual mode) or the gateway itself (gateway-owned;
-        # Task 3 consumes this for commissioned takeover).
+        # D12 lease-authority: a named lease can only reach this point
+        # through the validated, consumed takeover path inside
+        # _assert_bench_acceptable — authority "lease" is evidence a real
+        # lease was presented (never an unvalidated string).
         self._store.set_run_authority(
             run_id, "lease" if lease_id is not None else "gateway"
         )
+        if lease_id is not None:
+            # The commissioned handoff, made durable on the bench stream:
+            # manual lease authority passed to the run, pinned to the
+            # binding document that commissioned it. The event def's
+            # evidence is a CLOSED {id, version, sha256} ref, so the
+            # binding pin — not a free-form dict — is the payload.
+            self._emit(
+                "authority_changed",
+                bench_id,
+                run_id,
+                evidence={
+                    "id": str(binding_ref.get("id", "")),
+                    "version": str(binding_ref.get("version", "")),
+                    "sha256": str(binding_ref.get("sha256", "")),
+                },
+            )
         # Read the projection BEFORE submitting: the worker races this call
         # to flip the state to "running", and 202 semantics return "accepted".
         projection = self._run_projection(run_id)
@@ -550,9 +584,7 @@ class Operations:
         run = self._store.get_run(run_id)
         if run is None:
             raise errors.OperationFailure(errors.failure("not_found", f"run {run_id}"))
-        if run["principal_id"] != identity.principal and identity.scopes.isdisjoint(
-            TIER_SATISFIES["admin"]
-        ):
+        if not is_owner_or_admin(identity, str(run["principal_id"])):
             raise errors.OperationFailure(errors.failure(
                 "forbidden", f"run {run_id} belongs to principal {run['principal_id']!r}"
             ))
@@ -691,6 +723,18 @@ class Operations:
             lease.lease_id,
             evidence={"reason": reason, "request_id": request_id},
         )
+        # D12: releasing manual authority is an authority transition too.
+        # The event def's evidence is a CLOSED {id, version, sha256} ref, so
+        # the emit pins the commissioned bench configuration — the same
+        # ref the bench projection serves — with no run attached.
+        bench = self._store.get_bench(lease.bench_id)
+        if bench is not None:
+            self._emit(
+                "authority_changed",
+                lease.bench_id,
+                None,
+                evidence=self._bench_projection(bench)["configuration"],
+            )
         return self._lease_projection(replace(lease, state="released"))
 
     # --- admin: two-phase changes (Task 7) --------------------------------------
@@ -1207,11 +1251,34 @@ class Operations:
             offset += len(rows)
 
     def _assert_bench_acceptable(
-        self, bench_id: str, binding_ref: dict[str, Any], request_id: str
+        self,
+        bench_id: str,
+        binding_ref: dict[str, Any],
+        request_id: str,
+        identity: Identity,
+        lease_id: str | None,
     ) -> None:
-        """§5 accept-time pre-checks (D9): synchronous contention and binding
-        identity, raised BEFORE the request key is written (no dangling
-        idempotency tombstone on a refused run).
+        """§5 accept-time pre-checks (D9) with the D12 takeover woven in:
+        commissioned-lease validation, synchronous contention and binding
+        identity, all raised BEFORE the request key is written (no dangling
+        idempotency tombstone on a refused run — and no lease consumed for
+        a start that is refused).
+
+        Takeover (D12): a non-null ``lease_id`` asserts authority over the
+        bench via the caller's pre-held manual lease. It is validated HERE
+        — resolved through ``_find_lease``, ACTIVE on THIS bench, unexpired
+        at the seam clock, holder §6 owner-or-admin — and then CONSUMED
+        (store state → released), which is what lets the worker's
+        ``reserve`` see an idle bench instead of ``bench_busy`` and what
+        makes the lease single-shot: a consumed lease can never authorize
+        a second takeover (a §9 replay of the same request never reaches
+        this branch — the peek returns the existing run first). A
+        VALIDATED lease is the sanctioned override of the caller's OWN
+        manual authority; it never waives contention with another live
+        run or another owner. Failure codes (the catalog's global 14-code
+        set, per the controller ruling): unknown/expired/consumed lease
+        ``not_found``; wrong-bench lease ``conflict``; non-holder
+        ``forbidden``.
 
         Busy oracle: the store's run-state view — any run still in a live
         state (``LIVE_RUN_STATES``) owns the bench. There is no separate
@@ -1228,8 +1295,47 @@ class Operations:
         resolves binding refs (content-store lookup by digest). An unstored
         digest is NOT decided here — that failure stays asynchronous (the
         worker's poison guard owns it) — so only a resolvable document can
-        conflict at accept time.
+        conflict at accept time. Note the inverted guard: an unstored
+        binding still CONSUMES a presented lease, because acceptance
+        itself proceeds and the run needs the bench the lease was holding.
         """
+        lease: Lease | None = None
+        if lease_id is not None:
+            lease = self._find_lease(lease_id)
+            if lease is None or lease.state != "active":
+                # Unknown, released, expired-away or already consumed: the
+                # lease names no authority this start can ride (§6's "a
+                # late renewal cannot revive an expired lease" family).
+                raise errors.OperationFailure(
+                    errors.failure(
+                        "not_found",
+                        f"lease {lease_id} is not an active lease",
+                    )
+                )
+            if lease.bench_id != bench_id:
+                raise errors.OperationFailure(
+                    errors.failure(
+                        "conflict",
+                        f"lease {lease_id} is held on bench {lease.bench_id},"
+                        f" not {bench_id}",
+                    )
+                )
+            expiry = _parse_utc(lease.expires_at)
+            now_moment = _parse_utc(self._now_iso())
+            if expiry is None or now_moment is None or now_moment >= expiry:
+                raise errors.OperationFailure(
+                    errors.failure(
+                        "not_found",
+                        f"lease {lease_id} expired at {lease.expires_at}",
+                    )
+                )
+            if not is_owner_or_admin(identity, lease.holder):
+                raise errors.OperationFailure(
+                    errors.failure(
+                        "forbidden",
+                        f"lease {lease_id} is held by principal {lease.holder!r}",
+                    )
+                )
         for row in self._store.list_run_states(bench_id):
             if row["state"] in LIVE_RUN_STATES:
                 raise errors.OperationFailure(
@@ -1240,14 +1346,30 @@ class Operations:
                     )
                 )
         document = self._content.get_document(str(binding_ref.get("sha256", "")))
-        if document is None:
-            return  # unstored binding: the async path owns that failure
-        bound_request_id = str(document["content"].get("request_id", ""))
-        if bound_request_id != request_id:
-            raise errors.OperationFailure(
-                errors.failure(
-                    "conflict",
-                    f"binding document names request_id {bound_request_id!r},"
-                    f" not {request_id!r}",
+        if document is not None:
+            bound_request_id = str(document["content"].get("request_id", ""))
+            if bound_request_id != request_id:
+                raise errors.OperationFailure(
+                    errors.failure(
+                        "conflict",
+                        f"binding document names request_id {bound_request_id!r},"
+                        f" not {request_id!r}",
+                    )
                 )
-            )
+        if lease is not None:
+            # Consume LAST: every refusal above leaves the holder's lease
+            # untouched, and consumption still precedes the request key —
+            # nothing persists for a refused run, so no partially-taken-
+            # over state can survive a refused start.
+            try:
+                self._store.consume_lease(
+                    lease.bench_id, lease.sequence, self._now_iso()
+                )
+            except LeaseNotActive:
+                raise errors.OperationFailure(
+                    errors.failure(
+                        "conflict",
+                        f"lease {lease_id} was released while the start was"
+                        f" being decided",
+                    )
+                ) from None

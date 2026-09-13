@@ -159,10 +159,17 @@ def test_run_row_records_gateway_authority_by_default(
 def test_run_row_records_lease_authority_when_lease_id_present(
     seam_control: SeamControl,
 ) -> None:
+    """D12 realignment: the named lease must be REAL — an active lease the
+    caller holds, which the takeover validates and consumes. A bogus id no
+    longer records lease authority; it fails closed ``not_found`` (pinned
+    in test_takeover.py)."""
+    lease = seam_control.ops.lease_create(
+        _control("p1"), BENCH_ID, "lease-authority-1", 1, 600_000
+    )
     run = seam_control.ops.run_start(
         _control("p1"), BENCH_ID, str(seam_control.binding_ref["id"]),
-        seam_control.binding_ref, 1, "lease-authority-x",
+        seam_control.binding_ref, 1, str(lease["lease_id"]),
     )
     row = seam_control.store.get_run(str(run["run_id"]))
     assert row is not None
-    assert row["authority"] == "lease"  # authority came from a lease
+    assert row["authority"] == "lease"  # authority came from a validated lease

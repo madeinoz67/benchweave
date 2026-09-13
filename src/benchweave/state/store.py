@@ -260,6 +260,27 @@ class Store:
         if cursor.rowcount != 1:
             raise LeaseNotActive(f"no active lease {sequence} on bench {bench_id!r}")
 
+    def consume_lease(self, bench_id: str, sequence: int, now: str) -> None:
+        """Consume an active lease for a commissioned takeover (D12).
+
+        The interface lease-state enum is closed (active | released |
+        expired), so consumption records ``released`` like a holder
+        release; what distinguishes it is the audit trail — the
+        ``authority_changed`` bench event and the commissioned run's
+        ``authority='lease'`` row. A consumed lease can never authorize a
+        second takeover: the seam's takeover validation accepts only an
+        ACTIVE row, and this guarded transition (exact bench + sequence,
+        active-only, under the store's one-writer discipline) is the
+        single write that closes one.
+        """
+        cursor = self._conn.execute(
+            "UPDATE leases SET state = 'released', expires_at = ? "
+            "WHERE bench_id = ? AND sequence = ? AND state = 'active'",
+            (now, bench_id, sequence),
+        )
+        if cursor.rowcount != 1:
+            raise LeaseNotActive(f"no active lease {sequence} on bench {bench_id!r}")
+
     def get_active_lease(self, bench_id: str) -> Lease | None:
         row = self._conn.execute(
             "SELECT lease_id, bench_id, sequence, holder, expires_at, state"
