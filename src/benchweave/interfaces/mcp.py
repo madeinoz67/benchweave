@@ -29,6 +29,7 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import Callable
+from functools import wraps
 from pathlib import Path
 from typing import Any
 
@@ -129,6 +130,7 @@ def build_mcp(
     vendored = vendored_tools()
     max_page_size = limits["max_page_size"]
     max_chunk_bytes = limits["max_chunk_bytes"]
+    max_json_bytes = limits["max_json_bytes"]
 
     async def _identity() -> Identity:
         """Mint the caller's Identity from the request-context token only.
@@ -182,11 +184,44 @@ def build_mcp(
         """Register ``fn`` under ``stg_v1_<fn.__name__>`` with the vendored
         description and annotations (the direct-call form returns the
         function, not the Tool — schemas are pinned on the registry's Tool
-        object by ``_pin_all`` below)."""
+        object by ``_pin_all`` below).
+
+        D13 body ceiling (the D6 residual): the registered callable first
+        enforces ``max_json_bytes`` over the tool-call arguments — the MCP
+        expression of REST's pre-parse ceiling. REST measures the raw
+        request bytes before any decode; MCP arguments arrive already
+        parsed, so the canonical re-serialisation (sorted keys, compact
+        separators, UTF-8 bytes) is the measure. Same ``limits`` source,
+        same ``payload_too_large`` code, identical message text — the
+        envelopes match REST's 413 exactly. ``wraps`` keeps the original
+        signature visible to FastMCP's introspection (it follows
+        ``__wrapped__``), and the vendored schema pin below is the wire
+        authority regardless.
+        """
         name = f"stg_v1_{fn.__name__}"
         spec = vendored[name]
+
+        @wraps(fn)
+        async def ceiling_checked(*args: P.args, **kwargs: P.kwargs) -> Any:
+            if (
+                len(
+                    json.dumps(
+                        kwargs, sort_keys=True, separators=(",", ":")
+                    ).encode()
+                )
+                > max_json_bytes
+            ):
+                return ToolResult(
+                    structured_content=failure(
+                        "payload_too_large",
+                        f"body exceeds max_json_bytes ({max_json_bytes})",
+                    ).body(),
+                    is_error=True,
+                )
+            return await fn(*args, **kwargs)
+
         mcp.tool(
-            fn,
+            ceiling_checked,
             name=name,
             description=spec["description"],
             annotations=spec.get("annotations"),

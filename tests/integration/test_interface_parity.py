@@ -46,8 +46,11 @@ a test; none is silent) versus what it proves equal:
   level, alongside the exactly-17 tool set with no admin twin.
 - D6 failure-class expressibility: token-shaped rejections collapse to a
   transport 401 on MCP (no envelope can exist pre-auth — the WP02 map's 403
-  semantics surface only at REST), and ``payload_too_large`` is REST-only
-  (no MCP transport body ceiling is wired).
+  semantics surface only at REST); the ``payload_too_large`` half is CLOSED
+  (WP08 Task 5): the MCP adapter enforces the same ``max_json_bytes``
+  ceiling over the tool-call arguments (canonically re-serialised — MCP
+  arguments arrive parsed, unlike REST's raw bytes), so the class reaches
+  both transports with identical envelopes.
 - D7 token-shape probes (backfilled after review — the initial suite DROPPED
   the brief's one-expired + one-wrong-audience tokens; the omission is
   disclosed here and closed by tests): an expired token is 401
@@ -1075,9 +1078,13 @@ def test_extra_property_wire_truth_on_both_transports(
     assert rest_json["ok"] is True, rest_json  # extra property silently dropped
 
 
-def test_payload_too_large_rest_only(gateway: SimpleNamespace) -> None:
-    """D6 pin: the REST adapter enforces ``max_json_bytes`` (413); no MCP
-    transport body ceiling is wired, so the class is REST-reachable only."""
+def test_payload_too_large_envelope_parity(gateway: SimpleNamespace) -> None:
+    """D6 residual closed (D13 batch B): REST enforces ``max_json_bytes``
+    (413 pre-parse) and MCP now mirrors the posture — the ceiling fires
+    before dispatch over the tool-call arguments (canonically
+    re-serialised: MCP arguments arrive parsed, unlike REST's raw bytes)
+    and yields the SAME ``payload_too_large`` envelope — code and message
+    identical — as an isError result."""
     padding = "x" * (LIMITS["max_json_bytes"] + 1)
     resp = gateway.client.post(
         f"/v1/benches/{BENCH}/run-checks",
@@ -1085,7 +1092,23 @@ def test_payload_too_large_rest_only(gateway: SimpleNamespace) -> None:
         json={"binding_ref": {"id": padding, "version": "1", "sha256": BINDING_SHA}},
     )
     assert resp.status_code == 413
-    assert resp.json()["error"]["code"] == "payload_too_large"
+    rest_error = resp.json()["error"]
+    assert rest_error["code"] == "payload_too_large"
+
+    mcp_result = _call_result(
+        gateway.port,
+        "stg_v1_run_check",
+        {
+            "bench_id": BENCH,
+            "binding_ref": {"id": padding, "version": "1", "sha256": BINDING_SHA},
+        },
+        ADMIN,
+    )
+    assert mcp_result.get("isError") is True, mcp_result
+    envelope = mcp_result["structuredContent"]
+    assert envelope["ok"] is False
+    assert envelope["error"]["code"] == rest_error["code"] == "payload_too_large"
+    assert envelope["error"]["message"] == rest_error["message"]
 
 
 def test_expired_token_probe(gateway: SimpleNamespace) -> None:
