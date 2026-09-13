@@ -1,5 +1,6 @@
 """SDK UI scaffolding remains optional and operates without device access."""
 
+import importlib
 import json
 from pathlib import Path
 
@@ -7,20 +8,20 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
-def sdk_source(monkeypatch):
+def sdk_source(monkeypatch: pytest.MonkeyPatch) -> None:
     root = Path(__file__).resolve().parents[2]
     monkeypatch.syspath_prepend(str(root / "packages/sdk/src"))
 
 
-def run(monkeypatch, *arguments):
-    from benchweave_sdk import cli
+def run(monkeypatch: pytest.MonkeyPatch, *arguments: str | Path) -> None:
+    cli = importlib.import_module("benchweave_sdk.cli")
 
     monkeypatch.setattr("sys.argv", ["benchweave-sdk", *map(str, arguments)])
     cli.main()
 
 
-def check(monkeypatch, package, **options):
-    arguments = [
+def check(monkeypatch: pytest.MonkeyPatch, package: Path, **options: str) -> None:
+    arguments: list[str | Path] = [
         "check-ui",
         package / "presentation.json",
         "--descriptor",
@@ -35,7 +36,9 @@ def check(monkeypatch, package, **options):
     run(monkeypatch, *arguments)
 
 
-def test_optional_ui_preserves_descriptor_and_adapter(tmp_path, monkeypatch, capsys):
+def test_optional_ui_preserves_descriptor_and_adapter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     plain = tmp_path / "plain"
     ui = tmp_path / "ui"
     run(monkeypatch, "new", plain)
@@ -50,7 +53,9 @@ def test_optional_ui_preserves_descriptor_and_adapter(tmp_path, monkeypatch, cap
     assert "not admission or approval" in capsys.readouterr().out
 
 
-def test_ui_check_rejects_modified_manifest(tmp_path, monkeypatch):
+def test_ui_check_rejects_modified_manifest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     run(monkeypatch, "new", tmp_path / "ui", "--with-ui")
     package = tmp_path / "ui/src/example_plugin"
     manifest = package / "ui/manifest.json"
@@ -60,7 +65,9 @@ def test_ui_check_rejects_modified_manifest(tmp_path, monkeypatch):
     assert error.value.code == 1
 
 
-def test_ui_check_rejects_symlinked_resource(tmp_path, monkeypatch):
+def test_ui_check_rejects_symlinked_resource(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     run(monkeypatch, "new", tmp_path / "ui", "--with-ui")
     package = tmp_path / "ui/src/example_plugin"
     manifest = package / "ui/manifest.json"
@@ -73,7 +80,9 @@ def test_ui_check_rejects_symlinked_resource(tmp_path, monkeypatch):
     assert error.value.code == 1
 
 
-def test_ui_check_rejects_resource_root_escape(tmp_path, monkeypatch):
+def test_ui_check_rejects_resource_root_escape(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     run(monkeypatch, "new", tmp_path / "ui", "--with-ui")
     package = tmp_path / "ui/src/example_plugin"
     envelope = package / "presentation.json"

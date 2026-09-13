@@ -3,29 +3,34 @@
 import hashlib
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
-from benchweave.presentation.contracts import validate_presentation
+from benchweave.presentation.contracts import ValidationReport, validate_presentation
+
+type JsonObject = dict[str, Any]
+type Specimen = tuple[JsonObject, dict[str, JsonObject], JsonObject, JsonObject, dict[str, bytes]]
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def encode(value):
+def encode(value: object) -> bytes:
     return json.dumps(value).encode()
 
 
-def digest(raw):
+def digest(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
-def load(name):
-    return json.loads((ROOT / "docs/otdp-v0.3.0" / name).read_bytes())
+def load(name: str) -> JsonObject:
+    document: JsonObject = json.loads((ROOT / "docs/otdp-v0.3.0" / name).read_bytes())
+    return document
 
 
 @pytest.fixture
-def specimen():
-    documents = {}
+def specimen() -> Specimen:
+    documents: dict[str, JsonObject] = {}
     for directory in ("otdp-v0.3.0", "plugin-ui-v0.1.0"):
         for path in (ROOT / "docs" / directory).glob("*.schema.json"):
             document = json.loads(path.read_bytes())
@@ -95,7 +100,7 @@ def specimen():
     )
 
 
-def validate(specimen):
+def validate(specimen: Specimen) -> ValidationReport:
     descriptor, documents, target, manifest, assets = specimen
     descriptor_raw = encode(descriptor)
     manifest["descriptor_sha256"] = digest(descriptor_raw)
@@ -129,18 +134,18 @@ def validate(specimen):
     )
 
 
-def test_configuration_preset_specimen(specimen):
+def test_configuration_preset_specimen(specimen: Specimen) -> None:
     report = validate(specimen)
     assert report.valid, report.findings
 
 
-def test_profile_must_supply_the_bound_action(specimen):
+def test_profile_must_supply_the_bound_action(specimen: Specimen) -> None:
     specimen[0]["profiles"] = [*specimen[0]["profiles"], "otdp.other/1.0.0"]
     specimen[2]["profile_ids"] = ["otdp.other/1.0.0"]
     assert not validate(specimen).valid
 
 
-def test_preset_cannot_bypass_canonical_action_schema(specimen):
+def test_preset_cannot_bypass_canonical_action_schema(specimen: Specimen) -> None:
     permissive = json.loads(specimen[4]["settings"])
     permissive.pop("required", None)
     permissive["additionalProperties"] = True
@@ -152,7 +157,7 @@ def test_preset_cannot_bypass_canonical_action_schema(specimen):
     assert not validate(specimen).valid
 
 
-def scope_specimen(specimen):
+def scope_specimen(specimen: Specimen) -> Specimen:
     descriptor = load("examples/class-oscilloscope.json")
     action = "otdp.oscilloscope.fetch/1.0.0"
     target = {
@@ -185,12 +190,12 @@ def scope_specimen(specimen):
     return descriptor, specimen[1], target, manifest, {}
 
 
-def test_waveform_specimen(specimen):
+def test_waveform_specimen(specimen: Specimen) -> None:
     report = validate(scope_specimen(specimen))
     assert report.valid, report.findings
 
 
-def test_dataset_requires_descriptor_measurement_contract(specimen):
+def test_dataset_requires_descriptor_measurement_contract(specimen: Specimen) -> None:
     scope = scope_specimen(specimen)
     scope[0]["contracts"] = []
     assert not validate(scope).valid

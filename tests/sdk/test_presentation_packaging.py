@@ -8,7 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_sdk_wheel_rebuilt_from_sdist_contains_exact_presentation_contract(tmp_path):
+def test_sdk_wheel_rebuilt_from_sdist_contains_exact_presentation_contract(tmp_path: Path) -> None:
     dist = tmp_path / "dist"
     subprocess.run(
         ["uv", "build", str(ROOT / "packages/sdk"), "--out-dir", str(dist)],

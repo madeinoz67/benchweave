@@ -3,26 +3,30 @@
 import hashlib
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from benchweave.presentation import contracts
 
+type JsonObject = dict[str, Any]
+type Bundle = tuple[bytes, dict[str, JsonObject], JsonObject, JsonObject]
+
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def encode(value):
+def encode(value: object) -> bytes:
     return json.dumps(value).encode()
 
 
-def digest(raw):
+def digest(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
 @pytest.fixture
-def bundle():
+def bundle() -> Bundle:
     descriptor = (ROOT / "docs/otdp-v0.3.0/examples/reference-psu.json").read_bytes()
-    documents = {}
+    documents: dict[str, JsonObject] = {}
     for path in (ROOT / "docs/plugin-ui-v0.1.0").glob("*.schema.json"):
         schema = json.loads(path.read_bytes())
         documents[schema["$id"]] = schema
@@ -67,7 +71,13 @@ def bundle():
     return descriptor, documents, catalogue, manifest
 
 
-def validate(bundle, *, resources=None, envelope_updates=None, panels=frozenset()):
+def validate(
+    bundle: Bundle,
+    *,
+    resources: dict[str, bytes] | None = None,
+    envelope_updates: JsonObject | None = None,
+    panels: frozenset[str] = frozenset(),
+) -> contracts.ValidationReport:
     descriptor, documents, catalogue, manifest = bundle
     manifest_raw = encode(manifest)
     envelope = {
@@ -90,70 +100,70 @@ def validate(bundle, *, resources=None, envelope_updates=None, panels=frozenset(
     )
 
 
-def codes(report):
+def codes(report: contracts.ValidationReport) -> set[str]:
     return {finding.code for finding in report.findings}
 
 
-def test_valid_reading_plot(bundle):
+def test_valid_reading_plot(bundle: Bundle) -> None:
     assert validate(bundle).valid
 
 
 @pytest.mark.parametrize("path", ["../manifest.json", "/tmp/manifest.json", "a\\b", "x\n"])
-def test_rejects_unsafe_resource_keys(bundle, path):
+def test_rejects_unsafe_resource_keys(bundle: Bundle, path: str) -> None:
     assert "unsafe_path" in codes(validate(bundle, resources={path: b"{}"}))
 
 
-def test_descriptor_hash_binds_attachment(bundle):
+def test_descriptor_hash_binds_attachment(bundle: Bundle) -> None:
     report = validate(bundle, envelope_updates={"descriptor_sha256": "0" * 64})
     assert "digest_mismatch" in codes(report)
 
 
-def test_manifest_hash_uses_exact_bytes(bundle):
+def test_manifest_hash_uses_exact_bytes(bundle: Bundle) -> None:
     report = validate(bundle, resources={"manifest.json": encode(bundle[3]) + b"\n"})
     assert "digest_mismatch" in codes(report)
 
 
-def test_missing_resource_is_rejected(bundle):
+def test_missing_resource_is_rejected(bundle: Bundle) -> None:
     assert "unresolved_reference" in codes(validate(bundle, resources={}))
 
 
-def test_duplicate_binding_is_rejected(bundle):
+def test_duplicate_binding_is_rejected(bundle: Bundle) -> None:
     bundle[3]["bindings"] *= 2
     assert not validate(bundle).valid
 
 
-def test_cannot_invent_parameter(bundle):
+def test_cannot_invent_parameter(bundle: Bundle) -> None:
     bundle[2]["targets"][0]["parameter_id"] = "invented"
     assert "capability_mismatch" in codes(validate(bundle))
 
 
-def test_cannot_change_parameter_unit(bundle):
+def test_cannot_change_parameter_unit(bundle: Bundle) -> None:
     bundle[2]["targets"][0]["variables"][1]["unit"] = "A"
     assert "capability_mismatch" in codes(validate(bundle))
 
 
-def test_unknown_page_binding_is_rejected(bundle):
+def test_unknown_page_binding_is_rejected(bundle: Bundle) -> None:
     bundle[3]["pages"][0]["bindings"] = ["missing"]
     assert "unresolved_reference" in codes(validate(bundle))
 
 
-def test_non_numeric_plot_is_rejected(bundle):
+def test_non_numeric_plot_is_rejected(bundle: Bundle) -> None:
     bundle[2]["targets"][0]["variables"][1]["type"] = "string"
     assert "invalid_plot" in codes(validate(bundle))
 
 
-def test_waveform_requires_vectors(bundle):
+def test_waveform_requires_vectors(bundle: Bundle) -> None:
     bundle[3]["pages"][0]["plots"][0]["kind"] = "waveform"
     assert "invalid_plot" in codes(validate(bundle))
 
 
-def test_missing_required_feature_is_rejected(bundle):
+def test_missing_required_feature_is_rejected(bundle: Bundle) -> None:
     bundle[3]["required_ui_features"] = ["unknown/1.0.0"]
     assert "unsupported_feature" in codes(validate(bundle))
 
 
 @pytest.mark.parametrize("required", [False, True])
-def test_unavailable_panel_is_explicit(bundle, required):
+def test_unavailable_panel_is_explicit(bundle: Bundle, required: bool) -> None:
     bundle[3]["pages"] = [
         {
             "id": "custom",
@@ -170,12 +180,12 @@ def test_unavailable_panel_is_explicit(bundle, required):
     assert validate(bundle, panels=frozenset({"custom/1.0.0"})).valid
 
 
-def test_asset_digest_is_checked(bundle):
+def test_asset_digest_is_checked(bundle: Bundle) -> None:
     bundle[3]["assets"] = [{"id": "help", "path": "help.txt", "sha256": "0" * 64}]
     resources = {"manifest.json": encode(bundle[3]), "help.txt": b"help"}
     assert "digest_mismatch" in codes(validate(bundle, resources=resources))
 
 
-def test_unknown_executable_field_is_rejected(bundle):
+def test_unknown_executable_field_is_rejected(bundle: Bundle) -> None:
     bundle[3]["execute"] = "shell command"
     assert not validate(bundle).valid

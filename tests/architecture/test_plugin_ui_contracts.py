@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 from jsonschema import Draft202012Validator
@@ -12,7 +13,7 @@ DIRECTORY = ROOT / "docs/plugin-ui-v0.1.0"
 NAMES = ("ui-manifest", "configuration-preset", "presentation-envelope", "binding-catalogue")
 
 
-def schemas():
+def schemas() -> dict[str, dict[str, Any]]:
     result = {}
     for name in NAMES:
         path = DIRECTORY / f"{name}.schema.json"
@@ -23,14 +24,14 @@ def schemas():
     return result
 
 
-def test_all_contract_schemas_are_valid_and_versioned():
+def test_all_contract_schemas_are_valid_and_versioned() -> None:
     for name, schema in schemas().items():
         expected = f"https://benchweave.dev/contracts/plugin-ui/0.1.0/{name}.schema.json"
         assert schema["$id"] == expected
 
 
 @pytest.mark.parametrize("extra", [False, True])
-def test_minimal_manifest_needs_no_graph_and_rejects_unknown_fields(extra):
+def test_minimal_manifest_needs_no_graph_and_rejects_unknown_fields(extra: bool) -> None:
     documents = schemas()
     registry = Registry().with_resources(
         (value["$id"], Resource.from_contents(value)) for value in documents.values()

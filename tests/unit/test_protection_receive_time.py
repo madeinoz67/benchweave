@@ -82,7 +82,12 @@ def test_each_delayed_read_uses_its_receive_time(
         )
         monitor.phase = "protecting"
         retained: list[Any] = []
-        monitor.retain = retained.append
+
+        def retain(snapshot: dict[str, Any]) -> str:
+            retained.append(snapshot)
+            return "evidence-1"
+
+        monitor.retain = retain
         monitor.tick()
         assert len(retained) == 1
         snapshot = retained[0]
