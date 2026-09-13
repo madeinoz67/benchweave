@@ -2,7 +2,9 @@
 
 BenchWeave is the project name for the Smart Test Gateway architecture work.
 
-This repository is currently a Python project skeleton plus the frozen architecture and PoC/MVP planning documents. Implementation should begin from the PRD and delivery plan in this folder, with architecture documents treated as contracts rather than informal notes.
+This repository carries the BenchWeave implementation (packages WP01–WP07) alongside the frozen architecture and PoC/MVP planning documents. Implementation flows from the PRD and delivery plan in this folder, with architecture documents treated as contracts rather than informal notes.
+
+**Current status (WP07, 2026-09-13):** the gateway side of interface 1.1.0 is live — 20 REST routes + 17 MCP tools over FastAPI/FastMCP on one core-operations seam, REST↔MCP parity and SIGKILL event recovery proven; registry admission/activation change kinds are not reachable without a registry session, and OAuth/TLS are out of PoC scope — both disclosed in the [compatibility record](compatibility.md).
 
 ## Start Here
 
