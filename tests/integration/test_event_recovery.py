@@ -653,20 +653,23 @@ def test_retention_overtake_yields_event_gap_over_http(tmp_path: Path) -> None:
     """
     gateway = _launch(tmp_path, limits=SMALL_LIMITS)
     try:
-        def _lease(request_id: str) -> None:
-            resp = gateway.client.post(
-                f"/v1/benches/{BENCH}/leases",
-                headers=_bearer(),
-                json={
-                    "request_id": request_id,
-                    "expected_generation": 1,
-                    "duration_ms": 60000,
-                },
-            )
-            assert resp.status_code == 201, resp.text
+        # §6 (WP08 Task 5): one live manual lease per bench, so the twelve
+        # emissions are one create plus eleven RENEWALS of the same lease —
+        # one lease_changed per call, the same twelve-emission arithmetic
+        # twelve fresh creates used to produce.
+        created = gateway.client.post(
+            f"/v1/benches/{BENCH}/leases",
+            headers=_bearer(),
+            json={
+                "request_id": "req-lease-1",
+                "expected_generation": 1,
+                "duration_ms": 60000,
+            },
+        )
+        assert created.status_code == 201, created.text
+        lease_id = str(created.json()["data"]["lease_id"])
+        sequence = int(created.json()["data"]["sequence"])
 
-        _lease("req-lease-1")
-        _lease("req-lease-2")
         first = gateway.client.get(
             f"/v1/benches/{BENCH}/events",
             headers=_bearer(),
@@ -677,8 +680,18 @@ def test_retention_overtake_yields_event_gap_over_http(tmp_path: Path) -> None:
         assert len(page) == 1
         stale_cursor = str(first.json()["data"]["cursor"])
 
-        for index in range(3, 13):  # ten more emissions: 12 total, window keeps 10
-            _lease(f"req-lease-{index}")
+        for index in range(2, 13):  # eleven renewals: 12 emissions, window 10
+            renewed = gateway.client.post(
+                f"/v1/leases/{lease_id}/renewals",
+                headers=_bearer(),
+                json={
+                    "request_id": f"req-lease-{index}",
+                    "sequence": sequence,
+                    "duration_ms": 60000,
+                },
+            )
+            assert renewed.status_code == 200, renewed.text
+            sequence = int(renewed.json()["data"]["sequence"])
 
         overtaken = gateway.client.get(
             f"/v1/benches/{BENCH}/events",

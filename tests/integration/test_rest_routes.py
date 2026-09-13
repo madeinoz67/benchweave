@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
 from collections.abc import Iterator
 from pathlib import Path
 from types import SimpleNamespace
@@ -208,8 +209,23 @@ def gateway(tmp_path_factory: pytest.TempPathFactory) -> Iterator[SimpleNamespac
         filled["run_id"] = started.json()["data"]["run_id"]
         filled["request_id"] = "req-voltage-check-1"
 
+        # §6 (WP08 Task 5): lease creation refuses a bench with a live run,
+        # so the setup waits for the run to close terminal (deterministic —
+        # the matrix's own lease case below needs an idle bootstrap bench).
+        deadline = time.monotonic() + 60.0
+        while True:
+            polled = client.get(f"/v1/runs/{filled['run_id']}", headers=admin)
+            assert polled.status_code == 200, polled.text
+            if polled.json()["data"]["state"] == "terminal":
+                break
+            assert time.monotonic() < deadline, "setup run never reached terminal"
+            time.sleep(0.2)
+
+        # The setup lease lives on bench-two (§6: one live manual lease per
+        # bench — the bootstrap bench stays clean for the matrix's own
+        # lease_create case; renew/release are bench-agnostic).
         created = client.post(
-            f"/v1/benches/{BENCH}/leases",
+            "/v1/benches/bench-two/leases",
             headers=admin,
             json={
                 "request_id": "req-task9-lease",

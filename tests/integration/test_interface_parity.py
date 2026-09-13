@@ -233,6 +233,14 @@ def gateway(tmp_path_factory: pytest.TempPathFactory) -> Iterator[SimpleNamespac
         None,
         NOW_ISO,
     )
+    # §6 (WP08 Task 5): lease creation now rejects a bench that already
+    # holds live authority, so the module's lease inventory spreads over
+    # dedicated spare benches (seeded pre-boot, the rest_routes pattern):
+    # the renew lease stays on the bootstrap bench; the two release-
+    # fixture leases and the create-parity bench get their own.
+    for spare in ("parity-rel-a", "parity-rel-b", "parity-create"):
+        store.bump_generation(spare, NOW_ISO)
+        store.put_bench(spare, 1, "observation", "{}", "proprietary", NOW_ISO)
     app = create_app(
         store=store,
         content=content,
@@ -262,13 +270,13 @@ def gateway(tmp_path_factory: pytest.TempPathFactory) -> Iterator[SimpleNamespac
         assert final["outcome"] == "passed", final
 
         leases: dict[str, str] = {}
-        for name, request in (
-            ("renew", "req-parity-lease-renew"),
-            ("rel_a", "req-parity-lease-rel-a"),
-            ("rel_b", "req-parity-lease-rel-b"),
+        for name, bench, request in (
+            ("renew", BENCH, "req-parity-lease-renew"),
+            ("rel_a", "parity-rel-a", "req-parity-lease-rel-a"),
+            ("rel_b", "parity-rel-b", "req-parity-lease-rel-b"),
         ):
             created = client.post(
-                f"/v1/benches/{BENCH}/leases",
+                f"/v1/benches/{bench}/leases",
                 headers=_bearer(CONTROL),
                 json={
                     "request_id": request,
@@ -651,22 +659,35 @@ def test_run_start_replay_parity(gateway: SimpleNamespace) -> None:
 
 def test_lease_create_parity(gateway: SimpleNamespace) -> None:
     """Same §9 key on both transports names the SAME lease identity; only the
-    monotone fencing ``sequence`` differs (masked — the one mutating field)."""
+    monotone fencing ``sequence`` differs (masked — the one mutating field).
+    §6 (WP08 Task 5): one live manual lease per bench, so the REST lease is
+    released before the MCP twin mints — the same §9 key then re-issues the
+    same lease id on the now-idle spare bench."""
+    bench = "parity-create"
     body = {
         "request_id": "req-parity-lease-create",
         "expected_generation": 1,
         "duration_ms": 60000,
     }
     rest_status, rest_json = _rest(
-        gateway, "post", f"/v1/benches/{BENCH}/leases", body, CONTROL
+        gateway, "post", f"/v1/benches/{bench}/leases", body, CONTROL
     )
+    assert rest_status == 201, rest_json
+    released = _rest(
+        gateway,
+        "post",
+        f"/v1/leases/{rest_json['data']['lease_id']}/releases",
+        {"request_id": "req-parity-lease-create-rel", "reason": "parity spare"},
+        CONTROL,
+    )
+    assert released[1]["ok"], released
     mcp_json = _call(
         gateway.port,
         "stg_v1_lease_create",
-        {"bench_id": BENCH, **body},
+        {"bench_id": bench, **body},
         CONTROL,
     )
-    assert rest_status == 201 and rest_json["ok"] and mcp_json["ok"]
+    assert rest_json["ok"] and mcp_json["ok"]
     assert rest_json["data"]["lease_id"] == mcp_json["data"]["lease_id"]
     masked = [{**env["data"], "sequence": None} for env in (rest_json, mcp_json)]
     assert masked[0] == masked[1]
@@ -675,7 +696,9 @@ def test_lease_create_parity(gateway: SimpleNamespace) -> None:
 
 def test_lease_release_parity(gateway: SimpleNamespace) -> None:
     """Two fixture-seeded leases, one released per transport: identical
-    released-envelope shape; only the §9-derived ``lease_id`` differs."""
+    released-envelope shape; the §9-derived ``lease_id``, the bench-wide
+    fencing ``sequence`` and the (now distinct, §6 one-live-lease-per-bench)
+    spare benches are masked."""
     rest_status, rest_json = _rest(
         gateway,
         "post",
@@ -695,10 +718,11 @@ def test_lease_release_parity(gateway: SimpleNamespace) -> None:
     )
     assert rest_status == 200 and rest_json["ok"] and mcp_json["ok"]
     assert rest_json["data"]["state"] == mcp_json["data"]["state"] == "released"
-    # Both fields differ by construction: §9-derived lease ids name different
-    # leases, and bench-wide fencing sequences are monotone per issue.
+    # All three differ by construction: §9-derived lease ids name different
+    # leases, bench-wide fencing sequences are monotone per issue, and the
+    # two leases live on different spare benches (§6).
     masked = [
-        {**env["data"], "lease_id": None, "sequence": None}
+        {**env["data"], "lease_id": None, "sequence": None, "bench_id": None}
         for env in (rest_json, mcp_json)
     ]
     assert masked[0] == masked[1]
@@ -743,6 +767,46 @@ def test_lease_renew_parity(gateway: SimpleNamespace) -> None:
     masked = [{**env["data"], "sequence": None} for env in (rest_json, mcp_json)]
     assert masked[0] == masked[1]
     assert mcp_json["data"]["sequence"] == next_sequence + 1
+
+
+def test_lease_renew_replay_parity(gateway: SimpleNamespace) -> None:
+    """§6 duplicate-renewal (D13 batch B): "a duplicate request returns the
+    same renewal, not an extra extension" — the §9 request-key idiom, both
+    transports. The REST renewal files the key (principal parity +
+    lease_renew + request id); the MCP call with the SAME request replays
+    it byte-identically instead of a second extension."""
+    current = next(
+        lease.sequence
+        for lease in gateway.store.list_leases(BENCH)
+        if lease.lease_id == gateway.leases["renew"] and lease.state == "active"
+    )
+    body = {
+        "request_id": "req-parity-renew-replay",
+        "sequence": current,
+        "duration_ms": 60000,
+    }
+    rest_status, rest_json = _rest(
+        gateway,
+        "post",
+        f"/v1/leases/{gateway.leases['renew']}/renewals",
+        body,
+        CONTROL,
+    )
+    assert rest_status == 200, rest_json
+    mcp_json = _call(
+        gateway.port,
+        "stg_v1_lease_renew",
+        {"lease_id": gateway.leases["renew"], **body},
+        CONTROL,
+    )
+    assert mcp_json == rest_json  # the replay, byte-identical
+    # No second extension: exactly one active row at the renewal's sequence.
+    active = [
+        lease.sequence
+        for lease in gateway.store.list_leases(BENCH)
+        if lease.lease_id == gateway.leases["renew"] and lease.state == "active"
+    ]
+    assert active == [rest_json["data"]["sequence"]]
 
 
 # --- failure-class parity ------------------------------------------------------

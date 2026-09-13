@@ -646,6 +646,32 @@ class Operations:
                     f" not {expected_generation}",
                 )
             )
+        # §6 (D13 batch B): "The core rejects conflicts with existing manual
+        # or gateway-owned authority." A live run (the §5 busy oracle) or a
+        # live lease (expiry-aware, the ``_live_lease`` idiom) owns the
+        # bench — minting a second manual authority on it is a conflict.
+        # This also closes the D12-disclosed consume→reserve window: an
+        # unrelated lease_create landing between a takeover's lease
+        # consumption and the worker's reservation now finds the takeover
+        # run live and is refused, instead of bench_busy-ing the run into
+        # the poison guard.
+        for row in self._store.list_run_states(bench_id):
+            if row["state"] in LIVE_RUN_STATES:
+                raise errors.OperationFailure(
+                    errors.failure(
+                        "conflict",
+                        f"bench {bench_id} is busy with run {row['run_id']}"
+                        f" (state {row['state']})",
+                    )
+                )
+        live = self._live_lease(bench_id)
+        if live is not None:
+            raise errors.OperationFailure(
+                errors.failure(
+                    "conflict",
+                    f"bench {bench_id} already holds active lease {live.lease_id}",
+                )
+            )
         now = self._now_iso()
         lease_id = (
             f"lease-{scoped_request_key(identity.principal, 'lease_create', request_id)[:16]}"

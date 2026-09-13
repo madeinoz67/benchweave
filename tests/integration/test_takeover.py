@@ -262,6 +262,36 @@ def test_takeover_on_bench_with_live_run_still_conflicts(
     assert active is not None and active.lease_id == str(lease["lease_id"])
 
 
+# --- the consume→reserve window (§6 "rejects conflicts with existing authority") ---
+
+
+def test_unrelated_lease_create_in_takeover_window_is_refused(
+    seam_control: SeamControl,
+) -> None:
+    """D12's disclosed consume→reserve window, CLOSED (§6, D13 batch B):
+    once a takeover has consumed the caller's lease and its run is live,
+    an UNRELATED lease_create on the bench is refused with ``conflict`` —
+    the run's live state IS the gateway-owned authority §6 protects.
+    Pre-fix this mint succeeded and the worker's ``reserve`` then found
+    the bench busy (bench_busy → poison guard ⇒ an outcome_unknown death
+    for a valid takeover); the refusal keeps the takeover's path clear."""
+    lease = seam_control.ops.lease_create(
+        _control("p1"), BENCH_ID, "lease-window-1", 1, 600_000
+    )
+    variant = _variant_binding(seam_control, "req-window-1")
+    run = seam_control.ops.run_start(
+        _control("p1"), BENCH_ID, "req-window-1", variant, 1, str(lease["lease_id"])
+    )
+    assert run["state"] in ("accepted", "running")
+    _await_coordinator(seam_control.coordinators)
+    with pytest.raises(errors.OperationFailure) as exc:
+        seam_control.ops.lease_create(
+            _control("p2"), BENCH_ID, "lease-window-2", 1, 1000
+        )
+    assert exc.value.failure.code == "conflict"
+    assert "run" in exc.value.failure.message
+
+
 # --- a consumed lease is single-shot; §9 replay stays ahead ------------------------
 
 

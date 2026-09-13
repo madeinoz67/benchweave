@@ -16,7 +16,9 @@ its own assert (this file is the register of record for the batch):
 3. crash-window — ``accept_request``→``create_run`` is two transactions;
    a process death between them wedges the §9 request key. The startup
    recovery path (the app lifespan's ONE recovery entrypoint) reconciles
-   the dangling key so the same ``request_id`` proceeds.
+   the dangling key so the same ``request_id`` proceeds. Batch B added
+   the ``lease_renew`` §9 keys (whose ``run_id`` column holds a LEASE id),
+   so the sweep's anti-join now also resolves in ``leases``.
 4. lease-close hygiene — ``release_lease`` and ``consume_lease`` are one
    guarded active→released transition (shared private helper), pinned as
    behaviorally identical.

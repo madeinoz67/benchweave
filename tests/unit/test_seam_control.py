@@ -416,6 +416,51 @@ def test_lease_renew_stale_sequence_conflicts(seam_control: SeamControl) -> None
     assert exc.value.failure.code == "conflict"
 
 
+# --- §6 lease-creation contention (D13 batch B) -----------------------------------
+
+
+def test_lease_create_on_live_run_conflicts(seam_control: SeamControl) -> None:
+    """§6: lease creation "rejects conflicts with existing ... gateway-owned
+    authority" — a live run owns the bench, so minting a manual lease on it
+    is a conflict naming the run (the same busy oracle `_assert_bench_
+    acceptable` reads)."""
+    ops, _, _ = seam_control
+    coordinators = seam_control.coordinators
+    ident = _control("p1")
+    ops.run_start(
+        ident, BENCH_ID, str(seam_control.binding_ref["id"]), seam_control.binding_ref, 1, None
+    )
+    _await_coordinator(coordinators)
+    with pytest.raises(errors.OperationFailure) as exc:
+        ops.lease_create(_control("p2"), BENCH_ID, "lease-busy-1", 1, 1000)
+    assert exc.value.failure.code == "conflict"
+    assert "busy with run" in exc.value.failure.message
+
+
+def test_lease_create_on_live_lease_conflicts(seam_control: SeamControl) -> None:
+    """§6's other half: existing MANUAL authority — a bench that already
+    holds a live lease refuses a second mint (renewal is the extension
+    path; a fresh identity requires a release first)."""
+    ops, _, _ = seam_control
+    ident = _control("p1")
+    lease = ops.lease_create(ident, BENCH_ID, "lease-live-1", 1, 600_000)
+    with pytest.raises(errors.OperationFailure) as exc:
+        ops.lease_create(_control("p2"), BENCH_ID, "lease-live-2", 1, 1000)
+    assert exc.value.failure.code == "conflict"
+    assert str(lease["lease_id"]) in exc.value.failure.message
+
+
+def test_lease_create_after_release_readmits(seam_control: SeamControl) -> None:
+    """The refusal is liveness-scoped, not a permanent lock: release the
+    live lease and the bench admits a fresh manual lease again."""
+    ops, _, _ = seam_control
+    ident = _control("p1")
+    lease = ops.lease_create(ident, BENCH_ID, "lease-cycle-1", 1, 600_000)
+    ops.lease_release(ident, str(lease["lease_id"]), "lease-cycle-1", "done")
+    fresh = ops.lease_create(_control("p2"), BENCH_ID, "lease-cycle-2", 1, 1000)
+    assert fresh["state"] == "active"
+
+
 def test_lease_renew_duplicate_returns_same_renewal(seam_control: SeamControl) -> None:
     """§6 (D13 batch B): "Each renewal increments sequence; a duplicate
     request returns the same renewal, not an extra extension" — the §9
