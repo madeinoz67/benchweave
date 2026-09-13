@@ -36,6 +36,7 @@ from benchweave.interfaces.operations import Operations, append_bench_event
 from benchweave.interfaces.rest import build_router
 from benchweave.interfaces.validation import VENDORED_CORPUS_ROOT, SeamValidator
 from benchweave.interfaces.worker import RunWorker
+from benchweave.state.hold import StoreHold
 from benchweave.state.store import Store
 
 # Sim plugins are repo fixtures loaded exactly as tests/integration/
@@ -311,6 +312,14 @@ def _build_run_factory(
     return build_run
 
 
+def _store_db_path(store: Store) -> Path | None:
+    """The main database file backing ``store`` (None for in-memory stores)."""
+    for row in store.connection.execute("PRAGMA database_list").fetchall():
+        if row[1] == "main" and row[2]:
+            return Path(str(row[2]))
+    return None
+
+
 def create_app(
     *,
     store: Store,
@@ -359,20 +368,34 @@ def create_app(
 
     @asynccontextmanager
     async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
-        with gate:
-            admit_startup_bench(store, content, fixtures_dir, now=now_iso())
-            # Task 11 wiring: a restarted gateway closes what a dead process
-            # left open before it serves or executes anything new.
-            _recover_interrupted_runs(
-                store, fixtures_dir, emit_keep=quota, now_iso=now_iso
-            )
-        worker.start()
+        # WP08 Task 10: mark store ownership for the whole serving lifetime.
+        # At-rest commands (backup/restore) acquire the same advisory lock
+        # and refuse — naming this gateway — while it is held, and a second
+        # gateway on the same database fails loudly here instead of silently
+        # corrupting it. The OS releases the flock on process death, so a
+        # crash can never wedge the gate (see state/hold.py).
+        db_file = _store_db_path(store)
+        hold = StoreHold(db_file, label=f"gateway {gateway_id}") if db_file else None
+        if hold is not None:
+            hold.acquire()
         try:
-            async with mcp_app.lifespan(app):
-                yield
+            with gate:
+                admit_startup_bench(store, content, fixtures_dir, now=now_iso())
+                # Task 11 wiring: a restarted gateway closes what a dead process
+                # left open before it serves or executes anything new.
+                _recover_interrupted_runs(
+                    store, fixtures_dir, emit_keep=quota, now_iso=now_iso
+                )
+            worker.start()
+            try:
+                async with mcp_app.lifespan(app):
+                    yield
+            finally:
+                worker.stop()
+                worker.join(timeout=5.0)
         finally:
-            worker.stop()
-            worker.join(timeout=5.0)
+            if hold is not None:
+                hold.release()
 
     app = FastAPI(title="BenchWeave gateway", version="1.1.0", lifespan=_lifespan)
     # Task 9: the REST router is included BEFORE the "/" mount — a mount at
