@@ -324,7 +324,9 @@ def test_plain_renderer_report_lines_show_digests(capsys: pytest.CaptureFixture[
     assert "generated_at: 2026-09-14T00:00:00Z" in out
     assert SIMULATION_LABEL in out
     assert DIGEST_A in out and DIGEST_B in out
-    assert f"missing evidence: {DIGEST_B}" in out
+    # Task 13 settlement: missing entries render in the canonical named
+    # form (evidence_id + kind + digest), like the markdown emitter.
+    assert f"missing evidence: ev-2 kind=artifact digest={DIGEST_B}" in out
 
 
 def test_plain_renderer_demo_lines_stream_the_feed(capsys: pytest.CaptureFixture[str]) -> None:

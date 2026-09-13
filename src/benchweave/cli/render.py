@@ -341,11 +341,15 @@ class PlainTextRenderer:
                 f"evidence {entry.get('kind')}: {_digest_of(entry)} "
                 f"present={entry.get('present')}"
             )
-        missing = report.get("missing_evidence")
-        if isinstance(missing, Sequence) and not isinstance(missing, str | bytes):
-            for item in missing:
-                detail = item if isinstance(item, str) else _digest_of(item)
-                lines.append(f"missing evidence: {detail}")
+        # Task 13 settlement: ``missing_evidence`` is the canonical entry
+        # shape (the same dict as ``evidence``) — named like the markdown
+        # (evidence_id + kind + digest); the pre-settlement bare-string
+        # tolerance is gone.
+        for entry in _mappings(report.get("missing_evidence")):
+            lines.append(
+                f"missing evidence: {entry.get('evidence_id')}"
+                f" kind={entry.get('kind')} digest={_digest_of(entry)}"
+            )
         click.echo("\n".join(lines))
 
     def demo_view(self, events: Iterable[Mapping[str, object]]) -> None:

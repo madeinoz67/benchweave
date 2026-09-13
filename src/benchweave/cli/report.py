@@ -323,9 +323,22 @@ def report_from_data_dir(
 
     Refuses (naming the holder, through the ``daemon_holds`` gate) while a
     live gateway owns the store; refuses before that if the data directory
-    carries no store. The report is read-only — unlike the mutating at-rest
-    commands it never takes the exclusive hold; two concurrent reports (or
-    a report beside a verify) are safe reads of an unheld store.
+    carries no store.
+
+    Read posture, disclosed truthfully (review I1): unlike the mutating
+    at-rest commands this never takes the exclusive hold — but the open is
+    ``Store.open``, the app-boot posture, which applies PENDING migrations
+    under ``BEGIN IMMEDIATE``. On a store predating the current schema that
+    is a write made without a hold (the steady-state case — every store
+    ``setup`` creates is already migrated — opens purely read-only, so
+    concurrent reports are safe reads exactly there). The window is bounded
+    by the gate order (a live gateway is refused before the open, so the
+    only concurrent writer possible is another at-rest command or report)
+    and by SQLite's own file locking, which serializes the actual writes —
+    never corrupting, at worst a brief block. ``atrest.verify`` is NOT a
+    precedent for read-only opens: it never calls ``Store.open`` (it opens
+    SQLite ``mode=ro``); matching that posture here would bypass the
+    Store's public migration path, so the disclosure stands instead.
     """
     data_dir = Path(data_dir)
     db = db_path(data_dir)
