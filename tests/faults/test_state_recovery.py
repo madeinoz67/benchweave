@@ -87,13 +87,17 @@ def test_crash_window_split_state_reconciles_never_wedges(store: Store) -> None:
         " VALUES (?, ?, ?, ?)",
         ("key-dangling", body, "run-never-created", NOW),
     )
-    # Healthy shapes the sweep must NOT touch: a live key+run pair, and a
-    # key whose run was tombstoned (the run row still exists).
+    # Healthy shapes the sweep must NOT touch: a live key+run pair, a
+    # key whose run was tombstoned (the run row still exists), and a
+    # change_submit key — its run_id column holds a CHANGE id (change_submit
+    # files change ids, never run ids), so it is not a dangling run key.
     store.accept_request("key-live", body, "run-live", NOW)
     store.create_run("run-live", binding_body(), "engineer-a", NOW)
     store.accept_request("key-tomb", body, "run-tomb", NOW)
     store.create_run("run-tomb", binding_body(), "engineer-a", NOW)
     store.delete_run("run-tomb", NOW)
+    store.accept_request("key-change", body, "chg-healthy", NOW)
+    store.put_change("chg-healthy", "bench-1", "trip_reset", "{}", 1, "d13", NOW)
 
     # The durable wedge, pre-recovery: the key exists, its run does not.
     assert store.find_request("key-dangling") is not None
@@ -106,6 +110,7 @@ def test_crash_window_split_state_reconciles_never_wedges(store: Store) -> None:
     assert store.find_request("key-dangling") is None
     assert store.find_request("key-live") is not None
     assert store.find_request("key-tomb") is not None
+    assert store.find_request("key-change") is not None
     assert store.get_run("run-live") is not None
 
     # Idempotent, and the same request id proceeds once reconciled.

@@ -48,6 +48,7 @@ from test_seam_control import (
 from benchweave.control.coordinator import _iso_plus_ms
 from benchweave.interfaces import errors
 from benchweave.interfaces.app import _recover_interrupted_runs
+from benchweave.interfaces.identity import Identity
 from benchweave.interfaces.operations import scoped_request_key
 from benchweave.state.migrations import MIGRATIONS
 from benchweave.state.store import LeaseNotActive, Store
@@ -208,6 +209,44 @@ def test_d13_crash_window_request_key_reconciles_and_retry_proceeds(
         _control("p1"), BENCH_ID, request_id, seam_control.binding_ref, 1, None
     )
     assert run["state"] in ("accepted", "running")
+
+
+def test_d13_sweep_spares_change_submit_keys(
+    seam_control: SeamControl,
+) -> None:
+    """``change_submit`` files §9 keys whose ``run_id`` column holds a
+    change id (there is no run and never will be). The crash-window sweep
+    must scope itself to RUN keys: a change key survives with its §9
+    replay intact — the same request id replays to the EXISTING change,
+    never a fresh filing — while a genuine dangling run key is still
+    purged in the same sweep."""
+    ops = seam_control.ops
+    store = seam_control.store
+    admin = Identity("admin-1", "stg", frozenset({"stg:admin"}), 2**31)
+    target = {"id": "t", "version": "1", "sha256": "0" * 64}
+    first = ops.change_submit(
+        admin, "chg-d13", BENCH_ID, "trip_reset", target, 1, "d13 covering"
+    )
+    assert first["state"] == "proposed"
+
+    store.reconcile_dangling_requests()  # the restart-class sweep
+    key = scoped_request_key("admin-1", "change_submit", "chg-d13")
+    assert store.find_request(key) is not None, "change keys are not dangling"
+    assert store.get_change(str(first["change_id"])) is not None
+
+    second = ops.change_submit(
+        admin, "chg-d13", BENCH_ID, "trip_reset", target, 1, "d13 covering"
+    )
+    assert second["change_id"] == first["change_id"]  # replay, not a re-file
+
+    # Mirror in the same sweep pass: a genuine dangling run key still goes.
+    run_key = scoped_request_key("p1", "run_start", "req-mirror")
+    store.connection.execute(
+        "INSERT INTO requests (idempotency_key, body_sha256, run_id, accepted_at)"
+        " VALUES (?, ?, ?, ?)",
+        (run_key, "0" * 64, "run-ghost-2", NOW),
+    )
+    assert store.reconcile_dangling_requests() == [run_key]
 
 
 # --- D13 item 4: the lease-close transition ----------------------------------------

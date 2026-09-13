@@ -199,11 +199,13 @@ def _recover_interrupted_runs(
     coordinator = RunCoordinator(store, {}, SystemClock(), SystemClock(), docs)
     recovered = coordinator.recover_interrupted()
     # D13 crash-window reconciliation rides the same startup path: a §9
-    # request key filed by a process that died between accept_request and
-    # create_run points at a run that never materialized (a permanent
-    # replay wedge). The sweep purges exactly those keys — every key with
-    # a runs row, live or tombstoned, keeps its replay protection — so
-    # the same request id can proceed. No event is emitted: nothing
+    # RUN-request key filed by a process that died between
+    # accept_request and create_run points at a run that never
+    # materialized (a permanent replay wedge). The sweep is scoped to run
+    # keys — its anti-join must resolve in neither runs nor changes, so
+    # change_submit keys (whose run_id column holds a change id) and keys
+    # with a runs row, live or tombstoned, keep their replay protection —
+    # and the same request id can proceed. No event is emitted: nothing
     # observable happened (no run, no dispatch) and the seven-kind fence
     # has no vocabulary for it; the purged keys are the caller's evidence.
     store.reconcile_dangling_requests()

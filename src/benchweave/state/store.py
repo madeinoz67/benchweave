@@ -153,24 +153,29 @@ class Store:
         }
 
     def reconcile_dangling_requests(self) -> list[str]:
-        """Purge §9 request keys whose run never materialized (D13).
+        """Purge §9 RUN-request keys whose run never materialized (D13).
 
         ``accept_request`` and ``create_run`` are two transactions: a
         process death between them files a key that points at no run, and
         every same-body replay then resolves the key and fails on the
         ghost — a permanent wedge. This sweep (the store leg of the app
         lifespan's recovery entrypoint, alongside
-        ``RunCoordinator.recover_interrupted``) deletes exactly those
-        keys — a LEFT JOIN keeps every key whose run row exists, live or
-        tombstoned — so the same request id can proceed after restart.
-        Idempotent by construction; returns the purged keys.
+        ``RunCoordinator.recover_interrupted``) deletes exactly those RUN
+        keys: the anti-join must resolve in BOTH durable tables, because
+        the one ``requests`` table serves every §9 operation — a
+        ``change_submit`` key's ``run_id`` column holds a CHANGE id
+        (change ids are not run ids and never become them), so keys that
+        resolve in ``changes`` are healthy and keep their replay
+        protection, as do run keys whose run row exists, live or
+        tombstoned. Idempotent by construction; returns the purged keys.
         """
         self._conn.execute("BEGIN IMMEDIATE")
         try:
             rows = self._conn.execute(
                 "SELECT requests.idempotency_key FROM requests"
                 " LEFT JOIN runs ON runs.run_id = requests.run_id"
-                " WHERE runs.run_id IS NULL"
+                " LEFT JOIN changes ON changes.change_id = requests.run_id"
+                " WHERE runs.run_id IS NULL AND changes.change_id IS NULL"
             ).fetchall()
             keys = [str(row[0]) for row in rows]
             for key in keys:
