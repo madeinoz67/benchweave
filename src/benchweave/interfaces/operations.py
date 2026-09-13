@@ -261,8 +261,10 @@ class Operations:
     ) -> dict[str, Any]:
         """Bench event stream read (observe): principal-bound cursor
         paging with honest watermarks. A cursor the retention window has
-        overtaken is ``event_gap`` (the §7 events paragraph's code, with
-        the watermarks already in hand) — never a silent truncation."""
+        overtaken is ``event_gap`` carrying the retained watermarks in
+        ``details`` (§7/§10: the raise preempts the response, so the
+        watermarks the caller needs to rejoin the stream ride the failure)
+        — never a silent truncation."""
         require_permission(identity, "observe")
         stream = f"bench:{bench_id}"
         oldest, current = self._store.stream_watermarks(stream)
@@ -282,11 +284,19 @@ class Operations:
                     errors.failure("invalid_request", "cursor sequence is not numeric")
                 ) from None
             if oldest is not None and after_int < int(oldest) - 1:
-                # §7 events paragraph: retention overtake is event_gap (the
-                # watermarks the caller needs are already in this response's
-                # hands); cursor_expired has no emitting path by construction.
+                # §7 events paragraph: retention overtake is event_gap, with
+                # the retained watermarks in details (§10) — the raise
+                # preempts the response, so the rejoin point must ride the
+                # failure itself; cursor_expired has no emitting path by
+                # construction.
                 raise errors.OperationFailure(errors.failure(
-                    "event_gap", f"retention overtook sequence {decoded[1]}"))
+                    "event_gap",
+                    f"retention overtook sequence {decoded[1]}",
+                    details={
+                        "oldest_sequence": oldest or "0",
+                        "current_sequence": current or "0",
+                    },
+                ))
             after_sequence = decoded[1]
         events = self._store.read_events_after(stream, after_sequence, limit)
         cursor = (

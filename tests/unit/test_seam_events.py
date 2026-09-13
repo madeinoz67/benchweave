@@ -62,8 +62,10 @@ def test_cursor_pages_and_is_principal_bound(seam: Seam) -> None:
 
 def test_retention_overtake_yields_event_gap(seam: Seam) -> None:
     """§7 events paragraph: a cursor the retention window has overtaken is
-    ``event_gap`` (with watermarks) — the final-fix-wave correction from the
-    wrong ``cursor_expired`` pin."""
+    ``event_gap`` WITH the retained watermarks in ``details`` (§10: the
+    raise preempts the response, so the watermarks the caller needs to
+    rejoin the stream must ride the failure itself) — the final-fix-wave
+    correction from the wrong ``cursor_expired`` pin."""
     ops, store = seam
     for _ in range(6):
         ops._emit("run_changed", "bench-1", "run-1")
@@ -73,6 +75,11 @@ def test_retention_overtake_yields_event_gap(seam: Seam) -> None:
     with pytest.raises(errors.OperationFailure) as exc:
         ops.events_get(IDENT, "bench-1", after=stale, limit=10)
     assert exc.value.failure.code == "event_gap"
+    # 6 emissions, trim keeps 3: the retained window is sequences 4..6.
+    assert exc.value.failure.details == {
+        "oldest_sequence": "4",
+        "current_sequence": "6",
+    }
 
 
 def test_evidence_gap_emitted_when_retention_fails(seam: Seam) -> None:
