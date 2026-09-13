@@ -1,13 +1,6 @@
-"""BenchWeave command line entrypoint."""
+"""BenchWeave command line entrypoint (dispatches to the Click tree)."""
 
-from benchweave import __version__
-
-
-def main() -> int:
-    """Print the installed BenchWeave version."""
-    print(f"benchweave {__version__}")
-    return 0
-
+from benchweave.cli import main
 
 if __name__ == "__main__":
     raise SystemExit(main())

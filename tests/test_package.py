@@ -1,14 +1,10 @@
-from pytest import CaptureFixture
-
 from benchweave import __version__
-from benchweave.__main__ import main
 
 
 def test_version_is_available() -> None:
     assert __version__
 
 
-def test_cli_entrypoint_prints_version(capsys: CaptureFixture[str]) -> None:
-    assert main() == 0
-    captured = capsys.readouterr()
-    assert captured.out.startswith("benchweave ")
+# The version-print entrypoint test moved to tests/cli/test_commands.py
+# (test_version_flag_prints_package_version): `main` now dispatches to the
+# Click tree, so the version surfaces via `benchweave --version`.
