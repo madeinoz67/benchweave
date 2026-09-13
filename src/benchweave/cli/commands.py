@@ -1,9 +1,10 @@
 """The ``benchweave`` Click command tree (Task 9: CLI foundation).
 
 Eight commands — ``setup status demo report backup restore verify serve`` —
-so ``--help`` is already the full operator surface. ``status`` (Task 9) and
-the four at-rest commands (Task 10) are live; ``demo``/``report``/``serve``
-raise the exact stub message below until Tasks 11-14 land them.
+so ``--help`` is already the full operator surface. ``status`` (Task 9), the
+four at-rest commands (Task 10) and ``demo`` (Task 11: live-gateway mode or
+the labelled ephemeral fresh-install simulation) are live; ``report`` and
+``serve`` raise the exact stub message below until Tasks 12-14 land them.
 
 ``status`` speaks to a live gateway over the stdlib-only REST client; the
 at-rest commands operate directly on the data directory under the
@@ -25,6 +26,7 @@ import click
 
 from benchweave import __version__
 from benchweave.cli import atrest
+from benchweave.cli import demo as demo_lib
 from benchweave.cli.client import GatewayClient, GatewayError
 from benchweave.cli.output import emit
 from benchweave.state.hold import StoreHeldError
@@ -83,7 +85,9 @@ def setup(data_dir: Path, show_secret: bool, json_output: bool) -> None:
     _set_json(json_output)
     try:
         db = atrest.setup(data_dir)
-    except atrest.AtRestError as error:
+    except (atrest.AtRestError, OSError) as error:
+        # T10 review carry: an unwritable/unusable parent (e.g. --data-dir
+        # under a file) is a truthful refusal, never a traceback.
         raise click.ClickException(str(error)) from error
     secret_file = data_dir / atrest.CREDENTIAL_FILE
     click.echo(
@@ -203,7 +207,12 @@ def restore(archive: Path, data_dir: Path, json_output: bool) -> None:
 def verify(data_dir: Path, json_output: bool) -> None:
     """Check manifest digests + store integrity (exit 0 iff clean)."""
     _set_json(json_output)
-    problems = atrest.verify_problems(data_dir)
+    try:
+        # T10 review carry: a truncated/invalid manifest.json raises
+        # AtRestError out of _load_manifest — exit truthfully, no traceback.
+        problems = atrest.verify_problems(data_dir)
+    except atrest.AtRestError as error:
+        raise click.ClickException(str(error)) from error
     for problem in problems:
         click.echo(f"verify: {problem}", err=True)
     emit({"ok": not problems, "problems": problems})
@@ -212,9 +221,93 @@ def verify(data_dir: Path, json_output: bool) -> None:
 
 
 @cli.command()
-def demo() -> None:
+@click.option(
+    "--gateway",
+    "gateway_url",
+    envvar="BENCHWEAVE_GATEWAY",
+    default=None,
+    help=(
+        "Drive the LIVE gateway at this base URL (e.g. http://127.0.0.1:8123) "
+        "instead of booting an ephemeral simulation."
+    ),
+)
+@click.option(
+    "--token",
+    envvar="BENCHWEAVE_TOKEN",
+    default=None,
+    help="Bearer token for --gateway mode (control tier or higher).",
+)
+@click.option(
+    "--scratch",
+    "scratch",
+    type=click.Path(path_type=Path),
+    default=None,
+    help=(
+        "Fresh-install mode: directory for the ephemeral store (created if "
+        "absent; removed on exit unless --keep — a pre-existing directory "
+        "itself is never deleted, only the demo's store files)."
+    ),
+)
+@click.option(
+    "--keep",
+    "keep",
+    is_flag=True,
+    help="Fresh-install mode: keep the scratch directory after the demo.",
+)
+@click.option(
+    "--timeout",
+    "timeout_s",
+    type=float,
+    default=demo_lib.DEFAULT_TIMEOUT_S,
+    show_default=True,
+    help="Seconds to wait for the demonstration run to reach a terminal state.",
+)
+@click.option(
+    "--fixtures",
+    "fixtures",
+    type=click.Path(path_type=Path),
+    default=None,
+    envvar="BENCHWEAVE_FIXTURES",
+    help="Fixture lattice directory (default: the repository execution lattice).",
+)
+@click.option(
+    "--json",
+    "json_output",
+    is_flag=True,
+    help="Emit the stable machine JSON contract instead of text.",
+)
+def demo(
+    gateway_url: str | None,
+    token: str | None,
+    scratch: Path | None,
+    keep: bool,
+    timeout_s: float,
+    fixtures: Path | None,
+    json_output: bool,
+) -> None:
     """Run the built-in simulator demonstration."""
-    _not_implemented()
+    _set_json(json_output)
+    if timeout_s <= 0:
+        raise click.ClickException("--timeout must be a positive number of seconds")
+    if gateway_url is not None:
+        if token is None:
+            raise click.ClickException(
+                "--gateway mode needs --token (or BENCHWEAVE_TOKEN)"
+            )
+        try:
+            payload = demo_lib.drive_live_gateway(
+                gateway_url, token, fixtures=fixtures, timeout_s=timeout_s
+            )
+        except (demo_lib.DemoError, GatewayError) as error:
+            raise click.ClickException(str(error)) from error
+    else:
+        try:
+            payload = demo_lib.run_simulation(
+                scratch=scratch, keep=keep, fixtures=fixtures, timeout_s=timeout_s
+            )
+        except (demo_lib.DemoError, GatewayError) as error:
+            raise click.ClickException(str(error)) from error
+    emit(payload, render=demo_lib.render_demo)
 
 
 @cli.command()

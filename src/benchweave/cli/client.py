@@ -113,3 +113,54 @@ class GatewayClient:
     def bench_list(self, *, limit: int = 100) -> dict[str, Any]:
         """GET ``/v1/benches`` → bench inventory payload (envelope unwrapped)."""
         return self._unwrap(self.get("/v1/benches", params={"limit": str(limit)}), "/v1/benches")
+
+    def bench_get(self, bench_id: str) -> dict[str, Any]:
+        """GET ``/v1/benches/{bench_id}`` → the bench object (envelope unwrapped)."""
+        path = f"/v1/benches/{bench_id}"
+        return self._unwrap(self.get(path), path)
+
+    def run_start(
+        self,
+        bench_id: str,
+        *,
+        request_id: str,
+        binding_ref: Mapping[str, Any],
+        expected_generation: int,
+        lease_id: str | None = None,
+    ) -> dict[str, Any]:
+        """POST ``/v1/benches/{bench_id}/runs`` → the accepted run (202)."""
+        path = f"/v1/benches/{bench_id}/runs"
+        payload = {
+            "request_id": request_id,
+            "binding_ref": dict(binding_ref),
+            "expected_generation": expected_generation,
+            "lease_id": lease_id,
+        }
+        return self._unwrap(self.post(path, payload), path)
+
+    def run_check(self, bench_id: str, *, binding_ref: Mapping[str, Any]) -> dict[str, Any]:
+        """POST ``/v1/benches/{bench_id}/run-checks`` → the advisory preflight."""
+        path = f"/v1/benches/{bench_id}/run-checks"
+        return self._unwrap(self.post(path, {"binding_ref": dict(binding_ref)}), path)
+
+    def run_get(self, run_id: str) -> dict[str, Any]:
+        """GET ``/v1/runs/{run_id}`` → the contract run projection."""
+        path = f"/v1/runs/{run_id}"
+        return self._unwrap(self.get(path), path)
+
+    def run_find(self, request_id: str) -> dict[str, Any]:
+        """GET ``/v1/requests/{request_id}`` → the §9 principal-scoped run lookup."""
+        path = f"/v1/requests/{request_id}"
+        return self._unwrap(self.get(path), path)
+
+    def document_get(self, sha256: str) -> dict[str, Any]:
+        """GET ``/v1/documents/{sha256}`` → the stored document payload."""
+        path = f"/v1/documents/{sha256}"
+        return self._unwrap(self.get(path), path)
+
+    def events_get(self, bench_id: str, *, limit: int = 100) -> dict[str, Any]:
+        """GET ``/v1/benches/{bench_id}/events`` → the bench event stream page."""
+        path = f"/v1/benches/{bench_id}/events"
+        return self._unwrap(
+            self.get(path, params={"after": "", "limit": str(limit)}), path
+        )

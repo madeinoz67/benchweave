@@ -146,6 +146,14 @@ def daemon_holds(db_path: Path) -> bool:
         fd = os.open(path, os.O_RDONLY)
     except FileNotFoundError:
         return False
+    except PermissionError:
+        # T10 review carry, direction PINNED (Task 11): an unreadable hold
+        # marker reads as HELD. For the anti-coordinate rule (ISC-12) the
+        # safe direction is held-true — a false "free" risks exactly the
+        # second coordinator the gate exists to prevent, while a false
+        # "held" in this single-operator loopback context is a cheap,
+        # truthful retry once the operator fixes the permissions.
+        return True
     try:
         fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
