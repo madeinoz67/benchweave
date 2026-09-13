@@ -276,6 +276,13 @@ class Operations:
             raise errors.OperationFailure(
                 errors.failure("not_found", f"artifact {artifact_id}")
             ) from None
+        except ValueError as invalid:
+            # D11: the §8 letter's "offsets beyond size fail" — a window that
+            # cannot exist in this artifact is a bad request, not a missing
+            # artifact (the caller already holds its size from any chunk).
+            raise errors.OperationFailure(
+                errors.failure("invalid_request", str(invalid))
+            ) from None
         return {
             "artifact_id": chunk["artifact_id"],
             "offset": chunk["offset"],

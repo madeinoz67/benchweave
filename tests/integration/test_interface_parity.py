@@ -1319,6 +1319,54 @@ def test_negative_offset_serves_head_bytes_on_both_transports(
 # --- admin pins (D2 + stored-generation fence + not_ready) ---------------------
 
 
+def test_artifact_offset_letter_beyond_size_fails_at_size_serves_empty(
+    gateway: SimpleNamespace,
+) -> None:
+    """D11 closed (WP08 Task 5, ALIGNED to the contract §8 letter): "At EOF
+    an offset equal to size yields zero bytes; offsets beyond size fail."
+    At-size is the pinned zero-byte eof chunk on both transports; beyond-size
+    is ``invalid_request`` on both — the seam is the single construction
+    site, so the failure envelopes are identical by construction and are
+    compared end to end here."""
+    size = len(ARTIFACT_BYTES)
+    status, rest_json = _rest(
+        gateway,
+        "get",
+        f"/v1/artifacts/{gateway.artifact_id}/chunks?offset={size}&length=64",
+        None,
+        OBSERVE,
+    )
+    assert status == 200, rest_json
+    assert rest_json["data"]["bytes"] == 0
+    assert rest_json["data"]["eof"] is True
+    mcp_json = _call(
+        gateway.port,
+        "stg_v1_artifact_read",
+        {"artifact_id": gateway.artifact_id, "offset": size, "length": 64},
+        OBSERVE,
+    )
+    assert mcp_json["data"] == rest_json["data"]
+
+    status, rest_json = _rest(
+        gateway,
+        "get",
+        f"/v1/artifacts/{gateway.artifact_id}/chunks?offset={size + 1}&length=64",
+        None,
+        OBSERVE,
+    )
+    assert status == 400, rest_json
+    assert rest_json["error"]["code"] == "invalid_request"
+    mcp_json = _call(
+        gateway.port,
+        "stg_v1_artifact_read",
+        {"artifact_id": gateway.artifact_id, "offset": size + 1, "length": 64},
+        OBSERVE,
+    )
+    assert mcp_json["ok"] is False, mcp_json
+    assert mcp_json["error"]["code"] == rest_json["error"]["code"]
+    assert mcp_json["error"]["message"] == rest_json["error"]["message"]
+
+
 def test_change_apply_approver_token_end_to_end(gateway: SimpleNamespace) -> None:
     """D2 CATALOG-AMENDMENT pin (REST-only surface): the catalog body omits
     ``approver_token`` yet REST forwards it as a seam kwarg — apply without

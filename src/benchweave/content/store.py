@@ -88,6 +88,14 @@ class ContentStore:
         if row is None:
             raise KeyError(artifact_id)
         data = row[0]
+        # D11 (interface contract §8): "At EOF an offset equal to size
+        # yields zero bytes; offsets beyond size fail." Python slicing would
+        # silently clamp a beyond-size offset to the empty tail — the seam
+        # maps this ValueError to invalid_request.
+        if offset > len(data):
+            raise ValueError(
+                f"offset {offset} is beyond the artifact size {len(data)}"
+            )
         window = data[offset : offset + length]
         return {
             "artifact_id": artifact_id,
