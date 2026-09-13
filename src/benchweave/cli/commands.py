@@ -3,9 +3,10 @@
 Eight commands — ``setup status demo report backup restore verify serve`` —
 so ``--help`` is already the full operator surface. ``status`` (Task 9), the
 four at-rest commands (Task 10), ``demo`` (Task 11: live-gateway mode or the
-labelled ephemeral fresh-install simulation) and ``report`` (Task 13: the
-store-derived report model with markdown/JSON emitters, at-rest only) are
-live; ``serve`` raises the exact stub message below until Task 14 lands it.
+labelled ephemeral fresh-install simulation), ``report`` (Task 13: the
+store-derived report model with markdown/JSON emitters, at-rest only) and
+``serve`` (Task 14: env → ``app_entry.build`` → foreground uvicorn, with the
+production secret posture enforced inside ``build``) are live.
 
 ``status`` speaks to a live gateway over the stdlib-only REST client; the
 at-rest commands operate directly on the data directory under the
@@ -41,11 +42,6 @@ from benchweave.state.hold import StoreHeldError
 @click.version_option(version=__version__, prog_name="benchweave")
 def cli() -> None:
     """BenchWeave operator CLI."""
-
-
-def _not_implemented() -> None:
-    """The Task 9 stub: honest failure, exact brief message."""
-    raise click.ClickException("not implemented in this task")
 
 
 def _set_json(json_output: bool) -> None:
@@ -426,9 +422,51 @@ def _write_out(out: Path, text: str) -> None:
 
 
 @cli.command()
-def serve() -> None:
-    """Run a BenchWeave gateway locally."""
-    _not_implemented()
+@click.option(
+    "--host",
+    "host",
+    default="127.0.0.1",
+    show_default=True,
+    envvar="BENCHWEAVE_HOST",
+    help="Bind address (loopback by default — the gateway is local-only).",
+)
+@click.option(
+    "--port",
+    "port",
+    type=int,
+    default=8125,
+    show_default=True,
+    envvar="BENCHWEAVE_PORT",
+    help="Bind port.",
+)
+def serve(host: str, port: int) -> None:
+    """Run a BenchWeave gateway locally (foreground; systemd Type=simple).
+
+    Wires the environment into :func:`app_entry.build` — the same
+    composition the integration suites boot — and runs it under uvicorn in
+    the FOREGROUND (``uvicorn.run`` blocks; daemonization belongs to the
+    service manager, which is why the unit is ``Type=simple``). The
+    production secret posture is enforced inside ``build``: with
+    ``BENCHWEAVE_ENV=production`` a default/absent ``BENCHWEAVE_SECRET``
+    refuses before anything touches disk.
+    """
+    # Lazy heavy imports: only serve pays for the app stack.
+    import uvicorn
+
+    from benchweave.interfaces import app_entry
+
+    try:
+        app = app_entry.build()
+    except KeyError as error:
+        raise click.ClickException(
+            f"missing required environment variable {error} — serve reads "
+            "BENCHWEAVE_DB (plus BENCHWEAVE_SECRET/FIXTURES/HOST/PORT as "
+            "the deploy surface configures them)"
+        ) from error
+    except RuntimeError as error:
+        # The production secret-posture refusal: handled message, exit 1.
+        raise click.ClickException(str(error)) from error
+    uvicorn.run(app, host=host, port=port)
 
 
 # --- status: the first live command -------------------------------------------

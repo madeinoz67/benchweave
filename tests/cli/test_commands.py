@@ -42,9 +42,8 @@ from benchweave.interfaces.identity import issue
 from benchweave.state.store import Store
 
 COMMANDS = ["setup", "status", "demo", "report", "backup", "restore", "verify", "serve"]
-# Tasks 10-13 made the at-rest commands, demo and report live; only serve
-# remains a stub until Task 14 lands it.
-STUB_COMMANDS = ["serve"]
+# Tasks 10-13 made the at-rest commands, demo and report live; Task 14 made
+# serve live too (its behaviour suite lives in test_serve.py) — no stubs remain.
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "execution"
 SECRET = b"wp08-task-nine-secret"
@@ -133,13 +132,6 @@ def test_help_lists_all_eight_commands() -> None:
     assert result.exit_code == 0
     for name in COMMANDS:
         assert name in result.output, f"--help must list {name}"
-
-
-@pytest.mark.parametrize("name", STUB_COMMANDS)
-def test_stub_commands_fail_with_the_exact_brief_message(name: str) -> None:
-    result = CliRunner().invoke(cli, [name])
-    assert result.exit_code != 0
-    assert "not implemented in this task" in _combined(result)
 
 
 def test_version_flag_prints_package_version() -> None:

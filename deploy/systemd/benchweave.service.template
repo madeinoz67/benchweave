@@ -1,0 +1,52 @@
+# BenchWeave gateway — systemd unit TEMPLATE (WP08 Task 14).
+#
+# Render the two placeholders before installing:
+#   sed -e 's|{{DATA_DIR}}|/var/lib/benchweave|g' \
+#       -e 's|{{ENV_FILE}}|/etc/benchweave/benchweave.env|g' \
+#       deploy/systemd/benchweave.service.template \
+#       | sudo tee /etc/systemd/system/benchweave.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now benchweave
+#
+# Every directive's threat rationale: deploy/PERMISSIONS-REVIEW.md (the
+# review document is the deliverable this template implements). CI renders
+# and verifies this file with `systemd-analyze verify` on ubuntu-latest
+# (.github/workflows/ci.yml, job `systemd`).
+
+[Unit]
+Description=BenchWeave test-bench gateway
+After=network.target
+
+[Service]
+Type=simple
+User=benchweave
+Group=benchweave
+# --- the nine hardening directives (PERMISSIONS-REVIEW.md §3) ---------------
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths={{DATA_DIR}}
+PrivateTmp=true
+CapabilityBoundingSet=
+MemoryDenyWriteExecute=true
+EnvironmentFile={{ENV_FILE}}
+ExecStart=/usr/bin/python3 -m benchweave serve
+# --- additional sandboxing, documented alongside the nine (§4) ---------------
+ProtectHome=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

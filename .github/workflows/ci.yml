@@ -34,3 +34,26 @@ jobs:
 
       - name: Test
         run: uv run pytest -q
+
+  systemd:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Render and verify the systemd unit template
+        run: |
+          set -euo pipefail
+          # A missing verifier is a skip that must never pass silently.
+          if ! command -v systemd-analyze >/dev/null 2>&1; then
+            echo "::error::systemd-analyze is required to verify deploy/systemd/ but is absent on this runner"
+            exit 1
+          fi
+          # Rehearse the deployment preconditions the rendered unit names:
+          # the dedicated system user, the one writable data dir, the env file.
+          sudo useradd --system --no-create-home --shell /usr/sbin/nologin benchweave
+          sudo mkdir -p /var/lib/benchweave /etc/benchweave
+          sudo touch /etc/benchweave/benchweave.env
+          sed -e 's|{{DATA_DIR}}|/var/lib/benchweave|g' \
+              -e 's|{{ENV_FILE}}|/etc/benchweave/benchweave.env|g' \
+              deploy/systemd/benchweave.service.template > /tmp/benchweave.service
+          systemd-analyze verify /tmp/benchweave.service
