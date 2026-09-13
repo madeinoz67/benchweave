@@ -42,9 +42,9 @@ from benchweave.interfaces.identity import issue
 from benchweave.state.store import Store
 
 COMMANDS = ["setup", "status", "demo", "report", "backup", "restore", "verify", "serve"]
-# Tasks 10-11 made the at-rest commands and demo live; only these remain
-# stubs until Tasks 12-14 land them.
-STUB_COMMANDS = ["report", "serve"]
+# Tasks 10-13 made the at-rest commands, demo and report live; only serve
+# remains a stub until Task 14 lands it.
+STUB_COMMANDS = ["serve"]
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "execution"
 SECRET = b"wp08-task-nine-secret"

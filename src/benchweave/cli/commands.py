@@ -2,9 +2,10 @@
 
 Eight commands — ``setup status demo report backup restore verify serve`` —
 so ``--help`` is already the full operator surface. ``status`` (Task 9), the
-four at-rest commands (Task 10) and ``demo`` (Task 11: live-gateway mode or
-the labelled ephemeral fresh-install simulation) are live; ``report`` and
-``serve`` raise the exact stub message below until Tasks 12-14 land them.
+four at-rest commands (Task 10), ``demo`` (Task 11: live-gateway mode or the
+labelled ephemeral fresh-install simulation) and ``report`` (Task 13: the
+store-derived report model with markdown/JSON emitters, at-rest only) are
+live; ``serve`` raises the exact stub message below until Task 14 lands it.
 
 ``status`` speaks to a live gateway over the stdlib-only REST client; the
 at-rest commands operate directly on the data directory under the
@@ -334,9 +335,94 @@ def demo(
 
 
 @cli.command()
-def report() -> None:
-    """Render run evidence into an operator report."""
-    _not_implemented()
+@click.option(
+    "--data-dir",
+    "data_dir",
+    type=click.Path(path_type=Path),
+    required=True,
+    envvar="BENCHWEAVE_DATA_DIR",
+    help=_DATA_DIR_HELP,
+)
+@click.option(
+    "--bench",
+    "bench_id",
+    default=None,
+    help="Restrict the report to one bench id (default: every bench).",
+)
+@click.option(
+    "--out",
+    "out",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Write the report to FILE (markdown; JSON with --json) instead of stdout.",
+)
+@click.option(
+    "--gateway",
+    "gateway_url",
+    envvar="BENCHWEAVE_GATEWAY",
+    default=None,
+    help=(
+        "NOT IMPLEMENTED: compose the report from a live gateway over REST. "
+        "The report is at-rest only in this task — read the data directory."
+    ),
+)
+@click.option(
+    "--json",
+    "json_output",
+    is_flag=True,
+    help="Emit the stable machine JSON contract instead of text.",
+)
+def report(
+    data_dir: Path,
+    bench_id: str | None,
+    out: Path | None,
+    gateway_url: str | None,
+    json_output: bool,
+) -> None:
+    """Render run evidence into an operator report (store at rest)."""
+    _set_json(json_output)
+    if gateway_url is not None:
+        # Controller ruling 2: --gateway composition would fork the model
+        # into a second read path — a documented stub this task, not a
+        # silent fallthrough to at-rest reads.
+        raise click.ClickException(
+            "not implemented in this task: --gateway report composition — "
+            "the report reads the data directory at rest; drop --gateway"
+        )
+    from benchweave.cli import report as report_lib
+    from benchweave.cli.atrest import AtRestError
+
+    try:
+        model = report_lib.report_from_data_dir(
+            data_dir, bench_id=bench_id, now=report_lib.now_iso()
+        )
+    except (AtRestError, StoreHeldError, ValueError, OSError) as error:
+        raise click.ClickException(str(error)) from error
+    if json_output:
+        if out is not None:
+            _write_out(out, report_lib.render_json(model))
+            return
+        emit(model)
+        return
+    if out is not None:
+        _write_out(out, report_lib.render_markdown(model))
+        return
+    if sys.stdout.isatty():
+        # The Task 12 view layer: on a TTY the Textual report view runs.
+        from benchweave.cli.render import TextualRenderer
+
+        TextualRenderer().report_view(model)
+        return
+    click.echo(report_lib.render_markdown(model))
+
+
+def _write_out(out: Path, text: str) -> None:
+    """Write an --out report file; an unusable path refuses truthfully."""
+    try:
+        out.write_text(text + "\n", encoding="utf-8")
+    except OSError as error:
+        raise click.ClickException(f"cannot write {out}: {error}") from error
+    click.echo(f"wrote {out}", err=True)
 
 
 @cli.command()

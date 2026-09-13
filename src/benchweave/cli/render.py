@@ -93,13 +93,11 @@ def _mappings(value: object) -> list[Mapping[str, object]]:
 
 
 def _digest_of(entry: Mapping[str, object]) -> str:
-    """An evidence entry's digest (Task 13 pins the model key; ``digest``
-    and ``sha256`` both accepted so the view tolerates the final choice)."""
-    for key in ("digest", "sha256"):
-        value = entry.get(key)
-        if isinstance(value, str):
-            return value
-    return ""
+    """An evidence entry's digest. Task 13 settled the model's canonical
+    key — ``digest`` — so the view reads that key only (the former
+    ``digest``|``sha256`` tolerance is gone)."""
+    value = entry.get("digest")
+    return value if isinstance(value, str) else ""
 
 
 def _demo_record_lines(record: Mapping[str, object]) -> list[str]:
@@ -182,9 +180,12 @@ class ReportApp(App[None]):
         runs = self.query_one("#runs", DataTable)
         runs.add_columns("run", "bench", "state", "outcome")
         for run in _mappings(self._report.get("runs")):
+            # Task 13 settlement: the model's canonical run keys are
+            # ``id`` and ``bench`` — the former run_id|id / bench_id|bench
+            # tolerances are gone.
             runs.add_row(
-                str(run.get("run_id", run.get("id", ""))),
-                str(run.get("bench_id", run.get("bench", ""))),
+                str(run.get("id", "")),
+                str(run.get("bench", "")),
                 str(run.get("state", "")),
                 str(run.get("outcome", "")),
             )
@@ -330,8 +331,9 @@ class PlainTextRenderer:
         runs = _mappings(report.get("runs"))
         lines.append(f"runs: {len(runs)}")
         for run in runs:
+            # Task 13 settlement: the model's canonical run keys.
             lines.append(
-                "  {run_id}  bench={bench_id} state={state} "
+                "  {id}  bench={bench} state={state} "
                 "outcome={outcome}".format_map({k: str(v) for k, v in run.items()})
             )
         for entry in _mappings(report.get("evidence")):

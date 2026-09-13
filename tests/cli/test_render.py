@@ -136,24 +136,47 @@ def _benches() -> list[dict[str, object]]:
 
 
 def _report() -> dict[str, object]:
+    # The Task 13 canonical model shape (build_report's output): run keys
+    # ``id``/``bench``, evidence digest key ``digest`` — the settled keys
+    # the view must render, no tolerances.
     return {
         "generated_at": "2026-09-14T00:00:00Z",
         "simulation": True,
-        "benches": [{"bench_id": "sim-bench", "busy": False, "generation": 2}],
+        "benches": [
+            {"id": "sim-bench", "busy": False, "generation": 2, "simulation": True}
+        ],
         "runs": [
             {
-                "run_id": "run-1",
-                "bench_id": "sim-bench",
+                "id": "run-1",
+                "bench": "sim-bench",
                 "state": "terminal",
                 "outcome": "passed",
                 "principal": "benchweave-demo",
+                "simulation": True,
             }
         ],
         "evidence": [
-            {"kind": "run_record", "digest": DIGEST_A, "present": True},
-            {"kind": "artifact", "sha256": DIGEST_B, "present": False},
+            {
+                "evidence_id": "ev-1",
+                "kind": "run_record",
+                "digest": DIGEST_A,
+                "present": True,
+            },
+            {
+                "evidence_id": "ev-2",
+                "kind": "artifact",
+                "digest": DIGEST_B,
+                "present": False,
+            },
         ],
-        "missing_evidence": [DIGEST_B],
+        "missing_evidence": [
+            {
+                "evidence_id": "ev-2",
+                "kind": "artifact",
+                "digest": DIGEST_B,
+                "present": False,
+            }
+        ],
     }
 
 
