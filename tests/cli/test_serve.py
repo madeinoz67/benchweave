@@ -413,6 +413,20 @@ def test_env_example_is_placeholder_only_and_carries_no_fixtures_coupling() -> N
     assert re.fullmatch(r"__[A-Z0-9_]+__|\{\{[A-Z_]+\}\}|<[A-Z_ ]+>", secret_line.group(1))
 
 
+def test_env_example_secret_placeholder_equals_the_refused_constant() -> None:
+    """T14 micro-carry (landed with T15): the example's placeholder text and
+    the production denylist's refused constant are ONE value, pinned — if
+    the example's placeholder text ever changes, this fails instead of the
+    denylist silently going stale (a changed placeholder would boot
+    production on a publicly-known secret again)."""
+    from benchweave.interfaces.app_entry import ENV_EXAMPLE_PLACEHOLDER_SECRET
+
+    text = ENV_EXAMPLE.read_text(encoding="utf-8")
+    secret_line = re.search(r"^BENCHWEAVE_SECRET=(.+)$", text, re.MULTILINE)
+    assert secret_line is not None
+    assert secret_line.group(1) == ENV_EXAMPLE_PLACEHOLDER_SECRET.decode()
+
+
 # The secret-grep (controller ruling 2): deploy/ carries no real secrets —
 # secret-shaped keys hold placeholders only, and no high-entropy blob
 # survives once placeholders and filesystem paths are removed.

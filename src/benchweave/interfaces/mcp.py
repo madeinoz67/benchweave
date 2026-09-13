@@ -30,7 +30,6 @@ import asyncio
 import json
 from collections.abc import Callable
 from functools import wraps
-from pathlib import Path
 from typing import Any
 
 from fastmcp import FastMCP
@@ -45,12 +44,12 @@ from benchweave.interfaces.errors import (
 )
 from benchweave.interfaces.identity import Identity, IdentityRejected, validate
 from benchweave.interfaces.operations import Operations
+from benchweave.vendoring import contract_family
 
-# The vendored corpus lives at the repo root beside the tests that pin it
-# (src/benchweave/interfaces/mcp.py -> parents[3] is the repository root).
-_VENDORED_PATH = (
-    Path(__file__).resolve().parents[3] / "contracts" / "interface-v1.1.0" / "mcp-tools.json"
-)
+# The vendored corpus (packaged in the wheel, repo-relative in a dev
+# checkout — benchweave/vendoring.py; the corpus bytes stay pinned at the
+# repository root beside the tests that pin them).
+_VENDORED_PATH = contract_family("interface-v1.1.0") / "mcp-tools.json"
 _vendored_cache: dict[str, dict[str, Any]] | None = None
 
 

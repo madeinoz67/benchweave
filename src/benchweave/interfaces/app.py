@@ -38,10 +38,12 @@ from benchweave.interfaces.validation import VENDORED_CORPUS_ROOT, SeamValidator
 from benchweave.interfaces.worker import RunWorker
 from benchweave.state.hold import StoreHold
 from benchweave.state.store import Store
+from benchweave.vendoring import sim_plugins_root
 
 # Sim plugins are repo fixtures loaded exactly as tests/integration/
-# test_procedures.py loads them (they are not package code).
-_PLUGINS_ROOT = Path(__file__).resolve().parents[3] / "plugins"
+# test_procedures.py loads them (they are not package code) — packaged
+# inside the wheel so a fresh install can run the simulator demo
+# (benchweave/vendoring.py resolves packaged-first, repo fallback).
 _SIM_PLUGINS: tuple[tuple[str, str], ...] = (
     ("psu", "sim_psu"),
     ("controller", "sim_controller"),
@@ -74,7 +76,7 @@ class WriteGate:
 
 def _load_sim_plugin(name: str) -> ModuleType:
     """The sim plugin module, mirroring the integration tests' loader."""
-    path = _PLUGINS_ROOT / "benchweave" / name / "src" / f"benchweave_{name}" / "plugin.py"
+    path = sim_plugins_root() / name / "src" / f"benchweave_{name}" / "plugin.py"
     if not path.is_file():
         raise FileNotFoundError(f"sim plugin file missing: {path}")
     spec = importlib.util.spec_from_file_location(name.replace("-", "_"), path)

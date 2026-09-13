@@ -47,7 +47,6 @@ import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from typing import Any
 
 from jsonschema import Draft202012Validator
@@ -74,8 +73,11 @@ from benchweave.host.types import (
     OperationStatus,
 )
 from benchweave.state.store import Store
+from benchweave.vendoring import contract_family
 
-_CONTRACTS = Path(__file__).resolve().parents[3] / "contracts" / "execution-v1.0.0"
+#: The vendored execution contracts (packaged in the wheel, repo-relative
+#: in a dev checkout — :mod:`benchweave.vendoring`).
+_CONTRACTS = contract_family("execution-v1.0.0")
 _RUN_RECORD_VALIDATOR: Any = None
 
 #: Body outcomes that pass through unchanged when the safe state is verified.

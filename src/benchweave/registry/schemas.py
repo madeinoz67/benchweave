@@ -8,18 +8,18 @@ from __future__ import annotations
 
 import json
 from functools import cache
-from pathlib import Path
 
 from jsonschema import Draft202012Validator, FormatChecker
 
 from benchweave.content.json_document import JsonDocument, load_document
+from benchweave.vendoring import contract_family
 
 #: Vendored registry schemas, resolved exactly as ``control/documents.py``
-#: resolves its vendored execution-v1.0.0 schemas: module-relative to the
-#: repository root (``parents[3]``), one directory per contract family. The
+#: resolves its vendored execution-v1.0.0 schemas (packaged in the wheel,
+#: repo-relative in a dev checkout — :mod:`benchweave.vendoring`). The
 #: schema bytes are pinned in ``contracts/manifest.json`` and verified by
 #: ``tests/contract/test_baseline.py``.
-_CONTRACTS = Path(__file__).resolve().parents[3] / "contracts" / "registry-v1.0.0"
+_CONTRACTS = contract_family("registry-v1.0.0")
 
 
 class RegistryRejected(ValueError):

@@ -25,8 +25,11 @@ from typing import Any
 from jsonschema import Draft202012Validator, FormatChecker
 
 from benchweave.content.json_document import DocumentRejected, load_document
+from benchweave.vendoring import contract_family
 
-_CONTRACTS = Path(__file__).resolve().parents[3] / "contracts" / "execution-v1.0.0"
+#: The vendored execution contracts (packaged in the wheel, repo-relative
+#: in a dev checkout — :mod:`benchweave.vendoring`).
+_CONTRACTS = contract_family("execution-v1.0.0")
 _PACKAGE_LOCK_FILENAME = "package-lock.json"
 _MAX_DOCUMENT_BYTES = 1_048_576
 

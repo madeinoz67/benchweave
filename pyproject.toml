@@ -52,6 +52,15 @@ benchweave = "benchweave.__main__:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/benchweave"]
+# The runtime's vendored assets (contract corpora + the simulator plugins)
+# live at the repo root beside the suites that pin them; a wheel install has
+# no repo around it, so the same trees ship verbatim inside the package
+# (resolved by benchweave/vendoring.py — packaged-first, repo fallback).
+# The fixture lattice is deliberately NOT packaged: it is operator-supplied
+# input (--fixtures / BENCHWEAVE_FIXTURES, disclosed repo-relative default).
+[tool.hatch.build.targets.wheel.force-include]
+"contracts" = "benchweave/_vendored/contracts"
+"plugins/benchweave" = "benchweave/_vendored/plugins/benchweave"
 
 [tool.pytest.ini_options]
 addopts = "-q -p no:cacheprovider"
