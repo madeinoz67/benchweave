@@ -114,8 +114,9 @@ def build_router(
                 )
             except Exception as crash:
                 # D13: the ONE internal_error construction site — identical
-                # message text on both transports, per-instance detail in
-                # ``details``, correlation_id minted per envelope.
+                # message text on both transports, correlation_id minted per
+                # envelope; the crash itself is logged server-side by the
+                # factory, keyed by that correlation_id.
                 return JSONResponse(
                     errors.internal_failure(crash).body(),
                     status_code=errors.FAILURE_HTTP["internal_error"],

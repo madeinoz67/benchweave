@@ -1187,9 +1187,11 @@ def test_internal_error_parity_with_correlation_id(
 ) -> None:
     """D13: an unexpected crash under a handler surfaces the contract
     ``internal_error`` envelope on BOTH transports — identical message text
-    (one construction site, ``errors.internal_failure``; the per-instance
-    detail rides ``details``, never the message) and a non-empty 16-hex
-    ``correlation_id`` on each, freshly minted per envelope."""
+    (one construction site, ``errors.internal_failure``) and a non-empty
+    16-hex ``correlation_id`` on each, freshly minted per envelope; the
+    crash itself never rides the wire (the closed ``details`` def carries
+    no ``exception`` key — the class is logged server-side keyed by the
+    correlation_id, pinned in the unit suite)."""
 
     def boom(
         self: Operations, identity: Any, bench_id: str, binding_ref: dict[str, Any]
@@ -1219,6 +1221,9 @@ def test_internal_error_parity_with_correlation_id(
     assert mcp_error["code"] == rest_error["code"] == "internal_error"
     assert mcp_error["message"] == rest_error["message"]
     assert mcp_error["retry"] == rest_error["retry"] == "never"
+    assert (
+        mcp_error["details"] == rest_error["details"] == {}
+    )  # the closed details def carries no crash class — diagnostics are logged
     assert _CORRELATION_ID.match(rest_error["correlation_id"])
     assert _CORRELATION_ID.match(mcp_error["correlation_id"])
     # Per-failure mint: the two envelopes are distinct diagnostics events.

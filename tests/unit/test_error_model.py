@@ -1,19 +1,21 @@
-"""WP08 Task 5: the 14-code error model — envelope shape and the one
-``internal_error`` construction site (D13 batch B).
+"""WP08 Task 5: the 14-code error model — rendered envelope shape and the
+one ``internal_error`` construction site (D13 batch B).
 
 Unit level: the ``Failure`` envelope is the wire contract both adapters
-render, so these pins hold the shape itself, the verbatim catalog
+render, so these pins hold the rendered shape itself, the verbatim catalog
 ``error_http_status`` map, and the single ``internal_failure`` factory both
-transports share — identical message text across transports (per-instance
-detail is parameterised into ``details``, never the message) and a freshly
-minted 16-hex ``correlation_id`` per envelope, the contract §10 "a
-correlation ID links internal diagnostics" link. The end-to-end
+transports share — identical message text across transports, a freshly
+minted 16-hex ``correlation_id`` per envelope (DISTINCT per envelope,
+controller-ratified), and crash diagnostics OFF the wire: the closed
+``details`` def admits no ``exception`` key, so the class is logged
+server-side keyed by the correlation_id (§10). The end-to-end
 both-transport comparison lives in ``test_interface_parity.py``.
 """
 
 from __future__ import annotations
 
 import json
+import logging
 import re
 from pathlib import Path
 
@@ -35,7 +37,12 @@ def test_failure_http_is_the_catalog_map_verbatim() -> None:
     assert CATALOG["error_http_status"] == FAILURE_HTTP
 
 
-def test_failure_body_is_the_contract_error_envelope() -> None:
+def test_failure_body_is_the_rendered_error_envelope() -> None:
+    """Pins the RENDERED shape (what both adapters put on the wire), NOT
+    the contract's: the vendored ``$defs/error`` requires ``correlation_id``
+    minLength 1 and a closed six-key ``details`` — the rendered envelope
+    diverges de-facto (empty correlation on non-internal failures, open
+    details). Registered as compatibility row D14; unchanged here."""
     fail = failure("conflict", "bench busy", retry="never", details={"x": 1})
     assert fail.body() == {
         "ok": False,
@@ -73,10 +80,23 @@ def test_internal_failure_mints_a_unique_16hex_correlation_id() -> None:
     assert one.body()["error"]["correlation_id"] == one.correlation_id
 
 
-def test_internal_failure_details_carry_only_the_exception_class() -> None:
-    """Per-instance detail is the exception CLASS, never the payload — a
-    crashed exception string can carry anything, and the contract §10
-    excludes stack traces from the wire."""
-    crash = internal_failure(ValueError("secret connection string"))
-    assert crash.details == {"exception": "ValueError"}
+def test_internal_failure_keeps_diagnostics_off_the_wire_and_logs_them(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The vendored ``details`` def is CLOSED (six keys, no ``exception``):
+    internal diagnostics never ride the wire. The exception is logged
+    server-side by the module logger, keyed by the envelope's
+    correlation_id — the §10 "a correlation ID links internal
+    diagnostics" join between a wire response and its log line."""
+    with caplog.at_level(logging.ERROR, logger="benchweave.interfaces.errors"):
+        crash = internal_failure(ValueError("secret connection string"))
+    assert crash.details == {}  # nothing about the crash is on the wire
     assert "secret" not in json.dumps(crash.body())
+    assert _HEX16.match(crash.correlation_id)
+    joined = [
+        record
+        for record in caplog.records
+        if crash.correlation_id in record.getMessage()
+    ]
+    assert joined, "the log line must carry the envelope's correlation_id"
+    assert "ValueError" in joined[0].getMessage()

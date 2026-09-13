@@ -172,7 +172,8 @@ def build_mcp(
         except Exception as crash:
             # D13 parity: the same internal_error construction site REST's
             # ``_guard`` uses — identical message text, a minted
-            # correlation_id, and never an exception over the wire.
+            # correlation_id, crash detail logged server-side by the
+            # factory (never an exception over the wire).
             return ToolResult(
                 structured_content=internal_failure(crash).body(),
                 is_error=True,

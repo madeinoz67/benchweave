@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from dataclasses import dataclass, field
 from typing import Any
@@ -53,28 +54,40 @@ def failure(
     return Failure(code=code, message=message, retry=retry, details=details or {})
 
 
+# The app's first operational module logger (Task-5 fix wave): the one
+# place unexpected-exception diagnostics land. The vendored ``$defs/error``
+# ``details`` is a CLOSED six-key object, so crash detail cannot ride the
+# wire — per §10 ("a correlation ID links internal diagnostics") it is
+# logged here, keyed by the envelope's correlation_id.
+_LOG = logging.getLogger(__name__)
+
+
 def internal_failure(crash: BaseException | None = None) -> Failure:
     """The ONE ``internal_error`` construction site for both adapters (D13).
 
-    The message text is transport-invariant — per-instance detail is
-    parameterised into ``details`` (the exception CLASS name only: a
-    crashed exception string can carry anything, and the contract §10
-    excludes stack traces from the wire), never the message. Every
-    envelope mints its own ``correlation_id`` (``uuid4().hex[:16]``): the
-    §10 "a correlation ID links internal diagnostics" link between the
-    wire response and the operator's logs. Both adapters render exactly
-    this factory's output, so text parity is by construction and is
-    pinned end to end in the parity suite.
+    The message text is transport-invariant and the wire envelope carries
+    NO crash detail — the vendored ``$defs/error`` ``details`` is closed
+    (findings/revision/watermarks/retry_after_ms only), so an ``exception``
+    key there is a schema violation. Per the §10 design, the freshly
+    minted ``correlation_id`` (``uuid4().hex[:16]``) rides the wire while
+    the exception is LOGGED server-side keyed by that same id, so an
+    operator can join a wire response to its log line. Both adapters
+    render exactly this factory's output, so text parity is by
+    construction and is pinned end to end in the parity suite.
     """
-    details: dict[str, Any] = {}
+    correlation_id = uuid.uuid4().hex[:16]
     if crash is not None:
-        details["exception"] = type(crash).__name__
+        _LOG.error(
+            "internal_error correlation_id=%s: %s: %s",
+            correlation_id,
+            type(crash).__name__,
+            crash,
+        )
     return Failure(
         code="internal_error",
         message="unexpected gateway failure",
-        correlation_id=uuid.uuid4().hex[:16],
+        correlation_id=correlation_id,
         retry="never",
-        details=details,
     )
 
 
