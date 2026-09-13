@@ -23,14 +23,18 @@ a test; none is silent) versus what it proves equal:
   (authenticated apply over REST succeeds; apply without the detached token
   fails closed ``forbidden``/``missing_token``) and records the amendment for
   WP08. The three admin ops are REST-only by catalog: no MCP twin exists.
-- D3 required-vs-defaulted params: catalog input schemas declare paging/
-  chunk params REQUIRED; REST rejects an absent param as 400
-  ``invalid_request``. The MCP tool signatures carry dummy defaults (the
-  Task 8 fidelity workaround — the signature is only the callable, the
-  vendored schema is pinned for ``tools/list``), and fastmcp 4.0.3 does NOT
-  enforce the pinned schema's ``required`` at dispatch: a tools/call
-  omitting a required argument SUCCEEDS through the default. Pinned
-  honestly below (empirical), WP08 reconciliation item.
+- D3 required-vs-defaulted params — CLOSED (WP08 Task 1, as a side effect
+  of D8 seam validation): catalog input schemas declare paging/chunk
+  params REQUIRED; REST rejects an absent param as 400 ``invalid_request``.
+  fastmcp 4.0.3 does not enforce the pinned schema's ``required`` at
+  dispatch, so the MCP tool signatures' dummy defaults still fire — but the
+  seam now validates the defaulted payload: every empty-string default
+  (``run_id``/``bench_id``/``reason``/...) violates the corpus pattern or
+  ``minLength`` and surfaces ``invalid_request`` on MCP too (parity with
+  REST's 400). The one honest residual: the paging defaults (``limit=1``,
+  ``cursor=None``/``after=None``) are schema-VALID well-formed requests, so
+  an MCP ``bench_list`` omitting them still succeeds — pinned below; that
+  is a transport-default difference, not a validation gap.
 - D4 event evidence shape: the seam emits free-form evidence dicts
   (``{retention_failures}``, ``{reason, request_id}``, ``{request_id}``)
   while the contract's event ``evidence`` def is a closed document ref
@@ -802,10 +806,14 @@ def test_failure_classes_match_on_both_transports(
 def test_invalid_request_required_param_rest_vs_mcp_default(
     gateway: SimpleNamespace,
 ) -> None:
-    """D3 pin (empirical): REST rejects an absent required param (400
-    invalid_request); fastmcp 4.0.3 does NOT enforce the pinned schema's
-    ``required`` at dispatch — the signature's dummy default fires and the
-    call SUCCEEDS. Both behaviors pinned honestly; WP08 reconciliation."""
+    """D3 post-D8 pin: REST rejects an absent required param (400
+    invalid_request) and a non-integer one; on MCP the fastmcp defaults
+    still fire (no dispatch-time ``required`` enforcement), but the seam now
+    validates the defaulted payload — the empty-string defaults are
+    schema-INVALID, so an omitted required string param surfaces
+    ``invalid_request`` on MCP too (the D3 close). The paging defaults
+    (``limit=1``, ``cursor=None``) are schema-valid well-formed requests
+    and still succeed: the honest residual, pinned as such."""
     status, rest_json = _rest(gateway, "get", "/v1/benches", None, OBSERVE)
     assert status == 400
     assert rest_json["error"]["code"] == "invalid_request"
@@ -814,8 +822,212 @@ def test_invalid_request_required_param_rest_vs_mcp_default(
     assert status == 400
     assert rest_json["error"]["code"] == "invalid_request"
 
+    # REST twin of the MCP defaulted call: omitting required BODY fields is
+    # 400 there, so the class agrees across transports for string params.
+    status, rest_json = _rest(
+        gateway, "post", "/v1/runs/none/cancellations", {"request_id": "req-d3"}, CONTROL
+    )
+    assert status == 400
+    assert rest_json["error"]["code"] == "invalid_request"
+
+    # The close: omitted required string params over MCP now yield the
+    # contract invalid_request envelope (empty-string defaults violate the
+    # corpus pattern/minLength) — previously this call succeeded.
+    mcp_json = _call(gateway.port, "stg_v1_run_cancel", {}, CONTROL)
+    assert mcp_json["ok"] is False, mcp_json
+    assert mcp_json["error"]["code"] == "invalid_request"
+
+    # The residual: paging defaults are schema-valid, so the call succeeds.
     mcp_json = _call(gateway.port, "stg_v1_bench_list", {}, OBSERVE)
-    assert mcp_json["ok"] is True, mcp_json  # limit/cursor defaulted, not rejected
+    assert mcp_json["ok"] is True, mcp_json  # limit/cursor defaulted, valid
+
+
+# --- D8: seam validation parity (spec Decision 2) -----------------------------
+#
+# Empirical transport boundary (pinned by this suite's RED run, and the
+# reason the matrix is split by what can reach the seam):
+#
+# - REST forwards raw body/path values, so EVERY schema violation reaches
+#   the seam and is ``invalid_request`` 400 — pinned for all classes below.
+# - MCP dispatch validates arguments against the tool SIGNATURE, not the
+#   vendored schema (the D3 root): numeric strings COERCE to the annotated
+#   int (``"1"`` -> 1) and string-where-object is rejected by fastmcp with
+#   its own non-contract error — neither reaches the seam over MCP. The
+#   seam itself rejects both classes (unit suite + REST prove it).
+# - Schema violations on plain string params (pattern violations, empty
+#   strings) pass signature coercion and DO reach the seam on both
+#   transports — the both-transport envelope matrix below.
+
+TYPE_CONFUSION_CASES: dict[str, dict[str, Any]] = {
+    # op -> rest (method, path, body), token tier. Every case is
+    # shape-invalid per the vendored corpus. Pre-D8 REST behavior (pinned
+    # by the RED run): 500 internal_error (AttributeError on the confused
+    # binding), 409 conflict (string expected_generation compared
+    # unequal), or a 201 with garbage stored (change_submit target_ref).
+    "run_start_binding": {
+        "rest": ("post", f"/v1/benches/{BENCH}/runs", {
+            "request_id": "req-tc-run-start",
+            "binding_ref": "not-an-object",
+            "expected_generation": 1,
+            "lease_id": None,
+        }),
+        "token": CONTROL,
+    },
+    "run_check_binding": {
+        "rest": ("post", f"/v1/benches/{BENCH}/run-checks", {
+            "binding_ref": "not-an-object",
+        }),
+        "token": CONTROL,
+    },
+    "run_start_generation": {
+        "rest": ("post", f"/v1/benches/{BENCH}/runs", {
+            "request_id": "req-tc-generation",
+            "binding_ref": BINDING_REF,
+            "expected_generation": "1",  # string where the corpus declares integer
+            "lease_id": None,
+        }),
+        "token": CONTROL,
+    },
+    "lease_create_duration": {
+        "rest": ("post", f"/v1/benches/{BENCH}/leases", {
+            "request_id": "req-tc-lease-create",
+            "expected_generation": 1,
+            "duration_ms": "60000",  # string where the corpus declares integer
+        }),
+        "token": CONTROL,
+    },
+    "lease_renew_sequence": {
+        # "{renew}" resolves to the fixture's live renew lease in-test.
+        "rest": ("post", "/v1/leases/{renew}/renewals", {
+            "request_id": "req-tc-lease-renew",
+            "sequence": "1",  # string where the corpus declares integer
+            "duration_ms": 60000,
+        }),
+        "token": CONTROL,
+    },
+    "change_submit_target": {
+        "rest": ("post", "/v1/admin/changes", {
+            "request_id": "req-tc-change-submit",
+            "bench_id": BENCH,
+            "kind": "trip_reset",
+            "target_ref": "not-an-object",
+            "expected_generation": 1,
+            "reason": "type-confusion pin",
+        }),
+        "token": ADMIN,  # admin ops are REST-only by catalog (no MCP twin)
+    },
+}
+
+
+@pytest.mark.parametrize("op_name", sorted(TYPE_CONFUSION_CASES))
+def test_type_confusion_is_invalid_request_at_rest(
+    gateway: SimpleNamespace, op_name: str
+) -> None:
+    """D8 pin (REST carries every class): shape-invalid inputs are the
+    contract ``invalid_request`` at the catalog's 400 — replacing the
+    presence-only layer where they coerced (409), 500'd, or stored garbage
+    (201). The MCP arms of two classes are transport-pre-empted (see
+    ``test_mcp_signature_coercion_boundary``); the seam-level rejection is
+    proven by the unit validation suite.
+    """
+    case = TYPE_CONFUSION_CASES[op_name]
+    seed = {"renew": gateway.leases["renew"]}
+    method, path, body = case["rest"]
+    status, rest_json = _rest(
+        gateway, method, path.format(**seed), _fill(body, seed), case["token"]
+    )
+    assert status == CATALOG["error_http_status"]["invalid_request"], (op_name, rest_json)
+    assert rest_json["error"]["code"] == "invalid_request", op_name
+    assert rest_json["error"]["retry"] == "never"
+
+
+SCHEMA_VIOLATION_CASES: dict[str, dict[str, Any]] = {
+    # Violations on plain string params pass fastmcp's signature coercion
+    # and reach the seam on BOTH transports — full envelope parity here.
+    # Pre-D8 behavior (RED run): not_found 404 on both.
+    "bench_get": {
+        "rest": ("get", "/v1/benches/BAD_ID", None),
+        "mcp": {"bench_id": "BAD_ID"},  # violates ^[a-z][a-z0-9_.-]*$
+        "token": OBSERVE,
+    },
+    "run_find": {
+        "rest": ("get", "/v1/requests/REQ_BAD", None),
+        "mcp": {"request_id": "REQ_BAD"},
+        "token": CONTROL,
+    },
+    "lease_create": {
+        "rest": ("post", "/v1/benches/BAD_BENCH/leases", {
+            "request_id": "req-sv-lease-create",
+            "expected_generation": 1,
+            "duration_ms": 60000,
+        }),
+        "mcp": {
+            "bench_id": "BAD_BENCH",
+            "request_id": "req-sv-lease-create",
+            "expected_generation": 1,
+            "duration_ms": 60000,
+        },
+        "token": CONTROL,
+    },
+}
+
+
+@pytest.mark.parametrize("op_name", sorted(SCHEMA_VIOLATION_CASES))
+def test_schema_violation_is_invalid_request_on_both_transports(
+    gateway: SimpleNamespace, op_name: str
+) -> None:
+    """D8 pin (both transports): a schema violation that reaches the seam
+    yields the identical contract failure envelope — same code, same retry
+    — with REST at the catalog's 400.
+    """
+    case = SCHEMA_VIOLATION_CASES[op_name]
+    method, path, body = case["rest"]
+    status, rest_json = _rest(gateway, method, path, body, case["token"])
+    assert status == CATALOG["error_http_status"]["invalid_request"], (op_name, rest_json)
+    assert rest_json["error"]["code"] == "invalid_request", op_name
+    mcp_json = _call(
+        gateway.port, f"stg_v1_{op_name}", case["mcp"], case["token"]
+    )
+    assert mcp_json["ok"] is False, (op_name, mcp_json)
+    assert mcp_json["error"]["code"] == "invalid_request", op_name
+    assert mcp_json["error"]["retry"] == rest_json["error"]["retry"]
+
+
+def test_mcp_signature_coercion_boundary(gateway: SimpleNamespace) -> None:
+    """D8/D3 boundary disclosure (empirical, from this suite's RED run):
+    fastmcp validates tool arguments against the SIGNATURE, not the
+    vendored schema, so two type-confusion classes never reach the seam
+    over MCP. (a) A string-where-object argument is rejected BY FASTMCP —
+    an isError result carrying fastmcp's own text, not the contract
+    envelope (the call fails; nothing is accepted). (b) A numeric-string
+    argument is COERCED to the annotated int — a coerced renewal proceeds
+    to its real semantic fence (here: the sequence conflict; on
+    run_start/lease_create the RED run showed coerced accepts). The seam
+    itself rejects both classes — proven by the unit validation suite and
+    the REST arms above. No state is mutated by this probe.
+    """
+    rejected = _call_result(
+        gateway.port,
+        "stg_v1_run_check",
+        {"bench_id": BENCH, "binding_ref": "not-an-object"},
+        CONTROL,
+    )
+    assert rejected["isError"] is True, rejected
+    assert "structuredContent" not in rejected  # not a contract envelope
+
+    coerced = _call(
+        gateway.port,
+        "stg_v1_lease_renew",
+        {
+            "lease_id": gateway.leases["renew"],
+            "request_id": "req-coerce-renew",
+            "sequence": "1",  # coerced to int 1 -> real semantic fence
+            "duration_ms": 60000,
+        },
+        CONTROL,
+    )
+    assert coerced["ok"] is False, coerced
+    assert coerced["error"]["code"] == "conflict"  # sequence fence, no mutation
 
 
 def test_payload_too_large_rest_only(gateway: SimpleNamespace) -> None:

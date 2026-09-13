@@ -16,9 +16,11 @@ from benchweave.interfaces import errors, operations
 from benchweave.interfaces.bootstrap import admit_startup_bench
 from benchweave.interfaces.identity import Identity
 from benchweave.interfaces.operations import Operations
+from benchweave.interfaces.validation import SeamValidator
 from benchweave.state.store import Store
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "execution"
+CORPUS = Path(__file__).resolve().parents[2] / "contracts" / "interface-v1.1.0"
 Seam = tuple[Operations, Store]
 
 
@@ -29,6 +31,7 @@ def seam(tmp_path: Path) -> Iterator[Seam]:
     admit_startup_bench(store, content, FIXTURES, now="2026-09-12T00:00:00Z")
     ops = operations.Operations(
         store, content, gateway_id="gw-test",
+        validator=SeamValidator(CORPUS),
         limits={"max_json_bytes": 1048576, "max_page_size": 1000,
                 "max_chunk_bytes": 65536, "max_lease_ms": 600000,
                 "min_poll_ms": 100, "max_admission_ms": 5000},

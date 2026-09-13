@@ -34,10 +34,12 @@ from benchweave.interfaces import errors, operations
 from benchweave.interfaces.bootstrap import admit_startup_bench
 from benchweave.interfaces.identity import Identity
 from benchweave.interfaces.operations import Operations
+from benchweave.interfaces.validation import SeamValidator
 from benchweave.interfaces.worker import RunWorker
 from benchweave.state.store import Store
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "execution"
+CORPUS = Path(__file__).resolve().parents[2] / "contracts" / "interface-v1.1.0"
 PLUGINS_ROOT = Path(__file__).resolve().parents[2] / "plugins"
 BENCH_ID = "sim-bench"  # the bootstrap bench (fixtures/execution/bench.json)
 DESCRIPTORS = {
@@ -161,6 +163,7 @@ def seam_control(tmp_path: Path) -> Iterator[SeamControl]:
     ops = operations.Operations(
         store,
         content,
+        validator=SeamValidator(CORPUS),
         gateway_id="gw-test",
         limits=LIMITS,
         worker=worker,

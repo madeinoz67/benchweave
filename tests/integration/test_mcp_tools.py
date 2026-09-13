@@ -37,8 +37,10 @@ from benchweave.interfaces.app import WriteGate, create_app
 from benchweave.interfaces.identity import issue
 from benchweave.interfaces.mcp import build_mcp
 from benchweave.interfaces.operations import Operations, append_bench_event
+from benchweave.interfaces.validation import SeamValidator
 from benchweave.state.store import Store
 
+CORPUS = Path(__file__).resolve().parents[2] / "contracts" / "interface-v1.1.0"
 VENDORED = json.loads(
     (
         Path(__file__).resolve().parents[2]
@@ -84,6 +86,7 @@ def seam_app(tmp_path: Path) -> Iterator[FastMCP]:
     operations = Operations(
         store,
         content,
+        validator=SeamValidator(CORPUS),
         gateway_id="gw-task8",
         limits=LIMITS,
         now_iso=lambda: NOW_ISO,

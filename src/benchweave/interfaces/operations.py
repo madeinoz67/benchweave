@@ -17,6 +17,7 @@ from benchweave.control.clocking import SystemClock
 from benchweave.control.coordinator import _iso_plus_ms
 from benchweave.interfaces import errors
 from benchweave.interfaces.identity import Identity, IdentityRejected, validate
+from benchweave.interfaces.validation import SeamValidator
 from benchweave.state.store import Conflict, Lease, LeaseNotActive, Store
 
 if TYPE_CHECKING:
@@ -127,6 +128,7 @@ class Operations:
         store: Store,
         content: ContentStore,
         *,
+        validator: SeamValidator,
         gateway_id: str,
         limits: dict[str, int],
         worker: RunWorker | None = None,
@@ -136,6 +138,10 @@ class Operations:
     ) -> None:
         self._store = store
         self._content = content
+        # D8: vendored-corpus input admission — every public method validates
+        # its payload (built from its own kwargs) as the first statement after
+        # require_permission; shape/type violations are ``invalid_request``.
+        self._validator = validator
         self._gateway_id = gateway_id
         self._limits = limits
         self._worker = worker
@@ -151,6 +157,7 @@ class Operations:
 
     def gateway_info(self, identity: Identity) -> dict[str, Any]:
         require_permission(identity, "observe")
+        self._validator.validate("gateway_info", {})
         return {
             "gateway_id": self._gateway_id,
             "interface_version": "1.1.0",
@@ -162,6 +169,7 @@ class Operations:
         self, identity: Identity, *, limit: int, cursor: str | None
     ) -> tuple[list[dict[str, Any]], str | None]:
         require_permission(identity, "observe")
+        self._validator.validate("bench_list", {"limit": limit, "cursor": cursor})
         offset = self._cursor_offset(identity.principal, cursor, "benches")
         rows, has_more = self._store.list_benches(limit=limit, offset=offset)
         items = [self._bench_projection(row) for row in rows]
@@ -174,6 +182,7 @@ class Operations:
 
     def bench_get(self, identity: Identity, bench_id: str) -> dict[str, Any]:
         require_permission(identity, "observe")
+        self._validator.validate("bench_get", {"bench_id": bench_id})
         row = self._store.get_bench(bench_id)
         if row is None:
             raise errors.OperationFailure(errors.failure("not_found", f"bench {bench_id}"))
@@ -183,6 +192,9 @@ class Operations:
         self, identity: Identity, bench_id: str, *, limit: int, cursor: str | None
     ) -> tuple[list[dict[str, Any]], str | None]:
         require_permission(identity, "observe")
+        self._validator.validate("device_list", {
+            "bench_id": bench_id, "limit": limit, "cursor": cursor,
+        })
         stream = f"devices:{bench_id}"
         offset = self._cursor_offset(identity.principal, cursor, stream)
         rows, has_more = self._store.list_devices(bench_id, limit=limit, offset=offset)
@@ -198,6 +210,9 @@ class Operations:
 
     def device_get(self, identity: Identity, bench_id: str, device_id: str) -> dict[str, Any]:
         require_permission(identity, "observe")
+        self._validator.validate("device_get", {
+            "bench_id": bench_id, "device_id": device_id,
+        })
         row = self._store.get_device(device_id)
         if row is None or row["bench_id"] != bench_id:
             raise errors.OperationFailure(
@@ -207,6 +222,7 @@ class Operations:
 
     def document_get(self, identity: Identity, sha256: str) -> dict[str, Any]:
         require_permission(identity, "observe")
+        self._validator.validate("document_get", {"sha256": sha256})
         doc = self._content.get_document(sha256)
         if doc is None:
             raise errors.OperationFailure(errors.failure("not_found", f"document {sha256}"))
@@ -225,9 +241,15 @@ class Operations:
         require_permission(identity, "observe")
         # Offset floor at the SEAM (final-fix wave): a negative offset must
         # never reach the store's Python slicing (wrong-window tail bytes);
-        # flooring here makes both adapters correct by construction.
-        if offset < 0:
+        # flooring here makes both adapters correct by construction. D8/D11
+        # ordering: the floor stays clamp-not-reject for a negative INTEGER
+        # (the pinned behavior), while a non-integer offset falls through to
+        # the validator below (invalid_request) instead of raising here.
+        if isinstance(offset, int) and not isinstance(offset, bool) and offset < 0:
             offset = 0
+        self._validator.validate("artifact_read", {
+            "artifact_id": artifact_id, "offset": offset, "length": length,
+        })
         try:
             chunk = self._content.artifact_chunk(artifact_id, offset, length)
         except KeyError:
@@ -246,6 +268,7 @@ class Operations:
 
     def evidence_get(self, identity: Identity, evidence_id: str) -> dict[str, Any]:
         require_permission(identity, "observe")
+        self._validator.validate("evidence_get", {"evidence_id": evidence_id})
         row = self._content.get_evidence(evidence_id)
         if row is None:
             raise errors.OperationFailure(errors.failure("not_found", f"evidence {evidence_id}"))
@@ -266,6 +289,9 @@ class Operations:
         watermarks the caller needs to rejoin the stream ride the failure)
         — never a silent truncation."""
         require_permission(identity, "observe")
+        self._validator.validate("events_get", {
+            "bench_id": bench_id, "after": after, "limit": limit,
+        })
         stream = f"bench:{bench_id}"
         oldest, current = self._store.stream_watermarks(stream)
         if oldest is None and self._store.get_bench(bench_id) is None:
@@ -321,6 +347,9 @@ class Operations:
         binding document name this bench, and are its pinned documents
         present? No reservation, no device I/O; never an admission token."""
         require_permission(identity, "control")
+        self._validator.validate("run_check", {
+            "bench_id": bench_id, "binding_ref": binding_ref,
+        })
         bench = self._store.get_bench(bench_id)
         if bench is None:
             raise errors.OperationFailure(errors.failure("not_found", f"bench {bench_id}"))
@@ -388,6 +417,13 @@ class Operations:
         commissioned takeover (Task 7); it takes no part in acceptance.
         """
         require_permission(identity, "control")
+        self._validator.validate("run_start", {
+            "bench_id": bench_id,
+            "request_id": request_id,
+            "binding_ref": binding_ref,
+            "expected_generation": expected_generation,
+            "lease_id": lease_id,
+        })
         if self._store.get_bench(bench_id) is None:
             raise errors.OperationFailure(errors.failure("not_found", f"bench {bench_id}"))
         # Decision 4: the generations table is the canonical authority — the
@@ -446,12 +482,14 @@ class Operations:
         # interface-v1.1.0): the read tier, with control/admin admitted via
         # the hierarchy — the Task 10 parity ledger's tier-drift fix.
         require_permission(identity, "observe")
+        self._validator.validate("run_get", {"run_id": run_id})
         return self._run_projection(run_id)
 
     def run_find(self, identity: Identity, request_id: str) -> dict[str, Any]:
         """§9: the lookup is principal-scoped — replaying another
         principal's request id can never discover their runs."""
         require_permission(identity, "control")
+        self._validator.validate("run_find", {"request_id": request_id})
         key = scoped_request_key(identity.principal, "run_start", request_id)
         request = self._store.find_request(key)
         if request is None:
@@ -473,6 +511,9 @@ class Operations:
         authority over someone else's run — a control-tier principal may
         cancel only runs they own; the admin tier may cancel any run."""
         require_permission(identity, "control")
+        self._validator.validate("run_cancel", {
+            "run_id": run_id, "request_id": request_id, "reason": reason,
+        })
         run = self._store.get_run(run_id)
         if run is None:
             raise errors.OperationFailure(errors.failure("not_found", f"run {run_id}"))
@@ -511,6 +552,12 @@ class Operations:
         scoped key, so one request id names one lease identity; renewal
         re-issues the SAME id at a new sequence."""
         require_permission(identity, "control")
+        self._validator.validate("lease_create", {
+            "bench_id": bench_id,
+            "request_id": request_id,
+            "expected_generation": expected_generation,
+            "duration_ms": duration_ms,
+        })
         bench = self._store.get_bench(bench_id)
         if bench is None:
             raise errors.OperationFailure(errors.failure("not_found", f"bench {bench_id}"))
@@ -550,6 +597,12 @@ class Operations:
         only until Task 7 reads the commissioning doc for takeover roles;
         a stale sequence is a conflict (the caller's lease view is fenced)."""
         require_permission(identity, "control")
+        self._validator.validate("lease_renew", {
+            "lease_id": lease_id,
+            "request_id": request_id,
+            "sequence": sequence,
+            "duration_ms": duration_ms,
+        })
         lease = self._find_lease(lease_id)
         if lease is None or lease.state != "active":
             raise errors.OperationFailure(errors.failure("not_found", f"lease {lease_id}"))
@@ -583,6 +636,9 @@ class Operations:
         code here: the WP05 monitor already ends the body as ``cancelled``
         on lease loss at its next tick."""
         require_permission(identity, "control")
+        self._validator.validate("lease_release", {
+            "lease_id": lease_id, "request_id": request_id, "reason": reason,
+        })
         lease = self._find_lease(lease_id)
         if lease is None:
             raise errors.OperationFailure(errors.failure("not_found", f"lease {lease_id}"))
@@ -626,6 +682,14 @@ class Operations:
         a different candidate is a conflict.
         """
         require_permission(identity, "admin")
+        self._validator.validate("change_submit", {
+            "request_id": request_id,
+            "bench_id": bench_id,
+            "kind": kind,
+            "target_ref": target_ref,
+            "expected_generation": expected_generation,
+            "reason": reason,
+        })
         if kind not in self.CHANGE_KINDS:
             raise errors.OperationFailure(
                 errors.failure("invalid_request", f"unknown change kind {kind!r}")
@@ -683,6 +747,15 @@ class Operations:
         and surfaces as ``unavailable`` (uncertainty is never erased).
         """
         require_permission(identity, "admin")
+        # The validated payload is the corpus's REST body for this route:
+        # ``change_id`` is a path param the body schema does not declare,
+        # and ``approver_token`` is the D2 detached credential outside the
+        # corpus until the interface-v1.1.1 amendment folds it in.
+        self._validator.validate("change_apply", {
+            "request_id": request_id,
+            "expected_generation": expected_generation,
+            "approval_ref": approval_ref,
+        })
         change = self._store.get_change(change_id)
         if change is None:
             raise errors.OperationFailure(errors.failure("not_found", f"change {change_id}"))
@@ -751,6 +824,7 @@ class Operations:
     def change_get(self, identity: Identity, change_id: str) -> dict[str, Any]:
         """Admin-tier read of one change record in any state."""
         require_permission(identity, "admin")
+        self._validator.validate("change_get", {"change_id": change_id})
         return self._change_projection(change_id)
 
     def verify_approval(

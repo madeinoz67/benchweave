@@ -29,8 +29,10 @@ from benchweave.content.store import ContentStore
 from benchweave.interfaces import errors
 from benchweave.interfaces.identity import Identity, issue
 from benchweave.interfaces.operations import Operations
+from benchweave.interfaces.validation import SeamValidator
 from benchweave.state.store import Store
 
+CORPUS = Path(__file__).resolve().parents[2] / "contracts" / "interface-v1.1.0"
 ADMIN = Identity("admin-1", "stg", frozenset({"stg:admin"}), 2**31)
 SECRET = b"test-issuer-secret"
 NOW = "2026-09-12T00:00:00Z"
@@ -67,6 +69,7 @@ def seam_admin(tmp_path: Path) -> Iterator[tuple[Operations, Store, ContentStore
     ops = Operations(
         store,
         content,
+        validator=SeamValidator(CORPUS),
         gateway_id="gw-admin-test",
         limits=LIMITS,
         issuer_secret=SECRET,

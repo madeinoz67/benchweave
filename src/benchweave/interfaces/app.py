@@ -34,6 +34,7 @@ from benchweave.interfaces.bootstrap import admit_startup_bench
 from benchweave.interfaces.mcp import build_mcp
 from benchweave.interfaces.operations import Operations, append_bench_event
 from benchweave.interfaces.rest import build_router
+from benchweave.interfaces.validation import VENDORED_CORPUS_ROOT, SeamValidator
 from benchweave.interfaces.worker import RunWorker
 from benchweave.state.store import Store
 
@@ -319,6 +320,9 @@ def create_app(
     operations = Operations(
         store,
         content,
+        # D8: the seam validates every payload against the vendored corpus;
+        # the registry builds once per app (corpus disagreement is fatal).
+        validator=SeamValidator(VENDORED_CORPUS_ROOT),
         gateway_id=gateway_id,
         limits=limits,
         worker=worker,
