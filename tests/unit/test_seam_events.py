@@ -16,7 +16,7 @@ from benchweave.interfaces.validation import SeamValidator
 from benchweave.state.store import Store
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "execution"
-CORPUS = Path(__file__).resolve().parents[2] / "contracts" / "interface-v1.1.0"
+CORPUS = Path(__file__).resolve().parents[2] / "contracts" / "interface-v1.1.1"
 NOW = "2026-09-12T00:00:00Z"
 Seam = tuple[Operations, Store]
 

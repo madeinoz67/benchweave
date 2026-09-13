@@ -925,14 +925,19 @@ class Operations:
         """
         require_permission(identity, "admin")
         # The validated payload is the corpus's REST body for this route:
-        # ``change_id`` is a path param the body schema does not declare,
-        # and ``approver_token`` is the D2 detached credential outside the
-        # corpus until the interface-v1.1.1 amendment folds it in.
-        self._validator.validate("change_apply", {
+        # ``change_id`` is a path param the body schema does not declare.
+        # ``approver_token`` rides the interface-v1.1.1 errata body (D2):
+        # validated whenever the adapter forwards it, and absent for a
+        # corpus-literal body — ``None`` must never hit the string-typed
+        # property, so the kwarg's optionality mirrors the catalog's.
+        payload: dict[str, Any] = {
             "request_id": request_id,
             "expected_generation": expected_generation,
             "approval_ref": approval_ref,
-        })
+        }
+        if approver_token is not None:
+            payload["approver_token"] = approver_token
+        self._validator.validate("change_apply", payload)
         change = self._store.get_change(change_id)
         if change is None:
             raise errors.OperationFailure(errors.failure("not_found", f"change {change_id}"))

@@ -16,13 +16,16 @@ a test; none is silent) versus what it proves equal:
   while the catalog declares ``observe``. The seam was FIXED to observe; the
   suite pins both tiers (observe passes directly, control passes via the
   observe ⊆ control ⊆ admin hierarchy).
-- D2 ``change_apply`` body: the catalog's REST input schema does not declare
-  ``approver_token``, but the REST adapter forwards it as a seam kwarg
-  (Task 9 disclosure). CATALOG-AMENDMENT note: the vendored catalog is frozen
-  authority and is NOT edited here — the suite pins the behavior end-to-end
+- D2 ``change_apply`` body — CLOSED (WP08 Task 6, interface-v1.1.1 errata):
+  the 1.1.0 catalog's REST input schema did not declare ``approver_token``,
+  but the REST adapter forwarded it as a seam kwarg (Task 9 disclosure).
+  The amendment ships as the versioned corpus revision
+  ``contracts/interface-v1.1.1/`` (vendored from ``docs/interface-v1.1.1/``;
+  1.1.0 bytes untouched); the seam now validates the token-bearing body
+  the adapter actually sends, and this suite pins it end-to-end
   (authenticated apply over REST succeeds; apply without the detached token
-  fails closed ``forbidden``/``missing_token``) and records the amendment for
-  WP08. The three admin ops are REST-only by catalog: no MCP twin exists.
+  fails closed ``forbidden``/``missing_token``). The three admin ops are
+  REST-only by catalog: no MCP twin exists.
 - D3 required-vs-defaulted params — CLOSED (WP08 Task 1, as a side effect
   of D8 seam validation): catalog input schemas declare paging/chunk
   params REQUIRED; REST rejects an absent param as 400 ``invalid_request``.
@@ -111,7 +114,7 @@ from benchweave.interfaces.operations import Operations
 from benchweave.state.store import Store
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "execution"
-CONTRACTS = Path(__file__).resolve().parents[2] / "contracts" / "interface-v1.1.0"
+CONTRACTS = Path(__file__).resolve().parents[2] / "contracts" / "interface-v1.1.1"
 CATALOG = json.loads((CONTRACTS / "operation-catalog.json").read_text(encoding="utf-8"))
 VENDORED_TOOLS = {
     t["name"]: t
@@ -1510,9 +1513,11 @@ def test_artifact_offset_letter_beyond_size_fails_at_size_serves_empty(
 
 
 def test_change_apply_approver_token_end_to_end(gateway: SimpleNamespace) -> None:
-    """D2 CATALOG-AMENDMENT pin (REST-only surface): the catalog body omits
-    ``approver_token`` yet REST forwards it as a seam kwarg — apply without
-    the detached token fails closed; apply with it succeeds end-to-end."""
+    """D2 errata pin (REST-only surface): the interface-v1.1.1 body schema
+    admits the optional ``approver_token`` the adapter forwards — the body
+    WITH the token is seam-validated against the amended corpus (apply
+    succeeds end-to-end); a corpus-literal body without it stays valid and
+    fails closed at approval verification."""
     submitted = gateway.client.post(
         "/v1/admin/changes",
         headers=_bearer(ADMIN),

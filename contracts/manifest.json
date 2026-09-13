@@ -5,6 +5,7 @@
     "registry": "1.0.0",
     "execution": "1.0.0",
     "interface": "1.1.0",
+    "interface_errata": "1.1.1",
     "mcp": "2026-07-28",
     "note": "Admitted contract corpus vendored byte-identical from docs/; obsolete interface 1.0.0 is intentionally absent."
   },
@@ -117,6 +118,36 @@
     {
       "path": "interface-v1.1.0/operation-catalog.json",
       "source": "docs/interface-v1.1.0/operation-catalog.json",
+      "sha256": "4ba6d48c27d89dbe4b892d554830258f23582284353cf350d3dd31b235175c0f"
+    },
+    {
+      "path": "interface-v1.1.1/examples/mcp-start-exchange.json",
+      "source": "docs/interface-v1.1.1/examples/mcp-start-exchange.json",
+      "sha256": "c61b1352e6468a068fb29be77382928b6808d30ef5a00253fc8c2e09dae60da9"
+    },
+    {
+      "path": "interface-v1.1.1/examples/operation-vectors.json",
+      "source": "docs/interface-v1.1.1/examples/operation-vectors.json",
+      "sha256": "f352908adbba829b3c26839428cb2d50f97f52bacdb8b517202ddee83809f56a"
+    },
+    {
+      "path": "interface-v1.1.1/interface.schema.json",
+      "source": "docs/interface-v1.1.1/interface.schema.json",
+      "sha256": "2cefd03681804e8778575639949942da5121a1b0a73dbf0fa71a72511ac89020"
+    },
+    {
+      "path": "interface-v1.1.1/mcp-tools.json",
+      "source": "docs/interface-v1.1.1/mcp-tools.json",
+      "sha256": "7127e31842d3ec93fff1f7174626bbc760591d9d6649a704799635f4fd2671c8"
+    },
+    {
+      "path": "interface-v1.1.1/openapi.json",
+      "source": "docs/interface-v1.1.1/openapi.json",
+      "sha256": "4d2b8357a7974d46d5edca886a1189392c9286518c68d5c0c84d61f2f41cb44c"
+    },
+    {
+      "path": "interface-v1.1.1/operation-catalog.json",
+      "source": "docs/interface-v1.1.1/operation-catalog.json",
       "sha256": "4ba6d48c27d89dbe4b892d554830258f23582284353cf350d3dd31b235175c0f"
     },
     {

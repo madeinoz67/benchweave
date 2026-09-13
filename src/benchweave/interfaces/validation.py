@@ -33,8 +33,11 @@ from benchweave.interfaces import errors
 #: same repository root as ``parents[2]`` from ``tests/integration/``; from
 #: ``src/benchweave/interfaces/`` the equivalent depth is ``parents[3]`` —
 #: the same resolution ``interfaces/mcp.py`` already uses for this corpus).
+#: interface-v1.1.1 is the D2 errata revision: change_apply's REST body
+#: admits the optional ``approver_token`` the adapter forwards. The 1.1.0
+#: corpus stays vendored, frozen, at ``contracts/interface-v1.1.0/``.
 VENDORED_CORPUS_ROOT = (
-    Path(__file__).resolve().parents[3] / "contracts" / "interface-v1.1.0"
+    Path(__file__).resolve().parents[3] / "contracts" / "interface-v1.1.1"
 )
 
 _TOOL_PREFIX = "stg_v1_"

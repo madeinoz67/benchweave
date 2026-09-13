@@ -37,7 +37,7 @@ vendored: dict[str, Any] = json.loads(
     (
         Path(__file__).resolve().parents[2]
         / "contracts"
-        / "interface-v1.1.0"
+        / "interface-v1.1.1"
         / "mcp-tools.json"
     ).read_text(encoding="utf-8")
 )
