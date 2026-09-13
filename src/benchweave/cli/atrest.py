@@ -79,6 +79,15 @@ CREDENTIAL_FILE = "benchweave.env"
 SECRET_ENV_KEY = "BENCHWEAVE_SECRET"
 #: The digest manifest name (in backups and in restored data dirs).
 MANIFEST_NAME = "manifest.json"
+#: Files a verified tree may carry beyond the manifest's ``files``: the
+#: manifest itself (written after the digests are taken), the store's
+#: runtime sidecars — ``-wal``/``-shm`` and the ``.hold`` marker — and the
+#: deliberately-unbacked credential file (the operator re-places
+#: ``benchweave.env`` in a restored data dir per the guide). All are
+#: live-state, never backup content.
+_UNLISTED_OK = frozenset(
+    {MANIFEST_NAME, CREDENTIAL_FILE, DB_NAME + "-wal", DB_NAME + "-shm", DB_NAME + ".hold"}
+)
 
 
 class AtRestError(RuntimeError):
@@ -109,6 +118,13 @@ def _digest_tree(root: Path) -> dict[str, str]:
         if path.is_file():
             files[path.relative_to(root).as_posix()] = _sha256(path)
     return files
+
+
+def _tree_files(root: Path) -> set[str]:
+    """POSIX-relative paths of every file under ``root``."""
+    return {
+        path.relative_to(root).as_posix() for path in root.rglob("*") if path.is_file()
+    }
 
 
 def _write_credential_file(path: Path, secret: str) -> None:
@@ -264,6 +280,18 @@ def _manifest_mismatches(staged: Path, manifest: dict[str, Any]) -> list[str]:
         actual = _sha256(path)
         if actual != expected:
             problems.append(f"{rel}: sha256 mismatch (expected {expected[:12]}, got {actual[:12]})")
+    # The gate is total in BOTH directions (WP08 closing audit, Forge
+    # minor 3): a backup tree is complete, so any staged file the manifest
+    # does not list is smuggling, not provenance — refuse naming the
+    # extras. Before this, ``content/`` extras rode into the data dir
+    # unverified and ``verify`` blessed the result. The only unlisted
+    # files allowed are the manifest itself and the store's runtime
+    # sidecars (live-state in a restored data dir, never backup content).
+    extras = sorted(
+        rel for rel in _tree_files(staged) if rel not in files and rel not in _UNLISTED_OK
+    )
+    if extras:
+        problems.append(f"{MANIFEST_NAME}: unlisted file(s) present: " + ", ".join(extras))
     return problems
 
 
@@ -272,11 +300,14 @@ def restore(archive: Path, data_dir: Path) -> None:
 
     The archive is staged into a sibling temp directory and every manifest
     digest is checked BEFORE anything in ``data_dir`` is touched — a failed
-    verify never half-replaces. The manifest gate is total (review I1): a
-    damaged manifest (emptied ``files``, one that stops covering the store)
-    fails the restore instead of disarming the digest check, and the staged
-    snapshot must pass the same SQLite integrity check ``verify`` applies —
-    the mutating command never runs a weaker gate than the advisory one.
+    verify never half-replaces. The manifest gate is total in BOTH
+    directions (review I1 + the WP08 closing audit): a damaged manifest
+    (emptied ``files``, one that stops covering the store) fails the
+    restore instead of disarming the digest check, and any staged file the
+    manifest does not list is refused as tampering (a backup tree is
+    complete). The staged snapshot must also pass the same SQLite
+    integrity check ``verify`` applies — the mutating command never runs
+    a weaker gate than the advisory one.
     The previous data dir is renamed aside as
     ``<name>.pre-restore-<stamp>`` (kept for the operator), then the staged
     directory is moved into place with ``os.replace``; if that move fails
@@ -376,8 +407,10 @@ def verify_problems(target: Path) -> list[str]:
     """Every problem found verifying ``target`` (empty list == clean).
 
     ``target`` is a backup archive or a restored data dir — both carry
-    ``manifest.json``. Exit-0 bar: every manifest digest matches AND the
-    store file passes SQLite's integrity_check. Runtime sidecar files
+    ``manifest.json``. Exit-0 bar: every manifest digest matches, NO
+    unlisted file is present (beyond the manifest itself, the store's
+    runtime sidecars, and the deliberately-unbacked credential file), AND
+    the store file passes SQLite's integrity_check. Runtime sidecar files
     (``-wal``/``-shm``/the hold marker) are live-state, not manifest
     entries — their presence is expected and never a mismatch.
     """

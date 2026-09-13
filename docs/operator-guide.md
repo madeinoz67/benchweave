@@ -153,8 +153,9 @@ The report lists benches and runs (simulated ones labelled `[SIMULATION]`,
 derived from the bench's stored commissioning limitation), every evidence
 digest, and — honestly — any evidence whose backing bytes are gone
 (`missing_evidence` is never papered over). On a TTY the report opens as a
-view **[interactive]**. This command holds no lock; it refuses while a
-live gateway owns the store.
+view **[interactive]**. Like the other at-rest commands, the report takes
+the store's exclusive lock for its whole read and refuses (naming the
+holder) while a live gateway owns the store.
 
 ## 6. Backup and restore
 
@@ -168,10 +169,11 @@ benchweave verify  --data-dir /var/lib/benchweave                        # exit 
 A backup is `backup-<iso>/` holding a self-contained SQLite snapshot
 (`sqlite3` backup API — committed WAL frames folded in), a verbatim copy
 of `content/`, and `manifest.json` with the sha256 of every file.
-`restore` re-verifies **every** manifest digest plus a SQLite integrity
-check on a staged copy *before* anything in the data dir is touched, then
-swaps it in; your previous directory is kept beside it as
-`<name>.pre-restore-<iso>`.
+`restore` re-verifies **every** manifest digest, refuses any staged file
+the manifest does not list (a backup tree is complete — extras are
+tampering), and runs a SQLite integrity check on a staged copy *before*
+anything in the data dir is touched, then swaps it in; your previous
+directory is kept beside it as `<name>.pre-restore-<iso>`.
 
 Both mutating commands refuse (naming the holder) while a live gateway
 holds the store — stop the gateway first (§9).

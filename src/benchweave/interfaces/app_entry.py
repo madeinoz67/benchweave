@@ -17,13 +17,15 @@ chosen database file:
 - ``BENCHWEAVE_REGISTRY_DIR``: fixture registry root for the resolver
   session (default: the repository ``fixtures/registry``).
 
-Production secret posture (WP08 Task 14): with
-``BENCHWEAVE_ENV=production`` the composition REFUSES to boot when the
-secret is unset or is the suites' default test secret — a test secret in a
-deployment mints tokens anyone with the public source can mint. The
-refusal fires before the store is opened, so a refused boot leaves no
-file behind. Every other posture keeps the suites' default-secret
-behaviour unchanged.
+Production secret posture (WP08 Task 14, completed by the closing
+audit): with ``BENCHWEAVE_ENV=production`` the composition REFUSES to
+boot when the secret is unset, empty/whitespace, or ANY publicly known
+secret literal committed to the repository — not just the suites'
+default test secret; the full inventory is ``_KNOWN_PUBLIC_SECRETS`` —
+since a known secret in a deployment mints tokens anyone with the
+public source can mint. The refusal fires before the store is opened,
+so a refused boot leaves no file behind. Every other posture keeps the
+suites' default-secret behaviour unchanged.
 
 Registry wiring (the Task 7 carry): ``registry_session_from_env`` builds
 the fixture resolver session (:func:`bootstrap.build_registry_session`) so
@@ -62,8 +64,33 @@ _DEFAULT_SECRET = b"wp07-task-eleven-secret"
 #: refused alongside the default test secret under production posture.
 ENV_EXAMPLE_PLACEHOLDER_SECRET = b"__GENERATE_AND_STORE_A_REAL_RANDOM_SECRET__"
 #: Secret values that are publicly known and therefore unusable in
-#: production (empty/whitespace is refused separately, below).
-_KNOWN_PUBLIC_SECRETS = frozenset({_DEFAULT_SECRET, ENV_EXAMPLE_PLACEHOLDER_SECRET})
+#: production (empty/whitespace is refused separately, below). The set is
+#: the repository's FULL committed literal inventory (the WP08 closing
+#: audit, Forge Important 1: an operator pasting ANY public test secret
+#: must not boot production) — mechanically pinned by
+#: ``tests/cli/test_serve.py``
+#: (``test_known_public_secrets_covers_every_repo_secret_literal``),
+#: which greps the tracked tree for secret-shaped literals and fails if
+#: any is missing here, so a future test literal cannot ship
+#: un-deniedlisted.
+_KNOWN_PUBLIC_SECRETS = frozenset(
+    {
+        _DEFAULT_SECRET,
+        ENV_EXAMPLE_PLACEHOLDER_SECRET,
+        b"wp02-test-secret-not-a-credential",  # tests/integration/test_mcp_baseline.py
+        b"wp07-cursor-v1",  # interfaces/operations.py (cursor principal-binding constant)
+        b"wp07-task-eight-secret",  # tests/integration/test_mcp_tools.py
+        b"wp07-task-nine-secret",  # tests/integration/test_rest_routes.py
+        b"wp07-task-ten-secret",  # tests/integration/test_interface_parity.py
+        b"wp08-task-seven-secret",  # tests/integration/test_registry_changes.py
+        b"wp08-task-nine-secret",  # tests/cli/test_commands.py
+        b"wp08-task-ten-secret",  # tests/integration/test_backup_restore.py
+        b"wp08-task-eleven-secret",  # tests/cli/test_live.py
+        b"wp08-task-twelve-secret",  # tests/cli/test_render.py
+        b"wp08-task-fourteen-live-secret",  # retired from the tree; public via git history
+        b"test-issuer-secret",  # tests/unit/test_seam_admin.py
+    }
+)
 #: The env value that arms the production secret posture.
 PRODUCTION_ENV_VALUE = "production"
 _LIMITS: dict[str, int] = {
@@ -88,12 +115,13 @@ def _require_production_secret(secret: bytes) -> None:
     """Refuse unusable secrets under production posture.
 
     Refused: empty/whitespace values (a trailing-``=`` typo in the env file
-    must not boot token-signing with no secret) and the known-public
-    values — the repo's default test secret and the deploy example's
-    placeholder — both readable by anyone with the public source. The
-    check runs before any store is opened, so a refused boot creates
-    nothing on disk. Unset ``BENCHWEAVE_SECRET`` falls back to the default
-    and is refused with it.
+    must not boot token-signing with no secret) and every known-public
+    value — any secret literal committed to the repository (the default
+    test secret, the deploy example's placeholder, and the test suites'
+    literals), all readable by anyone with the public source. The check
+    runs before any store is opened, so a refused boot creates nothing on
+    disk. Unset ``BENCHWEAVE_SECRET`` falls back to the default and is
+    refused with it.
     """
     if os.environ.get("BENCHWEAVE_ENV") != PRODUCTION_ENV_VALUE:
         return
@@ -103,9 +131,9 @@ def _require_production_secret(secret: bytes) -> None:
     raise RuntimeError(
         "refusing to boot: BENCHWEAVE_ENV=production with an unusable "
         "BENCHWEAVE_SECRET (empty or whitespace, or a publicly known value "
-        "— the repo's default test secret or the deploy example's "
-        "placeholder) — set a real secret (e.g. the one `benchweave setup` "
-        "wrote to benchweave.env, kept mode 0600)"
+        "— any secret literal committed to the repository, e.g. the "
+        "default test secret) — set a real secret (e.g. the one "
+        "`benchweave setup` wrote to benchweave.env, kept mode 0600)"
     )
 
 

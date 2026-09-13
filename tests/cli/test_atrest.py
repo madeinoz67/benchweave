@@ -407,3 +407,65 @@ def test_backup_over_a_corrupted_store_is_handled_and_leaves_no_partial(
     assert result.exit_code != 0
     assert "snapshot" in _combined(result)
     assert not list(out.glob("backup-*")), "a failed backup must not leave a partial dir"
+
+
+# --- WP08 closing audit: restore extras gate + the setup hold boundary ------------
+
+
+def test_restore_refuses_unlisted_extra_files_in_the_archive(tmp_path: Path) -> None:
+    """Forge minor 3: the digest gate was one-directional — an unlisted
+    extra file in the archive's content/ rode into the data dir
+    unverified and ``verify`` blessed the result. A backup tree is
+    complete: ANY unlisted staged file is tampering."""
+    data = tmp_path / "data"
+    _initialized(data)
+    (data / "content" / "blob.bin").write_bytes(b"content-bytes")
+    archive = backup(data, tmp_path / "out")
+    (archive / "content" / "smuggled.bin").write_bytes(b"evil-bytes")
+    problems = verify_problems(archive)
+    assert any("smuggled.bin" in line for line in problems), (
+        "verify must not bless an archive carrying unlisted extras"
+    )
+    fresh = tmp_path / "fresh"
+    result = CliRunner().invoke(
+        cli, ["restore", "--archive", str(archive), "--data-dir", str(fresh)]
+    )
+    assert result.exit_code != 0
+    combined = _combined(result)
+    assert "smuggled.bin" in combined, "the refusal must name the extras"
+    assert "unlisted" in combined
+    assert not (fresh / "state.sqlite").exists(), "a smuggled extra must not restore"
+
+
+def test_verify_still_accepts_live_sidecars_beside_the_manifest(tmp_path: Path) -> None:
+    """The extras gate carves out the store's runtime sidecars and the
+    deliberately-unbacked credential file: a restored data dir that has
+    since served traffic (``-wal``/``-shm``/the ``.hold`` marker) and
+    carries the operator's re-placed ``benchweave.env`` still verifies
+    clean — live-state, not tampering."""
+    data = tmp_path / "data"
+    _initialized(data)
+    archive = backup(data, tmp_path / "out")
+    fresh = tmp_path / "fresh"
+    restore(archive, fresh)
+    for sidecar in ("state.sqlite-wal", "state.sqlite-shm", "state.sqlite.hold"):
+        (fresh / sidecar).write_bytes(b"live-state")
+    (fresh / "benchweave.env").write_text("BENCHWEAVE_SECRET=replaced\n")
+    assert verify(fresh) == 0
+
+
+def test_setup_refusal_while_the_store_is_held_is_handled_not_a_traceback(
+    tmp_path: Path,
+) -> None:
+    """Forge minor 4: a racing setup (another coordinator holds the lock
+    between the exists-check and the hold acquisition) must surface as a
+    handled refusal naming the holder, never a StoreHeldError traceback."""
+    data = tmp_path / "data"
+    data.mkdir()
+    with StoreHold(data / "state.sqlite", label="gateway gw-unit pid 424242"):
+        result = CliRunner().invoke(cli, ["setup", "--data-dir", str(data)])
+    _handled(result)
+    assert result.exit_code != 0
+    combined = _combined(result)
+    assert "held" in combined
+    assert "gw-unit" in combined and "424242" in combined, "must name the holder"

@@ -86,9 +86,12 @@ def setup(data_dir: Path, show_secret: bool, json_output: bool) -> None:
     _set_json(json_output)
     try:
         db = atrest.setup(data_dir)
-    except (atrest.AtRestError, OSError) as error:
+    except (atrest.AtRestError, StoreHeldError, OSError) as error:
         # T10 review carry: an unwritable/unusable parent (e.g. --data-dir
-        # under a file) is a truthful refusal, never a traceback.
+        # under a file) is a truthful refusal, never a traceback — and
+        # (WP08 closing audit, Forge minor 4) so is a racing coordinator:
+        # setup's StoreHold raises StoreHeldError, which must surface as
+        # a refusal naming the holder, not a traceback.
         raise click.ClickException(str(error)) from error
     secret_file = data_dir / atrest.CREDENTIAL_FILE
     click.echo(

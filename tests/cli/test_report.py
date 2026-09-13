@@ -296,10 +296,40 @@ def test_cli_report_out_writes_both_forms(tmp_path: Path) -> None:
 
 def test_cli_report_refuses_under_daemon_hold(tmp_path: Path) -> None:
     data_dir = _seed(tmp_path)
-    with StoreHold(db_path(data_dir), label="live gateway pid 1"):
+    with StoreHold(db_path(data_dir), label="gateway gw-report pid 424242"):
         result = CliRunner().invoke(cli, ["report", "--data-dir", str(data_dir)])
     assert result.exit_code != 0
-    assert "held" in _combined(result)
+    combined = _combined(result)
+    assert "held" in combined
+    assert "gw-report" in combined and "424242" in combined, "must name the holder"
+
+
+def test_report_holds_the_store_for_its_whole_read_window(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """WP08 closing audit (Forge Important 2): the check-then-act probe is
+    gone — the read runs UNDER the exclusive hold (a concurrent
+    ``daemon_holds`` probe sees held mid-report), and the hold is released
+    when the report closes."""
+    from benchweave.cli import report as report_lib
+    from benchweave.cli.atrest import daemon_holds
+
+    data_dir = _seed(tmp_path)
+    db = db_path(data_dir)
+    real_build = report_lib.build_report
+    seen: list[bool] = []
+
+    def probing_build(
+        store: Store, content: ContentStore, *, bench_id: str | None, now: str
+    ) -> dict[str, Any]:
+        seen.append(daemon_holds(db))
+        return real_build(store, content, bench_id=bench_id, now=now)
+
+    monkeypatch.setattr(report_lib, "build_report", probing_build)
+    model = report_lib.report_from_data_dir(data_dir, now=NOW)
+    assert model["runs"], "the probing build must have produced a report"
+    assert seen == [True], "the report read must run under the exclusive hold"
+    assert daemon_holds(db) is False, "the hold is released when the report closes"
 
 
 def test_cli_report_gateway_is_a_documented_stub(tmp_path: Path) -> None:

@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import os
 import re
+import secrets
 import socket
 import subprocess
 import sys
@@ -47,7 +48,9 @@ DATA_DIR = "/var/lib/benchweave"
 ENV_FILE = "/etc/benchweave/benchweave.env"
 # The test secret app_entry falls back to (refused under production posture).
 DEFAULT_SECRET = "wp07-task-eleven-secret"
-LIVE_SECRET = "wp08-task-fourteen-live-secret"
+# The live-serve test's production secret is GENERATED at runtime (the WP08
+# closing audit: a committed literal is public, so booting production on one
+# is the exact bug the denylist closes).
 
 
 def _combined(result: Result) -> str:
@@ -173,6 +176,91 @@ def test_app_entry_build_refuses_the_env_example_placeholder_in_production(
     assert not db.exists()
 
 
+# --- WP08 closing audit (Forge Important 1): the denylist is the FULL public set ----
+
+
+def test_app_entry_build_refuses_a_committed_test_suite_secret_in_production(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An operator pasting any of the repo's committed test-suite secrets
+    (here: the Task 12 render suite's) must not boot production — before
+    this fix only the default and the deploy placeholder were denied."""
+    from benchweave.interfaces import app_entry
+
+    db = _production_env(monkeypatch, tmp_path)
+    monkeypatch.setenv("BENCHWEAVE_SECRET", "wp08-task-twelve-secret")
+    with pytest.raises(RuntimeError) as raised:
+        app_entry.build()
+    assert "BENCHWEAVE_SECRET" in str(raised.value)
+    assert not db.exists()
+
+
+def test_app_entry_build_refuses_every_known_public_secret_in_production(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The denylist itself is exercised end to end: every member refuses."""
+    from benchweave.interfaces import app_entry
+    from benchweave.interfaces.app_entry import _KNOWN_PUBLIC_SECRETS
+
+    _production_env(monkeypatch, tmp_path)
+    denied = sorted(value.decode() for value in _KNOWN_PUBLIC_SECRETS)
+    assert len(denied) >= 14, "the denylist must be the repo's FULL public-literal set"
+    for value in denied:
+        monkeypatch.setenv("BENCHWEAVE_SECRET", value)
+        with pytest.raises(RuntimeError, match="refusing"):
+            app_entry.build()
+
+
+# The denylist pin (Forge Important 1, requirement 3): the same mechanical
+# inventory as `git grep 'SECRET *= *b?"'` — every static secret-shaped
+# literal COMMITTED to the repository (tracked files: what ships and is
+# therefore public) must be refused under production posture, so a future
+# test literal cannot ship un-deniedlisted (the pin goes red in the very
+# commit that introduces the literal).
+_SECRET_LITERAL = re.compile(r'SECRET *= *b?"([^"]*)"')
+
+
+def _repo_secret_literals() -> set[str]:
+    """Every static secret-shaped string literal in the tracked tree."""
+    tracked = subprocess.run(  # noqa: S603 - fixed argv, no shell
+        ["git", "-C", str(REPO), "ls-files"],
+        capture_output=True,
+        check=True,
+        text=True,
+    ).stdout.splitlines()
+    assert tracked, "the tracked-file listing must not be vacuous"
+    values: set[str] = set()
+    for rel in sorted(tracked):
+        path = REPO / rel
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue  # binary/unreadable — not a literal source
+        for line in text.splitlines():
+            match = _SECRET_LITERAL.search(line)
+            if match is None:
+                continue
+            value = match.group(1)
+            if value and not value.startswith("$"):
+                values.add(value)
+    return values
+
+
+def test_known_public_secrets_covers_every_repo_secret_literal() -> None:
+    """The PIN: the mechanical inventory is a subset of the refused set."""
+    from benchweave.interfaces.app_entry import _KNOWN_PUBLIC_SECRETS
+
+    inventory = _repo_secret_literals()
+    assert inventory, "a vacuous scan is a broken pin — the repo carries secret literals"
+    missing = sorted(
+        value for value in inventory if value.strip().encode() not in _KNOWN_PUBLIC_SECRETS
+    )
+    assert not missing, (
+        "public secret literal(s) missing from the production denylist "
+        "(app_entry._KNOWN_PUBLIC_SECRETS): " + ", ".join(missing)
+    )
+
+
 # --- review M2/M3: observability and the lazy mechanism ---------------------------
 
 
@@ -282,6 +370,7 @@ def test_serve_live_boots_and_serves_with_a_real_secret_in_production(
     from benchweave.interfaces.identity import issue
 
     port = _free_port()
+    live_secret = secrets.token_urlsafe(32)
     db = tmp_path / "state.sqlite"
     stderr_path = tmp_path / "serve.stderr.log"
     env = {
@@ -293,7 +382,7 @@ def test_serve_live_boots_and_serves_with_a_real_secret_in_production(
         {
             "BENCHWEAVE_ENV": "production",
             "BENCHWEAVE_DB": str(db),
-            "BENCHWEAVE_SECRET": LIVE_SECRET,
+            "BENCHWEAVE_SECRET": live_secret,
         }
     )
     with stderr_path.open("wb") as handle:
@@ -314,7 +403,7 @@ def test_serve_live_boots_and_serves_with_a_real_secret_in_production(
             stderr=handle,
         )
         token = issue(
-            LIVE_SECRET.encode(),
+            live_secret.encode(),
             principal="task14-observe",
             audience="stg",
             scopes={"stg:observe"},

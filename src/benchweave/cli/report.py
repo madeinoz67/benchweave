@@ -45,10 +45,11 @@ Derivations, disclosed (controller rulings 3-5):
   :class:`~benchweave.content.store.ContentStore` public surface.
 
 The at-rest command wrapper — :func:`report_from_data_dir` — reads the
-store AT REST under the one-coordinator rule's read posture: it refuses
-(through the same :func:`~benchweave.cli.atrest.daemon_holds` gate as the
-Task 10/11 discipline), naming the holder, while a live gateway owns the
-store. ``--gateway`` composition (a report built from REST reads) is a
+store AT REST under the one-coordinator rule: it takes the store's
+exclusive hold (the same :class:`~benchweave.state.hold.StoreHold` as
+the sibling at-rest commands) for its whole open→read→close window and
+refuses, naming the holder, while a live gateway owns the store.
+``--gateway`` composition (a report built from REST reads) is a
 documented not-implemented stub: wiring it here would fork the model into
 two read paths, so this task ships the at-rest one only.
 """
@@ -56,15 +57,16 @@ two read paths, so this task ships the at-rest one only.
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from benchweave.cli.atrest import AtRestError, daemon_holds, db_path, holder_info
+from benchweave.cli.atrest import AtRestError, db_path
 from benchweave.cli.demo import SIMULATION_LABEL
 from benchweave.content.store import ContentStore
-from benchweave.state.hold import StoreHeldError
+from benchweave.state.hold import StoreHold
 from benchweave.state.store import Store
 
 __all__ = [
@@ -321,43 +323,40 @@ def report_from_data_dir(
 ) -> dict[str, Any]:
     """Open the data directory's store AT REST and build the report.
 
-    Refuses (naming the holder, through the ``daemon_holds`` gate) while a
-    live gateway owns the store; refuses before that if the data directory
-    carries no store.
+    Refuses (naming the holder, through the same exclusive hold as the
+    sibling at-rest commands) while a live gateway owns the store; refuses
+    before that if the data directory carries no store.
 
-    Read posture, disclosed truthfully (review I1): unlike the mutating
-    at-rest commands this never takes the exclusive hold — but the open is
-    ``Store.open``, the app-boot posture, which applies PENDING migrations
-    under ``BEGIN IMMEDIATE``. On a store predating the current schema that
-    is a write made without a hold (the steady-state case — every store
-    ``setup`` creates is already migrated — opens purely read-only, so
-    concurrent reports are safe reads exactly there). The window is bounded
-    by the gate order (a live gateway is refused before the open, so the
-    only concurrent writer possible is another at-rest command or report)
-    and by SQLite's own file locking, which serializes the actual writes —
-    never corrupting, at worst a brief block. ``atrest.verify`` is NOT a
-    precedent for read-only opens: it never calls ``Store.open`` (it opens
-    SQLite ``mode=ro``); matching that posture here would bypass the
-    Store's public migration path, so the disclosure stands instead.
+    Read posture (closed by the WP08 audit, Forge Important 2): the hold
+    is taken across the whole open→read→close window, exactly like the
+    mutating at-rest commands. The old probe-then-open order read
+    live-mutating state in the window between the ``daemon_holds`` check
+    and ``Store.open`` — an open that applies PENDING migrations under
+    ``BEGIN IMMEDIATE``, i.e. a write made without a hold on a store
+    predating the current schema. Under the hold the ordering is
+    truthful: a gateway booting concurrently is refused at ITS OWN
+    lifespan hold acquisition (it cannot become the coordinator while
+    this report owns the store), and the only other contenders are
+    at-rest commands, which serialize on the same hold. Contention cost
+    is ~zero: a refused contender retries once this report closes.
     """
     data_dir = Path(data_dir)
     db = db_path(data_dir)
     if not db.is_file():
         raise AtRestError(f"no store at {db} — run setup first")
-    if daemon_holds(db):
-        raise StoreHeldError(holder_info(db))
-    try:
-        store = Store.open(db)
-    except sqlite3.Error as error:
-        raise AtRestError(f"cannot open {db}: {error}") from error
-    try:
-        return build_report(store, ContentStore(store), bench_id=bench_id, now=now)
-    except sqlite3.Error as error:
-        # Corrupt pages surfacing mid-read (integrity is verify's domain,
-        # but a refusal here must still be a message, never a traceback).
-        raise AtRestError(f"cannot read {db}: {error}") from error
-    finally:
-        store.close()
+    with StoreHold(db, label=f"report pid {os.getpid()}"):
+        try:
+            store = Store.open(db)
+        except sqlite3.Error as error:
+            raise AtRestError(f"cannot open {db}: {error}") from error
+        try:
+            return build_report(store, ContentStore(store), bench_id=bench_id, now=now)
+        except sqlite3.Error as error:
+            # Corrupt pages surfacing mid-read (integrity is verify's domain,
+            # but a refusal here must still be a message, never a traceback).
+            raise AtRestError(f"cannot read {db}: {error}") from error
+        finally:
+            store.close()
 
 
 def now_iso() -> str:
