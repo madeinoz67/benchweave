@@ -27,6 +27,7 @@ plus safe state onto the terminal truth table is the coordinator's single
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -110,7 +111,7 @@ def read_signal_values(
     bench: dict[str, Any],
     *,
     deadline_ns: int,
-    wall_now: str,
+    wall_now: str | Callable[[], str],
 ) -> dict[str, SignalValue]:
     """Build one bench-signal snapshot from fresh plugin parameter reads.
 
@@ -125,10 +126,11 @@ def read_signal_values(
     finite ``max_age_ms``, so the signal is INVALID, never maximally
     fresh. A missing device, failed read, non-numeric value, bad quality
     or lapsed freshness marks the signal invalid, which makes its
-    conditions INVALID downstream.
+    conditions INVALID downstream. Live callers pass a clock callback, sampled
+    after each dispatch; a fixed timestamp represents an already known receipt
+    time for deterministic callers.
     """
     snapshot: dict[str, SignalValue] = {}
-    now = _parse_wall(wall_now)
     for signal in bench["signals"]:
         signal_id = str(signal["id"])
         source = signal.get("source", {})
@@ -141,6 +143,7 @@ def read_signal_values(
             result = plugin.dispatch(request, deadline_ns=deadline_ns)
             if result.status is OperationStatus.OK and isinstance(result.data, Reading):
                 reading = result.data
+        now = _parse_wall(wall_now() if callable(wall_now) else wall_now)
         value: float | None = None
         unit: str | None = None
         age_ms = 0
@@ -153,7 +156,7 @@ def read_signal_values(
                 elapsed_ms = int((now - observed).total_seconds() * 1000.0)
                 # A future-stamped observed_at is impossible timing (§4):
                 # the age is unknown, not zero — the signal is INVALID.
-                computed_ms = elapsed_ms if elapsed_ms >= 0 else None
+                computed_ms = elapsed_ms if observed <= now else None
             if computed_ms is not None:
                 # Effective age: the older of the host-computed age and the
                 # device-reported buffer age.
@@ -336,7 +339,7 @@ class ProtectionEngine:
                 self._plugins,
                 self._bench,
                 deadline_ns=protection_deadline,
-                wall_now=self._wall.now_iso(),
+                wall_now=self._wall.now_iso,
             )
             violations = evaluate_conditions({"continuous_conditions": verify}, snapshot)
             if not violations:

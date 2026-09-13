@@ -269,7 +269,7 @@ class _RunMonitor:
                 self._plugins,
                 self._bench,
                 deadline_ns=self._clock.now_ns() + self._poll_ns,
-                wall_now=self._wall.now_iso(),
+                wall_now=self._wall.now_iso,
             )
             if self.retain is not None:
                 try:

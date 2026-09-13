@@ -1026,10 +1026,13 @@ class Operations:
         seven fields; outcome/safe_state/terminal_record are null until
         terminal, and terminal-without-a-durable-record is honest
         uncertainty — outcome_unknown/unknown, never a fabricated pass)."""
+        # The worker persists the terminal record before publishing terminal
+        # queue state. Read that state first: a terminal observation must then
+        # see its record, while an earlier running observation can stay pending.
+        state_row = self._store.get_run_state(run_id)
         run = self._store.get_run(run_id)
         if run is None:
             raise errors.OperationFailure(errors.failure("not_found", f"run {run_id}"))
-        state_row = self._store.get_run_state(run_id)
         if state_row is None:
             # Seam-visible runs carry a queue-state row (run_start always
             # writes one); there is no bench_id source without it.

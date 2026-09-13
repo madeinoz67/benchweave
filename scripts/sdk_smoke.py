@@ -21,7 +21,7 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-CONTRACT_SETS = ("otdp-v0.3.0", "registry-v1.0.0")
+CONTRACT_SETS = ("otdp-v0.3.0", "registry-v1.0.0", "plugin-ui-v0.1.0")
 
 
 def digest(data: bytes) -> str:
@@ -98,6 +98,35 @@ def installed_check(reference: Path, report: Path) -> None:
     assert "example_plugin/protocol.py" in payload
     assert "example_plugin/descriptor.json" in payload
     assert "example_plugin/vectors.json" in payload
+    presentation = import_module("benchweave_sdk.presentation")
+    admission = import_module("benchweave.presentation.admission")
+    for package, path in (
+        ("benchweave_sdk", "_presentation_contract.py"),
+        ("benchweave", "presentation/contracts.py"),
+    ):
+        assert digest(files(package).joinpath(path).read_bytes()) == expected["presentation_sha256"]
+    envelope = payload["example_plugin/presentation.json"]
+    descriptor_raw = payload["example_plugin/descriptor.json"]
+    catalogue = json.loads(payload["example_plugin/binding-catalogue.json"])
+    ui_resources = resources(files("example_plugin").joinpath("ui"))
+    sdk_report = presentation.validate_presentation(
+        envelope,
+        descriptor_raw=descriptor_raw,
+        resources=ui_resources,
+        binding_catalogue=catalogue,
+        firmware="1.0.0",
+    )
+    gateway_report = admission.validate_attachment(
+        envelope,
+        descriptor_raw=descriptor_raw,
+        verified_resources=ui_resources,
+        binding_catalogue=catalogue,
+        schema_documents=presentation.schemas(),
+        supported_features=frozenset(),
+        supported_panels=frozenset(),
+        firmware="1.0.0",
+    )
+    assert sdk_report.valid and gateway_report.valid, (sdk_report, gateway_report)
     # A synthetic admitted-cache fixture tests the loader's execution integrity;
     # registry admission/closure policy remains covered by the registry suite.
     manifest = {
@@ -171,6 +200,9 @@ def installed_check(reference: Path, report: Path) -> None:
                 "contract_files_verified": len(packaged_hashes),
                 "example": "wheel installed outside checkout; identify/read passed",
                 "tampered_helper": "rejected before import",
+                "presentation": (
+                    "installed UI resources and identical SDK/gateway validator verified"
+                ),
                 "hardware": "none; deterministic MockHost only",
             },
             indent=2,
@@ -194,6 +226,9 @@ def build_and_check(out_dir: Path) -> None:
         "checkout": str(checkout),
         "gateway_version": gateway_metadata["project"]["version"],
         "sdk_version": sdk_metadata["project"]["version"],
+        "presentation_sha256": digest(
+            (checkout / "src/benchweave/presentation/contracts.py").read_bytes()
+        ),
         "contracts": {
             f"{name}/{relative}": digest(data)
             for name in CONTRACT_SETS
@@ -204,7 +239,7 @@ def build_and_check(out_dir: Path) -> None:
     sdk_wheel = sdk_out / f"benchweave_sdk-{expected['sdk_version']}-py3-none-any.whl"
     assert gateway_wheel.is_file() and sdk_wheel.is_file()
     with tempfile.TemporaryDirectory(prefix="benchweave-sdk-smoke-") as directory:
-        workspace = Path(directory)
+        workspace = Path(directory).resolve()
         python = workspace / "venv/bin/python"
         run(["uv", "venv", "--python", sys.executable, str(workspace / "venv")], cwd=workspace)
         run(
@@ -229,6 +264,7 @@ def build_and_check(out_dir: Path) -> None:
                 str(generated),
                 "--package",
                 "example_plugin",
+                "--with-ui",
             ],
             cwd=workspace,
         )

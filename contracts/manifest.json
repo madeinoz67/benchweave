@@ -10,6 +10,26 @@
   },
   "files": [
     {
+      "path": "plugin-ui-v0.1.0/binding-catalogue.schema.json",
+      "source": "docs/plugin-ui-v0.1.0/binding-catalogue.schema.json",
+      "sha256": "070734887a57654f2aec4c9c96d959cabcdd670deaed55b802d22939669643a8"
+    },
+    {
+      "path": "plugin-ui-v0.1.0/configuration-preset.schema.json",
+      "source": "docs/plugin-ui-v0.1.0/configuration-preset.schema.json",
+      "sha256": "bea991c3de717db302a1758fd9721893902b0a22d45653135a5eb6e7bc2706e6"
+    },
+    {
+      "path": "plugin-ui-v0.1.0/presentation-envelope.schema.json",
+      "source": "docs/plugin-ui-v0.1.0/presentation-envelope.schema.json",
+      "sha256": "1f56d52edea32659102111092789ad1c250e8afd188d92c4eca485aefebaebda"
+    },
+    {
+      "path": "plugin-ui-v0.1.0/ui-manifest.schema.json",
+      "source": "docs/plugin-ui-v0.1.0/ui-manifest.schema.json",
+      "sha256": "f6eb48255bc275a468b23b9df0c0ab64776dfbe5eb9bacb9d063130c272c42f1"
+    },
+    {
       "path": "execution-v1.0.0/bench.schema.json",
       "source": "docs/execution-v1.0.0/bench.schema.json",
       "sha256": "c12b0730fe6606560ae4e85be85d8d8710eda11202c2b9771ac1648f09f40b77"
