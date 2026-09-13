@@ -88,6 +88,11 @@ MANIFEST_NAME = "manifest.json"
 _UNLISTED_OK = frozenset(
     {MANIFEST_NAME, CREDENTIAL_FILE, DB_NAME + "-wal", DB_NAME + "-shm", DB_NAME + ".hold"}
 )
+#: The registry session's work tree root. ``app_entry`` places it under
+#: ``<data_dir>/registry/`` (cache, ``packages.lock.json``, activations) —
+#: live-state in a serving data dir, never backup content (restore never
+#: stages one; see ``app_entry.registry_session_from_env``).
+_REGISTRY_WORK_TREE = "registry"
 
 
 class AtRestError(RuntimeError):
@@ -125,6 +130,16 @@ def _tree_files(root: Path) -> set[str]:
     return {
         path.relative_to(root).as_posix() for path in root.rglob("*") if path.is_file()
     }
+
+
+def _is_live_state(rel: str) -> bool:
+    """May ``rel`` live in a verified tree beyond the manifest: one of the
+    exact live-state names, or anywhere inside the registry work tree
+    (``app_entry`` puts its cache/locks/activations under
+    ``<data_dir>/registry/``). A files-only inventory makes the prefix
+    rule sufficient — a stray root FILE named ``registry`` is not the
+    work tree and stays an extra."""
+    return rel in _UNLISTED_OK or rel.startswith(_REGISTRY_WORK_TREE + "/")
 
 
 def _write_credential_file(path: Path, secret: str) -> None:
@@ -285,10 +300,11 @@ def _manifest_mismatches(staged: Path, manifest: dict[str, Any]) -> list[str]:
     # does not list is smuggling, not provenance — refuse naming the
     # extras. Before this, ``content/`` extras rode into the data dir
     # unverified and ``verify`` blessed the result. The only unlisted
-    # files allowed are the manifest itself and the store's runtime
-    # sidecars (live-state in a restored data dir, never backup content).
+    # files allowed are live-state (the manifest itself, the credential
+    # file, the store's runtime sidecars, and the registry work tree —
+    # see ``_is_live_state``).
     extras = sorted(
-        rel for rel in _tree_files(staged) if rel not in files and rel not in _UNLISTED_OK
+        rel for rel in _tree_files(staged) if rel not in files and not _is_live_state(rel)
     )
     if extras:
         problems.append(f"{MANIFEST_NAME}: unlisted file(s) present: " + ", ".join(extras))
@@ -408,9 +424,10 @@ def verify_problems(target: Path) -> list[str]:
 
     ``target`` is a backup archive or a restored data dir — both carry
     ``manifest.json``. Exit-0 bar: every manifest digest matches, NO
-    unlisted file is present (beyond the manifest itself, the store's
-    runtime sidecars, and the deliberately-unbacked credential file), AND
-    the store file passes SQLite's integrity_check. Runtime sidecar files
+    unlisted file is present (beyond live-state: the manifest itself, the
+    store's runtime sidecars, the deliberately-unbacked credential file,
+    and the registry session's work tree), AND the store file passes
+    SQLite's integrity_check. Runtime sidecar files
     (``-wal``/``-shm``/the hold marker) are live-state, not manifest
     entries — their presence is expected and never a mismatch.
     """

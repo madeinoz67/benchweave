@@ -454,6 +454,26 @@ def test_verify_still_accepts_live_sidecars_beside_the_manifest(tmp_path: Path) 
     assert verify(fresh) == 0
 
 
+def test_verify_still_accepts_the_registry_work_tree(tmp_path: Path) -> None:
+    """``app_entry`` places the registry session's work tree (cache,
+    ``packages.lock.json``, activations) under ``<data_dir>/registry/`` —
+    live-state in a serving data dir, never backup content (restore never
+    stages one). A restored data dir with registry activity must still
+    verify clean, while a non-registry extra still refuses."""
+    data = tmp_path / "data"
+    _initialized(data)
+    archive = backup(data, tmp_path / "out")
+    fresh = tmp_path / "fresh"
+    restore(archive, fresh)
+    (fresh / "registry" / "cache").mkdir(parents=True)
+    (fresh / "registry" / "cache" / "pkg.tgz").write_bytes(b"package")
+    (fresh / "registry" / "packages.lock.json").write_text("{}\n")
+    assert verify(fresh) == 0
+    # The carve-out is narrow: a non-registry extra still refuses.
+    (fresh / "content" / "smuggled.bin").write_bytes(b"evil")
+    assert verify(fresh) != 0
+
+
 def test_setup_refusal_while_the_store_is_held_is_handled_not_a_traceback(
     tmp_path: Path,
 ) -> None:
