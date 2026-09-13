@@ -1538,6 +1538,71 @@ def test_change_apply_stored_generation_fence(gateway: SimpleNamespace) -> None:
     assert record["data"]["reasons"]
 
 
+def test_change_apply_unknown_outcome_advertises_retry_never(
+    gateway: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D13 retry honesty: an undecided apply crash records ``unknown`` and
+    surfaces ``unavailable`` — but re-entering ``change_apply`` on an
+    unknown change is the two-phase ``conflict`` (the state is no longer
+    proposed), so the envelope must NOT advertise ``retry: same_request``.
+    The truthful value is ``never`` (contract §10: reconciliation, not
+    re-entry) — and the pinned re-entry below proves the advertised
+    conflict is real, which is exactly why same_request lied."""
+    gen = int(
+        gateway.client.get(f"/v1/benches/{BENCH}", headers=_bearer(ADMIN))
+        .json()["data"]["generation"]
+    )
+    submitted = gateway.client.post(
+        "/v1/admin/changes",
+        headers=_bearer(ADMIN),
+        json={
+            "request_id": "req-pin-retry-honesty",
+            "bench_id": BENCH,
+            "kind": "trip_reset",
+            "target_ref": TARGET_REF,
+            "expected_generation": gen,
+            "reason": "pin: unknown-outcome apply advertises retry never",
+        },
+    )
+    assert submitted.status_code == 201, submitted.text
+    change_id = submitted.json()["data"]["change_id"]
+    apply_body = {
+        "request_id": "req-pin-retry-honesty-apply",
+        "expected_generation": gen,
+        "approval_ref": _store_approval(gateway.content, change_id, gen),
+        "approver_token": APPROVER_TOKEN,
+    }
+
+    def boom(
+        self: Operations, change: dict[str, Any], request_id: str, now: str
+    ) -> None:
+        raise RuntimeError("injected apply crash")
+
+    monkeypatch.setattr(Operations, "_dispatch_change", boom)
+    crashed = gateway.client.post(
+        f"/v1/admin/changes/{change_id}/apply",
+        headers=_bearer(ADMIN),
+        json=apply_body,
+    )
+    assert crashed.status_code == 503, crashed.text
+    assert crashed.json()["error"]["code"] == "unavailable"
+    assert crashed.json()["error"]["retry"] == "never"
+    _, record = _rest(gateway, "get", f"/v1/admin/changes/{change_id}", None, ADMIN)
+    assert record["data"]["state"] == "unknown"
+
+    # The advertised re-entry semantics are real: the same-key apply now
+    # conflicts on the unknown state (and records failed) — the exact
+    # outcome ``same_request`` would have misled the client into.
+    monkeypatch.undo()
+    reentry = gateway.client.post(
+        f"/v1/admin/changes/{change_id}/apply",
+        headers=_bearer(ADMIN),
+        json=apply_body,
+    )
+    assert reentry.status_code == 409, reentry.text
+    assert reentry.json()["error"]["code"] == "conflict"
+
+
 def test_not_ready_configuration_activation_under_live_lease(
     gateway: SimpleNamespace,
 ) -> None:

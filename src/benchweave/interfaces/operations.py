@@ -903,7 +903,13 @@ class Operations:
                 errors.failure(
                     "unavailable",
                     f"change {change_id} apply did not complete; state is unknown",
-                    retry="same_request",
+                    # D13 retry honesty: re-entering change_apply on an
+                    # unknown change is the two-phase ``conflict`` (the
+                    # state is no longer proposed), so ``same_request`` lied
+                    # about re-entry semantics. The truthful advice is
+                    # ``never`` (contract §10: reconciliation/correction —
+                    # change_get, then a NEW change if warranted).
+                    retry="never",
                 )
             ) from crash
         return self._change_projection(change_id)
