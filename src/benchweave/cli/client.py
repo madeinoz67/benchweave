@@ -25,6 +25,14 @@ class GatewayClient:
     """Bearer-authenticated REST client (GET/POST via stdlib urllib)."""
 
     def __init__(self, base_url: str, *, token: str, timeout: float = 10.0) -> None:
+        # A scheme-less ``--gateway banana`` used to reach urllib as
+        # ``ValueError: unknown url type`` deep inside the request — reject
+        # it here, at the boundary, as a handled GatewayError.
+        parsed = urllib.parse.urlsplit(base_url)
+        if parsed.scheme not in ("http", "https") or not parsed.netloc:
+            raise GatewayError(
+                f"gateway URL must start with http:// or https:// — got {base_url!r}"
+            )
         self._base = base_url.rstrip("/")
         self._token = token
         self._timeout = timeout
@@ -62,6 +70,11 @@ class GatewayClient:
             raise GatewayError(f"{method} {url} -> HTTP {error.code}: {detail}") from error
         except urllib.error.URLError as error:
             raise GatewayError(f"{method} {url} unreachable: {error.reason}") from error
+        except ValueError as error:
+            # Belt and braces for any future URL shape the constructor's
+            # scheme check misses: a malformed target is a handled failure,
+            # never a traceback.
+            raise GatewayError(f"{method} {url} is not a valid request target: {error}") from error
         except TimeoutError as error:
             # A gateway that accepts and answers headers but hangs on the
             # body (M4): report, never traceback.

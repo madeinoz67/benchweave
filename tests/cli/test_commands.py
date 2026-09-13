@@ -291,6 +291,20 @@ def test_main_returns_int_exit_codes() -> None:
     assert main(["status", "--gateway", f"http://127.0.0.1:{_dead_port()}", "--token", "x"]) != 0
 
 
+# --- T9 carry (Task 10): bare-word gateway URLs must not traceback ----------------
+
+
+def test_status_schemeless_gateway_url_is_handled_not_a_traceback() -> None:
+    """``--gateway banana`` used to escape ``ValueError: unknown url type``
+    from deep inside urllib — the constructor now rejects it as GatewayError."""
+    result = CliRunner().invoke(cli, ["status", "--gateway", "banana", "--token", OBSERVE])
+    _handled(result)
+    assert result.exit_code != 0
+    combined = _combined(result)
+    assert "banana" in combined
+    assert "http://" in combined and "https://" in combined
+
+
 # --- structure pin ------------------------------------------------------------
 
 

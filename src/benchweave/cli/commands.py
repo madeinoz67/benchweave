@@ -126,8 +126,8 @@ def status(gateway_url: str, token: str, json_output: bool) -> None:
     ctx = click.get_current_context()
     obj = ctx.ensure_object(dict)
     obj["json"] = json_output
-    client = GatewayClient(gateway_url, token=token)
     try:
+        client = GatewayClient(gateway_url, token=token)
         info = client.gateway_info()
         benches = client.bench_list()
     except GatewayError as error:
