@@ -328,7 +328,7 @@ def create_app(
     )
 
     mcp_server = build_mcp(
-        operations, secret=secret, now_epoch=now_epoch, limits=limits
+        operations, secret=secret, now_epoch=now_epoch, limits=limits, gate=gate
     )
     mcp_app = mcp_server.http_app(path="/mcp")
 

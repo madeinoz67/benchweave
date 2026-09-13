@@ -60,7 +60,10 @@ def test_cursor_pages_and_is_principal_bound(seam: Seam) -> None:
         ops.events_get(stranger, "bench-1", after=page1["cursor"], limit=2)
 
 
-def test_retention_overtake_yields_cursor_expired(seam: Seam) -> None:
+def test_retention_overtake_yields_event_gap(seam: Seam) -> None:
+    """§7 events paragraph: a cursor the retention window has overtaken is
+    ``event_gap`` (with watermarks) — the final-fix-wave correction from the
+    wrong ``cursor_expired`` pin."""
     ops, store = seam
     for _ in range(6):
         ops._emit("run_changed", "bench-1", "run-1")
@@ -69,7 +72,7 @@ def test_retention_overtake_yields_cursor_expired(seam: Seam) -> None:
     stale = operations.encode_cursor("bench:bench-1", "1", "p1")
     with pytest.raises(errors.OperationFailure) as exc:
         ops.events_get(IDENT, "bench-1", after=stale, limit=10)
-    assert exc.value.failure.code == "cursor_expired"
+    assert exc.value.failure.code == "event_gap"
 
 
 def test_evidence_gap_emitted_when_retention_fails(seam: Seam) -> None:

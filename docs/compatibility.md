@@ -117,10 +117,24 @@ non-loopback binding.
   the callable). `tools/list` deep-equals the vendored corpus: all 17
   `stg_v1_*` tools, `required` included.
 
-## Deviation register (D1–D7, pinned by the parity suite)
+## Deviation register (D1–D13, pinned by the parity suite)
 
-Each deviation has a pinning test; none is silent. Full wording lives in
-the `tests/integration/test_interface_parity.py` module docstring.
+Each deviation has a pinning test or an explicit disclosure; none is
+silent. Full wording for D1–D7 lives in the
+`tests/integration/test_interface_parity.py` module docstring. D8–D13 are
+the final-fix-wave register (2026-09-13, from the two whole-branch
+reviews); each names its WP08 reconciliation.
+
+**Final-fix-wave code corrections shipped the same day** (behavior pins
+updated with them): the §7 retention-overtake failure is `event_gap`, not
+`cursor_expired` (the overtake branch is `event_gap`'s raise site;
+`cursor_expired` now has no emitter — trim deletes contiguous prefixes, so
+a hole cannot arise by construction); `run_cancel` is owner-or-admin
+scoped (§6 — a control-tier stranger gets 403); the artifact offset floor
+moved into the seam (negative offsets serve head bytes on both
+transports); the five mutating MCP tools hold the app's `WriteGate`
+(mirroring REST's seven gated handlers); and MCP failure envelopes carry
+`isError: true` (D10, closed).
 
 | # | Deviation |
 |---|---|
@@ -131,6 +145,12 @@ the `tests/integration/test_interface_parity.py` module docstring.
 | D5 | wire `tools/list` schemas are vendored-minus-`$defs` (the corpus `$defs` are unreferenced and inert; serve-time middleware is the SDK's) |
 | D6 | token-shaped rejections collapse to a transport 401 on MCP (no envelope can exist pre-auth); `payload_too_large` is REST-only |
 | D7 | token-shape probes pinned on both transports: expired → 401 `unauthenticated`; wrong-audience → 403 `forbidden`; an stg-audience token as `approver_token` fails closed 403 |
+| D8 | seam input validation is presence-only plus adapter clamps — the spec's jsonschema-at-the-seam layer (Invariant-2) is NOT implemented; type-confusion inputs coerce or surface 500 `internal_error` rather than 400. Full catalog validation is the WP08 seam surface (flagged by both whole-branch reviews) |
+| D9 | §5 semantics are not pre-checked at the seam: no accept-time busy/lease contention check (contention surfaces asynchronously as `outcome_unknown`), the binding document's `request_id` match against the §9 request id is unenforced (the suites exercise mismatched ids by fixture), and manual-vs-gateway lease authority is unmodeled. WP08 adds seam pre-checks |
+| D10 | MCP `isError` — FIXED by the final fix wave: failure envelopes now serve `isError: true` with the contract envelope intact as structured content (`test_interface_parity.py::test_mcp_is_error_flag_on_failure_and_success`). Closed |
+| D11 | input coercion policy is clamp-not-reject: `limit`/`length` clamp to `[1, max]`, artifact `offset` floors at 0 (now at the seam); a beyond-size `offset` serves a zero-byte `eof=true` chunk, which differs from the contract §8 letter — WP08 reconciliation |
+| D12 | the interface-visible takeover slice (spec Decision 8) is NOT implemented: `run_start`'s `lease_id` is accepted-and-dropped, and `authority_changed` has zero emitters. Descoped to WP08 |
+| D13 | known seam/transport residuals, WP08-grouped: lease expiry is never enforced at the seam (an expired-unreleased lease keeps its bench `busy`); the async single-loop posture runs blocking SQLite on one event loop (head-of-line blocking under concurrent calls) and the events table has no index; `accept_request`→`create_run` is two transactions (a crash between wedges the request key — recovery-side mitigation only); no MCP transport body ceiling (D6 residual); `internal_error` text diverges between transports and `correlation_id` is never populated; `change_apply` failures advertise `retry: same_request` while the two-phase state machine turns that re-entry into `conflict` |
 
 ## Licence/provenance display (Task 12 verdict: store-retained, not wire-exposed)
 

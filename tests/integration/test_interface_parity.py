@@ -60,11 +60,17 @@ a test; none is silent) versus what it proves equal:
   release — two fixture-seeded leases, one released per transport).
 - Unreachable failure classes, named and not faked: ``policy_denied``
   (``_bench_projection`` has no tripped source yet — the flag is hardcoded
-  False until the WP08 hardware surface), ``gone``/``event_gap``/
+  False until the WP08 hardware surface), ``gone``/``cursor_expired``/
   ``rate_limited``/``unavailable``/``internal_error`` (no emitting path is
-  reachable through a healthy app: event_gap needs monitor retention
-  failures, unavailable needs an undecided apply crash or a worker-less
-  gateway, internal_error needs an unexpected exception).
+  reachable through a healthy app: ``cursor_expired`` has no emitter —
+  retention ``trim_stream`` deletes a contiguous prefix, so a hole can
+  never arise by construction, and the contract's §7 events paragraph
+  assigns the one stale-cursor path there is, retention overtake, to
+  ``event_gap`` (the overtake branch is its raise site); ``unavailable``
+  needs an undecided apply crash or a worker-less gateway;
+  ``internal_error`` needs an unexpected exception). Monitor retention
+  failures emit the ``evidence_gap`` EVENT KIND (Task 6), a different thing
+  from the ``event_gap`` failure code.
 """
 
 from __future__ import annotations
@@ -383,6 +389,36 @@ def _call(
         return found
     envelope: dict[str, Any] = json.loads(result["content"][0]["text"])
     return envelope
+
+
+def _call_result(
+    port: int, tool: str, arguments: dict[str, Any], token: str
+) -> dict[str, Any]:
+    """One tools/call on a fresh session -> the RAW JSON-RPC result object
+    (``isError`` flag included, not just the contract envelope)."""
+    headers = _bearer(token)
+    status, session = _initialize(port, headers)
+    assert status == 200 and session is not None, (status, session)
+    ack = _post(
+        port,
+        {"jsonrpc": "2.0", "method": "notifications/initialized"},
+        {"Mcp-Session-Id": session, **headers},
+    )
+    assert ack[0] in (200, 202), ack
+    status, body = _post(
+        port,
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {"name": tool, "arguments": arguments},
+        },
+        {"Mcp-Session-Id": session, **headers},
+    )
+    assert status == 200, (status, body)
+    assert body is not None and "result" in body, body
+    result: dict[str, Any] = body["result"]
+    return result
 
 
 def _rest(
@@ -822,6 +858,30 @@ def test_wrong_audience_token_probe(gateway: SimpleNamespace) -> None:
     assert transport_status == 401 and session is None  # D6 collapse
 
 
+def test_mcp_is_error_flag_on_failure_and_success(gateway: SimpleNamespace) -> None:
+    """Final-fix-wave pin (§2/§10): a failure envelope is not a normal tool
+    result — the MCP result carries ``isError: true`` with the contract
+    envelope as structured content, and a success carries ``isError``
+    false. REST expresses the same truth via its HTTP status; the flag is
+    the MCP transport's only expression of it."""
+    failed = _call_result(
+        gateway.port,
+        "stg_v1_bench_get",
+        {"bench_id": "nope-bench"},
+        OBSERVE,
+    )
+    assert failed["isError"] is True, failed
+    failure_envelope = failed["structuredContent"]
+    assert failure_envelope["ok"] is False
+    assert failure_envelope["error"]["code"] == "not_found"
+
+    succeeded = _call_result(
+        gateway.port, "stg_v1_bench_get", {"bench_id": BENCH}, OBSERVE
+    )
+    assert succeeded["isError"] is False, succeeded
+    assert succeeded["structuredContent"]["ok"] is True
+
+
 # --- D4: event evidence wire shape ---------------------------------------------
 
 
@@ -850,11 +910,11 @@ def test_event_evidence_shape_deviation(gateway: SimpleNamespace) -> None:
     assert not any(set(ev) == {"id", "version", "sha256"} for ev in evidences)
 
 
-def test_cursor_expired_after_retention_trim(gateway: SimpleNamespace) -> None:
-    """cursor_expired on both transports: a valid held cursor the retention
-    window has overtaken is refused, never silently truncated (Task 6). The
-    trim is seeded directly on the fixture's store; both adapters then read
-    the same retained stream."""
+def test_event_gap_after_retention_trim(gateway: SimpleNamespace) -> None:
+    """event_gap on both transports (§7 events paragraph, final-fix-wave
+    correction): a valid held cursor the retention window has overtaken is
+    refused, never silently truncated. The trim is seeded directly on the
+    fixture's store; both adapters then read the same retained stream."""
     stream = f"bench:{BENCH}"
     page = _rest(
         gateway, "get", f"/v1/benches/{BENCH}/events?after=&limit=1", None, OBSERVE
@@ -873,7 +933,7 @@ def test_cursor_expired_after_retention_trim(gateway: SimpleNamespace) -> None:
         OBSERVE,
     )
     assert status == 410
-    assert rest_json["error"]["code"] == "cursor_expired"
+    assert rest_json["error"]["code"] == "event_gap"
     assert mcp_json["error"] == rest_json["error"]
 
 
@@ -957,6 +1017,36 @@ def test_document_bytes_and_chunk_digests(gateway: SimpleNamespace) -> None:
         reassembled += base64.b64decode(chunk["base64"])
     assert reassembled == ARTIFACT_BYTES
     assert hashlib.sha256(reassembled).hexdigest() == whole_sha
+
+
+def test_negative_offset_serves_head_bytes_on_both_transports(
+    gateway: SimpleNamespace,
+) -> None:
+    """Final-fix-wave parity edge: a negative artifact offset is floored at
+    0 BY THE SEAM (operations.artifact_read), so both adapters serve the
+    head bytes by construction — REST's own clamp is now redundant defense,
+    and MCP (which passed negatives into Python slicing) no longer serves
+    wrong-window bytes from the tail."""
+    _, rest_json = _rest(
+        gateway,
+        "get",
+        f"/v1/artifacts/{gateway.artifact_id}/chunks?offset=-5&length=64",
+        None,
+        OBSERVE,
+    )
+    mcp_json = _call(
+        gateway.port,
+        "stg_v1_artifact_read",
+        {"artifact_id": gateway.artifact_id, "offset": -5, "length": 64},
+        OBSERVE,
+    )
+    assert rest_json["ok"] is True and mcp_json["ok"] is True
+    assert mcp_json["data"] == rest_json["data"]
+    head = rest_json["data"]
+    assert head["offset"] == 0  # floored, not sliced from the tail
+    assert head["bytes"] == len(ARTIFACT_BYTES)
+    assert head["eof"] is True
+    assert base64.b64decode(head["base64"]) == ARTIFACT_BYTES  # the HEAD bytes
 
 
 # --- admin pins (D2 + stored-generation fence + not_ready) ---------------------

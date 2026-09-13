@@ -223,6 +223,11 @@ class Operations:
         self, identity: Identity, artifact_id: str, offset: int, length: int
     ) -> dict[str, Any]:
         require_permission(identity, "observe")
+        # Offset floor at the SEAM (final-fix wave): a negative offset must
+        # never reach the store's Python slicing (wrong-window tail bytes);
+        # flooring here makes both adapters correct by construction.
+        if offset < 0:
+            offset = 0
         try:
             chunk = self._content.artifact_chunk(artifact_id, offset, length)
         except KeyError:
@@ -256,7 +261,8 @@ class Operations:
     ) -> dict[str, Any]:
         """Bench event stream read (observe): principal-bound cursor
         paging with honest watermarks. A cursor the retention window has
-        overtaken is ``cursor_expired`` — never a silent truncation."""
+        overtaken is ``event_gap`` (the §7 events paragraph's code, with
+        the watermarks already in hand) — never a silent truncation."""
         require_permission(identity, "observe")
         stream = f"bench:{bench_id}"
         oldest, current = self._store.stream_watermarks(stream)
@@ -276,8 +282,11 @@ class Operations:
                     errors.failure("invalid_request", "cursor sequence is not numeric")
                 ) from None
             if oldest is not None and after_int < int(oldest) - 1:
+                # §7 events paragraph: retention overtake is event_gap (the
+                # watermarks the caller needs are already in this response's
+                # hands); cursor_expired has no emitting path by construction.
                 raise errors.OperationFailure(errors.failure(
-                    "cursor_expired", f"retention overtook sequence {decoded[1]}"))
+                    "event_gap", f"retention overtook sequence {decoded[1]}"))
             after_sequence = decoded[1]
         events = self._store.read_events_after(stream, after_sequence, limit)
         cursor = (
@@ -448,10 +457,21 @@ class Operations:
         monitor tick while the body is still dispatchable (§5: cancellation
         never suppresses the safe transition). The coordinator API takes
         run and principal only — this wraps it and records the caller's
-        reason and request id in the run_changed event."""
+        reason and request id in the run_changed event.
+
+        §6 owner scoping (final-fix wave): the control tier alone is not
+        authority over someone else's run — a control-tier principal may
+        cancel only runs they own; the admin tier may cancel any run."""
         require_permission(identity, "control")
-        if self._store.get_run(run_id) is None:
+        run = self._store.get_run(run_id)
+        if run is None:
             raise errors.OperationFailure(errors.failure("not_found", f"run {run_id}"))
+        if run["principal_id"] != identity.principal and identity.scopes.isdisjoint(
+            TIER_SATISFIES["admin"]
+        ):
+            raise errors.OperationFailure(errors.failure(
+                "forbidden", f"run {run_id} belongs to principal {run['principal_id']!r}"
+            ))
         if self._worker is not None:
             self._worker.cancel(run_id, identity.principal)
         state = self._store.get_run_state(run_id)

@@ -35,6 +35,7 @@ from typing import Any
 from fastmcp import FastMCP
 from fastmcp.server.auth import AccessToken, TokenVerifier
 from fastmcp.server.dependencies import get_access_token
+from fastmcp.tools import ToolResult
 
 from benchweave.interfaces.errors import OperationFailure, failure
 from benchweave.interfaces.identity import Identity, IdentityRejected, validate
@@ -98,6 +99,7 @@ def build_mcp(
     secret: bytes,
     now_epoch: Callable[[], int],
     limits: dict[str, int],
+    gate: Any,
     audience: str = "stg",
 ) -> FastMCP:
     """Register exactly the 17 ``stg_v1_*`` tools, each schema-pinned verbatim.
@@ -110,6 +112,15 @@ def build_mcp(
     including the floor at 1: SQLite reads ``LIMIT < 0`` as UNLIMITED, so
     a negative page size must never reach it, and the store rejects chunk
     lengths below 1).
+
+    ``gate`` is the app's ``WriteGate`` (final-fix wave): the five mutating
+    tools that exist here (run_start, run_cancel, lease_create/renew/
+    release) hold it across their seam call — the same process-wide
+    single-writer discipline REST's seven mutating handlers already apply
+    (REST's change_submit/change_apply are catalog-REST-only, so no MCP
+    twin needs gating). ``Any`` for the gate keeps the import graph
+    acyclic, mirroring ``build_router``. Reads and the advisory
+    ``run_check`` stay ungated, mirroring REST exactly.
     """
     mcp = FastMCP(
         name="benchweave-gateway",
@@ -142,15 +153,20 @@ def build_mcp(
                 failure(code, f"token rejected: {rejected.reason}")
             ) from None
 
-    def _dispatch(call: Callable[[], Any]) -> dict[str, Any]:
+    def _dispatch(call: Callable[[], Any]) -> ToolResult:
         """One seam call wrapped in the contract envelope; app failures are
-        the failure body, never an exception over the wire."""
+        the failure body carried as an ERROR result (``isError: true``, the
+        envelope intact as structured content) — the MCP transport's
+        expression of what REST says with its HTTP status, and never an
+        exception over the wire."""
         try:
-            return {"ok": True, "data": call()}
+            return ToolResult(structured_content={"ok": True, "data": call()})
         except OperationFailure as fail:
-            return fail.failure.body()
+            return ToolResult(structured_content=fail.failure.body(), is_error=True)
 
-    def _paged(call: Callable[[], tuple[list[dict[str, Any]], str | None]]) -> dict[str, Any]:
+    def _paged(
+        call: Callable[[], tuple[list[dict[str, Any]], str | None]]
+    ) -> ToolResult:
         """List endpoints: the seam's (items, next_cursor) tuple becomes the
         contract ``items``/``next_cursor`` data object."""
 
@@ -181,25 +197,25 @@ def build_mcp(
     # --- observe --------------------------------------------------------------
 
     @_register
-    async def gateway_info() -> dict[str, Any]:
+    async def gateway_info() -> ToolResult:
         identity = await _identity()
         return _dispatch(lambda: operations.gateway_info(identity))
 
     @_register
-    async def bench_list(limit: int = 1, cursor: str | None = None) -> dict[str, Any]:
+    async def bench_list(limit: int = 1, cursor: str | None = None) -> ToolResult:
         identity = await _identity()
         page = max(1, min(limit, max_page_size))
         return _paged(lambda: operations.bench_list(identity, limit=page, cursor=cursor))
 
     @_register
-    async def bench_get(bench_id: str = "") -> dict[str, Any]:
+    async def bench_get(bench_id: str = "") -> ToolResult:
         identity = await _identity()
         return _dispatch(lambda: operations.bench_get(identity, bench_id))
 
     @_register
     async def device_list(
         bench_id: str = "", limit: int = 1, cursor: str | None = None
-    ) -> dict[str, Any]:
+    ) -> ToolResult:
         identity = await _identity()
         page = max(1, min(limit, max_page_size))
         return _paged(
@@ -207,19 +223,19 @@ def build_mcp(
         )
 
     @_register
-    async def device_get(bench_id: str = "", device_id: str = "") -> dict[str, Any]:
+    async def device_get(bench_id: str = "", device_id: str = "") -> ToolResult:
         identity = await _identity()
         return _dispatch(lambda: operations.device_get(identity, bench_id, device_id))
 
     @_register
-    async def document_get(sha256: str = "") -> dict[str, Any]:
+    async def document_get(sha256: str = "") -> ToolResult:
         identity = await _identity()
         return _dispatch(lambda: operations.document_get(identity, sha256))
 
     @_register
     async def events_get(
         bench_id: str = "", after: str | None = None, limit: int = 1
-    ) -> dict[str, Any]:
+    ) -> ToolResult:
         identity = await _identity()
         page = max(1, min(limit, max_page_size))
         return _dispatch(
@@ -227,14 +243,14 @@ def build_mcp(
         )
 
     @_register
-    async def evidence_get(evidence_id: str = "") -> dict[str, Any]:
+    async def evidence_get(evidence_id: str = "") -> ToolResult:
         identity = await _identity()
         return _dispatch(lambda: operations.evidence_get(identity, evidence_id))
 
     @_register
     async def artifact_read(
         artifact_id: str = "", offset: int = 0, length: int = 1
-    ) -> dict[str, Any]:
+    ) -> ToolResult:
         identity = await _identity()
         chunk = max(1, min(length, max_chunk_bytes))
         return _dispatch(
@@ -244,9 +260,9 @@ def build_mcp(
     # --- control: runs ----------------------------------------------------------
 
     @_register
-    async def run_check(bench_id: str = "", binding_ref: dict[str, Any] | None = None) -> dict[
-        str, Any
-    ]:
+    async def run_check(
+        bench_id: str = "", binding_ref: dict[str, Any] | None = None
+    ) -> ToolResult:
         identity = await _identity()
         return _dispatch(
             lambda: operations.run_check(identity, bench_id, binding_ref or {})
@@ -259,37 +275,43 @@ def build_mcp(
         binding_ref: dict[str, Any] | None = None,
         expected_generation: int = 1,
         lease_id: str | None = None,
-    ) -> dict[str, Any]:
+    ) -> ToolResult:
         identity = await _identity()
-        return _dispatch(
-            lambda: operations.run_start(
-                identity,
-                bench_id,
-                request_id,
-                binding_ref or {},
-                expected_generation,
-                lease_id,
-            )
-        )
+
+        def go() -> dict[str, Any]:
+            with gate:
+                return operations.run_start(
+                    identity,
+                    bench_id,
+                    request_id,
+                    binding_ref or {},
+                    expected_generation,
+                    lease_id,
+                )
+
+        return _dispatch(go)
 
     @_register
-    async def run_get(run_id: str = "") -> dict[str, Any]:
+    async def run_get(run_id: str = "") -> ToolResult:
         identity = await _identity()
         return _dispatch(lambda: operations.run_get(identity, run_id))
 
     @_register
-    async def run_find(request_id: str = "") -> dict[str, Any]:
+    async def run_find(request_id: str = "") -> ToolResult:
         identity = await _identity()
         return _dispatch(lambda: operations.run_find(identity, request_id))
 
     @_register
     async def run_cancel(
         run_id: str = "", request_id: str = "", reason: str = ""
-    ) -> dict[str, Any]:
+    ) -> ToolResult:
         identity = await _identity()
-        return _dispatch(
-            lambda: operations.run_cancel(identity, run_id, request_id, reason)
-        )
+
+        def go() -> dict[str, Any]:
+            with gate:
+                return operations.run_cancel(identity, run_id, request_id, reason)
+
+        return _dispatch(go)
 
     # --- control: leases --------------------------------------------------------
 
@@ -299,33 +321,42 @@ def build_mcp(
         request_id: str = "",
         expected_generation: int = 1,
         duration_ms: int = 1,
-    ) -> dict[str, Any]:
+    ) -> ToolResult:
         identity = await _identity()
-        return _dispatch(
-            lambda: operations.lease_create(
-                identity, bench_id, request_id, expected_generation, duration_ms
-            )
-        )
+
+        def go() -> dict[str, Any]:
+            with gate:
+                return operations.lease_create(
+                    identity, bench_id, request_id, expected_generation, duration_ms
+                )
+
+        return _dispatch(go)
 
     @_register
     async def lease_renew(
         lease_id: str = "", request_id: str = "", sequence: int = 1, duration_ms: int = 1
-    ) -> dict[str, Any]:
+    ) -> ToolResult:
         identity = await _identity()
-        return _dispatch(
-            lambda: operations.lease_renew(
-                identity, lease_id, request_id, sequence, duration_ms
-            )
-        )
+
+        def go() -> dict[str, Any]:
+            with gate:
+                return operations.lease_renew(
+                    identity, lease_id, request_id, sequence, duration_ms
+                )
+
+        return _dispatch(go)
 
     @_register
     async def lease_release(
         lease_id: str = "", request_id: str = "", reason: str = ""
-    ) -> dict[str, Any]:
+    ) -> ToolResult:
         identity = await _identity()
-        return _dispatch(
-            lambda: operations.lease_release(identity, lease_id, request_id, reason)
-        )
+
+        def go() -> dict[str, Any]:
+            with gate:
+                return operations.lease_release(identity, lease_id, request_id, reason)
+
+        return _dispatch(go)
 
     assert registered_names == set(vendored), "registration table drifted from the corpus"
 

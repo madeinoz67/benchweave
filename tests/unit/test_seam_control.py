@@ -299,6 +299,35 @@ def test_run_cancel_forwards_to_active_coordinator(seam_control: SeamControl) ->
     assert coordinator.cancelled == [(run["run_id"], "p1")]
 
 
+def test_run_cancel_owner_scoping_stranger_forbidden_admin_allowed(
+    seam_control: SeamControl,
+) -> None:
+    """Final-fix-wave §6 pin: the control tier alone is not authority to
+    cancel — a control-tier principal who does not own the run is
+    ``forbidden``; the owner and an admin-tier principal both pass."""
+    ops, _, _ = seam_control
+    coordinators = seam_control.coordinators
+    owner = _control("p1")
+    run = ops.run_start(owner, BENCH_ID, "req-scope", seam_control.binding_ref, 1, None)
+    coordinator = _await_coordinator(coordinators)
+
+    stranger = _control("p2")  # control tier, not the owner, not admin
+    with pytest.raises(errors.OperationFailure) as exc:
+        ops.run_cancel(stranger, run["run_id"], "req-scope-x", "not your run")
+    assert exc.value.failure.code == "forbidden"
+    assert coordinator.cancelled == []  # never reached the worker
+
+    admin = Identity("p2", "stg", frozenset({"stg:admin"}), 2**31)
+    ops.run_cancel(admin, run["run_id"], "req-scope-a", "admin override")
+    assert coordinator.cancelled == [(run["run_id"], "p2")]
+
+    ops.run_cancel(owner, run["run_id"], "req-scope-o", "owner cancels own run")
+    assert coordinator.cancelled == [
+        (run["run_id"], "p2"),
+        (run["run_id"], "p1"),
+    ]
+
+
 # --- run_check: advisory preflight -------------------------------------------------
 
 

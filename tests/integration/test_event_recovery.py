@@ -28,7 +28,8 @@ plugins) on a loopback uvicorn port:
   exactly the quota-bound rows, and the terminal record survives with its
   evidence refs intact.
 - Retention overtake: reading with a cursor the window has passed is 410
-  ``cursor_expired`` — never a silent truncation.
+  ``event_gap`` — never a silent truncation (§7 events paragraph,
+  final-fix-wave correction from the wrong ``cursor_expired`` pin).
 - Worker poison guard: a run whose coordinator construction raises must not
   kill the worker thread — the poisoned run lands terminal with honest
   unknown truth (no fabricated record) and a later good run still completes.
@@ -640,12 +641,14 @@ def test_kill_mid_run_child_process_recovers_interrupted(tmp_path: Path) -> None
 # --- retention overtake --------------------------------------------------------
 
 
-def test_retention_overtake_yields_cursor_expired_over_http(tmp_path: Path) -> None:
-    """A cursor the retention window passed is 410 cursor_expired, not silent.
+def test_retention_overtake_yields_event_gap_over_http(tmp_path: Path) -> None:
+    """A cursor the retention window passed is 410 event_gap, not silent.
 
     ``max_page_size=1`` ⇒ the seam's bench-event window keeps 10. Twelve
     lease emissions later, a cursor captured at sequence 1 is behind the
-    window: the read must fail loudly with ``cursor_expired``.
+    window: the read must fail loudly with ``event_gap`` (§7 events
+    paragraph — the final-fix-wave correction from the wrong
+    ``cursor_expired`` pin).
     """
     gateway = _launch(tmp_path, limits=SMALL_LIMITS)
     try:
@@ -683,7 +686,7 @@ def test_retention_overtake_yields_cursor_expired_over_http(tmp_path: Path) -> N
         )
         assert overtaken.status_code == 410, overtaken.text
         error: dict[str, Any] = overtaken.json()["error"]
-        assert error["code"] == "cursor_expired"
+        assert error["code"] == "event_gap"
     finally:
         _shutdown(gateway)
 

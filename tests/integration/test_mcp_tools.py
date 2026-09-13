@@ -32,7 +32,8 @@ from fastapi import FastAPI
 from fastmcp import FastMCP
 
 from benchweave.content.store import ContentStore
-from benchweave.interfaces.app import create_app
+from benchweave.interfaces import app as app_module
+from benchweave.interfaces.app import WriteGate, create_app
 from benchweave.interfaces.identity import issue
 from benchweave.interfaces.mcp import build_mcp
 from benchweave.interfaces.operations import Operations, append_bench_event
@@ -90,7 +91,11 @@ def seam_app(tmp_path: Path) -> Iterator[FastMCP]:
         now_epoch=lambda: NOW_EPOCH,
     )
     yield build_mcp(
-        operations, secret=SECRET, now_epoch=lambda: NOW_EPOCH, limits=LIMITS
+        operations,
+        secret=SECRET,
+        now_epoch=lambda: NOW_EPOCH,
+        limits=LIMITS,
+        gate=WriteGate(),
     )
     store.close()
 
@@ -351,6 +356,100 @@ def test_live_mount_auth_rejections(tmp_path: Path) -> None:
         envelope = _call_envelope(body)
         assert envelope["ok"] is False
         assert envelope["error"]["code"] == "forbidden"
+
+
+# --- final fix wave: MCP write gate + isError posture -------------------------
+
+
+def test_mutating_mcp_tool_holds_write_gate_read_does_not(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Final-fix-wave pin (§4): MCP mutations ride the app's WriteGate —
+    the same process-wide single-writer discipline REST's seven mutating
+    handlers already hold. REST's set maps to the five mutating MCP tools
+    that exist (run_start, run_cancel, lease_create/renew/release;
+    change_submit/apply are REST-only by catalog, unreachable here). The
+    seam spy records whether the gate is held AT the seam call: the
+    mutating tool holds it, the read tool does not."""
+    depth = {"held": 0}
+    seen: dict[str, bool] = {}
+
+    class SpyGate(WriteGate):
+        def __enter__(self) -> WriteGate:
+            depth["held"] += 1
+            return super().__enter__()
+
+        def __exit__(self, *exc: object) -> None:
+            depth["held"] -= 1
+            super().__exit__(*exc)
+
+    monkeypatch.setattr(app_module, "WriteGate", SpyGate)
+
+    original_create = Operations.lease_create
+    original_get = Operations.bench_get
+
+    def spy_lease_create(
+        self: Operations,
+        identity: Any,
+        bench_id: str,
+        request_id: str,
+        expected_generation: int,
+        duration_ms: int,
+    ) -> dict[str, Any]:
+        seen["lease_create"] = depth["held"] > 0
+        return original_create(
+            self, identity, bench_id, request_id, expected_generation, duration_ms
+        )
+
+    def spy_bench_get(self: Operations, identity: Any, bench_id: str) -> dict[str, Any]:
+        seen["bench_get"] = depth["held"] > 0
+        return original_get(self, identity, bench_id)
+
+    monkeypatch.setattr(Operations, "lease_create", spy_lease_create)
+    monkeypatch.setattr(Operations, "bench_get", spy_bench_get)
+
+    store = Store.open(tmp_path / "state.db", check_same_thread=False)
+    content = ContentStore(store)
+    app = create_app(
+        store=store,
+        content=content,
+        secret=SECRET,
+        limits=LIMITS,
+        gateway_id="gw-gate-spy",
+        fixtures_dir=FIXTURES,
+        now_iso=lambda: NOW_ISO,
+        now_epoch=lambda: NOW_EPOCH,
+    )
+    url, server, thread = _boot(app)
+    try:
+        token = _token({"stg:control"})
+        session = _session(url, token)
+        mutating = _tools_call(
+            url,
+            session,
+            token,
+            2,
+            "stg_v1_lease_create",
+            {
+                "bench_id": "nope-bench",
+                "request_id": "req-gate-spy",
+                "expected_generation": 1,
+                "duration_ms": 1000,
+            },
+        )
+        assert mutating["ok"] is False, mutating  # unknown bench: not_found
+        reading = _tools_call(
+            url, session, token, 3, "stg_v1_bench_get", {"bench_id": "nope-bench"}
+        )
+        assert reading["ok"] is False, reading
+    finally:
+        server.should_exit = True
+        thread.join(timeout=5)
+        store.close()
+
+    assert seen["lease_create"] is True, "mutating tool must hold the write gate"
+    assert seen["bench_get"] is False, "read tools stay ungated (REST parity)"
+    assert depth["held"] == 0  # balanced enter/exit through the whole test
 
 
 # --- fix wave: adapter limit/length clamping + first run-through-app test ----
