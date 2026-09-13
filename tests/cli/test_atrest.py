@@ -292,3 +292,118 @@ def test_restore_missing_archive_fails_truthfully(tmp_path: Path) -> None:
         cli, ["restore", "--archive", str(tmp_path / "nope"), "--data-dir", str(tmp_path / "d")]
     )
     assert result.exit_code != 0
+
+
+# --- review fix wave: I1 — the digest gate may never be vacuous ------------------
+
+
+def _rewrite_manifest_files(archive: Path, files: dict[str, str]) -> None:
+    manifest = json.loads((archive / "manifest.json").read_text(encoding="utf-8"))
+    manifest["files"] = files
+    (archive / "manifest.json").write_text(
+        json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8"
+    )
+
+
+def test_restore_rejects_an_emptied_manifest_despite_a_valid_db(tmp_path: Path) -> None:
+    """A damaged manifest must fail the restore, not disarm it: an empty
+    ``files`` dict would verify clean with ZERO digests checked."""
+    data = tmp_path / "data"
+    _initialized(data)
+    archive = backup(data, tmp_path / "out")
+    _rewrite_manifest_files(archive, {})
+    fresh = tmp_path / "fresh"
+    result = CliRunner().invoke(
+        cli, ["restore", "--archive", str(archive), "--data-dir", str(fresh)]
+    )
+    assert result.exit_code != 0
+    combined = _combined(result)
+    assert "files" in combined and "empty" in combined
+    assert not (fresh / "state.sqlite").exists(), "a disarmed manifest must not restore"
+
+
+def test_restore_rejects_a_manifest_that_stops_covering_the_store(tmp_path: Path) -> None:
+    """Dropping the ``state.sqlite`` entry while other digests still pass
+    must not let the store swap in unverified."""
+    data = tmp_path / "data"
+    _initialized(data)
+    (data / "content" / "blob.bin").write_bytes(b"content-bytes")
+    archive = backup(data, tmp_path / "out")
+    manifest = json.loads((archive / "manifest.json").read_text(encoding="utf-8"))
+    files = {k: v for k, v in manifest["files"].items() if k != "state.sqlite"}
+    assert files, "test needs at least one non-store entry to pass its digest"
+    _rewrite_manifest_files(archive, files)
+    fresh = tmp_path / "fresh"
+    result = CliRunner().invoke(
+        cli, ["restore", "--archive", str(archive), "--data-dir", str(fresh)]
+    )
+    assert result.exit_code != 0
+    assert "state.sqlite" in _combined(result)
+    assert not (fresh / "state.sqlite").exists()
+
+
+def test_restore_runs_integrity_check_beyond_digests(tmp_path: Path) -> None:
+    """The mutating command applies at least the advisory gate: a corrupt
+    store whose manifest digest was fixed up to match still refuses."""
+    data = tmp_path / "data"
+    _initialized(data)
+    archive = backup(data, tmp_path / "out")
+    corrupt = b"definitely not a sqlite database"
+    (archive / "state.sqlite").write_bytes(corrupt)
+    manifest = json.loads((archive / "manifest.json").read_text(encoding="utf-8"))
+    files = dict(manifest["files"])
+    files["state.sqlite"] = _sha256_bytes(corrupt)
+    _rewrite_manifest_files(archive, files)
+    fresh = tmp_path / "fresh"
+    result = CliRunner().invoke(
+        cli, ["restore", "--archive", str(archive), "--data-dir", str(fresh)]
+    )
+    assert result.exit_code != 0
+    assert "integrity" in _combined(result)
+    assert not (fresh / "state.sqlite").exists()
+
+
+def _sha256_bytes(raw: bytes) -> str:
+    return hashlib.sha256(raw).hexdigest()
+
+
+# --- review fix wave: I2 — traceback-free at-rest boundaries ----------------------
+
+
+def _handled(result: Result) -> None:
+    assert result.exception is None or isinstance(
+        result.exception, SystemExit
+    ), f"must be a handled error, not a traceback: {result.exception!r}"
+
+
+def test_restore_to_a_missing_parent_dir_is_handled_not_a_traceback(tmp_path: Path) -> None:
+    """Disaster-recovery-to-a-rebuilt-path is THE restore use case — a
+    nonexistent parent must refuse truthfully, not FileNotFoundError."""
+    data = tmp_path / "data"
+    _initialized(data)
+    archive = backup(data, tmp_path / "out")
+    target = tmp_path / "nonexistent" / "parent" / "data"
+    result = CliRunner().invoke(
+        cli, ["restore", "--archive", str(archive), "--data-dir", str(target)]
+    )
+    _handled(result)
+    assert result.exit_code != 0
+    assert "stage" in _combined(result)
+    assert not (tmp_path / "nonexistent").exists(), "nothing created on refusal"
+
+
+def test_backup_over_a_corrupted_store_is_handled_and_leaves_no_partial(
+    tmp_path: Path,
+) -> None:
+    """A non-SQLite state.sqlite must exit non-zero with a truthful message
+    (not sqlite3.DatabaseError), and a failed backup must not leave a
+    partial backup-<iso>/ behind."""
+    data = tmp_path / "data"
+    _initialized(data)
+    (data / "state.sqlite").write_bytes(b"junk-bytes-not-a-database")
+    out = tmp_path / "out"
+    result = CliRunner().invoke(cli, ["backup", "--data-dir", str(data), "--out", str(out)])
+    _handled(result)
+    assert result.exit_code != 0
+    assert "snapshot" in _combined(result)
+    assert not list(out.glob("backup-*")), "a failed backup must not leave a partial dir"

@@ -205,19 +205,30 @@ def backup(data_dir: Path, out: Path) -> Path:
         # Only created under the hold: a refused backup must not leave a
         # half-created target directory behind.
         target.mkdir(parents=True)
-        source = sqlite3.connect(str(db))
-        snapshot = target / DB_NAME
-        dest = sqlite3.connect(str(snapshot))
         try:
-            source.backup(dest)
-        finally:
-            dest.close()
-            source.close()
-        content_src = data_dir / CONTENT_DIR
-        if content_src.is_dir():
-            shutil.copytree(content_src, target / CONTENT_DIR)
-        else:
-            (target / CONTENT_DIR).mkdir()
+            source = sqlite3.connect(str(db))
+            snapshot = target / DB_NAME
+            dest = sqlite3.connect(str(snapshot))
+            try:
+                source.backup(dest)
+            except sqlite3.Error as error:
+                raise AtRestError(f"cannot snapshot {db}: {error}") from error
+            finally:
+                dest.close()
+                source.close()
+            content_src = data_dir / CONTENT_DIR
+            try:
+                if content_src.is_dir():
+                    shutil.copytree(content_src, target / CONTENT_DIR)
+                else:
+                    (target / CONTENT_DIR).mkdir()
+            except OSError as error:
+                raise AtRestError(f"cannot copy content from {content_src}: {error}") from error
+        except BaseException:
+            # A failed backup must not leave a partial backup-<iso>/ behind
+            # (review M4) — same cleanliness as the refusal path.
+            shutil.rmtree(target, ignore_errors=True)
+            raise
     manifest = {
         "files": _digest_tree(target),
         "wal_included": wal_included,
@@ -237,6 +248,13 @@ def _manifest_mismatches(staged: Path, manifest: dict[str, Any]) -> list[str]:
     if not isinstance(files, dict):
         return [f"{MANIFEST_NAME}: 'files' must be an object"]
     problems: list[str] = []
+    # The digest gate may never be vacuous (review I1): a damaged manifest —
+    # an emptied ``files`` dict, or one that stops covering the store while
+    # the archive still carries it — must fail verification, not disarm it.
+    if not files:
+        problems.append(f"{MANIFEST_NAME}: 'files' is empty — nothing to verify")
+    elif DB_NAME not in files and (staged / DB_NAME).is_file():
+        problems.append(f"{MANIFEST_NAME}: 'files' does not cover {DB_NAME}")
     for rel in sorted(files):
         expected = str(files[rel])
         path = staged / rel
@@ -254,11 +272,22 @@ def restore(archive: Path, data_dir: Path) -> None:
 
     The archive is staged into a sibling temp directory and every manifest
     digest is checked BEFORE anything in ``data_dir`` is touched — a failed
-    verify never half-replaces. The previous data dir is renamed aside as
+    verify never half-replaces. The manifest gate is total (review I1): a
+    damaged manifest (emptied ``files``, one that stops covering the store)
+    fails the restore instead of disarming the digest check, and the staged
+    snapshot must pass the same SQLite integrity check ``verify`` applies —
+    the mutating command never runs a weaker gate than the advisory one.
+    The previous data dir is renamed aside as
     ``<name>.pre-restore-<stamp>`` (kept for the operator), then the staged
     directory is moved into place with ``os.replace``; if that move fails
-    the aside copy is put straight back. Credentials (``benchweave.env``)
-    are deliberately not part of backups and are not restored.
+    the aside copy is put straight back. During the swap window the held
+    lock stays anchored to the OLD database file's inode (now inside the
+    aside dir) — the incoming directory is un-anchored until this call
+    returns, so a gateway booting concurrently can take a fresh hold inode;
+    the swap then fails loudly (``ENOTEMPTY``) with the aside copy
+    preserved — confusing, never corrupting. Credentials
+    (``benchweave.env``) are deliberately not part of backups and are not
+    restored.
     """
     archive = Path(archive)
     data_dir = Path(data_dir)
@@ -274,23 +303,34 @@ def restore(archive: Path, data_dir: Path) -> None:
     if hold is not None:
         hold.acquire()
     try:
-        staging = Path(
-            tempfile.mkdtemp(dir=data_dir.parent, prefix=f".{data_dir.name}.restore-")
-        )
+        try:
+            staging = Path(
+                tempfile.mkdtemp(dir=data_dir.parent, prefix=f".{data_dir.name}.restore-")
+            )
+        except OSError as error:
+            # Disaster-recovery-to-a-rebuilt-path is THE restore use case —
+            # a missing parent must refuse truthfully, not traceback.
+            raise AtRestError(
+                f"cannot stage restore beside {data_dir.parent}: {error}"
+            ) from error
         try:
             staged = staging / data_dir.name
             staged.mkdir()
-            shutil.copy2(archive / DB_NAME, staged / DB_NAME)
-            content_src = archive / CONTENT_DIR
-            if content_src.is_dir():
-                shutil.copytree(content_src, staged / CONTENT_DIR)
-            else:
-                (staged / CONTENT_DIR).mkdir()
-            shutil.copy2(archive / MANIFEST_NAME, staged / MANIFEST_NAME)
-            mismatches = _manifest_mismatches(staged, manifest)
-            if mismatches:
+            try:
+                shutil.copy2(archive / DB_NAME, staged / DB_NAME)
+                content_src = archive / CONTENT_DIR
+                if content_src.is_dir():
+                    shutil.copytree(content_src, staged / CONTENT_DIR)
+                else:
+                    (staged / CONTENT_DIR).mkdir()
+                shutil.copy2(archive / MANIFEST_NAME, staged / MANIFEST_NAME)
+            except OSError as error:
+                raise AtRestError(f"cannot read archive {archive}: {error}") from error
+            problems = _manifest_mismatches(staged, manifest)
+            problems.extend(_integrity_problems(staged / DB_NAME))
+            if problems:
                 raise AtRestError(
-                    "archive digest verification failed: " + "; ".join(mismatches)
+                    "archive digest/integrity verification failed: " + "; ".join(problems)
                 )
             aside: Path | None = None
             if data_dir.exists():

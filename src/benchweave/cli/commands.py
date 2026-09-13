@@ -133,7 +133,10 @@ def backup(data_dir: Path, out: Path, json_output: bool) -> None:
     _set_json(json_output)
     try:
         target = atrest.backup(data_dir, out)
-    except (atrest.AtRestError, StoreHeldError) as error:
+    except (atrest.AtRestError, StoreHeldError, OSError) as error:
+        # OSError as a safety net (review I2): every mapped failure is an
+        # AtRestError, but an unforeseen filesystem error must still be a
+        # handled message, never a traceback.
         raise click.ClickException(str(error)) from error
     manifest = json.loads(
         (target / atrest.MANIFEST_NAME).read_text(encoding="utf-8")
@@ -175,7 +178,9 @@ def restore(archive: Path, data_dir: Path, json_output: bool) -> None:
     _set_json(json_output)
     try:
         atrest.restore(archive, data_dir)
-    except (atrest.AtRestError, StoreHeldError) as error:
+    except (atrest.AtRestError, StoreHeldError, OSError) as error:
+        # OSError as a safety net (review I2): e.g. staging into a
+        # nonexistent parent is a refusal, not a FileNotFoundError traceback.
         raise click.ClickException(str(error)) from error
     emit({"restored": str(data_dir), "archive": str(archive)})
 

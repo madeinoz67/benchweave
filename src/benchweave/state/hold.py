@@ -88,24 +88,28 @@ class StoreHold:
         fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
         try:
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            # Written only under the held lock: the body names the CURRENT
+            # holder, never a refused contender.
+            os.ftruncate(fd, 0)
+            os.lseek(fd, 0, os.SEEK_SET)
+            os.write(
+                fd,
+                json.dumps(
+                    {
+                        "pid": os.getpid(),
+                        "label": self._label,
+                        "acquired_at": datetime.now(UTC).isoformat(),
+                    }
+                ).encode("utf-8"),
+            )
+            os.fsync(fd)
         except BlockingIOError as error:
             os.close(fd)
             raise StoreHeldError(_read_holder(path)) from error
-        # Written only under the held lock: the body names the CURRENT
-        # holder, never a refused contender.
-        os.ftruncate(fd, 0)
-        os.lseek(fd, 0, os.SEEK_SET)
-        os.write(
-            fd,
-            json.dumps(
-                {
-                    "pid": os.getpid(),
-                    "label": self._label,
-                    "acquired_at": datetime.now(UTC).isoformat(),
-                }
-            ).encode("utf-8"),
-        )
-        os.fsync(fd)
+        except OSError:
+            # Any other failure must not leak the descriptor (review M3).
+            os.close(fd)
+            raise
         self._fd = fd
 
     def release(self) -> None:
@@ -136,7 +140,10 @@ def daemon_holds(db_path: Path) -> bool:
     if not path.exists():
         return False
     try:
-        fd = os.open(path, os.O_RDWR)
+        # Read-only suffices for flock (review M3): the probe never writes,
+        # and a read-only open works where a write open could not (e.g. a
+        # 0600 marker owned by the gateway's user, probed by the operator).
+        fd = os.open(path, os.O_RDONLY)
     except FileNotFoundError:
         return False
     try:
