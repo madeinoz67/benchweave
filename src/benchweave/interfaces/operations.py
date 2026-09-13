@@ -1048,7 +1048,7 @@ class Operations:
         fixture bench with no registry session (WP08 deployment surface), so
         an otherwise-valid idle activation records ``failed``/``not_ready``
         rather than fabricating an activation record."""
-        if self._store.get_active_lease(bench_id) is not None:
+        if self._live_lease(bench_id) is not None:
             raise errors.OperationFailure(
                 errors.failure("not_ready", f"bench {bench_id} holds a live lease; not idle")
             )
@@ -1118,7 +1118,7 @@ class Operations:
             "generation": row["generation"],
             "qualification": row["qualification"],
             "tripped": False,
-            "busy": self._store.get_active_lease(row["bench_id"]) is not None,
+            "busy": self._live_lease(row["bench_id"]) is not None,
             "configuration": {
                 "id": str(configuration.get("id", row["bench_id"])),
                 "version": str(configuration.get("version", "1")),
@@ -1232,6 +1232,29 @@ class Operations:
             "expires_at": lease.expires_at,
             "state": lease.state,
         }
+
+    def _live_lease(self, bench_id: str) -> Lease | None:
+        """The bench's ACTIVE lease, iff its stored ``expires_at`` is still
+        in the future at the seam's injected clock (D13).
+
+        The stored stamp is the read-time oracle — ``limits.max_lease_ms``
+        bounds what ``lease_create`` may mint, never what a read decides —
+        and ``now >= expires_at`` means the unreleased row pins nothing:
+        the bench stops reading busy and new runs/leases are admissible.
+        An unparseable stamp fails the same direction (no deadline can be
+        established, so the row cannot hold the bench; the takeover path
+        already refuses such a row closed ``not_found``). This clears only
+        the LEASE-side busy: the §5 run-side oracle stays
+        ``LIVE_RUN_STATES`` over ``Store.list_run_states``.
+        """
+        lease = self._store.get_active_lease(bench_id)
+        if lease is None:
+            return None
+        expiry = _parse_utc(lease.expires_at)
+        now_moment = _parse_utc(self._now_iso())
+        if expiry is None or now_moment is None or now_moment >= expiry:
+            return None
+        return lease
 
     def _find_lease(self, lease_id: str) -> Lease | None:
         """Locate a lease by id across benches, preferring the active row

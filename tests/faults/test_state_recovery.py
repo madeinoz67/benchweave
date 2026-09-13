@@ -68,6 +68,52 @@ def test_same_key_different_body_conflicts(store: Store) -> None:
         store.accept_request("req-1", body_hash(binding_body("proc-b")), "run-2", NOW)
 
 
+# --- D13 crash-window: accept_request without create_run -------------------
+
+
+def test_crash_window_split_state_reconciles_never_wedges(store: Store) -> None:
+    """A process death between ``accept_request`` and ``create_run``
+    leaves a §9 key pointing at a run that never materialized — every
+    same-body replay resolves the key and then fails on the ghost. The
+    recovery sweep (the store leg of the lifespan's recovery entrypoint)
+    purges exactly those keys: healthy keys — including a tombstoned
+    run's — survive, the sweep is idempotent, and the same request id
+    proceeds afterwards."""
+    body = body_hash(binding_body())
+    # The split state, written directly over the store's sqlite3
+    # connection: the committed requests row, no runs row behind it.
+    store.connection.execute(
+        "INSERT INTO requests (idempotency_key, body_sha256, run_id, accepted_at)"
+        " VALUES (?, ?, ?, ?)",
+        ("key-dangling", body, "run-never-created", NOW),
+    )
+    # Healthy shapes the sweep must NOT touch: a live key+run pair, and a
+    # key whose run was tombstoned (the run row still exists).
+    store.accept_request("key-live", body, "run-live", NOW)
+    store.create_run("run-live", binding_body(), "engineer-a", NOW)
+    store.accept_request("key-tomb", body, "run-tomb", NOW)
+    store.create_run("run-tomb", binding_body(), "engineer-a", NOW)
+    store.delete_run("run-tomb", NOW)
+
+    # The durable wedge, pre-recovery: the key exists, its run does not.
+    assert store.find_request("key-dangling") is not None
+    assert store.get_run("run-never-created") is None
+    replay = store.accept_request("key-dangling", body, "run-never-created", NOW)
+    assert accept_result(replay) == "duplicate"  # the ghost keeps answering
+
+    purged = store.reconcile_dangling_requests()
+    assert purged == ["key-dangling"]
+    assert store.find_request("key-dangling") is None
+    assert store.find_request("key-live") is not None
+    assert store.find_request("key-tomb") is not None
+    assert store.get_run("run-live") is not None
+
+    # Idempotent, and the same request id proceeds once reconciled.
+    assert store.reconcile_dangling_requests() == []
+    again = store.accept_request("key-dangling", body, "run-retry-1", NOW)
+    assert accept_result(again) == "accepted"
+
+
 # --- runs and retained tombstones ------------------------------------------
 
 

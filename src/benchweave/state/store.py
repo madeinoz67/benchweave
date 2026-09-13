@@ -152,6 +152,37 @@ class Store:
             "accepted_at": row[3],
         }
 
+    def reconcile_dangling_requests(self) -> list[str]:
+        """Purge §9 request keys whose run never materialized (D13).
+
+        ``accept_request`` and ``create_run`` are two transactions: a
+        process death between them files a key that points at no run, and
+        every same-body replay then resolves the key and fails on the
+        ghost — a permanent wedge. This sweep (the store leg of the app
+        lifespan's recovery entrypoint, alongside
+        ``RunCoordinator.recover_interrupted``) deletes exactly those
+        keys — a LEFT JOIN keeps every key whose run row exists, live or
+        tombstoned — so the same request id can proceed after restart.
+        Idempotent by construction; returns the purged keys.
+        """
+        self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            rows = self._conn.execute(
+                "SELECT requests.idempotency_key FROM requests"
+                " LEFT JOIN runs ON runs.run_id = requests.run_id"
+                " WHERE runs.run_id IS NULL"
+            ).fetchall()
+            keys = [str(row[0]) for row in rows]
+            for key in keys:
+                self._conn.execute(
+                    "DELETE FROM requests WHERE idempotency_key = ?", (key,)
+                )
+        except BaseException:
+            self._conn.execute("ROLLBACK")
+            raise
+        self._conn.execute("COMMIT")
+        return keys
+
     # --- runs -----------------------------------------------------------------
 
     def create_run(self, run_id: str, binding: dict[str, Any], principal_id: str, now: str) -> None:
@@ -252,13 +283,8 @@ class Store:
         )
 
     def release_lease(self, bench_id: str, sequence: int, now: str) -> None:
-        cursor = self._conn.execute(
-            "UPDATE leases SET state = 'released', expires_at = ? "
-            "WHERE bench_id = ? AND sequence = ? AND state = 'active'",
-            (now, bench_id, sequence),
-        )
-        if cursor.rowcount != 1:
-            raise LeaseNotActive(f"no active lease {sequence} on bench {bench_id!r}")
+        """Release an active lease (the holder returns the bench)."""
+        self._close_lease(bench_id, sequence, now)
 
     def consume_lease(self, bench_id: str, sequence: int, now: str) -> None:
         """Consume an active lease for a commissioned takeover (D12).
@@ -273,6 +299,14 @@ class Store:
         active-only, under the store's one-writer discipline) is the
         single write that closes one.
         """
+        self._close_lease(bench_id, sequence, now)
+
+    def _close_lease(self, bench_id: str, sequence: int, now: str) -> None:
+        """The ONE guarded active→released transition (D13 hygiene fold):
+        both a holder release and a commissioned consumption close the
+        lease the same way — exact bench + sequence, active-only, the
+        close time stamped into ``expires_at`` — so the two public
+        methods can never drift apart."""
         cursor = self._conn.execute(
             "UPDATE leases SET state = 'released', expires_at = ? "
             "WHERE bench_id = ? AND sequence = ? AND state = 'active'",

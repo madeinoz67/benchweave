@@ -189,10 +189,24 @@ def _recover_interrupted_runs(
     ``run_changed`` makes the gap visible on the bench stream — nothing
     else is invented. No plugins are constructed: recovery never touches a
     device.
+
+    D13 batch A adds the crash-window leg on the same startup path:
+    ``Store.reconcile_dangling_requests`` purges §9 keys whose run never
+    materialized (a process death between ``accept_request`` and
+    ``create_run``), unwedging the request id for a fresh attempt.
     """
     docs = _recovery_documents(fixtures_dir)
     coordinator = RunCoordinator(store, {}, SystemClock(), SystemClock(), docs)
     recovered = coordinator.recover_interrupted()
+    # D13 crash-window reconciliation rides the same startup path: a §9
+    # request key filed by a process that died between accept_request and
+    # create_run points at a run that never materialized (a permanent
+    # replay wedge). The sweep purges exactly those keys — every key with
+    # a runs row, live or tombstoned, keeps its replay protection — so
+    # the same request id can proceed. No event is emitted: nothing
+    # observable happened (no run, no dispatch) and the seven-kind fence
+    # has no vocabulary for it; the purged keys are the caller's evidence.
+    store.reconcile_dangling_requests()
     bench_id = str(docs.bench["id"])
     for run_id in recovered:
         store.put_run_state(run_id, bench_id, "terminal", now_iso())
