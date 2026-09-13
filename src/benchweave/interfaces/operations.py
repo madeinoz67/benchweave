@@ -16,8 +16,13 @@ from benchweave.content.store import ContentStore
 from benchweave.control.clocking import SystemClock
 from benchweave.control.coordinator import _iso_plus_ms, _parse_utc
 from benchweave.interfaces import errors
+from benchweave.interfaces.bootstrap import RegistrySession
 from benchweave.interfaces.identity import Identity, IdentityRejected, validate
 from benchweave.interfaces.validation import SeamValidator
+from benchweave.registry.activation import ActivationRejected, activate
+from benchweave.registry.admission import AdmissionRejected, Admitted, Approval, admit
+from benchweave.registry.authenticity import AuthenticityRejected
+from benchweave.registry.schemas import RegistryRejected
 from benchweave.state.store import Conflict, Lease, LeaseNotActive, Store
 
 if TYPE_CHECKING:
@@ -42,6 +47,15 @@ _CURSOR_SECRET = b"wp07-cursor-v1"  # principal-binding only, not an auth secret
 # from acceptance until its queue state closes terminal — the D9 busy oracle
 # reads exactly these states via Store.list_run_states.
 LIVE_RUN_STATES = frozenset({"accepted", "running", "protecting"})
+
+# Registry-layer refusals that mean "the registry does not carry this
+# target" — surfaced as ``not_found``; every other registry gate refusal
+# (revocation, expiry, rollback, budgets, authenticity) is a decided
+# ``policy_denied`` (WP08 Task 7 wiring).
+_REGISTRY_NOT_FOUND_REASONS = frozenset(
+    {"unknown_release", "missing_dependency", "unrouted_namespace",
+     "cross_origin_fallback"}
+)
 
 
 def require_permission(identity: Identity, permission: str) -> None:
@@ -155,6 +169,7 @@ class Operations:
         now_iso: Callable[[], str] | None = None,
         issuer_secret: bytes | None = None,
         now_epoch: Callable[[], int] | None = None,
+        registry_session: RegistrySession | None = None,
     ) -> None:
         self._store = store
         self._content = content
@@ -172,6 +187,11 @@ class Operations:
         # production deployment config is the WP08 surface.
         self._issuer_secret = issuer_secret
         self._now_epoch = now_epoch if now_epoch is not None else _default_now_epoch
+        # Fixture resolver session (WP08 Task 7): the local registry surface
+        # the two registry change kinds dispatch through. ``None`` keeps the
+        # WP07 fail-closed posture — both kinds record ``failed``/
+        # ``not_ready`` instead of fabricating registry work.
+        self._registry_session = registry_session
 
     # --- observe -------------------------------------------------------------
 
@@ -983,7 +1003,7 @@ class Operations:
                         f" not {expected_generation}",
                     )
                 )
-            self._dispatch_change(change, request_id, now)
+            self._dispatch_change(change, request_id, now, approver.principal)
         except errors.OperationFailure as fail:
             self._record_change_outcome(change_id, "failed", fail.failure.message, now)
             raise
@@ -1089,20 +1109,28 @@ class Operations:
         return approver
 
     def _dispatch_change(
-        self, change: dict[str, Any], request_id: str, now: str
+        self,
+        change: dict[str, Any],
+        request_id: str,
+        now: str,
+        approver_principal: str,
     ) -> None:
         """Run the kind's checks, then commit exactly once: bump the
         canonical generation, refresh the bench-row projection (Task-5
         mandate — observe must never lag the authority), mark the change
-        applied, and emit the kind's event (Task 6)."""
+        applied, and emit the kind's event (Task 6).
+
+        ``approver_principal`` is the independently authenticated approver
+        change_apply verified (never the applier); the registry kinds
+        record it in the package lock's approval block (WP08 Task 7)."""
         kind = str(change["kind"])
         bench_id = str(change["bench_id"])
-        handler: Callable[[dict[str, Any], str], str] = {
+        handler: Callable[[dict[str, Any], str, str], str] = {
             "package_admission": self._apply_package_admission,
             "configuration_activation": self._apply_configuration_activation,
             "trip_reset": self._apply_trip_reset,
         }[kind]
-        event_kind = handler(change, bench_id)
+        event_kind = handler(change, bench_id, approver_principal)
         new_generation = self._store.bump_generation(bench_id, now)
         row = self._store.get_bench(bench_id)
         if row is not None:
@@ -1127,7 +1155,9 @@ class Operations:
             },
         )
 
-    def _apply_trip_reset(self, change: dict[str, Any], bench_id: str) -> str:
+    def _apply_trip_reset(
+        self, change: dict[str, Any], bench_id: str, _approver_principal: str
+    ) -> str:
         """Trip reset requires no live trip condition on the bench projection
         (contract: reset cannot re-arm or restart a test — reconciled
         physical state); a tripped bench is ``policy_denied``."""
@@ -1143,42 +1173,144 @@ class Operations:
         return "bench_changed"
 
     def _apply_configuration_activation(
-        self, change: dict[str, Any], bench_id: str
+        self, change: dict[str, Any], bench_id: str, approver_principal: str
     ) -> str:
         """Idle boundary first: a live bench lease refuses activation —
         registry.activation.activate's ``not_idle``, surfaced as
         ``not_ready``.
 
-        WP07 disclosure: the registry leg — ``activate(admitted, *,
-        bench_generation, bench_has_live_lease, records_dir, activated_at)
-        -> ActivationRecord`` — needs an ``Admitted`` closure only a
-        configured registry session can produce; this gateway runs the PoC
-        fixture bench with no registry session (WP08 deployment surface), so
-        an otherwise-valid idle activation records ``failed``/``not_ready``
-        rather than fabricating an activation record."""
+        WP08 Task 7: with a registry session wired, the kind admits the
+        target closure (the same surface package_admission dispatches
+        through) and activates it — ``activate(admitted, *,
+        bench_generation, bench_has_live_lease, records_dir, activated_at)``
+        writes the per-bench activation record binding the admitted lock
+        digest into the generation this change creates. The
+        ``bench_has_live_lease=False`` argument is justified by the idle
+        refusal above, never assumed.
+        Without a session the kind still records ``failed``/``not_ready``
+        rather than fabricating an activation record (the WP07 posture,
+        pinned by test_seam_admin and test_registry_changes)."""
         if self._live_lease(bench_id) is not None:
             raise errors.OperationFailure(
                 errors.failure("not_ready", f"bench {bench_id} holds a live lease; not idle")
             )
-        raise errors.OperationFailure(
-            errors.failure("not_ready", "registry activation is not configured")
-        )
+        session = self._require_registry_session()
+        admitted = self._admit_registry_target(change, approver_principal)
+        try:
+            activate(
+                admitted,
+                bench_generation=int(change["expected_generation"]),
+                bench_has_live_lease=False,  # the idle refusal above owns this
+                records_dir=session.records_dir / bench_id,
+                activated_at=self._now_iso(),
+            )
+        except ActivationRejected as rejected:
+            code = {"not_idle": "not_ready", "generation_conflict": "conflict"}.get(
+                rejected.reason, "policy_denied"
+            )
+            raise errors.OperationFailure(
+                errors.failure(code, f"registry activation refused: {rejected.reason}")
+            ) from None
+        return "registry_status_changed"
 
-    def _apply_package_admission(self, change: dict[str, Any], bench_id: str) -> str:
+    def _apply_package_admission(
+        self, change: dict[str, Any], bench_id: str, approver_principal: str
+    ) -> str:
         """package_admission: registry admission of the target package.
 
-        WP07 disclosure: ``registry.admission.admit(closure, *, cache_root,
-        lock_path, limits: AdmissionLimits, approval: Approval(principal_id,
-        approved_at, policy_id, policy_version), now_ns, roots,
-        high_water=None) -> Admitted`` consumes a ``ResolvedClosure`` from
-        the resolver session plus per-release trust roots. No registry
-        session is configured on this gateway (the PoC fixture bench
-        bypasses the registry), so the kind records ``failed``/
-        ``not_ready`` instead of admitting anything; WP08 wires the resolver
-        session and this becomes a real admit + ``registry_status_changed``."""
-        raise errors.OperationFailure(
-            errors.failure("not_ready", "registry admission is not configured")
-        )
+        WP08 Task 7: with a registry session wired, the kind resolves the
+        target's dependency closure, checks the change's digest pin against
+        the served root release, and admits — the same
+        ``registry.admission.admit`` surface the WP06 suite proves (verified
+        extraction into the content-addressed cache, the package lock, the
+        persisted high-water view). Without a session the kind still records
+        ``failed``/``not_ready`` instead of admitting anything.
+        """
+        self._admit_registry_target(change, approver_principal)
+        return "registry_status_changed"
+
+    def _require_registry_session(self) -> RegistrySession:
+        """The wired fixture resolver session, or the honest not_ready."""
+        if self._registry_session is None:
+            raise errors.OperationFailure(
+                errors.failure("not_ready", "registry admission is not configured")
+            )
+        return self._registry_session
+
+    def _admit_registry_target(
+        self, change: dict[str, Any], approver_principal: str
+    ) -> Admitted:
+        """Resolve, digest-check, and admit the change's target closure.
+
+        The target ref's ``sha256`` pins the root release's manifest digest:
+        a pin the served registry does not match is a ``conflict`` refused
+        BEFORE anything is admitted. Registry-layer refusals are decided
+        failures, never undecided crashes — resolve/admit rejections map to
+        ``not_found`` when the registry does not carry the target and
+        ``policy_denied`` for every other gate (revocation, expiry,
+        rollback, budgets, authenticity), so the change records ``failed``
+        with the refusing reason instead of ``unknown``.
+        """
+        session = self._require_registry_session()
+        target = json.loads(str(change["target_ref_json"]))
+        package_id = str(target["id"])
+        version = str(target["version"])
+        pinned_sha = str(target["sha256"])
+        try:
+            closure = session.resolver.resolve(
+                session.registry_id,
+                package_id,
+                version,
+                now_ns=session.now_ns(),
+                high_water=session.high_water,
+            )
+            root = next(
+                (
+                    release
+                    for release in closure.releases
+                    if release.package_id == package_id and release.version == version
+                ),
+                None,
+            )
+            if root is None or root.manifest_sha256 != pinned_sha:
+                raise errors.OperationFailure(
+                    errors.failure(
+                        "conflict",
+                        f"registry {session.registry_id} serves {package_id}"
+                        f" {version} at a different manifest digest than pinned",
+                    )
+                )
+            return admit(
+                closure,
+                cache_root=session.cache_root,
+                lock_path=session.lock_path,
+                limits=session.limits,
+                approval=Approval(
+                    principal_id=approver_principal,
+                    approved_at=self._now_iso(),
+                    # The approval vehicle is the two-phase change approval
+                    # whose independent approver is named above; the lock
+                    # schema requires a non-empty policy identity and the
+                    # gateway has no richer policy registry to cite.
+                    policy_id="stg:admin-change",
+                    policy_version="1",
+                ),
+                now_ns=session.now_ns(),
+                roots=session.roots,
+                high_water=session.high_water,
+            )
+        except (
+            RegistryRejected,
+            AdmissionRejected,
+            AuthenticityRejected,
+        ) as rejected:
+            code = (
+                "not_found" if rejected.reason in _REGISTRY_NOT_FOUND_REASONS
+                else "policy_denied"
+            )
+            raise errors.OperationFailure(
+                errors.failure(code, f"registry refused: {rejected.reason}")
+            ) from None
 
     def _record_change_outcome(
         self, change_id: str, state: str, reason: str, now: str

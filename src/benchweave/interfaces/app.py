@@ -30,7 +30,7 @@ from benchweave.control.clocking import MonotonicClock, SystemClock, WallClock
 from benchweave.control.coordinator import RunCoordinator, _PreparedRun, _RunMonitor
 from benchweave.control.documents import AdmittedDocuments, admit_documents
 from benchweave.host.plugin import DevicePlugin
-from benchweave.interfaces.bootstrap import admit_startup_bench
+from benchweave.interfaces.bootstrap import RegistrySession, admit_startup_bench
 from benchweave.interfaces.mcp import build_mcp
 from benchweave.interfaces.operations import Operations, append_bench_event
 from benchweave.interfaces.rest import build_router
@@ -321,6 +321,7 @@ def create_app(
     fixtures_dir: Path,
     now_iso: Callable[[], str],
     now_epoch: Callable[[], int],
+    registry_session: RegistrySession | None = None,
 ) -> FastAPI:
     """Compose the gateway: gate, worker (limits mandated), seam, MCP mount."""
     gate = WriteGate()
@@ -345,6 +346,10 @@ def create_app(
         now_iso=now_iso,
         issuer_secret=secret,
         now_epoch=now_epoch,
+        # WP08 Task 7: the fixture resolver session (constructed once via
+        # bootstrap.build_registry_session); ``None`` keeps the fail-closed
+        # WP07 posture for the registry change kinds.
+        registry_session=registry_session,
     )
 
     mcp_server = build_mcp(
