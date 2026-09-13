@@ -112,9 +112,12 @@ def build_router(
                     fail.failure.body(),
                     status_code=errors.FAILURE_HTTP[fail.failure.code],
                 )
-            except Exception:
+            except Exception as crash:
+                # D13: the ONE internal_error construction site — identical
+                # message text on both transports, per-instance detail in
+                # ``details``, correlation_id minted per envelope.
                 return JSONResponse(
-                    errors.failure("internal_error", "unexpected gateway failure").body(),
+                    errors.internal_failure(crash).body(),
                     status_code=errors.FAILURE_HTTP["internal_error"],
                 )
 

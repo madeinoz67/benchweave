@@ -38,7 +38,11 @@ from fastmcp.server.auth import AccessToken, TokenVerifier
 from fastmcp.server.dependencies import get_access_token
 from fastmcp.tools import ToolResult
 
-from benchweave.interfaces.errors import OperationFailure, failure
+from benchweave.interfaces.errors import (
+    OperationFailure,
+    failure,
+    internal_failure,
+)
 from benchweave.interfaces.identity import Identity, IdentityRejected, validate
 from benchweave.interfaces.operations import Operations
 
@@ -165,6 +169,14 @@ def build_mcp(
             return ToolResult(structured_content={"ok": True, "data": call()})
         except OperationFailure as fail:
             return ToolResult(structured_content=fail.failure.body(), is_error=True)
+        except Exception as crash:
+            # D13 parity: the same internal_error construction site REST's
+            # ``_guard`` uses — identical message text, a minted
+            # correlation_id, and never an exception over the wire.
+            return ToolResult(
+                structured_content=internal_failure(crash).body(),
+                is_error=True,
+            )
 
     def _paged(
         call: Callable[[], tuple[list[dict[str, Any]], str | None]]

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -50,6 +51,31 @@ def failure(
     if code not in FAILURE_HTTP:
         raise ValueError(f"unknown interface error code {code!r}")
     return Failure(code=code, message=message, retry=retry, details=details or {})
+
+
+def internal_failure(crash: BaseException | None = None) -> Failure:
+    """The ONE ``internal_error`` construction site for both adapters (D13).
+
+    The message text is transport-invariant — per-instance detail is
+    parameterised into ``details`` (the exception CLASS name only: a
+    crashed exception string can carry anything, and the contract §10
+    excludes stack traces from the wire), never the message. Every
+    envelope mints its own ``correlation_id`` (``uuid4().hex[:16]``): the
+    §10 "a correlation ID links internal diagnostics" link between the
+    wire response and the operator's logs. Both adapters render exactly
+    this factory's output, so text parity is by construction and is
+    pinned end to end in the parity suite.
+    """
+    details: dict[str, Any] = {}
+    if crash is not None:
+        details["exception"] = type(crash).__name__
+    return Failure(
+        code="internal_error",
+        message="unexpected gateway failure",
+        correlation_id=uuid.uuid4().hex[:16],
+        retry="never",
+        details=details,
+    )
 
 
 class OperationFailure(Exception):

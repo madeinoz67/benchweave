@@ -68,14 +68,18 @@ a test; none is silent) versus what it proves equal:
 - Unreachable failure classes, named and not faked: ``policy_denied``
   (``_bench_projection`` has no tripped source yet — the flag is hardcoded
   False until the WP08 hardware surface), ``gone``/``cursor_expired``/
-  ``rate_limited``/``unavailable``/``internal_error`` (no emitting path is
+  ``rate_limited``/``unavailable`` (no emitting path is
   reachable through a healthy app: ``cursor_expired`` has no emitter —
   retention ``trim_stream`` deletes a contiguous prefix, so a hole can
   never arise by construction, and the contract's §7 events paragraph
   assigns the one stale-cursor path there is, retention overtake, to
   ``event_gap`` (the overtake branch is its raise site); ``unavailable``
   needs an undecided apply crash or a worker-less gateway;
-  ``internal_error`` needs an unexpected exception). Monitor retention
+  ``internal_error`` needs an unexpected exception — reachable only by
+  INJECTION, which is exactly what
+  ``test_internal_error_parity_with_correlation_id`` does (a monkeypatched
+  seam crash on both transports; the D13 one-construction-site pin).
+  Monitor retention
   failures emit the ``evidence_gap`` EVENT KIND (Task 6), a different thing
   from the ``event_gap`` failure code.
 """
@@ -85,6 +89,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import re
 import threading
 import time
 import urllib.error
@@ -102,6 +107,7 @@ from fastapi import FastAPI
 from benchweave.content.store import ContentStore
 from benchweave.interfaces.app import create_app
 from benchweave.interfaces.identity import issue
+from benchweave.interfaces.operations import Operations
 from benchweave.state.store import Store
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "execution"
@@ -129,6 +135,7 @@ LIMITS: dict[str, int] = {
     "max_admission_ms": 5000,
 }
 BENCH = "sim-bench"
+_CORRELATION_ID = re.compile(r"^[0-9a-f]{16}$")  # errors.internal_failure mint
 DEVICE = "descriptor-sim-controller"  # bootstrap keys rows by descriptor id
 BINDING_SHA = hashlib.sha256((FIXTURES / "run-binding.json").read_bytes()).hexdigest()
 BINDING_REF = {"id": "req-voltage-check-1", "version": "1.0.0", "sha256": BINDING_SHA}
@@ -1109,6 +1116,49 @@ def test_payload_too_large_envelope_parity(gateway: SimpleNamespace) -> None:
     assert envelope["ok"] is False
     assert envelope["error"]["code"] == rest_error["code"] == "payload_too_large"
     assert envelope["error"]["message"] == rest_error["message"]
+
+
+def test_internal_error_parity_with_correlation_id(
+    gateway: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D13: an unexpected crash under a handler surfaces the contract
+    ``internal_error`` envelope on BOTH transports — identical message text
+    (one construction site, ``errors.internal_failure``; the per-instance
+    detail rides ``details``, never the message) and a non-empty 16-hex
+    ``correlation_id`` on each, freshly minted per envelope."""
+
+    def boom(
+        self: Operations, identity: Any, bench_id: str, binding_ref: dict[str, Any]
+    ) -> dict[str, Any]:
+        raise RuntimeError("injected internal_error probe")
+
+    monkeypatch.setattr(Operations, "run_check", boom)
+    status, rest_json = _rest(
+        gateway,
+        "post",
+        f"/v1/benches/{BENCH}/run-checks",
+        {"binding_ref": BINDING_REF},
+        CONTROL,
+    )
+    assert status == 500, rest_json
+    rest_error = rest_json["error"]
+    assert rest_error["code"] == "internal_error"
+
+    mcp_result = _call_result(
+        gateway.port,
+        "stg_v1_run_check",
+        {"bench_id": BENCH, "binding_ref": BINDING_REF},
+        CONTROL,
+    )
+    assert mcp_result.get("isError") is True, mcp_result
+    mcp_error = mcp_result["structuredContent"]["error"]
+    assert mcp_error["code"] == rest_error["code"] == "internal_error"
+    assert mcp_error["message"] == rest_error["message"]
+    assert mcp_error["retry"] == rest_error["retry"] == "never"
+    assert _CORRELATION_ID.match(rest_error["correlation_id"])
+    assert _CORRELATION_ID.match(mcp_error["correlation_id"])
+    # Per-failure mint: the two envelopes are distinct diagnostics events.
+    assert rest_error["correlation_id"] != mcp_error["correlation_id"]
 
 
 def test_expired_token_probe(gateway: SimpleNamespace) -> None:
