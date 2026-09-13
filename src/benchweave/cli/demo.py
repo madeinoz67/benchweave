@@ -39,6 +39,7 @@ import sqlite3
 import tempfile
 import threading
 import time
+from collections import deque
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
@@ -93,6 +94,35 @@ class RunReader(Protocol):
     gateway: a stub implementing ``run_get`` satisfies it structurally)."""
 
     def run_get(self, run_id: str) -> dict[str, Any]: ...
+
+
+class DriveClient(Protocol):
+    """The REST surface a live drive needs (``GatewayClient`` satisfies it
+    structurally; test stubs implement it the same way — the RunReader
+    precedent, widened to the whole drive path)."""
+
+    def bench_get(self, bench_id: str) -> dict[str, Any]: ...
+
+    def run_check(
+        self, bench_id: str, *, binding_ref: Mapping[str, Any]
+    ) -> dict[str, Any]: ...
+
+    def run_start(
+        self,
+        bench_id: str,
+        *,
+        request_id: str,
+        binding_ref: Mapping[str, Any],
+        expected_generation: int,
+    ) -> dict[str, Any]: ...
+
+    def run_find(self, request_id: str) -> dict[str, Any]: ...
+
+    def run_get(self, run_id: str) -> dict[str, Any]: ...
+
+    def events_get(
+        self, bench_id: str, *, after: str = "", limit: int = 100
+    ) -> dict[str, Any]: ...
 
 
 # --- fixture binding ------------------------------------------------------------
@@ -170,7 +200,7 @@ def _terminal_evidence(run: Mapping[str, Any]) -> tuple[dict[str, Any] | None, l
     return dict(terminal_ref), [str(terminal_ref["sha256"])]
 
 
-def _start_run(client: GatewayClient, fixtures: Path) -> dict[str, Any]:
+def _start_run(client: DriveClient, fixtures: Path) -> dict[str, Any]:
     """The shared start of both drive orchestration paths: resolve the
     binding, advisory-preflight it, start the run, and §9-cross-check that
     the request resolves to the run that was just accepted."""
@@ -207,7 +237,7 @@ def _start_run(client: GatewayClient, fixtures: Path) -> dict[str, Any]:
 
 
 def drive_gateway(
-    client: GatewayClient, fixtures: Path, *, timeout_s: float
+    client: DriveClient, fixtures: Path, *, timeout_s: float
 ) -> dict[str, Any]:
     """Start the fixture run on the gateway's bench and drive it to terminal."""
     started = _start_run(client, fixtures)
@@ -234,25 +264,31 @@ def drive_gateway(
 
 class LiveDrive:
     """One drive, observable live: the identical one-REST-path start as
-    :func:`drive_gateway`, then an ``events_get``-polling generator that
-    yields bench events to a view as they arrive until the run is terminal.
+    :func:`drive_gateway`, then a poll-cycle API the live feed drives —
+    ``poll()`` (run_get + cursor-paged ``events_get``),
+    ``wait_poll_interval()`` (a stop-aware wait), and ``result()``.
 
-    The live view (Task 12) consumes :func:`live_feed`; the view never
-    drives the gateway — the polling lives here, in the command layer.
+    ``stop()`` ends the drive promptly (the operator closed the live view):
+    a poll loop observing it unblocks within ONE poll interval — never the
+    drive timeout. The live view (Task 12) consumes :func:`live_feed`; the
+    view never drives the gateway — the polling lives here, in the command
+    layer.
     """
 
-    def __init__(
-        self, client: GatewayClient, fixtures: Path, *, timeout_s: float
-    ) -> None:
+    def __init__(self, client: DriveClient, fixtures: Path, *, timeout_s: float) -> None:
         self._client = client
         self._fixtures = fixtures
         self._timeout_s = timeout_s
+        self._stop = threading.Event()
         self._binding: dict[str, Any] | None = None
         self._bench_id = ""
         self._run_id = ""
+        self._after = ""
         self._run: dict[str, Any] | None = None
+        self._last_run: dict[str, Any] | None = None
         self._seen: list[dict[str, Any]] = []
         self._failure: DemoError | GatewayError | None = None
+        self._deadline = 0.0
 
     @property
     def bench_id(self) -> str:
@@ -262,6 +298,23 @@ class LiveDrive:
     def run_id(self) -> str:
         return self._run_id
 
+    @property
+    def terminal(self) -> bool:
+        return self._run is not None
+
+    @property
+    def stopped(self) -> bool:
+        return self._stop.is_set()
+
+    def stop(self) -> None:
+        """Signal the poll loop to end promptly (the live view was closed)."""
+        self._stop.set()
+
+    def wait_poll_interval(self) -> bool:
+        """Wait one poll interval; True when ``stop()`` was observed — the
+        bounded, stop-aware replacement for ``time.sleep`` in poll loops."""
+        return self._stop.wait(POLL_INTERVAL_S)
+
     def start(self) -> None:
         """binding → preflight → run_start → §9 cross-check (truthful errors)."""
         started = _start_run(self._client, self._fixtures)
@@ -269,86 +322,150 @@ class LiveDrive:
         self._bench_id = str(started["bench_id"])
         self._run_id = str(started["run_id"])
 
-    def events(self) -> Iterator[dict[str, Any]]:
-        """Yield bench events as they arrive (``events_get`` pages via the
-        returned cursor) until the run is terminal. On a truthful failure
-        (timeout, transport) the failure is recorded, ONE ``demo_error``
-        record is yielded, and the feed ends — a view never sees an
-        exception from its feed."""
+    def poll(self) -> list[dict[str, Any]]:
+        """One REST cycle: ``run_get`` + the next ``events_get`` page
+        (cursor-paged). Records the observation and the new events; returns
+        the NEW events ([] when none). Raises the truthful timeout error
+        once the deadline passes without a terminal state."""
         if not self._run_id:
-            raise DemoError("LiveDrive.events() before start()")
-        after = ""
-        deadline = time.monotonic() + self._timeout_s
-        try:
-            while True:
-                run = self._client.run_get(self._run_id)
-                page = self._client.events_get(self._bench_id, after=after)
-                items = page.get("events")
-                if isinstance(items, list):
-                    for event in items:
-                        if isinstance(event, dict):
-                            self._seen.append(event)
-                            yield event
-                cursor = page.get("cursor")
-                if isinstance(cursor, str) and cursor:
-                    after = cursor
-                if run.get("state") == "terminal":
-                    self._run = run
-                    return
-                if time.monotonic() >= deadline:
-                    raise DemoError(
-                        f"run {self._run_id} did not reach a terminal state within "
-                        f"{self._timeout_s:g}s (last state: {run.get('state')!r})"
-                    )
-                time.sleep(POLL_INTERVAL_S)
-        except (DemoError, GatewayError) as error:
-            self._failure = error
-            yield {FEED_ERROR: str(error)}
+            raise DemoError("LiveDrive.poll() before start()")
+        if self._deadline == 0.0:
+            self._deadline = time.monotonic() + self._timeout_s
+        run = self._client.run_get(self._run_id)
+        self._last_run = run
+        page = self._client.events_get(self._bench_id, after=self._after)
+        new: list[dict[str, Any]] = []
+        items = page.get("events")
+        if isinstance(items, list):
+            for event in items:
+                if isinstance(event, dict):
+                    new.append(event)
+        cursor = page.get("cursor")
+        if isinstance(cursor, str) and cursor:
+            self._after = cursor
+        self._seen.extend(new)
+        if run.get("state") == "terminal":
+            self._run = run
+        elif time.monotonic() >= self._deadline:
+            raise DemoError(
+                f"run {self._run_id} did not reach a terminal state within "
+                f"{self._timeout_s:g}s (last state: {run.get('state')!r})"
+            )
+        return new
+
+    def fail(self, error: DemoError | GatewayError) -> None:
+        """Record a truthful drive failure (surfaced by ``result()``)."""
+        self._failure = error
 
     def result(self) -> dict[str, Any]:
-        """The drive_gateway-shaped summary — valid once ``events()`` has run
-        to exhaustion (the run is terminal); a failed drive re-raises here."""
+        """The drive summary — the full drive_gateway-shaped payload once the
+        feed ran to exhaustion (the run is terminal); an operator-close
+        payload when the live view was closed early (a clean close, not a
+        failure); a failed drive re-raises here."""
+        if self._binding is None:
+            raise DemoError("LiveDrive.result() before start()")
         if self._failure is not None:
             raise self._failure
-        if self._run is None:
-            raise DemoError(
-                "the live drive has not reached a terminal state — "
-                "consume events() to exhaustion first"
-            )
-        assert self._binding is not None
-        terminal_ref, digests = _terminal_evidence(self._run)
-        return {
-            "bench_id": self._bench_id,
-            "procedure_id": self._binding["procedure_id"],
-            "request_id": self._binding["request_id"],
-            "run_id": self._run_id,
-            "state": str(self._run["state"]),
-            "outcome": self._run.get("outcome"),
-            "safe_state": self._run.get("safe_state"),
-            "terminal_record": terminal_ref,
-            "evidence_digests": digests,
-            "events_observed": len(self._seen),
-        }
+        if self._run is not None:
+            terminal_ref, digests = _terminal_evidence(self._run)
+            return {
+                "bench_id": self._bench_id,
+                "procedure_id": self._binding["procedure_id"],
+                "request_id": self._binding["request_id"],
+                "run_id": self._run_id,
+                "state": str(self._run["state"]),
+                "outcome": self._run.get("outcome"),
+                "safe_state": self._run.get("safe_state"),
+                "terminal_record": terminal_ref,
+                "evidence_digests": digests,
+                "events_observed": len(self._seen),
+            }
+        if self.stopped:
+            last = self._last_run or {}
+            return {
+                "bench_id": self._bench_id,
+                "procedure_id": self._binding["procedure_id"],
+                "request_id": self._binding["request_id"],
+                "run_id": self._run_id,
+                "state": str(last.get("state", "unknown")),
+                "outcome": last.get("outcome"),
+                "safe_state": last.get("safe_state"),
+                "terminal_record": None,
+                "evidence_digests": [],
+                "events_observed": len(self._seen),
+                "closed_by_operator": True,
+            }
+        raise DemoError(
+            "the live drive has not reached a terminal state — "
+            "consume the feed to exhaustion first"
+        )
 
 
-def live_feed(drive: LiveDrive, *, label: str | None) -> Iterator[dict[str, Any]]:
+class LiveFeed:
     """The demo_view feed: an opening banner record (carrying the
     SIMULATION label in fresh-install mode, ``None`` against a live
-    gateway), then the bench events as they arrive. The feed ends when the
-    run is terminal — or after one ``demo_error`` record when the drive
-    failed truthfully."""
-    yield {
-        FEED_BANNER: {
-            "label": label,
-            "bench_id": drive.bench_id,
-            "run_id": drive.run_id,
+    gateway), then bench events as they arrive. The feed ENDS when the run
+    is terminal — or, on a failed drive, after one ``demo_error`` record
+    carrying the truthful message.
+
+    Unlike a bare generator, the poll loop waits in poll-interval-bounded
+    increments and observes ``close()`` (the live view was closed) within
+    one poll interval — an operator quit never blocks on the drive timeout
+    (a running generator cannot be closed; an iterator can).
+    """
+
+    def __init__(self, drive: LiveDrive, *, label: str | None) -> None:
+        self._drive = drive
+        self._banner: dict[str, Any] = {
+            FEED_BANNER: {
+                "label": label,
+                "bench_id": drive.bench_id,
+                "run_id": drive.run_id,
+            }
         }
-    }
-    yield from drive.events()
+        self._pending: deque[dict[str, Any]] = deque()
+        self._served_banner = False
+        self._done = False
+
+    def __iter__(self) -> Iterator[dict[str, Any]]:
+        return self
+
+    def close(self) -> None:
+        """End the feed promptly (the operator closed the live view)."""
+        self._drive.stop()
+
+    def __next__(self) -> dict[str, Any]:
+        if not self._served_banner:
+            self._served_banner = True
+            return self._banner
+        while not self._pending:
+            if self._done or self._drive.stopped:
+                raise StopIteration
+            try:
+                self._pending.extend(self._drive.poll())
+            except (DemoError, GatewayError) as error:
+                self._drive.fail(error)
+                self._done = True
+                return {FEED_ERROR: str(error)}
+            if self._drive.terminal:
+                self._done = True
+                if not self._pending:
+                    raise StopIteration
+                break  # serve this cycle's events, then end
+            if self._drive.wait_poll_interval():
+                raise StopIteration  # the operator closed the live view
+        return self._pending.popleft()
+
+
+def live_feed(drive: LiveDrive, *, label: str | None) -> LiveFeed:
+    """The demo_view feed (see :class:`LiveFeed`): banner record + bench
+    events as they arrive; ends at terminal, on a ``demo_error`` record
+    (failed drive), or promptly on ``close()`` (operator closed the view)."""
+    return LiveFeed(drive, label=label)
 
 
 def _drive_with_view(
-    client: GatewayClient,
+    client: DriveClient,
     fixtures: Path,
     *,
     timeout_s: float,
@@ -356,12 +473,16 @@ def _drive_with_view(
     label: str | None,
 ) -> dict[str, Any]:
     """Drive to terminal — plainly, or through a live view the command
-    feeds events to as they arrive (the view consumes; it never drives)."""
+    feeds events to as they arrive (the view consumes; it never drives).
+    The view returning early (the operator closed it) stops the drive
+    promptly and yields the operator-close summary — a clean exit, not a
+    failure."""
     if view is None:
         return drive_gateway(client, fixtures, timeout_s=timeout_s)
     drive = LiveDrive(client, fixtures, timeout_s=timeout_s)
     drive.start()
     view(live_feed(drive, label=label))
+    drive.stop()  # the view returned: release the poll loop promptly
     return drive.result()
 
 
@@ -599,6 +720,16 @@ def render_demo(data: Mapping[str, object]) -> str:
     lines.append(f"state:           {data.get('state')}")
     lines.append(f"outcome:         {data.get('outcome')}")
     lines.append(f"safe_state:      {data.get('safe_state')}")
+    if data.get("closed_by_operator"):
+        # The operator closed the live view early — a clean exit, with the
+        # mode's truth: a live-gateway run keeps running; the ephemeral
+        # simulation was torn down with its gateway.
+        if str(data.get("mode")) == "gateway":
+            lines.append("closed by operator — the run continues on the gateway")
+        else:
+            lines.append(
+                "closed by operator — the ephemeral simulation run was torn down"
+            )
     terminal = data.get("terminal_record")
     if isinstance(terminal, Mapping):
         lines.append(f"terminal_record: {terminal.get('sha256')}")

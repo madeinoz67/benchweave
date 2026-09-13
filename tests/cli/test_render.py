@@ -455,7 +455,7 @@ def test_live_drive_result_refuses_before_terminal(gateway: SimpleNamespace) -> 
     client = GatewayClient(gateway.base, token=gateway.token)
     drive = LiveDrive(client, FIXTURES, timeout_s=30.0)
     drive.start()
-    with pytest.raises(DemoError, match="consume events"):
+    with pytest.raises(DemoError, match="consume the feed"):
         drive.result()
 
 
@@ -484,6 +484,170 @@ def test_run_simulation_threads_the_view_through_the_drive(tmp_path: Path) -> No
     banner = cast(Mapping[str, object], seen[0][FEED_BANNER])
     assert banner["label"] == SIMULATION_LABEL
     assert any("kind" in record for record in seen[1:]), "events arrived at the view"
+
+
+# --- I1: the operator-close (quit) path of the live demo view --------------------
+
+
+class _StalledFeed:
+    """A demo-feed stand-in that serves the banner then stalls (no more
+    records) until ``close()`` — the quit-mid-feed scenario. Self-terminates
+    after ``abort_s`` so a regression fails fast instead of hanging the
+    suite on an abandoned worker."""
+
+    def __init__(self, *, abort_s: float = 6.0) -> None:
+        self.closed = threading.Event()
+        self.ended = threading.Event()
+        self._abort_at = time.monotonic() + abort_s
+        self._banner_done = False
+
+    def close(self) -> None:
+        self.closed.set()
+
+    def __iter__(self) -> Iterator[Mapping[str, object]]:
+        return self
+
+    def __next__(self) -> Mapping[str, object]:
+        if not self._banner_done:
+            self._banner_done = True
+            return _banner()
+        while not self.closed.is_set():
+            if time.monotonic() >= self._abort_at:
+                break
+            # poll-like bounded wait: a close must end this within one cycle
+            self.closed.wait(0.2)
+        self.ended.set()
+        raise StopIteration
+
+
+@pytest.mark.anyio
+async def test_demo_app_quit_mid_feed_closes_the_stalled_feed() -> None:
+    """I1: quitting the live view mid-feed must CLOSE the feed so the app's
+    worker (and its executor thread) unblocks within ~one poll interval —
+    never the drive timeout — and the app exits cleanly."""
+    feed = _StalledFeed()
+    app = DemoApp(feed)  # production default: auto_exit on feed end
+    async with app.run_test() as pilot:
+        await pilot.pause(0.1)  # banner marshalled; worker stalled in next()
+        await pilot.press("q")  # the operator quits mid-feed
+    # Bounded waits (fail fast on regression — never the timeout):
+    assert feed.closed.wait(timeout=5.0), "quit must close the stalled feed"
+    assert feed.ended.wait(timeout=5.0), (
+        "the stalled feed must end within ~one poll interval of the close"
+    )
+
+
+class _StalledGateway:
+    """A drive-client stub (the RunReader precedent, full drive surface):
+    the run never leaves ``running`` and event pages stay empty — a stalled
+    feed with no gateway and no fixture execution."""
+
+    def __init__(self) -> None:
+        self.run_get_calls = 0
+
+    def bench_get(self, bench_id: str) -> dict[str, object]:
+        return {"bench_id": bench_id, "generation": 1}
+
+    def run_check(
+        self, bench_id: str, *, binding_ref: Mapping[str, object]
+    ) -> dict[str, object]:
+        return {"valid": True, "generation": 1}
+
+    def run_start(
+        self,
+        bench_id: str,
+        *,
+        request_id: str,
+        binding_ref: Mapping[str, object],
+        expected_generation: int,
+    ) -> dict[str, object]:
+        return {"run_id": "run-stalled-1"}
+
+    def run_find(self, request_id: str) -> dict[str, object]:
+        return {"run_id": "run-stalled-1"}
+
+    def run_get(self, run_id: str) -> dict[str, object]:
+        self.run_get_calls += 1
+        return {
+            "run_id": run_id,
+            "state": "running",
+            "outcome": None,
+            "safe_state": None,
+            "terminal_record": None,
+        }
+
+    def events_get(
+        self, bench_id: str, *, after: str = "", limit: int = 100
+    ) -> dict[str, object]:
+        return {
+            "events": [],
+            "cursor": after or "cursor-0",
+            "stream_id": f"bench.{bench_id}",
+            "oldest_sequence": "0",
+            "current_sequence": "0",
+        }
+
+
+def test_live_feed_close_ends_the_stalled_feed_within_one_poll_interval() -> None:
+    """I1: a consumer blocked mid-poll (the view's worker) must be released
+    by ``close()`` within ~one poll interval — bounded, not the 30s timeout —
+    and the drive reports an operator close, not a failure."""
+    stub = _StalledGateway()
+    drive = LiveDrive(stub, FIXTURES, timeout_s=30.0)
+    drive.start()
+    feed = live_feed(drive, label=SIMULATION_LABEL)
+    assert FEED_BANNER in next(iter(feed))
+    ended = threading.Event()
+
+    def consume() -> None:  # the view's worker: stalled inside next()
+        for _record in feed:
+            pass
+        ended.set()
+
+    worker = threading.Thread(target=consume, daemon=True)
+    worker.start()
+    time.sleep(0.6)  # the worker is stalled in next() on the empty pages
+    assert not ended.is_set(), "precondition: the feed is genuinely stalled"
+    calls_before = stub.run_get_calls
+    feed.close()  # the operator closed the live view
+    assert ended.wait(timeout=2.0), (
+        "close() must end the stalled feed within ~one poll interval "
+        "(2s), not the 30s timeout"
+    )
+    payload = drive.result()
+    assert payload["closed_by_operator"] is True
+    assert payload["run_id"] == "run-stalled-1"
+    assert payload["state"] == "running"  # the last observed state, truthfully
+    assert stub.run_get_calls >= calls_before  # it WAS polling, then stopped
+
+
+def test_drive_with_view_operator_close_is_a_clean_truthful_exit() -> None:
+    """I1: a view that returns mid-feed (the operator closed it) produces a
+    clean exit-0-shaped payload and a mode-truthful summary line — never a
+    DemoError traceback-class refusal."""
+    from benchweave.cli.demo import _drive_with_view
+
+    def quitting_view(events: Iterable[Mapping[str, object]]) -> None:
+        iterator = iter(events)
+        next(iterator)  # the banner; the operator quits here
+
+    payload = _drive_with_view(
+        _StalledGateway(), FIXTURES, timeout_s=30.0, view=quitting_view, label=None
+    )
+    assert payload["closed_by_operator"] is True
+    gateway_text = render_demo(
+        {**payload, "mode": "gateway", "simulation": False, "label": None,
+         "gateway": "http://127.0.0.1:1"}
+    )
+    assert "closed by operator" in gateway_text
+    assert "continues on the gateway" in gateway_text  # gateway-mode truth
+    fresh_text = render_demo(
+        {**payload, "mode": "simulation", "simulation": True,
+         "label": SIMULATION_LABEL, "gateway": "http://127.0.0.1:1",
+         "scratch_dir": "/tmp/x"}
+    )
+    assert "closed by operator" in fresh_text
+    assert "torn down" in fresh_text  # fresh-mode truth: the ephemeral run ends
 
 
 # --- the three T11 review carries ------------------------------------------------
@@ -549,6 +713,26 @@ def test_carry_b_unwritable_scratch_parent_refuses_truthfully(tmp_path: Path) ->
         assert "cannot create" in combined
     finally:
         parent.chmod(0o700)
+
+
+def test_carry_b_unwritable_preexisting_scratch_dir_refuses_truthfully(
+    tmp_path: Path,
+) -> None:
+    """M1 (review fold): the one carry-(b) branch with no pin — a pre-existing
+    unwritable scratch directory reaches ``Store.open``, whose
+    sqlite3.OperationalError must map to a truthful DemoError refusal."""
+    scratch = tmp_path / "locked-scratch"
+    scratch.mkdir()
+    scratch.chmod(0o500)
+    try:
+        result = CliRunner().invoke(cli, ["demo", "--scratch", str(scratch), "--json"])
+        _handled(result)
+        assert result.exit_code != 0
+        combined = _combined(result)
+        assert str(scratch) in combined
+        assert "cannot open a store" in combined
+    finally:
+        scratch.chmod(0o700)
 
 
 def test_carry_c_mode_crossed_options_note_their_mode_in_help() -> None:

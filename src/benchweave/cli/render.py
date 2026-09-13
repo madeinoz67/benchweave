@@ -23,13 +23,16 @@ record ``{"demo_banner": {"label", "bench_id", "run_id"}}`` — ``label`` is
 ``SIMULATION`` in fresh-install mode, ``None`` against a live gateway —
 then bench event mappings as they arrive, and — only on a failed drive — a
 closing ``{"demo_error": message}`` record. The feed ENDING is the terminal
-signal: ``DemoApp`` closes itself (``auto_exit``).
+signal: ``DemoApp`` closes itself (``auto_exit``). Feeds may expose
+``close()`` (``demo.LiveFeed`` does): the app closes the feed when the
+operator quits, so the worker consuming it unblocks within one poll
+interval — never the drive timeout.
 """
 
 from __future__ import annotations
 
 import contextlib
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import Protocol, cast, runtime_checkable
 
 import click
@@ -223,6 +226,21 @@ class DemoApp(App[None]):
         # The worker THREAD iterates the feed (the command polls the gateway
         # — the view only consumes); records are marshalled to the UI thread.
         self.run_worker(self._consume, thread=True, name="demo-feed")
+
+    def on_unmount(self) -> None:
+        # The operator closed the view: CLOSE the feed so the worker (and
+        # the app's executor thread, joined at App.run shutdown) unblocks
+        # within one poll interval — never the drive timeout. Textual's
+        # Worker.cancel() only sets an event a blocked worker never checks,
+        # so the feed itself must be closeable. Feeds without close() (plain
+        # lists, generators) are unaffected.
+        close: Callable[[], None] | None = getattr(self._events, "close", None)
+        if close is not None:
+            # ValueError only for a RUNNING generator's close() (an embedder
+            # passing a bare generator) — the abandoned generator is then
+            # closed by GC; LiveFeed.close() cannot raise here.
+            with contextlib.suppress(ValueError):
+                close()
 
     def _consume(self) -> None:
         """Iterate the feed on the worker thread until it ends or the app
