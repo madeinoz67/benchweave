@@ -135,6 +135,88 @@ def test_app_entry_build_default_posture_keeps_the_test_secret(
     assert isinstance(app_entry.build(), FastAPI)
 
 
+# --- review I1: empty and placeholder secrets are publicly-known boots ------------
+
+
+@pytest.mark.parametrize("value", ["", " ", "\t "])
+def test_app_entry_build_refuses_empty_secret_in_production(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    """``BENCHWEAVE_SECRET=`` (a trailing-``=`` typo in the env file) must
+    refuse in production — an empty secret boots production signing tokens
+    with no secret at all."""
+    from benchweave.interfaces import app_entry
+
+    db = _production_env(monkeypatch, tmp_path)
+    monkeypatch.setenv("BENCHWEAVE_SECRET", value)
+    with pytest.raises(RuntimeError) as raised:
+        app_entry.build()
+    assert "BENCHWEAVE_SECRET" in str(raised.value)
+    assert not db.exists(), "the refusal must fire before the store is opened"
+
+
+def test_app_entry_build_refuses_the_env_example_placeholder_in_production(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The deploy example's placeholder is public in the repo — an operator
+    who copies the example and forgets to fill it must not boot production
+    on it (PERMISSIONS-REVIEW §1's operator-error row, exactly)."""
+    from benchweave.interfaces import app_entry
+
+    db = _production_env(monkeypatch, tmp_path)
+    monkeypatch.setenv(
+        "BENCHWEAVE_SECRET", "__GENERATE_AND_STORE_A_REAL_RANDOM_SECRET__"
+    )
+    with pytest.raises(RuntimeError) as raised:
+        app_entry.build()
+    assert "BENCHWEAVE_SECRET" in str(raised.value)
+    assert not db.exists()
+
+
+# --- review M2/M3: observability and the lazy mechanism ---------------------------
+
+
+def test_build_notes_when_no_registry_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """M2: the fail-closed not_ready posture is observable at build time —
+    a one-line stderr note, not a silent capability downgrade."""
+    from benchweave.interfaces import app_entry
+
+    monkeypatch.delenv("BENCHWEAVE_ENV", raising=False)
+    monkeypatch.delenv("BENCHWEAVE_SECRET", raising=False)
+    monkeypatch.setenv("BENCHWEAVE_DB", str(tmp_path / "state.sqlite"))
+    empty = tmp_path / "no-registry"
+    empty.mkdir()
+    monkeypatch.setenv("BENCHWEAVE_REGISTRY_DIR", str(empty))
+    app_entry.build()
+    note = capsys.readouterr().err
+    assert "not_ready" in note
+    assert "registry" in note
+
+
+def test_lazy_app_imports_without_env_and_builds_only_on_access(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """M3: the PEP 562 mechanism pinned directly — importing the module
+    composes nothing (an absent env cannot fail the import), and ``app``
+    enters the module dict only at attribute access."""
+    import importlib
+    import sys as sys_module
+
+    monkeypatch.delenv("BENCHWEAVE_DB", raising=False)
+    sys_module.modules.pop("benchweave.interfaces.app_entry", None)
+    module = importlib.import_module("benchweave.interfaces.app_entry")
+    assert "app" not in vars(module), "import must not compose the gateway"
+    monkeypatch.setenv("BENCHWEAVE_DB", str(tmp_path / "state.sqlite"))
+    monkeypatch.delenv("BENCHWEAVE_ENV", raising=False)
+    monkeypatch.delenv("BENCHWEAVE_SECRET", raising=False)
+    assert module.app is not None, "attribute access builds the gateway"
+    assert "app" in vars(module), "the built app caches in the module dict"
+
+
 # --- T7 carry: the fixture resolver session wired from the environment ----------
 
 
@@ -337,7 +419,7 @@ def test_env_example_is_placeholder_only_and_carries_no_fixtures_coupling() -> N
 _PLACEHOLDER = re.compile(r"\{\{[^}]+\}\}|<[A-Za-z0-9_ .-]+>|__[A-Z0-9_]+__")
 _ABS_PATH = re.compile(r"(?:/[A-Za-z0-9_.+-]+)+")
 _SECRETISH_KEY = re.compile(
-    r"^[A-Z0-9_]*(?:SECRET|TOKEN|KEY|PASSWORD|PASSPHRASE|CREDENTIAL)[A-Z0-9_]*\s*="
+    r"^\s*[A-Z0-9_]*(?:SECRET|TOKEN|KEY|PASSWORD|PASSPHRASE|CREDENTIAL)[A-Z0-9_]*\s*="
 )
 _HIGH_ENTROPY = re.compile(r"[A-Za-z0-9+/=]{32,}")
 

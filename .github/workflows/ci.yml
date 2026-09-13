@@ -48,6 +48,11 @@ jobs:
             echo "::error::systemd-analyze is required to verify deploy/systemd/ but is absent on this runner"
             exit 1
           fi
+          # NOTE: the pytest suite's `{{`-absence assertion on the rendered
+          # template (tests/cli/test_serve.py) is the guard that catches a
+          # missed placeholder — systemd-analyze verify can tolerate literal
+          # braces in some directive positions. Do not "simplify" that test
+          # away; this job and it catch complementary failure modes.
           # Rehearse the deployment preconditions the rendered unit names:
           # the dedicated system user, the one writable data dir, the env file.
           sudo useradd --system --no-create-home --shell /usr/sbin/nologin benchweave

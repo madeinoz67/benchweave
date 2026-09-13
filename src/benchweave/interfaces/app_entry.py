@@ -40,6 +40,7 @@ the (posture-checked) composition at access time.
 from __future__ import annotations
 
 import os
+import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -56,6 +57,13 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 _DEFAULT_FIXTURES = _REPO_ROOT / "fixtures" / "execution"
 _DEFAULT_REGISTRY = _REPO_ROOT / "fixtures" / "registry"
 _DEFAULT_SECRET = b"wp07-task-eleven-secret"
+#: The deploy example's placeholder value (keep in sync with
+#: deploy/systemd/benchweave.env.example) — public in the repo, so it is
+#: refused alongside the default test secret under production posture.
+ENV_EXAMPLE_PLACEHOLDER_SECRET = b"__GENERATE_AND_STORE_A_REAL_RANDOM_SECRET__"
+#: Secret values that are publicly known and therefore unusable in
+#: production (empty/whitespace is refused separately, below).
+_KNOWN_PUBLIC_SECRETS = frozenset({_DEFAULT_SECRET, ENV_EXAMPLE_PLACEHOLDER_SECRET})
 #: The env value that arms the production secret posture.
 PRODUCTION_ENV_VALUE = "production"
 _LIMITS: dict[str, int] = {
@@ -77,21 +85,28 @@ def _now_epoch() -> int:
 
 
 def _require_production_secret(secret: bytes) -> None:
-    """Refuse the default test secret under production posture.
+    """Refuse unusable secrets under production posture.
 
-    The check runs before any store is opened, so a refused boot creates
+    Refused: empty/whitespace values (a trailing-``=`` typo in the env file
+    must not boot token-signing with no secret) and the known-public
+    values — the repo's default test secret and the deploy example's
+    placeholder — both readable by anyone with the public source. The
+    check runs before any store is opened, so a refused boot creates
     nothing on disk. Unset ``BENCHWEAVE_SECRET`` falls back to the default
     and is refused with it.
     """
-    if (
-        os.environ.get("BENCHWEAVE_ENV") == PRODUCTION_ENV_VALUE
-        and secret == _DEFAULT_SECRET
-    ):
-        raise RuntimeError(
-            "refusing to boot: BENCHWEAVE_ENV=production with the default test "
-            "secret — set BENCHWEAVE_SECRET to a real secret (e.g. the one "
-            "`benchweave setup` wrote to benchweave.env, kept mode 0600)"
-        )
+    if os.environ.get("BENCHWEAVE_ENV") != PRODUCTION_ENV_VALUE:
+        return
+    stripped = secret.strip()
+    if stripped and stripped not in _KNOWN_PUBLIC_SECRETS:
+        return
+    raise RuntimeError(
+        "refusing to boot: BENCHWEAVE_ENV=production with an unusable "
+        "BENCHWEAVE_SECRET (empty or whitespace, or a publicly known value "
+        "— the repo's default test secret or the deploy example's "
+        "placeholder) — set a real secret (e.g. the one `benchweave setup` "
+        "wrote to benchweave.env, kept mode 0600)"
+    )
 
 
 def registry_session_from_env(data_dir: Path) -> RegistrySession | None:
@@ -125,6 +140,16 @@ def build() -> FastAPI:
     _require_production_secret(secret)
     store = Store.open(db_path, check_same_thread=False)
     content = ContentStore(store)
+    session = registry_session_from_env(Path(db_path).parent)
+    if session is None:
+        # M2 (review): make the fail-closed posture observable at build
+        # time — a silent capability downgrade is indistinguishable from
+        # "the admin kinds work" until the first refusal.
+        print(
+            "benchweave: no fixture registry root — the registry admin "
+            "change kinds stay not_ready (fail-closed)",
+            file=sys.stderr,
+        )
     return create_app(
         store=store,
         content=content,
@@ -136,7 +161,7 @@ def build() -> FastAPI:
         now_epoch=_now_epoch,
         # Task 7 carry: the fixture resolver session (None keeps the WP07
         # fail-closed not_ready posture where no registry root exists).
-        registry_session=registry_session_from_env(Path(db_path).parent),
+        registry_session=session,
     )
 
 

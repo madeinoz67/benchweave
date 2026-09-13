@@ -29,7 +29,7 @@ blast radius; it is not a VM boundary).
 
 | Root | Path (rendered) | Mode / owner | Writable? |
 | --- | --- | --- | --- |
-| Data dir | `{{DATA_DIR}}` (e.g. `/var/lib/benchweave`) | `0750 benchweave:benchweave` | **The only writable root** — `state.sqlite`, its WAL/hold sidecars, `content/`, and the registry session's work tree (`registry/`) |
+| Data dir | `{{DATA_DIR}}` (e.g. `/var/lib/benchweave`) | `0750 benchweave:benchweave` | **The only writable root** — `state.sqlite` (the whole store, including the DB-backed content plane — there is no separate content directory) with its WAL/hold sidecars, and the registry session's work tree (`registry/`) |
 | Credential env file | `{{ENV_FILE}}` (e.g. `/etc/benchweave/benchweave.env`) | `0600 root:benchweave` | Read by the unit at start; edited by the operator |
 | Code + fixtures checkout | e.g. `/opt/benchweave` (repo checkout or wheel install) | read-only to `benchweave` | Never — code, the execution lattice, and the fixture registry are inputs, not state |
 
@@ -70,9 +70,10 @@ The unit's mandated hardening set (controller ruling 1), in template order:
    things admission verifies are the things served.
 4. **`ReadWritePaths={{DATA_DIR}}`** — the single, explicit carve-out from
    (3): the data dir only. Every mutable artifact the gateway legitimately
-   produces — store, WAL, hold marker, content plane, registry work tree —
-   is designed to live under it (see §2). Anything attempting to write
-   elsewhere fails at the VFS layer.
+   produces — the store (which carries the DB-backed content plane inside
+   it), its WAL and hold marker, and the registry work tree — is designed
+   to live under it (see §2). Anything attempting to write elsewhere fails
+   at the VFS layer.
 5. **`PrivateTmp=true`** — the service gets its own `/tmp` and `/var/tmp`
    namespaces. No symlink races or eavesdropping between the gateway and
    any other local user sharing the host's real `/tmp`; no
@@ -148,13 +149,16 @@ identity/bench surface has no per-socket credentialing need).
 
 - **Refusal, not warning.** With `BENCHWEAVE_ENV=production`,
   `app_entry.build()` raises before opening the store if
-  `BENCHWEAVE_SECRET` is unset or equals the repo's default test secret
-  (`wp07-task-eleven-secret` — public in the source tree, so on it anyone
-  can mint admin tokens). `benchweave serve` surfaces it as a clean CLI
-  error and exits non-zero; systemd's `Restart=on-failure` will retry it,
-  which is correct: a misconfigured deploy should stay loudly down, not
-  boot quietly weak. Default posture (no `BENCHWEAVE_ENV`) is unchanged —
-  the integration suites boot on the test secret.
+  `BENCHWEAVE_SECRET` is unset, empty/whitespace (a trailing-`=` typo in
+  the env file), or equals a publicly known value — the repo's default
+  test secret (`wp07-task-eleven-secret`) or the deploy example's own
+  placeholder (`__GENERATE_AND_STORE_A_REAL_RANDOM_SECRET__`); both are
+  readable by anyone with the public source, so on either anyone can mint
+  admin tokens. `benchweave serve` surfaces it as a clean CLI error and
+  exits non-zero; systemd's `Restart=on-failure` will retry it, which is
+  correct: a misconfigured deploy should stay loudly down, not boot
+  quietly weak. Default posture (no `BENCHWEAVE_ENV`) is unchanged — the
+  integration suites boot on the test secret.
 - **One 0600 file.** The secret reaches the gateway only via
   `{{ENV_FILE}}`: copy the example, `chown root:benchweave`, `chmod 0600`,
   and fill it with an operator-generated value (`openssl rand -hex 32`).
