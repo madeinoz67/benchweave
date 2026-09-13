@@ -805,10 +805,8 @@ def test_evidence_storage_failure_emits_evidence_gap(tmp_path: Path) -> None:
 _TAKEOVER_EVENT_DEF = json.loads(
     (REPO_ROOT / "contracts" / "interface-v1.1.0" / "interface.schema.json").read_bytes()
 )["$defs"]["event"]
-# stream_id's colon-less pattern forbids the seam's "bench:{id}" naming —
-# a pre-existing corpus divergence affecting every kind (see the takeover
-# suite); neutralised here so the rest validates verbatim.
-_TAKEOVER_EVENT_DEF["properties"]["stream_id"] = {"type": "string", "minLength": 1}
+# The def, VERBATIM — its stream_id pattern admits the seam's
+# "bench.{bench_id}" naming (the fix-wave rename). Never patched here.
 _TAKEOVER_EVENT_VALIDATOR = Draft202012Validator(_TAKEOVER_EVENT_DEF)
 
 

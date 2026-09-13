@@ -117,7 +117,10 @@ def append_bench_event(
     """
     if kind not in Operations.EVENT_KINDS:
         raise ValueError(f"unknown event kind {kind!r}")
-    stream_id = f"bench:{bench_id}"
+    # Stream naming: "bench.{bench_id}" — the dot form is the one the
+    # vendored event def's stream_id pattern (^[a-z][a-z0-9_.-]*$)
+    # admits; the colon form was a live contract violation (fix wave).
+    stream_id = f"bench.{bench_id}"
     envelope = {
         "stream_id": stream_id,
         "at": now_iso(),
@@ -309,7 +312,7 @@ class Operations:
         self._validator.validate("events_get", {
             "bench_id": bench_id, "after": after, "limit": limit,
         })
-        stream = f"bench:{bench_id}"
+        stream = f"bench.{bench_id}"
         oldest, current = self._store.stream_watermarks(stream)
         if oldest is None and self._store.get_bench(bench_id) is None:
             raise errors.OperationFailure(errors.failure("not_found", f"bench {bench_id}"))
@@ -1160,7 +1163,7 @@ class Operations:
     def _emit(self, kind: str, bench_id: str, run_id: str | None,
               evidence: dict[str, Any] | None = None) -> None:
         """Durable bench event stream (Task 6): kind from the seven, append
-        to ``bench:{bench_id}``, retention-trimmed after every emit."""
+        to ``bench.{bench_id}``, retention-trimmed after every emit."""
         append_bench_event(
             self._store, kind, bench_id, run_id, evidence,
             keep=self._limits["max_page_size"] * 10, now_iso=self._now_iso,
@@ -1322,7 +1325,17 @@ class Operations:
                 )
             expiry = _parse_utc(lease.expires_at)
             now_moment = _parse_utc(self._now_iso())
-            if expiry is None or now_moment is None or now_moment >= expiry:
+            if expiry is None or now_moment is None:
+                # A corrupt row/stamp is not an expiry claim: fail closed
+                # with a truthful message, never a fabricated deadline.
+                raise errors.OperationFailure(
+                    errors.failure(
+                        "not_found",
+                        f"lease {lease_id} expiry {lease.expires_at!r} is not"
+                        f" a parseable timestamp",
+                    )
+                )
+            if now_moment >= expiry:
                 raise errors.OperationFailure(
                     errors.failure(
                         "not_found",

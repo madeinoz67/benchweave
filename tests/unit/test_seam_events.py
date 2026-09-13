@@ -46,7 +46,7 @@ def test_events_get_returns_kinds_and_watermarks(seam: Seam) -> None:
     ops._emit("lease_changed", "bench-1", None)
     data = ops.events_get(IDENT, "bench-1", after=None, limit=10)
     assert [e["kind"] for e in data["events"]] == ["run_changed", "lease_changed"]
-    assert data["stream_id"] == "bench:bench-1"
+    assert data["stream_id"] == "bench.bench-1"
     assert data["oldest_sequence"] == "1" and data["current_sequence"] == "2"
 
 
@@ -73,8 +73,8 @@ def test_retention_overtake_yields_event_gap(seam: Seam) -> None:
     for _ in range(6):
         ops._emit("run_changed", "bench-1", "run-1")
     keep = 3
-    store.trim_stream("bench:bench-1", keep)
-    stale = operations.encode_cursor("bench:bench-1", "1", "p1")
+    store.trim_stream("bench.bench-1", keep)
+    stale = operations.encode_cursor("bench.bench-1", "1", "p1")
     with pytest.raises(errors.OperationFailure) as exc:
         ops.events_get(IDENT, "bench-1", after=stale, limit=10)
     assert exc.value.failure.code == "event_gap"

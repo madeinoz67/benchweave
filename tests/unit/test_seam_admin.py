@@ -350,7 +350,7 @@ def test_apply_success_refreshes_bench_row_and_emits_bench_changed(
     row = store.get_bench(BENCH)
     assert row is not None
     assert row["generation"] == 2  # projection is truthful
-    events = store.read_events_after(f"bench:{BENCH}", None, 10)
+    events = store.read_events_after(f"bench.{BENCH}", None, 10)
     assert [event["kind"] for event in events] == ["bench_changed"]
     assert events[0]["evidence"]["change_id"] == "chg-ok"
     assert events[0]["evidence"]["generation"] == 2

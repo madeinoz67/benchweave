@@ -1182,7 +1182,7 @@ def test_event_gap_after_retention_trim(gateway: SimpleNamespace) -> None:
     correction): a valid held cursor the retention window has overtaken is
     refused, never silently truncated. The trim is seeded directly on the
     fixture's store; both adapters then read the same retained stream."""
-    stream = f"bench:{BENCH}"
+    stream = f"bench.{BENCH}"
     page = _rest(
         gateway, "get", f"/v1/benches/{BENCH}/events?after=&limit=1", None, OBSERVE
     )

@@ -54,14 +54,10 @@ CORPUS = Path(__file__).resolve().parents[2] / "contracts" / "interface-v1.1.0"
 NOW = "2026-09-12T00:00:00Z"  # seam_control's frozen clock
 OTHER_BENCH = "sim-bench-two"  # a wrong-bench lease target (store-seeded)
 
-# The vendored event def, verbatim EXCEPT stream_id's pattern: the seam's
-# stream naming is "bench:{bench_id}" (colon), which the def's colon-less
-# ^[a-z][a-z0-9_.-]*$ forbids — a pre-existing corpus divergence affecting
-# EVERY emitted kind, not something D12 introduced (disclosed in the task
-# report; the D2 errata path owns reconciliation). Everything else
-# validates verbatim, and the exact stream id is pinned explicitly.
+# The vendored event def, VERBATIM: its ``evidence`` is a closed ref, and
+# its ``stream_id`` pattern admits the seam's "bench.{bench_id}" naming
+# (the fix-wave rename). The def is never patched here.
 _EVENT_DEF = json.loads((CORPUS / "interface.schema.json").read_bytes())["$defs"]["event"]
-_EVENT_DEF["properties"]["stream_id"] = {"type": "string", "minLength": 1}
 _EVENT_VALIDATOR = Draft202012Validator(_EVENT_DEF)
 
 
@@ -133,7 +129,7 @@ def test_takeover_with_active_lease_accepted_run_proceeds_authority_changed(
         "run_changed",  # the run announcement
     ]
     event = events[1]
-    assert event["stream_id"] == f"bench:{BENCH_ID}"
+    assert event["stream_id"] == f"bench.{BENCH_ID}"
     assert event["run_id"] == run["run_id"]
     assert event["evidence"] == {
         "id": variant["id"],
@@ -332,7 +328,7 @@ def test_lease_release_emits_authority_changed(seam_control: SeamControl) -> Non
     ]
     event = events[2]
     assert event["run_id"] is None
-    assert event["stream_id"] == f"bench:{BENCH_ID}"
+    assert event["stream_id"] == f"bench.{BENCH_ID}"
     bench = seam_control.ops.bench_get(_control("p1"), BENCH_ID)
     assert event["evidence"] == bench["configuration"]
     assert not list(_EVENT_VALIDATOR.iter_errors(event))
