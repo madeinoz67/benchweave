@@ -416,6 +416,102 @@ def test_lease_renew_stale_sequence_conflicts(seam_control: SeamControl) -> None
     assert exc.value.failure.code == "conflict"
 
 
+def test_lease_renew_duplicate_returns_same_renewal(seam_control: SeamControl) -> None:
+    """§6 (D13 batch B): "Each renewal increments sequence; a duplicate
+    request returns the same renewal, not an extra extension" — the §9
+    request-key idiom (principal + lease_renew + request id; the body is
+    the renewal's own input). The replay answers with the SAME envelope
+    and mints nothing."""
+    ops, _, _ = seam_control
+    ident = _control("p1")
+    lease = ops.lease_create(ident, BENCH_ID, "lease-dup-1", 1, 600_000)
+    first = ops.lease_renew(
+        ident, lease["lease_id"], "lease-dup-r", lease["sequence"], 2000
+    )
+    assert first["sequence"] == lease["sequence"] + 1
+    replay = ops.lease_renew(
+        ident, lease["lease_id"], "lease-dup-r", lease["sequence"], 2000
+    )
+    assert replay == first  # the SAME renewal: no second extension
+    rows = seam_control.store.list_leases(BENCH_ID)
+    assert [row.sequence for row in rows] == [
+        lease["sequence"],
+        first["sequence"],
+    ]  # create + exactly one renewal row — the replay minted nothing
+
+
+def test_lease_renew_duplicate_with_different_body_conflicts(
+    seam_control: SeamControl,
+) -> None:
+    """§9: the same renewal key with a different canonical body is a
+    conflict, exactly like run_start/change_submit."""
+    ops, _, _ = seam_control
+    ident = _control("p1")
+    lease = ops.lease_create(ident, BENCH_ID, "lease-dupb-1", 1, 600_000)
+    ops.lease_renew(ident, lease["lease_id"], "lease-dupb-r", lease["sequence"], 2000)
+    with pytest.raises(errors.OperationFailure) as exc:
+        ops.lease_renew(
+            ident, lease["lease_id"], "lease-dupb-r", lease["sequence"], 9999
+        )
+    assert exc.value.failure.code == "conflict"
+
+
+def test_lease_renew_same_sequence_second_renewal_conflicts(
+    seam_control: SeamControl,
+) -> None:
+    """The duplicate-vs-stale discriminator (D13): a SECOND renewal quoting
+    the same now-stale sequence under a FRESH request id is the fenced
+    conflict — only a same-request replay returns the same renewal."""
+    ops, _, _ = seam_control
+    ident = _control("p1")
+    lease = ops.lease_create(ident, BENCH_ID, "lease-stale-1", 1, 600_000)
+    first = ops.lease_renew(
+        ident, lease["lease_id"], "lease-stale-r1", lease["sequence"], 2000
+    )
+    with pytest.raises(errors.OperationFailure) as exc:
+        ops.lease_renew(
+            ident, lease["lease_id"], "lease-stale-r2", lease["sequence"], 2000
+        )
+    assert exc.value.failure.code == "conflict"
+    assert first["sequence"] == lease["sequence"] + 1
+
+
+def test_lease_renew_expired_lease_is_not_revived(tmp_path: Path) -> None:
+    """§6: "A late renewal cannot revive an expired lease." The seam clock
+    is the expiry oracle (the `_live_lease` idiom, D13 batch A): once
+    now >= expires_at, renewal is `not_found` — the row is left as it is,
+    no successor is minted, and the bench (whose busy read already
+    un-pinned) admits a fresh lease."""
+    store = Store.open(tmp_path / "state.db")
+    content = ContentStore(store)
+    admit_startup_bench(store, content, FIXTURES, now=NOW)
+    clock = {"now": NOW}
+    ops = operations.Operations(
+        store,
+        content,
+        validator=SeamValidator(CORPUS),
+        gateway_id="gw-revival",
+        limits=LIMITS,
+        now_iso=lambda: clock["now"],
+    )
+    try:
+        ident = _control("p1")
+        lease = ops.lease_create(ident, BENCH_ID, "lease-exp-1", 1, 1000)
+        clock["now"] = "2026-09-12T00:00:02Z"  # past the 1s expiry
+        with pytest.raises(errors.OperationFailure) as exc:
+            ops.lease_renew(ident, lease["lease_id"], "lease-exp-1r", 1, 1000)
+        assert exc.value.failure.code == "not_found"
+        # The dead row was untouched and no successor sequence was minted.
+        rows = store.list_leases(BENCH_ID)
+        assert [row.sequence for row in rows] == [1]
+        assert rows[0].state == "active"  # expired-unreleased, unrenewed
+        # The bench admits a fresh manual lease (expiry stopped pinning).
+        fresh = ops.lease_create(ident, BENCH_ID, "lease-exp-2", 1, 1000)
+        assert fresh["state"] == "active"
+    finally:
+        store.close()
+
+
 # --- monitor retention hook (WP05 inertness + evidence) ------------------------------
 
 

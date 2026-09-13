@@ -161,13 +161,16 @@ class Store:
         ghost — a permanent wedge. This sweep (the store leg of the app
         lifespan's recovery entrypoint, alongside
         ``RunCoordinator.recover_interrupted``) deletes exactly those RUN
-        keys: the anti-join must resolve in BOTH durable tables, because
-        the one ``requests`` table serves every §9 operation — a
-        ``change_submit`` key's ``run_id`` column holds a CHANGE id
-        (change ids are not run ids and never become them), so keys that
-        resolve in ``changes`` are healthy and keep their replay
-        protection, as do run keys whose run row exists, live or
-        tombstoned. Idempotent by construction; returns the purged keys.
+        keys: the anti-join must resolve in EVERY durable table the one
+        ``requests`` store serves — a ``change_submit`` key's ``run_id``
+        column holds a CHANGE id (change ids are not run ids and never
+        become them), and a ``lease_renew`` key's holds the LEASE id
+        (renewal re-issues the same identity at a new sequence, so a
+        lease row has existed since creation — a renewal key is never
+        dangling), so keys that resolve in ``changes`` or ``leases`` are
+        healthy and keep their replay protection, as do run keys whose
+        run row exists, live or tombstoned. Idempotent by construction;
+        returns the purged keys.
         """
         self._conn.execute("BEGIN IMMEDIATE")
         try:
@@ -175,7 +178,9 @@ class Store:
                 "SELECT requests.idempotency_key FROM requests"
                 " LEFT JOIN runs ON runs.run_id = requests.run_id"
                 " LEFT JOIN changes ON changes.change_id = requests.run_id"
+                " LEFT JOIN leases ON leases.lease_id = requests.run_id"
                 " WHERE runs.run_id IS NULL AND changes.change_id IS NULL"
+                " AND leases.lease_id IS NULL"
             ).fetchall()
             keys = [str(row[0]) for row in rows]
             for key in keys:

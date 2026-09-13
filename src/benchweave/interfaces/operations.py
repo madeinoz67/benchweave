@@ -668,9 +668,21 @@ class Operations:
         sequence: int,
         duration_ms: int,
     ) -> dict[str, Any]:
-        """Re-issue a lease's expiry at a new fencing sequence. Same holder
-        only until Task 7 reads the commissioning doc for takeover roles;
-        a stale sequence is a conflict (the caller's lease view is fenced)."""
+        """Re-issue a lease's expiry at a new fencing sequence. §6 renewal
+        semantics (D13 batch B): same holder only until Task 7 reads the
+        commissioning doc for takeover roles; a stale sequence is a conflict
+        (the caller's lease view is fenced); a LATE renewal cannot revive an
+        expired lease (expired means expired — ``not_found`` at the seam
+        clock, the ``_live_lease`` oracle); and a duplicate request returns
+        the SAME renewal, not an extra extension (§9 request keys, the
+        run_start/change_submit idiom: principal + operation + request id,
+        body = the renewal's own input; a different body under the key is a
+        conflict). The replay peek precedes validation — a late replay of a
+        performed renewal still answers with the lease's current state.
+        The key is filed BEFORE the successor mint, so a crash between them
+        leaves a replay answering the un-extended state (detectable: the
+        sequence is unchanged); filing after would double-extend on crash,
+        the worse failure."""
         require_permission(identity, "control")
         self._validator.validate("lease_renew", {
             "lease_id": lease_id,
@@ -678,9 +690,53 @@ class Operations:
             "sequence": sequence,
             "duration_ms": duration_ms,
         })
+        key = scoped_request_key(identity.principal, "lease_renew", request_id)
+        body_sha = hashlib.sha256(
+            json.dumps([lease_id, sequence, duration_ms], separators=(",", ":")).encode()
+        ).hexdigest()
+        # §9 replay beats §6 validation (the run_start ordering): an
+        # already-filed renewal answers with the lease's current state —
+        # the retained resource status, never a second extension.
+        filed = self._store.find_request(key)
+        if filed is not None:
+            if filed["body_sha256"] != body_sha:
+                raise errors.OperationFailure(
+                    errors.failure(
+                        "conflict",
+                        f"request_id {request_id!r} reused with a different renewal",
+                    )
+                )
+            replayed = self._find_lease(lease_id)
+            if replayed is None:
+                raise errors.OperationFailure(
+                    errors.failure("not_found", f"lease {lease_id}")
+                )
+            return self._lease_projection(replayed)
         lease = self._find_lease(lease_id)
         if lease is None or lease.state != "active":
             raise errors.OperationFailure(errors.failure("not_found", f"lease {lease_id}"))
+        expiry = _parse_utc(lease.expires_at)
+        now_moment = _parse_utc(self._now_iso())
+        if expiry is None or now_moment is None:
+            # A corrupt row/stamp is not an expiry claim: fail closed the
+            # way _assert_bench_acceptable does — never fabricate a deadline
+            # a renewal could ride.
+            raise errors.OperationFailure(
+                errors.failure(
+                    "not_found",
+                    f"lease {lease_id} expiry {lease.expires_at!r} is not"
+                    f" a parseable timestamp",
+                )
+            )
+        if now_moment >= expiry:
+            # §6: "A late renewal cannot revive an expired lease." The
+            # expired-unreleased row names no live authority — the same
+            # not_found family the takeover path uses for expired leases.
+            raise errors.OperationFailure(
+                errors.failure(
+                    "not_found", f"lease {lease_id} expired at {lease.expires_at}"
+                )
+            )
         if lease.holder != identity.principal:
             raise errors.OperationFailure(
                 errors.failure("forbidden", "only the lease holder may renew")
@@ -693,6 +749,14 @@ class Operations:
                 )
             )
         now = self._now_iso()
+        try:
+            self._store.accept_request(key, body_sha, lease.lease_id, now)
+        except Conflict:
+            raise errors.OperationFailure(
+                errors.failure(
+                    "conflict", f"request_id {request_id!r} reused with a different renewal"
+                )
+            ) from None
         successor = self._store.next_lease(
             lease.bench_id,
             lease.lease_id,

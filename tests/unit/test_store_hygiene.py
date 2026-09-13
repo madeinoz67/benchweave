@@ -249,6 +249,39 @@ def test_d13_sweep_spares_change_submit_keys(
     assert store.reconcile_dangling_requests() == [run_key]
 
 
+def test_d13_sweep_spares_lease_renew_keys(seam_control: SeamControl) -> None:
+    """``lease_renew`` files §9 keys whose ``run_id`` column holds the LEASE
+    id (renewal re-issues the same identity at a new sequence, so a lease
+    row has existed since creation — a renewal key is never dangling).
+    The sweep's anti-join resolves in ``leases`` too: renewal keys keep
+    their §9 replay protection across restarts while a genuine dangling
+    run key still purges in the same pass."""
+    ops = seam_control.ops
+    store = seam_control.store
+    ident = _control("p1")
+    lease = ops.lease_create(ident, BENCH_ID, "lease-sweep-1", 1, 600_000)
+    renewed = ops.lease_renew(
+        ident, str(lease["lease_id"]), "lease-sweep-1r", lease["sequence"], 2000
+    )
+
+    store.reconcile_dangling_requests()  # the restart-class sweep
+    key = scoped_request_key("p1", "lease_renew", "lease-sweep-1r")
+    assert store.find_request(key) is not None, "renewal keys are not dangling"
+    replay = ops.lease_renew(
+        ident, str(lease["lease_id"]), "lease-sweep-1r", lease["sequence"], 2000
+    )
+    assert replay == renewed  # the same renewal survives the restart-class sweep
+
+    # Mirror in the same pass: a genuine dangling run key still goes.
+    run_key = scoped_request_key("p1", "run_start", "req-mirror-lease")
+    store.connection.execute(
+        "INSERT INTO requests (idempotency_key, body_sha256, run_id, accepted_at)"
+        " VALUES (?, ?, ?, ?)",
+        (run_key, "0" * 64, "run-ghost-3", NOW),
+    )
+    assert store.reconcile_dangling_requests() == [run_key]
+
+
 # --- D13 item 4: the lease-close transition ----------------------------------------
 
 
