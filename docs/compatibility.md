@@ -146,7 +146,7 @@ transports); the five mutating MCP tools hold the app's `WriteGate`
 | D6 | token-shaped rejections collapse to a transport 401 on MCP (no envelope can exist pre-auth); `payload_too_large` is REST-only |
 | D7 | token-shape probes pinned on both transports: expired → 401 `unauthenticated`; wrong-audience → 403 `forbidden`; an stg-audience token as `approver_token` fails closed 403 |
 | D8 | CLOSED (WP08 Task 1): the seam validates every public operation's payload against the vendored corpus — `interfaces/validation.py::SeamValidator` builds one schema per operation (the MCP `inputSchema` where a tool twin exists, else the OpenAPI `requestBody`; their `required` sets cross-checked at registry build with path params reconciled) and every `Operations` method validates as its first act after `require_permission`, so type-confused/shape-invalid inputs are the contract `invalid_request` on both transports (`tests/unit/test_seam_validation.py` + the parity suite's D8 re-pins: 500/coerced-409/garbage-201 all flipped to 400). Boundary disclosed and pinned: fastmcp dispatch validates the tool SIGNATURE, not the vendored schema — numeric strings coerce to the annotated int and string-where-object is rejected pre-seam on MCP with a non-contract error, so those two classes never reach the seam over MCP; the seam itself rejects both (REST arms prove it end-to-end). Named residual, same root: extra-property enforcement is seam-only — the REST adapter's named-field extraction (`_field` and the per-route keyword lists) DROPS unknown body properties before the seam (the request succeeds with the property silently ignored), and MCP rejects an unknown tool argument at dispatch with fastmcp's own non-contract error (`unexpected_keyword_argument`); neither wire surfaces the contract `invalid_request` for this class, and wire-level enforcement requires adapter changes frozen out of this slice (`test_interface_parity.py::test_extra_property_wire_truth_on_both_transports` pins both wires) |
-| D9 | §5 semantics are not pre-checked at the seam: no accept-time busy/lease contention check (contention surfaces asynchronously as `outcome_unknown`), the binding document's `request_id` match against the §9 request id is unenforced (the suites exercise mismatched ids by fixture), and manual-vs-gateway lease authority is unmodeled. WP08 adds seam pre-checks |
+| D9 | CLOSED (WP08 Task 2): §5 accept-time pre-checks live in the seam. `run_start` refuses synchronously — 409 `conflict`, before the request key is written — when (a) the bench has a live run (busy oracle: `Store.list_run_states`, states accepted/running/protecting; the store had no per-bench run view, so activity is derived from `run_states`) or (b) the binding document's own `request_id` (content-store resolution, `run_check`'s idiom) differs from the §9 request id. §9 replay stays ahead of both: an already-filed request key returns the existing run before any §5 check (peek via `find_request`; `accept_request` remains the atomic race authority). Lease authority is modeled on the run row (`runs.authority`, migration v3: `lease` when a `lease_id` was named, else `gateway`) — takeover itself is Task 3. Postures pinned in `tests/integration/test_seam_prechecks.py`: an unstored binding digest is not decided at accept time (the worker's poison guard keeps owning that async failure); the catalog blesses no busy-specific code, so contention rides `conflict`. Consequence disclosed: a second run can no longer queue behind a live one ("no queue waits indefinitely for control") — the pre-D9 queued-cancel recorded-no-op pin was unreachable-premised and was replaced by the §5 contention pin (`test_event_recovery.py::test_second_run_start_on_live_run_conflicts_and_frees_after_terminal`); the worker's FIFO drain remains an internal residual. Bonus closure: the Task-10 repeated-binding worker crash (same binding, different §9 id) is now refused at the seam (binding-mismatch conflict before acceptance) |
 | D10 | MCP `isError` — FIXED by the final fix wave: failure envelopes now serve `isError: true` with the contract envelope intact as structured content (`test_interface_parity.py::test_mcp_is_error_flag_on_failure_and_success`). Closed |
 | D11 | input coercion policy is clamp-not-reject: `limit`/`length` clamp to `[1, max]`, artifact `offset` floors at 0 (now at the seam); a beyond-size `offset` serves a zero-byte `eof=true` chunk, which differs from the contract §8 letter — WP08 reconciliation |
 | D12 | the interface-visible takeover slice (spec Decision 8) is NOT implemented: `run_start`'s `lease_id` is accepted-and-dropped, and `authority_changed` has zero emitters. Descoped to WP08 |
@@ -178,15 +178,17 @@ admits a licence field flips that test and forces the wire carry.
   hardcodes `tripped=False` (no live trip source in the PoC), so the
   reset-refusal gate never fires; reconciled physical state is the
   contract's assumption, not a wired signal here.
-- **Queued-cancel is a recorded no-op**: cancelling a queued (not yet
-  dispatched) run emits the `run_changed` event and forwards nothing —
-  the worker can only cancel the active coordinator; the run's own
-  lifecycle decides the outcome (§5).
-- **Repeated-binding runs land `outcome_unknown`**: a second `run_start`
-  on the same binding document is accepted by the seam (different §9
-  request keys) while the coordinator dedups on the binding's own request
-  id; the worker's poison guard contains the failure and the run closes
-  terminal without a record — honest `outcome_unknown`, never a
-  fabricated pass. WP08 hardening item.
+- **Queued-cancel branch is interface-unreachable (D9)**: a second
+  `run_start` on a bench with a live run now conflicts at accept time, so
+  no run can queue behind another through the interface; the recorded-no-op
+  cancel branch remains for a single run's accept→dispatch window only
+  (the worker's FIFO drain is an internal residual).
+- **Repeated-binding second starts conflict at the seam (D9)**: a
+  `run_start` whose §9 request id differs from the binding document's own
+  `request_id` is refused synchronously (409 `conflict`) before
+  acceptance; the same §9 id is a §9 replay. The pre-D9 async shape
+  (seam accepts, coordinator dedups on the binding's own id, worker's
+  poison guard closes the run `outcome_unknown`) is retained only for
+  unstored binding digests, which are not decided at accept time.
 - **Auth is the local HMAC test issuer, loopback only** — OAuth and TLS
   are out of PoC scope (see Transport verified).

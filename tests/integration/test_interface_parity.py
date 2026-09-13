@@ -131,7 +131,7 @@ BINDING_SHA = hashlib.sha256((FIXTURES / "run-binding.json").read_bytes()).hexdi
 BINDING_REF = {"id": "req-voltage-check-1", "version": "1.0.0", "sha256": BINDING_SHA}
 ARTIFACT_BYTES = b"0123456789abcdefghij"  # 20 bytes — chunk reassembly target
 TARGET_REF = {"id": "t10", "version": "1", "sha256": "0" * 64}
-RUN_REQUEST = "req-parity-run"
+RUN_REQUEST = "req-voltage-check-1"  # §5 (D9): must equal the binding doc's own request_id
 
 
 def _token(

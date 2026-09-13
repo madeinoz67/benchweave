@@ -79,7 +79,7 @@ ROUTE_CASES: list[tuple[str, str, int, Any]] = [
     # run on the same binding would trip the coordinator's binding-level
     # duplicate rejection in the worker thread.
     ("post", f"/v1/benches/{BENCH}/runs", 202, {
-        "request_id": "req-task9-run",
+        "request_id": "req-voltage-check-1",
         "binding_ref": BINDING_REF,
         "expected_generation": 2,
         "lease_id": None,
@@ -198,7 +198,7 @@ def gateway(tmp_path_factory: pytest.TempPathFactory) -> Iterator[SimpleNamespac
             f"/v1/benches/{BENCH}/runs",
             headers=admin,
             json={
-                "request_id": "req-task9-run",
+                "request_id": "req-voltage-check-1",  # §5: the binding doc's own id
                 "binding_ref": BINDING_REF,
                 "expected_generation": 1,
                 "lease_id": None,
@@ -206,7 +206,7 @@ def gateway(tmp_path_factory: pytest.TempPathFactory) -> Iterator[SimpleNamespac
         )
         assert started.status_code == 202, started.text
         filled["run_id"] = started.json()["data"]["run_id"]
-        filled["request_id"] = "req-task9-run"
+        filled["request_id"] = "req-voltage-check-1"
 
         created = client.post(
             f"/v1/benches/{BENCH}/leases",

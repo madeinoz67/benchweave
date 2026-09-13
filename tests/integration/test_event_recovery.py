@@ -33,14 +33,14 @@ plugins) on a loopback uvicorn port:
 - Worker poison guard: a run whose coordinator construction raises must not
   kill the worker thread — the poisoned run lands terminal with honest
   unknown truth (no fabricated record) and a later good run still completes.
-- Queued-cancel semantics (Task 5's deferred decision, pinned here): a run
-  still in ``accepted`` (not yet dispatched) cannot be cancelled — the
-  worker drains FIFO and has no queue removal, and §5 cancellation only
-  reaches the ACTIVE coordinator. ``run_cancel`` on a queued run is a
-  recorded no-op: 200 with the current projection plus a ``run_changed``
-  carrying the caller's reason, and the run then executes to its own
-  terminal outcome. That is the honest surface today; mid-queue removal
-  would need worker queue support (WP08 reconciliation item).
+- Queued-cancel semantics (Task 5's deferred decision, SUPERSEDED by
+  D9/WP08 Task 2): a second ``run_start`` on a bench with a live run is
+  now refused synchronously (409 ``conflict`` — "no queue waits
+  indefinitely for control"), so the old queued-run premise (cancel a
+  run still queued behind a held one = recorded no-op) is unreachable
+  through the interface; the pin was replaced by the §5 contention test
+  below. The worker's FIFO drain remains as an internal residual
+  (observable only in a single run's accept→dispatch window).
 
 One binding document executes exactly once per database (the coordinator's
 acceptance is idempotent on the binding document's own ``request_id``; run
@@ -400,7 +400,7 @@ def test_worker_survives_poisoned_build_run(tmp_path: Path) -> None:
         assert honest["safe_state"] == "unknown"
         assert honest["terminal_record"] is None, "no record may be fabricated"
 
-        good = _start_run(gateway, "req-good-after-poison", BINDING_REF)
+        good = _start_run(gateway, "req-voltage-check-1", BINDING_REF)
         final = _poll_run(gateway, good, want="terminal", timeout=30.0)
         assert final["outcome"] == "passed", final
 
@@ -572,7 +572,7 @@ def test_kill_mid_run_child_process_recovers_interrupted(tmp_path: Path) -> None
             f"/v1/benches/{BENCH}/runs",
             headers=_bearer(),
             json={
-                "request_id": "req-child-kill",
+                "request_id": "req-voltage-check-1",  # §5: the binding doc's own id
                 "binding_ref": BINDING_REF,
                 "expected_generation": 1,
                 "lease_id": None,
@@ -706,7 +706,7 @@ def test_device_disconnect_yields_uncertain_truth(tmp_path: Path) -> None:
     with _wrapped_psu(lambda inner: _DisconnectPsu(inner)):
         gateway = _launch(tmp_path)
         try:
-            run_id = _start_run(gateway, "req-disconnect", BINDING_REF)
+            run_id = _start_run(gateway, "req-voltage-check-1", BINDING_REF)
             final = _poll_run(gateway, run_id, want="terminal", timeout=30.0)
             assert final["outcome"] in ("execution_error", "outcome_unknown"), final
             assert final["outcome"] != "passed"
@@ -747,7 +747,7 @@ def test_evidence_storage_failure_emits_evidence_gap(tmp_path: Path) -> None:
     """
     gateway = _launch(tmp_path, limits=SMALL_LIMITS)
     try:
-        run_id = _start_run(gateway, "req-evidence-gap", BINDING_REF)
+        run_id = _start_run(gateway, "req-voltage-check-1", BINDING_REF)
         final = _poll_run(gateway, run_id, want="terminal", timeout=30.0)
         assert final["terminal_record"] is not None
 
@@ -802,19 +802,19 @@ def test_evidence_storage_failure_emits_evidence_gap(tmp_path: Path) -> None:
 # --- queued-cancel semantics (Task 5 deferred decision, pinned) ----------------
 
 
-def test_queued_cancel_is_recorded_not_honoured(tmp_path: Path) -> None:
-    """Cancelling a run still queued is a recorded no-op (pinned).
+def test_second_run_start_on_live_run_conflicts_and_frees_after_terminal(
+    tmp_path: Path,
+) -> None:
+    """D9 §5 pin (replaces the queued-cancel pin, whose premise D9 voids).
 
-    The worker drains FIFO and has no queue removal, and the coordinator's
-    cancel path only exists for the ACTIVE run (§5): ``run_cancel`` on a
-    queued run returns 200 with the current (accepted) projection, records
-    the caller's reason on the bench stream, and the run still executes to
-    its own terminal outcome afterwards. Mid-queue cancellation would need
-    worker queue support — WP08 reconciliation item, not this task.
-
-    The queued run uses a second binding variant: one binding document
-    executes exactly once per database (the coordinator's acceptance dedups
-    on the binding's own request_id), so two live runs need two bindings.
+    A bench with a live run refuses a second ``run_start`` synchronously —
+    409 ``conflict``, no queue forms ("no queue waits indefinitely for
+    control") — and the bench frees once the run closes terminal, where a
+    fresh binding starts cleanly. The pre-D9 surface let a second run
+    queue behind a held one and recorded a mid-queue cancel as a no-op;
+    with accept-time contention that state is unreachable through
+    ``run_start`` (the worker's FIFO drain remains an internal residual,
+    observable only in a single run's accept→dispatch window).
     """
     seed = Store.open(tmp_path / "state.db", check_same_thread=False)
     seed_content = ContentStore(seed)
@@ -831,33 +831,30 @@ def test_queued_cancel_is_recorded_not_honoured(tmp_path: Path) -> None:
     with _wrapped_psu(lambda inner: _HoldPsu(inner, release)):
         gateway = _launch(tmp_path)
         try:
-            first = _start_run(gateway, "req-hold-first", BINDING_REF)
+            first = _start_run(gateway, "req-voltage-check-1", BINDING_REF)
             _poll_run(gateway, first, want="running", timeout=15.0)
 
-            queued = _start_run(gateway, "req-queued-second", SECOND_REF)
-            cancel = gateway.client.post(
-                f"/v1/runs/{queued}/cancellations",
+            second = gateway.client.post(
+                f"/v1/benches/{BENCH}/runs",
                 headers=_bearer(),
-                json={"request_id": "req-cancel-queued", "reason": "operator changed mind"},
+                json={
+                    "request_id": "req-voltage-check-2",
+                    "binding_ref": SECOND_REF,
+                    "expected_generation": 1,
+                    "lease_id": None,
+                },
             )
-            assert cancel.status_code == 200, cancel.text
-            assert cancel.json()["data"]["state"] == "accepted"
+            assert second.status_code == 409, second.text
+            assert second.json()["error"]["code"] == "conflict"
 
-            events = _bench_events(gateway)
-            assert any(
-                e["kind"] == "run_changed"
-                and e.get("run_id") == queued
-                and "operator changed mind" in str(e.get("evidence", {}))
-                for e in events
-            ), "the cancellation intent must be recorded"
-
-            release.set()  # the parked body proceeds; the queue drains FIFO
+            release.set()  # the parked body proceeds
             first_final = _poll_run(gateway, first, want="terminal", timeout=30.0)
-            queued_final = _poll_run(gateway, queued, want="terminal", timeout=30.0)
             assert first_final["outcome"] == "passed", first_final
-            assert queued_final["outcome"] == "passed", (
-                "a queued cancel cannot suppress the run: no mid-queue removal exists"
-            )
+
+            # The bench freed: the second binding now starts cleanly.
+            after = _start_run(gateway, "req-voltage-check-2", SECOND_REF)
+            after_final = _poll_run(gateway, after, want="terminal", timeout=30.0)
+            assert after_final["outcome"] == "passed", after_final
         finally:
-            release.set()  # never leave the queue parked
+            release.set()  # never leave the body parked
             _shutdown(gateway)

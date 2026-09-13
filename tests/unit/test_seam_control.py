@@ -192,22 +192,29 @@ def test_run_start_is_idempotent_per_principal(seam_control: SeamControl) -> Non
     ops, worker, _ = seam_control
     ident = _control("p1")
     ref = seam_control.binding_ref
-    first = ops.run_start(ident, BENCH_ID, "req-1", ref, 1, None)
-    second = ops.run_start(ident, BENCH_ID, "req-1", ref, 1, None)
+    first = ops.run_start(ident, BENCH_ID, str(ref["id"]), ref, 1, None)
+    second = ops.run_start(ident, BENCH_ID, str(ref["id"]), ref, 1, None)
     assert first["run_id"] == second["run_id"]
     assert worker.submitted == 1  # dedup hit, no second submit
 
 
 def test_request_id_is_principal_scoped(seam_control: SeamControl) -> None:
-    ops, _, _ = seam_control
+    """§9 namespaces are per principal — the same request id files two runs
+    for two callers. D9 note: the first run must close terminal before the
+    second starts (a bench with a live run conflicts at accept time), so
+    the fixture's release event drains the blocked fake in between."""
+    ops, worker, release = seam_control
     p1 = _control("p1")
     p2 = _control("p2")
     ref = seam_control.binding_ref
-    one = ops.run_start(p1, BENCH_ID, "same-id", ref, 1, None)
-    two = ops.run_start(p2, BENCH_ID, "same-id", ref, 1, None)
+    request_id = str(ref["id"])  # §5: must equal the binding document's own
+    one = ops.run_start(p1, BENCH_ID, request_id, ref, 1, None)
+    release.set()  # free the bench: let the parked fake run finish
+    worker.join(timeout=10)
+    two = ops.run_start(p2, BENCH_ID, request_id, ref, 1, None)
     assert one["run_id"] != two["run_id"]  # separate namespaces (§9)
-    assert ops.run_find(p1, "same-id")["run_id"] == one["run_id"]
-    assert ops.run_find(p2, "same-id")["run_id"] == two["run_id"]
+    assert ops.run_find(p1, request_id)["run_id"] == one["run_id"]
+    assert ops.run_find(p2, request_id)["run_id"] == two["run_id"]
 
 
 def test_expected_generation_mismatch_conflicts(seam_control: SeamControl) -> None:
@@ -240,9 +247,13 @@ def test_run_start_reused_request_with_different_body_conflicts(
     ops, _, _ = seam_control
     ident = _control("p1")
     other = dict(seam_control.binding_ref, version="9.9.9")
-    ops.run_start(ident, BENCH_ID, "req-d", seam_control.binding_ref, 1, None)
+    ops.run_start(
+        ident, BENCH_ID, str(seam_control.binding_ref["id"]), seam_control.binding_ref, 1, None
+    )
     with pytest.raises(errors.OperationFailure) as exc:
-        ops.run_start(ident, BENCH_ID, "req-d", other, 1, None)
+        ops.run_start(
+            ident, BENCH_ID, str(seam_control.binding_ref["id"]), other, 1, None
+        )
     assert exc.value.failure.code == "conflict"
 
 
@@ -261,7 +272,9 @@ def test_run_state_reaches_terminal_after_worker_drains(seam_control: SeamContro
     ops, worker, release = seam_control
     coordinators = seam_control.coordinators
     ident = _control("p1")
-    run = ops.run_start(ident, BENCH_ID, "req-9", seam_control.binding_ref, 1, None)
+    run = ops.run_start(
+        ident, BENCH_ID, str(seam_control.binding_ref["id"]), seam_control.binding_ref, 1, None
+    )
     assert run["state"] == "accepted"
     assert run["revision"] == 1
     assert run["outcome"] is None and run["safe_state"] is None
@@ -296,7 +309,9 @@ def test_run_cancel_forwards_to_active_coordinator(seam_control: SeamControl) ->
     ops, _, _ = seam_control
     coordinators = seam_control.coordinators
     ident = _control("p1")
-    run = ops.run_start(ident, BENCH_ID, "req-c", seam_control.binding_ref, 1, None)
+    run = ops.run_start(
+        ident, BENCH_ID, str(seam_control.binding_ref["id"]), seam_control.binding_ref, 1, None
+    )
     coordinator = _await_coordinator(coordinators)
     ops.run_cancel(ident, run["run_id"], "req-c", "operator requested")
     assert coordinator.cancelled == [(run["run_id"], "p1")]
@@ -311,7 +326,9 @@ def test_run_cancel_owner_scoping_stranger_forbidden_admin_allowed(
     ops, _, _ = seam_control
     coordinators = seam_control.coordinators
     owner = _control("p1")
-    run = ops.run_start(owner, BENCH_ID, "req-scope", seam_control.binding_ref, 1, None)
+    run = ops.run_start(
+        owner, BENCH_ID, str(seam_control.binding_ref["id"]), seam_control.binding_ref, 1, None
+    )
     coordinator = _await_coordinator(coordinators)
 
     stranger = _control("p2")  # control tier, not the owner, not admin

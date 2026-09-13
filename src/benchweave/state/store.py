@@ -170,6 +170,24 @@ class Store:
         )
         self._conn.execute("COMMIT")
 
+    def set_run_authority(self, run_id: str, authority: str) -> None:
+        """Record whether the run's authority came from a lease ("lease") or
+        the gateway ("gateway") — D9 lease-authority modeling; WP08 Task 3
+        consumes the field for commissioned takeover."""
+        self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            cursor = self._conn.execute(
+                "UPDATE runs SET authority = ? WHERE run_id = ?", (authority, run_id)
+            )
+        except BaseException:
+            if self._conn.in_transaction:
+                self._conn.execute("ROLLBACK")
+            raise
+        if cursor.rowcount != 1:
+            self._conn.execute("ROLLBACK")
+            raise ValueError(f"run {run_id!r} not found")
+        self._conn.execute("COMMIT")
+
     def finalize_run(self, run_id: str, terminal: dict[str, Any]) -> None:
         cursor = self._conn.execute(
             "UPDATE runs SET terminal_json = ? WHERE run_id = ? AND tombstoned = 0",
@@ -189,7 +207,7 @@ class Store:
     def get_run(self, run_id: str) -> dict[str, Any] | None:
         row = self._conn.execute(
             "SELECT binding_json, principal_id, started_at, terminal_json, tombstoned,"
-            " tombstoned_at FROM runs WHERE run_id = ?",
+            " tombstoned_at, authority FROM runs WHERE run_id = ?",
             (run_id,),
         ).fetchone()
         if row is None:
@@ -202,6 +220,8 @@ class Store:
             "terminal": json.loads(row[3]) if row[3] is not None else None,
             "tombstoned": bool(row[4]),
             "tombstoned_at": row[5],
+            # D9 lease-authority modeling (WP08 Task 2): "lease" | "gateway".
+            "authority": str(row[6]),
         }
 
     # --- leases -----------------------------------------------------------------
@@ -558,6 +578,29 @@ class Store:
             "revision": int(row[3]),
             "updated_at": row[4],
         }
+
+    def list_run_states(self, bench_id: str) -> list[dict[str, Any]]:
+        """Every queue-state row for one bench, ordered by run id.
+
+        The store has no other per-bench run view, so the seam's §5 busy
+        oracle derives bench activity from these rows (D9): a run owns its
+        bench from acceptance until its state closes terminal. Read-only.
+        """
+        rows = self._conn.execute(
+            "SELECT run_id, bench_id, state, revision, updated_at FROM run_states"
+            " WHERE bench_id = ? ORDER BY run_id",
+            (bench_id,),
+        ).fetchall()
+        return [
+            {
+                "run_id": row[0],
+                "bench_id": row[1],
+                "state": row[2],
+                "revision": int(row[3]),
+                "updated_at": row[4],
+            }
+            for row in rows
+        ]
 
     # --- admin change records (WP07) ------------------------------------------------
 

@@ -610,7 +610,7 @@ def test_live_run_through_app_reaches_truthful_terminal(tmp_path: Path) -> None:
             "stg_v1_run_start",
             {
                 "bench_id": "sim-bench",
-                "request_id": "req-task8-live-1",
+                "request_id": "req-voltage-check-1",  # §5: the binding doc's own id
                 "binding_ref": {
                     "id": "req-voltage-check-1",
                     "version": "1.0.0",

@@ -38,6 +38,11 @@ TIER_SATISFIES: dict[str, frozenset[str]] = {
 }
 _CURSOR_SECRET = b"wp07-cursor-v1"  # principal-binding only, not an auth secret
 
+# §5 live-run states (interface-v1.1.0 run.state enum): a run owns its bench
+# from acceptance until its queue state closes terminal — the D9 busy oracle
+# reads exactly these states via Store.list_run_states.
+LIVE_RUN_STATES = frozenset({"accepted", "running", "protecting"})
+
 
 def require_permission(identity: Identity, permission: str) -> None:
     if identity.scopes.isdisjoint(TIER_SATISFIES[permission]):
@@ -410,11 +415,17 @@ class Operations:
         """Accept a run and enqueue it; returns the contract ``run`` in state
         ``accepted`` (202-accept semantics).
 
-        §9 idempotency: the key is scoped to principal + operation + request
-        id, and the request body is the binding pin — a replay returns the
-        original run and NEVER enqueues again; the same key with a different
-        binding is a conflict. ``lease_id`` names a pre-held lease for
-        commissioned takeover (Task 7); it takes no part in acceptance.
+        §5 pre-checks (D9, spec Decision 3) run synchronously BEFORE the
+        request key is written: a bench with a live run conflicts (no queue
+        waits for control), and the binding document's own ``request_id``
+        must match the §9 request id. §9 idempotency stays ahead of both:
+        the key is scoped to principal + operation + request id, the request
+        body is the binding pin — a replay returns the original run and
+        NEVER enqueues again (even while that run keeps the bench busy);
+        the same key with a different binding is a conflict. ``lease_id``
+        names a pre-held lease for commissioned takeover (Task 3); beyond
+        the authority it records on the run row it takes no part in
+        acceptance.
         """
         require_permission(identity, "control")
         self._validator.validate("run_start", {
@@ -449,6 +460,22 @@ class Operations:
         body_sha = hashlib.sha256(
             json.dumps(binding_ref, sort_keys=True, separators=(",", ":")).encode()
         ).hexdigest()
+        # §9 replay beats §5 contention: resolve an already-filed request
+        # BEFORE the busy/binding pre-checks, so a retry of the same
+        # request id while its run is active still returns that run. The
+        # peek writes nothing; accept_request below remains the atomic
+        # authority for any race the peek cannot see.
+        filed = self._store.find_request(key)
+        if filed is not None:
+            if filed["body_sha256"] != body_sha:
+                raise errors.OperationFailure(
+                    errors.failure(
+                        "conflict",
+                        f"request_id {request_id!r} reused with a different binding",
+                    )
+                )
+            return self._run_projection(str(filed["run_id"]))  # replay: never enqueue
+        self._assert_bench_acceptable(bench_id, binding_ref, request_id)
         try:
             accepted = self._store.accept_request(key, body_sha, run_id, now)
         except Conflict:
@@ -470,6 +497,12 @@ class Operations:
             now=now,
         )
         self._store.put_run_state(run_id, bench_id, "accepted", now)
+        # D9 lease-authority modeling: record where authority came from —
+        # a named lease (manual mode) or the gateway itself (gateway-owned;
+        # Task 3 consumes this for commissioned takeover).
+        self._store.set_run_authority(
+            run_id, "lease" if lease_id is not None else "gateway"
+        )
         # Read the projection BEFORE submitting: the worker races this call
         # to flip the state to "running", and 202 semantics return "accepted".
         projection = self._run_projection(run_id)
@@ -1172,3 +1205,49 @@ class Operations:
             if not has_more:
                 return found
             offset += len(rows)
+
+    def _assert_bench_acceptable(
+        self, bench_id: str, binding_ref: dict[str, Any], request_id: str
+    ) -> None:
+        """§5 accept-time pre-checks (D9): synchronous contention and binding
+        identity, raised BEFORE the request key is written (no dangling
+        idempotency tombstone on a refused run).
+
+        Busy oracle: the store's run-state view — any run still in a live
+        state (``LIVE_RUN_STATES``) owns the bench. There is no separate
+        live-run registry, so activity is derived from run_states via the
+        store's query surface (``list_run_states``, the read-only accessor
+        added for this check). Catalog pin: operation-catalog.json declares
+        no busy-specific failure code for run_start — its global
+        error_http_status map gives contention the 409 ``conflict`` vehicle
+        (``not_ready`` is also 409 but names a gateway-capability failure,
+        not a busy bench).
+
+        Binding match: the binding document's own top-level ``request_id``
+        must equal the §9 request id, resolved exactly as ``run_check``
+        resolves binding refs (content-store lookup by digest). An unstored
+        digest is NOT decided here — that failure stays asynchronous (the
+        worker's poison guard owns it) — so only a resolvable document can
+        conflict at accept time.
+        """
+        for row in self._store.list_run_states(bench_id):
+            if row["state"] in LIVE_RUN_STATES:
+                raise errors.OperationFailure(
+                    errors.failure(
+                        "conflict",
+                        f"bench {bench_id} is busy with run {row['run_id']}"
+                        f" (state {row['state']})",
+                    )
+                )
+        document = self._content.get_document(str(binding_ref.get("sha256", "")))
+        if document is None:
+            return  # unstored binding: the async path owns that failure
+        bound_request_id = str(document["content"].get("request_id", ""))
+        if bound_request_id != request_id:
+            raise errors.OperationFailure(
+                errors.failure(
+                    "conflict",
+                    f"binding document names request_id {bound_request_id!r},"
+                    f" not {request_id!r}",
+                )
+            )
