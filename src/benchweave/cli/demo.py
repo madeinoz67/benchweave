@@ -35,16 +35,17 @@ import json
 import os
 import secrets
 import shutil
+import sqlite3
 import tempfile
 import threading
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
 from benchweave.cli.atrest import DB_NAME, daemon_holds
-from benchweave.cli.client import GatewayClient
+from benchweave.cli.client import GatewayClient, GatewayError
 
 if TYPE_CHECKING:
     import uvicorn
@@ -73,6 +74,14 @@ DEFAULT_TIMEOUT_S = 120.0
 POLL_INTERVAL_S = 0.2
 #: The label every fresh-install surface carries (ruling: no exceptions).
 SIMULATION_LABEL = "SIMULATION"
+#: Feed record keys (the demo_view contract, producer here / consumer in
+#: ``benchweave.cli.render``): an opening banner record, and — only on a
+#: failed drive — a closing error record carrying the truthful message.
+FEED_BANNER = "demo_banner"
+FEED_ERROR = "demo_error"
+#: A live-view feed consumer: receives the feed; the view never drives
+#: the gateway itself (one-REST-path discipline, Task 12 ruling).
+View = Callable[[Iterable[Mapping[str, object]]], None]
 
 
 class DemoError(RuntimeError):
@@ -161,10 +170,10 @@ def _terminal_evidence(run: Mapping[str, Any]) -> tuple[dict[str, Any] | None, l
     return dict(terminal_ref), [str(terminal_ref["sha256"])]
 
 
-def drive_gateway(
-    client: GatewayClient, fixtures: Path, *, timeout_s: float
-) -> dict[str, Any]:
-    """Start the fixture run on the gateway's bench and drive it to terminal."""
+def _start_run(client: GatewayClient, fixtures: Path) -> dict[str, Any]:
+    """The shared start of both drive orchestration paths: resolve the
+    binding, advisory-preflight it, start the run, and §9-cross-check that
+    the request resolves to the run that was just accepted."""
     binding = fixture_binding(fixtures)
     bench_id = binding["bench_id"]
     bench = client.bench_get(bench_id)
@@ -194,6 +203,17 @@ def drive_gateway(
             f"run_find({binding['request_id']!r}) resolved {found.get('run_id')!r}, "
             f"not the started run {run_id!r}"
         )
+    return {"binding": binding, "bench_id": bench_id, "run_id": run_id}
+
+
+def drive_gateway(
+    client: GatewayClient, fixtures: Path, *, timeout_s: float
+) -> dict[str, Any]:
+    """Start the fixture run on the gateway's bench and drive it to terminal."""
+    started = _start_run(client, fixtures)
+    binding = dict(started["binding"])
+    bench_id = str(started["bench_id"])
+    run_id = str(started["run_id"])
     run = poll_to_terminal(client, run_id, timeout_s=timeout_s)
     terminal_ref, digests = _terminal_evidence(run)
     events = client.events_get(bench_id)
@@ -212,17 +232,158 @@ def drive_gateway(
     }
 
 
+class LiveDrive:
+    """One drive, observable live: the identical one-REST-path start as
+    :func:`drive_gateway`, then an ``events_get``-polling generator that
+    yields bench events to a view as they arrive until the run is terminal.
+
+    The live view (Task 12) consumes :func:`live_feed`; the view never
+    drives the gateway — the polling lives here, in the command layer.
+    """
+
+    def __init__(
+        self, client: GatewayClient, fixtures: Path, *, timeout_s: float
+    ) -> None:
+        self._client = client
+        self._fixtures = fixtures
+        self._timeout_s = timeout_s
+        self._binding: dict[str, Any] | None = None
+        self._bench_id = ""
+        self._run_id = ""
+        self._run: dict[str, Any] | None = None
+        self._seen: list[dict[str, Any]] = []
+        self._failure: DemoError | GatewayError | None = None
+
+    @property
+    def bench_id(self) -> str:
+        return self._bench_id
+
+    @property
+    def run_id(self) -> str:
+        return self._run_id
+
+    def start(self) -> None:
+        """binding → preflight → run_start → §9 cross-check (truthful errors)."""
+        started = _start_run(self._client, self._fixtures)
+        self._binding = dict(started["binding"])
+        self._bench_id = str(started["bench_id"])
+        self._run_id = str(started["run_id"])
+
+    def events(self) -> Iterator[dict[str, Any]]:
+        """Yield bench events as they arrive (``events_get`` pages via the
+        returned cursor) until the run is terminal. On a truthful failure
+        (timeout, transport) the failure is recorded, ONE ``demo_error``
+        record is yielded, and the feed ends — a view never sees an
+        exception from its feed."""
+        if not self._run_id:
+            raise DemoError("LiveDrive.events() before start()")
+        after = ""
+        deadline = time.monotonic() + self._timeout_s
+        try:
+            while True:
+                run = self._client.run_get(self._run_id)
+                page = self._client.events_get(self._bench_id, after=after)
+                items = page.get("events")
+                if isinstance(items, list):
+                    for event in items:
+                        if isinstance(event, dict):
+                            self._seen.append(event)
+                            yield event
+                cursor = page.get("cursor")
+                if isinstance(cursor, str) and cursor:
+                    after = cursor
+                if run.get("state") == "terminal":
+                    self._run = run
+                    return
+                if time.monotonic() >= deadline:
+                    raise DemoError(
+                        f"run {self._run_id} did not reach a terminal state within "
+                        f"{self._timeout_s:g}s (last state: {run.get('state')!r})"
+                    )
+                time.sleep(POLL_INTERVAL_S)
+        except (DemoError, GatewayError) as error:
+            self._failure = error
+            yield {FEED_ERROR: str(error)}
+
+    def result(self) -> dict[str, Any]:
+        """The drive_gateway-shaped summary — valid once ``events()`` has run
+        to exhaustion (the run is terminal); a failed drive re-raises here."""
+        if self._failure is not None:
+            raise self._failure
+        if self._run is None:
+            raise DemoError(
+                "the live drive has not reached a terminal state — "
+                "consume events() to exhaustion first"
+            )
+        assert self._binding is not None
+        terminal_ref, digests = _terminal_evidence(self._run)
+        return {
+            "bench_id": self._bench_id,
+            "procedure_id": self._binding["procedure_id"],
+            "request_id": self._binding["request_id"],
+            "run_id": self._run_id,
+            "state": str(self._run["state"]),
+            "outcome": self._run.get("outcome"),
+            "safe_state": self._run.get("safe_state"),
+            "terminal_record": terminal_ref,
+            "evidence_digests": digests,
+            "events_observed": len(self._seen),
+        }
+
+
+def live_feed(drive: LiveDrive, *, label: str | None) -> Iterator[dict[str, Any]]:
+    """The demo_view feed: an opening banner record (carrying the
+    SIMULATION label in fresh-install mode, ``None`` against a live
+    gateway), then the bench events as they arrive. The feed ends when the
+    run is terminal — or after one ``demo_error`` record when the drive
+    failed truthfully."""
+    yield {
+        FEED_BANNER: {
+            "label": label,
+            "bench_id": drive.bench_id,
+            "run_id": drive.run_id,
+        }
+    }
+    yield from drive.events()
+
+
+def _drive_with_view(
+    client: GatewayClient,
+    fixtures: Path,
+    *,
+    timeout_s: float,
+    view: View | None,
+    label: str | None,
+) -> dict[str, Any]:
+    """Drive to terminal — plainly, or through a live view the command
+    feeds events to as they arrive (the view consumes; it never drives)."""
+    if view is None:
+        return drive_gateway(client, fixtures, timeout_s=timeout_s)
+    drive = LiveDrive(client, fixtures, timeout_s=timeout_s)
+    drive.start()
+    view(live_feed(drive, label=label))
+    return drive.result()
+
+
 # --- mode payloads ----------------------------------------------------------------
 
 
 def drive_live_gateway(
-    base_url: str, token: str, *, fixtures: Path | None, timeout_s: float
+    base_url: str,
+    token: str,
+    *,
+    fixtures: Path | None,
+    timeout_s: float,
+    view: View | None = None,
 ) -> dict[str, Any]:
     """Gateway mode: drive the operator's live gateway; the report is NEVER
-    labelled a simulation (the bench may be real hardware)."""
+    labelled a simulation (the bench may be real hardware). With a ``view``,
+    the drive feeds it the live event stream (Task 12)."""
     fixtures_dir = resolve_fixtures(fixtures)
     client = GatewayClient(base_url, token=token)
-    payload = drive_gateway(client, fixtures_dir, timeout_s=timeout_s)
+    payload = _drive_with_view(
+        client, fixtures_dir, timeout_s=timeout_s, view=view, label=None
+    )
     payload.update(
         {
             "mode": "gateway",
@@ -309,8 +470,11 @@ def run_simulation(
     keep: bool,
     fixtures: Path | None,
     timeout_s: float,
+    view: View | None = None,
 ) -> dict[str, Any]:
-    """Fresh-install mode: an ephemeral labelled simulation on a scratch dir."""
+    """Fresh-install mode: an ephemeral labelled simulation on a scratch dir.
+    With a ``view``, the drive feeds it the live event stream, banner
+    labelled SIMULATION (Task 12)."""
     # Lazy heavy imports: only the demo pays for the app stack.
     from benchweave.content.store import ContentStore
     from benchweave.interfaces.app import create_app
@@ -324,7 +488,21 @@ def run_simulation(
     # demo's own store files inside it are.
     if scratch is not None:
         root = Path(scratch)
+        # T11 review carry: unusable --scratch paths are truthful refusals,
+        # never sqlite3/OSError tracebacks (the setup/verify precedent).
+        if root.exists() and not root.is_dir():
+            raise DemoError(
+                f"cannot use --scratch {root}: it exists and is not a directory"
+            )
         created_root = not root.exists()
+        if created_root:
+            try:
+                root.mkdir(parents=True, exist_ok=True)
+            except OSError as error:
+                # e.g. a parent that is a file, or an unwritable parent.
+                raise DemoError(
+                    f"cannot create scratch directory {root}: {error}"
+                ) from error
     else:
         root = Path(tempfile.mkdtemp(prefix="benchweave-demo-"))
         created_root = True
@@ -338,10 +516,14 @@ def run_simulation(
             + f" under {root} — the demo never composes a second coordinator "
             "over a held store; stop that gateway first"
         )
-    if created_root:
-        root.mkdir(parents=True, exist_ok=True)  # mkdtemp already made it
 
-    store = Store.open(root / DB_NAME, check_same_thread=False)
+    try:
+        store = Store.open(root / DB_NAME, check_same_thread=False)
+    except sqlite3.OperationalError as error:
+        # e.g. a pre-existing scratch directory the operator cannot write to.
+        raise DemoError(
+            f"cannot open a store under --scratch {root}: {error}"
+        ) from error
     content = ContentStore(store)
     secret = secrets.token_bytes(32)
     app = create_app(
@@ -367,7 +549,13 @@ def run_simulation(
             expires_at=_now_epoch() + 3600,
         )
         client = GatewayClient(f"http://127.0.0.1:{port}", token=token)
-        payload = drive_gateway(client, fixtures_dir, timeout_s=timeout_s)
+        payload = _drive_with_view(
+            client,
+            fixtures_dir,
+            timeout_s=timeout_s,
+            view=view,
+            label=SIMULATION_LABEL,
+        )
     finally:
         if server is not None:
             server.should_exit = True
@@ -420,7 +608,13 @@ def render_demo(data: Mapping[str, object]) -> str:
         for digest in digests:
             if isinstance(digest, str):
                 printed += 1
-                lines.append(f"evidence digest: {digest}  (the run record document)")
+                # T11 review carry: GET /v1/documents/<sha> 404s — the line
+                # names where the digest IS readable (the run record, via
+                # the report command).
+                lines.append(
+                    f"evidence digest: {digest}  "
+                    "(the run record — read it via 'benchweave report')"
+                )
     if printed == 0:
         lines.append("evidence digest: (none — uncertain terminal carries no record)")
     lines.append(f"events_observed: {data.get('events_observed')}")

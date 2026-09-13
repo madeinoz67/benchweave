@@ -5,9 +5,10 @@ Routing (the Task 9 contract):
 - ``--json``  → ``json.dumps`` (``indent=2``, ``sort_keys=True``) to stdout.
                 This is the MACHINE CONTRACT Tasks 10-15 build on — additive
                 only; renaming or removing keys is a breaking change.
-- TTY, no flags → the caller's ``render`` callable (plain-text for now; the
-                Textual renderers land beside it in Task 12 as alternative
-                ``render`` callables, not as a fork of this module).
+- TTY, no flags → the caller's ``render`` callable — plain text by
+                default; a render callable that carries a ``textual_view()``
+                method (the Task 12 render layer) RUNS that Textual view on
+                the TTY instead of printing.
 - non-TTY    → the built-in generic plain-text fallback below.
 
 The ``--json`` flag travels via the active Click context object (``ctx.obj``)
@@ -33,7 +34,7 @@ from __future__ import annotations
 
 import json
 import sys
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Protocol
 
 import click
@@ -82,6 +83,12 @@ def emit(
         click.echo(json.dumps(data, indent=2, sort_keys=True))
         return
     if sys.stdout.isatty() and render is not None and isinstance(data, Mapping):
+        textual_view: Callable[[], None] | None = getattr(render, "textual_view", None)
+        if textual_view is not None:
+            # Task 12 wiring: the render callable carries the command's
+            # Textual view — on a TTY the view runs; emit prints nothing.
+            textual_view()
+            return
         click.echo(render(data))
         return
     click.echo("\n".join(_plain(data)))

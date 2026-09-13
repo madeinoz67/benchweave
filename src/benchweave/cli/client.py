@@ -158,9 +158,13 @@ class GatewayClient:
         path = f"/v1/documents/{sha256}"
         return self._unwrap(self.get(path), path)
 
-    def events_get(self, bench_id: str, *, limit: int = 100) -> dict[str, Any]:
-        """GET ``/v1/benches/{bench_id}/events`` → the bench event stream page."""
+    def events_get(
+        self, bench_id: str, *, after: str = "", limit: int = 100
+    ) -> dict[str, Any]:
+        """GET ``/v1/benches/{bench_id}/events`` → the bench event stream page
+        (``after`` = the cursor from the previous page; empty = from the start —
+        the Task 12 live view polls it incrementally)."""
         path = f"/v1/benches/{bench_id}/events"
         return self._unwrap(
-            self.get(path, params={"after": "", "limit": str(limit)}), path
+            self.get(path, params={"after": after, "limit": str(limit)}), path
         )

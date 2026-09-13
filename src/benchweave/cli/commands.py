@@ -10,14 +10,17 @@ the labelled ephemeral fresh-install simulation) are live; ``report`` and
 at-rest commands operate directly on the data directory under the
 one-coordinator rule (``state.hold``). Both emit through
 :mod:`benchweave.cli.output` — ``--json`` is the machine contract (shape
-pinned in that module's docstring and in the test suite). Rendering is
-plain text for now; the Textual renderers (Task 12) slot in as ``render``
-callables beside the current one.
+pinned in that module's docstring and in the test suite). On a TTY the
+Task 12 Textual views render (:mod:`benchweave.cli.render` — ``status``
+rides ``emit``'s TTY branch on its render callable; ``demo`` runs its live
+event-fed view during the drive); non-TTY and ``--json`` paths are
+unchanged plain/JSON.
 """
 
 from __future__ import annotations
 
 import json
+import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import cast
@@ -28,7 +31,8 @@ from benchweave import __version__
 from benchweave.cli import atrest
 from benchweave.cli import demo as demo_lib
 from benchweave.cli.client import GatewayClient, GatewayError
-from benchweave.cli.output import emit
+from benchweave.cli.demo import View
+from benchweave.cli.output import Renderer, emit
 from benchweave.state.hold import StoreHeldError
 
 
@@ -235,7 +239,10 @@ def verify(data_dir: Path, json_output: bool) -> None:
     "--token",
     envvar="BENCHWEAVE_TOKEN",
     default=None,
-    help="Bearer token for --gateway mode (control tier or higher).",
+    help=(
+        "Bearer token for --gateway mode (control tier or higher). "
+        "Ignored in fresh-install mode."
+    ),
 )
 @click.option(
     "--scratch",
@@ -245,14 +252,18 @@ def verify(data_dir: Path, json_output: bool) -> None:
     help=(
         "Fresh-install mode: directory for the ephemeral store (created if "
         "absent; removed on exit unless --keep — a pre-existing directory "
-        "itself is never deleted, only the demo's store files)."
+        "itself is never deleted, only the demo's store files). "
+        "Fresh-install mode only — ignored with --gateway."
     ),
 )
 @click.option(
     "--keep",
     "keep",
     is_flag=True,
-    help="Fresh-install mode: keep the scratch directory after the demo.",
+    help=(
+        "Fresh-install mode: keep the scratch directory after the demo. "
+        "Ignored with --gateway."
+    ),
 )
 @click.option(
     "--timeout",
@@ -289,6 +300,14 @@ def demo(
     _set_json(json_output)
     if timeout_s <= 0:
         raise click.ClickException("--timeout must be a positive number of seconds")
+    view: View | None = None
+    if sys.stdout.isatty() and not json_output:
+        # Task 12: on a TTY the demo is a LIVE Textual view the command
+        # feeds events to as they arrive (the view never drives the
+        # gateway); the plain summary still prints after the view closes.
+        from benchweave.cli.render import TextualRenderer
+
+        view = TextualRenderer().demo_view
     if gateway_url is not None:
         if token is None:
             raise click.ClickException(
@@ -296,14 +315,18 @@ def demo(
             )
         try:
             payload = demo_lib.drive_live_gateway(
-                gateway_url, token, fixtures=fixtures, timeout_s=timeout_s
+                gateway_url, token, fixtures=fixtures, timeout_s=timeout_s, view=view
             )
         except (demo_lib.DemoError, GatewayError) as error:
             raise click.ClickException(str(error)) from error
     else:
         try:
             payload = demo_lib.run_simulation(
-                scratch=scratch, keep=keep, fixtures=fixtures, timeout_s=timeout_s
+                scratch=scratch,
+                keep=keep,
+                fixtures=fixtures,
+                timeout_s=timeout_s,
+                view=view,
             )
         except (demo_lib.DemoError, GatewayError) as error:
             raise click.ClickException(str(error)) from error
@@ -323,27 +346,6 @@ def serve() -> None:
 
 
 # --- status: the first live command -------------------------------------------
-
-
-def _render_status(data: Mapping[str, object]) -> str:
-    """Plain-text TTY rendering (the Textual renderer lands beside it in Task 12)."""
-    gateway = cast(Mapping[str, object], data["gateway"])
-    benches = cast(Mapping[str, object], data["benches"])
-    items = cast(Sequence[Mapping[str, object]], benches["items"])
-    lines = [
-        f"gateway_id:        {gateway['gateway_id']}",
-        f"interface_version: {gateway['interface_version']}",
-        f"mcp_version:       {gateway['mcp_version']}",
-        f"benches:           {len(items)}",
-    ]
-    for item in items:
-        lines.append(
-            "  {bench_id}  generation={generation} "
-            "qualification={qualification} busy={busy} tripped={tripped}".format_map(
-                {k: str(v) for k, v in item.items()}
-            )
-        )
-    return "\n".join(lines)
 
 
 @cli.command()
@@ -377,7 +379,16 @@ def status(gateway_url: str, token: str, json_output: bool) -> None:
         benches = client.bench_list()
     except GatewayError as error:
         raise click.ClickException(str(error)) from error
-    emit({"gateway": info, "benches": benches}, render=_render_status)
+    render: Renderer | None = None
+    if sys.stdout.isatty() and not json_output:
+        # Task 12 wiring: the render callable carries the Textual view for
+        # emit's TTY branch; non-TTY and --json keep their pinned paths.
+        from benchweave.cli.render import StatusRender
+
+        render = StatusRender(
+            info, cast(Sequence[Mapping[str, object]], benches["items"])
+        )
+    emit({"gateway": info, "benches": benches}, render=render)
 
 
 # --- entrypoint ---------------------------------------------------------------
