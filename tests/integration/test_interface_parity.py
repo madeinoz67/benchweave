@@ -1030,6 +1030,51 @@ def test_mcp_signature_coercion_boundary(gateway: SimpleNamespace) -> None:
     assert coerced["error"]["code"] == "conflict"  # sequence fence, no mutation
 
 
+def test_extra_property_wire_truth_on_both_transports(
+    gateway: SimpleNamespace,
+) -> None:
+    """D8 residual pin — extra-property enforcement is seam-only, and the
+    two wires diverge (RED-sanity'd both ways before pinning):
+
+    - REST drops the extra property at the adapter's named-field
+      translation (``_field`` extraction), so the request SUCCEEDS with
+      the property silently ignored — the normal success envelope at the
+      catalog's success status, not ``invalid_request``.
+    - MCP rejects an unknown tool argument at dispatch (fastmcp validates
+      against the SIGNATURE, which has no ``junk`` param): an isError
+      result carrying fastmcp's own text — not the contract envelope, and
+      nothing is accepted.
+    - The seam itself rejects extra properties (``additionalProperties:
+      false``, unit suite); wire-level enforcement on either transport
+      needs adapter changes (excluded here by the ruling-4 adapter
+      freeze) — registered as the named D8 residual in
+      docs/compatibility.md.
+    """
+    mcp_result = _call_result(
+        gateway.port,
+        "stg_v1_run_cancel",
+        {
+            "run_id": gateway.run_id,
+            "request_id": "req-extra-mcp",
+            "reason": "extra",
+            "junk": 1,
+        },
+        CONTROL,
+    )
+    assert mcp_result["isError"] is True, mcp_result
+    assert "structuredContent" not in mcp_result  # not a contract envelope
+
+    status, rest_json = _rest(
+        gateway,
+        "post",
+        f"/v1/runs/{gateway.run_id}/cancellations",
+        {"request_id": "req-extra-rest", "reason": "extra", "junk": 1},
+        CONTROL,
+    )
+    assert status == OPS["run_cancel"]["success_status"], rest_json
+    assert rest_json["ok"] is True, rest_json  # extra property silently dropped
+
+
 def test_payload_too_large_rest_only(gateway: SimpleNamespace) -> None:
     """D6 pin: the REST adapter enforces ``max_json_bytes`` (413); no MCP
     transport body ceiling is wired, so the class is REST-reachable only."""
