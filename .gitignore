@@ -22,6 +22,12 @@ htmlcov/
 coverage.xml
 junit*.xml
 
+# Wheel-only vendored trees (hatch force-include -> benchweave/_vendored/).
+# Nothing creates src/benchweave/_vendored/ in a checkout; the guard keeps a
+# stray copy from ever being committed, so packaged-first vendoring resolution
+# (src/benchweave/vendoring.py) can never flip to a stale tree copy.
+src/benchweave/_vendored/
+
 # Local configuration and credentials; keep shareable templates
 .env
 .env.*
