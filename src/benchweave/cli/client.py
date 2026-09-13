@@ -62,7 +62,24 @@ class GatewayClient:
             raise GatewayError(f"{method} {url} -> HTTP {error.code}: {detail}") from error
         except urllib.error.URLError as error:
             raise GatewayError(f"{method} {url} unreachable: {error.reason}") from error
-        return json.loads(raw) if raw else {}
+        except TimeoutError as error:
+            # A gateway that accepts and answers headers but hangs on the
+            # body (M4): report, never traceback.
+            raise GatewayError(f"{method} {url} timed out after {self._timeout}s") from error
+        if not raw:
+            return {}
+        try:
+            parsed: object = json.loads(raw)
+        except json.JSONDecodeError as error:
+            # A wrong-but-alive server on the loopback port (I1): 2xx HTML
+            # is the common misconfiguration — surface it, don't traceback.
+            snippet = repr(raw[:80])
+            raise GatewayError(f"{method} {url} returned a non-JSON body: {snippet}") from error
+        if not isinstance(parsed, dict):
+            raise GatewayError(
+                f"{method} {url} returned a non-JSON-object body: {type(parsed).__name__}"
+            )
+        return parsed
 
     # --- typed surface --------------------------------------------------------
 

@@ -22,6 +22,8 @@ import socket
 import threading
 import time
 from collections.abc import Iterator
+from contextlib import contextmanager
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
@@ -32,6 +34,7 @@ from click.testing import CliRunner, Result
 from fastapi import FastAPI
 
 from benchweave import __version__
+from benchweave.cli.client import GatewayClient, GatewayError
 from benchweave.cli.commands import cli, main
 from benchweave.content.store import ContentStore
 from benchweave.interfaces.app import create_app
@@ -194,6 +197,92 @@ def test_status_rejected_token_exits_nonzero(gateway: SimpleNamespace) -> None:
     assert "token rejected" in combined
 
 
+# --- wrong-shaped but alive servers (the common misconfiguration) -------------
+
+
+@contextmanager
+def _raw_server(body: bytes, content_type: str) -> Iterator[str]:
+    """A real loopback listener serving one fixed 2xx body to any request."""
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, fmt: str, *args: object) -> None:
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_address[1]}"
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+        server.server_close()
+
+
+def _handled(result: Result) -> None:
+    """The failure was handled (exit + message), not a traceback-class exception.
+
+    Standalone Click turns ClickException into SystemExit(1); only genuine
+    crashes surface here as Exception instances.
+    """
+    assert result.exception is None or isinstance(
+        result.exception, SystemExit
+    ), f"must be a handled error, not a traceback: {result.exception!r}"
+
+
+def test_status_html_2xx_body_exits_nonzero_with_truthful_message() -> None:
+    with _raw_server(b"<html><body>gateway admin UI</body></html>", "text/html") as base:
+        result = CliRunner().invoke(cli, ["status", "--gateway", base, "--token", OBSERVE])
+    _handled(result)
+    assert result.exit_code != 0
+    combined = _combined(result)
+    assert "non-JSON body" in combined
+    assert "<html>" in combined  # the repr-escaped snippet names the culprit
+
+
+def test_status_json_array_2xx_body_exits_nonzero_with_truthful_message() -> None:
+    with _raw_server(b"[1, 2, 3]", "application/json") as base:
+        result = CliRunner().invoke(cli, ["status", "--gateway", base, "--token", OBSERVE])
+    _handled(result)
+    assert result.exit_code != 0
+    assert "non-JSON-object body" in _combined(result)
+
+
+def test_client_read_phase_timeout_is_a_gateway_error() -> None:
+    """A gateway that answers headers then hangs must not traceback."""
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            self.send_response(200)
+            self.send_header("Content-Length", "64")
+            self.end_headers()
+            time.sleep(2.0)
+
+        def log_message(self, fmt: str, *args: object) -> None:
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        client = GatewayClient(
+            f"http://127.0.0.1:{server.server_address[1]}", token="x", timeout=0.3
+        )
+        with pytest.raises(GatewayError, match="timed out"):
+            client.get("/v1")
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+        server.server_close()
+
+
 # --- entrypoint contract ------------------------------------------------------
 
 
@@ -207,10 +296,12 @@ def test_main_returns_int_exit_codes() -> None:
 
 def test_click_and_textual_imports_confined_to_cli_package() -> None:
     offenders: list[str] = []
+    walked = 0
     for path in sorted(SRC_ROOT.rglob("*.py")):
         rel = path.relative_to(SRC_ROOT)
         if rel.parts and rel.parts[0] == "cli":
             continue
+        walked += 1
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
@@ -223,6 +314,8 @@ def test_click_and_textual_imports_confined_to_cli_package() -> None:
                 and node.module.split(".")[0] in FORBIDDEN_ROOTS
             ):
                 offenders.append(f"{rel}:{node.lineno}: from {node.module} import")
+    # Self-verify: SRC_ROOT breakage (rglob finding nothing) must not pass vacuously.
+    assert walked > 20, f"structure walk must cover the package; only {walked} files walked"
     assert not offenders, (
         "click/textual may only be imported under src/benchweave/cli/: "
         + ", ".join(offenders)
