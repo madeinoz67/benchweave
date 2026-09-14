@@ -35,6 +35,41 @@ def check(monkeypatch: pytest.MonkeyPatch, package: Path, **options: str) -> int
     return run(monkeypatch, *arguments)
 
 
+def test_scaffold_rejects_shadowing_package_names(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for name in ("benchweave_sdk", "benchweave", "os"):
+        assert run(monkeypatch, "new", tmp_path / f"p-{name}", "--package", name) == 1
+
+
+def test_create_ui_resources_is_atomic_on_unusable_descriptors(tmp_path: Path) -> None:
+    presentation = importlib.import_module("benchweave_sdk.presentation")
+    scaffold = importlib.import_module("benchweave_sdk.scaffold")
+
+    empty = tmp_path / "empty"
+    scaffold.create_project(empty, "example_plugin")
+    descriptor_path = empty / "src/example_plugin/descriptor.json"
+    document = json.loads(descriptor_path.read_bytes())
+    document["parameters"] = []
+    descriptor_path.write_text(json.dumps(document), encoding="utf-8")
+    package = empty / "src/example_plugin"
+    with pytest.raises(ValueError, match="at least one readable"):
+        presentation.create_ui_resources(empty, "example_plugin")
+    assert not (package / "presentation.json").exists()
+    assert not (package / "ui").exists()
+
+    unknown = tmp_path / "unknown"
+    scaffold.create_project(unknown, "example_plugin")
+    descriptor_path = unknown / "src/example_plugin/descriptor.json"
+    document = json.loads(descriptor_path.read_bytes())
+    document["parameters"][0]["type"] = "float8"
+    descriptor_path.write_text(json.dumps(document), encoding="utf-8")
+    package = unknown / "src/example_plugin"
+    with pytest.raises(ValueError, match="preview_unsupported_parameter_type"):
+        presentation.create_ui_resources(unknown, "example_plugin")
+    assert not (package / "presentation.json").exists()
+
+
 def test_optional_ui_preserves_descriptor_and_adapter(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
