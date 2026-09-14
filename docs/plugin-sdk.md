@@ -73,6 +73,12 @@ Generated tests cover identify/read, quiet lifecycle, invalid inputs, pre-dispat
 
 Descriptor checks currently cover its schema, matching capabilities/policies, unique parameter names and ordered ranges. These are **partial checks**, not all S01–S18, C01–C12 or M01–M14 obligations. The SDK provides no physical transport provider, complete profile/capture test harness or hardware qualification certificate.
 
+## Local UI preview (simulated)
+
+`benchweave-sdk check-ui`, `check-preset` and `preview-ui` validate presentation candidates and preview them offline. `preview-ui` serves the versioned preview API and the bundled React renderer on loopback only; every scenario, observation and control receipt is simulated and labelled as such — the preview path has no gateway, registry or hardware reach. An external development renderer (`--renderer-url`, e.g. a local Vite dev server) must also name a loopback host; non-loopback renderer origins are rejected because plugin authors can suggest command lines. The served document's shape is pinned by [plugin-ui-preview-v1](plugin-ui-preview-v1/preview-document.schema.json), validated from both the Python emitter and the renderer's decoder.
+
+The SDK's runtime dependencies are Click, jsonschema (+ referencing, rfc3339-validator, rfc3987 format backends), Rich and Textual — all declared in `packages/sdk/pyproject.toml`; the wheel vendors the canonical contract JSONs, the pure presentation validator and the built renderer assets.
+
 ## 4. Review compatibility and deployment
 
 Use the [AI device integration reviewer](ai-device-reviewer.md) with the exact revision and test evidence. Its SDK maintenance checklist covers public interfaces, contracts, generated projects, mocks, gateway compatibility and release artefacts.
