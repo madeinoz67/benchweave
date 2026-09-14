@@ -43,6 +43,17 @@ def test_rich_output_is_plain_when_captured() -> None:
     assert "\x1b[" not in rendered
 
 
+def test_findings_render_author_strings_literally() -> None:
+    from benchweave_sdk.console import ConsoleOutput
+
+    stream = StringIO()
+    output = ConsoleOutput(file=stream, terminal=True)
+    output.findings([("[red]evil[/red]", "presentation.json", "[bold]spoofed[/bold]")])
+    rendered = stream.getvalue()
+    assert "[red]evil[/red]" in rendered
+    assert "[bold]spoofed[/bold]" in rendered
+
+
 def test_textual_preview_status_lifecycle() -> None:
     from benchweave_sdk.preview_tui import PreviewStatusApp
 

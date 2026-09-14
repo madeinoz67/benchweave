@@ -127,6 +127,43 @@ def test_preview_ui_rejects_non_loopback_renderer_origin() -> None:
     assert "preview_renderer_origin_not_local" in result.output
 
 
+def test_preview_ui_rejects_missing_fixtures_directory() -> None:
+    cli = importlib.import_module("benchweave_sdk.cli")
+    result = CliRunner().invoke(
+        cli.cli,
+        preview_arguments("--fixtures", "does/not/exist", "--no-open"),
+    )
+    assert result.exit_code == 1
+    assert "preview_fixtures_directory_expected" in result.output
+
+
+def test_preview_ui_survives_browserless_hosts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import webbrowser
+
+    cli = importlib.import_module("benchweave_sdk.cli")
+    presentation = importlib.import_module("benchweave_sdk.presentation")
+    fixtures = importlib.import_module("benchweave_sdk.fixtures")
+    preview_server = importlib.import_module("benchweave_sdk.preview_server")
+    server = FakeServer()
+    model = SimpleNamespace(scenarios=(object(),), renderer_version="0.1.0")
+
+    def refusing(url: str) -> bool:
+        raise webbrowser.Error("no browser")
+
+    monkeypatch.setattr(presentation, "load_validated_preview_inputs", lambda *a, **k: object())
+    monkeypatch.setattr(fixtures, "build_preview_model", lambda candidate: model)
+    monkeypatch.setattr(preview_server, "PreviewServer", lambda *a, **k: server)
+    monkeypatch.setattr(preview_server, "bundled_assets", lambda: Path("."))
+    monkeypatch.setattr(cli.webbrowser, "open", refusing)
+
+    result = CliRunner().invoke(cli.cli, preview_arguments())
+
+    assert result.exit_code == 0
+    assert "Browser did not open" in result.output
+
+
 def test_preview_ui_labels_custom_renderer_output() -> None:
     cli = importlib.import_module("benchweave_sdk.cli")
     presentation = importlib.import_module("benchweave_sdk.presentation")

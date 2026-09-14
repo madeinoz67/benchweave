@@ -200,6 +200,19 @@ def test_backslash_asset_paths_are_rejected_on_every_platform(tmp_path: Path) ->
     assert error.value.code == 404
 
 
+def test_nul_byte_paths_are_rejected_as_not_found(tmp_path: Path) -> None:
+    server_module = importlib.import_module("benchweave_sdk.preview_server")
+    (tmp_path / "index.html").write_text("preview", encoding="utf-8")
+
+    with (
+        server_module.PreviewServer(model(), tmp_path) as address,
+        pytest.raises(urllib.error.HTTPError) as error,
+    ):
+        urllib.request.urlopen(address.url + "/%00secret", timeout=2)
+
+    assert error.value.code == 404
+
+
 def test_bundled_renderer_assets_are_hash_verified_at_serve_time(tmp_path: Path) -> None:
     server_module = importlib.import_module("benchweave_sdk.preview_server")
     assert server_module.__file__ is not None

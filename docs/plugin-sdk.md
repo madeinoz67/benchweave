@@ -79,6 +79,8 @@ Descriptor checks currently cover its schema, matching capabilities/policies, un
 
 The SDK's runtime dependencies are Click, jsonschema (+ referencing, rfc3339-validator, rfc3987 format backends), Rich and Textual — all declared in `packages/sdk/pyproject.toml`; the wheel vendors the canonical contract JSONs, the pure presentation validator and the built renderer assets.
 
+Operational notes: `preview-ui` is an interactive tool — with output redirected (or `--no-open`) it serves until interrupted by design, exiting 0 on SIGINT as a normal stop; a fixed `--port` can hit a short `EADDRINUSE` window on immediate restart (deliberate anti-port-steal posture — prefer the default ephemeral port); request bodies have no handler timeout, which only matters for untrusted peers under the explicitly acknowledged `--allow-network` mode.
+
 ## 4. Review compatibility and deployment
 
 Use the [AI device integration reviewer](ai-device-reviewer.md) with the exact revision and test evidence. Its SDK maintenance checklist covers public interfaces, contracts, generated projects, mocks, gateway compatibility and release artefacts.
