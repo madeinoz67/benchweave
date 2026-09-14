@@ -1,4 +1,10 @@
-"""The 14-code interface error model (interface-v1.1.0 error_http_status)."""
+"""The 14-code interface error model (interface-v1.1.0 error_http_status).
+
+Every failure envelope mints a fresh 16-hex ``correlation_id`` — the
+vendored ``$defs/error`` requires minLength 1 (D14 cheap half, WP09).
+The ``details`` six-key half of D14 remains deferred: rendered
+``details`` stays open/free-form, registered in compatibility.md.
+"""
 
 from __future__ import annotations
 
@@ -47,11 +53,22 @@ class Failure:
 
 
 def failure(
-    code: str, message: str, *, retry: str = "never", details: dict[str, Any] | None = None
+    code: str,
+    message: str,
+    *,
+    retry: str = "never",
+    details: dict[str, Any] | None = None,
+    correlation_id: str | None = None,
 ) -> Failure:
     if code not in FAILURE_HTTP:
         raise ValueError(f"unknown interface error code {code!r}")
-    return Failure(code=code, message=message, retry=retry, details=details or {})
+    return Failure(
+        code=code,
+        message=message,
+        retry=retry,
+        details=details or {},
+        correlation_id=uuid.uuid4().hex[:16] if correlation_id is None else correlation_id,
+    )
 
 
 # The app's first operational module logger (Task-5 fix wave): the one

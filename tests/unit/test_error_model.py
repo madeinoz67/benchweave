@@ -38,22 +38,29 @@ def test_failure_http_is_the_catalog_map_verbatim() -> None:
 
 
 def test_failure_body_is_the_rendered_error_envelope() -> None:
-    """Pins the RENDERED shape (what both adapters put on the wire), NOT
-    the contract's: the vendored ``$defs/error`` requires ``correlation_id``
-    minLength 1 and a closed six-key ``details`` — the rendered envelope
-    diverges de-facto (empty correlation on non-internal failures, open
-    details). Registered as compatibility row D14; unchanged here."""
+    """D14 cheap half (WP09): every failure mints a real correlation_id
+    (vendored $defs/error minLength 1). The ``details`` half of D14 stays
+    deferred — rendered ``details`` remains open/free-form, pinned here as
+    the rendered shape, registered in compatibility.md."""
     fail = failure("conflict", "bench busy", retry="never", details={"x": 1})
-    assert fail.body() == {
+    body = fail.body()
+    assert body == {
         "ok": False,
         "error": {
             "code": "conflict",
             "message": "bench busy",
-            "correlation_id": "",
+            "correlation_id": fail.correlation_id,
             "retry": "never",
             "details": {"x": 1},
         },
     }
+    assert _HEX16.match(fail.correlation_id), "non-internal failures mint too"
+
+
+def test_failure_honours_explicit_correlation_id_and_uniqueness() -> None:
+    explicit = failure("conflict", "x", correlation_id="deadbeefdeadbeef")
+    assert explicit.correlation_id == "deadbeefdeadbeef"
+    assert failure("conflict", "a").correlation_id != failure("conflict", "b").correlation_id
 
 
 def test_unknown_code_is_a_programming_error_never_a_wire_code() -> None:

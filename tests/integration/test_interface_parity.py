@@ -68,6 +68,10 @@ a test; none is silent) versus what it proves equal:
   are compared with exactly the mutating field masked (``sequence`` for
   create/renew — same lease identity via the §9 key; ``lease_id`` for
   release — two fixture-seeded leases, one released per transport).
+- Error-envelope parity (D14 cheap half, WP09): every failure mints a
+  fresh 16-hex ``correlation_id`` per request, so cross-transport error
+  comparisons mask exactly that one field (each side must still be a valid
+  mint); every other error field matches exactly.
 - Unreachable failure classes, named and not faked: ``policy_denied``
   (``_bench_projection`` has no tripped source yet — the flag is hardcoded
   False until the WP08 hardware surface), ``gone``/``cursor_expired``/
@@ -138,7 +142,7 @@ LIMITS: dict[str, int] = {
     "max_admission_ms": 5000,
 }
 BENCH = "sim-bench"
-_CORRELATION_ID = re.compile(r"^[0-9a-f]{16}$")  # errors.internal_failure mint
+_CORRELATION_ID = re.compile(r"^[0-9a-f]{16}$")  # errors.failure mint — every envelope (D14)
 DEVICE = "descriptor-sim-controller"  # bootstrap keys rows by descriptor id
 BINDING_SHA = hashlib.sha256((FIXTURES / "run-binding.json").read_bytes()).hexdigest()
 BINDING_REF = {"id": "req-voltage-check-1", "version": "1.0.0", "sha256": BINDING_SHA}
@@ -877,7 +881,14 @@ def test_failure_classes_match_on_both_transports(
     assert rest_json["error"]["code"] == mcp_json["error"]["code"] == code
     assert rest_json["error"]["retry"] == mcp_json["error"]["retry"]
     if level == "full":
-        assert rest_json["error"] == mcp_json["error"], code
+        # D14 cheap half (WP09): the id is minted per envelope — the two
+        # transports are separate requests, so two distinct mints; every
+        # other error field must match exactly.
+        rest_masked = {k: v for k, v in rest_json["error"].items() if k != "correlation_id"}
+        mcp_masked = {k: v for k, v in mcp_json["error"].items() if k != "correlation_id"}
+        assert rest_masked == mcp_masked, code
+        assert _CORRELATION_ID.match(rest_json["error"]["correlation_id"]), code
+        assert _CORRELATION_ID.match(mcp_json["error"]["correlation_id"]), code
 
 
 def test_invalid_request_required_param_rest_vs_mcp_default(
@@ -1346,7 +1357,13 @@ def test_event_gap_after_retention_trim(gateway: SimpleNamespace) -> None:
     )
     assert status == 410
     assert rest_json["error"]["code"] == "event_gap"
-    assert mcp_json["error"] == rest_json["error"]
+    # D14 cheap half (WP09): per-envelope mint — mask the id, require a
+    # valid mint on each side, every other field identical.
+    rest_masked = {k: v for k, v in rest_json["error"].items() if k != "correlation_id"}
+    mcp_masked = {k: v for k, v in mcp_json["error"].items() if k != "correlation_id"}
+    assert mcp_masked == rest_masked
+    assert _CORRELATION_ID.match(rest_json["error"]["correlation_id"])
+    assert _CORRELATION_ID.match(mcp_json["error"]["correlation_id"])
 
 
 # --- §9 isolation (ledger item 7) ----------------------------------------------
@@ -1371,7 +1388,13 @@ def test_cross_principal_request_id_isolation(gateway: SimpleNamespace) -> None:
         gateway.port, "stg_v1_run_find", {"request_id": RUN_REQUEST}, foreign
     )
     assert mcp_json["ok"] is False
-    assert mcp_json["error"] == rest_json["error"]
+    # D14 cheap half (WP09): per-envelope mint — mask the id, require a
+    # valid mint on each side, every other field identical.
+    rest_masked = {k: v for k, v in rest_json["error"].items() if k != "correlation_id"}
+    mcp_masked = {k: v for k, v in mcp_json["error"].items() if k != "correlation_id"}
+    assert mcp_masked == rest_masked
+    assert _CORRELATION_ID.match(rest_json["error"]["correlation_id"])
+    assert _CORRELATION_ID.match(mcp_json["error"]["correlation_id"])
 
     status, rest_json = _rest(gateway, "get", f"/v1/requests/{RUN_REQUEST}", None, owner)
     assert status == 200 and rest_json["data"]["run_id"] == gateway.run_id
