@@ -1,12 +1,13 @@
-"""WP09 Task 4: PoC acceptance — the PRD §3 demonstration journey, live.
+"""PoC acceptance — the PRD §3 demonstration journey, live.
 
 One suite drives the journey a PRD reader would recognise over the one
 composed application (``create_app``: bootstrap admission, REST ``/v1``,
 MCP ``/mcp``, run worker, sim plugins, wired registry session) on a
-loopback uvicorn port — no TestClient, no seam doubles. Tasks 4–5 land
+loopback uvicorn port — no TestClient, no seam doubles. Tasks 4–5 landed
 the scaffold (fixtures), steps 1–3 (discover → admit → select) and steps
 4–5 (the run journey: start via REST, retrieve via MCP, the report); the
-fault/reuse legs (§3 steps 6–7) land in Task 6 of this suite.
+fault legs and the second-install reuse leg (§3 steps 6–7) complete the
+suite.
 
 Sketch-risk deviations from the task brief (real surface wins):
 - There is no ``GET /v1/registry`` — interface 1.1.1 has no
@@ -24,6 +25,10 @@ Sketch-risk deviations from the task brief (real surface wins):
   markers are the commissioning document's ``simulator-only`` evidence
   limitation and its "Not hardware-qualified." description, read back
   byte-pinned through ``GET /v1/documents/{sha256}``.
+- The sketch's "supply disabled" final-state element has no separate
+  wire moment to assert: a passed run's safe transition disables the
+  supply and the verified final safe condition
+  (``safe_state == "verified"``) subsumes it.
 - ``journey_discover_admit_select(app)`` gains a ``tokens`` argument
   (the principals live in the ``poc_tokens`` fixture; re-issuing inside
   the helper would fork the issuer state).
@@ -82,11 +87,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import subprocess
 import threading
 import time
 import urllib.error
 import urllib.request
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -98,9 +105,14 @@ import uvicorn
 
 from benchweave.cli.report import build_report, render_markdown
 from benchweave.content.store import ContentStore
-from benchweave.interfaces.app import create_app
-from benchweave.interfaces.bootstrap import RegistrySession, build_registry_session
+from benchweave.interfaces.app import RECOVERY_RUN_CHANGED_REASON, create_app
+from benchweave.interfaces.bootstrap import (
+    RegistrySession,
+    admit_startup_bench,
+    build_registry_session,
+)
 from benchweave.interfaces.identity import issue
+from benchweave.interfaces.operations import scoped_request_key
 from benchweave.registry.resolver import ResolvedClosure
 from benchweave.state.store import Store
 
@@ -136,6 +148,21 @@ BINDING_SHA = hashlib.sha256((FIXTURES / "run-binding.json").read_bytes()).hexdi
 #: The binding document's own request id (§5) — the run legs' dedup key.
 BINDING_REF: dict[str, str] = {
     "id": "req-voltage-check-1",
+    "version": "1.0.0",
+    "sha256": BINDING_SHA,
+}
+
+#: The restart leg's crash state (§3 step 6d): a PREVIOUS process's
+#: mid-body kill under the journey operator's principal, staged through
+#: the real Store APIs before the gateway boots (the ``poc_app`` fixture),
+#: so the journey gateway's own lifespan is the recovery boot. A second
+#: boot over a live gateway's database is impossible by design — the
+#: flock daemon-hold refuses it (state/hold.py) — which is exactly why
+#: the staged idiom lives in the stand-up rather than a second app.
+RESTART_RUN_ID = "run-poc-fault-restart"
+RESTART_REQUEST_ID = "req-poc-fault-restart"
+RESTART_REF: dict[str, str] = {
+    "id": RESTART_REQUEST_ID,
     "version": "1.0.0",
     "sha256": BINDING_SHA,
 }
@@ -267,9 +294,11 @@ class _Rest:
 class _Mcp:
     """MCP 2026-07-28 loopback client over the live app (task-8 idiom).
 
-    One initialized session (observer token at the transport); each
-    ``call`` carries the named principal's bearer — the seam enforces the
-    tier per tool.
+    One initialized session PER PRINCIPAL, created lazily on first use:
+    fastmcp binds a session to the credential that created it, so the
+    tier a call runs under is chosen by which session it enters through
+    (per-call bearer switching on one session is impossible on this
+    transport — see the ``__init__`` note for the live proof).
     """
 
     def __init__(self, url: str, tokens: Tokens) -> None:
@@ -430,10 +459,20 @@ def poc_app(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Gateway]:
     (``create_app`` on a file-backed store, uvicorn on an ephemeral port)
     with one addition the journey needs: ``build_registry_session`` over
     the committed fixture registry, so the admin change surface can admit
-    real packages live.
+    real packages live. And one pre-boot block the restart leg needs: a
+    previous process's crashed run is staged through the real Store APIs
+    BEFORE the boot (the staged-crash idiom), so this gateway's lifespan
+    runs its startup recovery over it — the journey gateway is itself a
+    recovery boot (§3 step 6d asserts the honesty of that recovery).
     """
     work = tmp_path_factory.mktemp("poc-acceptance")
-    store = Store.open(work / "state.db", check_same_thread=False)
+    db_path = work / "state.db"
+    seed = Store.open(db_path, check_same_thread=False)
+    seed_content = ContentStore(seed)
+    admit_startup_bench(seed, seed_content, FIXTURES, now=NOW_ISO)
+    _stage_crashed_run(seed, RESTART_RUN_ID, RESTART_REF, principal="poc-operator")
+    seed.close()
+    store = Store.open(db_path, check_same_thread=False)
     content = ContentStore(store)
     session = build_registry_session(REGISTRY, work / "registry", now_ns=lambda: NOW_NS)
     app = create_app(
@@ -666,6 +705,29 @@ def _store_approval(
 # --- the run drive (Task 5 produces; Tasks 6–9 consume) --------------------------
 
 
+def _bench_events(rest: _Rest, bench_id: str) -> list[dict[str, Any]]:
+    """The bench stream whole, cursor-paged, with an exhaustion guard.
+    The exhaustion signal is an EMPTY PAGE, never an empty cursor — the
+    events endpoint always returns a cursor (``after`` or the zero mark
+    when there is nothing new), so a cursor-based termination would page
+    forever (the Task-5 review minor: exit on exhaustion, and fail loudly
+    if the 50-page cap is reached with events still coming instead of
+    silently undercounting — the test_event_recovery paging idiom).
+    """
+    events: list[dict[str, Any]] = []
+    after = ""
+    for _ in range(50):
+        page = rest.get(
+            f"/v1/benches/{bench_id}/events", params={"after": after, "limit": 1000}
+        ).json()["data"]
+        page_events = list(page["events"])
+        if not page_events:
+            return events  # exhausted: the server has no more rows
+        events.extend(page_events)
+        after = str(page.get("cursor") or "")
+    raise AssertionError(f"bench event stream for {bench_id} exceeded 50 pages")
+
+
 def journey_run(
     app: Gateway,
     rest: _Rest,
@@ -769,17 +831,7 @@ def journey_run(
     )
 
     # The bench stream, paged whole (cursor-bounded; one page holds it).
-    events = 0
-    after = ""
-    for _ in range(50):
-        page = rest.get(
-            f"/v1/benches/{admitted.bench_id}/events",
-            params={"after": after, "limit": 1000},
-        ).json()["data"]
-        events += len(page["events"])
-        after = str(page.get("cursor") or "")
-        if not after:
-            break
+    events = len(_bench_events(rest, admitted.bench_id))
 
     return TerminalRecord(
         run_id=run_id,
@@ -1044,3 +1096,619 @@ def test_journey_admin_change_and_stale_generation_rejected(
     )
     assert replay.status_code == 202, replay.text
     assert str(replay.json()["data"]["run_id"]) == journey_terminal.run_id
+
+
+# --- §3 step 6: the fault legs (Task 6) ------------------------------------------
+
+#: Step kinds that dispatch to a device — the executor's operation kinds
+#: (``delay``/``sample``/``assert``/``if``/``repeat`` never reach a plugin).
+#: The durable ``run:{id}`` stream carries one event per executed
+#: occurrence, so counting these events IS the dispatch count: an
+#: unintended second execution would mint events above the leg's pin
+#: (executor.py's "one dispatch per occurrence, ever"; the occurrence
+#: pins in test_procedures.py).
+DISPATCH_KINDS = frozenset({"invoke", "read", "write"})
+
+#: Per-leg terminal outcome. Every value is pinned by the deep suite that
+#: owns the behaviour — never derived here by intuition:
+LEG_EXPECTATION: dict[str, tuple[str, ...]] = {
+    # The dropped 202 is transport-side: the run itself is healthy, and the
+    # identical retry must resolve to THAT run — operations.py's "§9 replay
+    # beats §5 contention" pin; the replay idiom is
+    # test_event_recovery.test_same_request_retry_after_recovery_returns_existing_run.
+    "lost_response": ("passed",),
+    # test_procedures.test_stale_sample_is_execution_error: the stale sample
+    # is INVALID evidence — body ``execution_error`` ("stale" reason), which
+    # the verified final safe condition passes through (terminal_outcome).
+    "stale_sample": ("execution_error",),
+    # The dispatched OVP rejection is uncertain truth: executor.py's
+    # "DISPATCHED or UNKNOWN maps to outcome_unknown" over the sim plugin's
+    # trip contract (test_sim_plugins' OVP pins), and coordinator.py's
+    # "uncertainty is never erased by later safety" keeps it there.
+    "trip": ("outcome_unknown",),
+    # test_event_recovery.test_kill_mid_run_staged_crash_recovers_interrupted
+    # (in-process variant): a fresh boot's recovery records ``interrupted``.
+    "restart": ("interrupted",),
+}
+
+#: Per-leg dispatched-device-operation count, from the same derivation the
+#: deep suites walk (test_procedures.test_worst_case_bound_exact enumerates
+#: the fixture procedure's step list; each pin below names where its fault
+#: terminates the body):
+LEG_OCCURRENCES: dict[str, int] = {
+    # A healthy body dispatches configure, enable, note, model, measure and
+    # remeasure x3 — eight device operations, and the §9 retry adds none.
+    "lost_response": 8,
+    # The stale leg dies at the ``voltage`` sample (never dispatched):
+    # configure, enable, note, model, measure — five dispatches, the last
+    # measure's result ageing past max_age before selection.
+    "stale_sample": 5,
+    # The trip leg dies on the tripping ``enable`` dispatch: configure then
+    # enable — two dispatches, the second applied-then-tripped.
+    "trip": 2,
+    # The staged crash dispatched nothing (no step events in the durable
+    # stream), and recovery only rebuilds the occurrence ledger to suppress
+    # replay — zero dispatches, ever.
+    "restart": 0,
+}
+
+
+def dispatch_occurrences(app: Gateway, record: TerminalRecord) -> int:
+    """Dispatched device operations in the run's durable event stream."""
+    events = app.store.read_events(f"run:{record.run_id}")
+    return sum(1 for event in events if str(event.get("kind")) in DISPATCH_KINDS)
+
+
+def _wire_generation(rest: _Rest, bench_id: str) -> int:
+    """The bench's CURRENT generation over the wire — legs never assume a
+    literal (the admission and the in-journey trip_reset both advanced it
+    before the legs run; any future admin change must keep working here)."""
+    return int(rest.get(f"/v1/benches/{bench_id}").json()["data"]["generation"])
+
+
+def _poll_terminal(
+    rest: _Rest, run_id: str, *, timeout_s: float = 60.0, poll_s: float = 0.2
+) -> dict[str, Any]:
+    """Bounded REST poll to terminal (the journey_run idiom, leg-local)."""
+    deadline = time.monotonic() + timeout_s
+    current: dict[str, Any] = {}
+    while True:
+        current = rest.get(f"/v1/runs/{run_id}").json()["data"]
+        if current["state"] == "terminal":
+            return current
+        assert time.monotonic() < deadline, (
+            f"run {run_id} never reached terminal within {timeout_s:g}s "
+            f"(last state: {current['state']!r})"
+        )
+        time.sleep(poll_s)
+
+
+def _record_from_final(
+    bench_id: str,
+    run_id: str,
+    request_id: str,
+    final: dict[str, Any],
+    *,
+    mcp_run_id: str,
+    events: int,
+) -> TerminalRecord:
+    """Assemble the wire-shaped TerminalRecord from a terminal projection
+    (journey_run's tail discipline: an uncertain terminal carries no record
+    and no digest — never fabricated)."""
+    terminal_ref = final.get("terminal_record")
+    ref_dict = dict(terminal_ref) if isinstance(terminal_ref, dict) else None
+    digests: tuple[str, ...] = (
+        (str(ref_dict["sha256"]),) if ref_dict and ref_dict.get("sha256") else ()
+    )
+    return TerminalRecord(
+        run_id=run_id,
+        bench_id=bench_id,
+        request_id=request_id,
+        state=str(final["state"]),
+        outcome=final.get("outcome"),
+        safe_state=final.get("safe_state"),
+        terminal_record=ref_dict,
+        evidence_digests=digests,
+        mcp_run_id=mcp_run_id,
+        events_observed=events,
+    )
+
+
+def _fault_binding(
+    app: Gateway, request_id: str, *, procedure: dict[str, Any] | None = None
+) -> dict[str, str]:
+    """Store one §5 binding variant for a fault leg; returns its wire ref.
+
+    The fixture binding under a fresh document-level ``request_id`` (the
+    second-binding idiom from test_event_recovery — the coordinator's
+    per-binding acceptance dedups on it), optionally pinning a MUTATED
+    procedure. A mutated procedure needs a commissioning variant too: the
+    admission lattice pins the procedure digest from BOTH sides
+    (documents.py: binding → procedure and commissioning.procedure_refs →
+    procedure), so the mutation is re-pinned through the chain exactly as
+    test_procedures' ``readmit_mutated`` rebuilds it, and the run path
+    loads every document from the ContentStore by digest
+    (app._spool_documents).
+    """
+    binding = json.loads((FIXTURES / "run-binding.json").read_bytes())
+    binding["request_id"] = request_id
+    if procedure is not None:
+        procedure_bytes = json.dumps(procedure, indent=2).encode()
+        procedure_sha = hashlib.sha256(procedure_bytes).hexdigest()
+        app.content.put_document(
+            procedure_bytes, procedure_sha, procedure, "urn:stg:procedure", NOW_ISO
+        )
+        binding["procedure"]["sha256"] = procedure_sha
+        commissioning = json.loads((FIXTURES / "commissioning.json").read_bytes())
+        for ref in commissioning["procedure_refs"]:
+            if ref["id"] == procedure["id"] and ref["version"] == procedure["version"]:
+                ref["sha256"] = procedure_sha
+        commissioning_bytes = json.dumps(commissioning, indent=2).encode()
+        commissioning_sha = hashlib.sha256(commissioning_bytes).hexdigest()
+        app.content.put_document(
+            commissioning_bytes,
+            commissioning_sha,
+            commissioning,
+            "urn:stg:commissioning",
+            NOW_ISO,
+        )
+        binding["commissioning"]["sha256"] = commissioning_sha
+    binding_bytes = json.dumps(binding, indent=2).encode()
+    binding_sha = hashlib.sha256(binding_bytes).hexdigest()
+    app.content.put_document(binding_bytes, binding_sha, binding, "urn:stg:binding", NOW_ISO)
+    return {"id": request_id, "version": "1.0.0", "sha256": binding_sha}
+
+
+def _stale_procedure() -> dict[str, Any]:
+    """The stale-evidence vector, verbatim from the deep suite.
+
+    test_procedures.test_stale_sample_is_execution_error inserts a 600 ms
+    delay between the ``measure`` invoke and the ``voltage`` sample
+    (``max_age_ms`` 500): the sample is INVALID at selection —
+    ``execution_error``, never a passing assertion.
+    """
+    procedure: dict[str, Any] = json.loads(
+        (FIXTURES / "procedure-voltage-check.json").read_bytes()
+    )
+    steps = procedure["steps"]
+    index = next(i for i, step in enumerate(steps) if step["id"] == "measure")
+    steps.insert(index + 1, {"id": "age", "kind": "delay", "duration_ms": 600})
+    return procedure
+
+
+def _trip_procedure() -> dict[str, Any]:
+    """The OVP-trip vector: policy-clean inputs that trip the real device.
+
+    5.4 V under a 5.3 V OVP threshold — both inside the policy's configure
+    constraints (voltage_v <= 5.5, ovp_v <= 6), so the dispatch is admitted
+    and the DEVICE trips when the enable write turns the output on with
+    the setpoint above threshold (sim_psu._check_trips) — the plugin
+    contract's OVP pins (test_sim_plugins: latch until reset, dispatched).
+    """
+    procedure: dict[str, Any] = json.loads(
+        (FIXTURES / "procedure-voltage-check.json").read_bytes()
+    )
+    configure = next(step for step in procedure["steps"] if step["id"] == "configure")
+    configure["input"]["voltage_v"] = 5.4
+    configure["input"]["ovp_v"] = 5.3
+    return procedure
+
+
+def _stage_crashed_run(
+    store: Store, run_id: str, binding_ref: dict[str, str], *, principal: str
+) -> None:
+    """Stage exactly the durable state a mid-body kill leaves behind.
+
+    The real Store APIs write what a crashed process had committed (the
+    test_event_recovery idiom, principal parametrised for the journey's
+    operator): an accepted (principal, ``run_start``, request_id) dedup
+    row, a run row without a terminal record, queue state ``running``, and
+    an active bench lease held by ``run:{run_id}`` — reserved before the
+    body's first dispatch.
+    """
+    key = scoped_request_key(principal, "run_start", str(binding_ref["id"]))
+    body_sha = hashlib.sha256(
+        json.dumps(binding_ref, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    store.accept_request(key, body_sha, run_id, NOW_ISO)
+    store.create_run(
+        run_id,
+        binding={
+            "id": str(binding_ref["id"]),
+            "version": str(binding_ref["version"]),
+            "sha256": body_sha,
+        },
+        principal_id=principal,
+        now=NOW_ISO,
+    )
+    store.next_lease(BENCH, f"lease-{run_id}", f"run:{run_id}", f"{NOW_ISO}T+10s")
+    store.put_run_state(run_id, BENCH, "running", NOW_ISO)
+
+
+def _leg_lost_response(
+    app: Gateway, rest: _Rest, mcp: _Mcp, admitted: Admitted, tokens: Tokens
+) -> TerminalRecord:
+    """§3 step 6a — the operator's start response is lost; the identical
+    retry returns the SAME run, never a second dispatch.
+
+    The "dropped" 202 is driven in its hardest window: the retry fires
+    while the run is still live and the bench busy, where §5 contention
+    would refuse a DIFFERENT request — operations.py pins that the §9
+    replay resolves first and returns the original run. The run itself is
+    healthy by design (the fault is transport-side); LEG_OCCURRENCES
+    carries the no-second-dispatch proof.
+    """
+    del tokens
+    generation = _wire_generation(rest, admitted.bench_id)
+    ref = _fault_binding(app, "req-poc-fault-lost-response")
+    body = {
+        "request_id": ref["id"],
+        "binding_ref": ref,
+        "expected_generation": generation,
+        "lease_id": None,
+    }
+    started = rest.post(
+        f"/v1/benches/{admitted.bench_id}/runs", principal="operator", json=body
+    )
+    assert started.status_code == 202, started.text
+    run_id = str(started.json()["data"]["run_id"])
+
+    # The response is "lost" — the client holds only the request it filed;
+    # the byte-identical retry must resolve to the SAME live run.
+    retry = rest.post(
+        f"/v1/benches/{admitted.bench_id}/runs", principal="operator", json=body
+    )
+    assert retry.status_code == 202, retry.text
+    replayed = retry.json()["data"]
+    assert str(replayed["run_id"]) == run_id
+    assert replayed["state"] in ("accepted", "running"), replayed
+
+    final = _poll_terminal(rest, run_id)
+    found = mcp.call(
+        "stg_v1_run_find", {"request_id": ref["id"]}, principal="operator"
+    )["data"]
+    assert str(found["run_id"]) == run_id  # one run under the request, both transports
+    via_mcp = mcp.call("stg_v1_run_get", {"run_id": run_id})["data"]
+    assert str(via_mcp["run_id"]) == run_id
+    return _record_from_final(
+        admitted.bench_id,
+        run_id,
+        ref["id"],
+        final,
+        mcp_run_id=str(via_mcp["run_id"]),
+        events=len(_bench_events(rest, admitted.bench_id)),
+    )
+
+
+def _leg_stale_sample(
+    app: Gateway, rest: _Rest, mcp: _Mcp, admitted: Admitted, tokens: Tokens
+) -> TerminalRecord:
+    """§3 step 6b — a stale sample is INVALID evidence, never a pass.
+
+    The deep-suite vector exactly: a 600 ms delay ages the measure result
+    past ``max_age_ms`` 500 before the ``voltage`` sample selects it. The
+    wire outcome is ``execution_error`` with the INVALID_SAMPLE signature
+    on the durable stream, and the body died at the sample — ``recheck``
+    never runs (test_procedures pins all three).
+    """
+    del tokens
+    generation = _wire_generation(rest, admitted.bench_id)
+    ref = _fault_binding(app, "req-poc-fault-stale-sample", procedure=_stale_procedure())
+    record = journey_run(
+        app,
+        rest,
+        mcp,
+        admitted,
+        request_id=ref["id"],
+        binding_ref=ref,
+        expected_generation=generation,
+    )
+    by_step = {
+        str(event["occurrence"][1]): event
+        for event in app.store.read_events(f"run:{record.run_id}")
+    }
+    assert by_step["voltage"]["status"] == "error"
+    assert by_step["voltage"]["error_code"] == "INVALID_SAMPLE"
+    assert "recheck" not in by_step  # the body ended at the stale sample
+    assert record.outcome != "passed"
+    return record
+
+
+def _leg_trip(
+    app: Gateway, rest: _Rest, mcp: _Mcp, admitted: Admitted, tokens: Tokens
+) -> TerminalRecord:
+    """§3 step 6c — the simulator's OVP trip, live through the real plugin.
+
+    Policy-clean configure inputs (5.4 V under a 5.3 V OVP threshold) are
+    admitted, and the device trips on the enable write — applied then
+    latched (sim_psu: "write applied; protective trip: OVP_TRIP"). A
+    DISPATCHED rejection is uncertain truth: the terminal outcome is
+    ``outcome_unknown`` with a real record, the durable stream carries the
+    enable step's DEVICE_REJECTED, and the record's reasons name the trip.
+    """
+    del tokens
+    generation = _wire_generation(rest, admitted.bench_id)
+    ref = _fault_binding(app, "req-poc-fault-trip", procedure=_trip_procedure())
+    record = journey_run(
+        app,
+        rest,
+        mcp,
+        admitted,
+        request_id=ref["id"],
+        binding_ref=ref,
+        expected_generation=generation,
+    )
+    by_step = {
+        str(event["occurrence"][1]): event
+        for event in app.store.read_events(f"run:{record.run_id}")
+    }
+    assert by_step["enable"]["status"] == "error"
+    assert by_step["enable"]["error_code"] == "DEVICE_REJECTED"
+    assert "measure" not in by_step  # the body ended at the tripping enable
+    assert record.terminal_record is not None  # uncertain, but recorded
+    durable = app.store.get_run(record.run_id)
+    assert durable is not None and durable["terminal"] is not None
+    reasons = [str(reason) for reason in durable["terminal"]["reasons"]]
+    assert any("OVP_TRIP" in reason for reason in reasons), reasons
+    assert record.outcome != "passed"
+    return record
+
+
+def _leg_restart(
+    app: Gateway, rest: _Rest, mcp: _Mcp, admitted: Admitted, tokens: Tokens
+) -> TerminalRecord:
+    """§3 step 6d — the journey gateway IS a recovery boot, honestly.
+
+    A previous process's mid-body kill (the staged crash the ``poc_app``
+    fixture wrote before boot: accepted §9 row, run row without a
+    terminal record, running queue state, lease held by ``run:{id}``)
+    under the journey operator's principal. The boot's lifespan recovery
+    finalised it ``interrupted``/``unknown`` with a real record, one
+    visible recovery ``run_changed``, nothing invented — and zero
+    dispatches, ever (recovery rebuilds the occurrence ledger to suppress
+    replay; it never dispatches). Everything is asserted over the
+    journey's own transports.
+    """
+    del app, tokens  # read-only over the journey's transports
+    final = _poll_terminal(rest, RESTART_RUN_ID, timeout_s=10.0)
+    assert final["outcome"] == "interrupted"
+    assert final["safe_state"] == "unknown"
+    assert isinstance(final["terminal_record"], dict)  # recovery writes a real record
+
+    # The recovery is visible on the bench stream exactly once, nothing
+    # invented (the staged-crash pin: no trip, no fabricated event).
+    bench_events = _bench_events(rest, admitted.bench_id)
+    recovery_events = [
+        event
+        for event in bench_events
+        if event.get("run_id") == RESTART_RUN_ID and str(event["kind"]) == "run_changed"
+    ]
+    assert len(recovery_events) == 1, (
+        [e["kind"] for e in bench_events if e.get("run_id") == RESTART_RUN_ID]
+    )
+    assert RECOVERY_RUN_CHANGED_REASON in str(recovery_events[0].get("evidence", {}))
+    run_kinds = [
+        str(event["kind"])
+        for event in bench_events
+        if event.get("run_id") == RESTART_RUN_ID
+    ]
+    assert run_kinds == ["run_changed"]  # no invented protective event
+
+    # §9 under the journey's principal, both transports: the staged request
+    # resolves to the recovered run — one run, recovered not re-executed.
+    found = mcp.call(
+        "stg_v1_run_find", {"request_id": RESTART_REQUEST_ID}, principal="operator"
+    )["data"]
+    assert str(found["run_id"]) == RESTART_RUN_ID
+    via_mcp = mcp.call("stg_v1_run_get", {"run_id": RESTART_RUN_ID})["data"]
+    assert str(via_mcp["run_id"]) == RESTART_RUN_ID
+    return _record_from_final(
+        admitted.bench_id,
+        RESTART_RUN_ID,
+        RESTART_REQUEST_ID,
+        final,
+        mcp_run_id=str(via_mcp["run_id"]),
+        events=len(bench_events),
+    )
+
+
+journey_fault_legs: dict[str, Callable[..., TerminalRecord]] = {
+    "lost_response": _leg_lost_response,
+    "stale_sample": _leg_stale_sample,
+    "trip": _leg_trip,
+    "restart": _leg_restart,
+}
+
+
+@pytest.mark.parametrize("leg", ["lost_response", "stale_sample", "trip", "restart"])
+def test_journey_fault_legs(
+    leg: str,
+    poc_app: Gateway,
+    poc_rest: _Rest,
+    poc_mcp: _Mcp,
+    poc_tokens: Tokens,
+    journey_admitted: Admitted,
+) -> None:
+    """PRD §3 step 6, live: four fault legs, each honest, each executed
+    exactly once.
+
+    Three legs are fault-OUTCOME legs (stale sample, OVP trip, restart):
+    their terminal outcome is never ``passed`` — asserted inside each
+    driver together with the fault's deep-suite signature. The fourth is
+    transport-side: the lost-response leg's RUN is healthy by design, and
+    its fault proof is the §9 replay plus LEG_OCCURRENCES. Every
+    expectation and occurrence count cites its deep-suite pin in the
+    LEG_EXPECTATION / LEG_OCCURRENCES tables; the durable event stream is
+    the occurrence oracle (one dispatch per occurrence, ever).
+    """
+    record = journey_fault_legs[leg](poc_app, poc_rest, poc_mcp, journey_admitted, poc_tokens)
+    assert record.outcome in LEG_EXPECTATION[leg]
+    assert dispatch_occurrences(poc_app, record) == LEG_OCCURRENCES[leg]
+
+
+# --- §3 step 7: second-install reuse from the built wheel (Task 6) ----------------
+
+
+@dataclass(frozen=True)
+class WheelTree:
+    """One fresh install of the built wheel: the console binary plus the
+    installed package's vendored plugin tree (site-packages root)."""
+
+    binary: Path
+    site_packages: Path
+
+    def plugin_digests(self) -> dict[str, str]:
+        """sha256 of every source file under the vendored plugin tree,
+        keyed relative to ``plugins/benchweave``.
+
+        Byte identity is the reuse contract: pyproject's force-include
+        ships the tree verbatim ("the same trees ship verbatim inside the
+        package"), so digest equality against the repo sources IS the
+        zero-plugin-source-changes proof, and equality between installs
+        is deterministic package reuse.
+        """
+        root = self.site_packages / "benchweave" / "_vendored" / "plugins" / "benchweave"
+        digests = {
+            str(path.relative_to(root)): hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in sorted(root.rglob("*"))
+            if path.is_file()
+            and "__pycache__" not in path.parts
+            and path.suffix != ".pyc"
+        }
+        assert digests, f"no vendored plugin files under {root}"
+        assert "sim_psu/src/benchweave_sim_psu/plugin.py" in digests
+        return digests
+
+
+@pytest.fixture(scope="module")
+def journey_wheel(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
+    """Build the wheel once for this module (the test_clean_install
+    idiom, kept local: hoisting the session fixture into conftest would
+    touch that suite's file for a per-session duplicate-build saving —
+    disclosed in the Task-6 report)."""
+    root = tmp_path_factory.mktemp("poc-reuse")
+    dist = root / "dist"
+    build = subprocess.run(  # noqa: S603, S607 - fixed argv; uv is the toolchain
+        ["uv", "build", "--out-dir", str(dist)],
+        cwd=str(REPO_ROOT),
+        capture_output=True,
+        text=True,
+        timeout=600,
+        check=False,
+    )
+    assert build.returncode == 0, f"uv build failed:\n{build.stderr}"
+    wheels = sorted(dist.glob("benchweave-*.whl"))
+    assert len(wheels) == 1, f"expected exactly one wheel, found: {wheels}"
+    yield wheels[0]
+
+
+def _install_wheel(wheel: Path, root: Path) -> WheelTree:
+    """Install the built wheel into a throwaway venv (never the dev venv)
+    — the clean-install idiom."""
+    created = subprocess.run(  # noqa: S603, S607 - fixed argv; uv is the toolchain
+        ["uv", "venv", str(root / "venv")],
+        capture_output=True,
+        text=True,
+        timeout=300,
+        check=False,
+    )
+    assert created.returncode == 0, f"uv venv failed:\n{created.stderr}"
+    installed = subprocess.run(  # noqa: S603, S607
+        [
+            "uv",
+            "pip",
+            "install",
+            "--python",
+            str(root / "venv" / "bin" / "python"),
+            str(wheel),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=900,
+        check=False,
+    )
+    assert installed.returncode == 0, f"wheel install failed:\n{installed.stderr}"
+    binary = root / "venv" / "bin" / "benchweave"
+    assert binary.is_file(), "the wheel must install the benchweave console script"
+    sites = sorted((root / "venv" / "lib").glob("python*/site-packages"))
+    assert len(sites) == 1, f"expected one site-packages, found: {sites}"
+    return WheelTree(binary=binary, site_packages=sites[0])
+
+
+def _demo_end_to_end(install: WheelTree, scratch: Path) -> dict[str, Any]:
+    """The §3 journey's outcome set at CLI level on a fresh install (the
+    test_clean_install demo step, tightened to the Task-4/5 assertions):
+    SIMULATION-identified, terminal ``passed``, verified safe condition, a
+    real terminal-record digest and real evidence digests."""
+    env = {
+        key: value for key, value in os.environ.items() if not key.startswith("BENCHWEAVE_")
+    }
+    result = subprocess.run(  # noqa: S603 - fixed argv, no shell
+        [
+            str(install.binary),
+            "demo",
+            "--scratch",
+            str(scratch),
+            "--keep",
+            "--fixtures",
+            str(FIXTURES),
+            "--json",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=360,
+        env=env,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    demo: dict[str, Any] = json.loads(result.stdout)
+    assert demo["mode"] == "simulation"
+    assert demo["simulation"] is True
+    assert demo["label"] == "SIMULATION"
+    assert demo["bench_id"] == BENCH
+    assert demo["state"] == "terminal"
+    assert demo["outcome"] == "passed"
+    assert demo["safe_state"] == "verified"
+    terminal_sha = str(demo["terminal_record"]["sha256"])
+    assert len(terminal_sha) == 64 and int(terminal_sha, 16) >= 0
+    assert demo["evidence_digests"], "the simulator run retains evidence digests"
+    assert all(len(str(d)) == 64 for d in demo["evidence_digests"])
+    return demo
+
+
+@pytest.mark.slow
+def test_journey_second_install_reuse(journey_wheel: Path, tmp_path: Path) -> None:
+    """PRD §3 step 7 / PRD-01+02: a SECOND fresh install of the same built
+    wheel reuses the exact plugin packages and repeats the demo
+    end-to-end.
+
+    Two independent trees install the one built wheel; both carry
+    byte-identical vendored plugin packages (deterministic packaging
+    reuse), and those bytes are the repo's plugin sources verbatim —
+    zero plugin-source changes between install one and the reused install
+    two. The second install then runs the demonstration journey
+    end-to-end (the Task-4/5 outcome set at CLI level), proving the reused
+    packages execute, not just sit in the tree.
+    """
+    primary = _install_wheel(journey_wheel, tmp_path / "install-one")
+    secondary = _install_wheel(journey_wheel, tmp_path / "install-two")
+
+    # Package reuse: both installs carry byte-identical plugin packages.
+    assert primary.plugin_digests() == secondary.plugin_digests()
+
+    # Zero plugin-source changes: the vendored trees are the repo's plugin
+    # sources verbatim (the pyproject force-include contract).
+    repo_root = REPO_ROOT / "plugins" / "benchweave"
+    repo_digests = {
+        str(path.relative_to(repo_root)): hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in sorted(repo_root.rglob("*"))
+        if path.is_file()
+        and "__pycache__" not in path.parts
+        and path.suffix != ".pyc"
+    }
+    assert primary.plugin_digests() == repo_digests
+
+    # The reused install repeats the demonstration journey end-to-end.
+    demo = _demo_end_to_end(secondary, tmp_path / "demo-two")
+    assert demo["outcome"] == "passed"
+
