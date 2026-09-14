@@ -230,21 +230,21 @@ def test_scrub_junit_hostname_replaces_every_machine_name() -> None:
     (the same doctrine the summaries' host disclosure follows)."""
     report = (
         b'<?xml version="1.0" encoding="utf-8"?>\n'
-        b'<testsuites><testsuite name="a" hostname="MacBookPro.lovegroove.io" '
+        b'<testsuites><testsuite name="a" hostname="scrub-test-host.example" '
         b'tests="1">'
         b'<testcase classname="c" name="test_journey_fault_legs[trip]" '
         b'time="1.0"/>'
         b'</testsuite>'
-        b'<testsuite name="b" hostname="MacBookPro.lovegroove.io" tests="0"/>'
+        b'<testsuite name="b" hostname="scrub-test-host.example" tests="0"/>'
         b'</testsuites>'
     )
 
     scrubbed = scrub_junit_hostname(report)
 
     assert scrubbed == report.replace(
-        b'hostname="MacBookPro.lovegroove.io"', b'hostname="reference-host"'
+        b'hostname="scrub-test-host.example"', b'hostname="reference-host"'
     )
-    assert b"lovegroove" not in scrubbed
+    assert b"scrub-test-host.example" not in scrubbed
     assert scrubbed.count(b'hostname="reference-host"') == 2
 
 
