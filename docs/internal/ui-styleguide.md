@@ -4,6 +4,8 @@
 
 **Design authority:** [UI style guide and workbench design](ui-styleguide-workbench-design.md)
 
+**Portable visual reference:** [Layered Precision light/dark mock-up](ui-styleguide-mockup.html)
+
 This guide is the implementation reference for humans and AI agents extending the BenchWeave UI. Storybook is the executable source of truth. `ui/src/styles/` owns tokens, `ui/src/components/` owns reusable behaviour, and `ui/src/compositions/` demonstrates supported product use.
 
 The first slice establishes the Layered Precision design language and representative operator and administrative compositions. The approved design contains the full target inventory; absence from this initial slice does not authorise a one-off substitute.
@@ -38,6 +40,8 @@ The supported project runtime is Node.js 22 LTS. Dependency versions are exact i
 
 Use CSS custom properties from `ui/src/styles/tokens.css` and `themes.css`. Components must not hard-code a colour or shadow that conveys product meaning.
 
+This section is normative. The tables below define the design values; the CSS files are their executable mirror. A change to either requires the other to change in the same commit.
+
 Token groups include:
 
 - `--bw-space-*` for layout rhythm;
@@ -49,6 +53,103 @@ Token groups include:
 - `--bw-advisory`, `--bw-warning`, `--bw-critical`, `--bw-trip` and `--bw-success`.
 
 Add a semantic token to both themes in the same change. Do not introduce a raw colour prop on a component.
+
+### Colour palette
+
+Theme changes luminance and contrast, not meaning. Use semantic names in components; hexadecimal values belong only in theme definitions, documentation and visual-test fixtures.
+
+| Token | Light | Dark | Use |
+| --- | --- | --- | --- |
+| `--bw-canvas` | `#e4ebef` | `#19252c` | Application background |
+| `--bw-surface` | `#f5f8f9` | `#26363f` | Raised panel and control face |
+| `--bw-surface-recessed` | `#dce5ea` | `#101a20` | Plots, tables, logs and wells |
+| `--bw-text` | `#17242c` | `#eef5f7` | Primary text and values |
+| `--bw-text-muted` | `#5b6a73` | `#aebbc2` | Labels, metadata and secondary text |
+| `--bw-border` | `#c3cfd5` | `#40515b` | Neutral boundaries and dividers |
+| `--bw-accent` | `#0b7181` | `#42cee2` | Selected state and primary action |
+| `--bw-accent-contrast` | `#ffffff` | `#07161a` | Text/icons on accent |
+| `--bw-focus` | `#087f8c` | `#59d9eb` | Keyboard focus ring only |
+| `--bw-advisory` | `#2476b8` | `#62aee8` | Informative state requiring awareness |
+| `--bw-warning` | `#a96608` | `#ffb342` | Attention required |
+| `--bw-critical` | `#b63830` | `#ff6d63` | Immediate operator action |
+| `--bw-trip` | `#a92858` | `#ff5d91` | Protective trip and inhibited control |
+| `--bw-success` | `#177158` | `#67d8b2` | Confirmed successful outcome |
+
+Severity colours are not general decoration. Normal state uses neutral surfaces; success is reserved for a confirmed transition or outcome. Charts use accent first, then severity colours only when the series itself has that meaning.
+
+### Spacing and layout
+
+The base unit is `0.25rem` (normally 4 px). Use only the defined steps for component padding and gaps.
+
+| Token | Value | Typical use |
+| --- | --- | --- |
+| `--bw-space-1` | `0.25rem` | Tight label/value separation |
+| `--bw-space-2` | `0.5rem` | Icon gaps and compact rows |
+| `--bw-space-3` | `0.75rem` | Control groups and alert padding |
+| `--bw-space-4` | `1rem` | Standard component padding |
+| `--bw-space-5` | `1.5rem` | Panel and page-section gaps |
+| `--bw-space-6` | `2rem` | Major composition separation |
+
+Layout rules:
+
+- page content maximum width: `90rem`;
+- page gutter: `1.5rem`, reducing to `1rem` below 48rem;
+- minimum supported viewport: `20rem`;
+- reading grid minimum tile width: `13rem`;
+- plot minimum useful height: `15rem` desktop and `12rem` compact;
+- table rows: minimum `2.5rem` target height;
+- use CSS grid for device/plugin panels so unknown plugin compositions wrap without absolute placement;
+- breakpoints are content-driven, with reference points at 30rem, 48rem, 64rem and 90rem; do not branch component behaviour by device name.
+
+### Radius, borders and elevation
+
+| Token or rule | Value | Use |
+| --- | --- | --- |
+| `--bw-radius-control` | `0.5rem` | Buttons, fields, bubbles and compact controls |
+| `--bw-radius-panel` | `0.875rem` | Panels, cards and instrument groups |
+| Standard border | `1px solid var(--bw-border)` | Component boundary |
+| Focus outline | `0.125rem solid var(--bw-focus)` | Keyboard focus |
+| Focus offset | `0.125rem` | Separation from component edge |
+| Raised shadow | `0.5rem 0.625rem 1.5rem` dark plus `-0.35rem -0.35rem 1rem` light | Panels/readings |
+| Recessed shadow | inset `0.25rem 0.25rem 0.625rem` dark plus inset `-0.2rem -0.2rem 0.5rem` light | Plots, tables and wells |
+| Abnormal glow | `0 0 1.5rem`, state colour at 32% | Affected reading only |
+
+Elevation has three levels: canvas (0), recessed (-1) and raised (+1). Dialogs and menus may use +2 by strengthening the raised shadow once. Do not create arbitrary elevation levels or nest strong shadows.
+
+### Typography
+
+UI text uses `Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`. Numeric readings, timestamps, identifiers and source evidence use `"SFMono-Regular", Consolas, "Liberation Mono", monospace` with tabular numerals.
+
+| Role | Size / line height | Weight | Treatment |
+| --- | --- | --- | --- |
+| Page title | `2rem / 1.2` | 700 | Sentence case |
+| Section title | `1.25rem / 1.3` | 700 | Sentence case |
+| Panel title | `1rem / 1.35` | 700 | Sentence case |
+| Body | `0.875rem / 1.5` | 400 | Sentence case |
+| Control label | `0.875rem / 1.25` | 700 | Sentence case |
+| Metadata | `0.75rem / 1.4` | 400–600 | Sentence case |
+| Eyebrow/quantity | `0.7rem / 1.2` | 700 | Uppercase, `0.08em` tracking |
+| Primary reading | `clamp(1.65rem, 4vw, 2.35rem) / 1.1` | 650 | Data font, tabular |
+| Unit/quality | `0.75rem / 1.3` | 400–600 | Data font where numeric |
+
+Do not use more than three text sizes in one compact panel. Uppercase is limited to short quantity labels, state labels and eyebrows; never use uppercase for instructional paragraphs.
+
+### Controls, icons and targets
+
+- standard control minimum height: `2.5rem`;
+- compact control minimum height: `2rem`, limited to dense desktop tables;
+- touch-first or safety-significant action minimum target: `2.75rem` square;
+- button horizontal padding: `0.9rem`; vertical padding: `0.55rem`;
+- standard icon: 16–18 px; status icon: 16 px; empty-state illustration maximum: 48 px;
+- use Lucide icons with `1.75px`–`2px` stroke and `aria-hidden="true"` when adjacent text supplies the name;
+- destructive and protective actions always include a text label; icon-only is not allowed;
+- a rotary control is paired with a precise numeric field and explicit Apply action.
+
+### Motion
+
+The standard interaction transition is `120ms ease`. Hover may lift a raised control by `1px`; active may move it down by `1px` and use the recessed shadow. State changes must not pulse continuously. Critical or trip indication may animate once on entry, then remain static.
+
+When `prefers-reduced-motion: reduce` is active, animation and transition duration is `0.01ms`, iteration count is one, and smooth scrolling is disabled.
 
 ## Layered Precision surfaces
 

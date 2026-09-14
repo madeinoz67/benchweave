@@ -1,4 +1,4 @@
-import { readdirSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 describe("Storybook catalogue", () => {
@@ -20,5 +20,25 @@ describe("Storybook catalogue", () => {
     ]) {
       expect(stories).toContain(group);
     }
+  });
+
+  it("publishes the normative tokens and a portable light/dark mock-up", () => {
+    const guide = readFileSync("../docs/internal/ui-styleguide.md", "utf8");
+    const mockup = readFileSync("../docs/internal/ui-styleguide-mockup.html", "utf8");
+
+    for (const section of [
+      "### Colour palette",
+      "### Spacing and layout",
+      "### Radius, borders and elevation",
+      "### Typography",
+      "### Controls, icons and targets",
+      "### Motion",
+    ]) {
+      expect(guide).toContain(section);
+    }
+
+    expect(mockup).toContain('aria-label="Light theme mock-up"');
+    expect(mockup).toContain('aria-label="Dark theme mock-up"');
+    expect(mockup).toContain('aria-label="Voltage and current waveform"');
   });
 });
