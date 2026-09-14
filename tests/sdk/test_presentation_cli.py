@@ -13,14 +13,13 @@ def sdk_source(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.syspath_prepend(str(root / "packages/sdk/src"))
 
 
-def run(monkeypatch: pytest.MonkeyPatch, *arguments: str | Path) -> None:
+def run(monkeypatch: pytest.MonkeyPatch, *arguments: str | Path) -> int:
     cli = importlib.import_module("benchweave_sdk.cli")
+    exit_code: int = cli.main([*map(str, arguments)])
+    return exit_code
 
-    monkeypatch.setattr("sys.argv", ["benchweave-sdk", *map(str, arguments)])
-    cli.main()
 
-
-def check(monkeypatch: pytest.MonkeyPatch, package: Path, **options: str) -> None:
+def check(monkeypatch: pytest.MonkeyPatch, package: Path, **options: str) -> int:
     arguments: list[str | Path] = [
         "check-ui",
         package / "presentation.json",
@@ -33,7 +32,42 @@ def check(monkeypatch: pytest.MonkeyPatch, package: Path, **options: str) -> Non
     ]
     for key, value in options.items():
         arguments.extend(["--" + key, value])
-    run(monkeypatch, *arguments)
+    return run(monkeypatch, *arguments)
+
+
+def test_scaffold_rejects_shadowing_package_names(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for name in ("benchweave_sdk", "benchweave", "os"):
+        assert run(monkeypatch, "new", tmp_path / f"p-{name}", "--package", name) == 1
+
+
+def test_create_ui_resources_is_atomic_on_unusable_descriptors(tmp_path: Path) -> None:
+    presentation = importlib.import_module("benchweave_sdk.presentation")
+    scaffold = importlib.import_module("benchweave_sdk.scaffold")
+
+    empty = tmp_path / "empty"
+    scaffold.create_project(empty, "example_plugin")
+    descriptor_path = empty / "src/example_plugin/descriptor.json"
+    document = json.loads(descriptor_path.read_bytes())
+    document["parameters"] = []
+    descriptor_path.write_text(json.dumps(document), encoding="utf-8")
+    package = empty / "src/example_plugin"
+    with pytest.raises(ValueError, match="at least one readable"):
+        presentation.create_ui_resources(empty, "example_plugin")
+    assert not (package / "presentation.json").exists()
+    assert not (package / "ui").exists()
+
+    unknown = tmp_path / "unknown"
+    scaffold.create_project(unknown, "example_plugin")
+    descriptor_path = unknown / "src/example_plugin/descriptor.json"
+    document = json.loads(descriptor_path.read_bytes())
+    document["parameters"][0]["type"] = "float8"
+    descriptor_path.write_text(json.dumps(document), encoding="utf-8")
+    package = unknown / "src/example_plugin"
+    with pytest.raises(ValueError, match="preview_unsupported_parameter_type"):
+        presentation.create_ui_resources(unknown, "example_plugin")
+    assert not (package / "presentation.json").exists()
 
 
 def test_optional_ui_preserves_descriptor_and_adapter(
@@ -53,6 +87,45 @@ def test_optional_ui_preserves_descriptor_and_adapter(
     assert "not admission or approval" in capsys.readouterr().out
 
 
+def test_ui_scaffold_includes_valid_preview_fixtures_and_conformance_test(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run(monkeypatch, "new", tmp_path / "ui", "--with-ui")
+    project = tmp_path / "ui"
+    package = project / "src/example_plugin"
+    assert (package / "ui/fixtures/normal.json").is_file()
+    assert (package / "ui/fixtures/warning.json").is_file()
+    conformance = project / "tests/test_presentation_preview.py"
+    assert conformance.is_file()
+    assert "BASELINE_IDS" in conformance.read_text()
+
+    from benchweave_sdk.fixtures import build_preview_model
+    from benchweave_sdk.presentation import load_validated_preview_inputs
+
+    candidate = load_validated_preview_inputs(
+        package / "presentation.json",
+        package / "descriptor.json",
+        package,
+        package / "binding-catalogue.json",
+        firmware=None,
+        features=frozenset(),
+        panels=frozenset(),
+    )
+    ids = {scenario.id for scenario in build_preview_model(candidate).scenarios}
+    mandatory = {
+        "normal",
+        "warning",
+        "loading",
+        "stale",
+        "disconnected",
+        "critical",
+        "trip",
+        "recovery",
+        "request-rejected",
+    }
+    assert mandatory <= ids
+
+
 def test_ui_check_rejects_modified_manifest(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -60,9 +133,7 @@ def test_ui_check_rejects_modified_manifest(
     package = tmp_path / "ui/src/example_plugin"
     manifest = package / "ui/manifest.json"
     manifest.write_bytes(manifest.read_bytes() + b"\n")
-    with pytest.raises(SystemExit) as error:
-        check(monkeypatch, package)
-    assert error.value.code == 1
+    assert check(monkeypatch, package) == 1
 
 
 def test_ui_check_rejects_symlinked_resource(
@@ -75,9 +146,7 @@ def test_ui_check_rejects_symlinked_resource(
     outside.write_bytes(manifest.read_bytes())
     manifest.unlink()
     manifest.symlink_to(outside)
-    with pytest.raises(SystemExit) as error:
-        check(monkeypatch, package)
-    assert error.value.code == 1
+    assert check(monkeypatch, package) == 1
 
 
 def test_ui_check_rejects_resource_root_escape(
@@ -89,6 +158,4 @@ def test_ui_check_rejects_resource_root_escape(
     document = json.loads(envelope.read_bytes())
     document["resource_root"] = "../outside"
     envelope.write_text(json.dumps(document))
-    with pytest.raises(SystemExit) as error:
-        check(monkeypatch, package)
-    assert error.value.code == 1
+    assert check(monkeypatch, package) == 1
