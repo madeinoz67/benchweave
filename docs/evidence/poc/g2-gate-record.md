@@ -84,7 +84,7 @@ following this record.
 | Every applicable fault case deterministic; no false passed | 4 applicable legs, all verdict `passed`, occurrence oracles exact (lost_response 8/8, restart 0/0, stale_sample 5/5, trip 2/2), `failed: 0` | PASS | `fault-matrix/legs.json`, `fault-matrix/junit.xml` |
 | Reference-host p95 metadata reads ≤ 500 ms | **4.746 ms** (100 reads, 2 observers, one active run, `active_run_coverage: 1.0`) | PASS | `timing/prd-load.json` (`prd-load-reads`) |
 | Reference-host p95 run acceptance ≤ 2 s | **4.790 ms** (100 accepts on the idle bench, sequential — see the observer caveat below; concurrent proxy bound: the stress tier's ~5.2× p95 inflation at 16 observers bounds a concurrent-acceptance p95 at ≲25 ms, ~80× under the 2000 ms target) | pass — sequential, idle-bench, observers 1-achieved/2-declared per the caveat below | `timing/prd-load.json` (`prd-load-acceptance`) |
-| Product owner accepts the reuse and operator journey | — | PENDING | Owner line below |
+| Product owner accepts the reuse and operator journey | — | ACCEPTED 2026-09-14 | Owner line below |
 
 **Stress tier — non-gating, labelled as such:** `timing/stress-16.json`
 records read p95 24.614 ms / max 32.833 ms over 1600 reads at 16
@@ -163,8 +163,8 @@ named; reopen rule stated there.
 
 ## Owner
 
-Product decision owner acceptance: PENDING — Stephen Eaton accepts on
-review of this record.
+Product decision owner acceptance: ACCEPTED — Stephen Eaton, 2026-09-14,
+on review of this record and the evidence tree it binds.
 
 ## Commit range
 
