@@ -67,7 +67,7 @@ behaviour at depth.
 | PRD-08 protection/recovery | `test_journey_fault_legs` — lost_response, restart, stale_sample, trip: 4/4 legs verdict `passed`, occurrence oracles exact (8/0/5/2), `failed: 0` | `tests/integration/test_event_recovery.py` + `tests/contract/test_fault_matrix.py` | `fault-matrix/legs.json` + `fault-matrix/junit.xml` |
 | PRD-09 measurement honesty | Assertions + verified final safe condition in `test_journey_run_rest_retrieve_mcp_report` (`safe_state == "verified"`; SIMULATION visibly identified via the commissioning document's evidence limitation, byte-pinned read-back) | `tests/integration/test_procedures.py` (stale / wrong-unit) | — |
 | PRD-10 parity/access | Same admitted inventory over both transports (discovery leg); same run over both (run leg) | `tests/integration/test_interface_parity.py` (full parity) | — |
-| PRD-11 network independence | No dedicated registry-loss journey leg — the Task-6 leg was conditional ("if uncovered") and the deep suite carries it: accepted runs are gateway-owned and complete through client/process loss | `tests/integration/test_event_recovery.py` | `runs/summary.json` (100 runs, `duplicate_dispatch_total: 0`) |
+| PRD-11 network independence | PRD §5's own observable, verbatim: "finishes within policy through client/registry loss". Client loss and process loss are proven live by the fault legs (`lost_response`, `restart` — verdict `passed`); registry loss during a run is **unevidenced by fault injection and claimed structurally only** — post-admission execution reads the content-addressed cache, never the registry. No dedicated registry-loss journey leg — the Task-6 leg was conditional ("if uncovered") | `tests/integration/test_event_recovery.py` + `tests/integration/test_registry_reuse.py::test_control_stack_run_on_cached_plugin` (the coordinated run executes on a `load_plugin` cache instance — manifest-sha module pin) | `runs/summary.json` (100 runs, `duplicate_dispatch_total: 0`) |
 | PRD-12 controlled admin | `test_journey_admin_change_and_stale_generation_rejected` — one staged admission at a safe idle boundary, then one staged `trip_reset` at the safe idle boundary after terminal | `tests/unit/test_seam_admin.py` + `tests/integration/test_registry_changes.py` | — |
 
 The mapped suites' live pass is exercised by the WP09 close gates
@@ -83,7 +83,7 @@ following this record.
 | 100 consecutive runs: complete, consistent evidence, no duplicate dispatch | 100/100 `passed`, seed 20260914, `dispatch_occurrences_total: 800`, `duplicate_dispatch_total: 0`, 41.5 s | PASS | `runs/summary.json` (+ the 100 per-run records) |
 | Every applicable fault case deterministic; no false passed | 4 applicable legs, all verdict `passed`, occurrence oracles exact (lost_response 8/8, restart 0/0, stale_sample 5/5, trip 2/2), `failed: 0` | PASS | `fault-matrix/legs.json`, `fault-matrix/junit.xml` |
 | Reference-host p95 metadata reads ≤ 500 ms | **4.746 ms** (100 reads, 2 observers, one active run, `active_run_coverage: 1.0`) | PASS | `timing/prd-load.json` (`prd-load-reads`) |
-| Reference-host p95 run acceptance ≤ 2 s | **4.790 ms** (100 accepts on the idle bench, sequential — see the observer caveat below) | PASS | `timing/prd-load.json` (`prd-load-acceptance`) |
+| Reference-host p95 run acceptance ≤ 2 s | **4.790 ms** (100 accepts on the idle bench, sequential — see the observer caveat below; concurrent proxy bound: the stress tier's ~5.2× p95 inflation at 16 observers bounds a concurrent-acceptance p95 at ≲25 ms, ~80× under the 2000 ms target) | pass — sequential, idle-bench, observers 1-achieved/2-declared per the caveat below | `timing/prd-load.json` (`prd-load-acceptance`) |
 | Product owner accepts the reuse and operator journey | — | PENDING | Owner line below |
 
 **Stress tier — non-gating, labelled as such:** `timing/stress-16.json`
@@ -148,6 +148,18 @@ named; reopen rule stated there.
    per-read views. This fence is why PRD-12's in-journey admin pair is
    one admission + one `trip_reset` (the registry change kinds cannot
    re-apply in the same session).
+6. **PRD-11 registry-loss — structural, not fault-injected.** The fault
+   legs prove client loss (`lost_response`) and process loss
+   (`restart`) live; registry loss during a run has no injected leg.
+   The PRD §5 sentence — "finishes within policy through
+   client/registry loss" — is met on the registry half structurally:
+   once admission lands the releases in the content-addressed cache,
+   execution reads the cache, never the registry (pinned by
+   `tests/integration/test_registry_reuse.py::test_control_stack_run_on_cached_plugin`,
+   whose coordinated run executes on a `load_plugin` cache instance,
+   module name carrying the manifest sha). Removing the registry after
+   admission is not exercised by any leg; the independence claim comes
+   from the execution path, not a live registry-outage run.
 
 ## Owner
 

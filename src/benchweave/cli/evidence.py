@@ -53,6 +53,10 @@ rather than leaving it to be inferred.
 Host disclosure: the summary records the generating platform (system,
 release, machine, python) — deliberately NOT the hostname; committed
 evidence needs reproduction context, not a machine name.
+
+Index root policy: ``benchweave evidence index`` intentionally refuses
+root-level files other than ``index.md`` (the gate record binds the
+index digest; indexing it would recurse) — :func:`_artifact_rows`.
 """
 
 from __future__ import annotations
@@ -1214,6 +1218,11 @@ def _artifact_rows(dest: Path) -> list[tuple[str, str, str]]:
             # are noise, not evidence: skipped wherever they sit — never
             # indexed, and never an unclassified-artifact refusal.
             continue
+        # Root-level files other than index.md are INTENTIONALLY refused,
+        # not an oversight: the G2 gate record sits at the tree root and
+        # binds this index's committed sha256 — indexing it would recurse
+        # the digest binding (the index digesting the record that digests
+        # the index).
         if len(relative.parts) == 1:
             raise EvidenceError(
                 f"unclassified artifact at the tree root: {relative} — the index "
