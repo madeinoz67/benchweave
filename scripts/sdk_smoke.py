@@ -40,9 +40,18 @@ def clean_environment() -> dict[str, str]:
     return environment
 
 
-def run(command: list[str], *, cwd: Path) -> None:
+def run(
+    command: list[str], *, cwd: Path, capture: bool = False
+) -> subprocess.CompletedProcess[str]:
     print("+ " + " ".join(command), flush=True)
-    subprocess.run(command, cwd=cwd, env=clean_environment(), check=True)
+    return subprocess.run(
+        command,
+        cwd=cwd,
+        env=clean_environment(),
+        check=True,
+        capture_output=capture,
+        text=True,
+    )
 
 
 def resources(directory: Any, prefix: str = "") -> dict[str, bytes]:
@@ -255,7 +264,16 @@ def build_and_check(out_dir: Path) -> None:
             ],
             cwd=workspace,
         )
-        run([str(workspace / "venv/bin/benchweave")], cwd=workspace)
+        # The Click CLI's contract (a bare invocation prints usage and exits 1,
+        # so the retired bare-call smoke broke): --version exits 0 and names
+        # the installed distribution's version — assert it matches the wheel.
+        installed_version = run(
+            [str(workspace / "venv/bin/benchweave"), "--version"], cwd=workspace, capture=True
+        )
+        assert installed_version.stdout
+        assert installed_version.stdout.strip() == (
+            f"benchweave, version {expected['gateway_version']}"
+        ), installed_version.stdout
         generated = workspace / "external-example"
         run(
             [
