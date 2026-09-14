@@ -249,6 +249,24 @@ def test_demo_fresh_install_keep_retains_scratch(tmp_path: Path) -> None:
     assert (scratch / "state.sqlite").is_file()
 
 
+def test_demo_fresh_install_preexisting_scratch_survives_with_own_files_removed(
+    tmp_path: Path,
+) -> None:
+    """T11 M3: a pre-existing --scratch directory is the OPERATOR's — the
+    demo removes exactly its own store files, never the directory or its
+    contents."""
+    scratch = tmp_path / "operator-scratch"
+    scratch.mkdir()
+    operator_file = scratch / "operator-notes.txt"
+    operator_file.write_text("operator data", encoding="utf-8")
+    result = CliRunner().invoke(cli, ["demo", "--scratch", str(scratch), "--json"])
+    assert result.exit_code == 0, _combined(result)
+    assert scratch.is_dir(), "the operator's directory must survive"
+    assert operator_file.read_text(encoding="utf-8") == "operator data"
+    for suffix in ("", "-wal", "-shm", ".hold"):
+        assert not (scratch / f"state.sqlite{suffix}").exists(), suffix
+
+
 # --- anti-coordinate (ISC-12): never compose against a held store ----------------
 
 

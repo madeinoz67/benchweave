@@ -472,7 +472,14 @@ def test_live_drive_feeds_events_until_terminal(gateway: SimpleNamespace) -> Non
     assert payload["safe_state"] == "verified"
     assert payload["run_id"] == drive.run_id
     assert payload["bench_id"] == "sim-bench"
-    assert payload["events_observed"] == len(events)
+    # Real assertion (T12 whole-branch minor): the observed count must equal
+    # what the SERVER holds for THIS run — an independent oracle that
+    # catches dropped and double-counted events alike (the old
+    # ``== len(events)`` compared two counters over the same poll loop).
+    served = client.events_get("sim-bench", limit=1000)
+    run_events = [e for e in served["events"] if e.get("run_id") == drive.run_id]
+    assert run_events, "the server must hold this run's events"
+    assert payload["events_observed"] == len(run_events)
     assert payload["evidence_digests"], "the terminal record's digest is carried"
 
 
