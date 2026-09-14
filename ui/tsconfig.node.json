@@ -5,7 +5,9 @@
     "skipLibCheck": true,
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    "jsx": "react-jsx",
+    "types": ["vite/client"]
   },
   "include": ["vite.config.ts", ".storybook/**/*.ts", ".storybook/**/*.tsx", "eslint.config.js"]
 }
