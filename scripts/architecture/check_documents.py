@@ -12,6 +12,37 @@ DOCS = globals().get("DOCS", Path(__file__).resolve().parents[2] / "docs")
 CHECKS = []
 
 
+def strip_code_fences(text: str) -> str:
+    """Markdown minus its fenced code blocks.
+
+    A fenced block can contain ``](...)`` expressions that are CODE, not
+    links (``legs[leg](arg)``); the link scan must run on prose only. An
+    opening fence may carry an info string (`````python`````); a closing
+    fence is only the fence characters. An unclosed fence swallows the rest
+    of the file — conservative in the safe direction (fewer false links).
+    """
+    kept: list[str] = []
+    fence_char = ""
+    fence_len = 0
+    for line in text.splitlines(keepends=True):
+        stripped = line.strip()
+        if fence_char:
+            if (
+                len(stripped) >= fence_len
+                and stripped.startswith(fence_char * fence_len)
+                and not stripped.strip(fence_char)
+            ):
+                fence_char = ""
+            continue
+        run = len(stripped) - len(stripped.lstrip(stripped[0])) if stripped else 0
+        if run >= 3 and stripped[0] in "`~":
+            fence_char = stripped[0]
+            fence_len = run
+            continue
+        kept.append(line)
+    return "".join(kept)
+
+
 def unique_object(pairs):
     result = {}
     for key, value in pairs:
@@ -85,8 +116,11 @@ for path, data in documents.items():
             except Unresolvable:
                 resolved = False
             CHECKS.append((f"{path.relative_to(DOCS)} resolves {ref}", resolved))
-for path in sorted(DOCS.rglob("*.md")):
-    for link in re.findall("\\]\\(([^)]+)\\)", path.read_text(encoding="utf-8")):
+for path, text in sorted(
+    (path, strip_code_fences(path.read_text(encoding="utf-8")))
+    for path in DOCS.rglob("*.md")
+):
+    for link in re.findall("\\]\\(([^)]+)\\)", text):
         link = link.strip("<>")
         if urlparse(link).scheme:
             CHECKS.append(

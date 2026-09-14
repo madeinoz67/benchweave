@@ -46,6 +46,25 @@ def test_validation_is_read_only(tmp_path: Path) -> None:
     assert snapshot() == before, "Validation changed the architecture documents"
 
 
+def test_documents_ignores_markdown_links_inside_fenced_code_blocks(
+    tmp_path: Path,
+) -> None:
+    """A subscript-call expression in a fenced block (``legs[leg](arg)``) is
+    code, not a ``](destination)`` link — planning docs may carry such code,
+    and the checker must not demand a file for it. Prose links stay checked.
+    """
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "fences.md").write_text(
+        "# Fences\n\nProse [link](other.md) stays checked.\n\n"
+        "```python\nresult = legs[leg](arg)\n```\n",
+        encoding="utf-8",
+    )
+    (docs / "other.md").write_text("# Other\n", encoding="utf-8")
+    failures = [name for name, passed in run_checks("documents", docs) if not passed]
+    assert failures == []
+
+
 @pytest.mark.parametrize(
     ("suite", "relative_path", "old", "new", "expected"),
     [
