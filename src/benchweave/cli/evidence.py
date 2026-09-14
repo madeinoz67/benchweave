@@ -60,6 +60,7 @@ from __future__ import annotations
 import hashlib
 import json
 import platform
+import re
 import secrets
 import shutil
 import sqlite3
@@ -992,6 +993,29 @@ _LEG_PROPERTIES = (
     "occurrences_actual",
 )
 
+#: The deterministic replacement for every ``hostname`` attribute value the
+#: retained junit report carries (xunit1 writes one per ``<testsuite>``):
+#: committed evidence records reproduction context, never a machine name —
+#: the same doctrine the summaries' host disclosure already follows.
+REFERENCE_HOST = "reference-host"
+
+
+def scrub_junit_hostname(xml_bytes: bytes) -> bytes:
+    """Replace every junit ``hostname="..."`` value with :data:`REFERENCE_HOST`.
+
+    Retention-time scrub for the fault harvest's kept ``junit.xml``: the
+    report pytest writes names the generating machine on every
+    ``<testsuite>``, and retained evidence must not. A bytewise
+    substitution — every other byte of the report passes through
+    untouched, so the retained file stays byte-faithful to the scratch
+    report apart from the hostname values.
+    """
+    return re.sub(
+        rb'hostname="[^"]*"',
+        f'hostname="{REFERENCE_HOST}"'.encode(),
+        xml_bytes,
+    )
+
 
 def fault_legs_from_junit(xml_bytes: bytes) -> list[dict[str, Any]]:
     """Project a junit report's fault-leg cases to lean per-leg rows.
@@ -1004,7 +1028,15 @@ def fault_legs_from_junit(xml_bytes: bytes) -> list[dict[str, Any]]:
     leg case missing its recorded properties, refuses loudly — a wiring
     break, not a leg to guess about.
     """
-    root = ET.fromstring(xml_bytes)
+    try:
+        root = ET.fromstring(xml_bytes)
+    except ET.ParseError as error:
+        # A truncated/invalid scratch report is a harvest failure with a
+        # named message, never an xml.etree traceback through the CLI.
+        raise EvidenceError(
+            f"the junit report is not well-formed XML ({error}) — a truncated "
+            "report is a wiring failure, not a leg to guess about"
+        ) from error
     legs: list[dict[str, Any]] = []
     for case in root.iter("testcase"):
         name = str(case.get("name", ""))
@@ -1059,8 +1091,9 @@ def generate_faults(
     Runs the journey fault legs under pytest with ``--junitxml`` into a
     scratch file, projects the report to a lean per-leg JSON, and retains
     BOTH: ``legs.json`` (the lean matrix) and ``junit.xml`` (the report
-    itself — retained evidence, not tool state). The complete-matrix
-    discipline of the other generators applies: artifacts land only when
+    itself — retained evidence, not tool state; the hostname attributes
+    pytest writes are scrubbed to :data:`REFERENCE_HOST` at retention).
+    The complete-matrix discipline of the other generators applies: artifacts land only when
     every leg passed — a failing or missing leg aborts loudly (naming the
     legs) and nothing is written.
     """
@@ -1122,7 +1155,13 @@ def generate_faults(
         (fault_dir / "legs.json").write_text(
             json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
         )
-        shutil.copyfile(junit_path, fault_dir / "junit.xml")
+        # Retention scrubs the machine name pytest writes per <testsuite>:
+        # the retained junit.xml is byte-faithful to the scratch report
+        # apart from the hostname values (committed evidence never names
+        # the generating host).
+        (fault_dir / "junit.xml").write_bytes(
+            scrub_junit_hostname(junit_path.read_bytes())
+        )
         return payload
 
 
@@ -1148,6 +1187,12 @@ _GENERATOR_COMMANDS = {
     "timing": "benchweave evidence timing --dest {dest}",
     "fault-matrix": "benchweave evidence faults --dest {dest}",
 }
+#: Regeneration preconditions a generated row discloses after its command
+#: (the index tells the operator how to reproduce the artifact, including
+#: where from: the faults default ``--tests`` node id is repo-relative).
+_GENERATOR_NOTES = {
+    "fault-matrix": "from the repository root — the default --tests node id is relative",
+}
 
 
 def _artifact_rows(dest: Path) -> list[tuple[str, str, str]]:
@@ -1163,6 +1208,11 @@ def _artifact_rows(dest: Path) -> list[tuple[str, str, str]]:
             continue
         relative = path.relative_to(dest)
         if relative.parts == (_INDEX_NAME,):
+            continue
+        if any(part.startswith(".") for part in relative.parts):
+            # Operator-local dotfiles (macOS .DS_Store, editor droppings)
+            # are noise, not evidence: skipped wherever they sit — never
+            # indexed, and never an unclassified-artifact refusal.
             continue
         if len(relative.parts) == 1:
             raise EvidenceError(
@@ -1218,8 +1268,12 @@ def generate_index(dest: Path) -> dict[str, Any]:
         "|---|---|---|---|",
     ]
     for relative, evidence_class, digest in rows:
+        top = relative.split("/")[0]
         if evidence_class == "generated":
-            cell = f"`{_GENERATOR_COMMANDS[relative.split('/')[0]].format(dest=dest_arg)}`"
+            cell = f"`{_GENERATOR_COMMANDS[top].format(dest=dest_arg)}`"
+            note = _GENERATOR_NOTES.get(top)
+            if note:
+                cell = f"{cell} ({note})"
         else:
             cell = _RECORD_CELL
         lines.append(f"| `{relative}` | {evidence_class} | `{digest}` | {cell} |")

@@ -1,6 +1,6 @@
 """The ``benchweave`` Click command tree (Task 9: CLI foundation).
 
-Eight commands — ``setup status demo report backup restore verify serve`` —
+Nine commands — ``setup status demo report backup restore verify serve evidence`` —
 so ``--help`` is already the full operator surface. ``status`` (Task 9), the
 four at-rest commands (Task 10), ``demo`` (Task 11: live-gateway mode or the
 labelled ephemeral fresh-install simulation), ``report`` (Task 13: the

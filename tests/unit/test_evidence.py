@@ -33,6 +33,7 @@ from benchweave.cli.evidence import (
     fault_legs_from_junit,
     generate_index,
     generate_runs,
+    scrub_junit_hostname,
 )
 
 #: The per-run record's complete key set (lean by contract: ids, digests,
@@ -215,6 +216,43 @@ def test_fault_legs_from_junit_refuses_a_report_with_no_legs() -> None:
         fault_legs_from_junit(xml)
 
 
+def test_fault_legs_from_junit_refuses_malformed_xml() -> None:
+    """A truncated scratch report is a harvest failure with a named
+    message — never an ``xml.etree`` traceback through the CLI."""
+    with pytest.raises(EvidenceError, match="not well-formed"):
+        fault_legs_from_junit(b"<testsuite><testcase name=")
+
+
+def test_scrub_junit_hostname_replaces_every_machine_name() -> None:
+    """Retention scrub: every ``hostname="..."`` value becomes the fixed
+    ``reference-host`` label and every other byte passes through — the
+    retained junit carries reproduction context, never a machine name
+    (the same doctrine the summaries' host disclosure follows)."""
+    report = (
+        b'<?xml version="1.0" encoding="utf-8"?>\n'
+        b'<testsuites><testsuite name="a" hostname="MacBookPro.lovegroove.io" '
+        b'tests="1">'
+        b'<testcase classname="c" name="test_journey_fault_legs[trip]" '
+        b'time="1.0"/>'
+        b'</testsuite>'
+        b'<testsuite name="b" hostname="MacBookPro.lovegroove.io" tests="0"/>'
+        b'</testsuites>'
+    )
+
+    scrubbed = scrub_junit_hostname(report)
+
+    assert scrubbed == report.replace(
+        b'hostname="MacBookPro.lovegroove.io"', b'hostname="reference-host"'
+    )
+    assert b"lovegroove" not in scrubbed
+    assert scrubbed.count(b'hostname="reference-host"') == 2
+
+
+def test_scrub_junit_hostname_passes_a_hostless_report_through() -> None:
+    report = b'<testsuite name="a" tests="1"><testcase name="t"/></testsuite>'
+    assert scrub_junit_hostname(report) == report
+
+
 # --- the digest index (WP09 Task 11, Step 1) -------------------------------------
 
 
@@ -269,6 +307,12 @@ def test_generate_index_lists_every_artifact_with_digest_and_class(tmp_path: Pat
         assert cells[2].strip("`") == digest  # an independent sha256 over the bytes
         if evidence_class == "generated":
             assert cells[3].strip("`").startswith("benchweave evidence ")
+            if relative.startswith("fault-matrix/"):
+                # The default --tests node id is repo-relative — the row
+                # discloses the repo-root regeneration precondition.
+                assert "repository root" in cells[3]
+            else:
+                assert "repository root" not in cells[3]
         else:
             assert "digest-bound" in cells[3]
 
@@ -289,3 +333,19 @@ def test_generate_index_refuses_an_unclassified_artifact(tmp_path: Path) -> None
     stray.write_bytes(b"not a classified evidence class\n")
     with pytest.raises(EvidenceError, match="notes"):
         generate_index(tmp_path)
+
+
+def test_generate_index_skips_dotfiles(tmp_path: Path) -> None:
+    """Operator-local dotfiles (macOS ``.DS_Store``, editor droppings) are
+    noise, not evidence: skipped wherever they sit — a root dotfile never
+    trips the unclassified-artifact refusal and a nested one is never
+    indexed."""
+    _seed_index_tree(tmp_path)
+    (tmp_path / ".DS_Store").write_bytes(b"finder metadata\n")
+    (tmp_path / "runs" / ".DS_Store").write_bytes(b"finder metadata\n")
+
+    payload = generate_index(tmp_path)
+
+    assert payload["artifacts"] == len(_INDEX_TREE)
+    rows = _index_rows((tmp_path / "index.md").read_text(encoding="utf-8"))
+    assert set(rows) == set(_INDEX_TREE)  # neither dotfile indexed

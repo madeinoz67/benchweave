@@ -65,6 +65,11 @@ packages = ["src/benchweave"]
 [tool.pytest.ini_options]
 addopts = "-q -p no:cacheprovider"
 testpaths = ["tests"]
+# xunit1 is the repo default so any --junitxml run agrees with the evidence
+# faults harvest (which pins the same family explicitly): xunit2 rejects
+# <properties> inside <testcase> — the recorded measurements the fault-leg
+# tests emit via record_property — warning on every leg.
+junit_family = "xunit1"
 markers = [
   "slow: real child-process orchestration (kill-mid-run); deselect in CI with -m 'not slow'",
 ]
