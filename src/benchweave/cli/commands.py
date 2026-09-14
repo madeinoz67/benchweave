@@ -32,6 +32,7 @@ import click
 from benchweave import __version__
 from benchweave.cli import atrest
 from benchweave.cli import demo as demo_lib
+from benchweave.cli import evidence as evidence_lib
 from benchweave.cli.client import GatewayClient, GatewayError
 from benchweave.cli.demo import View
 from benchweave.cli.output import Renderer, emit
@@ -49,6 +50,11 @@ def _set_json(json_output: bool) -> None:
     ctx = click.get_current_context()
     obj = ctx.ensure_object(dict)
     obj["json"] = json_output
+
+
+# The evidence generator group (Task 7): ``benchweave evidence runs`` drives
+# the seeded volume leg; timing/faults/index subcommands land in Task 11.
+cli.add_command(evidence_lib.evidence)
 
 
 # --- at-rest commands (Task 10) -------------------------------------------------
