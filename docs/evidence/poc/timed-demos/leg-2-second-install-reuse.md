@@ -3,8 +3,9 @@
 **PRD §6 target:** a second engineer discovers/admits the published
 integrations and repeats the demo in **≤ 30 minutes** with **zero
 plugin-source changes**.
-**Verdict: PASS — 5 s total / 5 s post-download (excluded segment
-sub-second); zero plugin-source changes proven by digest identity.**
+**Verdict: PASS on the documented command path — 5 s total / 5 s
+post-download (excluded segment sub-second); zero plugin-source changes
+proven by digest identity.**
 
 > **Author-run disclosure.** This leg was executed by the WP09
 > implementer (the author), not an independent second engineer, on the

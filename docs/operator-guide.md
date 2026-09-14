@@ -52,6 +52,7 @@ uv venv /opt/benchweave-venv-two
 uv pip install --python /opt/benchweave-venv-two/bin/python dist/benchweave-*.whl
 /opt/benchweave-venv-two/bin/benchweave --version
 
+# Resolve SITE_* only after the installs above — earlier, the glob stays literal.
 SITE_ONE="$(echo /opt/benchweave-venv/lib/python*/site-packages)"
 SITE_TWO="$(echo /opt/benchweave-venv-two/lib/python*/site-packages)"
 (cd "$SITE_ONE/benchweave/_vendored/plugins/benchweave" \

@@ -2,7 +2,8 @@
 
 **PRD §6 target:** a prepared engineer completes the documented clean
 simulated demo in **≤ 30 minutes**, excluding dependency download time.
-**Verdict: PASS — 10 s total / 8 s post-download.**
+**Verdict: PASS on the documented command path — 10 s total / 8 s
+post-download.**
 
 > **Author-run disclosure.** This leg was executed by the WP09
 > implementer (the author), not an independent operator, on the
@@ -75,7 +76,7 @@ the report read back 36 evidence entries, all present,
 ## Aborted attempt (disclosed)
 
 Attempt 1 (08:00:26Z, log retained at
-`.superpowers/sdd/task-8-leg1-shell-attempt1.log`) aborted after 12 s at
+`.superpowers/sdd/task-8-leg1-shell-attempt1.log`) aborted after 5 s at
 step 3: a transcription error in the timing harness executed
 `--python /tmp/bw-timed/leg-1/bin/python` (missing `/venv`) — **not the
 guide's command**. No product step beyond `uv build`/`uv venv` had run.
