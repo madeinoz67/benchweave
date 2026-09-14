@@ -21,7 +21,9 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-CONTRACT_SETS = ("otdp-v0.3.0", "registry-v1.0.0", "plugin-ui-v0.1.0")
+# Keep in sync with packages/sdk/hatch_build.py: the installed wheel carries
+# every set listed there, and the drift assert compares the full corpus.
+CONTRACT_SETS = ("otdp-v0.3.0", "registry-v1.0.0", "plugin-ui-v0.1.0", "plugin-ui-preview-v1")
 
 
 def digest(data: bytes) -> str:
