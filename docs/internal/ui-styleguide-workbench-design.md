@@ -16,6 +16,8 @@ The visual direction is **Layered Precision**: a modern digital-instrument inter
 
 Device plugins remain declarative. The host validates plugin presentation resources and renders them with host-owned components. A plugin may select versioned host panels, but it does not ship arbitrary browser code. This boundary provides plug-and-play presentation without weakening security, accessibility, compatibility or visual consistency.
 
+Custom devices that do not fit a current OTDP class may still provide a plugin-defined interface by composing the host's existing components through a bounded, versioned declarative recipe. They do not require a new React bundle or a false claim of conformance to a standard device class.
+
 The style system applies to operator, workbench and administrative interfaces.
 
 ## 2. Product fit
@@ -144,6 +146,29 @@ The plugin UI 0.1.0 contract maps to host surfaces as follows:
 | `waveform` plot | Numeric vector axes and one or more declared numeric traces |
 
 Optional unavailable panels degrade to other valid generic pages where available. A required unavailable panel blocks that page and reports a stable diagnostic. Unsupported required features, invalid plots, unresolved bindings, incompatible units and malformed resources fail closed.
+
+Plugin UI 0.1.0 does not yet define an arbitrary component-composition document. The implementation must not disguise such a document inside an ungoverned extension field. Plugin-defined component recipes require a separately reviewed, versioned presentation-contract addition with explicit schema, host feature identifier, limits and conformance tests.
+
+### 6.1 Custom device component recipes
+
+A custom device plugin may declare a default page or panel constructed from an allowlist of host components. The recipe may reference only bindings already validated against the admitted descriptor and trusted binding catalogue.
+
+The initial component allowlist should cover:
+
+- sections, groups, responsive grids, splits and tab stacks;
+- scalar, Boolean and enumerated readings;
+- buttons, numeric fields, switches, selectors, sliders, dials and knobs;
+- trends, waveforms, compatible generic graphs and dataset tables;
+- status indicators, badges and message bubbles;
+- explanatory text and locally admitted static assets.
+
+A recipe controls composition, not implementation. It cannot contain JavaScript, executable templates, arbitrary HTML, arbitrary CSS, external URLs, credentials, polling intervals, raw protocol commands or permission declarations. Component properties use closed schemas, named design tokens and bounded values. Bindings establish data type, unit, access, action and dataset compatibility before a component can consume them.
+
+Recipes have bounded component count, nesting depth, grid spans, asset size and text length. The validator rejects duplicate identifiers, inaccessible control labelling, incompatible component/binding pairs, unresolved actions and unsupported component versions. The host remains responsible for responsive reflow, themes, focus order, alert semantics and final request submission.
+
+A plugin may supply a recommended default composition, while users may place the same validated components and plugin pages in their own UI workbenches. Saved user placement remains separate from the plugin recipe and from physical-bench configuration.
+
+If a recipe is optional and unsupported, the host falls back to valid generic readings, configuration and dataset pages. If it is required, the page is unavailable with a stable compatibility diagnostic; it never silently renders a partially functional control surface.
 
 ## 7. Component catalogue
 
@@ -302,6 +327,8 @@ The workbench will include representative stories for all current OTDP classes:
 
 These stories prove visual and contract coverage. They do not claim that runtime bridges or physical hardware implement every illustrated action.
 
+The catalogue also includes at least one custom-device specimen that advertises no standard device class and builds its interface entirely from the approved component-recipe allowlist. This proves that plug-and-play presentation is not limited to the twelve initial classes.
+
 ## 9. Operator and administrative consistency
 
 One shared token and component package serves operator and administrative applications. Operator surfaces prioritise live state, readings, controls, acquisition and procedure progress. Administrative surfaces cover registry packages, plugin admission, device inventory, physical bench configuration, identities, roles, policies, approvals, audit, updates and recovery.
@@ -367,6 +394,8 @@ Extend the `benchweave-sdk new --with-ui` path around its existing minimal readi
 4. expose the result in a local workbench and generated Storybook stories.
 
 Plugin authors declare resources; they do not create React components.
+
+For a custom device, the SDK can additionally scaffold a component recipe from descriptor bindings. It validates every component/binding pairing, previews the composition through the production host renderer and generates stories for the recipe's declared states. The scaffold is a starting point and cannot infer device semantics, safe actions or hardware qualification.
 
 ### 11.3 Mock host adapter
 
@@ -454,7 +483,9 @@ Implementation acceptance requires:
 - keyboard-only coverage;
 - contrast checks including glow states;
 - exact contract fixtures for all page and binding kinds;
+- valid and rejected custom-device component recipes, including resource-limit tests;
 - representative stories for all twelve device classes;
+- a custom-device story assembled without a class-specific panel or plugin-supplied code;
 - responsive checks at defined breakpoints;
 - unit, prefix, range and precision formatting tests;
 - proof that colour and glow are never the sole status indicator;
