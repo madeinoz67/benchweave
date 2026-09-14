@@ -28,6 +28,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 import uvicorn
 from click.testing import CliRunner, Result
@@ -38,6 +39,7 @@ from benchweave.cli.atrest import daemon_holds
 from benchweave.cli.commands import cli
 from benchweave.content.store import ContentStore
 from benchweave.interfaces.app import create_app
+from benchweave.interfaces.identity import issue
 from benchweave.state.store import Store
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "execution"
@@ -184,6 +186,10 @@ def test_roundtrip_restore_parity_with_uncheckpointed_wal(tmp_path: Path) -> Non
     db = atrest.setup(data)
     store = Store.open(db)
     content = ContentStore(store)
+    # M8 strictness: autocheckpoint OFF on the seeding connection, so the
+    # un-checkpointed-WAL precondition is deterministic (not emergent from
+    # merely holding the connection open).
+    store.connection.execute("PRAGMA wal_autocheckpoint=0")
 
     # Seed a real multi-row, multi-stream corpus directly through the store.
     store.put_bench("bench-a", 1, "qualified", "{}", "licence-a", NOW_ISO)
@@ -192,10 +198,14 @@ def test_roundtrip_restore_parity_with_uncheckpointed_wal(tmp_path: Path) -> Non
     store.create_run("run-2", {"binding": "two", "nested": [1, 2]}, "principal-2", NOW_ISO)
     store.put_run_state("run-1", "bench-a", "terminal", NOW_ISO)
     store.put_run_state("run-2", "bench-b", "queued", NOW_ISO)
+    # Streams use the seam's own naming ("bench.{bench_id}") so the
+    # post-restore SERVED letter (M5 below) reads the same streams.
     for index in range(5):
-        store.append_event("bench-a", {"type": "run_changed", "index": str(index)})
+        store.append_event("bench.bench-a", {"type": "run_changed", "index": str(index)})
     for index in range(3):
-        store.append_event("bench-b", {"type": "lease_state_changed", "index": str(index)})
+        store.append_event(
+            "bench.bench-b", {"type": "lease_state_changed", "index": str(index)}
+        )
     artifact_ids = [
         content.put_artifact(b"artifact-one", NOW_ISO),
         content.put_artifact(b"artifact-two-" * 64, NOW_ISO),
@@ -219,13 +229,15 @@ def test_roundtrip_restore_parity_with_uncheckpointed_wal(tmp_path: Path) -> Non
         "benches": {bid: store.get_bench(bid) for bid in ("bench-a", "bench-b")},
         "runs": {rid: store.get_run(rid) for rid in ("run-1", "run-2")},
         "run_states": {rid: store.get_run_state(rid) for rid in ("run-1", "run-2")},
-        "events": {sid: store.read_events(sid) for sid in ("bench-a", "bench-b")},
+        "events": {
+            sid: store.read_events(sid) for sid in ("bench.bench-a", "bench.bench-b")
+        },
         "artifact_digests": {
             aid: content.artifact_chunk(aid, 0, 64)["sha256"] for aid in artifact_ids
         },
         "evidence": content.get_evidence(evidence_id),
     }
-    assert len(baseline["events"]["bench-a"]) == 5, "multi-event stream, not a single event"
+    assert len(baseline["events"]["bench.bench-a"]) == 5, "multi-event stream, not a single event"
 
     archive = atrest.backup(data, tmp_path / "out")
     manifest = json.loads((archive / "manifest.json").read_text(encoding="utf-8"))
@@ -248,7 +260,7 @@ def test_roundtrip_restore_parity_with_uncheckpointed_wal(tmp_path: Path) -> Non
             rid: reopened.get_run_state(rid) for rid in ("run-1", "run-2")
         } == baseline["run_states"]
         assert {
-            sid: reopened.read_events(sid) for sid in ("bench-a", "bench-b")
+            sid: reopened.read_events(sid) for sid in ("bench.bench-a", "bench.bench-b")
         } == baseline["events"], "restored stream must match the baseline event-for-event"
         assert {
             aid: recontent.artifact_chunk(aid, 0, 64)["sha256"] for aid in artifact_ids
@@ -256,6 +268,43 @@ def test_roundtrip_restore_parity_with_uncheckpointed_wal(tmp_path: Path) -> Non
         assert recontent.get_evidence(evidence_id) == baseline["evidence"]
     finally:
         reopened.close()
+
+    # M5 (serving letter): the restored store serves the SAME event letter
+    # over REST — the full events_get envelope, not just store-level parity.
+    app = _compose(db)
+    server, thread = _boot(app)
+    try:
+        port = server.servers[0].sockets[0].getsockname()[1]
+        observe = issue(
+            SECRET,
+            principal="atrest-observe",
+            audience="stg",
+            scopes={"stg:observe"},
+            expires_at=NOW_EPOCH + 3600,
+        )
+        resp = httpx.get(
+            f"http://127.0.0.1:{port}/v1/benches/bench-a/events",
+            params={"limit": 10},
+            headers={"Authorization": f"Bearer {observe}"},
+            timeout=5.0,
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["ok"] is True
+        data = body["data"]
+        assert set(data) == {
+            "events",
+            "cursor",
+            "stream_id",
+            "oldest_sequence",
+            "current_sequence",
+        }
+        assert data["events"] == baseline["events"]["bench.bench-a"]
+        assert data["stream_id"] == "bench.bench-a"
+        assert data["oldest_sequence"] == "1"
+        assert data["current_sequence"] == "5"
+    finally:
+        _shutdown(server, thread)
 
 
 # --- parity helper reuse guard ---------------------------------------------------
@@ -283,5 +332,36 @@ def test_restored_store_serves_through_a_composed_gateway(tmp_path: Path) -> Non
             assert row is not None and row["generation"] == 7
         finally:
             store.close()
+    finally:
+        _shutdown(server, thread)
+
+
+def test_second_gateway_boot_is_refused_while_the_first_holds_the_store(
+    tmp_path: Path,
+) -> None:
+    """M6: the one-coordinator rule at BOOT — while a live gateway holds the
+    store, a second gateway composed over the same database must fail its
+    lifespan (the StoreHold refusal), never silently co-coordinate."""
+    data = tmp_path / "data"
+    db = atrest.setup(data)
+    first = _compose(db)
+    server, thread = _boot(first)
+    try:
+        _wait_held(db, expected=True)
+        second = _compose(db)
+        config = uvicorn.Config(second, host="127.0.0.1", port=0, log_level="error")
+        second_server = uvicorn.Server(config)
+        second_thread = threading.Thread(target=second_server.run, daemon=True)
+        second_thread.start()
+        deadline = time.monotonic() + 5.0
+        while not second_server.started and second_thread.is_alive():
+            if time.monotonic() > deadline:
+                break
+            time.sleep(0.05)
+        assert not second_server.started, (
+            "a second gateway must not boot on a store the first one holds"
+        )
+        second_thread.join(timeout=5)
+        _wait_held(db, expected=True)  # the FIRST holder is unchanged
     finally:
         _shutdown(server, thread)
