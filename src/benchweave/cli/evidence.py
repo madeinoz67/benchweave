@@ -66,7 +66,8 @@ import sqlite3
 import tempfile
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -88,6 +89,18 @@ from benchweave.cli.demo import (
     resolve_fixtures,
 )
 from benchweave.cli.output import emit
+from benchweave.performance import (
+    ACCEPTANCE_TARGET_P95_MS,
+    LABEL_ACCEPTANCE,
+    LABEL_READS,
+    LABEL_STRESS,
+    READS_TARGET_P95_MS,
+    PerformanceError,
+    TimingResult,
+    measure_acceptance,
+    measure_reads,
+    measure_stress,
+)
 
 if TYPE_CHECKING:
     import uvicorn
@@ -126,7 +139,9 @@ class AppHandles:
     The drive itself is wire-only (``client`` — the demo rule); ``store``
     and ``content`` exist for the per-run consistency gate, which reads the
     DURABLE record and event stream the wire only references. ``timeout_s``
-    bounds each run's poll to terminal.
+    bounds each run's poll to terminal. ``token`` is the ephemeral
+    principal's bearer token (Task 9: the timing measurements build their
+    own per-observer clients from base_url + token, not this one client).
     """
 
     client: GatewayClient
@@ -134,6 +149,7 @@ class AppHandles:
     content: ContentStore
     fixtures: Path
     base_url: str
+    token: str
     timeout_s: float
 
 
@@ -440,6 +456,81 @@ def _clear_prior(runs_dir: Path) -> None:
             path.unlink()
 
 
+@contextmanager
+def _ephemeral_gateway(fixtures_dir: Path, *, timeout_s: float) -> Iterator[AppHandles]:
+    """Boot ONE ephemeral SIMULATION gateway; yield its handles; tear down.
+
+    The generate_runs boot, factored once (the timing leg reuses it):
+    scratch mkdtemp root, the anti-coordinate gate BEFORE any composition,
+    loopback uvicorn, the ephemeral principal's token, and a teardown that
+    always stops the server, joins it, closes the store, and removes the
+    scratch tree this context created.
+    """
+    # Lazy heavy imports: only generation pays for the app stack (the demo rule).
+    from benchweave.content.store import ContentStore
+    from benchweave.interfaces.app import create_app
+    from benchweave.interfaces.identity import issue
+    from benchweave.state.store import Store
+
+    root = Path(tempfile.mkdtemp(prefix="benchweave-evidence-"))
+    # Anti-coordinate gate (ISC-12): refuse BEFORE composing anything.
+    held = held_stores(root)
+    if held:
+        raise EvidenceError(
+            "refusing: a live gateway holds "
+            + ", ".join(str(path) for path in held)
+            + f" under {root} — the generator never composes a second coordinator "
+            "over a held store"
+        )
+    try:
+        store = Store.open(root / DB_NAME, check_same_thread=False)
+    except sqlite3.OperationalError as error:
+        raise EvidenceError(f"cannot open a scratch store under {root}: {error}") from error
+
+    server: uvicorn.Server | None = None
+    thread: threading.Thread | None = None
+    try:
+        content = ContentStore(store)
+        secret = secrets.token_bytes(32)
+        app = create_app(
+            store=store,
+            content=content,
+            secret=secret,
+            limits=DEFAULT_LIMITS,
+            gateway_id=EVIDENCE_GATEWAY_ID,
+            fixtures_dir=fixtures_dir,
+            now_iso=_now_iso,
+            now_epoch=_now_epoch,
+        )
+        # demo's loopback boot, imported deliberately: ONE boot idiom, not a fork.
+        server, thread, port = _boot(app)
+        token = issue(
+            secret,
+            principal=EVIDENCE_PRINCIPAL,
+            audience="stg",
+            scopes={"stg:control"},
+            expires_at=_now_epoch() + 3600,
+        )
+        client = GatewayClient(f"http://127.0.0.1:{port}", token=token)
+        yield AppHandles(
+            client=client,
+            store=store,
+            content=content,
+            fixtures=fixtures_dir,
+            base_url=f"http://127.0.0.1:{port}",
+            token=token,
+            timeout_s=timeout_s,
+        )
+    finally:
+        if server is not None:
+            server.should_exit = True
+        if thread is not None:
+            thread.join(timeout=5.0)
+        store.close()
+        # The scratch tree is always this context's own mkdtemp creation.
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def generate_runs(
     dest: Path,
     *,
@@ -464,62 +555,7 @@ def generate_runs(
     if timeout_s <= 0:
         raise EvidenceError(f"timeout_s must be positive, got {timeout_s}")
     fixtures_dir = resolve_fixtures(fixtures)
-    # Lazy heavy imports: only generation pays for the app stack (the demo rule).
-    from benchweave.content.store import ContentStore
-    from benchweave.interfaces.app import create_app
-    from benchweave.interfaces.identity import issue
-    from benchweave.state.store import Store
-
-    root = Path(tempfile.mkdtemp(prefix="benchweave-evidence-"))
-    # Anti-coordinate gate (ISC-12): refuse BEFORE composing anything.
-    held = held_stores(root)
-    if held:
-        raise EvidenceError(
-            "refusing: a live gateway holds "
-            + ", ".join(str(path) for path in held)
-            + f" under {root} — the generator never composes a second coordinator "
-            "over a held store"
-        )
-    try:
-        store = Store.open(root / DB_NAME, check_same_thread=False)
-    except sqlite3.OperationalError as error:
-        raise EvidenceError(f"cannot open a scratch store under {root}: {error}") from error
-
-    server: uvicorn.Server | None = None
-    thread: threading.Thread | None = None
-    port = 0
-    try:
-        content = ContentStore(store)
-        secret = secrets.token_bytes(32)
-        app = create_app(
-            store=store,
-            content=content,
-            secret=secret,
-            limits=DEFAULT_LIMITS,
-            gateway_id=EVIDENCE_GATEWAY_ID,
-            fixtures_dir=fixtures_dir,
-            now_iso=_now_iso,
-            now_epoch=_now_epoch,
-        )
-        # demo's loopback boot, imported deliberately: ONE boot idiom, not a fork.
-        server, thread, port = _boot(app)
-        token = issue(
-            secret,
-            principal=EVIDENCE_PRINCIPAL,
-            audience="stg",
-            scopes={"stg:control"},
-            expires_at=_now_epoch() + 3600,
-        )
-        client = GatewayClient(f"http://127.0.0.1:{port}", token=token)
-        handles = AppHandles(
-            client=client,
-            store=store,
-            content=content,
-            fixtures=fixtures_dir,
-            base_url=f"http://127.0.0.1:{port}",
-            timeout_s=timeout_s,
-        )
-
+    with _ephemeral_gateway(fixtures_dir, timeout_s=timeout_s) as handles:
         runs_dir = Path(dest) / "runs"
         runs_dir.mkdir(parents=True, exist_ok=True)
         _clear_prior(runs_dir)
@@ -563,14 +599,374 @@ def generate_runs(
             json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8"
         )
         return summary
-    finally:
-        if server is not None:
-            server.should_exit = True
-        if thread is not None:
-            thread.join(timeout=5.0)
-        store.close()
-        # The scratch tree is always this generator's own mkdtemp creation.
-        shutil.rmtree(root, ignore_errors=True)
+
+
+# --- the timing leg (Task 9) --------------------------------------------------------
+
+#: Default read requests per PRD-load window (PRD §6: 100 requests).
+DEFAULT_TIMING_REQUESTS = 100
+#: Default observers for the reads window (PRD §6: two observers).
+DEFAULT_TIMING_OBSERVERS = 2
+#: The stress tier's shape: 16 observers x 100 reads each, non-gating.
+STRESS_OBSERVERS = 16
+STRESS_REQUESTS_PER_OBSERVER = 100
+#: Offset keeping the driver's §9 key family disjoint from the acceptance
+#: family under any operator-passed seed.
+_DRIVER_SEED_OFFSET = 900_000
+
+
+class _ActiveRunDriver:
+    """Keeps one run live on the bench, restarting as each reaches terminal.
+
+    A fixture run reaches terminal in well under a second — far shorter
+    than a measurement window — so the driver loops the seeded-journey
+    start (fresh binding variant, preflight, ``run_start``, publish the
+    run id, poll to terminal, next seed). ``coverage(window)`` is the live
+    fraction the driver ACHIEVED over a measurement window: each live
+    interval spans accept-response to terminal observation (0.2 s poll
+    granularity), and the retained evidence reports this measured number,
+    never a claim.
+    """
+
+    def __init__(self, handles: AppHandles, *, seed: int) -> None:
+        self._handles = handles
+        self._seed = seed
+        self._stop = threading.Event()
+        self._first = threading.Event()
+        self._lock = threading.Lock()
+        self._intervals: list[tuple[float, float]] = []
+        self._open_since: float | None = None
+        self._run_id = ""
+        self._error: BaseException | None = None
+        self._thread = threading.Thread(
+            target=self._loop, name="benchweave-timing-driver", daemon=True
+        )
+
+    @property
+    def current_run_id(self) -> str:
+        with self._lock:
+            return self._run_id
+
+    @property
+    def error(self) -> BaseException | None:
+        return self._error
+
+    def start(self) -> None:
+        self._thread.start()
+
+    def wait_first_run(self, timeout_s: float) -> None:
+        """Block until the first run is live (or fail truthfully)."""
+        if not self._first.wait(timeout_s):
+            self._stop.set()
+            detail = f"the active-run driver produced no live run within {timeout_s:g}s"
+            if self._error is not None:
+                detail += f" (driver error: {self._error})"
+            raise EvidenceError(detail)
+        if self._error is not None:
+            raise EvidenceError(f"the active-run driver failed: {self._error}") from self._error
+
+    def stop(self) -> None:
+        """Graceful stop: the in-flight run finishes to terminal, then the loop ends."""
+        self._stop.set()
+        self._thread.join(timeout=15.0)
+
+    def coverage(self, window_start: float, window_end: float) -> float:
+        """The live fraction achieved over [window_start, window_end].
+
+        A run still live when this is called counts through ``window_end``
+        — it was continuously live from its accept past the closed window
+        (exact, not an estimate); a run that already reached terminal
+        observation contributes its finalized interval.
+        """
+        window = window_end - window_start
+        if window <= 0:
+            return 0.0
+        live = 0.0
+        with self._lock:
+            for start, end in self._intervals:
+                live += max(0.0, min(end, window_end) - max(start, window_start))
+            if self._open_since is not None:
+                live += max(0.0, window_end - max(self._open_since, window_start))
+        return min(1.0, live / window)
+
+    def _loop(self) -> None:
+        index = 0
+        while not self._stop.is_set():
+            index += 1
+            try:
+                self._drive(seed=self._seed + index)
+            except BaseException as error:  # surfaced by the caller, never swallowed
+                self._error = error
+                self._first.set()
+                return
+
+    def _drive(self, *, seed: int) -> None:
+        handles = self._handles
+        request_id = f"req-timing-drive-{seed}"
+        ref, document = _binding_variant(handles.content, handles.fixtures, request_id)
+        bench_id = str(document["bench"]["id"])
+        client = handles.client
+        preflight = client.run_check(bench_id, binding_ref=ref)
+        if preflight.get("valid") is not True:
+            raise EvidenceError(
+                f"driver seed {seed} ({request_id}): run_check preflight rejected "
+                f"the binding — {preflight.get('findings')!r}"
+            )
+        generation = preflight.get("generation")
+        if not isinstance(generation, int):
+            raise EvidenceError(
+                f"driver seed {seed} ({request_id}): preflight carried no canonical generation"
+            )
+        accepted = client.run_start(
+            bench_id,
+            request_id=request_id,
+            binding_ref=ref,
+            expected_generation=generation,
+        )
+        if accepted.get("state") != "accepted":
+            raise EvidenceError(
+                f"driver seed {seed} ({request_id}): run_start returned state "
+                f"{accepted.get('state')!r}, not 'accepted'"
+            )
+        run_id = str(accepted["run_id"])
+        accepted_at = time.monotonic()
+        with self._lock:
+            self._run_id = run_id
+            self._open_since = accepted_at
+        self._first.set()
+        try:
+            final = poll_to_terminal(client, run_id, timeout_s=handles.timeout_s)
+        finally:
+            with self._lock:
+                self._intervals.append((accepted_at, time.monotonic()))
+                self._open_since = None
+        if final.get("outcome") != "passed":
+            # A driver run failing under load is an anomaly the measurement
+            # must not paper over — the load leg assumes a healthy body.
+            raise EvidenceError(
+                f"driver seed {seed} ({request_id}): outcome "
+                f"{final.get('outcome')!r}, not 'passed' — the bench is unhealthy "
+                "under this load"
+            )
+
+
+def _lattice_bench_id(handles: AppHandles) -> str:
+    """The one bench the lattice admitted (in-process discovery, once)."""
+    payload = handles.client.bench_list()
+    items = payload.get("items")
+    if isinstance(items, list) and items and isinstance(items[0], dict):
+        bench_id = str(items[0].get("bench_id", ""))
+        if bench_id:
+            return bench_id
+    raise EvidenceError("the ephemeral gateway served no bench to measure against")
+
+
+def _timing_entry(
+    result: TimingResult,
+    **extra: Any,
+) -> dict[str, Any]:
+    """One measurement's retained record: the TimingResult fields + extras."""
+    entry: dict[str, Any] = {
+        "label": result.label,
+        "p50_ms": result.p50_ms,
+        "p95_ms": result.p95_ms,
+        "max_ms": result.max_ms,
+        "count": result.count,
+        "observers": result.observers,
+        "active_run": result.active_run,
+        "seed": result.seed,
+    }
+    entry.update(extra)
+    return entry
+
+
+def generate_timing(
+    dest: Path,
+    *,
+    seed: int = DEFAULT_SEED,
+    requests: int = DEFAULT_TIMING_REQUESTS,
+    observers: int = DEFAULT_TIMING_OBSERVERS,
+    acceptance_requests: int = DEFAULT_TIMING_REQUESTS,
+    stress_observers: int = STRESS_OBSERVERS,
+    stress_requests: int = STRESS_REQUESTS_PER_OBSERVER,
+    timeout_s: float = DEFAULT_TIMEOUT_S,
+    fixtures: Path | None = None,
+) -> dict[str, Any]:
+    """Measure the PRD §6 targets + the stress tier; write both artifacts.
+
+    One ephemeral SIMULATION gateway (the generate_runs idiom). Order
+    matters and is disclosed in the artifacts: acceptance FIRST — it needs
+    the bench's one live-run slot exclusively, every sample on a fresh §9
+    key with the previous run driven to terminal — then the active-run
+    driver keeps a run live across the reads and stress windows. The
+    reads artifact records the ACHIEVED live fraction as
+    ``active_run_coverage`` and this function REFUSES to write it with
+    none: an active-run reads measurement that never observed a live run
+    would be a fabricated condition, not a measurement.
+    """
+    if min(requests, acceptance_requests, stress_requests, observers, stress_observers) < 1:
+        raise EvidenceError("every request/observer count must be >= 1")
+    if timeout_s <= 0:
+        raise EvidenceError(f"timeout_s must be positive, got {timeout_s}")
+    fixtures_dir = resolve_fixtures(fixtures)
+    with _ephemeral_gateway(fixtures_dir, timeout_s=timeout_s) as handles:
+        bench_id = _lattice_bench_id(handles)
+
+        def prepare(index: int) -> tuple[str, str, dict[str, Any]]:
+            request_id = f"req-timing-accept-{seed + index}"
+            ref, document = _binding_variant(handles.content, handles.fixtures, request_id)
+            return str(document["bench"]["id"]), request_id, ref
+
+        def await_terminal(run_id: str) -> None:
+            final = poll_to_terminal(handles.client, run_id, timeout_s=handles.timeout_s)
+            if final.get("outcome") != "passed":
+                raise EvidenceError(
+                    f"acceptance sample run {run_id}: outcome "
+                    f"{final.get('outcome')!r}, not 'passed'"
+                )
+
+        acceptance = measure_acceptance(
+            handles.base_url,
+            handles.token,
+            requests=acceptance_requests,
+            observers=observers,
+            timeout=timeout_s,
+            prepare=prepare,
+            await_terminal=await_terminal,
+            seed=seed,
+        )
+
+        driver = _ActiveRunDriver(handles, seed=seed + _DRIVER_SEED_OFFSET)
+        driver.start()
+        try:
+            driver.wait_first_run(timeout_s=timeout_s)
+            reads_start = time.monotonic()
+            reads = measure_reads(
+                handles.base_url,
+                handles.token,
+                requests=requests,
+                observers=observers,
+                active_run=True,
+                timeout=timeout_s,
+                bench_id=bench_id,
+                run_id_of=lambda: driver.current_run_id,
+                seed=seed,
+            )
+            reads_end = time.monotonic()
+            if driver.error is not None:
+                raise EvidenceError(
+                    f"the active-run driver failed during the reads window: {driver.error}"
+                ) from driver.error
+            reads_coverage = driver.coverage(reads_start, reads_end)
+            if reads_coverage <= 0.0:
+                raise EvidenceError(
+                    "the reads window observed NO live run — refusing to write "
+                    "active-run reads evidence with no active run"
+                )
+
+            stress_start = time.monotonic()
+            stress = measure_stress(
+                handles.base_url,
+                handles.token,
+                observers=stress_observers,
+                requests_per_observer=stress_requests,
+                timeout=timeout_s,
+                bench_id=bench_id,
+                run_id_of=lambda: driver.current_run_id,
+                seed=seed,
+            )
+            stress_end = time.monotonic()
+            if driver.error is not None:
+                raise EvidenceError(
+                    f"the active-run driver failed during the stress window: {driver.error}"
+                ) from driver.error
+            stress_coverage = driver.coverage(stress_start, stress_end)
+        finally:
+            driver.stop()
+
+        method = {
+            "reads": (
+                f"{requests} metadata reads (GET /v1/benches, GET /v1/runs/{{id}}, "
+                f"GET /v1/benches/{{id}}/events, rotating) by {observers} concurrent "
+                "observer threads while one run is live; a background driver "
+                "restarts seeded runs as each reaches terminal and the achieved "
+                "live fraction is reported as active_run_coverage (accept-response "
+                "to terminal observation, 0.2 s poll granularity)"
+            ),
+            "acceptance": (
+                "each sample times ONE run_start call to its 202 accept response on "
+                "a fresh §9 request key; the advisory run-check preflight and the "
+                "poll to terminal (which frees the bench's one live-run slot) sit "
+                "OUTSIDE every timed window — PRD §6 excludes device execution. "
+                "Sequential on the single admitted bench: the committed fixture "
+                "lattice admits exactly one bench per gateway and §5 holds one live "
+                "run per bench, so a second concurrent run_start CONFLICTS at "
+                "accept rather than measuring — the declared two-observer posture "
+                "is recorded as observers_declared, the achieved shape as observers"
+            ),
+            "stress": (
+                f"{stress_observers} observers x {stress_requests} metadata reads each "
+                "(the same rotating read set), barrier-started so the whole burst "
+                "is simultaneous, while the active-run driver keeps a run live; "
+                "NON-REFERENCE and NON-GATING — it exists to make the D13 "
+                "async-single-loop (blocking SQLite on one event loop) disclosure "
+                "honest, not to gate anything"
+            ),
+            "percentile": "linear interpolation, rank = q * (n - 1), over the sorted sample",
+            "timer": "time.perf_counter around each GatewayClient call (stdlib only)",
+        }
+        reads_entry = _timing_entry(
+            reads,
+            active_run=True,
+            active_run_coverage=round(reads_coverage, 4),
+            target_p95_ms=READS_TARGET_P95_MS,
+            verdict="pass" if reads.p95_ms <= READS_TARGET_P95_MS else "fail",
+        )
+        acceptance_entry = _timing_entry(
+            acceptance,
+            observers_declared=observers,
+            target_p95_ms=ACCEPTANCE_TARGET_P95_MS,
+            verdict="pass" if acceptance.p95_ms <= ACCEPTANCE_TARGET_P95_MS else "fail",
+        )
+        stress_entry = _timing_entry(
+            stress,
+            active_run=stress_coverage > 0.0,
+            active_run_coverage=round(stress_coverage, 4),
+            verdict="recorded",
+        )
+        prd_payload: dict[str, Any] = {
+            "generated_at": _now_iso(),
+            "host": _host_disclosure(),
+            "simulation": True,
+            "label": SIMULATION_LABEL,
+            "gateway_id": EVIDENCE_GATEWAY_ID,
+            "seed": seed,
+            "reference": True,
+            "gating": True,
+            "measurements": {LABEL_READS: reads_entry, LABEL_ACCEPTANCE: acceptance_entry},
+            "method": method,
+        }
+        stress_payload: dict[str, Any] = {
+            "generated_at": _now_iso(),
+            "host": _host_disclosure(),
+            "simulation": True,
+            "label": SIMULATION_LABEL,
+            "gateway_id": EVIDENCE_GATEWAY_ID,
+            "seed": seed,
+            "reference": False,
+            "gating": False,
+            "measurements": {LABEL_STRESS: stress_entry},
+            "method": {key: method[key] for key in ("stress", "percentile", "timer")},
+        }
+        timing_dir = Path(dest) / "timing"
+        timing_dir.mkdir(parents=True, exist_ok=True)
+        (timing_dir / "prd-load.json").write_text(
+            json.dumps(prd_payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+        (timing_dir / "stress-16.json").write_text(
+            json.dumps(stress_payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+        return prd_payload
 
 
 # --- the Click surface ----------------------------------------------------------------
@@ -665,3 +1061,115 @@ def runs(
     except (EvidenceError, DemoError, GatewayError) as error:
         raise click.ClickException(str(error)) from error
     emit(summary)
+
+
+@evidence.command()
+@click.option(
+    "--dest",
+    "dest",
+    type=click.Path(path_type=Path),
+    required=True,
+    help=(
+        "Output root; the timing artifacts land under <dest>/timing/ "
+        "(prd-load.json + stress-16.json)."
+    ),
+)
+@click.option(
+    "--seed",
+    "seed",
+    type=int,
+    default=DEFAULT_SEED,
+    show_default=True,
+    help="Base seed; names the measurement and derives every §9 request key.",
+)
+@click.option(
+    "--requests",
+    "requests",
+    type=int,
+    default=DEFAULT_TIMING_REQUESTS,
+    show_default=True,
+    help="Metadata read requests in the PRD-load reads window.",
+)
+@click.option(
+    "--observers",
+    "observers",
+    type=int,
+    default=DEFAULT_TIMING_OBSERVERS,
+    show_default=True,
+    help="Concurrent observer threads for the reads window (PRD §6: two).",
+)
+@click.option(
+    "--acceptance-requests",
+    "acceptance_requests",
+    type=int,
+    default=DEFAULT_TIMING_REQUESTS,
+    show_default=True,
+    help="run_start accept-decision samples (fresh §9 keys, sequential).",
+)
+@click.option(
+    "--stress-observers",
+    "stress_observers",
+    type=int,
+    default=STRESS_OBSERVERS,
+    show_default=True,
+    help="Observers in the non-gating stress tier.",
+)
+@click.option(
+    "--stress-requests",
+    "stress_requests",
+    type=int,
+    default=STRESS_REQUESTS_PER_OBSERVER,
+    show_default=True,
+    help="Reads per observer in the stress tier.",
+)
+@click.option(
+    "--timeout",
+    "timeout_s",
+    type=float,
+    default=DEFAULT_TIMEOUT_S,
+    show_default=True,
+    help="Seconds to wait for any driven run to reach a terminal state.",
+)
+@click.option(
+    "--fixtures",
+    "fixtures",
+    type=click.Path(path_type=Path),
+    default=None,
+    envvar="BENCHWEAVE_FIXTURES",
+    help="Fixture lattice directory (default: the repository execution lattice).",
+)
+@click.option(
+    "--json",
+    "json_output",
+    is_flag=True,
+    help="Emit the stable machine JSON contract instead of text.",
+)
+def timing(
+    dest: Path,
+    seed: int,
+    requests: int,
+    observers: int,
+    acceptance_requests: int,
+    stress_observers: int,
+    stress_requests: int,
+    timeout_s: float,
+    fixtures: Path | None,
+    json_output: bool,
+) -> None:
+    """Measure PRD §6 targets + the 16-observer stress tier (SIMULATION)."""
+    _set_json(json_output)
+    try:
+        payload = generate_timing(
+            dest,
+            seed=seed,
+            requests=requests,
+            observers=observers,
+            acceptance_requests=acceptance_requests,
+            stress_observers=stress_observers,
+            stress_requests=stress_requests,
+            timeout_s=timeout_s,
+            fixtures=fixtures,
+        )
+    except (EvidenceError, DemoError, GatewayError, PerformanceError) as error:
+        raise click.ClickException(str(error)) from error
+    emit(payload)
