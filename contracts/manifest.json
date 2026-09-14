@@ -31,6 +31,11 @@
       "sha256": "f6eb48255bc275a468b23b9df0c0ab64776dfbe5eb9bacb9d063130c272c42f1"
     },
     {
+      "path": "plugin-ui-preview-v1/fixture.schema.json",
+      "source": "docs/plugin-ui-preview-v1/fixture.schema.json",
+      "sha256": "32aa34af00cb3941c73ad9efde1fd54121823e51d61144311f3c79c4c8fa3073"
+    },
+    {
       "path": "execution-v1.0.0/bench.schema.json",
       "source": "docs/execution-v1.0.0/bench.schema.json",
       "sha256": "c12b0730fe6606560ae4e85be85d8d8710eda11202c2b9771ac1648f09f40b77"
