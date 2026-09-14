@@ -27,6 +27,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          submodules: recursive
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           version: "0.11.16"
@@ -50,11 +51,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          submodules: recursive
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           version: "0.11.16"
           enable-cache: true
       - run: uv python install 3.13
+      - name: Standards sync check
+        # A release proves synchronisation: refuse to build and attach SDK
+        # distributions while the vendored standards tree is out of sync.
+        run: make check-sdk-standards
       - name: Rebuild and verify the exact release assets
         run: >-
           uv run --no-project --python 3.13 scripts/sdk_smoke.py

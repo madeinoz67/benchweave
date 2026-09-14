@@ -13,6 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.13"
@@ -43,6 +45,8 @@ jobs:
         model: [sim_psu, sim_controller]
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.13"

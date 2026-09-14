@@ -65,3 +65,23 @@ accepted-risk) is proposed to the ledger before the session ends. The skill file
 generic; this repo's protocol is what binds them here. Review findings are never
 forgotten.
 (Memory system adopted 2026-09-10 from the muninndb repository.)
+
+## Two-repo discipline: the SDK submodule
+
+`packages/sdk` is a git submodule with its own repository
+(`madeinoz67/benchweave-sdk`) and its own CI. Editing anything under
+`packages/sdk` is always **two commits, in this order**:
+
+1. Commit inside the submodule and **push it** (the SDK repo's CI and releases
+   run from its own remote — an unpushed submodule commit is invisible there
+   and breaks main-repo CI, which checks out submodules by SHA).
+2. Then commit the advanced submodule pointer in the main repository.
+
+`make sync-sdk-standards` enforces the order: it refuses to run against a
+submodule working tree with uncommitted changes, and its report reminds you
+that the pointer commit is still yours to make. Nothing in the flow pushes or
+commits for you.
+
+Planning docs under `docs/superpowers/` stay local-untracked in **both**
+repositories (they are force-added only at close-out, when they document
+something that has landed).

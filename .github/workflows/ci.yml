@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
@@ -38,10 +40,17 @@ jobs:
       - name: Test
         run: uv run pytest -q
 
+      - name: Standards sync check
+        # Re-export the corpus to a temp dir and refuse any drift between
+        # the main-repo standards, the SDK lock and the vendored tree.
+        run: make check-sdk-standards
+
   ui:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - uses: actions/setup-node@v4
         with:
@@ -75,7 +84,7 @@ jobs:
       - name: Renderer freshness gate
         run: |
           npm --prefix ui run build:preview
-          git diff --exit-code -- packages/sdk/src/benchweave_sdk/preview_assets
+          git -C packages/sdk diff --exit-code -- src/benchweave_sdk/preview_assets
 
       - name: Dependency audit
         working-directory: ui
@@ -85,6 +94,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Render and verify the systemd unit template
         run: |

@@ -39,6 +39,44 @@ npm run build:preview   # rebuilds packages/sdk/src/benchweave_sdk/preview_asset
 the rebuilt `preview_assets/` together with the `ui/` source change. CI's
 **ui** job runs the same commands and fails if the committed renderer is stale.
 
+## Standards synchronisation
+
+The canonical standards live in `standards/standards-manifest.json`; the SDK
+submodule (`packages/sdk`) pins them via `standards-lock.json` plus the
+vendored tree under `src/benchweave_sdk/standards/`. Two make targets govern
+the flow:
+
+- `make sync-sdk-standards` — export the corpus, import it into the SDK,
+  verify and run the standards tests; changes stay uncommitted for review.
+- `make check-sdk-standards` — non-mutating: re-export to a temp dir and
+  compare lock + vendored tree, then regenerate the compatibility matrix and
+  fail when the committed file differs.
+
+When a synchronisation changes or deprecates a standard, `sync` writes the
+lock's `compatibility.notes` as `null` — fill it in before committing: the
+check deliberately halts with `compatibility_incomplete` until the migration
+note is present. That halt is the operator prompt, not an error to work
+around.
+
+`docs/compatibility-matrix.md` is generated (never hand edited) from the
+manifest and the SDK lock; regenerate with
+`uv run python -m benchweave.standards matrix`. It carries versions, status
+and migration guidance but no commit SHAs — `python -m benchweave.standards
+versions` prints the live main/SDK/standards combination.
+
+Change propagation, end to end:
+
+1. Change the canonical specification in the main repo.
+2. Increment the applicable standards version when normative content changes.
+3. Validate and export (`make sync-sdk-standards`).
+4. Open a reviewed SDK change containing the synchronised resources.
+5. Run SDK conformance, packaging and documentation gates.
+6. Release the SDK when the standards change requires a new SDK version.
+7. Update the main project's submodule pointer to the released SDK commit.
+8. Run main-project integration and compatibility gates.
+9. Record the final main / SDK / standards version combination
+   (compatibility matrix row): regenerate and commit the matrix.
+
 ## GitHub workflows
 
 - **CI** runs the Python gates (ruff, config-driven mypy, pytest) plus a

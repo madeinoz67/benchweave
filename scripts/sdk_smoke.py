@@ -2,15 +2,14 @@
 """Build both distributions and test a wheel-installed external adapter.
 
 Run with Python 3.13 and uv on PATH. No repository PYTHONPATH, hardware, registry
-installation or publication is used. The installed subprocess receives canonical
-contract hashes, never a source fallback. --out-dir retains release artefacts and
+installation or publication is used. The installed subprocess receives the SDK
+standards lock's hashes, never a source fallback. --out-dir retains release artefacts and
 a verification report; temporary environments and generated projects are removed.
 """
 
 from __future__ import annotations
 
 import argparse
-import ast
 import hashlib
 import json
 import os
@@ -23,21 +22,13 @@ from pathlib import Path
 from typing import Any
 
 
-def _contract_sets() -> tuple[str, ...]:
-    """Read CONTRACT_SETS from the SDK build hook so the smoke cannot drift.
-
-    Parsing (not importing) keeps this working without hatchling installed and
-    for the standalone copy, which never calls this — only build_and_check does.
-    """
-    source = (Path(__file__).resolve().parents[1] / "packages/sdk/hatch_build.py").read_text()
-    for node in ast.parse(source).body:
-        if isinstance(node, ast.Assign):
-            for target in node.targets:
-                if isinstance(target, ast.Name) and target.id == "CONTRACT_SETS":
-                    value = ast.literal_eval(node.value)
-                    if isinstance(value, tuple) and value:
-                        return tuple(str(item) for item in value)
-    raise RuntimeError("Cannot read CONTRACT_SETS from packages/sdk/hatch_build.py")
+def _standards_lock() -> dict[str, Any]:
+    """Read the SDK lock so the smoke and the build hook share one source."""
+    lock_path = Path(__file__).resolve().parents[1] / "packages" / "sdk" / "standards-lock.json"
+    lock: dict[str, Any] = json.loads(lock_path.read_bytes())
+    if lock.get("lock_version") != 1 or not lock.get("standards"):
+        raise RuntimeError(f"Cannot read a valid standards lock from {lock_path}")
+    return lock
 
 
 def digest(data: bytes) -> str:
@@ -111,9 +102,15 @@ def installed_check(reference: Path, report: Path) -> None:
     assert benchweave_sdk.ADAPTER_API_VERSION == "1.1"
     assert files("benchweave").joinpath("py.typed").is_file()
     assert files("benchweave_sdk").joinpath("py.typed").is_file()
-    packaged = resources(files("benchweave_sdk").joinpath("contracts"))
-    packaged_hashes = {name: digest(data) for name, data in packaged.items()}
-    assert packaged_hashes == expected["contracts"], "SDK contract resources drifted"
+    packaged = resources(files("benchweave_sdk").joinpath("standards"))
+    locked_hashes = {
+        name: digest(data)
+        for name, data in packaged.items()
+        if Path(name).name != "_GENERATED.txt"
+    }
+    assert locked_hashes == expected["standards"], "SDK vendored standards drifted from the lock"
+    for identifier in expected["standard_ids"]:
+        assert f"{identifier}/_GENERATED.txt" in packaged, f"stamp missing: {identifier}"
 
     payload = {
         f"example_plugin/{name}": data
@@ -126,7 +123,7 @@ def installed_check(reference: Path, report: Path) -> None:
     presentation = import_module("benchweave_sdk.presentation")
     admission = import_module("benchweave.presentation.admission")
     for package, path in (
-        ("benchweave_sdk", "_presentation_contract.py"),
+        ("benchweave_sdk", "standards/plugin-ui/contracts.py"),
         ("benchweave", "presentation/contracts.py"),
     ):
         assert digest(files(package).joinpath(path).read_bytes()) == expected["presentation_sha256"]
@@ -222,9 +219,10 @@ def installed_check(reference: Path, report: Path) -> None:
                 "sdk_version": expected["sdk_version"],
                 "otdp_version": "0.3.0",
                 "adapter_api_version": "1.1",
-                "contract_files_verified": len(packaged_hashes),
+                "standards_files_verified": len(locked_hashes),
                 "example": "wheel installed outside checkout; identify/read passed",
                 "tampered_helper": "rejected before import",
+                "standards": "installed tree equals packages/sdk/standards-lock.json",
                 "presentation": (
                     "installed UI resources and identical SDK/gateway validator verified"
                 ),
@@ -247,17 +245,25 @@ def build_and_check(out_dir: Path) -> None:
     run(["uv", "build", "--out-dir", str(sdk_out), str(checkout / "packages/sdk")], cwd=checkout)
     gateway_metadata = tomllib.loads((checkout / "pyproject.toml").read_text())
     sdk_metadata = tomllib.loads((checkout / "packages/sdk/pyproject.toml").read_text())
+    lock = _standards_lock()
+    standards: list[dict[str, Any]] = lock["standards"]
+    presentation_sha256 = next(
+        file["sha256"]
+        for standard in standards
+        if standard["id"] == "plugin-ui"
+        for file in standard["files"]
+        if file["path"] == "plugin-ui/contracts.py"
+    )
     expected = {
         "checkout": str(checkout),
         "gateway_version": gateway_metadata["project"]["version"],
         "sdk_version": sdk_metadata["project"]["version"],
-        "presentation_sha256": digest(
-            (checkout / "src/benchweave/presentation/contracts.py").read_bytes()
-        ),
-        "contracts": {
-            f"{name}/{relative}": digest(data)
-            for name in _contract_sets()
-            for relative, data in resources(checkout / "contracts" / name).items()
+        "presentation_sha256": presentation_sha256,
+        "standard_ids": sorted(str(standard["id"]) for standard in standards),
+        "standards": {
+            str(file["path"]): str(file["sha256"])
+            for standard in standards
+            for file in standard["files"]
         },
     }
     gateway_wheel = gateway_out / f"benchweave-{expected['gateway_version']}-py3-none-any.whl"
