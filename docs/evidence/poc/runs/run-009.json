@@ -1,0 +1,16 @@
+{
+  "bench_id": "sim-bench",
+  "binding_sha256": "83f4b56a102e91492c68bc89426f6bbac266cbe8330d228867ab0d014836b5af",
+  "dispatch_occurrences": 8,
+  "duration_s": 0.418,
+  "events_digest": "59d867eb6e0a0de40c2bcc9d92976d4f798af977b6996d40a55af6a25862d6e4",
+  "index": 9,
+  "outcome": "passed",
+  "request_id": "req-volume-20260923",
+  "run_id": "run-bad384ecb1884e5d",
+  "safe_state": "verified",
+  "seed": 20260923,
+  "started_at": "2026-09-14T07:06:13.401863Z",
+  "state": "terminal",
+  "terminal_sha256": "76abf3aee0ab6b556de434126b263192fe8c18ad7e51cc12f2b63b550e828b5b"
+}
