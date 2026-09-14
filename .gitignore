@@ -21,6 +21,9 @@ dist/
 htmlcov/
 coverage.xml
 junit*.xml
+# …except the retained fault-matrix report: docs/evidence/poc/fault-matrix/
+# junit.xml IS evidence (the harvest's committed junit), not tool state.
+!docs/evidence/poc/fault-matrix/junit.xml
 
 # Wheel-only vendored trees (hatch force-include -> benchweave/_vendored/).
 # Nothing creates src/benchweave/_vendored/ in a checkout; the guard keeps a

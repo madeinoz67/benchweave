@@ -56,7 +56,7 @@ rank = q * (n - 1), over the sorted sample.
 | JSON field | `prd-load-reads` | `prd-load-acceptance` |
 |---|---|---|
 | `p50_ms` | 2.487 | 2.084 |
-| `p95_ms` | **4.746** | **4.790** |
+| `p95_ms` | **4.746** | **4.790** (JSON serializes 4.79) |
 | `max_ms` | 17.157 | 9.501 |
 | `count` | 100 | 100 |
 | `observers` | 2 | 1 (`observers_declared: 2` — caveat below) |
@@ -120,8 +120,7 @@ itself sub-millisecond to a few milliseconds.
 2. **Write-heavy mixes** — the measured set is read-dominated (three
    GET kinds); the only concurrent writer is the driver's restart
    cycle (binding-variant store, preflight, `run_start`, state
-   transitions — a 17th client, disclosed in the artifacts' method
-   text).
+   transitions — a 17th client).
 3. **Long single store operations** — no artifact-sized writes,
    checkpoints, or migrations were in the measured set, so the
    worst-case serialization unit (one long write holding the loop

@@ -1,0 +1,71 @@
+{
+  "generated_at": "2026-09-14T10:49:41.906534Z",
+  "host": {
+    "machine": "arm64",
+    "python": "3.13.13",
+    "release": "25.6.0",
+    "system": "Darwin"
+  },
+  "label": "SIMULATION",
+  "legs": [
+    {
+      "duration_s": 0.902,
+      "expected_outcomes": [
+        "passed"
+      ],
+      "name": "lost_response",
+      "occurrences": {
+        "actual": 8,
+        "expected": 8
+      },
+      "outcome": "passed",
+      "verdict": "passed"
+    },
+    {
+      "duration_s": 0.242,
+      "expected_outcomes": [
+        "interrupted"
+      ],
+      "name": "restart",
+      "occurrences": {
+        "actual": 0,
+        "expected": 0
+      },
+      "outcome": "interrupted",
+      "verdict": "passed"
+    },
+    {
+      "duration_s": 1.087,
+      "expected_outcomes": [
+        "execution_error"
+      ],
+      "name": "stale_sample",
+      "occurrences": {
+        "actual": 5,
+        "expected": 5
+      },
+      "outcome": "execution_error",
+      "verdict": "passed"
+    },
+    {
+      "duration_s": 0.225,
+      "expected_outcomes": [
+        "outcome_unknown"
+      ],
+      "name": "trip",
+      "occurrences": {
+        "actual": 2,
+        "expected": 2
+      },
+      "outcome": "outcome_unknown",
+      "verdict": "passed"
+    }
+  ],
+  "simulation": true,
+  "tests": "tests/integration/test_poc_acceptance.py::test_journey_fault_legs",
+  "totals": {
+    "duration_s": 2.456,
+    "failed": 0,
+    "legs": 4
+  }
+}
