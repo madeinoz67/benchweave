@@ -1,0 +1,12 @@
+{"attempt": "ladder-115200-EMPTY", "baud": 115200, "field": 222, "sent_hex": "f1 a1 de 00 de", "ts": "07:54:44", "reply_hex": "", "reply_len": 0}
+{"attempt": "ladder-115200-ZERO", "baud": 115200, "field": 222, "sent_hex": "f1 a1 de 01 00 df", "ts": "07:54:46", "reply_hex": "", "reply_len": 0}
+{"attempt": "ladder-9600-EMPTY", "baud": 9600, "field": 222, "sent_hex": "f1 a1 de 00 de", "ts": "07:54:48", "reply_hex": "", "reply_len": 0}
+{"attempt": "ladder-9600-ZERO", "baud": 9600, "field": 222, "sent_hex": "f1 a1 de 01 00 df", "ts": "07:54:50", "reply_hex": "", "reply_len": 0}
+{"attempt": "ladder-19200-EMPTY", "baud": 19200, "field": 222, "sent_hex": "f1 a1 de 00 de", "ts": "07:54:52", "reply_hex": "", "reply_len": 0}
+{"attempt": "ladder-19200-ZERO", "baud": 19200, "field": 222, "sent_hex": "f1 a1 de 01 00 df", "ts": "07:54:53", "reply_hex": "", "reply_len": 0}
+{"attempt": "ladder-38400-EMPTY", "baud": 38400, "field": 222, "sent_hex": "f1 a1 de 00 de", "ts": "07:54:55", "reply_hex": "", "reply_len": 0}
+{"attempt": "ladder-38400-ZERO", "baud": 38400, "field": 222, "sent_hex": "f1 a1 de 01 00 df", "ts": "07:54:57", "reply_hex": "", "reply_len": 0}
+{"attempt": "ladder-57600-EMPTY", "baud": 57600, "field": 222, "sent_hex": "f1 a1 de 00 de", "ts": "07:54:59", "reply_hex": "", "reply_len": 0}
+{"attempt": "ladder-57600-ZERO", "baud": 57600, "field": 222, "sent_hex": "f1 a1 de 01 00 df", "ts": "07:55:01", "reply_hex": "", "reply_len": 0}
+{"attempt": "ladder-230400-EMPTY", "baud": 230400, "field": 222, "sent_hex": "f1 a1 de 00 de", "ts": "07:55:03", "reply_hex": "", "reply_len": 0}
+{"attempt": "ladder-230400-ZERO", "baud": 230400, "field": 222, "sent_hex": "f1 a1 de 01 00 df", "ts": "07:55:05", "reply_hex": "", "reply_len": 0}
