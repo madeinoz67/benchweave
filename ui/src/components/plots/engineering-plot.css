@@ -1,0 +1,58 @@
+.bw-plot {
+  margin: 0;
+  padding: var(--bw-space-3);
+  border: 1px solid var(--bw-border);
+  border-radius: var(--bw-radius-panel);
+  background: var(--bw-surface-recessed);
+  box-shadow: var(--bw-shadow-recessed);
+  color: var(--bw-text);
+}
+
+.bw-plot figcaption {
+  margin-bottom: var(--bw-space-2);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.bw-plot__canvas {
+  width: 100%;
+  min-height: 16rem;
+}
+
+.bw-plot__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--bw-space-4);
+  margin: var(--bw-space-2) 0 0;
+  padding: 0;
+  color: var(--bw-text-muted);
+  font-family: var(--bw-font-data);
+  font-size: 0.75rem;
+  list-style: none;
+}
+
+.bw-plot__legend li::before {
+  display: inline-block;
+  width: 1.25rem;
+  margin-right: var(--bw-space-2);
+  border-top: 0.16rem solid var(--bw-accent);
+  content: "";
+  vertical-align: middle;
+}
+
+.bw-plot__legend li[data-line="dashed"]::before {
+  border-color: var(--bw-warning);
+  border-top-style: dashed;
+}
+
+.bw-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
