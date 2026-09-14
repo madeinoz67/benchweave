@@ -40,6 +40,11 @@ jobs:
       - name: Test
         run: uv run pytest -q
 
+      - name: Standards sync check
+        # Re-export the corpus to a temp dir and refuse any drift between
+        # the main-repo standards, the SDK lock and the vendored tree.
+        run: make check-sdk-standards
+
   ui:
     runs-on: ubuntu-latest
     steps:

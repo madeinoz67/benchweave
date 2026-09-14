@@ -57,6 +57,10 @@ jobs:
           version: "0.11.16"
           enable-cache: true
       - run: uv python install 3.13
+      - name: Standards sync check
+        # A release proves synchronisation: refuse to build and attach SDK
+        # distributions while the vendored standards tree is out of sync.
+        run: make check-sdk-standards
       - name: Rebuild and verify the exact release assets
         run: >-
           uv run --no-project --python 3.13 scripts/sdk_smoke.py
