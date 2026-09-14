@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-14T10:49:41.906534Z",
+  "generated_at": "2026-09-14T12:16:42.764675Z",
   "host": {
     "machine": "arm64",
     "python": "3.13.13",
@@ -9,7 +9,7 @@
   "label": "SIMULATION",
   "legs": [
     {
-      "duration_s": 0.902,
+      "duration_s": 0.869,
       "expected_outcomes": [
         "passed"
       ],
@@ -22,7 +22,7 @@
       "verdict": "passed"
     },
     {
-      "duration_s": 0.242,
+      "duration_s": 0.238,
       "expected_outcomes": [
         "interrupted"
       ],
@@ -35,7 +35,7 @@
       "verdict": "passed"
     },
     {
-      "duration_s": 1.087,
+      "duration_s": 1.052,
       "expected_outcomes": [
         "execution_error"
       ],
@@ -48,7 +48,7 @@
       "verdict": "passed"
     },
     {
-      "duration_s": 0.225,
+      "duration_s": 0.227,
       "expected_outcomes": [
         "outcome_unknown"
       ],
@@ -64,7 +64,7 @@
   "simulation": true,
   "tests": "tests/integration/test_poc_acceptance.py::test_journey_fault_legs",
   "totals": {
-    "duration_s": 2.456,
+    "duration_s": 2.386,
     "failed": 0,
     "legs": 4
   }

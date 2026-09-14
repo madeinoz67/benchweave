@@ -16,8 +16,8 @@ carries no timestamp of its own.
 |---|---|---|---|
 | `decisions/d13-async-posture.md` | record | `2cbeb143eb3510bd68164875dd4042ab6c6ddabaaf2e824f68556467b69280fa` | record — digest-bound, never regenerated |
 | `decisions/deferred-deviations.md` | record | `db1a1d639ed40eb5891a48e66e21d21e22a2bc1bba1735795a2dabf2a85daa48` | record — digest-bound, never regenerated |
-| `fault-matrix/junit.xml` | generated | `85b7bd7734722ac7cb5a2fd9b28173362655b7ee4758513b24cc24ed626074a5` | `benchweave evidence faults --dest docs/evidence/poc` |
-| `fault-matrix/legs.json` | generated | `70aae935905ca64ffd07f567d2be55215401110f13b0e09bc28e74d2c84a35ba` | `benchweave evidence faults --dest docs/evidence/poc` |
+| `fault-matrix/junit.xml` | generated | `5725d61d571dac90a39ecacff66d1d05beead726575d46f422dde945205530b5` | `benchweave evidence faults --dest docs/evidence/poc` (from the repository root — the default --tests node id is relative) |
+| `fault-matrix/legs.json` | generated | `5979b00fe2e56c65fd729308cb7ed3d9756d27ba80a61b1810a0b11f72c88014` | `benchweave evidence faults --dest docs/evidence/poc` (from the repository root — the default --tests node id is relative) |
 | `runs/run-001.json` | generated | `9cf3898617ceb74c4f29bbcd79de4693656ec57369276e63510f091b857e8590` | `benchweave evidence runs --dest docs/evidence/poc` |
 | `runs/run-002.json` | generated | `17ba4f5898108939f588b6915682ff91a91a0f56e06e221c20984db7dea5a19b` | `benchweave evidence runs --dest docs/evidence/poc` |
 | `runs/run-003.json` | generated | `0dbe97cc9ec546f895d8bcc535f37f0077e2f7590e8a740e6bbbad75865ea21e` | `benchweave evidence runs --dest docs/evidence/poc` |
