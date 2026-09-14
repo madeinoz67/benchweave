@@ -96,3 +96,6 @@ opencode.json
 # doesn't ship (muninndb convention). `git add -f` a doc here if it documents something
 # that landed. ISA.html render lives here alongside its source.
 docs/superpowers/
+
+# Standards SDK bundle output (python -m benchweave.standards export)
+.standards-bundle/
