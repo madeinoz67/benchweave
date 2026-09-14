@@ -68,7 +68,16 @@ def _digest(path: Path) -> str:
 
 
 def _head_manifest() -> dict[str, Any]:
-    """The manifest as last committed — the frozen-bytes reference point."""
+    """The manifest as last committed — the frozen-bytes reference point.
+
+    Durability boundary (ISC-5 ledger note): HEAD re-baselines with every
+    commit, so this guard catches UNCOMMITTED drift against the last commit
+    (and a manifest-row rewrite in the working tree); the durable freeze on
+    1.1.0 is git history itself plus the vendoring record — a committed
+    edit to the 1.1.0 corpus would re-baseline HEAD and pass here, which is
+    why the corpus revision flow ships amendments as NEW revisions, never
+    edits to the frozen baseline.
+    """
     proc = subprocess.run(
         ["git", "-C", str(ROOT), "show", "HEAD:contracts/manifest.json"],
         check=True,
