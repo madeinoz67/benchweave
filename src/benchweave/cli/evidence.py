@@ -63,9 +63,12 @@ import platform
 import secrets
 import shutil
 import sqlite3
+import subprocess
+import sys
 import tempfile
 import threading
 import time
+import xml.etree.ElementTree as ET
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -969,12 +972,279 @@ def generate_timing(
         return prd_payload
 
 
+# --- the fault-matrix harvest (Task 11) ---------------------------------------------
+
+#: The harvest target: exactly the four journey fault legs (Task 6), so the
+#: junit report the transform reads carries only fault-leg cases.
+DEFAULT_FAULT_TESTS = "tests/integration/test_poc_acceptance.py::test_journey_fault_legs"
+#: Generous bound for the harvest pytest run (the legs share one booted
+#: application via the suite's fixtures, but the suite is not fast).
+FAULT_HARVEST_TIMEOUT_S = 600.0
+#: The junit testcase name prefix every parameterized leg carries.
+_LEG_TEST_PREFIX = "test_journey_fault_legs["
+#: The measured values each leg records (pytest ``record_property``) — the
+#: transform refuses a report lacking any of them rather than restate the
+#: expectation tables from the test module.
+_LEG_PROPERTIES = (
+    "actual_outcome",
+    "expected_outcomes",
+    "occurrences_expected",
+    "occurrences_actual",
+)
+
+
+def fault_legs_from_junit(xml_bytes: bytes) -> list[dict[str, Any]]:
+    """Project a junit report's fault-leg cases to lean per-leg rows.
+
+    A pure transform — no test code imported, no values restated: every
+    row field comes from the XML itself (the leg id from the parameterized
+    name, the verdict from the testcase child element, the measured
+    outcome and occurrence counts from the properties the leg test
+    records). Non-leg cases are ignored; a report with no leg cases, or a
+    leg case missing its recorded properties, refuses loudly — a wiring
+    break, not a leg to guess about.
+    """
+    root = ET.fromstring(xml_bytes)
+    legs: list[dict[str, Any]] = []
+    for case in root.iter("testcase"):
+        name = str(case.get("name", ""))
+        if not (name.startswith(_LEG_TEST_PREFIX) and name.endswith("]")):
+            continue
+        leg = name[len(_LEG_TEST_PREFIX) : -1]
+        verdict = "passed"
+        for tag in ("failure", "error", "skipped"):
+            if case.find(tag) is not None:
+                verdict = "failed" if tag == "failure" else tag
+                break
+        properties = {
+            str(prop.get("name")): str(prop.get("value"))
+            for prop in case.iter("property")
+        }
+        missing = [key for key in _LEG_PROPERTIES if key not in properties]
+        if missing:
+            raise EvidenceError(
+                f"fault leg {leg!r}: the junit report records no "
+                f"{', '.join(missing)} — the leg test must record them "
+                "(pytest record_property)"
+            )
+        legs.append(
+            {
+                "name": leg,
+                "verdict": verdict,
+                "outcome": properties["actual_outcome"],
+                "expected_outcomes": properties["expected_outcomes"].split(","),
+                "occurrences": {
+                    "expected": int(properties["occurrences_expected"]),
+                    "actual": int(properties["occurrences_actual"]),
+                },
+                "duration_s": round(float(str(case.get("time", "0"))), 3),
+            }
+        )
+    if not legs:
+        raise EvidenceError(
+            "the junit report carries no test_journey_fault_legs[...] cases — "
+            "the harvest target must select the fault legs"
+        )
+    return sorted(legs, key=lambda leg: str(leg["name"]))
+
+
+def generate_faults(
+    dest: Path,
+    *,
+    tests: str = DEFAULT_FAULT_TESTS,
+    timeout_s: float = FAULT_HARVEST_TIMEOUT_S,
+) -> dict[str, Any]:
+    """Harvest the fault-matrix leg results into ``<dest>/fault-matrix/``.
+
+    Runs the journey fault legs under pytest with ``--junitxml`` into a
+    scratch file, projects the report to a lean per-leg JSON, and retains
+    BOTH: ``legs.json`` (the lean matrix) and ``junit.xml`` (the report
+    itself — retained evidence, not tool state). The complete-matrix
+    discipline of the other generators applies: artifacts land only when
+    every leg passed — a failing or missing leg aborts loudly (naming the
+    legs) and nothing is written.
+    """
+    if timeout_s <= 0:
+        raise EvidenceError(f"timeout_s must be positive, got {timeout_s}")
+    with tempfile.TemporaryDirectory(prefix="benchweave-faults-") as scratch:
+        junit_path = Path(scratch) / "fault-legs.xml"
+        # junit_family=xunit1: the default (xunit2) schema rejects
+        # <properties> inside <testcase> — the recorded measurements the
+        # transform reads — warning on every leg. xunit1 carries them
+        # schema-valid; the retained junit.xml is self-describing either way.
+        command = [
+            sys.executable,
+            "-m",
+            "pytest",
+            tests,
+            "-o",
+            "junit_family=xunit1",
+            f"--junitxml={junit_path}",
+        ]
+        try:
+            completed = subprocess.run(
+                command, capture_output=True, text=True, timeout=timeout_s
+            )
+        except subprocess.TimeoutExpired as error:
+            raise EvidenceError(
+                f"the fault-leg pytest run exceeded {timeout_s:g}s — harvest refused"
+            ) from error
+        if not junit_path.is_file():
+            tail = (completed.stdout + completed.stderr).strip()[-400:]
+            raise EvidenceError(f"pytest produced no junit report: {tail!r}")
+        legs = fault_legs_from_junit(junit_path.read_bytes())
+        failed = [leg for leg in legs if str(leg["verdict"]) != "passed"]
+        if failed or completed.returncode != 0:
+            detail = ", ".join(
+                f"{leg['name']} ({leg['verdict']})" for leg in failed
+            )
+            detail = detail or f"pytest exit {completed.returncode}"
+            raise EvidenceError(
+                f"the fault matrix is not green — refusing to harvest: {detail}"
+            )
+        payload: dict[str, Any] = {
+            "generated_at": _now_iso(),
+            "host": _host_disclosure(),
+            "simulation": True,
+            "label": SIMULATION_LABEL,
+            "tests": tests,
+            "legs": legs,
+            "totals": {
+                "legs": len(legs),
+                "failed": 0,
+                "duration_s": round(
+                    sum(float(str(leg["duration_s"])) for leg in legs), 3
+                ),
+            },
+        }
+        fault_dir = Path(dest) / "fault-matrix"
+        fault_dir.mkdir(parents=True, exist_ok=True)
+        (fault_dir / "legs.json").write_text(
+            json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+        shutil.copyfile(junit_path, fault_dir / "junit.xml")
+        return payload
+
+
+# --- the digest index (Task 11) ------------------------------------------------------
+
+#: Top-level dirs whose artifacts are REGENERABLE — the index names each
+#: one's generator command; regenerating rewrites the artifact and this
+#: index's digest row for it.
+_GENERATED_DIRS = frozenset({"runs", "timing", "fault-matrix"})
+#: Top-level dirs whose artifacts are RECORDS — digest-bound; regenerating
+#: the index refreshes digests but never rewrites a record.
+_RECORD_DIRS = frozenset({"timed-demos", "decisions"})
+#: The index file this generator writes (and therefore never indexes — a
+#: file cannot digest itself).
+_INDEX_NAME = "index.md"
+#: The regeneration cell a record-class row carries (records have no
+#: regenerating command by definition).
+_RECORD_CELL = "record — digest-bound, never regenerated"
+#: The regenerating command named in each generated row (the dest exactly
+#: as the operator passed it, so the row is reproducible).
+_GENERATOR_COMMANDS = {
+    "runs": "benchweave evidence runs --dest {dest}",
+    "timing": "benchweave evidence timing --dest {dest}",
+    "fault-matrix": "benchweave evidence faults --dest {dest}",
+}
+
+
+def _artifact_rows(dest: Path) -> list[tuple[str, str, str]]:
+    """(relative path, class, sha256) for every classified artifact, sorted.
+
+    Refuses anything the class rules do not cover: an unknown top-level
+    directory or a stray file at the tree root would otherwise index under
+    a silently wrong class — the loud refusal forces a conscious rule.
+    """
+    rows: list[tuple[str, str, str]] = []
+    for path in sorted(dest.rglob("*")):
+        if not path.is_file():
+            continue
+        relative = path.relative_to(dest)
+        if relative.parts == (_INDEX_NAME,):
+            continue
+        if len(relative.parts) == 1:
+            raise EvidenceError(
+                f"unclassified artifact at the tree root: {relative} — the index "
+                "classifies by top-level directory (runs/timing/fault-matrix are "
+                "generated; timed-demos/decisions are records)"
+            )
+        top = relative.parts[0]
+        if top in _GENERATED_DIRS:
+            evidence_class = "generated"
+        elif top in _RECORD_DIRS:
+            evidence_class = "record"
+        else:
+            raise EvidenceError(
+                f"unclassified evidence directory: {top}/ (from {relative}) — "
+                "register the class before indexing it"
+            )
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        rows.append((relative.as_posix(), evidence_class, digest))
+    return rows
+
+
+def generate_index(dest: Path) -> dict[str, Any]:
+    """Write ``<dest>/index.md``: one row per artifact — digest + class.
+
+    Deterministic by construction: rows are sorted by path, digests come
+    from the bytes, and NO generation timestamp rides the index (times
+    belong to the artifacts — the runs/timing/fault-matrix artifacts carry
+    their own ``generated_at``). An unchanged tree regenerates a
+    byte-identical index. Returns the lean emit payload.
+    """
+    dest = Path(dest)
+    if not dest.is_dir():
+        raise EvidenceError(f"evidence tree not found at {dest}")
+    rows = _artifact_rows(dest)
+    dest_arg = dest.as_posix()
+    lines = [
+        "# PoC evidence index",
+        "",
+        "Every retained artifact under this tree, one row per file, each row",
+        "carrying the sha256 over the file's bytes. Classes:",
+        "",
+        "- `generated` — regenerable by the named command; regenerating rewrites",
+        "  the artifact and this index's digest row for it.",
+        "- `record` — digest-bound records (timed demos, decision registrations);",
+        "  regenerating the index refreshes digests but NEVER rewrites a record.",
+        "",
+        "The index excludes itself (a file cannot digest itself) and is",
+        "deterministic — an unchanged tree regenerates byte-identically — so it",
+        "carries no timestamp of its own.",
+        "",
+        "| Artifact | Class | SHA-256 | Regeneration |",
+        "|---|---|---|---|",
+    ]
+    for relative, evidence_class, digest in rows:
+        if evidence_class == "generated":
+            cell = f"`{_GENERATOR_COMMANDS[relative.split('/')[0]].format(dest=dest_arg)}`"
+        else:
+            cell = _RECORD_CELL
+        lines.append(f"| `{relative}` | {evidence_class} | `{digest}` | {cell} |")
+    (dest / _INDEX_NAME).write_text("\n".join(lines) + "\n", encoding="utf-8")
+    generated = sum(1 for _, evidence_class, _ in rows if evidence_class == "generated")
+    return {
+        "dest": dest_arg,
+        "index": (dest / _INDEX_NAME).as_posix(),
+        "artifacts": len(rows),
+        "generated": generated,
+        "record": len(rows) - generated,
+    }
+
+
 # --- the Click surface ----------------------------------------------------------------
 
 
 @click.group()
 def evidence() -> None:
-    """Generate retained evidence artifacts (volume runs; timing/faults to come)."""
+    """Generate and index the retained evidence tree.
+
+    Four generators: ``runs`` (the seeded volume leg), ``timing`` (the PRD
+    §6 targets + the stress tier), ``faults`` (the fault-matrix leg
+    harvest), and ``index`` (the digest index binding the whole tree).
+    """
 
 
 def _set_json(json_output: bool) -> None:
@@ -1171,5 +1441,68 @@ def timing(
             fixtures=fixtures,
         )
     except (EvidenceError, DemoError, GatewayError, PerformanceError) as error:
+        raise click.ClickException(str(error)) from error
+    emit(payload)
+
+
+@evidence.command()
+@click.option(
+    "--dest",
+    "dest",
+    type=click.Path(path_type=Path),
+    required=True,
+    help="Output root; legs.json + junit.xml land under <dest>/fault-matrix/.",
+)
+@click.option(
+    "--tests",
+    "tests",
+    default=DEFAULT_FAULT_TESTS,
+    show_default=True,
+    help="pytest node id selecting the journey fault legs to harvest.",
+)
+@click.option(
+    "--timeout",
+    "timeout_s",
+    type=float,
+    default=FAULT_HARVEST_TIMEOUT_S,
+    show_default=True,
+    help="Seconds to bound the harvest pytest run.",
+)
+@click.option(
+    "--json",
+    "json_output",
+    is_flag=True,
+    help="Emit the stable machine JSON contract instead of text.",
+)
+def faults(dest: Path, tests: str, timeout_s: float, json_output: bool) -> None:
+    """Harvest the fault-matrix leg results (lean JSON + retained junit)."""
+    _set_json(json_output)
+    try:
+        payload = generate_faults(dest, tests=tests, timeout_s=timeout_s)
+    except (EvidenceError, OSError) as error:
+        raise click.ClickException(str(error)) from error
+    emit(payload)
+
+
+@evidence.command()
+@click.option(
+    "--dest",
+    "dest",
+    type=click.Path(path_type=Path, exists=True, file_okay=False),
+    required=True,
+    help="Evidence tree root; the digest index lands at <dest>/index.md.",
+)
+@click.option(
+    "--json",
+    "json_output",
+    is_flag=True,
+    help="Emit the stable machine JSON contract instead of text.",
+)
+def index(dest: Path, json_output: bool) -> None:
+    """Index every artifact: sha256 + class + regenerating command."""
+    _set_json(json_output)
+    try:
+        payload = generate_index(dest)
+    except (EvidenceError, OSError) as error:
         raise click.ClickException(str(error)) from error
     emit(payload)

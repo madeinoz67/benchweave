@@ -1528,6 +1528,7 @@ def test_journey_fault_legs(
     poc_mcp: _Mcp,
     poc_tokens: Tokens,
     journey_admitted: Admitted,
+    record_property: Callable[[str, object], None],
 ) -> None:
     """PRD §3 step 6, live: four fault legs, each honest, each executed
     exactly once.
@@ -1540,10 +1541,21 @@ def test_journey_fault_legs(
     expectation and occurrence count cites its deep-suite pin in the
     LEG_EXPECTATION / LEG_OCCURRENCES tables; the durable event stream is
     the occurrence oracle (one dispatch per occurrence, ever).
+
+    The measured per-leg values (outcome, expected outcomes, occurrence
+    counts) are recorded via ``record_property`` so the WP09 Task-11
+    fault-matrix harvest can project them out of the ``--junitxml``
+    report into the retained evidence — the committed matrix carries
+    MEASURED values, never these tables restated.
     """
     record = journey_fault_legs[leg](poc_app, poc_rest, poc_mcp, journey_admitted, poc_tokens)
+    occurrences = dispatch_occurrences(poc_app, record)
+    record_property("actual_outcome", record.outcome)
+    record_property("expected_outcomes", ",".join(LEG_EXPECTATION[leg]))
+    record_property("occurrences_expected", LEG_OCCURRENCES[leg])
+    record_property("occurrences_actual", occurrences)
     assert record.outcome in LEG_EXPECTATION[leg]
-    assert dispatch_occurrences(poc_app, record) == LEG_OCCURRENCES[leg]
+    assert occurrences == LEG_OCCURRENCES[leg]
 
 
 # --- §3 step 7: second-install reuse from the built wheel (Task 6) ----------------

@@ -6,7 +6,11 @@ four at-rest commands (Task 10), ``demo`` (Task 11: live-gateway mode or the
 labelled ephemeral fresh-install simulation), ``report`` (Task 13: the
 store-derived report model with markdown/JSON emitters, at-rest only) and
 ``serve`` (Task 14: env → ``app_entry.build`` → foreground uvicorn, with the
-production secret posture enforced inside ``build``) are live.
+production secret posture enforced inside ``build``) are live. The
+``evidence`` group (WP09 Tasks 7–11) generates the retained evidence tree —
+``runs`` (the seeded volume leg), ``timing`` (the PRD §6 targets + the
+stress tier), ``faults`` (the fault-matrix leg harvest) and ``index`` (the
+digest index binding the whole tree).
 
 ``status`` speaks to a live gateway over the stdlib-only REST client; the
 at-rest commands operate directly on the data directory under the
@@ -52,8 +56,9 @@ def _set_json(json_output: bool) -> None:
     obj["json"] = json_output
 
 
-# The evidence generator group (Task 7): ``benchweave evidence runs`` drives
-# the seeded volume leg; timing/faults/index subcommands land in Task 11.
+# The retained-evidence generator group (WP09 Tasks 7–11): ``runs`` (seeded
+# volume), ``timing`` (PRD §6 + stress), ``faults`` (fault-matrix harvest)
+# and ``index`` (the digest index over the whole tree).
 cli.add_command(evidence_lib.evidence)
 
 
