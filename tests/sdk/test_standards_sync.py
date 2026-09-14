@@ -168,3 +168,79 @@ def test_check_command_exits_nonzero_on_tamper(
 
     monkeypatch.setattr(standards_sync, "sync", _tampered)
     assert sdk_cli.main(["sync-standards", str(tmp_path), "--check"]) == 1
+
+
+# --- --check with no bundle: the self-contained lane, no main-project export. ---
+
+
+def test_self_check_clean_tree_verifies_without_bundle(tmp_path: Path) -> None:
+    bundle = _export(tmp_path)
+    sdk = _synced_sdk(tmp_path, bundle)
+    assert sync(None, sdk, check_only=True) == SyncReport((), (), (), ())
+
+
+def test_self_check_detects_tampered_file_without_bundle(tmp_path: Path) -> None:
+    bundle = _export(tmp_path)
+    sdk = _synced_sdk(tmp_path, bundle)
+    victim = next((sdk / "src/benchweave_sdk/standards").rglob("*.json"))
+    victim.write_text(victim.read_text() + " tampered")
+    with pytest.raises(ValueError, match="hash_mismatch"):
+        sync(None, sdk, check_only=True)
+
+
+def test_self_check_detects_deleted_file_without_bundle(tmp_path: Path) -> None:
+    bundle = _export(tmp_path)
+    sdk = _synced_sdk(tmp_path, bundle)
+    victim = next((sdk / "src/benchweave_sdk/standards").rglob("*.json"))
+    victim.unlink()
+    with pytest.raises(ValueError, match="hash_mismatch.*missing"):
+        sync(None, sdk, check_only=True)
+
+
+def test_self_check_detects_extra_file_without_bundle(tmp_path: Path) -> None:
+    """A file in the tree the lock does not record would ride into wheels."""
+    bundle = _export(tmp_path)
+    sdk = _synced_sdk(tmp_path, bundle)
+    stray = sdk / "src/benchweave_sdk/standards/otdp/EXTRA.txt"
+    stray.write_text("not in the lock")
+    with pytest.raises(ValueError, match="unexpected_vendored_file"):
+        sync(None, sdk, check_only=True)
+
+
+def test_self_check_detects_missing_stamp_without_bundle(tmp_path: Path) -> None:
+    bundle = _export(tmp_path)
+    sdk = _synced_sdk(tmp_path, bundle)
+    (sdk / "src/benchweave_sdk/standards/otdp/_GENERATED.txt").unlink()
+    with pytest.raises(ValueError, match="stamp_missing"):
+        sync(None, sdk, check_only=True)
+
+
+def test_no_bundle_without_check_flag_is_refused(tmp_path: Path) -> None:
+    bundle = _export(tmp_path)
+    sdk = _synced_sdk(tmp_path, bundle)
+    with pytest.raises(ValueError, match="bundle_required"):
+        sync(None, sdk)
+
+
+def test_check_command_without_bundle_passes_none(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import benchweave_sdk.standards_sync as standards_sync
+    from benchweave_sdk import cli as sdk_cli
+
+    seen: dict[str, object] = {}
+
+    def _capture(bundle: object, *, sdk_root: object, check_only: object) -> SyncReport:
+        seen["bundle"] = bundle
+        return SyncReport((), (), (), ())
+
+    monkeypatch.setattr(standards_sync, "sync", _capture)
+    assert sdk_cli.main(["sync-standards", "--check"]) == 0
+    assert seen["bundle"] is None
+
+
+def test_check_command_without_bundle_verifies_real_committed_tree() -> None:
+    """End to end on the submodule itself: the CLI's no-bundle lane is clean."""
+    from benchweave_sdk import cli as sdk_cli
+
+    assert sdk_cli.main(["sync-standards", "--check"]) == 0
