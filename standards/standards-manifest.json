@@ -1,0 +1,114 @@
+{
+  "manifest_version": 1,
+  "standards": [
+    {
+      "id": "otdp",
+      "version": "0.3.0",
+      "status": "stable",
+      "released": "2026-09-10",
+      "supersedes": null,
+      "normative": [
+        "contracts/otdp-v0.3.0/device-profile-catalog.json",
+        "contracts/otdp-v0.3.0/device-profile-catalog.schema.json",
+        "contracts/otdp-v0.3.0/examples/class-action-vectors.json",
+        "contracts/otdp-v0.3.0/examples/class-daq.json",
+        "contracts/otdp-v0.3.0/examples/class-dc_psu.json",
+        "contracts/otdp-v0.3.0/examples/class-dmm.json",
+        "contracts/otdp-v0.3.0/examples/class-electronic_load.json",
+        "contracts/otdp-v0.3.0/examples/class-embedded_controller.json",
+        "contracts/otdp-v0.3.0/examples/class-function_generator.json",
+        "contracts/otdp-v0.3.0/examples/class-logic_analyser.json",
+        "contracts/otdp-v0.3.0/examples/class-oscilloscope.json",
+        "contracts/otdp-v0.3.0/examples/class-smu.json",
+        "contracts/otdp-v0.3.0/examples/class-spectrum_analyser.json",
+        "contracts/otdp-v0.3.0/examples/class-switch_matrix.json",
+        "contracts/otdp-v0.3.0/examples/class-vna.json",
+        "contracts/otdp-v0.3.0/examples/measurement-vectors.json",
+        "contracts/otdp-v0.3.0/examples/reference-can.json",
+        "contracts/otdp-v0.3.0/examples/reference-capture.json",
+        "contracts/otdp-v0.3.0/examples/reference-controller.json",
+        "contracts/otdp-v0.3.0/examples/reference-psu.json",
+        "contracts/otdp-v0.3.0/examples/reference-vectors.json",
+        "contracts/otdp-v0.3.0/otdp-device-descriptor.schema.json",
+        "contracts/otdp-v0.3.0/otdp-measurement.schema.json",
+        "contracts/otdp-v0.3.0/otdp-runtime.schema.json"
+      ]
+    },
+    {
+      "id": "registry",
+      "version": "1.0.0",
+      "status": "stable",
+      "released": "2026-09-10",
+      "supersedes": null,
+      "normative": [
+        "contracts/registry-v1.0.0/examples/package-lock.json",
+        "contracts/registry-v1.0.0/examples/release-manifest.json",
+        "contracts/registry-v1.0.0/examples/release-status.json",
+        "contracts/registry-v1.0.0/package-lock.schema.json",
+        "contracts/registry-v1.0.0/release-manifest.schema.json",
+        "contracts/registry-v1.0.0/release-status.schema.json"
+      ]
+    },
+    {
+      "id": "execution",
+      "version": "1.0.0",
+      "status": "stable",
+      "released": "2026-09-10",
+      "supersedes": null,
+      "normative": [
+        "contracts/execution-v1.0.0/bench.schema.json",
+        "contracts/execution-v1.0.0/commissioning.schema.json",
+        "contracts/execution-v1.0.0/examples/bench.json",
+        "contracts/execution-v1.0.0/examples/commissioning.json",
+        "contracts/execution-v1.0.0/examples/procedure.json",
+        "contracts/execution-v1.0.0/examples/run-binding.json",
+        "contracts/execution-v1.0.0/examples/run-record.json",
+        "contracts/execution-v1.0.0/examples/safety-policy.json",
+        "contracts/execution-v1.0.0/procedure.schema.json",
+        "contracts/execution-v1.0.0/run-binding.schema.json",
+        "contracts/execution-v1.0.0/run-record.schema.json",
+        "contracts/execution-v1.0.0/safety-policy.schema.json"
+      ]
+    },
+    {
+      "id": "interface",
+      "version": "1.1.1",
+      "status": "stable",
+      "released": "2026-09-13",
+      "supersedes": "1.1.0",
+      "normative": [
+        "contracts/interface-v1.1.1/examples/mcp-start-exchange.json",
+        "contracts/interface-v1.1.1/examples/operation-vectors.json",
+        "contracts/interface-v1.1.1/interface.schema.json",
+        "contracts/interface-v1.1.1/mcp-tools.json",
+        "contracts/interface-v1.1.1/openapi.json",
+        "contracts/interface-v1.1.1/operation-catalog.json"
+      ]
+    },
+    {
+      "id": "plugin-ui",
+      "version": "0.1.0",
+      "status": "stable",
+      "released": "2026-09-13",
+      "supersedes": null,
+      "normative": [
+        "contracts/plugin-ui-v0.1.0/binding-catalogue.schema.json",
+        "contracts/plugin-ui-v0.1.0/configuration-preset.schema.json",
+        "contracts/plugin-ui-v0.1.0/presentation-envelope.schema.json",
+        "contracts/plugin-ui-v0.1.0/ui-manifest.schema.json",
+        "src/benchweave/presentation/contracts.py"
+      ]
+    },
+    {
+      "id": "plugin-ui-preview",
+      "version": "1.0.0",
+      "status": "stable",
+      "released": "2026-09-14",
+      "supersedes": null,
+      "normative": [
+        "contracts/plugin-ui-preview-v1/fixture.schema.json",
+        "contracts/plugin-ui-preview-v1/preview-document.schema.json"
+      ]
+    }
+  ]
+}
