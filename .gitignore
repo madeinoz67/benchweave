@@ -16,6 +16,14 @@ __pycache__/
 # Build and test output
 build/
 dist/
+node_modules/
+storybook-static/
+*.tsbuildinfo
+# tsc can emit compiled siblings of vite.config.ts (noEmit in tsconfig.node.json
+# means nothing regenerates them); Vite resolves the .js FIRST, so a stale
+# compiled config would silently shadow its source.
+ui/vite.config.js
+ui/vite.config.d.ts
 .coverage
 .coverage.*
 htmlcov/
@@ -80,6 +88,9 @@ opencode.json
 
 # Executing-plans checkpoint state (transient)
 .checkpoint-state.json
+
+# Local visual brainstorming sessions
+.superpowers/
 
 # In-progress planning, design and ISA docs — kept local by default so half-formed state
 # doesn't ship (muninndb convention). `git add -f` a doc here if it documents something

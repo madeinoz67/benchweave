@@ -1,0 +1,112 @@
+.bw-workbench {
+  display: grid;
+  gap: var(--bw-space-4);
+  width: min(100%, 90rem);
+  margin: 0 auto;
+  color: var(--bw-text);
+}
+
+.bw-workbench__header,
+.bw-status-cluster,
+.bw-authority-strip,
+.bw-workbench__footer {
+  display: flex;
+  gap: var(--bw-space-3);
+  align-items: center;
+}
+
+.bw-workbench__header {
+  justify-content: space-between;
+}
+
+.bw-workbench__header h2 {
+  margin: var(--bw-space-1) 0 0;
+  font-size: clamp(1.35rem, 3vw, 2rem);
+}
+
+.bw-eyebrow {
+  color: var(--bw-text-muted);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.bw-badge {
+  display: inline-flex;
+  gap: var(--bw-space-1);
+  align-items: center;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-family: var(--bw-font-data);
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.bw-badge[data-tone="advisory"] { color: var(--bw-advisory); }
+.bw-badge[data-tone="success"] { color: var(--bw-success); }
+
+.bw-authority-strip {
+  flex-wrap: wrap;
+  padding: var(--bw-space-3) var(--bw-space-4);
+  border: 1px solid var(--bw-border);
+  border-radius: var(--bw-radius-control);
+  background: var(--bw-surface-recessed);
+  box-shadow: var(--bw-shadow-recessed);
+  font-size: 0.8rem;
+}
+
+.bw-authority-strip span {
+  display: inline-flex;
+  gap: var(--bw-space-1);
+  align-items: center;
+  color: var(--bw-text-muted);
+}
+
+.bw-readings-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--bw-space-4);
+}
+
+.bw-workbench__grid {
+  display: grid;
+  grid-template-columns: minmax(18rem, 0.75fr) minmax(28rem, 1.6fr);
+  gap: var(--bw-space-4);
+}
+
+.bw-setpoint {
+  display: flex;
+  gap: var(--bw-space-5);
+  align-items: center;
+}
+
+.bw-setpoint__entry {
+  display: grid;
+  flex: 1;
+  gap: var(--bw-space-3);
+}
+
+.bw-setpoint__entry small,
+.bw-workbench__footer {
+  color: var(--bw-text-muted);
+}
+
+.bw-workbench__footer {
+  justify-content: center;
+  font-size: 0.75rem;
+}
+
+@media (max-width: 56rem) {
+  .bw-workbench__grid,
+  .bw-readings-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .bw-workbench__header,
+  .bw-setpoint {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

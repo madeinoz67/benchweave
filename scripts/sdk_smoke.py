@@ -10,6 +10,7 @@ a verification report; temporary environments and generated projects are removed
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import json
 import os
@@ -21,7 +22,22 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-CONTRACT_SETS = ("otdp-v0.3.0", "registry-v1.0.0", "plugin-ui-v0.1.0")
+
+def _contract_sets() -> tuple[str, ...]:
+    """Read CONTRACT_SETS from the SDK build hook so the smoke cannot drift.
+
+    Parsing (not importing) keeps this working without hatchling installed and
+    for the standalone copy, which never calls this — only build_and_check does.
+    """
+    source = (Path(__file__).resolve().parents[1] / "packages/sdk/hatch_build.py").read_text()
+    for node in ast.parse(source).body:
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id == "CONTRACT_SETS":
+                    value = ast.literal_eval(node.value)
+                    if isinstance(value, tuple) and value:
+                        return tuple(str(item) for item in value)
+    raise RuntimeError("Cannot read CONTRACT_SETS from packages/sdk/hatch_build.py")
 
 
 def digest(data: bytes) -> str:
@@ -240,7 +256,7 @@ def build_and_check(out_dir: Path) -> None:
         ),
         "contracts": {
             f"{name}/{relative}": digest(data)
-            for name in CONTRACT_SETS
+            for name in _contract_sets()
             for relative, data in resources(checkout / "contracts" / name).items()
         },
     }

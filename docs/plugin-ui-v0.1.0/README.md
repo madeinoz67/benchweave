@@ -1,6 +1,6 @@
 # Plugin presentation contracts 0.1.0
 
-Plugins can declare optional configuration, readings, dataset and specialised panel pages through a shared host UI. A plugin with no presentation remains usable through its descriptor. This contract and the SDK tools validate presentation candidates; they do not introduce a browser renderer or activate attachments in the registry.
+Plugins can declare optional configuration, readings, dataset and specialised panel pages through a shared host UI. A plugin with no presentation remains usable through its descriptor. This contract and the SDK tools validate presentation candidates; they do not activate attachments in the registry. The SDK additionally bundles a labelled, simulation-only preview renderer (`benchweave-sdk preview-ui`) for local authoring — it displays simulated states, serves loopback only, and never operates hardware or publishes anything.
 
 ## Ownership and execution
 

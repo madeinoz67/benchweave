@@ -56,4 +56,12 @@ worktree resolve through `.git` to the same file. Its tests are
 **codex sessions:** no drain hook fires there — run
 `node .claude/hooks/memory-drain.mjs --base http://127.0.0.1:8125/mcp` before ending a
 session that queued proposals.
+
+**RedTeam and external review workflows route through this rule too** (principal
+directive 2026-09-14): when the RedTeam skill or any adversarial/audit workflow runs
+against this repo, its synthesis step is not the record — the full findings list (every
+severity, LOW and NIT included, each with its disposition: fixed / deferred /
+accepted-risk) is proposed to the ledger before the session ends. The skill files stay
+generic; this repo's protocol is what binds them here. Review findings are never
+forgotten.
 (Memory system adopted 2026-09-10 from the muninndb repository.)

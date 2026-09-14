@@ -41,4 +41,16 @@ Run the architecture checks explicitly with:
 uv run pytest tests/contracts -s
 ```
 
+## UI development
+
+The UI foundation and executable component workbench live under `ui/`. See the [approved UI design](docs/internal/ui-styleguide-workbench-design.md), [implementation style guide](docs/internal/ui-styleguide.md), and [portable light/dark mock-up](docs/internal/ui-styleguide-mockup.html).
+
+```sh
+cd ui
+npm install
+npm run storybook
+```
+
+The workbench stories use simulated presentation data; they do not establish runtime support or hardware qualification.
+
 GitHub CI checks architecture contracts, rejection cases, lint, formatting, types, tests and package builds. Architectural validation does not establish runtime conformance or physical safety qualification.

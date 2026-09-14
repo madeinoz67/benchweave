@@ -30,10 +30,56 @@ jobs:
       - name: Lint
         run: |
           uv run ruff check .
-          uv run mypy src tests
+          # Config-driven: pyproject [tool.mypy] files= includes packages/sdk/src,
+          # so benchweave_sdk resolves for the tests that import it. Explicit
+          # path args drop it from the build and break those imports.
+          uv run mypy
 
       - name: Test
         run: uv run pytest -q
+
+  ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install locked UI dependencies
+        working-directory: ui
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: ui
+        run: npm run typecheck
+
+      - name: Lint
+        working-directory: ui
+        run: npm run lint
+
+      - name: Unit tests
+        working-directory: ui
+        run: npm test
+
+      - name: Storybook build
+        working-directory: ui
+        run: npm run build-storybook
+
+      # Rebuild the vendored SDK renderer and fail if the committed copy is
+      # stale: hatch_build only proves inventory-vs-committed-bytes consistency,
+      # so source drift would otherwise ship silently in the wheel.
+      - name: Renderer freshness gate
+        run: |
+          npm --prefix ui run build:preview
+          git diff --exit-code -- packages/sdk/src/benchweave_sdk/preview_assets
+
+      - name: Dependency audit
+        working-directory: ui
+        run: npm audit --audit-level=high
 
   systemd:
     runs-on: ubuntu-latest
