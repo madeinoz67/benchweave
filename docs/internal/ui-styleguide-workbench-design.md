@@ -244,7 +244,34 @@ Meaning cannot depend on colour alone. Trace identity uses labels and, where nec
 - panel, drawer, modal and toolbar;
 - card, section and resizable work area.
 
-### 7.9 Domain compositions
+### 7.9 Message bubbles and alert classes
+
+Message bubbles provide short contextual text near a reading, control, plot marker, table row or workbench panel. They use the same semantic state model as reading glow.
+
+| Class | Use | Persistence and announcement |
+| --- | --- | --- |
+| Neutral | Context, helper text or system detail | Dismissible; no live announcement unless opened by the user |
+| Success | Confirmed completion with no continuing risk | May dismiss automatically after sufficient reading time; polite announcement |
+| Advisory | Non-urgent condition or evidence note | Dismissible when the underlying state remains visible; polite announcement |
+| Warning | Condition requiring attention before it worsens | Persistent until acknowledged or resolved; polite announcement |
+| Critical | Failed limit, invalid state or immediate operator action | Persistent until resolved; assertive announcement |
+| Protective trip | Protective action occurred and ordinary control is inhibited | Persistent and non-dismissible while active; assertive announcement with recovery guidance |
+
+Supported placements are:
+
+- **inline bubble** beside the affected value or field;
+- **anchored callout** attached to a graph point, trace, control or table row;
+- **panel message** inside the affected component when more explanation is required;
+- **global banner** for bench-wide, authority or service state;
+- **transient toast** only for low-consequence confirmation and background status.
+
+Each bubble supports a severity icon, concise title, message, timestamp or freshness where relevant, source, optional supported action and an accessible dismiss control when dismissal is allowed. The pointer or anchor must identify the affected object without obscuring its value. Long diagnostic detail belongs in an expandable region or linked panel rather than an oversized bubble.
+
+Warning, critical and trip information must not exist only as a transient toast. Dismissing a message does not acknowledge the underlying device, safety or policy condition unless the user invokes a separately labelled and authorised acknowledgement action.
+
+Bubble elevation places it above its source panel. Advisory, warning, critical and trip bubbles may use a restrained matching edge or under-glow, but text contrast remains independent of the glow. Live updates must coalesce repeated messages so assistive technology and operators are not flooded during acquisition.
+
+### 7.10 Domain compositions
 
 - device identity and connection header;
 - lease and control-authority summary;
@@ -431,6 +458,8 @@ Implementation acceptance requires:
 - responsive checks at defined breakpoints;
 - unit, prefix, range and precision formatting tests;
 - proof that colour and glow are never the sole status indicator;
+- message-bubble placement, persistence, dismissal and live-region announcement tests;
+- proof that warning, critical and trip messages cannot disappear into transient-only feedback;
 - SDK preview and production-renderer structure parity;
 - workbench layout round-trip and migration tests;
 - missing plugin and unsupported panel recovery tests.
