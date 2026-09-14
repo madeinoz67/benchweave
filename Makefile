@@ -14,6 +14,8 @@ sync-sdk-standards:
 	uv run pytest -q tests/sdk tests/standards
 	@uv run python -m benchweave.standards versions
 
-# Non-mutating: re-export to a temp dir and compare lock + vendored tree.
+# Non-mutating: re-export to a temp dir and compare lock + vendored tree,
+# then gate the committed compatibility matrix on a fresh render.
 check-sdk-standards:
 	uv run python -m benchweave.standards check
+	uv run python -m benchweave.standards matrix --check
