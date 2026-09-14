@@ -38,6 +38,42 @@ corpora and the BenchWeave simulator plugins ship inside it (under
 operator-supplied input (`--fixtures` / `BENCHWEAVE_FIXTURES`; see
 §4 Demo and §9 Troubleshooting).
 
+### Second-install reuse
+
+A second clean installation reuses the same published packages without
+touching plugin source: install the **same built wheel** into a second
+fresh venv, verify the vendored plugin trees are byte-identical to the
+first install (and to the checkout's `plugins/benchweave/` — the
+zero-plugin-source-changes proof), then repeat the demo from install two
+with the same fixtures:
+
+```sh
+uv venv /opt/benchweave-venv-two
+uv pip install --python /opt/benchweave-venv-two/bin/python dist/benchweave-*.whl
+/opt/benchweave-venv-two/bin/benchweave --version
+
+SITE_ONE="$(echo /opt/benchweave-venv/lib/python*/site-packages)"
+SITE_TWO="$(echo /opt/benchweave-venv-two/lib/python*/site-packages)"
+(cd "$SITE_ONE/benchweave/_vendored/plugins/benchweave" \
+    && find . -type f ! -name '*.pyc' -print0 | sort -z | xargs -0 shasum -a 256) > /tmp/plugins-one.sha256
+(cd "$SITE_TWO/benchweave/_vendored/plugins/benchweave" \
+    && find . -type f ! -name '*.pyc' -print0 | sort -z | xargs -0 shasum -a 256) > /tmp/plugins-two.sha256
+diff /tmp/plugins-one.sha256 /tmp/plugins-two.sha256 \
+    && echo "install two reuses install one's plugin packages byte-for-byte"
+
+(cd plugins/benchweave \
+    && find . -type f ! -name '*.pyc' -print0 | sort -z | xargs -0 shasum -a 256) > /tmp/plugins-repo.sha256
+diff /tmp/plugins-one.sha256 /tmp/plugins-repo.sha256 \
+    && echo "the shipped trees are the checkout's plugin sources verbatim"
+
+/opt/benchweave-venv-two/bin/benchweave demo \
+    --scratch /tmp/demo-two --keep --fixtures /path/to/fixtures/execution --json
+```
+
+An empty `diff` (exit 0, the echo confirms) is the reuse evidence: the
+second install resolved the same package bytes as the first and shipped
+the sources verbatim — no plugin source was modified to repeat the demo.
+
 ## 2. Setup — the data directory
 
 ```sh
