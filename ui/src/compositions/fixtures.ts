@@ -1,5 +1,6 @@
 import type { Severity } from "../components/feedback/severity";
 import type { PlotTrace } from "../components/plots/EngineeringPlot";
+import type { PreviewDocument, PreviewScenario, PreviewSeverity } from "../preview/api";
 
 export interface WorkbenchReading {
   id: string;
@@ -40,6 +41,32 @@ export const warningWorkbench: DeviceWorkbenchFixture = {
     { id: "current", label: "Current", unit: "A", values: currentTrend },
   ],
 };
+
+const severityFor = (severity: PreviewSeverity): Severity => severity === "trip" ? "critical" : severity === "info" ? "advisory" : severity;
+const displayValue = (value: boolean | number | string | null): string => value === null ? "—" : typeof value === "boolean" ? (value ? "On" : "Off") : String(value);
+const titleFor = (bindingId: string): string => bindingId.split(/[._-]/).map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
+
+export function scenarioToWorkbenchFixture(scenario: PreviewScenario, preview: PreviewDocument): DeviceWorkbenchFixture {
+  const numeric = scenario.observations.filter((observation): observation is typeof observation & { value: number } => typeof observation.value === "number");
+  const voltage = numeric.find((observation) => observation.unit === "V")?.value ?? 0;
+  return {
+    simulation: true,
+    device: { id: preview.plugin_id, title: titleFor(preview.plugin_id), connected: scenario.id !== "disconnected" },
+    lease: { owner: scenario.lease_state === "held" ? "Simulated controller" : scenario.lease_state, expiresInSeconds: 0 },
+    readings: scenario.observations.map((observation) => ({
+      id: observation.binding_id,
+      label: titleFor(observation.binding_id),
+      value: displayValue(observation.value),
+      unit: observation.unit,
+      severity: severityFor(scenario.expected_severity),
+      freshness: observation.freshness_ms === null ? "Unavailable" : `${observation.freshness_ms} ms`,
+      quality: observation.quality,
+    })),
+    stagedVoltage: voltage,
+    message: scenario.description,
+    traces: numeric.map((observation) => ({ id: observation.binding_id, label: titleFor(observation.binding_id), unit: observation.unit ?? "", values: [[-1, observation.value], [0, observation.value]] })),
+  };
+}
 
 export interface AdminFixture {
   packages: readonly { id: string; revision: string; status: string }[];

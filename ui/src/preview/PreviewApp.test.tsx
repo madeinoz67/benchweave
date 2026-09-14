@@ -1,0 +1,35 @@
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { PreviewApp } from "./PreviewApp";
+
+vi.mock("echarts/core", () => ({ init: () => ({ setOption: () => undefined, resize: () => undefined, dispose: () => undefined }), use: () => undefined }));
+
+const observation = { binding_id: "voltage", value: 12.04, unit: "V", quality: "good", freshness_ms: 84, provenance: "synthetic" };
+const normal = { id: "normal", title: "Normal", description: "Nominal simulated state", timestamp_strategy: "fixed", observations: [observation], permissions: ["controller"], lease_state: "held", approval_state: "not_required", unavailable_panels: [], expected_severity: "success", request_outcomes: [], baseline: true };
+const trip = { ...normal, id: "trip", title: "Protective trip", description: "Simulated protective trip", permissions: [], lease_state: "none", expected_severity: "trip" };
+const preview = { api_version: 1, plugin_id: "example.psu", renderer_version: "1.0.0", pages: [], scenarios: [normal, trip], simulation: true };
+
+afterEach(() => vi.unstubAllGlobals());
+
+describe("PreviewApp", () => {
+  it("keeps simulation labelling across scenario selection", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => preview }));
+    render(<PreviewApp />);
+    expect(await screen.findByText("SIMULATED PRESENTATION DATA")).toBeVisible();
+    fireEvent.change(screen.getByLabelText("Preview scenario"), { target: { value: "trip" } });
+    expect(screen.getByText("Protective trip · Simulated protective trip")).toBeVisible();
+    expect(screen.getByText("SIMULATED PRESENTATION DATA")).toBeVisible();
+    expect(screen.getByText(/Controls are read-only/)).toBeVisible();
+    expect(screen.getByRole("button", { name: "Apply staged set-point" })).toBeDisabled();
+  });
+
+  it("shows a simulated receipt without changing the observation", async () => {
+    const fetcher = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => preview }).mockResolvedValueOnce({ ok: true, json: async () => ({ binding_id: "voltage", outcome: "accepted", message: "Simulated request accepted" }) });
+    vi.stubGlobal("fetch", fetcher);
+    render(<PreviewApp />);
+    expect((await screen.findAllByText("12.04"))[0]).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Apply staged set-point" }));
+    await waitFor(() => expect(screen.getAllByText("Simulated request accepted").length).toBeGreaterThan(0));
+    expect(screen.getAllByText("12.04").length).toBeGreaterThan(0);
+  });
+});

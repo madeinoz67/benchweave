@@ -15,9 +15,10 @@ import "./compositions.css";
 export interface DeviceWorkbenchProps {
   fixture: DeviceWorkbenchFixture;
   onRequestSetPoint?(value: number): void;
+  requestEnabled?: boolean;
 }
 
-export function DeviceWorkbench({ fixture, onRequestSetPoint = () => undefined }: DeviceWorkbenchProps) {
+export function DeviceWorkbench({ fixture, onRequestSetPoint = () => undefined, requestEnabled = true }: DeviceWorkbenchProps) {
   const [stagedVoltage, setStagedVoltage] = useState(fixture.stagedVoltage);
   return (
     <section className="bw-workbench" aria-labelledby="device-workbench-title">
@@ -44,7 +45,7 @@ export function DeviceWorkbench({ fixture, onRequestSetPoint = () => undefined }
             <RotaryControl label="Voltage set-point" value={stagedVoltage} unit="V" min={0} max={15} step={0.1} onStage={setStagedVoltage} />
             <div className="bw-setpoint__entry">
               <NumericInput label="Precise voltage" value={stagedVoltage} unit="V" min={0} max={15} step={0.1} onChange={setStagedVoltage} />
-              <Button variant="primary" onClick={() => onRequestSetPoint(stagedVoltage)}>Apply staged set-point</Button>
+              <Button variant="primary" disabled={!requestEnabled} onClick={() => onRequestSetPoint(stagedVoltage)}>Apply staged set-point</Button>
               <small>Request remains subject to authority, policy and device verification.</small>
             </div>
           </div>
