@@ -105,7 +105,9 @@ def _origin_url(repo: Path) -> str:
 
 
 def _cell(value: str) -> str:
-    return value.replace("|", "\\|")
+    # Operator-authored text (compatibility notes) must never break the row:
+    # neutralise pipes AND newlines, the two characters a markdown table cannot carry.
+    return value.replace("|", "\\|").replace("\n", " ")
 
 
 def _compatibility(lock: dict[str, Any]) -> dict[str, Any]:

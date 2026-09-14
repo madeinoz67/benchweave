@@ -84,6 +84,15 @@ def test_render_is_byte_identical_across_calls() -> None:
     assert render_matrix(ROOT) == render_matrix(ROOT)
 
 
+def test_render_neutralises_newlines_in_operator_notes() -> None:
+    """Operator-authored cells must never break the markdown table."""
+    from benchweave.standards.matrix import _cell
+
+    assert _cell("line one\nline two") == "line one line two"
+    assert _cell("a|b") == "a\\|b"
+    assert "\n" not in _cell("x\n\ny")
+
+
 def test_committed_matrix_is_not_stale() -> None:
     from benchweave.standards.matrix import check_matrix
 
