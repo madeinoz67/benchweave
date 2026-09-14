@@ -196,4 +196,6 @@ def test_preview_model_is_built_from_the_validated_candidate(tmp_path: Path) -> 
 
     assert model.plugin_id == "dev.example.example-plugin"
     assert model.simulation is True
-    assert len(model.scenarios) == 9
+    assert len(model.scenarios) == 11
+    author_ids = {scenario.id for scenario in model.scenarios if not scenario.baseline}
+    assert author_ids == {"example-normal", "example-warning"}

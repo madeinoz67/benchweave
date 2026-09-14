@@ -53,6 +53,38 @@ def test_optional_ui_preserves_descriptor_and_adapter(
     assert "not admission or approval" in capsys.readouterr().out
 
 
+def test_ui_scaffold_includes_valid_preview_fixtures_and_conformance_test(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run(monkeypatch, "new", tmp_path / "ui", "--with-ui")
+    project = tmp_path / "ui"
+    package = project / "src/example_plugin"
+    assert (package / "ui/fixtures/normal.json").is_file()
+    assert (package / "ui/fixtures/warning.json").is_file()
+    conformance = project / "tests/test_presentation_preview.py"
+    assert conformance.is_file()
+    assert "MANDATORY_BASELINE_IDS" in conformance.read_text()
+
+    from benchweave_sdk.fixtures import build_preview_model
+    from benchweave_sdk.presentation import load_validated_preview_inputs
+
+    candidate = load_validated_preview_inputs(
+        package / "presentation.json",
+        package / "descriptor.json",
+        package,
+        package / "binding-catalogue.json",
+        firmware=None,
+        features=frozenset(),
+        panels=frozenset(),
+    )
+    ids = {scenario.id for scenario in build_preview_model(candidate).scenarios}
+    mandatory = {
+        "normal", "warning", "loading", "stale", "disconnected",
+        "critical", "trip", "recovery", "request-rejected",
+    }
+    assert mandatory <= ids
+
+
 def test_ui_check_rejects_modified_manifest(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

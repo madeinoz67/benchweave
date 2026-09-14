@@ -6,6 +6,7 @@ const document = { api_version: 1, renderer_version: "1.0.0", simulation: true, 
 
 describe("preview API boundary", () => {
   it("decodes version one", () => expect(decodePreview(document).scenarios[0]?.observations[0]?.value).toBe(12.04));
+  it("accepts the canonical advisory severity", () => expect(decodePreview({ ...document, scenarios: [{ ...scenario, expected_severity: "advisory" }] }).scenarios[0]?.expected_severity).toBe("advisory"));
   it("rejects incompatible versions", () => expect(() => decodePreview({ ...document, api_version: 2 })).toThrow(/preview_api_version/));
   it("rejects duplicate scenarios", () => expect(() => decodePreview({ ...document, scenarios: [scenario, scenario] })).toThrow(/preview_duplicate_scenario/));
   it("rejects non-finite observations", () => expect(() => decodePreview({ ...document, scenarios: [{ ...scenario, observations: [{ ...scenario.observations[0], value: Number.NaN }] }] })).toThrow(/preview_non_finite/));

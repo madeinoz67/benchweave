@@ -386,12 +386,14 @@ Canonical JSON Schemas remain the source of truth. Generate TypeScript types and
 
 ### 11.2 Scaffold and preview
 
-Extend the `benchweave-sdk new --with-ui` path around its existing minimal readings manifest and binding catalogue. A presentation-development command will:
+Extend the `benchweave-sdk new --with-ui` path around its existing minimal readings manifest and binding catalogue. The implemented `benchweave-sdk preview-ui` command:
 
-1. validate the envelope, manifest, catalogue and referenced resources;
-2. load them into the real host renderer;
-3. provide deterministic host fixtures;
-4. expose the result in a local workbench and generated Storybook stories.
+1. validates the envelope, manifest, catalogue and referenced resources through the canonical validator;
+2. serves the version-matched production React components from the SDK wheel;
+3. provides nine deterministic baseline states plus validated author fixtures;
+4. exposes them through an ephemeral loopback workbench with simulated request receipts.
+
+Generated Storybook stories and descriptor-derived custom component recipes remain future work; they are not implied by preview success.
 
 Plugin authors declare resources; they do not create React components.
 
@@ -410,7 +412,7 @@ The local adapter supplies deterministic examples of:
 - warning, critical, trip and recovery;
 - unavailable required and optional panels.
 
-Local preview is prominently marked as simulated and cannot connect to physical equipment by default.
+Local preview is prominently marked `SIMULATED PRESENTATION DATA`. It does not import plugin code, open transports, load credentials or connect to physical equipment.
 
 ### 11.4 Registered panel development
 
@@ -420,7 +422,7 @@ Host-owned specialised panels use a separate harness. Each panel declares suppor
 
 1. Scaffold or update presentation resources.
 2. Run `benchweave-sdk check-ui`.
-3. Launch the deterministic local presentation preview.
+3. Launch `benchweave-sdk preview-ui` with the generated `ui/fixtures` directory.
 4. Review generated stories in light, dark and fault states.
 5. Run UI conformance and accessibility checks.
 6. Package exact resources and update hashes.

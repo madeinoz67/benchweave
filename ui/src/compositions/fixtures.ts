@@ -42,7 +42,7 @@ export const warningWorkbench: DeviceWorkbenchFixture = {
   ],
 };
 
-const severityFor = (severity: PreviewSeverity): Severity => severity === "trip" ? "critical" : severity === "info" ? "advisory" : severity;
+const severityFor = (severity: PreviewSeverity): Severity => severity === "trip" ? "critical" : severity;
 const displayValue = (value: boolean | number | string | null): string => value === null ? "—" : typeof value === "boolean" ? (value ? "On" : "Off") : String(value);
 const titleFor = (bindingId: string): string => bindingId.split(/[._-]/).map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
 

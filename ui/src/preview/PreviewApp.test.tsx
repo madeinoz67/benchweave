@@ -5,7 +5,7 @@ import { PreviewApp } from "./PreviewApp";
 vi.mock("echarts/core", () => ({ init: () => ({ setOption: () => undefined, resize: () => undefined, dispose: () => undefined }), use: () => undefined }));
 
 const observation = { binding_id: "voltage", value: 12.04, unit: "V", quality: "good", freshness_ms: 84, provenance: "synthetic" };
-const normal = { id: "normal", title: "Normal", description: "Nominal simulated state", timestamp_strategy: "fixed", observations: [observation], permissions: ["controller"], lease_state: "held", approval_state: "not_required", unavailable_panels: [], expected_severity: "success", request_outcomes: [], baseline: true };
+const normal = { id: "normal", title: "Normal", description: "Nominal simulated state", timestamp_strategy: "fixed", observations: [observation], permissions: ["controller"], lease_state: "held", approval_state: "not_required", unavailable_panels: [], expected_severity: "success", request_outcomes: [{ binding_id: "voltage", outcome: "accepted", message: "Simulated request accepted" }], baseline: true };
 const trip = { ...normal, id: "trip", title: "Protective trip", description: "Simulated protective trip", permissions: [], lease_state: "none", expected_severity: "trip" };
 const preview = { api_version: 1, plugin_id: "example.psu", renderer_version: "1.0.0", pages: [], scenarios: [normal, trip], simulation: true };
 
@@ -20,6 +20,16 @@ describe("PreviewApp", () => {
     expect(screen.getByText("Protective trip · Simulated protective trip")).toBeVisible();
     expect(screen.getByText("SIMULATED PRESENTATION DATA")).toBeVisible();
     expect(screen.getByText(/Controls are read-only/)).toBeVisible();
+    expect(screen.getByRole("button", { name: "Apply staged set-point" })).toBeDisabled();
+  });
+
+  it("switches host theme and gates controls by simulated role", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => preview }));
+    render(<PreviewApp />);
+    await screen.findByText("SIMULATED PRESENTATION DATA");
+    fireEvent.change(screen.getByLabelText("Preview theme"), { target: { value: "light" } });
+    expect(document.documentElement.dataset.theme).toBe("light");
+    fireEvent.change(screen.getByLabelText("Simulated role"), { target: { value: "observer" } });
     expect(screen.getByRole("button", { name: "Apply staged set-point" })).toBeDisabled();
   });
 
