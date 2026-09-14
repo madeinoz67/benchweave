@@ -115,3 +115,36 @@ def test_preview_ui_rejects_non_loopback_without_acknowledgement() -> None:
     )
     assert result.exit_code == 1
     assert "preview_network_acknowledgement_required" in result.output
+
+
+def test_preview_ui_rejects_non_loopback_renderer_origin() -> None:
+    cli = importlib.import_module("benchweave_sdk.cli")
+    result = CliRunner().invoke(
+        cli.cli,
+        preview_arguments("--renderer-url", "https://evil.example/r.html", "--no-open"),
+    )
+    assert result.exit_code == 1
+    assert "preview_renderer_origin_not_local" in result.output
+
+
+def test_preview_ui_labels_custom_renderer_output() -> None:
+    cli = importlib.import_module("benchweave_sdk.cli")
+    presentation = importlib.import_module("benchweave_sdk.presentation")
+    fixtures = importlib.import_module("benchweave_sdk.fixtures")
+    preview_server = importlib.import_module("benchweave_sdk.preview_server")
+    server = FakeServer()
+    model = SimpleNamespace(scenarios=(object(),), renderer_version="0.1.0")
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(presentation, "load_validated_preview_inputs", lambda *a, **k: object())
+    monkeypatch.setattr(fixtures, "build_preview_model", lambda candidate: model)
+    monkeypatch.setattr(preview_server, "PreviewServer", lambda *a, **k: server)
+    monkeypatch.setattr(preview_server, "bundled_assets", lambda: Path("."))
+    try:
+        result = CliRunner().invoke(
+            cli.cli,
+            preview_arguments("--renderer-url", "http://127.0.0.1:5173/preview", "--no-open"),
+        )
+    finally:
+        monkeypatch.undo()
+    assert result.exit_code == 0
+    assert "Custom renderer" in result.output

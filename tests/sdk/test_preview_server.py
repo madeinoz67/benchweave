@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import json
+import shutil
 import sys
 import urllib.error
 import urllib.request
@@ -131,3 +132,84 @@ def test_server_does_not_serve_paths_outside_asset_root(tmp_path: Path) -> None:
         urllib.request.urlopen(address.url + "/../secret.txt", timeout=2)
 
     assert error.value.code == 404
+
+
+def test_preflight_options_allows_only_the_configured_renderer_origin(tmp_path: Path) -> None:
+    server_module = importlib.import_module("benchweave_sdk.preview_server")
+    (tmp_path / "index.html").write_text("preview", encoding="utf-8")
+
+    with server_module.PreviewServer(
+        model(), tmp_path, allowed_origin="http://127.0.0.1:5173"
+    ) as address:
+        request = urllib.request.Request(
+            address.url + "/api/v1/scenarios/request-rejected/requests",
+            headers={
+                "Origin": "http://127.0.0.1:5173",
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "content-type",
+            },
+            method="OPTIONS",
+        )
+        with urllib.request.urlopen(request, timeout=2) as response:
+            assert response.status == 204
+            assert response.headers["Access-Control-Allow-Origin"] == "http://127.0.0.1:5173"
+            assert "POST" in response.headers["Access-Control-Allow-Methods"]
+            assert "Content-Type" in response.headers["Access-Control-Allow-Headers"]
+
+        foreign = urllib.request.Request(
+            address.url + "/api/v1/preview",
+            headers={"Origin": "http://127.0.0.1:9999", "Access-Control-Request-Method": "POST"},
+            method="OPTIONS",
+        )
+        with pytest.raises(urllib.error.HTTPError) as error:
+            urllib.request.urlopen(foreign, timeout=2)
+
+    assert error.value.code == 403
+
+
+def test_foreign_host_header_is_rejected(tmp_path: Path) -> None:
+    server_module = importlib.import_module("benchweave_sdk.preview_server")
+    (tmp_path / "index.html").write_text("preview", encoding="utf-8")
+
+    with (
+        server_module.PreviewServer(model(), tmp_path) as address,
+        pytest.raises(urllib.error.HTTPError) as error,
+    ):
+        request = urllib.request.Request(
+            address.url + "/api/v1/preview", headers={"Host": "attacker.example"}
+        )
+        urllib.request.urlopen(request, timeout=2)
+
+    assert error.value.code == 403
+
+
+def test_backslash_asset_paths_are_rejected_on_every_platform(tmp_path: Path) -> None:
+    server_module = importlib.import_module("benchweave_sdk.preview_server")
+    (tmp_path / "index.html").write_text("preview", encoding="utf-8")
+    # A literal-backslash filename is legal on POSIX and on Windows resolves as a
+    # directory escape: the guard must reject the path itself, not rely on the
+    # filesystem happening to miss the file.
+    (tmp_path / "..\\..\\leaked.txt").write_text("leaked", encoding="utf-8")
+
+    with (
+        server_module.PreviewServer(model(), tmp_path) as address,
+        pytest.raises(urllib.error.HTTPError) as error,
+    ):
+        urllib.request.urlopen(address.url + "/..%5C..%5Cleaked.txt", timeout=2)
+
+    assert error.value.code == 404
+
+
+def test_bundled_renderer_assets_are_hash_verified_at_serve_time(tmp_path: Path) -> None:
+    server_module = importlib.import_module("benchweave_sdk.preview_server")
+    assert server_module.__file__ is not None
+    source = Path(server_module.__file__).with_name("preview_assets")
+    copied = tmp_path / "preview_assets"
+    shutil.copytree(source, copied)
+
+    server_module.verify_bundled_assets(copied)
+
+    target = copied / "site" / "index.html"
+    target.write_bytes(target.read_bytes() + b"<!-- tampered -->")
+    with pytest.raises(ValueError, match="preview_renderer_asset_tampered"):
+        server_module.verify_bundled_assets(copied)
