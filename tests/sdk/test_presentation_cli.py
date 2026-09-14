@@ -62,7 +62,7 @@ def test_ui_scaffold_includes_valid_preview_fixtures_and_conformance_test(
     assert (package / "ui/fixtures/warning.json").is_file()
     conformance = project / "tests/test_presentation_preview.py"
     assert conformance.is_file()
-    assert "MANDATORY_BASELINE_IDS" in conformance.read_text()
+    assert "BASELINE_IDS" in conformance.read_text()
 
     from benchweave_sdk.fixtures import build_preview_model
     from benchweave_sdk.presentation import load_validated_preview_inputs
