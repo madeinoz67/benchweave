@@ -9,9 +9,23 @@ const normal = { id: "normal", title: "Normal", description: "Nominal simulated 
 const trip = { ...normal, id: "trip", title: "Protective trip", description: "Simulated protective trip", permissions: [], lease_state: "none", expected_severity: "trip" };
 const preview = { api_version: 1, plugin_id: "example.psu", renderer_version: "1.0.0", pages: [], scenarios: [normal, trip], simulation: true };
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  window.history.replaceState({}, "", "/");
+});
 
 describe("PreviewApp", () => {
+  it("uses the development renderer API base from the page query", async () => {
+    const fetcher = vi.fn().mockResolvedValue({ ok: true, json: async () => preview });
+    vi.stubGlobal("fetch", fetcher);
+    window.history.replaceState({}, "", "/?apiBase=http%3A%2F%2F127.0.0.1%3A49152");
+
+    render(<PreviewApp />);
+
+    await screen.findByText("SIMULATED PRESENTATION DATA");
+    expect(fetcher).toHaveBeenCalledWith("http://127.0.0.1:49152/api/v1/preview", expect.any(Object));
+  });
+
   it("keeps simulation labelling across scenario selection", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => preview }));
     render(<PreviewApp />);

@@ -61,10 +61,23 @@ def test_server_exposes_versioned_preview_and_scenarios(tmp_path: Path) -> None:
 
     assert preview["simulation"] is True
     assert preview["api_version"] == 1
-    assert scenarios == [
-        {"id": "request-rejected", "title": "Request rejected", "baseline": True}
-    ]
+    assert scenarios == [{"id": "request-rejected", "title": "Request rejected", "baseline": True}]
     assert health == {"ready": True, "api_version": 1}
+
+
+def test_server_allows_only_configured_development_renderer_origin(tmp_path: Path) -> None:
+    server_module = importlib.import_module("benchweave_sdk.preview_server")
+    (tmp_path / "index.html").write_text("preview", encoding="utf-8")
+    with server_module.PreviewServer(
+        model(), tmp_path, allowed_origin="http://127.0.0.1:5173"
+    ) as address:
+        request = urllib.request.Request(
+            address.url + "/api/v1/preview",
+            headers={"Origin": "http://127.0.0.1:5173"},
+        )
+        with urllib.request.urlopen(request, timeout=2) as response:
+            assert response.headers["Access-Control-Allow-Origin"] == "http://127.0.0.1:5173"
+            assert response.headers["Vary"] == "Origin"
 
 
 def test_server_returns_configured_simulated_receipt(tmp_path: Path) -> None:

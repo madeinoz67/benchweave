@@ -6,7 +6,8 @@ import { fetchPreview, requestSimulatedAction, type PreviewDocument, type Simula
 
 export interface PreviewAppProps { apiBase?: string }
 
-export function PreviewApp({ apiBase = "" }: PreviewAppProps) {
+export function PreviewApp({ apiBase }: PreviewAppProps) {
+  const resolvedApiBase = apiBase ?? new URLSearchParams(window.location.search).get("apiBase") ?? "";
   const [preview, setPreview] = useState<PreviewDocument | null>(null);
   const [scenarioId, setScenarioId] = useState("");
   const [receipt, setReceipt] = useState<SimulatedReceipt | null>(null);
@@ -16,9 +17,9 @@ export function PreviewApp({ apiBase = "" }: PreviewAppProps) {
 
   useEffect(() => {
     const controller = new AbortController();
-    fetchPreview(apiBase).then((loaded) => { if (!controller.signal.aborted) { setPreview(loaded); setScenarioId(loaded.scenarios[0]?.id ?? ""); } }).catch((reason: unknown) => { if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : String(reason)); });
+    fetchPreview(resolvedApiBase).then((loaded) => { if (!controller.signal.aborted) { setPreview(loaded); setScenarioId(loaded.scenarios[0]?.id ?? ""); } }).catch((reason: unknown) => { if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : String(reason)); });
     return () => controller.abort();
-  }, [apiBase]);
+  }, [resolvedApiBase]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -40,7 +41,7 @@ export function PreviewApp({ apiBase = "" }: PreviewAppProps) {
   const requestSetPoint = async (value: number) => {
     const binding = scenario.observations.find((observation) => observation.unit === "V")?.binding_id ?? scenario.observations[0]?.binding_id;
     if (!binding) return;
-    try { setReceipt(await requestSimulatedAction(apiBase, scenario.id, binding, value)); }
+    try { setReceipt(await requestSimulatedAction(resolvedApiBase, scenario.id, binding, value)); }
     catch (reason) { setReceipt({ binding_id: binding, outcome: "error", message: reason instanceof Error ? reason.message : String(reason) }); }
   };
 

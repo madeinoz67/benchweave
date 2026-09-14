@@ -13,14 +13,12 @@ def sdk_source(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.syspath_prepend(str(root / "packages/sdk/src"))
 
 
-def run(monkeypatch: pytest.MonkeyPatch, *arguments: str | Path) -> None:
+def run(monkeypatch: pytest.MonkeyPatch, *arguments: str | Path) -> int:
     cli = importlib.import_module("benchweave_sdk.cli")
-
-    monkeypatch.setattr("sys.argv", ["benchweave-sdk", *map(str, arguments)])
-    cli.main()
+    return cli.main([*map(str, arguments)])
 
 
-def check(monkeypatch: pytest.MonkeyPatch, package: Path, **options: str) -> None:
+def check(monkeypatch: pytest.MonkeyPatch, package: Path, **options: str) -> int:
     arguments: list[str | Path] = [
         "check-ui",
         package / "presentation.json",
@@ -33,7 +31,7 @@ def check(monkeypatch: pytest.MonkeyPatch, package: Path, **options: str) -> Non
     ]
     for key, value in options.items():
         arguments.extend(["--" + key, value])
-    run(monkeypatch, *arguments)
+    return run(monkeypatch, *arguments)
 
 
 def test_optional_ui_preserves_descriptor_and_adapter(
@@ -79,8 +77,15 @@ def test_ui_scaffold_includes_valid_preview_fixtures_and_conformance_test(
     )
     ids = {scenario.id for scenario in build_preview_model(candidate).scenarios}
     mandatory = {
-        "normal", "warning", "loading", "stale", "disconnected",
-        "critical", "trip", "recovery", "request-rejected",
+        "normal",
+        "warning",
+        "loading",
+        "stale",
+        "disconnected",
+        "critical",
+        "trip",
+        "recovery",
+        "request-rejected",
     }
     assert mandatory <= ids
 
@@ -92,9 +97,7 @@ def test_ui_check_rejects_modified_manifest(
     package = tmp_path / "ui/src/example_plugin"
     manifest = package / "ui/manifest.json"
     manifest.write_bytes(manifest.read_bytes() + b"\n")
-    with pytest.raises(SystemExit) as error:
-        check(monkeypatch, package)
-    assert error.value.code == 1
+    assert check(monkeypatch, package) == 1
 
 
 def test_ui_check_rejects_symlinked_resource(
@@ -107,9 +110,7 @@ def test_ui_check_rejects_symlinked_resource(
     outside.write_bytes(manifest.read_bytes())
     manifest.unlink()
     manifest.symlink_to(outside)
-    with pytest.raises(SystemExit) as error:
-        check(monkeypatch, package)
-    assert error.value.code == 1
+    assert check(monkeypatch, package) == 1
 
 
 def test_ui_check_rejects_resource_root_escape(
@@ -121,6 +122,4 @@ def test_ui_check_rejects_resource_root_escape(
     document = json.loads(envelope.read_bytes())
     document["resource_root"] = "../outside"
     envelope.write_text(json.dumps(document))
-    with pytest.raises(SystemExit) as error:
-        check(monkeypatch, package)
-    assert error.value.code == 1
+    assert check(monkeypatch, package) == 1

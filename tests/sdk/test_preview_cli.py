@@ -5,8 +5,10 @@ from __future__ import annotations
 import importlib
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+from click.testing import CliRunner
 
 SDK = Path(__file__).resolve().parents[2] / "packages/sdk/src"
 sys.path.insert(0, str(SDK))
@@ -35,69 +37,76 @@ class FakeServer:
         return
 
 
+def preview_arguments(*extra: str) -> list[str]:
+    return [
+        "preview-ui",
+        "presentation.json",
+        "--descriptor",
+        "descriptor.json",
+        "--resources",
+        ".",
+        "--catalogue",
+        "binding-catalogue.json",
+        *extra,
+    ]
+
+
 def test_preview_ui_no_open_reports_ready_url(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
 ) -> None:
     cli = importlib.import_module("benchweave_sdk.cli")
     presentation = importlib.import_module("benchweave_sdk.presentation")
     fixtures = importlib.import_module("benchweave_sdk.fixtures")
     preview_server = importlib.import_module("benchweave_sdk.preview_server")
     server = FakeServer()
+    model = SimpleNamespace(scenarios=(object(),), renderer_version="0.1.0")
     monkeypatch.setattr(presentation, "load_validated_preview_inputs", lambda *a, **k: object())
-    monkeypatch.setattr(fixtures, "build_preview_model", lambda candidate: object())
+    monkeypatch.setattr(fixtures, "build_preview_model", lambda candidate: model)
     monkeypatch.setattr(preview_server, "PreviewServer", lambda *a, **k: server)
     monkeypatch.setattr(preview_server, "bundled_assets", lambda: tmp_path)
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        [
-            "benchweave-sdk",
-            "preview-ui",
-            "presentation.json",
-            "--descriptor",
-            "descriptor.json",
-            "--resources",
-            ".",
-            "--catalogue",
-            "binding-catalogue.json",
-            "--no-open",
-        ],
-    )
 
-    cli.main()
+    result = CliRunner().invoke(cli.cli, preview_arguments("--no-open"))
 
-    output = capsys.readouterr().out
-    assert "SIMULATED PRESENTATION DATA" in output
-    assert server.address.url in output
+    assert result.exit_code == 0
+    assert "SIMULATED PRESENTATION DATA" in result.output
+    assert server.address.url in result.output
     assert server.started and server.waited
 
 
-def test_preview_ui_rejects_non_loopback_without_acknowledgement(
-    monkeypatch: pytest.MonkeyPatch,
+def test_development_renderer_receives_api_base_and_exact_origin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     cli = importlib.import_module("benchweave_sdk.cli")
+    presentation = importlib.import_module("benchweave_sdk.presentation")
+    fixtures = importlib.import_module("benchweave_sdk.fixtures")
+    preview_server = importlib.import_module("benchweave_sdk.preview_server")
+    server = FakeServer()
+    model = SimpleNamespace(scenarios=(object(),), renderer_version="0.1.0")
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(presentation, "load_validated_preview_inputs", lambda *a, **k: object())
+    monkeypatch.setattr(fixtures, "build_preview_model", lambda candidate: model)
+    monkeypatch.setattr(preview_server, "bundled_assets", lambda: tmp_path)
     monkeypatch.setattr(
-        sys,
-        "argv",
-        [
-            "benchweave-sdk",
-            "preview-ui",
-            "presentation.json",
-            "--descriptor",
-            "descriptor.json",
-            "--resources",
-            ".",
-            "--catalogue",
-            "binding-catalogue.json",
-            "--host",
-            "192.0.2.10",
-            "--no-open",
-        ],
+        preview_server, "PreviewServer", lambda *a, **k: captured.update(k) or server
     )
+    opened: list[str] = []
+    monkeypatch.setattr(cli.webbrowser, "open", lambda url: opened.append(url) or True)
 
-    with pytest.raises(SystemExit) as error:
-        cli.main()
+    result = CliRunner().invoke(
+        cli.cli,
+        preview_arguments("--renderer-url", "http://127.0.0.1:5173/preview"),
+    )
+    assert result.exit_code == 0
+    assert captured["allowed_origin"] == "http://127.0.0.1:5173"
+    assert opened and "apiBase=http%3A%2F%2F127.0.0.1%3A49152" in opened[0]
 
-    assert error.value.code == 1
+
+def test_preview_ui_rejects_non_loopback_without_acknowledgement() -> None:
+    cli = importlib.import_module("benchweave_sdk.cli")
+    result = CliRunner().invoke(
+        cli.cli,
+        preview_arguments("--host", "192.0.2.10", "--no-open"),
+    )
+    assert result.exit_code == 1
+    assert "preview_network_acknowledgement_required" in result.output

@@ -166,9 +166,7 @@ def test_author_fixture_rejects_unknown_binding(tmp_path: Path) -> None:
 
 def test_author_fixture_rejects_wrong_unit(tmp_path: Path) -> None:
     fixtures = fixtures_module()
-    (tmp_path / "high-load.json").write_text(
-        json.dumps(author_fixture(unit="A")), encoding="utf-8"
-    )
+    (tmp_path / "high-load.json").write_text(json.dumps(author_fixture(unit="A")), encoding="utf-8")
 
     with pytest.raises(ValueError, match="preview_unit_mismatch"):
         fixtures.load_author_fixtures(tmp_path, catalogue())
