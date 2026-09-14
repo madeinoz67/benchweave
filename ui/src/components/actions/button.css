@@ -1,0 +1,50 @@
+.bw-button {
+  min-height: 2.5rem;
+  padding: 0.55rem 0.9rem;
+  border: 1px solid var(--bw-border);
+  border-radius: var(--bw-radius-control);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bw-surface), white 8%), var(--bw-surface));
+  box-shadow: 0 0.22rem 0.48rem var(--bw-shadow-dark), inset 0 1px color-mix(in srgb, var(--bw-shadow-light), transparent 35%);
+  color: var(--bw-text);
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform var(--bw-transition-fast), box-shadow var(--bw-transition-fast);
+}
+
+.bw-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.bw-button:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: var(--bw-shadow-recessed);
+}
+
+.bw-button[data-variant="primary"] {
+  border-color: var(--bw-accent);
+  background: var(--bw-accent);
+  color: var(--bw-accent-contrast);
+}
+
+.bw-button[data-variant="tertiary"] {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.bw-button[data-variant="destructive"] {
+  border-color: var(--bw-critical);
+  color: var(--bw-critical);
+}
+
+.bw-button[data-variant="protective"] {
+  border-color: var(--bw-trip);
+  background: var(--bw-trip);
+  color: #fff;
+}
+
+.bw-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  box-shadow: none;
+}
