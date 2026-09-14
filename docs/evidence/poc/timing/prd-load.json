@@ -1,0 +1,50 @@
+{
+  "gateway_id": "gw-cli-evidence",
+  "gating": true,
+  "generated_at": "2026-09-14T09:17:10.681472Z",
+  "host": {
+    "machine": "arm64",
+    "python": "3.13.13",
+    "release": "25.6.0",
+    "system": "Darwin"
+  },
+  "label": "SIMULATION",
+  "measurements": {
+    "prd-load-acceptance": {
+      "active_run": false,
+      "count": 100,
+      "label": "prd-load-acceptance",
+      "max_ms": 9.501,
+      "observers": 1,
+      "observers_declared": 2,
+      "p50_ms": 2.084,
+      "p95_ms": 4.79,
+      "seed": 20260914,
+      "target_p95_ms": 2000,
+      "verdict": "pass"
+    },
+    "prd-load-reads": {
+      "active_run": true,
+      "active_run_coverage": 1.0,
+      "count": 100,
+      "label": "prd-load-reads",
+      "max_ms": 17.157,
+      "observers": 2,
+      "p50_ms": 2.487,
+      "p95_ms": 4.746,
+      "seed": 20260914,
+      "target_p95_ms": 500,
+      "verdict": "pass"
+    }
+  },
+  "method": {
+    "acceptance": "each sample times ONE run_start call to its 202 accept response on a fresh \u00a79 request key; the advisory run-check preflight and the poll to terminal (which frees the bench's one live-run slot) sit OUTSIDE every timed window \u2014 PRD \u00a76 excludes device execution. Sequential on the single admitted bench: the committed fixture lattice admits exactly one bench per gateway and \u00a75 holds one live run per bench, so a second concurrent run_start CONFLICTS at accept rather than measuring \u2014 the declared two-observer posture is recorded as observers_declared, the achieved shape as observers",
+    "percentile": "linear interpolation, rank = q * (n - 1), over the sorted sample",
+    "reads": "100 metadata reads (GET /v1/benches, GET /v1/runs/{id}, GET /v1/benches/{id}/events, rotating) by 2 concurrent observer threads while one run is live; a background driver restarts seeded runs as each reaches terminal and the achieved live fraction is reported as active_run_coverage (accept-response to terminal observation, 0.2 s poll granularity)",
+    "stress": "16 observers x 100 metadata reads each (the same rotating read set), barrier-started so the whole burst is simultaneous, while the active-run driver keeps a run live; NON-REFERENCE and NON-GATING \u2014 it exists to make the D13 async-single-loop (blocking SQLite on one event loop) disclosure honest, not to gate anything",
+    "timer": "time.perf_counter around each GatewayClient call (stdlib only)"
+  },
+  "reference": true,
+  "seed": 20260914,
+  "simulation": true
+}

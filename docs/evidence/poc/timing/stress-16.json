@@ -1,0 +1,34 @@
+{
+  "gateway_id": "gw-cli-evidence",
+  "gating": false,
+  "generated_at": "2026-09-14T09:17:10.681506Z",
+  "host": {
+    "machine": "arm64",
+    "python": "3.13.13",
+    "release": "25.6.0",
+    "system": "Darwin"
+  },
+  "label": "SIMULATION",
+  "measurements": {
+    "stress-16": {
+      "active_run": true,
+      "active_run_coverage": 0.9418,
+      "count": 1600,
+      "label": "stress-16",
+      "max_ms": 32.833,
+      "observers": 16,
+      "p50_ms": 14.053,
+      "p95_ms": 24.614,
+      "seed": 20260914,
+      "verdict": "recorded"
+    }
+  },
+  "method": {
+    "percentile": "linear interpolation, rank = q * (n - 1), over the sorted sample",
+    "stress": "16 observers x 100 metadata reads each (the same rotating read set), barrier-started so the whole burst is simultaneous, while the active-run driver keeps a run live; NON-REFERENCE and NON-GATING \u2014 it exists to make the D13 async-single-loop (blocking SQLite on one event loop) disclosure honest, not to gate anything",
+    "timer": "time.perf_counter around each GatewayClient call (stdlib only)"
+  },
+  "reference": false,
+  "seed": 20260914,
+  "simulation": true
+}
