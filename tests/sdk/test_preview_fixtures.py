@@ -6,6 +6,7 @@ import importlib
 import json
 import sys
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 from jsonschema import Draft202012Validator
@@ -16,11 +17,11 @@ FIXTURE_SCHEMA = ROOT / "contracts/plugin-ui-preview-v1/fixture.schema.json"
 sys.path.insert(0, str(SDK))
 
 
-def preview_models():  # type: ignore[no-untyped-def]
+def preview_models() -> ModuleType:
     return importlib.import_module("benchweave_sdk.preview_models")
 
 
-def fixtures_module():  # type: ignore[no-untyped-def]
+def fixtures_module() -> ModuleType:
     return importlib.import_module("benchweave_sdk.fixtures")
 
 

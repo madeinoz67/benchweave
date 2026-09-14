@@ -22,7 +22,7 @@ def test_sdk_exposes_click_command_group() -> None:
         assert command in result.output
 
 
-def test_click_usage_and_domain_exit_codes(tmp_path) -> None:
+def test_click_usage_and_domain_exit_codes(tmp_path: Path) -> None:
     from benchweave_sdk.cli import cli
 
     runner = CliRunner()
@@ -48,17 +48,22 @@ def test_textual_preview_status_lifecycle() -> None:
 
     shutdown: list[bool] = []
     opened: list[str] = []
+
+    def record_open(url: str) -> bool:
+        opened.append(url)
+        return True
+
     app = PreviewStatusApp(
         url="http://127.0.0.1:49152",
         renderer_version="0.1.0",
         scenarios=11,
-        open_browser=lambda url: opened.append(url) or True,
+        open_browser=record_open,
         shutdown=lambda: shutdown.append(True),
     )
 
     async def exercise() -> None:
         async with app.run_test() as pilot:
-            assert "SIMULATED PRESENTATION DATA" in app.query_one("#simulation").render().plain
+            assert "SIMULATED PRESENTATION DATA" in str(app.query_one("#simulation").render())
             await pilot.press("o")
             assert opened == ["http://127.0.0.1:49152"]
             await pilot.press("q")

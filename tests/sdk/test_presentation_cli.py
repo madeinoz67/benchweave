@@ -15,7 +15,8 @@ def sdk_source(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def run(monkeypatch: pytest.MonkeyPatch, *arguments: str | Path) -> int:
     cli = importlib.import_module("benchweave_sdk.cli")
-    return cli.main([*map(str, arguments)])
+    exit_code: int = cli.main([*map(str, arguments)])
+    return exit_code
 
 
 def check(monkeypatch: pytest.MonkeyPatch, package: Path, **options: str) -> int:

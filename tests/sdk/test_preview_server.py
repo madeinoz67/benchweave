@@ -15,7 +15,7 @@ SDK = Path(__file__).resolve().parents[2] / "packages/sdk/src"
 sys.path.insert(0, str(SDK))
 
 
-def model():  # type: ignore[no-untyped-def]
+def model() -> object:
     models = importlib.import_module("benchweave_sdk.preview_models")
     scenario = models.PreviewScenario(
         id="request-rejected",
@@ -47,7 +47,9 @@ def get_json(url: str) -> dict[str, object] | list[object]:
     with urllib.request.urlopen(url, timeout=2) as response:
         assert response.headers["Content-Type"] == "application/json; charset=utf-8"
         assert response.headers.get("Access-Control-Allow-Origin") is None
-        return json.loads(response.read())
+        payload: object = json.loads(response.read())
+        assert isinstance(payload, (dict, list))
+        return payload
 
 
 def test_server_exposes_versioned_preview_and_scenarios(tmp_path: Path) -> None:
@@ -59,6 +61,7 @@ def test_server_exposes_versioned_preview_and_scenarios(tmp_path: Path) -> None:
         scenarios = get_json(address.url + "/api/v1/scenarios")
         health = get_json(address.url + "/healthz")
 
+    assert isinstance(preview, dict)
     assert preview["simulation"] is True
     assert preview["api_version"] == 1
     assert scenarios == [{"id": "request-rejected", "title": "Request rejected", "baseline": True}]

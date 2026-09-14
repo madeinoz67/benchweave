@@ -19,7 +19,7 @@ class FakeAddress:
 
 
 class FakeServer:
-    def __init__(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+    def __init__(self, *args: object, **kwargs: object) -> None:
         self.args = args
         self.kwargs = kwargs
         self.address = FakeAddress()
@@ -91,7 +91,12 @@ def test_development_renderer_receives_api_base_and_exact_origin(
         preview_server, "PreviewServer", lambda *a, **k: captured.update(k) or server
     )
     opened: list[str] = []
-    monkeypatch.setattr(cli.webbrowser, "open", lambda url: opened.append(url) or True)
+
+    def record_open(url: str) -> bool:
+        opened.append(url)
+        return True
+
+    monkeypatch.setattr(cli.webbrowser, "open", record_open)
 
     result = CliRunner().invoke(
         cli.cli,

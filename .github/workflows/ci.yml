@@ -30,7 +30,10 @@ jobs:
       - name: Lint
         run: |
           uv run ruff check .
-          uv run mypy src tests
+          # Config-driven: pyproject [tool.mypy] files= includes packages/sdk/src,
+          # so benchweave_sdk resolves for the tests that import it. Explicit
+          # path args drop it from the build and break those imports.
+          uv run mypy
 
       - name: Test
         run: uv run pytest -q
