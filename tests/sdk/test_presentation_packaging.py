@@ -1,16 +1,49 @@
-"""Source distributions preserve exact gateway/SDK validator and schema bytes."""
+"""Wheels ship the lock-verified vendored standards tree, not checkout reach."""
+
+from __future__ import annotations
 
 import hashlib
 import json
 import subprocess
 import tarfile
 import zipfile
+from collections.abc import Callable
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+LOCK_PATH = ROOT / "packages" / "sdk" / "standards-lock.json"
+STAMP_NAME = "_GENERATED.txt"
 
 
-def test_sdk_wheel_rebuilt_from_sdist_contains_exact_presentation_contract(tmp_path: Path) -> None:
+def _locked_files() -> dict[str, str]:
+    assert LOCK_PATH.is_file(), (
+        "packages/sdk/standards-lock.json missing; run benchweave-sdk sync-standards"
+    )
+    lock = json.loads(LOCK_PATH.read_bytes())
+    files = {
+        file["path"]: file["sha256"]
+        for standard in lock["standards"]
+        for file in standard["files"]
+    }
+    assert files, "standards-lock.json records no files"
+    return files
+
+
+def _assert_standards_tree(names: list[str], read: Callable[[str], bytes]) -> None:
+    """The packaged standards tree is exactly the locked set plus its stamps."""
+    expected = _locked_files()
+    prefix = "benchweave_sdk/standards/"
+    included = {name.removeprefix(prefix) for name in names if name.startswith(prefix)}
+    stamps = {
+        f"{identifier}/{STAMP_NAME}"
+        for identifier in {path.partition("/")[0] for path in expected}
+    }
+    assert included == set(expected) | stamps
+    for path, digest in sorted(expected.items()):
+        assert hashlib.sha256(read(prefix + path)).hexdigest() == digest, path
+
+
+def test_sdk_wheel_rebuilt_from_sdist_contains_locked_standards_tree(tmp_path: Path) -> None:
     dist = tmp_path / "dist"
     subprocess.run(
         ["uv", "build", str(ROOT / "packages/sdk"), "--out-dir", str(dist)],
@@ -19,13 +52,13 @@ def test_sdk_wheel_rebuilt_from_sdist_contains_exact_presentation_contract(tmp_p
         text=True,
     )
     wheel = next(dist.glob("*.whl"))
-    schema_path = "benchweave_sdk/contracts/plugin-ui-v0.1.0/ui-manifest.schema.json"
     with zipfile.ZipFile(wheel) as archive:
         names = archive.namelist()
-        assert "benchweave_sdk/_presentation_contract.py" in names
-        assert schema_path in names
-        preview_schema = "benchweave_sdk/contracts/plugin-ui-preview-v1/fixture.schema.json"
-        assert preview_schema in names
+        _assert_standards_tree(names, archive.read)
+        # The checkout reach is gone: no force-included contracts copy and no
+        # synthesized top-level validator module may remain in the wheel.
+        assert "benchweave_sdk/_presentation_contract.py" not in names
+        assert not any(name.startswith("benchweave_sdk/contracts/") for name in names)
         inventory_path = "benchweave_sdk/preview_assets/inventory.json"
         inventory = json.loads(archive.read(inventory_path))
         assert inventory["api_version"] == 1
@@ -34,24 +67,19 @@ def test_sdk_wheel_rebuilt_from_sdist_contains_exact_presentation_contract(tmp_p
             packaged = archive.read(f"benchweave_sdk/preview_assets/{asset['path']}")
             assert len(packaged) == asset["size"]
             assert hashlib.sha256(packaged).hexdigest() == asset["sha256"]
-        expected = archive.read("benchweave_sdk/_presentation_contract.py")
-        assert expected == (ROOT / "src/benchweave/presentation/contracts.py").read_bytes()
-        for name in (
-            "ui-manifest",
-            "configuration-preset",
-            "presentation-envelope",
-            "binding-catalogue",
-        ):
-            relative = f"plugin-ui-v0.1.0/{name}.schema.json"
-            assert (
-                archive.read(f"benchweave_sdk/contracts/{relative}")
-                == (ROOT / "contracts" / relative).read_bytes()
-            )
+    # The vendored validator stays byte-identical to the gateway's canonical
+    # source; the lock pins that exact digest.
+    gateway_validator = ROOT / "src/benchweave/presentation/contracts.py"
+    assert (
+        hashlib.sha256(gateway_validator.read_bytes()).hexdigest()
+        == _locked_files()["plugin-ui/contracts.py"]
+    )
     unpacked = tmp_path / "source"
     unpacked.mkdir()
     with tarfile.open(next(dist.glob("*.tar.gz"))) as archive:
         archive.extractall(unpacked, filter="data")
     source = next(unpacked.iterdir())
+    assert (source / "standards-lock.json").is_file(), "sdist omits the standards lock"
     rebuilt = tmp_path / "rebuilt"
     subprocess.run(
         ["uv", "build", "--wheel", str(source), "--out-dir", str(rebuilt)],
@@ -61,11 +89,8 @@ def test_sdk_wheel_rebuilt_from_sdist_contains_exact_presentation_contract(tmp_p
         text=True,
     )
     with zipfile.ZipFile(next(rebuilt.glob("*.whl"))) as archive:
-        assert archive.read("benchweave_sdk/_presentation_contract.py") == expected
-        assert schema_path in archive.namelist()
-        assert preview_schema in archive.namelist()
-        rebuilt_inventory = json.loads(archive.read(inventory_path))
+        _assert_standards_tree(archive.namelist(), archive.read)
+        rebuilt_inventory = json.loads(
+            archive.read("benchweave_sdk/preview_assets/inventory.json")
+        )
         assert rebuilt_inventory == inventory
-        for asset in rebuilt_inventory["assets"]:
-            packaged = archive.read(f"benchweave_sdk/preview_assets/{asset['path']}")
-            assert hashlib.sha256(packaged).hexdigest() == asset["sha256"]
