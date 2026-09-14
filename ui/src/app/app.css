@@ -13,9 +13,23 @@
   clip: rect(0 0 0 0);
 }
 
+.bw-app__toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: min(100%, 90rem);
+  margin: 0 auto var(--bw-space-4);
+}
+
+.bw-app__toolbar .bw-button {
+  display: inline-flex;
+  gap: var(--bw-space-2);
+  align-items: center;
+}
+
 .bw-simulation-banner {
   width: fit-content;
-  margin: 0 auto var(--bw-space-4);
+  margin: 0;
   padding: 0.4rem 0.7rem;
   border: 1px solid var(--bw-advisory);
   border-radius: 999px;
