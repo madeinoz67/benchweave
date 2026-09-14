@@ -3,9 +3,10 @@
 One suite drives the journey a PRD reader would recognise over the one
 composed application (``create_app``: bootstrap admission, REST ``/v1``,
 MCP ``/mcp``, run worker, sim plugins, wired registry session) on a
-loopback uvicorn port — no TestClient, no seam doubles. This task lands
-the scaffold (fixtures) and steps 1–3 (discover → admit → select); the
-run/fault/reuse legs (§3 steps 4–7) land in Tasks 5–6 of this suite.
+loopback uvicorn port — no TestClient, no seam doubles. Tasks 4–5 land
+the scaffold (fixtures), steps 1–3 (discover → admit → select) and steps
+4–5 (the run journey: start via REST, retrieve via MCP, the report); the
+fault/reuse legs (§3 steps 6–7) land in Task 6 of this suite.
 
 Sketch-risk deviations from the task brief (real surface wins):
 - There is no ``GET /v1/registry`` — interface 1.1.1 has no
@@ -50,27 +51,31 @@ rows naming Task 5/6 legs state where that evidence lands, by design):
       the app's published factory/host services (run legs, Tasks 5–6);
       deep = tests/contract/test_sim_plugins.py + test_host_abi.py
   PRD-05 ownership/admission .... journey run starts on the admitted
-      bench; stale generation start rejected (run legs, Tasks 5–6);
-      deep = tests/integration/test_takeover.py + test_event_recovery.py
+      bench; stale generation start rejected after the in-journey admin
+      change (run legs, HERE); deep = tests/integration/test_takeover.py
+      + test_event_recovery.py
   PRD-06 bounded procedures ..... the fixture procedure executes all its
       step kinds (run legs, Tasks 5–6); deep = tests/integration/
       test_procedures.py
   PRD-07 run/request identity ... REST start + MCP retrieve = one run
-      (Task 5); retry legs (Task 6); deep = test_event_recovery.py +
-      tests/unit/test_seam_control.py
+      (run leg, HERE); retry legs (Task 6); deep = test_event_recovery.py
+      + tests/unit/test_seam_control.py
   PRD-08 protection/recovery .... trip + restart legs (Task 6); deep =
       test_event_recovery.py + tests/contract/test_fault_matrix.py
   PRD-09 measurement honesty .... assertions + final safe condition
-      verified (Task 5); stale/wrong-unit deep = test_procedures.py
+      verified (run leg, HERE); stale/wrong-unit deep = test_procedures.py
   PRD-10 parity/access .......... the same admitted inventory reads
       identically over both transports (discovery leg, here); the same
-      run over both (Task 5); full parity =
+      run over both (run leg, HERE); full parity =
       tests/integration/test_interface_parity.py
   PRD-11 network independence .. registry-loss leg (Task 6) if
       uncovered; deep = test_event_recovery.py
   PRD-12 controlled admin ....... one staged admission at a safe idle
-      boundary in-journey (HERE); deep = tests/unit/test_seam_admin.py
-      + tests/integration/test_registry_changes.py
+      boundary in-journey (HERE), then one staged ``trip_reset`` at the
+      safe idle boundary after the run lands terminal (run leg, HERE —
+      the registry kinds cannot re-apply in this session: Task 4's
+      admission spent the resolver's high-water map); deep =
+      tests/unit/test_seam_admin.py + tests/integration/test_registry_changes.py
 """
 
 from __future__ import annotations
@@ -91,6 +96,7 @@ import httpx
 import pytest
 import uvicorn
 
+from benchweave.cli.report import build_report, render_markdown
 from benchweave.content.store import ContentStore
 from benchweave.interfaces.app import create_app
 from benchweave.interfaces.bootstrap import RegistrySession, build_registry_session
@@ -195,6 +201,36 @@ class Admitted:
     simulated_limitations: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class TerminalRecord:
+    """What one driven run leaves behind (§3 steps 4–5; Tasks 6–9 consume).
+
+    Wire-shaped by design: every field is what the transports serve, so
+    fault/volume/timing legs can assert on it without store access (the
+    durable record document itself is store-side only — see
+    :func:`journey_run`).
+    """
+
+    run_id: str
+    bench_id: str
+    #: The §9 request id the run was filed under (the binding's own id).
+    request_id: str
+    state: str
+    outcome: str | None
+    #: PRD-09's final safe condition, wire-named (``verified``/``unknown``).
+    safe_state: str | None
+    #: The closed ``{id, version, sha256}`` terminal-record ref; ``None``
+    #: on an uncertain terminal (``outcome_unknown``/``interrupted``),
+    #: which truthfully carries no record.
+    terminal_record: dict[str, str] | None
+    #: The evidence-bearing run record's digest(s) — the ref's sha256.
+    evidence_digests: tuple[str, ...]
+    #: The run id as MCP read it in flight — identity across transports.
+    mcp_run_id: str
+    #: Bench events on the stream when the drive finished (paged whole).
+    events_observed: int
+
+
 class _Rest:
     """httpx client with the journey principal's bearer injected."""
 
@@ -239,17 +275,30 @@ class _Mcp:
     def __init__(self, url: str, tokens: Tokens) -> None:
         self._url = url
         self._tokens = tokens
-        self._session = _mcp_initialize(url, tokens.observer)
+        # One session PER PRINCIPAL, lazily initialized: fastmcp binds a
+        # session to the credential that created it and answers a call
+        # riding a different bearer with a transport-level 404 ("credential
+        # does not match"), so per-call principal switching on one session
+        # is impossible — the tier is chosen by which session the call
+        # enters through (proven live in Task 5's run_find leg).
+        self._sessions: dict[str, str] = {"observer": _mcp_initialize(url, tokens.observer)}
 
-    def call(
-        self, name: str, arguments: dict[str, Any], *, principal: str = "observer"
-    ) -> dict[str, Any]:
+    def _session_for(self, principal: str) -> tuple[str, str]:
+        """The principal's (session id, bearer), initializing on first use."""
         token = {
             "observer": self._tokens.observer,
             "operator": self._tokens.operator,
             "admin": self._tokens.admin,
         }.get(principal)
         assert token is not None, f"unknown journey principal {principal!r}"
+        if principal not in self._sessions:
+            self._sessions[principal] = _mcp_initialize(self._url, token)
+        return self._sessions[principal], token
+
+    def call(
+        self, name: str, arguments: dict[str, Any], *, principal: str = "observer"
+    ) -> dict[str, Any]:
+        session, token = self._session_for(principal)
         status, body, _ = _mcp_post(
             self._url,
             {
@@ -258,7 +307,7 @@ class _Mcp:
                 "method": "tools/call",
                 "params": {"name": name, "arguments": arguments},
             },
-            {"Mcp-Session-Id": self._session, "Authorization": f"Bearer {token}"},
+            {"Mcp-Session-Id": session, "Authorization": f"Bearer {token}"},
         )
         assert status == 200, f"{name} rejected: {status} {body}"
         assert body is not None, f"{name} returned no body"
@@ -614,6 +663,138 @@ def _store_approval(
     return {"id": f"approval-{change_id}", "version": "1", "sha256": sha}
 
 
+# --- the run drive (Task 5 produces; Tasks 6–9 consume) --------------------------
+
+
+def journey_run(
+    app: Gateway,
+    rest: _Rest,
+    mcp: _Mcp,
+    admitted: Admitted,
+    *,
+    request_id: str | None = None,
+    binding_ref: dict[str, str] | None = None,
+    expected_generation: int | None = None,
+    timeout_s: float = 60.0,
+    poll_s: float = 0.2,
+) -> TerminalRecord:
+    """PRD §3 step 4 over the live gateway — the full drive Tasks 6–9 reuse.
+
+    ``benchweave.cli.demo``'s discipline, both transports: advisory
+    ``run-checks`` preflight (the binding and its pinned documents are
+    held; the reported generation is the canonical authority the fence
+    reads), ``run_start`` via REST (the fixture lattice's valid binding —
+    the binding document's own ``request_id`` is the §9 key), a §9
+    ``run_find`` cross-check on BOTH transports plus ``run_get`` via MCP
+    while the run is in flight (one run over both transports, PRD-07/10),
+    then a bounded REST poll to terminal (the ``test_event_recovery``
+    idiom) ending at the terminal record's wire ref and digest.
+
+    Defaults come from ``admitted`` — ``Admitted.generation`` is the
+    ``expected_generation`` (never a literal: each applied change advances
+    it). Fault/volume/timing legs override ``request_id``/``binding_ref``/
+    ``expected_generation`` for their own bindings; the drive asserts
+    only transport invariants (202/200, §9 identity), never an outcome —
+    the caller asserts what the outcome should be.
+
+    ``app`` is the drive's gateway handle, kept for the fault legs that
+    need store access; the drive itself is wire-only.
+    """
+    del app  # wire-only drive: the handle stays in the signature for Tasks 6–9
+    ref = dict(binding_ref or admitted.binding_ref)
+    rid = request_id if request_id is not None else str(ref["id"])
+    generation = (
+        expected_generation if expected_generation is not None else admitted.generation
+    )
+
+    # Advisory preflight: valid binding + the canonical generation the
+    # fence reads. An Admitted carrying a stale generation fails HERE,
+    # truthfully, instead of at the 409 below.
+    preflight = rest.post(
+        f"/v1/benches/{admitted.bench_id}/run-checks",
+        principal="operator",
+        json={"binding_ref": ref},
+    ).json()["data"]
+    assert preflight["valid"] is True, preflight
+    assert preflight["generation"] == generation, (
+        f"admitted generation {generation} is stale; the bench is at "
+        f"{preflight['generation']} — re-run the admission journey"
+    )
+
+    started = rest.post(
+        f"/v1/benches/{admitted.bench_id}/runs",
+        principal="operator",
+        json={
+            "request_id": rid,
+            "binding_ref": ref,
+            "expected_generation": generation,
+            "lease_id": None,
+        },
+    )
+    assert started.status_code == 202, started.text
+    run = started.json()["data"]
+    assert run["state"] == "accepted"  # 202 semantics: read before submit
+    run_id = str(run["run_id"])
+
+    # §9 cross-check on both transports: the request resolves, for this
+    # principal, to the run that was just accepted.
+    found_rest = rest.get(f"/v1/requests/{rid}", principal="operator").json()["data"]
+    assert str(found_rest["run_id"]) == run_id
+    found_mcp = mcp.call(
+        "stg_v1_run_find", {"request_id": rid}, principal="operator"
+    )["data"]
+    assert str(found_mcp["run_id"]) == run_id
+    via_mcp = mcp.call("stg_v1_run_get", {"run_id": run_id})["data"]
+    mcp_run_id = str(via_mcp["run_id"])
+    assert mcp_run_id == run_id
+
+    # Bounded poll to terminal.
+    deadline = time.monotonic() + timeout_s
+    while True:
+        current = rest.get(f"/v1/runs/{run_id}").json()["data"]
+        if current["state"] == "terminal":
+            break
+        assert time.monotonic() < deadline, (
+            f"run {run_id} never reached terminal within {timeout_s:g}s "
+            f"(last state: {current['state']!r})"
+        )
+        time.sleep(poll_s)
+
+    # The terminal record ref + its digest (the demo's rule: an uncertain
+    # terminal carries no record and no digest — never fabricated).
+    terminal_ref = current.get("terminal_record")
+    ref_dict = dict(terminal_ref) if isinstance(terminal_ref, dict) else None
+    digests: tuple[str, ...] = (
+        (str(ref_dict["sha256"]),) if ref_dict and ref_dict.get("sha256") else ()
+    )
+
+    # The bench stream, paged whole (cursor-bounded; one page holds it).
+    events = 0
+    after = ""
+    for _ in range(50):
+        page = rest.get(
+            f"/v1/benches/{admitted.bench_id}/events",
+            params={"after": after, "limit": 1000},
+        ).json()["data"]
+        events += len(page["events"])
+        after = str(page.get("cursor") or "")
+        if not after:
+            break
+
+    return TerminalRecord(
+        run_id=run_id,
+        bench_id=admitted.bench_id,
+        request_id=rid,
+        state=str(current["state"]),
+        outcome=current.get("outcome"),
+        safe_state=current.get("safe_state"),
+        terminal_record=ref_dict,
+        evidence_digests=digests,
+        mcp_run_id=mcp_run_id,
+        events_observed=events,
+    )
+
+
 # --- steps 1–3 (this task's journey test) ---------------------------------------
 
 
@@ -660,3 +841,206 @@ def test_journey_discover_admit_select(
     assert journey_admitted.policy_ref["id"] == "sim-policy"
     assert journey_admitted.policy_ref["version"] == "1.0.0"
     assert journey_admitted.simulated_limitations == ("simulator-only",)
+
+
+# --- steps 4–5 (Task 5's run journey) -------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def journey_terminal(
+    poc_app: Gateway, poc_rest: _Rest, poc_mcp: _Mcp, journey_admitted: Admitted
+) -> TerminalRecord:
+    """§3 step 4, driven once: the terminal run both journey tests assert on."""
+    return journey_run(poc_app, poc_rest, poc_mcp, journey_admitted)
+
+
+def test_journey_run_rest_retrieve_mcp_report(
+    poc_app: Gateway, poc_rest: _Rest, poc_mcp: _Mcp, journey_terminal: TerminalRecord
+) -> None:
+    """PRD §3 steps 4–5, live: one run over both transports, then the report.
+
+    Step 4 — the run starts via REST (``POST /v1/benches/{bench}/runs``;
+    the sketch's ``/v1/runs/start`` does not exist), the SAME run is
+    retrieved via MCP (``stg_v1_run_find`` + ``stg_v1_run_get``) while
+    in flight, and the terminal projection reads identically over both
+    transports (PRD-07/10). The terminal outcome is ``passed`` and the
+    final safe condition is verified — on the wire that is
+    ``safe_state == "verified"`` (the sketch's
+    ``final_safety.verified`` field does not exist; the interface
+    schema's conditional pins ``passed ⇒ safe_state verified +
+    terminal_record present``), and in the durable terminal record the
+    same verdict with its evidence lattice (store-side read: the record
+    document is deliberately not REST-servable). Step 5 — the report
+    renders with visible SIMULATION identification. Report rendering is
+    CLI-side (``benchweave report`` reads the store at rest and refuses
+    while this gateway holds it), so the journey exercises the same pure
+    model that command renders — ``build_report`` + ``render_markdown``
+    over the app's own store/content handles — and asserts its
+    wire-adjacent equivalents (SIMULATION labels, the run's row, every
+    evidence digest present).
+    """
+    record = journey_terminal
+
+    # One run over both transports (PRD-07/10): identity in flight (the
+    # MCP retrieve inside the drive), and the terminal projection equal.
+    assert record.mcp_run_id == record.run_id
+    rest_final = poc_rest.get(f"/v1/runs/{record.run_id}").json()["data"]
+    mcp_final = poc_mcp.call("stg_v1_run_get", {"run_id": record.run_id})["data"]
+    assert mcp_final == rest_final
+
+    # Terminal outcome + final safe condition (PRD-09), wire side.
+    assert record.state == "terminal"
+    assert record.outcome == "passed"
+    assert record.safe_state == "verified"
+    assert record.terminal_record is not None
+    assert len(record.evidence_digests) == 1  # the record ref's digest
+    for digest in record.evidence_digests:
+        assert len(digest) == 64 and int(digest, 16) >= 0
+
+    # The durable terminal record itself (store-side; never REST-served):
+    # the same verdicts plus the evidence lattice the wire ref points at.
+    durable = poc_app.store.get_run(record.run_id)
+    assert durable is not None
+    terminal = dict(durable["terminal"])
+    assert terminal["run_id"] == record.run_id
+    assert terminal["outcome"] == "passed"
+    assert terminal["safe_state"] == "verified"  # PRD-09: the record's verdict
+    assert terminal["principal_id"] == "poc-operator"
+    assert terminal["evidence_refs"]  # assertions evaluated along the way
+    for ref in terminal["evidence_refs"]:
+        assert len(str(ref["sha256"])) == 64
+
+    # The bench stream recorded the run's lifecycle (event evidence).
+    assert record.events_observed > 0
+    page = poc_rest.get(
+        f"/v1/benches/{record.bench_id}/events", params={"after": "", "limit": 1000}
+    ).json()["data"]
+    kinds = [str(event["kind"]) for event in page["events"]]
+    assert "run_changed" in kinds
+
+    # Step 5: the report — SIMULATION visibly identified (the pure model
+    # the at-rest ``benchweave report`` command renders; see docstring).
+    report = build_report(
+        poc_app.store, poc_app.content, bench_id=record.bench_id, now=NOW_ISO
+    )
+    assert report["simulation"] is True
+    markdown = render_markdown(report)
+    assert "SIMULATION" in markdown
+    (run_row,) = [row for row in report["runs"] if row["id"] == record.run_id]
+    assert run_row["state"] == "terminal"
+    assert run_row["outcome"] == "passed"
+    assert run_row["simulation"] is True
+    assert report["missing_evidence"] == []  # every evidence digest present
+
+
+def test_journey_admin_change_and_stale_generation_rejected(
+    poc_app: Gateway,
+    poc_rest: _Rest,
+    poc_tokens: Tokens,
+    journey_admitted: Admitted,
+    journey_terminal: TerminalRecord,
+) -> None:
+    """PRD-12 then PRD-05, in-journey: controlled admin at the safe idle
+    boundary, then the stale-generation fence.
+
+    The staged admin change is a ``trip_reset`` pinning the bench's
+    commissioning document — the one kind that can apply in this session:
+    both registry kinds re-resolve their target closure through the
+    resolver session's shared high-water map, which Task 4's admission
+    already spent (the strictly-advancing rollback fence refuses the
+    revisit), while ``trip_reset`` needs only a non-tripped bench. It is
+    submitted under the admin principal, applied at the wire-visible safe
+    idle boundary (the journey's run is terminal; the bench holds no live
+    lease and no trip) with the bench owner's detached approval — Task
+    4's two-phase idiom — and the bench generation advances with the
+    change. PRD-05: a run start presenting the PRE-change generation is
+    fenced (409 ``conflict``, nothing filed), and the corrected retry
+    under the new generation is the §9 replay — the same request resolves
+    to the SAME run, never a second execution.
+    """
+    bench_id = journey_admitted.bench_id
+
+    # The safe idle boundary, wire-visible: no live lease, no trip, and
+    # the journey's run has closed terminal (the §5 run-side busy oracle).
+    bench = poc_rest.get(f"/v1/benches/{bench_id}").json()["data"]
+    assert bench["busy"] is False
+    assert bench["tripped"] is False
+    assert journey_terminal.state == "terminal"
+
+    # Stage + apply the controlled admin change (two-phase, distinct
+    # approver — the applier's admin identity authorizes nothing).
+    generation = journey_admitted.generation
+    submitted = poc_rest.post(
+        "/v1/admin/changes",
+        principal="admin",
+        json={
+            "request_id": "req-poc-trip-reset",
+            "bench_id": bench_id,
+            "kind": "trip_reset",
+            "target_ref": journey_admitted.commissioning_ref,
+            "expected_generation": generation,
+            "reason": "poc journey: controlled admin change at the safe idle boundary",
+        },
+    )
+    assert submitted.status_code == 201, submitted.text
+    change_id = str(submitted.json()["data"]["change_id"])
+    approval_ref = _store_approval(poc_app.content, change_id, generation, poc_tokens)
+    applied = poc_rest.post(
+        f"/v1/admin/changes/{change_id}/apply",
+        principal="admin",
+        json={
+            "request_id": "req-poc-apply-trip-reset",
+            "expected_generation": generation,
+            "approval_ref": approval_ref,
+            "approver_token": poc_tokens.approver,
+        },
+    )
+    assert applied.status_code == 200, applied.text
+    assert applied.json()["data"]["state"] == "applied"
+
+    # The change really happened: generation advanced, the record stands
+    # applied, and the bench stream carries the admin event for THIS change.
+    bench = poc_rest.get(f"/v1/benches/{bench_id}").json()["data"]
+    assert bench["generation"] == generation + 1
+    change = poc_rest.get(
+        f"/v1/admin/changes/{change_id}", principal="admin"
+    ).json()["data"]
+    assert change["state"] == "applied"
+    page = poc_rest.get(
+        f"/v1/benches/{bench_id}/events", params={"after": "", "limit": 1000}
+    ).json()["data"]
+    admin_events = [
+        event for event in page["events"] if str(event["kind"]) == "bench_changed"
+    ]
+    assert any(
+        str(event["evidence"]["change_id"]) == change_id for event in admin_events
+    )
+
+    # PRD-05: the same start presenting the pre-change generation is fenced.
+    stale = poc_rest.post(
+        f"/v1/benches/{bench_id}/runs",
+        principal="operator",
+        json={
+            "request_id": journey_admitted.binding_ref["id"],
+            "binding_ref": journey_admitted.binding_ref,
+            "expected_generation": generation,  # stale: the change advanced it
+            "lease_id": None,
+        },
+    )
+    assert stale.status_code == 409, stale.text
+    assert stale.json()["error"]["code"] == "conflict"
+
+    # The corrected retry under the new generation is the §9 REPLAY: the
+    # same request resolves to the SAME terminal run — never re-executed.
+    replay = poc_rest.post(
+        f"/v1/benches/{bench_id}/runs",
+        principal="operator",
+        json={
+            "request_id": journey_admitted.binding_ref["id"],
+            "binding_ref": journey_admitted.binding_ref,
+            "expected_generation": generation + 1,
+            "lease_id": None,
+        },
+    )
+    assert replay.status_code == 202, replay.text
+    assert str(replay.json()["data"]["run_id"]) == journey_terminal.run_id
