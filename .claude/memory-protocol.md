@@ -39,6 +39,17 @@ Do **not** propose:
 - Five variations of one idea. One concept per memory, atomic. If it needs "and", it is
   probably two memories.
 
+**One class is exempt from the noise bar: review findings.** Every review —
+code-reviewer, RedTeam, adversarial audit, or a human review relayed by an agent —
+appends its findings record to the ledger before the review session ends, at **every
+severity including LOW and NIT**, each finding with its disposition (fixed / deferred /
+accepted-risk). A deferred or accepted finding with no ledger record is a lost finding:
+PRs get merged and forgotten, trackers rot, transcripts evaporate — the vault is the one
+place a review tail survives. Ship it as one "review record" proposal (verdict +
+severity-ranked findings + dispositions) or one proposal per follow-up item; either
+survives. Prose-only output does not. *(Principal directive 2026-09-14: review findings
+must never be forgotten, no matter how low-risk or nit-picked.)*
+
 The bar exists because **a noisy vault is worse than a small one.** That is measured here
 too: a pollution analysis found 74% of supersession pairs were template junk, and it
 collapsed the analysis that depended on them. A drain with no bar is a pollution pump.

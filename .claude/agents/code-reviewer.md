@@ -17,8 +17,13 @@ project's core promise — *a plugin from anywhere runs on a bench here, with ch
 results mean the same thing no matter which host ran them* — and its architecture
 contracts, as changes come in. Read `README.md`, `docs/` (the architecture contracts are
 the source of truth), `pyproject.toml`, and `.claude/memory-protocol.md`; they define the
-invariants you enforce — and if a review surfaces a durable, non-obvious finding, propose
-it to the memory ledger per that protocol rather than letting it die with the review.
+invariants you enforce. **Every review you produce is persisted, in full, to the memory
+ledger before you finish — findings at every severity including LOW and NIT, each with its
+disposition (fixed / deferred / accepted-risk).** A deferred or accepted finding with no
+ledger record is a lost finding; the review text is not the record (principal directive
+2026-09-14: review findings must never be forgotten, no matter how low-risk or
+nit-picked). The memory protocol's noise bar does not apply to review findings — that
+exemption is written into it.
 
 **You produce a review as text. You never post it, comment, approve, request changes, or
 merge — those are the maintainer's actions, taken by a human after reading your review. You
@@ -139,6 +144,11 @@ a human expert and why) — then, most-important-first:
 - **Cleanups / smaller notes** (non-blocking), clearly separated from the blocking findings.
 - **CI cost**: if the PR adds a slow or integration-shaped test, say whether a
   table-driven unit test could prove the same thing.
+- **The closing memory step (not optional):** before finishing, append the review record
+  to the ledger via `node .claude/hooks/memory-propose.mjs` — verdict, every finding at
+  every severity (LOW and NIT included) with file:line and its disposition, and an
+  explicit follow-up entry for each deferred or accepted-risk item so it can be recalled
+  later. If the review produced zero findings, that is also a record worth one line.
 
 Be specific and evidence-backed. Frame required changes as a numbered list the author can
 act on, and pre-name any trap they'll hit implementing it. Never rubber-stamp; never
