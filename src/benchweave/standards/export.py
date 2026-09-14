@@ -8,7 +8,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from .manifest import StandardEntry, load_manifest, validate_manifest
+from .manifest import StandardEntry, StandardsError, load_manifest, validate_manifest
 
 
 def canonical_json(value: Any) -> bytes:
@@ -49,6 +49,11 @@ def _entry(root: Path, entry: StandardEntry, sources: dict[str, str]) -> dict[st
             if relative.startswith("contracts/")
             else f"{entry.id}/{Path(relative).name}"
         )
+        if bundle_path in sources:
+            # Fail closed: a collision would ship one file while files[] lists both.
+            raise StandardsError(
+                f"normative_bundle_path_collision: {entry.id}: {bundle_path}"
+            )
         sources[bundle_path] = relative
         files.append(
             {"path": bundle_path, "sha256": hashlib.sha256(raw).hexdigest(), "size": len(raw)}

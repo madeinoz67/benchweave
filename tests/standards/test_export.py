@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path, PurePosixPath
@@ -10,7 +11,11 @@ from pathlib import Path, PurePosixPath
 import pytest
 
 from benchweave.standards.export import canonical_json, export_bundle
-from benchweave.standards.manifest import StandardEntry, load_manifest
+from benchweave.standards.manifest import (
+    StandardEntry,
+    StandardsError,
+    load_manifest,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -53,6 +58,34 @@ def _bundle_paths(entry: StandardEntry) -> set[str]:
         else f"{entry.id}/{PurePosixPath(n).name}"
         for n in entry.normative
     }
+
+
+def test_export_refuses_normative_paths_that_collide_in_the_bundle(tmp_path: Path) -> None:
+    """Two normative paths mapping to one bundle path must fail closed."""
+    broken = tmp_path / "repo"
+    (broken / "standards").mkdir(parents=True)
+    (broken / "src/benchweave/presentation/other").mkdir(parents=True)
+    document = json.loads((ROOT / "standards/standards-manifest.json").read_bytes())
+    entry = document["standards"][0]
+    # Two non-contracts paths sharing a basename: both map to <id>/contracts.py
+    # in the bundle - a silent file drop without the collision guard.
+    entry["normative"] = [
+        "src/benchweave/presentation/contracts.py",
+        "src/benchweave/presentation/other/contracts.py",
+    ]
+    document["standards"] = [entry]
+    shutil.copy(
+        ROOT / "src/benchweave/presentation/contracts.py",
+        broken / "src/benchweave/presentation/contracts.py",
+    )
+    shutil.copy(
+        ROOT / "src/benchweave/presentation/contracts.py",
+        broken / "src/benchweave/presentation/other/contracts.py",
+    )
+    (broken / "standards/standards-manifest.json").write_text(json.dumps(document))
+
+    with pytest.raises(StandardsError, match="normative_bundle_path_collision"):
+        export_bundle(broken, tmp_path / "out")
 
 
 def test_export_refuses_a_missing_normative_file(tmp_path: Path) -> None:
