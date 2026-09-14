@@ -79,7 +79,7 @@ jobs:
       - name: Renderer freshness gate
         run: |
           npm --prefix ui run build:preview
-          git diff --exit-code -- packages/sdk/src/benchweave_sdk/preview_assets
+          git -C packages/sdk diff --exit-code -- src/benchweave_sdk/preview_assets
 
       - name: Dependency audit
         working-directory: ui
