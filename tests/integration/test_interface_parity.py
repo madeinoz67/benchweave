@@ -180,6 +180,11 @@ def _bearer(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+def _masked_error(envelope: dict[str, Any]) -> dict[str, Any]:
+    """Error object minus the per-envelope ``correlation_id`` mint (D14)."""
+    return {k: v for k, v in envelope["error"].items() if k != "correlation_id"}
+
+
 # --- module gateway: one live app, both transports, seeded state -------------
 
 
@@ -884,9 +889,7 @@ def test_failure_classes_match_on_both_transports(
         # D14 cheap half (WP09): the id is minted per envelope — the two
         # transports are separate requests, so two distinct mints; every
         # other error field must match exactly.
-        rest_masked = {k: v for k, v in rest_json["error"].items() if k != "correlation_id"}
-        mcp_masked = {k: v for k, v in mcp_json["error"].items() if k != "correlation_id"}
-        assert rest_masked == mcp_masked, code
+        assert _masked_error(rest_json) == _masked_error(mcp_json), code
         assert _CORRELATION_ID.match(rest_json["error"]["correlation_id"]), code
         assert _CORRELATION_ID.match(mcp_json["error"]["correlation_id"]), code
 
@@ -1003,6 +1006,19 @@ TYPE_CONFUSION_CASES: dict[str, dict[str, Any]] = {
             "reason": "type-confusion pin",
         }),
         "token": ADMIN,  # admin ops are REST-only by catalog (no MCP twin)
+    },
+    "change_apply_token": {
+        # ISC-5 whole-branch pin: the D2 errata's string-typed
+        # ``approver_token``, wrong-typed, is ``invalid_request`` at the
+        # catalog 400 — seam validation precedes the change lookup, so an
+        # unknown change id is fine here.
+        "rest": ("post", "/v1/admin/changes/chg-unknown/apply", {
+            "request_id": "req-tc-apply-token",
+            "expected_generation": 1,
+            "approval_ref": {"id": "approval-x", "version": "1", "sha256": "0" * 64},
+            "approver_token": 12345,  # integer where the 1.1.1 corpus declares string
+        }),
+        "token": ADMIN,
     },
 }
 
@@ -1359,9 +1375,7 @@ def test_event_gap_after_retention_trim(gateway: SimpleNamespace) -> None:
     assert rest_json["error"]["code"] == "event_gap"
     # D14 cheap half (WP09): per-envelope mint — mask the id, require a
     # valid mint on each side, every other field identical.
-    rest_masked = {k: v for k, v in rest_json["error"].items() if k != "correlation_id"}
-    mcp_masked = {k: v for k, v in mcp_json["error"].items() if k != "correlation_id"}
-    assert mcp_masked == rest_masked
+    assert _masked_error(rest_json) == _masked_error(mcp_json)
     assert _CORRELATION_ID.match(rest_json["error"]["correlation_id"])
     assert _CORRELATION_ID.match(mcp_json["error"]["correlation_id"])
 
@@ -1390,9 +1404,7 @@ def test_cross_principal_request_id_isolation(gateway: SimpleNamespace) -> None:
     assert mcp_json["ok"] is False
     # D14 cheap half (WP09): per-envelope mint — mask the id, require a
     # valid mint on each side, every other field identical.
-    rest_masked = {k: v for k, v in rest_json["error"].items() if k != "correlation_id"}
-    mcp_masked = {k: v for k, v in mcp_json["error"].items() if k != "correlation_id"}
-    assert mcp_masked == rest_masked
+    assert _masked_error(rest_json) == _masked_error(mcp_json)
     assert _CORRELATION_ID.match(rest_json["error"]["correlation_id"])
     assert _CORRELATION_ID.match(mcp_json["error"]["correlation_id"])
 
