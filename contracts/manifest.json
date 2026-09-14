@@ -36,6 +36,11 @@
       "sha256": "32aa34af00cb3941c73ad9efde1fd54121823e51d61144311f3c79c4c8fa3073"
     },
     {
+      "path": "plugin-ui-preview-v1/preview-document.schema.json",
+      "source": "docs/plugin-ui-preview-v1/preview-document.schema.json",
+      "sha256": "a0b474824c1d0bfad5f3eb80e946bf0ddbdc0c024c7ed6b9f25ac5e81ac0746e"
+    },
+    {
       "path": "execution-v1.0.0/bench.schema.json",
       "source": "docs/execution-v1.0.0/bench.schema.json",
       "sha256": "c12b0730fe6606560ae4e85be85d8d8710eda11202c2b9771ac1648f09f40b77"

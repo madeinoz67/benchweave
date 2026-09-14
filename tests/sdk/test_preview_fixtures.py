@@ -14,6 +14,7 @@ from jsonschema import Draft202012Validator
 ROOT = Path(__file__).resolve().parents[2]
 SDK = ROOT / "packages/sdk/src"
 FIXTURE_SCHEMA = ROOT / "contracts/plugin-ui-preview-v1/fixture.schema.json"
+DOCUMENT_SCHEMA = ROOT / "contracts/plugin-ui-preview-v1/preview-document.schema.json"
 sys.path.insert(0, str(SDK))
 
 
@@ -133,20 +134,7 @@ def test_preview_observation_rejects_non_finite_values() -> None:
         observation.to_document()
 
 
-@pytest.mark.parametrize(
-    "scenario_id",
-    [
-        "normal",
-        "loading",
-        "stale",
-        "disconnected",
-        "warning",
-        "critical",
-        "trip",
-        "recovery",
-        "request-rejected",
-    ],
-)
+@pytest.mark.parametrize("scenario_id", sorted(fixtures_module().BASELINE_IDS))
 def test_baseline_scenarios_are_always_generated(scenario_id: str) -> None:
     fixtures = fixtures_module()
 
@@ -198,3 +186,38 @@ def test_preview_model_is_built_from_the_validated_candidate(tmp_path: Path) -> 
     assert len(model.scenarios) == 11
     author_ids = {scenario.id for scenario in model.scenarios if not scenario.baseline}
     assert author_ids == {"example-normal", "example-warning"}
+
+    assert fixtures.__file__ is not None
+    inventory = json.loads(
+        (Path(fixtures.__file__).with_name("preview_assets") / "inventory.json").read_bytes()
+    )
+    assert model.renderer_version == inventory["renderer_version"]
+
+
+def test_served_preview_document_conforms_to_wire_schema(tmp_path: Path) -> None:
+    presentation = importlib.import_module("benchweave_sdk.presentation")
+    scaffold = importlib.import_module("benchweave_sdk.scaffold")
+    fixtures = fixtures_module()
+    project = tmp_path / "plugin"
+    scaffold.create_project(project, "example_plugin")
+    presentation.create_ui_resources(project, "example_plugin")
+    package = project / "src/example_plugin"
+    candidate = presentation.load_validated_preview_inputs(
+        package / "presentation.json",
+        package / "descriptor.json",
+        package,
+        package / "binding-catalogue.json",
+        firmware="1.0.0",
+        features=frozenset(),
+        panels=frozenset(),
+    )
+    document = fixtures.build_preview_model(candidate).to_document()
+
+    schema = json.loads(DOCUMENT_SCHEMA.read_bytes())
+    Draft202012Validator.check_schema(schema)
+    validator = Draft202012Validator(schema)
+    assert not list(validator.iter_errors(document))
+
+    poisoned = json.loads(json.dumps(document))
+    poisoned["scenarios"][0]["expected_severity"] = "catastrophic"
+    assert list(validator.iter_errors(poisoned))
