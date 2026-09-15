@@ -31,7 +31,10 @@ _SESSION_DELAY_S: float = 0.05
 # ...and one bounded telemetry drain before each commanded call. The captured
 # cycle is five fields at ~2 Hz (a frame per ~100 ms), so a window above the
 # inter-frame gap both empties the reply path and captures at least one frame
-# while staying well inside the adapter's 1 s soft operation deadline.
+# while staying well inside the adapter's 1 s soft operation deadline. The
+# window is frame-atomic (WP11 W1): it bounds when the drain stops STARTING
+# receives — a frame in flight at the edge completes, so the boundary can
+# never desync the stream and poison the session.
 _DRAIN_WINDOW_S: float = 0.15
 
 
@@ -197,10 +200,15 @@ class _CorrelatedWire:
     streaming reality: receive() returns exactly the first frame whose field
     matches the field the adapter is about to request, and every other
     frame — telemetry by definition on this protocol — is absorbed through
-    the same PARAMETERS mapping as the drain. Malformed frames still raise
-    ProtocolError (this wrapper empties a healthy stream, it must not hide
-    corruption), and an exhausted transport inside a commanded window fails
-    the exchange as the protocol failure the adapter already pins.
+    the same PARAMETERS mapping as the drain. When telemetry itself carries
+    the requested field (the ~2 Hz cycle includes 195), that telemetry frame
+    IS the reply: the protocol offers no reply marker, so first-field-match
+    is the only rule available, and the superseded reply frame surfaces
+    through the absorb path as telemetry (WP11 W2 pin). Malformed frames
+    still raise ProtocolError (this wrapper empties a healthy stream, it
+    must not hide corruption), and an exhausted transport inside a
+    commanded window fails the exchange as the protocol failure the
+    adapter already pins.
     """
 
     def __init__(self, scope: _Scope, absorb: Callable[[Packet, float, str], None]) -> None:

@@ -860,6 +860,81 @@ def test_drained_telemetry_surfaces_in_the_reading_shape(
     asyncio.run(scenario())
 
 
+def test_drain_edge_straddle_never_poisons_the_session(
+    trailing_transport: Any,
+) -> None:
+    """WP10 Forge W1 replayed: a telemetry frame straddles the drain window
+    edge — header bytes inside the window, tail bytes 0.25 s later against
+    the 0.15 s drain. Cancel-at-deadline abandoned the frame mid-receive;
+    the stale buffered bytes then failed header validation inside the
+    commanded window AFTER dispatch, and the ambiguity doctrine poisoned
+    the session permanently. A frame-atomic drain keeps the session
+    healthy on one plugin instance."""
+
+    async def scenario() -> None:
+        telemetry_195 = bytes.fromhex(
+            "f0 a1 c3 0c 00 00 00 00 00 00 00 00 00 00 00 00 cf"
+        )
+        host = TransportHost(trailing_transport)
+        plugin = create_plugin()
+        await plugin.open(build_descriptor(), host, Context())
+        identified = await plugin.execute(request(), Context())
+        validate_result(identified)
+        assert identified["status"] == "ok"
+        inner = trailing_transport.receive
+        state = {"stage": 0}
+
+        async def straddling(max_bytes: int) -> bytes:
+            gets = sum(
+                1 for data in trailing_transport.sent if data[:2] == bytes((0xF1, GET))
+            )
+            if state["stage"] == 0 and trailing_transport.awake and gets >= 2:
+                state["stage"] = 1
+                return telemetry_195[:8]
+            if state["stage"] == 1:
+                state["stage"] = 2
+                await asyncio.sleep(0.25)
+                return telemetry_195[8:]
+            return bytes(await inner(max_bytes))
+
+        trailing_transport.receive = straddling
+        first = await plugin.execute(request("read", parameter="voltage"), Context())
+        validate_result(first)
+        assert first["status"] == "ok"
+        second = await plugin.execute(request("read", parameter="voltage"), Context())
+        validate_result(second)
+        assert second["status"] == "ok"
+
+    asyncio.run(scenario())
+
+
+def test_same_field_telemetry_frame_is_the_reply(same_field_transport: Any) -> None:
+    """W2 pin: the protocol has no reply marker, so the correlated wire
+    accepts the FIRST frame carrying the requested field — when the ~2 Hz
+    telemetry cycle includes that field, the telemetry frame IS the reply.
+    The reading is measurement-honest (device-reported, receipt-stamped);
+    the superseded reply frame stays in the stream and is absorbed as
+    telemetry by a later window (not asserted here — the mock's infinite
+    cycle makes latest-wins nondeterministic beyond this window)."""
+
+    async def scenario() -> None:
+        host = TransportHost(same_field_transport)
+        plugin = create_plugin()
+        await plugin.open(build_descriptor(), host, Context())
+        identified = await plugin.execute(request(), Context())
+        validate_result(identified)
+        assert identified["status"] == "ok"
+        read = await plugin.execute(request("read", parameter="voltage"), Context())
+        validate_result(read)
+        assert read["status"] == "ok"
+        # The telemetry frame (0 V, output off) won the same-field race —
+        # not the 2.5 V reply queued behind it in the same window.
+        assert read["data"]["value"] == 0.0
+        assert same_field_transport.awake
+
+    asyncio.run(scenario())
+
+
 def test_session_constants_stay_evidence_backed() -> None:
     from benchweave_fnirsi_dps150.adapter import _DRAIN_WINDOW_S, _SESSION_DELAY_S
 

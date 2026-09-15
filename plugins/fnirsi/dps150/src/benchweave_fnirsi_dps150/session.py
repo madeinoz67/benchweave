@@ -17,7 +17,6 @@ device's wake is proven only by the traffic that follows.
 """
 
 import asyncio
-import contextlib
 import math
 from collections.abc import Awaitable, Callable
 
@@ -64,10 +63,16 @@ async def drain_telemetry(transport: Transport, *, window_s: float) -> list[Pack
     The drain-before-commanded-call primitive for the adapter: the live
     device streams unsolicited telemetry around its command replies, so a
     caller drains whatever complete frames arrive inside ``window_s`` and
-    discards the trailing partial frame. EOF (b"") ends the drain early; a
-    receive still pending at the deadline is cancelled. Malformed input is
-    not discarded — the strict decoder's ProtocolError propagates, because
-    the drain's job is to empty a healthy stream, not to hide corruption.
+    discards the trailing partial frame. The window is FRAME-ATOMIC: it
+    decides when the drain stops STARTING receives, and a receive already
+    in flight when the window closes runs to completion, so the stream is
+    never abandoned mid-frame (WP11 W1: the old cancel-at-deadline window
+    could strand a half-consumed frame and desync every later reader).
+    Completion of an in-flight frame is bounded by the caller's operation
+    deadline, not this window; the overshoot is at most one frame. EOF
+    (b"") ends the drain early. Malformed input is not discarded — the
+    strict decoder's ProtocolError propagates, because the drain's job is
+    to empty a healthy stream, not to hide corruption.
     """
     if (
         type(window_s) not in (float, int)
@@ -75,18 +80,19 @@ async def drain_telemetry(transport: Transport, *, window_s: float) -> list[Pack
         or not math.isfinite(window_s)
     ):
         raise ValueError("Window must be a finite positive number <=3600 seconds")
-    deadline = asyncio.get_running_loop().time() + window_s
+    loop = asyncio.get_running_loop()
+    end_at = loop.time() + window_s
     decoder = FrameDecoder()
     packets: list[Packet] = []
-    with contextlib.suppress(TimeoutError):
-        async with asyncio.timeout_at(deadline):
-            while True:
-                # A yield enforces the deadline even if a mock/provider
-                # returns fragments synchronously without yielding to the
-                # event loop.
-                await asyncio.sleep(0)
-                chunk = await transport.receive(260)
-                if chunk == b"":
-                    break
-                packets.extend(decoder.feed(chunk))
+    while True:
+        if loop.time() >= end_at:
+            break
+        # A yield keeps the loop cooperative even if a mock/provider
+        # returns fragments synchronously without yielding to the event
+        # loop.
+        await asyncio.sleep(0)
+        chunk = await transport.receive(260)
+        if chunk == b"":
+            break
+        packets.extend(decoder.feed(chunk))
     return packets

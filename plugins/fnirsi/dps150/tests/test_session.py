@@ -78,12 +78,17 @@ def test_open_session_default_pacing_uses_real_sleep() -> None:
     asyncio.run(scenario())
 
 
-def test_drain_collects_frames_until_window_ends() -> None:
+def test_drain_consumes_all_offered_frames_until_eof() -> None:
+    """Re-pinned for the frame-atomic window: with EOF available, the drain
+    collects every offered frame and ends early on b"" — the window never
+    interrupts a frame, so nothing offered is left behind."""
+
     async def scenario() -> None:
-        transport = ScriptedTransport([TELEMETRY] * 3)
+        transport = ScriptedTransport([TELEMETRY] * 3, eof=True)
         packets = await drain_telemetry(transport, window_s=0.02)
         assert [packet.field for packet in packets] == [195, 195, 195]
         assert not transport.chunks
+        assert transport.reads == 4  # three frames, then the EOF that ends
 
     asyncio.run(scenario())
 
@@ -93,7 +98,7 @@ def test_drain_reassembles_fragmented_frames(cut: int) -> None:
     stream = TELEMETRY + TELEMETRY
 
     async def scenario() -> None:
-        transport = ScriptedTransport([stream[:cut], stream[cut:]])
+        transport = ScriptedTransport([stream[:cut], stream[cut:]], eof=True)
         packets = await drain_telemetry(transport, window_s=0.01)
         assert [packet.field for packet in packets] == [195, 195]
 
@@ -103,7 +108,7 @@ def test_drain_reassembles_fragmented_frames(cut: int) -> None:
 def test_drain_discards_partial_tail() -> None:
     async def scenario() -> None:
         partial = bytes.fromhex("f0 a1 c3 0c")
-        transport = ScriptedTransport([TELEMETRY, partial])
+        transport = ScriptedTransport([TELEMETRY, partial], eof=True)
         packets = await drain_telemetry(transport, window_s=0.01)
         assert [packet.field for packet in packets] == [195]
 
@@ -117,6 +122,51 @@ def test_drain_stops_at_eof_before_window_edge() -> None:
         packets = await drain_telemetry(transport, window_s=2)
         assert [packet.field for packet in packets] == [195, 195]
         assert asyncio.get_running_loop().time() - started < 1
+
+    asyncio.run(scenario())
+
+
+class DelayedTailTransport:
+    """Replays the WP10 W1 window edge at the session layer: one complete
+    frame inside the window, whose successor's bytes only land after the
+    window has closed. Schedule offsets are relative to construction."""
+
+    def __init__(self, chunks_at: list[tuple[float, bytes]]) -> None:
+        self._schedule = list(chunks_at)
+        self._started = asyncio.get_running_loop().time()
+
+    async def send(self, data: bytes) -> None:
+        raise AssertionError("the session layer never sends while draining")
+
+    async def receive(self, max_bytes: int) -> bytes:
+        if not self._schedule:
+            return b""
+        at, chunk = self._schedule.pop(0)
+        target = self._started + at
+        now = asyncio.get_running_loop().time()
+        if target > now:
+            await asyncio.sleep(target - now)
+        return chunk
+
+
+def test_drain_window_edge_is_frame_atomic() -> None:
+    """W1: a frame whose bytes straddle the window edge completes — the
+    window bounds frame starts, never a frame already in flight. Old
+    cancel-at-deadline behaviour abandoned the pending receive mid-frame
+    and left the stream misaligned for the next reader."""
+
+    async def scenario() -> None:
+        transport = DelayedTailTransport(
+            [
+                (0.0, TELEMETRY),
+                (0.25, TELEMETRY),
+            ]
+        )
+        packets = await drain_telemetry(transport, window_s=0.1)
+        assert [packet.field for packet in packets] == [195, 195]
+        # The stream stays aligned: the next reader sees a clean EOF, not a
+        # fragment of the frame the window edge interrupted.
+        assert await transport.receive(260) == b""
 
     asyncio.run(scenario())
 

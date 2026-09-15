@@ -101,10 +101,18 @@ class HandshakingTransport:
     cycle.
     """
 
-    def __init__(self, *, trailing_telemetry: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        trailing_telemetry: bool = False,
+        trailing_tail: bool = True,
+        get_overrides: dict[int, bytes] | None = None,
+    ) -> None:
         self.sent: list[bytes] = []
         self.awake = False
         self.trailing_telemetry = trailing_telemetry
+        self.trailing_tail = trailing_tail
+        self._get_overrides = get_overrides or {}
         self._diverged = False
         self._preamble = bytearray()
         self._replies: deque[bytes] = deque()
@@ -138,7 +146,7 @@ class HandshakingTransport:
         if data[:2] != bytes((0xF1, GET)):
             return
         try:
-            payload = _GET_PAYLOADS[data[2]]
+            payload = self._get_overrides.get(data[2]) or _GET_PAYLOADS[data[2]]
         except KeyError:
             raise ValueError(f"no HandshakingTransport reply for field {data[2]}") from None
         body = bytes((data[2], len(payload))) + payload
@@ -147,9 +155,11 @@ class HandshakingTransport:
             self._replies.append(reply)
             return
         front = _TELEMETRY_CYCLE[0]
-        tail = _TELEMETRY_CYCLE[self._cycle % len(_TELEMETRY_CYCLE)]
-        self._cycle += 1
-        self._replies.append(front + reply + tail)
+        entry = front + reply
+        if self.trailing_tail:
+            entry += _TELEMETRY_CYCLE[self._cycle % len(_TELEMETRY_CYCLE)]
+            self._cycle += 1
+        self._replies.append(entry)
 
 
 @pytest.fixture
@@ -168,3 +178,16 @@ def trailing_transport() -> HandshakingTransport:
     live-stream.jsonl "diagnosis-final".
     """
     return HandshakingTransport(trailing_telemetry=True)
+
+
+@pytest.fixture
+def same_field_transport() -> HandshakingTransport:
+    """A woken device whose GET reply for a field differs from its telemetry
+    for the same field — the W2 pin: with no reply marker in the protocol,
+    the first same-field frame in the commanded window IS the reply, so the
+    telemetry frame must win and the superseded reply must surface through
+    the absorb path as telemetry."""
+    overrides = {195: struct.pack("<3f", 2.5, 0.5, 1.25)}
+    return HandshakingTransport(
+        trailing_telemetry=True, trailing_tail=False, get_overrides=overrides
+    )
