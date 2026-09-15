@@ -121,9 +121,7 @@ def test_drain_stops_at_eof_before_window_edge() -> None:
     asyncio.run(scenario())
 
 
-@pytest.mark.parametrize(
-    "window_s", [0, -1, True, float("nan"), float("inf"), "1", 3601]
-)
+@pytest.mark.parametrize("window_s", [0, -1, True, float("nan"), float("inf"), "1", 3601])
 def test_invalid_window_has_no_io(window_s: object) -> None:
     async def scenario() -> None:
         transport = ScriptedTransport([])

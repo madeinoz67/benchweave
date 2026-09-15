@@ -88,11 +88,23 @@ class HandshakingTransport:
     cycle, one whole frame per receive. SETs and session frames are recorded
     but draw no reply, matching the client's dispatch-only writes; a GET for
     a field with no configured payload is a mock-configuration error.
+
+    ``trailing_telemetry`` mode models the steady-state streaming device from
+    live-stream.jsonl "diagnosis-final": the ~2 Hz stream shares the
+    commanded receive window with the reply, so each GET's answer window
+    holds telemetry ahead of and behind the reply (connect-v2.jsonl
+    identity-222 captured one 171-byte window with the reply plus fifteen
+    telemetry frames). The frame in flight when the pre-call drain closes is
+    pinned to the cycle's captured 195 V/A/W lead — its live position in the
+    cycle is a timing race, but a regression test must present the window
+    that poisons deterministically — and the trailing frame continues the
+    cycle.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, trailing_telemetry: bool = False) -> None:
         self.sent: list[bytes] = []
         self.awake = False
+        self.trailing_telemetry = trailing_telemetry
         self._diverged = False
         self._preamble = bytearray()
         self._replies: deque[bytes] = deque()
@@ -130,10 +142,29 @@ class HandshakingTransport:
         except KeyError:
             raise ValueError(f"no HandshakingTransport reply for field {data[2]}") from None
         body = bytes((data[2], len(payload))) + payload
-        self._replies.append(bytes((0xF0, GET)) + body + bytes((sum(body) % 256,)))
+        reply = bytes((0xF0, GET)) + body + bytes((sum(body) % 256,))
+        if not self.trailing_telemetry:
+            self._replies.append(reply)
+            return
+        front = _TELEMETRY_CYCLE[0]
+        tail = _TELEMETRY_CYCLE[self._cycle % len(_TELEMETRY_CYCLE)]
+        self._cycle += 1
+        self._replies.append(front + reply + tail)
 
 
 @pytest.fixture
 def handshaking_transport() -> HandshakingTransport:
     """A device that stays silent until the exact captured handshake."""
     return HandshakingTransport()
+
+
+@pytest.fixture
+def trailing_transport() -> HandshakingTransport:
+    """A woken device whose commanded windows interleave live telemetry.
+
+    Trailing-telemetry mode: every GET reply shares its receive window with
+    the ~2 Hz stream — one frame in flight ahead of the reply, the cycle
+    continuing behind it — the shape that poisoned the live session in
+    live-stream.jsonl "diagnosis-final".
+    """
+    return HandshakingTransport(trailing_telemetry=True)

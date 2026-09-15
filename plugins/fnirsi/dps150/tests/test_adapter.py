@@ -26,6 +26,7 @@ def commanded_sends(calls: list[tuple[dict[str, Any], Any]]) -> list[bytes]:
         if t["kind"] == "stream_send" and t["data"] not in SESSION_FRAMES
     ]
 
+
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = ROOT / "src/benchweave_fnirsi_dps150"
 SCHEMAS = ROOT / "contracts/otdp-v0.3.0"
@@ -753,6 +754,70 @@ def test_commanded_read_survives_interleaved_telemetry(
             assert result["data"]["parameter"] == "voltage"
             assert result["data"]["value"] == 0.0
         assert handshaking_transport.awake
+
+    asyncio.run(scenario())
+
+
+def test_trailing_telemetry_never_poisons_sequential_reads(
+    trailing_transport: Any,
+) -> None:
+    """live-stream.jsonl "diagnosis-final" replayed: telemetry trails — and
+    races ahead of — the reply inside the commanded receive window, so the
+    Client's strict one-frame view poisoned the whole instance after the
+    first interleaved window (34 ok / 1 unknown / 235 instant errors on the
+    live device). Correlated reply consumption must keep identify and N
+    sequential reads healthy on ONE plugin instance."""
+
+    async def scenario() -> None:
+        host = TransportHost(trailing_transport)
+        plugin = create_plugin()
+        await plugin.open(build_descriptor(), host, Context())
+        result = await plugin.execute(request(), Context())
+        validate_result(result)
+        assert result["status"] == "ok"
+        assert result["data"]["model"] == "DPS-150"
+        for _ in range(5):
+            read = await plugin.execute(request("read", parameter="input_voltage"), Context())
+            validate_result(read)
+            assert read["status"] == "ok"
+            assert read["data"]["parameter"] == "input_voltage"
+            assert read["data"]["value"] == pytest.approx(20.067, abs=1e-3)
+        assert trailing_transport.awake
+
+    asyncio.run(scenario())
+
+
+def test_interleaved_frames_absorbed_from_commanded_windows_still_surface(
+    trailing_transport: Any,
+) -> None:
+    """Telemetry frames absorbed out of a commanded reply window surface
+    through latest_telemetry() in the reading shape — same PARAMETERS
+    mapping as the drain, one row per parameter, nothing discarded."""
+
+    async def scenario() -> None:
+        host = TransportHost(trailing_transport)
+        plugin = create_plugin()
+        await plugin.open(build_descriptor(), host, Context())
+        identified = await plugin.execute(request(), Context())
+        assert identified["status"] == "ok"
+        for parameter in ("input_voltage", "temperature"):
+            read = await plugin.execute(request("read", parameter=parameter), Context())
+            validate_result(read)
+            assert read["status"] == "ok"
+        rows = plugin.latest_telemetry()
+        by_parameter = {row["parameter"]: row for row in rows}
+        assert set(by_parameter) == {
+            "voltage",
+            "current",
+            "power",
+            "input_voltage",
+            "temperature",
+        }
+        assert by_parameter["voltage"]["value"] == pytest.approx(0.0)
+        assert by_parameter["input_voltage"]["value"] == pytest.approx(20.067, abs=1e-3)
+        for row in rows:
+            assert row["quality"] == "valid" and row["source"] == "device"
+            assert row["age_ms"] >= 0
 
     asyncio.run(scenario())
 

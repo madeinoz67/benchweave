@@ -6,19 +6,22 @@ truth lives here per the WP10 architecture: the device is silent until the
 evidence-backed two-frame handshake (fixtures/protocols/dps150/), its wake is
 power-cycle-bound and survives reconnection, and unsolicited ~2 Hz telemetry
 interleaves with request/response — so the adapter establishes the session at
-first commanded use and drains a bounded telemetry window before each
-commanded call, buffering frames into its measurement surface.
+first commanded use, drains a bounded telemetry window before each commanded
+call, and consumes each commanded reply window by correlation: the first
+frame matching the requested field is the reply, and every other frame in
+the window is telemetry, buffered into its measurement surface.
 """
 
 import asyncio
 import json
 import math
 import re
+from collections.abc import Callable
 from datetime import datetime, timedelta
 from typing import Any, Protocol
 
 from .client import Client, GetPayload
-from .codec import ProtocolError, Value, decode_value
+from .codec import Packet, ProtocolError, Value, decode_packet, decode_value
 from .descriptor import PARAMETERS, build_descriptor
 from .session import drain_telemetry, open_session
 
@@ -137,18 +140,28 @@ class _Scope:
         return header + body
 
     async def receive(self, max_bytes: int) -> bytes:
+        """One strictly framed complete frame; no offered bytes are an error.
+
+        Satisfies the library Transport contract the session opener types
+        against (_Scope is what open_session receives). The commanded
+        Client path no longer uses this strict view — on a live streaming
+        device a commanded window legitimately holds interleaved telemetry,
+        which is _CorrelatedWire's job — so exhaustion here is a failed
+        exchange, exactly as it was when the Client consumed _Scope raw.
+        """
         frame = await self._frame(max_bytes)
         if frame is None:
             raise ProtocolError("Incomplete or oversized exact receive")
         return frame
 
     async def receive_stream(self, max_bytes: int) -> bytes:
-        """A complete telemetry frame, or b"" when no bytes are offered.
+        """A complete frame, or b"" when no bytes are offered.
 
-        Framing matches receive(), but an exhausted transport ends a
-        telemetry drain quietly (the session library reads b"" as
-        end-of-stream) while corrupt frames still raise ProtocolError: a
-        drain empties a healthy stream, it must not hide corruption.
+        Framing matches receive(); an exhausted transport ends a telemetry
+        drain or a correlated receive window quietly (the session library
+        reads b"" as end-of-stream) while corrupt frames still raise
+        ProtocolError: a receive window empties a healthy stream, it must
+        not hide corruption.
         """
         frame = await self._frame(max_bytes)
         return b"" if frame is None else frame
@@ -170,6 +183,56 @@ class _TelemetryDrain:
 
     async def receive(self, max_bytes: int) -> bytes:
         return await self._scope.receive_stream(max_bytes)
+
+
+class _CorrelatedWire:
+    """_Scope as the Client's Transport on a live streaming session.
+
+    The live device interleaves ~2 Hz telemetry with command replies inside
+    one commanded receive window (connect-v2.jsonl; live-stream.jsonl
+    "diagnosis-final"): a frame in flight when the pre-call drain closes can
+    land ahead of the reply, and the stream continues behind it. The
+    Client's one-frame rule is correct for a quiescent session, so this
+    wrapper keeps the library's contract honest by never showing it the
+    streaming reality: receive() returns exactly the first frame whose field
+    matches the field the adapter is about to request, and every other
+    frame — telemetry by definition on this protocol — is absorbed through
+    the same PARAMETERS mapping as the drain. Malformed frames still raise
+    ProtocolError (this wrapper empties a healthy stream, it must not hide
+    corruption), and an exhausted transport inside a commanded window fails
+    the exchange as the protocol failure the adapter already pins.
+    """
+
+    def __init__(self, scope: _Scope, absorb: Callable[[Packet, float, str], None]) -> None:
+        self._scope = scope
+        self._absorb = absorb
+        self._expected: int | None = None
+
+    def expect(self, field: int) -> None:
+        """Name the field the next Client read will request."""
+        self._expected = field
+
+    async def send(self, data: bytes) -> None:
+        await self._scope.send(data)
+
+    async def receive(self, max_bytes: int) -> bytes:
+        expected = self._expected
+        if expected is None:
+            raise AssertionError("expect() must precede each commanded read")
+        while True:
+            frame = await self._scope.receive_stream(max_bytes)
+            if frame == b"":
+                # A commanded window on this device is never legitimately
+                # empty: the awake device always answers and always streams,
+                # so exhaustion inside the window is a failed exchange —
+                # surfaced as the protocol failure the adapter already pins,
+                # not reclassified as transport loss (b"" EOF stays a
+                # library-level truth for raw transports).
+                raise ProtocolError("Commanded window offered no bytes")
+            packet = decode_packet(frame)
+            if packet.field == expected:
+                return frame
+            self._absorb(packet, self._scope.received_monotonic, self._scope.received_at)
 
 
 class DevicePlugin:
@@ -199,14 +262,37 @@ class DevicePlugin:
             raise ValueError("Descriptor differs from the reviewed adapter contract")
         self._opened = True
 
+    def _absorb_stamped(self, packet: Packet, observed_monotonic: float, observed_at: str) -> None:
+        """Buffer one telemetry packet into the measurement surface.
+
+        The same PARAMETERS mapping as a commanded read: field 195 surfaces
+        as voltage, current and power (V/A/W), 192 as input_voltage, 196 as
+        temperature; one row per parameter, latest frame wins.
+        """
+        decoded: Value | None = None
+        for name, field, component, _, _, _, _ in PARAMETERS:
+            if field != packet.field:
+                continue
+            if decoded is None:
+                decoded = decode_value(packet)
+            value = decoded
+            if component is not None:
+                if not isinstance(decoded, tuple):
+                    raise ProtocolError("Expected voltage/current/power tuple")
+                value = decoded[component]
+            self._telemetry[name] = (value, observed_monotonic, observed_at)
+
     async def _drain(self, scope: _Scope) -> None:
         """Buffer one bounded telemetry window before a commanded call.
 
-        The live device streams unsolicited telemetry around its replies, so
-        the Client's one-frame rule holds only on a drained session. Frames
-        are buffered, never discarded: fields carrying an adapter parameter
-        surface through latest_telemetry() using the same PARAMETERS mapping
-        as a commanded read; rows are stamped with the window's last frame
+        Front protection and telemetry freshness: the live device streams
+        unsolicited telemetry around its replies, so the window empties the
+        reply path ahead of the request and captures fresh frames; frames
+        that still interleave with the reply itself are consumed by
+        _CorrelatedWire inside the commanded window. Buffered frames are
+        never discarded: fields carrying an adapter parameter surface
+        through latest_telemetry() using the same PARAMETERS mapping as a
+        commanded read; rows are stamped with the window's last frame
         receipt. Malformed frames propagate (ProtocolError), per the drain's
         contract of emptying only a healthy stream.
         """
@@ -216,18 +302,7 @@ class DevicePlugin:
         observed_monotonic = scope.received_monotonic
         observed_at = scope.received_at
         for packet in packets:
-            decoded: Value | None = None
-            for name, field, component, _, _, _, _ in PARAMETERS:
-                if field != packet.field:
-                    continue
-                if decoded is None:
-                    decoded = decode_value(packet)
-                value = decoded
-                if component is not None:
-                    if not isinstance(decoded, tuple):
-                        raise ProtocolError("Expected voltage/current/power tuple")
-                    value = decoded[component]
-                self._telemetry[name] = (value, observed_monotonic, observed_at)
+            self._absorb_stamped(packet, observed_monotonic, observed_at)
 
     def latest_telemetry(self) -> tuple[dict[str, Any], ...]:
         """Latest drained telemetry as rows in the adapter's reading shape.
@@ -341,15 +416,23 @@ class DevicePlugin:
                     # an error.
                     await open_session(scope, delay_s=_SESSION_DELAY_S)
                     self._established = True
-                client = Client(scope, get_payload=GetPayload.EMPTY)
+                wire = _CorrelatedWire(scope, self._absorb_stamped)
+                client = Client(wire, get_payload=GetPayload.EMPTY)
+
+                async def correlated_read(field: int) -> Value:
+                    # One act: name the field on the wire, then ask the Client
+                    # for it, so the correlation can never go stale.
+                    wire.expect(field)
+                    return await client.read(field, timeout=scope.remaining())
+
                 if verb == "identify":
                     self._identified = False
                     await self._drain(scope)
-                    model = await client.read(222, timeout=scope.remaining())
+                    model = await correlated_read(222)
                     if model != "DPS-150":
                         raise _Failure("IDENTITY_MISMATCH", "Device model does not match DPS-150")
                     await self._drain(scope)
-                    firmware = await client.read(224, timeout=scope.remaining())
+                    firmware = await correlated_read(224)
                     if not isinstance(firmware, str):
                         raise ProtocolError("Invalid firmware identity")
                     data: dict[str, Any] = {
@@ -365,7 +448,7 @@ class DevicePlugin:
                     spec = next(p for p in PARAMETERS if p[0] == parameter)
                     _, field, component, kind, unit, _, choices = spec
                     await self._drain(scope)
-                    value = await client.read(field, timeout=scope.remaining())
+                    value = await correlated_read(field)
                     if component is not None:
                         if not isinstance(value, tuple):
                             raise ProtocolError("Expected voltage/current/power tuple")
