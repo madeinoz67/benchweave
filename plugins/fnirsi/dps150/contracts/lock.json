@@ -1,7 +1,7 @@
 {
   "repository": "https://github.com/madeinoz67/benchweave",
-  "revision": "ddcc3203f16a6e3b5d2fb3f4a0db184005f48993",
-  "directory": "docs/otdp-v0.3.0",
+  "revision": "084f89c6168aa20d2c014bd4f435afd90d0cb86c",
+  "directory": "standards/otdp-v0.3.0",
   "otdp_version": "0.3.0",
   "adapter_api_version": "1.1",
   "sha256": {

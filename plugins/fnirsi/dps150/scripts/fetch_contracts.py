@@ -2,8 +2,9 @@
 
 Fetch immutable OTDP inputs with SHA-256 verification. No core checkout required.
 Existing verified copies support offline use; mismatches fail without overwriting.
-Corpus relocation 2026-09-15: the canonical tree is now standards/otdp-v0.3.0;
-the next re-lock points lock directory there (old pinned revisions keep working).
+The fetch root is the lock's ``directory`` field (standards/otdp-v0.3.0 since
+the 2026-09-15 corpus consolidation; older locks pinned docs/ paths, and their
+pinned revisions keep those paths alive in git history).
 """
 
 import argparse
@@ -24,7 +25,10 @@ def main() -> None:
     revision = lock["revision"]
     if not re.fullmatch(r"[a-f0-9]{40}", revision):
         raise ValueError("An immutable full commit is required")
-    base = f"https://raw.githubusercontent.com/madeinoz67/benchweave/{revision}/docs/otdp-v0.3.0/"
+    directory = lock["directory"]
+    if not re.fullmatch(r"[a-z0-9_./-]+", directory) or ".." in directory:
+        raise ValueError("Invalid contract directory")
+    base = f"https://raw.githubusercontent.com/madeinoz67/benchweave/{revision}/{directory}/"
     destination = ROOT / "contracts/otdp-v0.3.0"
     for name, expected in lock["sha256"].items():
         if Path(name).name != name or not re.fullmatch(r"[a-f0-9]{64}", expected):
