@@ -1,7 +1,13 @@
 """Read-only OTDP 0.3.0 adapter, structurally implementing the documented 1.1 ABI.
 
 Only scoped host services perform I/O. No SDK, serial driver, background reader,
-handshake, retry, reconnection, or profile assurance is implied by this adapter.
+retry, reconnection, or profile assurance is implied by this adapter. Session
+truth lives here per the WP10 architecture: the device is silent until the
+evidence-backed two-frame handshake (fixtures/protocols/dps150/), its wake is
+power-cycle-bound and survives reconnection, and unsolicited ~2 Hz telemetry
+interleaves with request/response — so the adapter establishes the session at
+first commanded use and drains a bounded telemetry window before each
+commanded call, buffering frames into its measurement surface.
 """
 
 import asyncio
@@ -12,8 +18,18 @@ from datetime import datetime, timedelta
 from typing import Any, Protocol
 
 from .client import Client, GetPayload
-from .codec import ProtocolError
+from .codec import ProtocolError, Value, decode_value
 from .descriptor import PARAMETERS, build_descriptor
+from .session import drain_telemetry, open_session
+
+# Evidence-backed session constants (WP10; fixtures/protocols/dps150/): the
+# ~50 ms fire-and-forget pacing captured in connect-v2.jsonl...
+_SESSION_DELAY_S: float = 0.05
+# ...and one bounded telemetry drain before each commanded call. The captured
+# cycle is five fields at ~2 Hz (a frame per ~100 ms), so a window above the
+# inter-frame gap both empties the reply path and captures at least one frame
+# while staying well inside the adapter's 1 s soft operation deadline.
+_DRAIN_WINDOW_S: float = 0.15
 
 
 class OperationContext(Protocol):
@@ -82,7 +98,8 @@ class _Scope:
         if result != {}:
             raise ProtocolError("Invalid host send response")
 
-    async def _exact(self, size: int) -> bytes:
+    async def _receive_exact(self, size: int) -> bytes | None:
+        """One exact host receive; None when the transport offers no bytes."""
         self.remaining()
         result = await self.services.transfer(
             {"kind": "stream_receive", "max_bytes": size, "termination": "lf", "exact_bytes": size},
@@ -92,19 +109,67 @@ class _Scope:
         if not isinstance(result, dict) or set(result) != {"data"}:
             raise ProtocolError("Invalid host receive response")
         data = result["data"]
+        if data == b"":
+            return None
         if type(data) is not bytes or len(data) != size:
             raise ProtocolError("Incomplete or oversized exact receive")
         return data
 
-    async def receive(self, max_bytes: int) -> bytes:
-        header = await self._exact(4)
+    async def _exact(self, size: int) -> bytes:
+        data = await self._receive_exact(size)
+        if data is None:
+            raise ProtocolError("Incomplete or oversized exact receive")
+        return data
+
+    async def _frame(self, max_bytes: int) -> bytes | None:
+        """One header-validated complete frame; None if no bytes are offered."""
+        header = await self._receive_exact(4)
+        if header is None:
+            return None
         if header[:2] != b"\xf0\xa1" or header[3] + 5 > max_bytes:
             raise ProtocolError("Invalid frame header or length")
-        body = await self._exact(header[3] + 1)
+        body = await self._receive_exact(header[3] + 1)
+        if body is None:
+            raise ProtocolError("Incomplete or oversized exact receive")
         self.received_monotonic = self.services.monotonic()
         self.received_at = self.services.utc_now()
         self.remaining()
         return header + body
+
+    async def receive(self, max_bytes: int) -> bytes:
+        frame = await self._frame(max_bytes)
+        if frame is None:
+            raise ProtocolError("Incomplete or oversized exact receive")
+        return frame
+
+    async def receive_stream(self, max_bytes: int) -> bytes:
+        """A complete telemetry frame, or b"" when no bytes are offered.
+
+        Framing matches receive(), but an exhausted transport ends a
+        telemetry drain quietly (the session library reads b"" as
+        end-of-stream) while corrupt frames still raise ProtocolError: a
+        drain empties a healthy stream, it must not hide corruption.
+        """
+        frame = await self._frame(max_bytes)
+        return b"" if frame is None else frame
+
+
+class _TelemetryDrain:
+    """_Scope as the session library's Transport for bounded telemetry drains.
+
+    The drain never sends; receive yields exactly one complete frame per
+    call, so the library's decoder sees whole frames and an exhausted
+    transport (b"") ends the window early as it would on the raw Transport.
+    """
+
+    def __init__(self, scope: _Scope) -> None:
+        self._scope = scope
+
+    async def send(self, data: bytes) -> None:
+        raise AssertionError("the telemetry drain never sends")
+
+    async def receive(self, max_bytes: int) -> bytes:
+        return await self._scope.receive_stream(max_bytes)
 
 
 class DevicePlugin:
@@ -117,6 +182,8 @@ class DevicePlugin:
         self._failed = False
         self._busy = False
         self._identified = False
+        self._established = False
+        self._telemetry: dict[str, tuple[Value, float, str]] = {}
 
     async def open(
         self, descriptor: dict[str, Any], services: HostServices, context: OperationContext
@@ -131,6 +198,69 @@ class DevicePlugin:
         ):
             raise ValueError("Descriptor differs from the reviewed adapter contract")
         self._opened = True
+
+    async def _drain(self, scope: _Scope) -> None:
+        """Buffer one bounded telemetry window before a commanded call.
+
+        The live device streams unsolicited telemetry around its replies, so
+        the Client's one-frame rule holds only on a drained session. Frames
+        are buffered, never discarded: fields carrying an adapter parameter
+        surface through latest_telemetry() using the same PARAMETERS mapping
+        as a commanded read; rows are stamped with the window's last frame
+        receipt. Malformed frames propagate (ProtocolError), per the drain's
+        contract of emptying only a healthy stream.
+        """
+        packets = await drain_telemetry(_TelemetryDrain(scope), window_s=_DRAIN_WINDOW_S)
+        if not packets:
+            return
+        observed_monotonic = scope.received_monotonic
+        observed_at = scope.received_at
+        for packet in packets:
+            decoded: Value | None = None
+            for name, field, component, _, _, _, _ in PARAMETERS:
+                if field != packet.field:
+                    continue
+                if decoded is None:
+                    decoded = decode_value(packet)
+                value = decoded
+                if component is not None:
+                    if not isinstance(decoded, tuple):
+                        raise ProtocolError("Expected voltage/current/power tuple")
+                    value = decoded[component]
+                self._telemetry[name] = (value, observed_monotonic, observed_at)
+
+    def latest_telemetry(self) -> tuple[dict[str, Any], ...]:
+        """Latest drained telemetry as rows in the adapter's reading shape.
+
+        Rows follow the same measurement contract as a commanded read
+        (parameter, value, unit, observed_at, age_ms, quality, source) and
+        the same PARAMETERS mapping — field 195 surfaces as voltage,
+        current and power (V/A/W), 192 as input_voltage, 196 as temperature.
+        One row per parameter, latest frame wins, PARAMETERS order; age_ms
+        grows from the drain-time stamp.
+        """
+        services = self._services
+        if services is None:
+            return ()
+        rows: list[dict[str, Any]] = []
+        for name, _, _, _, unit, _, _ in PARAMETERS:
+            stamped = self._telemetry.get(name)
+            if stamped is None:
+                continue
+            value, observed_monotonic, observed_at = stamped
+            age = services.monotonic() - observed_monotonic
+            rows.append(
+                {
+                    "parameter": name,
+                    "value": value,
+                    "unit": unit,
+                    "observed_at": observed_at,
+                    "age_ms": max(0, int(age * 1000)),
+                    "quality": "valid",
+                    "source": "device",
+                }
+            )
+        return tuple(rows)
 
     async def execute(self, request: dict[str, Any], context: OperationContext) -> dict[str, Any]:
         # Missing envelope identity cannot be turned into a valid correlated result.
@@ -203,12 +333,22 @@ class DevicePlugin:
         succeeded = False
         try:
             async with asyncio.timeout(scope.remaining()):
+                if not self._established:
+                    # The device's wake is power-cycle-bound and survives
+                    # reconnection, so the handshake is sent unconditionally
+                    # at first commanded use — harmless to an already-awake
+                    # device — and never read as evidence that silence is
+                    # an error.
+                    await open_session(scope, delay_s=_SESSION_DELAY_S)
+                    self._established = True
                 client = Client(scope, get_payload=GetPayload.EMPTY)
                 if verb == "identify":
                     self._identified = False
+                    await self._drain(scope)
                     model = await client.read(222, timeout=scope.remaining())
                     if model != "DPS-150":
                         raise _Failure("IDENTITY_MISMATCH", "Device model does not match DPS-150")
+                    await self._drain(scope)
                     firmware = await client.read(224, timeout=scope.remaining())
                     if not isinstance(firmware, str):
                         raise ProtocolError("Invalid firmware identity")
@@ -224,6 +364,7 @@ class DevicePlugin:
                 else:
                     spec = next(p for p in PARAMETERS if p[0] == parameter)
                     _, field, component, kind, unit, _, choices = spec
+                    await self._drain(scope)
                     value = await client.read(field, timeout=scope.remaining())
                     if component is not None:
                         if not isinstance(value, tuple):
@@ -295,6 +436,8 @@ class DevicePlugin:
             raise RuntimeError("Cancel and await the active operation before close")
         self._failed = True
         self._identified = False
+        self._established = False
+        self._telemetry.clear()
         if self._services is not None:
             remaining = _remaining(self._services, context, context.deadline_monotonic)
             async with asyncio.timeout(min(remaining, 1.0)):
