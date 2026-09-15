@@ -239,6 +239,7 @@ All notable changes to this project will be documented in this file.
 - Submodule pointer - absolute doc links (submodule 49d0bb9)
 - Advance sdk pointer to v0.0.2 (0f105a3)
 - Advance sdk pointer to bb3159e (tap-bump job)
+- Ignore gortex git-hook artifacts (wiki, mermaid exports, docs bundle)
 
 ### Refactoring
 
