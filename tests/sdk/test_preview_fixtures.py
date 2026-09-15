@@ -13,8 +13,8 @@ from jsonschema import Draft202012Validator
 
 ROOT = Path(__file__).resolve().parents[2]
 SDK = ROOT / "packages/sdk/src"
-FIXTURE_SCHEMA = ROOT / "standards/plugin-ui-preview-v1/fixture.schema.json"
-DOCUMENT_SCHEMA = ROOT / "standards/plugin-ui-preview-v1/preview-document.schema.json"
+FIXTURE_SCHEMA = ROOT / "standards/plugin-ui-preview/1.0.0/fixture.schema.json"
+DOCUMENT_SCHEMA = ROOT / "standards/plugin-ui-preview/1.0.0/preview-document.schema.json"
 sys.path.insert(0, str(SDK))
 
 

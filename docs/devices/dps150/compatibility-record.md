@@ -16,7 +16,7 @@ path, and the base profile's protection requirement is met by independently
 programmable OVP/OCP thresholds with binary32-exact snapshot readback. The
 scoped limits of that sentence are recorded below ("What this record does not
 claim"); the profile's required failure-mode cases from
-[`device-classes.md` §4](../../../standards/otdp-v0.3.0/device-classes.md) remain WP11
+[`device-classes.md` §4](../../../standards/otdp/0.3.0/device-classes.md) remain WP11
 conformance work, not discovery claims.
 
 ## Identity (HW-01)
@@ -119,7 +119,7 @@ ceiling tracks input minus ~0.2 V, not a fixed 30 V**; field 227 = 5.10 A
 
 Normative source: `otdp.dc_psu/1.0.0` requires `configure`, `output`,
 `measure` (contracts `otdp-v0.3.0/device-profile-catalog.json`);
-[`device-classes.md` §4](../../../standards/otdp-v0.3.0/device-classes.md) requires the
+[`device-classes.md` §4](../../../standards/otdp/0.3.0/device-classes.md) requires the
 configured protection functions and observed-state output assurance.
 
 | Profile requirement | Device path | Live evidence | Capture |

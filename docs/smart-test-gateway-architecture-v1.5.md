@@ -14,7 +14,7 @@ The gateway is an instrument-control system. Unattended operation is conditional
 
 This document defines architectural contracts and the initial operating model. It does not prescribe electrical protective circuits or establish numeric safety limits. Bench-specific values are mandatory commissioning inputs under §15; they are not guessed architectural defaults.
 
-The supplied OTDP v0.1 specification and schema have been reviewed and reconciled. New integrations target the accompanying OTDP **0.3.0 specification**, **descriptor schema**, **runtime schema** and **Python adapter API 1.1** in `otdp-v0.3.0/`. The agent authoring procedure, host interfaces, transport rules, conformance obligations and reference protocols are part of that package. The schemas are interface artefacts; they are not a gateway implementation or proof of hardware behaviour.
+The supplied OTDP v0.1 specification and schema have been reviewed and reconciled. New integrations target the accompanying OTDP **0.3.0 specification**, **descriptor schema**, **runtime schema** and **Python adapter API 1.1** in `otdp/0.3.0/`. The agent authoring procedure, host interfaces, transport rules, conformance obligations and reference protocols are part of that package. The schemas are interface artefacts; they are not a gateway implementation or proof of hardware behaviour.
 
 OTDP owns the device-description and integration boundary. STG owns commissioning, authorisation, ownership, DUT safety policy, execution and recovery. Existing v0.1 descriptors require reviewed migration; changing a version field does not make them compatible. The accompanying `otdp-architecture-reconciliation.md` records the original defects and their resolution. No missing-document dependency remains.
 
@@ -298,7 +298,7 @@ Remaining engineering activities: gateway and plugin implementation, library sel
 
 ## 18. Central registry and shared integrations
 
-The companion [registry contract](../standards/registry-v1.0.0/registry-specification.md) defines distribution of reusable class profiles, model descriptors and executable implementations. It provides central discovery, publisher ownership, immutable releases, compatibility metadata, licence/provenance, test evidence, maintenance status, advisories and private mirrors. Source repositories support contributions; signed releases support reproducible adoption.
+The companion [registry contract](../standards/registry/1.0.0/registry-specification.md) defines distribution of reusable class profiles, model descriptors and executable implementations. It provides central discovery, publisher ownership, immutable releases, compatibility metadata, licence/provenance, test evidence, maintenance status, advisories and private mirrors. Source repositories support contributions; signed releases support reproducible adoption.
 
 Registry contract 1.0.0 is a packaging/distribution companion to OTDP 0.3.0 and adapter API 1.1; their runtime interfaces remain unchanged. Publication requires the release manifest and applicable evidence. Local-only plugin authoring remains supported. The central service never grants bench authority.
 
@@ -308,7 +308,7 @@ The registry operator owns namespace governance, distribution keys, review workf
 
 ## 19. Procedure and bench document contracts
 
-The companion [execution contract 1.0.0](../standards/execution-v1.0.0/execution-contract.md) defines six schemas: portable procedure, bench definition, safety policy, commissioning record, run binding and terminal run record. It preserves the OTDP 0.3.0 and adapter API 1.1 runtime interfaces.
+The companion [execution contract 1.0.0](../standards/execution/1.0.0/execution-contract.md) defines six schemas: portable procedure, bench definition, safety policy, commissioning record, run binding and terminal run record. It preserves the OTDP 0.3.0 and adapter API 1.1 runtime interfaces.
 
 Procedures use bounded sequential steps, fixed-count loops, explicit lexical result references and typed scalar assertions. Logical roles/channels bind to commissioned instances. The host reserves shared resources and protective dependencies before acceptance, validates resolved actions against profile/device/policy constraints and retains the accepted immutable configuration throughout the run.
 
@@ -320,13 +320,13 @@ See the [architecture closure register](architecture-closure.md) for review disp
 
 ## 20. REST and MCP interface baseline
 
-The [interface contract 1.1.0](../standards/interface-v1.1.0/interface-contract.md) specifies twenty REST operations and seventeen MCP tools. The operation catalog, shared JSON Schema, OpenAPI 3.1.0 document and MCP tool definitions describe one authorised core surface. The MCP transport is pinned to 2026-07-28; compatibility with older revisions is not implicit.
+The [interface contract 1.1.0](../standards/interface/1.1.0/interface-contract.md) specifies twenty REST operations and seventeen MCP tools. The operation catalog, shared JSON Schema, OpenAPI 3.1.0 document and MCP tool definitions describe one authorised core surface. The MCP transport is pinned to 2026-07-28; compatibility with older revisions is not implicit.
 
 Discovery and observation read retained metadata/evidence. Control submits an approved run binding, repeats admission checks and returns a durable run ID. Cross-interface deduplication, explicit leases, generation checks and cancellation preserve the procedure contract through disconnects. Event cursors and immutable chunked evidence support client recovery independently of MCP transport sessions.
 
 Administrative changes are REST-only, independently authorised and constrained to a safe boundary. The control interface cannot fabricate its own approval or directly bypass policy with raw instrument commands. Authentication tokens, protocol request IDs and bench authority remain distinct concepts.
 
-The [interface review scenarios](../standards/interface-v1.1.0/review-scenarios.md) document recovery expectations; they are design walkthroughs, not runtime tests. Registry composition and integrated architectural acceptance review are recorded in the acceptance documents. Runtime acceptance remains to be demonstrated.
+The [interface review scenarios](../standards/interface/1.1.0/review-scenarios.md) document recovery expectations; they are design walkthroughs, not runtime tests. Registry composition and integrated architectural acceptance review are recorded in the acceptance documents. Runtime acceptance remains to be demonstrated.
 
 ## 21. Consolidated baseline and acceptance
 

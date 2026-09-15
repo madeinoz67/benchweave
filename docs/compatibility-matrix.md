@@ -11,9 +11,9 @@ committed file is stale. Commit SHAs are not pinned here — run
 
 | Standard | Schema/protocol version | Status | SDK version | Main-project range | Migration guidance | Sources |
 | --- | --- | --- | --- | --- | --- | --- |
-| otdp | 0.3.0 | stable | 0.1.0 | >=0.1.0 | — | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
-| registry | 1.0.0 | stable | 0.1.0 | >=0.1.0 | — | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
-| execution | 1.0.0 | stable | 0.1.0 | >=0.1.0 | — | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
-| interface | 1.1.1 | stable | 0.1.0 | >=0.1.0 | Supersedes 1.1.0 | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
-| plugin-ui | 0.1.0 | stable | 0.1.0 | >=0.1.0 | — | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
-| plugin-ui-preview | 1.0.0 | stable | 0.1.0 | >=0.1.0 | — | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
+| otdp | 0.3.0 | stable | 0.0.2 | >=0.1.0 | — | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
+| registry | 1.0.0 | stable | 0.0.2 | >=0.1.0 | — | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
+| execution | 1.0.0 | stable | 0.0.2 | >=0.1.0 | — | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
+| interface | 1.1.1 | stable | 0.0.2 | >=0.1.0 | Supersedes 1.1.0 | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
+| plugin-ui | 0.1.0 | stable | 0.0.2 | >=0.1.0 | — | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
+| plugin-ui-preview | 1.0.0 | stable | 0.0.2 | >=0.1.0 | — | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |

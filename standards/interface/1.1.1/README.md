@@ -1,9 +1,9 @@
 # Interface corpus errata 1.1.1 (D2)
 
 This directory is a **new, versioned revision** of the admitted interface
-corpus — not an edit of `interface-v1.1.0`. The 1.1.0 corpus remains vendored
-at `standards/interface-v1.1.0/` with its bytes frozen; this revision is
-housed at `standards/interface-v1.1.1/` and recorded in
+corpus — not an edit of `interface/1.1.0`. The 1.1.0 corpus remains vendored
+at `standards/interface/1.1.0/` with its bytes frozen; this revision is
+housed at `standards/interface/1.1.1/` and recorded in
 `standards/corpus-manifest.json` as `identity.interface_errata: "1.1.1"`.
 
 ## Why the architecture identity stays 1.1.0
@@ -52,7 +52,7 @@ inputSchema and no catalog failure-code entry is affected).
 
 ## Provenance
 
-- Source of truth: `standards/interface-v1.1.1/` (this directory; machine
+- Source of truth: `standards/interface/1.1.1/` (this directory; machine
   artifacts and errata record live together since the 2026-09-15
   consolidation).
 - Originally authored under `docs/` and vendored to `contracts/` before both

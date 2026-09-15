@@ -79,8 +79,8 @@ reg = (CONTRACT_DIR / "registry-composition-review.md").read_text(encoding="utf-
 end = (CONTRACT_DIR / "end-to-end-review.md").read_text(encoding="utf-8")
 check("16 composition scenarios", len(set(re.findall("\\| (R\\d\\d) \\|", reg))) == 16)
 check("26 integrated scenarios", len(set(re.findall("\\| (E\\d\\d) \\|", end))) == 26)
-p = (STANDARDS / "execution-v1.0.0/execution-contract.md").read_text(encoding="utf-8")
-i = (STANDARDS / "interface-v1.1.0/interface-contract.md").read_text(encoding="utf-8")
+p = (STANDARDS / "execution/1.0.0/execution-contract.md").read_text(encoding="utf-8")
+i = (STANDARDS / "interface/1.1.0/interface-contract.md").read_text(encoding="utf-8")
 check("expiry covers protective budget", "full body plus protective budget" in p)
 check(
     "repeated faults do not extend deadline",

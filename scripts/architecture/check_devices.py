@@ -12,7 +12,7 @@ from referencing import Registry, Resource
 "Document/schema conformance checks, not instrument implementation."
 DOCS = globals().get("DOCS", Path(__file__).resolve().parents[2] / "docs")
 STANDARDS = globals().get("STANDARDS", Path(__file__).resolve().parents[2] / "standards")
-OUT = STANDARDS / "otdp-v0.3.0"
+OUT = STANDARDS / "otdp/0.3.0"
 
 
 def load(name):

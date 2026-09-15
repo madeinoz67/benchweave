@@ -23,10 +23,10 @@ from referencing.jsonschema import DRAFT202012
 ROOT = Path(__file__).resolve().parents[2]
 CONTRACTS = ROOT / "standards"
 ADMITTED_DIRS = (
-    "otdp-v0.3.0",
-    "registry-v1.0.0",
-    "execution-v1.0.0",
-    "interface-v1.1.0",
+    "otdp/0.3.0",
+    "registry/1.0.0",
+    "execution/1.0.0",
+    "interface/1.1.0",
 )
 
 

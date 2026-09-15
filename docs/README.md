@@ -10,27 +10,27 @@
 | File | Purpose |
 |---|---|
 | [Architecture](smart-test-gateway-architecture-v1.5.md) | System responsibilities, protection, ownership, recovery and commissioning |
-| [Central registry](../standards/registry-v1.0.0/registry-specification.md) | Shared packages, discovery, publication, metadata, trust and offline adoption |
-| [Registry checks](../standards/registry-v1.0.0/validation-report.md) | 63 passing metadata-contract checks |
-| [Procedure and bench contracts](../standards/execution-v1.0.0/execution-contract.md) | Bounded execution, wiring/resources, safety policy, commissioning and outcomes |
-| [Execution checks](../standards/execution-v1.0.0/validation-report.md) | 150 passing document/schema checks; six linked synthetic examples |
-| [REST/MCP contract](../standards/interface-v1.1.0/interface-contract.md) | Twenty REST operations, seventeen MCP tools, authentication and recovery |
-| [OpenAPI](../standards/interface-v1.1.0/openapi.json) | REST routes and schema references |
-| [MCP tools](../standards/interface-v1.1.0/mcp-tools.json) | Input/output schemas for the pinned MCP baseline |
-| [Interface checks](../standards/interface-v1.1.0/validation-report.md) | 254 document/mapping checks and explicit verification limits |
-| [Interface errata 1.1.1](../standards/interface-v1.1.1/README.md) | D2 amendment: `change_apply` body admits the optional `approver_token`; 1.1.0 bytes untouched |
+| [Central registry](../standards/registry/1.0.0/registry-specification.md) | Shared packages, discovery, publication, metadata, trust and offline adoption |
+| [Registry checks](../standards/registry/1.0.0/validation-report.md) | 63 passing metadata-contract checks |
+| [Procedure and bench contracts](../standards/execution/1.0.0/execution-contract.md) | Bounded execution, wiring/resources, safety policy, commissioning and outcomes |
+| [Execution checks](../standards/execution/1.0.0/validation-report.md) | 150 passing document/schema checks; six linked synthetic examples |
+| [REST/MCP contract](../standards/interface/1.1.0/interface-contract.md) | Twenty REST operations, seventeen MCP tools, authentication and recovery |
+| [OpenAPI](../standards/interface/1.1.0/openapi.json) | REST routes and schema references |
+| [MCP tools](../standards/interface/1.1.0/mcp-tools.json) | Input/output schemas for the pinned MCP baseline |
+| [Interface checks](../standards/interface/1.1.0/validation-report.md) | 254 document/mapping checks and explicit verification limits |
+| [Interface errata 1.1.1](../standards/interface/1.1.1/README.md) | D2 amendment: `change_apply` body admits the optional `approver_token`; 1.1.0 bytes untouched |
 | [Closure register](architecture-closure.md) | Review disposition, normative versions and qualification boundaries |
 | [Registry composition review](acceptance/registry-composition-review.md) | Sixteen package reuse/compatibility scenarios |
 | [Integrated review](acceptance/end-to-end-review.md) | Twenty-six end-to-end cases and resolved cross-contract findings |
 | [Decisions](smart-test-gateway-decisions.md) | Selected architectural trade-offs |
-| [Device classes](../standards/otdp-v0.3.0/device-classes.md) | Twelve class profiles, physical semantics, acquisition lifecycle and explicit exclusions |
-| [Core specification](../standards/otdp-v0.3.0/otdp-specification.md) | Plugin authoring, runtime and host contracts |
-| [Extension contract](../standards/otdp-v0.3.0/extension-contract.md) | Typed actions, local schema admission and adapter API 1.1 |
-| [Measurement model](../standards/otdp-v0.3.0/measurement-model.md) | Units, axes, channels, complex/digital data, timing, calibration and uncertainty |
-| [Profile catalog](../standards/otdp-v0.3.0/device-profile-catalog.json) | Fifty actions with exact input/output schemas |
-| [Validation report](../standards/otdp-v0.3.0/validation-report.md) | 495 passing document/schema checks and their limits |
+| [Device classes](../standards/otdp/0.3.0/device-classes.md) | Twelve class profiles, physical semantics, acquisition lifecycle and explicit exclusions |
+| [Core specification](../standards/otdp/0.3.0/otdp-specification.md) | Plugin authoring, runtime and host contracts |
+| [Extension contract](../standards/otdp/0.3.0/extension-contract.md) | Typed actions, local schema admission and adapter API 1.1 |
+| [Measurement model](../standards/otdp/0.3.0/measurement-model.md) | Units, axes, channels, complex/digital data, timing, calibration and uncertainty |
+| [Profile catalog](../standards/otdp/0.3.0/device-profile-catalog.json) | Fifty actions with exact input/output schemas |
+| [Validation report](../standards/otdp/0.3.0/validation-report.md) | 495 passing document/schema checks and their limits |
 
-The package also includes descriptor, runtime, measurement and catalog schemas; twelve class descriptor fixtures; fifty action exchange vectors; thirteen dataset examples; and the four migrated core reference descriptors and their protocol vectors. Current normative device contracts are in `otdp-v0.3.0/`.
+The package also includes descriptor, runtime, measurement and catalog schemas; twelve class descriptor fixtures; fifty action exchange vectors; thirteen dataset examples; and the four migrated core reference descriptors and their protocol vectors. Current normative device contracts are in `otdp/0.3.0/`.
 
 ## Device-class coverage
 

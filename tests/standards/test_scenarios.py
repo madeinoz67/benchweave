@@ -32,9 +32,9 @@ STANDARD = "plugin-ui"
 OLD_VERSION = "0.1.0"
 NEW_VERSION = "0.2.0"
 # The scenario victim: normative and standards-pinned (docs/ holds no corpus).
-NORMATIVE = "standards/plugin-ui-v0.1.0/ui-manifest.schema.json"
-PIN_KEY = "plugin-ui-v0.1.0/ui-manifest.schema.json"
-DOC_README = "standards/plugin-ui-v0.1.0/README.md"
+NORMATIVE = "standards/plugin-ui/0.1.0/ui-manifest.schema.json"
+PIN_KEY = "plugin-ui/0.1.0/ui-manifest.schema.json"
+DOC_README = "standards/plugin-ui/0.1.0/README.md"
 PARITY = "src/benchweave/presentation/contracts.py"
 ALL_IDS = {"otdp", "registry", "execution", "interface", "plugin-ui", "plugin-ui-preview"}
 

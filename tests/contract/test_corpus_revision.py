@@ -1,11 +1,11 @@
-"""D2 errata corpus revision: ``interface-v1.1.1`` is a new, versioned corpus.
+"""D2 errata corpus revision: ``interface/1.1.1`` is a new, versioned corpus.
 
-The vendored ``interface-v1.1.0`` corpus stays frozen authority — its bytes
+The vendored ``interface/1.1.0`` corpus stays frozen authority — its bytes
 are NEVER edited, pinned here against the digests recorded in git HEAD's
 manifest. The D2 amendment (the catalog's ``change_apply`` REST body schema
 omitted ``approver_token``, which the REST adapter already forwards as the
 detached approval credential) ships as a NEW versioned corpus revision,
-``standards/interface-v1.1.1/`` (originally vendored from a docs source before
+``standards/interface/1.1.1/`` (originally vendored from a docs source before
 the docs mirror was retired; manifest ``source`` fields remain as historical
 provenance):
 
@@ -34,9 +34,24 @@ from benchweave.interfaces.validation import SeamValidator
 
 ROOT = Path(__file__).resolve().parents[2]
 CONTRACTS = ROOT / "standards"
-BASELINE = "interface-v1.1.0"
-REVISION = "interface-v1.1.1"
+BASELINE = "interface/1.1.0"
+REVISION = "interface/1.1.1"
 APPLY_ROUTE = "/v1/admin/changes/{change_id}/apply"
+
+
+def _modern_path(path: str) -> str:
+    """Map any historical corpus row path to the standards/<id>/<version> shape."""
+    for old, new in (
+        ("interface-v1.1.0/", "interface/1.1.0/"),
+        ("interface-v1.1.1/", "interface/1.1.1/"),
+        ("otdp-v0.3.0/", "otdp/0.3.0/"),
+        ("registry-v1.0.0/", "registry/1.0.0/"),
+        ("execution-v1.0.0/", "execution/1.0.0/"),
+        ("plugin-ui-v0.1.0/", "plugin-ui/0.1.0/"),
+        ("plugin-ui-preview-v1/", "plugin-ui-preview/1.0.0/"),
+    ):
+        path = path.replace(old, new)
+    return path
 
 #: The revision's corpus set — mirrors the 1.1.0 vendored set exactly.
 REVISION_FILES = (
@@ -93,6 +108,10 @@ def _head_manifest() -> dict[str, Any]:
             capture_output=True,
         )
     manifest = json.loads(proc.stdout)
+    # Row paths moved with the corpus (docs/ → contracts/ → standards/<id>/<ver>);
+    # normalize HEAD rows to the current shape so only digest drift can fail.
+    for row in manifest["files"]:
+        row["path"] = _modern_path(row["path"])
     assert isinstance(manifest, dict)
     return manifest
 
@@ -129,13 +148,13 @@ def test_baseline_bytes_are_unchanged_since_head() -> None:
         for entry in _head_manifest()["files"]
         if str(entry["path"]).startswith(f"{BASELINE}/")
     }
-    assert head, "HEAD manifest carries no interface-v1.1.0 entries"
+    assert head, "HEAD manifest carries no interface/1.1.0 entries"
     for rel, digest in head.items():
         assert _digest(CONTRACTS / rel) == digest, f"1.1.0 byte drift: {rel}"
     current = {rel: str(entry["sha256"]) for rel, entry in _entries(BASELINE).items()}
-    assert current == head, "manifest rewrote interface-v1.1.0 rows"
+    assert current == head, "manifest rewrote interface/1.1.0 rows"
     on_disk = {str(p.relative_to(CONTRACTS)) for p in (CONTRACTS / BASELINE).rglob("*.json")}
-    assert set(head) == on_disk, "unlisted interface-v1.1.0 files appeared"
+    assert set(head) == on_disk, "unlisted interface/1.1.0 files appeared"
 
 
 def test_change_apply_body_admits_optional_approver_token() -> None:
