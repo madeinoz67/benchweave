@@ -3,7 +3,7 @@
 > Record version 1.0.0 (2026-09-15). Evidence window: 2026-09-15, one
 > supervised session (07:54–10:57 local) plus one adapter-path stream run
 > (10:47). Every claim below cites a committed capture under
-> [`fixtures/protocols/dps150/`](../../../fixtures/protocols/dps150/) or the
+> `../../../fixtures/protocols/dps150/` or the
 > commit that introduced it. All live passes ran under the principal's
 > per-leg approval recorded in each capture's provenance header.
 
@@ -23,13 +23,13 @@ conformance work, not discovery claims.
 
 | Source | Value | Evidence |
 |---|---|---|
-| USB vendor | Artery "AT32 Virtual Com Port", idVendor 11836 (0x2E3C) | first-contact session log, [`README.md`](../../../fixtures/protocols/dps150/README.md) |
-| USB product id (idProduct) | **Not captured** — no capture in this record records idProduct; only idVendor is on file, so VID/PID matching has no PID basis here | absence across [`fixtures/protocols/dps150/`](../../../fixtures/protocols/dps150/) (HW-01 table in [`README.md`](../../../fixtures/protocols/dps150/README.md) lists idVendor only) |
-| USB serial | `135DD2594096`, stable across the session and across USB re-enumeration (node name unchanged: `/dev/cu.usbmodem135DD25940961`) | [`hw05-leg3-replug.jsonl`](../../../fixtures/protocols/dps150/hw05-leg3-replug.jsonl) |
-| Wire field 222 | Model `DPS-150` | [`connect-v2.jsonl`](../../../fixtures/protocols/dps150/connect-v2.jsonl) step `identity-222` |
+| USB vendor | Artery "AT32 Virtual Com Port", idVendor 11836 (0x2E3C) | first-contact session log, `../../../fixtures/protocols/dps150/README.md` |
+| USB product id (idProduct) | **Not captured** — no capture in this record records idProduct; only idVendor is on file, so VID/PID matching has no PID basis here | absence across `../../../fixtures/protocols/dps150/` (HW-01 table in `../../../fixtures/protocols/dps150/README.md` lists idVendor only) |
+| USB serial | `135DD2594096`, stable across the session and across USB re-enumeration (node name unchanged: `/dev/cu.usbmodem135DD25940961`) | `../../../fixtures/protocols/dps150/hw05-leg3-replug.jsonl` |
+| Wire field 222 | Model `DPS-150` | `../../../fixtures/protocols/dps150/connect-v2.jsonl` step `identity-222` |
 | Wire field 223 | Hardware `V1.0` | `connect-v2.jsonl` step `identity-223` |
 | Wire field 224 | Firmware `V1.2` | `connect-v2.jsonl` step `identity-224` |
-| Adapter identify | `manufacturer: FNIRSI, model: DPS-150, firmware: V1.2` in 425.4 ms | [`live-stream.jsonl`](../../../fixtures/protocols/dps150/live-stream.jsonl) step `identify` |
+| Adapter identify | `manufacturer: FNIRSI, model: DPS-150, firmware: V1.2` in 425.4 ms | `../../../fixtures/protocols/dps150/live-stream.jsonl` step `identify` |
 
 One unit is evidenced: serial `135DD2594096`, HW V1.0 / FW V1.2. Nothing in
 this record extends to another serial, hardware revision or firmware without
@@ -43,12 +43,12 @@ re-qualification.
 - The 12-silence negative (below) was captured **without** flow control and
   **without** the handshake, so it does not separate the two requirements;
   both are treated as preconditions (stated first in
-  [`protocol-evidence.md`](../../../plugins/fnirsi/dps150/docs/protocol-evidence.md)).
+  `../../../plugins/fnirsi/dps150/docs/protocol-evidence.md`).
 - ~50 ms pacing between the two handshake frames and after every write
   (upstream-verified; the captured connect sequence uses it).
 - Baud is not auto-detected in any useful sense: bare queries at 115200,
   9600, 19200, 38400, 57600 and 230400 all drew zero bytes before the
-  handshake ([`first-contact-negative.jsonl`](../../../fixtures/protocols/dps150/first-contact-negative.jsonl)).
+  handshake (`../../../fixtures/protocols/dps150/first-contact-negative.jsonl`).
 - The `/dev` node name is stable across USB unplug/replug
   (`hw05-leg3-replug.jsonl`: `old_node` == `new_node`).
 
@@ -67,7 +67,7 @@ tested and requires no re-handshake on reconnect:
 
 | Event | Cold query, no re-handshake | Capture |
 |---|---|---|
-| Port close and reopen | answered (`DPS-150`) | [`hw05-leg12-linkloss.jsonl`](../../../fixtures/protocols/dps150/hw05-leg12-linkloss.jsonl) L1 |
+| Port close and reopen | answered (`DPS-150`) | `../../../fixtures/protocols/dps150/hw05-leg12-linkloss.jsonl` L1 |
 | Host process death mid-session (fresh process) | answered | `hw05-leg12-linkloss.jsonl` L2 |
 | USB unplug + physical replug | answered | `hw05-leg3-replug.jsonl` L3 |
 
@@ -103,10 +103,10 @@ commanded replies). Fix commit `16295ab` consumes each commanded reply window
 by correlation — first frame matching the requested field is the reply, every
 other frame is telemetry, buffered into the adapter's measurement surface
 (`_CorrelatedWire` in
-[`adapter.py`](../../../plugins/fnirsi/dps150/src/benchweave_fnirsi_dps150/adapter.py)).
+`../../../plugins/fnirsi/dps150/src/benchweave_fnirsi_dps150/adapter.py`).
 Post-fix verification: **165/165 reads ok over 60 s, p50 162.1 ms, max
 195.5 ms, identify ok (425.4 ms), no bad values**
-([`live-stream.jsonl`](../../../fixtures/protocols/dps150/live-stream.jsonl),
+(`../../../fixtures/protocols/dps150/live-stream.jsonl`,
 commit `5dfc64a`).
 
 First live values (output off, unloaded bench): input 20.06–20.07 V; output
@@ -124,9 +124,9 @@ configured protection functions and observed-state output assurance.
 
 | Profile requirement | Device path | Live evidence | Capture |
 |---|---|---|---|
-| `configure`: `voltage_v` | Write field 193 | Accepted; applies at terminals — 1.00 V commanded, output sampled 0.834 V (ramp) then 1.000 V; snapshot `set_voltage=1.0` | [`hw04-leg5-output-toggle.jsonl`](../../../fixtures/protocols/dps150/hw04-leg5-output-toggle.jsonl) 5b |
-| `configure`: `current_limit_a` | Write field 194 | Accepted; snapshot `set_current=0.5` after SET 0.500 A; restore 5.0 verified | [`hw04-leg3b-setcurrent-snapshot.jsonl`](../../../fixtures/protocols/dps150/hw04-leg3b-setcurrent-snapshot.jsonl) |
-| `configure`: `ovp_v` | Write field 209 | Programmable numeric threshold; snapshot `ovp=5.5` exactly after SET 5.5 V; restore 30.0 verified | [`hw04-leg34-current-protection.jsonl`](../../../fixtures/protocols/dps150/hw04-leg34-current-protection.jsonl) leg 4 |
+| `configure`: `voltage_v` | Write field 193 | Accepted; applies at terminals — 1.00 V commanded, output sampled 0.834 V (ramp) then 1.000 V; snapshot `set_voltage=1.0` | `../../../fixtures/protocols/dps150/hw04-leg5-output-toggle.jsonl` 5b |
+| `configure`: `current_limit_a` | Write field 194 | Accepted; snapshot `set_current=0.5` after SET 0.500 A; restore 5.0 verified | `../../../fixtures/protocols/dps150/hw04-leg3b-setcurrent-snapshot.jsonl` |
+| `configure`: `ovp_v` | Write field 209 | Programmable numeric threshold; snapshot `ovp=5.5` exactly after SET 5.5 V; restore 30.0 verified | `../../../fixtures/protocols/dps150/hw04-leg34-current-protection.jsonl` leg 4 |
 | `configure`: `ocp_a` | Write field 210 | Programmable numeric threshold; snapshot `ocp=0.05000000074505806` (binary32 of 0.05) after SET 0.050 A; restore 5.1 verified | `hw04-leg34-current-protection.jsonl` leg 4 |
 | `configure`: `effective_configuration` | Snapshot read (field 255) | Setpoints and protections read back binary32-exact via the combined 139-byte record | legs 3b/4/5b |
 | `output`: enable/disable | Write field 219 | ON at 0 V (enabled, output 0/0/0) and ON at 1 V (ramp then 1.0 V at terminals); OFF returns `enabled=false`; assurance is observed state (snapshot `enabled` + field 195/219), not an echo | `hw04-leg5-output-toggle.jsonl` 5a/5b |
@@ -190,7 +190,7 @@ Software provenance: captures were driven by the shipped
 harness scripts under gitignored session paths; approvals recorded in the
 capture provenance headers). Protocol source pinning, licence attribution and
 the supported-subset definition live in
-[`protocol-evidence.md`](../../../plugins/fnirsi/dps150/docs/protocol-evidence.md).
+`../../../plugins/fnirsi/dps150/docs/protocol-evidence.md`.
 Commit `b1a720a` additionally records a mid-run harness crash during leg 5,
 emergency-restored and re-run clean within the codec's 260-byte feed bound.
 
