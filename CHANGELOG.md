@@ -68,6 +68,7 @@ All notable changes to this project will be documented in this file.
 - Neutralise newlines in matrix cells
 - Tolerate trailing telemetry in the commanded reply window (live-device defect)
 - Frame-atomic drain window — WP11 W1 straddle hardening + W2 same-field pin
+- Ruff-format dps150 session - repair dps150-independent lane (broken by #14)
 
 ### Documentation
 
