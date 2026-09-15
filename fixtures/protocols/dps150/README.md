@@ -20,7 +20,7 @@ protection, or output writes were sent at any point in this capture.
 
 - **The device is silent until the session-open command.** Twelve bare
   field queries across six bauds x two GET dialects (2026-09-15 first
-  contact, `dps150-first-contact.jsonl` in the session scratch) produced
+  contact, `first-contact-negative.jsonl` in this directory) produced
   zero bytes. After session-open + baud negotiation, the device answers and
   streams.
 - After the session opens, the device emits a **periodic unsolicited
