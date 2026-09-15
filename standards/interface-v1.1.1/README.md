@@ -2,7 +2,7 @@
 
 This directory is a **new, versioned revision** of the admitted interface
 corpus — not an edit of `interface-v1.1.0`. The 1.1.0 corpus remains vendored
-at `contracts/interface-v1.1.0/` with its bytes frozen; this revision is
+at `standards/interface-v1.1.0/` with its bytes frozen; this revision is
 housed at `standards/interface-v1.1.1/` and recorded in
 `standards/corpus-manifest.json` as `identity.interface_errata: "1.1.1"`.
 
@@ -57,7 +57,7 @@ inputSchema and no catalog failure-code entry is affected).
   consolidation).
 - Originally authored under `docs/` and vendored to `contracts/` before both
   mirrors were retired (manifest `source` fields record that history).
-- Every vendored file is recorded in `contracts/manifest.json` with its
+- Every vendored file is recorded in `standards/corpus-manifest.json` with its
   sha256 (`shasum -a 256` over the vendored bytes).
 - Integrity is pinned by `tests/contract/test_corpus_revision.py`: the
   revision byte-matches its manifest digests, the 1.1.0
