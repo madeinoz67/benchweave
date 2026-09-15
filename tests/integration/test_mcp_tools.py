@@ -40,11 +40,11 @@ from benchweave.interfaces.operations import Operations, append_bench_event
 from benchweave.interfaces.validation import SeamValidator
 from benchweave.state.store import Store
 
-CORPUS = Path(__file__).resolve().parents[2] / "standards" / "interface-v1.1.1"
+CORPUS = Path(__file__).resolve().parents[2] / "standards" / "interface/1.1.1"
 VENDORED = json.loads(
     (
         Path(__file__).resolve().parents[2]
-        / "standards" / "interface-v1.1.1" / "mcp-tools.json"
+        / "standards" / "interface/1.1.1" / "mcp-tools.json"
     ).read_text(encoding="utf-8")
 )
 VENDORED_TOOLS = {
@@ -139,7 +139,7 @@ def test_tool_names_match_catalog_mcp_fields() -> None:
     catalog = json.loads(
         (
             Path(__file__).resolve().parents[2]
-            / "standards" / "interface-v1.1.1" / "operation-catalog.json"
+            / "standards" / "interface/1.1.1" / "operation-catalog.json"
         ).read_text(encoding="utf-8")
     )
     with_mcp = {op["mcp_tool"] for op in catalog["operations"] if op["mcp_tool"]}

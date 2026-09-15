@@ -116,7 +116,7 @@ def test_missing_bundle_file_is_vocabulary_prefixed(tmp_path: Path) -> None:
     """A manifest-listed file absent from files/ is a ValueError, not a bare OSError."""
     bundle = _export(tmp_path)
     sdk = _synced_sdk(tmp_path, bundle)
-    victim = bundle / "files" / "registry/registry-v1.0.0/package-lock.schema.json"
+    victim = bundle / "files" / "registry/1.0.0/package-lock.schema.json"
     victim.unlink()
     with pytest.raises(ValueError, match="bundle_file_missing"):
         sync(bundle, sdk)

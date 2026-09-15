@@ -27,7 +27,7 @@ from benchweave.interfaces.errors import (
     internal_failure,
 )
 
-CORPUS = Path(__file__).resolve().parents[2] / "standards" / "interface-v1.1.1"
+CORPUS = Path(__file__).resolve().parents[2] / "standards" / "interface/1.1.1"
 CATALOG = json.loads((CORPUS / "operation-catalog.json").read_text(encoding="utf-8"))
 _HEX16 = re.compile(r"^[0-9a-f]{16}$")
 

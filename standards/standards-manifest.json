@@ -8,30 +8,30 @@
       "released": "2026-09-10",
       "supersedes": null,
       "normative": [
-        "standards/otdp-v0.3.0/device-profile-catalog.json",
-        "standards/otdp-v0.3.0/device-profile-catalog.schema.json",
-        "standards/otdp-v0.3.0/examples/class-action-vectors.json",
-        "standards/otdp-v0.3.0/examples/class-daq.json",
-        "standards/otdp-v0.3.0/examples/class-dc_psu.json",
-        "standards/otdp-v0.3.0/examples/class-dmm.json",
-        "standards/otdp-v0.3.0/examples/class-electronic_load.json",
-        "standards/otdp-v0.3.0/examples/class-embedded_controller.json",
-        "standards/otdp-v0.3.0/examples/class-function_generator.json",
-        "standards/otdp-v0.3.0/examples/class-logic_analyser.json",
-        "standards/otdp-v0.3.0/examples/class-oscilloscope.json",
-        "standards/otdp-v0.3.0/examples/class-smu.json",
-        "standards/otdp-v0.3.0/examples/class-spectrum_analyser.json",
-        "standards/otdp-v0.3.0/examples/class-switch_matrix.json",
-        "standards/otdp-v0.3.0/examples/class-vna.json",
-        "standards/otdp-v0.3.0/examples/measurement-vectors.json",
-        "standards/otdp-v0.3.0/examples/reference-can.json",
-        "standards/otdp-v0.3.0/examples/reference-capture.json",
-        "standards/otdp-v0.3.0/examples/reference-controller.json",
-        "standards/otdp-v0.3.0/examples/reference-psu.json",
-        "standards/otdp-v0.3.0/examples/reference-vectors.json",
-        "standards/otdp-v0.3.0/otdp-device-descriptor.schema.json",
-        "standards/otdp-v0.3.0/otdp-measurement.schema.json",
-        "standards/otdp-v0.3.0/otdp-runtime.schema.json"
+        "standards/otdp/0.3.0/device-profile-catalog.json",
+        "standards/otdp/0.3.0/device-profile-catalog.schema.json",
+        "standards/otdp/0.3.0/examples/class-action-vectors.json",
+        "standards/otdp/0.3.0/examples/class-daq.json",
+        "standards/otdp/0.3.0/examples/class-dc_psu.json",
+        "standards/otdp/0.3.0/examples/class-dmm.json",
+        "standards/otdp/0.3.0/examples/class-electronic_load.json",
+        "standards/otdp/0.3.0/examples/class-embedded_controller.json",
+        "standards/otdp/0.3.0/examples/class-function_generator.json",
+        "standards/otdp/0.3.0/examples/class-logic_analyser.json",
+        "standards/otdp/0.3.0/examples/class-oscilloscope.json",
+        "standards/otdp/0.3.0/examples/class-smu.json",
+        "standards/otdp/0.3.0/examples/class-spectrum_analyser.json",
+        "standards/otdp/0.3.0/examples/class-switch_matrix.json",
+        "standards/otdp/0.3.0/examples/class-vna.json",
+        "standards/otdp/0.3.0/examples/measurement-vectors.json",
+        "standards/otdp/0.3.0/examples/reference-can.json",
+        "standards/otdp/0.3.0/examples/reference-capture.json",
+        "standards/otdp/0.3.0/examples/reference-controller.json",
+        "standards/otdp/0.3.0/examples/reference-psu.json",
+        "standards/otdp/0.3.0/examples/reference-vectors.json",
+        "standards/otdp/0.3.0/otdp-device-descriptor.schema.json",
+        "standards/otdp/0.3.0/otdp-measurement.schema.json",
+        "standards/otdp/0.3.0/otdp-runtime.schema.json"
       ]
     },
     {
@@ -41,12 +41,12 @@
       "released": "2026-09-10",
       "supersedes": null,
       "normative": [
-        "standards/registry-v1.0.0/examples/package-lock.json",
-        "standards/registry-v1.0.0/examples/release-manifest.json",
-        "standards/registry-v1.0.0/examples/release-status.json",
-        "standards/registry-v1.0.0/package-lock.schema.json",
-        "standards/registry-v1.0.0/release-manifest.schema.json",
-        "standards/registry-v1.0.0/release-status.schema.json"
+        "standards/registry/1.0.0/examples/package-lock.json",
+        "standards/registry/1.0.0/examples/release-manifest.json",
+        "standards/registry/1.0.0/examples/release-status.json",
+        "standards/registry/1.0.0/package-lock.schema.json",
+        "standards/registry/1.0.0/release-manifest.schema.json",
+        "standards/registry/1.0.0/release-status.schema.json"
       ]
     },
     {
@@ -56,18 +56,18 @@
       "released": "2026-09-10",
       "supersedes": null,
       "normative": [
-        "standards/execution-v1.0.0/bench.schema.json",
-        "standards/execution-v1.0.0/commissioning.schema.json",
-        "standards/execution-v1.0.0/examples/bench.json",
-        "standards/execution-v1.0.0/examples/commissioning.json",
-        "standards/execution-v1.0.0/examples/procedure.json",
-        "standards/execution-v1.0.0/examples/run-binding.json",
-        "standards/execution-v1.0.0/examples/run-record.json",
-        "standards/execution-v1.0.0/examples/safety-policy.json",
-        "standards/execution-v1.0.0/procedure.schema.json",
-        "standards/execution-v1.0.0/run-binding.schema.json",
-        "standards/execution-v1.0.0/run-record.schema.json",
-        "standards/execution-v1.0.0/safety-policy.schema.json"
+        "standards/execution/1.0.0/bench.schema.json",
+        "standards/execution/1.0.0/commissioning.schema.json",
+        "standards/execution/1.0.0/examples/bench.json",
+        "standards/execution/1.0.0/examples/commissioning.json",
+        "standards/execution/1.0.0/examples/procedure.json",
+        "standards/execution/1.0.0/examples/run-binding.json",
+        "standards/execution/1.0.0/examples/run-record.json",
+        "standards/execution/1.0.0/examples/safety-policy.json",
+        "standards/execution/1.0.0/procedure.schema.json",
+        "standards/execution/1.0.0/run-binding.schema.json",
+        "standards/execution/1.0.0/run-record.schema.json",
+        "standards/execution/1.0.0/safety-policy.schema.json"
       ]
     },
     {
@@ -77,12 +77,12 @@
       "released": "2026-09-13",
       "supersedes": "1.1.0",
       "normative": [
-        "standards/interface-v1.1.1/examples/mcp-start-exchange.json",
-        "standards/interface-v1.1.1/examples/operation-vectors.json",
-        "standards/interface-v1.1.1/interface.schema.json",
-        "standards/interface-v1.1.1/mcp-tools.json",
-        "standards/interface-v1.1.1/openapi.json",
-        "standards/interface-v1.1.1/operation-catalog.json"
+        "standards/interface/1.1.1/examples/mcp-start-exchange.json",
+        "standards/interface/1.1.1/examples/operation-vectors.json",
+        "standards/interface/1.1.1/interface.schema.json",
+        "standards/interface/1.1.1/mcp-tools.json",
+        "standards/interface/1.1.1/openapi.json",
+        "standards/interface/1.1.1/operation-catalog.json"
       ]
     },
     {
@@ -92,10 +92,10 @@
       "released": "2026-09-13",
       "supersedes": null,
       "normative": [
-        "standards/plugin-ui-v0.1.0/binding-catalogue.schema.json",
-        "standards/plugin-ui-v0.1.0/configuration-preset.schema.json",
-        "standards/plugin-ui-v0.1.0/presentation-envelope.schema.json",
-        "standards/plugin-ui-v0.1.0/ui-manifest.schema.json",
+        "standards/plugin-ui/0.1.0/binding-catalogue.schema.json",
+        "standards/plugin-ui/0.1.0/configuration-preset.schema.json",
+        "standards/plugin-ui/0.1.0/presentation-envelope.schema.json",
+        "standards/plugin-ui/0.1.0/ui-manifest.schema.json",
         "src/benchweave/presentation/contracts.py"
       ]
     },
@@ -106,8 +106,8 @@
       "released": "2026-09-14",
       "supersedes": null,
       "normative": [
-        "standards/plugin-ui-preview-v1/fixture.schema.json",
-        "standards/plugin-ui-preview-v1/preview-document.schema.json"
+        "standards/plugin-ui-preview/1.0.0/fixture.schema.json",
+        "standards/plugin-ui-preview/1.0.0/preview-document.schema.json"
       ]
     }
   ]

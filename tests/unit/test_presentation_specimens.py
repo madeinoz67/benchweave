@@ -24,14 +24,14 @@ def digest(raw: bytes) -> str:
 
 
 def load(name: str) -> JsonObject:
-    document: JsonObject = json.loads((ROOT / "standards/otdp-v0.3.0" / name).read_bytes())
+    document: JsonObject = json.loads((ROOT / "standards/otdp/0.3.0" / name).read_bytes())
     return document
 
 
 @pytest.fixture
 def specimen() -> Specimen:
     documents: dict[str, JsonObject] = {}
-    for directory in ("otdp-v0.3.0", "plugin-ui-v0.1.0"):
+    for directory in ("otdp/0.3.0", "plugin-ui/0.1.0"):
         for path in (ROOT / "standards" / directory).glob("*.schema.json"):
             document = json.loads(path.read_bytes())
             documents[document["$id"]] = document

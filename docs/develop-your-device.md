@@ -86,7 +86,7 @@ The repository contains package admission and cache-loading components, but thes
 - `load_plugin` in the same module checks an implementation entry's cached bytes against the manifest, dynamically loads the verified Python code and calls its factory. The host still has to open and attach the instance.
 - `admit_startup_bench` in `src/benchweave/interfaces/bootstrap.py` populates bench inventory from startup fixtures. This is not a general runtime plugin installer.
 
-**External OTDP support is limited to the tested bridge scope.** The documented [OTDP API 1.1](../standards/otdp-v0.3.0/otdp-specification.md#8-python-adapter-abi-11) uses `create_plugin()` and async `open`/`execute`/`next_event`/`close`. The new `load_otdp_plugin` in `src/benchweave/registry/otdp_loading.py` verifies cached package files and uses `OTDPBridge` to adapt identify, scalar read and scalar write to the host. It supports package-relative and standard-library imports and requires caller-supplied scoped services. Profile actions, capture/streaming and arbitrary third-party dependencies need further integration. The legacy `load_plugin` path still uses clock-injected factories and the synchronous simulator interface; choose the correct loader. Passing the SDK example does not establish compatibility or hardware qualification for every external package.
+**External OTDP support is limited to the tested bridge scope.** The documented [OTDP API 1.1](../standards/otdp/0.3.0/otdp-specification.md#8-python-adapter-abi-11) uses `create_plugin()` and async `open`/`execute`/`next_event`/`close`. The new `load_otdp_plugin` in `src/benchweave/registry/otdp_loading.py` verifies cached package files and uses `OTDPBridge` to adapt identify, scalar read and scalar write to the host. It supports package-relative and standard-library imports and requires caller-supplied scoped services. Profile actions, capture/streaming and arbitrary third-party dependencies need further integration. The legacy `load_plugin` path still uses clock-injected factories and the synchronous simulator interface; choose the correct loader. Passing the SDK example does not establish compatibility or hardware qualification for every external package.
 
 The optional [plugin SDK](plugin-sdk.md) now provides offline contracts, types, mocks, conformance helpers and an independently buildable starter. It is a minimal authoring SDK, not a complete production host. Copying a folder or running `pip install` does not complete admission, bench configuration and activation.
 
@@ -192,7 +192,7 @@ the actual tooling; do not invent a registry URL or publication command.
 
 **Ready to share:** release metadata and evidence match the exact candidate, with the required accountable review complete. A simulated-only release must be labelled accordingly.
 
-The current developer guide documents local dev packaging and gateway registry admission, but the public registry service, submission/review pipeline, and device-install command are not yet available. A minimal [authoring SDK](plugin-sdk.md) is available in source and published to PyPI as benchweave-sdk from its own repository. Prepare the release now; public registry publication requires that service and its review/distribution process. Sharing source or publishing an ordinary Python library is separate from BenchWeave registry publication. See the [registry specification](../standards/registry-v1.0.0/registry-specification.md).
+The current developer guide documents local dev packaging and gateway registry admission, but the public registry service, submission/review pipeline, and device-install command are not yet available. A minimal [authoring SDK](plugin-sdk.md) is available in source and published to PyPI as benchweave-sdk from its own repository. Prepare the release now; public registry publication requires that service and its review/distribution process. Sharing source or publishing an ordinary Python library is separate from BenchWeave registry publication. See the [registry specification](../standards/registry/1.0.0/registry-specification.md).
 
 Installing and activating an integration on a physical bench is also separate: resolve and admit the package, bind local connections, qualify the bench and activate at an approved idle boundary. Package publication alone does not commission a device.
 
@@ -220,14 +220,14 @@ constraints; do not present proposed behaviour as tested device evidence.
 Resolve missing hardware facts before implementing the affected feature.
 ```
 
-For a straightforward controller, start by assessing [native OTDP UART JSON](../standards/otdp-v0.3.0/otdp-specification.md#62-native-uart-json). It can support a declarative integration for operations fully expressed by that binding. Standard class actions and capture require an adapter in this baseline, even with native firmware. A documented custom protocol behind an adapter is another option when native UART JSON does not fit.
+For a straightforward controller, start by assessing [native OTDP UART JSON](../standards/otdp/0.3.0/otdp-specification.md#62-native-uart-json). It can support a declarative integration for operations fully expressed by that binding. Standard class actions and capture require an adapter in this baseline, even with native firmware. A documented custom protocol behind an adapter is another option when native UART JSON does not fit.
 
 ```text
 Simple native operations:  BenchWeave → native UART JSON firmware
 Class actions or capture: BenchWeave → adapter → device firmware
 ```
 
-The descriptor declares the integration in both cases. Communication inside BenchWeave uses admitted host transport. The [reference controller](../standards/otdp-v0.3.0/examples/reference-controller.json) and [reference exchanges](../standards/otdp-v0.3.0/examples/reference-protocols.md) are synthetic authoring examples, not ready-to-flash firmware or evidence for your board.
+The descriptor declares the integration in both cases. Communication inside BenchWeave uses admitted host transport. The [reference controller](../standards/otdp/0.3.0/examples/reference-controller.json) and [reference exchanges](../standards/otdp/0.3.0/examples/reference-protocols.md) are synthetic authoring examples, not ready-to-flash firmware or evidence for your board.
 
 ### F1. Describe the board and firmware contract
 
@@ -314,7 +314,7 @@ non-applicable cases. Include firmware and integration tests in their CI.
 Report exact commands/results and remaining compatibility blockers.
 ```
 
-**Ready to continue:** firmware, descriptor and any adapter agree, and applicable conformance checks pass. The [core specification](../standards/otdp-v0.3.0/otdp-specification.md), [profile extension](../standards/otdp-v0.3.0/extension-contract.md) and [measurement model](../standards/otdp-v0.3.0/measurement-model.md) define the requirements; these prompts add none.
+**Ready to continue:** firmware, descriptor and any adapter agree, and applicable conformance checks pass. The [core specification](../standards/otdp/0.3.0/otdp-specification.md), [profile extension](../standards/otdp/0.3.0/extension-contract.md) and [measurement model](../standards/otdp/0.3.0/measurement-model.md) define the requirements; these prompts add none.
 
 ### F4. Prove it on the actual board
 

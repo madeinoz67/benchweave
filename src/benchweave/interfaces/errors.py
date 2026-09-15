@@ -1,4 +1,4 @@
-"""The 14-code interface error model (interface-v1.1.0 error_http_status).
+"""The 14-code interface error model (interface/1.1.0 error_http_status).
 
 Every failure envelope mints a fresh 16-hex ``correlation_id`` — the
 vendored ``$defs/error`` requires minLength 1 (D14 cheap half, WP09).

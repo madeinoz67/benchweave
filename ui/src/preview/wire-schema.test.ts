@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import Ajv2020 from "ajv/dist/2020";
-import schema from "../../../standards/plugin-ui-preview-v1/preview-document.schema.json";
+import schema from "../../../standards/plugin-ui-preview/1.0.0/preview-document.schema.json";
 import { decodePreview } from "./api";
 
 // The wire document is contract-first: this schema is the single source both

@@ -7,7 +7,7 @@ from jsonschema import Draft202012Validator, FormatChecker
 
 DOCS = globals().get("DOCS", Path(__file__).resolve().parents[2] / "docs")
 STANDARDS = globals().get("STANDARDS", Path(__file__).resolve().parents[2] / "standards")
-CONTRACT_DIR = STANDARDS / "registry-v1.0.0"
+CONTRACT_DIR = STANDARDS / "registry/1.0.0"
 results = []
 
 

@@ -22,11 +22,11 @@ def encode(value: object) -> bytes:
 @pytest.fixture
 def bundle() -> Bundle:
     documents: dict[str, JsonObject] = {}
-    for path in (ROOT / "standards/plugin-ui-v0.1.0").glob("*.schema.json"):
+    for path in (ROOT / "standards/plugin-ui/0.1.0").glob("*.schema.json"):
         schema = json.loads(path.read_bytes())
         documents[schema["$id"]] = schema
     descriptor = json.loads(
-        (ROOT / "standards/otdp-v0.3.0/examples/class-dc_psu.json").read_bytes()
+        (ROOT / "standards/otdp/0.3.0/examples/class-dc_psu.json").read_bytes()
     )
     schema = {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
