@@ -38,6 +38,7 @@ commit_parsers = [
     { message = "^test", group = "Testing" },
     { message = "^evidence", group = "Hardware Evidence" },
     { message = "^chore\\(release\\): prepare for", skip = true },
+    { message = "^chore\\(changelog\\)", skip = true },
     { message = "^chore", group = "Miscellaneous" },
     { body = ".*security", group = "Security" },
 ]

@@ -202,6 +202,7 @@ All notable changes to this project will be documented in this file.
 - Evidence-backed session layer — handshake frames + telemetry drain
 - Session establishment + telemetry drain/route per WP10 design
 - Live demo script under the plugin — ramp, telemetry, session-survival flourish
+- Git-cliff config, seeded CHANGELOG.md, merge-driven regeneration
 
 ### Hardware Evidence
 
