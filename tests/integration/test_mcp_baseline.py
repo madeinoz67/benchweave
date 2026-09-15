@@ -23,7 +23,7 @@ import pytest
 from benchweave.interfaces.identity import IdentityRejected, issue, validate
 
 ROOT = Path(__file__).resolve().parents[2]
-CONTRACT_TOOLS = ROOT / "contracts" / "interface-v1.1.1" / "mcp-tools.json"
+CONTRACT_TOOLS = ROOT / "standards" / "interface-v1.1.1" / "mcp-tools.json"
 SECRET = b"wp02-test-secret-not-a-credential"
 AUDIENCE = "benchweave-gateway"
 INVOKE_SCOPE = "tools:invoke"

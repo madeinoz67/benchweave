@@ -216,7 +216,7 @@ def _impl_extras() -> list[tuple[str, bytes]]:
 
 def _profile_member() -> tuple[str, bytes]:
     """Structural dc_psu profile derived from the vendored OTDP class contract
-    (``docs/otdp-v0.3.0/examples/class-dc_psu.json``): class identity, the
+    (``standards/otdp-v0.3.0/examples/class-dc_psu.json``): class identity, the
     three profile actions with their class-contract properties, and one
     conformance vector per action. Kept small — a fixture, not a device model.
     """

@@ -8,7 +8,8 @@ from pathlib import Path
 from jsonschema import Draft202012Validator, FormatChecker
 
 DOCS = globals().get("DOCS", Path(__file__).resolve().parents[2] / "docs")
-CONTRACT_DIR = DOCS / "interface-v1.1.0"
+STANDARDS = globals().get("STANDARDS", Path(__file__).resolve().parents[2] / "standards")
+CONTRACT_DIR = STANDARDS / "interface-v1.1.0"
 schema = json.loads((CONTRACT_DIR / "interface.schema.json").read_text(encoding="utf-8"))
 catalog = json.loads((CONTRACT_DIR / "operation-catalog.json").read_text(encoding="utf-8"))
 api = json.loads((CONTRACT_DIR / "openapi.json").read_text(encoding="utf-8"))

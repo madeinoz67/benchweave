@@ -118,7 +118,7 @@ from benchweave.interfaces.operations import Operations
 from benchweave.state.store import Store
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "execution"
-CONTRACTS = Path(__file__).resolve().parents[2] / "contracts" / "interface-v1.1.1"
+CONTRACTS = Path(__file__).resolve().parents[2] / "standards" / "interface-v1.1.1"
 CATALOG = json.loads((CONTRACTS / "operation-catalog.json").read_text(encoding="utf-8"))
 VENDORED_TOOLS = {
     t["name"]: t

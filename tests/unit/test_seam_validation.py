@@ -7,7 +7,7 @@ import pytest
 from benchweave.interfaces import errors
 from benchweave.interfaces.validation import SeamValidator
 
-CORPUS = Path(__file__).resolve().parents[2] / "contracts" / "interface-v1.1.1"
+CORPUS = Path(__file__).resolve().parents[2] / "standards" / "interface-v1.1.1"
 
 
 @pytest.fixture(scope="module")

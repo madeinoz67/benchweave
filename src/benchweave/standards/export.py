@@ -45,8 +45,8 @@ def _entry(root: Path, entry: StandardEntry, sources: dict[str, str]) -> dict[st
     for relative in entry.normative:
         raw = (root / relative).read_bytes()
         bundle_path = (
-            f"{entry.id}/{relative.removeprefix('contracts/')}"
-            if relative.startswith("contracts/")
+            f"{entry.id}/{relative.removeprefix('standards/')}"
+            if relative.startswith("standards/")
             else f"{entry.id}/{Path(relative).name}"
         )
         if bundle_path in sources:

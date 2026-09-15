@@ -32,7 +32,7 @@ from benchweave.interfaces.operations import Operations
 from benchweave.interfaces.validation import SeamValidator
 from benchweave.state.store import Store
 
-CORPUS = Path(__file__).resolve().parents[2] / "contracts" / "interface-v1.1.1"
+CORPUS = Path(__file__).resolve().parents[2] / "standards" / "interface-v1.1.1"
 ADMIN = Identity("admin-1", "stg", frozenset({"stg:admin"}), 2**31)
 SECRET = b"test-issuer-secret"
 NOW = "2026-09-12T00:00:00Z"

@@ -20,7 +20,7 @@ from benchweave.interfaces.validation import SeamValidator
 from benchweave.state.store import Store
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "execution"
-CORPUS = Path(__file__).resolve().parents[2] / "contracts" / "interface-v1.1.1"
+CORPUS = Path(__file__).resolve().parents[2] / "standards" / "interface-v1.1.1"
 Seam = tuple[Operations, Store]
 
 
@@ -147,7 +147,7 @@ def _vendored_interface_schema() -> dict[str, Any]:
     schema file is a byte-copy of 1.1.0) — the authority the licence
     verdict is decided by, read fresh so this suite pins the artifact."""
     path = (
-        FIXTURES.parents[1] / "contracts" / "interface-v1.1.1"
+        FIXTURES.parents[1] / "standards" / "interface-v1.1.1"
         / "interface.schema.json"
     )
     schema: dict[str, Any] = json.loads(path.read_text())

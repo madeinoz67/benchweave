@@ -1,6 +1,6 @@
 """Vendored-asset resolution: wheel-packaged first, dev-checkout fallback.
 
-The runtime reads vendored contract corpora (``contracts/``) and the
+The runtime reads vendored contract corpora (``standards/``) and the
 BenchWeave simulator plugins (``plugins/benchweave/``) that live at the
 REPOSITORY root beside the suites that pin them. A wheel install has no
 repository around it, so the wheel packages the same trees verbatim under
@@ -31,7 +31,7 @@ def contract_family(name: str) -> Path:
     packaged = _PACKAGED_ROOT / "contracts" / name
     if packaged.is_dir():
         return packaged
-    return _REPO_ROOT / "contracts" / name
+    return _REPO_ROOT / "standards" / name
 
 
 def sim_plugins_root() -> Path:

@@ -63,8 +63,8 @@ enforce the stale claim.** A doc that is confidently wrong is worse than none.
    packaging, loading, policy, or lifecycle behaviour) → `docs/device-developer-guide.md`;
    operator-visible behaviour (service, config, CI) → the operator docs and `README.md`;
    **CLI-visible behaviour (`src/benchweave/cli/`) → the CLI reference in the operator
-   docs; API-visible behaviour → the OpenAPI spec in lockstep (`contracts/interface-v1.1.0/`
-   AND `docs/interface-v1.1.0/` must move together); MCP-visible behaviour →
+   docs; API-visible behaviour → the OpenAPI spec (`standards/interface-v1.1.0/` is the
+   sole machine-artifact home); MCP-visible behaviour →
    `contracts/interface-v1.1.0/mcp-tools.json` and any tool schema it references;
    UI-visible behaviour → the console/UI docs, once that surface exists — when a UI stage
    lands, name its doc home here**;
@@ -74,8 +74,8 @@ enforce the stale claim.** A doc that is confidently wrong is worse than none.
    CI contract — `.github/workflows/ci.yml` ↔ test reality: any test whose outcome
    depends on repo secrets or environment must match the workflow's materialisation, and
    workflow changes get a cold full-suite run, not a warm local one;
-   vendoring manifest — `contracts/manifest.json` byte-pins move with any vendored
-   contract change;
+   vendoring manifest — `standards/corpus-manifest.json` byte-pins move with any
+   vendored contract change;
    security-posture docs — key/secret handling docs track the real key paths and secret
    names (rule 5 catches leaks; this catches drift between the posture text and the
    posture)**;

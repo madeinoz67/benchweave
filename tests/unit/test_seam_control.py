@@ -39,7 +39,7 @@ from benchweave.interfaces.worker import RunWorker
 from benchweave.state.store import Store
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "execution"
-CORPUS = Path(__file__).resolve().parents[2] / "contracts" / "interface-v1.1.1"
+CORPUS = Path(__file__).resolve().parents[2] / "standards" / "interface-v1.1.1"
 PLUGINS_ROOT = Path(__file__).resolve().parents[2] / "plugins"
 BENCH_ID = "sim-bench"  # the bootstrap bench (fixtures/execution/bench.json)
 DESCRIPTORS = {

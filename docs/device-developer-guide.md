@@ -28,7 +28,7 @@ This guide explains the workflow; it introduces no new protocol requirements. Th
 | Run integrations on a gateway | Host ABI, bench configuration and execution contracts | Scoped host services, admission, ownership, evidence and qualified deployment |
 | Share an integration | Registry contract and compatible existing packages | Immutable package, release metadata, provenance and conformance evidence |
 
-Read the [core specification](otdp-v0.3.0/otdp-specification.md), [profile/adapter extension](otdp-v0.3.0/extension-contract.md), [device classes](otdp-v0.3.0/device-classes.md) and [measurement model](otdp-v0.3.0/measurement-model.md) before writing a class-capable integration. The [documentation index](project-index.md) links the remaining contracts.
+Read the [core specification](../standards/otdp-v0.3.0/otdp-specification.md), [profile/adapter extension](../standards/otdp-v0.3.0/extension-contract.md), [device classes](../standards/otdp-v0.3.0/device-classes.md) and [measurement model](../standards/otdp-v0.3.0/measurement-model.md) before writing a class-capable integration. The [documentation index](project-index.md) links the remaining contracts.
 
 ### Repository layout for device plugins
 
@@ -114,7 +114,7 @@ Use uv for Python dependencies. Retain its lockfile and the exact tested runtime
 
 ### Descriptor authoring checklist
 
-Use the [descriptor schema](otdp-v0.3.0/otdp-device-descriptor.schema.json) and a suitable [class descriptor example](otdp-v0.3.0/examples/class-dc_psu.json) as references. Copying a fixture does not transfer its evidence to your hardware.
+Use the [descriptor schema](../standards/otdp-v0.3.0/otdp-device-descriptor.schema.json) and a suitable [class descriptor example](../standards/otdp-v0.3.0/examples/class-dc_psu.json) as references. Copying a fixture does not transfer its evidence to your hardware.
 
 | Field group | Authoring rule |
 |---|---|
@@ -132,7 +132,7 @@ Validate all applicable **S01–S18**, **C01–C12** and **M01–M14** obligatio
 
 ## 5. Implement the adapter lifecycle
 
-The normative factory and methods are in [core specification §8](otdp-v0.3.0/otdp-specification.md#8-python-adapter-abi-11). They use structural Python interfaces. The optional [plugin SDK](plugin-sdk.md) supplies typing protocols, offline validation and mocks for development; plugin runtime code need not import it.
+The normative factory and methods are in [core specification §8](../standards/otdp-v0.3.0/otdp-specification.md#8-python-adapter-abi-11). They use structural Python interfaces. The optional [plugin SDK](plugin-sdk.md) supplies typing protocols, offline validation and mocks for development; plugin runtime code need not import it.
 
 | Entry point | Required behaviour |
 |---|---|
@@ -181,7 +181,7 @@ Native UART JSON uses strict UTF-8 NDJSON with LF termination, bounded frames an
 
 Advertise only the implemented subset. Document boot/reset/serial-control-line behaviour, watchdog behaviour and loss-of-host behaviour, with qualification evidence where applicable. Firmware flashing is a separate controlled activity, not plugin admission or `open()` behaviour.
 
-Use the [synthetic controller descriptor](otdp-v0.3.0/examples/reference-controller.json), [reference protocol](otdp-v0.3.0/examples/reference-protocols.md) and [runtime schema](otdp-v0.3.0/otdp-runtime.schema.json) for exact examples. They are authoring targets, not ready-to-flash ESP32 firmware.
+Use the [synthetic controller descriptor](../standards/otdp-v0.3.0/examples/reference-controller.json), [reference protocol](../standards/otdp-v0.3.0/examples/reference-protocols.md) and [runtime schema](../standards/otdp-v0.3.0/otdp-runtime.schema.json) for exact examples. They are authoring targets, not ready-to-flash ESP32 firmware.
 
 ## 7. Publish measurements correctly
 
@@ -196,7 +196,7 @@ Select the real dataset meaning: scalar set, waveform, digital trace, spectrum, 
 
 Payload creation/writing requires `artifact_writer`; reading authorised upload inputs requires `artifact_reader`. Finalising bytes does not validate their physical meaning: the manifest must still pass the dataset and class checks. Partial data must not become a complete successful acquisition merely because the file was written.
 
-See the [measurement model](otdp-v0.3.0/measurement-model.md) for all M01–M14 rules and the [extension contract](otdp-v0.3.0/extension-contract.md) for host method signatures.
+See the [measurement model](../standards/otdp-v0.3.0/measurement-model.md) for all M01–M14 rules and the [extension contract](../standards/otdp-v0.3.0/extension-contract.md) for host method signatures.
 
 ## 8. Test before hardware qualification
 
@@ -233,14 +233,14 @@ This is the implementation and qualification sequence for the planned host, not 
 
 1. **Select the deployment.** The reference is a supervised host-native Linux service for direct hardware access. Qualify OS, runtime, adapter, backend, device firmware, USB/bus topology and access permissions together. Containers or worker isolation require equivalent qualified behaviour; an in-process Python interface is not a sandbox.
 2. **Resolve and admit the package.** Verify exact dependencies, local schemas, permissions, provenance and firmware support before importing executable code. Search and inspection must not execute install hooks. Do not let descriptors install packages or providers.
-3. **Create local bench records.** Bind `connection_key` to the commissioned instance. Maintain wiring, channel/resource maps, safety policy, procedure, commissioning and package lock separately from shared descriptors. Follow the [execution contract](execution-v1.0.0/execution-contract.md).
+3. **Create local bench records.** Bind `connection_key` to the commissioned instance. Maintain wiring, channel/resource maps, safety policy, procedure, commissioning and package lock separately from shared descriptors. Follow the [execution contract](../standards/execution-v1.0.0/execution-contract.md).
 4. **Implement scoped host services.** Enforce connection identity, transaction shape, byte/time limits, monotonic deadlines, ownership, evidence retention and dataset quotas. Resolve schema references from verified local content only. Provide no unrestricted credentials or host paths to adapters.
 5. **Activate at a safe idle boundary.** Create a new configuration generation, instantiate one plugin per physical device, open it and explicitly identify it. Identity or firmware mismatch blocks ordinary control. The approved package lock remains fixed throughout a run.
 6. **Enforce the control path.** Authenticate and authorise, establish ownership, validate current safety conditions, schedule, execute and verify. REST and MCP call the same core; tool annotations and sessions do not grant authority.
 7. **Qualify protection and operation.** Supply actual voltage/current/power/energy limits, safe-state criteria, timing budgets, independent protective response and evidence. Unattended runs require a commissioned bounded procedure. Future mains-powered fixtures require separate qualification.
 8. **Exercise failures and recovery.** Verify lost device/host communication, process failure, storage failure, restart, identity changes and cancellation. Recovery does not blindly replay work, auto-clear trips or resume output. Preserve evidence and require the contract's verification/re-arming process.
 
-Network-facing interfaces require the [interface contract](interface-v1.1.0/interface-contract.md) authentication and authorisation model and TLS. Restrict raw instrument protocols to the bench network. Publish REST/MCP interfaces, not direct unauthenticated instrument sockets, to application clients.
+Network-facing interfaces require the [interface contract](../standards/interface-v1.1.0/interface-contract.md) authentication and authorisation model and TLS. Restrict raw instrument protocols to the bench network. Publish REST/MCP interfaces, not direct unauthenticated instrument sockets, to application clients.
 
 The host owns protective priority independently of ordinary plugin work. Device shutdown commands alone do not cover host failure. Define retention, backup/restore, health monitoring and resource limits as deployment inputs. A graceful stop must not be the only path to a safe condition.
 
@@ -273,9 +273,9 @@ Choose the correct registry kind:
 
 Avoid a descriptor/implementation dependency cycle. The normal shape is a profile consumed by an implementation bundling its descriptors; a separate downstream descriptor may depend on that implementation. A descriptor-free generic library is an ordinary language dependency, not a new registry kind.
 
-Supply the [release manifest](registry-v1.0.0/release-manifest.schema.json): registry/package/version identity, publisher and maintainers, support links, licence and bundled licence file, immutable source revision, compatibility/runtime matrix, device targets, exact dependencies, permissions, file inventory and hashes, test evidence, changelog and migration notes. Executable releases also need an SBOM, build provenance and exact dependency lock. The manifest sits outside its payload archive to avoid a circular hash.
+Supply the [release manifest](../standards/registry-v1.0.0/release-manifest.schema.json): registry/package/version identity, publisher and maintainers, support links, licence and bundled licence file, immutable source revision, compatibility/runtime matrix, device targets, exact dependencies, permissions, file inventory and hashes, test evidence, changelog and migration notes. Executable releases also need an SBOM, build provenance and exact dependency lock. The manifest sits outside its payload archive to avoid a circular hash.
 
-Use a new package ID for a fork and preserve lineage. Do not publish private endpoints, credentials, instance serial selection, bench safety policy or private captures. Do not assume rights to redistribute manuals or SDKs. Required metadata and review/evidence states are defined in the [registry specification](registry-v1.0.0/registry-specification.md).
+Use a new package ID for a fork and preserve lineage. Do not publish private endpoints, credentials, instance serial selection, bench safety policy or private captures. Do not assume rights to redistribute manuals or SDKs. Required metadata and review/evidence states are defined in the [registry specification](../standards/registry-v1.0.0/registry-specification.md).
 
 ### Registry operator
 

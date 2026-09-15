@@ -48,7 +48,7 @@ from benchweave.state.store import Store
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / "fixtures" / "execution"
 PLUGINS_ROOT = ROOT / "plugins"
-RUN_RECORD_SCHEMA = ROOT / "contracts" / "execution-v1.0.0" / "run-record.schema.json"
+RUN_RECORD_SCHEMA = ROOT / "standards" / "execution-v1.0.0" / "run-record.schema.json"
 DESCRIPTORS = {
     "psu": FIXTURES / "descriptor-sim-psu.json",
     "controller": FIXTURES / "descriptor-sim-controller.json",

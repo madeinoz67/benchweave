@@ -51,25 +51,25 @@ def load_manifest(root: Path) -> StandardsManifest:
 
 
 def validate_manifest(manifest: StandardsManifest, root: Path) -> None:
-    """Every normative file exists; contracts/ files match contracts/manifest.json pins."""
-    pins = _contracts_pins(root)
+    """Every normative file exists; standards/ files match standards/corpus-manifest.json pins."""
+    pins = _corpus_pins(root)
     for entry in manifest.standards:
         for relative in entry.normative:
             path = root / relative
             if not path.is_file():
                 raise StandardsError(f"missing_normative_file: {entry.id}: {relative}")
             digest = hashlib.sha256(path.read_bytes()).hexdigest()
-            if relative.startswith("contracts/"):
-                pinned = pins.get(relative.removeprefix("contracts/"))
+            if relative.startswith("standards/"):
+                pinned = pins.get(relative.removeprefix("standards/"))
                 if pinned is None:
-                    raise StandardsError(f"normative_not_in_contracts_manifest: {relative}")
+                    raise StandardsError(f"normative_not_in_corpus_manifest: {relative}")
                 if pinned != digest:
                     raise StandardsError(f"normative_hash_mismatch: {relative}")
-            # Non-contracts paths (the parity validator) carry no second authority.
+            # Non-standards paths (the parity validator) carry no second authority.
 
 
-def _contracts_pins(root: Path) -> dict[str, str]:
-    path = root / "contracts/manifest.json"
+def _corpus_pins(root: Path) -> dict[str, str]:
+    path = root / "standards/corpus-manifest.json"
     if not path.is_file():
         return {}
     document = json.loads(path.read_bytes())

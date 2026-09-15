@@ -9,7 +9,7 @@ from jsonschema import Draft202012Validator
 from referencing import Registry, Resource
 
 ROOT = Path(__file__).resolve().parents[2]
-DIRECTORY = ROOT / "docs/plugin-ui-v0.1.0"
+DIRECTORY = ROOT / "standards/plugin-ui-v0.1.0"
 NAMES = ("ui-manifest", "configuration-preset", "presentation-envelope", "binding-catalogue")
 
 
