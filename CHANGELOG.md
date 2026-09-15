@@ -70,6 +70,7 @@ All notable changes to this project will be documented in this file.
 - Frame-atomic drain window — WP11 W1 straddle hardening + W2 same-field pin
 - Ruff-format dps150 session - repair dps150-independent lane (broken by #14)
 - Repoint preview wire-schema test at standards/ corpus path
+- Re-lock dps150 contracts at the standards tree
 
 ### Documentation
 
@@ -242,6 +243,8 @@ All notable changes to this project will be documented in this file.
 - Advance sdk pointer to v0.0.2 (0f105a3)
 - Advance sdk pointer to bb3159e (tap-bump job)
 - Ignore gortex git-hook artifacts (wiki, mermaid exports, docs bundle)
+- Remove the retired firmware/esp32_reference placeholder
+- Post-consolidation cleanup — retire firmware placeholder, re-lock dps150 contracts (#20)
 
 ### Refactoring
 
