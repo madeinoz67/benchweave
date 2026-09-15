@@ -161,9 +161,7 @@ class HandshakingTransport:
             try:
                 payload = _GET_PAYLOADS[data[2]]
             except KeyError:
-                raise ValueError(
-                    f"no HandshakingTransport reply for field {data[2]}"
-                ) from None
+                raise ValueError(f"no HandshakingTransport reply for field {data[2]}") from None
         body = bytes((data[2], len(payload))) + payload
         reply = bytes((0xF0, GET)) + body + bytes((sum(body) % 256,))
         if not self.trailing_telemetry:

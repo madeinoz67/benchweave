@@ -884,9 +884,7 @@ def test_drain_edge_straddle_never_poisons_the_session(
     healthy on one plugin instance."""
 
     async def scenario() -> None:
-        telemetry_195 = bytes.fromhex(
-            "f0 a1 c3 0c 00 00 00 00 00 00 00 00 00 00 00 00 cf"
-        )
+        telemetry_195 = bytes.fromhex("f0 a1 c3 0c 00 00 00 00 00 00 00 00 00 00 00 00 cf")
         host = TransportHost(trailing_transport)
         plugin = create_plugin()
         await plugin.open(build_descriptor(), host, Context())
@@ -897,9 +895,7 @@ def test_drain_edge_straddle_never_poisons_the_session(
         state = {"stage": 0}
 
         async def straddling(max_bytes: int) -> bytes:
-            gets = sum(
-                1 for data in trailing_transport.sent if data[:2] == bytes((0xF1, GET))
-            )
+            gets = sum(1 for data in trailing_transport.sent if data[:2] == bytes((0xF1, GET)))
             if state["stage"] == 0 and trailing_transport.awake and gets >= 2:
                 state["stage"] = 1
                 return telemetry_195[:8]
@@ -992,17 +988,13 @@ def test_stamp_invalidation_inside_the_commanded_window_poisons(
         flipped = {"done": False}
 
         async def flipping(max_bytes: int) -> bytes:
-            gets = sum(
-                1 for data in trailing_transport.sent if data[:2] == bytes((0xF1, GET))
-            )
+            gets = sum(1 for data in trailing_transport.sent if data[:2] == bytes((0xF1, GET)))
             # The commanded window is distinguishable from the pre-send
             # drain: it is the first receive after the read's GET, when the
             # queue-at-send reply is pending. Snapshot the queue's state
             # BEFORE the inner receive pops it (a live deque reference would
             # be falsy by the time the flip checks it).
-            window = (
-                trailing_transport.awake and gets >= 3 and bool(trailing_transport._replies)
-            )
+            window = trailing_transport.awake and gets >= 3 and bool(trailing_transport._replies)
             chunk = bytes(await inner(max_bytes))
             if not flipped["done"] and window and chunk:
                 flipped["done"] = True
