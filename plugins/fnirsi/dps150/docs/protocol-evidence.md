@@ -1,6 +1,6 @@
 # DPS-150 protocol library
 
-Status: source-supported protocol subset, qualified with synthetic mock exchanges plus one supervised read-only live-hardware capture (2026-09-15, `fixtures/protocols/dps150/` at the repository root) that grounds the session layer and identity answers cited below. No DUT was commissioned; no setpoint, protection or output write has ever been sent. No firmware compatibility beyond the captured unit, physical protection, measurement accuracy or OTDP profile conformance is claimed.
+Status: source-supported protocol subset, qualified with synthetic mock exchanges plus supervised live-hardware captures (2026-09-15, `fixtures/protocols/dps150/` at the repository root) that ground the session layer, identity answers, GET dialects and write behaviour cited below. Supervised writes were sent and captured: voltage and current setpoints (fields 193/194), numeric OVP/OCP (fields 209/210) and the output toggle (field 219) at 1.00 V unloaded, each leg under the principal's per-leg approval recorded in the capture provenance headers, with every setting restored and verified afterwards by snapshot readback. Both GET dialects are live-verified post-handshake. No DUT was commissioned; no firmware compatibility beyond the captured unit, physical protection, measurement accuracy or OTDP profile conformance is claimed.
 
 ## Design and reuse
 
@@ -53,7 +53,7 @@ Explicitly unsupported: unknown C0/field 225, reset, firmware update, direct set
 
 ## Evidence-backed session layer
 
-The device does not answer a clean transport: it must be woken first. This is the one protocol area with direct live-hardware corroboration, and it is kept outside the codec's reviewed subset on purpose.
+The device does not answer a clean transport: it must be woken first. This area has direct live-hardware corroboration, and it is kept outside the codec's reviewed subset on purpose.
 
 Upstream provenance: cho45/fnirsi-dps-150 at 6107bd34 opens every session with CMD_SESSION (`0xC1`) then CMD_BAUD (`0xB0`) as fire-and-forget frames paced ~50 ms apart, over a port with RTS/CTS hardware flow control. Neither frame draws a reply of its own; wake is proven only by the traffic that follows.
 
@@ -61,7 +61,7 @@ Live corroboration, first contact 2026-09-15 (supervised, read-only; committed a
 
 `session.open_session(transport, delay_s=0.05)` sends those two captured frames with the captured pacing; `session.drain_telemetry(transport, window_s=...)` empties the unsolicited stream around commanded calls. The frames are hand-derived constants, deliberately not routed through `encode_packet` — the codec's supported-subset guard still rejects C1/B0, so the reviewed subset above is unchanged. The handshake is fire-and-forget: `open_session` receives nothing and establishes no session state, and a failed wake is indistinguishable from a dead link until a commanded call times out.
 
-Transport preconditions: an exclusively owned, already-established session with RTS/CTS hardware flow control enabled, and ~50 ms pacing between the two frames. The GET dialect is not settled by this capture: ZERO-payload GETs are live-verified post-handshake; EMPTY was exercised only in the silent pre-handshake phase and remains untested on hardware.
+Transport preconditions: an exclusively owned, already-established session with RTS/CTS hardware flow control enabled, and ~50 ms pacing between the two frames. The captures do not settle the dialect as a firmware property: both ZERO-payload and EMPTY GETs are live-verified post-handshake (EMPTY by `hw04-leg34-current-protection.jsonl`, step `leg6-dialect-EMPTY`), and qualification must still select one explicitly.
 
 ## Injected transport and lifecycle
 

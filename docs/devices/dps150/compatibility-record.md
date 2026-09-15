@@ -24,6 +24,7 @@ conformance work, not discovery claims.
 | Source | Value | Evidence |
 |---|---|---|
 | USB vendor | Artery "AT32 Virtual Com Port", idVendor 11836 (0x2E3C) | first-contact session log, [`README.md`](../../../fixtures/protocols/dps150/README.md) |
+| USB product id (idProduct) | **Not captured** — no capture in this record records idProduct; only idVendor is on file, so VID/PID matching has no PID basis here | absence across [`fixtures/protocols/dps150/`](../../../fixtures/protocols/dps150/) (HW-01 table in [`README.md`](../../../fixtures/protocols/dps150/README.md) lists idVendor only) |
 | USB serial | `135DD2594096`, stable across the session and across USB re-enumeration (node name unchanged: `/dev/cu.usbmodem135DD25940961`) | [`hw05-leg3-replug.jsonl`](../../../fixtures/protocols/dps150/hw05-leg3-replug.jsonl) |
 | Wire field 222 | Model `DPS-150` | [`connect-v2.jsonl`](../../../fixtures/protocols/dps150/connect-v2.jsonl) step `identity-222` |
 | Wire field 223 | Hardware `V1.0` | `connect-v2.jsonl` step `identity-223` |
