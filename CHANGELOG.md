@@ -69,6 +69,7 @@ All notable changes to this project will be documented in this file.
 - Tolerate trailing telemetry in the commanded reply window (live-device defect)
 - Frame-atomic drain window — WP11 W1 straddle hardening + W2 same-field pin
 - Ruff-format dps150 session - repair dps150-independent lane (broken by #14)
+- Repoint preview wire-schema test at standards/ corpus path
 
 ### Documentation
 
@@ -124,6 +125,7 @@ All notable changes to this project will be documented in this file.
 - Point SDK consumers at PyPI; simplify dead concurrency expression
 - Close-out - PyPI/brew publishing design + implementation plan (landed)
 - Record honesty — WP11 W3 ramp wording + W4 adapter-shape note
+- Fix errata README's own post-move pointers (review M-1)
 
 ### Features
 
@@ -247,6 +249,8 @@ All notable changes to this project will be documented in this file.
 - Colocate device and simulator projects
 - Align CLI with Click Rich and Textual
 - Single-source preview constants
+- One standards tree — corpus, prose and locks under standards/
+- One standards tree (corpus, prose, locks under standards/) (#19)
 
 ### Testing
 
