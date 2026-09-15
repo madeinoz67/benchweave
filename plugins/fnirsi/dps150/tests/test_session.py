@@ -5,6 +5,7 @@ from collections import deque
 
 import pytest
 
+from benchweave_fnirsi_dps150.client import Client, GetPayload, OperationTimeout, Transport
 from benchweave_fnirsi_dps150.codec import FrameDecoder  # noqa: F401 (shape check)
 from benchweave_fnirsi_dps150.session import (
     BAUD_NEGOTIATE,
@@ -129,5 +130,65 @@ def test_invalid_window_has_no_io(window_s: object) -> None:
         with pytest.raises(ValueError):
             await drain_telemetry(transport, window_s=window_s)  # type: ignore[arg-type]
         assert transport.reads == 0
+
+    asyncio.run(scenario())
+
+
+def test_client_read_times_out_without_handshake(
+    handshaking_transport: Transport,
+) -> None:
+    """The captured negative, replayed: a bare GET is dispatched, the
+    un-handshaked device offers zero bytes, and the deadline expires."""
+
+    async def scenario() -> None:
+        client = Client(handshaking_transport, get_payload=GetPayload.ZERO)
+        with pytest.raises(OperationTimeout) as excinfo:
+            await client.read(222, timeout=0.05)
+        assert excinfo.value.dispatch_started is True
+        assert client.unusable
+
+    asyncio.run(scenario())
+
+
+def test_client_read_answers_after_handshake(
+    handshaking_transport: Transport,
+) -> None:
+    """open_session wakes the device: GETs draw their reply first, then the
+    captured telemetry cycle keeps streaming around them."""
+
+    async def scenario() -> None:
+        await open_session(handshaking_transport, delay_s=0)
+        client = Client(handshaking_transport, get_payload=GetPayload.ZERO)
+        assert await client.read(222, timeout=1) == "DPS-150"
+        assert await client.read(195, timeout=1) == (0.0, 0.0, 0.0)
+        packets = await drain_telemetry(handshaking_transport, window_s=0.05)
+        fields = [packet.field for packet in packets]
+        assert fields[:5] == [195, 192, 226, 227, 196]
+        assert set(fields) == {195, 192, 226, 227, 196}
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize(
+    "preamble",
+    [
+        BAUD_NEGOTIATE + SESSION_OPEN,  # right frames, wrong order
+        SESSION_OPEN,  # second frame never sent
+        SESSION_OPEN + bytes.fromhex("f1 b0 00 01 05 07"),  # corrupt checksum
+        b"\x00" * 12,  # noise
+    ],
+    ids=["reversed", "incomplete", "corrupt", "noise"],
+)
+def test_wrong_preamble_keeps_the_device_silent(
+    handshaking_transport: Transport, preamble: bytes
+) -> None:
+    """Only the exact captured sequence wakes the device; anything else
+    leaves it as silent as the twelve bare queries were."""
+
+    async def scenario() -> None:
+        await handshaking_transport.send(preamble)
+        client = Client(handshaking_transport, get_payload=GetPayload.ZERO)
+        with pytest.raises(OperationTimeout):
+            await client.read(222, timeout=0.03)
 
     asyncio.run(scenario())

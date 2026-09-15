@@ -1,6 +1,6 @@
 # DPS-150 protocol library
 
-Status: source-supported protocol subset, validated with synthetic mock exchanges only. No hardware was connected or operated. No firmware compatibility, physical protection, measurement accuracy or OTDP profile conformance is claimed.
+Status: source-supported protocol subset, qualified with synthetic mock exchanges plus one supervised read-only live-hardware capture (2026-09-15, `fixtures/protocols/dps150/` at the repository root) that grounds the session layer and identity answers cited below. No DUT was commissioned; no setpoint, protection or output write has ever been sent. No firmware compatibility beyond the captured unit, physical protection, measurement accuracy or OTDP profile conformance is claimed.
 
 ## Design and reuse
 
@@ -49,7 +49,19 @@ ALL maps the first seven floats to input/set/output/temperature values; protecti
 
 The write envelope follows the reviewed manual ranges; it is not a safe DUT envelope. 5.1 A OCP is a protection setting, not an expanded 5 A output rating. Zero protection values are merely encodable source settings; their disable/trip semantics are unknown. OVP/OCP resolution is not asserted. Binary32 rounding is inherent in the wire representation, never proof of an effective setting. `write_payload` rejects setpoint quantisation violations before encoding. `encode_packet` is the lower-level byte codec; it validates payload shape/finite range but does not establish engineering-unit quantisation or assurance.
 
-Explicitly unsupported: session/baud commands B0/C1, unknown C0/field 225, reset, firmware update, direct setpoint/protection GETs, preset programming, display/audio settings, metering controls, OPP/OTP/LVP writes, sweeps and streaming subscriptions. Some exist in upstream code but are deliberately outside this reviewed subset. No commands are invented to initialise or synchronise the device.
+Explicitly unsupported: unknown C0/field 225, reset, firmware update, direct setpoint/protection GETs, preset programming, display/audio settings, metering controls, OPP/OTP/LVP writes, sweeps and streaming subscriptions. Some exist in upstream code but are deliberately outside this reviewed subset. The evidence-backed session handshake below is the sole initialise/synchronise mechanism, and it deliberately stays outside `encode_packet`; no other commands are invented to initialise or synchronise the device.
+
+## Evidence-backed session layer
+
+The device does not answer a clean transport: it must be woken first. This is the one protocol area with direct live-hardware corroboration, and it is kept outside the codec's reviewed subset on purpose.
+
+Upstream provenance: cho45/fnirsi-dps-150 at 6107bd34 opens every session with CMD_SESSION (`0xC1`) then CMD_BAUD (`0xB0`) as fire-and-forget frames paced ~50 ms apart, over a port with RTS/CTS hardware flow control. Neither frame draws a reply of its own; wake is proven only by the traffic that follows.
+
+Live corroboration, first contact 2026-09-15 (supervised, read-only; committed at `fixtures/protocols/dps150/`, repository commit `0bab412`): twelve bare identity queries — both GET dialects across six bauds (115200, 9600, 19200, 38400, 57600, 230400), without flow control — drew zero reply bytes (`first-contact-negative.jsonl`). On a port with RTS/CTS enabled, sending session-open `F1 C1 00 01 01 02` then, after ~50 ms, baud negotiation `F1 B0 00 01 05 06` woke the device: it answered subsequent GETs and streamed an unsolicited ~2 Hz telemetry cycle of fields 195, 192, 226, 227, 196 around them (`connect-v2.jsonl`). The negative capture lacked both the handshake and flow control, so it does not separate the two requirements; both are treated as preconditions.
+
+`session.open_session(transport, delay_s=0.05)` sends those two captured frames with the captured pacing; `session.drain_telemetry(transport, window_s=...)` empties the unsolicited stream around commanded calls. The frames are hand-derived constants, deliberately not routed through `encode_packet` — the codec's supported-subset guard still rejects C1/B0, so the reviewed subset above is unchanged. The handshake is fire-and-forget: `open_session` receives nothing and establishes no session state, and a failed wake is indistinguishable from a dead link until a commanded call times out.
+
+Transport preconditions: an exclusively owned, already-established session with RTS/CTS hardware flow control enabled, and ~50 ms pacing between the two frames. The GET dialect is not settled by this capture: ZERO-payload GETs are live-verified post-handshake; EMPTY was exercised only in the silent pre-handshake phase and remains untested on hardware.
 
 ## Injected transport and lifecycle
 
@@ -74,7 +86,7 @@ The protocol has no operation IDs. Matching command/field after a send cannot di
 
 ## Requirements and tests
 
-All fixtures in `tests/test_protocol.py` are explicitly synthetic. Literal golden frames check requests/responses independently of the production encoder. The ALL fixture is assembled from documented byte offsets, not captured hardware.
+All fixtures in `tests/test_protocol.py` are explicitly synthetic. Literal golden frames check requests/responses independently of the production encoder. The ALL fixture is assembled from documented byte offsets, not captured hardware. The handshake-demanding mock in `tests/conftest.py` is synthetic too: its silence rule, reply table and five-frame telemetry cycle are transcribed from the live capture, not replayed hardware.
 
 | Requirement | Tests |
 |---|---|
@@ -85,7 +97,10 @@ All fixtures in `tests/test_protocol.py` are explicitly synthetic. Literal golde
 | Combined-state field mapping | test_combined_snapshot_preserves_unknown_bytes |
 | Total deadlines, no resend/reconnection | test_receive_timeout_blocks_reuse, test_send_timeout_and_no_replay, test_overall_deadline_does_not_restart_per_fragment |
 | Single flight, cancellation, link failure | test_cancellation_and_concurrent_calls, test_transport_failure_blocks_reuse |
+| Handshake frames and pacing; bounded drain windows | tests/test_session.py: test_open_session_sends_evidence_frames_in_order, test_open_session_default_pacing_uses_real_sleep, test_drain_collects_frames_until_window_ends, test_drain_reassembles_fragmented_frames, test_drain_discards_partial_tail, test_drain_stops_at_eof_before_window_edge, test_invalid_window_has_no_io |
+| Captured negative pinned: no answer without the exact handshake | tests/test_session.py: test_client_read_times_out_without_handshake, test_wrong_preamble_keeps_the_device_silent |
+| Woken device answers GETs amid the telemetry cycle | tests/test_session.py: test_client_read_answers_after_handshake |
 
-Run `uv run --no-sync pytest tests/test_protocol.py`; this plugin's own test discovery, ruff and mypy configuration cover its source and tests. Setup and contract bootstrap commands are in the project README.
+Run `uv run --no-sync pytest tests/test_protocol.py tests/test_session.py`; this plugin's own test discovery, ruff and mypy configuration cover its source and tests. Setup and contract bootstrap commands are in the project README.
 
 This work supports future OTDP S02/S09/S10/S17 validation, but is not an adapter API 1.1 implementation. Configuration tokens, authorisation, scoped HostServices, readback verification, datasets and complete dc_psu profile actions remain separate integration work. Hardware qualification must verify firmware identity, selected GET dialect, attachment/local-lock effects, readback, link loss and protection behaviour. Hardware operation and publication each require separate explicit authorisation.
