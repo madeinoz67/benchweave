@@ -31,8 +31,27 @@ _SESSION_DELAY_S: float = 0.05
 # ...and one bounded telemetry drain before each commanded call. The captured
 # cycle is five fields at ~2 Hz (a frame per ~100 ms), so a window above the
 # inter-frame gap both empties the reply path and captures at least one frame
-# while staying well inside the adapter's 1 s soft operation deadline.
+# while staying well inside the adapter's 1 s soft operation deadline. The
+# window is receive-atomic (WP11 W1; frame-atomic at the adapter's
+# frame-granular drain view): it bounds when the drain stops STARTING
+# receives — a receive in flight at the edge completes, so the boundary can
+# never desync the stream and poison the session.
 _DRAIN_WINDOW_S: float = 0.15
+
+# One stamp rule for every surfaced row: reads and telemetry alike validate
+# the host clock's RFC3339 UTC shape before it becomes observed_at (WP11
+# T5-10 — telemetry rows used to skip this check).
+_RFC3339_UTC = re.compile(
+    r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|\+00:00)"
+)
+
+
+def _validated_stamp(text: str) -> str:
+    if not _RFC3339_UTC.fullmatch(text):
+        raise ValueError("Host timestamp must be RFC3339 UTC")
+    if datetime.fromisoformat(text).utcoffset() != timedelta(0):
+        raise ValueError("Host timestamp must be RFC3339 UTC")
+    return text
 
 
 class OperationContext(Protocol):
@@ -197,10 +216,15 @@ class _CorrelatedWire:
     streaming reality: receive() returns exactly the first frame whose field
     matches the field the adapter is about to request, and every other
     frame — telemetry by definition on this protocol — is absorbed through
-    the same PARAMETERS mapping as the drain. Malformed frames still raise
-    ProtocolError (this wrapper empties a healthy stream, it must not hide
-    corruption), and an exhausted transport inside a commanded window fails
-    the exchange as the protocol failure the adapter already pins.
+    the same PARAMETERS mapping as the drain. When telemetry itself carries
+    the requested field (the ~2 Hz cycle includes 195), that telemetry frame
+    IS the reply: the protocol offers no reply marker, so first-field-match
+    is the only rule available, and the superseded reply frame surfaces
+    through the absorb path as telemetry (WP11 W2 pin). Malformed frames
+    still raise ProtocolError (this wrapper empties a healthy stream, it
+    must not hide corruption), and an exhausted transport inside a
+    commanded window fails the exchange as the protocol failure the
+    adapter already pins.
     """
 
     def __init__(self, scope: _Scope, absorb: Callable[[Packet, float, str], None]) -> None:
@@ -267,8 +291,12 @@ class DevicePlugin:
 
         The same PARAMETERS mapping as a commanded read: field 195 surfaces
         as voltage, current and power (V/A/W), 192 as input_voltage, 196 as
-        temperature; one row per parameter, latest frame wins.
+        temperature; one row per parameter, latest frame wins. The host
+        stamp carries the read path's validation (T5-10): an invalid RFC3339
+        UTC clock fails the operation instead of surfacing unvalidated
+        rows. Value-kind guarantees ride the strict decoder.
         """
+        _validated_stamp(observed_at)
         decoded: Value | None = None
         for name, field, component, _, _, _, _ in PARAMETERS:
             if field != packet.field:
@@ -459,14 +487,7 @@ class DevicePlugin:
                         raise ProtocolError("Invalid boolean reading")
                     if kind == "enum" and value not in choices:
                         raise ProtocolError("Invalid enum reading")
-                    if not re.fullmatch(
-                        r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|\+00:00)",
-                        scope.received_at,
-                    ):
-                        raise ValueError("Host timestamp must be RFC3339 UTC")
-                    timestamp = datetime.fromisoformat(scope.received_at)
-                    if timestamp.utcoffset() != timedelta(0):
-                        raise ValueError("Host timestamp must be RFC3339 UTC")
+                    _validated_stamp(scope.received_at)
                     scope.remaining()
                     age = services.monotonic() - scope.received_monotonic
                     if not math.isfinite(age) or age < 0:

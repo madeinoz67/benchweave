@@ -9,7 +9,7 @@ import pytest
 from jsonschema import Draft202012Validator, FormatChecker
 
 from benchweave_fnirsi_dps150.adapter import create_plugin
-from benchweave_fnirsi_dps150.codec import GET
+from benchweave_fnirsi_dps150.codec import GET, MAX_FRAME_BYTES
 from benchweave_fnirsi_dps150.descriptor import build_descriptor
 from benchweave_fnirsi_dps150.session import BAUD_NEGOTIATE, SESSION_OPEN
 
@@ -344,10 +344,14 @@ def test_malformed_response_poisons_session(wire: str) -> None:
         (RuntimeError("secret"), "INTERNAL_ERROR"),
     ],
 )
-@pytest.mark.parametrize("at", [2, 3, 4])
+@pytest.mark.parametrize("at", [1, 2, 3, 4])
 def test_host_failures_preserve_dispatch_uncertainty(
     failure: Exception, code: str, at: int
 ) -> None:
+    """T5-9: every fault position is pinned, including at=1 — the drain's
+    first receive (pre-send, not dispatched; only pinnable since the drain's
+    window stopped conflating host TimeoutError with its own deadline)."""
+
     async def scenario() -> None:
         host = Host(bytes.fromhex("f0a1c30c0000803f00000040000000400e"))
         plugin = await identified(host)
@@ -355,8 +359,10 @@ def test_host_failures_preserve_dispatch_uncertainty(
         result = await plugin.execute(request("read", parameter="voltage"), Context())
         validate_result(result)
         assert result["error"]["code"] == code
-        assert result["error"]["dispatch_state"] == ("unknown" if at == 2 else "dispatched")
-        assert result["status"] == "unknown"
+        assert result["error"]["dispatch_state"] == (
+            "not_dispatched" if at == 1 else "unknown" if at == 2 else "dispatched"
+        )
+        assert result["status"] == ("error" if at == 1 else "unknown")
         assert "secret" not in json.dumps(result)
         assert len(host.calls) == at
 
@@ -364,8 +370,12 @@ def test_host_failures_preserve_dispatch_uncertainty(
 
 
 @pytest.mark.parametrize("cancel", [False, True])
-@pytest.mark.parametrize("after", [0, 2, 3])
+@pytest.mark.parametrize("after", [0, 1, 2, 3])
 def test_deadline_and_cancellation_boundaries(cancel: bool, after: int) -> None:
+    """T5-9: after=1 pins the boundary between the drain's EOF receive and
+    the send — a clock advance or cancellation landing there fails the call
+    pre-dispatch, unlike after>=2 which lands inside the dispatched window."""
+
     async def scenario() -> None:
         host = Host(bytes.fromhex("f0a1c30c0000803f00000040000000400e"))
         plugin = await identified(host)
@@ -383,9 +393,11 @@ def test_deadline_and_cancellation_boundaries(cancel: bool, after: int) -> None:
         validate_result(result)
         assert result["error"]["code"] == ("CANCELLED" if cancel else "TIMEOUT")
         assert result["error"]["dispatch_state"] == (
-            "not_dispatched" if after == 0 else "dispatched"
+            "not_dispatched" if after <= 1 else "dispatched"
         )
-        assert result["status"] == ("unknown" if after else "cancelled" if cancel else "error")
+        assert result["status"] == (
+            ("cancelled" if cancel else "error") if after <= 1 else "unknown"
+        )
         assert len(host.calls) == after
 
     asyncio.run(scenario())
@@ -701,7 +713,7 @@ class TransportHost:
         assert transaction["kind"] == "stream_receive"
         size = transaction["exact_bytes"]
         while len(self.buffer) < size:
-            chunk = await self.transport.receive(260)
+            chunk = await self.transport.receive(MAX_FRAME_BYTES)
             if not chunk:
                 break
             self.buffer.extend(chunk)
@@ -856,6 +868,156 @@ def test_drained_telemetry_surfaces_in_the_reading_shape(
             assert row["observed_at"] == "2026-09-12T03:00:00Z"
             assert row["age_ms"] >= 0
             assert row["quality"] == "valid" and row["source"] == "device"
+
+    asyncio.run(scenario())
+
+
+def test_drain_edge_straddle_never_poisons_the_session(
+    trailing_transport: Any,
+) -> None:
+    """WP10 Forge W1 replayed: a telemetry frame straddles the drain window
+    edge — header bytes inside the window, tail bytes 0.25 s later against
+    the 0.15 s drain. Cancel-at-deadline abandoned the frame mid-receive;
+    the stale buffered bytes then failed header validation inside the
+    commanded window AFTER dispatch, and the ambiguity doctrine poisoned
+    the session permanently. A frame-atomic drain keeps the session
+    healthy on one plugin instance."""
+
+    async def scenario() -> None:
+        telemetry_195 = bytes.fromhex(
+            "f0 a1 c3 0c 00 00 00 00 00 00 00 00 00 00 00 00 cf"
+        )
+        host = TransportHost(trailing_transport)
+        plugin = create_plugin()
+        await plugin.open(build_descriptor(), host, Context())
+        identified = await plugin.execute(request(), Context())
+        validate_result(identified)
+        assert identified["status"] == "ok"
+        inner = trailing_transport.receive
+        state = {"stage": 0}
+
+        async def straddling(max_bytes: int) -> bytes:
+            gets = sum(
+                1 for data in trailing_transport.sent if data[:2] == bytes((0xF1, GET))
+            )
+            if state["stage"] == 0 and trailing_transport.awake and gets >= 2:
+                state["stage"] = 1
+                return telemetry_195[:8]
+            if state["stage"] == 1:
+                state["stage"] = 2
+                await asyncio.sleep(0.25)
+                return telemetry_195[8:]
+            return bytes(await inner(max_bytes))
+
+        trailing_transport.receive = straddling
+        first = await plugin.execute(request("read", parameter="voltage"), Context())
+        validate_result(first)
+        assert first["status"] == "ok"
+        second = await plugin.execute(request("read", parameter="voltage"), Context())
+        validate_result(second)
+        assert second["status"] == "ok"
+
+    asyncio.run(scenario())
+
+
+def test_same_field_telemetry_frame_is_the_reply(same_field_transport: Any) -> None:
+    """W2 pin: the protocol has no reply marker, so the correlated wire
+    accepts the FIRST frame carrying the requested field — when the ~2 Hz
+    telemetry cycle includes that field, the telemetry frame IS the reply.
+    The reading is measurement-honest (device-reported, receipt-stamped);
+    the superseded reply frame stays in the stream and is absorbed as
+    telemetry by a later window (not asserted here — the mock's infinite
+    cycle makes latest-wins nondeterministic beyond this window)."""
+
+    async def scenario() -> None:
+        host = TransportHost(same_field_transport)
+        plugin = create_plugin()
+        await plugin.open(build_descriptor(), host, Context())
+        identified = await plugin.execute(request(), Context())
+        validate_result(identified)
+        assert identified["status"] == "ok"
+        read = await plugin.execute(request("read", parameter="voltage"), Context())
+        validate_result(read)
+        assert read["status"] == "ok"
+        # The telemetry frame (0 V, output off) won the same-field race —
+        # not the 2.5 V reply queued behind it in the same window.
+        assert read["data"]["value"] == 0.0
+        assert same_field_transport.awake
+
+    asyncio.run(scenario())
+
+
+def test_telemetry_rows_reject_an_invalid_host_timestamp(
+    trailing_transport: Any,
+) -> None:
+    """T5-10: telemetry rows carry the same host-stamp validation as the
+    read path — an invalid utc_now during a telemetry-bearing operation
+    fails the call (INVALID_ARGUMENT, pre-dispatch) instead of surfacing a
+    row with an unvalidated timestamp."""
+
+    async def scenario() -> None:
+        host = TransportHost(trailing_transport)
+        plugin = create_plugin()
+        await plugin.open(build_descriptor(), host, Context())
+        identified = await plugin.execute(request(), Context())
+        assert identified["status"] == "ok"
+        host.timestamp = "yesterday"
+        read = await plugin.execute(request("read", parameter="voltage"), Context())
+        validate_result(read)
+        assert read["status"] != "ok"
+        assert read["error"]["code"] == "INVALID_ARGUMENT"
+        assert read["error"]["dispatch_state"] == "not_dispatched"
+
+    asyncio.run(scenario())
+
+
+def test_stamp_invalidation_inside_the_commanded_window_poisons(
+    trailing_transport: Any,
+) -> None:
+    """Forge-W11 F3 pin: a host clock that goes invalid between the pre-send
+    drain and an interleaved telemetry frame raises from the absorb path
+    POST-DISPATCH — ValueError becomes INVALID_ARGUMENT with dispatch_state
+    "dispatched", and the ambiguity doctrine fails the session — exactly the
+    posture the read path holds for the same host fault mid-read (adapter
+    symmetry, not a new poison class)."""
+
+    async def scenario() -> None:
+        host = TransportHost(trailing_transport)
+        plugin = create_plugin()
+        await plugin.open(build_descriptor(), host, Context())
+        identified = await plugin.execute(request(), Context())
+        validate_result(identified)
+        assert identified["status"] == "ok"
+        inner = trailing_transport.receive
+        flipped = {"done": False}
+
+        async def flipping(max_bytes: int) -> bytes:
+            gets = sum(
+                1 for data in trailing_transport.sent if data[:2] == bytes((0xF1, GET))
+            )
+            # The commanded window is distinguishable from the pre-send
+            # drain: it is the first receive after the read's GET, when the
+            # queue-at-send reply is pending. Snapshot the queue's state
+            # BEFORE the inner receive pops it (a live deque reference would
+            # be falsy by the time the flip checks it).
+            window = (
+                trailing_transport.awake and gets >= 3 and bool(trailing_transport._replies)
+            )
+            chunk = bytes(await inner(max_bytes))
+            if not flipped["done"] and window and chunk:
+                flipped["done"] = True
+                host.timestamp = "yesterday"  # clock invalidates mid-window
+            return chunk
+
+        trailing_transport.receive = flipping
+        first = await plugin.execute(request("read", parameter="input_voltage"), Context())
+        validate_result(first)
+        assert first["status"] != "ok"
+        assert first["error"]["code"] == "INVALID_ARGUMENT"
+        assert first["error"]["dispatch_state"] == "dispatched"
+        second = await plugin.execute(request("read", parameter="input_voltage"), Context())
+        validate_result(second)
+        assert second["error"]["code"] == "TRANSPORT_ERROR"
 
     asyncio.run(scenario())
 
