@@ -15,6 +15,10 @@ BenchWeave is a Python test-bench gateway for embedded systems, combining reusab
 
 The first PoC is simulator-first. The planned hardware MVP targets the **FNIRSI DPS-150**, with **ESP32** as the provisional controller family. Unattended hardware testing requires separate bench commissioning and qualification.
 
+## Sister repository
+
+The [plugin developer SDK](https://github.com/madeinoz67/benchweave-sdk) (`benchweave-sdk`) provides the offline SDK tooling — project generation, validation, mocks and the local UI preview. It is mounted at `packages/sdk` as a git submodule with its own CI and release cycle; the [SDK guide](docs/plugin-sdk.md) documents it.
+
 ## Start here
 
 - [PoC/MVP product requirements](docs/implementation-planning/00-poc-mvp-prd.md)
