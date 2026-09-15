@@ -192,7 +192,7 @@ the actual tooling; do not invent a registry URL or publication command.
 
 **Ready to share:** release metadata and evidence match the exact candidate, with the required accountable review complete. A simulated-only release must be labelled accordingly.
 
-The current developer guide documents local dev packaging and gateway registry admission, but the public registry service, submission/review pipeline, and device-install command are not yet available. A minimal [authoring SDK](plugin-sdk.md) is available in source and built by the release workflow. Prepare the release now; public registry publication requires that service and its review/distribution process. Sharing source or publishing an ordinary Python library is separate from BenchWeave registry publication. See the [registry specification](registry-v1.0.0/registry-specification.md).
+The current developer guide documents local dev packaging and gateway registry admission, but the public registry service, submission/review pipeline, and device-install command are not yet available. A minimal [authoring SDK](plugin-sdk.md) is available in source and published to PyPI as benchweave-sdk from its own repository. Prepare the release now; public registry publication requires that service and its review/distribution process. Sharing source or publishing an ordinary Python library is separate from BenchWeave registry publication. See the [registry specification](registry-v1.0.0/registry-specification.md).
 
 Installing and activating an integration on a physical bench is also separate: resolve and admit the package, bind local connections, qualify the bench and activate at an approved idle boundary. Package publication alone does not commission a device.
 
