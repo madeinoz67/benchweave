@@ -671,14 +671,23 @@ test('F5: a re-proposal whose non-identity fields changed is reported, never sil
   assert.equal(arch.summary, 'a corrected summary', 'the correction is recoverable from the archive')
 })
 
-test('F5: an idempotency hit with nothing to correct stays quiet', async (t) => {
+test('F5: an idempotency hit on a proposal with only routing tags reports the tags annotation, and nothing else', async (t) => {
   const srv = await fakeMuninn({ onRemember: () => ({ id: 'eng-existing', idempotent: true }) })
   t.after(() => srv.close())
-  const bare = { vault: 'testvault', concept: 'bare', content: 'A proposal carrying identity fields and nothing else at all, comfortably past forty.' }
+  // Tightened 2026-09-15: a tag-less proposal dead-letters at validation and never reaches
+  // muninn_remember, so the old "quiet" fixture (no tags) never exercised the idempotency
+  // path this test names — it passed vacuously. Main requires >= 1 tag and has no bare-["sdk"]
+  // exemption, so every valid proposal carries descriptive content the drain must report.
+  const bare = { vault: 'testvault', concept: 'bare', content: 'A proposal carrying identity fields, one routing tag, and nothing else at all.', tags: ['routing'] }
   const { root } = makeRepo([bare])
   const r = await runNode(DRAIN, ['--base', srv.base], { root })
-  assert.equal(readReceiptFile(root).counts.unapplied_annotations, 0)
-  assert.doesNotMatch(r.out, /NOT APPLIED/)
+  assert.ok(srv.calls.some((c) => c.name === 'muninn_remember'), 'a valid tagged proposal must reach muninn_remember, not dead-letter')
+  assert.equal(readReceiptFile(root).counts.unapplied_annotations, 1,
+    'tags always carry descriptive content, so an idempotent hit must report them')
+  assert.match(r.out, /NOT APPLIED/)
+  assert.match(r.out, /tags/)
+  const arch = JSON.parse(lines(join(root, '.claude', 'memory-proposals.drained.jsonl'))[0])
+  assert.deepEqual(arch.annotations_not_applied, ['tags'], 'summary/type/entities are absent, so tags is the only annotation reported')
 })
 
 // ── The read boundary: an unterminated trailing line is transient, not permanent ───────────
