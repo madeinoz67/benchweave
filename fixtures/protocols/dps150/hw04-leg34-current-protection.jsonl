@@ -1,0 +1,22 @@
+{"provenance": {"leg": "hw04-leg3+4 (+6 dialect)", "approval": "principal 'continue each task' momentum 2026-09-15; register writes w/ verified restore; output OFF (219 untouched); leg-2-kind", "ts": "2026-09-15T08:48:25"}}
+{"step": "read-227", "sent_hex": "f1 a1 e3 01 00 e4", "reply_len": 62}
+{"step": "leg3-baseline", "decoded": "5.099999904632568"}
+{"step": "set-194=0.100A", "sent_hex": "f1 b1 c2 04 cd cc cc 3d 68", "reply_len": 53}
+{"step": "read-227", "sent_hex": "f1 a1 e3 01 00 e4", "reply_len": 62}
+{"step": "leg3-readback", "decoded": "5.099999904632568"}
+{"step": "set-194=5.000A-restore", "sent_hex": "f1 b1 c2 04 00 00 a0 40 a6", "reply_len": 53}
+{"step": "read-227", "sent_hex": "f1 a1 e3 01 00 e4", "reply_len": 62}
+{"step": "leg3-restore-verify", "decoded": "5.099999904632568"}
+{"step": "read-255", "sent_hex": "f1 a1 ff 01 00 00", "reply_len": 214}
+{"step": "leg4-baseline-all", "decoded": "Snapshot(input_voltage=20.06439208984375, set_voltage=0.0, set_current=5.0, voltage=0.0, current=0.0, power=0.0, temperature_c=23.355724334716797, ovp=30.0, ocp=5.099999904632568, opp=150.0, otp_c=80.0, lvp=5.0, enabled=False, protection='normal', mode='CV', raw_payload=b'\\xe0\\x83\\xa0A\\x00\\x00\\x00\\x00\\x00\\x00\\xa0@\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x86\\xd8\\xbaA\\x00\\x00\\xa0@\\x00\\x00\\x80?\\x00\\x00\\xa0@\\x00\\x00\\x80?\\x00\\x00\\xa0@\\x00\\x00\\x80?\\x00\\x00\\xa0@\\x00\\x00\\x80?\\x00\\x00\\xa0@\\x00\\x00\\x80?\\x00\\x00\\xa0@\\x00\\x00\\x80?\\x00\\x00\\xf0A33\\xa3@\\x00\\x00\\x16C\\x00\\x00\\xa0B\\x00\\x00\\xa0@\\n\\n\\x01\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x01\\x01F\\xea\\x9eA33\\xa3@\\x00\\x00\\xf0A33\\xa3@\\x00\\x00\\x16C\\x00\\x00\\xc6B\\x00\\x00\\xf0A')", "ovp_ocp_offsets_76_95": "00 00 f0 41 33 33 a3 40 00 00 16 43 00 00 a0 42 00 00 a0 40"}
+{"step": "set-209-OVP=5.5V", "sent_hex": "f1 b1 d1 04 00 00 b0 40 c5", "reply_len": 89}
+{"step": "set-210-OCP=0.050A", "sent_hex": "f1 b1 d2 04 cd cc 4c 3d f8", "reply_len": 53}
+{"step": "read-255", "sent_hex": "f1 a1 ff 01 00 00", "reply_len": 197}
+{"step": "leg4-set-all", "decoded": "Snapshot(input_voltage=20.066795349121094, set_voltage=0.0, set_current=5.0, voltage=0.0, current=0.0, power=0.0, temperature_c=23.407840728759766, ovp=5.5, ocp=0.05000000074505806, opp=150.0, otp_c=80.0, lvp=5.0, enabled=False, protection='normal', mode='CV', raw_payload=b'\\xcc\\x88\\xa0A\\x00\\x00\\x00\\x00\\x00\\x00\\xa0@\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00BC\\xbbA\\x00\\x00\\xa0@\\x00\\x00\\x80?\\x00\\x00\\xa0@\\x00\\x00\\x80?\\x00\\x00\\xa0@\\x00\\x00\\x80?\\x00\\x00\\xa0@\\x00\\x00\\x80?\\x00\\x00\\xa0@\\x00\\x00\\x80?\\x00\\x00\\xa0@\\x00\\x00\\x80?\\x00\\x00\\xb0@\\xcd\\xccL=\\x00\\x00\\x16C\\x00\\x00\\xa0B\\x00\\x00\\xa0@\\n\\n\\x01\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x01\\x012\\xef\\x9eA33\\xa3@\\x00\\x00\\xf0A33\\xa3@\\x00\\x00\\x16C\\x00\\x00\\xc6B\\x00\\x00\\xf0A')", "ovp_ocp_offsets_76_95": "00 00 b0 40 cd cc 4c 3d 00 00 16 43 00 00 a0 42 00 00 a0 40"}
+{"step": "leg4-baseline-offset-floats", "values": [30.0, 5.1, 150.0, 80.0, 5.0], "note": "restore values chosen from these once identified"}
+{"step": "set-209-OVP=30.0V-restore", "sent_hex": "f1 b1 d1 04 00 00 f0 41 06", "reply_len": 53}
+{"step": "set-210-OCP=5.1A-restore", "sent_hex": "f1 b1 d2 04 33 33 a3 40 1f", "reply_len": 53}
+{"step": "read-255", "sent_hex": "f1 a1 ff 01 00 00", "reply_len": 197}
+{"step": "leg4-restore-verify-all", "decoded": "Snapshot(input_voltage=20.070999145507812, set_voltage=0.0, set_current=5.0, voltage=0.0, current=0.0, power=0.0, temperature_c=23.4599609375, ovp=30.0, ocp=5.099999904632568, opp=150.0, otp_c=80.0, lvp=5.0, enabled=False, protection='normal', mode='CV', raw_payload=b'h\\x91\\xa0A\\x00\\x00\\x00\\x00\\x00\\x00\\xa0@\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\xae\\xbbA\\x00\\x00\\xa0@\\x00\\x00\\x80?\\x00\\x00\\xa0@\\x00\\x00\\x80?\\x00\\x00\\xa0@\\x00\\x00\\x80?\\x00\\x00\\xa0@\\x00\\x00\\x80?\\x00\\x00\\xa0@\\x00\\x00\\x80?\\x00\\x00\\xa0@\\x00\\x00\\x80?\\x00\\x00\\xf0A33\\xa3@\\x00\\x00\\x16C\\x00\\x00\\xa0B\\x00\\x00\\xa0@\\n\\n\\x01\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x01\\x01\\xce\\xf7\\x9eA33\\xa3@\\x00\\x00\\xf0A33\\xa3@\\x00\\x00\\x16C\\x00\\x00\\xc6B\\x00\\x00\\xf0A')", "ovp_ocp_offsets_76_95": "00 00 f0 41 33 33 a3 40 00 00 16 43 00 00 a0 42 00 00 a0 40"}
+{"step": "read-222-EMPTY", "sent_hex": "f1 a1 de 00 de", "reply_len": 65}
+{"step": "leg6-dialect-EMPTY", "decoded": "DPS-150"}

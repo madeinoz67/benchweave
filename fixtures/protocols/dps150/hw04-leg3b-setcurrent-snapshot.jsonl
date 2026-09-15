@@ -1,0 +1,6 @@
+{"provenance": {"leg": "hw04-leg3b-setcurrent-snapshot", "approval": "principal 'continue each task' momentum 2026-09-15; leg-2-kind (register write, restore verified, output OFF)", "ts": "2026-09-15T08:49:45"}}
+{"step": "baseline", "set_voltage": 0.0, "set_current": 5.0, "enabled": false}
+{"step": "set-194=0.500A", "sent_hex": "f1 b1 c2 04 00 00 00 3f 05"}
+{"step": "after-set", "set_voltage": 0.0, "set_current": 0.5, "enabled": false}
+{"step": "set-194=5.000A-restore", "sent_hex": "f1 b1 c2 04 00 00 a0 40 a6"}
+{"step": "restore-verify", "set_voltage": 0.0, "set_current": 5.0, "enabled": false}
