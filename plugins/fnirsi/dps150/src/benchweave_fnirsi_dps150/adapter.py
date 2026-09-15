@@ -41,9 +41,7 @@ _DRAIN_WINDOW_S: float = 0.15
 # One stamp rule for every surfaced row: reads and telemetry alike validate
 # the host clock's RFC3339 UTC shape before it becomes observed_at (WP11
 # T5-10 — telemetry rows used to skip this check).
-_RFC3339_UTC = re.compile(
-    r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|\+00:00)"
-)
+_RFC3339_UTC = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|\+00:00)")
 
 
 def _validated_stamp(text: str) -> str:
