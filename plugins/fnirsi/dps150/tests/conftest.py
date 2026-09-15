@@ -132,9 +132,11 @@ class HandshakingTransport:
             self._diverged = True
         elif len(seen) >= len(_HANDSHAKE):
             if len(seen) > len(_HANDSHAKE):
-                # Noise appended to the completing send: the captured wake
-                # sequence is exactly two frames, and surplus bytes diverge
-                # the preamble rather than waking and silently dropping them.
+                # Noise appended to the completing send — modeled
+                # conservatively; the captures do not settle noise after the
+                # handshake. The captured wake sequence is exactly two
+                # frames, and surplus bytes diverge the preamble rather than
+                # waking and silently dropping them.
                 self._diverged = True
             else:
                 self.awake = True
@@ -154,10 +156,14 @@ class HandshakingTransport:
     def _answer(self, data: bytes) -> None:
         if data[:2] != bytes((0xF1, GET)):
             return
-        try:
-            payload = self._get_overrides.get(data[2]) or _GET_PAYLOADS[data[2]]
-        except KeyError:
-            raise ValueError(f"no HandshakingTransport reply for field {data[2]}") from None
+        payload = self._get_overrides.get(data[2])
+        if payload is None:
+            try:
+                payload = _GET_PAYLOADS[data[2]]
+            except KeyError:
+                raise ValueError(
+                    f"no HandshakingTransport reply for field {data[2]}"
+                ) from None
         body = bytes((data[2], len(payload))) + payload
         reply = bytes((0xF0, GET)) + body + bytes((sum(body) % 256,))
         if not self.trailing_telemetry:

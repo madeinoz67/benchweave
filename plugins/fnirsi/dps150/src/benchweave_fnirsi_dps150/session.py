@@ -63,16 +63,21 @@ async def drain_telemetry(transport: Transport, *, window_s: float) -> list[Pack
     The drain-before-commanded-call primitive for the adapter: the live
     device streams unsolicited telemetry around its command replies, so a
     caller drains whatever complete frames arrive inside ``window_s`` and
-    discards the trailing partial frame. The window is FRAME-ATOMIC: it
+    discards the trailing partial frame. The window is RECEIVE-ATOMIC: it
     decides when the drain stops STARTING receives, and a receive already
-    in flight when the window closes runs to completion, so the stream is
-    never abandoned mid-frame (WP11 W1: the old cancel-at-deadline window
-    could strand a half-consumed frame and desync every later reader).
-    Completion of an in-flight frame is bounded by the caller's operation
-    deadline, not this window; the overshoot is at most one frame. EOF
-    (b"") ends the drain early. Malformed input is not discarded — the
-    strict decoder's ProtocolError propagates, because the drain's job is
-    to empty a healthy stream, not to hide corruption.
+    in flight when the window closes runs to completion, so a receive is
+    never abandoned mid-call (WP11 W1: the old cancel-at-deadline window
+    could strand a half-consumed receive and desync every later reader).
+    Frame-atomicity follows for frame-granular receives — one whole frame
+    per receive, as the adapter's drain view provides; a raw chunked
+    Transport may still split a frame across receives, and the decoder's
+    trailing partial is discarded as before. Completion of an in-flight
+    receive is bounded by the caller's operation deadline, not this
+    window; the overshoot is at most one receive's data — one frame for
+    frame-granular receives. EOF (b"") ends the drain early. Malformed
+    input is not discarded — the strict decoder's ProtocolError propagates,
+    because the drain's job is to empty a healthy stream, not to hide
+    corruption.
     """
     if (
         type(window_s) not in (float, int)

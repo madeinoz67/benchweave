@@ -124,12 +124,12 @@ configured protection functions and observed-state output assurance.
 
 | Profile requirement | Device path | Live evidence | Capture |
 |---|---|---|---|
-| `configure`: `voltage_v` | Write field 193 | Accepted; applies at terminals — 1.00 V commanded, output sampled 0.834 V then 1.000 V (two samples consistent with a ramp; not a ramp characterisation); snapshot `set_voltage=1.0` | `../../../fixtures/protocols/dps150/hw04-leg5-output-toggle.jsonl` 5b |
+| `configure`: `voltage_v` | Write field 193 | Accepted; applies at terminals — 1.00 V commanded, output sampled 0.834 V then 1.000 V then 1.000 V (three samples consistent with a ramp; not a ramp characterisation); snapshot `set_voltage=1.0` | `../../../fixtures/protocols/dps150/hw04-leg5-output-toggle.jsonl` 5b |
 | `configure`: `current_limit_a` | Write field 194 | Accepted; snapshot `set_current=0.5` after SET 0.500 A; restore 5.0 verified | `../../../fixtures/protocols/dps150/hw04-leg3b-setcurrent-snapshot.jsonl` |
 | `configure`: `ovp_v` | Write field 209 | Programmable numeric threshold; snapshot `ovp=5.5` exactly after SET 5.5 V; restore 30.0 verified | `../../../fixtures/protocols/dps150/hw04-leg34-current-protection.jsonl` leg 4 |
 | `configure`: `ocp_a` | Write field 210 | Programmable numeric threshold; snapshot `ocp=0.05000000074505806` (binary32 of 0.05) after SET 0.050 A; restore 5.1 verified | `hw04-leg34-current-protection.jsonl` leg 4 |
 | `configure`: `effective_configuration` | Snapshot read (field 255) | Setpoints and protections read back binary32-exact via the combined 139-byte record | legs 3b/4/5b |
-| `output`: enable/disable | Write field 219 | ON at 0 V (enabled, output 0/0/0) and ON at 1 V (0.834 V then 1.0 V sampled at terminals — two samples, not a ramp characterisation); OFF returns `enabled=false`; assurance is observed state (snapshot `enabled` + field 195/219), not an echo | `hw04-leg5-output-toggle.jsonl` 5a/5b |
+| `output`: enable/disable | Write field 219 | ON at 0 V (enabled, output 0/0/0) and ON at 1 V (0.834 V, 1.0 V, 1.0 V sampled at terminals — three samples, not a ramp characterisation); OFF returns `enabled=false`; assurance is observed state (snapshot `enabled` + field 195/219), not an echo | `hw04-leg5-output-toggle.jsonl` 5a/5b |
 | `measure` | Field 195; snapshot 255 | Live V/A/W tuple on request and as the ~2 Hz stream; combined snapshot adds input voltage, temperature, setpoints, protections | `hw04-leg1-baseline.jsonl`; `live-stream.jsonl` |
 
 **Adapter-shape note (open for WP11).** The profile's `configure` action schema carries required `configuration_id` and `channel` envelope fields (vendored `device-profile-catalog.json`); this record proves the device paths for a single output channel but takes no position on how the adapter maps those envelope fields onto the DPS-150's one channel — that shape decision belongs to the WP11 adapter work, not to this device-evidence record.
@@ -182,7 +182,7 @@ must treat concurrent local operation as a live failure mode (the
 | `hw04-leg2-voltage.jsonl` | `01cc7e2` | Field-193 write accepted; 226 is not a setpoint readback |
 | `hw04-leg34-current-protection.jsonl` | `1f0b7f4` | 227 is not a setpoint readback; snapshot setpoint readback; programmable exact OVP/OCP; protection tuple; EMPTY dialect live post-handshake |
 | `hw04-leg3b-setcurrent-snapshot.jsonl` | `1f0b7f4` | Snapshot `set_current` readback, restore verified |
-| `hw04-leg5-output-toggle.jsonl` | `b1a720a` | Output toggle proof (0 V and 1 V incl. the 0.834→1.000 V two-sample sequence), snapshot assurance, restores; panel observations + correction (`b349e11`, `62b9e79`) |
+| `hw04-leg5-output-toggle.jsonl` | `b1a720a` | Output toggle proof (0 V and 1 V incl. the 0.834→1.000→1.000 V three-sample sequence), snapshot assurance, restores; panel observations + correction (`b349e11`, `62b9e79`) |
 | `hw05-leg12-linkloss.jsonl` | `a97d04e` | Session survives port close and process death, no re-handshake |
 | `hw05-leg3-replug.jsonl` | `4994187` | Session survives USB replug; node name stable |
 | `live-stream.jsonl` | `aae2088` → `5dfc64a` | Adapter-path stream: poisoning diagnosis in history, post-fix 165/165 clean run |

@@ -32,8 +32,9 @@ _SESSION_DELAY_S: float = 0.05
 # cycle is five fields at ~2 Hz (a frame per ~100 ms), so a window above the
 # inter-frame gap both empties the reply path and captures at least one frame
 # while staying well inside the adapter's 1 s soft operation deadline. The
-# window is frame-atomic (WP11 W1): it bounds when the drain stops STARTING
-# receives — a frame in flight at the edge completes, so the boundary can
+# window is receive-atomic (WP11 W1; frame-atomic at the adapter's
+# frame-granular drain view): it bounds when the drain stops STARTING
+# receives — a receive in flight at the edge completes, so the boundary can
 # never desync the stream and poison the session.
 _DRAIN_WINDOW_S: float = 0.15
 

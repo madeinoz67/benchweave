@@ -9,7 +9,7 @@ import pytest
 from jsonschema import Draft202012Validator, FormatChecker
 
 from benchweave_fnirsi_dps150.adapter import create_plugin
-from benchweave_fnirsi_dps150.codec import GET
+from benchweave_fnirsi_dps150.codec import GET, MAX_FRAME_BYTES
 from benchweave_fnirsi_dps150.descriptor import build_descriptor
 from benchweave_fnirsi_dps150.session import BAUD_NEGOTIATE, SESSION_OPEN
 
@@ -713,7 +713,7 @@ class TransportHost:
         assert transaction["kind"] == "stream_receive"
         size = transaction["exact_bytes"]
         while len(self.buffer) < size:
-            chunk = await self.transport.receive(260)
+            chunk = await self.transport.receive(MAX_FRAME_BYTES)
             if not chunk:
                 break
             self.buffer.extend(chunk)
@@ -967,6 +967,57 @@ def test_telemetry_rows_reject_an_invalid_host_timestamp(
         assert read["status"] != "ok"
         assert read["error"]["code"] == "INVALID_ARGUMENT"
         assert read["error"]["dispatch_state"] == "not_dispatched"
+
+    asyncio.run(scenario())
+
+
+def test_stamp_invalidation_inside_the_commanded_window_poisons(
+    trailing_transport: Any,
+) -> None:
+    """Forge-W11 F3 pin: a host clock that goes invalid between the pre-send
+    drain and an interleaved telemetry frame raises from the absorb path
+    POST-DISPATCH — ValueError becomes INVALID_ARGUMENT with dispatch_state
+    "dispatched", and the ambiguity doctrine fails the session — exactly the
+    posture the read path holds for the same host fault mid-read (adapter
+    symmetry, not a new poison class)."""
+
+    async def scenario() -> None:
+        host = TransportHost(trailing_transport)
+        plugin = create_plugin()
+        await plugin.open(build_descriptor(), host, Context())
+        identified = await plugin.execute(request(), Context())
+        validate_result(identified)
+        assert identified["status"] == "ok"
+        inner = trailing_transport.receive
+        flipped = {"done": False}
+
+        async def flipping(max_bytes: int) -> bytes:
+            gets = sum(
+                1 for data in trailing_transport.sent if data[:2] == bytes((0xF1, GET))
+            )
+            # The commanded window is distinguishable from the pre-send
+            # drain: it is the first receive after the read's GET, when the
+            # queue-at-send reply is pending. Snapshot the queue's state
+            # BEFORE the inner receive pops it (a live deque reference would
+            # be falsy by the time the flip checks it).
+            window = (
+                trailing_transport.awake and gets >= 3 and bool(trailing_transport._replies)
+            )
+            chunk = bytes(await inner(max_bytes))
+            if not flipped["done"] and window and chunk:
+                flipped["done"] = True
+                host.timestamp = "yesterday"  # clock invalidates mid-window
+            return chunk
+
+        trailing_transport.receive = flipping
+        first = await plugin.execute(request("read", parameter="input_voltage"), Context())
+        validate_result(first)
+        assert first["status"] != "ok"
+        assert first["error"]["code"] == "INVALID_ARGUMENT"
+        assert first["error"]["dispatch_state"] == "dispatched"
+        second = await plugin.execute(request("read", parameter="input_voltage"), Context())
+        validate_result(second)
+        assert second["error"]["code"] == "TRANSPORT_ERROR"
 
     asyncio.run(scenario())
 
