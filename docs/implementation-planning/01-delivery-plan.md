@@ -41,7 +41,6 @@ The MCP project reports Python SDK support for 2026-07-28. Still test the exact 
 | `src/stg/cli/` | Setup, inspection, demo and report commands |
 | `plugins/benchweave/sim_psu/`, `plugins/benchweave/sim_controller/` | Real plugins against faultable simulated transports |
 | `plugins/fnirsi/dps150/`, `plugins/esp32_controller/` | Hardware plugins, created only after their evidence gate |
-| `firmware/esp32_reference/` | Optional reference-DUT firmware, not protection firmware |
 | `tests/unit/`, `tests/contract/`, `tests/integration/`, `tests/faults/`, `tests/hardware/` | Separate test purposes and explicit hardware opt-in |
 | `fixtures/`, `docs/`, `deploy/` | Versioned demo fixtures, source/operation evidence and service packaging |
 
@@ -63,7 +62,7 @@ Each package ends in its own reviewable result. Hardware discovery can proceed a
 | WP08 | Operator CLI, reports and native service. `src/stg/cli/`, `deploy/`, `docs/operator-guide.md`, `tests/integration/test_clean_install.py` | WP07; delivery engineer | Fresh install, labelled simulation, concise truthful report, reviewed service permissions, backup/restore, fixture/credential separation |
 | WP09 | PoC acceptance and performance report. `tests/faults/`, `tests/integration/test_poc_acceptance.py`, `docs/evidence/poc/` | WP01–08; QA + product owner | PRD-01–12, 100 normal simulator runs, fault matrix and second-user reuse; measured read/admission targets; G2 |
 | WP10 | DPS-150 protocol/compatibility discovery. `docs/devices/dps150/`, `fixtures/protocols/dps150/`, `docs/devices/esp32-selection.md` | Available equipment/docs; integration + bench owner | HW-01–06 evidence; audit community reuse before coding; decide full PSU profile versus explicitly limited profile |
-| WP11 | Hardware integrations, optional ESP32 firmware and supervised fixture. `plugins/fnirsi/dps150/`, `plugins/esp32_controller/`, `firmware/esp32_reference/`, `tests/hardware/test_supervised_fixture.py` | WP09/10 and approved commissioning setup; integration + bench owner | PRD-13/14, genuine protocol vectors, board/power-path review, independent measurement/protection and timing evidence; G3 |
+| WP11 | Hardware integrations and supervised fixture. `plugins/fnirsi/dps150/`, `plugins/esp32_controller/`, `tests/hardware/test_supervised_fixture.py` | WP09/10 and approved commissioning setup; integration + bench owner | PRD-13/14, genuine protocol vectors, board/power-path review, independent measurement/protection and timing evidence; G3 |
 | WP12 | Unattended MVP and operational handoff. `tests/hardware/test_qualified_procedure.py`, `docs/evidence/mvp/`, `docs/recovery.md` | WP11; QA + bench/test-safety + product owner | PRD-15/16, 20 normal hardware runs, approved faults, restore/update/revocation drills and signed qualified procedure; G4 |
 
 No guessed calendar dates or story-point precision are assigned before staffing and hardware availability are known. WP02 and WP10 are explicit risk-reduction gates; a failed gate changes the relevant detailed plan, not the advertised compatibility claim.

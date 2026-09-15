@@ -138,6 +138,7 @@ Failure on (2) displaces the board per the criterion above; failure on (1)
 is a firmware-contract question first (the PRD's "only if existing firmware
 cannot supply the contract" ordering) and a board question only after that.
 
-No firmware exists for this DUT yet (`firmware/esp32_reference/` remains
-optional planning scope); nothing here authorises flashing or energisation —
+No firmware exists for this DUT yet (the retired `firmware/esp32_reference/`
+placeholder was removed 2026-09-16; any future reference-DUT firmware belongs
+in the device plugin's own project); nothing here authorises flashing or energisation —
 those are WP11 commissioning steps under their own approvals.
