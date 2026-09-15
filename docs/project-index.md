@@ -31,4 +31,6 @@ Use the [AI device reviewer](ai-device-reviewer.md) to assess candidate integrat
 
 Start with the [Device developer guide](device-developer-guide.md) for device creation, gateway hosting and shared packages, including an AI task template and human review checklist.
 
+The [plugin SDK guide](plugin-sdk.md) documents the offline plugin authoring SDK, maintained in the separate [benchweave-sdk](https://github.com/madeinoz67/benchweave-sdk) repository mounted at `packages/sdk`.
+
 See [Development and CI](development.md) for uv setup, local checks and GitHub workflows.
