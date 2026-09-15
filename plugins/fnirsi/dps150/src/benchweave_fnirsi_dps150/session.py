@@ -21,7 +21,7 @@ import math
 from collections.abc import Awaitable, Callable
 
 from .client import Transport
-from .codec import FrameDecoder, Packet
+from .codec import MAX_FRAME_BYTES, FrameDecoder, Packet
 
 # connect-v2.jsonl step "session-open", sent byte-verbatim:
 # "f1 c1 00 01 01 02". Header 0xF1, command 0xC1, then the codec's framing
@@ -91,7 +91,7 @@ async def drain_telemetry(transport: Transport, *, window_s: float) -> list[Pack
         # returns fragments synchronously without yielding to the event
         # loop.
         await asyncio.sleep(0)
-        chunk = await transport.receive(260)
+        chunk = await transport.receive(MAX_FRAME_BYTES)
         if chunk == b"":
             break
         packets.extend(decoder.feed(chunk))

@@ -131,15 +131,24 @@ class HandshakingTransport:
         if seen[:limit] != _HANDSHAKE[:limit]:
             self._diverged = True
         elif len(seen) >= len(_HANDSHAKE):
-            self.awake = True
+            if len(seen) > len(_HANDSHAKE):
+                # Noise appended to the completing send: the captured wake
+                # sequence is exactly two frames, and surplus bytes diverge
+                # the preamble rather than waking and silently dropping them.
+                self._diverged = True
+            else:
+                self.awake = True
 
     async def receive(self, max_bytes: int) -> bytes:
         if not self.awake:
             await asyncio.Future[None]()
         if self._replies:
-            return self._replies.popleft()
+            reply = self._replies.popleft()
+            assert len(reply) <= max_bytes  # Transport contract: bounded offers
+            return reply
         frame = _TELEMETRY_CYCLE[self._cycle % len(_TELEMETRY_CYCLE)]
         self._cycle += 1
+        assert len(frame) <= max_bytes  # Transport contract: bounded offers
         return frame
 
     def _answer(self, data: bytes) -> None:

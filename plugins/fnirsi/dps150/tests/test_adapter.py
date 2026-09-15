@@ -344,10 +344,14 @@ def test_malformed_response_poisons_session(wire: str) -> None:
         (RuntimeError("secret"), "INTERNAL_ERROR"),
     ],
 )
-@pytest.mark.parametrize("at", [2, 3, 4])
+@pytest.mark.parametrize("at", [1, 2, 3, 4])
 def test_host_failures_preserve_dispatch_uncertainty(
     failure: Exception, code: str, at: int
 ) -> None:
+    """T5-9: every fault position is pinned, including at=1 — the drain's
+    first receive (pre-send, not dispatched; only pinnable since the drain's
+    window stopped conflating host TimeoutError with its own deadline)."""
+
     async def scenario() -> None:
         host = Host(bytes.fromhex("f0a1c30c0000803f00000040000000400e"))
         plugin = await identified(host)
@@ -355,8 +359,10 @@ def test_host_failures_preserve_dispatch_uncertainty(
         result = await plugin.execute(request("read", parameter="voltage"), Context())
         validate_result(result)
         assert result["error"]["code"] == code
-        assert result["error"]["dispatch_state"] == ("unknown" if at == 2 else "dispatched")
-        assert result["status"] == "unknown"
+        assert result["error"]["dispatch_state"] == (
+            "not_dispatched" if at == 1 else "unknown" if at == 2 else "dispatched"
+        )
+        assert result["status"] == ("error" if at == 1 else "unknown")
         assert "secret" not in json.dumps(result)
         assert len(host.calls) == at
 
@@ -364,8 +370,12 @@ def test_host_failures_preserve_dispatch_uncertainty(
 
 
 @pytest.mark.parametrize("cancel", [False, True])
-@pytest.mark.parametrize("after", [0, 2, 3])
+@pytest.mark.parametrize("after", [0, 1, 2, 3])
 def test_deadline_and_cancellation_boundaries(cancel: bool, after: int) -> None:
+    """T5-9: after=1 pins the boundary between the drain's EOF receive and
+    the send — a clock advance or cancellation landing there fails the call
+    pre-dispatch, unlike after>=2 which lands inside the dispatched window."""
+
     async def scenario() -> None:
         host = Host(bytes.fromhex("f0a1c30c0000803f00000040000000400e"))
         plugin = await identified(host)
@@ -383,9 +393,11 @@ def test_deadline_and_cancellation_boundaries(cancel: bool, after: int) -> None:
         validate_result(result)
         assert result["error"]["code"] == ("CANCELLED" if cancel else "TIMEOUT")
         assert result["error"]["dispatch_state"] == (
-            "not_dispatched" if after == 0 else "dispatched"
+            "not_dispatched" if after <= 1 else "dispatched"
         )
-        assert result["status"] == ("unknown" if after else "cancelled" if cancel else "error")
+        assert result["status"] == (
+            ("cancelled" if cancel else "error") if after <= 1 else "unknown"
+        )
         assert len(host.calls) == after
 
     asyncio.run(scenario())
@@ -931,6 +943,30 @@ def test_same_field_telemetry_frame_is_the_reply(same_field_transport: Any) -> N
         # not the 2.5 V reply queued behind it in the same window.
         assert read["data"]["value"] == 0.0
         assert same_field_transport.awake
+
+    asyncio.run(scenario())
+
+
+def test_telemetry_rows_reject_an_invalid_host_timestamp(
+    trailing_transport: Any,
+) -> None:
+    """T5-10: telemetry rows carry the same host-stamp validation as the
+    read path — an invalid utc_now during a telemetry-bearing operation
+    fails the call (INVALID_ARGUMENT, pre-dispatch) instead of surfacing a
+    row with an unvalidated timestamp."""
+
+    async def scenario() -> None:
+        host = TransportHost(trailing_transport)
+        plugin = create_plugin()
+        await plugin.open(build_descriptor(), host, Context())
+        identified = await plugin.execute(request(), Context())
+        assert identified["status"] == "ok"
+        host.timestamp = "yesterday"
+        read = await plugin.execute(request("read", parameter="voltage"), Context())
+        validate_result(read)
+        assert read["status"] != "ok"
+        assert read["error"]["code"] == "INVALID_ARGUMENT"
+        assert read["error"]["dispatch_state"] == "not_dispatched"
 
     asyncio.run(scenario())
 

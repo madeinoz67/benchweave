@@ -6,7 +6,11 @@ from collections import deque
 import pytest
 
 from benchweave_fnirsi_dps150.client import Client, GetPayload, OperationTimeout, Transport
-from benchweave_fnirsi_dps150.codec import FrameDecoder  # noqa: F401 (shape check)
+from benchweave_fnirsi_dps150.codec import (
+    MAX_FRAME_BYTES,
+    FrameDecoder,  # noqa: F401 (shape check)
+    ProtocolError,
+)
 from benchweave_fnirsi_dps150.session import (
     BAUD_NEGOTIATE,
     SESSION_OPEN,
@@ -49,7 +53,9 @@ class ScriptedTransport:
             if self.eof:
                 return b""
             await asyncio.Future[None]()
-        return self.chunks.popleft()
+        chunk = self.chunks.popleft()
+        assert len(chunk) <= max_bytes  # Transport contract: bounded offers
+        return chunk
 
 
 def test_open_session_sends_evidence_frames_in_order() -> None:
@@ -146,6 +152,7 @@ class DelayedTailTransport:
         now = asyncio.get_running_loop().time()
         if target > now:
             await asyncio.sleep(target - now)
+        assert len(chunk) <= max_bytes  # Transport contract: bounded offers
         return chunk
 
 
@@ -166,7 +173,51 @@ def test_drain_window_edge_is_frame_atomic() -> None:
         assert [packet.field for packet in packets] == [195, 195]
         # The stream stays aligned: the next reader sees a clean EOF, not a
         # fragment of the frame the window edge interrupted.
-        assert await transport.receive(260) == b""
+        assert await transport.receive(MAX_FRAME_BYTES) == b""
+
+    asyncio.run(scenario())
+
+
+def test_drain_propagates_protocol_error_from_corrupt_frames() -> None:
+    """T1-1 pin: the drain empties a healthy stream and must not hide
+    corruption — a corrupt frame inside the window raises ProtocolError
+    out of drain_telemetry, exactly as it would on a commanded read."""
+
+    async def scenario() -> None:
+        transport = ScriptedTransport([TELEMETRY + b"\x00" * 6], eof=True)
+        with pytest.raises(ProtocolError):
+            await drain_telemetry(transport, window_s=0.01)
+
+    asyncio.run(scenario())
+
+
+def test_wake_rejects_noise_appended_to_the_completing_send(
+    handshaking_transport: Transport,
+) -> None:
+    """T2-6 pin: the captured wake sequence is exactly two frames; extra
+    bytes appended to the send that completes it are noise, and the device
+    model must latch silent rather than wake and silently drop them."""
+
+    async def scenario() -> None:
+        await handshaking_transport.send(SESSION_OPEN + BAUD_NEGOTIATE + b"\x00")
+        client = Client(handshaking_transport, get_payload=GetPayload.ZERO)
+        with pytest.raises(OperationTimeout):
+            await client.read(222, timeout=0.03)
+
+    asyncio.run(scenario())
+
+
+def test_wake_accepts_both_frames_in_one_exact_send(
+    handshaking_transport: Transport,
+) -> None:
+    """T2-6 companion pin: the wake is byte-driven, not write-boundary-driven
+    — one send carrying exactly the two captured frames wakes the device
+    just as two paced sends do."""
+
+    async def scenario() -> None:
+        await handshaking_transport.send(SESSION_OPEN + BAUD_NEGOTIATE)
+        client = Client(handshaking_transport, get_payload=GetPayload.ZERO)
+        assert await client.read(222, timeout=1) == "DPS-150"
 
     asyncio.run(scenario())
 

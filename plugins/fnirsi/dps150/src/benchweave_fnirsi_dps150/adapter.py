@@ -37,6 +37,21 @@ _SESSION_DELAY_S: float = 0.05
 # never desync the stream and poison the session.
 _DRAIN_WINDOW_S: float = 0.15
 
+# One stamp rule for every surfaced row: reads and telemetry alike validate
+# the host clock's RFC3339 UTC shape before it becomes observed_at (WP11
+# T5-10 — telemetry rows used to skip this check).
+_RFC3339_UTC = re.compile(
+    r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|\+00:00)"
+)
+
+
+def _validated_stamp(text: str) -> str:
+    if not _RFC3339_UTC.fullmatch(text):
+        raise ValueError("Host timestamp must be RFC3339 UTC")
+    if datetime.fromisoformat(text).utcoffset() != timedelta(0):
+        raise ValueError("Host timestamp must be RFC3339 UTC")
+    return text
+
 
 class OperationContext(Protocol):
     operation_id: str
@@ -275,8 +290,12 @@ class DevicePlugin:
 
         The same PARAMETERS mapping as a commanded read: field 195 surfaces
         as voltage, current and power (V/A/W), 192 as input_voltage, 196 as
-        temperature; one row per parameter, latest frame wins.
+        temperature; one row per parameter, latest frame wins. The host
+        stamp carries the read path's validation (T5-10): an invalid RFC3339
+        UTC clock fails the operation instead of surfacing unvalidated
+        rows. Value-kind guarantees ride the strict decoder.
         """
+        _validated_stamp(observed_at)
         decoded: Value | None = None
         for name, field, component, _, _, _, _ in PARAMETERS:
             if field != packet.field:
@@ -467,14 +486,7 @@ class DevicePlugin:
                         raise ProtocolError("Invalid boolean reading")
                     if kind == "enum" and value not in choices:
                         raise ProtocolError("Invalid enum reading")
-                    if not re.fullmatch(
-                        r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|\+00:00)",
-                        scope.received_at,
-                    ):
-                        raise ValueError("Host timestamp must be RFC3339 UTC")
-                    timestamp = datetime.fromisoformat(scope.received_at)
-                    if timestamp.utcoffset() != timedelta(0):
-                        raise ValueError("Host timestamp must be RFC3339 UTC")
+                    _validated_stamp(scope.received_at)
                     scope.remaining()
                     age = services.monotonic() - scope.received_monotonic
                     if not math.isfinite(age) or age < 0:

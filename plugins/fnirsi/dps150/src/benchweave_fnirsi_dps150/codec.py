@@ -9,9 +9,13 @@ import struct
 from dataclasses import dataclass
 from decimal import Decimal
 from types import MappingProxyType
+from typing import Final
 
 GET = 0xA1
 SET = 0xB1
+# The length byte bounds payloads to 255, so the largest possible wire frame
+# is 4 header bytes (F0 A1 field length) + 255 payload bytes + 1 checksum.
+MAX_FRAME_BYTES: Final[int] = 260
 READ_FIELDS = frozenset({192, 195, 196, 217, 218, 219, 220, 221, 222, 223, 224, 226, 227, 255})
 # Conservative software envelope, not a commissioned DUT envelope. Protection
 # thresholds have no verified resolution, so only their finite bounds are applied.
@@ -153,7 +157,7 @@ class FrameDecoder:
             raise
 
     def _feed(self, chunk: bytes) -> list[Packet]:
-        if type(chunk) is not bytes or len(chunk) > 260:
+        if type(chunk) is not bytes or len(chunk) > MAX_FRAME_BYTES:
             raise ProtocolError("Chunk exceeds bounded receive size or is not bytes")
         self._buffer.extend(chunk)
         packets: list[Packet] = []
