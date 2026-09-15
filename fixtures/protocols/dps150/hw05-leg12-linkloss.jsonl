@@ -1,0 +1,7 @@
+{"provenance": {"leg": "hw05-leg1+2-linkloss", "approval": "principal 'yes proceed' 2026-09-15; read-only (handshake + GET only)", "ts": "2026-09-15T08:57:21"}}
+{"step": "L1-handshaked", "reply_len": 118, "decoded": "DPS-150"}
+{"step": "L1-reopen-no-handshake", "reply_len": 118, "decoded": "DPS-150"}
+{"step": "L1-rehandshake", "reply_len": 118, "decoded": "DPS-150"}
+{"step": "L2-child-handshake-then-death", "child_rc": 0, "child_err": ""}
+{"step": "L2-fresh-no-handshake", "reply_len": 118, "decoded": "DPS-150"}
+{"step": "L2-fresh-rehandshake", "reply_len": 118, "decoded": "DPS-150"}

@@ -1,0 +1,3 @@
+{"provenance": {"leg": "hw05-leg3-replug", "approval": "principal unplugged+replugged USB on request 2026-09-15; read-only", "old_node": "/dev/cu.usbmodem135DD25940961", "new_node": "/dev/cu.usbmodem135DD25940961", "ts": "2026-09-15T08:59:19"}}
+{"step": "L3-cold-no-handshake", "reply_len": 118, "decoded": "DPS-150"}
+{"step": "L3-after-handshake", "reply_len": 118, "decoded": "DPS-150"}

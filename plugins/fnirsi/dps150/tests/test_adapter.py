@@ -9,7 +9,23 @@ import pytest
 from jsonschema import Draft202012Validator, FormatChecker
 
 from benchweave_fnirsi_dps150.adapter import create_plugin
+from benchweave_fnirsi_dps150.codec import GET
 from benchweave_fnirsi_dps150.descriptor import build_descriptor
+from benchweave_fnirsi_dps150.session import BAUD_NEGOTIATE, SESSION_OPEN
+
+# The two fire-and-forget frames the adapter sends at session establishment;
+# conformance assertions index or filter past them wherever commanded wire is pinned.
+SESSION_FRAMES = (SESSION_OPEN, BAUD_NEGOTIATE)
+
+
+def commanded_sends(calls: list[tuple[dict[str, Any], Any]]) -> list[bytes]:
+    """stream_send transactions excluding the establishment handshake."""
+    return [
+        t["data"]
+        for t, _ in calls
+        if t["kind"] == "stream_send" and t["data"] not in SESSION_FRAMES
+    ]
+
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = ROOT / "src/benchweave_fnirsi_dps150"
@@ -36,8 +52,18 @@ class Context:
 
 
 class Host:
+    """Wire-scripted host whose GET replies materialise only at send time.
+
+    A commanded GET pops the next scripted reply into the receive buffer, so
+    the telemetry drain the adapter runs BEFORE each command finds an empty,
+    EOF-terminated stream (no unsolicited telemetry on this mock) and can
+    never consume a reply that has not been asked for yet.
+    """
+
     def __init__(self, wire: bytes = b"") -> None:
+        self.replies: list[bytes] = []
         self.wire = wire
+        self.buffer = bytearray()
         self.now = 100.0
         self.calls: list[tuple[dict[str, Any], Any]] = []
         self.closes = 0
@@ -49,6 +75,17 @@ class Host:
         self.timestamp = "2026-09-12T03:00:00Z"
         self.entered = asyncio.Event()
 
+    @property
+    def wire(self) -> bytes:
+        return self.replies[0] if self.replies else b""
+
+    @wire.setter
+    def wire(self, value: bytes) -> None:
+        self.replies[:] = [value] if value else []
+
+    def queue_replies(self, *frames: bytes) -> None:
+        self.replies.extend(frames)
+
     def monotonic(self) -> float:
         return self.now
 
@@ -56,7 +93,7 @@ class Host:
         return self.timestamp
 
     async def transfer(self, transaction: dict[str, Any], context: Any) -> dict[str, Any]:
-        assert context.markers == 1
+        # Pure receives need no dispatch marker (spec §8); sends must be marked.
         assert context.operation_id == "host-op" and context.dataset_id is None
         assert context.deadline_monotonic <= 101.0
         self.calls.append((transaction, context))
@@ -71,15 +108,20 @@ class Host:
         if count == self.fail_at and self.failure:
             raise self.failure
         if transaction["kind"] == "stream_send":
+            assert context.markers == 1
             assert set(transaction) == {"kind", "data"}
-            assert type(transaction["data"]) is bytes
+            data = transaction["data"]
+            assert type(data) is bytes
+            if data[:2] == bytes((0xF1, GET)) and self.replies:
+                self.buffer.extend(self.replies.pop(0))
             return {}
         assert transaction["kind"] == "stream_receive"
         assert set(transaction) == {"kind", "max_bytes", "exact_bytes", "termination"}
         assert transaction["termination"] == "lf"
         size = transaction["exact_bytes"]
         assert 1 <= size == transaction["max_bytes"] <= 256
-        data, self.wire = self.wire[:size], self.wire[size:]
+        data = bytes(self.buffer[:size])
+        del self.buffer[:size]
         return {"data": data}
 
     async def close_transport(self, context: Any) -> None:
@@ -106,7 +148,8 @@ async def opened(host: Host) -> Any:
 
 
 async def identified(host: Host) -> Any:
-    host.wire = IDENTITY + host.wire
+    pending = host.replies[:]
+    host.replies[:] = [IDENTITY[:12], IDENTITY[12:]]
     plugin = await opened(host)
     result = await plugin.execute(request(), Context())
     validate_result(result)
@@ -118,10 +161,11 @@ async def identified(host: Host) -> Any:
         "firmware": "1.0",
         "source": "device",
     }
-    assert [t["data"].hex() for t, _ in host.calls if t["kind"] == "stream_send"] == [
+    assert [data.hex() for data in commanded_sends(host.calls)] == [
         "f1a1de00de",
         "f1a1e000e0",
     ]
+    host.replies[:] = pending
     host.calls.clear()
     return plugin
 
@@ -168,14 +212,15 @@ def test_scalar_vectors() -> None:
         result = await plugin.execute(request("read", parameter=vector["parameter"]), Context())
         validate_result(result)
         assert result == vector["result"]
-        assert host.calls[0][0] == {
+        # one EOF-ended drain precedes the GET on every commanded call
+        assert host.calls[1][0] == {
             "kind": "stream_send",
             "data": bytes.fromhex(vector["request_hex"]),
         }
-        assert len(host.calls) == 3
+        assert len(host.calls) == 4
         host.wire = bytes.fromhex(vector["response_hex"])
         result2 = await plugin.execute(request("read", parameter=vector["parameter"]), Context())
-        assert result2 == result and len(host.calls) == 6
+        assert result2 == result and len(host.calls) == 8
 
     for vector in json.loads((PACKAGE / "adapter-vectors.json").read_text()):
         asyncio.run(scenario(vector))
@@ -299,7 +344,7 @@ def test_malformed_response_poisons_session(wire: str) -> None:
         (RuntimeError("secret"), "INTERNAL_ERROR"),
     ],
 )
-@pytest.mark.parametrize("at", [1, 2, 3])
+@pytest.mark.parametrize("at", [2, 3, 4])
 def test_host_failures_preserve_dispatch_uncertainty(
     failure: Exception, code: str, at: int
 ) -> None:
@@ -310,7 +355,7 @@ def test_host_failures_preserve_dispatch_uncertainty(
         result = await plugin.execute(request("read", parameter="voltage"), Context())
         validate_result(result)
         assert result["error"]["code"] == code
-        assert result["error"]["dispatch_state"] == ("unknown" if at == 1 else "dispatched")
+        assert result["error"]["dispatch_state"] == ("unknown" if at == 2 else "dispatched")
         assert result["status"] == "unknown"
         assert "secret" not in json.dumps(result)
         assert len(host.calls) == at
@@ -319,7 +364,7 @@ def test_host_failures_preserve_dispatch_uncertainty(
 
 
 @pytest.mark.parametrize("cancel", [False, True])
-@pytest.mark.parametrize("after", [0, 1, 2])
+@pytest.mark.parametrize("after", [0, 2, 3])
 def test_deadline_and_cancellation_boundaries(cancel: bool, after: int) -> None:
     async def scenario() -> None:
         host = Host(bytes.fromhex("f0a1c30c0000803f00000040000000400e"))
@@ -402,21 +447,22 @@ def test_blocked_transfer_timeout_task_cancel_and_busy() -> None:
 
 
 def test_model_mismatch_and_invalid_firmware() -> None:
-    async def scenario(wire: bytes, code: str) -> None:
-        host = Host(wire)
+    async def scenario(replies: list[bytes], code: str) -> None:
+        host = Host()
+        host.queue_replies(*replies)
         plugin = await opened(host)
         result = await plugin.execute(request(), Context())
         validate_result(result)
         assert result["error"]["code"] == code
-        assert len([t for t, _ in host.calls if t["kind"] == "stream_send"]) <= 2
+        assert len(commanded_sends(host.calls)) <= 2
         before = len(host.calls)
         denied = await plugin.execute(request("read", parameter="voltage"), Context())
         assert denied["status"] != "ok" and len(host.calls) == before
 
     # Valid checksum, different model; malformed UTF-8 firmware; empty firmware.
-    asyncio.run(scenario(bytes.fromhex("f0a1de014120"), "IDENTITY_MISMATCH"))
+    asyncio.run(scenario([bytes.fromhex("f0a1de014120")], "IDENTITY_MISMATCH"))
     for firmware in ["f0a1e001ffe0", "f0a1e000e0"]:
-        asyncio.run(scenario(IDENTITY[:12] + bytes.fromhex(firmware), "PROTOCOL_ERROR"))
+        asyncio.run(scenario([IDENTITY[:12], bytes.fromhex(firmware)], "PROTOCOL_ERROR"))
 
 
 @pytest.mark.parametrize(
@@ -568,14 +614,15 @@ def test_failed_close_retry_and_deadline() -> None:
 
 def test_both_identity_queries_share_context_and_absolute_deadline() -> None:
     async def scenario() -> None:
-        host = Host(IDENTITY)
+        host = Host()
+        host.queue_replies(IDENTITY[:12], IDENTITY[12:])
         plugin = await opened(host)
-        host.advance_at = 3
+        host.advance_at = 6
         context = Context()
         result = await plugin.execute(request(), context)
         assert result["error"]["code"] == "TIMEOUT"
         assert all(seen is context for _, seen in host.calls)
-        assert len(host.calls) == 3 and context.markers == 1
+        assert len(host.calls) == 6 and context.markers == 1
         assert context.deadline_monotonic == 101.0
 
     asyncio.run(scenario())
@@ -590,13 +637,13 @@ def test_packaged_failure_vectors() -> None:
             case "deadline":
                 context.deadline_monotonic = 100.0
             case "receive_timeout":
-                host.failure, host.fail_at = TimeoutError(), 2
+                host.failure, host.fail_at = TimeoutError(), 3
             case "cancel":
                 context.cancelled = True
             case "cancel_after_send":
-                host.cancel_at = 1
+                host.cancel_at = 2
             case "send_loss":
-                host.failure, host.fail_at = ConnectionError(), 1
+                host.failure, host.fail_at = ConnectionError(), 2
             case None:
                 pass
             case _:
@@ -606,7 +653,7 @@ def test_packaged_failure_vectors() -> None:
         assert result["status"] == vector["status"]
         assert result["error"]["code"] == vector["code"]
         assert result["error"]["dispatch_state"] == vector["dispatch_state"]
-        sent = [t["data"].hex() for t, _ in host.calls if t["kind"] == "stream_send"]
+        sent = [data.hex() for data in commanded_sends(host.calls)]
         assert sent == ([] if vector["request_hex"] is None else [vector["request_hex"]])
 
     for vector in json.loads((PACKAGE / "adapter-failure-vectors.json").read_text()):
@@ -622,3 +669,199 @@ def test_negative_numeric_reading_is_not_clamped_to_setpoint_limits() -> None:
         assert result["data"]["value"] == -1.0
 
     asyncio.run(scenario())
+
+
+class TransportHost:
+    """HostServices bridging scoped transfers onto a Transport mock.
+
+    stream_send forwards to the transport; stream_receive buffers whole
+    transport chunks and serves the adapter's exact byte counts. A transport
+    offering no bytes resolves the transfer with b"", which the adapter's
+    drain reads as end-of-stream.
+    """
+
+    def __init__(self, transport: Any) -> None:
+        self.transport = transport
+        self.now = 100.0
+        self.timestamp = "2026-09-12T03:00:00Z"
+        self.closes = 0
+        self.buffer = bytearray()
+
+    def monotonic(self) -> float:
+        return self.now
+
+    def utc_now(self) -> str:
+        return self.timestamp
+
+    async def transfer(self, transaction: dict[str, Any], context: Any) -> dict[str, Any]:
+        if transaction["kind"] == "stream_send":
+            assert set(transaction) == {"kind", "data"}
+            await self.transport.send(transaction["data"])
+            return {}
+        assert transaction["kind"] == "stream_receive"
+        size = transaction["exact_bytes"]
+        while len(self.buffer) < size:
+            chunk = await self.transport.receive(260)
+            if not chunk:
+                break
+            self.buffer.extend(chunk)
+        data = bytes(self.buffer[:size])
+        del self.buffer[:size]
+        return {"data": data}
+
+    async def close_transport(self, context: Any) -> None:
+        self.closes += 1
+
+
+def test_adapter_establishes_the_session_at_first_commanded_use(
+    handshaking_transport: Any,
+) -> None:
+    """The captured negative, replayed through the adapter: the device stays
+    silent until the exact handshake, so the adapter must send it itself at
+    establishment. The send is unconditional — an already-awake device (a
+    reconnect; the wake is power-cycle-bound) ignores it harmlessly."""
+
+    async def scenario() -> None:
+        host = TransportHost(handshaking_transport)
+        plugin = create_plugin()
+        await plugin.open(build_descriptor(), host, Context())
+        result = await plugin.execute(request(), Context())
+        validate_result(result)
+        assert result["status"] == "ok"
+        assert result["data"]["model"] == "DPS-150"
+        assert handshaking_transport.sent[:2] == [SESSION_OPEN, BAUD_NEGOTIATE]
+
+    asyncio.run(scenario())
+
+
+def test_commanded_read_survives_interleaved_telemetry(
+    handshaking_transport: Any,
+) -> None:
+    """A woken device streams telemetry around every reply; the bounded drain
+    before each commanded call keeps the Client's one-frame rule intact
+    without discarding the interleaved frames."""
+
+    async def scenario() -> None:
+        host = TransportHost(handshaking_transport)
+        plugin = create_plugin()
+        await plugin.open(build_descriptor(), host, Context())
+        identified = await plugin.execute(request(), Context())
+        assert identified["status"] == "ok"
+        for _ in range(2):
+            result = await plugin.execute(request("read", parameter="voltage"), Context())
+            validate_result(result)
+            assert result["status"] == "ok"
+            assert result["data"]["parameter"] == "voltage"
+            assert result["data"]["value"] == 0.0
+        assert handshaking_transport.awake
+
+    asyncio.run(scenario())
+
+
+def test_trailing_telemetry_never_poisons_sequential_reads(
+    trailing_transport: Any,
+) -> None:
+    """live-stream.jsonl "diagnosis-final" replayed: telemetry trails — and
+    races ahead of — the reply inside the commanded receive window, so the
+    Client's strict one-frame view poisoned the whole instance after the
+    first interleaved window (34 ok / 1 unknown / 235 instant errors on the
+    live device). Correlated reply consumption must keep identify and N
+    sequential reads healthy on ONE plugin instance."""
+
+    async def scenario() -> None:
+        host = TransportHost(trailing_transport)
+        plugin = create_plugin()
+        await plugin.open(build_descriptor(), host, Context())
+        result = await plugin.execute(request(), Context())
+        validate_result(result)
+        assert result["status"] == "ok"
+        assert result["data"]["model"] == "DPS-150"
+        for _ in range(5):
+            read = await plugin.execute(request("read", parameter="input_voltage"), Context())
+            validate_result(read)
+            assert read["status"] == "ok"
+            assert read["data"]["parameter"] == "input_voltage"
+            assert read["data"]["value"] == pytest.approx(20.067, abs=1e-3)
+        assert trailing_transport.awake
+
+    asyncio.run(scenario())
+
+
+def test_interleaved_frames_absorbed_from_commanded_windows_still_surface(
+    trailing_transport: Any,
+) -> None:
+    """Telemetry frames absorbed out of a commanded reply window surface
+    through latest_telemetry() in the reading shape — same PARAMETERS
+    mapping as the drain, one row per parameter, nothing discarded."""
+
+    async def scenario() -> None:
+        host = TransportHost(trailing_transport)
+        plugin = create_plugin()
+        await plugin.open(build_descriptor(), host, Context())
+        identified = await plugin.execute(request(), Context())
+        assert identified["status"] == "ok"
+        for parameter in ("input_voltage", "temperature"):
+            read = await plugin.execute(request("read", parameter=parameter), Context())
+            validate_result(read)
+            assert read["status"] == "ok"
+        rows = plugin.latest_telemetry()
+        by_parameter = {row["parameter"]: row for row in rows}
+        assert set(by_parameter) == {
+            "voltage",
+            "current",
+            "power",
+            "input_voltage",
+            "temperature",
+        }
+        assert by_parameter["voltage"]["value"] == pytest.approx(0.0)
+        assert by_parameter["input_voltage"]["value"] == pytest.approx(20.067, abs=1e-3)
+        for row in rows:
+            assert row["quality"] == "valid" and row["source"] == "device"
+            assert row["age_ms"] >= 0
+
+    asyncio.run(scenario())
+
+
+def test_drained_telemetry_surfaces_in_the_reading_shape(
+    handshaking_transport: Any,
+) -> None:
+    """Drained telemetry is observable through the adapter's measurement
+    surface: field 195 arrives as voltage/current/power (V/A/W) per the
+    PARAMETERS contract, in the reading envelope's shape."""
+
+    async def scenario() -> None:
+        host = TransportHost(handshaking_transport)
+        plugin = create_plugin()
+        await plugin.open(build_descriptor(), host, Context())
+        result = await plugin.execute(request(), Context())
+        assert result["status"] == "ok"
+        rows = plugin.latest_telemetry()
+        by_parameter = {row["parameter"]: row for row in rows}
+        assert set(by_parameter) == {
+            "voltage",
+            "current",
+            "power",
+            "input_voltage",
+            "temperature",
+        }
+        assert by_parameter["voltage"]["value"] == pytest.approx(0.0)
+        assert [by_parameter[name]["unit"] for name in ("voltage", "current", "power")] == [
+            "V",
+            "A",
+            "W",
+        ]
+        assert by_parameter["input_voltage"]["value"] == pytest.approx(20.067, abs=1e-3)
+        assert by_parameter["temperature"]["value"] == pytest.approx(21.454, abs=1e-3)
+        for row in rows:
+            assert row["observed_at"] == "2026-09-12T03:00:00Z"
+            assert row["age_ms"] >= 0
+            assert row["quality"] == "valid" and row["source"] == "device"
+
+    asyncio.run(scenario())
+
+
+def test_session_constants_stay_evidence_backed() -> None:
+    from benchweave_fnirsi_dps150.adapter import _DRAIN_WINDOW_S, _SESSION_DELAY_S
+
+    assert _SESSION_DELAY_S == 0.05  # connect-v2.jsonl fire-and-forget pacing
+    assert _DRAIN_WINDOW_S == 0.15  # above the ~100 ms inter-frame gap of the 2 Hz cycle

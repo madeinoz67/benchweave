@@ -1,0 +1,9 @@
+{"provenance": {"leg": "hw04-leg2-voltage", "approval": "principal 'continue' 2026-09-15 after leg-2 proposal (SET 193=5.00V, readback, restore 0.00V)", "mode": "setpoint register only; field 219 (output enable) untouched; restore verified", "ts": "2026-09-15T08:46:49"}}
+{"step": "read-226", "sent_hex": "f1 a1 e2 01 00 e3", "reply_len": 115, "decoded": "19.871196746826172"}
+{"step": "read-195", "sent_hex": "f1 a1 c3 01 00 c4", "reply_len": 123, "decoded": "(0.0, 0.0, 0.0)"}
+{"step": "set-193=5.00V", "sent_hex": "f1 b1 c1 04 00 00 a0 40 a5", "reply_hex": "f0 a1 c3 0c 00 00 00 00 00 00 00 00 00 00 00 00 cf f0 a1 c0 04 4d 8d a0 41 7f f0", "reply_len": 53}
+{"step": "read-226", "sent_hex": "f1 a1 e2 01 00 e3", "reply_len": 115, "decoded": "19.86599349975586"}
+{"step": "read-195", "sent_hex": "f1 a1 c3 01 00 c4", "reply_len": 123, "decoded": "(0.0, 0.0, 0.0)"}
+{"step": "set-193=0.00V-restore", "sent_hex": "f1 b1 c1 04 00 00 00 00 c5", "reply_hex": "f0 a1 c3 0c 00 00 00 00 00 00 00 00 00 00 00 00 cf f0 a1 c0 04 fc 77 a0 41 18 f0", "reply_len": 53}
+{"step": "read-226", "sent_hex": "f1 a1 e2 01 00 e3", "reply_len": 132, "decoded": "19.85838508605957"}
+{"step": "read-195", "sent_hex": "f1 a1 c3 01 00 c4", "reply_len": 123, "decoded": "(0.0, 0.0, 0.0)"}
