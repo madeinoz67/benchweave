@@ -86,6 +86,12 @@ opencode.json
 .github/copilot-instructions.md
 .github/skills/
 
+# Gortex git-hook artifacts — the post-merge hook regenerates all three
+# (gortex export --format mermaid, gortex wiki, gortex docs); local-only.
+wiki/
+docs/architecture/
+CHANGELOG_AUTO.md
+
 # Executing-plans checkpoint state (transient)
 .checkpoint-state.json
 
