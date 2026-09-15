@@ -53,8 +53,8 @@ def _bundle_paths(entry: StandardEntry) -> set[str]:
     # contracts/ assets land under their set-relative path; the parity
     # validator (src/...) lands under its bare filename.
     return {
-        f"{entry.id}/{n.removeprefix('contracts/')}"
-        if n.startswith("contracts/")
+        f"{entry.id}/{n.removeprefix('standards/')}"
+        if n.startswith("standards/")
         else f"{entry.id}/{PurePosixPath(n).name}"
         for n in entry.normative
     }

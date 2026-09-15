@@ -1,8 +1,8 @@
 """Spec §10 scenarios: full export→sync→check cycles on throwaway corpus copies.
 
 The real tree and the ``packages/sdk`` submodule are never mutated. Every
-scenario builds a temporary "repo" from what the manifest names — ``standards/``,
-``contracts/``, the parity validator, the plugin-ui docs tree — plus a temporary
+scenario builds a temporary "repo" from what the manifest names — ``standards/``
+(both manifests and the whole corpus) and the parity validator — plus a temporary
 SDK root populated by a first sync, then mutates the copy the way an operator
 would and watches each gate's reaction.
 """
@@ -31,11 +31,10 @@ ROOT = Path(__file__).resolve().parents[2]
 STANDARD = "plugin-ui"
 OLD_VERSION = "0.1.0"
 NEW_VERSION = "0.2.0"
-# The scenario victim: normative, contracts-pinned, and mirrored under docs/.
-NORMATIVE = "contracts/plugin-ui-v0.1.0/ui-manifest.schema.json"
+# The scenario victim: normative and standards-pinned (docs/ holds no corpus).
+NORMATIVE = "standards/plugin-ui-v0.1.0/ui-manifest.schema.json"
 PIN_KEY = "plugin-ui-v0.1.0/ui-manifest.schema.json"
-DOC_README = "docs/plugin-ui-v0.1.0/README.md"
-DOC_COPY = "docs/plugin-ui-v0.1.0/ui-manifest.schema.json"
+DOC_README = "standards/plugin-ui-v0.1.0/README.md"
 PARITY = "src/benchweave/presentation/contracts.py"
 ALL_IDS = {"otdp", "registry", "execution", "interface", "plugin-ui", "plugin-ui-preview"}
 
@@ -45,11 +44,9 @@ def _repo_copy(tmp_path: Path) -> Path:
     repo = tmp_path / "repo"
     repo.mkdir()
     shutil.copytree(ROOT / "standards", repo / "standards")
-    shutil.copytree(ROOT / "contracts", repo / "contracts")
     parity = repo / PARITY
     parity.parent.mkdir(parents=True)
     shutil.copy2(ROOT / PARITY, parity)
-    shutil.copytree(ROOT / "docs/plugin-ui-v0.1.0", repo / "docs/plugin-ui-v0.1.0")
     return repo
 
 
@@ -93,11 +90,11 @@ def _bump_version(repo: Path) -> None:
 
 
 def _repin(repo: Path) -> None:
-    """Point the contracts pin back at the (mutated) bytes on disk."""
-    document: dict[str, Any] = json.loads((repo / "contracts/manifest.json").read_bytes())
+    """Point the corpus pin back at the (mutated) bytes on disk."""
+    document: dict[str, Any] = json.loads((repo / "standards/corpus-manifest.json").read_bytes())
     row = next(f for f in document["files"] if f["path"] == PIN_KEY)
     row["sha256"] = hashlib.sha256((repo / NORMATIVE).read_bytes()).hexdigest()
-    (repo / "contracts/manifest.json").write_text(json.dumps(document, indent=2) + "\n")
+    (repo / "standards/corpus-manifest.json").write_text(json.dumps(document, indent=2) + "\n")
 
 
 def _stamp_line(path: Path) -> str:
@@ -144,7 +141,6 @@ def test_spec10_versioned_breaking_change_updates_the_lock(tmp_path: Path) -> No
     _break_normative(repo)
     _bump_version(repo)
     _repin(repo)
-    shutil.copy2(repo / NORMATIVE, repo / DOC_COPY)  # keep the docs mirror honest
     export_bundle(repo, bundle)
     report = sync(bundle, sdk)
     assert report.changed == (STANDARD,)

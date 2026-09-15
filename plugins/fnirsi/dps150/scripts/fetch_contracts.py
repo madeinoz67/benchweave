@@ -2,6 +2,8 @@
 
 Fetch immutable OTDP inputs with SHA-256 verification. No core checkout required.
 Existing verified copies support offline use; mismatches fail without overwriting.
+Corpus relocation 2026-09-15: the canonical tree is now standards/otdp-v0.3.0;
+the next re-lock points lock directory there (old pinned revisions keep working).
 """
 
 import argparse

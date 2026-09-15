@@ -4,8 +4,10 @@ The vendored ``interface-v1.1.0`` corpus stays frozen authority — its bytes
 are NEVER edited, pinned here against the digests recorded in git HEAD's
 manifest. The D2 amendment (the catalog's ``change_apply`` REST body schema
 omitted ``approver_token``, which the REST adapter already forwards as the
-detached approval credential) ships as a NEW revision, vendored
-byte-identical from a NEW ``docs/interface-v1.1.1/`` source:
+detached approval credential) ships as a NEW versioned corpus revision,
+``standards/interface-v1.1.1/`` (originally vendored from a docs source before
+the docs mirror was retired; manifest ``source`` fields remain as historical
+provenance):
 
 - only ``change_apply``'s requestBody schema changes — it gains an OPTIONAL
   ``approver_token`` string property (NOT added to ``required``; the adapter
@@ -31,7 +33,7 @@ from benchweave.interfaces import errors
 from benchweave.interfaces.validation import SeamValidator
 
 ROOT = Path(__file__).resolve().parents[2]
-CONTRACTS = ROOT / "contracts"
+CONTRACTS = ROOT / "standards"
 BASELINE = "interface-v1.1.0"
 REVISION = "interface-v1.1.1"
 APPLY_ROUTE = "/v1/admin/changes/{change_id}/apply"
@@ -50,7 +52,7 @@ _APPROVAL_REF: dict[str, Any] = {"id": "approval-1", "version": "1", "sha256": "
 
 
 def _manifest() -> dict[str, Any]:
-    manifest = json.loads((CONTRACTS / "manifest.json").read_text(encoding="utf-8"))
+    manifest = json.loads((CONTRACTS / "corpus-manifest.json").read_text(encoding="utf-8"))
     assert isinstance(manifest, dict)
     return manifest
 
@@ -79,10 +81,17 @@ def _head_manifest() -> dict[str, Any]:
     edits to the frozen baseline.
     """
     proc = subprocess.run(
-        ["git", "-C", str(ROOT), "show", "HEAD:contracts/manifest.json"],
-        check=True,
+        ["git", "-C", str(ROOT), "show", "HEAD:standards/corpus-manifest.json"],
         capture_output=True,
     )
+    if proc.returncode != 0:
+        # Pre-relocation history (before the standards/ consolidation) kept
+        # the manifest at contracts/manifest.json; HEAD may be either side.
+        proc = subprocess.run(
+            ["git", "-C", str(ROOT), "show", "HEAD:contracts/manifest.json"],
+            check=True,
+            capture_output=True,
+        )
     manifest = json.loads(proc.stdout)
     assert isinstance(manifest, dict)
     return manifest
@@ -97,18 +106,16 @@ def _apply_body_schema(corpus: str) -> dict[str, Any]:
     return schema
 
 
-def test_revision_files_match_manifest_and_docs_sources() -> None:
-    """Every vendored revision byte matches its docs source at the manifest
-    digest, and nothing vendored escapes the manifest."""
+def test_revision_files_match_manifest_and_cover_the_tree() -> None:
+    """Every vendored revision byte matches its manifest digest, and
+    nothing vendored escapes the manifest. The retired docs sources survive
+    only as provenance in the manifest's ``source`` fields."""
     entries = _entries(REVISION)
     assert set(entries) == {f"{REVISION}/{name}" for name in REVISION_FILES}
     for rel, entry in entries.items():
         vendored = CONTRACTS / rel
         assert vendored.is_file(), f"missing vendored file: {rel}"
         assert _digest(vendored) == entry["sha256"], f"manifest digest drift: {rel}"
-        source = ROOT / str(entry["source"])
-        assert source.is_file(), f"missing docs source: {entry['source']}"
-        assert source.read_bytes() == vendored.read_bytes(), f"not byte-identical: {rel}"
     on_disk = {str(p.relative_to(CONTRACTS)) for p in (CONTRACTS / REVISION).rglob("*.json")}
     assert on_disk == set(entries), "vendored files outside the manifest"
 

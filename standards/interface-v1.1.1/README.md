@@ -2,9 +2,9 @@
 
 This directory is a **new, versioned revision** of the admitted interface
 corpus — not an edit of `interface-v1.1.0`. The 1.1.0 corpus remains vendored
-at `contracts/interface-v1.1.0/` with its bytes frozen; this revision is
-vendored byte-identically at `contracts/interface-v1.1.1/` and recorded in
-`contracts/manifest.json` as `identity.interface_errata: "1.1.1"`.
+at `standards/interface-v1.1.0/` with its bytes frozen; this revision is
+housed at `standards/interface-v1.1.1/` and recorded in
+`standards/corpus-manifest.json` as `identity.interface_errata: "1.1.1"`.
 
 ## Why the architecture identity stays 1.1.0
 
@@ -52,11 +52,14 @@ inputSchema and no catalog failure-code entry is affected).
 
 ## Provenance
 
-- Source of truth: `docs/interface-v1.1.1/` (this directory).
-- Vendored byte-identically into `contracts/interface-v1.1.1/`.
-- Every vendored file is recorded in `contracts/manifest.json` with its
+- Source of truth: `standards/interface-v1.1.1/` (this directory; machine
+  artifacts and errata record live together since the 2026-09-15
+  consolidation).
+- Originally authored under `docs/` and vendored to `contracts/` before both
+  mirrors were retired (manifest `source` fields record that history).
+- Every vendored file is recorded in `standards/corpus-manifest.json` with its
   sha256 (`shasum -a 256` over the vendored bytes).
 - Integrity is pinned by `tests/contract/test_corpus_revision.py`: the
-  revision byte-matches its docs sources at the manifest digests, the 1.1.0
+  revision byte-matches its manifest digests, the 1.1.0
   corpus bytes are unchanged versus git HEAD's manifest, and the 1.1.0
   corpus rejects the token-bearing body the 1.1.1 corpus admits.

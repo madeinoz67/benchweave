@@ -816,7 +816,7 @@ def test_evidence_storage_failure_emits_evidence_gap(tmp_path: Path) -> None:
 # --- D12 commissioned takeover (WP08 Task 3) -------------------------------------
 
 _TAKEOVER_EVENT_DEF = json.loads(
-    (REPO_ROOT / "contracts" / "interface-v1.1.1" / "interface.schema.json").read_bytes()
+    (REPO_ROOT / "standards" / "interface-v1.1.1" / "interface.schema.json").read_bytes()
 )["$defs"]["event"]
 # The def, VERBATIM — its stream_id pattern admits the seam's
 # "bench.{bench_id}" naming (the fix-wave rename). Never patched here.

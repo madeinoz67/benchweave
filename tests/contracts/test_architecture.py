@@ -12,10 +12,12 @@ ROOT = Path(__file__).resolve().parents[2]
 SUITES = ("devices", "registry", "execution", "interface", "closure", "planning", "documents")
 
 
-def run_checks(suite: str, docs: Path) -> list[tuple[str, bool]]:
+def run_checks(suite: str, docs: Path, standards: Path) -> list[tuple[str, bool]]:
     script = ROOT / "scripts" / "architecture" / f"check_{suite}.py"
     assert script.is_file(), f"Missing architecture validator: {script}"
-    namespace = runpy.run_path(str(script), init_globals={"DOCS": docs})
+    namespace = runpy.run_path(
+        str(script), init_globals={"DOCS": docs, "STANDARDS": standards}
+    )
     checks = namespace["CHECKS"]
     assert isinstance(checks, list) and checks, f"No checks executed by {suite}"
     return [(str(name), bool(passed)) for name, passed in checks]
@@ -23,7 +25,7 @@ def run_checks(suite: str, docs: Path) -> list[tuple[str, bool]]:
 
 @pytest.mark.parametrize("suite", SUITES)
 def test_architecture(suite: str) -> None:
-    checks = run_checks(suite, ROOT / "docs")
+    checks = run_checks(suite, ROOT / "docs", ROOT / "standards")
     failures = [name for name, passed in checks if not passed]
     assert not failures, f"{suite}: {len(failures)}/{len(checks)} failed:\n" + "\n".join(failures)
     print(f"{suite}: {len(checks)} checks passed")
@@ -31,19 +33,23 @@ def test_architecture(suite: str) -> None:
 
 def test_validation_is_read_only(tmp_path: Path) -> None:
     docs = tmp_path / "docs"
+    standards = tmp_path / "standards"
     shutil.copytree(ROOT / "docs", docs)
+    shutil.copytree(ROOT / "standards", standards)
 
-    def snapshot() -> dict[str, str]:
+    def snapshot(root: Path) -> dict[str, str]:
         return {
-            str(p.relative_to(docs)): hashlib.sha256(p.read_bytes()).hexdigest()
-            for p in docs.rglob("*")
+            str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest()
+            for p in root.rglob("*")
             if p.is_file()
         }
 
-    before = snapshot()
+    before_docs = snapshot(docs)
+    before_standards = snapshot(standards)
     for suite in SUITES:
-        run_checks(suite, docs)
-    assert snapshot() == before, "Validation changed the architecture documents"
+        run_checks(suite, docs, standards)
+    assert snapshot(docs) == before_docs, "Validation changed the architecture documents"
+    assert snapshot(standards) == before_standards, "Validation changed the corpus"
 
 
 def test_documents_ignores_markdown_links_inside_fenced_code_blocks(
@@ -55,13 +61,15 @@ def test_documents_ignores_markdown_links_inside_fenced_code_blocks(
     """
     docs = tmp_path / "docs"
     docs.mkdir()
+    standards = tmp_path / "standards"
+    standards.mkdir()
     (docs / "fences.md").write_text(
         "# Fences\n\nProse [link](other.md) stays checked.\n\n"
         "```python\nresult = legs[leg](arg)\n```\n",
         encoding="utf-8",
     )
     (docs / "other.md").write_text("# Other\n", encoding="utf-8")
-    failures = [name for name, passed in run_checks("documents", docs) if not passed]
+    failures = [name for name, passed in run_checks("documents", docs, standards) if not passed]
     assert failures == []
 
 
@@ -118,13 +126,19 @@ def test_contract_regressions_are_detected(
     tmp_path: Path, suite: str, relative_path: str, old: str, new: str, expected: str
 ) -> None:
     docs = tmp_path / "docs"
+    standards = tmp_path / "standards"
     shutil.copytree(ROOT / "docs", docs)
-    path = docs / relative_path
+    shutil.copytree(ROOT / "standards", standards)
+    path = (
+        standards / relative_path
+        if (standards / relative_path).is_file()
+        else docs / relative_path
+    )
     original = path.read_text(encoding="utf-8")
     assert not old or old in original, "Mutation must change the intended fixture"
     changed = original.replace(old, new, 1) if old else original + new
     path.write_text(changed, encoding="utf-8")
     if path.suffix == ".json":
         json.loads(changed)  # Test semantic damage rather than invalid JSON syntax.
-    failures = [name for name, passed in run_checks(suite, docs) if not passed]
+    failures = [name for name, passed in run_checks(suite, docs, standards) if not passed]
     assert any(expected in name for name in failures), failures

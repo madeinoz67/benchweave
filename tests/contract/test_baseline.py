@@ -2,8 +2,8 @@
 
 Proves the four properties WP01 requires of the vendored contracts: byte
 hashes, duplicate keys, nonfinite values, schema references and the source
-manifest. The corpus under ``contracts/`` is a byte-identical import of the
-admitted architecture documents; this file detects any drift, tampering or
+manifest. The corpus under ``standards/`` is the admitted architecture contract
+set; this file detects any drift, tampering or
 accidental admission of obsolete schema versions.
 """
 
@@ -21,8 +21,7 @@ from referencing.exceptions import Unresolvable
 from referencing.jsonschema import DRAFT202012
 
 ROOT = Path(__file__).resolve().parents[2]
-CONTRACTS = ROOT / "contracts"
-DOCS = ROOT / "docs"
+CONTRACTS = ROOT / "standards"
 ADMITTED_DIRS = (
     "otdp-v0.3.0",
     "registry-v1.0.0",
@@ -55,13 +54,17 @@ def _load_strict(path: Path) -> Any:
 
 
 def _manifest() -> dict[str, Any]:
-    manifest = _load_strict(CONTRACTS / "manifest.json")
+    manifest = _load_strict(CONTRACTS / "corpus-manifest.json")
     assert isinstance(manifest, dict)
     return manifest
 
 
 def _contract_files() -> list[Path]:
-    return sorted(p for p in CONTRACTS.rglob("*.json") if p.name != "manifest.json")
+    return sorted(
+        p
+        for p in CONTRACTS.rglob("*.json")
+        if p.name not in ("corpus-manifest.json", "standards-manifest.json")
+    )
 
 
 def _walk(value: Any, base: str) -> list[tuple[Any, str]]:
@@ -89,15 +92,6 @@ def test_manifest_hashes_match_contract_files() -> None:
         path = CONTRACTS / entry["path"]
         actual = hashlib.sha256(path.read_bytes()).hexdigest()
         assert actual == entry["sha256"], f"hash mismatch: {entry['path']}"
-
-
-def test_contracts_are_byte_identical_to_docs_sources() -> None:
-    for entry in _manifest()["files"]:
-        source = ROOT / entry["source"]
-        assert source.is_file(), f"missing source: {entry['source']}"
-        assert (CONTRACTS / entry["path"]).read_bytes() == source.read_bytes(), (
-            f"import not byte-identical: {entry['path']}"
-        )
 
 
 def test_no_obsolete_interface_version_present() -> None:

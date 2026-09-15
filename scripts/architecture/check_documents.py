@@ -9,6 +9,7 @@ from referencing.jsonschema import DRAFT202012
 
 "Offline JSON, schema-reference and local Markdown-link integrity checks."
 DOCS = globals().get("DOCS", Path(__file__).resolve().parents[2] / "docs")
+STANDARDS = globals().get("STANDARDS", Path(__file__).resolve().parents[2] / "standards")
 CHECKS = []
 
 
@@ -70,7 +71,7 @@ def walk(value, base):
 
 documents = {}
 registry = Registry()
-for path in sorted(DOCS.rglob("*.json")):
+for path in sorted(STANDARDS.rglob("*.json")):
     try:
         data = json.loads(
             path.read_text(encoding="utf-8"),
@@ -78,9 +79,9 @@ for path in sorted(DOCS.rglob("*.json")):
             parse_constant=reject_constant,
         )
     except (ValueError, UnicodeError) as error:
-        CHECKS.append((f"{path.relative_to(DOCS)} valid JSON: {error}", False))
+        CHECKS.append((f"{path.relative_to(STANDARDS)} valid JSON: {error}", False))
         continue
-    CHECKS.append((f"{path.relative_to(DOCS)} valid JSON", True))
+    CHECKS.append((f"{path.relative_to(STANDARDS)} valid JSON", True))
     documents[path] = data
     resource = Resource.from_contents(data, default_specification=DRAFT202012)
     registry = registry.with_resource(path.as_uri(), resource)
@@ -115,10 +116,22 @@ for path, data in documents.items():
                 resolved = True
             except Unresolvable:
                 resolved = False
-            CHECKS.append((f"{path.relative_to(DOCS)} resolves {ref}", resolved))
+            CHECKS.append((f"{path.relative_to(STANDARDS)} resolves {ref}", resolved))
+for path in sorted(DOCS.rglob("*.json")):
+    try:
+        json.loads(
+            path.read_text(encoding="utf-8"),
+            object_pairs_hook=unique_object,
+            parse_constant=reject_constant,
+        )
+    except (ValueError, UnicodeError) as error:
+        CHECKS.append((f"{path.relative_to(DOCS)} valid JSON: {error}", False))
+        continue
+    CHECKS.append((f"{path.relative_to(DOCS)} valid JSON", True))
 for path, text in sorted(
     (path, strip_code_fences(path.read_text(encoding="utf-8")))
-    for path in DOCS.rglob("*.md")
+    for root in (DOCS, STANDARDS)
+    for path in root.rglob("*.md")
 ):
     for link in re.findall("\\]\\(([^)]+)\\)", text):
         link = link.strip("<>")
@@ -136,9 +149,12 @@ for path, text in sorted(
         destination = (path.parent / unquote(target)).resolve()
         CHECKS.append(
             (
-                f"{path.relative_to(DOCS)} local link {link}",
+                f"{path.name} local link {link}",
                 not Path(target).is_absolute()
-                and destination.is_relative_to(DOCS.resolve())
+                and (
+                    destination.is_relative_to(DOCS.resolve())
+                    or destination.is_relative_to(STANDARDS.resolve())
+                )
                 and destination.exists(),
             )
         )

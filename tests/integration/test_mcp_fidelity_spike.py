@@ -36,7 +36,7 @@ from mcp_types.version import LATEST_HANDSHAKE_VERSION
 vendored: dict[str, Any] = json.loads(
     (
         Path(__file__).resolve().parents[2]
-        / "contracts"
+        / "standards"
         / "interface-v1.1.1"
         / "mcp-tools.json"
     ).read_text(encoding="utf-8")
