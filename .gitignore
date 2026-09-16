@@ -111,3 +111,12 @@ docs/superpowers/
 # standards corpus produced by each plugin's fetch_contracts.py from its
 # committed lock (lock.json IS tracked; the bytes are a reproducible cache).
 plugins/*/*/contracts/*-*.*.*/
+
+# Public site assembly (scripts/assemble_docs_site.py) — build output, never committed
+user_guide/
+great-docs/
+_great_docs_build/
+.great-docs/
+.great-docs-cache/
+site/
+standards_pages/

@@ -17,6 +17,7 @@
 | 8 | Guides (plugin author / operator) | device-developer-guide, develop-your-device, dps150-protocol | living | link checker | `docs/` |
 | 9 | Plugin-local pinned copies | `plugins/<vendor>/<device>/contracts/` | pinned to a corpus revision | plugin tests | inside the plugin |
 | 10 | Working material | `superpowers/`, `internal/`, ISA | ephemeral, local | none | untracked by convention |
+| 11 | Public site source | `website/` (static front door), `great-docs.yml`, `index.qmd`, `scripts/assemble_docs_site.py` | living | docs workflow (assembly `verify_tree`) | `website/` + root config; build output (`user_guide/`, `standards_pages/`, `great-docs/`, `site/`) gitignored |
 
 ## Rules
 
@@ -35,3 +36,8 @@
 5. **Historical records are not live references.** `source:` provenance fields, the
    compatibility register, planning history and the changelog may name retired paths;
    they are records, not routing.
+6. **The public site renders, it does not copy.** Class 11 is the one class that
+   *presents* other classes: the docs site stages classes 2 and 8 (and the changelog)
+   at build time into gitignored trees and renders them; nothing under `website/` or
+   the build output is a second home for any document. Amendment 2026-09-16 admitting
+   `website/` as a top-level tree under rule 2.

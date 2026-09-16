@@ -1,0 +1,109 @@
+# Great Docs configuration for the BenchWeave gateway documentation site.
+#
+# Built by scripts/assemble_docs_site.py (CI: .github/workflows/docs.yml) into
+# the docs/ tier of the Pages site; the static front door in website/ serves at
+# the root. Theme tokens follow docs/internal/public-site-styleguide.html
+# ("Great Docs mapping"). The guide pages under user_guide: are STAGED by the
+# assembly from docs/ (doc-taxonomy rule 1: one home per class — user_guide/ is
+# build output, gitignored); the Standards section renders standards/ in place.
+#
+# Unversioned by design until the first vX.Y.Z release tag exists — see the
+# assembly script's refuse_if_tagged.
+
+display_name: BenchWeave
+parser: numpy
+dynamic: true
+repo: https://github.com/madeinoz67/benchweave
+site_url: https://madeinoz67.github.io/benchweave/docs/
+seo:
+  canonical:
+    base_url: https://madeinoz67.github.io/benchweave/docs/
+
+# The gateway's public surface is REST, MCP and the CLI; its Python internals
+# are not a supported API (the plugin-facing API is documented in the SDK's
+# site). No Python API reference.
+reference: false
+
+cli:
+  enabled: true
+  module: benchweave.cli.commands   # the `benchweave` console-script Click tree
+  name: cli
+  title: "benchweave CLI"
+  sections: []
+
+# Great Docs' changelog page reads GitHub Releases only; the gateway has none yet.
+# CHANGELOG.md (git-cliff) is staged into the user guide instead (assembly USER_GUIDE).
+changelog:
+  enabled: false
+
+user_guide:
+  - section: "Guides"
+    contents:
+      - operator-guide.md
+      - device-developer-guide.md
+      - develop-your-device.md
+      - ai-device-reviewer.md
+      - plugin-sdk.md
+      - development.md
+  - section: "Architecture"
+    contents:
+      - architecture.md
+      - decisions.md
+      - architecture-validation.md
+      - architecture-closure.md
+      - compatibility.md
+      - compatibility-matrix.md
+  - section: "Planning"
+    contents:
+      - poc-mvp-prd.md
+      - delivery-plan.md
+      - first-slice-plan.md
+  - section: "Devices"
+    contents:
+      - dps150-protocol.md
+      - dps150-compatibility-record.md
+      - esp32-selection.md
+  - section: "Project"
+    contents:
+      - changelog.md
+
+sections:
+  - title: Standards
+    dir: standards_pages   # staged by the assembly from standards/ (build-time, gitignored); renamed to standards/ after the build
+    index: true
+    index_columns: 2
+    dir_titles:
+      otdp: "OTDP"
+      registry: "Registry"
+      execution: "Execution"
+      interface: "Interface"
+      plugin-ui: "Plugin UI"
+      plugin-ui-preview: "Plugin UI preview"
+
+logo:
+  light: website/assets/logo.svg
+  show_title: true
+
+hero:
+  logo:
+    light: docs/assets/benchweave-banner.png
+  logo_height: 200px
+  name: false              # the banner already carries the name
+
+accent_color:
+  light: "#C6790A"
+  dark: "#FFB020"
+navbar_color:
+  light: "#EEF1F0"
+  dark: "#1B2027"
+
+include_in_header:
+  - '<link rel="preconnect" href="https://fonts.googleapis.com">'
+  - '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
+  - '<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">'
+  - text: |
+      <style>
+      body { font-family: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+      h1, h2, h3, h4, h5, h6, .navbar-brand { font-family: "Space Grotesk", "IBM Plex Sans", -apple-system, BlinkMacSystemFont, sans-serif; }
+      code, pre, kbd, samp { font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+      </style>
