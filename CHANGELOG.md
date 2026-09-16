@@ -256,6 +256,7 @@ All notable changes to this project will be documented in this file.
 - Re-lock dps150 at the 0.1.0 baseline (#22)
 - Ignore device plugins' local vendored contracts
 - Ignore device plugins' local vendored contracts (#23)
+- Advance SDK pointer — gortex-artifact ignore guard (main #17 parity)
 
 ### Refactoring
 
