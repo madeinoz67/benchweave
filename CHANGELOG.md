@@ -71,6 +71,10 @@ All notable changes to this project will be documented in this file.
 - Ruff-format dps150 session - repair dps150-independent lane (broken by #14)
 - Repoint preview wire-schema test at standards/ corpus path
 - Re-lock dps150 contracts at the standards tree
+- Review fix wave for the id/version tree (PR #21 M-1/M-2)
+- Smoke script + adapter API constant follow the 0.1.0 baseline
+- Audit straggler sweep — URN ids, catalog version, prose assertions
+- Review fix wave 2 — runtime interface version, example teachings, doc truth
 
 ### Documentation
 
@@ -207,6 +211,7 @@ All notable changes to this project will be documented in this file.
 - Session establishment + telemetry drain/route per WP10 design
 - Live demo script under the plugin — ramp, telemetry, session-survival flourish
 - Git-cliff config, seeded CHANGELOG.md, merge-driven regeneration
+- Standards GOVERNANCE.md rulebook + resident standards-governor agent
 
 ### Hardware Evidence
 
@@ -245,6 +250,8 @@ All notable changes to this project will be documented in this file.
 - Ignore gortex git-hook artifacts (wiki, mermaid exports, docs bundle)
 - Remove the retired firmware/esp32_reference placeholder
 - Post-consolidation cleanup — retire firmware placeholder, re-lock dps150 contracts (#20)
+- Advance SDK pointer — adapter API constant at 0.1.0
+- Principal row calls — redate releases to the reset, align acceptance record
 
 ### Refactoring
 
@@ -254,6 +261,9 @@ All notable changes to this project will be documented in this file.
 - Single-source preview constants
 - One standards tree — corpus, prose and locks under standards/
 - One standards tree (corpus, prose, locks under standards/) (#19)
+- Id/version tree — standards/<id>/<version>/ with retention
+- Reset every standard to 0.1.0 — the governance starting point
+- Id/version tree, full 0.1.0 reset, and governance layer (#21)
 
 ### Testing
 
