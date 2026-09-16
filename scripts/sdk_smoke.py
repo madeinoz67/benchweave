@@ -98,8 +98,8 @@ def installed_check(reference: Path, report: Path) -> None:
     assert version("benchweave") == expected["gateway_version"]
     assert version("benchweave-sdk") == expected["sdk_version"]
     assert benchweave_sdk.__version__ == expected["sdk_version"]
-    assert benchweave_sdk.OTDP_VERSION == "0.3.0"
-    assert benchweave_sdk.ADAPTER_API_VERSION == "1.1"
+    assert benchweave_sdk.OTDP_VERSION == "0.1.0"
+    assert benchweave_sdk.ADAPTER_API_VERSION == "0.1.0"
     assert files("benchweave").joinpath("py.typed").is_file()
     assert files("benchweave_sdk").joinpath("py.typed").is_file()
     packaged = resources(files("benchweave_sdk").joinpath("standards"))
@@ -218,7 +218,7 @@ def installed_check(reference: Path, report: Path) -> None:
                 "gateway_version": expected["gateway_version"],
                 "sdk_version": expected["sdk_version"],
                 "otdp_version": "0.1.0",
-                "adapter_api_version": "1.1",
+                "adapter_api_version": "0.1.0",
                 "standards_files_verified": len(locked_hashes),
                 "example": "wheel installed outside checkout; identify/read passed",
                 "tampered_helper": "rejected before import",
