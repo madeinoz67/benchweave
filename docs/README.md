@@ -60,7 +60,7 @@ These documents define the interfaces; a gateway host or plugin implementation i
 
 Build and exercise the gateway and plugins against these contracts. Supply actual device protocol evidence, model limits and hardware qualification. Commission the bench's voltage/current/power/energy envelope, safe transition, response time and unattended procedures. Future mains-powered fixtures require separate qualification.
 
-Only the current contract set is retained in this repository; superseded documents and ZIP copies have been removed.
+Superseded standard versions are retained digest-frozen beside their successors (see `standards/GOVERNANCE.md`); pre-reset history lives in git.
 
 ## Baseline verification
 
