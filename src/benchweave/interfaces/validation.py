@@ -30,11 +30,11 @@ from benchweave.interfaces import errors
 from benchweave.vendoring import contract_family
 
 #: The vendored interface corpus (packaged in the wheel, repo-relative in a
-#: dev checkout — :mod:`benchweave.vendoring`). interface-v1.1.1 is the D2
+#: dev checkout — :mod:`benchweave.vendoring`). interface/0.1.0 is the D2
 #: errata revision: change_apply's REST body admits the optional
 #: ``approver_token`` the adapter forwards. The 1.1.0 corpus stays vendored,
-#: frozen, at ``contracts/interface-v1.1.0/``.
-VENDORED_CORPUS_ROOT = contract_family("interface-v1.1.1")
+#: frozen, at ``contracts/interface/0.1.0/``.
+VENDORED_CORPUS_ROOT = contract_family("interface/0.1.0")
 
 _TOOL_PREFIX = "stg_v1_"
 _PATH_TEMPLATE = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")

@@ -44,7 +44,7 @@ def _deprecated_repo(tmp_path: Path, notes: str | None) -> tuple[Path, Path]:
             {
                 "lock_version": 1,
                 "standards": [
-                    {"id": "otdp", "version": "0.3.0", "status": "deprecated", "files": []}
+                    {"id": "otdp", "version": "0.1.0", "status": "deprecated", "files": []}
                 ],
                 "compatibility": {
                     "main_project": ">=0.1.0",
@@ -137,7 +137,7 @@ def test_deprecated_standard_renders_migration_guidance(tmp_path: Path) -> None:
         tmp_path, "Migrate device profiles to the 0.4 catalog before upgrading."
     )
     rendered = render_matrix(repo, sdk)
-    assert "| otdp | 0.3.0 | deprecated |" in rendered
+    assert "| otdp | 0.1.0 | deprecated |" in rendered
     assert "Migrate device profiles to the 0.4 catalog before upgrading." in rendered
 
 

@@ -1,38 +1,134 @@
 {
-  "contract_version": "1.0.0",
+  "contract_version": "0.1.0",
   "id": "sim-policy",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "Executable simulator envelope. Not hardware-qualified.",
-  "domains": [{"id": "dut", "max_abs_voltage_v": 6, "max_abs_current_a": 1,
-               "max_power_w": 3, "max_stored_energy_j": 0.01, "max_energised_ms": 10000}],
+  "domains": [
+    {
+      "id": "dut",
+      "max_abs_voltage_v": 6,
+      "max_abs_current_a": 1,
+      "max_power_w": 3,
+      "max_stored_energy_j": 0.01,
+      "max_energised_ms": 10000
+    }
+  ],
   "allow_rules": [
-    {"device_id": "psu", "kind": "invoke", "action_id": "otdp.dc_psu.configure/1.0.0",
-     "input_constraints": {"type": "object", "properties": {
-       "channel": {"const": "ch1"}, "voltage_v": {"minimum": 0, "maximum": 5.5},
-       "current_limit_a": {"maximum": 0.5}, "ovp_v": {"maximum": 6}, "ocp_a": {"maximum": 0.5}}}},
-    {"device_id": "psu", "kind": "invoke", "action_id": "otdp.dc_psu.output/1.0.0",
-     "input_constraints": {"properties": {"channel": {"const": "ch1"}}}},
-    {"device_id": "psu", "kind": "invoke", "action_id": "otdp.dc_psu.measure/1.0.0",
-     "input_constraints": {"properties": {"channel": {"const": "ch1"}}}},
-    {"device_id": "controller", "kind": "write", "parameter": "operator_note",
-     "value_constraints": {"type": "string", "maxLength": 200}}
+    {
+      "device_id": "psu",
+      "kind": "invoke",
+      "action_id": "otdp.dc_psu.configure/1.0.0",
+      "input_constraints": {
+        "type": "object",
+        "properties": {
+          "channel": {
+            "const": "ch1"
+          },
+          "voltage_v": {
+            "minimum": 0,
+            "maximum": 5.5
+          },
+          "current_limit_a": {
+            "maximum": 0.5
+          },
+          "ovp_v": {
+            "maximum": 6
+          },
+          "ocp_a": {
+            "maximum": 0.5
+          }
+        }
+      }
+    },
+    {
+      "device_id": "psu",
+      "kind": "invoke",
+      "action_id": "otdp.dc_psu.output/1.0.0",
+      "input_constraints": {
+        "properties": {
+          "channel": {
+            "const": "ch1"
+          }
+        }
+      }
+    },
+    {
+      "device_id": "psu",
+      "kind": "invoke",
+      "action_id": "otdp.dc_psu.measure/1.0.0",
+      "input_constraints": {
+        "properties": {
+          "channel": {
+            "const": "ch1"
+          }
+        }
+      }
+    },
+    {
+      "device_id": "controller",
+      "kind": "write",
+      "parameter": "operator_note",
+      "value_constraints": {
+        "type": "string",
+        "maxLength": 200
+      }
+    }
   ],
   "continuous_conditions": [
-    {"id": "dut-voltage-bounds", "kind": "numeric", "signal": "dut-voltage",
-     "unit": "V", "minimum": -0.1, "maximum": 5.5},
-    {"id": "dut-power", "kind": "absolute_product", "signals": ["dut-voltage", "dut-current"],
-     "unit": "W", "maximum": 3.0, "max_skew_ms": 100}
+    {
+      "id": "dut-voltage-bounds",
+      "kind": "numeric",
+      "signal": "dut-voltage",
+      "unit": "V",
+      "minimum": -0.1,
+      "maximum": 5.5
+    },
+    {
+      "id": "dut-power",
+      "kind": "absolute_product",
+      "signals": [
+        "dut-voltage",
+        "dut-current"
+      ],
+      "unit": "W",
+      "maximum": 3.0,
+      "max_skew_ms": 100
+    }
   ],
-  "independent_protection": {"required": false,
-    "assessment": {"id": "sim-protection-assessment", "version": "1.0.0",
-                   "sha256": "0000000000000000000000000000000000000000000000000000000000000000"},
-    "mechanism_ids": []},
-  "safe_transition": {"max_duration_ms": 2000, "actions": [
-      {"id": "disable", "device_id": "psu", "kind": "invoke",
-       "action_id": "otdp.dc_psu.output/1.0.0",
-       "input": {"channel": "ch1", "enabled": false},
-       "timeout_ms": 500}],
-    "verify": [{"id": "voltage-safe", "kind": "numeric", "signal": "dut-voltage",
-                "unit": "V", "minimum": -0.1, "maximum": 0.1}],
-    "stable_for_ms": 100}
+  "independent_protection": {
+    "required": false,
+    "assessment": {
+      "id": "sim-protection-assessment",
+      "version": "0.1.0",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "mechanism_ids": []
+  },
+  "safe_transition": {
+    "max_duration_ms": 2000,
+    "actions": [
+      {
+        "id": "disable",
+        "device_id": "psu",
+        "kind": "invoke",
+        "action_id": "otdp.dc_psu.output/1.0.0",
+        "input": {
+          "channel": "ch1",
+          "enabled": false
+        },
+        "timeout_ms": 500
+      }
+    ],
+    "verify": [
+      {
+        "id": "voltage-safe",
+        "kind": "numeric",
+        "signal": "dut-voltage",
+        "unit": "V",
+        "minimum": -0.1,
+        "maximum": 0.1
+      }
+    ],
+    "stable_for_ms": 100
+  }
 }

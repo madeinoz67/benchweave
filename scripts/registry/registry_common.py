@@ -118,7 +118,7 @@ def _manifest(
 ) -> dict[str, Any]:
     impl = kind == "implementation"
     return {
-        "manifest_version": "1.0.0",
+        "manifest_version": "0.1.0",
         "registry_id": registry_id,
         "package_id": package_id,
         "version": "1.0.0",
@@ -134,8 +134,8 @@ def _manifest(
         "licence": {"spdx_expression": "MIT", "file": "LICENSE"},
         "source": {"url": "https://example.invalid/src", "revision": "0" * 40},
         "compatibility": {
-            "otdp_versions": ["0.3.0"],
-            "adapter_api_versions": ["1.1"] if impl else [],
+            "otdp_versions": ["0.1.0"],
+            "adapter_api_versions": ["0.1.0"] if impl else [],
             "stg_versions": ["1.5"],
             "runtimes": (
                 [{"os": "macos", "architecture": "arm64", "python_version": "3.13"}]
@@ -176,7 +176,7 @@ def _status(
     expires: str = STATUS_EXPIRES,
 ) -> dict[str, Any]:
     return {
-        "status_version": "1.0.0",
+        "status_version": "0.1.0",
         "release": {
             "registry_id": registry_id,
             "package_id": package_id,
@@ -216,7 +216,7 @@ def _impl_extras() -> list[tuple[str, bytes]]:
 
 def _profile_member() -> tuple[str, bytes]:
     """Structural dc_psu profile derived from the vendored OTDP class contract
-    (``standards/otdp-v0.3.0/examples/class-dc_psu.json``): class identity, the
+    (``standards/otdp/0.1.0/examples/class-dc_psu.json``): class identity, the
     three profile actions with their class-contract properties, and one
     conformance vector per action. Kept small — a fixture, not a device model.
     """

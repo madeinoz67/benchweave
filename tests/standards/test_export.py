@@ -50,10 +50,10 @@ def test_bundle_covers_every_normative_file(tmp_path: Path) -> None:
 
 
 def _bundle_paths(entry: StandardEntry) -> set[str]:
-    # contracts/ assets land under their set-relative path; the parity
-    # validator (src/...) lands under its bare filename.
+    # standards/ assets land under their tree-relative path (<id>/<version>/…);
+    # the parity validator (src/...) lands under its bare filename.
     return {
-        f"{entry.id}/{n.removeprefix('standards/')}"
+        n.removeprefix("standards/")
         if n.startswith("standards/")
         else f"{entry.id}/{PurePosixPath(n).name}"
         for n in entry.normative

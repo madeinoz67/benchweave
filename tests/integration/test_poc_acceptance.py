@@ -10,7 +10,7 @@ fault legs and the second-install reuse leg (§3 steps 6–7) complete the
 suite.
 
 Sketch-risk deviations from the task brief (real surface wins):
-- There is no ``GET /v1/registry`` — interface 1.1.1 has no
+- There is no ``GET /v1/registry`` — interface 0.1.0 has no
   registry-discovery operation. Discovery is the resolver surface the app
   itself routes (``build_registry_session`` over ``fixtures/registry``)
   plus the wire's admitted inventory: ``GET /v1/benches/{bench}/devices``
@@ -889,9 +889,9 @@ def test_journey_discover_admit_select(
 
     # Step 3 (select leg): versioned procedure + policy; simulation visible.
     assert journey_admitted.procedure_ref["id"] == "voltage-check"
-    assert journey_admitted.procedure_ref["version"] == "1.0.0"
+    assert journey_admitted.procedure_ref["version"] == "0.1.0"
     assert journey_admitted.policy_ref["id"] == "sim-policy"
-    assert journey_admitted.policy_ref["version"] == "1.0.0"
+    assert journey_admitted.policy_ref["version"] == "0.1.0"
     assert journey_admitted.simulated_limitations == ("simulator-only",)
 
 

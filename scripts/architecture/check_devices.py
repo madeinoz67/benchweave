@@ -12,7 +12,7 @@ from referencing import Registry, Resource
 "Document/schema conformance checks, not instrument implementation."
 DOCS = globals().get("DOCS", Path(__file__).resolve().parents[2] / "docs")
 STANDARDS = globals().get("STANDARDS", Path(__file__).resolve().parents[2] / "standards")
-OUT = STANDARDS / "otdp-v0.3.0"
+OUT = STANDARDS / "otdp/0.1.0"
 
 
 def load(name):
@@ -72,11 +72,11 @@ check(
 profile_map = {p["id"]: p for p in catalog["profiles"]}
 check("Twelve distinct profiles", len(profile_map) == 12)
 known_features = {
-    "otdp.core/0.3.0",
-    "otdp.adapter/1.1",
-    "otdp.passive_can/0.3.0",
-    "otdp.measurement/0.3.0",
-    "otdp.profile_actions/1.0.0",
+    "otdp.core/0.1.0",
+    "otdp.adapter/0.1.0",
+    "otdp.passive_can/0.1.0",
+    "otdp.measurement/0.1.0",
+    "otdp.profile_actions/0.1.0",
 } | set(profile_map)
 
 
@@ -233,7 +233,7 @@ d = copy.deepcopy(base)
 d["actions"]["otdp.dc_psu.output/1.0.0"]["side_effect"] = "none"
 check("Reject downgraded source action", "downgraded effect" in class_errors(d))
 d = copy.deepcopy(base)
-d["required_features"].remove("otdp.profile_actions/1.0.0")
+d["required_features"].remove("otdp.profile_actions/0.1.0")
 check("Reject absent action feature structurally", not dv.is_valid(d))
 d = copy.deepcopy(base)
 d["required_features"].remove("otdp.dc_psu/1.0.0")

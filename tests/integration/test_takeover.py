@@ -50,7 +50,7 @@ from benchweave.interfaces.identity import Identity
 from benchweave.interfaces.operations import scoped_request_key
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "execution"
-CORPUS = Path(__file__).resolve().parents[2] / "standards" / "interface-v1.1.1"
+CORPUS = Path(__file__).resolve().parents[2] / "standards" / "interface/0.1.0"
 NOW = "2026-09-12T00:00:00Z"  # seam_control's frozen clock
 OTHER_BENCH = "sim-bench-two"  # a wrong-bench lease target (store-seeded)
 

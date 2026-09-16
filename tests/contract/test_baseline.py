@@ -23,10 +23,10 @@ from referencing.jsonschema import DRAFT202012
 ROOT = Path(__file__).resolve().parents[2]
 CONTRACTS = ROOT / "standards"
 ADMITTED_DIRS = (
-    "otdp-v0.3.0",
-    "registry-v1.0.0",
-    "execution-v1.0.0",
-    "interface-v1.1.0",
+    "otdp/0.1.0",
+    "registry/0.1.0",
+    "execution/0.1.0",
+    "interface/0.1.0",
 )
 
 
@@ -95,18 +95,18 @@ def test_manifest_hashes_match_contract_files() -> None:
 
 
 def test_no_obsolete_interface_version_present() -> None:
-    assert not list(CONTRACTS.rglob("interface-v1.0.0*")), "obsolete interface 1.0.0 imported"
+    assert not (CONTRACTS / "interface" / "1.0.0").exists(), "obsolete interface 1.0.0 imported"
     for entry in _manifest()["files"]:
-        assert "interface-v1.0.0" not in entry["path"]
+        assert not entry["path"].startswith("interface/1.0.0/")
 
 
 def test_manifest_identity_pins_admitted_versions() -> None:
     identity = _manifest()["identity"]
     assert identity["architecture"] == "STG 1.5"
-    assert identity["interface"] == "1.1.0"
-    assert identity["registry"] == "1.0.0"
-    assert identity["execution"] == "1.0.0"
-    assert identity["otdp"] == "0.3.0"
+    assert identity["interface"] == "0.1.0"
+    assert identity["registry"] == "0.1.0"
+    assert identity["execution"] == "0.1.0"
+    assert identity["otdp"] == "0.1.0"
     assert identity["mcp"] == "2026-07-28"
 
 

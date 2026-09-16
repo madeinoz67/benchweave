@@ -13,8 +13,8 @@ from jsonschema import Draft202012Validator
 
 ROOT = Path(__file__).resolve().parents[2]
 SDK = ROOT / "packages/sdk/src"
-FIXTURE_SCHEMA = ROOT / "standards/plugin-ui-preview-v1/fixture.schema.json"
-DOCUMENT_SCHEMA = ROOT / "standards/plugin-ui-preview-v1/preview-document.schema.json"
+FIXTURE_SCHEMA = ROOT / "standards/plugin-ui-preview/0.1.0/fixture.schema.json"
+DOCUMENT_SCHEMA = ROOT / "standards/plugin-ui-preview/0.1.0/preview-document.schema.json"
 sys.path.insert(0, str(SDK))
 
 
@@ -50,7 +50,7 @@ def catalogue() -> dict[str, object]:
 
 def author_fixture(binding_id: str = "voltage", unit: str | None = "V") -> dict[str, object]:
     return {
-        "contract_version": "1.0.0",
+        "contract_version": "0.1.0",
         "id": "high-load",
         "title": "High load",
         "description": "Synthetic high-load state",
@@ -79,7 +79,7 @@ def test_fixture_schema_is_closed_and_versioned() -> None:
 
     Draft202012Validator.check_schema(schema)
     assert schema["$id"] == (
-        "https://benchweave.dev/contracts/plugin-ui-preview/1/fixture.schema.json"
+        "https://benchweave.dev/contracts/plugin-ui-preview/0.1.0/fixture.schema.json"
     )
     assert schema["additionalProperties"] is False
 

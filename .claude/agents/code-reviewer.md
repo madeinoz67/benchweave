@@ -63,9 +63,9 @@ enforce the stale claim.** A doc that is confidently wrong is worse than none.
    packaging, loading, policy, or lifecycle behaviour) → `docs/device-developer-guide.md`;
    operator-visible behaviour (service, config, CI) → the operator docs and `README.md`;
    **CLI-visible behaviour (`src/benchweave/cli/`) → the CLI reference in the operator
-   docs; API-visible behaviour → the OpenAPI spec (`standards/interface-v1.1.0/` is the
+   docs; API-visible behaviour → the OpenAPI spec (`standards/interface/0.1.0/` is the
    sole machine-artifact home); MCP-visible behaviour →
-   `contracts/interface-v1.1.0/mcp-tools.json` and any tool schema it references;
+   `standards/interface/0.1.0/mcp-tools.json` and any tool schema it references;
    UI-visible behaviour → the console/UI docs, once that surface exists — when a UI stage
    lands, name its doc home here**;
    **fixture/builder lockstep — `fixtures/registry/` ↔ `scripts/registry/build_fixtures.py`

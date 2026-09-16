@@ -16,11 +16,11 @@ a test; none is silent) versus what it proves equal:
   while the catalog declares ``observe``. The seam was FIXED to observe; the
   suite pins both tiers (observe passes directly, control passes via the
   observe ⊆ control ⊆ admin hierarchy).
-- D2 ``change_apply`` body — CLOSED (WP08 Task 6, interface-v1.1.1 errata):
+- D2 ``change_apply`` body — CLOSED (WP08 Task 6, interface/0.1.0 errata):
   the 1.1.0 catalog's REST input schema did not declare ``approver_token``,
   but the REST adapter forwarded it as a seam kwarg (Task 9 disclosure).
   The amendment ships as the versioned corpus revision
-  ``contracts/interface-v1.1.1/`` (vendored from ``docs/interface-v1.1.1/``;
+  ``contracts/interface/0.1.0/`` (vendored from ``docs/interface/0.1.0/``;
   1.1.0 bytes untouched); the seam now validates the token-bearing body
   the adapter actually sends, and this suite pins it end-to-end
   (authenticated apply over REST succeeds; apply without the detached token
@@ -118,7 +118,7 @@ from benchweave.interfaces.operations import Operations
 from benchweave.state.store import Store
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "execution"
-CONTRACTS = Path(__file__).resolve().parents[2] / "standards" / "interface-v1.1.1"
+CONTRACTS = Path(__file__).resolve().parents[2] / "standards" / "interface/0.1.0"
 CATALOG = json.loads((CONTRACTS / "operation-catalog.json").read_text(encoding="utf-8"))
 VENDORED_TOOLS = {
     t["name"]: t
@@ -1548,7 +1548,7 @@ def test_artifact_offset_letter_beyond_size_fails_at_size_serves_empty(
 
 
 def test_change_apply_approver_token_end_to_end(gateway: SimpleNamespace) -> None:
-    """D2 errata pin (REST-only surface): the interface-v1.1.1 body schema
+    """D2 errata pin (REST-only surface): the interface/0.1.0 body schema
     admits the optional ``approver_token`` the adapter forwards — the body
     WITH the token is seam-validated against the amended corpus (apply
     succeeds end-to-end); a corpus-literal body without it stays valid and

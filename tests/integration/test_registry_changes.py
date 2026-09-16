@@ -32,7 +32,7 @@ from benchweave.state.store import Store
 
 REPO = Path(__file__).resolve().parents[2]
 REG = REPO / "fixtures" / "registry"
-CORPUS = REPO / "standards" / "interface-v1.1.1"
+CORPUS = REPO / "standards" / "interface/0.1.0"
 NOW = "2026-09-12T00:00:00Z"
 # The registry clock, verbatim from test_registry_reuse: inside every fixture
 # status's validity window (expires 2027-09-11, updated_at not in the future).

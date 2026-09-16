@@ -1,13 +1,43 @@
 {
-  "contract_version": "1.0.0",
+  "contract_version": "0.1.0",
   "request_id": "req-voltage-check-1",
-  "procedure": {"id": "voltage-check", "version": "1.0.0", "sha256": "39bc93c37a5c7a3c9ba7b701b3bc57ab37f8e308f1ad32d1460b9b80cb918a29"},
-  "bench": {"id": "sim-bench", "version": "1.0.0", "sha256": "9d3dca89f3939ad232cc1692288db27da113199e679f25e29e2b3ac5e3a5606f"},
-  "policy": {"id": "sim-policy", "version": "1.0.0", "sha256": "b97f9f1526619b611be94eb759cceca512da538ecfdcc0376b3902f2bd470364"},
-  "package_lock": {"id": "sim-lock", "version": "1.0.0", "sha256": "1f1ec92fa8ea299e4d36a89f4e28e9adc8362e10e79019f4dbdf6d77ad3e893c"},
-  "commissioning": {"id": "sim-commissioning", "version": "1.0.0", "sha256": "4f7e26f0642d36c53457b788adaf7773ff5096a7c55a43c174be671047af8516"},
+  "procedure": {
+    "id": "voltage-check",
+    "version": "0.1.0",
+    "sha256": "f5e970d476d0a5000266aa07f360b152f9238be96a36c1694a2d29cfe850cbf6"
+  },
+  "bench": {
+    "id": "sim-bench",
+    "version": "0.1.0",
+    "sha256": "4ea4cea931819eb0c872b230c618fea37aa34f88ae685203b5ecbd254d4dd109"
+  },
+  "policy": {
+    "id": "sim-policy",
+    "version": "0.1.0",
+    "sha256": "0a107432fe5c0ffcb20c61e577d3bf382374352ccee851265d73700dc261fc4a"
+  },
+  "package_lock": {
+    "id": "sim-lock",
+    "version": "0.1.0",
+    "sha256": "e7b140b5224bfc6eeac7a5b0c5bfe30fe6f28b96531f1bf5c8237b5db12967ce"
+  },
+  "commissioning": {
+    "id": "sim-commissioning",
+    "version": "0.1.0",
+    "sha256": "64fe00bfdff11911fa4158147940f57b129a403a077c04ef06a69c827374ff9f"
+  },
   "bindings": [
-    {"role": "supply", "device_id": "psu", "channels": {"output": "ch1"}},
-    {"role": "dut", "device_id": "controller", "channels": {}}
+    {
+      "role": "supply",
+      "device_id": "psu",
+      "channels": {
+        "output": "ch1"
+      }
+    },
+    {
+      "role": "dut",
+      "device_id": "controller",
+      "channels": {}
+    }
   ]
 }

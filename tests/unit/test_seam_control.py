@@ -5,7 +5,7 @@ public API (the real coordinator is exercised end-to-end in Task 11), so
 these tests pin the seam contract — §9 principal-scoped request keys, the
 202-accept/dedup/conflict decision, queue-state transitions accepted →
 running → terminal, the lease lifecycle, and the monitor's retention hook.
-Projections are checked against the vendored interface-v1.1.0 ``run`` and
+Projections are checked against the vendored interface/0.1.0 ``run`` and
 ``lease`` defs (closed objects; the shapes must stay contract-legal).
 """
 
@@ -39,7 +39,7 @@ from benchweave.interfaces.worker import RunWorker
 from benchweave.state.store import Store
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "execution"
-CORPUS = Path(__file__).resolve().parents[2] / "standards" / "interface-v1.1.1"
+CORPUS = Path(__file__).resolve().parents[2] / "standards" / "interface/0.1.0"
 PLUGINS_ROOT = Path(__file__).resolve().parents[2] / "plugins"
 BENCH_ID = "sim-bench"  # the bootstrap bench (fixtures/execution/bench.json)
 DESCRIPTORS = {

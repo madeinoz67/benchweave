@@ -14,7 +14,7 @@ The gateway is an instrument-control system. Unattended operation is conditional
 
 This document defines architectural contracts and the initial operating model. It does not prescribe electrical protective circuits or establish numeric safety limits. Bench-specific values are mandatory commissioning inputs under §15; they are not guessed architectural defaults.
 
-The supplied OTDP v0.1 specification and schema have been reviewed and reconciled. New integrations target the accompanying OTDP **0.3.0 specification**, **descriptor schema**, **runtime schema** and **Python adapter API 1.1** in `otdp-v0.3.0/`. The agent authoring procedure, host interfaces, transport rules, conformance obligations and reference protocols are part of that package. The schemas are interface artefacts; they are not a gateway implementation or proof of hardware behaviour.
+The supplied OTDP v0.1 specification and schema have been reviewed and reconciled. New integrations target the accompanying OTDP **0.3.0 specification**, **descriptor schema**, **runtime schema** and **Python adapter API 0.1.0** in `otdp/0.1.0/`. The agent authoring procedure, host interfaces, transport rules, conformance obligations and reference protocols are part of that package. The schemas are interface artefacts; they are not a gateway implementation or proof of hardware behaviour.
 
 OTDP owns the device-description and integration boundary. STG owns commissioning, authorisation, ownership, DUT safety policy, execution and recovery. Existing v0.1 descriptors require reviewed migration; changing a version field does not make them compatible. The accompanying `otdp-architecture-reconciliation.md` records the original defects and their resolution. No missing-document dependency remains.
 
@@ -196,7 +196,7 @@ Permissions are assigned to authenticated identities with separate observer, con
 
 Network access to instruments is restricted where direct access would bypass gateway policy. Secrets and privileged configuration are not included in general device descriptions. Audit identifies the authenticated principal, not just an MCP session identifier.
 
-Interface contract 1.1.0 selects REST v1 and MCP 2026-07-28; client interoperability and transport security remain implementation acceptance obligations. MCP hints remain guidance and do not substitute for gateway enforcement or prove that a human approved an operation.
+Interface contract 0.1.0 selects REST v1 and MCP 2026-07-28; client interoperability and transport security remain implementation acceptance obligations. MCP hints remain guidance and do not substitute for gateway enforcement or prove that a human approved an operation.
 
 ## 11. Failure and recovery contract
 
@@ -268,7 +268,7 @@ The listed architectural choices are selected below for this design baseline; th
 | D08 | Reviewed, versioned trusted plugins only; executable changes are release changes | Project owner admits integrations and records any required containment |
 | D09 | Per-identity, per-bench observer/controller/admin permissions with explicit delegated authority | Administrator selects provider and protocol baseline, then verifies interoperability |
 | D10 | Separate audit/capture budgets; logging loss blocks new energising work but never protection | System owner sets capacities, retention and bounded active-work response |
-| D11 | New integrations target the reconciled OTDP 0.3.0 descriptor/runtime/measurement schemas, class catalog and adapter API 1.1; v0.1 requires reviewed migration | Implement and exercise the published structural, semantic and behavioural contracts before claiming implementation conformance |
+| D11 | New integrations target the reconciled OTDP 0.1.0 descriptor/runtime/measurement schemas, class catalog and adapter API 0.1.0; v0.1 requires reviewed migration | Implement and exercise the published structural, semantic and behavioural contracts before claiming implementation conformance |
 
 D11 is closed architecturally. The specification and schemas now define authoring inputs, package layout, operation semantics, host interfaces, supported bindings and required conformance evidence. The original v0.1 schema is not presented as a sufficient safety/admission validator. Bench safety information deliberately remains in gateway-owned configuration, rather than ignorable device extensions.
 
@@ -276,11 +276,11 @@ The commissioning record names the accountable owners for D01–D10 and captures
 
 ## 16. Device-class coverage in v1.1
 
-The OTDP 0.3.0 package defines twelve composable profiles: DC PSU, DMM, oscilloscope, logic analyser, function generator, electronic load, SMU, DAQ, embedded controller, switch matrix, spectrum analyser and VNA. Fifty versioned actions have typed inputs and outputs. The normative class definitions, measurement model, extension contract and pinned catalog are part of the integration boundary.
+The OTDP 0.1.0 package defines twelve composable profiles: DC PSU, DMM, oscilloscope, logic analyser, function generator, electronic load, SMU, DAQ, embedded controller, switch matrix, spectrum analyser and VNA. Fifty versioned actions have typed inputs and outputs. The normative class definitions, measurement model, extension contract and pinned catalog are part of the integration boundary.
 
 Profile actions use validated invoke dispatch with scoped configuration/acquisition identities. Required actions establish class membership; optional features and actual model limits are explicit. Multi-profile instruments retain shared resource ownership. Sources, sinks, switching and stimulus-producing measurements remain subject to the same bench policy and protection requirements.
 
-The evidence service accepts typed datasets with units, dimensions, channels, timing, uncertainty, calibration and immutable inline or hashed binary payloads. Existing single-channel capture remains a core compatibility contract; richer class acquisitions use the dataset services in adapter API 1.1.
+The evidence service accepts typed datasets with units, dimensions, channels, timing, uncertainty, calibration and immutable inline or hashed binary payloads. Existing single-channel capture remains a core compatibility contract; richer class acquisitions use the dataset services in adapter API 0.1.0.
 
 This is bounded class coverage. Specialised device families and unsupported host transports require reviewed extensions; representing their data does not establish complete control support. No commercial instrument is qualified by the structural examples.
 
@@ -298,9 +298,9 @@ Remaining engineering activities: gateway and plugin implementation, library sel
 
 ## 18. Central registry and shared integrations
 
-The companion [registry contract](../standards/registry-v1.0.0/registry-specification.md) defines distribution of reusable class profiles, model descriptors and executable implementations. It provides central discovery, publisher ownership, immutable releases, compatibility metadata, licence/provenance, test evidence, maintenance status, advisories and private mirrors. Source repositories support contributions; signed releases support reproducible adoption.
+The companion [registry contract](../standards/registry/0.1.0/registry-specification.md) defines distribution of reusable class profiles, model descriptors and executable implementations. It provides central discovery, publisher ownership, immutable releases, compatibility metadata, licence/provenance, test evidence, maintenance status, advisories and private mirrors. Source repositories support contributions; signed releases support reproducible adoption.
 
-Registry contract 1.0.0 is a packaging/distribution companion to OTDP 0.3.0 and adapter API 1.1; their runtime interfaces remain unchanged. Publication requires the release manifest and applicable evidence. Local-only plugin authoring remains supported. The central service never grants bench authority.
+Registry contract 1.0.0 is a packaging/distribution companion to OTDP 0.1.0 and adapter API 0.1.0; their runtime interfaces remain unchanged. Publication requires the release manifest and applicable evidence. Local-only plugin authoring remains supported. The central service never grants bench authority.
 
 Gateways resolve an exact dependency closure, verify authenticated metadata and artefacts, review permissions and record a local package lock before safe activation. Active procedures retain their approved package generation. Updates, revocations, offline operation and recovery follow the registry contract and commissioned local policy. No live test depends on a registry request or installs missing code on demand.
 
@@ -308,7 +308,7 @@ The registry operator owns namespace governance, distribution keys, review workf
 
 ## 19. Procedure and bench document contracts
 
-The companion [execution contract 1.0.0](../standards/execution-v1.0.0/execution-contract.md) defines six schemas: portable procedure, bench definition, safety policy, commissioning record, run binding and terminal run record. It preserves the OTDP 0.3.0 and adapter API 1.1 runtime interfaces.
+The companion [execution contract 1.0.0](../standards/execution/0.1.0/execution-contract.md) defines six schemas: portable procedure, bench definition, safety policy, commissioning record, run binding and terminal run record. It preserves the OTDP 0.1.0 and adapter API 0.1.0 runtime interfaces.
 
 Procedures use bounded sequential steps, fixed-count loops, explicit lexical result references and typed scalar assertions. Logical roles/channels bind to commissioned instances. The host reserves shared resources and protective dependencies before acceptance, validates resolved actions against profile/device/policy constraints and retains the accepted immutable configuration throughout the run.
 
@@ -320,17 +320,17 @@ See the [architecture closure register](architecture-closure.md) for review disp
 
 ## 20. REST and MCP interface baseline
 
-The [interface contract 1.1.0](../standards/interface-v1.1.0/interface-contract.md) specifies twenty REST operations and seventeen MCP tools. The operation catalog, shared JSON Schema, OpenAPI 3.1.0 document and MCP tool definitions describe one authorised core surface. The MCP transport is pinned to 2026-07-28; compatibility with older revisions is not implicit.
+The [interface contract 0.1.0](../standards/interface/0.1.0/interface-contract.md) specifies twenty REST operations and seventeen MCP tools. The operation catalog, shared JSON Schema, OpenAPI 3.1.0 document and MCP tool definitions describe one authorised core surface. The MCP transport is pinned to 2026-07-28; compatibility with older revisions is not implicit.
 
 Discovery and observation read retained metadata/evidence. Control submits an approved run binding, repeats admission checks and returns a durable run ID. Cross-interface deduplication, explicit leases, generation checks and cancellation preserve the procedure contract through disconnects. Event cursors and immutable chunked evidence support client recovery independently of MCP transport sessions.
 
 Administrative changes are REST-only, independently authorised and constrained to a safe boundary. The control interface cannot fabricate its own approval or directly bypass policy with raw instrument commands. Authentication tokens, protocol request IDs and bench authority remain distinct concepts.
 
-The [interface review scenarios](../standards/interface-v1.1.0/review-scenarios.md) document recovery expectations; they are design walkthroughs, not runtime tests. Registry composition and integrated architectural acceptance review are recorded in the acceptance documents. Runtime acceptance remains to be demonstrated.
+The [interface review scenarios](../standards/interface/0.1.0/review-scenarios.md) document recovery expectations; they are design walkthroughs, not runtime tests. Registry composition and integrated architectural acceptance review are recorded in the acceptance documents. Runtime acceptance remains to be demonstrated.
 
 ## 21. Consolidated baseline and acceptance
 
-STG 1.5 consolidates the selected architecture with OTDP 0.3.0, adapter API 1.1, registry 1.0.0, execution 1.0.0 and interface 1.1.0 (MCP 2026-07-28). The package manifest identifies the authoritative file bytes. Earlier architecture archives remain historical and must not be mixed into this contract set.
+STG 1.5 consolidates the selected architecture with OTDP 0.1.0, adapter API 0.1.0, registry 0.1.0, execution 0.1.0 and interface 0.1.0 (MCP 2026-07-28). The package manifest identifies the authoritative file bytes. Earlier architecture archives remain historical and must not be mixed into this contract set.
 
 The [registry composition review](acceptance/registry-composition-review.md) resolves sixteen reuse/dependency cases. The [integrated acceptance review](acceptance/end-to-end-review.md) traces twenty-six normal/failure cases and records cross-contract corrections. Passing assertions cannot conceal missing safety or missing terminal evidence. Manual ownership, exact document bytes, total qualification duration and nonrenewable protective deadlines are now explicit.
 

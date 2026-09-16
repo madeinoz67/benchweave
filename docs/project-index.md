@@ -4,7 +4,7 @@ BenchWeave is the project name for the Smart Test Gateway architecture work.
 
 This repository carries the BenchWeave implementation (packages WP01–WP07) alongside the frozen architecture and PoC/MVP planning documents. Implementation flows from the PRD and delivery plan in this folder, with architecture documents treated as contracts rather than informal notes.
 
-**Current status (updated 2026-09-14):** the gateway side of interface 1.1.0 is live — 20 REST routes + 17 MCP tools over FastAPI/FastMCP on one core-operations seam, REST↔MCP parity and SIGKILL event recovery proven; registry admission/activation change kinds are not reachable without a registry session, and OAuth/TLS are out of PoC scope — both disclosed in the [compatibility record](compatibility.md). The `feature/ui` line adds the Layered Precision workbench style guide and the SDK's simulation-only plugin UI preview workflow (bundled renderer, preview server, Click/Rich/Textual CLI).
+**Current status (updated 2026-09-14):** the gateway side of interface 0.1.0 is live — 20 REST routes + 17 MCP tools over FastAPI/FastMCP on one core-operations seam, REST↔MCP parity and SIGKILL event recovery proven; registry admission/activation change kinds are not reachable without a registry session, and OAuth/TLS are out of PoC scope — both disclosed in the [compatibility record](compatibility.md). The `feature/ui` line adds the Layered Precision workbench style guide and the SDK's simulation-only plugin UI preview workflow (bundled renderer, preview server, Click/Rich/Textual CLI).
 
 ## Start Here
 
@@ -15,11 +15,11 @@ This repository carries the BenchWeave implementation (packages WP01–WP07) alo
 
 ## Contract Sets
 
-- [OTDP v0.3.0](../standards/otdp-v0.3.0/otdp-specification.md)
-- [Registry v1.0.0](../standards/registry-v1.0.0/registry-specification.md)
-- [Execution v1.0.0](../standards/execution-v1.0.0/execution-contract.md)
-- [Interface v1.1.0](../standards/interface-v1.1.0/interface-contract.md)
-- [Plugin UI v0.1.0](../standards/plugin-ui-v0.1.0/README.md) and [Plugin UI preview v1](../standards/plugin-ui-preview-v1/fixture.schema.json) (fixture and served-document schemas for the simulation-only preview workflow)
+- [OTDP v0.1.0](../standards/otdp/0.1.0/otdp-specification.md)
+- [Registry v0.1.0](../standards/registry/0.1.0/registry-specification.md)
+- [Execution v0.1.0](../standards/execution/0.1.0/execution-contract.md)
+- [Interface v0.1.0](../standards/interface/0.1.0/interface-contract.md)
+- [Plugin UI v0.1.0](../standards/plugin-ui/0.1.0/README.md) and [Plugin UI preview v1](../standards/plugin-ui-preview/0.1.0/fixture.schema.json) (fixture and served-document schemas for the simulation-only preview workflow)
 - [Acceptance closure](acceptance/end-to-end-review.md)
 
 

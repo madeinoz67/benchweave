@@ -20,7 +20,7 @@ from benchweave.interfaces.validation import SeamValidator
 from benchweave.state.store import Store
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "execution"
-CORPUS = Path(__file__).resolve().parents[2] / "standards" / "interface-v1.1.1"
+CORPUS = Path(__file__).resolve().parents[2] / "standards" / "interface/0.1.0"
 Seam = tuple[Operations, Store]
 
 
@@ -55,7 +55,7 @@ def test_gateway_info_shape(seam: Seam) -> None:
     ops, _ = seam
     data = ops.gateway_info(OBSERVE)
     assert data["gateway_id"] == "gw-test"
-    assert data["interface_version"] == "1.1.0"
+    assert data["interface_version"] == "0.1.0"
     assert data["mcp_version"] == "2026-07-28"
     assert data["limits"]["max_chunk_bytes"] == 65536
 
@@ -143,11 +143,11 @@ def test_failure_http_map_has_fourteen_codes() -> None:
 
 
 def _vendored_interface_schema() -> dict[str, Any]:
-    """The vendored interface schema (interface-v1.1.1 errata revision; the
+    """The vendored interface schema (interface/0.1.0 errata revision; the
     schema file is a byte-copy of 1.1.0) — the authority the licence
     verdict is decided by, read fresh so this suite pins the artifact."""
     path = (
-        FIXTURES.parents[1] / "standards" / "interface-v1.1.1"
+        FIXTURES.parents[1] / "standards" / "interface/0.1.0"
         / "interface.schema.json"
     )
     schema: dict[str, Any] = json.loads(path.read_text())

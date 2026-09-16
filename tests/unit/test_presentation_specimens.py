@@ -24,14 +24,14 @@ def digest(raw: bytes) -> str:
 
 
 def load(name: str) -> JsonObject:
-    document: JsonObject = json.loads((ROOT / "standards/otdp-v0.3.0" / name).read_bytes())
+    document: JsonObject = json.loads((ROOT / "standards/otdp/0.1.0" / name).read_bytes())
     return document
 
 
 @pytest.fixture
 def specimen() -> Specimen:
     documents: dict[str, JsonObject] = {}
-    for directory in ("otdp-v0.3.0", "plugin-ui-v0.1.0"):
+    for directory in ("otdp/0.1.0", "plugin-ui/0.1.0"):
         for path in (ROOT / "standards" / directory).glob("*.schema.json"):
             document = json.loads(path.read_bytes())
             documents[document["$id"]] = document
@@ -165,7 +165,7 @@ def scope_specimen(specimen: Specimen) -> Specimen:
         "kind": "dataset",
         "action_id": action,
         "profile_ids": descriptor["profiles"],
-        "measurement_schema_id": "urn:otdp:measurement:0.3.0",
+        "measurement_schema_id": "urn:otdp:measurement:0.1.0",
         "variables": [
             {"id": "time", "type": "number", "shape": "vector", "unit": "s", "axis_role": "x"},
             {"id": "signal", "type": "number", "shape": "vector", "unit": "V", "axis_role": "y"},

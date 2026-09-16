@@ -90,7 +90,7 @@ Close architectural ambiguity without inventing bench-specific requirements. Thi
 
 ## A09 — OTDP compatibility is an explicit integration gate
 
-**Selected:** New plugins target the accompanying reconciled OTDP 0.3.0 specification, descriptor/runtime schemas and adapter API 1.1. Gateway runtime safety and ownership remain explicit separate contracts.
+**Selected:** New plugins target the accompanying reconciled OTDP 0.1.0 specification, descriptor/runtime schemas and adapter API 0.1.0. Gateway runtime safety and ownership remain explicit separate contracts.
 
 **Alternatives:** Accept v0.1 structural validation as sufficient; embed gateway policy into optional descriptor extensions.
 
@@ -120,7 +120,7 @@ Close architectural ambiguity without inventing bench-specific requirements. Thi
 
 **Reason:** This makes admission and failure handling reviewable without permitting a shared test or AI-generated procedure to rewrite its operating envelope. Wiring, identities and package versions must match the evidence that qualified them.
 
-**Consequence:** All endings require the approved safe transition; terminal pass requires verified final safety. General scripts, parallel/distributed workflows and advanced analytics remain extensions. Fixture values and zero external digests are synthetic and do not commission real hardware. The integrated architectural review is recorded in the acceptance documents; interface 1.1.0 supplies the external contract.
+**Consequence:** All endings require the approved safe transition; terminal pass requires verified final safety. General scripts, parallel/distributed workflows and advanced analytics remain extensions. Fixture values and zero external digests are synthetic and do not commission real hardware. The integrated architectural review is recorded in the acceptance documents; interface 0.1.0 supplies the external contract.
 
 ## A13 — One core contract behind REST and MCP
 
@@ -132,7 +132,7 @@ Close architectural ambiguity without inventing bench-specific requirements. Thi
 
 ## A14 — Final review corrections and bounded closure
 
-**Selected:** Interface 1.1.0 preserves original document bytes for digest verification and permits terminal evidence gaps only with uncertain/interrupted outcomes. The caller's valid manual lease supplies, rather than conflicts with, manual run authority. Qualification covers body plus protection; repeated trips cannot restart a protective deadline. Registry profile ownership, wrapper compatibility and shared physical-instance ownership are explicit.
+**Selected:** Interface 0.1.0 preserves original document bytes for digest verification and permits terminal evidence gaps only with uncertain/interrupted outcomes. The caller's valid manual lease supplies, rather than conflicts with, manual run authority. Qualification covers body plus protection; repeated trips cannot restart a protective deadline. Registry profile ownership, wrapper compatibility and shared physical-instance ownership are explicit.
 
 **Consequence:** Sixteen registry composition and twenty-six integrated scenarios have defined architectural responses and acceptance owners. Implementation and hardware evidence remain required. The baseline is closed at its explicit scope; additional families, providers and workflows require reviewed extensions.
 
