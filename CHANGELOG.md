@@ -131,6 +131,7 @@ All notable changes to this project will be documented in this file.
 - Close-out - PyPI/brew publishing design + implementation plan (landed)
 - Record honesty — WP11 W3 ramp wording + W4 adapter-shape note
 - Fix errata README's own post-move pointers (review M-1)
+- Add Contributor Covenant 3.0 code of conduct
 
 ### Features
 
