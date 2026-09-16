@@ -75,6 +75,7 @@ All notable changes to this project will be documented in this file.
 - Smoke script + adapter API constant follow the 0.1.0 baseline
 - Audit straggler sweep — URN ids, catalog version, prose assertions
 - Review fix wave 2 — runtime interface version, example teachings, doc truth
+- Declare MIT license in pyproject metadata (was Proprietary)
 
 ### Documentation
 
@@ -132,6 +133,7 @@ All notable changes to this project will be documented in this file.
 - Record honesty — WP11 W3 ramp wording + W4 adapter-shape note
 - Fix errata README's own post-move pointers (review M-1)
 - Add Contributor Covenant 3.0 code of conduct
+- Add SECURITY, CONTRIBUTING, SUPPORT and issue/PR templates
 
 ### Features
 
