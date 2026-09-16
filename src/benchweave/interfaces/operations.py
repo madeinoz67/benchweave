@@ -43,7 +43,7 @@ TIER_SATISFIES: dict[str, frozenset[str]] = {
 }
 _CURSOR_SECRET = b"wp07-cursor-v1"  # principal-binding only, not an auth secret
 
-# §5 live-run states (interface/1.1.0 run.state enum): a run owns its bench
+# §5 live-run states (interface/0.1.0 run.state enum): a run owns its bench
 # from acceptance until its queue state closes terminal — the D9 busy oracle
 # reads exactly these states via Store.list_run_states.
 LIVE_RUN_STATES = frozenset({"accepted", "running", "protecting"})
@@ -390,7 +390,7 @@ class Operations:
     def run_check(
         self, identity: Identity, bench_id: str, binding_ref: dict[str, Any]
     ) -> dict[str, Any]:
-        """Advisory preflight (interface/1.1.0 run_check): does the stored
+        """Advisory preflight (interface/0.1.0 run_check): does the stored
         binding document name this bench, and are its pinned documents
         present? No reservation, no device I/O; never an admission token."""
         require_permission(identity, "control")
@@ -576,7 +576,7 @@ class Operations:
 
     def run_get(self, identity: Identity, run_id: str) -> dict[str, Any]:
         # Catalog authority (operation-catalog.json declares run_get observe,
-        # interface/1.1.0): the read tier, with control/admin admitted via
+        # interface/0.1.0): the read tier, with control/admin admitted via
         # the hierarchy — the Task 10 parity ledger's tier-drift fix.
         require_permission(identity, "observe")
         self._validator.validate("run_get", {"run_id": run_id})
@@ -946,7 +946,7 @@ class Operations:
         require_permission(identity, "admin")
         # The validated payload is the corpus's REST body for this route:
         # ``change_id`` is a path param the body schema does not declare.
-        # ``approver_token`` rides the interface/1.1.1 errata body (D2):
+        # ``approver_token`` rides the interface/0.1.0 errata body (D2):
         # validated whenever the adapter forwards it, and absent for a
         # corpus-literal body — ``None`` must never hit the string-typed
         # property, so the kwarg's optionality mirrors the catalog's.
@@ -1416,7 +1416,7 @@ class Operations:
                    {"retention_failures": failures})
 
     def _run_projection(self, run_id: str) -> dict[str, Any]:
-        """Contract ``run`` object (interface/1.1.0 ``run`` def: closed,
+        """Contract ``run`` object (interface/0.1.0 ``run`` def: closed,
         seven fields; outcome/safe_state/terminal_record are null until
         terminal, and terminal-without-a-durable-record is honest
         uncertainty — outcome_unknown/unknown, never a fabricated pass)."""
@@ -1463,7 +1463,7 @@ class Operations:
         }
 
     def _lease_projection(self, lease: Lease) -> dict[str, Any]:
-        """Contract lease object (interface/1.1.0 ``lease`` def: closed,
+        """Contract lease object (interface/0.1.0 ``lease`` def: closed,
         five fields — the holder is deliberately not exposed)."""
         return {
             "lease_id": lease.lease_id,

@@ -46,7 +46,7 @@ def test_first_sync_writes_lock_and_vendored_tree(tmp_path: Path) -> None:
     stamp = sdk / "src/benchweave_sdk/standards/otdp/_GENERATED.txt"
     first_line = stamp.read_text().splitlines()[0]
     assert first_line.startswith("otdp/")
-    assert first_line.endswith("Generated from otdp@0.3.0 — do not edit")
+    assert first_line.endswith("Generated from otdp@0.1.0 — do not edit")
     # Stamps live beside files that stay byte-identical to the bundle.
     document = json.loads((bundle / "bundle-manifest.json").read_bytes())
     entry = next(s["files"][0] for s in document["standards"] if s["id"] == "otdp")
@@ -116,7 +116,7 @@ def test_missing_bundle_file_is_vocabulary_prefixed(tmp_path: Path) -> None:
     """A manifest-listed file absent from files/ is a ValueError, not a bare OSError."""
     bundle = _export(tmp_path)
     sdk = _synced_sdk(tmp_path, bundle)
-    victim = bundle / "files" / "registry/1.0.0/package-lock.schema.json"
+    victim = bundle / "files" / "registry/0.1.0/package-lock.schema.json"
     victim.unlink()
     with pytest.raises(ValueError, match="bundle_file_missing"):
         sync(bundle, sdk)

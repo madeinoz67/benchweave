@@ -889,9 +889,9 @@ def test_journey_discover_admit_select(
 
     # Step 3 (select leg): versioned procedure + policy; simulation visible.
     assert journey_admitted.procedure_ref["id"] == "voltage-check"
-    assert journey_admitted.procedure_ref["version"] == "1.0.0"
+    assert journey_admitted.procedure_ref["version"] == "0.1.0"
     assert journey_admitted.policy_ref["id"] == "sim-policy"
-    assert journey_admitted.policy_ref["version"] == "1.0.0"
+    assert journey_admitted.policy_ref["version"] == "0.1.0"
     assert journey_admitted.simulated_limitations == ("simulator-only",)
 
 

@@ -29,9 +29,9 @@ def test_manifest_loads_all_six_standards() -> None:
     }
 
 
-def test_interface_supersedes_1_1_0() -> None:
+def test_interface_reset_has_no_supersession() -> None:
     entry = next(e for e in load_manifest(ROOT).standards if e.id == "interface")
-    assert entry.version == "1.1.1" and entry.supersedes == "1.1.0"
+    assert entry.version == "0.1.0" and entry.supersedes is None
 
 
 def test_validation_passes_on_the_canonical_corpus() -> None:

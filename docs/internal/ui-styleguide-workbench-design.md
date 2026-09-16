@@ -6,7 +6,7 @@
 
 **Audience:** UI engineers, plugin authors, reviewers, administrators and AI coding agents
 
-**Related contracts:** Plugin UI 0.1.0, OTDP 0.3.0, adapter API 1.1, interface 1.1.1
+**Related contracts:** Plugin UI 0.1.0, OTDP 0.1.0, adapter API 0.1.0, interface 0.1.0
 
 ## 1. Decision
 

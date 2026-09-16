@@ -1,7 +1,7 @@
 """Strict admission of execution-contract documents.
 
 Decodes each admission input with the exact-byte JSON decoder, validates the
-five execution-contract documents against the vendored execution/1.0.0
+five execution-contract documents against the vendored execution/0.1.0
 schemas, and verifies the digest pin lattice between them. The package lock
 and device descriptors have no vendored schema this work package, so they are
 decoded exactly and gated by a minimal structural check instead.
@@ -29,7 +29,7 @@ from benchweave.vendoring import contract_family
 
 #: The vendored execution contracts (packaged in the wheel, repo-relative
 #: in a dev checkout — :mod:`benchweave.vendoring`).
-_CONTRACTS = contract_family("execution/1.0.0")
+_CONTRACTS = contract_family("execution/0.1.0")
 _PACKAGE_LOCK_FILENAME = "package-lock.json"
 _MAX_DOCUMENT_BYTES = 1_048_576
 
@@ -164,7 +164,7 @@ def admit_documents(
     """Admit an execution document set or raise :class:`AdmissionRejected`.
 
     All five contract documents are decoded with the exact-byte decoder and
-    validated against their vendored execution/1.0.0 schemas, then the full
+    validated against their vendored execution/0.1.0 schemas, then the full
     pin lattice is verified: the binding pins procedure, bench, policy,
     package lock and commissioning; the bench pins policy, package lock and
     every device descriptor, and names the commissioning; the commissioning

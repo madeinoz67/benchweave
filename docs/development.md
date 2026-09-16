@@ -101,7 +101,7 @@ be pushed to GitHub with Actions enabled.
 
 ## Documentation baseline
 
-`docs/` retains architecture 1.5, OTDP 0.3.0, interface 1.1.0, registry 1.0.0,
-execution 1.0.0, decisions, acceptance reviews and implementation planning.
+`docs/` retains architecture 1.5, OTDP 0.1.0, interface 0.1.0, registry 0.1.0,
+execution 0.1.0, decisions, acceptance reviews and implementation planning.
 Superseded versions and ZIP copies have been removed from the project.
 Keep future documentation here and use Git history for superseded revisions.

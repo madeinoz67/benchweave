@@ -217,7 +217,7 @@ def installed_check(reference: Path, report: Path) -> None:
             {
                 "gateway_version": expected["gateway_version"],
                 "sdk_version": expected["sdk_version"],
-                "otdp_version": "0.3.0",
+                "otdp_version": "0.1.0",
                 "adapter_api_version": "1.1",
                 "standards_files_verified": len(locked_hashes),
                 "example": "wheel installed outside checkout; identify/read passed",

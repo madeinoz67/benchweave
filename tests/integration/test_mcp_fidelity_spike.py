@@ -14,7 +14,7 @@ pins gateway_info exactly (including ``required: []`` and the 10-entry
 
 Handshake (SDK-honest, per mcp_types.version): ``initialize`` counter-offers
 at most LATEST_HANDSHAKE_VERSION (2025-11-25) in this SDK generation; the
-interface/1.1.0 contract's 2026-07-28 pin is spoken via the modern
+interface/0.1.0 contract's 2026-07-28 pin is spoken via the modern
 ``server/discover`` path (``supportedVersions`` offers 2026-07-28). On the
 wire, serve-time dereference middleware prunes the corpus's unreferenced
 ``$defs`` from tools/list (pinned below: wire schema == vendored minus
@@ -37,7 +37,7 @@ vendored: dict[str, Any] = json.loads(
     (
         Path(__file__).resolve().parents[2]
         / "standards"
-        / "interface/1.1.1"
+        / "interface/0.1.0"
         / "mcp-tools.json"
     ).read_text(encoding="utf-8")
 )
@@ -199,7 +199,7 @@ def test_fastmcp_mount_serves_initialize_over_loopback() -> None:
             k: v for k, v in vend["inputSchema"].items() if k != "$defs"
         }
 
-        # Modern-era discovery: the interface/1.1.0 contract's 2026-07-28
+        # Modern-era discovery: the interface/0.1.0 contract's 2026-07-28
         # pin is spoken here (envelope _meta keys + protocol/method headers).
         body, _ = post(
             {

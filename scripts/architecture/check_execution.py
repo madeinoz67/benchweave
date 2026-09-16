@@ -9,7 +9,7 @@ from jsonschema import Draft202012Validator, FormatChecker
 "Document-contract review checks; not a production interpreter or admission service."
 DOCS = globals().get("DOCS", Path(__file__).resolve().parents[2] / "docs")
 STANDARDS = globals().get("STANDARDS", Path(__file__).resolve().parents[2] / "standards")
-CONTRACT_DIR = STANDARDS / "execution/1.0.0"
+CONTRACT_DIR = STANDARDS / "execution/0.1.0"
 E = CONTRACT_DIR / "examples"
 results = []
 
@@ -300,7 +300,7 @@ x = copy.deepcopy(policy)
 x["continuous_conditions"][1]["unit"] = "A"
 check("monitor unit mismatch", "condition unit" in bench_errors(b, x))
 catalog = json.loads(
-    (STANDARDS / "otdp/0.3.0/device-profile-catalog.json").read_text(encoding="utf-8")
+    (STANDARDS / "otdp/0.1.0/device-profile-catalog.json").read_text(encoding="utf-8")
 )
 
 

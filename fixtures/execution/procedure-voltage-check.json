@@ -1,60 +1,202 @@
 {
-  "contract_version": "1.0.0",
+  "contract_version": "0.1.0",
   "id": "voltage-check",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "Executable simulator procedure: configure, enable, measure, assert, repeat.",
   "mode": "gateway_owned",
-  "safety_policy": {"id": "sim-policy", "version": "1.0.0"},
+  "safety_policy": {
+    "id": "sim-policy",
+    "version": "0.1.0"
+  },
   "roles": [
-    {"id": "supply", "required_profiles": ["otdp.dc_psu/1.0.0"], "channels": ["output"]},
-    {"id": "dut", "required_profiles": [], "channels": []}
+    {
+      "id": "supply",
+      "required_profiles": [
+        "otdp.dc_psu/1.0.0"
+      ],
+      "channels": [
+        "output"
+      ]
+    },
+    {
+      "id": "dut",
+      "required_profiles": [],
+      "channels": []
+    }
   ],
   "max_body_ms": 8000,
   "max_protection_ms": 2000,
   "steps": [
-    {"id": "configure", "kind": "invoke", "role": "supply",
-     "action_id": "otdp.dc_psu.configure/1.0.0",
-     "input": {"configuration_id": {"$stg_issue": "configuration_id"},
-               "channel": {"$stg_channel": "output"},
-               "voltage_v": 5.0, "current_limit_a": 0.5, "ovp_v": 5.5, "ocp_a": 0.5},
-     "timeout_ms": 500},
-    {"id": "enable", "kind": "invoke", "role": "supply",
-     "action_id": "otdp.dc_psu.output/1.0.0",
-     "input": {"channel": {"$stg_channel": "output"}, "enabled": true,
-               "configuration_id": {"$stg_ref": {"step": "configure", "pointer": "/configuration_id"}}},
-     "timeout_ms": 500},
-    {"id": "settle", "kind": "delay", "duration_ms": 100},
-    {"id": "note", "kind": "write", "role": "dut", "parameter": "operator_note",
-     "value": "wp05 run", "timeout_ms": 200},
-    {"id": "model", "kind": "read", "role": "dut", "parameter": "identity_model",
-     "timeout_ms": 200},
-    {"id": "measure", "kind": "invoke", "role": "supply",
-     "action_id": "otdp.dc_psu.measure/1.0.0",
-     "input": {"configuration_id": {"$stg_ref": {"step": "configure", "pointer": "/configuration_id"}},
-               "channels": [{"$stg_channel": "output"}]},
-     "timeout_ms": 500},
-    {"id": "voltage", "kind": "sample", "source_step": "measure", "variable_id": "voltage",
-     "unit": "V", "max_age_ms": 500, "require_known_uncertainty": true},
-    {"id": "check", "kind": "assert",
-     "predicate": {"sample": "voltage", "minimum": 4.9, "maximum": 5.1}},
-    {"id": "branch", "kind": "if",
-     "predicate": {"sample": "voltage", "minimum": 0.1, "maximum": 5.5},
-     "then": [{"id": "recheck", "kind": "sample", "source_step": "measure",
-               "variable_id": "current", "unit": "A", "max_age_ms": 500,
-               "require_known_uncertainty": true},
-              {"id": "check-current", "kind": "assert",
-               "predicate": {"sample": "recheck", "minimum": -0.01, "maximum": 0.5}}],
-     "else": []},
-    {"id": "loop", "kind": "repeat", "count": 3, "steps": [
-      {"id": "remeasure", "kind": "invoke", "role": "supply",
-       "action_id": "otdp.dc_psu.measure/1.0.0",
-       "input": {"configuration_id": {"$stg_ref": {"step": "configure", "pointer": "/configuration_id"}},
-                 "channels": [{"$stg_channel": "output"}]},
-       "timeout_ms": 500},
-      {"id": "voltage-again", "kind": "sample", "source_step": "remeasure",
-       "variable_id": "voltage", "unit": "V", "max_age_ms": 500,
-       "require_known_uncertainty": true},
-      {"id": "check-again", "kind": "assert",
-       "predicate": {"sample": "voltage-again", "minimum": 4.9, "maximum": 5.1}}]}
+    {
+      "id": "configure",
+      "kind": "invoke",
+      "role": "supply",
+      "action_id": "otdp.dc_psu.configure/1.0.0",
+      "input": {
+        "configuration_id": {
+          "$stg_issue": "configuration_id"
+        },
+        "channel": {
+          "$stg_channel": "output"
+        },
+        "voltage_v": 5.0,
+        "current_limit_a": 0.5,
+        "ovp_v": 5.5,
+        "ocp_a": 0.5
+      },
+      "timeout_ms": 500
+    },
+    {
+      "id": "enable",
+      "kind": "invoke",
+      "role": "supply",
+      "action_id": "otdp.dc_psu.output/1.0.0",
+      "input": {
+        "channel": {
+          "$stg_channel": "output"
+        },
+        "enabled": true,
+        "configuration_id": {
+          "$stg_ref": {
+            "step": "configure",
+            "pointer": "/configuration_id"
+          }
+        }
+      },
+      "timeout_ms": 500
+    },
+    {
+      "id": "settle",
+      "kind": "delay",
+      "duration_ms": 100
+    },
+    {
+      "id": "note",
+      "kind": "write",
+      "role": "dut",
+      "parameter": "operator_note",
+      "value": "wp05 run",
+      "timeout_ms": 200
+    },
+    {
+      "id": "model",
+      "kind": "read",
+      "role": "dut",
+      "parameter": "identity_model",
+      "timeout_ms": 200
+    },
+    {
+      "id": "measure",
+      "kind": "invoke",
+      "role": "supply",
+      "action_id": "otdp.dc_psu.measure/1.0.0",
+      "input": {
+        "configuration_id": {
+          "$stg_ref": {
+            "step": "configure",
+            "pointer": "/configuration_id"
+          }
+        },
+        "channels": [
+          {
+            "$stg_channel": "output"
+          }
+        ]
+      },
+      "timeout_ms": 500
+    },
+    {
+      "id": "voltage",
+      "kind": "sample",
+      "source_step": "measure",
+      "variable_id": "voltage",
+      "unit": "V",
+      "max_age_ms": 500,
+      "require_known_uncertainty": true
+    },
+    {
+      "id": "check",
+      "kind": "assert",
+      "predicate": {
+        "sample": "voltage",
+        "minimum": 4.9,
+        "maximum": 5.1
+      }
+    },
+    {
+      "id": "branch",
+      "kind": "if",
+      "predicate": {
+        "sample": "voltage",
+        "minimum": 0.1,
+        "maximum": 5.5
+      },
+      "then": [
+        {
+          "id": "recheck",
+          "kind": "sample",
+          "source_step": "measure",
+          "variable_id": "current",
+          "unit": "A",
+          "max_age_ms": 500,
+          "require_known_uncertainty": true
+        },
+        {
+          "id": "check-current",
+          "kind": "assert",
+          "predicate": {
+            "sample": "recheck",
+            "minimum": -0.01,
+            "maximum": 0.5
+          }
+        }
+      ],
+      "else": []
+    },
+    {
+      "id": "loop",
+      "kind": "repeat",
+      "count": 3,
+      "steps": [
+        {
+          "id": "remeasure",
+          "kind": "invoke",
+          "role": "supply",
+          "action_id": "otdp.dc_psu.measure/1.0.0",
+          "input": {
+            "configuration_id": {
+              "$stg_ref": {
+                "step": "configure",
+                "pointer": "/configuration_id"
+              }
+            },
+            "channels": [
+              {
+                "$stg_channel": "output"
+              }
+            ]
+          },
+          "timeout_ms": 500
+        },
+        {
+          "id": "voltage-again",
+          "kind": "sample",
+          "source_step": "remeasure",
+          "variable_id": "voltage",
+          "unit": "V",
+          "max_age_ms": 500,
+          "require_known_uncertainty": true
+        },
+        {
+          "id": "check-again",
+          "kind": "assert",
+          "predicate": {
+            "sample": "voltage-again",
+            "minimum": 4.9,
+            "maximum": 5.1
+          }
+        }
+      ]
+    }
   ]
 }

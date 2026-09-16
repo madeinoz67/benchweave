@@ -203,7 +203,7 @@ def test_admit_happy_path(tmp_path: Path) -> None:
     assert lock_bytes == _canonical(json.loads(lock_bytes))
     assert _sha(lock_bytes) == admitted.lock_sha256
     lock = load_lock_document(lock_bytes, _sha(lock_bytes), max_bytes=LOCK_MAX_BYTES)
-    assert lock.content["lock_version"] == "1.0.0"
+    assert lock.content["lock_version"] == "0.1.0"
     assert lock.content["created_at"] == "2026-09-11T00:00:00Z"
     assert lock.content["roots"] == [
         {

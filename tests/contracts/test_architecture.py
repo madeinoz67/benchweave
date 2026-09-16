@@ -76,24 +76,24 @@ def test_documents_ignores_markdown_links_inside_fenced_code_blocks(
 @pytest.mark.parametrize(
     ("suite", "relative_path", "old", "new", "expected"),
     [
-        ("devices", "otdp/0.3.0/otdp-measurement.schema.json", "", "\n", "pinned"),
+        ("devices", "otdp/0.1.0/otdp-measurement.schema.json", "", "\n", "pinned"),
         (
             "registry",
-            "registry/1.0.0/examples/release-manifest.json",
+            "registry/0.1.0/examples/release-manifest.json",
             '"version": "1.0.0"',
             '"version": "latest"',
             "positive fixture",
         ),
         (
             "execution",
-            "execution/1.0.0/examples/run-record.json",
+            "execution/0.1.0/examples/run-record.json",
             '"safe_state": "verified"',
             '"safe_state": "unknown"',
             "positive fixture",
         ),
         (
             "interface",
-            "interface/1.1.0/examples/operation-vectors.json",
+            "interface/0.1.0/examples/operation-vectors.json",
             '"ok": true',
             '"ok": false',
             "Stored fixture agrees",
@@ -115,7 +115,7 @@ def test_documents_ignores_markdown_links_inside_fenced_code_blocks(
         ("documents", "project-index.md", "", "\n[Broken](missing.md)\n", "local link"),
         (
             "documents",
-            "interface/1.1.0/interface.schema.json",
+            "interface/0.1.0/interface.schema.json",
             '"$ref": "#/$defs/',
             '"$ref": "#/$defs/missing-',
             "resolves",

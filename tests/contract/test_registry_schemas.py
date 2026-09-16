@@ -23,7 +23,7 @@ def _digest(raw: bytes) -> str:
 
 def _valid_manifest() -> dict[str, Any]:
     return {
-        "manifest_version": "1.0.0",
+        "manifest_version": "0.1.0",
         "registry_id": "origin-main",
         "package_id": "benchweave/dc-psu-profile",
         "version": "1.0.0",
@@ -39,7 +39,7 @@ def _valid_manifest() -> dict[str, Any]:
         "licence": {"spdx_expression": "MIT", "file": "LICENSE"},
         "source": {"url": "https://example.invalid/src", "revision": "0" * 40},
         "compatibility": {
-            "otdp_versions": ["0.3.0"],
+            "otdp_versions": ["0.1.0"],
             "adapter_api_versions": [],
             "stg_versions": ["1.5"],
             "runtimes": [],
@@ -143,7 +143,7 @@ def test_manifest_kind_conditional_enforced() -> None:
 
 def test_status_and_lock_loaders() -> None:
     status = {
-        "status_version": "1.0.0",
+        "status_version": "0.1.0",
         "release": {
             "registry_id": "origin-main",
             "package_id": "benchweave/dc-psu-profile",
@@ -164,7 +164,7 @@ def test_status_and_lock_loaders() -> None:
     assert load_status_document(raw, _digest(raw), max_bytes=100_000).content["sequence"] == 1
 
     lock = {
-        "lock_version": "1.0.0",
+        "lock_version": "0.1.0",
         "created_at": "2026-09-11T00:00:00Z",
         "roots": [
             {
@@ -191,7 +191,7 @@ def test_status_and_lock_loaders() -> None:
     }
     raw_lock = _dump(lock)
     loaded_lock = load_lock_document(raw_lock, _digest(raw_lock), max_bytes=100_000)
-    assert loaded_lock.content["lock_version"] == "1.0.0"
+    assert loaded_lock.content["lock_version"] == "0.1.0"
 
 
 def test_digest_mismatch_still_rejected_by_content_layer() -> None:

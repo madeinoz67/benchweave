@@ -224,4 +224,4 @@ def test_finite_clock_and_descriptor_rejections() -> None:
         with pytest.raises(ValueError):
             host.advance(delta)
     with pytest.raises(ValueError):
-        validation.validate_descriptor({"otdp_version": "0.3.0"})
+        validation.validate_descriptor({"otdp_version": "0.1.0"})

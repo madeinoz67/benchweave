@@ -49,7 +49,7 @@ from benchweave.vendoring import contract_family
 # The vendored corpus (packaged in the wheel, repo-relative in a dev
 # checkout — benchweave/vendoring.py; the corpus bytes stay pinned at the
 # repository root beside the tests that pin them).
-_VENDORED_PATH = contract_family("interface/1.1.1") / "mcp-tools.json"
+_VENDORED_PATH = contract_family("interface/0.1.0") / "mcp-tools.json"
 _vendored_cache: dict[str, dict[str, Any]] | None = None
 
 

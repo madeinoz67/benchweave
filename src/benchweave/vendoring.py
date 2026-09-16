@@ -27,7 +27,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def contract_family(name: str) -> Path:
-    """A vendored contract family directory (e.g. ``interface/1.1.1``)."""
+    """A vendored contract family directory (e.g. ``interface/0.1.0``)."""
     packaged = _PACKAGED_ROOT / "contracts" / name
     if packaged.is_dir():
         return packaged
