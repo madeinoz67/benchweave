@@ -254,6 +254,8 @@ All notable changes to this project will be documented in this file.
 - Principal row calls — redate releases to the reset, align acceptance record
 - Re-lock dps150 at the 0.1.0 baseline
 - Re-lock dps150 at the 0.1.0 baseline (#22)
+- Ignore device plugins' local vendored contracts
+- Ignore device plugins' local vendored contracts (#23)
 
 ### Refactoring
 
