@@ -252,6 +252,8 @@ All notable changes to this project will be documented in this file.
 - Post-consolidation cleanup — retire firmware placeholder, re-lock dps150 contracts (#20)
 - Advance SDK pointer — adapter API constant at 0.1.0
 - Principal row calls — redate releases to the reset, align acceptance record
+- Re-lock dps150 at the 0.1.0 baseline
+- Re-lock dps150 at the 0.1.0 baseline (#22)
 
 ### Refactoring
 
