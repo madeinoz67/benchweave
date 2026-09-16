@@ -7,8 +7,8 @@
 | Finding | Resolution |
 |---|---|
 | Manual lease counted as a conflicting owner during its own run start | The same principal's valid lease is the authority for that manual run. Other leases/runs conflict; the lease is not a second procedure |
-| Terminal status required a persisted record during an audit/storage failure | Interface 1.1.0 permits a missing terminal_record only with outcome_unknown/interrupted; passed still requires retained terminal evidence. The summary explicitly exposes the evidence gap |
-| Parsed document content could not reproduce a byte-addressed SHA-256 | Interface 1.1.0 additionally returns original_utf8_base64; its exact bytes must hash to document.sha256 and parse to the returned content |
+| Terminal status required a persisted record during an audit/storage failure | Interface 0.1.0 permits a missing terminal_record only with outcome_unknown/interrupted; passed still requires retained terminal evidence. The summary explicitly exposes the evidence gap |
+| Parsed document content could not reproduce a byte-addressed SHA-256 | Interface 0.1.0 additionally returns original_utf8_base64; its exact bytes must hash to document.sha256 and parse to the returned content |
 | Procedure budget could finish before qualification expiry but protection could run past it | Admission requires the body plus full protection budget to fit the qualification validity interval |
 | Repeated monitor faults could repeatedly restart the protective deadline | First protective entry fixes the deadline; later faults append/escalate evidence without renewing the budget |
 | Shared/wrapper descriptors risked duplicate profile definitions or circular dependencies | Distinguish profile ownership from consumption, allow one-way wrapper dependencies and enforce one physical instrument instance |

@@ -5,7 +5,7 @@
       "id": "otdp",
       "version": "0.1.0",
       "status": "stable",
-      "released": "2026-09-10",
+      "released": "2026-09-16",
       "supersedes": null,
       "normative": [
         "standards/otdp/0.1.0/device-profile-catalog.json",
@@ -38,7 +38,7 @@
       "id": "registry",
       "version": "0.1.0",
       "status": "stable",
-      "released": "2026-09-10",
+      "released": "2026-09-16",
       "supersedes": null,
       "normative": [
         "standards/registry/0.1.0/examples/package-lock.json",
@@ -53,7 +53,7 @@
       "id": "execution",
       "version": "0.1.0",
       "status": "stable",
-      "released": "2026-09-10",
+      "released": "2026-09-16",
       "supersedes": null,
       "normative": [
         "standards/execution/0.1.0/bench.schema.json",
@@ -74,7 +74,7 @@
       "id": "interface",
       "version": "0.1.0",
       "status": "stable",
-      "released": "2026-09-13",
+      "released": "2026-09-16",
       "supersedes": null,
       "normative": [
         "standards/interface/0.1.0/examples/mcp-start-exchange.json",
@@ -89,7 +89,7 @@
       "id": "plugin-ui",
       "version": "0.1.0",
       "status": "stable",
-      "released": "2026-09-13",
+      "released": "2026-09-16",
       "supersedes": null,
       "normative": [
         "standards/plugin-ui/0.1.0/binding-catalogue.schema.json",
@@ -103,7 +103,7 @@
       "id": "plugin-ui-preview",
       "version": "0.1.0",
       "status": "stable",
-      "released": "2026-09-14",
+      "released": "2026-09-16",
       "supersedes": null,
       "normative": [
         "standards/plugin-ui-preview/0.1.0/fixture.schema.json",
