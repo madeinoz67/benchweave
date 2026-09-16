@@ -134,6 +134,7 @@ All notable changes to this project will be documented in this file.
 - Fix errata README's own post-move pointers (review M-1)
 - Add Contributor Covenant 3.0 code of conduct
 - Add SECURITY, CONTRIBUTING, SUPPORT and issue/PR templates
+- Public-site styleguide and mockup for the SDK website
 
 ### Features
 
@@ -261,6 +262,7 @@ All notable changes to this project will be documented in this file.
 - Ignore device plugins' local vendored contracts (#23)
 - Advance SDK pointer — gortex-artifact ignore guard (main #17 parity)
 - Advance benchweave-sdk pointer (CoC + governance docs)
+- Advance SDK pointer — docs site + public site merged (PR #4); repoint plugin-sdk stub
 
 ### Refactoring
 
