@@ -216,6 +216,7 @@ All notable changes to this project will be documented in this file.
 - Live demo script under the plugin — ramp, telemetry, session-survival flourish
 - Git-cliff config, seeded CHANGELOG.md, merge-driven regeneration
 - Standards GOVERNANCE.md rulebook + resident standards-governor agent
+- Public site — static front door + Great Docs tree on Pages
 
 ### Hardware Evidence
 
