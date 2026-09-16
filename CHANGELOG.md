@@ -264,6 +264,7 @@ All notable changes to this project will be documented in this file.
 - Advance benchweave-sdk pointer (CoC + governance docs)
 - Advance SDK pointer — docs site + public site merged (PR #4); repoint plugin-sdk stub
 - Advance SDK pointer — close-out docs
+- Advance SDK pointer — SDK-focused static site
 
 ### Refactoring
 
