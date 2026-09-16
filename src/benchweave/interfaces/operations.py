@@ -200,7 +200,7 @@ class Operations:
         self._validator.validate("gateway_info", {})
         return {
             "gateway_id": self._gateway_id,
-            "interface_version": "1.1.0",
+            "interface_version": "0.1.0",
             "mcp_version": "2026-07-28",
             "limits": dict(self._limits),
         }

@@ -55,7 +55,7 @@ def test_gateway_info_shape(seam: Seam) -> None:
     ops, _ = seam
     data = ops.gateway_info(OBSERVE)
     assert data["gateway_id"] == "gw-test"
-    assert data["interface_version"] == "1.1.0"
+    assert data["interface_version"] == "0.1.0"
     assert data["mcp_version"] == "2026-07-28"
     assert data["limits"]["max_chunk_bytes"] == 65536
 

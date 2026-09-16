@@ -1,4 +1,4 @@
-"""OTDP runtime 0.3.0 envelopes as typed Python.
+"""OTDP runtime 0.1.0 envelopes as typed Python.
 
 Every dataclass here mirrors a ``$defs`` entry in
 contracts/otdp/0.1.0/otdp-runtime.schema.json, and every ``__post_init__``

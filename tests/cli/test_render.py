@@ -110,7 +110,7 @@ def _handled(result: Result) -> None:
 def _info() -> dict[str, object]:
     return {
         "gateway_id": GATEWAY_ID,
-        "interface_version": "1.1.1",
+        "interface_version": "0.1.0",
         "mcp_version": "2026-07-28",
         "limits": {"max_page_size": 1000},
     }
@@ -310,7 +310,7 @@ def test_render_status_lines_are_unchanged() -> None:
     text = render_status({"gateway": _info(), "benches": {"items": _benches()}})
     assert text.splitlines() == [
         f"gateway_id:        {GATEWAY_ID}",
-        "interface_version: 1.1.1",
+        "interface_version: 0.1.0",
         "mcp_version:       2026-07-28",
         "benches:           2",
         "  sim-bench  generation=1 qualification=qualified busy=False tripped=False",

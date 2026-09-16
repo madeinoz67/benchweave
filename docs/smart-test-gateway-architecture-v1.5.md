@@ -196,7 +196,7 @@ Permissions are assigned to authenticated identities with separate observer, con
 
 Network access to instruments is restricted where direct access would bypass gateway policy. Secrets and privileged configuration are not included in general device descriptions. Audit identifies the authenticated principal, not just an MCP session identifier.
 
-Interface contract 1.1.0 selects REST v1 and MCP 2026-07-28; client interoperability and transport security remain implementation acceptance obligations. MCP hints remain guidance and do not substitute for gateway enforcement or prove that a human approved an operation.
+Interface contract 0.1.0 selects REST v1 and MCP 2026-07-28; client interoperability and transport security remain implementation acceptance obligations. MCP hints remain guidance and do not substitute for gateway enforcement or prove that a human approved an operation.
 
 ## 11. Failure and recovery contract
 
@@ -320,7 +320,7 @@ See the [architecture closure register](architecture-closure.md) for review disp
 
 ## 20. REST and MCP interface baseline
 
-The [interface contract 1.1.0](../standards/interface/0.1.0/interface-contract.md) specifies twenty REST operations and seventeen MCP tools. The operation catalog, shared JSON Schema, OpenAPI 3.1.0 document and MCP tool definitions describe one authorised core surface. The MCP transport is pinned to 2026-07-28; compatibility with older revisions is not implicit.
+The [interface contract 0.1.0](../standards/interface/0.1.0/interface-contract.md) specifies twenty REST operations and seventeen MCP tools. The operation catalog, shared JSON Schema, OpenAPI 3.1.0 document and MCP tool definitions describe one authorised core surface. The MCP transport is pinned to 2026-07-28; compatibility with older revisions is not implicit.
 
 Discovery and observation read retained metadata/evidence. Control submits an approved run binding, repeats admission checks and returns a durable run ID. Cross-interface deduplication, explicit leases, generation checks and cancellation preserve the procedure contract through disconnects. Event cursors and immutable chunked evidence support client recovery independently of MCP transport sessions.
 

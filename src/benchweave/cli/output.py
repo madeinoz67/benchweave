@@ -23,7 +23,7 @@ Pinned ``status --json`` shape (Tasks 10-15 consume this)::
       },
       "gateway": {                # GET /v1 data payload, verbatim
         "gateway_id": "...",
-        "interface_version": "1.1.0",
+        "interface_version": "0.1.0",
         "mcp_version": "2026-07-28",
         "limits": { ... }
       }

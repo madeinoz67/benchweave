@@ -42,11 +42,11 @@ This is a bounded class baseline, not universal feature coverage. AC power sourc
 
 ## Procedure and bench provision
 
-Execution contract 1.0.0 adds six schemas for procedures, benches, safety policies, commissioning, run bindings and run records. Logical roles make a procedure portable across separately qualified fixtures. Bounded control flow, explicit measurement validity and a required verified safe ending support unattended execution. The fixtures are synthetic; no actual bench limits or qualification are supplied.
+Execution contract 0.1.0 adds six schemas for procedures, benches, safety policies, commissioning, run bindings and run records. Logical roles make a procedure portable across separately qualified fixtures. Bounded control flow, explicit measurement validity and a required verified safe ending support unattended execution. The fixtures are synthetic; no actual bench limits or qualification are supplied.
 
 ## Central repository provision
 
-Registry contract 1.0.0 adds immutable release manifests, mutable release status and local dependency locks, each with a schema and synthetic metadata example. Users can share profiles, descriptors and implementations through a public catalogue or private mirror. The gateway retains local admission and offline execution authority. The package defines this architecture; it does not deploy a central service.
+Registry contract 0.1.0 adds immutable release manifests, mutable release status and local dependency locks, each with a schema and synthetic metadata example. Users can share profiles, descriptors and implementations through a public catalogue or private mirror. The gateway retains local admission and offline execution authority. The package defines this architecture; it does not deploy a central service.
 
 ## Handoff to an AI coding agent
 
@@ -60,7 +60,7 @@ These documents define the interfaces; a gateway host or plugin implementation i
 
 Build and exercise the gateway and plugins against these contracts. Supply actual device protocol evidence, model limits and hardware qualification. Commission the bench's voltage/current/power/energy envelope, safe transition, response time and unattended procedures. Future mains-powered fixtures require separate qualification.
 
-Superseded standard versions are retained digest-frozen beside their successors (see `standards/GOVERNANCE.md`); pre-reset history lives in git.
+From the 0.1.0 baseline forward, superseded versions are retained digest-frozen beside their successors (see `standards/GOVERNANCE.md`); the reset's pre-baseline lineage lives in git.
 
 ## Baseline verification
 

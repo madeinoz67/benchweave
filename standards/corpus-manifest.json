@@ -212,22 +212,22 @@
     {
       "path": "otdp/0.1.0/examples/reference-can.json",
       "source": "docs/otdp-v0.3.0/examples/reference-can.json",
-      "sha256": "3e433ba6db551a2cd8065497795ab04fef56b29284e28113cf97d68d2be97ec4"
+      "sha256": "75a7dc36e850b6c3a3a13b7610c7fa77cec6261d2c1240c33c3f78147bca91ea"
     },
     {
       "path": "otdp/0.1.0/examples/reference-capture.json",
       "source": "docs/otdp-v0.3.0/examples/reference-capture.json",
-      "sha256": "0fde85ab7d73ce79c6484553811195349e6a0a50c3496d95cc6c779cd8493dac"
+      "sha256": "f6449983cd2e7420db466de6a86ceadb6b186d3e459b08bbc0244902c1a54598"
     },
     {
       "path": "otdp/0.1.0/examples/reference-controller.json",
       "source": "docs/otdp-v0.3.0/examples/reference-controller.json",
-      "sha256": "ec0ccf23218e1b84eb2aacc9ef925f0909c8ad10379cc8e994194f3d0b33e3f0"
+      "sha256": "761ad3d76980f25346209ca84e94fd7cc0e66c2aa4c66116189fe08a86d27248"
     },
     {
       "path": "otdp/0.1.0/examples/reference-psu.json",
       "source": "docs/otdp-v0.3.0/examples/reference-psu.json",
-      "sha256": "eebbf2431dfe63245fe132a40a721f5d1abb0244f1f08c4ba73d7a562dc72f1f"
+      "sha256": "acd4d7093832611c5440288e8d0831ff6cff4756c9fa103322b73e4e63bf8513"
     },
     {
       "path": "otdp/0.1.0/examples/reference-vectors.json",
@@ -257,7 +257,7 @@
     {
       "path": "registry/0.1.0/examples/release-manifest.json",
       "source": "docs/registry-v1.0.0/examples/release-manifest.json",
-      "sha256": "54ddadb6128c51da6e010734f72ef1d2d23e56723efa3731930aa9cadaac0f2c"
+      "sha256": "9d3cbfab9d63fd22f456be2f8ef1d1c15b730b314f2cb807ac36827f7ded3be6"
     },
     {
       "path": "registry/0.1.0/examples/release-status.json",
