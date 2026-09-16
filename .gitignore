@@ -106,3 +106,8 @@ docs/superpowers/
 # Standards SDK bundle output (python -m benchweave.standards export)
 .standards-bundle/
 .standards-bundle.staging/
+
+# Device-plugin local vendored contracts: fetched-and-verified copies of the
+# standards corpus produced by each plugin's fetch_contracts.py from its
+# committed lock (lock.json IS tracked; the bytes are a reproducible cache).
+plugins/*/*/contracts/*-*.*.*/
