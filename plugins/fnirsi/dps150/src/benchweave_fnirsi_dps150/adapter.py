@@ -1,4 +1,4 @@
-"""Read-only OTDP 0.3.0 adapter, structurally implementing the documented 1.1 ABI.
+"""Read-only OTDP 0.1.0 adapter, structurally implementing the documented 1.1 ABI.
 
 Only scoped host services perform I/O. No SDK, serial driver, background reader,
 retry, reconnection, or profile assurance is implied by this adapter. Session

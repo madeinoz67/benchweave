@@ -18,7 +18,7 @@ def pytest_sessionstart() -> None:
     root = Path(__file__).resolve().parents[1]
     lock = json.loads((root / "contracts/lock.json").read_text())
     for name, expected in lock["sha256"].items():
-        path = root / "contracts/otdp-v0.3.0" / name
+        path = root / "contracts/otdp-0.1.0" / name
         if not path.is_file():
             raise RuntimeError("Run python scripts/fetch_contracts.py before the offline tests")
         if hashlib.sha256(path.read_bytes()).hexdigest() != expected:
