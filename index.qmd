@@ -1,0 +1,25 @@
+**BenchWeave** is a Python test-bench gateway for embedded systems: reusable instrument and DUT plugins, shared device profiles, and safety-aware automated testing, exposed to applications and coding agents over REST and MCP.
+
+**Status: architecture baseline and Python scaffold.** The repository carries versioned contracts, PoC/MVP plans and architecture validation in CI. The gateway side of interface 0.1.0 is live in the PoC — REST routes and MCP tools over FastAPI/FastMCP on one core-operations seam; hardware qualification and unattended bench operation remain separate, commissioned work.
+
+# The plan
+
+- Connect instruments and devices under test through reusable plugins and typed device profiles.
+- Share profiles and implementations through a central registry, with local admission and offline execution.
+- Coordinate bounded test procedures with explicit ownership, measurement evidence and verified safe endings.
+- Expose a consistent REST and MCP interface for applications and coding agents.
+
+The first PoC is simulator-first. The planned hardware MVP targets the FNIRSI DPS-150, with ESP32 as the provisional controller family.
+
+# Where to start
+
+- [Operator guide](user-guide/operator-guide.md) — install, configure and run the gateway.
+- [Device developer guide](user-guide/device-developer-guide.md) — device creation, gateway hosting and shared packages, with the AI task template and human review checklist.
+- [Develop your device with AI](user-guide/develop-your-device.md) — five-step paths for device plugins and custom firmware.
+- [Architecture v1.5](user-guide/architecture.md) — the admitted architecture baseline.
+- [Standards](standards-pages/index.qmd) — the versioned contract sets: OTDP, registry, execution, interface, plugin UI and plugin UI preview.
+- [CLI reference](reference/cli/index.qmd) — the `benchweave` command tree.
+
+# Sister repository
+
+The [plugin developer SDK](https://madeinoz67.github.io/benchweave-sdk/) (`benchweave-sdk`) provides the offline plugin tooling — project generation, validation, mocks and the local UI preview. It is mounted in this repository at `packages/sdk` as a git submodule with its own CI and release cycle; the [plugin SDK guide](user-guide/plugin-sdk.md) documents it.
