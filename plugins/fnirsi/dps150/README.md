@@ -1,6 +1,6 @@
 # FNIRSI DPS-150 local BenchWeave adapter
 
-This is an unpublished, read-only adapter for **OTDP 0.3.0 / adapter API 1.1**, descriptor and implementation **0.1.0**, against BenchWeave revision `230acefc88c2e7d5d1dfc07100344fdc564ea404` and its device developer guide. All qualification evidence is **simulated with mocks**. No physical firmware has been qualified. No hardware was opened or operated, and nothing was published.
+This is an unpublished, read-only adapter for **OTDP 0.1.0 / adapter API 0.1.0**, descriptor and implementation **0.1.0**, against BenchWeave revision `230acefc88c2e7d5d1dfc07100344fdc564ea404` and its device developer guide. All qualification evidence is **simulated with mocks**. No physical firmware has been qualified. No hardware was opened or operated, and nothing was published.
 
 The reviewed factory is `benchweave_fnirsi_dps150.adapter:create_plugin`. This independent project owns the injectable protocol library, adapter, descriptor, evidence and tests. Its Python distribution is `benchweave-fnirsi-dps150`; it imports no BenchWeave core implementation and has no runtime dependencies. See [LICENSE](LICENSE) and [protocol evidence](docs/protocol-evidence.md) for selective reuse of cho45's MIT framing algorithms and KochC's corroborating evidence. It is not a published registry release. The descriptor ID remains `org.benchweave.fnirsi-dps150`.
 
@@ -19,7 +19,7 @@ uv run mypy
 uv build
 ```
 
-The explicit contract bootstrap downloads eight immutable, SHA-256-pinned OTDP documents/schemas from the revision in `contracts/lock.json`. It is a development dependency fetch, not runtime I/O; tests only verify/read local copies and fail clearly if they are absent or altered. Once dependencies and contracts are present, checks run offline. Contract upgrades require reviewing new bytes and updating the lock explicitly. For an offline handoff, retain the fetched `contracts/otdp-v0.3.0/` directory with the project.
+The explicit contract bootstrap downloads eight immutable, SHA-256-pinned OTDP documents/schemas from the revision in `contracts/lock.json`. It is a development dependency fetch, not runtime I/O; tests only verify/read local copies and fail clearly if they are absent or altered. Once dependencies and contracts are present, checks run offline. Contract upgrades require reviewing new bytes and updating the lock explicitly. For an offline handoff, retain the fetched `contracts/otdp-0.1.0/` directory with the project.
 
 The project has its own `uv.lock`. Wheels contain the Python package, descriptor, vectors, licence and evidence documentation. Source distributions contain source, tests, tools, contract lock and docs; a fresh extraction can bootstrap its pinned contract inputs without the core checkout. Build success is not registry admission: registry manifests, provenance/SBOM, review and installation remain separate release work. No package is published or installed into a gateway by these commands.
 

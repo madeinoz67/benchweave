@@ -1,4 +1,4 @@
-"""Mock-only OTDP 0.3.0 / adapter 1.1 conformance."""
+"""Mock-only OTDP 0.1.0 / adapter 1.1 conformance."""
 
 import asyncio
 import json
@@ -29,7 +29,7 @@ def commanded_sends(calls: list[tuple[dict[str, Any], Any]]) -> list[bytes]:
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = ROOT / "src/benchweave_fnirsi_dps150"
-SCHEMAS = ROOT / "contracts/otdp-v0.3.0"
+SCHEMAS = ROOT / "contracts/otdp-0.1.0"
 IDENTITY = bytes.fromhex("f0a1de074450532d3135308f f0a1e003312e3072")
 
 
@@ -177,7 +177,7 @@ def test_descriptor_schema_and_package_evidence() -> None:
     Draft202012Validator(schema, format_checker=FormatChecker()).validate(descriptor)
     assert descriptor["capabilities"] == ["identify", "read"]
     assert set(descriptor["operations"]) == {"identify", "read"}
-    assert descriptor["required_features"] == ["otdp.core/0.3.0", "otdp.adapter/1.1"]
+    assert descriptor["required_features"] == ["otdp.core/0.1.0", "otdp.adapter/0.1.0"]
     assert not {"profiles", "actions", "contracts", "channels"} & descriptor.keys()
     assert descriptor["integration"]["adapter"]["permissions"] == ["scoped_transport"]
     assert descriptor["integration"]["adapter"]["dependencies"] == []

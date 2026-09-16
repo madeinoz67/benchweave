@@ -29,7 +29,7 @@ def main() -> None:
     if not re.fullmatch(r"[a-z0-9_./-]+", directory) or ".." in directory:
         raise ValueError("Invalid contract directory")
     base = f"https://raw.githubusercontent.com/madeinoz67/benchweave/{revision}/{directory}/"
-    destination = ROOT / "contracts/otdp-v0.3.0"
+    destination = ROOT / "contracts" / "-".join(Path(directory).parts[-2:])
     for name, expected in lock["sha256"].items():
         if Path(name).name != name or not re.fullmatch(r"[a-f0-9]{64}", expected):
             raise ValueError("Invalid contract lock entry")

@@ -1,5 +1,5 @@
 {
-  "otdp_version": "0.3.0",
+  "otdp_version": "0.1.0",
   "descriptor_version": "0.1.0",
   "id": "org.benchweave.fnirsi-dps150",
   "display_name": "FNIRSI DPS-150 (read-only, KochC empty-GET dialect)",
@@ -22,7 +22,7 @@
     {"name": "protection", "description": "Device-reported protection; receipt timestamp only.", "type": "enum", "access": "ro", "semantic": "state", "read_policy": {"max_age_ms": 0, "destructive": false}, "binding": {"kind": "adapter", "key": "protection"}, "enum_values": ["normal", "OVP", "OCP", "OPP", "OTP", "LVP", "REP"]},
     {"name": "mode", "description": "Device-reported mode; receipt timestamp only.", "type": "enum", "access": "ro", "semantic": "state", "read_policy": {"max_age_ms": 0, "destructive": false}, "binding": {"kind": "adapter", "key": "mode"}, "enum_values": ["CC", "CV"]}
   ],
-  "required_features": ["otdp.core/0.3.0", "otdp.adapter/1.1"],
+  "required_features": ["otdp.core/0.1.0", "otdp.adapter/0.1.0"],
   "provenance": {
     "sources": [
       {"title": "KochC protocol mappings and serial settings", "reference": "https://github.com/KochC/DPS-150-python-library/tree/ae1df445d5993bdc0839d863ac1ba25d9d1bbfae", "revision": "ae1df445d5993bdc0839d863ac1ba25d9d1bbfae"},
