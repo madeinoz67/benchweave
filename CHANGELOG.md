@@ -260,6 +260,7 @@ All notable changes to this project will be documented in this file.
 - Ignore device plugins' local vendored contracts
 - Ignore device plugins' local vendored contracts (#23)
 - Advance SDK pointer — gortex-artifact ignore guard (main #17 parity)
+- Advance benchweave-sdk pointer (CoC + governance docs)
 
 ### Refactoring
 
