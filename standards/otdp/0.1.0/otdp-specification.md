@@ -1,4 +1,4 @@
-# Open Test Device Protocol — Specification 0.3.0
+# Open Test Device Protocol — Specification 0.1.0
 
 **Status:** Core and twelve device-class design profiles; implementation and hardware qualification remain separate  
 **Date:** 9 September 2026  
@@ -34,7 +34,7 @@ The agent MUST NOT create or widen bench limits, auto-install a descriptor-adver
 
 ## 3. Descriptor model
 
-The descriptor schema is Draft 2020-12, identified by `urn:otdp:device-descriptor:0.3.0`. It is a local artefact identifier, not a URL to fetch. `otdp_version` is exactly `0.3.0`. `descriptor_version` uses `major.minor.patch` with nonnegative integers and no leading zeroes. This revision does not accept prerelease/build suffixes.
+The descriptor schema is Draft 2020-12, identified by `urn:otdp:device-descriptor:0.1.0`. It is a local artefact identifier, not a URL to fetch. `otdp_version` is exactly `0.1.0`. `descriptor_version` uses `major.minor.patch` with nonnegative integers and no leading zeroes. This revision does not accept prerelease/build suffixes.
 
 Required top-level information is version, namespaced model `id`, display name, description, identity contract, integration mode, transport, capabilities, operation policies, parameters, required features and provenance. Exact field types and conditional requirements are in the schema. Numeric conformance levels are removed: implementation mode and capability availability are independent.
 
@@ -293,7 +293,7 @@ Do not edit a version field and assume compatibility. Review each descriptor: re
 
 Map `vendor` into expected identity only after checking actual device responses. Replace `adapter.module` with the reviewed factory entry point and API/version contract. Native JSON devices must implement correlation/runtime envelopes or remain behind a legacy adapter. Preserve original descriptors as migration evidence; unresolved claims remain uncommissioned.
 
-The 0.3.0 schemas reject 0.1 descriptors deliberately. There is no automatic compatibility or conformance claim for the supplied v0.1 examples.
+The 0.1.0 schemas reject 0.1 descriptors deliberately. There is no automatic compatibility or conformance claim for the supplied v0.1 examples.
 
 
 ## 14. Class-profile contract and additional host services
@@ -302,8 +302,8 @@ The twelve profiles, 50 action schemas and typed dataset contract are normative 
 
 ## 15. Shared repository packaging
 
-STG 1.2 adds the companion [registry contract 1.0.0](../../registry/0.1.0/registry-specification.md). Authors should inspect existing compatible packages before creating a duplicate integration. A shared release includes the registry manifest, licence, immutable source reference, compatibility, permissions, pinned dependencies and applicable evidence. Profiles, declarative descriptors and executable implementations can be published separately with exact relationships. This distribution contract does not change OTDP 0.1.0 runtime envelopes or adapter API 0.1.0 and is not required for an unpublished local-only integration. Registry discovery never authorises automatic installation or device control.
+STG 1.2 adds the companion [registry contract 0.1.0](../../registry/0.1.0/registry-specification.md). Authors should inspect existing compatible packages before creating a duplicate integration. A shared release includes the registry manifest, licence, immutable source reference, compatibility, permissions, pinned dependencies and applicable evidence. Profiles, declarative descriptors and executable implementations can be published separately with exact relationships. This distribution contract does not change OTDP 0.1.0 runtime envelopes or adapter API 0.1.0 and is not required for an unpublished local-only integration. Registry discovery never authorises automatic installation or device control.
 
 ## 16. Procedure and commissioning boundary
 
-STG 1.3 supplies the companion [execution contract 1.0.0](../../execution/0.1.0/execution-contract.md). Its procedure engine maps approved typed steps into these OTDP envelopes. Bench, safety-policy and commissioning metadata remain host-owned and separate from shared device descriptors. Plugins receive already authorised operations and scoped host-issued identities; they do not interpret the procedure language or grant procedure authority. Runtime versions in this document remain unchanged.
+STG 1.3 supplies the companion [execution contract 0.1.0](../../execution/0.1.0/execution-contract.md). Its procedure engine maps approved typed steps into these OTDP envelopes. Bench, safety-policy and commissioning metadata remain host-owned and separate from shared device descriptors. Plugins receive already authorised operations and scoped host-issued identities; they do not interpret the procedure language or grant procedure authority. Runtime versions in this document remain unchanged.

@@ -8,7 +8,7 @@ The descriptor lists channels, profile IDs, action mappings and contract referen
 
 The standard catalog is `device-profile-catalog.json`, validated by `device-profile-catalog.schema.json`. Each embedded input/output schema also passes Draft 2020-12 meta-validation. A catalog file hash is not its schema URI: the catalog schema identifies the file's structure, while the descriptor pins the actual catalog contents. The measurement schema is pinned separately.
 
-`required_features` is now an extensible identifier list, but every identifier must be understood by the host before admission. Initial known features are core/0.3.0, adapter/1.1, passive_can/0.3.0, profile_actions/1.0.0, measurement/0.3.0 under the `otdp.` namespace, and the twelve catalog profile IDs. A well-formed unknown identifier is not automatically supported. This replaces v0.2's closed feature enumeration without weakening admission.
+`required_features` is now an extensible identifier list, but every identifier must be understood by the host before admission. Initial known features are core/0.1.0, adapter/0.1.0, passive_can/0.1.0, profile_actions/0.1.0, measurement/0.1.0 under the `otdp.` namespace, and the twelve catalog profile IDs. A well-formed unknown identifier is not automatically supported. This replaces v0.2's closed feature enumeration without weakening admission.
 
 Version matching is exact. This revision does not negotiate version ranges or silently choose a similar profile. A future profile revision gets its own ID, schemas, semantic rules and tests. Unknown optional `x-` metadata remains ignorable and cannot change required behaviour.
 

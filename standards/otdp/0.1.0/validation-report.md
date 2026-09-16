@@ -1,4 +1,4 @@
-# OTDP 0.3.0 specification verification
+# OTDP 0.1.0 specification verification
 
 **Result: 495/495 checks passed; 0 failed.**
 
@@ -117,74 +117,74 @@ Twelve class profiles and fifty input/output action contracts were checked again
 - PASS: class-daq.json descriptor structure
 - PASS: class-daq.json known required features
 - PASS: class-daq.json class membership/effects
-- PASS: class-daq.json pinned urn:otdp:profile-catalog:1.0.0
-- PASS: class-daq.json pinned urn:otdp:measurement:0.3.0
+- PASS: class-daq.json pinned urn:otdp:profile-catalog:0.1.0
+- PASS: class-daq.json pinned urn:otdp:measurement:0.1.0
 - PASS: class-daq.json vector file resolves
 - PASS: class-dc_psu.json descriptor structure
 - PASS: class-dc_psu.json known required features
 - PASS: class-dc_psu.json class membership/effects
-- PASS: class-dc_psu.json pinned urn:otdp:profile-catalog:1.0.0
-- PASS: class-dc_psu.json pinned urn:otdp:measurement:0.3.0
+- PASS: class-dc_psu.json pinned urn:otdp:profile-catalog:0.1.0
+- PASS: class-dc_psu.json pinned urn:otdp:measurement:0.1.0
 - PASS: class-dc_psu.json vector file resolves
 - PASS: class-dmm.json descriptor structure
 - PASS: class-dmm.json known required features
 - PASS: class-dmm.json class membership/effects
-- PASS: class-dmm.json pinned urn:otdp:profile-catalog:1.0.0
-- PASS: class-dmm.json pinned urn:otdp:measurement:0.3.0
+- PASS: class-dmm.json pinned urn:otdp:profile-catalog:0.1.0
+- PASS: class-dmm.json pinned urn:otdp:measurement:0.1.0
 - PASS: class-dmm.json vector file resolves
 - PASS: class-electronic_load.json descriptor structure
 - PASS: class-electronic_load.json known required features
 - PASS: class-electronic_load.json class membership/effects
-- PASS: class-electronic_load.json pinned urn:otdp:profile-catalog:1.0.0
-- PASS: class-electronic_load.json pinned urn:otdp:measurement:0.3.0
+- PASS: class-electronic_load.json pinned urn:otdp:profile-catalog:0.1.0
+- PASS: class-electronic_load.json pinned urn:otdp:measurement:0.1.0
 - PASS: class-electronic_load.json vector file resolves
 - PASS: class-embedded_controller.json descriptor structure
 - PASS: class-embedded_controller.json known required features
 - PASS: class-embedded_controller.json class membership/effects
-- PASS: class-embedded_controller.json pinned urn:otdp:profile-catalog:1.0.0
-- PASS: class-embedded_controller.json pinned urn:otdp:measurement:0.3.0
+- PASS: class-embedded_controller.json pinned urn:otdp:profile-catalog:0.1.0
+- PASS: class-embedded_controller.json pinned urn:otdp:measurement:0.1.0
 - PASS: class-embedded_controller.json vector file resolves
 - PASS: class-function_generator.json descriptor structure
 - PASS: class-function_generator.json known required features
 - PASS: class-function_generator.json class membership/effects
-- PASS: class-function_generator.json pinned urn:otdp:profile-catalog:1.0.0
-- PASS: class-function_generator.json pinned urn:otdp:measurement:0.3.0
+- PASS: class-function_generator.json pinned urn:otdp:profile-catalog:0.1.0
+- PASS: class-function_generator.json pinned urn:otdp:measurement:0.1.0
 - PASS: class-function_generator.json vector file resolves
 - PASS: class-logic_analyser.json descriptor structure
 - PASS: class-logic_analyser.json known required features
 - PASS: class-logic_analyser.json class membership/effects
-- PASS: class-logic_analyser.json pinned urn:otdp:profile-catalog:1.0.0
-- PASS: class-logic_analyser.json pinned urn:otdp:measurement:0.3.0
+- PASS: class-logic_analyser.json pinned urn:otdp:profile-catalog:0.1.0
+- PASS: class-logic_analyser.json pinned urn:otdp:measurement:0.1.0
 - PASS: class-logic_analyser.json vector file resolves
 - PASS: class-oscilloscope.json descriptor structure
 - PASS: class-oscilloscope.json known required features
 - PASS: class-oscilloscope.json class membership/effects
-- PASS: class-oscilloscope.json pinned urn:otdp:profile-catalog:1.0.0
-- PASS: class-oscilloscope.json pinned urn:otdp:measurement:0.3.0
+- PASS: class-oscilloscope.json pinned urn:otdp:profile-catalog:0.1.0
+- PASS: class-oscilloscope.json pinned urn:otdp:measurement:0.1.0
 - PASS: class-oscilloscope.json vector file resolves
 - PASS: class-smu.json descriptor structure
 - PASS: class-smu.json known required features
 - PASS: class-smu.json class membership/effects
-- PASS: class-smu.json pinned urn:otdp:profile-catalog:1.0.0
-- PASS: class-smu.json pinned urn:otdp:measurement:0.3.0
+- PASS: class-smu.json pinned urn:otdp:profile-catalog:0.1.0
+- PASS: class-smu.json pinned urn:otdp:measurement:0.1.0
 - PASS: class-smu.json vector file resolves
 - PASS: class-spectrum_analyser.json descriptor structure
 - PASS: class-spectrum_analyser.json known required features
 - PASS: class-spectrum_analyser.json class membership/effects
-- PASS: class-spectrum_analyser.json pinned urn:otdp:profile-catalog:1.0.0
-- PASS: class-spectrum_analyser.json pinned urn:otdp:measurement:0.3.0
+- PASS: class-spectrum_analyser.json pinned urn:otdp:profile-catalog:0.1.0
+- PASS: class-spectrum_analyser.json pinned urn:otdp:measurement:0.1.0
 - PASS: class-spectrum_analyser.json vector file resolves
 - PASS: class-switch_matrix.json descriptor structure
 - PASS: class-switch_matrix.json known required features
 - PASS: class-switch_matrix.json class membership/effects
-- PASS: class-switch_matrix.json pinned urn:otdp:profile-catalog:1.0.0
-- PASS: class-switch_matrix.json pinned urn:otdp:measurement:0.3.0
+- PASS: class-switch_matrix.json pinned urn:otdp:profile-catalog:0.1.0
+- PASS: class-switch_matrix.json pinned urn:otdp:measurement:0.1.0
 - PASS: class-switch_matrix.json vector file resolves
 - PASS: class-vna.json descriptor structure
 - PASS: class-vna.json known required features
 - PASS: class-vna.json class membership/effects
-- PASS: class-vna.json pinned urn:otdp:profile-catalog:1.0.0
-- PASS: class-vna.json pinned urn:otdp:measurement:0.3.0
+- PASS: class-vna.json pinned urn:otdp:profile-catalog:0.1.0
+- PASS: class-vna.json pinned urn:otdp:measurement:0.1.0
 - PASS: class-vna.json vector file resolves
 - PASS: reference-can.json descriptor structure
 - PASS: reference-can.json known required features

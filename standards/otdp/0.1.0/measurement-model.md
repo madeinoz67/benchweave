@@ -1,4 +1,4 @@
-# OTDP measurement and dataset model 0.3.0
+# OTDP measurement and dataset model 0.1.0
 
 **Normative schema:** `otdp-measurement.schema.json` (`urn:otdp:measurement:0.1.0`)  
 **Purpose:** Describe measurement meaning independently of instrument command syntax or file transport.

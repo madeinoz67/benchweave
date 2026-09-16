@@ -1,4 +1,4 @@
-# STG REST and MCP interface contract 1.1.0
+# STG REST and MCP interface contract 0.1.0
 
 **Baseline:** STG 1.5 · OTDP 0.1.0 · execution 0.1.0 · registry 0.1.0.  
 **Status:** Architectural interface definition, not a deployed or tested server.
@@ -61,7 +61,7 @@ Lease release is idempotent and triggers the approved safe transition for associ
 
 run_cancel requires the run owner with current control permission or a separately authorised administrator. It is durable, idempotent and records a reason. It requests body termination and protection, not reversal of device commands or immediate physical safety. A terminal run returns its existing state. Cancellation does not require an unexpired controlling lease. An unauthenticated or unauthorised remote caller cannot invoke it; independent/local protective mechanisms remain available without that caller.
 
-run_get returns a monotonically increasing revision and accepted/running/protecting/terminal state. Terminal body outcome and physical safety follow execution contract 1.0.0. Nonterminal outcome and safe-state fields are null; terminal outcome/safe-state values are required. A storage failure may leave terminal_record null only for outcome_unknown or interrupted. That null explicitly means final evidence is missing; even physically verified safety cannot produce passed without a retained terminal record. After a crash the summary may itself be unavailable; recovery reports interruption/unknown rather than inventing a prior record. A retrieved failed test is a successful read response with its failed outcome, not an HTTP transport failure. Clients must wait for terminal evidence before asserting completion. Busy loops or lost MCP requests cannot release ownership; only the coordinator performs the defined transition.
+run_get returns a monotonically increasing revision and accepted/running/protecting/terminal state. Terminal body outcome and physical safety follow execution contract 0.1.0. Nonterminal outcome and safe-state fields are null; terminal outcome/safe-state values are required. A storage failure may leave terminal_record null only for outcome_unknown or interrupted. That null explicitly means final evidence is missing; even physically verified safety cannot produce passed without a retained terminal record. After a crash the summary may itself be unavailable; recovery reports interruption/unknown rather than inventing a prior record. A retrieved failed test is a successful read response with its failed outcome, not an HTTP transport failure. Clients must wait for terminal evidence before asserting completion. Busy loops or lost MCP requests cannot release ownership; only the coordinator performs the defined transition.
 
 ## 7. Pagination, events and reconnect
 
@@ -105,6 +105,6 @@ Required interface checks I01–I12: REST/MCP request/result equivalence; no pri
 
 The supplied verification checks schemas, catalog/OpenAPI/tool mappings and selected examples. It does not run an HTTP server, OAuth flow, MCP client, event store or device. The STG 1.5 acceptance documents record registry composition and integrated scenario review. Those are architectural walkthroughs, not live conformance evidence. This interface contract intentionally does not claim older MCP clients interoperate without a separately qualified compatibility adapter.
 
-## 12. Revision 1.1.0
+## 12. Revision history
 
 Supersedes interface 1.0.0 in the design package. Adds original_utf8_base64 to document results and permits a missing terminal record only for explicit uncertain/interrupted outcomes. REST v1/tool names remain; clients inspect the advertised interface version and validate against this exact catalog. This unreleased design revision makes no deployed-client compatibility claim.
