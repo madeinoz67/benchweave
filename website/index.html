@@ -262,6 +262,20 @@
       </div>
     </div>
 
+    <div class="surprised">
+      <h2>What surprised us</h2>
+      <div class="surprised-grid">
+        <div class="surprised-card">
+          <h3>A device plugin doesn't need BenchWeave</h3>
+          <p>A plugin is a descriptor plus an adapter against structural interfaces, with no runtime dependency on the SDK or the gateway. The <a href="https://github.com/madeinoz67/benchweave/tree/main/plugins/fnirsi/dps150" target="_blank" rel="noopener">DPS-150 plugin</a> builds and tests unchanged outside this checkout and has driven the real supply. So a standalone MCP server that implements the host side can control a device in its own right — the plugin is a standard way of saying what a device is and how it talks. What that path doesn't give you is the bench safety model: ownership, protection deadlines and verified endings live in the gateway.</p>
+        </div>
+        <div class="surprised-card">
+          <h3>Greenfield hardware can start from the firmware</h3>
+          <p>For your own board, the same workflow starts one step earlier: <a href="docs/user-guide/develop-your-device.html#build-my-own-device-firmware">Build my own device firmware</a> gives you a shared session instruction and stage prompts to get from board and intended behaviour to firmware, descriptor and adapter that agree, with the firmware kept in the plugin's own <code>firmware/</code> beside its toolchain and compatibility record. The prompts authorise software work only; flashing and energising stay with you.</p>
+        </div>
+      </div>
+    </div>
+
     <div class="ai-callout">
       <div>
         <h2>Build your instrument and workbench with AI</h2>
@@ -284,9 +298,10 @@
     <div class="limits-callout">
       <div>
         <h2>Where it stands</h2>
-        <p>The gateway side of interface 0.1.0 is live in the PoC — REST routes and MCP tools over FastAPI/FastMCP on one core-operations seam, with REST↔MCP parity and SIGKILL event recovery proven. Registry admission and activation change kinds are not reachable without a registry session; OAuth and TLS are out of PoC scope. Hardware qualification and unattended bench operation are separate, commissioned work.</p>
+        <p><strong>Working now.</strong> The simulator-first PoC is through its acceptance gate: durable run and lease state with kill-recovery, procedure admission and protection, 20 REST routes and 17 MCP tools on one core-operations seam, and an operator CLI. The SDK scaffolds an independent plugin project and release CI builds one outside the checkout and drives it through the gateway on mock transport. The DPS-150 plugin — hand-written, zero runtime dependencies — has driven the real supply; it is read-only and claims no PSU profile yet.</p>
+        <p><strong>Next.</strong> Gateway and devices talking through the registry: the gateway side of the registry contract is done (signed catalogue, admission with a content-addressed cache, activation, an unsigned dev loop) but the registry service and a device-install command do not exist, and the OTDP bridge carries identify and scalar read/write only. Then a basic operator UI on the component library that exists today. Hardware qualification and unattended bench operation remain separate, commissioned work.</p>
       </div>
-      <a class="btn btn-secondary" href="docs/user-guide/compatibility.html">Compatibility record</a>
+      <a class="btn btn-secondary" href="docs/user-guide/delivery-plan.html">Delivery plan</a>
     </div>
   </section>
 
