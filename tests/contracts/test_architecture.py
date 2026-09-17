@@ -12,6 +12,22 @@ ROOT = Path(__file__).resolve().parents[2]
 SUITES = ("devices", "registry", "execution", "interface", "closure", "planning", "documents")
 
 
+@pytest.fixture(scope="session")
+def pristine_trees(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, Path]:
+    """One repository→tmp copy of ``docs/`` and ``standards/`` per session.
+
+    Walking the repository trees is the expensive part (230 files), so the
+    mutating tests below never re-copy from the repository: each takes a
+    cheap per-test copy from this pristine pair and leaves the pair itself
+    untouched (``test_validation_is_read_only`` proves the checkers cannot
+    dirty a tree they are pointed at).
+    """
+    base = tmp_path_factory.mktemp("architecture-pristine")
+    shutil.copytree(ROOT / "docs", base / "docs")
+    shutil.copytree(ROOT / "standards", base / "standards")
+    return base / "docs", base / "standards"
+
+
 def run_checks(suite: str, docs: Path, standards: Path) -> list[tuple[str, bool]]:
     script = ROOT / "scripts" / "architecture" / f"check_{suite}.py"
     assert script.is_file(), f"Missing architecture validator: {script}"
@@ -31,11 +47,12 @@ def test_architecture(suite: str) -> None:
     print(f"{suite}: {len(checks)} checks passed")
 
 
-def test_validation_is_read_only(tmp_path: Path) -> None:
+def test_validation_is_read_only(tmp_path: Path, pristine_trees: tuple[Path, Path]) -> None:
+    pristine_docs, pristine_standards = pristine_trees
     docs = tmp_path / "docs"
     standards = tmp_path / "standards"
-    shutil.copytree(ROOT / "docs", docs)
-    shutil.copytree(ROOT / "standards", standards)
+    shutil.copytree(pristine_docs, docs)
+    shutil.copytree(pristine_standards, standards)
 
     def snapshot(root: Path) -> dict[str, str]:
         return {
@@ -123,17 +140,29 @@ def test_documents_ignores_markdown_links_inside_fenced_code_blocks(
     ],
 )
 def test_contract_regressions_are_detected(
-    tmp_path: Path, suite: str, relative_path: str, old: str, new: str, expected: str
+    tmp_path: Path,
+    pristine_trees: tuple[Path, Path],
+    suite: str,
+    relative_path: str,
+    old: str,
+    new: str,
+    expected: str,
 ) -> None:
-    docs = tmp_path / "docs"
-    standards = tmp_path / "standards"
-    shutil.copytree(ROOT / "docs", docs)
-    shutil.copytree(ROOT / "standards", standards)
-    path = (
-        standards / relative_path
-        if (standards / relative_path).is_file()
-        else docs / relative_path
-    )
+    # Each case damages exactly one file, so only the tree holding that file
+    # is copied (tmp→tmp, from the session's pristine pair); the other tree
+    # is shared read-only. Path resolution mirrors the original: standards
+    # wins when the relative path exists in both trees.
+    pristine_docs, pristine_standards = pristine_trees
+    if (pristine_standards / relative_path).is_file():
+        docs = pristine_docs
+        standards = tmp_path / "standards"
+        shutil.copytree(pristine_standards, standards)
+        path = standards / relative_path
+    else:
+        docs = tmp_path / "docs"
+        shutil.copytree(pristine_docs, docs)
+        standards = pristine_standards
+        path = docs / relative_path
     original = path.read_text(encoding="utf-8")
     assert not old or old in original, "Mutation must change the intended fixture"
     changed = original.replace(old, new, 1) if old else original + new
