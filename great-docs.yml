@@ -84,6 +84,26 @@ logo:
   light: website/assets/logo.svg
   show_title: true
 
+# Lucide nav icons per the public-site styleguide v0.2 "Nav mapping", keyed by the
+# labels this site actually renders (page titles are lifted from each document's H1
+# by the assembly; standards groups are the dir_titles above).
+nav_icons:
+  navbar:
+    Standards: shield-check
+    User Guide: book-open
+  sidebar:
+    "Smart Test Gateway — PoC and MVP product requirements": rocket
+    "Smart Test Gateway PoC/MVP Implementation Plan": map
+    "Smart Test Gateway — Architecture v1.5": layout-template
+    OTDP: activity
+    Registry: database
+    Execution: play-circle
+    Interface: plug
+    "Plugin UI": layout-template
+    "Device developer guide": cpu
+    "AI device integration reviewer": bot
+    "Development and CI": git-branch
+
 hero:
   logo:
     light: docs/assets/benchweave-banner.png
