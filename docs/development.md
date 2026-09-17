@@ -15,14 +15,15 @@ uv run --no-sync benchweave
 uv build
 ```
 
-The lint/type/test trio mirrors CI's main gate, which runs `uv sync --locked`,
+The lint/type/test trio mirrors CI's main gate, which runs `uv sync`,
 `uv run ruff check .`, `uv run mypy`, `uv run pytest -q` and
-`make check-sdk-standards` from SHA-pinned actions. `ruff format` is available
+`make check-sdk-standards`. `ruff format` is available
 locally but is not a CI gate. When this page and the workflow disagree,
 `.github/workflows/ci.yml` is the authority.
 
 Add dependencies with `uv add` or `uv add --dev`, and commit both
-`pyproject.toml` and `uv.lock`. CI rejects a stale lockfile. Build dependencies
+`pyproject.toml` and `uv.lock`; `uv sync --locked --dev` enforces lockfile
+freshness locally. Build dependencies
 are resolved separately using the build-system requirements in `pyproject.toml`.
 
 ## UI toolchain
@@ -84,7 +85,7 @@ Change propagation, end to end:
 
 ## GitHub workflows
 
-- **CI** runs the Python gates (locked sync, ruff check, config-driven mypy,
+- **CI** runs the Python gates (sync, ruff check, config-driven mypy,
   pytest) and the standards sync check (`make check-sdk-standards`), plus a
   **systemd** template-verification job and a **ui** job (typecheck, lint,
   unit tests, Storybook build, renderer freshness gate, `npm audit`) on Linux.
