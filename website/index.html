@@ -28,10 +28,11 @@
     <button onclick="showPanel('standards', this)">Standards</button>
     <button onclick="showPanel('docs', this)">Docs</button>
     <button onclick="showPanel('sdk', this)">SDK</button>
+    <button onclick="showPanel('builtwith', this)">Built with</button>
   </nav>
   <div class="top-right">
-    <a class="icon-btn" title="GitHub" aria-label="BenchWeave on GitHub" href="https://github.com/madeinoz67/benchweave" target="_blank" rel="noopener">
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+    <a class="star-btn" title="Star BenchWeave on GitHub" aria-label="Star BenchWeave on GitHub" href="https://github.com/madeinoz67/benchweave" target="_blank" rel="noopener">
+      <span class="star" aria-hidden="true">★</span><span class="label">Star on GitHub</span><span class="count" id="star-count" hidden></span>
     </a>
     <button class="icon-btn" title="Toggle theme" aria-label="Toggle light or dark theme" onclick="toggleTheme()">◐</button>
   </div>
@@ -411,6 +412,43 @@
         </div>
       </div>
     </div>
+  </section>
+
+  <!-- ================= BUILT WITH ================= -->
+  <section class="panel" id="panel-builtwith">
+    <div class="page-head">
+      <h1>Built with AI</h1>
+      <p>BenchWeave is built by AI coding agents under human direction. For anyone curious how that works in practice, this page is the honest record: which model did which job, and the open tooling around them. The stack is deliberately mixed — no single vendor wrote this project.</p>
+    </div>
+    <div class="spec-grid">
+      <div class="spec-card">
+        <div class="spec-head"><h4>Architecture brainstorming</h4><span class="badge badge-version">GPT Astra</span></div>
+        <p>The origin conversations — turning “wouldn't it be cool to have AI help test hardware?” into a first architecture worth committing to.</p>
+      </div>
+      <div class="spec-card">
+        <div class="spec-head"><h4>The code</h4><span class="badge badge-version">GLM-5.3</span></div>
+        <p>The working model behind the gateway, the SDK, the plugins and the tests. Spec-driven and test-first: every slice landed as a failing test made green.</p>
+        <a class="spec-link" href="https://z.ai/" target="_blank" rel="noopener">Z.ai →</a>
+      </div>
+      <div class="spec-card">
+        <div class="spec-head"><h4>This website</h4><span class="badge badge-version">Anthropic Fable</span></div>
+        <p>Designed and built on free credits — which have since expired.</p>
+        <a class="spec-link" href="https://www.anthropic.com/" target="_blank" rel="noopener">Anthropic →</a>
+      </div>
+    </div>
+    <div class="docs-grid">
+      <div class="docs-group">
+        <div class="sb-title">memory &amp; code intelligence</div>
+        <a class="doc-card" href="https://github.com/scrypster/muninndb" target="_blank" rel="noopener"><h3>MuninnDB</h3><p>A self-hosted long-term memory server. This project keeps its own local vault, so hard-won context survives the session that earned it.</p></a>
+        <a class="doc-card" href="https://github.com/zzet/gortex" target="_blank" rel="noopener"><h3>Gortex</h3><p>A local code-intelligence daemon. The codebase is graph-indexed, and reads and edits route through it — nothing is touched blind.</p></a>
+      </div>
+      <div class="docs-group">
+        <div class="sb-title">method &amp; harness</div>
+        <a class="doc-card" href="https://github.com/obra/superpowers" target="_blank" rel="noopener"><h3>Superpowers</h3><p>The spec-driven development methodology around the coding agents: brainstorm, spec, plan, then implement — one reviewed slice at a time.</p></a>
+        <a class="doc-card" href="https://ourlifeos.ai/" target="_blank" rel="noopener"><h3>LifeOS</h3><p>The life-operating-system harness the whole workflow runs on — intent, planning, memory and verification.</p></a>
+      </div>
+    </div>
+    <p class="note">Mixed models, one rule: nothing lands on trust. Every change, AI-written or not, passes review and the CI gates — pytest, ruff, mypy strict — before it reaches main.</p>
   </section>
 
   <footer class="site-footer">
