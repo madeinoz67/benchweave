@@ -79,6 +79,10 @@ All notable changes to this project will be documented in this file.
 - Key the Pages concurrency group by ref
 - Wrap phone-width header onto two rows
 - Anchor public-site-assembly ignores to the repo root
+- B2 — Failure construction-site guard refuses empty correlation_id
+- D14-details — the closed six-key error envelope on every failure
+- D4 — every event kind emits the closed document-ref evidence
+- Review-fix wave — poison-emit guard, fallback log, hygiene
 
 ### Documentation
 
@@ -142,6 +146,7 @@ All notable changes to this project will be documented in this file.
 - Add Built with AI panel crediting models and tooling
 - Report via private advisory, not personal email
 - Add permanent Discord invite to README, SUPPORT and site (#33)
+- D4 + D14-details CLOSED by the interface-errata slice (#16)
 
 ### Features
 
