@@ -2,6 +2,9 @@ name: Package
 
 on:
   push:
+    # main only: an unrestricted push trigger double-ran every PR branch
+    # (once as push, once as pull_request).
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
