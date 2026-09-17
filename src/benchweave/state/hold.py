@@ -1,9 +1,11 @@
 """Advisory single-holder ownership for a store's database file (WP08 Task 10).
 
 The one-coordinator rule's enforcement primitive: a live gateway holds an
-exclusive ``flock`` on ``<db>.hold`` for exactly as long as its app lifespan
-owns the store, and the at-rest commands (backup/restore) acquire the same
-lock — refusing, with the holder named, while a live coordinator owns it.
+exclusive ``flock`` on a marker BESIDE the store's directory
+(``<data_dir>.hold`` — see :func:`hold_path` for why it is a sibling, not a
+file inside the directory) for exactly as long as its app lifespan owns the
+store, and the at-rest commands (backup/restore) acquire the same lock —
+refusing, with the holder named, while a live coordinator owns it.
 
 Why an OS lock and not a pid/boot-check marker: the operating system
 releases the lock when the holding PROCESS DIES, so a crashed gateway can
@@ -76,9 +78,21 @@ class StoreHeldError(RuntimeError):
 
 
 def hold_path(db_path: Path) -> Path:
-    """The advisory lock file that marks ownership of ``db_path``."""
+    """The advisory lock file that marks ownership of ``db_path``.
+
+    The marker is a SIBLING of the database's directory —
+    ``<parent>/<dir>.hold`` for ``<parent>/<dir>/<db>`` — never a file
+    inside that directory: ``restore`` swaps the whole data directory with
+    ``os.replace`` while the hold is taken, and on Windows a directory
+    containing ANY open descriptor (the held marker's own fd included)
+    cannot be renamed (WinError 5; a ``FILE_SHARE_DELETE`` handle does not
+    help — verified against ``MoveFileExW``). Living outside the swapped
+    directory, the held lock also stays anchored to the same inode across
+    the swap, so the swap window never exists un-anchored.
+    """
     db_path = Path(db_path)
-    return db_path.with_name(db_path.name + ".hold")
+    data_dir = db_path.parent
+    return data_dir.parent / (data_dir.name + ".hold")
 
 
 def _read_holder(path: Path) -> dict[str, Any] | None:

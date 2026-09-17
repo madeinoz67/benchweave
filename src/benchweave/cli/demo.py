@@ -579,10 +579,16 @@ def _teardown_scratch(root: Path, *, remove_root: bool, keep: bool) -> None:
         return
     if remove_root:
         shutil.rmtree(root, ignore_errors=True)
+        # The advisory hold marker is a sibling of the data dir, not inside
+        # it (see state/hold.hold_path) — sweep it too.
+        with contextlib.suppress(OSError):
+            root.parent.joinpath(root.name + ".hold").unlink()
         return
-    for suffix in ("", "-wal", "-shm", ".hold"):
+    for suffix in ("", "-wal", "-shm"):
         with contextlib.suppress(OSError):
             (root / (DB_NAME + suffix)).unlink()
+    with contextlib.suppress(OSError):
+        root.parent.joinpath(root.name + ".hold").unlink()
 
 
 def run_simulation(
