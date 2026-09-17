@@ -47,13 +47,18 @@ def _payload(identity_args: dict[str, object]) -> bytes:
     audience = identity_args["audience"]
     scopes = identity_args["scopes"]
     expires_at = identity_args["expires_at"]
-    if not isinstance(principal, str) or not principal:
+    if not isinstance(principal, str) or not principal or "|" in principal:
         raise IdentityRejected("malformed_token")
-    if not isinstance(audience, str) or not audience:
+    if not isinstance(audience, str) or not audience or "|" in audience:
         raise IdentityRejected("malformed_token")
     if not isinstance(expires_at, int) or isinstance(expires_at, bool):
         raise IdentityRejected("malformed_token")
     joined = " ".join(sorted(scopes)) if isinstance(scopes, (set, frozenset, list)) else ""
+    if "|" in joined:
+        raise IdentityRejected("malformed_token")
+    # ``|`` is the payload field delimiter: rejected in every field above so a
+    # crafted principal/audience/scope can never shift field boundaries. The
+    # 5-field check in ``validate`` stays as defence in depth.
     return f"v1|{principal}|{audience}|{joined}|{expires_at}".encode()
 
 

@@ -134,8 +134,8 @@ def resolve_fixtures(explicit: Path | None) -> Path:
     fixtures = explicit or Path(os.environ.get("BENCHWEAVE_FIXTURES", str(DEFAULT_FIXTURES)))
     if not (fixtures / BINDING_FILE).is_file():
         raise DemoError(
-            f"fixture lattice not found at {fixtures} — pass --fixtures pointing at a "
-            f"directory carrying {BINDING_FILE}"
+            f"fixture lattice not found at {fixtures} — pass --fixtures (or set "
+            f"BENCHWEAVE_FIXTURES) pointing at a directory carrying {BINDING_FILE}"
         )
     return fixtures
 
