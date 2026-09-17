@@ -83,6 +83,7 @@ All notable changes to this project will be documented in this file.
 - D14-details — the closed six-key error envelope on every failure
 - D4 — every event kind emits the closed document-ref evidence
 - Review-fix wave — poison-emit guard, fallback log, hygiene
+- Pin the symmetric stray/stamp gates across all three check lanes (#9)
 
 ### Documentation
 
