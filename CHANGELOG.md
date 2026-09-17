@@ -76,6 +76,7 @@ All notable changes to this project will be documented in this file.
 - Audit straggler sweep — URN ids, catalog version, prose assertions
 - Review fix wave 2 — runtime interface version, example teachings, doc truth
 - Declare MIT license in pyproject metadata (was Proprietary)
+- Key the Pages concurrency group by ref
 
 ### Documentation
 
@@ -268,6 +269,7 @@ All notable changes to this project will be documented in this file.
 - Advance SDK pointer — docs site + public site merged (PR #4); repoint plugin-sdk stub
 - Advance SDK pointer — close-out docs
 - Advance SDK pointer — SDK-focused static site
+- Advance SDK pointer — docs concurrency fix
 
 ### Refactoring
 
