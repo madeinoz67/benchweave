@@ -62,6 +62,28 @@ whole-envelope audit; the errata slice owns the envelope surface
 deliberately, alongside D4's event payloads, in the same
 interface-version decision.
 
+## RESOLUTION (interface-errata slice, 2026-09-17 — both registrations closed)
+
+The dedicated slice landed as `feat/interface-errata-slice` (issue
+[#16](https://github.com/madeinoz67/benchweave/issues/16)), three
+commits: B2 `07c3805` (the `Failure` construction-site guard),
+D14-details `41d547a` (the closed six-key envelope on every failure —
+typed findings from the seam validator, §7 watermarks plus stream on
+`event_gap`, `current_revision` at the generation-conflict sites,
+honest nulls elsewhere), and D4 `a1a99c4` (every event kind emits the
+closed doc-ref — binding document for run-scoped kinds, bench
+configuration for lease/bench kinds, change target for registry kinds —
+with free-form operational context relocated to the gateway log /
+`change_get` / §9 tombstones).
+
+**No corpus byte moved.** The decision the registration deferred —
+which kinds carry which document refs, and whether the closed def
+itself grows — resolved entirely in the seam: every emitter already
+holds a real document to pin, and the `$defs/error`'s five nullable
+keys admit honest nulls, so no def change was justified. Conformance
+flows seam→corpus; the deviation register rows in
+`docs/compatibility.md` carry the full closure text.
+
 ## Ledgered, not errata-bound: D15 / D16
 
 D15 (the `lease_create` §9 replay-peek asymmetry) and D16 (the
