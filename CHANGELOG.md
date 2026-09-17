@@ -77,6 +77,7 @@ All notable changes to this project will be documented in this file.
 - Review fix wave 2 — runtime interface version, example teachings, doc truth
 - Declare MIT license in pyproject metadata (was Proprietary)
 - Key the Pages concurrency group by ref
+- Anchor public-site-assembly ignores to the repo root
 
 ### Documentation
 
