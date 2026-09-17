@@ -151,6 +151,11 @@ def _resolve_event_evidence(
                     "version": str(ref["version"]),
                     "sha256": str(ref["sha256"]),
                 }
+            _LOG.warning(
+                "event evidence fallback: run %s has a non-ref binding row"
+                " (keys %s); pinning the bench configuration",
+                run_id, sorted(ref),
+            )
     bench = store.get_bench(bench_id)
     if bench is not None:
         return _bench_configuration_ref(bench)

@@ -3,7 +3,7 @@
 Every failure envelope mints a fresh 16-hex ``correlation_id`` (minLength
 1, D14) and serves the CLOSED six-key ``details`` object — typed findings
 plus the five nullable watermarks (D14-details, interface-errata slice);
-free-form detail content has no construction path.
+no factory path renders free-form detail content.
 """
 
 from __future__ import annotations
