@@ -8,6 +8,7 @@ continuity, matching the delivery plan's WP03 verification list.
 
 from __future__ import annotations
 
+import concurrent.futures
 import json
 import subprocess
 import sys
@@ -245,12 +246,32 @@ def _spawn(mode: str, path: Path) -> subprocess.Popen[bytes]:
     )
 
 
-def _await_marker(process: subprocess.Popen[bytes], marker: str) -> None:
+#: Generous bound for the child's next stdout marker (the healthy child
+#: prints within milliseconds; the kill cleanup below waits 10s): a wedged
+#: child now fails the test instead of blocking the whole run on readline.
+MARKER_TIMEOUT = 30.0
+
+
+def _read_marker_line(process: subprocess.Popen[bytes]) -> str:
     assert process.stdout is not None
-    line = process.stdout.readline().decode().strip()
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    future: concurrent.futures.Future[bytes] = pool.submit(process.stdout.readline)
+    try:
+        raw = future.result(timeout=MARKER_TIMEOUT)
+    except TimeoutError:
+        pytest.fail(f"child emitted no marker within {MARKER_TIMEOUT}s")
+    finally:
+        # wait=False: a reader still stuck on the pipe is unblocked by the
+        # caller's kill() (EOF), never joined here.
+        pool.shutdown(wait=False)
+    return raw.decode().strip()
+
+
+def _await_marker(process: subprocess.Popen[bytes], marker: str) -> None:
+    line = _read_marker_line(process)
     assert line == "OPENED", f"unexpected child output: {line}"
     if marker != "OPENED":
-        line = process.stdout.readline().decode().strip()
+        line = _read_marker_line(process)
         assert line == marker, f"waiting for {marker}, got {line}"
 
 

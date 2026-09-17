@@ -72,7 +72,7 @@ testpaths = ["tests"]
 # tests emit via record_property — warning on every leg.
 junit_family = "xunit1"
 markers = [
-  "slow: real child-process orchestration (kill-mid-run); deselect in CI with -m 'not slow'",
+  "slow: real child-process orchestration (kill-mid-run); CI runs these — deselect locally for quick iteration with -m 'not slow'",
 ]
 
 # Report-only coverage: `uv run pytest --cov` prints the table; no gate or
