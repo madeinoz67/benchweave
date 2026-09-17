@@ -194,12 +194,12 @@ def test_stamp_line_is_identical_in_checker_and_sdk() -> None:
 
 
 def test_check_only_stray_file_gate_symmetry(tmp_path: Path) -> None:
-    """T7 follow-up: how the two --check lanes treat a stray vendored file.
+    """T7 follow-up, RESOLVED (#9): both --check lanes reject a stray file.
 
-    Asymmetry pinned here deliberately, not fixed (a close-out decision):
-    bundle-mode --check verifies only the lock-recorded paths and lets a stray
-    extra file through, while the no-bundle lane recomputes the whole tree and
-    refuses it.
+    The asymmetry (bundle-mode walked only lock-recorded paths and let a
+    stray extra file through, while the no-bundle lane swept the whole
+    tree) was pinned as accepted behavior and is now fixed — one shared
+    extras sweep serves every lane.
     """
     from benchweave.standards.export import export_bundle
 
@@ -208,6 +208,71 @@ def test_check_only_stray_file_gate_symmetry(tmp_path: Path) -> None:
     sdk = _synced_sdk(tmp_path, bundle)
     stray = sdk / "src/benchweave_sdk/standards" / STANDARD / "EXTRA.txt"
     stray.write_text("not in the lock\n")
-    assert sync(bundle, sdk, check_only=True) == SyncReport((), (), (), ())
+    with pytest.raises(ValueError, match="unexpected_vendored_file"):
+        sync(bundle, sdk, check_only=True)
     with pytest.raises(ValueError, match="unexpected_vendored_file"):
         sync(None, sdk, check_only=True)
+
+
+def test_bundle_check_verifies_stamps(tmp_path: Path) -> None:
+    """#9 acceptance: bundle-mode --check verifies stamps, not just digests.
+
+    A missing per-standard stamp is drift in either lane — it would ride
+    into wheels unnoticed.
+    """
+    from benchweave.standards.export import export_bundle
+
+    bundle = tmp_path / "bundle"
+    export_bundle(ROOT, bundle)
+    sdk = _synced_sdk(tmp_path, bundle)
+    stamp = sdk / "src/benchweave_sdk/standards" / STANDARD / "_GENERATED.txt"
+    stamp.unlink()
+    with pytest.raises(ValueError, match="stamp_missing"):
+        sync(bundle, sdk, check_only=True)
+    with pytest.raises(ValueError, match="stamp_missing"):
+        sync(None, sdk, check_only=True)
+
+
+def test_hatch_build_rejects_stray_vendored_file(tmp_path: Path) -> None:
+    """#9 acceptance: the build hook sweeps the vendored tree at build time.
+
+    Per-entry digests alone let a stray file ship in any wheel built
+    outside the gated paths; the hook now walks the tree with the same
+    lock ∪ stamps ∪ __pycache__ rule.
+    """
+    import importlib.util
+    import sys
+    import types
+
+    from benchweave.standards.export import export_bundle
+
+    bundle = tmp_path / "bundle"
+    export_bundle(ROOT, bundle)
+    sdk = _synced_sdk(tmp_path, bundle)
+
+    if importlib.util.find_spec("hatchling") is None:
+        # The build hook's only hatchling use is the BuildHookInterface
+        # base class; a stub keeps the hook importable outside the build env.
+        stub = types.ModuleType("hatchling.builders.hooks.plugin.interface")
+        stub.BuildHookInterface = type("BuildHookInterface", (), {})  # type: ignore[attr-defined]
+        for name in (
+            "hatchling",
+            "hatchling.builders",
+            "hatchling.builders.hooks",
+            "hatchling.builders.hooks.plugin",
+        ):
+            sys.modules.setdefault(name, types.ModuleType(name))
+        sys.modules["hatchling.builders.hooks.plugin.interface"] = stub
+
+    spec = importlib.util.spec_from_file_location(
+        "hatch_build_sdk", SDK_SRC.parent / "hatch_build.py"
+    )
+    assert spec is not None and spec.loader is not None
+    hatch = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(hatch)
+
+    hatch._validate_vendored_standards(sdk)  # clean tree passes
+    stray = sdk / "src/benchweave_sdk/standards" / STANDARD / "EXTRA.txt"
+    stray.write_text("not in the lock\n")
+    with pytest.raises(RuntimeError, match="unexpected_vendored_file"):
+        hatch._validate_vendored_standards(sdk)
