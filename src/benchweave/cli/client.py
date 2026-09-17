@@ -61,9 +61,10 @@ class GatewayClient:
         if payload is not None:
             body = json.dumps(payload).encode("utf-8")
             headers["Content-Type"] = "application/json"
-        request = urllib.request.Request(url, data=body, headers=headers, method=method)
+        # S310: the scheme is pinned to http(s) at the constructor boundary.
+        request = urllib.request.Request(url, data=body, headers=headers, method=method)  # noqa: S310
         try:
-            with urllib.request.urlopen(request, timeout=self._timeout) as response:
+            with urllib.request.urlopen(request, timeout=self._timeout) as response:  # noqa: S310
                 raw = response.read()
         except urllib.error.HTTPError as error:
             detail = error.read().decode("utf-8", "replace").strip()

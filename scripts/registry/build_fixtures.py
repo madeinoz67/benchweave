@@ -49,7 +49,7 @@ def _load_key(name: str) -> Ed25519PrivateKey:
     key = serialization.load_pem_private_key(
         (REPO / "fixtures/registry/keys" / f"{name}.pem").read_bytes(), password=None
     )
-    assert isinstance(key, Ed25519PrivateKey)
+    assert isinstance(key, Ed25519PrivateKey)  # noqa: S101 — narrowing only
     return key
 
 

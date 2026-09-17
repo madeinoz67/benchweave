@@ -1033,7 +1033,9 @@ def fault_legs_from_junit(xml_bytes: bytes) -> list[dict[str, Any]]:
     break, not a leg to guess about.
     """
     try:
-        root = ET.fromstring(xml_bytes)
+        # S314: parses the junit.xml this harvest itself just wrote — local,
+        # trusted bytes, never a network document.
+        root = ET.fromstring(xml_bytes)  # noqa: S314
     except ET.ParseError as error:
         # A truncated/invalid scratch report is a harvest failure with a
         # named message, never an xml.etree traceback through the CLI.
@@ -1119,7 +1121,7 @@ def generate_faults(
             f"--junitxml={junit_path}",
         ]
         try:
-            completed = subprocess.run(
+            completed = subprocess.run(  # noqa: S603 — fixed argv assembled above
                 command, capture_output=True, text=True, timeout=timeout_s
             )
         except subprocess.TimeoutExpired as error:

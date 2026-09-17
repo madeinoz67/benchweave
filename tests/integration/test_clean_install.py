@@ -63,7 +63,7 @@ class WheelInstall:
             for key, value in os.environ.items()
             if not key.startswith("BENCHWEAVE_")
         }
-        return subprocess.run(  # noqa: S603 - fixed argv, no shell
+        return subprocess.run(
             [str(self.binary), *args],
             capture_output=True,
             text=True,
@@ -79,7 +79,7 @@ def wheel(tmp_path_factory: pytest.TempPathFactory) -> Iterator[WheelInstall]:
     venv) — the clean install under test."""
     root = tmp_path_factory.mktemp("clean-install")
     dist = root / "dist"
-    build = subprocess.run(  # noqa: S603, S607 - fixed argv; uv is the toolchain
+    build = subprocess.run(
         ["uv", "build", "--out-dir", str(dist)],
         cwd=str(REPO),
         capture_output=True,
@@ -91,7 +91,7 @@ def wheel(tmp_path_factory: pytest.TempPathFactory) -> Iterator[WheelInstall]:
     wheels = sorted(dist.glob("benchweave-*.whl"))
     assert len(wheels) == 1, f"expected exactly one wheel, found: {wheels}"
     venv = root / "venv"
-    created = subprocess.run(  # noqa: S603, S607
+    created = subprocess.run(
         ["uv", "venv", str(venv)],
         capture_output=True,
         text=True,
@@ -99,7 +99,7 @@ def wheel(tmp_path_factory: pytest.TempPathFactory) -> Iterator[WheelInstall]:
         check=False,
     )
     assert created.returncode == 0, f"uv venv failed:\n{created.stderr}"
-    installed = subprocess.run(  # noqa: S603, S607
+    installed = subprocess.run(
         [
             "uv",
             "pip",

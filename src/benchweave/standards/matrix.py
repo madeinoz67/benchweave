@@ -90,8 +90,8 @@ def _sources(main_url: str, sdk_url: str) -> str:
 
 def _origin_url(repo: Path) -> str:
     """Static origin URL of a checkout; empty when no origin is configured."""
-    result = subprocess.run(
-        ["git", "-C", str(repo), "config", "--get", "remote.origin.url"],
+    result = subprocess.run(  # noqa: S603 — fixed argv
+        ["git", "-C", str(repo), "config", "--get", "remote.origin.url"],  # noqa: S607 — PATH git is the supported invocation
         capture_output=True,
         text=True,
         check=False,

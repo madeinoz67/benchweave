@@ -405,7 +405,10 @@ def build_mcp(
 
         return _dispatch(go)
 
-    assert registered_names == set(vendored), "registration table drifted from the corpus"
+    if registered_names != set(vendored):
+        # Survives python -O: serving a drifted tool table would silently
+        # break the vendored-exact interface guarantee.
+        raise RuntimeError("registration table drifted from the corpus")
 
     async def _pin_all() -> None:
         """The mandated construction (Task 1 spike): fetch each registered
@@ -415,7 +418,8 @@ def build_mcp(
         covers all 17."""
         for name in sorted(vendored):
             tool = await mcp.get_tool(name)
-            assert tool is not None, f"{name} not registered"
+            if tool is None:
+                raise RuntimeError(f"{name} not registered")
             tool.parameters = vendored[name]["inputSchema"]
             # MCP-wire requirement (mcp_types' Tool model): outputSchema
             # carries a top-level ``type``. The vendored outputSchema is a
@@ -426,8 +430,11 @@ def build_mcp(
             tool.output_schema = pinned_output
             # Build-time self-check: the pin took (same object the server
             # serves from — the fidelity test re-proves it end to end).
-            assert tool.parameters == vendored[name]["inputSchema"]
-            assert tool.output_schema == pinned_output
+            # Explicit raise so the check survives python -O.
+            if tool.parameters != vendored[name]["inputSchema"] or (
+                tool.output_schema != pinned_output
+            ):
+                raise RuntimeError(f"{name}: schema pin did not take")
 
     asyncio.run(_pin_all())
     return mcp

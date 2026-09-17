@@ -76,7 +76,7 @@ CONTENT_DIR = "content"
 #: The 0600 credential file written by setup.
 CREDENTIAL_FILE = "benchweave.env"
 #: The env key carrying the gateway secret inside the credential file.
-SECRET_ENV_KEY = "BENCHWEAVE_SECRET"
+SECRET_ENV_KEY = "BENCHWEAVE_SECRET"  # noqa: S105 — an env var NAME, not a credential
 #: The digest manifest name (in backups and in restored data dirs).
 MANIFEST_NAME = "manifest.json"
 #: Files a verified tree may carry beyond the manifest's ``files``: the
@@ -341,7 +341,7 @@ def restore(archive: Path, data_dir: Path) -> None:
     if not (archive / MANIFEST_NAME).is_file():
         raise AtRestError(f"archive {archive} has no {MANIFEST_NAME} — not a backup directory")
     manifest = _load_manifest(archive)
-    assert manifest is not None  # the is_file check above makes this true
+    assert manifest is not None  # noqa: S101 — narrowing only; is_file above makes this true
     for required in (DB_NAME,):
         if not (archive / required).is_file():
             raise AtRestError(f"archive {archive} is missing {required}")
