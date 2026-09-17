@@ -5,8 +5,8 @@ exclusive ``flock`` on ``<db>.hold`` for exactly as long as its app lifespan
 owns the store, and the at-rest commands (backup/restore) acquire the same
 lock — refusing, with the holder named, while a live coordinator owns it.
 
-Why ``flock`` and not a pid/boot-check marker: the operating system releases
-an advisory ``flock`` when the holding PROCESS DIES, so a crashed gateway can
+Why an OS lock and not a pid/boot-check marker: the operating system
+releases the lock when the holding PROCESS DIES, so a crashed gateway can
 never leave a false "held" behind — the gate cannot false-positive across
 process death (the exact failure mode pid+boot-check designs have to chase).
 The lockfile BODY carries holder metadata (pid, label, acquired_at) purely
@@ -15,18 +15,50 @@ never the file content, is the truth. Metadata is written only after the
 lock is acquired, so the body always describes the current holder; stale
 content under a free lock is ignored by design.
 
-``fcntl.flock`` is POSIX (macOS/Linux) — the repo's supported platforms (CI
-matrix is ubuntu/macos; the deploy target is systemd).
+POSIX (macOS/Linux — the supported deploy platforms; the target is systemd)
+uses ``fcntl.flock``. Windows uses an ``msvcrt.locking`` region so the
+gateway remains importable and the suite runnable on Windows development
+checkouts; the crash-release property holds there too. Windows region locks
+are mandatory rather than advisory, so the locked byte lives at a fixed
+offset far beyond any metadata the body will ever hold — plain readers of
+the marker file never touch it.
 """
 
 from __future__ import annotations
 
-import fcntl
 import json
 import os
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+if sys.platform == "win32":
+    import msvcrt
+
+    _LOCK_OFFSET = 1 << 30
+
+    def _lock_exclusive_nonblocking(fd: int) -> None:
+        os.lseek(fd, _LOCK_OFFSET, os.SEEK_SET)
+        try:
+            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+        except OSError as error:
+            # Contention surfaces as EACCES; any other failure of the lock
+            # call reads as held too — the safe direction (see daemon_holds).
+            raise BlockingIOError(str(error)) from error
+
+    def _unlock(fd: int) -> None:
+        os.lseek(fd, _LOCK_OFFSET, os.SEEK_SET)
+        msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+
+else:
+    import fcntl
+
+    def _lock_exclusive_nonblocking(fd: int) -> None:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+    def _unlock(fd: int) -> None:
+        fcntl.flock(fd, fcntl.LOCK_UN)
 
 
 class StoreHeldError(RuntimeError):
@@ -87,7 +119,7 @@ class StoreHold:
         path.parent.mkdir(parents=True, exist_ok=True)
         fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
         try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            _lock_exclusive_nonblocking(fd)
             # Written only under the held lock: the body names the CURRENT
             # holder, never a refused contender.
             os.ftruncate(fd, 0)
@@ -116,7 +148,7 @@ class StoreHold:
         """Drop the hold (a no-op when not held)."""
         if self._fd is None:
             return
-        fcntl.flock(self._fd, fcntl.LOCK_UN)
+        _unlock(self._fd)
         os.close(self._fd)
         self._fd = None
 
@@ -140,7 +172,7 @@ def daemon_holds(db_path: Path) -> bool:
     if not path.exists():
         return False
     try:
-        # Read-only suffices for flock (review M3): the probe never writes,
+        # Read-only suffices for the lock probe (review M3): it never writes,
         # and a read-only open works where a write open could not (e.g. a
         # 0600 marker owned by the gateway's user, probed by the operator).
         fd = os.open(path, os.O_RDONLY)
@@ -155,10 +187,10 @@ def daemon_holds(db_path: Path) -> bool:
         # truthful retry once the operator fixes the permissions.
         return True
     try:
-        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        _lock_exclusive_nonblocking(fd)
     except BlockingIOError:
         os.close(fd)
         return True
-    fcntl.flock(fd, fcntl.LOCK_UN)
+    _unlock(fd)
     os.close(fd)
     return False
