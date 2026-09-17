@@ -459,7 +459,8 @@ def verify_tree(dest: Path, paths: dict[str, str]) -> None:
     if failures:
         raise SystemExit("assembled site verification FAILED:\n  " + "\n  ".join(failures))
     log(
-        f"verification OK: static root + unversioned docs/ ({sum(1 for _ in docs.rglob('*.html'))} pages)"
+        f"verification OK: static root + unversioned docs/ "
+        f"({sum(1 for _ in docs.rglob('*.html'))} pages)"
     )
 
 
