@@ -79,9 +79,15 @@ def test_retention_overtake_yields_event_gap(seam: Seam) -> None:
         ops.events_get(IDENT, "bench-1", after=stale, limit=10)
     assert exc.value.failure.code == "event_gap"
     # 6 emissions, trim keeps 3: the retained window is sequences 4..6.
+    # D14-details: the failure carries the CLOSED six-key object with the
+    # §7 watermarks AND the stream they address.
     assert exc.value.failure.details == {
+        "findings": [],
+        "current_revision": None,
+        "stream_id": "bench.bench-1",
         "oldest_sequence": "4",
         "current_sequence": "6",
+        "retry_after_ms": None,
     }
 
 

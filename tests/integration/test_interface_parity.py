@@ -143,6 +143,16 @@ LIMITS: dict[str, int] = {
 }
 BENCH = "sim-bench"
 _CORRELATION_ID = re.compile(r"^[0-9a-f]{16}$")  # errors.failure mint — every envelope (D14)
+# D14-details (interface-errata slice): the closed six-key object every
+# context-free failure serves — findings empty, watermarks honestly null.
+_CLOSED_EMPTY_DETAILS: dict[str, object] = {
+    "findings": [],
+    "current_revision": None,
+    "stream_id": None,
+    "oldest_sequence": None,
+    "current_sequence": None,
+    "retry_after_ms": None,
+}
 DEVICE = "descriptor-sim-controller"  # bootstrap keys rows by descriptor id
 BINDING_SHA = hashlib.sha256((FIXTURES / "run-binding.json").read_bytes()).hexdigest()
 BINDING_REF = {"id": "req-voltage-check-1", "version": "1.0.0", "sha256": BINDING_SHA}
@@ -1252,7 +1262,7 @@ def test_internal_error_parity_with_correlation_id(
     assert mcp_error["message"] == rest_error["message"]
     assert mcp_error["retry"] == rest_error["retry"] == "never"
     assert (
-        mcp_error["details"] == rest_error["details"] == {}
+        mcp_error["details"] == rest_error["details"] == _CLOSED_EMPTY_DETAILS
     )  # the closed details def carries no crash class — diagnostics are logged
     assert _CORRELATION_ID.match(rest_error["correlation_id"])
     assert _CORRELATION_ID.match(mcp_error["correlation_id"])

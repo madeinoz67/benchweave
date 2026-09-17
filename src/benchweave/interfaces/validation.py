@@ -117,7 +117,9 @@ class SeamValidator:
             return  # no corpus schema: handler owns presence/404 semantics
         error = next(validator.iter_errors(dict(payload)), None)
         if error is not None:
+            field = ".".join(str(part) for part in error.absolute_path) or "<root>"
             raise errors.OperationFailure(errors.failure(
                 "invalid_request",
                 f"{operation}: {error.message} at {list(error.absolute_path) or '<root>'}",
+                findings=[{"field": field, "reason": error.message}],
             )) from None

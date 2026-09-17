@@ -365,10 +365,9 @@ class Operations:
                 raise errors.OperationFailure(errors.failure(
                     "event_gap",
                     f"retention overtook sequence {decoded[1]}",
-                    details={
-                        "oldest_sequence": oldest or "0",
-                        "current_sequence": current or "0",
-                    },
+                    stream_id=stream,
+                    oldest_sequence=oldest or "0",
+                    current_sequence=current or "0",
                 ))
             after_sequence = decoded[1]
         events = self._store.read_events_after(stream, after_sequence, limit)
@@ -491,6 +490,7 @@ class Operations:
                     "conflict",
                     f"bench {bench_id} is at generation {generation},"
                     f" not {expected_generation}",
+                    current_revision=generation,
                 )
             )
         if self._worker is None:
@@ -664,6 +664,7 @@ class Operations:
                     "conflict",
                     f"bench {bench_id} is at generation {generation},"
                     f" not {expected_generation}",
+                    current_revision=generation,
                 )
             )
         # §6 (D13 batch B): "The core rejects conflicts with existing manual
@@ -1209,7 +1210,15 @@ class Operations:
                 rejected.reason, "policy_denied"
             )
             raise errors.OperationFailure(
-                errors.failure(code, f"registry activation refused: {rejected.reason}")
+                errors.failure(
+                    code,
+                    f"registry activation refused: {rejected.reason}",
+                    current_revision=(
+                        self._store.current_generation(bench_id)
+                        if rejected.reason == "generation_conflict"
+                        else None
+                    ),
+                )
             ) from None
         return "registry_status_changed"
 

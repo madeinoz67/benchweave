@@ -1,9 +1,9 @@
 """The 14-code interface error model (interface/0.1.0 error_http_status).
 
-Every failure envelope mints a fresh 16-hex ``correlation_id`` — the
-vendored ``$defs/error`` requires minLength 1 (D14 cheap half, WP09).
-The ``details`` six-key half of D14 remains deferred: rendered
-``details`` stays open/free-form, registered in compatibility.md.
+Every failure envelope mints a fresh 16-hex ``correlation_id`` (minLength
+1, D14) and serves the CLOSED six-key ``details`` object — typed findings
+plus the five nullable watermarks (D14-details, interface-errata slice);
+free-form detail content has no construction path.
 """
 
 from __future__ import annotations
@@ -69,16 +69,34 @@ def failure(
     message: str,
     *,
     retry: str = "never",
-    details: dict[str, Any] | None = None,
+    findings: list[dict[str, str]] | None = None,
+    current_revision: int | None = None,
+    stream_id: str | None = None,
+    oldest_sequence: str | None = None,
+    current_sequence: str | None = None,
+    retry_after_ms: int | None = None,
     correlation_id: str | None = None,
 ) -> Failure:
+    """The one non-internal failure factory: mints the id and renders the
+    CLOSED six-key ``details`` object (D14-details, interface-errata
+    slice) — typed findings plus the five nullable watermarks, populated
+    only where the failure's own context supplies them, honestly null
+    elsewhere. The vendored ``$defs/error`` admits no other detail
+    content, so there is no free-form escape hatch."""
     if code not in FAILURE_HTTP:
         raise ValueError(f"unknown interface error code {code!r}")
     return Failure(
         code=code,
         message=message,
         retry=retry,
-        details=details or {},
+        details={
+            "findings": findings or [],
+            "current_revision": current_revision,
+            "stream_id": stream_id,
+            "oldest_sequence": oldest_sequence,
+            "current_sequence": current_sequence,
+            "retry_after_ms": retry_after_ms,
+        },
         correlation_id=uuid.uuid4().hex[:16] if correlation_id is None else correlation_id,
     )
 
@@ -117,6 +135,14 @@ def internal_failure(crash: BaseException | None = None) -> Failure:
         message="unexpected gateway failure",
         correlation_id=correlation_id,
         retry="never",
+        details={
+            "findings": [],
+            "current_revision": None,
+            "stream_id": None,
+            "oldest_sequence": None,
+            "current_sequence": None,
+            "retry_after_ms": None,
+        },
     )
 
 

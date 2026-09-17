@@ -36,6 +36,12 @@ def test_type_confusion_is_invalid_request(validator: SeamValidator) -> None:
             "lease_id": None,
         })
     assert ei.value.failure.code == "invalid_request"
+    # D14-details: the schema failure lands as typed findings — a field
+    # path and a reason, the closed object's only free content.
+    findings = ei.value.failure.details["findings"]
+    assert findings and all(
+        set(f) == {"field", "reason"} and f["field"] and f["reason"] for f in findings
+    )
 
 
 def test_expected_generation_string_is_invalid_request(

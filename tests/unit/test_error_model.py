@@ -38,11 +38,11 @@ def test_failure_http_is_the_catalog_map_verbatim() -> None:
 
 
 def test_failure_body_is_the_rendered_error_envelope() -> None:
-    """D14 cheap half (WP09): every failure mints a real correlation_id
-    (vendored $defs/error minLength 1). The ``details`` half of D14 stays
-    deferred — rendered ``details`` remains open/free-form, pinned here as
-    the rendered shape, registered in compatibility.md."""
-    fail = failure("conflict", "bench busy", retry="never", details={"x": 1})
+    """D14-details half (interface-errata slice): every failure envelope
+    serves the CLOSED six-key ``details`` object — typed findings
+    (possibly empty) plus the five nullable watermarks — and the rendered
+    ``error`` object validates against the vendored ``$defs/error``."""
+    fail = failure("conflict", "bench busy", retry="never")
     body = fail.body()
     assert body == {
         "ok": False,
@@ -51,10 +51,51 @@ def test_failure_body_is_the_rendered_error_envelope() -> None:
             "message": "bench busy",
             "correlation_id": fail.correlation_id,
             "retry": "never",
-            "details": {"x": 1},
+            "details": {
+                "findings": [],
+                "current_revision": None,
+                "stream_id": None,
+                "oldest_sequence": None,
+                "current_sequence": None,
+                "retry_after_ms": None,
+            },
         },
     }
+    _validate_error_def(body["error"])
     assert _HEX16.match(fail.correlation_id), "non-internal failures mint too"
+
+
+def test_failure_details_populate_from_failure_context() -> None:
+    """D14-details: the typed parameters land in the closed object —
+    findings pairs, the generation at a conflict, and the §7 watermarks
+    that ride an ``event_gap`` (with the stream they address)."""
+    fail = failure(
+        "event_gap",
+        "retention overtook sequence 3",
+        findings=[{"field": "after", "reason": "overtaken by retention"}],
+        current_revision=7,
+        stream_id="bench.bench-1",
+        oldest_sequence="4",
+        current_sequence="6",
+    )
+    assert fail.body()["error"]["details"] == {
+        "findings": [{"field": "after", "reason": "overtaken by retention"}],
+        "current_revision": 7,
+        "stream_id": "bench.bench-1",
+        "oldest_sequence": "4",
+        "current_sequence": "6",
+        "retry_after_ms": None,
+    }
+    _validate_error_def(fail.body()["error"])
+
+
+def _validate_error_def(error: dict[str, object]) -> None:
+    """Validate the rendered ``error`` object against the vendored
+    ``$defs/error`` subschema (self-contained: no external refs)."""
+    from jsonschema import Draft202012Validator
+
+    schema = json.loads((CORPUS / "interface.schema.json").read_text(encoding="utf-8"))
+    Draft202012Validator(schema["$defs"]["error"]).validate(error)
 
 
 def test_failure_honours_explicit_correlation_id_and_uniqueness() -> None:
@@ -97,7 +138,14 @@ def test_internal_failure_keeps_diagnostics_off_the_wire_and_logs_them(
     diagnostics" join between a wire response and its log line."""
     with caplog.at_level(logging.ERROR, logger="benchweave.interfaces.errors"):
         crash = internal_failure(ValueError("secret connection string"))
-    assert crash.details == {}  # nothing about the crash is on the wire
+    assert crash.details == {
+        "findings": [],
+        "current_revision": None,
+        "stream_id": None,
+        "oldest_sequence": None,
+        "current_sequence": None,
+        "retry_after_ms": None,
+    }  # the closed empty object — nothing about the crash is on the wire
     assert "secret" not in json.dumps(crash.body())
     assert _HEX16.match(crash.correlation_id)
     joined = [
