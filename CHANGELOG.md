@@ -77,6 +77,7 @@ All notable changes to this project will be documented in this file.
 - Review fix wave 2 — runtime interface version, example teachings, doc truth
 - Declare MIT license in pyproject metadata (was Proprietary)
 - Key the Pages concurrency group by ref
+- Wrap phone-width header onto two rows
 - Anchor public-site-assembly ignores to the repo root
 
 ### Documentation
@@ -138,6 +139,7 @@ All notable changes to this project will be documented in this file.
 - Add SECURITY, CONTRIBUTING, SUPPORT and issue/PR templates
 - Public-site styleguide and mockup for the SDK website
 - Public-site styleguide v0.2 — AI instructions, sub-brands, icon set, nav mapping
+- Add Built with AI panel crediting models and tooling
 
 ### Features
 
@@ -223,6 +225,7 @@ All notable changes to this project will be documented in this file.
 - Add "Where it came from" — the origin of the project
 - "What surprised us" and a validated "Where it stands"
 - Align the main site to public-site styleguide v0.2
+- Star-on-GitHub header CTA with live count
 
 ### Hardware Evidence
 
