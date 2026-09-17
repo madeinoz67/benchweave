@@ -39,6 +39,18 @@ class Failure:
     retry: str = "never"  # never | read | same_request
     details: dict[str, Any] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        """B2 (interface-errata slice): an un-minted Failure is a
+        programming error, never a wire envelope — the vendored ``$defs/error``
+        requires ``correlation_id`` minLength 1, and the default ``""``
+        let a direct construction violate it. The factories mint; a direct
+        construction must pass a real id."""
+        if not self.correlation_id:
+            raise ValueError(
+                "Failure correlation_id must be a non-empty id — use"
+                " errors.failure()/internal_failure() to mint one"
+            )
+
     def body(self) -> dict[str, Any]:
         return {
             "ok": False,

@@ -107,3 +107,19 @@ def test_internal_failure_keeps_diagnostics_off_the_wire_and_logs_them(
     ]
     assert joined, "the log line must carry the envelope's correlation_id"
     assert "ValueError" in joined[0].getMessage()
+
+
+def test_failure_refuses_empty_correlation_id_at_construction() -> None:
+    """B2 (interface-errata slice): the default ``correlation_id: str = ""``
+    permitted empty ids via direct construction — the construction site is
+    now guarded, so an un-minted Failure is a programming error, never a
+    wire envelope with an id that violates the def's minLength 1."""
+    import pytest as _pytest
+
+    from benchweave.interfaces.errors import Failure
+
+    with _pytest.raises(ValueError, match="correlation_id"):
+        Failure("conflict", "un-minted")
+    with _pytest.raises(ValueError, match="correlation_id"):
+        Failure("conflict", "explicitly empty", correlation_id="")
+    Failure("conflict", "real id", correlation_id="deadbeefdeadbeef").body()
