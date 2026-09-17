@@ -136,6 +136,7 @@ All notable changes to this project will be documented in this file.
 - Add Contributor Covenant 3.0 code of conduct
 - Add SECURITY, CONTRIBUTING, SUPPORT and issue/PR templates
 - Public-site styleguide and mockup for the SDK website
+- Public-site styleguide v0.2 — AI instructions, sub-brands, icon set, nav mapping
 
 ### Features
 
@@ -220,6 +221,7 @@ All notable changes to this project will be documented in this file.
 - Public site — static front door + Great Docs tree on Pages
 - Add "Where it came from" — the origin of the project
 - "What surprised us" and a validated "Where it stands"
+- Align the main site to public-site styleguide v0.2
 
 ### Hardware Evidence
 
@@ -270,6 +272,7 @@ All notable changes to this project will be documented in this file.
 - Advance SDK pointer — close-out docs
 - Advance SDK pointer — SDK-focused static site
 - Advance SDK pointer — docs concurrency fix
+- Advance SDK pointer — styleguide v0.2 brand
 
 ### Refactoring
 
