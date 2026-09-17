@@ -3,7 +3,7 @@
    panels reachable from outside the page. */
 
 var THEME_KEY = 'bw-site-theme';
-var PANEL_INDEX = { home: 0, standards: 1, docs: 2, sdk: 3 };
+var PANEL_INDEX = { home: 0, standards: 1, docs: 2, sdk: 3, builtwith: 4 };
 
 function showPanel(name, btn) {
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
