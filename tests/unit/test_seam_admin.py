@@ -352,8 +352,9 @@ def test_apply_success_refreshes_bench_row_and_emits_bench_changed(
     assert row["generation"] == 2  # projection is truthful
     events = store.read_events_after(f"bench.{BENCH}", None, 10)
     assert [event["kind"] for event in events] == ["bench_changed"]
-    assert events[0]["evidence"]["change_id"] == "chg-ok"
-    assert events[0]["evidence"]["generation"] == 2
+    # D4 (interface-errata slice): the event pins the change's target
+    # document ref; change_id/generation are change_get's to serve.
+    assert events[0]["evidence"] == TARGET_REF
 
 
 def test_apply_crash_without_decision_records_unknown(

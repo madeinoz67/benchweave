@@ -164,8 +164,9 @@ def test_package_admission_applies_end_to_end_over_fixture_registry(
     # carries it for the registry change paths (interface.schema.json).
     events = store.read_events_after(f"bench.{BENCH}", None, 10)
     assert [event["kind"] for event in events] == ["registry_status_changed"]
-    assert events[0]["evidence"]["change_id"] == applied["change_id"]
-    assert events[0]["evidence"]["generation"] == 2
+    # D4 (interface-errata slice): the event pins the change's target
+    # package ref; change_id/generation are change_get's to serve.
+    assert events[0]["evidence"] == TARGET_REF
 
 
 def test_configuration_activation_applies_end_to_end_over_fixture_registry(

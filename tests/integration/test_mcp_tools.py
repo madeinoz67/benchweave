@@ -484,9 +484,18 @@ def _prep_two_benches_two_devices_two_events(store: Store, content: ContentStore
     del content  # pages need no content-store rows
     generation = store.bump_generation("bench-two", NOW_ISO)
     store.put_bench("bench-two", generation, "observation", "{}", "proprietary", NOW_ISO)
+    # D4 (interface-errata slice): seeded stream events carry an explicit
+    # closed doc-ref (the bench-two configuration this helper just wrote)
+    # — page-size tests must not depend on emit-time evidence resolution.
+    evidence = {
+        "id": "bench-two",
+        "version": "1",
+        "sha256": hashlib.sha256(b"{}").hexdigest(),
+    }
     for _ in range(2):
         append_bench_event(
-            store, "bench_changed", "sim-bench", None, keep=None, now_iso=lambda: NOW_ISO
+            store, "bench_changed", "sim-bench", None, evidence,
+            keep=None, now_iso=lambda: NOW_ISO
         )
 
 

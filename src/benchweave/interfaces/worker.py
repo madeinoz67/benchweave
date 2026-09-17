@@ -20,6 +20,7 @@ two writers serialised safely).
 
 from __future__ import annotations
 
+import logging
 import queue
 import threading
 from collections.abc import Callable
@@ -29,6 +30,12 @@ from benchweave.content.store import ContentStore
 from benchweave.control.clocking import SystemClock
 from benchweave.interfaces.operations import append_bench_event
 from benchweave.state.store import Store
+
+# D4 (interface-errata slice): worker-side operational context (the poison
+# error class/text, retention-failure counts) rides the gateway log keyed
+# by run id — the closed event def has no free-form channel, and §10
+# excludes crash detail from the wire.
+_LOG = logging.getLogger(__name__)
 
 
 class RunWorker:
@@ -141,9 +148,12 @@ class RunWorker:
                 # fabricated outcome. The bench stream carries the worker
                 # error so the gap is visible, and the drain continues.
                 store.put_run_state(run_id, bench_id, "terminal", self._now_iso())
+                _LOG.error(
+                    "run_worker poison run_id=%s error=%s: %s",
+                    run_id, type(error).__name__, error,
+                )
                 append_bench_event(
-                    store, "run_changed", bench_id, run_id,
-                    {"worker_error": f"{type(error).__name__}: {error}"},
+                    store, "run_changed", bench_id, run_id, None,
                     keep=self._emit_keep, now_iso=self._now_iso,
                 )
             else:
@@ -171,6 +181,8 @@ class RunWorker:
         monitor = getattr(coordinator, "monitor", None)
         failures = int(getattr(monitor, "retention_failures", 0)) if monitor else 0
         if failures > 0:
-            append_bench_event(store, "evidence_gap", bench_id, run_id,
-                               {"retention_failures": failures},
+            _LOG.warning(
+                "evidence_gap run_id=%s retention_failures=%d", run_id, failures
+            )
+            append_bench_event(store, "evidence_gap", bench_id, run_id, None,
                                keep=self._emit_keep, now_iso=self._now_iso)

@@ -42,25 +42,25 @@ def seam(tmp_path: Path) -> Iterator[Seam]:
 
 def test_events_get_returns_kinds_and_watermarks(seam: Seam) -> None:
     ops, store = seam
-    ops._emit("run_changed", "bench-1", "run-1")
-    ops._emit("lease_changed", "bench-1", None)
-    data = ops.events_get(IDENT, "bench-1", after=None, limit=10)
+    ops._emit("run_changed", "sim-bench", "run-1")
+    ops._emit("lease_changed", "sim-bench", None)
+    data = ops.events_get(IDENT, "sim-bench", after=None, limit=10)
     assert [e["kind"] for e in data["events"]] == ["run_changed", "lease_changed"]
-    assert data["stream_id"] == "bench.bench-1"
+    assert data["stream_id"] == "bench.sim-bench"
     assert data["oldest_sequence"] == "1" and data["current_sequence"] == "2"
 
 
 def test_cursor_pages_and_is_principal_bound(seam: Seam) -> None:
     ops, _ = seam
     for _ in range(5):
-        ops._emit("bench_changed", "bench-1", None)
-    page1 = ops.events_get(IDENT, "bench-1", after=None, limit=2)
+        ops._emit("bench_changed", "sim-bench", None)
+    page1 = ops.events_get(IDENT, "sim-bench", after=None, limit=2)
     assert len(page1["events"]) == 2
-    page2 = ops.events_get(IDENT, "bench-1", after=page1["cursor"], limit=2)
+    page2 = ops.events_get(IDENT, "sim-bench", after=page1["cursor"], limit=2)
     assert page2["events"][0]["sequence"] == "3"
     stranger = Identity("p2", "stg", frozenset({"stg:observe"}), 2**31)
     with pytest.raises(errors.OperationFailure):
-        ops.events_get(stranger, "bench-1", after=page1["cursor"], limit=2)
+        ops.events_get(stranger, "sim-bench", after=page1["cursor"], limit=2)
 
 
 def test_retention_overtake_yields_event_gap(seam: Seam) -> None:
@@ -71,12 +71,12 @@ def test_retention_overtake_yields_event_gap(seam: Seam) -> None:
     correction from the wrong ``cursor_expired`` pin."""
     ops, store = seam
     for _ in range(6):
-        ops._emit("run_changed", "bench-1", "run-1")
+        ops._emit("run_changed", "sim-bench", "run-1")
     keep = 3
-    store.trim_stream("bench.bench-1", keep)
-    stale = operations.encode_cursor("bench.bench-1", "1", "p1")
+    store.trim_stream("bench.sim-bench", keep)
+    stale = operations.encode_cursor("bench.sim-bench", "1", "p1")
     with pytest.raises(errors.OperationFailure) as exc:
-        ops.events_get(IDENT, "bench-1", after=stale, limit=10)
+        ops.events_get(IDENT, "sim-bench", after=stale, limit=10)
     assert exc.value.failure.code == "event_gap"
     # 6 emissions, trim keeps 3: the retained window is sequences 4..6.
     # D14-details: the failure carries the CLOSED six-key object with the
@@ -84,7 +84,7 @@ def test_retention_overtake_yields_event_gap(seam: Seam) -> None:
     assert exc.value.failure.details == {
         "findings": [],
         "current_revision": None,
-        "stream_id": "bench.bench-1",
+        "stream_id": "bench.sim-bench",
         "oldest_sequence": "4",
         "current_sequence": "6",
         "retry_after_ms": None,
@@ -93,7 +93,13 @@ def test_retention_overtake_yields_event_gap(seam: Seam) -> None:
 
 def test_evidence_gap_emitted_when_retention_fails(seam: Seam) -> None:
     ops, store = seam
-    ops._emit_evidence_gap("bench-1", "run-1", 2)
-    data = ops.events_get(IDENT, "bench-1", after=None, limit=10)
+    ops._emit_evidence_gap("sim-bench", "run-1", 2)
+    data = ops.events_get(IDENT, "sim-bench", after=None, limit=10)
     assert data["events"][-1]["kind"] == "evidence_gap"
-    assert data["events"][-1]["evidence"]["retention_failures"] == 2
+    # D4 (interface-errata slice): the event pins the run's binding
+    # document (run-1 has no run row in this fixture, so resolution falls
+    # to the stream's commissioned bench configuration — the honest
+    # document anchor); the failure count itself left the wire for the
+    # gateway log.
+    evidence = data["events"][-1]["evidence"]
+    assert set(evidence) == {"id", "version", "sha256"}

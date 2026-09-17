@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import logging
 import sys
 import tempfile
 import threading
@@ -50,8 +51,11 @@ _SIM_PLUGINS: tuple[tuple[str, str], ...] = (
 )
 
 #: Bench-stream evidence reason on the recovery ``run_changed`` (Task 11
-#: wiring). Free-form evidence joins the Task 10 parity ledger's D4 family.
+#: wiring). D4 (interface-errata slice): the reason rides the gateway log;
+#: the event pins the run's binding document.
 RECOVERY_RUN_CHANGED_REASON = "gateway restart recovery: run finalised as interrupted"
+
+_LOG = logging.getLogger(__name__)
 
 
 class WriteGate:
@@ -215,12 +219,16 @@ def _recover_interrupted_runs(
     bench_id = str(docs.bench["id"])
     for run_id in recovered:
         store.put_run_state(run_id, bench_id, "terminal", now_iso())
+        _LOG.info(
+            "run_changed (recovery) run_id=%s reason=%s",
+            run_id, RECOVERY_RUN_CHANGED_REASON,
+        )
         append_bench_event(
             store,
             "run_changed",
             bench_id,
             run_id,
-            {"reason": RECOVERY_RUN_CHANGED_REASON},
+            None,
             keep=emit_keep,
             now_iso=now_iso,
         )

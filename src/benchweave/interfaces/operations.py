@@ -6,6 +6,7 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 import time
 import uuid
 from collections.abc import Callable
@@ -24,6 +25,12 @@ from benchweave.registry.admission import AdmissionRejected, Admitted, Approval,
 from benchweave.registry.authenticity import AuthenticityRejected
 from benchweave.registry.schemas import RegistryRejected
 from benchweave.state.store import Conflict, Lease, LeaseNotActive, Store
+
+# D4 (interface-errata slice): operational context that left the event wire
+# lands here — the closed event def has no free-form channel, so reasons,
+# request ids and failure counts are logged server-side, joinable to their
+# event by run/stream identity.
+_LOG = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from benchweave.interfaces.worker import RunWorker
@@ -112,6 +119,47 @@ def _default_now_epoch() -> int:
     return int(time.time())
 
 
+def _bench_configuration_ref(row: dict[str, Any]) -> dict[str, str]:
+    """The commissioned bench configuration document ref — the anchor the
+    bench projection serves and every bench-stream event of non-run kinds
+    pins (D4, interface-errata slice)."""
+    configuration_text = row["configuration_json"]
+    configuration = json.loads(configuration_text)
+    return {
+        "id": str(configuration.get("id", row["bench_id"])),
+        "version": str(configuration.get("version", "1")),
+        "sha256": hashlib.sha256(configuration_text.encode()).hexdigest(),
+    }
+
+
+def _resolve_event_evidence(
+    store: Store, bench_id: str, run_id: str | None
+) -> dict[str, str]:
+    """Resolve the closed document ref an event pins when the emitter
+    supplies none (D4, interface-errata slice): the run's binding document
+    for run-scoped emissions, else the stream's commissioned bench
+    configuration. Emitters guarantee one of the two exists; neither
+    resolving is a programming error raised loudly, never a schema-violating
+    empty evidence object on the wire."""
+    if run_id is not None:
+        run = store.get_run(run_id)
+        if run is not None:
+            ref = run["binding"]
+            if set(ref) == {"id", "version", "sha256"}:
+                return {
+                    "id": str(ref["id"]),
+                    "version": str(ref["version"]),
+                    "sha256": str(ref["sha256"]),
+                }
+    bench = store.get_bench(bench_id)
+    if bench is not None:
+        return _bench_configuration_ref(bench)
+    raise ValueError(
+        f"no document anchor for event on bench {bench_id!r}"
+        f" (run {run_id!r} has no row and the bench has no configuration)"
+    )
+
+
 def append_bench_event(
     store: Store,
     kind: str,
@@ -128,6 +176,14 @@ def append_bench_event(
     thread-affine store) so both writers produce the identical envelope
     under the same seven-kind fence. ``keep`` is the per-stream retention
     window; ``None`` appends untrimmed — the next seam-side emit re-trims.
+
+    D4 (interface-errata slice): the emitted ``evidence`` is ALWAYS the
+    contract's closed ``{id, version, sha256}`` document ref — an omitted
+    evidence resolves to the run's binding document or the commissioned
+    bench configuration, and an explicit dict must already be the closed
+    ref shape (the ``authority_changed`` takeovers and the change-target
+    refs pass theirs). Free-form operational context has no wire channel;
+    emitters log it server-side.
     """
     if kind not in Operations.EVENT_KINDS:
         raise ValueError(f"unknown event kind {kind!r}")
@@ -135,12 +191,14 @@ def append_bench_event(
     # vendored event def's stream_id pattern (^[a-z][a-z0-9_.-]*$)
     # admits; the colon form was a live contract violation (fix wave).
     stream_id = f"bench.{bench_id}"
+    if evidence is None:
+        evidence = _resolve_event_evidence(store, bench_id, run_id)
     envelope = {
         "stream_id": stream_id,
         "at": now_iso(),
         "kind": kind,
         "run_id": run_id,
-        "evidence": evidence or {},
+        "evidence": evidence,
     }
     store.append_event(stream_id, envelope)
     if keep is not None:
@@ -538,7 +596,13 @@ class Operations:
             binding={
                 "id": str(binding_ref.get("id", "")),
                 "version": str(binding_ref.get("version", "")),
-                "sha256": body_sha,
+                # The TRUE document ref as the caller supplied it — the
+                # binding document's own content-store digest (D4,
+                # interface-errata slice: run-scoped events pin this ref,
+                # and the recovery-path terminal record receives the same
+                # digest the normal path records). The §9 idempotency pin
+                # is a different digest and lives in the requests table.
+                "sha256": str(binding_ref.get("sha256", "")),
             },
             principal_id=identity.principal,
             now=now,
@@ -624,12 +688,15 @@ class Operations:
         if state is not None:
             # A run row without a queue state has no bench to name; a
             # bench-less event would mint a junk ``bench:`` stream.
-            self._emit(
-                "run_changed",
-                state["bench_id"],
-                run_id,
-                evidence={"reason": reason, "request_id": request_id},
+            # D4 (interface-errata slice): the wire event pins the run's
+            # binding document; the caller's reason and request id are
+            # operational context — §9 tombstones and the gateway log own
+            # them, the closed event def has no channel.
+            _LOG.info(
+                "run_cancel run_id=%s request_id=%s reason=%s",
+                run_id, request_id, reason,
             )
+            self._emit("run_changed", state["bench_id"], run_id)
         return self._run_projection(run_id)
 
     # --- control: leases --------------------------------------------------------
@@ -703,8 +770,11 @@ class Operations:
             holder=identity.principal,
             expires_at=_iso_plus_ms(now, duration_ms),
         )
-        self._emit("lease_changed", bench_id, lease.lease_id,
-                   evidence={"request_id": request_id})
+        _LOG.info(
+            "lease_created bench=%s lease=%s request_id=%s",
+            bench_id, lease.lease_id, request_id,
+        )
+        self._emit("lease_changed", bench_id, None)
         return self._lease_projection(lease)
 
     def lease_renew(
@@ -811,8 +881,11 @@ class Operations:
             expires_at=_iso_plus_ms(now, duration_ms),
         )
         self._store.release_lease(lease.bench_id, lease.sequence, now)
-        self._emit("lease_changed", lease.bench_id, lease.lease_id,
-                   evidence={"request_id": request_id})
+        _LOG.info(
+            "lease_renewed bench=%s lease=%s request_id=%s sequence=%s",
+            lease.bench_id, lease.lease_id, request_id, successor.sequence,
+        )
+        self._emit("lease_changed", lease.bench_id, None)
         return self._lease_projection(successor)
 
     def lease_release(
@@ -838,12 +911,11 @@ class Operations:
             raise errors.OperationFailure(
                 errors.failure("not_found", f"lease {lease_id} is not active")
             ) from None
-        self._emit(
-            "lease_changed",
-            lease.bench_id,
-            lease.lease_id,
-            evidence={"reason": reason, "request_id": request_id},
+        _LOG.info(
+            "lease_released bench=%s lease=%s request_id=%s reason=%s",
+            lease.bench_id, lease.lease_id, request_id, reason,
         )
+        self._emit("lease_changed", lease.bench_id, None)
         # D12: releasing manual authority is an authority transition too.
         # The event def's evidence is a CLOSED {id, version, sha256} ref, so
         # the emit pins the commissioned bench configuration — the same
@@ -1144,16 +1216,15 @@ class Operations:
                 now,
             )
         self._store.set_change_state(str(change["change_id"]), "applied", [], now)
+        # D4 (interface-errata slice): the event pins the change's target
+        # package ref — the immutable document the admission/activation
+        # acted on. The change id, kind, request id and generation are
+        # change_get's to serve (§9); the closed event def has no channel.
         self._emit(
             event_kind,
             bench_id,
             None,
-            evidence={
-                "change_id": str(change["change_id"]),
-                "kind": kind,
-                "request_id": request_id,
-                "generation": new_generation,
-            },
+            evidence=json.loads(str(change["target_ref_json"])),
         )
 
     def _apply_trip_reset(
@@ -1360,19 +1431,13 @@ class Operations:
         vendored bench $def is closed (``additionalProperties: false``, no
         licence field), so the seam owns the contract projection.
         """
-        configuration_text = row["configuration_json"]
-        configuration = json.loads(configuration_text)
         return {
             "bench_id": row["bench_id"],
             "generation": row["generation"],
             "qualification": row["qualification"],
             "tripped": False,
             "busy": self._live_lease(row["bench_id"]) is not None,
-            "configuration": {
-                "id": str(configuration.get("id", row["bench_id"])),
-                "version": str(configuration.get("version", "1")),
-                "sha256": hashlib.sha256(configuration_text.encode()).hexdigest(),
-            },
+            "configuration": _bench_configuration_ref(row),
         }
 
     def _device_projection(self, row: dict[str, Any]) -> dict[str, Any]:
@@ -1420,9 +1485,14 @@ class Operations:
 
     def _emit_evidence_gap(self, bench_id: str, run_id: str, failures: int) -> None:
         """One ``evidence_gap`` per drain when monitor retention failed —
-        evidence write failures are loud, never dropped (invariant 6)."""
-        self._emit("evidence_gap", bench_id, run_id,
-                   {"retention_failures": failures})
+        evidence write failures are loud, never dropped (invariant 6).
+        D4 (interface-errata slice): the count left the wire for the
+        gateway log; the event's presence IS the signal, pinned to the
+        run's binding document."""
+        _LOG.warning(
+            "evidence_gap run_id=%s retention_failures=%d", run_id, failures
+        )
+        self._emit("evidence_gap", bench_id, run_id)
 
     def _run_projection(self, run_id: str) -> dict[str, Any]:
         """Contract ``run`` object (interface/0.1.0 ``run`` def: closed,

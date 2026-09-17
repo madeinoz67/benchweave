@@ -105,7 +105,7 @@ import uvicorn
 
 from benchweave.cli.report import build_report, render_markdown
 from benchweave.content.store import ContentStore
-from benchweave.interfaces.app import RECOVERY_RUN_CHANGED_REASON, create_app
+from benchweave.interfaces.app import create_app
 from benchweave.interfaces.bootstrap import (
     RegistrySession,
     admit_startup_bench,
@@ -1065,7 +1065,8 @@ def test_journey_admin_change_and_stale_generation_rejected(
         event for event in page["events"] if str(event["kind"]) == "bench_changed"
     ]
     assert any(
-        str(event["evidence"]["change_id"]) == change_id for event in admin_events
+        event["evidence"] == journey_admitted.commissioning_ref
+        for event in admin_events
     )
 
     # PRD-05: the same start presenting the pre-change generation is fenced.
@@ -1486,7 +1487,9 @@ def _leg_restart(
     assert len(recovery_events) == 1, (
         [e["kind"] for e in bench_events if e.get("run_id") == RESTART_RUN_ID]
     )
-    assert RECOVERY_RUN_CHANGED_REASON in str(recovery_events[0].get("evidence", {}))
+    # D4 (interface-errata slice): the recovery event pins the run's
+    # binding document; the reason rides the gateway log.
+    assert set(recovery_events[0].get("evidence", {})) == {"id", "version", "sha256"}
     run_kinds = [
         str(event["kind"])
         for event in bench_events
