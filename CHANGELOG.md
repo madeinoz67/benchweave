@@ -141,6 +141,7 @@ All notable changes to this project will be documented in this file.
 - Public-site styleguide v0.2 — AI instructions, sub-brands, icon set, nav mapping
 - Add Built with AI panel crediting models and tooling
 - Report via private advisory, not personal email
+- Add permanent Discord invite to README, SUPPORT and site (#33)
 
 ### Features
 
