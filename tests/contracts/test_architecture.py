@@ -148,20 +148,22 @@ def test_contract_regressions_are_detected(
     new: str,
     expected: str,
 ) -> None:
-    # Each case damages exactly one file, so only the tree holding that file
-    # is copied (tmp→tmp, from the session's pristine pair); the other tree
-    # is shared read-only. Path resolution mirrors the original: standards
+    # Both trees are copied per case (tmp→tmp, from the session's pristine
+    # pair — the expensive repository walk still happens once): docs/ and
+    # standards/ MUST stay siblings under one root, because the docs tree
+    # links into ../standards/ throughout and a split topology fails every
+    # such cross-tree link as "local link" — the exact substring the docs
+    # mutation case asserts on, which would let it pass without detecting
+    # the injected break. Path resolution mirrors the original: standards
     # wins when the relative path exists in both trees.
     pristine_docs, pristine_standards = pristine_trees
-    if (pristine_standards / relative_path).is_file():
-        docs = pristine_docs
-        standards = tmp_path / "standards"
-        shutil.copytree(pristine_standards, standards)
+    docs = tmp_path / "docs"
+    standards = tmp_path / "standards"
+    shutil.copytree(pristine_docs, docs)
+    shutil.copytree(pristine_standards, standards)
+    if (standards / relative_path).is_file():
         path = standards / relative_path
     else:
-        docs = tmp_path / "docs"
-        shutil.copytree(pristine_docs, docs)
-        standards = pristine_standards
         path = docs / relative_path
     original = path.read_text(encoding="utf-8")
     assert not old or old in original, "Mutation must change the intended fixture"
