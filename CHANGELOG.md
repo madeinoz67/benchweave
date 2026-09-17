@@ -140,6 +140,7 @@ All notable changes to this project will be documented in this file.
 - Public-site styleguide and mockup for the SDK website
 - Public-site styleguide v0.2 — AI instructions, sub-brands, icon set, nav mapping
 - Add Built with AI panel crediting models and tooling
+- Report via private advisory, not personal email
 
 ### Features
 
@@ -277,6 +278,8 @@ All notable changes to this project will be documented in this file.
 - Advance SDK pointer — SDK-focused static site
 - Advance SDK pointer — docs concurrency fix
 - Advance SDK pointer — styleguide v0.2 brand
+- Bump packages/sdk to 17d6ecb (star CTA + header wrap)
+- Bump packages/sdk to 5da15c7 (gateway links to project website)
 
 ### Refactoring
 
@@ -327,6 +330,8 @@ All notable changes to this project will be documented in this file.
 - Gate the UI toolchain and vendored-renderer freshness
 - Gate PRs and releases on standards sync
 - Gate-only package lane; SDK distribution moves to PyPI
+- Push CHANGELOG.md via changelog app token
+- Add manual trigger
 
 ### Review
 
