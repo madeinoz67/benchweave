@@ -23,6 +23,10 @@ The public site is at <https://madeinoz67.github.io/benchweave/> — the standar
 
 The [plugin developer SDK](https://github.com/madeinoz67/benchweave-sdk) (`benchweave-sdk`) provides the offline SDK tooling — project generation, validation, mocks and the local UI preview. It is mounted at `packages/sdk` as a git submodule with its own CI and release cycle; the [SDK guide](docs/plugin-sdk.md) documents it.
 
+## Community
+
+Questions, plugin builds, works in progress — join the [BenchWeave Discord](https://discord.gg/Y5XPTWQQXr). The invite is permanent. Bugs and feature requests belong in the [issue tracker](https://github.com/madeinoz67/benchweave/issues); see [SUPPORT.md](SUPPORT.md).
+
 ## Start here
 
 - [PoC/MVP product requirements](docs/implementation-planning/00-poc-mvp-prd.md)
