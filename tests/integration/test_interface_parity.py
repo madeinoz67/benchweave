@@ -38,12 +38,13 @@ a test; none is silent) versus what it proves equal:
   ``cursor=None``/``after=None``) are schema-VALID well-formed requests, so
   an MCP ``bench_list`` omitting them still succeeds — pinned below; that
   is a transport-default difference, not a validation gap.
-- D4 event evidence shape: the seam emits free-form evidence dicts
-  (``{retention_failures}``, ``{reason, request_id}``, ``{request_id}``)
-  while the contract's event ``evidence`` def is a closed document ref
-  ``{id, version, sha256}``. The CURRENT wire shape is pinned (events_get
-  carries the free-form dict on both transports); payloads are NOT reshaped
-  here. WP08 reconciliation item.
+- D4 event evidence: CLOSED (interface-errata slice) — every emitted event
+  carries the contract's closed document ref ``{id, version, sha256}``
+  (binding document for run-scoped kinds, bench configuration for
+  lease/bench kinds, target package ref for registry kinds) and every
+  served event validates against the vendored ``event`` def; free-form
+  operational context (worker errors, retention counts, reasons) rides
+  the gateway log, and change state stays with ``change_get``.
 - D5 wire ``tools/list`` schemas are vendored-minus-``$defs`` (Task 1's
   accepted serve-time dereference deviation) — pinned here at the wire
   level, alongside the exactly-17 tool set with no admin twin.
@@ -126,6 +127,17 @@ VENDORED_TOOLS = {
         "tools"
     ]
 }
+
+
+def _validate_event_def(event: dict[str, Any]) -> None:
+    """D4 (interface-errata slice): validate a served event against the
+    vendored ``event`` def — the closed evidence ref is only half the
+    conformance claim; the whole envelope must validate."""
+    from jsonschema import Draft202012Validator
+
+    schema = json.loads((CONTRACTS / "interface.schema.json").read_text(encoding="utf-8"))
+    Draft202012Validator(schema["$defs"]["event"]).validate(event)
+
 OPS = {op["name"]: op for op in CATALOG["operations"]}
 SHARED_OPS = [op for op in CATALOG["operations"] if op["mcp_tool"]]
 REST_ONLY_OPS = [op for op in CATALOG["operations"] if not op["mcp_tool"]]
@@ -143,6 +155,16 @@ LIMITS: dict[str, int] = {
 }
 BENCH = "sim-bench"
 _CORRELATION_ID = re.compile(r"^[0-9a-f]{16}$")  # errors.failure mint — every envelope (D14)
+# D14-details (interface-errata slice): the closed six-key object every
+# context-free failure serves — findings empty, watermarks honestly null.
+_CLOSED_EMPTY_DETAILS: dict[str, object] = {
+    "findings": [],
+    "current_revision": None,
+    "stream_id": None,
+    "oldest_sequence": None,
+    "current_sequence": None,
+    "retry_after_ms": None,
+}
 DEVICE = "descriptor-sim-controller"  # bootstrap keys rows by descriptor id
 BINDING_SHA = hashlib.sha256((FIXTURES / "run-binding.json").read_bytes()).hexdigest()
 BINDING_REF = {"id": "req-voltage-check-1", "version": "1.0.0", "sha256": BINDING_SHA}
@@ -1252,7 +1274,7 @@ def test_internal_error_parity_with_correlation_id(
     assert mcp_error["message"] == rest_error["message"]
     assert mcp_error["retry"] == rest_error["retry"] == "never"
     assert (
-        mcp_error["details"] == rest_error["details"] == {}
+        mcp_error["details"] == rest_error["details"] == _CLOSED_EMPTY_DETAILS
     )  # the closed details def carries no crash class — diagnostics are logged
     assert _CORRELATION_ID.match(rest_error["correlation_id"])
     assert _CORRELATION_ID.match(mcp_error["correlation_id"])
@@ -1315,15 +1337,17 @@ def test_mcp_is_error_flag_on_failure_and_success(gateway: SimpleNamespace) -> N
 
 
 def test_event_evidence_shape_deviation(gateway: SimpleNamespace) -> None:
-    """D4 pin, realigned by D12: the seam's free-form evidence dict still
-    rides the wire on both transports for the legacy kinds (the contract's
-    event def declares a closed doc-ref — that half of the divergence is
-    pinned, not reshaped; the remaining free-form kinds stay a WP08
-    reconciliation item), while ``authority_changed`` — D12's first
-    emitters — conforms to the def's closed ref exactly.
+    """D4 CLOSED (interface-errata slice): every emitted event — all seven
+    kinds — carries the contract's CLOSED ``{id, version, sha256}``
+    document ref as evidence (the run's binding document for run-scoped
+    kinds, the commissioned bench configuration for lease/bench kinds, the
+    change's target package ref for registry kinds), and every served
+    event validates against the vendored ``event`` def. Free-form
+    operational context left the wire for the gateway log / change_get /
+    run projections (§10 excludes it from event payloads by design).
 
-    Runs BEFORE the retention-trim case: the run_cancel evidence rows this
-    asserts over are exactly what the trim deletes.
+    Runs BEFORE the retention-trim case: the events this asserts over are
+    exactly what the trim deletes.
     """
     _, rest_json = _rest(
         gateway, "get", f"/v1/benches/{BENCH}/events?after=&limit=100", None, OBSERVE
@@ -1335,18 +1359,11 @@ def test_event_evidence_shape_deviation(gateway: SimpleNamespace) -> None:
         OBSERVE,
     )
     assert mcp_json == rest_json
-    evidences = [event["evidence"] for event in rest_json["data"]["events"]]
-    # The matrix's run_cancel emitted {reason, request_id} — free-form, and
-    # demonstrably not the closed {id, version, sha256} doc-ref.
-    assert {"reason": "parity", "request_id": "req-parity-cancel"} in evidences
-    # D12: wherever the matrix emitted authority_changed, its evidence IS
-    # the closed doc-ref (the def's shape) — the first kind reconciled.
-    authority = [
-        event["evidence"]
-        for event in rest_json["data"]["events"]
-        if event["kind"] == "authority_changed"
-    ]
-    assert all(set(ev) == {"id", "version", "sha256"} for ev in authority), authority
+    events = rest_json["data"]["events"]
+    assert events, "the matrix must have emitted events before this read"
+    for event in events:
+        assert set(event["evidence"]) == {"id", "version", "sha256"}, event
+        _validate_event_def(event)
 
 
 def test_event_gap_after_retention_trim(gateway: SimpleNamespace) -> None:

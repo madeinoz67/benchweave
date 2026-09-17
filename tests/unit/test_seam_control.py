@@ -223,6 +223,8 @@ def test_expected_generation_mismatch_conflicts(seam_control: SeamControl) -> No
     with pytest.raises(errors.OperationFailure) as exc:
         ops.run_start(ident, BENCH_ID, "req-x", seam_control.binding_ref, 999, None)
     assert exc.value.failure.code == "conflict"
+    # D14-details: the generation at stake rides the conflict envelope.
+    assert exc.value.failure.details["current_revision"] == 1
 
 
 def test_generation_fence_reads_canonical_authority(seam_control: SeamControl) -> None:

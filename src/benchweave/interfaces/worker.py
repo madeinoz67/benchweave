@@ -20,6 +20,7 @@ two writers serialised safely).
 
 from __future__ import annotations
 
+import logging
 import queue
 import threading
 from collections.abc import Callable
@@ -30,6 +31,12 @@ from benchweave.control.clocking import SystemClock
 from benchweave.interfaces.operations import append_bench_event
 from benchweave.state.store import Store
 
+# D4 (interface-errata slice): worker-side operational context (the poison
+# error class/text, retention-failure counts) rides the gateway log keyed
+# by run id — the closed event def has no free-form channel, and §10
+# excludes crash detail from the wire.
+_LOG = logging.getLogger(__name__)
+
 
 class RunWorker:
     """Drains the accepted-run queue FIFO; exactly one run is ever active.
@@ -37,8 +44,9 @@ class RunWorker:
     A job whose construction or execution raises is contained per job
     (Task 11 poison guard): the queue state closes terminal without a
     terminal record — honest ``outcome_unknown`` through the projection —
-    a ``run_changed`` carries the worker error, and the drain continues
-    with the next queued run.
+    a ``run_changed`` event and a gateway-log ERROR line carry the
+    failure (D4: the event pins the binding document; the error text
+    rides the log), and the drain continues with the next queued run.
     """
 
     def __init__(
@@ -138,14 +146,25 @@ class RunWorker:
                 # with the run's own lifecycle: the queue state closes
                 # terminal WITHOUT a terminal record, so the projection
                 # reports outcome_unknown — honest uncertainty, never a
-                # fabricated outcome. The bench stream carries the worker
-                # error so the gap is visible, and the drain continues.
+                # fabricated outcome. The bench stream carries the state
+                # change (D4: the event pins the run's binding document;
+                # the worker error itself rides the gateway log), and the
+                # drain continues. The emit is itself guarded: a raising
+                # call inside the poison handler would defeat the guard.
                 store.put_run_state(run_id, bench_id, "terminal", self._now_iso())
-                append_bench_event(
-                    store, "run_changed", bench_id, run_id,
-                    {"worker_error": f"{type(error).__name__}: {error}"},
-                    keep=self._emit_keep, now_iso=self._now_iso,
+                _LOG.error(
+                    "run_worker poison run_id=%s error=%s: %s",
+                    run_id, type(error).__name__, error,
                 )
+                try:
+                    append_bench_event(
+                        store, "run_changed", bench_id, run_id, None,
+                        keep=self._emit_keep, now_iso=self._now_iso,
+                    )
+                except Exception:
+                    _LOG.exception(
+                        "run_worker poison emit failed run_id=%s", run_id
+                    )
             else:
                 store.put_run_state(run_id, bench_id, "terminal", self._now_iso())
                 self._emit_completion(store, coordinator, run_id, bench_id)
@@ -171,6 +190,8 @@ class RunWorker:
         monitor = getattr(coordinator, "monitor", None)
         failures = int(getattr(monitor, "retention_failures", 0)) if monitor else 0
         if failures > 0:
-            append_bench_event(store, "evidence_gap", bench_id, run_id,
-                               {"retention_failures": failures},
+            _LOG.warning(
+                "evidence_gap run_id=%s retention_failures=%d", run_id, failures
+            )
+            append_bench_event(store, "evidence_gap", bench_id, run_id, None,
                                keep=self._emit_keep, now_iso=self._now_iso)

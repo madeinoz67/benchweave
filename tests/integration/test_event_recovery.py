@@ -58,6 +58,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import socket
 import subprocess
@@ -384,22 +385,31 @@ def _stage_crashed_run(store: Store, run_id: str, request_id: str) -> None:
 # --- worker poison guard -------------------------------------------------------
 
 
-def test_worker_survives_poisoned_build_run(tmp_path: Path) -> None:
+def test_worker_survives_poisoned_build_run(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
     """A coordinator-construction failure must not kill the worker thread.
 
     The poisoned run (a binding whose pinned document is not stored) lands
     terminal with honest unknown truth — no fabricated terminal record —
-    and a ``run_changed`` carries the worker error; a subsequent good run
-    still executes to ``passed``.
+    and a ``run_changed`` event plus a server-side ERROR log line carry the
+    failure (D4, interface-errata slice: the worker error left the wire
+    for the gateway log — §10 excludes crash detail from event payloads —
+    while the event pins the run's binding document); a subsequent good
+    run still executes to ``passed``.
     """
     gateway = _launch(tmp_path)
     try:
-        poisoned = _start_run(gateway, "req-poison", POISON_REF)
-        _poll_run(gateway, poisoned, want="terminal")
+        with caplog.at_level(logging.ERROR, logger="benchweave.interfaces.worker"):
+            poisoned = _start_run(gateway, "req-poison", POISON_REF)
+            _poll_run(gateway, poisoned, want="terminal")
         honest = _run_get(gateway, poisoned)
         assert honest["outcome"] == "outcome_unknown"
         assert honest["safe_state"] == "unknown"
         assert honest["terminal_record"] is None, "no record may be fabricated"
+        assert poisoned in caplog.text and "Error" in caplog.text, (
+            "the poison must be visible in the gateway log, keyed by run id"
+        )
 
         good = _start_run(gateway, "req-voltage-check-1", BINDING_REF)
         final = _poll_run(gateway, good, want="terminal", timeout=30.0)
@@ -408,9 +418,10 @@ def test_worker_survives_poisoned_build_run(tmp_path: Path) -> None:
         events = _bench_events(gateway)
         poisoned_events = [e for e in events if e.get("run_id") == poisoned]
         assert any(
-            e["kind"] == "run_changed" and "worker_error" in str(e.get("evidence", {}))
+            e["kind"] == "run_changed"
+            and set(e.get("evidence", {})) == {"id", "version", "sha256"}
             for e in poisoned_events
-        ), "the poison must be visible on the bench stream"
+        ), "the poisoned run's events pin the closed binding-document ref"
     finally:
         _shutdown(gateway)
 
@@ -443,8 +454,10 @@ def test_kill_mid_run_staged_crash_recovers_interrupted(tmp_path: Path) -> None:
         events = _bench_events(gateway)
         assert [e["kind"] for e in events] == ["run_changed"], events
         assert all(e.get("run_id") == crashed for e in events)
-        reason = app_module.RECOVERY_RUN_CHANGED_REASON
-        assert reason in str(events[0].get("evidence", {})), events[0]
+        # D4 (interface-errata slice): the wire event pins the run's
+        # binding document; the recovery reason rides the gateway log
+        # (RECOVERY_RUN_CHANGED_REASON, logged keyed by run id).
+        assert set(events[0].get("evidence", {})) == {"id", "version", "sha256"}
         assert "trip" not in [e["kind"] for e in events], "no invented protective event"
     finally:
         _shutdown(gateway)
@@ -627,9 +640,11 @@ def test_kill_mid_run_child_process_recovers_interrupted(tmp_path: Path) -> None
         kinds = [e["kind"] for e in events]
         assert kinds and set(kinds) == {"run_changed"}, events
         assert all(e.get("run_id") == run_id for e in events), events
-        reason = app_module.RECOVERY_RUN_CHANGED_REASON
+        # D4 (interface-errata slice): the recovery reason
+        # (RECOVERY_RUN_CHANGED_REASON) rides the gateway log keyed by run
+        # id; the wire event pins the closed binding-document ref.
         assert any(
-            reason in str(e.get("evidence", {})) for e in events
+            set(e.get("evidence", {})) == {"id", "version", "sha256"} for e in events
         ), "the recovery must be visible on the bench stream"
         assert "trip" not in kinds and "evidence_gap" not in kinds
     finally:
@@ -802,7 +817,10 @@ def test_evidence_storage_failure_emits_evidence_gap(tmp_path: Path) -> None:
         gaps = [e for e in events if e["kind"] == "evidence_gap" and e.get("run_id") == run_id]
         assert len(gaps) == 1, f"exactly one evidence_gap, got {gaps}"
         evidence = dict(gaps[0].get("evidence") or {})
-        assert int(evidence["retention_failures"]) >= 1, gaps[0]
+        assert set(evidence) == {"id", "version", "sha256"}, (
+            "D4 (interface-errata slice): the gap event pins the closed"
+            " binding-document ref; the failure count rides the gateway log"
+        )
 
         quota = SMALL_LIMITS["max_page_size"] * 10
         row = gateway.store.connection.execute(
