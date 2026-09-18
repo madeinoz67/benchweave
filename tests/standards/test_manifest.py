@@ -153,6 +153,42 @@ def test_identity_fails_when_the_const_is_absent_from_the_descriptor_schema(
         validate_identity(load_manifest(ROOT), root)
 
 
+def _set_identity_value(root: Path, key: str, value: str | None) -> None:
+    path = root / "standards/corpus-manifest.json"
+    document = json.loads(path.read_bytes())
+    if value is None:
+        document["identity"].pop(key, None)
+    else:
+        document["identity"][key] = value
+    path.write_text(json.dumps(document))
+
+
+def test_identity_standard_version_mismatch_fails(tmp_path: Path) -> None:
+    # identity.otdp stale vs its standards-manifest entry: the block misreports
+    # the corpus while every existing gate stays green unless derived.
+    root = _identity_root(tmp_path)
+    _set_identity_value(root, "otdp", "0.1.0")
+    with pytest.raises(StandardsError, match="identity_standard_mismatch"):
+        validate_identity(load_manifest(ROOT), root)
+
+
+def test_identity_standard_key_absent_fails(tmp_path: Path) -> None:
+    root = _identity_root(tmp_path)
+    _set_identity_value(root, "registry", None)
+    with pytest.raises(StandardsError, match="identity_standard_absent"):
+        validate_identity(load_manifest(ROOT), root)
+
+
+def test_identity_standard_declared_without_manifest_entry_fails(tmp_path: Path) -> None:
+    root = _identity_root(tmp_path)
+    _set_identity_value(root, "execution", "9.9.9")
+    manifest = StandardsManifest(
+        tuple(e for e in load_manifest(ROOT).standards if e.id != "execution")
+    )
+    with pytest.raises(StandardsError, match="identity_standard_mismatch"):
+        validate_identity(manifest, root)
+
+
 def test_identity_fails_when_the_descriptor_is_not_in_the_normative_list(
     tmp_path: Path,
 ) -> None:

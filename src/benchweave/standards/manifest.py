@@ -9,6 +9,8 @@ from pathlib import Path
 
 VALID_STATUS = frozenset({"draft", "stable", "deprecated"})
 DESCRIPTOR_SCHEMA_NAME = "otdp-device-descriptor.schema.json"
+# Identity keys that name a standards-manifest id and therefore carry its version
+IDENTITY_STANDARD_KEYS = ("otdp", "registry", "execution", "interface")
 
 
 class StandardsError(ValueError):
@@ -89,10 +91,14 @@ def load_identity(root: Path) -> dict[str, str]:
 
 
 def validate_identity(manifest: StandardsManifest, root: Path) -> None:
-    """The declared adapter_api must equal the descriptor schema's api_version const.
+    """The identity block is derived-checked against its machine authorities.
 
-    The schema const is the single authority; the identity block is a declaration
-    that is verified, never trusted. Absence is a failure, not a default.
+    adapter_api must equal the descriptor schema's api_version const, and the
+    standards-manifest is the authority for the standard version keys: for
+    each manifest id in IDENTITY_STANDARD_KEYS the block must declare exactly
+    that version, and must not declare a standard the manifest does not carry.
+    Declarations are verified, never trusted; architecture, mcp and note are
+    not standards-manifest ids and stay untouched.
     """
     identity = load_identity(root)
     if "adapter_api" not in identity:
@@ -117,6 +123,21 @@ def validate_identity(manifest: StandardsManifest, root: Path) -> None:
             f"identity_adapter_api_mismatch: identity {identity['adapter_api']} "
             f"vs schema const {const} in {relative}"
         )
+    versions = {entry.id: entry.version for entry in manifest.standards}
+    for key in IDENTITY_STANDARD_KEYS:
+        if key in versions:
+            if key not in identity:
+                raise StandardsError(f"identity_standard_absent: {key}")
+            if identity[key] != versions[key]:
+                raise StandardsError(
+                    f"identity_standard_mismatch: identity {key} {identity[key]} "
+                    f"vs manifest {key}@{versions[key]}"
+                )
+        elif key in identity:
+            raise StandardsError(
+                f"identity_standard_mismatch: identity declares {key} "
+                "but the manifest has no such standard"
+            )
 
 
 def _descriptor_relative(manifest: StandardsManifest) -> str:

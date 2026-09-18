@@ -96,6 +96,10 @@ def test_export_refuses_normative_paths_that_collide_in_the_bundle(tmp_path: Pat
     corpus["files"] = [
         row for row in corpus["files"] if row["path"] == descriptor.removeprefix("standards/")
     ]
+    # The tmp manifest carries only the otdp entry; the identity block derives
+    # from it, so the standard keys it cannot account for are dropped too.
+    for key in ("registry", "execution", "interface"):
+        corpus["identity"].pop(key)
     (broken / "standards/corpus-manifest.json").write_text(json.dumps(corpus))
     (broken / "standards/standards-manifest.json").write_text(json.dumps(document))
 
