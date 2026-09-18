@@ -254,25 +254,68 @@ def bridge_services_members(source: str) -> set[str]:
     }
 
 
-def _string_set_literals(node: ast.AST) -> set[frozenset[str]]:
-    """Key/element sets of set and dict literals whose parts are all plain strings."""
-    literals: set[frozenset[str]] = set()
-    for inner in ast.walk(node):
-        parts: list[str] = []
-        if isinstance(inner, ast.Set):
-            constants = [element for element in inner.elts if isinstance(element, ast.Constant)]
-            parts = [element.value for element in constants if isinstance(element.value, str)]
-            if len(parts) != len(inner.elts) or not parts:
-                continue
-        elif isinstance(inner, ast.Dict):
-            constants = [key for key in inner.keys if isinstance(key, ast.Constant)]
-            parts = [key.value for key in constants if isinstance(key.value, str)]
-            if len(parts) != len(inner.keys) or not parts:
-                continue
-        else:
+def _enforced_set_literals(tree: ast.Module) -> set[frozenset[str]]:
+    """String set literals that gate a raise (an ``if`` whose body raises).
+
+    A literal in a dead local proves presence, not enforcement — the envelope
+    pin requires the key set to be the test of a raise-guarding branch.
+    """
+    enforced: set[frozenset[str]] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.If):
             continue
-        literals.add(frozenset(parts))
-    return literals
+        if not any(isinstance(statement, ast.Raise) for statement in node.body):
+            continue
+        for inner in ast.walk(node.test):
+            if not isinstance(inner, ast.Set):
+                continue
+            values = [element.value for element in inner.elts if isinstance(element, ast.Constant)]
+            if values and all(isinstance(value, str) for value in values):
+                enforced.add(frozenset(value for value in values if isinstance(value, str)))
+    return enforced
+
+
+def _request_keys_reaching_execute(tree: ast.Module) -> frozenset[str]:
+    """Keys of the request dict literal that reaches the adapter's execute call.
+
+    Accepts the two pinnable construction forms — a dict literal passed
+    directly, or a name bound to one by a single assignment; anything else (a
+    helper's return value, a computed dict) fails loud so the shape change is
+    reviewed, not silently trusted.
+    """
+    for node in ast.walk(tree):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "execute"
+            and _is_self_attr(node.func.value, "_adapter")
+        ):
+            continue
+        argument = node.args[0] if node.args else None
+        literal: ast.Dict | None = None
+        if isinstance(argument, ast.Dict):
+            literal = argument
+        elif isinstance(argument, ast.Name):
+            for assign in ast.walk(tree):
+                if not isinstance(assign, ast.Assign):
+                    continue
+                for target in assign.targets:
+                    if (
+                        isinstance(target, ast.Name)
+                        and target.id == argument.id
+                        and isinstance(assign.value, ast.Dict)
+                    ):
+                        literal = assign.value
+        if literal is None:
+            raise AssertionError(
+                "request envelope construction no longer reaches the execute call "
+                "in a pinnable form (a dict literal or a name bound to one)"
+            )
+        keys = [key.value for key in literal.keys if isinstance(key, ast.Constant)]
+        if not keys or len(keys) != len(literal.keys):
+            raise AssertionError("request envelope keys are not all plain strings")
+        return frozenset(key for key in keys if isinstance(key, str))
+    raise AssertionError("no pinned execute call site found for the request envelope")
 
 
 def _protocol_methods(cls: Any) -> dict[str, Any]:
@@ -403,11 +446,20 @@ def check_envelopes(source: str, runtime: dict[str, Any]) -> None:
     # changes, this row surfaces it.
     assert defs["error"].get("patternProperties"), "error ^x- extension allowance changed"
 
-    literals = _string_set_literals(ast.parse(source))
-    assert frozenset(RESULT_KEYS) in literals, "success key set no longer enforced in the bridge"
-    assert frozenset(ERROR_PATH_KEYS) in literals, "error key set no longer enforced in bridge"
-    assert frozenset(ERROR_KEYS) in literals, "error-object key set no longer enforced in bridge"
-    assert frozenset(REQUEST_KEYS) in literals, "request key set no longer built by the bridge"
+    tree = ast.parse(source)
+    enforced = _enforced_set_literals(tree)
+    assert enforced == {
+        frozenset(RESULT_KEYS),
+        frozenset(ERROR_PATH_KEYS),
+        frozenset(ERROR_KEYS),
+    }, (
+        "the bridge's raise-guarded envelope key sets drifted from the pinned three: "
+        f"enforced={sorted(sorted(literal) for literal in enforced)}"
+    )
+    assert _request_keys_reaching_execute(tree) == REQUEST_KEYS, (
+        "the request envelope built by the bridge no longer carries the pinned keys "
+        "at the execute call site"
+    )
 
 
 def check_vocabularies(runtime: dict[str, Any]) -> None:
@@ -587,6 +639,21 @@ def test_comparator_rejects_an_adapter_data_member(tmp_path: Path) -> None:
     )
     with pytest.raises(AssertionError):
         check_adapter_surface(mutated, BRIDGE_SOURCE)
+
+
+def test_envelope_pin_rejects_a_dead_local_instead_of_enforcement() -> None:
+    """F3: an envelope literal in a dead local proves presence, not enforcement."""
+    dead = _mutated_bridge_source(
+        (
+            (
+                '        if set(result) != {"operation_id", "verb", "status", "data"}:\n'
+                '            raise ValueError("invalid success envelope")',
+                '        dead = {"operation_id", "verb", "status", "data"}',
+            ),
+        )
+    )
+    with pytest.raises(AssertionError):
+        check_envelopes(dead, _load_active("otdp-runtime.schema.json"))
 
 
 def test_absent_submodule_fails_under_ci(tmp_path: Path) -> None:
