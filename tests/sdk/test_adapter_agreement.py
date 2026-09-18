@@ -74,11 +74,11 @@ EXPECTED_ADAPTER_PARAMS: dict[str, tuple[str, ...]] = {
     "next_event": ("subscription_id", "context"),
     "close": ("context",),
 }
-EXPECTED_BRIDGE_CALLS: dict[str, tuple[int, bool]] = {
-    # member -> (positional arguments at the call site, keyword arguments used)
-    "open": (3, False),
-    "execute": (2, False),
-    "close": (1, False),
+EXPECTED_BRIDGE_CALLS: dict[str, tuple[int, bool, bool]] = {
+    # member -> (positional arguments, keyword arguments used, starred arguments)
+    "open": (3, False, False),
+    "execute": (2, False, False),
+    "close": (1, False, False),
 }
 # documented gap: declared by the SDK protocol, never called by the bridge
 # (identify/read/write only — the otdp_bridge module docstring)
@@ -179,6 +179,16 @@ def _load_mutated_interfaces(
 # --- structural extraction (the gateway side is read from code, never assumed) ---
 
 
+def _is_self_attr(node: ast.AST, name: str) -> TypeGuard[ast.Attribute]:
+    """The node is exactly ``self.<name>``."""
+    return (
+        isinstance(node, ast.Attribute)
+        and isinstance(node.value, ast.Name)
+        and node.value.id == "self"
+        and node.attr == name
+    )
+
+
 def _is_self_member(node: ast.AST, holder: str) -> TypeGuard[ast.Attribute]:
     return (
         isinstance(node, ast.Attribute)
@@ -189,26 +199,49 @@ def _is_self_member(node: ast.AST, holder: str) -> TypeGuard[ast.Attribute]:
     )
 
 
-def bridge_adapter_calls(source: str) -> dict[str, set[tuple[int, bool]]]:
-    """Every ``self._adapter`` member the bridge references.
+def bridge_adapter_pin(
+    source: str,
+) -> tuple[dict[str, set[tuple[int, bool, bool]]], int, list[int]]:
+    """Total pin over the ``_adapter`` attribute; nothing else in the module may touch it.
 
-    The value is the set of (positional call arguments, keyword arguments used)
-    shapes at the member's call sites — every site is recorded, so a second
-    call site with a different arity appears as an extra shape rather than
-    overwriting the first. A referenced-but-never-called member maps to an
-    empty set.
+    Returns (member -> call-site shapes, store count, linenos of occurrences in
+    any other form). A shape is (positional args, keyword args used, starred
+    args present). Every ``._adapter`` occurrence must be consumed as the base
+    of a member call or as an assignment target — an alias, a bare read, a
+    helper argument, a foreign receiver or a ``del`` lands in the unaccounted
+    list and fails the check, because a call through any of those forms
+    escapes the three-way pin silently.
     """
     tree = ast.parse(source)
-    referenced: dict[str, set[tuple[int, bool]]] = {}
+    consumed: set[int] = set()
+    stores = 0
+    shapes: dict[str, set[tuple[int, bool, bool]]] = {}
     for node in ast.walk(tree):
-        if not _is_self_member(node, "_adapter"):
-            continue
-        shapes: set[tuple[int, bool]] = set()
-        for candidate in ast.walk(tree):
-            if isinstance(candidate, ast.Call) and candidate.func is node:
-                shapes.add((len(candidate.args), bool(candidate.keywords)))
-        referenced[node.attr] = shapes
-    return referenced
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+            base = node.func.value
+            if _is_self_attr(base, "_adapter"):
+                consumed.add(id(base))
+                shapes.setdefault(node.func.attr, set()).add(
+                    (
+                        len(node.args),
+                        bool(node.keywords),
+                        any(isinstance(argument, ast.Starred) for argument in node.args),
+                    )
+                )
+        if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            for target in targets:
+                elements = target.elts if isinstance(target, (ast.Tuple, ast.List)) else [target]
+                for element in elements:
+                    if _is_self_attr(element, "_adapter"):
+                        consumed.add(id(element))
+                        stores += 1
+    unaccounted = sorted(
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Attribute) and node.attr == "_adapter" and id(node) not in consumed
+    )
+    return shapes, stores, unaccounted
 
 
 def bridge_services_members(source: str) -> set[str]:
@@ -307,19 +340,29 @@ def check_adapter_surface(sdk: ModuleType, source: str) -> None:
     """expected literals <-> SDK Adapter protocol <-> the bridge's actual call sites."""
     methods = _protocol_methods(sdk.Adapter)
     assert set(methods) == set(EXPECTED_ADAPTER_PARAMS), "SDK Adapter member set drifted"
-    calls = bridge_adapter_calls(source)
-    assert set(calls) == set(EXPECTED_BRIDGE_CALLS), "bridge adapter call set drifted"
-    assert set(methods) - set(calls) == ADAPTER_GAPS, "documented adapter gaps drifted"
+    shapes, stores, unaccounted = bridge_adapter_pin(source)
+    assert not unaccounted, (
+        f"._adapter is used outside the pinned call sites/store at lines {unaccounted}; "
+        "an alias, bare read, helper argument or foreign receiver escapes the three-way "
+        "pin silently — widen EXPECTED_BRIDGE_CALLS consciously instead"
+    )
+    assert stores == 1, "the bridge must store the adapter exactly once (OTDPBridge.__init__)"
+    assert set(shapes) == set(EXPECTED_BRIDGE_CALLS), "bridge adapter call set drifted"
+    assert set(methods) - set(shapes) == ADAPTER_GAPS, "documented adapter gaps drifted"
     for name, parameters in EXPECTED_ADAPTER_PARAMS.items():
         names, _, keyword_only, is_coroutine = _signature_shape(methods[name])
         assert names == parameters, f"SDK Adapter.{name} parameter names drifted"
         assert keyword_only == 0, f"SDK Adapter.{name} must not take keyword-only arguments"
         assert is_coroutine, f"SDK Adapter.{name} must stay async"
-        if name in EXPECTED_BRIDGE_CALLS:
-            expected_shape = EXPECTED_BRIDGE_CALLS[name]
-            assert calls[name] == {expected_shape}, f"bridge call sites to {name} drifted"
-            assert expected_shape[0] == len(parameters), f"bridge call to {name} arity drifted"
-            assert not expected_shape[1], f"bridge call to {name} must pass arguments positionally"
+    for name, site_shapes in shapes.items():
+        for positional, keywords, starred in site_shapes:
+            assert not starred, f"unpinnable call shape: starred argument at a {name} call site"
+            assert not keywords, f"bridge call to {name} must pass arguments positionally"
+            assert positional == len(EXPECTED_ADAPTER_PARAMS[name]), (
+                f"bridge call to {name} arity drifted"
+            )
+    for name, expected_shape in EXPECTED_BRIDGE_CALLS.items():
+        assert shapes[name] == {expected_shape}, f"bridge call sites to {name} drifted"
 
 
 def check_host_services(sdk: ModuleType, source: str) -> None:
@@ -476,6 +519,60 @@ def test_vocabulary_check_rejects_a_renamed_schema_enum_value() -> None:
     values[values.index("not_dispatched")] = "never_dispatched"
     with pytest.raises(AssertionError):
         check_vocabularies(runtime)
+
+
+def _mutated_bridge_source(replacements: tuple[tuple[str, str], ...]) -> str:
+    """String surgery on a COPY of the bridge source; the tree is never touched."""
+    source = BRIDGE_SOURCE
+    for old, new in replacements:
+        assert source.count(old) == 1, f"mutation fixture no longer applies: {old!r}"
+        source = source.replace(old, new)
+    return source
+
+
+def test_adapter_pin_rejects_an_aliased_adapter_call() -> None:
+    """F1: a call through an alias of self._adapter escapes the member pin."""
+    aliased = _mutated_bridge_source(
+        (
+            (
+                "result = self._run(self._adapter.execute(envelope, context), context)",
+                'alias = self._adapter\n'
+                '                self._run(alias.next_event("subscriptions", context), context)\n'
+                "                result = self._run(self._adapter.execute(envelope, context), context)",
+            ),
+        )
+    )
+    with pytest.raises(AssertionError):
+        check_adapter_surface(_sdk_module("benchweave_sdk.interfaces"), aliased)
+
+
+def test_adapter_pin_rejects_a_starred_call_argument() -> None:
+    """F1: a starred argument is an unpinnable shape, not one positional."""
+    starred = _mutated_bridge_source(
+        (
+            (
+                "self._adapter.execute(envelope, context)",
+                "self._adapter.execute(*envelope_parts, context)",
+            ),
+        )
+    )
+    with pytest.raises(AssertionError):
+        check_adapter_surface(_sdk_module("benchweave_sdk.interfaces"), starred)
+
+
+def test_adapter_pin_rejects_a_helper_argument_pass_through() -> None:
+    """F1: handing self._adapter to a helper escapes the member pin."""
+    passed = _mutated_bridge_source(
+        (
+            (
+                "result = self._run(self._adapter.execute(envelope, context), context)",
+                "self._dispatch_via(self._adapter, context)\n"
+                "                result = self._run(self._adapter.execute(envelope, context), context)",
+            ),
+        )
+    )
+    with pytest.raises(AssertionError):
+        check_adapter_surface(_sdk_module("benchweave_sdk.interfaces"), passed)
 
 
 def test_absent_submodule_fails_under_ci(tmp_path: Path) -> None:
