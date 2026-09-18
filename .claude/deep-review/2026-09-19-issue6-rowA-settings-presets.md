@@ -320,10 +320,22 @@ schema, two presets), two test files (§7), and the developer-guide section.
 - The design *applies* existing posture rather than changing it: plugin files
   confer no authority (REG-3/A11 — presets are data; `check-preset`'s own
   success message says "not admission or approval to apply settings");
-  presets contain redistributable settings only — the closed action schema
-  makes endpoints/wiring/secrets structurally unrepresentable in `settings`,
-  and the no-presentation-fields test (§7) pins that no label/unit/colour
-  leaks in either; select ≠ apply holds trivially because no apply exists.
+  presets contain redistributable settings only — [corrected in the fix
+  wave:] the closed action schema closes the key SET of `settings`, not the
+  string VALUES: an endpoint-looking string inside a corpus-required field
+  such as `configuration_id` passes both lanes clean, so
+  endpoints/wiring/secrets are narrowed, not structurally unrepresentable
+  (the developer guide's narrower phrasing is the accurate one), and the
+  no-presentation-fields test (§7) pins that no label/unit/colour leaks in
+  either; select ≠ apply holds trivially because no apply exists.
+
+  Mechanism boundary disclosed in the same fix wave: an empty
+  `input_constraints: {}` is silently vacuous — sim_scope's own
+  arm/trigger/fetch/abort actions declare `{}`, so the lanes check nothing
+  beyond the corpus schema for them. Only the configure action's constraints
+  bite, and only in lane 2. This becomes load-bearing the day an apply path
+  trusts lane 2 as preset verification: vacuous constraints on an action
+  would then mean unverified settings.
 - One **new plugin-level pin in the CON-2 spirit** (not an amendment — CON-2
   governs the registry fixture lattice): the parsed-equality test tying the
   shipped settings-schema copy to the vendored corpus. Without it the copy is

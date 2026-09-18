@@ -54,6 +54,23 @@ energisation. Model averaging is the one settings family with no action-input
 home (the closed 0.1.1 action schemas cannot represent it in preset
 settings), so `averaging_count` is a live-write-only parameter.
 
+## Fetch semantics
+
+Acquisition state is honest, not laundered: arming completes an
+immediate-trigger acquisition at arm time; every other trigger kind stays
+armed until the `trigger` action fires it. Fetching an incomplete
+acquisition refuses (`DEVICE_REJECTED`) unless `allow_partial` is true, in
+which case the dataset returns `status: partial` carrying the pretrigger
+buffer (`pretrigger_fraction x sample_count` samples) with a `status_reason`
+naming the cause. `max_bytes` caps the materialized payload at 8 bytes per
+sample per channel: an insufficient budget refuses when `allow_partial` is
+false, truncates to the budget (with the actual axis length reported) when
+true, and a budget below one sample per channel always refuses — no
+representable dataset. `started_at` is the arm time, `dataset_id` is
+acquisition-scoped with a per-acquisition fetch counter, and the dataset
+carries the configuration snapshotted at arm, so a reconfigure between arm
+and fetch cannot re-attribute the evidence.
+
 ## Authored envelopes
 
 The acquisition envelopes are authored for the simulator, not measured on
