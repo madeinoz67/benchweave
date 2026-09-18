@@ -353,6 +353,7 @@ All notable changes to this project will be documented in this file.
 - Pin the adapter protocol three-way — expected literals, SDK, gateway, corpus
 - Pin the submodule HEAD to the recorded gitlink
 - Pin the submodule HEAD against the committed gitlink, not the index
+- Pin test_sdk resolution to the pinned submodule tree (#53)
 
 ### Build
 
