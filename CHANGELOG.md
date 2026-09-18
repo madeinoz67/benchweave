@@ -235,6 +235,7 @@ All notable changes to this project will be documented in this file.
 - "What surprised us" and a validated "Where it stands"
 - Align the main site to public-site styleguide v0.2
 - Star-on-GitHub header CTA with live count
+- The build loop — agents, skills, drift guard, design records, constitution (#42)
 
 ### Hardware Evidence
 
