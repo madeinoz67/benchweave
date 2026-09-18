@@ -165,6 +165,16 @@ def build() -> FastAPI:
     """Compose the gateway from ``BENCHWEAVE_*`` environment inputs."""
     db_path = os.environ["BENCHWEAVE_DB"]
     fixtures = Path(os.environ.get("BENCHWEAVE_FIXTURES", str(_DEFAULT_FIXTURES)))
+    if not fixtures.is_dir():
+        # In a wheel install the repo-relative default resolves into the
+        # environment's site-packages parent, where no lattice exists (the
+        # execution fixtures are deliberately not vendored — they are
+        # operator-supplied input). Fail fast naming the knob instead of
+        # booting toward a cryptic downstream error.
+        raise RuntimeError(
+            f"benchweave: fixtures directory not found: {fixtures} — set "
+            "BENCHWEAVE_FIXTURES to your bench/procedure/policy lattice"
+        )
     secret = os.environ.get("BENCHWEAVE_SECRET", _DEFAULT_SECRET.decode()).encode()
     _require_production_secret(secret)
     store = Store.open(db_path, check_same_thread=False)

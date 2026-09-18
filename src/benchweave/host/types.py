@@ -17,18 +17,33 @@ Value = int | float | str | bool
 
 
 class Quality(StrEnum):
+    """How far a reading can be trusted: ``valid`` is a fresh, in-spec
+    observation; ``stale`` one that has aged past its freshness bound;
+    ``invalid`` one the device or bridge knows to be wrong."""
+
     VALID = "valid"
     STALE = "stale"
     INVALID = "invalid"
 
 
 class ReadingSource(StrEnum):
+    """Where a reading's value came from: ``device`` is a live
+    observation, ``cache`` an earlier observation replayed by the host,
+    and ``commissioned`` a value asserted by commissioning records rather
+    than measured."""
+
     DEVICE = "device"
     CACHE = "cache"
     COMMISSIONED = "commissioned"
 
 
 class Assurance(StrEnum):
+    """The write-verification ladder, weakest to strongest: ``dispatched``
+    (the command left the host), ``acknowledged`` (the device accepted
+    it), ``readback`` (the setting read back and matched), ``physical``
+    (an independent measurement confirmed the effect). Plugins report only
+    the level actually achieved, never an aspiration."""
+
     DISPATCHED = "dispatched"
     ACKNOWLEDGED = "acknowledged"
     READBACK = "readback"
@@ -36,6 +51,13 @@ class Assurance(StrEnum):
 
 
 class ErrorCode(StrEnum):
+    """The closed OTDP failure vocabulary. Caller faults:
+    ``INVALID_ARGUMENT``, ``UNSUPPORTED``. Wrong instrument:
+    ``IDENTITY_MISMATCH``. The device said no: ``DEVICE_REJECTED``. The
+    wire failed: ``TRANSPORT_ERROR``, ``TIMEOUT``, ``PROTOCOL_ERROR``. Out
+    of capacity: ``RESOURCE_LIMIT``. Stopped on request: ``CANCELLED``.
+    Everything the plugin cannot classify: ``INTERNAL_ERROR``."""
+
     INVALID_ARGUMENT = "INVALID_ARGUMENT"
     UNSUPPORTED = "UNSUPPORTED"
     IDENTITY_MISMATCH = "IDENTITY_MISMATCH"
@@ -49,12 +71,25 @@ class ErrorCode(StrEnum):
 
 
 class DispatchState(StrEnum):
+    """What the device may have seen of a failed operation:
+    ``not_dispatched`` — the command never left the host, retrying is
+    safe; ``dispatched`` — it left, the device may have acted; ``unknown``
+    — honesty after a mid-flight timeout, no claim either way. An
+    ``unknown``-status result may never claim ``not_dispatched`` (enforced
+    by :class:`OperationResult`)."""
+
     NOT_DISPATCHED = "not_dispatched"
     DISPATCHED = "dispatched"
     UNKNOWN = "unknown"
 
 
 class OperationVerb(StrEnum):
+    """The closed dispatch surface — every plugin operation is one of
+    these ten, so hosts can reason about the whole ABI: ``identify``,
+    ``read``, ``write``, ``self_test``, ``get_errors``, ``capture``,
+    ``stream_subscribe``/``stream_unsubscribe``, ``reset``, and the
+    profile-action escape hatch ``invoke``."""
+
     IDENTIFY = "identify"
     READ = "read"
     WRITE = "write"
@@ -68,6 +103,11 @@ class OperationVerb(StrEnum):
 
 
 class OperationStatus(StrEnum):
+    """The verdict of one dispatch: ``ok`` (data present), ``error`` (a
+    definite failure with its error envelope), ``unknown`` (post-dispatch
+    honesty — the outcome cannot be known), ``cancelled`` (stopped on
+    request before completion)."""
+
     OK = "ok"
     ERROR = "error"
     UNKNOWN = "unknown"
@@ -75,12 +115,20 @@ class OperationStatus(StrEnum):
 
 
 class IdentitySource(StrEnum):
+    """Who asserted the identity: ``device`` — self-reported by the
+    instrument; ``commissioned`` — asserted by the bench's commissioning
+    record for devices that cannot report their own."""
+
     DEVICE = "device"
     COMMISSIONED = "commissioned"
 
 
 @dataclass(frozen=True)
 class Identity:
+    """Who the instrument claims — or is commissioned — to be.
+    Manufacturer and model are mandatory; serial and firmware are
+    honest-when-known (None, never a placeholder)."""
+
     manufacturer: str
     model: str
     serial: str | None
@@ -94,6 +142,10 @@ class Identity:
 
 @dataclass(frozen=True)
 class Reading:
+    """One observed parameter value with its trust metadata: when it was
+    observed, how old it was at reply time (``age_ms``), its ``Quality``
+    and where it came from (``ReadingSource``)."""
+
     parameter: str
     value: Value | None
     unit: str | None
@@ -111,6 +163,10 @@ class Reading:
 
 @dataclass(frozen=True)
 class WriteReceipt:
+    """The reply to a write: what was requested, what the device reports
+    as in effect (None when unknowable), the ``Assurance`` level actually
+    achieved, and the verifying ``Reading`` where readback happened."""
+
     parameter: str
     requested_value: Value
     effective_value: Value | None
@@ -120,6 +176,8 @@ class WriteReceipt:
 
 @dataclass(frozen=True)
 class DiagnosticDetail:
+    """One self-test check line: what was checked, expected vs actual."""
+
     check: str
     expected: str
     actual: str
@@ -127,6 +185,9 @@ class DiagnosticDetail:
 
 @dataclass(frozen=True)
 class Diagnostic:
+    """A self-test verdict (``pass`` | ``fail`` | ``unknown``) with its
+    human summary and optional per-check details."""
+
     verdict: str  # pass | fail | unknown
     summary: str
     details: tuple[DiagnosticDetail, ...] = ()
@@ -140,18 +201,28 @@ class Diagnostic:
 
 @dataclass(frozen=True)
 class ErrorEntry:
+    """One entry drained from the device's own error queue: the vendor's
+    code and message, passed through untranslated."""
+
     code: str
     message: str
 
 
 @dataclass(frozen=True)
 class DeviceErrors:
+    """A ``get_errors`` drain of the device error queue; ``more`` is True
+    when entries remain undrained on the device."""
+
     entries: tuple[ErrorEntry, ...]
     more: bool
 
 
 @dataclass(frozen=True)
 class OperationError:
+    """The failure half of a result: the closed ``ErrorCode``, a human
+    message, and the ``DispatchState`` recording what the device may have
+    seen of the attempt."""
+
     code: ErrorCode
     message: str
     dispatch_state: DispatchState
@@ -163,6 +234,10 @@ class OperationError:
 
 @dataclass(frozen=True)
 class OperationRequest:
+    """One typed dispatch request: a caller-minted ``operation_id`` (the
+    correlation handle a result must echo), the verb, and its argument
+    object. The classmethods build the common shapes."""
+
     operation_id: str
     verb: OperationVerb
     arguments: dict[str, Any] = field(default_factory=dict)
@@ -173,10 +248,12 @@ class OperationRequest:
 
     @classmethod
     def identify(cls, operation_id: str) -> OperationRequest:
+        """An ``identify`` request (no arguments)."""
         return cls(operation_id=operation_id, verb=OperationVerb.IDENTIFY)
 
     @classmethod
     def read(cls, operation_id: str, *, parameter: str) -> OperationRequest:
+        """A ``read`` of one named parameter."""
         return cls(
             operation_id=operation_id,
             verb=OperationVerb.READ,
@@ -185,6 +262,7 @@ class OperationRequest:
 
     @classmethod
     def write(cls, operation_id: str, *, parameter: str, value: Value) -> OperationRequest:
+        """A ``write`` of one named parameter to ``value``."""
         return cls(
             operation_id=operation_id,
             verb=OperationVerb.WRITE,
@@ -194,6 +272,12 @@ class OperationRequest:
 
 @dataclass(frozen=True)
 class OperationResult:
+    """The reply envelope for one dispatch. ``__post_init__`` enforces the
+    schema's conditionals: ``ok`` carries data and no error, every other
+    status carries an error and no data, and ``unknown`` may never claim
+    ``not_dispatched`` — indeterminacy about work that provably never left
+    the host is a contradiction."""
+
     operation_id: str
     verb: OperationVerb
     status: OperationStatus
@@ -220,6 +304,7 @@ class OperationResult:
 
     @classmethod
     def ok(cls, operation_id: str, verb: OperationVerb, data: Any) -> OperationResult:
+        """A successful result carrying ``data``."""
         return cls(operation_id=operation_id, verb=verb, status=OperationStatus.OK, data=data)
 
     @classmethod
@@ -232,6 +317,8 @@ class OperationResult:
         message: str,
         dispatch_state: DispatchState,
     ) -> OperationResult:
+        """A definite failure: status ``error`` with the given code,
+        message and dispatch state."""
         return cls(
             operation_id=operation_id,
             verb=verb,
@@ -248,6 +335,9 @@ class OperationResult:
         code: ErrorCode,
         message: str,
     ) -> OperationResult:
+        """Post-dispatch honesty: status ``unknown`` with dispatch state
+        ``unknown`` — the outcome cannot be known (a timeout mid-flight is
+        the canonical case)."""
         return cls(
             operation_id=operation_id,
             verb=verb,

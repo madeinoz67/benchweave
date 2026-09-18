@@ -32,12 +32,21 @@ class LeaseNotActive(ValueError):
 
 @dataclass(frozen=True)
 class AcceptResult:
+    """The §9 idempotency verdict: ``outcome`` is ``"accepted"`` on first
+    sight or ``"duplicate"`` on a byte-identical replay; ``run_id`` is the
+    id the key resolves to either way."""
+
     outcome: str  # "accepted" | "duplicate"
     run_id: str
 
 
 @dataclass(frozen=True)
 class Lease:
+    """One immutable row of a bench's lease ledger, at its store-assigned
+    gap-free ``sequence``; ``state`` is ``"active"`` or ``"released"`` as
+    stored (a consumed lease records ``released`` too — see
+    ``Store.consume_lease``)."""
+
     lease_id: str
     bench_id: str
     sequence: int
@@ -47,6 +56,7 @@ class Lease:
 
 
 def accept_result(result: AcceptResult) -> str:
+    """The outcome string alone, for callers that branch on nothing else."""
     return result.outcome
 
 
@@ -66,6 +76,10 @@ class Store:
 
     @classmethod
     def open(cls, path: str | Path, *, check_same_thread: bool = True) -> Store:
+        """Open (or create) the database at ``path`` and bring it to the
+        current schema: WAL, synchronous=FULL and a 5s busy timeout are set
+        first, then every pending migration is applied, each under its own
+        BEGIN IMMEDIATE (a failed migration rolls back whole)."""
         # ``check_same_thread=False`` is the ASGI-app posture (WP07 Task 8):
         # the gateway serves from the event-loop thread while the store was
         # opened on the caller's thread; usage stays serialised by design
@@ -82,6 +96,7 @@ class Store:
         return store
 
     def close(self) -> None:
+        """Close the underlying connection; the store is unusable after."""
         self._conn.close()
 
     def _apply_migrations(self) -> None:
@@ -109,12 +124,18 @@ class Store:
             self._conn.execute("COMMIT")
 
     def schema_version(self) -> int:
+        """The highest applied migration version (0 on a virgin database)."""
         row = self._conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()
         return int(row[0] or 0)
 
     # --- request idempotency -------------------------------------------------
 
     def accept_request(self, key: str, body_sha256: str, run_id: str, now: str) -> AcceptResult:
+        """File an idempotency key under BEGIN IMMEDIATE (§9): first sight
+        inserts the row and returns ``accepted`` with the caller's
+        ``run_id``; a byte-identical replay (same ``body_sha256``) returns
+        ``duplicate`` carrying the ORIGINALLY filed run id; the same key
+        with a different body raises ``Conflict`` and files nothing."""
         self._conn.execute("BEGIN IMMEDIATE")
         try:
             row = self._conn.execute(
@@ -138,6 +159,7 @@ class Store:
         return AcceptResult(outcome="accepted", run_id=run_id)
 
     def find_request(self, key: str) -> dict[str, Any] | None:
+        """The filed request row for ``key``, or None when never accepted."""
         row = self._conn.execute(
             "SELECT idempotency_key, body_sha256, run_id, accepted_at"
             " FROM requests WHERE idempotency_key = ?",
@@ -196,6 +218,11 @@ class Store:
     # --- runs -----------------------------------------------------------------
 
     def create_run(self, run_id: str, binding: dict[str, Any], principal_id: str, now: str) -> None:
+        """Insert the run row (binding stored as canonical sorted-key JSON).
+
+        ``ValueError`` when the id already exists — live or tombstoned:
+        run ids are never reusable, so a tombstone burns the id forever.
+        """
         existing = self._conn.execute(
             "SELECT tombstoned FROM runs WHERE run_id = ?", (run_id,)
         ).fetchone()
@@ -230,6 +257,8 @@ class Store:
         self._conn.execute("COMMIT")
 
     def finalize_run(self, run_id: str, terminal: dict[str, Any]) -> None:
+        """Stamp the terminal envelope onto a live run; ``ValueError`` when
+        the run is unknown or tombstoned."""
         cursor = self._conn.execute(
             "UPDATE runs SET terminal_json = ? WHERE run_id = ? AND tombstoned = 0",
             (json.dumps(terminal, sort_keys=True), run_id),
@@ -238,6 +267,9 @@ class Store:
             raise ValueError(f"run {run_id!r} not found or tombstoned")
 
     def delete_run(self, run_id: str, now: str) -> None:
+        """Tombstone a run — soft delete: the row stays, the id stays
+        burned (``create_run`` refuses it forever). ``ValueError`` when the
+        run is unknown or already tombstoned."""
         cursor = self._conn.execute(
             "UPDATE runs SET tombstoned = 1, tombstoned_at = ? WHERE run_id = ? AND tombstoned = 0",
             (now, run_id),
@@ -246,6 +278,8 @@ class Store:
             raise ValueError(f"run {run_id!r} not found or already tombstoned")
 
     def get_run(self, run_id: str) -> dict[str, Any] | None:
+        """The full run row (binding/terminal JSON decoded, tombstones
+        included), or None when the id was never created."""
         row = self._conn.execute(
             "SELECT binding_json, principal_id, started_at, terminal_json, tombstoned,"
             " tombstoned_at, authority FROM runs WHERE run_id = ?",
@@ -268,6 +302,10 @@ class Store:
     # --- leases -----------------------------------------------------------------
 
     def next_lease(self, bench_id: str, lease_id: str, holder: str, expires_at: str) -> Lease:
+        """Issue the bench's next lease at MAX(sequence)+1 under BEGIN
+        IMMEDIATE — the per-bench sequence authority: assignment inside the
+        write transaction is what makes lease sequences monotonic and
+        gap-free. Returns the row just written, state ``active``."""
         self._conn.execute("BEGIN IMMEDIATE")
         try:
             row = self._conn.execute(
@@ -326,6 +364,8 @@ class Store:
             raise LeaseNotActive(f"no active lease {sequence} on bench {bench_id!r}")
 
     def get_active_lease(self, bench_id: str) -> Lease | None:
+        """The bench's active lease at the highest sequence, or None when
+        the bench is unheld."""
         row = self._conn.execute(
             "SELECT lease_id, bench_id, sequence, holder, expires_at, state"
             " FROM leases WHERE bench_id = ? AND state = 'active'"
@@ -340,6 +380,8 @@ class Store:
         )
 
     def list_leases(self, bench_id: str) -> list[Lease]:
+        """The bench's whole lease ledger in sequence order, closed rows
+        included — leases are history, never deleted."""
         rows = self._conn.execute(
             "SELECT lease_id, bench_id, sequence, holder, expires_at, state"
             " FROM leases WHERE bench_id = ? ORDER BY sequence",
@@ -356,6 +398,9 @@ class Store:
     # --- events -------------------------------------------------------------------
 
     def append_event(self, stream_id: str, event: dict[str, Any]) -> int:
+        """Append to a stream at MAX(sequence)+1 under BEGIN IMMEDIATE (the
+        per-stream sequence authority). The assigned sequence is stamped
+        into the stored envelope as a decimal string and returned."""
         self._conn.execute("BEGIN IMMEDIATE")
         try:
             row = self._conn.execute(
@@ -375,6 +420,7 @@ class Store:
         return sequence
 
     def read_events(self, stream_id: str) -> list[dict[str, Any]]:
+        """The whole stream in sequence order, envelopes decoded."""
         rows = self._conn.execute(
             "SELECT event_json FROM events WHERE stream_id = ? ORDER BY sequence",
             (stream_id,),
@@ -438,12 +484,18 @@ class Store:
     # --- generation authority (WP07) -----------------------------------------
 
     def current_generation(self, bench_id: str) -> int:
+        """The bench's generation (0 before the first bump) — the fence
+        value admin changes and run starts compare against."""
         row = self._conn.execute(
             "SELECT generation FROM generations WHERE bench_id = ?", (bench_id,)
         ).fetchone()
         return int(row[0]) if row else 0
 
     def bump_generation(self, bench_id: str, now: str) -> int:
+        """Advance the bench's generation by one under BEGIN IMMEDIATE and
+        return the new value (1 on the first bump). Read-then-write inside
+        the transaction — the check-then-act callers must still serialise
+        through the app's write gate."""
         self._conn.execute("BEGIN IMMEDIATE")
         try:
             row = self._conn.execute(
@@ -473,6 +525,9 @@ class Store:
         licence: str,
         now: str,
     ) -> None:
+        """Upsert the bench inventory row — whole-row replace keyed on
+        ``bench_id``; the caller supplies the generation (the authority is
+        ``bump_generation``, not this table)."""
         self._conn.execute("BEGIN IMMEDIATE")
         try:
             self._conn.execute(
@@ -490,6 +545,8 @@ class Store:
         self._conn.execute("COMMIT")
 
     def get_bench(self, bench_id: str) -> dict[str, Any] | None:
+        """The bench inventory row, or None when unknown. JSON columns come
+        back raw — the projection layer owns decoding."""
         row = self._conn.execute(
             "SELECT bench_id, generation, qualification, configuration_json, licence, updated_at"
             " FROM benches WHERE bench_id = ?",
@@ -507,6 +564,10 @@ class Store:
         }
 
     def list_benches(self, limit: int, offset: int) -> tuple[list[dict[str, Any]], bool]:
+        """One page of benches ordered by id: ``(items, has_more)``. The
+        ``limit + 1`` overfetch makes ``has_more`` exact without a COUNT;
+        callers clamp ``limit`` — SQLite reads a negative LIMIT as
+        unlimited."""
         rows = self._conn.execute(
             "SELECT bench_id, generation, qualification, configuration_json, licence, updated_at"
             " FROM benches ORDER BY bench_id LIMIT ? OFFSET ?",
@@ -539,6 +600,8 @@ class Store:
         licence: str,
         now: str,
     ) -> None:
+        """Upsert the device inventory row — whole-row replace keyed on
+        ``device_id`` (a re-put may re-home the device to another bench)."""
         self._conn.execute("BEGIN IMMEDIATE")
         try:
             self._conn.execute(
@@ -567,6 +630,8 @@ class Store:
         self._conn.execute("COMMIT")
 
     def get_device(self, device_id: str) -> dict[str, Any] | None:
+        """The device inventory row, or None when unknown. JSON columns
+        come back raw — the projection layer owns decoding."""
         row = self._conn.execute(
             "SELECT device_id, bench_id, generation, profiles_json, descriptor_json,"
             " identity_state, licence, updated_at FROM devices WHERE device_id = ?",
@@ -588,6 +653,9 @@ class Store:
     def list_devices(
         self, bench_id: str, limit: int, offset: int
     ) -> tuple[list[dict[str, Any]], bool]:
+        """One page of a bench's devices ordered by id: ``(items,
+        has_more)`` via the same ``limit + 1`` overfetch as
+        ``list_benches``."""
         rows = self._conn.execute(
             "SELECT device_id, bench_id, generation, profiles_json, descriptor_json,"
             " identity_state, licence, updated_at FROM devices WHERE bench_id = ?"
@@ -613,6 +681,9 @@ class Store:
     # --- run-state projection (WP07) ---------------------------------------------
 
     def put_run_state(self, run_id: str, bench_id: str, state: str, now: str) -> None:
+        """Upsert the run's queue-state projection; every overwrite
+        advances ``revision`` by one (first put is revision 1), so readers
+        can order updates without timestamps."""
         self._conn.execute("BEGIN IMMEDIATE")
         try:
             self._conn.execute(
@@ -629,6 +700,7 @@ class Store:
         self._conn.execute("COMMIT")
 
     def get_run_state(self, run_id: str) -> dict[str, Any] | None:
+        """The run's queue-state row, or None when never projected."""
         row = self._conn.execute(
             "SELECT run_id, bench_id, state, revision, updated_at FROM run_states"
             " WHERE run_id = ?",
@@ -679,6 +751,9 @@ class Store:
         reason: str,
         now: str,
     ) -> None:
+        """File a new admin change record in state ``proposed`` with an
+        empty reasons list; ``expected_generation`` is the fence the later
+        apply compares against."""
         self._conn.execute("BEGIN IMMEDIATE")
         try:
             self._conn.execute(
@@ -694,6 +769,7 @@ class Store:
         self._conn.execute("COMMIT")
 
     def get_change(self, change_id: str) -> dict[str, Any] | None:
+        """The change record (reasons decoded), or None when unknown."""
         row = self._conn.execute(
             "SELECT change_id, bench_id, kind, target_ref_json, expected_generation, reason,"
             " state, reasons_json, created_at, updated_at FROM changes WHERE change_id = ?",
@@ -717,6 +793,8 @@ class Store:
     def set_change_state(
         self, change_id: str, state: str, reasons: list[str], now: str
     ) -> None:
+        """Move a change record to ``state`` and replace its audit
+        ``reasons``; ``ValueError`` when the change id is unknown."""
         cursor = self._conn.execute(
             "UPDATE changes SET state = ?, reasons_json = ?, updated_at = ?"
             " WHERE change_id = ?",
@@ -728,6 +806,10 @@ class Store:
     # --- fault-injection window (test support) --------------------------------------
 
     def begin_kill_window(self) -> None:
+        """Open BEGIN IMMEDIATE, write a marker run and lease, and return
+        with the transaction still OPEN — the sanctioned
+        kill-a-process-mid-write window the fault suite aims at: a process
+        killed here must leave no trace after recovery. Test support only."""
         self._conn.execute("BEGIN IMMEDIATE")
         self._conn.execute(
             "INSERT INTO runs (run_id, binding_json, principal_id, started_at)"
@@ -740,5 +822,8 @@ class Store:
         )
 
     def commit_kill_window(self) -> None:
+        """The committed twin of ``begin_kill_window``: same writes, COMMIT
+        issued — the survivor the fault suite's recovery assertions compare
+        against."""
         self.begin_kill_window()
         self._conn.execute("COMMIT")

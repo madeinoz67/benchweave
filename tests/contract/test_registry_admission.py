@@ -35,6 +35,18 @@ from benchweave.registry.schemas import load_lock_document
 
 REPO = Path(__file__).resolve().parents[2]
 REG = REPO / "fixtures/registry"
+
+# The private signing keys are not committed (only their .pub.pem halves are);
+# CI materialises them from repository secrets, and fork PRs receive none.
+# Tests that must SIGN skip without them — never fail — so a fresh clone's
+# `uv run pytest -q` stays truthful. Everything reading the committed,
+# already-signed fixtures still runs.
+_MAIN_KEY = REG / "keys/main.pem"
+requires_signing_key = pytest.mark.skipif(
+    not (_MAIN_KEY.is_file() and _MAIN_KEY.stat().st_size > 0),
+    reason="requires the private fixture signing key fixtures/registry/keys/main.pem",
+)
+
 NOW = int(datetime(2026, 9, 12, tzinfo=UTC).timestamp() * 1_000_000_000)
 AFTER_EXPIRY_NS = int(datetime(2027, 9, 12, tzinfo=UTC).timestamp() * 1_000_000_000)
 FIXED_ZIP_TIME = (2026, 1, 1, 0, 0, 0)
@@ -276,6 +288,7 @@ def test_revoked_rejected_before_any_cache(tmp_path: Path) -> None:
     assert not (tmp_path / "packages.lock.json").exists()
 
 
+@requires_signing_key
 def test_yanked_rejected_before_any_cache(tmp_path: Path) -> None:
     status = json.loads(
         (REG / "origin-main/benchweave/sim-psu-descriptor/1.0.0/status.json").read_bytes()

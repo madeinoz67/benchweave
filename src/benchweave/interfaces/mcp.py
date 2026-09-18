@@ -82,6 +82,8 @@ class StgTokenVerifier(TokenVerifier):
         self._now_epoch = now_epoch
 
     async def verify_token(self, token: str) -> AccessToken | None:
+        """Accept iff ``identity.validate`` does; every rejection collapses
+        to None (a transport 401) per the class contract above."""
         try:
             identity = validate(
                 self._secret, token, audience=self._audience, now=self._now_epoch()
@@ -185,6 +187,7 @@ def build_mcp(
         contract ``items``/``next_cursor`` data object."""
 
         def go() -> dict[str, Any]:
+            """Shape the seam's tuple into the contract page object."""
             items, next_cursor = call()
             return {"items": items, "next_cursor": next_cursor}
 
@@ -208,13 +211,18 @@ def build_mcp(
         envelopes match REST's 413 exactly. ``wraps`` keeps the original
         signature visible to FastMCP's introspection (it follows
         ``__wrapped__``), and the vendored schema pin below is the wire
-        authority regardless.
+        authority regardless. Tool-body docstrings are reader
+        documentation only: the explicit ``description`` passed here
+        outranks ``__doc__`` in FastMCP, so the served description stays
+        vendored-exact.
         """
         name = f"stg_v1_{fn.__name__}"
         spec = vendored[name]
 
         @wraps(fn)
         async def ceiling_checked(*args: P.args, **kwargs: P.kwargs) -> Any:
+            """Enforce the ``max_json_bytes`` ceiling over the canonically
+            re-serialised arguments, then run the tool body."""
             if (
                 len(
                     json.dumps(
@@ -245,17 +253,21 @@ def build_mcp(
 
     @_register
     async def gateway_info() -> ToolResult:
+        """The gateway's identity/limits snapshot — the observe-tier hello."""
         identity = await _identity()
         return _dispatch(lambda: operations.gateway_info(identity))
 
     @_register
     async def bench_list(limit: int = 1, cursor: str | None = None) -> ToolResult:
+        """One page of the bench inventory; ``limit`` clamps to
+        [1, max_page_size]."""
         identity = await _identity()
         page = max(1, min(limit, max_page_size))
         return _paged(lambda: operations.bench_list(identity, limit=page, cursor=cursor))
 
     @_register
     async def bench_get(bench_id: str = "") -> ToolResult:
+        """One bench's projection by id."""
         identity = await _identity()
         return _dispatch(lambda: operations.bench_get(identity, bench_id))
 
@@ -263,6 +275,8 @@ def build_mcp(
     async def device_list(
         bench_id: str = "", limit: int = 1, cursor: str | None = None
     ) -> ToolResult:
+        """One page of a bench's devices; ``limit`` clamps to
+        [1, max_page_size]."""
         identity = await _identity()
         page = max(1, min(limit, max_page_size))
         return _paged(
@@ -271,11 +285,13 @@ def build_mcp(
 
     @_register
     async def device_get(bench_id: str = "", device_id: str = "") -> ToolResult:
+        """One device's projection by bench and device id."""
         identity = await _identity()
         return _dispatch(lambda: operations.device_get(identity, bench_id, device_id))
 
     @_register
     async def document_get(sha256: str = "") -> ToolResult:
+        """A stored document by content hash."""
         identity = await _identity()
         return _dispatch(lambda: operations.document_get(identity, sha256))
 
@@ -283,6 +299,8 @@ def build_mcp(
     async def events_get(
         bench_id: str = "", after: str | None = None, limit: int = 1
     ) -> ToolResult:
+        """A bench's event window after cursor ``after``; ``limit`` clamps
+        to [1, max_page_size]."""
         identity = await _identity()
         page = max(1, min(limit, max_page_size))
         return _dispatch(
@@ -291,6 +309,7 @@ def build_mcp(
 
     @_register
     async def evidence_get(evidence_id: str = "") -> ToolResult:
+        """One evidence record by id."""
         identity = await _identity()
         return _dispatch(lambda: operations.evidence_get(identity, evidence_id))
 
@@ -298,6 +317,7 @@ def build_mcp(
     async def artifact_read(
         artifact_id: str = "", offset: int = 0, length: int = 1
     ) -> ToolResult:
+        """One artifact chunk; ``length`` clamps to [1, max_chunk_bytes]."""
         identity = await _identity()
         chunk = max(1, min(length, max_chunk_bytes))
         return _dispatch(
@@ -310,6 +330,7 @@ def build_mcp(
     async def run_check(
         bench_id: str = "", binding_ref: dict[str, Any] | None = None
     ) -> ToolResult:
+        """The advisory §5 precheck — read-only, so it runs ungated."""
         identity = await _identity()
         return _dispatch(
             lambda: operations.run_check(identity, bench_id, binding_ref or {})
@@ -323,9 +344,12 @@ def build_mcp(
         expected_generation: int = 1,
         lease_id: str | None = None,
     ) -> ToolResult:
+        """Accept a run (§9 idempotent by ``request_id``) under the write
+        gate."""
         identity = await _identity()
 
         def go() -> dict[str, Any]:
+            """Hold the write gate across the seam mutation."""
             with gate:
                 return operations.run_start(
                     identity,
@@ -340,11 +364,13 @@ def build_mcp(
 
     @_register
     async def run_get(run_id: str = "") -> ToolResult:
+        """One run's projection by id (observe tier — the D1 pin)."""
         identity = await _identity()
         return _dispatch(lambda: operations.run_get(identity, run_id))
 
     @_register
     async def run_find(request_id: str = "") -> ToolResult:
+        """Resolve a §9 ``request_id`` to the run it accepted."""
         identity = await _identity()
         return _dispatch(lambda: operations.run_find(identity, request_id))
 
@@ -352,9 +378,11 @@ def build_mcp(
     async def run_cancel(
         run_id: str = "", request_id: str = "", reason: str = ""
     ) -> ToolResult:
+        """Request cancellation (§9 idempotent) under the write gate."""
         identity = await _identity()
 
         def go() -> dict[str, Any]:
+            """Hold the write gate across the seam mutation."""
             with gate:
                 return operations.run_cancel(identity, run_id, request_id, reason)
 
@@ -369,9 +397,11 @@ def build_mcp(
         expected_generation: int = 1,
         duration_ms: int = 1,
     ) -> ToolResult:
+        """Issue a bench lease at the next sequence, under the write gate."""
         identity = await _identity()
 
         def go() -> dict[str, Any]:
+            """Hold the write gate across the seam mutation."""
             with gate:
                 return operations.lease_create(
                     identity, bench_id, request_id, expected_generation, duration_ms
@@ -383,9 +413,12 @@ def build_mcp(
     async def lease_renew(
         lease_id: str = "", request_id: str = "", sequence: int = 1, duration_ms: int = 1
     ) -> ToolResult:
+        """Renew a lease — same identity at the next sequence — under the
+        write gate."""
         identity = await _identity()
 
         def go() -> dict[str, Any]:
+            """Hold the write gate across the seam mutation."""
             with gate:
                 return operations.lease_renew(
                     identity, lease_id, request_id, sequence, duration_ms
@@ -397,15 +430,20 @@ def build_mcp(
     async def lease_release(
         lease_id: str = "", request_id: str = "", reason: str = ""
     ) -> ToolResult:
+        """Release a held lease under the write gate."""
         identity = await _identity()
 
         def go() -> dict[str, Any]:
+            """Hold the write gate across the seam mutation."""
             with gate:
                 return operations.lease_release(identity, lease_id, request_id, reason)
 
         return _dispatch(go)
 
-    assert registered_names == set(vendored), "registration table drifted from the corpus"
+    if registered_names != set(vendored):
+        # Survives python -O: serving a drifted tool table would silently
+        # break the vendored-exact interface guarantee.
+        raise RuntimeError("registration table drifted from the corpus")
 
     async def _pin_all() -> None:
         """The mandated construction (Task 1 spike): fetch each registered
@@ -415,7 +453,8 @@ def build_mcp(
         covers all 17."""
         for name in sorted(vendored):
             tool = await mcp.get_tool(name)
-            assert tool is not None, f"{name} not registered"
+            if tool is None:
+                raise RuntimeError(f"{name} not registered")
             tool.parameters = vendored[name]["inputSchema"]
             # MCP-wire requirement (mcp_types' Tool model): outputSchema
             # carries a top-level ``type``. The vendored outputSchema is a
@@ -426,8 +465,11 @@ def build_mcp(
             tool.output_schema = pinned_output
             # Build-time self-check: the pin took (same object the server
             # serves from — the fidelity test re-proves it end to end).
-            assert tool.parameters == vendored[name]["inputSchema"]
-            assert tool.output_schema == pinned_output
+            # Explicit raise so the check survives python -O.
+            if tool.parameters != vendored[name]["inputSchema"] or (
+                tool.output_schema != pinned_output
+            ):
+                raise RuntimeError(f"{name}: schema pin did not take")
 
     asyncio.run(_pin_all())
     return mcp
