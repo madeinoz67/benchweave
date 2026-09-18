@@ -324,3 +324,132 @@ def test_descriptor_labels_units_present() -> None:
     for parameter in descriptor["parameters"]:
         if parameter["name"].endswith("_v"):
             assert parameter.get("unit") == "V", parameter["name"]
+
+
+# --- descriptor-envelope census (fix wave F1) -----------------------------------
+# {field, value} x {lane 1 check-preset, lane 2 check-ui, plugin dispatch}.
+# The plugin column is the envelope's definition; the lanes are the preset
+# verification mechanism. Lane 1 is pinned at its honest structural behavior:
+# check-preset validates settings against the settings-schema FILE (the corpus
+# byte copy) and never consults the descriptor's action input_constraints, so
+# it cannot refuse a corpus-legal value that violates the descriptor envelope.
+# Lane 2 is where the declared envelope bites (input_constraints are AND-ed
+# onto preset settings in the configuration-binding loop).
+
+ENVELOPE_MATRIX = [
+    ("range_v", 25.0, True),
+    ("range_v", 0.0005, True),
+    ("offset_v", 100.0, True),
+    ("range_v", 10.0, False),
+    ("range_v", 0.001, False),
+    ("offset_v", -10.0, False),
+    ("range_v", 10.001, True),
+    ("range_v", 0.0009, True),
+    ("offset_v", -10.001, True),
+]
+
+
+def _make_sim_scope() -> Any:
+    import importlib.util
+    import sys
+
+    path = ROOT / "plugins/benchweave/sim_scope/src/benchweave_sim_scope/plugin.py"
+    spec = importlib.util.spec_from_file_location("sim_scope_census", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    plugin = module.create_plugin(now_fn=lambda: "2026-09-19T00:00:00Z", monotonic_ns_fn=lambda: 0)
+    plugin.plugin_open(_NullServices())
+    return plugin
+
+
+class _NullServices:
+    def resolve_content(self, content_id: str) -> bytes:
+        return b"{}"
+
+    def retain_evidence(self, key: str, payload: bytes) -> str:
+        return f"evidence-{key}"
+
+    def emit_event(self, kind: str, body: dict[str, Any]) -> None:
+        pass
+
+    def quota_state(self) -> dict[str, int]:
+        return {"dataset_bytes_used": 0, "evidence_entries_used": 0, "events_emitted": 0}
+
+    def register_reading_sink(self, sink: Any) -> None:
+        pass
+
+
+def _plugin_configure(plugin: Any, settings: dict[str, Any]) -> Any:
+    from benchweave.host import OperationRequest, OperationStatus, OperationVerb
+
+    request = OperationRequest(
+        operation_id="census-op",
+        verb=OperationVerb.INVOKE,
+        arguments={"action_id": "otdp.oscilloscope.configure/1.0.0", "input": settings},
+    )
+    return plugin.dispatch(request, deadline_ns=10**12).status is OperationStatus.OK
+
+
+@pytest.mark.parametrize("field,value,should_refuse", ENVELOPE_MATRIX)
+def test_descriptor_envelope_census(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, field: str, value: float, should_refuse: bool
+) -> None:
+    preset = json.loads(PRESET_FAST.read_bytes())
+    preset["settings"]["channels"][0][field] = value
+    settings = preset["settings"]
+    plugin = _make_sim_scope()
+    plugin_ok = _plugin_configure(plugin, settings)
+    preset_path = write_document(tmp_path / "census.json", preset)
+    lane1_exit = lane1(monkeypatch, preset_path)
+    package = copy_package(tmp_path / "pkg")
+    mutated = json.loads((package / "ui/presets/fast-survey.json").read_bytes())
+    mutated["settings"]["channels"][0][field] = value
+    write_document(package / "ui/presets/fast-survey.json", mutated)
+    repin_manifest_and_envelope(package)
+    lane2_exit = lane2(monkeypatch, package)
+    if should_refuse:
+        assert not plugin_ok, (field, value)
+        assert lane2_exit != 0, (field, value)
+        assert lane1_exit == 0, (field, value)
+    else:
+        assert plugin_ok, (field, value)
+        assert lane1_exit == 0 and lane2_exit == 0, (field, value)
+
+
+# Top-level settings fields carry their own envelope (fix wave R1: the rate
+# got a 1e6 cap; the count initially got nothing — a 1e12-count preset passed
+# both lanes and would OOM the plugin at fetch). Same census shape as the
+# channel fields; same lane-1 structural residual (settings-schema file only).
+
+TOP_LEVEL_MATRIX = [
+    ("sample_count", 10**12, True),
+    ("sample_count", 10**6, False),
+]
+
+
+@pytest.mark.parametrize("field,value,should_refuse", TOP_LEVEL_MATRIX)
+def test_settings_envelope_census_top_level(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, field: str, value: int, should_refuse: bool
+) -> None:
+    preset = json.loads(PRESET_FAST.read_bytes())
+    preset["settings"][field] = value
+    settings = preset["settings"]
+    plugin = _make_sim_scope()
+    plugin_ok = _plugin_configure(plugin, settings)
+    preset_path = write_document(tmp_path / "census.json", preset)
+    lane1_exit = lane1(monkeypatch, preset_path)
+    package = copy_package(tmp_path / "pkg")
+    mutated = json.loads((package / "ui/presets/fast-survey.json").read_bytes())
+    mutated["settings"][field] = value
+    write_document(package / "ui/presets/fast-survey.json", mutated)
+    repin_manifest_and_envelope(package)
+    lane2_exit = lane2(monkeypatch, package)
+    if should_refuse:
+        assert not plugin_ok, (field, value)
+        assert lane2_exit != 0, (field, value)
+        assert lane1_exit == 0, (field, value)
+    else:
+        assert plugin_ok, (field, value)
+        assert lane1_exit == 0 and lane2_exit == 0, (field, value)

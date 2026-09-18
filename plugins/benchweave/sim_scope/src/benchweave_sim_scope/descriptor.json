@@ -476,7 +476,8 @@
               }
             }
           },
-          "sample_rate_hz": {"maximum": 1000000}
+          "sample_rate_hz": {"maximum": 1000000},
+          "sample_count": {"maximum": 1000000}
         }
       },
       "timeout_ms": 30000,

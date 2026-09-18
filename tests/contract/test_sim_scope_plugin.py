@@ -647,3 +647,42 @@ def test_arm_accepts_consistent_replay_documenting_the_trap(scope: Any) -> None:
         deadline_ns=10**12,
     )
     assert replayed.status.value == "ok"
+
+
+# --- sample_count bound (fix wave R1) -------------------------------------------
+
+
+def test_configure_refuses_sample_count_above_bound(scope: Any) -> None:
+    """The count envelope is authored, not measured: 1e6 samples per
+    acquisition (32 MB at 4 channels x float64) is the simulator's declared
+    ceiling, matched by the descriptor's configure input_constraints."""
+    request = _invoke(
+        "otdp.oscilloscope.configure/1.0.0",
+        {
+            "configuration_id": "cfg-1",
+            "channels": [CHANNEL_ITEM],
+            "sample_rate_hz": 1000.0,
+            "sample_count": 1_000_001,
+            "pretrigger_fraction": 0.0,
+            "trigger": {"kind": "immediate"},
+        },
+    )
+    result = scope.dispatch(request, deadline_ns=10**12)
+    assert result.status.value == "error"
+    assert result.error.code.value == "INVALID_ARGUMENT"
+    assert result.error.dispatch_state is DispatchState.NOT_DISPATCHED
+    at_bound = scope.dispatch(
+        _invoke(
+            "otdp.oscilloscope.configure/1.0.0",
+            {
+                "configuration_id": "cfg-1",
+                "channels": [CHANNEL_ITEM],
+                "sample_rate_hz": 1000.0,
+                "sample_count": 1_000_000,
+                "pretrigger_fraction": 0.0,
+                "trigger": {"kind": "immediate"},
+            },
+        ),
+        deadline_ns=10**12,
+    )
+    assert at_bound.status.value == "ok"

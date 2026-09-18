@@ -46,6 +46,7 @@ RANGE_MAX_V = 10.0
 AVERAGING_MIN = 1
 AVERAGING_MAX = 64
 SAMPLE_RATE_MAX_HZ = 1_000_000.0
+SAMPLE_COUNT_MAX = 1_000_000
 COUPLINGS = ("ac", "dc", "ground")
 
 ACTION_CONFIGURE = "otdp.oscilloscope.configure/1.0.0"
@@ -351,6 +352,12 @@ class SimScopePlugin:
         if not isinstance(sample_count, int) or isinstance(sample_count, bool) or sample_count < 1:
             return self._reject(
                 request, ErrorCode.INVALID_ARGUMENT, "sample_count must be a positive integer"
+            )
+        if sample_count > SAMPLE_COUNT_MAX:
+            return self._reject(
+                request,
+                ErrorCode.INVALID_ARGUMENT,
+                f"sample_count exceeds the simulator ceiling of {SAMPLE_COUNT_MAX}",
             )
         pretrigger_fraction = action_input.get("pretrigger_fraction")
         if not _numeric(pretrigger_fraction) or not 0 <= pretrigger_fraction <= 1:  # type: ignore[operator]

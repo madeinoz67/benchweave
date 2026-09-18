@@ -54,6 +54,14 @@ energisation. Model averaging is the one settings family with no action-input
 home (the closed 0.1.1 action schemas cannot represent it in preset
 settings), so `averaging_count` is a live-write-only parameter.
 
+## Authored envelopes
+
+The acquisition envelopes are authored for the simulator, not measured on
+hardware: `sample_rate_hz` is capped at 1e6 and `sample_count` at 1e6 samples
+per acquisition (32 MB of float64 across four channels). Both bounds are
+declared twice, in the descriptor's configure `input_constraints` (enforced by
+`check-ui` on presets) and in the plugin's dispatch validation.
+
 ## Compatibility
 
 This simulator uses BenchWeave 0.1.0's private synchronous host API, like
