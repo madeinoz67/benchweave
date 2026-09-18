@@ -31,7 +31,7 @@ from benchweave.host import (
 
 ROOT = Path(__file__).resolve().parents[2]
 PLUGINS = ROOT / "plugins"
-CONTRACTS = ROOT / "standards" / "otdp/0.1.1"
+CONTRACTS = ROOT / "standards" / "otdp/0.1.2"
 NOW = "2026-09-11T00:00:00Z"
 TICK = 1_000_000
 

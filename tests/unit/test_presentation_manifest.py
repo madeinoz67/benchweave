@@ -25,7 +25,7 @@ def digest(raw: bytes) -> str:
 
 @pytest.fixture
 def bundle() -> Bundle:
-    descriptor = (ROOT / "standards/otdp/0.1.1/examples/reference-psu.json").read_bytes()
+    descriptor = (ROOT / "standards/otdp/0.1.2/examples/reference-psu.json").read_bytes()
     documents: dict[str, JsonObject] = {}
     for path in (ROOT / "standards/plugin-ui/0.1.1").glob("*.schema.json"):
         schema = json.loads(path.read_bytes())

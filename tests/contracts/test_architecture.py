@@ -80,8 +80,8 @@ def test_documents_ignores_markdown_links_inside_fenced_code_blocks(
         (
             "devices",
             "otdp/0.1.2/examples/derivation-vectors.json",
-            '"values": [\n        9.0\n      ]',
-            '"values": [\n        9.1\n      ]',
+            '"values": [\n            9.0\n          ]',
+            '"values": [\n            9.1\n          ]',
             "census",
         ),
         (

@@ -1,7 +1,7 @@
 {
   "identity": {
     "architecture": "STG 1.5",
-    "otdp": "0.1.1",
+    "otdp": "0.1.2",
     "registry": "0.1.0",
     "execution": "0.1.0",
     "interface": "0.1.0",
@@ -389,6 +389,131 @@
       "path": "otdp/0.1.1/otdp-runtime.schema.json",
       "source": "standards/otdp/0.1.0/otdp-runtime.schema.json",
       "sha256": "c7e9c4b8b817a737cabc9f2a11e74a7cf88e4d7dc246f6b67910d9dcc69e7e95"
+    },
+    {
+      "path": "otdp/0.1.2/device-profile-catalog.json",
+      "source": "standards/otdp/0.1.1/device-profile-catalog.json",
+      "sha256": "75db66a242e9916bfc7fe35e711de19ad53f6866c25289c05eac962d60f03796"
+    },
+    {
+      "path": "otdp/0.1.2/device-profile-catalog.schema.json",
+      "source": "standards/otdp/0.1.1/device-profile-catalog.schema.json",
+      "sha256": "f65fb61a8f1994be9e385512292fdc5285831af8b30794f125ec139acc470458"
+    },
+    {
+      "path": "otdp/0.1.2/examples/class-action-vectors.json",
+      "source": "standards/otdp/0.1.1/examples/class-action-vectors.json",
+      "sha256": "750cb0b0ed52b218d178f769888b36aaac69f32a61d0cfb6777f6bceea095f37"
+    },
+    {
+      "path": "otdp/0.1.2/examples/class-daq.json",
+      "source": "standards/otdp/0.1.1/examples/class-daq.json",
+      "sha256": "7d7a5700a561198df8fdfd750b1fff84ecfa5b5b4501736f119e8a423171bb39"
+    },
+    {
+      "path": "otdp/0.1.2/examples/class-dc_psu.json",
+      "source": "standards/otdp/0.1.1/examples/class-dc_psu.json",
+      "sha256": "25232670214e968b2c638b63219b4f7ffd292b35861206473ff21465715bc6f8"
+    },
+    {
+      "path": "otdp/0.1.2/examples/class-dmm.json",
+      "source": "standards/otdp/0.1.1/examples/class-dmm.json",
+      "sha256": "2fd4a1a2f9ecb07920d0964d01eddb4fdb5b13ae9e685da78443bb05acda4a50"
+    },
+    {
+      "path": "otdp/0.1.2/examples/class-electronic_load.json",
+      "source": "standards/otdp/0.1.1/examples/class-electronic_load.json",
+      "sha256": "355be9569140e34a84d7f8871bddd7bef285b889ba868f009ff78644c6daeb0d"
+    },
+    {
+      "path": "otdp/0.1.2/examples/class-embedded_controller.json",
+      "source": "standards/otdp/0.1.1/examples/class-embedded_controller.json",
+      "sha256": "c7e145dc3e728572b09f0841a35e159362910225f0f6fef7af32acfae77dbc6e"
+    },
+    {
+      "path": "otdp/0.1.2/examples/class-function_generator.json",
+      "source": "standards/otdp/0.1.1/examples/class-function_generator.json",
+      "sha256": "a2dca8b8192d5ef739307f933424b83d24750ad5e07bbb8db6a6b41453354466"
+    },
+    {
+      "path": "otdp/0.1.2/examples/class-logic_analyser.json",
+      "source": "standards/otdp/0.1.1/examples/class-logic_analyser.json",
+      "sha256": "2746278796657a0a90448316661c507fc0b47ae5351e9c3de5615409ca876bd7"
+    },
+    {
+      "path": "otdp/0.1.2/examples/class-oscilloscope.json",
+      "source": "standards/otdp/0.1.1/examples/class-oscilloscope.json",
+      "sha256": "26abbd2e6de2f4c73ee6ae2e1625359a50adeb06090871dc7518ff266d538d4e"
+    },
+    {
+      "path": "otdp/0.1.2/examples/class-smu.json",
+      "source": "standards/otdp/0.1.1/examples/class-smu.json",
+      "sha256": "2212f2cc4d7aebab15ba6ad9820d34bcaf7b00a1778587300302d93abbbd785a"
+    },
+    {
+      "path": "otdp/0.1.2/examples/class-spectrum_analyser.json",
+      "source": "standards/otdp/0.1.1/examples/class-spectrum_analyser.json",
+      "sha256": "e6b1d83650c0cf6174f0ff5afddd6bde059df4a7a90d1e9c9f20dfea26a6e88f"
+    },
+    {
+      "path": "otdp/0.1.2/examples/class-switch_matrix.json",
+      "source": "standards/otdp/0.1.1/examples/class-switch_matrix.json",
+      "sha256": "d0c4816a25f6590a7379752cc33c385adc9593fc8a6202a04afc511addf0896f"
+    },
+    {
+      "path": "otdp/0.1.2/examples/class-vna.json",
+      "source": "standards/otdp/0.1.1/examples/class-vna.json",
+      "sha256": "faed309feaa682a36c16fa234d4245bdf7c0f12e72f24c9c42bd6ee5f3a6bcbd"
+    },
+    {
+      "path": "otdp/0.1.2/examples/derivation-vectors.json",
+      "source": "standards/otdp/0.1.2/examples/derivation-vectors.json",
+      "sha256": "d86ca2efd9b2261dbbe26c544b75e9253aff04bd25721bcd1a96ca5e6d5e3347"
+    },
+    {
+      "path": "otdp/0.1.2/examples/measurement-vectors.json",
+      "source": "standards/otdp/0.1.1/examples/measurement-vectors.json",
+      "sha256": "aff78ac0fb0057daac2cba98d314f633e5c36b5e33e2eb14e792bb63fa76ca06"
+    },
+    {
+      "path": "otdp/0.1.2/examples/reference-can.json",
+      "source": "standards/otdp/0.1.1/examples/reference-can.json",
+      "sha256": "03d1f495205427054ffc9e69e053d466906eedde4fa95af8b50791f79a5e9f91"
+    },
+    {
+      "path": "otdp/0.1.2/examples/reference-capture.json",
+      "source": "standards/otdp/0.1.1/examples/reference-capture.json",
+      "sha256": "ca1d26b9a81b5e81069ef7a1f46d87f65333e8153b5c3ec6d66795bb1601eb72"
+    },
+    {
+      "path": "otdp/0.1.2/examples/reference-controller.json",
+      "source": "standards/otdp/0.1.1/examples/reference-controller.json",
+      "sha256": "7b80615c2e64c7eeaa509ffa71e2751830690fa9d14a62178060b28ed455252c"
+    },
+    {
+      "path": "otdp/0.1.2/examples/reference-psu.json",
+      "source": "standards/otdp/0.1.1/examples/reference-psu.json",
+      "sha256": "089388d6504064c17d6733585a922027d0d9ec125d1ccef5dcdfd4c6b89a1614"
+    },
+    {
+      "path": "otdp/0.1.2/examples/reference-vectors.json",
+      "source": "standards/otdp/0.1.1/examples/reference-vectors.json",
+      "sha256": "6f476b31ec98f572c83127ed1684506fba18ed0205ea47869f90bdf0fe5fcef0"
+    },
+    {
+      "path": "otdp/0.1.2/otdp-device-descriptor.schema.json",
+      "source": "standards/otdp/0.1.1/otdp-device-descriptor.schema.json",
+      "sha256": "702c421a21ad574212094d6947516cd46a9613cce56ba14e93becdc43c2e83c1"
+    },
+    {
+      "path": "otdp/0.1.2/otdp-measurement.schema.json",
+      "source": "standards/otdp/0.1.1/otdp-measurement.schema.json",
+      "sha256": "0765a320d837f7099001707127da913374e9a09db3376ac8c981cb5c9a9e3363"
+    },
+    {
+      "path": "otdp/0.1.2/otdp-runtime.schema.json",
+      "source": "standards/otdp/0.1.1/otdp-runtime.schema.json",
+      "sha256": "8d42711f4cfef112d91fd9953e4f18a797cadd0e3aafe2d50dbd41cf5decbbea"
     },
     {
       "path": "registry/0.1.0/examples/package-lock.json",
