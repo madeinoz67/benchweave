@@ -165,7 +165,12 @@ Authoring rules the instance demonstrates:
   `semantic: configuration` parameter, not in preset settings.
 - **Validate with both SDK lanes**: `benchweave-sdk check-preset` per preset
   and `benchweave-sdk check-ui` over the package. Only the latter performs the
-  both-schemas clause.
+  both-schemas clause, and only the latter enforces the descriptor action's
+  `input_constraints`: `check-preset` validates settings against the
+  settings-schema file and never consults descriptor actions, so a value that
+  is corpus-legal but outside your declared envelope passes `check-preset`
+  and is refused only by `check-ui` (or by the plugin at apply time). Declare
+  the full envelope in `input_constraints`, not only the channel pattern.
 - **A preset's `configuration_id` is a placeholder.** The runtime treats that
   key as gateway-issued; any future apply path must substitute the issued
   token, never replay the literal. Selecting a preset performs no I/O and
