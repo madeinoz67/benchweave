@@ -159,3 +159,65 @@ def test_ui_check_rejects_resource_root_escape(
     document["resource_root"] = "../outside"
     envelope.write_text(json.dumps(document))
     assert check(monkeypatch, package) == 1
+
+
+def test_scaffold_hint_pair_validates_identically(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Metric 1's fourth pair: the scaffold-generated example with an
+    author-added hinted plot vs its unhinted twin, both feature conditions.
+
+    The scaffold emits no plots, so the author-side step mirrors what a plugin
+    developer does: add a receipt-time variable to the catalogue target and a
+    time-series plot to the manifest. check-ui must accept both members
+    identically (P1/P2) — and the scaffold must declare the ACTIVE contract
+    version or this fails before hints are even considered.
+    """
+    hashlib = importlib.import_module("hashlib")
+    presentation = importlib.import_module("benchweave_sdk.presentation")
+    scaffold = importlib.import_module("benchweave_sdk.scaffold")
+
+    def authored(hints: list[dict[str, object]] | None) -> Path:
+        project = tmp_path / ("ui-hinted" if hints is not None else "ui-plain")
+        scaffold.create_project(project, "example_plugin")
+        presentation.create_ui_resources(project, "example_plugin")
+        package = project / "src/example_plugin"
+        catalogue_path = package / "binding-catalogue.json"
+        catalogue = json.loads(catalogue_path.read_bytes())
+        catalogue["targets"][0]["variables"].insert(
+            0,
+            {
+                "id": "time",
+                "type": "number",
+                "unit": "s",
+                "shape": "scalar",
+                "axis_role": "receipt_time",
+            },
+        )
+        catalogue_path.write_text(json.dumps(catalogue, indent=2) + "\n", encoding="utf-8")
+        manifest_path = package / "ui/manifest.json"
+        manifest = json.loads(manifest_path.read_bytes())
+        plot: dict[str, object] = {
+            "kind": "time_series",
+            "binding_id": manifest["bindings"][0]["id"],
+            "x": "time",
+            "y": ["value"],
+        }
+        if hints is not None:
+            plot["channel_hints"] = hints
+        manifest["pages"][0]["plots"] = [plot]
+        manifest_raw = json.dumps(manifest, indent=2) + "\n"
+        manifest_path.write_text(manifest_raw, encoding="utf-8")
+        envelope_path = package / "presentation.json"
+        envelope = json.loads(envelope_path.read_bytes())
+        envelope["manifest"]["sha256"] = hashlib.sha256(manifest_raw.encode()).hexdigest()
+        envelope_path.write_text(json.dumps(envelope, indent=2) + "\n", encoding="utf-8")
+        return package
+
+    plain = authored(None)
+    hinted = authored([{"variable_id": "value", "color_role": "muted"}])
+    assert check(monkeypatch, plain, firmware="1.0.0") == 0
+    # No --feature flag is the empty supported-feature host; one flag is the
+    # feature-declaring host. Both must accept the hinted twin identically.
+    assert check(monkeypatch, hinted, firmware="1.0.0") == 0
+    assert check(monkeypatch, hinted, firmware="1.0.0", feature="legend/1.0.0") == 0

@@ -96,10 +96,33 @@ the true reason (the standard version was absent):
 
 ## Two-repo completion
 
-The SDK-side sync (vendored 0.1.1 tree, lock, stamps, `validation.py` tuple,
-scaffold contract_version literals), the pushed `feat/issue6-rowC-display-hints`
-SDK branch, the submodule pointer commit and the post-pointer full-suite runs
-are recorded in the commits following this report on the main-repo branch;
-the scaffold-generated example's hinted/unhinted pair is measured there
-(`tests/sdk/test_presentation_cli.py`), completing the acceptance rule's
-fourth pair.
+SDK branch `feat/issue6-rowC-display-hints` (standalone checkout, off its
+origin/main `f7a8a47`): vendored tree re-imported from the canonical bundle
+(`sync-standards`, plugin-ui 0.1.0 → 0.1.1 with lock and stamps),
+`validation.py` loads plugin-ui at 0.1.1, `create_ui_resources` writes
+`contract_version` 0.1.1 at its manifest/envelope/catalogue sites (the
+plugin-ui-preview fixture at `:227` is a different standard and stays 0.1.0 —
+verified line by line, not bulk-sed), website badge and README guide link
+moved, preview
+renderer refreshed via `build:preview` (hashed assets + inventory). SDK gates
+on the branch: `uv run pytest` **16/0**, `uv run mypy` clean,
+`uv run ruff check .` clean, `sync-standards --check` agrees, version smoke
+`benchweave-sdk, version 0.0.2`. Pushed as `cd43001`.
+
+Main repo after the submodule pointer advanced to the pushed `cd43001`:
+`benchweave.standards check` clean (manifest, bundle, lock and vendored tree
+agree), `matrix --check` clean, and the acceptance rule's fourth pair — the
+scaffold-generated example with an author-added hinted plot vs its unhinted
+twin, checked by `check-ui` at no-feature and one-feature hosts
+(`tests/sdk/test_presentation_cli.py::test_scaffold_hint_pair_validates_identically`,
+RED against the pre-pointer submodule: the hinted member was refused,
+`assert 1 == 0`) — GREEN **8/8** in its file. Full suite with the pointer
+staged: **1010 collected / 1 failed**, the single failure being
+`test_submodule_head_matches_the_recorded_gitlink`, which compares the
+submodule HEAD against the COMMITTED gitlink `HEAD:packages/sdk` and therefore
+closes exactly when the pointer commit lands (this commit). Fixture-key note:
+the registry suites require the gitignored signing keys
+(`fixtures/registry/keys/*.pem`) that exist only in the maintainer's main
+checkout; a fresh worktree without them fails 8 registry tests unrelated to
+this change (verified: the same tests pass on the main checkout at the base
+commit `8bc83a5`).
