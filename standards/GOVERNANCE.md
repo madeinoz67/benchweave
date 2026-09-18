@@ -82,3 +82,14 @@ Sub-capability ids (`otdp:dc_psu:*` profiles, `otdp.*/*/` action ids),
 registry fixture package versions, plugin release versions, the architecture
 document edition (STG 1.5), and the MCP date. These carry their own versions;
 only the six standards above are governed by this file.
+
+The adapter API version is declared in the corpus-manifest identity block
+(`identity.adapter_api`); its authority is the active OTDP descriptor schema's
+`$defs.adapter.properties.api_version` const, and `validate_identity` fails
+closed on absence or disagreement at every export/check. Identity-block edits
+move no corpus rows and need no repin. Promotion trigger: when the adapter
+surface stabilizes, this becomes a seventh corpus standard carrying a canonical
+importable Python contract; until then the declaration plus the three-way
+agreement test (`tests/sdk/test_adapter_agreement.py`) is the honest boundary —
+it pins names, arity, keyword-only-ness, coroutine-ness and key/enum sets, not
+semantics.
