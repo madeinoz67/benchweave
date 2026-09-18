@@ -59,6 +59,18 @@ def _repo(tmp_path: Path) -> Path:
     return root
 
 
+def _current_repo(tmp_path: Path) -> Path:
+    """A tmp copy whose manifest is CURRENT whatever the working tree's
+    state: mid-bump drift the copy inherits is normalized by one repin on
+    the COPY (adversary F1 — the repo tree itself is never repinned from a
+    test). A copy that refuses normalization (say, frozen-row drift)
+    still fails loudly here: that state cannot be made current by repin,
+    and the failure names a tree problem, not a test problem."""
+    root = _repo(tmp_path)
+    _repin()(root)
+    return root
+
+
 def _manifest_bytes(root: Path) -> bytes:
     return (root / CORPUS_MANIFEST).read_bytes()
 
@@ -76,10 +88,12 @@ def _flip(root: Path, row_path: str) -> None:
 
 
 def test_repin_round_trip_is_byte_identical(tmp_path: Path) -> None:
-    # Adversary F1: anchored on a tmp copy, never the repo tree — a no-op
-    # assertion against a drifted real ROOT is a writer (it repins the
-    # working tree and masks its own failure on the rerun).
-    root = _repo(tmp_path)
+    # Adversary F1: anchored on a normalized tmp copy, never the repo
+    # tree — a no-op assertion against a drifted real ROOT is a writer
+    # (it repins the working tree and masks its own failure on the
+    # rerun), and an UN-normalized copy inherits working-tree drift and
+    # fails for a reason that is not the behavior under test.
+    root = _current_repo(tmp_path)
     before = _manifest_bytes(root)
     mtime = (root / CORPUS_MANIFEST).stat().st_mtime_ns
     assert _repin()(root) == []
@@ -207,10 +221,11 @@ def test_repin_refuses_duplicate_key_manifest(tmp_path: Path) -> None:
 
 
 def test_cli_repin_runs(tmp_path: Path) -> None:
-    # Adversary F1: the CLI smoke runs against a tmp copy — cwd IS the
-    # command's root, so a cwd of the repo tree would repin it on a
-    # drifted checkout.
-    root = _repo(tmp_path)
+    # Adversary F1: the CLI smoke runs against a normalized tmp copy —
+    # cwd IS the command's root, so a cwd of the repo tree would repin it
+    # on a drifted checkout, and an un-normalized copy would fail the
+    # "already current" assert on inherited drift.
+    root = _current_repo(tmp_path)
     result = subprocess.run(
         [sys.executable, "-m", "benchweave.standards", "repin"],
         cwd=root,
