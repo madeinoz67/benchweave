@@ -220,14 +220,14 @@ constraints; do not present proposed behaviour as tested device evidence.
 Resolve missing hardware facts before implementing the affected feature.
 ```
 
-For a straightforward controller, start by assessing [native OTDP UART JSON](../standards/otdp/0.1.1/otdp-specification.md#62-native-uart-json). It can support a declarative integration for operations fully expressed by that binding. Standard class actions and capture require an adapter in this baseline, even with native firmware. A documented custom protocol behind an adapter is another option when native UART JSON does not fit.
+For a straightforward controller, start by assessing [native OTDP UART JSON](../standards/otdp/0.1.2/otdp-specification.md#62-native-uart-json). It can support a declarative integration for operations fully expressed by that binding. Standard class actions and capture require an adapter in this baseline, even with native firmware. A documented custom protocol behind an adapter is another option when native UART JSON does not fit.
 
 ```text
 Simple native operations:  BenchWeave → native UART JSON firmware
 Class actions or capture: BenchWeave → adapter → device firmware
 ```
 
-The descriptor declares the integration in both cases. Communication inside BenchWeave uses admitted host transport. The [reference controller](../standards/otdp/0.1.1/examples/reference-controller.json) and [reference exchanges](../standards/otdp/0.1.1/examples/reference-protocols.md) are synthetic authoring examples, not ready-to-flash firmware or evidence for your board.
+The descriptor declares the integration in both cases. Communication inside BenchWeave uses admitted host transport. The [reference controller](../standards/otdp/0.1.2/examples/reference-controller.json) and [reference exchanges](../standards/otdp/0.1.2/examples/reference-protocols.md) are synthetic authoring examples, not ready-to-flash firmware or evidence for your board.
 
 ### F1. Describe the board and firmware contract
 
@@ -314,7 +314,7 @@ non-applicable cases. Include firmware and integration tests in their CI.
 Report exact commands/results and remaining compatibility blockers.
 ```
 
-**Ready to continue:** firmware, descriptor and any adapter agree, and applicable conformance checks pass. The [core specification](../standards/otdp/0.1.1/otdp-specification.md), [profile extension](../standards/otdp/0.1.1/extension-contract.md) and [measurement model](../standards/otdp/0.1.1/measurement-model.md) define the requirements; these prompts add none.
+**Ready to continue:** firmware, descriptor and any adapter agree, and applicable conformance checks pass. The [core specification](../standards/otdp/0.1.2/otdp-specification.md), [profile extension](../standards/otdp/0.1.2/extension-contract.md) and [measurement model](../standards/otdp/0.1.2/measurement-model.md) define the requirements; these prompts add none.
 
 ### F4. Prove it on the actual board
 

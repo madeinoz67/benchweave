@@ -85,10 +85,10 @@ Mark each applicable S/C/M requirement `satisfied`, `violated` or `unverified`, 
 
 Normative references:
 
-- [OTDP core and S01–S18](../standards/otdp/0.1.1/otdp-specification.md)
-- [Adapter/profile extension and C01–C12](../standards/otdp/0.1.1/extension-contract.md)
-- [Measurement model and M01–M14](../standards/otdp/0.1.1/measurement-model.md)
-- [Device classes](../standards/otdp/0.1.1/device-classes.md)
+- [OTDP core and S01–S19](../standards/otdp/0.1.2/otdp-specification.md)
+- [Adapter/profile extension and C01–C12](../standards/otdp/0.1.2/extension-contract.md)
+- [Measurement model and M01–M15](../standards/otdp/0.1.2/measurement-model.md)
+- [Device classes](../standards/otdp/0.1.2/device-classes.md)
 - [Architecture](smart-test-gateway-architecture-v1.5.md)
 - [Execution contract](../standards/execution/0.1.0/execution-contract.md)
 - [Interface contract](../standards/interface/0.1.0/interface-contract.md)
