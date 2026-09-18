@@ -1,10 +1,11 @@
 import { render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The mock captures every setOption payload so trace styling is asserted on the
 // real option object echarts would receive, never on rendered pixels. jsdom's
 // getComputedStyle returns no custom properties, so the component resolves the
-// documented fallback literals: accent #0b7181, alert #a96608, muted #5b6a73.
+// documented fallback literals: accent #0b7181, alert #a96608 — and a MISSING
+// text-muted token makes a muted hint fall back to the pass-1 default (C4).
 const setOption = vi.fn();
 vi.mock("echarts/core", () => ({
   init: () => ({ setOption, resize: () => undefined, dispose: () => undefined }),
@@ -36,8 +37,33 @@ function seriesOf(id: string) {
   return row!;
 }
 
+function plot(hints?: Map<string, TraceHint>, extra?: { threshold?: boolean }) {
+  render(
+    <EngineeringPlot
+      kind="waveform"
+      title="Plot"
+      x={{ label: "Time", unit: "s" }}
+      traces={traces}
+      hints={hints}
+      threshold={extra?.threshold ? { value: 1.2, label: "Warning limit", severity: "warning" } : undefined}
+    />,
+  );
+}
+
+/** Stub the theme so --bw-text-muted resolves; every other token stays absent
+ *  (falling back to the documented literals). */
+function stubMutedToken(value: string) {
+  vi.stubGlobal("getComputedStyle", () => ({
+    getPropertyValue: (name: string) => (name === "--bw-text-muted" ? value : ""),
+  }));
+}
+
 beforeEach(() => {
   setOption.mockClear();
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 describe("EngineeringPlot", () => {
@@ -82,66 +108,82 @@ describe("EngineeringPlot", () => {
     });
   });
 
-  it("biases hinted traces to the hinted role while others keep pass-1 styles", () => {
-    const hints = new Map<string, TraceHint>([["b", { colorRole: "accent" }]]);
-    render(
-      <EngineeringPlot
-        kind="waveform"
-        title="Hinted"
-        x={{ label: "Time", unit: "s" }}
-        traces={traces}
-        hints={hints}
-      />,
-    );
+  it("an accent hint on a non-index-0 trace loses silently to index 0's default claim", () => {
+    // C1 ruling: pass-1 index-0 accent is the FIRST claim. A later accent
+    // hint reverts to its own pass-1 default — uniqueness and no-cascade both
+    // hold; the hint loses silently.
+    plot(new Map([["b", { colorRole: "accent" }]]));
 
-    expect(seriesOf("b").lineStyle.color).toBe("#0b7181");
-    expect(seriesOf("b").itemStyle.color).toBe("#0b7181");
-    expect(seriesOf("a")).toMatchObject({
-      symbol: "circle",
-      lineStyle: { color: "#0b7181", type: "solid" },
-      itemStyle: { color: "#0b7181" },
-    });
-    expect(seriesOf("c")).toMatchObject({
-      symbol: "circle",
-      lineStyle: { color: "#a96608", type: "solid" },
-      itemStyle: { color: "#a96608" },
-    });
+    expect(seriesOf("a").lineStyle.color).toBe("#0b7181");
+    expect(seriesOf("b").lineStyle.color).toBe("#a96608");
+    expect(seriesOf("c").lineStyle.color).toBe("#a96608");
   });
 
-  it("resolves the muted role to the text-muted token", () => {
-    const hints = new Map<string, TraceHint>([["c", { colorRole: "muted" }]]);
-    render(
-      <EngineeringPlot
-        kind="waveform"
-        title="Muted"
-        x={{ label: "Time", unit: "s" }}
-        traces={traces}
-        hints={hints}
-      />,
-    );
+  it("resolves the muted role to the theme's text-muted token when present", () => {
+    stubMutedToken("#777777");
+    plot(new Map([["c", { colorRole: "muted" }]]));
 
-    expect(seriesOf("c").lineStyle.color).toBe("#5b6a73");
+    expect(seriesOf("c").lineStyle.color).toBe("#777777");
     expect(seriesOf("a").lineStyle.color).toBe("#0b7181");
     expect(seriesOf("b").lineStyle.color).toBe("#a96608");
   });
 
-  it("lets the earliest accent hint win; later accent hints revert to pass-1", () => {
-    const hints = new Map<string, TraceHint>([
-      ["b", { colorRole: "accent" }],
-      ["c", { colorRole: "accent" }],
-    ]);
-    render(
-      <EngineeringPlot
-        kind="waveform"
-        title="Collision"
-        x={{ label: "Time", unit: "s" }}
-        traces={traces}
-        hints={hints}
-      />,
+  it("falls back to the pass-1 default when the theme lacks the muted token", () => {
+    // C4: jsdom resolves no custom properties; a missing token must fall back
+    // to the trace's pass-1 default, never paint a light-theme literal.
+    plot(new Map([["c", { colorRole: "muted" }]]));
+
+    expect(seriesOf("c").lineStyle.color).toBe("#a96608");
+    expect(seriesOf("c").itemStyle.color).toBe("#a96608");
+  });
+
+  it("mutes index 0 and accents a later trace: exactly one accent, on the hinted trace", () => {
+    // The sanctioned emphasis composition (C1 ruling): muting index 0 releases
+    // its claim, so the accent hint on trace c wins.
+    stubMutedToken("#777777");
+    plot(new Map([["a", { colorRole: "muted" }], ["c", { colorRole: "accent" }]]));
+
+    expect(seriesOf("a").lineStyle.color).toBe("#777777");
+    expect(seriesOf("b").lineStyle.color).toBe("#a96608");
+    expect(seriesOf("c").lineStyle.color).toBe("#0b7181");
+  });
+
+  it("lets only the earliest accent hint win when index 0 is muted", () => {
+    stubMutedToken("#777777");
+    plot(
+      new Map([
+        ["a", { colorRole: "muted" }],
+        ["b", { colorRole: "accent" }],
+        ["c", { colorRole: "accent" }],
+      ]),
     );
 
     expect(seriesOf("b").lineStyle.color).toBe("#0b7181");
     expect(seriesOf("c").lineStyle.color).toBe("#a96608");
+  });
+
+  it("never renders more than one visible accent-coloured series, for any hints map", () => {
+    // C1 invariant, table-driven: uniqueness of the emphasis colour holds for
+    // every composition, including hinted-vs-hinted collisions.
+    const cases: Array<Record<string, TraceHint>> = [
+      {},
+      { b: { colorRole: "accent" } },
+      { b: { colorRole: "accent" }, c: { colorRole: "accent" } },
+      { a: { colorRole: "accent" }, b: { colorRole: "accent" }, c: { colorRole: "accent" } },
+      { a: { colorRole: "muted" }, b: { colorRole: "accent" } },
+      { a: { colorRole: "muted" }, b: { colorRole: "accent" }, c: { colorRole: "accent" } },
+      { a: { colorRole: "muted" }, b: { visible: false }, c: { colorRole: "accent" } },
+      { b: { colorRole: "muted" }, c: { visible: false } },
+    ];
+    for (const hints of cases) {
+      setOption.mockClear();
+      plot(new Map(Object.entries(hints)));
+      const accents = series().filter((entry) => entry.lineStyle.color === "#0b7181");
+      expect(
+        accents.map((entry) => entry.id),
+        `hints ${JSON.stringify(hints)}`,
+      ).toHaveLength(1);
+    }
   });
 
   it("filters hidden traces after style resolution so surviving indices never shift", () => {
@@ -174,11 +216,32 @@ describe("EngineeringPlot", () => {
     expect(screen.getByRole("img", { name: "Hidden middle channel" })).toHaveAccessibleDescription(
       "Time in s; Channel A in V; Channel C in V",
     );
-    const hidden = screen.getByText("Channel B · V").closest("li");
-    expect(hidden).not.toBeNull();
-    expect(hidden).toHaveAttribute("data-hidden", "true");
     const visible = screen.getByText("Channel A · V").closest("li");
     expect(visible).not.toHaveAttribute("data-hidden");
+  });
+
+  it("discloses hidden channels accessibly in the legend, not only visually", () => {
+    // C3: the struck-through styling is visual-only; the legend row's
+    // accessible name must carry the hidden state while the trace itself
+    // stays excluded from the chart description (design rule 3).
+    render(
+      <EngineeringPlot
+        kind="waveform"
+        title="Accessible disclosure"
+        x={{ label: "Time", unit: "s" }}
+        traces={traces}
+        hints={new Map([["b", { visible: false }]])}
+      />,
+    );
+
+    const hidden = screen.getByRole("listitem", { name: /hidden/i });
+    expect(hidden).toHaveAttribute("data-hidden", "true");
+    expect(hidden.textContent).toContain("Channel B · V");
+    const shown = screen.getAllByRole("listitem").filter((item) => item !== hidden);
+    expect(shown).toHaveLength(2);
+    for (const item of shown) {
+      expect(item.textContent).not.toMatch(/hidden/i);
+    }
   });
 
   it("keeps the threshold mark line when a non-index-0 trace is hidden", () => {
@@ -198,5 +261,31 @@ describe("EngineeringPlot", () => {
     expect(carrier).toBeDefined();
     expect(carrier!.id).toBe("a");
     expect(carrier!.markLine!.lineStyle.color).toBe("#a96608");
+  });
+
+  it("renders the threshold carrier-independently when every trace is hidden", () => {
+    // C2: all-visible:false is schema-legal and validator-clean; the limit
+    // line must not vanish with the series — it renders on a carrier series
+    // instead of being silently dropped.
+    const hints = new Map(traces.map((trace) => [trace.id, { visible: false } as TraceHint]));
+    render(
+      <EngineeringPlot
+        kind="time_series"
+        title="All hidden"
+        x={{ label: "Time", unit: "s" }}
+        traces={traces}
+        threshold={{ value: 1.2, label: "Warning limit", severity: "warning" }}
+        hints={hints}
+      />,
+    );
+
+    expect(series()).toHaveLength(1);
+    const carrier = series()[0];
+    expect(carrier.markLine).toBeDefined();
+    expect(carrier.markLine!.lineStyle.color).toBe("#a96608");
+    // The plot discloses that all channels are presentation-hidden: the
+    // description names no traces, and every legend row is struck through.
+    expect(screen.getByRole("img", { name: "All hidden" }).textContent).toBe("");
+    expect(screen.getAllByRole("listitem", { name: /hidden/i })).toHaveLength(3);
   });
 });
