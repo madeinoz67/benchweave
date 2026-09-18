@@ -4,7 +4,7 @@ Use AI to build a BenchWeave device plugin for an existing instrument or your ow
 
 **Describe → Build → Integrate → Prove → Package and share**
 
-This quickstart adds no protocol requirements. The [device developer guide](device-developer-guide.md) and its linked normative specifications define the contracts. Its documented baseline is architecture 1.5, OTDP 0.1.0 and adapter API 0.1.0. Confirm the versions in your chosen BenchWeave revision before starting.
+This quickstart adds no protocol requirements. The [device developer guide](device-developer-guide.md) and its linked normative specifications define the contracts. Its documented baseline is architecture 1.5, OTDP 0.1.1 and adapter API 1.1. Confirm the versions in your chosen BenchWeave revision before starting.
 
 ## Choose your path
 
