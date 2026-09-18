@@ -19,15 +19,31 @@ type Story = StoryObj<typeof meta>;
 export const Waveform: Story = {};
 export const MultiTrace: Story = { args: { traces } };
 export const ThresholdCrossing: Story = { args: { kind: "time_series", threshold: { value: 1.2, label: "Warning limit", severity: "warning" } } };
-export const HintedAccent: Story = {
+export const HintedMuted: Story = {
   args: {
     traces,
-    hints: new Map<string, TraceHint>([["ch2", { colorRole: "accent" }], ["ch3", { colorRole: "muted" }]]),
+    hints: new Map<string, TraceHint>([["ch3", { colorRole: "muted" }]]),
+  },
+};
+// The sanctioned emphasis composition: muting index 0 releases its accent
+// claim, so the accent hint on ch3 wins — exactly one emphasised trace.
+export const SanctionedEmphasis: Story = {
+  args: {
+    traces,
+    hints: new Map<string, TraceHint>([["ch1", { colorRole: "muted" }], ["ch3", { colorRole: "accent" }]]),
   },
 };
 export const HiddenChannel: Story = {
   args: {
     traces,
     hints: new Map<string, TraceHint>([["ch2", { visible: false }]]),
+  },
+};
+export const AllHiddenWithThreshold: Story = {
+  args: {
+    kind: "time_series",
+    traces,
+    threshold: { value: 1.2, label: "Warning limit", severity: "warning" },
+    hints: new Map<string, TraceHint>(traces.map((trace) => [trace.id, { visible: false }])),
   },
 };

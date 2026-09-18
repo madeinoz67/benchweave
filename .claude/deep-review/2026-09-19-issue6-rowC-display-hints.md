@@ -6,6 +6,38 @@ optional per-channel display hints (colour preference, show/hide) carried in the
 presentation manifest, composited under host theme authority. Rows A (settings-as-presets)
 and B (derived variables) are designed separately; D is deferred by the issue.
 
+## Amendment 2026-09-19 — mechanism-critique fix wave (C1–C4)
+
+Appended, not rewritten, per the invariants-file convention. The maintainer's
+mechanism-critique pass ruled on four findings; the rulings sharpen §2.4 and
+carry the same authority:
+
+1. **C1 (accent arbitration).** §2.4's collision rule under-specified whose
+   claim counts. Ruling: pass-1 index-0 accent is the FIRST claim — an accent
+   hint on a non-index-0 trace loses silently to it, so uniqueness of the
+   emphasis colour holds on every composition (pinned table-driven over all
+   hint maps: visible accent-coloured series ≤ 1, count exactly 1 over
+   non-empty visible sets). The sanctioned emphasis composition — mute index
+   0, accent a later trace — keeps working and is pinned. Hints still never
+   cascade: index 0 keeps its default when another trace's accent hint loses.
+2. **C2 (threshold residual, closing the §2.4 rule-4 gap).** §2.4 said a hint
+   may never touch the threshold mark line; it did not say what happens when
+   every trace is presentation-hidden and the mark line's carrier series is
+   filtered away. Chosen resolution: the threshold renders
+   carrier-independently — with zero visible series an empty-data carrier
+   series draws the mark line and nothing else. "No limit plotted" must never
+   be launderable into "no limit configured".
+3. **C3 (disclosure accessibility).** The struck-through legend row is now
+   also an accessible disclosure: hidden rows carry an explicit accessible
+   name naming the hidden state. The hidden trace itself stays excluded from
+   the chart series, tooltip and accessible description (§2.4 rule 3,
+   unchanged).
+4. **C4 (token fallback).** §2.4 rule 5 implemented as written: a theme
+   missing `--bw-text-muted` makes a muted hint fall back to the trace's
+   pass-1 default. The interim implementation's `|| "#5b6a73"` literal —
+   exactly the hardcoded-literal class the colour enum excludes — is gone.
+
+
 Reading verified on `main` at `8bc83a5`. Every claim below cites the file and line it was
 read at. **Review tier: Tier 3** — the change touches `standards/`, edits JSON Schema, and
 advances the `packages/sdk` submodule pointer (three independent triggers of the rubric's

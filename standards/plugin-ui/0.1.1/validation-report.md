@@ -1,5 +1,37 @@
 # Plugin UI contracts 0.1.1 — validation report
 
+## Amendment 2026-09-19 — mechanism-critique fix wave (C1–C4)
+
+Follow-up commits on the same branch (never rewritten history). RED first:
+`EngineeringPlot.test.tsx` **12 collected / 5 failed** against the tip — the C1
+ruling pin (`'#0b7181' to be '#a96608'`: an accent hint on a non-index-0 trace
+must lose to index 0's default claim), the C4 fallback (`'#5b6a73' to be
+'#a96608'`: a missing muted token must fall back to the pass-1 default), the
+C1 invariant (`hints {"b":{"colorRole":"accent"}}: expected [ 'a', 'b' ] to
+have a length of 1 but got 2`), the C3 disclosure (no accessible `listitem`
+naming the hidden state), and the C2 carrier (`expected [] to have a length of
+1 but got +0` with every trace hidden and a threshold configured). GREEN after
+the fix wave: **12/0**.
+
+- **C1**: `resolveStyles` arbitrates accent in trace order with pass-1
+  index-0 accent as the first claim; pinned by the ruling test, the
+  sanctioned mute-0+accent-N composition, the earliest-hint-wins collision
+  (with index 0 muted), and a table-driven invariant over eight hint maps
+  (exactly one visible accent series in each).
+- **C2**: threshold renders on an empty-data carrier series when no visible
+  series remains; pinned with all three channels hidden.
+- **C3**: hidden legend rows carry an explicit accessible name
+  ("… (hidden by presentation preference)") plus the visible struck-through
+  `hidden` tag; pinned with `toHaveAccessibleName(/hidden/i)` and non-hidden
+  rows asserted free of it.
+- **C4**: `--bw-text-muted` absent ⇒ `tokens.muted` undefined ⇒ muted hints
+  revert to the pass-1 default; pinned with the token stubbed present
+  (token colour used) and absent (default colour used).
+
+The design record's branch copy carries the four rulings as a dated
+amendment.
+
+
 Evidence record for the channel-hints increment (issue #6 row C; design
 `.claude/deep-review/2026-09-19-issue6-rowC-display-hints.md`, accepted with its
 pre-committed acceptance rule §7). The 0.1.0 increment's own evidence record
