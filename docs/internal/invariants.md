@@ -135,6 +135,13 @@ rather than rewriting the history — that is how this file earns trust.
   `TokenVerifier` over `benchweave.interfaces.identity.validate`) plus the layer beneath
   it — `src/benchweave/interfaces/mcp.py`. *An auth gap on the tool surface hands a caller
   the bench.*
+- **[CON-7]** Corpus-manifest sha256 rows are machine-rewritten only by
+  `benchweave.standards repin`, which rewrites existing rows' digests, never rows
+  themselves (`path`/`source` byte-preserved, byte-identical formatter), refuses
+  structural surprises fail-closed before any write, and verifies-but-never-rewrites
+  superseded-version rows — `src/benchweave/standards/repin.py`, pinned by
+  `tests/standards/test_repin.py`. *Without it, the next contributor's fastest path is
+  another hand-splice, and the frozen-row guarantee lives only in prose.*
 
 ## Registry & plugin invariants
 

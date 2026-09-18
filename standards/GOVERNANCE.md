@@ -33,7 +33,9 @@ declare and pin it:
 dir to the new version and edits bytes only in the copy; the old dir and its
 corpus-manifest rows stay in place, digest-frozen. Moving or in-place-editing a
 retained version is a governance violation, not a shortcut. The new version's
-rows record the old corpus path as their `source`.
+rows record the old corpus path as their `source`. Digest pins move only
+through `uv run python -m benchweave.standards repin` — the loop is
+edit → repin → export, never a hand-spliced digest.
 
 ## Retention
 
@@ -60,7 +62,9 @@ that did not produce the bytes.
 1. Drift gates: normative bytes changing without a version bump is refused
    (`normative_hash_mismatch`, `content_drift_without_version`)
 2. Coverage: corpus-manifest rows == machine files on disk (nothing vendored
-   escapes the manifest, nothing listed is missing)
+   escapes the manifest, nothing listed is missing; both directions are
+   enforced fail-closed by `benchweave.standards repin`, the only mechanical
+   pin writer)
 3. Architecture validator suites for the touched standard(s)
 4. SDK round-trip: `make check-sdk-standards` (manifest, bundle, lock and
    vendored tree agree)

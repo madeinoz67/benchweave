@@ -17,7 +17,9 @@ placement taxonomy is `docs/doc-taxonomy.md`.
    find out why).
 2. **Digest-lock integrity**: recompute every corpus-manifest row's sha256
    against the tree; rows == machine files exactly (nothing extra on disk,
-   nothing listed missing). Spot-check that `source` provenance fields name
+   nothing listed missing). `benchweave.standards repin` is the only
+   mechanical pin writer — a digest that moved by hand-splice is a finding.
+   Spot-check that `source` provenance fields name
    historical paths, not current ones.
 3. **Retention and supersession**: superseded versions retained digest-frozen;
    `supersedes` recorded on supersession; no version directory deleted outside
@@ -28,7 +30,8 @@ placement taxonomy is `docs/doc-taxonomy.md`.
    project docs in `docs/`, plugin-local pins inside the plugin — per
    `docs/doc-taxonomy.md`. A new file in the wrong home is a finding.
 5. **Consumer ripple complete** (the reset-cascade order — deviations are how
-   drift escapes): bytes settled FIRST, then corpus digests recomputed, then
+   drift escapes): bytes settled FIRST, then corpus digests recomputed
+   (`uv run python -m benchweave.standards repin` — never a hand-splice), then
    fixture lattices rebuilt at fixpoint (`fixtures/execution` documents pin
    each other by id+version+sha256 — an id-keyed fixpoint, never one-pass),
    then registry fixtures rebuilt (`scripts/registry/build_fixtures.py --out`
@@ -66,7 +69,9 @@ each with its disposition) to the memory ledger per the repo protocol.
 ### bump — version a corpus change
 1. Classify the change (errata → PATCH; breaking → MINOR+). Copy the version
    dir to the new version; edit bytes THERE (old dir untouched).
-2. New rows in `corpus-manifest.json` for the new version; `standards-manifest`
+2. New rows in `corpus-manifest.json` for the new version (path + `source`;
+   digests filled by `uv run python -m benchweave.standards repin`, which
+   refuses any coverage gap); `standards-manifest`
    version + `supersedes` updated; old version's rows remain.
 3. Cascade per duty 5; gates green.
 
