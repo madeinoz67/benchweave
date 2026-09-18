@@ -12,10 +12,11 @@ store handle. The next CI occurrence must report its own root cause.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 
-from _failure_detail import dump_at_rest_runs, format_run_failure
+from _failure_detail import _MAX_TERMINAL_JSON_CHARS, dump_at_rest_runs, format_run_failure
 
 _TERMINAL = {
     "run_id": "run-b2c0e3a03f724215",
@@ -101,7 +102,8 @@ def test_dump_at_rest_runs_reads_terminal_json(tmp_path: Path) -> None:
 
 def test_dump_at_rest_runs_is_read_only(tmp_path: Path) -> None:
     """The dump never writes: a missing store reports itself truthfully,
-    and an existing store is opened mode=ro (no -wal/-shm side files)."""
+    and an existing store is opened mode=ro (the database and its WAL log
+    are never written; the -shm wal-index may be rebuilt)."""
     missing = dump_at_rest_runs(tmp_path / "absent.sqlite")
     assert "absent.sqlite" in missing
 
@@ -109,3 +111,90 @@ def test_dump_at_rest_runs_is_read_only(tmp_path: Path) -> None:
     db.write_bytes(b"not a database")
     broken = dump_at_rest_runs(db)
     assert "not a database" in broken or "unreadable" in broken
+
+
+def test_dump_at_rest_runs_renders_reasons_past_the_raw_cap(tmp_path: Path) -> None:
+    """Review row 1 (PR #50): the store writes terminal_json with
+    ``sort_keys=True`` (state/store.py), so ``evidence_refs`` serializes
+    BEFORE ``reasons`` — a fat ref lattice pushes the reasons past any raw
+    head-slice. The dump must render the record structurally so the
+    reasons survive any evidence_refs size."""
+    fat = {
+        "run_id": "run-fat",
+        "body_outcome": "execution_error",
+        "safe_state": "verified",
+        "evidence_refs": [
+            {"id": f"events:run-fat/step-{index}", "version": "1", "sha256": "a" * 64}
+            for index in range(80)
+        ],
+        "reasons": ["late reason: ValueError('hidden past the raw cap')"],
+    }
+    terminal_json = json.dumps(fat, sort_keys=True)
+    assert terminal_json.index("late reason") > _MAX_TERMINAL_JSON_CHARS, (
+        "the fixture must push the reasons past the raw cap for this test to mean anything"
+    )
+
+    db = tmp_path / "state.sqlite"
+    connection = sqlite3.connect(db)
+    connection.executescript(
+        """
+        CREATE TABLE runs (
+            run_id TEXT PRIMARY KEY,
+            binding_json TEXT NOT NULL,
+            principal_id TEXT NOT NULL,
+            started_at TEXT NOT NULL,
+            terminal_json TEXT,
+            tombstoned INTEGER NOT NULL DEFAULT 0,
+            tombstoned_at TEXT
+        );
+        INSERT INTO runs (run_id, binding_json, principal_id, started_at, terminal_json)
+        VALUES ('run-fat', '{}', 'p', '2026-09-18T00:00:00Z', ?);
+        """
+    )
+    connection.execute(
+        "UPDATE runs SET terminal_json = ? WHERE run_id = 'run-fat'", (terminal_json,)
+    )
+    connection.commit()
+    connection.close()
+
+    dump = dump_at_rest_runs(db)
+    assert "ValueError('hidden past the raw cap')" in dump, (
+        "the reasons must survive a fat evidence_refs lattice"
+    )
+    assert "body_outcome: execution_error" in dump, "structural render, not a raw slice"
+
+
+def test_dump_at_rest_runs_dumps_foreign_records_as_raw(tmp_path: Path) -> None:
+    """Review F3 (PR #51): a parseable-but-foreign JSON object is not a
+    run record — it must fall back to the bounded raw slice, not render
+    three None lines that read like a real record."""
+    foreign = json.dumps({"hello": "foreign-record", "nested": {"a": 1}})
+    db = tmp_path / "state.sqlite"
+    connection = sqlite3.connect(db)
+    connection.executescript(
+        """
+        CREATE TABLE runs (
+            run_id TEXT PRIMARY KEY,
+            binding_json TEXT NOT NULL,
+            principal_id TEXT NOT NULL,
+            started_at TEXT NOT NULL,
+            terminal_json TEXT,
+            tombstoned INTEGER NOT NULL DEFAULT 0,
+            tombstoned_at TEXT
+        );
+        INSERT INTO runs (run_id, binding_json, principal_id, started_at, terminal_json)
+        VALUES ('run-foreign', '{}', 'p', '2026-09-18T00:00:00Z', ?);
+        """
+    )
+    connection.execute(
+        "UPDATE runs SET terminal_json = ? WHERE run_id = 'run-foreign'", (foreign,)
+    )
+    connection.commit()
+    connection.close()
+
+    dump = dump_at_rest_runs(db)
+    assert "foreign-record" in dump, "the foreign record's content rides the dump"
+    assert "body_outcome: None" not in dump, (
+        "a foreign dict must not render as a plausible run record"
+    )
+    assert "reasons: (none recorded)" not in dump

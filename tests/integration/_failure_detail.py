@@ -23,6 +23,7 @@ diagnostic that crashes is worse than a truncated assert.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -36,8 +37,10 @@ __all__ = [
 #: turn the assert message into its own log-flood.
 _MAX_REASONS = 40
 _MAX_EVENTS = 40
-#: Per-string cap for the at-rest dump (terminal records carry the full
-#: evidence_refs lattice; the reasons live early in the document).
+#: Per-string cap for the at-rest dump's UNPARSEABLE-record fallback: a
+#: corrupt or foreign blob is bounded, not printed whole. Parsed records
+#: never hit this cap — their reasons render structurally and are bounded
+#: only by ``_MAX_REASONS``.
 _MAX_TERMINAL_JSON_CHARS = 8000
 
 #: Event statuses that mean the step did not cleanly complete. The
@@ -66,14 +69,17 @@ def _feature_events(events: list[dict[str, Any]] | None) -> list[dict[str, Any]]
 def format_run_failure(
     run_id: str,
     terminal: dict[str, Any] | None,
-    events: list[dict[str, Any]] | None,
+    events: list[dict[str, Any]] | None = None,
 ) -> str:
     """A bounded, self-describing failure body for an outcome mismatch.
 
     Names the run, the terminal record's outcome/safe_state and every
     reason (the executor's exception mapping rides ``reasons``), then each
-    error event's operation/status/error_code. A missing terminal record
-    (the honest-unknown case) is named, never papered over.
+    error event's operation/status/error_code. ``events=None`` (the
+    default) omits the events section — for callers that read no events
+    (the at-rest dump); pass ``[]`` to state "none recorded". A missing
+    terminal record (the honest-unknown case) is named, never papered
+    over.
     """
     lines = [f"run {run_id}:"]
     if terminal is None:
@@ -87,28 +93,31 @@ def format_run_failure(
             lines.extend(f"    - {reason}" for reason in reasons[:_MAX_REASONS])
         else:
             lines.append("  reasons: (none recorded)")
-    featured = _feature_events(events)
-    if featured:
-        lines.append(f"  error events ({len(featured)} shown of {len(events or [])}):")
-        for event in featured:
-            parts = [
-                str(event.get("operation_id") or event.get("kind") or "?"),
-                f"status={event.get('status')}",
-            ]
-            if event.get("error_code") is not None:
-                parts.append(f"error_code={event.get('error_code')}")
-            lines.append(f"    - {'  '.join(parts)}")
-    else:
-        lines.append(f"  events: none recorded ({len(events or [])} total)")
+    if events is not None:
+        featured = _feature_events(events)
+        if featured:
+            lines.append(f"  error events ({len(featured)} shown of {len(events)}):")
+            for event in featured:
+                parts = [
+                    str(event.get("operation_id") or event.get("kind") or "?"),
+                    f"status={event.get('status')}",
+                ]
+                if event.get("error_code") is not None:
+                    parts.append(f"error_code={event.get('error_code')}")
+                lines.append(f"    - {'  '.join(parts)}")
+        else:
+            lines.append(f"  events: none recorded ({len(events)} total)")
     return "\n".join(lines)
 
 
 def dump_at_rest_runs(db_path: Path) -> str:
     """Every run's terminal record from the kept store, at rest.
 
-    Stdlib sqlite3 only, opened read-only (``mode=ro`` — no WAL side
-    files, no writes to the evidence under diagnosis). A missing or
-    unreadable store reports itself truthfully; it never raises.
+    Stdlib sqlite3 only, opened read-only (``mode=ro``): the database and
+    its WAL log are never written; the transient ``-shm`` wal-index may be
+    rebuilt (derived coordination scratch — it carries no evidence). A
+    missing or unreadable store reports itself truthfully; it never
+    raises.
     """
     db_path = Path(db_path)
     if not db_path.is_file():
@@ -131,7 +140,30 @@ def dump_at_rest_runs(db_path: Path) -> str:
             lines.append(f"  {run_id}: no terminal record")
             continue
         body = str(terminal_json)
+        try:
+            parsed: Any = json.loads(body)
+        except (json.JSONDecodeError, RecursionError):
+            # RecursionError: a pathologically nested foreign document —
+            # store-written records cannot reach that depth (json.dumps
+            # hits its own recursion limit at write time), but the dump
+            # must never raise on odd input, so it falls to the raw slice.
+            parsed = None
+        if isinstance(parsed, dict) and any(
+            key in parsed for key in ("body_outcome", "safe_state", "reasons")
+        ):
+            # Structural render: the store writes terminal_json with
+            # sort_keys=True, so evidence_refs serializes BEFORE reasons —
+            # a raw head-slice of a fat record cuts exactly the reasons.
+            # format_run_failure bounds the reasons count, not bytes.
+            # The any() key check keeps foreign dicts out: a parseable
+            # JSON object that carries none of the run-record outcome
+            # keys is not a record, and rendering it would print three
+            # None lines that read like one.
+            lines.append(format_run_failure(run_id, parsed))
+            continue
+        # Not a parseable run record (corrupt bytes, or foreign JSON):
+        # bounded raw slice.
         if len(body) > _MAX_TERMINAL_JSON_CHARS:
             body = body[:_MAX_TERMINAL_JSON_CHARS] + "…(truncated)"
-        lines.append(f"  {run_id}: {body}")
+        lines.append(f"  {run_id} (unparsed): {body}")
     return "\n".join(lines)
