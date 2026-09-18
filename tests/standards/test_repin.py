@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -261,3 +262,124 @@ def test_drift_without_repin_still_fails_validation(tmp_path: Path) -> None:
     _flip(root, REGENERABLE)
     with pytest.raises(StandardsError, match="normative_hash_mismatch"):
         validate_manifest(load_manifest(root), root)
+
+
+# --- adversary follow-up rows (PR #52): F2 canonical-write gate -------------------
+
+
+def _non_canonical(name: str, document: Any) -> bytes:
+    """Three hand-corrupted shapes that still parse: compact separators, a
+    UTF-8 BOM, and CRLF line endings (adversary F2's reproducer set)."""
+    if name == "compact":
+        return json.dumps(document, separators=(",", ":")).encode()
+    if name == "bom":
+        return json.dumps(document, indent=2).encode("utf-8-sig")
+    return (json.dumps(document, indent=2) + "\n").encode().replace(b"\n", b"\r\n")
+
+
+@pytest.mark.parametrize("shape", ["compact", "bom", "crlf"])
+def test_repin_refuses_to_write_a_non_canonical_manifest(
+    tmp_path: Path, shape: str
+) -> None:
+    """F2: reads tolerate any parseable form; writes do not. A drifted
+    digest in a compact/BOM/CRLF-shaped manifest must refuse rather than
+    rewrite the whole file to canonical form — a reflow beyond the digest
+    being repinned, visible only as a noisy diff."""
+    root = _repo(tmp_path)
+    _flip(root, REGENERABLE)
+    document = json.loads(_manifest_bytes(root))
+    shaped = _non_canonical(shape, document)
+    (root / CORPUS_MANIFEST).write_bytes(shaped)
+
+    with pytest.raises(StandardsError, match="corpus_manifest_not_canonical"):
+        _repin()(root)
+    assert _manifest_bytes(root) == shaped, "a refusal must not write"
+    assert not list((root / "standards").glob("*.tmp")), "a refusal must not stage"
+
+
+def test_repin_noop_tolerates_a_non_canonical_manifest(tmp_path: Path) -> None:
+    """F2 boundary: a non-canonical manifest whose digests are all current
+    is a read, not a write — no-op, zero bytes, no quiet canonicalization."""
+    root = _repo(tmp_path)
+    shaped = _non_canonical("compact", json.loads(_manifest_bytes(root)))
+    (root / CORPUS_MANIFEST).write_bytes(shaped)
+
+    assert _repin()(root) == []
+    assert _manifest_bytes(root) == shaped
+
+
+# --- adversary follow-up rows (PR #52): F3 staging, F4 symlink, F5 refusals -------
+
+
+def test_staging_name_is_process_unique(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F3: the staging sibling embeds the pid — two concurrent repin
+    processes never share a .tmp file (the observed race truncated the
+    manifest to transiently-empty bytes). Captured at the os.replace seam,
+    so the property is pinned deterministically rather than by racing in
+    CI; the pid is per-process, which is the real concurrent-caller shape
+    (the CLI), not threads."""
+    root = _repo(tmp_path)
+    _flip(root, REGENERABLE)
+    captured: list[str] = []
+    real_replace = os.replace
+
+    def spy(src: str, dst: str) -> None:  # pragma: no cover - thin seam
+        captured.append(src)
+        real_replace(src, dst)
+
+    monkeypatch.setattr("benchweave.standards.repin.os.replace", spy)
+    _repin()(root)
+
+    assert captured, "the spy must have seen the replace"
+    assert str(os.getpid()) in Path(captured[0]).name, (
+        "the staging name must embed the pid (unique per concurrent process)"
+    )
+    assert not list((root / "standards").glob("*.tmp")), "no staging left behind"
+
+
+def test_repin_refuses_a_symlinked_pinned_file(tmp_path: Path) -> None:
+    """F4: a pinned path that is a symlink hashes whatever it points at —
+    a resolution-level escape the lexical traversal check cannot see
+    (its comment claimed that scope; the scope lives here instead).
+    Refused regardless of drift, before any read of the target."""
+    root = _repo(tmp_path)
+    outside = tmp_path / "outside-the-corpus.json"
+    outside.write_bytes(root.joinpath("standards", REGENERABLE).read_bytes())
+    linked = root / "standards" / REGENERABLE
+    linked.unlink()
+    linked.symlink_to(outside)
+    raw = _manifest_bytes(root)
+
+    with pytest.raises(StandardsError, match="pinned_path_symlink"):
+        _repin()(root)
+    assert _manifest_bytes(root) == raw
+    assert not list((root / "standards").glob("*.tmp"))
+
+
+def test_repin_refuses_a_pinned_directory(tmp_path: Path) -> None:
+    """F5: a pinned path that is a directory fails as a refusal, not an
+    uncaught IsADirectoryError traceback (a *.json-named directory still
+    matches the coverage scan, so the failure lands in the digest loop)."""
+    root = _repo(tmp_path)
+    victim = root / "standards" / REGENERABLE
+    victim.unlink()
+    victim.mkdir()
+    raw = _manifest_bytes(root)
+
+    with pytest.raises(StandardsError, match="pinned_path_unreadable"):
+        _repin()(root)
+    assert _manifest_bytes(root) == raw
+
+
+def test_repin_refuses_a_missing_standards_manifest(tmp_path: Path) -> None:
+    """F5: the classifier's authority (standards-manifest.json) missing is
+    a refusal, not an uncaught FileNotFoundError traceback."""
+    root = _repo(tmp_path)
+    (root / "standards/standards-manifest.json").unlink()
+    raw = _manifest_bytes(root)
+
+    with pytest.raises(StandardsError, match="standards_manifest_absent"):
+        _repin()(root)
+    assert _manifest_bytes(root) == raw

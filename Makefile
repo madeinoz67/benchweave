@@ -3,7 +3,10 @@
 # One source of truth for uv's project environment (non-dot venv/, per the
 # repo convention). := deliberately: an ambient value must not reintroduce
 # a stray .venv/ on any target in this file. make 3.81 (macOS CLT) rejects
-# target-specific `export` lines, so the pin is file-scoped instead.
+# the single-line target-specific `export` shape (`target: export FOO :=`
+# doubling as the rule); the two-line form parses, but the pin is
+# file-scoped anyway — broader than forced, deliberately: it also covers
+# future bare `uv run` lines outside the two sdk-standards targets.
 export UV_PROJECT_ENVIRONMENT := venv
 
 # Export the canonical corpus, import it into the SDK submodule, verify the

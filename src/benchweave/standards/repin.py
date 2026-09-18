@@ -40,10 +40,15 @@ def repin_manifest(root: Path) -> list[str]:
         # Unlike _corpus_pins (which tolerates absence), a pin command with no
         # rows to pin is a hard error.
         raise StandardsError("corpus_manifest_absent: standards/corpus-manifest.json")
+    raw = manifest_path.read_bytes()
     try:
-        document = _strict_loads(manifest_path.read_bytes())
+        document = _strict_loads(raw)
     except ValueError as exc:
         raise StandardsError(f"corpus_manifest_invalid: {exc}") from exc
+    # The byte form of the manifest AS LOADED (before any digest mutation):
+    # the write-path gate compares the raw bytes against this, never against
+    # a dump of the already-mutated document.
+    canonical_input = (json.dumps(document, indent=2) + "\n").encode()
     if not isinstance(document, dict) or not isinstance(document.get("files"), list):
         raise StandardsError("corpus_manifest_invalid: files must be a list")
     rows: list[Any] = document["files"]
@@ -59,7 +64,23 @@ def repin_manifest(root: Path) -> list[str]:
     changed: list[str] = []
     for row in rows:
         path = str(row["path"])
-        digest = hashlib.sha256((root / "standards" / path).read_bytes()).hexdigest()
+        corpus_file = root / "standards" / path
+        if corpus_file.is_symlink():
+            # Adversary F4: a symlinked pinned file hashes whatever it
+            # points at — a resolution-level escape the lexical traversal
+            # check cannot see. The corpus is committed vendored content;
+            # a symlink is a structural surprise, refused before the
+            # target is read, regardless of drift.
+            raise StandardsError(f"pinned_path_symlink: {path}")
+        try:
+            digest = hashlib.sha256(corpus_file.read_bytes()).hexdigest()
+        except OSError as exc:
+            # Adversary F5: a directory (or unreadable file) at a pinned
+            # path is a refusal, not a traceback — it still matches the
+            # coverage scan, so the failure would land mid-loop otherwise.
+            raise StandardsError(
+                f"pinned_path_unreadable: {path} ({exc.__class__.__name__})"
+            ) from exc
         if path in regenerable:
             if row["sha256"] != digest:
                 row["sha256"] = digest
@@ -72,10 +93,28 @@ def repin_manifest(root: Path) -> list[str]:
     if not changed:
         return []
 
-    staged = manifest_path.parent / (manifest_path.name + ".tmp")
-    staged.write_bytes((json.dumps(document, indent=2) + "\n").encode())
-    os.chmod(staged, manifest_path.stat().st_mode)
-    os.replace(staged, manifest_path)
+    if raw != canonical_input:
+        # Adversary F2: reads tolerate any parseable form; writes do not.
+        # Serializing a compact/BOM/CRLF-shaped manifest back to canonical
+        # form is a whole-file reflow beyond the digest being repinned —
+        # corruption this command refuses to launder. Restore the file
+        # (e.g. git checkout), then repin.
+        raise StandardsError(
+            "corpus_manifest_not_canonical: writes require the canonical "
+            "indent-2 + trailing-newline byte form (a BOM, CRLF, or "
+            "alternate serialization is hand corruption) — restore the "
+            "file, then repin"
+        )
+
+    staged = manifest_path.parent / f"{manifest_path.name}.{os.getpid()}.tmp"
+    try:
+        staged.write_bytes((json.dumps(document, indent=2) + "\n").encode())
+        os.chmod(staged, manifest_path.stat().st_mode)
+        os.replace(staged, manifest_path)
+    finally:
+        # Post-replace this is a no-op; a failed replace must not leave
+        # staging behind (adversary F3's cleanup half).
+        staged.unlink(missing_ok=True)
     # A raise here is a repin bug failing loudly, not a repaired state.
     validate_manifest(load_manifest(root), root)
     return changed
@@ -130,8 +169,11 @@ def _check_row_path(path: str) -> None:
         or "\\" in path
         or ".." in posix.parts
     ):
-        # The digest loop reads root/"standards"/path; a traversal or absolute
-        # row would hash files outside the corpus.
+        # LEXICAL traversal only: a traversal or absolute row would make the
+        # digest loop address files outside the corpus by PATH. It does not
+        # see resolution-level escapes — a symlinked pinned file still
+        # hashes its target; that guard is pinned_path_symlink in the
+        # digest loop (adversary F4).
         raise StandardsError(f"pin_path_escape: {path}")
 
 
@@ -145,7 +187,15 @@ def _regenerable_paths(root: Path, pinned: set[str]) -> set[str]:
     the real defect.
     """
     regenerable: set[str] = set()
-    for entry in load_manifest(root).standards:
+    try:
+        manifest = load_manifest(root)
+    except FileNotFoundError as exc:
+        # Adversary F5: the classifier's own authority missing is a
+        # refusal, not a traceback — there is nothing to classify against.
+        raise StandardsError(
+            "standards_manifest_absent: standards/standards-manifest.json"
+        ) from exc
+    for entry in manifest.standards:
         for relative in entry.normative:
             if not relative.startswith("standards/"):
                 continue  # The parity validator carries no pin (manifest.py).
