@@ -686,3 +686,81 @@ def test_configure_refuses_sample_count_above_bound(scope: Any) -> None:
         deadline_ns=10**12,
     )
     assert at_bound.status.value == "ok"
+
+
+# --- configuration snapshot at arm (fix wave R3) --------------------------------
+
+
+def test_fetch_reports_the_armed_configuration_not_the_latest(scope: Any) -> None:
+    """Evidence attribution: arm→reconfigure→fetch must carry the ARMED identity.
+
+    Without a snapshot, a fetch after a reconfigure reports the new
+    configuration_id and the new channel set for an acquisition that was
+    armed under the old one — misattributed evidence.
+    """
+    scope.dispatch(_configure(LOW_NOISE_PAIR, configuration_id="cfg-1"), deadline_ns=10**12)
+    assert _arm(scope, configuration_id="cfg-1", acquisition_id="acq-1").status.value == "ok"
+    scope.dispatch(
+        _configure(
+            [
+                {
+                    "channel": "ch2",
+                    "coupling": "dc",
+                    "range_v": 5.0,
+                    "offset_v": 0.0,
+                    "probe_ratio": 1.0,
+                }
+            ],
+            configuration_id="cfg-2",
+        ),
+        deadline_ns=10**12,
+    )
+    result = scope.dispatch(
+        _invoke(
+            "otdp.oscilloscope.fetch/1.0.0",
+            {"acquisition_id": "acq-1", "max_bytes": 1_048_576, "allow_partial": False},
+        ),
+        deadline_ns=10**12,
+    )
+    assert result.status.value == "ok"
+    dataset = result.data["result"]
+    assert dataset["configuration_id"] == "cfg-1"
+    assert [variable["channel_ids"] for variable in dataset["variables"]] == [["ch1"], ["ch3"]]
+
+
+# --- trigger validation at dispatch (fix wave R5) -------------------------------
+
+
+def _configure_trigger(scope: Any, trigger: dict[str, Any]) -> Any:
+    return scope.dispatch(
+        _invoke(
+            "otdp.oscilloscope.configure/1.0.0",
+            {
+                "configuration_id": "cfg-1",
+                "channels": [CHANNEL_ITEM],
+                "sample_rate_hz": 1000.0,
+                "sample_count": 1024,
+                "pretrigger_fraction": 0.0,
+                "trigger": trigger,
+            },
+        ),
+        deadline_ns=10**12,
+    )
+
+
+def test_configure_refuses_edge_trigger_missing_required_subfields(scope: Any) -> None:
+    result = _configure_trigger(scope, {"kind": "edge"})
+    assert result.status.value == "error"
+    assert result.error.code.value == "INVALID_ARGUMENT"
+    assert result.error.dispatch_state is DispatchState.NOT_DISPATCHED
+
+
+def test_configure_refuses_unknown_trigger_kind(scope: Any) -> None:
+    result = _configure_trigger(scope, {"kind": "bogus"})
+    assert result.status.value == "error"
+    assert result.error.code.value == "INVALID_ARGUMENT"
+
+
+def test_configure_accepts_external_trigger_with_source(scope: Any) -> None:
+    result = _configure_trigger(scope, {"kind": "external", "source_channel": "ch1"})
+    assert result.status.value == "ok"

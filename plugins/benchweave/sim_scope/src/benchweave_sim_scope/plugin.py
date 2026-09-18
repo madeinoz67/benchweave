@@ -48,6 +48,7 @@ AVERAGING_MAX = 64
 SAMPLE_RATE_MAX_HZ = 1_000_000.0
 SAMPLE_COUNT_MAX = 1_000_000
 COUPLINGS = ("ac", "dc", "ground")
+TRIGGER_KINDS = ("immediate", "software", "external", "edge")
 
 ACTION_CONFIGURE = "otdp.oscilloscope.configure/1.0.0"
 ACTION_ARM = "otdp.oscilloscope.arm/1.0.0"
@@ -364,11 +365,32 @@ class SimScopePlugin:
             return self._reject(
                 request, ErrorCode.INVALID_ARGUMENT, "pretrigger_fraction must be in [0, 1]"
             )
+        # Trigger shape per the corpus action schema: dispatch is the last
+        # line of validation under host-ABI use, so the closed trigger form
+        # (kind set; edge requires source_channel/slope/level_v; external
+        # requires source_channel) is enforced here, not only in the lanes.
         trigger = action_input.get("trigger")
-        if not isinstance(trigger, dict) or "kind" not in trigger:
+        if not isinstance(trigger, dict) or trigger.get("kind") not in TRIGGER_KINDS:
             return self._reject(
-                request, ErrorCode.INVALID_ARGUMENT, "trigger requires a kind"
+                request, ErrorCode.INVALID_ARGUMENT, f"trigger kind must be one of {TRIGGER_KINDS}"
             )
+        if trigger["kind"] in ("edge", "external"):
+            source = trigger.get("source_channel")
+            if not isinstance(source, str) or not source:
+                return self._reject(
+                    request,
+                    ErrorCode.INVALID_ARGUMENT,
+                    f"{trigger['kind']} trigger requires source_channel",
+                )
+        if trigger["kind"] == "edge":
+            if trigger.get("slope") not in ("rising", "falling"):
+                return self._reject(
+                    request, ErrorCode.INVALID_ARGUMENT, "edge trigger requires a slope"
+                )
+            if not _numeric(trigger.get("level_v")):
+                return self._reject(
+                    request, ErrorCode.INVALID_ARGUMENT, "edge trigger requires numeric level_v"
+                )
         for item in channels:
             for field, pattern in CHANNEL_FIELDS:
                 parameter = pattern.format(channel=item["channel"])
@@ -427,12 +449,28 @@ class SimScopePlugin:
             )
         # An immediate trigger condition is met at arm time; every other kind
         # waits for the trigger action. The acquisition start is the arm time.
-        kind = self._acquisition_shape["trigger"].get("kind")
+        # The active configuration is snapshotted here: a later reconfigure
+        # must not re-scope or re-attribute an acquisition already armed.
+        shape = self._acquisition_shape
+        kind = shape["trigger"].get("kind")
         state = "complete" if kind == "immediate" else "armed"
         self._acquisitions[acquisition_id] = {
             "state": state,
             "started_at": self._now(),
             "fetches": 0,
+            "configuration": {
+                "configuration_id": self._configuration_id,
+                "enabled": list(self._enabled),
+                "offsets": {
+                    channel: self._channels[channel]["offset_v"] for channel in self._enabled
+                },
+                "shape": {
+                    "sample_rate_hz": shape["sample_rate_hz"],
+                    "sample_count": shape["sample_count"],
+                    "pretrigger_fraction": shape["pretrigger_fraction"],
+                    "trigger": dict(shape["trigger"]),
+                },
+            },
         }
         return OperationResult.ok(
             request.operation_id,
@@ -487,7 +525,9 @@ class SimScopePlugin:
             return self._reject(
                 request, ErrorCode.DEVICE_REJECTED, f"acquisition {acquisition_id} was aborted"
             )
-        shape = self._acquisition_shape
+        # Materialize from the snapshot taken at arm, not live state.
+        snapshot = acquisition["configuration"]
+        shape = snapshot["shape"]
         # Corpus dataset semantics: complete means the full requested
         # acquisition; anything missing samples is partial and records why,
         # reporting the actual axes/shapes (never padded to the request).
@@ -505,7 +545,8 @@ class SimScopePlugin:
             status = "partial"
             reason = "trigger has not fired; pretrigger buffer only"
         width = 8  # float64 elements
-        needed = len(self._enabled) * samples * width
+        channels = snapshot["enabled"]
+        needed = len(channels) * samples * width
         if needed > max_bytes:
             if not allow_partial:
                 return self._reject(
@@ -513,7 +554,7 @@ class SimScopePlugin:
                     ErrorCode.DEVICE_REJECTED,
                     f"insufficient max_bytes: {needed} bytes needed, {max_bytes} given",
                 )
-            samples = max_bytes // (width * len(self._enabled))
+            samples = max_bytes // (width * len(channels))
             status = "partial"
             reason = f"truncated to {samples} samples per channel by max_bytes"
         if samples < 1:
@@ -531,18 +572,18 @@ class SimScopePlugin:
                 "channel_ids": [channel],
                 "dtype": "float64",
                 "dimensions": ["sample"],
-                "values": [self._channels[channel]["offset_v"]] * samples,
+                "values": [snapshot["offsets"][channel]] * samples,
                 "uncertainty": {"status": "unknown"},
                 "calibration": {"status": "unknown"},
                 "status": "valid",
             }
-            for channel in self._enabled
+            for channel in channels
         ]
         kind = shape["trigger"].get("kind", "unknown")
         dataset: dict[str, Any] = {
             "dataset_id": f"dataset-scope-{acquisition_id}-{acquisition['fetches']}",
             "kind": "waveform",
-            "configuration_id": self._configuration_id,
+            "configuration_id": snapshot["configuration_id"],
             "acquisition_id": acquisition_id,
             "started_at": acquisition["started_at"],
             "clock": {
