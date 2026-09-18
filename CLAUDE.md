@@ -60,6 +60,142 @@ JSON
 
 ---
 
+This file governs how AI agents work in this repo: what BenchWeave *is*, the principles
+that must never be violated, and how to write and review changes that fit the project.
+The deep reference lives in `docs/internal/` — this file is the index and the
+non-negotiables.
+
+## 1. What BenchWeave is
+
+BenchWeave is a **local test-bench gateway for reusable instrument and DUT plugins**:
+Python 3.13, `uv`, hatchling, strict mypy. Its one-line promise, from the architecture
+doc, is load-bearing — every change is measured against it:
+
+> **A plugin from anywhere runs on a bench here, with checks whose results mean the same
+> thing no matter which host ran them.**
+
+The three clauses map to real subsystems:
+
+- **a plugin from anywhere** → the OTDP device-plugin ABI, the registry's pinned
+  dependency closure, trusted-plugin admission.
+- **runs on a bench here** → the control core: admission, binding, the eight-kind
+  procedure executor, the protective transition, the single-writer store.
+- **the same results on any host** → the vendored standards corpus (sha256-pinned,
+  machine-checkable), digest-verified admission, evidence-exact run records.
+
+If a change makes a bench behave less like this — a check that means different things on
+different hosts, a protective path that can be vetoed, a run record that launders
+ambiguity — it is wrong even if the suite passes.
+
+### Architecture map
+
+| Subsystem | Packages | What it owns |
+|---|---|---|
+| Control core | `src/benchweave/control/` | Admission (documents, semantics, binding, policy), the executor, the safe-transition engine, the run coordinator |
+| State | `src/benchweave/state/` | The single-writer SQLite store, migrations, the one-coordinator file hold |
+| Contracts | `src/benchweave/contracts/` | Architecture contract models and schema bindings |
+| Registry | `src/benchweave/registry/` | Local registry admission, package locks, resolver, authenticity |
+| Host / plugins | `src/benchweave/host/` | The device-plugin ABI, host services, the OTDP bridge |
+| Interfaces | `src/benchweave/interfaces/` | MCP (17 vendored-exact `stg_v1` tools), REST, identity, the app/worker |
+| Content & vendoring | `src/benchweave/content/`, `vendoring.py` | Exact-byte JSON documents, packaged-first vendored-asset resolution |
+
+Reference docs: `docs/internal/invariants.md` (hard invariants, CTL/STO/CON/REG),
+`docs/internal/review-rubric.md` (the gated review protocol),
+`docs/internal/drift-and-obligations.md` (cross-surface sync obligations + the CI map),
+`docs/smart-test-gateway-decisions.md` (why the project is the way it is, A01–A14).
+
+## 2. Core principles (the lens for every change)
+
+Each traces to a decision record (`docs/smart-test-gateway-decisions.md`) or a
+`docs/internal/` doc.
+
+1. **Evidence over assertion (A06).** A transport success is not completed physical work;
+   ambiguous outcomes stay ambiguous on the wire (`dispatch_state` UNKNOWN, `interrupted`
+   runs), duplicate suppression sits at the gateway boundary, and recovery reconciles
+   before dependent actions proceed.
+2. **Protection and completion never depend on continued AI judgement (A04).** An AI agent
+   may drive the interfaces; the protective transition and the run's bounded authority
+   must not require one to keep working. A client cannot silently promote an ordinary
+   operation to autonomous execution.
+3. **Qualified, not assumed (A02).** Neither low voltage nor an instrument's rating
+   establishes acceptable energy. Missing requirements block control; numeric envelopes,
+   safe transitions and response times are commissioned per bench from qualification
+   evidence — never hardcoded constants tuned on one bench.
+4. **One controlling procedure per bench (A03).** Explicit resource ownership and
+   scheduled observations; the one-writer store hold makes two coordinators
+   structurally impossible, not merely discouraged.
+5. **Bounded procedures (A12).** Versioned JSON documents, sequential actions, fixed-count
+   loops, lexical references, explicit deadlines. A shared or generated procedure can
+   never rewrite its operating envelope; all endings take the approved safe transition
+   and terminal pass requires verified final safety.
+6. **One core contract behind REST and MCP (A13).** Transports are adapters over typed
+   operation/result contracts and durable run identity — and behavior is pinned against
+   the frozen contract (`standards/interface/0.1.0/interface-contract.md`), never against
+   the sibling transport. Parity tests are not contract tests.
+7. **Audit failure constrains new work (A07).** Refuse new energising actions when their
+   intent cannot be recorded, while protective action and the approved active-procedure
+   response continue — accountability without making evidence storage a dependency of
+   protection.
+8. **Features land as minimal, reviewable increments referencing their design (the
+   `increment` skill).** Each names what it defers. Design records are committed
+   (`.claude/deep-review/`) so pre-committed acceptance rules are provably pre-committed.
+9. **Extend proven in-tree mechanisms over inventing new architecture.** Find the
+   precedent first; new architecture needs a justification the precedent can't satisfy.
+10. **Verify claims independently; severity can go up, not just down.** Never take a
+    report's or a PR description's claim on faith.
+11. **Honest negative results are first-class.** A killed idea on measured evidence is a
+    real result, not a failure to have something to show.
+12. **Claim discipline (`docs/internal/review-rubric.md` G4).** A set named in prose is
+    regenerable from a mechanism; a guard states what it does not catch;
+    *cannot/never* needs the structural reason inline; every number carries its
+    denominator and says whose measurement it is.
+
+## 3. How we work
+
+**Verify, don't assume.** For any non-trivial change:
+
+1. **Confirm the commit you're on.** The working checkout can be stale; run
+   `git branch --show-current` / `git log --oneline -3` and diff against `main` before
+   asserting what the code does. Work happens on working branches — never commit to
+   `main` directly. When in doubt, work in a fresh worktree off `origin/main`.
+2. **Run the real gates, not the diff**: with `UV_PROJECT_ENVIRONMENT=venv` —
+   `uv run ruff check .`, `uv run mypy` (**bare, config-driven** — explicit path args
+   silently drop `packages/sdk/src` from the build), and the focused
+   `uv run pytest` for the touched modules plus `tests/faults/` for anything touching
+   `state/`, `control/`, or concurrency. Read counts from `--junitxml` attributes or exit
+   codes, never from an output-filter summary line.
+3. **RED-sanity-check bug fixes.** The test must be shown to *fail without the fix*;
+   `no tests ran` is a FAILED check (pytest exits 5 when it collects nothing) — look for
+   the collected count, not a green run.
+4. **Walk the obligations.** `docs/internal/drift-and-obligations.md` is the list; the
+   path-shaped ones additionally warn via `.claude/hooks/drift-guard.mjs` (marked 🪝 in
+   that doc) — a reminder, not a gate, and no substitute for walking the list.
+
+**Keep CI fast.** The job map is in `drift-and-obligations.md`; prefer unit and fault
+tests, reach for end-to-end proof only when a change genuinely needs it, and never
+balloon the pipeline to prove a point a table-driven test could make.
+
+## 4. This repository is public
+
+Measure on real benches and real run histories; **never name them**. The corpus a
+measurement ran on is not ours to publish — it belongs to an operator, a client, or
+another product, and naming it links them to this project permanently.
+
+The rule, in committed content — source, tests, comments, design records, commit
+messages, **and filenames**:
+
+- Refer to a measurement corpus as **"a real bench"**. Keep the numbers; drop the name.
+- Use invented names in fixtures and examples — not a real colleague, client, contact,
+  DUT serial, or another product's module names.
+- No client, tenant, or employer identifiers; no pricing or commercial terms.
+- If a design record can't make its point without those, it isn't publishable —
+  `.claude/deep-review/README.md` has the triage rule and the `private/` convention.
+
+Git history is forever and a scrub of the tip is not a scrub. Getting it right before the
+commit is the only version of this that works.
+
+---
+
 ## The code-review agent
 
 `.claude/agents/code-reviewer.md` is the repo's resident reviewer — correctness, the
