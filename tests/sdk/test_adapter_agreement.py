@@ -538,6 +538,45 @@ def test_version_triplet() -> None:
     )
 
 
+def _recorded_gitlink(root: Path) -> str:
+    """The submodule commit the superproject has staged for packages/sdk."""
+    result = subprocess.run(
+        ["git", "-C", str(root), "ls-files", "-s", "packages/sdk"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, "git ls-files failed against the worktree"
+    fields = result.stdout.split()
+    assert fields and fields[0] == "160000", (
+        f"packages/sdk is not recorded as a submodule: {result.stdout!r}"
+    )
+    return fields[1]
+
+
+def test_submodule_head_matches_the_recorded_gitlink() -> None:
+    """Provenance proves the PATH; this pins the COMMIT under test.
+
+    A detached or moved packages/sdk at any other commit (a stale standalone
+    checkout swapped in, a WIP SDK branch) would otherwise test green locally
+    — the provenance assertion checks the tree, not the version. The Makefile
+    already requires HEAD == pointer before any sync; this is that predicate
+    as a CI pin.
+    """
+    head = subprocess.run(
+        ["git", "-C", str(ROOT / "packages" / "sdk"), "rev-parse", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert head.returncode == 0, "packages/sdk is not a git checkout"
+    assert head.stdout.strip() == _recorded_gitlink(ROOT), (
+        f"packages/sdk HEAD {head.stdout.strip()} != recorded gitlink "
+        f"{_recorded_gitlink(ROOT)}; the agreement test is running against an "
+        "unrecorded SDK commit"
+    )
+
+
 # --- anti-tautology proofs: the comparator must reject mutated copies ---
 
 
