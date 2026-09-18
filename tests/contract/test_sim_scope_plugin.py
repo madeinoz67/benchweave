@@ -449,3 +449,168 @@ def test_invoke_unknown_action_rejected_not_dispatched(scope: Any) -> None:
     assert result.status.value == "error"
     assert result.error.code.value == "UNSUPPORTED"
     assert result.error.dispatch_state is DispatchState.NOT_DISPATCHED
+
+
+# --- fetch honesty (fix wave F3): boundary table + lifecycle pins ---------------
+
+
+def _configure_edge(scope: Any) -> None:
+    """Configure an edge-triggered two-channel acquisition that stays armed."""
+    result = scope.dispatch(
+        _invoke(
+            "otdp.oscilloscope.configure/1.0.0",
+            {
+                "configuration_id": "cfg-1",
+                "channels": LOW_NOISE_PAIR,
+                "sample_rate_hz": 1000.0,
+                "sample_count": 1024,
+                "pretrigger_fraction": 0.25,
+                "trigger": {
+                    "kind": "edge",
+                    "source_channel": "ch1",
+                    "slope": "rising",
+                    "level_v": 0.5,
+                },
+            },
+        ),
+        deadline_ns=10**12,
+    )
+    assert result.status.value == "ok"
+
+
+def _fetch(scope: Any, max_bytes: int, allow_partial: bool, acq: str = "acq-1") -> Any:
+    return scope.dispatch(
+        _invoke(
+            "otdp.oscilloscope.fetch/1.0.0",
+            {"acquisition_id": acq, "max_bytes": max_bytes, "allow_partial": allow_partial},
+        ),
+        deadline_ns=10**12,
+    )
+
+
+def test_fetch_armed_without_partial_is_refused(scope: Any) -> None:
+    _configure_edge(scope)
+    assert _arm(scope).status.value == "ok"
+    refused = _fetch(scope, 1_048_576, False)
+    assert refused.status.value == "error"
+    assert refused.error.code.value == "DEVICE_REJECTED"
+
+
+def test_fetch_armed_with_partial_returns_partial_dataset(scope: Any) -> None:
+    _configure_edge(scope)
+    assert _arm(scope).status.value == "ok"
+    result = _fetch(scope, 1_048_576, True)
+    assert result.status.value == "ok"
+    dataset = result.data["result"]
+    assert dataset["status"] == "partial"
+    assert "trigger" in dataset["status_reason"]
+    for variable in dataset["variables"]:
+        assert len(variable["values"]) == 256  # the pretrigger buffer: 0.25 x 1024
+    assert dataset["axes"][0]["length"] == 256
+
+
+def test_fetch_complete_at_exact_budget_is_complete(scope: Any) -> None:
+    _configure_edge(scope)
+    assert _arm(scope).status.value == "ok"
+    triggered = scope.dispatch(
+        _invoke("otdp.oscilloscope.trigger/1.0.0", {"acquisition_id": "acq-1"}),
+        deadline_ns=10**12,
+    )
+    assert triggered.status.value == "ok"
+    exact = _fetch(scope, 2 * 1024 * 8, False)  # 2 channels x 1024 float64
+    assert exact.status.value == "ok"
+    dataset = exact.data["result"]
+    assert dataset["status"] == "complete"
+    for variable in dataset["variables"]:
+        assert len(variable["values"]) == 1024
+
+
+def test_fetch_complete_below_budget_refuses_without_partial(scope: Any) -> None:
+    _configure_edge(scope)
+    assert _arm(scope).status.value == "ok"
+    scope.dispatch(
+        _invoke("otdp.oscilloscope.trigger/1.0.0", {"acquisition_id": "acq-1"}),
+        deadline_ns=10**12,
+    )
+    refused = _fetch(scope, 2 * 1024 * 8 - 1, False)
+    assert refused.status.value == "error"
+    assert refused.error.code.value == "DEVICE_REJECTED"
+
+
+def test_fetch_complete_below_budget_truncates_with_partial(scope: Any) -> None:
+    _configure_edge(scope)
+    assert _arm(scope).status.value == "ok"
+    scope.dispatch(
+        _invoke("otdp.oscilloscope.trigger/1.0.0", {"acquisition_id": "acq-1"}),
+        deadline_ns=10**12,
+    )
+    result = _fetch(scope, 2 * 1024 * 8 - 1, True)
+    assert result.status.value == "ok"
+    dataset = result.data["result"]
+    assert dataset["status"] == "partial"
+    assert "max_bytes" in dataset["status_reason"]
+    for variable in dataset["variables"]:
+        assert len(variable["values"]) == 1023  # (16384 - 1) // (8 * 2)
+    assert dataset["axes"][0]["length"] == 1023
+
+
+def test_fetch_budget_below_one_sample_per_channel_refused(scope: Any) -> None:
+    _configure_edge(scope)
+    assert _arm(scope).status.value == "ok"
+    scope.dispatch(
+        _invoke("otdp.oscilloscope.trigger/1.0.0", {"acquisition_id": "acq-1"}),
+        deadline_ns=10**12,
+    )
+    refused = _fetch(scope, 8, True)
+    assert refused.status.value == "error"
+    assert refused.error.code.value == "DEVICE_REJECTED"
+
+
+def test_fetch_started_at_is_the_arm_time() -> None:
+    class AdvancingClock(Clock):
+        """iso() moves with advance() so arm-time and fetch-time differ."""
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.stamp = NOW
+
+        def advance(self, ns: int) -> None:
+            super().advance(ns)
+            self.stamp = "2026-09-19T00:00:05Z"
+
+        def iso(self) -> str:
+            return self.stamp
+
+    clock = AdvancingClock()
+    plugin = make_sim_scope(clock)
+    plugin.plugin_open(NullServices())
+    _configure_edge(plugin)
+    _arm(plugin)
+    clock.advance(5_000_000_000)
+    result = _fetch(plugin, 1_048_576, True)
+    assert result.status.value == "ok"
+    assert result.data["result"]["started_at"] == NOW
+    plugin.plugin_close()
+
+
+def test_fetch_dataset_ids_are_unique_per_fetch(scope: Any) -> None:
+    _configure_edge(scope)
+    assert _arm(scope).status.value == "ok"
+    first = _fetch(scope, 1_048_576, True)
+    second = _fetch(scope, 1_048_576, True)
+    assert first.data["result"]["dataset_id"] != second.data["result"]["dataset_id"]
+
+
+def test_fetch_dataset_matches_otdp_schema(scope: Any) -> None:
+    import json as _json
+
+    from jsonschema import Draft202012Validator
+
+    _configure_edge(scope)
+    assert _arm(scope).status.value == "ok"
+    result = _fetch(scope, 1_048_576, True)
+    schema = _json.loads(
+        (Path(__file__).resolve().parents[2] / "standards/otdp/0.1.1/otdp-measurement.schema.json")
+        .read_text(encoding="utf-8")
+    )
+    Draft202012Validator(schema).validate(result.data["result"])

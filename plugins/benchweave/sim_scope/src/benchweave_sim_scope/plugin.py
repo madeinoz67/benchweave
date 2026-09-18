@@ -74,7 +74,7 @@ class SimScopePlugin:
         self._monotonic_ns = monotonic_ns_fn
         self._services: HostServices | None = None
         self._configuration_id: str | None = None
-        self._acquisitions: dict[str, str] = {}
+        self._acquisitions: dict[str, dict[str, Any]] = {}
         self._channels: dict[str, dict[str, Value]] = {
             channel: {
                 "probe_ratio": 1.0,
@@ -418,11 +418,19 @@ class SimScopePlugin:
             return self._reject(
                 request, ErrorCode.INVALID_ARGUMENT, "arm requires a positive max_duration_ms"
             )
-        self._acquisitions[acquisition_id] = "armed"
+        # An immediate trigger condition is met at arm time; every other kind
+        # waits for the trigger action. The acquisition start is the arm time.
+        kind = self._acquisition_shape["trigger"].get("kind")
+        state = "complete" if kind == "immediate" else "armed"
+        self._acquisitions[acquisition_id] = {
+            "state": state,
+            "started_at": self._now(),
+            "fetches": 0,
+        }
         return OperationResult.ok(
             request.operation_id,
             request.verb,
-            {"result": {"acquisition_id": acquisition_id, "state": "armed"}},
+            {"result": {"acquisition_id": acquisition_id, "state": state}},
         )
 
     def _action_trigger(
@@ -433,17 +441,17 @@ class SimScopePlugin:
             return self._reject(
                 request, ErrorCode.INVALID_ARGUMENT, f"unknown acquisition {acquisition_id}"
             )
-        if self._acquisitions[acquisition_id] == "aborted":
+        if self._acquisitions[acquisition_id]["state"] == "aborted":
             return self._reject(
                 request, ErrorCode.DEVICE_REJECTED, f"acquisition {acquisition_id} was aborted"
             )
-        kind = self._acquisition_shape["trigger"].get("kind")
-        state = "complete" if kind == "immediate" else "running"
-        self._acquisitions[acquisition_id] = state
+        # The operator fired the trigger; the deterministic acquisition fills
+        # immediately, so the state transitions to complete.
+        self._acquisitions[acquisition_id]["state"] = "complete"
         return OperationResult.ok(
             request.operation_id,
             request.verb,
-            {"result": {"acquisition_id": acquisition_id, "state": state}},
+            {"result": {"acquisition_id": acquisition_id, "state": "complete"}},
         )
 
     def _action_fetch(
@@ -454,11 +462,60 @@ class SimScopePlugin:
             return self._reject(
                 request, ErrorCode.INVALID_ARGUMENT, f"unknown acquisition {acquisition_id}"
             )
-        if self._acquisitions[acquisition_id] == "aborted":
+        max_bytes = action_input.get("max_bytes")
+        allow_partial = action_input.get("allow_partial")
+        if (
+            not isinstance(max_bytes, int)
+            or isinstance(max_bytes, bool)
+            or max_bytes < 1
+            or not isinstance(allow_partial, bool)
+        ):
+            return self._reject(
+                request,
+                ErrorCode.INVALID_ARGUMENT,
+                "fetch requires a positive integer max_bytes and boolean allow_partial",
+            )
+        acquisition = self._acquisitions[acquisition_id]
+        if acquisition["state"] == "aborted":
             return self._reject(
                 request, ErrorCode.DEVICE_REJECTED, f"acquisition {acquisition_id} was aborted"
             )
-        sample_count = self._acquisition_shape["sample_count"]
+        shape = self._acquisition_shape
+        # Corpus dataset semantics: complete means the full requested
+        # acquisition; anything missing samples is partial and records why,
+        # reporting the actual axes/shapes (never padded to the request).
+        samples = shape["sample_count"]
+        status = "complete"
+        reason: str | None = None
+        if acquisition["state"] != "complete":
+            if not allow_partial:
+                return self._reject(
+                    request,
+                    ErrorCode.DEVICE_REJECTED,
+                    f"acquisition {acquisition_id} is not complete and allow_partial is false",
+                )
+            samples = round(shape["pretrigger_fraction"] * shape["sample_count"])
+            status = "partial"
+            reason = "trigger has not fired; pretrigger buffer only"
+        width = 8  # float64 elements
+        needed = len(self._enabled) * samples * width
+        if needed > max_bytes:
+            if not allow_partial:
+                return self._reject(
+                    request,
+                    ErrorCode.DEVICE_REJECTED,
+                    f"insufficient max_bytes: {needed} bytes needed, {max_bytes} given",
+                )
+            samples = max_bytes // (width * len(self._enabled))
+            status = "partial"
+            reason = f"truncated to {samples} samples per channel by max_bytes"
+        if samples < 1:
+            return self._reject(
+                request,
+                ErrorCode.DEVICE_REJECTED,
+                "max_bytes is below one sample per channel; no representable dataset",
+            )
+        acquisition["fetches"] += 1
         variables = [
             {
                 "id": channel,
@@ -467,19 +524,20 @@ class SimScopePlugin:
                 "channel_ids": [channel],
                 "dtype": "float64",
                 "dimensions": ["sample"],
-                "values": [self._channels[channel]["offset_v"]] * sample_count,
+                "values": [self._channels[channel]["offset_v"]] * samples,
                 "uncertainty": {"status": "unknown"},
                 "calibration": {"status": "unknown"},
                 "status": "valid",
             }
             for channel in self._enabled
         ]
+        kind = shape["trigger"].get("kind", "unknown")
         dataset: dict[str, Any] = {
-            "dataset_id": f"dataset-scope-{self._monotonic_ns()}",
+            "dataset_id": f"dataset-scope-{acquisition_id}-{acquisition['fetches']}",
             "kind": "waveform",
             "configuration_id": self._configuration_id,
             "acquisition_id": acquisition_id,
-            "started_at": self._now(),
+            "started_at": acquisition["started_at"],
             "clock": {
                 "domain_id": "sim-scope",
                 "timestamp_source": "device",
@@ -491,18 +549,24 @@ class SimScopePlugin:
                     "id": "sample",
                     "quantity": "time",
                     "unit": "s",
-                    "kind": "uniform",
-                    "points": sample_count,
+                    "length": samples,
+                    "coordinates": {
+                        "kind": "regular",
+                        "start": 0.0,
+                        "step": 1.0 / shape["sample_rate_hz"],
+                    },
                 }
             ],
             "variables": variables,
             "trigger": {
-                "source": self._acquisition_shape["trigger"].get("kind", "unknown"),
-                "time_relative_s": None,
+                "source": kind,
+                "time_relative_s": 0.0 if kind == "immediate" else None,
             },
-            "status": "complete",
+            "status": status,
             "context": {"direction": "observed"},
         }
+        if reason is not None:
+            dataset["status_reason"] = reason
         return OperationResult.ok(request.operation_id, request.verb, {"result": dataset})
 
     def _action_abort(
@@ -513,7 +577,7 @@ class SimScopePlugin:
             return self._reject(
                 request, ErrorCode.INVALID_ARGUMENT, f"unknown acquisition {acquisition_id}"
             )
-        self._acquisitions[acquisition_id] = "aborted"
+        self._acquisitions[acquisition_id]["state"] = "aborted"
         return OperationResult.ok(
             request.operation_id,
             request.verb,
