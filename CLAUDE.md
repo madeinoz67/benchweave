@@ -57,3 +57,23 @@ JSON
   memories (handoffs, project state) through the proposal ledger above; the drain delivers them.
 
 <!-- gortex:communities:end -->
+
+---
+
+## The code-review agent
+
+`.claude/agents/code-reviewer.md` is the repo's resident reviewer — correctness, the
+hard invariants (`docs/internal/invariants.md`), and cross-surface drift, with its own
+verify-build-test protocol. Use it (or the `/code-review` skill) when reviewing a change,
+and proactively before opening a PR. It routes by what the diff touches and follows
+`docs/internal/review-rubric.md` as the authority.
+
+Maintainers may have additional local-only tooling (issue triage, review orchestration) that
+is not part of this repo.
+
+---
+
+## Attribution
+
+Do not add "Generated with Claude" / Anthropic attribution to any PR body, commit message,
+issue, or code comment.
