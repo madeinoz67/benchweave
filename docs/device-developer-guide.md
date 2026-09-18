@@ -28,7 +28,7 @@ This guide explains the workflow; it introduces no new protocol requirements. Th
 | Run integrations on a gateway | Host ABI, bench configuration and execution contracts | Scoped host services, admission, ownership, evidence and qualified deployment |
 | Share an integration | Registry contract and compatible existing packages | Immutable package, release metadata, provenance and conformance evidence |
 
-Read the [core specification](../standards/otdp/0.1.0/otdp-specification.md), [profile/adapter extension](../standards/otdp/0.1.0/extension-contract.md), [device classes](../standards/otdp/0.1.0/device-classes.md) and [measurement model](../standards/otdp/0.1.0/measurement-model.md) before writing a class-capable integration. The [documentation index](project-index.md) links the remaining contracts.
+Read the [core specification](../standards/otdp/0.1.1/otdp-specification.md), [profile/adapter extension](../standards/otdp/0.1.1/extension-contract.md), [device classes](../standards/otdp/0.1.1/device-classes.md) and [measurement model](../standards/otdp/0.1.1/measurement-model.md) before writing a class-capable integration. The [documentation index](project-index.md) links the remaining contracts.
 
 ### Repository layout for device plugins
 
@@ -114,7 +114,7 @@ Use uv for Python dependencies. Retain its lockfile and the exact tested runtime
 
 ### Descriptor authoring checklist
 
-Use the [descriptor schema](../standards/otdp/0.1.0/otdp-device-descriptor.schema.json) and a suitable [class descriptor example](../standards/otdp/0.1.0/examples/class-dc_psu.json) as references. Copying a fixture does not transfer its evidence to your hardware.
+Use the [descriptor schema](../standards/otdp/0.1.1/otdp-device-descriptor.schema.json) and a suitable [class descriptor example](../standards/otdp/0.1.1/examples/class-dc_psu.json) as references. Copying a fixture does not transfer its evidence to your hardware.
 
 | Field group | Authoring rule |
 |---|---|
@@ -132,7 +132,7 @@ Validate all applicable **S01–S18**, **C01–C12** and **M01–M14** obligatio
 
 ## 5. Implement the adapter lifecycle
 
-The normative factory and methods are in [core specification §8](../standards/otdp/0.1.0/otdp-specification.md#8-python-adapter-abi-11). They use structural Python interfaces. The optional [plugin SDK](plugin-sdk.md) supplies typing protocols, offline validation and mocks for development; plugin runtime code need not import it.
+The normative factory and methods are in [core specification §8](../standards/otdp/0.1.1/otdp-specification.md#8-python-adapter-abi-11). They use structural Python interfaces. The optional [plugin SDK](plugin-sdk.md) supplies typing protocols, offline validation and mocks for development; plugin runtime code need not import it.
 
 | Entry point | Required behaviour |
 |---|---|
@@ -181,7 +181,7 @@ Native UART JSON uses strict UTF-8 NDJSON with LF termination, bounded frames an
 
 Advertise only the implemented subset. Document boot/reset/serial-control-line behaviour, watchdog behaviour and loss-of-host behaviour, with qualification evidence where applicable. Firmware flashing is a separate controlled activity, not plugin admission or `open()` behaviour.
 
-Use the [synthetic controller descriptor](../standards/otdp/0.1.0/examples/reference-controller.json), [reference protocol](../standards/otdp/0.1.0/examples/reference-protocols.md) and [runtime schema](../standards/otdp/0.1.0/otdp-runtime.schema.json) for exact examples. They are authoring targets, not ready-to-flash ESP32 firmware.
+Use the [synthetic controller descriptor](../standards/otdp/0.1.1/examples/reference-controller.json), [reference protocol](../standards/otdp/0.1.1/examples/reference-protocols.md) and [runtime schema](../standards/otdp/0.1.1/otdp-runtime.schema.json) for exact examples. They are authoring targets, not ready-to-flash ESP32 firmware.
 
 ## 7. Publish measurements correctly
 
@@ -196,7 +196,7 @@ Select the real dataset meaning: scalar set, waveform, digital trace, spectrum, 
 
 Payload creation/writing requires `artifact_writer`; reading authorised upload inputs requires `artifact_reader`. Finalising bytes does not validate their physical meaning: the manifest must still pass the dataset and class checks. Partial data must not become a complete successful acquisition merely because the file was written.
 
-See the [measurement model](../standards/otdp/0.1.0/measurement-model.md) for all M01–M14 rules and the [extension contract](../standards/otdp/0.1.0/extension-contract.md) for host method signatures.
+See the [measurement model](../standards/otdp/0.1.1/measurement-model.md) for all M01–M14 rules and the [extension contract](../standards/otdp/0.1.1/extension-contract.md) for host method signatures.
 
 ## 8. Test before hardware qualification
 

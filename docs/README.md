@@ -23,14 +23,14 @@
 | [Registry composition review](acceptance/registry-composition-review.md) | Sixteen package reuse/compatibility scenarios |
 | [Integrated review](acceptance/end-to-end-review.md) | Twenty-six end-to-end cases and resolved cross-contract findings |
 | [Decisions](smart-test-gateway-decisions.md) | Selected architectural trade-offs |
-| [Device classes](../standards/otdp/0.1.0/device-classes.md) | Twelve class profiles, physical semantics, acquisition lifecycle and explicit exclusions |
-| [Core specification](../standards/otdp/0.1.0/otdp-specification.md) | Plugin authoring, runtime and host contracts |
-| [Extension contract](../standards/otdp/0.1.0/extension-contract.md) | Typed actions, local schema admission and adapter API 0.1.0 |
-| [Measurement model](../standards/otdp/0.1.0/measurement-model.md) | Units, axes, channels, complex/digital data, timing, calibration and uncertainty |
-| [Profile catalog](../standards/otdp/0.1.0/device-profile-catalog.json) | Fifty actions with exact input/output schemas |
-| [Validation report](../standards/otdp/0.1.0/validation-report.md) | 495 passing document/schema checks and their limits |
+| [Device classes](../standards/otdp/0.1.1/device-classes.md) | Twelve class profiles, physical semantics, acquisition lifecycle and explicit exclusions |
+| [Core specification](../standards/otdp/0.1.1/otdp-specification.md) | Plugin authoring, runtime and host contracts |
+| [Extension contract](../standards/otdp/0.1.1/extension-contract.md) | Typed actions, local schema admission and adapter API 0.1.0 |
+| [Measurement model](../standards/otdp/0.1.1/measurement-model.md) | Units, axes, channels, complex/digital data, timing, calibration and uncertainty |
+| [Profile catalog](../standards/otdp/0.1.1/device-profile-catalog.json) | Fifty actions with exact input/output schemas |
+| [Validation report](../standards/otdp/0.1.1/validation-report.md) | 495 passing document/schema checks and their limits |
 
-The package also includes descriptor, runtime, measurement and catalog schemas; twelve class descriptor fixtures; fifty action exchange vectors; thirteen dataset examples; and the four migrated core reference descriptors and their protocol vectors. Current normative device contracts are in `otdp/0.1.0/`.
+The package also includes descriptor, runtime, measurement and catalog schemas; twelve class descriptor fixtures; fifty action exchange vectors; thirteen dataset examples; and the four migrated core reference descriptors and their protocol vectors. Current normative device contracts are in `otdp/0.1.1/`.
 
 ## Device-class coverage
 

@@ -26,7 +26,7 @@ def bundle() -> Bundle:
         schema = json.loads(path.read_bytes())
         documents[schema["$id"]] = schema
     descriptor = json.loads(
-        (ROOT / "standards/otdp/0.1.0/examples/class-dc_psu.json").read_bytes()
+        (ROOT / "standards/otdp/0.1.1/examples/class-dc_psu.json").read_bytes()
     )
     schema = {
         "$schema": "https://json-schema.org/draft/2020-12/schema",

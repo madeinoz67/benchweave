@@ -15,7 +15,7 @@ This repository carries the BenchWeave implementation (packages WP01–WP07) alo
 
 ## Contract Sets
 
-- [OTDP v0.1.0](../standards/otdp/0.1.0/otdp-specification.md)
+- [OTDP v0.1.0](../standards/otdp/0.1.1/otdp-specification.md)
 - [Registry v0.1.0](../standards/registry/0.1.0/registry-specification.md)
 - [Execution v0.1.0](../standards/execution/0.1.0/execution-contract.md)
 - [Interface v0.1.0](../standards/interface/0.1.0/interface-contract.md)

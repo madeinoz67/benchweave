@@ -29,6 +29,12 @@ declare and pin it:
 | Deprecation | none (status) | Status change only; the version stays, digest-frozen |
 | Deletion of a version | never | Retired corpora live in git history, not the tree |
 
+**Bump mechanics — copy, never move.** A version bump copies the old version
+dir to the new version and edits bytes only in the copy; the old dir and its
+corpus-manifest rows stay in place, digest-frozen. Moving or in-place-editing a
+retained version is a governance violation, not a shortcut. The new version's
+rows record the old corpus path as their `source`.
+
 ## Retention
 
 Superseded versions stay digest-frozen forever. A version is retired by
@@ -44,8 +50,10 @@ act (founding precedent: the 2026-09-16 0.1.0 reset). Resets are rare and
 executive decisions; they must reset every surface together — governance
 versions, tree dirs, and version strings inside the normative bytes — following
 the cascade order in the governor's runbook. History is preserved by git and
-by the `source` provenance fields in the corpus manifest, which always name
-the path where bytes were ORIGINALLY authored, never a current path.
+by the `source` provenance fields in the corpus manifest: reset-imported rows
+name the upstream authoring path, and supersession-copied rows name the
+corpus path they were copied from (per Bump mechanics above) — never a path
+that did not produce the bytes.
 
 ## Gates (mechanical, all must be green)
 

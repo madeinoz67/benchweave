@@ -300,7 +300,7 @@ x = copy.deepcopy(policy)
 x["continuous_conditions"][1]["unit"] = "A"
 check("monitor unit mismatch", "condition unit" in bench_errors(b, x))
 catalog = json.loads(
-    (STANDARDS / "otdp/0.1.0/device-profile-catalog.json").read_text(encoding="utf-8")
+    (STANDARDS / "otdp/0.1.1/device-profile-catalog.json").read_text(encoding="utf-8")
 )
 
 
