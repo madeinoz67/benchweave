@@ -31,7 +31,7 @@ def load(name: str) -> JsonObject:
 @pytest.fixture
 def specimen() -> Specimen:
     documents: dict[str, JsonObject] = {}
-    for directory in ("otdp/0.1.1", "plugin-ui/0.1.0"):
+    for directory in ("otdp/0.1.1", "plugin-ui/0.1.1"):
         for path in (ROOT / "standards" / directory).glob("*.schema.json"):
             document = json.loads(path.read_bytes())
             documents[document["$id"]] = document
@@ -42,7 +42,7 @@ def specimen() -> Specimen:
     schema = catalog["actions"][action]["input_schema"]
     schema_raw = encode(schema)
     preset = {
-        "contract_version": "0.1.0",
+        "contract_version": "0.1.1",
         "id": "synthetic-3v3",
         "title": "Synthetic 3.3 V configuration",
         "revision": "1.0.0",
@@ -70,7 +70,7 @@ def specimen() -> Specimen:
         "preset_asset_ids": ["preset"],
     }
     manifest = {
-        "contract_version": "0.1.0",
+        "contract_version": "0.1.1",
         "plugin_id": descriptor["id"],
         "descriptor_sha256": digest(encode(descriptor)),
         "bindings": [
@@ -110,12 +110,12 @@ def validate(specimen: Specimen) -> ValidationReport:
     ]
     manifest_raw = encode(manifest)
     catalogue = {
-        "contract_version": "0.1.0",
+        "contract_version": "0.1.1",
         "descriptor_sha256": digest(descriptor_raw),
         "targets": [target],
     }
     envelope = {
-        "contract_version": "0.1.0",
+        "contract_version": "0.1.1",
         "descriptor_sha256": digest(descriptor_raw),
         "resource_root": "ui",
         "manifest": {"path": "manifest.json", "sha256": digest(manifest_raw)},
@@ -172,7 +172,7 @@ def scope_specimen(specimen: Specimen) -> Specimen:
         ],
     }
     manifest = {
-        "contract_version": "0.1.0",
+        "contract_version": "0.1.1",
         "bindings": [{"id": "capture", "kind": "dataset", "target_id": "waveform"}],
         "pages": [
             {
@@ -199,3 +199,79 @@ def test_dataset_requires_descriptor_measurement_contract(specimen: Specimen) ->
     scope = scope_specimen(specimen)
     scope[0]["contracts"] = []
     assert not validate(scope).valid
+
+
+# --- channel_hints (plugin-ui 0.1.1) on a multi-y dataset specimen ---
+
+
+def multi_channel_specimen(specimen: Specimen, y_count: int) -> Specimen:
+    """Dual-and-more-channel waveform: the only target kind that can plot several
+    y variables at once (observation targets carry exactly one value variable)."""
+    descriptor = load("examples/class-oscilloscope.json")
+    variables = [
+        {"id": "time", "type": "number", "shape": "vector", "unit": "s", "axis_role": "x"}
+    ] + [
+        {"id": f"trace{index:02d}", "type": "number", "shape": "vector", "unit": "V", "axis_role": "y"}
+        for index in range(1, y_count + 1)
+    ]
+    target = {
+        "id": "waveform",
+        "kind": "dataset",
+        "action_id": "otdp.oscilloscope.fetch/1.0.0",
+        "profile_ids": descriptor["profiles"],
+        "measurement_schema_id": "urn:otdp:measurement:0.1.1",
+        "variables": variables,
+    }
+    manifest = {
+        "contract_version": "0.1.1",
+        "plugin_id": descriptor["id"],
+        "bindings": [{"id": "capture", "kind": "dataset", "target_id": "waveform"}],
+        "pages": [
+            {
+                "id": "waveform",
+                "kind": "dataset",
+                "title": "Waveform",
+                "bindings": ["capture"],
+                "required": True,
+                "plots": [
+                    {
+                        "kind": "waveform",
+                        "binding_id": "capture",
+                        "x": "time",
+                        "y": [f"trace{index:02d}" for index in range(1, y_count + 1)],
+                    }
+                ],
+            }
+        ],
+    }
+    return descriptor, specimen[1], target, manifest, {}
+
+
+def test_multi_channel_hinted_specimen_pair_is_equivalent(specimen: Specimen) -> None:
+    """Metric 1 on the multi-y case hints exist for: hinted vs unhinted twin,
+    both feature conditions, identical finding-free reports."""
+    scope = multi_channel_specimen(specimen, y_count=2)
+    baseline = validate(scope)
+    assert baseline.valid, baseline.findings
+    scope[3]["pages"][0]["plots"][0]["channel_hints"] = [
+        {"variable_id": "trace02", "color_role": "accent"},
+        {"variable_id": "trace01", "visible": False},
+    ]
+    report = validate(scope)
+    assert report.valid, report.findings
+    assert report.findings == baseline.findings
+
+
+def test_seventeenth_hint_on_sixteen_channel_plot_is_rejected(specimen: Specimen) -> None:
+    """Metric 2 variant 6: schema maxItems mirrors y's own 16-channel ceiling.
+
+    Lives here (not with the other five variants) because a 16-y plot needs a
+    dataset target: observation targets with more than one value variable fail
+    ``capability_mismatch`` independently of any hint.
+    """
+    scope = multi_channel_specimen(specimen, y_count=16)
+    hints = [{"variable_id": f"trace{index:02d}", "color_role": "muted"} for index in range(1, 17)]
+    hints.append({"variable_id": "time", "visible": False})
+    scope[3]["pages"][0]["plots"][0]["channel_hints"] = hints
+    report = validate(scope)
+    assert [finding.code for finding in report.findings] == ["invalid_document"]
