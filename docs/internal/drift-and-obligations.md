@@ -55,10 +55,16 @@ and remain the reviewer's job.
 8. **The adapter protocol surface** 🪝 (the SDK protocol
    `packages/sdk/src/benchweave_sdk/interfaces.py` ↔ the gateway mirror
    `src/benchweave/host/otdp_bridge.py` ↔ the descriptor schema's
-   `$defs.adapter.api_version` const) → the agreement test
-   (`tests/sdk/test_adapter_agreement.py`) and the corpus identity declaration
-   (`standards/corpus-manifest.json` `identity.adapter_api`) move in the same change.
-   `make check-sdk-standards` carries the identity-vs-schema check; the agreement test
+   `$defs.adapter.api_version` const; `standards/standards-manifest.json` selects the
+   active versions the identity block derives from, and
+   `packages/sdk/src/benchweave_sdk/__init__.py` carries the SDK-side
+   `ADAPTER_API_VERSION` constant) → the full bump touch-set moves in the same change:
+   the agreement test (`tests/sdk/test_adapter_agreement.py`), the corpus identity
+   declaration (`standards/corpus-manifest.json` `identity.*`), the manifest
+   versions when a standard bumps, the descriptor schema const, both SDK files, and
+   the orphan identity literal in `tests/contract/test_baseline.py`
+   (`test_manifest_identity_pins_admitted_versions`). `make check-sdk-standards`
+   carries the identity-vs-schema/manifest derivation checks; the agreement test
    carries the protocol shape (invariants CON-8/REG-4).
 
 9. **`deploy/systemd/` templates** 🪝 → the `systemd` CI job renders the template and

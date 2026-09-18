@@ -142,16 +142,22 @@ rather than rewriting the history — that is how this file earns trust.
   superseded-version rows — `src/benchweave/standards/repin.py`, pinned by
   `tests/standards/test_repin.py`. *Without it, the next contributor's fastest path is
   another hand-splice, and the frozen-row guarantee lives only in prose.*
-- **[CON-8]** The corpus identity block's `adapter_api` is derived-checked against the
-  active OTDP descriptor schema's `$defs.adapter.properties.api_version` const at every
-  export/check; absence fails (`identity_adapter_api_absent`), and a disagreement or a
-  missing const fails (`identity_adapter_api_mismatch`) —
+- **[CON-8]** The corpus identity block is derived-checked against its machine
+  authorities at every export/check — `adapter_api` against the active OTDP descriptor
+  schema's `$defs.adapter.properties.api_version` const (absence fails
+  `identity_adapter_api_absent`; disagreement or a missing const fails
+  `identity_adapter_api_mismatch`), and each standards-manifest id among
+  otdp/registry/execution/interface must be declared in the block at exactly that
+  manifest's version, with a standard the manifest does not carry refused
+  (`identity_standard_absent` / `identity_standard_mismatch`) —
   `src/benchweave/standards/manifest.py` `validate_identity`, wired once in
-  `export.py:export_bundle` after `validate_manifest`. The schema const is the single
-  authority; the identity block is a declaration that is verified, never trusted. *Without
-  it the identity block stays decorative and the next reset sweep re-creates
-  prose-vs-machine version drift main-side (issue #44: three doc surfaces carried a stale
-  adapter API version with every gate green).*
+  `export.py:export_bundle` after `validate_manifest`, with duplicate standard ids
+  structurally unrepresentable past `load_manifest` (`standards_entry_duplicate`).
+  The authorities are the schema const and the standards manifest; the identity block
+  is a declaration that is verified, never trusted. *Without it the identity block
+  stays decorative and the next reset sweep re-creates prose-vs-machine version drift
+  main-side (issue #44: three doc surfaces carried a stale adapter API version with
+  every gate green).*
 
 ## Registry & plugin invariants
 

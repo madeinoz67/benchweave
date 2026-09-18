@@ -105,6 +105,8 @@ const RULES = [
     triggers: (p) =>
       p === 'src/benchweave/host/otdp_bridge.py' ||
       p === 'packages/sdk/src/benchweave_sdk/interfaces.py' ||
+      p === 'packages/sdk/src/benchweave_sdk/__init__.py' ||
+      p === 'standards/standards-manifest.json' ||
       p.endsWith('otdp-device-descriptor.schema.json'),
     satisfies: (p) =>
       p === 'tests/sdk/test_adapter_agreement.py' || p === 'standards/corpus-manifest.json',
@@ -113,8 +115,12 @@ const RULES = [
       '',
       'The gateway hand-mirrors the SDK protocol (`otdp_bridge` ↔ `benchweave_sdk.interfaces`)',
       'and the adapter API version is declared in the corpus identity block with its authority',
-      'in the descriptor schema `$defs.adapter.api_version` const. A change to any party needs',
-      'the agreement test expectations and `identity.adapter_api` reviewed in the same change;',
+      'in the descriptor schema `$defs.adapter.api_version` const, while',
+      '`standards/standards-manifest.json` selects the active versions the identity block',
+      'derives from and `packages/sdk/src/benchweave_sdk/__init__.py` carries the SDK-side',
+      'version constant. A change to any party needs the agreement test expectations and',
+      '`identity.adapter_api` reviewed in the same change (and',
+      '`tests/contract/test_baseline.py` re-pinned when identity versions move);',
       '`make check-sdk-standards` and `uv run pytest tests/sdk` must stay green.',
     ],
   },
