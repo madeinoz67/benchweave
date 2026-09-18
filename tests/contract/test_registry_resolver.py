@@ -31,6 +31,19 @@ NOW = int(datetime(2026, 9, 12, tzinfo=UTC).timestamp() * 1_000_000_000)
 MAIN_ROOT = load_trust_root("origin-main", REG / "keys" / "main.pub.pem")
 DESC_KEY: Key = ("origin-main", "benchweave/sim-psu-descriptor", "1.0.0")
 
+# The private signing keys are not committed (only their .pub.pem halves are);
+# CI materialises them from repository secrets, and fork PRs receive none.
+# Tests that must SIGN skip without them — never fail — so a fresh clone's
+# `uv run pytest -q` stays truthful. Everything reading the committed,
+# already-signed fixtures still runs.
+requires_signing_keys = pytest.mark.skipif(
+    not all(
+        (REG / "keys" / name).is_file() and (REG / "keys" / name).stat().st_size > 0
+        for name in ("main.pem", "originb.pem")
+    ),
+    reason="requires the private fixture signing keys under fixtures/registry/keys/",
+)
+
 
 def _sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
@@ -190,6 +203,7 @@ def test_collision_never_redirects() -> None:
     assert sim_psu.manifest_sha256 != _sha(clone_manifest)
 
 
+@requires_signing_keys
 def test_cross_origin_fallback_rejected() -> None:
     honest = REG / "origin-main/benchweave/sim-psu/1.0.0/manifest.json"
     manifest: dict[str, Any] = json.loads(honest.read_bytes())
@@ -256,6 +270,7 @@ def test_unknown_release() -> None:
     assert exc.value.reason == "unknown_release"
 
 
+@requires_signing_keys
 def test_wrong_origin_signature_rejected() -> None:
     # Honest manifest bytes, signature made with the other origin's key: the
     # resolver must verify against the routing origin's trust root.
@@ -275,6 +290,7 @@ def test_wrong_origin_signature_rejected() -> None:
     assert exc.value.reason == "bad_signature"
 
 
+@requires_signing_keys
 def test_cycle_fixture_caught_by_pin_conflict() -> None:
     # Re-sign the descriptor with a back-edge to its dependent and re-pin that
     # digest in the dependent. A resolver-level cycle can never carry
@@ -382,6 +398,7 @@ def test_root_served_status_release_mismatch() -> None:
     assert exc.value.reason == "status_release_mismatch"
 
 
+@requires_signing_keys
 def test_status_manifest_pin_mismatch() -> None:
     # Identity-correct status whose release block pins a DIFFERENT manifest
     # digest (re-signed with main, so authenticity passes): a status is bound
@@ -403,6 +420,7 @@ def test_status_manifest_pin_mismatch() -> None:
     assert exc.value.reason == "status_release_mismatch"
 
 
+@requires_signing_keys
 def test_dependency_digest_disagreement_rejected() -> None:
     # Two dependents pin the same release key at different digests: the first
     # edge resolves against the true digest, and the revisit must compare the

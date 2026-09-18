@@ -77,10 +77,26 @@ markers = [
 [tool.ruff]
 line-length = 100
 target-version = "py313"
-extend-exclude = ["docs"]
+# packages/sdk lints in its own repository's CI with its own pinned config;
+# double-linting it here couples this gate to ruff-version skew between the
+# two repos (new rules land here first and fail on submodule code this repo
+# cannot edit — submodule fixes are two-commit, SDK-first).
+extend-exclude = ["docs", "packages/sdk"]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "SIM"]
+# S (flake8-bandit) is the security lint the tree's existing `# noqa: S603`
+# suppressions were written for; RUF100 keeps every noqa honest.
+select = ["E", "F", "I", "UP", "B", "SIM", "S", "RUF100"]
+
+[tool.ruff.lint.per-file-ignores]
+# Test code asserts freely, shells out to trusted repo-local commands, opens
+# loopback URLs, and uses dummy credentials and fixed paths by design.
+"tests/**" = ["S101", "S104", "S105", "S106", "S108", "S310", "S603", "S607"]
+"plugins/*/*/tests/**" = ["S101"]
+# Repo maintenance scripts run trusted, fixed commands; sdk_smoke's asserts
+# ARE its failure mechanism (run directly, never under -O).
+"scripts/**" = ["S603", "S607"]
+"scripts/sdk_smoke.py" = ["S101", "S603", "S607"]
 
 [tool.mypy]
 python_version = "3.13"

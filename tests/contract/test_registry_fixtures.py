@@ -9,10 +9,25 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from benchweave.registry.schemas import load_manifest_document, load_status_document
 
 REPO = Path(__file__).resolve().parents[2]
 REG = REPO / "fixtures" / "registry"
+
+# The private signing keys are not committed (only their .pub.pem halves are);
+# CI materialises them from repository secrets, and fork PRs receive none.
+# The builder tests must SIGN, so they skip without the keys — never fail —
+# while the catalogue tests keep validating the committed, already-signed
+# artifacts on every clone.
+requires_signing_keys = pytest.mark.skipif(
+    not all(
+        (REG / "keys" / name).is_file() and (REG / "keys" / name).stat().st_size > 0
+        for name in ("main.pem", "originb.pem")
+    ),
+    reason="requires the private fixture signing keys under fixtures/registry/keys/",
+)
 
 CATALOGUE = [
     ("benchweave/dc-psu-profile", "1.0.0"),
@@ -62,6 +77,7 @@ def _build(out: Path) -> None:
     )
 
 
+@requires_signing_keys
 def test_builder_is_deterministic(tmp_path: Path) -> None:
     out = tmp_path / "registry"
     _build(out)
@@ -86,6 +102,7 @@ def test_builder_is_deterministic(tmp_path: Path) -> None:
     assert (out / "catalogue.json").read_bytes() == (REG / "catalogue.json").read_bytes()
 
 
+@requires_signing_keys
 def test_builder_prunes_stale_release_dirs(tmp_path: Path) -> None:
     """Renames/deletions upstream can't leave validly-signed ghosts under --out."""
     out = tmp_path / "registry"

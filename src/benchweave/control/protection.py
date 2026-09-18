@@ -217,7 +217,10 @@ class ProtectionEngine:
 
     def _fixed_deadline(self) -> int:
         """The captured deadline, narrowed (only called after the first entry)."""
-        assert self._deadline_ns is not None
+        if self._deadline_ns is None:
+            # An explicit raise, not an assert: this invariant guards the
+            # safety engine and must survive python -O.
+            raise RuntimeError("protection invariant violated: no captured deadline")
         return self._deadline_ns
 
     def enter(self, reasons: list[str], entered_at_ns: int) -> ProtectionResult:
@@ -248,7 +251,10 @@ class ProtectionEngine:
         return self._snapshot_result()
 
     def _snapshot_result(self) -> ProtectionResult:
-        assert self._entered_at_ns is not None and self._deadline_ns is not None
+        if self._entered_at_ns is None or self._deadline_ns is None:
+            # An explicit raise, not an assert: this invariant guards the
+            # safety engine and must survive python -O.
+            raise RuntimeError("protection invariant violated: snapshot before first entry")
         return ProtectionResult(
             safe_state=self._standing if self._standing is not None else SAFE_UNKNOWN,
             reasons=list(self._reasons),

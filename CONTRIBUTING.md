@@ -31,6 +31,11 @@ uv run mypy          # config-driven; also covers packages/sdk/src
 make check-sdk-standards
 ```
 
+A handful of registry tests sign fixtures with private keys that are not in
+the repository (CI materialises them from secrets); on a fresh clone those
+tests **skip** with a named reason — skips there are expected, failures are
+not.
+
 Bug fixes ship test-first: a failing test that reproduces the bug lands in
 the same change as the fix.
 
