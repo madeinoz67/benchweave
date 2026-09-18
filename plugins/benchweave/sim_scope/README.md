@@ -17,6 +17,13 @@ sim_scope/
     plugin.py
     descriptor.json
     vectors.json
+    presentation.json
+    binding-catalogue.json
+    ui/
+      manifest.json
+      settings/oscilloscope-configure.schema.json
+      presets/fast-survey.json
+      presets/low-noise-pair.json
 ```
 
 The simulator implements identify, scalar reads/writes and all five
