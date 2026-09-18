@@ -41,6 +41,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+from _failure_detail import dump_at_rest_runs
 
 REPO = Path(__file__).resolve().parents[2]
 EXECUTION_LATTICE = REPO / "fixtures" / "execution"
@@ -175,7 +176,20 @@ def test_clean_install_operator_flow(wheel: WheelInstall, tmp_path: Path) -> Non
     assert demo["scratch_dir"] == str(scratch)
     assert demo["bench_id"] == "sim-bench"
     assert demo["state"] == "terminal"
-    assert demo["outcome"] == "passed"
+    if demo["outcome"] != "passed":
+        # Issue #48: an execution_error on CI must be self-describing. The
+        # demo payload carries only the closed terminal-record ref (the
+        # reasons live inside the evidence document), so the failure dumps
+        # the kept store at rest — stdlib sqlite, read-only, no in-process
+        # imports of the shipped code — where the terminal record's
+        # ``reasons`` carry the exception the executor mapped.
+        pytest.fail(
+            f"the fresh-install demo run did not pass "
+            f"(mode={demo.get('mode')} state={demo.get('state')} "
+            f"safe_state={demo.get('safe_state')} "
+            f"run_id={demo.get('run_id')}):\n"
+            + dump_at_rest_runs(scratch / "state.sqlite")
+        )
     assert demo["safe_state"] == "verified"
     assert demo["run_id"].startswith("run-")
     terminal_sha = demo["terminal_record"]["sha256"]
