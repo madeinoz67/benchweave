@@ -202,24 +202,75 @@ def _is_self_member(node: ast.AST, holder: str) -> TypeGuard[ast.Attribute]:
     )
 
 
+def _string_mediated_adapter_access(node: ast.AST) -> int | None:
+    """Line of a string-mediated ``_adapter`` access in the two pinned shapes.
+
+    ``getattr(self, "_adapter")`` with a literal name, or a subscript of
+    ``self.__dict__`` / ``vars(self)`` by the literal ``"_adapter"``.
+    Computed-string access (dynamic names, exec/eval) is out of scope — there
+    is no Attribute node and no literal to match.
+    """
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "getattr"
+        and any(
+            isinstance(argument, ast.Constant) and argument.value == "_adapter"
+            for argument in node.args
+        )
+    ):
+        return node.lineno
+    if isinstance(node, ast.Subscript):
+        slice_ = node.slice
+        if not (isinstance(slice_, ast.Constant) and slice_.value == "_adapter"):
+            return None
+        on_self_dict = (
+            isinstance(node.value, ast.Attribute)
+            and node.value.attr == "__dict__"
+            and isinstance(node.value.value, ast.Name)
+            and node.value.value.id == "self"
+        )
+        on_vars_self = (
+            isinstance(node.value, ast.Call)
+            and isinstance(node.value.func, ast.Name)
+            and node.value.func.id == "vars"
+            and len(node.value.args) == 1
+            and isinstance(node.value.args[0], ast.Name)
+            and node.value.args[0].id == "self"
+        )
+        if on_self_dict or on_vars_self:
+            return node.lineno
+    return None
+
+
 def bridge_adapter_pin(
     source: str,
-) -> tuple[dict[str, set[tuple[int, bool, bool]]], int, list[int]]:
-    """Total pin over the ``_adapter`` attribute; nothing else in the module may touch it.
+) -> tuple[dict[str, set[tuple[int, bool, bool]]], int, list[int], list[int]]:
+    """Pin over the ``_adapter`` name: attribute-syntax totality plus the
+    string-mediated literal shapes.
 
-    Returns (member -> call-site shapes, store count, linenos of occurrences in
-    any other form). A shape is (positional args, keyword args used, starred
-    args present). Every ``._adapter`` occurrence must be consumed as the base
-    of a member call or as an assignment target — an alias, a bare read, a
-    helper argument, a foreign receiver or a ``del`` lands in the unaccounted
-    list and fails the check, because a call through any of those forms
-    escapes the three-way pin silently.
+    Every ``._adapter`` attribute occurrence must be consumed as the base of a
+    pinned member call or as the single assignment store; an alias, a bare
+    read, a helper argument, a foreign receiver or a ``del`` lands in the
+    unaccounted list. The two demonstrated string-mediated escapes — getattr
+    with the literal "_adapter", and a self.__dict__ / vars(self) subscript by
+    that literal — land in the string-mediated list. Computed-string access
+    (dynamic names, exec/eval) is explicitly out of scope: no mechanism here
+    can see it, and the boundary is stated rather than overclaimed.
+
+    Returns (member -> call-site shapes, store count, unaccounted linenos,
+    string-mediated linenos). A shape is (positional args, keyword args used,
+    starred args present).
     """
     tree = ast.parse(source)
     consumed: set[int] = set()
     stores = 0
     shapes: dict[str, set[tuple[int, bool, bool]]] = {}
+    string_mediated: list[int] = []
     for node in ast.walk(tree):
+        mediated = _string_mediated_adapter_access(node)
+        if mediated is not None:
+            string_mediated.append(mediated)
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
             base = node.func.value
             if _is_self_attr(base, "_adapter"):
@@ -244,7 +295,7 @@ def bridge_adapter_pin(
         for node in ast.walk(tree)
         if isinstance(node, ast.Attribute) and node.attr == "_adapter" and id(node) not in consumed
     )
-    return shapes, stores, unaccounted
+    return shapes, stores, unaccounted, sorted(string_mediated)
 
 
 def bridge_services_members(source: str) -> set[str]:
@@ -388,11 +439,17 @@ def check_adapter_surface(sdk: ModuleType, source: str) -> None:
     data = set(getattr(sdk.Adapter, "__annotations__", {}))
     assert data == EXPECTED_ADAPTER_DATA, "SDK Adapter data members drifted"
     assert set(methods) == set(EXPECTED_ADAPTER_PARAMS), "SDK Adapter member set drifted"
-    shapes, stores, unaccounted = bridge_adapter_pin(source)
+    shapes, stores, unaccounted, string_mediated = bridge_adapter_pin(source)
     assert not unaccounted, (
         f"._adapter is used outside the pinned call sites/store at lines {unaccounted}; "
         "an alias, bare read, helper argument or foreign receiver escapes the three-way "
         "pin silently — widen EXPECTED_BRIDGE_CALLS consciously instead"
+    )
+    assert not string_mediated, (
+        f"string-mediated ._adapter access at lines {string_mediated} "
+        '(getattr with the literal "_adapter", or a self.__dict__ / vars(self) '
+        "subscript by it) escapes the three-way pin — use attribute syntax so "
+        "the pin can see the call"
     )
     assert stores == 1, "the bridge must store the adapter exactly once (OTDPBridge.__init__)"
     assert set(shapes) == set(EXPECTED_BRIDGE_CALLS), "bridge adapter call set drifted"
@@ -671,6 +728,51 @@ def test_adapter_pin_rejects_a_helper_argument_pass_through() -> None:
     )
     with pytest.raises(AssertionError):
         check_adapter_surface(_sdk_module("benchweave_sdk.interfaces"), passed)
+
+
+def test_adapter_pin_rejects_a_getattr_string_mediated_access() -> None:
+    """RF1: getattr(self, "_adapter") with a literal name has no Attribute node to pin."""
+    mutated = _mutated_bridge_source(
+        (
+            (
+                EXECUTE_CALL,
+                'self._run(getattr(self, "_adapter").next_event("subs", context), context)\n'
+                f"                {EXECUTE_CALL}",
+            ),
+        )
+    )
+    with pytest.raises(AssertionError):
+        check_adapter_surface(_sdk_module("benchweave_sdk.interfaces"), mutated)
+
+
+def test_adapter_pin_rejects_a_dict_subscript_string_mediated_access() -> None:
+    """RF1: self.__dict__["_adapter"] leaves the attribute-syntax pin blind."""
+    mutated = _mutated_bridge_source(
+        (
+            (
+                EXECUTE_CALL,
+                'self._run(self.__dict__["_adapter"].next_event("subs", context), context)\n'
+                f"                {EXECUTE_CALL}",
+            ),
+        )
+    )
+    with pytest.raises(AssertionError):
+        check_adapter_surface(_sdk_module("benchweave_sdk.interfaces"), mutated)
+
+
+def test_adapter_pin_rejects_a_vars_subscript_string_mediated_access() -> None:
+    """RF1: vars(self)["_adapter"] is the third demonstrated escape shape."""
+    mutated = _mutated_bridge_source(
+        (
+            (
+                EXECUTE_CALL,
+                'self._run(vars(self)["_adapter"].next_event("subs", context), context)\n'
+                f"                {EXECUTE_CALL}",
+            ),
+        )
+    )
+    with pytest.raises(AssertionError):
+        check_adapter_surface(_sdk_module("benchweave_sdk.interfaces"), mutated)
 
 
 def test_comparator_rejects_an_adapter_data_member(tmp_path: Path) -> None:
