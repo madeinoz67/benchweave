@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 from pathlib import Path
 
@@ -36,6 +37,25 @@ def test_interface_reset_has_no_supersession() -> None:
 
 def test_validation_passes_on_the_canonical_corpus() -> None:
     validate_manifest(load_manifest(ROOT), ROOT)
+
+
+def test_vendored_schema_titles_match_standard_version() -> None:
+    # A human-readable title may name its version (the 2026-09-16 reset line)
+    # or omit it, but naming a different one is reset residue: the corpus
+    # shipped "…datasets 0.3.0" under otdp@0.1.0 (#45).
+    version_like = re.compile(r"\d+\.\d+\.\d+")
+    offenders: list[str] = []
+    for entry in load_manifest(ROOT).standards:
+        for relative in entry.normative:
+            if not relative.startswith("standards/") or not relative.endswith(".schema.json"):
+                continue
+            title = json.loads((ROOT / relative).read_bytes()).get("title")
+            if not isinstance(title, str):
+                continue
+            stale = [t for t in version_like.findall(title) if t != entry.version]
+            if stale:
+                offenders.append(f"{relative}: {stale} under {entry.id}@{entry.version}")
+    assert not offenders, "reset residue in vendored titles:\n" + "\n".join(offenders)
 
 
 def test_missing_normative_file_fails(tmp_path: Path) -> None:

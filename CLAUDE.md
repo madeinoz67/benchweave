@@ -149,6 +149,10 @@ Each traces to a decision record (`docs/smart-test-gateway-decisions.md`) or a
     regenerable from a mechanism; a guard states what it does not catch;
     *cannot/never* needs the structural reason inline; every number carries its
     denominator and says whose measurement it is.
+13. **A standards version bump copies, never moves** (`standards/GOVERNANCE.md`):
+    the old version dir and its corpus-manifest rows stay in the tree,
+    digest-frozen; all edits land in the new version's copy, whose rows cite the
+    old corpus path as `source`.
 
 ## 3. How we work
 

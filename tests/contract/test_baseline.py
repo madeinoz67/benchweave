@@ -23,7 +23,7 @@ from referencing.jsonschema import DRAFT202012
 ROOT = Path(__file__).resolve().parents[2]
 CONTRACTS = ROOT / "standards"
 ADMITTED_DIRS = (
-    "otdp/0.1.0",
+    "otdp/0.1.1",
     "registry/0.1.0",
     "execution/0.1.0",
     "interface/0.1.0",
@@ -106,7 +106,7 @@ def test_manifest_identity_pins_admitted_versions() -> None:
     assert identity["interface"] == "0.1.0"
     assert identity["registry"] == "0.1.0"
     assert identity["execution"] == "0.1.0"
-    assert identity["otdp"] == "0.1.0"
+    assert identity["otdp"] == "0.1.1"
     assert identity["mcp"] == "2026-07-28"
 
 
