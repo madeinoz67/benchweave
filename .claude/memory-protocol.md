@@ -1,5 +1,3 @@
-# Provenance: adopted 2026-09-10 from the muninndb repository's memory system (hooks + protocol, verbatim). Its measured history (declaration rates, transcript counts, incident numbers) is muninndb's, kept for the mechanism's rationale. This repo drains to the `benchweave` vault.
-
 # Memory proposals — how a finding survives the session
 
 A session produces knowledge. Most of it is recoverable from git, the PR, or the issue

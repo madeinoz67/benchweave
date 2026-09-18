@@ -5,30 +5,33 @@ automatically. This is where "you changed X but didn't update Y" bugs live. A re
 walk this list for any PR that touches a synced surface — the review rubric's G5 gate is
 the obligation; this file is the detail behind it.
 
-There is no drift-guard hook in this repository. Every obligation here is judgment plus a
-build, and remains the reviewer's job.
+Obligations marked 🪝 are additionally warned about by `.claude/hooks/drift-guard.mjs`, a
+PostToolUse hook that fires when Claude Code edits the triggering path. It is a reminder,
+not a gate: it warns once per session, stays quiet if you have already touched the
+corresponding surface, and never blocks. The unmarked obligations need judgment or a build,
+and remain the reviewer's job.
 
 ## "If a PR touches X, it must also do Y"
 
-1. **An MCP tool change** (tool set, parameters, output schema) → the vendored corpus is
+1. **An MCP tool change** (tool set, parameters, output schema) 🪝 → the vendored corpus is
    the authority: `standards/interface/0.1.0/mcp-tools.json` plus any schema it references.
    The gateway pins tool schemas verbatim to the corpus (invariants CON-3), so a gateway
    change and a corpus change cannot land separately — normative standards changes start
    in this repository and sync out to the SDK. If the operation surface moved,
    `operation-catalog.json` moves too.
 
-2. **An API-visible change** → `standards/interface/0.1.0/openapi.json` (and
+2. **An API-visible change** 🪝 → `standards/interface/0.1.0/openapi.json` (and
    `interface.schema.json` when the envelope changes). There is no spec linter in CI —
    field-level drift is the reviewer's eye, not a gate.
 
 3. **Plugin/device-visible behavior** (packaging, loading, policy, lifecycle) →
    `docs/device-developer-guide.md`.
 
-4. **Operator-visible behavior** (service, config, CI) → `docs/operator-guide.md` and
+4. **Operator-visible behavior** 🪝 (service, config, CI) → `docs/operator-guide.md` and
    `README.md`. **CLI behavior** (`src/benchweave/cli/`) → the CLI reference in the
    operator docs.
 
-5. **The fixture lattice** → all four in lockstep: `fixtures/registry/` ↔
+5. **The fixture lattice** 🪝 → all four in lockstep: `fixtures/registry/` ↔
    `scripts/registry/build_fixtures.py` ↔ `catalogue.json` ↔ the digest-pinning tests.
    Fixtures without the builder, or a rebuilt lattice without regenerated digests, is
    silent drift. **CI materialises the fixture signing keys from repo secrets**
@@ -36,7 +39,7 @@ build, and remains the reviewer's job.
    match the workflow's materialisation, and a workflow change gets a cold full-suite run,
    not a warm local one.
 
-6. **Vendored contract bytes** → `standards/corpus-manifest.json` byte-pins move with any
+6. **Vendored contract bytes** 🪝 → `standards/corpus-manifest.json` byte-pins move with any
    vendored change, and `make check-sdk-standards` (CI `gates` job) must stay green: it
    refuses drift between the main-repo standards, the SDK lock and the vendored tree.
 
@@ -47,13 +50,13 @@ build, and remains the reviewer's job.
    diff in the SDK's committed `preview_assets` — a UI change that leaves the committed
    renderer stale ships silently in the wheel.
 
-8. **`deploy/systemd/` templates** → the `systemd` CI job renders the template and
+8. **`deploy/systemd/` templates** 🪝 → the `systemd` CI job renders the template and
    `systemd-analyze verify`s it against rehearsed preconditions (dedicated user, one
    writable data dir, env file). The `{{`-absence assertion in `tests/cli/test_serve.py`
    catches placeholder misses that `systemd-analyze verify` tolerates — the CI job's own
    comment says do not simplify that test away; the two catch complementary failure modes.
 
-9. **A dependency change** → `pyproject.toml` and `uv.lock` together, CI in the same
+9. **A dependency change** 🪝 → `pyproject.toml` and `uv.lock` together, CI in the same
    change when the dependency changes what CI must install or materialise.
 
 10. **Key/secret handling** → the security-posture docs must track the real key paths and
