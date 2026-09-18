@@ -95,10 +95,10 @@ def test_secrets_are_keyed() -> None:
 class _GatewayHandler(BaseHTTPRequestHandler):
     server_version = "BenchWeaveWP02Spike/0.1"
 
-    def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
+    def log_message(self, format: str, *args: Any) -> None:
         pass
 
-    def do_POST(self) -> None:  # noqa: N802
+    def do_POST(self) -> None:
         if self.path != "/mcp":
             self._respond(404, {"error": "not_found"})
             return

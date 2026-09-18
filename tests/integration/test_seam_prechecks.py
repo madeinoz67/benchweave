@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from test_seam_control import (  # noqa: E402  (path added by conftest)
+from test_seam_control import (
     BENCH_ID,
     SeamControl,
     _await_coordinator,

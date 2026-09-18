@@ -222,7 +222,7 @@ _SECRET_LITERAL = re.compile(r'SECRET *= *b?"([^"]*)"')
 
 def _repo_secret_literals() -> set[str]:
     """Every static secret-shaped string literal in the tracked tree."""
-    tracked = subprocess.run(  # noqa: S603 - fixed argv, no shell
+    tracked = subprocess.run(
         ["git", "-C", str(REPO), "ls-files"],
         capture_output=True,
         check=True,
@@ -386,7 +386,7 @@ def test_serve_live_boots_and_serves_with_a_real_secret_in_production(
         }
     )
     with stderr_path.open("wb") as handle:
-        proc = subprocess.Popen(  # noqa: S603 - fixed argv, no shell
+        proc = subprocess.Popen(
             [
                 sys.executable,
                 "-m",

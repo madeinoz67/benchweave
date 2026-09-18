@@ -176,11 +176,13 @@ def load_plugin(
     # loader never re-reads the file, so a swap on disk after the hash check
     # above cannot change what executes (surface-audit wave 1, item 4).
     spec = importlib.util.spec_from_file_location(module_name, entry_path)
-    assert spec is not None
+    assert spec is not None  # noqa: S101 — narrowing only; entry_path is a verified .py
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     try:
-        exec(compile(entry_bytes, str(entry_path), "exec"), module.__dict__)
+        # S102: executing VERIFIED bundle bytes is this loader's whole job —
+        # digest-checked above, never re-read from disk.
+        exec(compile(entry_bytes, str(entry_path), "exec"), module.__dict__)  # noqa: S102
     except BaseException:
         # A module whose body raised never leaves a half-initialized entry
         # in sys.modules; the plugin's own error is the honest surface

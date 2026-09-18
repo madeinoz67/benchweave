@@ -22,9 +22,21 @@ jobs:
         env:
           BENCHWEAVE_FIXTURE_KEY_MAIN: ${{ secrets.BENCHWEAVE_FIXTURE_KEY_MAIN }}
           BENCHWEAVE_FIXTURE_KEY_ORIGINB: ${{ secrets.BENCHWEAVE_FIXTURE_KEY_ORIGINB }}
+        # Fork PRs receive empty secrets; writing empty key files used to make
+        # the signing tests fail confusingly for every external contributor.
+        # Write a key only when its secret is present — the signing tests skip
+        # (with a named reason) when the files are absent.
         run: |
-          printf '%s' "$BENCHWEAVE_FIXTURE_KEY_MAIN" > fixtures/registry/keys/main.pem
-          printf '%s' "$BENCHWEAVE_FIXTURE_KEY_ORIGINB" > fixtures/registry/keys/originb.pem
+          if [ -n "$BENCHWEAVE_FIXTURE_KEY_MAIN" ]; then
+            printf '%s' "$BENCHWEAVE_FIXTURE_KEY_MAIN" > fixtures/registry/keys/main.pem
+          else
+            echo "::notice::BENCHWEAVE_FIXTURE_KEY_MAIN unavailable (fork PR?); signing tests will skip"
+          fi
+          if [ -n "$BENCHWEAVE_FIXTURE_KEY_ORIGINB" ]; then
+            printf '%s' "$BENCHWEAVE_FIXTURE_KEY_ORIGINB" > fixtures/registry/keys/originb.pem
+          else
+            echo "::notice::BENCHWEAVE_FIXTURE_KEY_ORIGINB unavailable (fork PR?); signing tests will skip"
+          fi
 
       - name: Sync environment
         run: uv sync

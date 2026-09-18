@@ -36,7 +36,7 @@ from pathlib import Path
 
 import pytest
 import test_seam_control as control_module
-from test_seam_control import (  # noqa: E402  (sibling, pytest path insertion)
+from test_seam_control import (
     BENCH_ID,
     LIMITS,
     NOW,
