@@ -74,6 +74,9 @@ EXPECTED_ADAPTER_PARAMS: dict[str, tuple[str, ...]] = {
     "next_event": ("subscription_id", "context"),
     "close": ("context",),
 }
+# Adapter data members: none today — the protocol is behavioral, and a data
+# member appearing on the SDK side is a protocol change this pin must surface
+EXPECTED_ADAPTER_DATA = frozenset[str]()
 EXPECTED_BRIDGE_CALLS: dict[str, tuple[int, bool, bool]] = {
     # member -> (positional arguments, keyword arguments used, starred arguments)
     "open": (3, False, False),
@@ -339,6 +342,8 @@ def check_context_agreement(sdk: ModuleType) -> None:
 def check_adapter_surface(sdk: ModuleType, source: str) -> None:
     """expected literals <-> SDK Adapter protocol <-> the bridge's actual call sites."""
     methods = _protocol_methods(sdk.Adapter)
+    data = set(getattr(sdk.Adapter, "__annotations__", {}))
+    assert data == EXPECTED_ADAPTER_DATA, "SDK Adapter data members drifted"
     assert set(methods) == set(EXPECTED_ADAPTER_PARAMS), "SDK Adapter member set drifted"
     shapes, stores, unaccounted = bridge_adapter_pin(source)
     assert not unaccounted, (
@@ -573,6 +578,15 @@ def test_adapter_pin_rejects_a_helper_argument_pass_through() -> None:
     )
     with pytest.raises(AssertionError):
         check_adapter_surface(_sdk_module("benchweave_sdk.interfaces"), passed)
+
+
+def test_comparator_rejects_an_adapter_data_member(tmp_path: Path) -> None:
+    """F2: a non-function Adapter member is a protocol change, not an invisible extra."""
+    mutated = _load_mutated_interfaces(
+        tmp_path, (("\n    async def open(", "\n    retries: int\n\n    async def open("),)
+    )
+    with pytest.raises(AssertionError):
+        check_adapter_surface(mutated, BRIDGE_SOURCE)
 
 
 def test_absent_submodule_fails_under_ci(tmp_path: Path) -> None:
