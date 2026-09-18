@@ -237,6 +237,7 @@ All notable changes to this project will be documented in this file.
 - Align the main site to public-site styleguide v0.2
 - Star-on-GitHub header CTA with live count
 - The build loop — agents, skills, drift guard, design records, constitution (#42)
+- Benchweave.standards repin — the mechanical pin writer (#46) (#52)
 
 ### Hardware Evidence
 
