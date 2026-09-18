@@ -617,6 +617,9 @@ def test_vocabulary_check_rejects_a_renamed_schema_enum_value() -> None:
         check_vocabularies(runtime)
 
 
+EXECUTE_CALL = "result = self._run(self._adapter.execute(envelope, context), context)"
+
+
 def _mutated_bridge_source(replacements: tuple[tuple[str, str], ...]) -> str:
     """String surgery on a COPY of the bridge source; the tree is never touched."""
     source = BRIDGE_SOURCE
@@ -631,10 +634,10 @@ def test_adapter_pin_rejects_an_aliased_adapter_call() -> None:
     aliased = _mutated_bridge_source(
         (
             (
-                "result = self._run(self._adapter.execute(envelope, context), context)",
-                'alias = self._adapter\n'
+                EXECUTE_CALL,
+                "alias = self._adapter\n"
                 '                self._run(alias.next_event("subscriptions", context), context)\n'
-                "                result = self._run(self._adapter.execute(envelope, context), context)",
+                f"                {EXECUTE_CALL}",
             ),
         )
     )
@@ -661,9 +664,8 @@ def test_adapter_pin_rejects_a_helper_argument_pass_through() -> None:
     passed = _mutated_bridge_source(
         (
             (
-                "result = self._run(self._adapter.execute(envelope, context), context)",
-                "self._dispatch_via(self._adapter, context)\n"
-                "                result = self._run(self._adapter.execute(envelope, context), context)",
+                EXECUTE_CALL,
+                "self._dispatch_via(self._adapter, context)\n" f"                {EXECUTE_CALL}",
             ),
         )
     )
