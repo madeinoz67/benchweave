@@ -306,23 +306,37 @@ def bridge_services_members(source: str) -> set[str]:
 
 
 def _enforced_set_literals(tree: ast.Module) -> set[frozenset[str]]:
-    """String set literals that gate a raise (an ``if`` whose body raises).
+    """String set literals compared for equality in a raise-gated test.
 
-    A literal in a dead local proves presence, not enforcement — the envelope
-    pin requires the key set to be the test of a raise-guarding branch.
+    Two conditions, both load-bearing. The literal must gate a raise (an
+    ``if`` whose body raises) — a dead local proves presence, not
+    enforcement. And it must be one side of a single-op equality comparison
+    (``==``/``!=``) — a weaker shape such as ``set(x) - KEYS`` keeps the
+    literal raise-gated but stops rejecting a result MISSING a required key,
+    so the comparison shape is pinned, not just the literal's presence.
     """
     enforced: set[frozenset[str]] = set()
+
+    def collect_comparison_sides(compare: ast.Compare) -> None:
+        if len(compare.ops) != 1 or not isinstance(compare.ops[0], (ast.Eq, ast.NotEq)):
+            return
+        for side in (compare.left, *compare.comparators):
+            if not isinstance(side, ast.Set):
+                continue
+            values = [
+                element.value for element in side.elts if isinstance(element, ast.Constant)
+            ]
+            if values and all(isinstance(value, str) for value in values):
+                enforced.add(frozenset(value for value in values if isinstance(value, str)))
+
     for node in ast.walk(tree):
         if not isinstance(node, ast.If):
             continue
         if not any(isinstance(statement, ast.Raise) for statement in node.body):
             continue
         for inner in ast.walk(node.test):
-            if not isinstance(inner, ast.Set):
-                continue
-            values = [element.value for element in inner.elts if isinstance(element, ast.Constant)]
-            if values and all(isinstance(value, str) for value in values):
-                enforced.add(frozenset(value for value in values if isinstance(value, str)))
+            if isinstance(inner, ast.Compare):
+                collect_comparison_sides(inner)
     return enforced
 
 
@@ -797,6 +811,24 @@ def test_envelope_pin_rejects_a_dead_local_instead_of_enforcement() -> None:
     )
     with pytest.raises(AssertionError):
         check_envelopes(dead, _load_active("otdp-runtime.schema.json"))
+
+
+def test_envelope_pin_rejects_split_enforcement_weakening_the_comparison() -> None:
+    """RF2: a raise-gated set-difference check stops rejecting missing keys."""
+    split = _mutated_bridge_source(
+        (
+            (
+                '        if set(result) != {"operation_id", "verb", "status", "data"}:\n'
+                '            raise ValueError("invalid success envelope")',
+                '        if "error" not in result:\n'
+                '            raise ValueError("invalid success envelope")\n'
+                '        if set(result) - {"operation_id", "verb", "status", "data"}:\n'
+                '            raise ValueError("invalid success envelope")',
+            ),
+        )
+    )
+    with pytest.raises(AssertionError):
+        check_envelopes(split, _load_active("otdp-runtime.schema.json"))
 
 
 def test_absent_submodule_fails_under_ci(tmp_path: Path) -> None:
