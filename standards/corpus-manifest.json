@@ -6,6 +6,7 @@
     "execution": "0.1.0",
     "interface": "0.1.0",
     "mcp": "2026-07-28",
+    "adapter_api": "1.1",
     "note": "Standards reset to 0.1.0 on 2026-09-16 as the governance starting point; prior ad-hoc versions live in git history."
   },
   "files": [

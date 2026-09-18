@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from .export import export_bundle
-from .manifest import load_manifest
+from .manifest import load_identity, load_manifest
 
 LOCK_NAME = "standards-lock.json"
 VENDORED = "src/benchweave_sdk/standards"
@@ -53,11 +53,14 @@ def run_check(root: Path, sdk_root: Path | None = None) -> list[str]:
 
 
 def version_lines(root: Path, sdk_root: Path | None = None) -> list[str]:
-    """Version table: main project, per standard, SDK lock, submodule SHA."""
+    """Version table: main project, per standard, adapter api, SDK lock, submodule SHA."""
     sdk = sdk_root if sdk_root is not None else root / "packages" / "sdk"
     lines = [f"benchweave {main_version(root)}"]
     for entry in load_manifest(root).standards:
         lines.append(f"standard {entry.id}@{entry.version} ({entry.status})")
+    # Reported, not trusted: the declared value is derive-checked at every
+    # export/check (manifest.validate_identity); undeclared says so.
+    lines.append(f"adapter api {load_identity(root).get('adapter_api', 'undeclared')}")
     for row in sorted(_read_lock(sdk).get("standards", []), key=lambda item: str(item["id"])):
         lines.append(f"sdk lock {row['id']}@{row['version']}")
     lines.append(f"submodule packages/sdk {submodule_sha(sdk)}")

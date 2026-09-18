@@ -8,7 +8,13 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from .manifest import StandardEntry, StandardsError, load_manifest, validate_manifest
+from .manifest import (
+    StandardEntry,
+    StandardsError,
+    load_manifest,
+    validate_identity,
+    validate_manifest,
+)
 
 
 def canonical_json(value: Any) -> bytes:
@@ -19,6 +25,7 @@ def export_bundle(root: Path, out: Path) -> Path:
     """Validate the canonical corpus, then write the bundle; fail before any write."""
     manifest = load_manifest(root)
     validate_manifest(manifest, root)
+    validate_identity(manifest, root)
     sources: dict[str, str] = {}  # bundle path -> repo-relative source path
     document = {
         "bundle_version": 1,

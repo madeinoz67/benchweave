@@ -52,20 +52,35 @@ and remain the reviewer's job.
    diff in the SDK's committed `preview_assets` — a UI change that leaves the committed
    renderer stale ships silently in the wheel.
 
-8. **`deploy/systemd/` templates** 🪝 → the `systemd` CI job renders the template and
+8. **The adapter protocol surface** 🪝 (the SDK protocol
+   `packages/sdk/src/benchweave_sdk/interfaces.py` ↔ the gateway mirror
+   `src/benchweave/host/otdp_bridge.py` ↔ the descriptor schema's
+   `$defs.adapter.api_version` const; `standards/standards-manifest.json` selects the
+   active versions the identity block derives from, and
+   `packages/sdk/src/benchweave_sdk/__init__.py` carries the SDK-side
+   `ADAPTER_API_VERSION` constant) → the full bump touch-set moves in the same change:
+   the agreement test (`tests/sdk/test_adapter_agreement.py`), the corpus identity
+   declaration (`standards/corpus-manifest.json` `identity.*`), the manifest
+   versions when a standard bumps, the descriptor schema const, both SDK files, and
+   the orphan identity literal in `tests/contract/test_baseline.py`
+   (`test_manifest_identity_pins_admitted_versions`). `make check-sdk-standards`
+   carries the identity-vs-schema/manifest derivation checks; the agreement test
+   carries the protocol shape (invariants CON-8/REG-4).
+
+9. **`deploy/systemd/` templates** 🪝 → the `systemd` CI job renders the template and
    `systemd-analyze verify`s it against rehearsed preconditions (dedicated user, one
    writable data dir, env file). The `{{`-absence assertion in `tests/cli/test_serve.py`
    catches placeholder misses that `systemd-analyze verify` tolerates — the CI job's own
    comment says do not simplify that test away; the two catch complementary failure modes.
 
-9. **A dependency change** 🪝 → `pyproject.toml` and `uv.lock` together, CI in the same
-   change when the dependency changes what CI must install or materialise.
+10. **A dependency change** 🪝 → `pyproject.toml` and `uv.lock` together, CI in the same
+    change when the dependency changes what CI must install or materialise.
 
-10. **Key/secret handling** → the security-posture docs must track the real key paths and
+11. **Key/secret handling** → the security-posture docs must track the real key paths and
     secret names (the reviewer's G0 secret scan catches leaks; this catches drift between
     the posture text and the posture).
 
-11. **Reserved for later stages** — the UI/console surface gets its doc home named here
+12. **Reserved for later stages** — the UI/console surface gets its doc home named here
     when that stage lands; hardware-evidence docs get theirs at WP10+ commissioning. Add
     the row at the moment the surface arrives, not after the first drift bug.
 
@@ -73,9 +88,9 @@ and remain the reviewer's job.
 
 | Job | What it catches |
 |---|---|
-| `gates` | submodules recursive; fixture keys materialised from secrets; `ruff check .`; config-driven `mypy` (bare — explicit path args drop `packages/sdk/src` from the build); `pytest -q`; `make check-sdk-standards` (main standards ↔ SDK lock ↔ vendored tree) |
+| `gates` | submodules recursive; fixture keys materialised from secrets; `ruff check .`; config-driven `mypy` (bare — explicit path args drop `packages/sdk/src` from the build); `pytest -q` (including the adapter agreement test, which pins the SDK↔gateway protocol mirror and the version triplet — see obligation 8); `make check-sdk-standards` (main standards ↔ SDK lock ↔ vendored tree, plus the identity `adapter_api` derivation check) |
 | `ui` | `npm ci` + typecheck + lint + unit tests + Storybook build; the renderer freshness gate (see obligation 7); `npm audit --audit-level=high` |
-| `systemd` | unit-template render + `systemd-analyze verify` with rehearsed deployment preconditions (see obligation 8) |
+| `systemd` | unit-template render + `systemd-analyze verify` with rehearsed deployment preconditions (see obligation 9) |
 
 What CI does **not** catch: every numbered obligation above that names a doc, a guide, or
 a cross-repo push — those are the reviewer's, which is why G5 exists in the rubric.
