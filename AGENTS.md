@@ -44,7 +44,7 @@ JSON
 Read `.claude/memory-protocol.md` for the bar (a noisy vault is worse than a small one, and
 the "do not propose" list is as load-bearing as the "do"). The ledger is gitignored and is
 subject to the same rule as committed content: no credentials, no client identifiers.
-Proposals drain themselves into the `benchweave` MuninnDB vault on `PreCompact` /
+Proposals drain themselves into the `benchweave` memory vault on `PreCompact` /
 `SessionEnd` / a debounced `Stop` via `.claude/hooks/memory-drain.mjs`, and
 `memory-freshness.mjs` reads the drain receipt back at `SessionStart` and speaks up when
 the queue is stale. Direct `muninn_remember` over MCP stays available; the ledger is what
@@ -64,7 +64,6 @@ severity, LOW and NIT included, each with its disposition: fixed / deferred /
 accepted-risk) is proposed to the ledger before the session ends. The skill files stay
 generic; this repo's protocol is what binds them here. Review findings are never
 forgotten.
-(Memory system adopted 2026-09-10 from the muninndb repository.)
 
 ## Two-repo discipline: the SDK submodule
 

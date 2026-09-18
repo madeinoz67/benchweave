@@ -123,3 +123,6 @@ plugins/*/*/contracts/*-*.*.*/
 /.great-docs-cache/
 /site/
 /standards_pages/
+
+# Design records: private/ holds pre-promotion designs (see .claude/deep-review/README.md)
+.claude/deep-review/private/

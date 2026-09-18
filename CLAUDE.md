@@ -50,9 +50,9 @@ JSON
 - The bar for what merits a proposal, and the do-not-propose list: `.claude/memory-protocol.md`.
 - The drain moves the queue into the `benchweave` vault on PreCompact / SessionEnd / Stop.
 - **Vault routing:** every memory for this project belongs in the `benchweave` vault — never the
-  default MuninnDB vault. Direct `muninn_remember`/`muninn_recall` over MCP goes through the
+  default memory vault. Direct `muninn_remember`/`muninn_recall` over MCP goes through the
   project server `muninndb-benchweave` (`.mcp.json`; one-time `/mcp` approval; a
-  globally-configured muninndb connection is typically key-scoped to `default` and cannot
+  globally-configured memory connection is typically key-scoped to `default` and cannot
   address `benchweave`). Until that server is approved in a session, route session-level
   memories (handoffs, project state) through the proposal ledger above; the drain delivers them.
 

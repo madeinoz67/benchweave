@@ -76,10 +76,15 @@ Always, in this order:
 
 ## Deliver
 
-Save the design to `docs/superpowers/specs/<YYYY-MM-DD>-<slug>-design.md` (local-untracked
-by convention; force-added only at close-out if it documents something that landed) and
-summarize it in your reply: the mechanism, the decisions you took and why, the acceptance
-rule, and anything you could not resolve that the maintainer must decide.
+Save the design to `.claude/deep-review/<YYYY-MM-DD>-<slug>-design.md` — design records
+are committed artifacts by convention (see `.claude/deep-review/README.md`): a
+pre-committed acceptance rule is only provably pre-committed if the document exists in git
+history before the measurement ran. Apply the README's triage rule — anything naming a
+person, client, bench, device serial, commercial terms, or one install's operational
+specifics goes in `.claude/deep-review/private/` (gitignored); default new work to
+`private/` and promote deliberately. Then summarize the design in your reply: the
+mechanism, the decisions you took and why, the acceptance rule, and anything you could not
+resolve that the maintainer must decide.
 
 **DON'T-BUILD is a first-class outcome.** If reading the code says the premise is wrong,
 the mechanism cannot work, or the value cannot be measured, say so with the evidence and
