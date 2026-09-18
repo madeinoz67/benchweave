@@ -309,7 +309,7 @@ def copy_standards_resources(docs_root: Path) -> None:
     log(f"standards corpus: {copied} non-Markdown file(s) copied beside the rendered prose")
 
 
-def fit_to_square(img, size: int):  # noqa: ANN001 - PIL types stay local
+def fit_to_square(img, size: int):
     from PIL import Image
 
     img.thumbnail((size, size), Image.Resampling.LANCZOS)
@@ -338,7 +338,7 @@ def complete_favicons(docs_root: Path, logo: Path) -> None:
             master.resize((px, px), Image.Resampling.LANCZOS).save(docs_root / name, "PNG")
         master.save(docs_root / "favicon.ico", format="ICO", sizes=[(16, 16), (32, 32), (48, 48)])
         log("generated raster favicon set at docs root")
-    except Exception as exc:  # noqa: BLE001 - loud cosmetic fallback
+    except Exception as exc:
         log(f"WARNING: raster favicons missing and generation failed ({exc}); SVG favicon remains")
 
 

@@ -10,10 +10,13 @@ Data-directory layout::
     <data_dir>/
       state.sqlite        # the whole store (WP03 state + WP07 content tables)
       state.sqlite-wal    # WAL sidecars while any connection is open
-      state.sqlite.hold   # advisory lock + holder metadata (never backed up)
       content/            # the on-disk content plane (empty while all
                           # content is DB-backed; the layout is the contract)
       benchweave.env      # 0600 credential file (NEVER backed up or restored)
+    <data_dir>.hold       # advisory lock + holder metadata, a SIBLING of the
+                          # data dir (never backed up): restore swaps the dir
+                          # with os.replace, and a marker inside it would pin
+                          # the rename on Windows — see state/hold.hold_path
 
 Backup layout (``out/backup-<iso>/``)::
 
@@ -76,17 +79,18 @@ CONTENT_DIR = "content"
 #: The 0600 credential file written by setup.
 CREDENTIAL_FILE = "benchweave.env"
 #: The env key carrying the gateway secret inside the credential file.
-SECRET_ENV_KEY = "BENCHWEAVE_SECRET"
+SECRET_ENV_KEY = "BENCHWEAVE_SECRET"  # noqa: S105 — an env var NAME, not a credential
 #: The digest manifest name (in backups and in restored data dirs).
 MANIFEST_NAME = "manifest.json"
 #: Files a verified tree may carry beyond the manifest's ``files``: the
 #: manifest itself (written after the digests are taken), the store's
-#: runtime sidecars — ``-wal``/``-shm`` and the ``.hold`` marker — and the
-#: deliberately-unbacked credential file (the operator re-places
-#: ``benchweave.env`` in a restored data dir per the guide). All are
-#: live-state, never backup content.
+#: runtime sidecars — ``-wal``/``-shm`` — and the deliberately-unbacked
+#: credential file (the operator re-places ``benchweave.env`` in a restored
+#: data dir per the guide). All are live-state, never backup content. The
+#: advisory hold marker needs no carve-out: it lives BESIDE the data dir
+#: (``<data_dir>.hold``), outside any verified tree.
 _UNLISTED_OK = frozenset(
-    {MANIFEST_NAME, CREDENTIAL_FILE, DB_NAME + "-wal", DB_NAME + "-shm", DB_NAME + ".hold"}
+    {MANIFEST_NAME, CREDENTIAL_FILE, DB_NAME + "-wal", DB_NAME + "-shm"}
 )
 #: The registry session's work tree root. ``app_entry`` places it under
 #: ``<data_dir>/registry/`` (cache, ``packages.lock.json``, activations) —
@@ -327,21 +331,20 @@ def restore(archive: Path, data_dir: Path) -> None:
     The previous data dir is renamed aside as
     ``<name>.pre-restore-<stamp>`` (kept for the operator), then the staged
     directory is moved into place with ``os.replace``; if that move fails
-    the aside copy is put straight back. During the swap window the held
-    lock stays anchored to the OLD database file's inode (now inside the
-    aside dir) — the incoming directory is un-anchored until this call
-    returns, so a gateway booting concurrently can take a fresh hold inode;
-    the swap then fails loudly (``ENOTEMPTY``) with the aside copy
-    preserved — confusing, never corrupting. Credentials
-    (``benchweave.env``) are deliberately not part of backups and are not
-    restored.
+    the aside copy is put straight back. The hold marker lives BESIDE the
+    data dir (``<data_dir>.hold`` — see ``state/hold.hold_path``), so the
+    held lock stays anchored to the same inode across the swap: a gateway
+    booting concurrently is refused for the whole window, and the swapped
+    directory itself carries no open descriptor that would pin the rename
+    on Windows. Credentials (``benchweave.env``) are deliberately not part
+    of backups and are not restored.
     """
     archive = Path(archive)
     data_dir = Path(data_dir)
     if not (archive / MANIFEST_NAME).is_file():
         raise AtRestError(f"archive {archive} has no {MANIFEST_NAME} — not a backup directory")
     manifest = _load_manifest(archive)
-    assert manifest is not None  # the is_file check above makes this true
+    assert manifest is not None  # noqa: S101 — narrowing only; is_file above makes this true
     for required in (DB_NAME,):
         if not (archive / required).is_file():
             raise AtRestError(f"archive {archive} is missing {required}")
@@ -427,9 +430,10 @@ def verify_problems(target: Path) -> list[str]:
     unlisted file is present (beyond live-state: the manifest itself, the
     store's runtime sidecars, the deliberately-unbacked credential file,
     and the registry session's work tree), AND the store file passes
-    SQLite's integrity_check. Runtime sidecar files
-    (``-wal``/``-shm``/the hold marker) are live-state, not manifest
-    entries — their presence is expected and never a mismatch.
+    SQLite's integrity_check. Runtime sidecar files (``-wal``/``-shm``)
+    are live-state, not manifest entries — their presence is expected and
+    never a mismatch. The advisory hold marker sits beside the data dir,
+    outside the verified tree entirely.
     """
     target = Path(target)
     problems: list[str] = []

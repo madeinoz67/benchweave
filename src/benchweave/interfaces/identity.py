@@ -47,13 +47,30 @@ def _payload(identity_args: dict[str, object]) -> bytes:
     audience = identity_args["audience"]
     scopes = identity_args["scopes"]
     expires_at = identity_args["expires_at"]
-    if not isinstance(principal, str) or not principal:
+    if not isinstance(principal, str) or not principal or "|" in principal:
         raise IdentityRejected("malformed_token")
-    if not isinstance(audience, str) or not audience:
+    if not isinstance(audience, str) or not audience or "|" in audience:
         raise IdentityRejected("malformed_token")
     if not isinstance(expires_at, int) or isinstance(expires_at, bool):
         raise IdentityRejected("malformed_token")
-    joined = " ".join(sorted(scopes)) if isinstance(scopes, (set, frozenset, list)) else ""
+    if isinstance(scopes, (set, frozenset, list)):
+        for scope in scopes:
+            if (
+                not isinstance(scope, str)
+                or not scope
+                or "|" in scope
+                or any(ch.isspace() for ch in scope)
+            ):
+                raise IdentityRejected("malformed_token")
+        joined = " ".join(sorted(scopes))
+    else:
+        joined = ""
+    # ``|`` is the payload field delimiter and `` `` is the intra-field scope
+    # delimiter: both are rejected element-by-element above so a crafted
+    # principal/audience/scope can never shift field boundaries, and a single
+    # scope element can never round-trip into several granted scopes through
+    # the split in ``validate``. The 5-field check there stays as defence in
+    # depth.
     return f"v1|{principal}|{audience}|{joined}|{expires_at}".encode()
 
 

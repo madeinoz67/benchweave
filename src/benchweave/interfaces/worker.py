@@ -123,6 +123,16 @@ class RunWorker:
 
     def _drain(self) -> None:
         store = Store.open(self._db_path)  # thread-affine connection
+        try:
+            self._drain_with(store)
+        finally:
+            # An explicit close, not GC-lifetime: a lingering connection keeps
+            # the database files locked on Windows (scratch teardown, and the
+            # at-rest commands' directory renames) until the cycle collector
+            # happens to run.
+            store.close()
+
+    def _drain_with(self, store: Store) -> None:
         while True:
             try:
                 run_id, principal_id, binding_ref, bench_id = self._queue.get(timeout=0.1)

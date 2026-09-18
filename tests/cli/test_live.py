@@ -45,7 +45,7 @@ from benchweave.cli.demo import DemoError, poll_to_terminal
 from benchweave.content.store import ContentStore
 from benchweave.interfaces.app import create_app
 from benchweave.interfaces.identity import issue
-from benchweave.state.hold import daemon_holds
+from benchweave.state.hold import daemon_holds, hold_path
 from benchweave.state.store import Store
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "execution"
@@ -263,8 +263,11 @@ def test_demo_fresh_install_preexisting_scratch_survives_with_own_files_removed(
     assert result.exit_code == 0, _combined(result)
     assert scratch.is_dir(), "the operator's directory must survive"
     assert operator_file.read_text(encoding="utf-8") == "operator data"
-    for suffix in ("", "-wal", "-shm", ".hold"):
+    for suffix in ("", "-wal", "-shm"):
         assert not (scratch / f"state.sqlite{suffix}").exists(), suffix
+    # The advisory hold marker is a sibling of the scratch dir; the demo
+    # must sweep that too (see state/hold.hold_path).
+    assert not (tmp_path / "operator-scratch.hold").exists()
 
 
 # --- anti-coordinate (ISC-12): never compose against a held store ----------------
@@ -355,7 +358,7 @@ def test_daemon_holds_permissionerror_reads_as_held(
     second coordinator the gate exists to prevent, while a false 'held'
     in the single-operator loopback context is a cheap, truthful retry."""
     db = tmp_path / "state.sqlite"
-    hold_file = db.with_name(db.name + ".hold")
+    hold_file = hold_path(db)  # a sibling of tmp_path itself
     hold_file.write_text("{}", encoding="utf-8")
     real_open = os.open
 

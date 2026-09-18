@@ -156,7 +156,9 @@ class _Bundle(importlib.abc.MetaPathFinder, importlib.abc.Loader):
             return standard_import(name, globals, locals, fromlist, level)
 
         module.__dict__["__builtins__"] = {**vars(builtins), "__import__": admitted_import}
-        exec(compile(self.inventory[path], module.__file__, "exec"), module.__dict__)
+        # S102: the deliberate verified-bundle execution boundary — bytes are
+        # digest-checked at admission and imports run through admitted_import.
+        exec(compile(self.inventory[path], module.__file__, "exec"), module.__dict__)  # noqa: S102
 
     def get_resource_reader(self, fullname: str) -> _Resources:
         path, package = self._path(fullname)

@@ -48,6 +48,14 @@ TIER_SATISFIES: dict[str, frozenset[str]] = {
     "control": frozenset({"stg:control", "stg:admin"}),
     "admin": frozenset({"stg:admin"}),
 }
+# Deliberately a public constant, not a secret (documented decision):
+# the cursor MAC only binds a pagination cursor to the principal that minted
+# it, and events_get independently re-authorises the stream against the
+# requested bench — forging a cursor buys an attacker nothing beyond choosing
+# an arbitrary sequence number they could request anyway. The constant is
+# listed in app_entry._KNOWN_PUBLIC_SECRETS so production posture refuses it
+# as a gateway secret. Revisit only if cursors ever carry more than
+# (principal, sequence) or the re-authorisation on read is removed.
 _CURSOR_SECRET = b"wp07-cursor-v1"  # principal-binding only, not an auth secret
 
 # §5 live-run states (interface/0.1.0 run.state enum): a run owns its bench
