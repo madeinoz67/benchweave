@@ -26,7 +26,14 @@ ROOT = Path(__file__).resolve().parents[2]
 VECTORS = ROOT / "standards" / "otdp" / "0.1.2" / "examples" / "derivation-vectors.json"
 
 
-def _dataset(variables: list[dict[str, Any]], axes: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+def _census_refusals() -> list[dict[str, Any]]:
+    document = json.loads(VECTORS.read_bytes())
+    return [row for row in document["evaluation"] if row["expect"] == "refused"]
+
+
+def _dataset(
+    variables: list[dict[str, Any]], axes: list[dict[str, Any]] | None = None
+) -> dict[str, Any]:
     return {
         "dataset_id": "dataset-faults",
         "kind": "scalar_set",
@@ -49,7 +56,7 @@ def _dataset(variables: list[dict[str, Any]], axes: list[dict[str, Any]] | None 
 
 def _operand(
     vid: str,
-    values: list[object],
+    values: list[Any],
     unit: str = "V",
     dimensions: list[str] | None = None,
     status: str = "valid",
@@ -192,11 +199,6 @@ def test_census_refusals_carry_machine_prefixes(row: dict[str, Any]) -> None:
         derive_dataset_variables(dataset, row["derived"])
     assert str(raised.value).startswith(str(row["reason_prefix"])), str(raised.value)
     assert dataset == row["dataset"]  # refusals never mutate either
-
-
-def _census_refusals() -> list[dict[str, Any]]:
-    document = json.loads(VECTORS.read_bytes())
-    return [row for row in document["evaluation"] if row["expect"] == "refused"]
 
 
 def test_static_checks_run_before_any_evaluation_read() -> None:

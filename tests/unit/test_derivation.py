@@ -14,8 +14,8 @@ recorded values.
 
 from __future__ import annotations
 
-import json
 import copy
+import json
 from pathlib import Path
 from typing import Any
 
@@ -181,12 +181,18 @@ def test_recorded_outputs_replay_exactly() -> None:
                 if any(value is None for value in environment.values()):
                     assert expected["values"][index] is None, (row["id"], expected["id"])
                     continue
-                replayed = eval(  # noqa: S307 — test-side oracle over corpus text
-                    marker["expression"], {"__builtins__": {}}, dict(environment)
-                )
+                try:
+                    replayed = eval(  # noqa: S307 — test-side oracle over corpus text
+                        marker["expression"], {"__builtins__": {}}, dict(environment)
+                    )
+                except ZeroDivisionError:
+                    # Python raises where the evaluator nulls: the recorded
+                    # element must be the in-band loss.
+                    assert expected["values"][index] is None, (row["id"], expected["id"])
+                    continue
                 recorded = expected["values"][index]
                 if recorded is None:
-                    continue  # div-zero / non-finite losses are pinned by status
+                    continue  # non-finite losses are pinned by status
                 assert replayed == recorded, (row["id"], expected["id"], index)
 
 

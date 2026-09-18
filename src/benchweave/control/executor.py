@@ -92,6 +92,11 @@ from benchweave.host.types import (
     Reading,
     WriteReceipt,
 )
+from benchweave.measurement.derivation import (
+    DerivationRefused,
+    DerivationRejected,
+    derive_dataset_variables,
+)
 
 #: One step occurrence: (run_id, step_id, loop index path). The loop index
 #: path carries one entry per enclosing ``repeat`` iteration; ``if`` branches
@@ -616,6 +621,7 @@ class Executor:
         clock: MonotonicClock,
         wall: WallClock,
         occurrence_ledger: dict[Occurrence, dict[str, Any]] | None = None,
+        derived_variables: dict[str, list[dict[str, Any]]] | None = None,
     ) -> None:
         self._plugins = plugins
         self._binding = binding
@@ -624,6 +630,12 @@ class Executor:
         self._wall = wall
         self._ledger: dict[Occurrence, dict[str, Any]] = (
             {} if occurrence_ledger is None else occurrence_ledger
+        )
+        # Digest-pinned derived-variable declarations by device id, from the
+        # admitted execution-side descriptors (M15/S19). Empty for devices
+        # without declarations: derivation then never touches their results.
+        self._derived: dict[str, list[dict[str, Any]]] = (
+            {} if derived_variables is None else derived_variables
         )
         # Occurrence-keyed issued-id registry: minted by $stg_issue during
         # resolution, invalidated when the issuing step's operation fails,
@@ -824,7 +836,56 @@ class Executor:
             verb=OperationVerb.INVOKE,
             arguments={"action_id": action_id, "input": resolved_input},
         )
-        return self._dispatch(self._plugins[device_id], request, step, body, event)
+        result = self._dispatch(self._plugins[device_id], request, step, body, event)
+        if result.status is OperationStatus.OK:
+            # Post-dispatch, pre-scope: derivation adds no physical work (the
+            # policy check already governed the input; the dispatch already
+            # completed) and downstream consumers — select_sample, predicates
+            # — must see derived variables exactly like plugin-emitted ones.
+            return self._apply_derivation(device_id, result, step_id, body, event)
+        return result
+
+    def _apply_derivation(
+        self,
+        device_id: str,
+        result: OperationResult,
+        step_id: str,
+        body: _Body,
+        event: dict[str, Any],
+    ) -> OperationResult:
+        """Append declared derived variables to a dataset-shaped invoke result.
+
+        A refusal (structural contradiction between the digest-pinned
+        declaration and the plugin-returned dataset) ends the body
+        ``execution_error`` with step ``error_code: DERIVATION_INVALID`` —
+        loud degradation per A06 — while the raw result stays in scope as
+        evidence. Non-dataset results (e.g. boolean action outputs) simply
+        have nothing to derive from: the declaration is device-level.
+        """
+
+        declarations = self._derived.get(device_id)
+        if not declarations:
+            return result
+        data = result.data
+        if not isinstance(data, dict):
+            return result
+        payload = data.get("result")
+        if not isinstance(payload, dict) or not isinstance(
+            payload.get("variables"), list
+        ):
+            return result
+        try:
+            derived_payload = derive_dataset_variables(payload, declarations)
+        except (DerivationRefused, DerivationRejected) as error:
+            event["status"] = "error"
+            event["error_code"] = "DERIVATION_INVALID"
+            body.terminate(
+                BODY_EXECUTION_ERROR, f"derivation_invalid: {step_id}: {error}"
+            )
+            return result
+        rebuilt = dict(data)
+        rebuilt["result"] = derived_payload
+        return OperationResult.ok(result.operation_id, result.verb, rebuilt)
 
     def _step_read(
         self,

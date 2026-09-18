@@ -13,16 +13,18 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from types import ModuleType
 from typing import Any
 
+from _harness import ROOT, readmit_mutated
+
 from benchweave.control.binding import resolve_binding
 from benchweave.control.clocking import TestClock
+from benchweave.control.documents import AdmittedDocuments
 from benchweave.control.executor import Executor
 from benchweave.host.plugin import DevicePlugin
-
-from conftest import ROOT, readmit_mutated
 
 PLUGINS_ROOT = ROOT / "plugins"
 RUN_ID = "run-derivation"
@@ -137,7 +139,9 @@ def _derived_procedure(graph: dict[str, Any]) -> None:
     ]
 
 
-def _run(tmp_path: Path, mutate=_derived_procedure) -> tuple[Any, dict, dict[str, Any]]:
+def _run(
+    tmp_path: Path, mutate: Callable[[dict[str, Any]], None] = _derived_procedure
+) -> tuple[Any, AdmittedDocuments, dict[tuple[str, str, tuple[int, ...]], dict[str, Any]]]:
     clock = TestClock()
     plugins = _plugins(clock)
     ledger: dict[tuple[str, str, tuple[int, ...]], dict[str, Any]] = {}
@@ -207,7 +211,9 @@ def test_structural_refusal_ends_the_body_execution_error(tmp_path: Path) -> Non
     body, _docs, ledger = _run(tmp_path, mutate)
     assert body.body_outcome == "execution_error", body.reasons
     measure_event = next(
-        event for event in body.step_events if event["kind"] == "invoke"
+        event
+        for event in body.step_events
+        if event["kind"] == "invoke" and event["occurrence"][1] == "measure"
     )
     assert measure_event["status"] == "error"
     assert measure_event["error_code"] == "DERIVATION_INVALID"
@@ -235,4 +241,4 @@ def test_known_uncertainty_requirement_refuses_derived_samples(tmp_path: Path) -
     rail_event = next(event for event in body.step_events if event["kind"] == "sample")
     assert rail_event["status"] == "error"
     assert rail_event["error_code"] == "INVALID_SAMPLE"
-    assert "UNKNOWN_UNCERTAINTY" in body.reasons[-1], body.reasons
+    assert "unknown_uncertainty" in body.reasons[-1], body.reasons

@@ -13,10 +13,9 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from _harness import readmit_mutated
 
 from benchweave.control.documents import AdmissionRejected
-
-from conftest import readmit_mutated
 
 
 def _with_derived(derived: list[dict[str, Any]]) -> Any:

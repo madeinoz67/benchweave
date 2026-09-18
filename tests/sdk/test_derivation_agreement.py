@@ -52,7 +52,8 @@ from benchweave_sdk.validation import validate_descriptor  # noqa: E402
 
 
 def _census() -> dict[str, Any]:
-    return json.loads(VECTORS.read_bytes())
+    document: dict[str, Any] = json.loads(VECTORS.read_bytes())
+    return document
 
 
 def _base_descriptor() -> dict[str, Any]:
@@ -63,7 +64,7 @@ def _base_descriptor() -> dict[str, Any]:
     new optional top-level property beside its existing content.
     """
 
-    descriptor = json.loads(CLASS_EXAMPLE.read_bytes())
+    descriptor: dict[str, Any] = json.loads(CLASS_EXAMPLE.read_bytes())
     assert descriptor["otdp_version"] == "0.1.2"
     return descriptor
 
@@ -134,6 +135,14 @@ def test_sdk_rejects_derived_variables_of_the_wrong_shape() -> None:
 def test_census_bytes_are_identical_in_the_vendored_tree() -> None:
     """The agreement pin holds only if both lanes read the same bytes."""
 
-    vendored = SDK_SRC / "benchweave_sdk" / "standards" / "otdp" / "0.1.2" / "examples" / "derivation-vectors.json"
+    vendored = (
+        SDK_SRC
+        / "benchweave_sdk"
+        / "standards"
+        / "otdp"
+        / "0.1.2"
+        / "examples"
+        / "derivation-vectors.json"
+    )
     assert vendored.is_file(), f"vendored census absent: {vendored}"
     assert vendored.read_bytes() == VECTORS.read_bytes()
