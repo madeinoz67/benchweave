@@ -85,6 +85,15 @@ All notable changes to this project will be documented in this file.
 - Review-fix wave — poison-emit guard, fallback log, hygiene
 - Pin the symmetric stray/stamp gates across all three check lanes (#9)
 - Otdp 0.1.1 — byte-errata of 0.1.0 (#45) (#47)
+- Make the adapter-call AST pin total over the _adapter name
+- Pin Adapter protocol data members, not only methods
+- Require envelope key sets in enforcement position, not mere presence
+- Derive identity standard-version keys against the standards manifest
+- Reject duplicate standard ids at manifest load
+- Fail styled, not raw, from the versions command
+- Refuse string-mediated adapter access and state the pin's true boundary
+- Pin the envelope comparison shape, not just the literal's presence
+- Make the identity block closed-world
 
 ### Documentation
 
@@ -150,6 +159,11 @@ All notable changes to this project will be documented in this file.
 - Add permanent Discord invite to README, SUPPORT and site (#33)
 - D4 + D14-details CLOSED by the interface-errata slice (#16)
 - Review rubric, hard invariants and drift obligations (#41)
+- Record the adapter-api identity and agreement invariants; correct stale baseline lines
+- Correct the remaining device-guide baseline claims (OTDP 0.1.1 / adapter API 1.1)
+- Commit the #44 design record
+- Complete the adapter-protocol obligation touch-set and hook triggers
+- Correct four remaining baseline lines to the machine versions
 
 ### Features
 
@@ -238,6 +252,7 @@ All notable changes to this project will be documented in this file.
 - Star-on-GitHub header CTA with live count
 - The build loop — agents, skills, drift guard, design records, constitution (#42)
 - Benchweave.standards repin — the mechanical pin writer (#46) (#52)
+- Derive-check identity.adapter_api against the descriptor schema const
 
 ### Hardware Evidence
 
@@ -304,6 +319,10 @@ All notable changes to this project will be documented in this file.
 - Reset every standard to 0.1.0 — the governance starting point
 - Id/version tree, full 0.1.0 reset, and governance layer (#21)
 
+### Style
+
+- Extract the execute-call fixture constant to clear E501
+
 ### Testing
 
 - WP06 acceptance — reuse, tamper, revocation, rollback, collision
@@ -331,6 +350,9 @@ All notable changes to this project will be documented in this file.
 - WP11 carried minors — T1-1/T1-3/T2-6/T2-8/T5-9/T5-10
 - Outcome failures dump terminal reasons + error events (#48) (#50)
 - #48 review rows 1-2 — structural reasons render + mode=ro claim truth (#51)
+- Pin the adapter protocol three-way — expected literals, SDK, gateway, corpus
+- Pin the submodule HEAD to the recorded gitlink
+- Pin the submodule HEAD against the committed gitlink, not the index
 
 ### Build
 
