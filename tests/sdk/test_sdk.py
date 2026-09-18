@@ -18,6 +18,26 @@ def sdk_module(name: str):  # type: ignore[no-untyped-def]
     return importlib.import_module(f"benchweave_sdk.{name}")
 
 
+def test_resolves_from_the_pinned_submodule_tree() -> None:
+    """The SDK under test must be the pinned packages/sdk tree (#53).
+
+    The main venv can carry an editable benchweave_sdk install whose path
+    entries point at a standalone checkout; without this assertion a
+    path-order change silently tests that (possibly stale) tree instead of
+    the commit under test. tests/sdk/test_adapter_agreement.py additionally
+    pins the submodule HEAD to the committed gitlink; this guard holds even
+    when that module is absent or deselected.
+    """
+    module = importlib.import_module("benchweave_sdk")
+    source = module.__file__
+    assert source is not None, "benchweave_sdk resolved without a source file"
+    resolved = Path(source).resolve()
+    assert resolved.is_relative_to(SDK), (
+        f"benchweave_sdk resolved from {resolved}, not the pinned submodule tree "
+        f"{SDK}; an editable install or standalone checkout is shadowing it"
+    )
+
+
 def test_context_preserves_dispatch_and_cancellation() -> None:
     testing = sdk_module("testing")
     context = testing.MockContext("op-1", deadline_monotonic=1.0)
