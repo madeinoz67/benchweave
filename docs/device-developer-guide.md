@@ -118,7 +118,7 @@ Use the [descriptor schema](../standards/otdp/0.1.1/otdp-device-descriptor.schem
 
 | Field group | Authoring rule |
 |---|---|
-| Versions and identity | Use OTDP 0.1.0, a versioned descriptor and a namespaced model ID. Keep model identity separate from physical instance identity. |
+| Versions and identity | Use OTDP 0.1.1, a versioned descriptor and a namespaced model ID. Keep model identity separate from physical instance identity. |
 | Integration | Choose declarative or adapter. For an adapter, declare the reviewed factory as `package.module:create_plugin` and API 1.1. |
 | Transport | Supply supported protocol settings and a `connection_key`; the host resolves the actual commissioned connection. |
 | Capabilities and policies | Advertise only implemented verbs, with exactly matching policies. `identify` is mandatory. |
@@ -301,7 +301,7 @@ Firmware: [exact supported versions or explicitly unresolved].
 Connection: [protocol/backend/settings and available evidence].
 Intended operations/channels: [list].
 Evidence: [manual revisions, local files and reference exchanges].
-Target: OTDP 0.1.0, adapter API 0.1.0, architecture 1.5.
+Target: OTDP 0.1.1, adapter API 1.1, architecture 1.5.
 Delivery location and packaging: [repository path; local-only or shared release].
 
 Read docs/device-developer-guide.md and the linked normative contracts.
