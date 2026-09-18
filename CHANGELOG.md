@@ -328,6 +328,7 @@ All notable changes to this project will be documented in this file.
 - Unchanged, clarification and breaking scenarios
 - F5-quiet exercises the idempotency path it names
 - WP11 carried minors — T1-1/T1-3/T2-6/T2-8/T5-9/T5-10
+- Outcome failures dump terminal reasons + error events (#48) (#50)
 
 ### Build
 
