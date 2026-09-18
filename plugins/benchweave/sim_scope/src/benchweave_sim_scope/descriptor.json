@@ -470,7 +470,9 @@
             "items": {
               "properties": {
                 "channel": {"pattern": "^ch[1-4]$"},
-                "probe_ratio": {"enum": [1, 10, 20, 50]}
+                "probe_ratio": {"enum": [1, 10, 20, 50]},
+                "range_v": {"minimum": 0.001, "maximum": 10.0},
+                "offset_v": {"minimum": -10.0, "maximum": 10.0}
               }
             }
           },
