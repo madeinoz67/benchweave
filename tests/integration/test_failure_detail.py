@@ -162,3 +162,39 @@ def test_dump_at_rest_runs_renders_reasons_past_the_raw_cap(tmp_path: Path) -> N
         "the reasons must survive a fat evidence_refs lattice"
     )
     assert "body_outcome: execution_error" in dump, "structural render, not a raw slice"
+
+
+def test_dump_at_rest_runs_dumps_foreign_records_as_raw(tmp_path: Path) -> None:
+    """Review F3 (PR #51): a parseable-but-foreign JSON object is not a
+    run record — it must fall back to the bounded raw slice, not render
+    three None lines that read like a real record."""
+    foreign = json.dumps({"hello": "foreign-record", "nested": {"a": 1}})
+    db = tmp_path / "state.sqlite"
+    connection = sqlite3.connect(db)
+    connection.executescript(
+        """
+        CREATE TABLE runs (
+            run_id TEXT PRIMARY KEY,
+            binding_json TEXT NOT NULL,
+            principal_id TEXT NOT NULL,
+            started_at TEXT NOT NULL,
+            terminal_json TEXT,
+            tombstoned INTEGER NOT NULL DEFAULT 0,
+            tombstoned_at TEXT
+        );
+        INSERT INTO runs (run_id, binding_json, principal_id, started_at, terminal_json)
+        VALUES ('run-foreign', '{}', 'p', '2026-09-18T00:00:00Z', ?);
+        """
+    )
+    connection.execute(
+        "UPDATE runs SET terminal_json = ? WHERE run_id = 'run-foreign'", (foreign,)
+    )
+    connection.commit()
+    connection.close()
+
+    dump = dump_at_rest_runs(db)
+    assert "foreign-record" in dump, "the foreign record's content rides the dump"
+    assert "body_outcome: None" not in dump, (
+        "a foreign dict must not render as a plausible run record"
+    )
+    assert "reasons: (none recorded)" not in dump

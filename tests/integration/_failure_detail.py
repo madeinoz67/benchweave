@@ -148,14 +148,21 @@ def dump_at_rest_runs(db_path: Path) -> str:
             # hits its own recursion limit at write time), but the dump
             # must never raise on odd input, so it falls to the raw slice.
             parsed = None
-        if isinstance(parsed, dict):
+        if isinstance(parsed, dict) and any(
+            key in parsed for key in ("body_outcome", "safe_state", "reasons")
+        ):
             # Structural render: the store writes terminal_json with
             # sort_keys=True, so evidence_refs serializes BEFORE reasons —
             # a raw head-slice of a fat record cuts exactly the reasons.
             # format_run_failure bounds the reasons count, not bytes.
+            # The any() key check keeps foreign dicts out: a parseable
+            # JSON object that carries none of the run-record outcome
+            # keys is not a record, and rendering it would print three
+            # None lines that read like one.
             lines.append(format_run_failure(run_id, parsed))
             continue
-        # Unparseable record (corrupt or foreign bytes): bounded raw slice.
+        # Not a parseable run record (corrupt bytes, or foreign JSON):
+        # bounded raw slice.
         if len(body) > _MAX_TERMINAL_JSON_CHARS:
             body = body[:_MAX_TERMINAL_JSON_CHARS] + "…(truncated)"
         lines.append(f"  {run_id} (unparsed): {body}")
