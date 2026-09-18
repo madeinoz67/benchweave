@@ -194,6 +194,16 @@ def test_identity_standard_key_absent_fails(tmp_path: Path) -> None:
         validate_identity(load_manifest(ROOT), root)
 
 
+def test_identity_unknown_key_fails(tmp_path: Path) -> None:
+    # Fabricated keys (telemetry, otdp-ui, ...) sailed through while the
+    # docstring claimed the block may not declare what the manifest does not
+    # carry; the block is closed-world and a new key is a governance event.
+    root = _identity_root(tmp_path)
+    _set_identity_value(root, "telemetry", "0.1.0")
+    with pytest.raises(StandardsError, match="identity_key_unknown"):
+        validate_identity(load_manifest(ROOT), root)
+
+
 def test_identity_standard_declared_without_manifest_entry_fails(tmp_path: Path) -> None:
     root = _identity_root(tmp_path)
     _set_identity_value(root, "execution", "9.9.9")

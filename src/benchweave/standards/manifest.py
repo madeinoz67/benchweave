@@ -11,6 +11,14 @@ VALID_STATUS = frozenset({"draft", "stable", "deprecated"})
 DESCRIPTOR_SCHEMA_NAME = "otdp-device-descriptor.schema.json"
 # Identity keys that name a standards-manifest id and therefore carry its version
 IDENTITY_STANDARD_KEYS = ("otdp", "registry", "execution", "interface")
+# Closed world: the identity block carries exactly these keys; a new key is a
+# standards-governance event, so the validator refuses it until updated here.
+IDENTITY_ALLOWED_KEYS = frozenset(IDENTITY_STANDARD_KEYS) | {
+    "adapter_api",
+    "architecture",
+    "mcp",
+    "note",
+}
 
 
 class StandardsError(ValueError):
@@ -97,16 +105,20 @@ def load_identity(root: Path) -> dict[str, str]:
 
 
 def validate_identity(manifest: StandardsManifest, root: Path) -> None:
-    """The identity block is derived-checked against its machine authorities.
+    """The identity block is closed-world and derived-checked.
 
-    adapter_api must equal the descriptor schema's api_version const, and the
-    standards-manifest is the authority for the standard version keys: for
-    each manifest id in IDENTITY_STANDARD_KEYS the block must declare exactly
-    that version, and must not declare a standard the manifest does not carry.
-    Declarations are verified, never trusted; architecture, mcp and note are
-    not standards-manifest ids and stay untouched.
+    The block carries exactly IDENTITY_ALLOWED_KEYS; an unknown key is refused
+    (identity_key_unknown) because a new key is a standards-governance event,
+    not an additive edit. adapter_api must equal the descriptor schema's
+    api_version const, and the standards-manifest is the authority for the
+    standard version keys: for each manifest id in IDENTITY_STANDARD_KEYS the
+    block must declare exactly that version, and must not declare a standard
+    the manifest does not carry. Declarations are verified, never trusted.
     """
     identity = load_identity(root)
+    unknown = set(identity) - IDENTITY_ALLOWED_KEYS
+    if unknown:
+        raise StandardsError(f"identity_key_unknown: {', '.join(sorted(unknown))}")
     if "adapter_api" not in identity:
         raise StandardsError("identity_adapter_api_absent: adapter_api")
     relative = _descriptor_relative(manifest)
