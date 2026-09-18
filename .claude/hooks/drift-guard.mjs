@@ -2,7 +2,7 @@
 // drift-guard.mjs — mechanical enforcement for the cross-surface obligations in
 // docs/internal/drift-and-obligations.md.
 //
-// That document lists eleven "if a PR touches X, it must also do Y" obligations and is
+// That document lists twelve "if a PR touches X, it must also do Y" obligations and is
 // honest that most of them have no automated check. This hook covers the ones that are
 // purely path-shaped, so they stop depending on a reviewer remembering. The rest need
 // judgment (or a build) and stay manual — see the doc.
@@ -100,12 +100,31 @@ const RULES = [
     ],
   },
   {
-    // Obligation 8 — systemd templates have a complementary test guard.
+    // Obligation 8 — the adapter protocol mirror moves SDK↔gateway↔corpus together.
+    id: 'adapter-protocol-drift',
+    triggers: (p) =>
+      p === 'src/benchweave/host/otdp_bridge.py' ||
+      p === 'packages/sdk/src/benchweave_sdk/interfaces.py' ||
+      p.endsWith('otdp-device-descriptor.schema.json'),
+    satisfies: (p) =>
+      p === 'tests/sdk/test_adapter_agreement.py' || p === 'standards/corpus-manifest.json',
+    message: [
+      '**[Drift 8] The adapter protocol surface was touched — three parties move together.**',
+      '',
+      'The gateway hand-mirrors the SDK protocol (`otdp_bridge` ↔ `benchweave_sdk.interfaces`)',
+      'and the adapter API version is declared in the corpus identity block with its authority',
+      'in the descriptor schema `$defs.adapter.api_version` const. A change to any party needs',
+      'the agreement test expectations and `identity.adapter_api` reviewed in the same change;',
+      '`make check-sdk-standards` and `uv run pytest tests/sdk` must stay green.',
+    ],
+  },
+  {
+    // Obligation 9 — systemd templates have a complementary test guard.
     id: 'systemd-template-drift',
     triggers: (p) => p.startsWith('deploy/systemd/'),
     satisfies: (p) => p.startsWith('tests/cli/'),
     message: [
-      '**[Drift 8] A systemd template was edited — the complementary test guard matters.**',
+      '**[Drift 9] A systemd template was edited — the complementary test guard matters.**',
       '',
       'The CI `systemd` job renders and `systemd-analyze verify`s the template, but the',
       '`{{`-absence assertion in `tests/cli/test_serve.py` catches placeholder misses the',
@@ -114,12 +133,12 @@ const RULES = [
     ],
   },
   {
-    // Obligation 9 — a dependency change means the lock moves in the same commit.
+    // Obligation 10 — a dependency change means the lock moves in the same commit.
     id: 'dependency-lock-drift',
     triggers: (p) => p === 'pyproject.toml',
     satisfies: (p) => p === 'uv.lock',
     message: [
-      '**[Drift 9] `pyproject.toml` was edited — does `uv.lock` move in the same commit?**',
+      '**[Drift 10] `pyproject.toml` was edited — does `uv.lock` move in the same commit?**',
       '',
       'A dependency add/remove/re-pin travels with its lock, and with CI when it changes',
       'what CI must install or materialise. Purely local config (tool settings, paths) can',

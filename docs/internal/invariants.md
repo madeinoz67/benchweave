@@ -142,6 +142,16 @@ rather than rewriting the history — that is how this file earns trust.
   superseded-version rows — `src/benchweave/standards/repin.py`, pinned by
   `tests/standards/test_repin.py`. *Without it, the next contributor's fastest path is
   another hand-splice, and the frozen-row guarantee lives only in prose.*
+- **[CON-8]** The corpus identity block's `adapter_api` is derived-checked against the
+  active OTDP descriptor schema's `$defs.adapter.properties.api_version` const at every
+  export/check; absence fails (`identity_adapter_api_absent`), and a disagreement or a
+  missing const fails (`identity_adapter_api_mismatch`) —
+  `src/benchweave/standards/manifest.py` `validate_identity`, wired once in
+  `export.py:export_bundle` after `validate_manifest`. The schema const is the single
+  authority; the identity block is a declaration that is verified, never trusted. *Without
+  it the identity block stays decorative and the next reset sweep re-creates
+  prose-vs-machine version drift main-side (issue #44: three doc surfaces carried a stale
+  adapter API version with every gate green).*
 
 ## Registry & plugin invariants
 
@@ -159,6 +169,19 @@ rather than rewriting the history — that is how this file earns trust.
   pinned by `tests/contract/test_registry_admission.py`. *A downloaded package is data
   until commissioned locally; an install path that grants authority is the whole security
   model inverted.*
+- **[REG-4]** The gateway's OTDP adapter mirror is pinned three-way in every CI run —
+  expected literals ↔ the pinned SDK submodule's protocol
+  (`packages/sdk/src/benchweave_sdk/interfaces.py`) ↔ gateway code
+  (`src/benchweave/host/otdp_bridge.py`: `_Context`, the AST-extracted `self._adapter`
+  call set, the enforced envelope key sets) ↔ the active corpus schema (`$defs`
+  envelopes and the four vocabularies in `src/benchweave/host/types.py`) — by
+  `tests/sdk/test_adapter_agreement.py`, whose documented gaps (next_event, the
+  HostServices transport/evidence members, CaptureServices, dataset_id, the error
+  `^x-` extension-key delta) carry their own presence assertions so silent narrowing
+  becomes a visible diff. Structure only, not semantics: names, arity,
+  keyword-only-ness, coroutine-ness, key/enum sets. *The hand-mirror is otherwise
+  checked only at release smoke (the installed distribution), so protocol-shape drift
+  between the two repos is invisible in CI until this pin.*
 
 ---
 
