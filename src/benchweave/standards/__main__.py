@@ -71,7 +71,12 @@ def main() -> int:
     if arguments.command == "versions":
         from .check import version_lines
 
-        for line in version_lines(root):
+        try:
+            lines = version_lines(root)
+        except ValueError as exc:
+            print(f"standards versions error: {exc}", file=sys.stderr)
+            return 1
+        for line in lines:
             print(line)
         return 0
     if arguments.command == "repin":
