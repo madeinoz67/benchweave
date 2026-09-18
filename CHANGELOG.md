@@ -164,6 +164,7 @@ All notable changes to this project will be documented in this file.
 - Commit the #44 design record
 - Complete the adapter-protocol obligation touch-set and hook triggers
 - Correct four remaining baseline lines to the machine versions
+- Sweep remaining stale version claims to the machine truth (#54)
 
 ### Features
 
