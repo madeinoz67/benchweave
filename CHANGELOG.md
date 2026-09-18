@@ -84,6 +84,7 @@ All notable changes to this project will be documented in this file.
 - D4 — every event kind emits the closed document-ref evidence
 - Review-fix wave — poison-emit guard, fallback log, hygiene
 - Pin the symmetric stray/stamp gates across all three check lanes (#9)
+- Otdp 0.1.1 — byte-errata of 0.1.0 (#45) (#47)
 
 ### Documentation
 
