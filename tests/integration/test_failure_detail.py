@@ -102,7 +102,8 @@ def test_dump_at_rest_runs_reads_terminal_json(tmp_path: Path) -> None:
 
 def test_dump_at_rest_runs_is_read_only(tmp_path: Path) -> None:
     """The dump never writes: a missing store reports itself truthfully,
-    and an existing store is opened mode=ro (no -wal/-shm side files)."""
+    and an existing store is opened mode=ro (the database and its WAL log
+    are never written; the -shm wal-index may be rebuilt)."""
     missing = dump_at_rest_runs(tmp_path / "absent.sqlite")
     assert "absent.sqlite" in missing
 

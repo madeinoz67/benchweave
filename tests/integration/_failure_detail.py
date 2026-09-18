@@ -142,7 +142,11 @@ def dump_at_rest_runs(db_path: Path) -> str:
         body = str(terminal_json)
         try:
             parsed: Any = json.loads(body)
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, RecursionError):
+            # RecursionError: a pathologically nested foreign document —
+            # store-written records cannot reach that depth (json.dumps
+            # hits its own recursion limit at write time), but the dump
+            # must never raise on odd input, so it falls to the raw slice.
             parsed = None
         if isinstance(parsed, dict):
             # Structural render: the store writes terminal_json with
