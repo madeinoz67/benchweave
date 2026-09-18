@@ -1,0 +1,118 @@
+{
+  "plugin": "sim_scope",
+  "meta": {
+    "clock": "injected-monotonic",
+    "note": "Synthetic action exchanges; replayed semantically by tests/contract/test_sim_scope_plugin.py (this plugin is not part of the fixture lattice)"
+  },
+  "vectors": [
+    {
+      "name": "identify_returns_device_identity",
+      "setup": [],
+      "request": {"verb": "identify", "arguments": {}},
+      "expect": {"status": "ok", "data_manufacturer": "benchweave-sim"}
+    },
+    {
+      "name": "read_identity_model",
+      "setup": [],
+      "request": {"verb": "read", "arguments": {"parameter": "identity_model"}},
+      "expect": {"status": "ok", "data_value": "sim-scope-1"}
+    },
+    {
+      "name": "write_averaging_in_envelope",
+      "setup": [],
+      "request": {"verb": "write", "arguments": {"parameter": "averaging_count", "value": 8}},
+      "expect": {"status": "ok"}
+    },
+    {
+      "name": "write_averaging_out_of_envelope",
+      "setup": [],
+      "request": {"verb": "write", "arguments": {"parameter": "averaging_count", "value": 0}},
+      "expect": {"status": "error", "error_code": "INVALID_ARGUMENT", "dispatch_state": "not_dispatched"}
+    },
+    {
+      "name": "write_probe_ratio_out_of_envelope",
+      "setup": [],
+      "request": {"verb": "write", "arguments": {"parameter": "ch1_probe_ratio", "value": 3}},
+      "expect": {"status": "error", "error_code": "INVALID_ARGUMENT", "dispatch_state": "not_dispatched"}
+    },
+    {
+      "name": "configure_applies_per_channel_state",
+      "setup": [],
+      "request": {
+        "verb": "invoke",
+        "arguments": {
+          "action_id": "otdp.oscilloscope.configure/1.0.0",
+          "input": {
+            "configuration_id": "cfg-1",
+            "channels": [
+              {"channel": "ch1", "coupling": "dc", "range_v": 1.0, "offset_v": 0.05, "probe_ratio": 10},
+              {"channel": "ch3", "coupling": "ac", "range_v": 1.0, "offset_v": -0.05, "probe_ratio": 10}
+            ],
+            "sample_rate_hz": 1000.0,
+            "sample_count": 1024,
+            "pretrigger_fraction": 0.25,
+            "trigger": {"kind": "edge", "source_channel": "ch1", "slope": "rising", "level_v": 0.5}
+          }
+        }
+      },
+      "expect": {"status": "ok", "result_configuration_id": "cfg-1"}
+    },
+    {
+      "name": "configure_rejects_unknown_channel",
+      "setup": [],
+      "request": {
+        "verb": "invoke",
+        "arguments": {
+          "action_id": "otdp.oscilloscope.configure/1.0.0",
+          "input": {
+            "configuration_id": "cfg-1",
+            "channels": [
+              {"channel": "ch9", "coupling": "dc", "range_v": 1.0, "offset_v": 0.0, "probe_ratio": 1}
+            ],
+            "sample_rate_hz": 1000.0,
+            "sample_count": 1024,
+            "pretrigger_fraction": 0.0,
+            "trigger": {"kind": "immediate"}
+          }
+        }
+      },
+      "expect": {"status": "error", "error_code": "INVALID_ARGUMENT", "dispatch_state": "not_dispatched"}
+    },
+    {
+      "name": "arm_requires_current_configuration_token",
+      "setup": ["configure_applies_per_channel_state"],
+      "request": {
+        "verb": "invoke",
+        "arguments": {
+          "action_id": "otdp.oscilloscope.arm/1.0.0",
+          "input": {"configuration_id": "preset-low-noise-pair", "acquisition_id": "acq-1", "max_duration_ms": 1000}
+        }
+      },
+      "expect": {"status": "error", "error_code": "DEVICE_REJECTED", "dispatch_state": "not_dispatched"}
+    },
+    {
+      "name": "fetch_covers_configured_channels_only",
+      "setup": ["configure_applies_per_channel_state", "arm_with_current_token"],
+      "request": {
+        "verb": "invoke",
+        "arguments": {
+          "action_id": "otdp.oscilloscope.fetch/1.0.0",
+          "input": {"acquisition_id": "acq-1", "max_bytes": 1048576, "allow_partial": false}
+        }
+      },
+      "expect": {"status": "ok", "variable_channel_ids": [["ch1"], ["ch3"]]}
+    },
+    {
+      "name": "abort_transitions_the_acquisition",
+      "setup": ["configure_applies_per_channel_state", "arm_with_current_token"],
+      "request": {
+        "verb": "invoke",
+        "arguments": {
+          "action_id": "otdp.oscilloscope.abort/1.0.0",
+          "input": {"acquisition_id": "acq-1"}
+        }
+      },
+      "expect": {"status": "ok", "result_state": "aborted"}
+    }
+  ]
+}
