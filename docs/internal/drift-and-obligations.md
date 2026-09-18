@@ -42,6 +42,8 @@ and remain the reviewer's job.
 6. **Vendored contract bytes** 🪝 → `standards/corpus-manifest.json` byte-pins move with any
    vendored change, and `make check-sdk-standards` (CI `gates` job) must stay green: it
    refuses drift between the main-repo standards, the SDK lock and the vendored tree.
+   Pins move via `uv run python -m benchweave.standards repin` (the loop is
+   edit → repin → export); hand-splicing digests is not a path.
 
 7. **The `packages/sdk` pointer** → the submodule commit must **exist and be pushed** to
    the SDK remote before the pointer lands here — CI checks out submodules by SHA, so an

@@ -94,7 +94,9 @@ const RULES = [
       '',
       '`standards/corpus-manifest.json` byte-pins move with any vendored change, and',
       '`make check-sdk-standards` refuses drift between the main-repo standards, the SDK lock',
-      'and the vendored tree. Re-export and re-sync rather than hand-editing pins.',
+      'and the vendored tree. Run `uv run python -m benchweave.standards repin` to recompute',
+      'the pins (edit → repin → export), then `make sync-sdk-standards` to re-sync — never',
+      'hand-splice digests.',
     ],
   },
   {
