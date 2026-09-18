@@ -108,7 +108,7 @@ An image or IQ dataset representation does not establish camera or RF-receiver c
 
 Use the [independent device project layout](#repository-layout-for-device-plugins). Keep descriptors and their referenced vectors in the Python package so the wheel contains them; keep project tests, pinned conformance inputs and development documentation at the model project root. Include firmware for custom devices in that same project, with a separate firmware build rather than an automatic Python installation hook.
 
-The integration contract requires a package README, descriptor and referenced evidence; executable integrations also need their Python package and tests. The simulator projects now live at `plugins/benchweave/sim_psu/` and `plugins/benchweave/sim_controller/`; `benchweave` denotes their maintainer, not a physical manufacturer. Each owns its `src/benchweave_sim_*/` package, execution descriptor projection, replay vectors, tests and `pyproject.toml`. These legacy test plugins are an explicit exception to the external-plugin boundary: they still require the private synchronous API in `benchweave==0.1.0`. Their wheels can be tested outside this checkout with a supplied gateway wheel, but they are not yet independent of core at runtime or qualified API 1.1 adapters. The current public bridge lacks their profile actions. Preserve that distinction until the bridge and simulator API migration are reviewed together. Core execution descriptors remain integration snapshots checked against the project-owned projections. The `firmware/esp32_reference/` placeholder was retired 2026-09-16; maintained firmware lives in each device plugin's own project (see below). Local development packaging and cache loading are described in §10; a source layout alone does not establish runtime compatibility.
+The integration contract requires a package README, descriptor and referenced evidence; executable integrations also need their Python package and tests. The simulator projects now live at `plugins/benchweave/sim_psu/`, `plugins/benchweave/sim_controller/` and `plugins/benchweave/sim_scope/`; `benchweave` denotes their maintainer, not a physical manufacturer. Each owns its `src/benchweave_sim_*/` package, execution descriptor projection, replay vectors, tests and `pyproject.toml`. These legacy test plugins are an explicit exception to the external-plugin boundary: they still require the private synchronous API in `benchweave==0.1.0`. Their wheels can be tested outside this checkout with a supplied gateway wheel, but they are not yet independent of core at runtime or qualified API 1.1 adapters. The current public bridge lacks their profile actions. Preserve that distinction until the bridge and simulator API migration are reviewed together. Core execution descriptors remain integration snapshots checked against the project-owned projections. The `firmware/esp32_reference/` placeholder was retired 2026-09-16; maintained firmware lives in each device plugin's own project (see below). Local development packaging and cache loading are described in §10; a source layout alone does not establish runtime compatibility.
 
 Use uv for Python dependencies. Retain its lockfile and the exact tested runtime/dependency evidence. The registry's `package-lock.schema.json` describes a different lock: registry package identities, versions and manifest digests. An implementation release needs both its executable dependency closure and its registry dependency closure; neither substitutes for the other.
 
@@ -129,6 +129,53 @@ Use the [descriptor schema](../standards/otdp/0.1.1/otdp-device-descriptor.schem
 | Provenance | Record real source revisions and vectors. Vector paths resolve relative to the descriptor and must remain inside the package. |
 
 Validate all applicable **S01–S18**, **C01–C12** and **M01–M14** obligations from the linked specifications. Schema validity covers only part of admission.
+
+### Named settings as presets
+
+`plugins/benchweave/sim_scope/` is the reference instance for shipping named,
+redistributable device setups alongside a plugin: the first in-tree
+configuration binding, settings schema and presets. Its layout:
+
+```text
+src/benchweave_sim_scope/
+  descriptor.json                                  # full OTDP 0.1.1 form
+  presentation.json                                # envelope: resource_root ui, manifest pinned by sha256
+  binding-catalogue.json                           # one configuration target
+  ui/manifest.json                                 # sha256-pinned assets, binding, configuration page
+  ui/settings/oscilloscope-configure.schema.json   # corpus action input schema, byte copy
+  ui/presets/fast-survey.json                      # complete settings documents
+  ui/presets/low-noise-pair.json
+```
+
+Authoring rules the instance demonstrates:
+
+- **Labels and units live in the descriptor and only there.** Every channel
+  carries a human `label`; every numeric parameter carries its `unit`
+  (`"1"` for dimensionless). Preset settings and UI resources never repeat or
+  override them — a preset is a complete action-input document, nothing else.
+- **The settings schema is a byte copy of the corpus action input schema** for
+  the bound configure action, carrying the corpus `$id`, because the binding
+  loop checks asset identity against the corpus. Keep a parsed-equality test
+  against the vendored catalog so the copy cannot drift silently.
+- **Preset `settings` validate against both the settings schema and the
+  canonical action schema, plus the descriptor action's `input_constraints`.**
+  The action schemas are closed (`additionalProperties: false`), so a setting
+  with no action-input home — model averaging is the live example — is
+  structurally unrepresentable in a preset; it belongs on a writable
+  `semantic: configuration` parameter, not in preset settings.
+- **Validate with both SDK lanes**: `benchweave-sdk check-preset` per preset
+  and `benchweave-sdk check-ui` over the package. Only the latter performs the
+  both-schemas clause.
+- **A preset's `configuration_id` is a placeholder.** The runtime treats that
+  key as gateway-issued; any future apply path must substitute the issued
+  token, never replay the literal. Selecting a preset performs no I/O and
+  confers no authority; applying settings remains a separately approved
+  procedure.
+
+`sim_scope` is a presentation and presets vehicle: its full-form descriptor
+passes `benchweave-sdk check` but is not admissible by the runtime
+execution-contract path, which expects the minimal descriptor dialect the
+legacy simulators use.
 
 ## 5. Implement the adapter lifecycle
 
