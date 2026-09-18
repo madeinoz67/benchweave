@@ -148,6 +148,7 @@ All notable changes to this project will be documented in this file.
 - Report via private advisory, not personal email
 - Add permanent Discord invite to README, SUPPORT and site (#33)
 - D4 + D14-details CLOSED by the interface-errata slice (#16)
+- Review rubric, hard invariants and drift obligations (#41)
 
 ### Features
 
