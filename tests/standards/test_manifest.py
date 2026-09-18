@@ -44,6 +44,21 @@ def test_validation_passes_on_the_canonical_corpus() -> None:
     validate_manifest(load_manifest(ROOT), ROOT)
 
 
+def test_load_manifest_rejects_duplicate_standard_ids(tmp_path: Path) -> None:
+    # Authority selection was list-order first-match and duplicate-tolerant: a
+    # second otdp entry (even a deprecated one) made every downstream
+    # derivation consult whichever copy came first, regardless of status.
+    document = json.loads((ROOT / "standards/standards-manifest.json").read_bytes())
+    entry = next(e for e in document["standards"] if e["id"] == "otdp")
+    superseded = dict(entry)
+    superseded["status"] = "deprecated"
+    document["standards"] = [superseded, {**entry, "version": "0.2.0"}]
+    (tmp_path / "standards").mkdir()
+    (tmp_path / "standards/standards-manifest.json").write_text(json.dumps(document))
+    with pytest.raises(StandardsError, match="standards_entry_duplicate"):
+        load_manifest(tmp_path)
+
+
 def test_vendored_schema_titles_match_standard_version() -> None:
     # A human-readable title may name its version (the 2026-09-16 reset line)
     # or omit it, but naming a different one is reset residue: the corpus

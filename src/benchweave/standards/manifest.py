@@ -38,6 +38,7 @@ def load_manifest(root: Path) -> StandardsManifest:
     if document.get("manifest_version") != 1:
         raise StandardsError("standards_manifest_version_unsupported")
     entries: list[StandardEntry] = []
+    seen: set[str] = set()
     for raw in document["standards"]:
         entry = StandardEntry(
             id=str(raw["id"]),
@@ -49,6 +50,11 @@ def load_manifest(root: Path) -> StandardsManifest:
         )
         if entry.status not in VALID_STATUS or not entry.normative:
             raise StandardsError(f"standards_entry_invalid: {entry.id}")
+        if entry.id in seen:
+            # Two entries for one id make every id-keyed derivation (identity,
+            # descriptor location) a list-order first-match — refuse at load.
+            raise StandardsError(f"standards_entry_duplicate: {entry.id}")
+        seen.add(entry.id)
         entries.append(entry)
     return StandardsManifest(tuple(entries))
 
