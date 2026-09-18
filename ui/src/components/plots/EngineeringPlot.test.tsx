@@ -26,6 +26,7 @@ function series() {
     symbol: string;
     lineStyle: { color: string; type: string };
     itemStyle: { color: string };
+    markLine?: { lineStyle: { color: string } };
   }>;
 }
 
@@ -196,6 +197,6 @@ describe("EngineeringPlot", () => {
     const carrier = series().find((entry) => entry.markLine !== undefined);
     expect(carrier).toBeDefined();
     expect(carrier!.id).toBe("a");
-    expect(carrier!.markLine.lineStyle.color).toBe("#a96608");
+    expect(carrier!.markLine!.lineStyle.color).toBe("#a96608");
   });
 });

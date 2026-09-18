@@ -100,7 +100,7 @@ def specimen() -> Specimen:
     )
 
 
-def validate(specimen: Specimen) -> ValidationReport:
+def validate(specimen: Specimen, *, features: frozenset[str] = frozenset()) -> ValidationReport:
     descriptor, documents, target, manifest, assets = specimen
     descriptor_raw = encode(descriptor)
     manifest["descriptor_sha256"] = digest(descriptor_raw)
@@ -128,7 +128,7 @@ def validate(specimen: Specimen) -> ValidationReport:
         resources=resources,
         binding_catalogue=catalogue,
         schema_documents=documents,
-        supported_features=frozenset(),
+        supported_features=features,
         supported_panels=frozenset(),
         firmware="1.0",
     )
@@ -203,17 +203,29 @@ def test_dataset_requires_descriptor_measurement_contract(specimen: Specimen) ->
 
 # --- channel_hints (plugin-ui 0.1.1) on a multi-y dataset specimen ---
 
+FEATURE_CONDITIONS: tuple[frozenset[str], ...] = (
+    frozenset(),
+    frozenset({"legend/1.0.0"}),
+)
+
 
 def multi_channel_specimen(specimen: Specimen, y_count: int) -> Specimen:
     """Dual-and-more-channel waveform: the only target kind that can plot several
     y variables at once (observation targets carry exactly one value variable)."""
     descriptor = load("examples/class-oscilloscope.json")
-    variables = [
-        {"id": "time", "type": "number", "shape": "vector", "unit": "s", "axis_role": "x"}
-    ] + [
-        {"id": f"trace{index:02d}", "type": "number", "shape": "vector", "unit": "V", "axis_role": "y"}
+    y_variables = [
+        {
+            "id": f"trace{index:02d}",
+            "type": "number",
+            "shape": "vector",
+            "unit": "V",
+            "axis_role": "y",
+        }
         for index in range(1, y_count + 1)
     ]
+    variables = [
+        {"id": "time", "type": "number", "shape": "vector", "unit": "s", "axis_role": "x"}
+    ] + y_variables
     target = {
         "id": "waveform",
         "kind": "dataset",
@@ -251,15 +263,34 @@ def test_multi_channel_hinted_specimen_pair_is_equivalent(specimen: Specimen) ->
     """Metric 1 on the multi-y case hints exist for: hinted vs unhinted twin,
     both feature conditions, identical finding-free reports."""
     scope = multi_channel_specimen(specimen, y_count=2)
-    baseline = validate(scope)
-    assert baseline.valid, baseline.findings
+    baseline = {features: validate(scope, features=features) for features in FEATURE_CONDITIONS}
+    assert all(report.valid for report in baseline.values()), baseline
     scope[3]["pages"][0]["plots"][0]["channel_hints"] = [
         {"variable_id": "trace02", "color_role": "accent"},
         {"variable_id": "trace01", "visible": False},
     ]
-    report = validate(scope)
-    assert report.valid, report.findings
-    assert report.findings == baseline.findings
+    for features, unhinted in baseline.items():
+        report = validate(scope, features=features)
+        assert report.valid, report.findings
+        assert report.findings == unhinted.findings
+
+
+@pytest.mark.parametrize("with_plots", [False, True], ids=["configuration", "waveform"])
+def test_specimen_hint_pairs_are_equivalent(specimen: Specimen, with_plots: bool) -> None:
+    """Metric 1 on the remaining corpus: the configuration specimen (no plots,
+    so the pair is byte-identical — hints have nowhere to attach) and the
+    waveform specimen (single-y hint), each at both feature conditions."""
+    scope = scope_specimen(specimen) if with_plots else specimen
+    baseline = {features: validate(scope, features=features) for features in FEATURE_CONDITIONS}
+    assert all(report.valid for report in baseline.values()), baseline
+    if with_plots:
+        scope[3]["pages"][0]["plots"][0]["channel_hints"] = [
+            {"variable_id": "signal", "color_role": "muted"}
+        ]
+    for features, unhinted in baseline.items():
+        report = validate(scope, features=features)
+        assert report.valid, report.findings
+        assert report.findings == unhinted.findings
 
 
 def test_seventeenth_hint_on_sixteen_channel_plot_is_rejected(specimen: Specimen) -> None:
@@ -270,7 +301,9 @@ def test_seventeenth_hint_on_sixteen_channel_plot_is_rejected(specimen: Specimen
     ``capability_mismatch`` independently of any hint.
     """
     scope = multi_channel_specimen(specimen, y_count=16)
-    hints = [{"variable_id": f"trace{index:02d}", "color_role": "muted"} for index in range(1, 17)]
+    hints: list[dict[str, str | bool]] = [
+        {"variable_id": f"trace{index:02d}", "color_role": "muted"} for index in range(1, 17)
+    ]
     hints.append({"variable_id": "time", "visible": False})
     scope[3]["pages"][0]["plots"][0]["channel_hints"] = hints
     report = validate(scope)

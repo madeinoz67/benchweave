@@ -47,6 +47,19 @@
   border-top-style: dashed;
 }
 
+/* A channel hidden by presentation preference stays disclosed — struck
+   through, dimmed, never silently absent from the legend. */
+.bw-plot__legend li[data-hidden="true"] {
+  color: var(--bw-text-muted);
+  opacity: 0.55;
+  text-decoration: line-through;
+}
+
+.bw-plot__legend li[data-hidden="true"]::before {
+  border-color: var(--bw-text-muted);
+  opacity: 0.55;
+}
+
 .bw-visually-hidden {
   position: absolute;
   width: 1px;
