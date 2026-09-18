@@ -30,9 +30,16 @@ The simulator implements identify, scalar reads/writes and all five
 `otdp.oscilloscope/1.0.0` profile actions over INVOKE (configure, arm,
 trigger, fetch, abort). Its clock is injected. Channel enablement is
 behaviorally real: `fetch` returns samples for exactly the channels the last
-`configure` named. Configuration token discipline matches sim_psu — `arm`
-requires the stored `configuration_id`, so replaying a preset's literal
-placeholder token into a future apply path fails visibly.
+`configure` named. The `arm` configuration-token check catches token
+MISMATCH — a half-substituted apply path that configures under one
+`configuration_id` and arms under another is refused. It does NOT catch
+consistent replay: configure and arm under the same literal preset
+`configuration_id` pass clean (pinned by
+`test_arm_accepts_consistent_replay_documenting_the_trap`). Defense against
+consistent replay belongs to the apply path, which must substitute the
+gateway-issued token (CTL-7 marks `configuration_id` issued) — a mechanism
+that cannot attach to this full-form descriptor, whose actions declare no
+issued keys.
 
 Unlike sim_psu/sim_controller, this descriptor is full OTDP 0.1.1 form and
 passes `benchweave-sdk check`. That also means it is NOT admissible by the

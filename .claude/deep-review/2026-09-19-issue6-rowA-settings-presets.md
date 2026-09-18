@@ -141,7 +141,7 @@ to match).
   the A02 posture that a settings bundle implies no energisation):
   - per channel: `chN_probe_ratio` (float, dimensionless), `chN_offset_v`
     (float, unit `V`, range `[-10, 10]`), `chN_range_v` (float, unit `V`,
-    range `]0, 10]`), `chN_coupling` (enum `ac|dc|ground`);
+    range `[0.001, 10]` — corrected in the fix wave; as first written this said `]0, 10]`, but the shipped descriptor declares the inclusive 1 mV floor), `chN_coupling` (enum `ac|dc|ground`);
   - `averaging_count` (int, range `[1, 64]`) — the one family with no
     action-input home;
   - `identity_model` (ro, string) for identify/read smoke coverage.
@@ -234,9 +234,16 @@ One wrinkle to carry forward explicitly: the action schema requires a
 future apply time the gateway-issued token must replace it (the runtime marks
 `configuration_id` issued — CTL-7, `control/semantics.py:140-160`; sim_psu's
 measure/output enforce the stored token, `sim_psu plugin.py:389-395, 408-414`).
-Replaying a preset's literal `configuration_id` into an invoke is a trap the
-apply-path design must not fall into; Row A ships documents only and defers
-that path (§5).
+[Corrected in the fix wave, 2026-09-19 — the original sentence claimed
+replay "is a trap" the sim exposes; the executed repro showed otherwise:]
+the sim's token checks catch only token MISMATCH (a half-substituted apply:
+configure under one token, arm under another). CONSISTENT replay — configure
+and arm under the same literal preset `configuration_id` — passes clean, and
+is pinned as passing by `test_arm_accepts_consistent_replay_documenting_the_
+trap`. Defense against consistent replay is the apply path's job: substitute
+the gateway-issued token (CTL-7 issued-key marking — which attaches to the
+runtime execution-contract dialect and cannot apply to this full-form
+descriptor). Row A ships documents only and defers that path (§5).
 
 ## 3. Precedent (principle 9)
 
@@ -424,11 +431,12 @@ against hand-broken copies (mutation matrix), then the real artifacts land.
    residual: the pin runs in the same CI job as the standards sync, so both
    move together or the job is red — the drift cannot land silently.
 3. **Preset `configuration_id` placeholder replay.** A future apply path that
-   replays the literal id collides with token discipline (sim_psu rejects
-   mismatched tokens; CTL-7 marks the key issued). *Mitigation:* stated in
-   §2.4 and deferred with the apply path; the dispatch tests pin that
-   `measure`/`output`-style token checks exist in the sim, so a replaying
-   apply path fails visibly when that design arrives.
+   replays the literal id collides with gateway token discipline (CTL-7 marks
+   the key issued at the runtime layer). *Mitigation, corrected in the fix
+   wave:* the sim's token checks refuse only MISMATCHED tokens (the
+   half-substituted apply); consistent replay passes and is pinned as
+   passing, so the sim is explicitly NOT the replay defense — the apply path
+   must substitute the gateway-issued token itself.
 4. **Reading-2 mismatch with maintainer intent.** If the maintainer actually
    wanted averaging inside preset settings, Row A as designed delivers less
    than expected. *Falsifier:* §1's table — the closed-schema evidence is

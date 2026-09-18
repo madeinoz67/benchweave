@@ -3,8 +3,9 @@
 Issue #6 row A: sim_scope is the first in-tree plugin whose named setups ship
 as ui/presets documents. This file pins the plugin side of that claim — the
 five otdp.oscilloscope profile actions over INVOKE, per-channel settings
-applied through the parameter write path, and the configuration token
-discipline a future apply path must not replay past (design §2.4).
+applied through the parameter write path, and the arm configuration-token
+MISMATCH check (consistent replay is out of the sim's reach — design §2.4 as
+corrected in the fix wave).
 
 Modeled on tests/contract/test_sim_plugins.py: explicit module load by path,
 injected Clock, NullServices. Not in the shared CONFORMING_PLUGINS suite (the
@@ -406,11 +407,13 @@ def test_fetch_requires_armed_acquisition(scope: Any) -> None:
 
 
 def test_arm_requires_current_configuration_token(scope: Any) -> None:
-    """Token discipline (design §2.4): a replayed stale configuration_id is refused.
+    """Token MISMATCH is refused: arm requires the stored configuration_id.
 
-    sim_psu's measure/output enforce the stored token; sim_scope's arm does the
-    same, so a future apply path that replays a preset's literal
-    configuration_id fails visibly here instead of silently reconfiguring.
+    This is the half-substituted-apply shape — one token to configure, another
+    to arm. It does not catch consistent replay (see
+    test_arm_accepts_consistent_replay_documenting_the_trap); that defense is
+    the apply path's job, which must substitute the gateway-issued token
+    rather than replay the preset's literal one.
     """
     scope.dispatch(_configure(LOW_NOISE_PAIR, configuration_id="cfg-1"), deadline_ns=10**12)
     stale = _arm(scope, configuration_id="preset-low-noise-pair")
@@ -614,3 +617,33 @@ def test_fetch_dataset_matches_otdp_schema(scope: Any) -> None:
         .read_text(encoding="utf-8")
     )
     Draft202012Validator(schema).validate(result.data["result"])
+
+
+def test_arm_accepts_consistent_replay_documenting_the_trap(scope: Any) -> None:
+    """CONSISTENT replay passes — the trap a future apply path must not rely on.
+
+    arm checks equality against the LAST configure's token only, so
+    configure("X") then arm("X") succeeds even when X is a preset's literal
+    placeholder rather than a gateway-issued token. The sim cannot defend
+    against consistent replay: CTL-7's issued-key marking attaches to the
+    runtime execution-contract descriptor dialect, not this full-form
+    descriptor. The apply path must substitute its own issued token; if this
+    test ever fails, arm grew a check that belongs upstream of the plugin.
+    """
+    configured = scope.dispatch(
+        _configure(LOW_NOISE_PAIR, configuration_id="preset-low-noise-pair"),
+        deadline_ns=10**12,
+    )
+    assert configured.status.value == "ok"
+    replayed = scope.dispatch(
+        _invoke(
+            "otdp.oscilloscope.arm/1.0.0",
+            {
+                "configuration_id": "preset-low-noise-pair",
+                "acquisition_id": "acq-replay",
+                "max_duration_ms": 1000,
+            },
+        ),
+        deadline_ns=10**12,
+    )
+    assert replayed.status.value == "ok"
