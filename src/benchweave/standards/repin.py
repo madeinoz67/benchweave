@@ -6,7 +6,11 @@ hand-authored under governance review (``standards/GOVERNANCE.md``), because a
 machine cannot know reset-import vs supersession-copy provenance.
 Superseded-version rows are verified against their pinned digests and never
 rewritten, so the command cannot launder an in-place edit of a retained
-version into a clean manifest. Every refusal fires before any byte is written.
+version into a clean manifest. Every structural refusal fires before any
+byte is written; the one after-write exception is the validate_manifest
+self-check, which can raise on a missing non-standards normative parity
+path (unchecked pre-write) after the manifest is already correctly
+written — the write is not lost, and the next run is a no-op.
 """
 
 from __future__ import annotations

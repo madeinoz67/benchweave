@@ -75,12 +75,16 @@ def _flip(root: Path, row_path: str) -> None:
     target.write_bytes(target.read_bytes() + b"\n")
 
 
-def test_repin_round_trip_is_byte_identical() -> None:
-    before = _manifest_bytes(ROOT)
-    mtime = (ROOT / CORPUS_MANIFEST).stat().st_mtime_ns
-    assert _repin()(ROOT) == []
-    assert _manifest_bytes(ROOT) == before
-    assert (ROOT / CORPUS_MANIFEST).stat().st_mtime_ns == mtime
+def test_repin_round_trip_is_byte_identical(tmp_path: Path) -> None:
+    # Adversary F1: anchored on a tmp copy, never the repo tree — a no-op
+    # assertion against a drifted real ROOT is a writer (it repins the
+    # working tree and masks its own failure on the rerun).
+    root = _repo(tmp_path)
+    before = _manifest_bytes(root)
+    mtime = (root / CORPUS_MANIFEST).stat().st_mtime_ns
+    assert _repin()(root) == []
+    assert _manifest_bytes(root) == before
+    assert (root / CORPUS_MANIFEST).stat().st_mtime_ns == mtime
 
 
 def test_repin_updates_exactly_the_edited_row(tmp_path: Path) -> None:
@@ -202,16 +206,35 @@ def test_repin_refuses_duplicate_key_manifest(tmp_path: Path) -> None:
     _refused_without_write(root, _manifest_bytes(root), "corpus_manifest_invalid")
 
 
-def test_cli_repin_runs() -> None:
+def test_cli_repin_runs(tmp_path: Path) -> None:
+    # Adversary F1: the CLI smoke runs against a tmp copy — cwd IS the
+    # command's root, so a cwd of the repo tree would repin it on a
+    # drifted checkout.
+    root = _repo(tmp_path)
     result = subprocess.run(
         [sys.executable, "-m", "benchweave.standards", "repin"],
-        cwd=ROOT,
+        cwd=root,
         capture_output=True,
         text=True,
         check=False,
     )
     assert result.returncode == 0, result.stderr
     assert "already current" in result.stdout
+
+
+def test_tests_never_repin_the_repo_tree() -> None:
+    """Adversary F1 guard: the suite must never invoke repin against the
+    repo ROOT — on a drifted checkout a "no-op" test is a writer that can
+    put an unreviewed pin move into the next ``git add -A``. The needles
+    are regexes whose own source forms cannot match, so this guard cannot
+    trip on itself."""
+    source = Path(__file__).read_text(encoding="utf-8")
+    assert not re.search(r"_repin\(\)\(\s*ROOT", source), (
+        "repin must be invoked on tmp copies, never the repo ROOT"
+    )
+    assert not re.search(r"cwd\s*=\s*ROOT\b", source), (
+        "the CLI smoke's cwd is the command's root"
+    )
 
 
 def test_drift_without_repin_still_fails_validation(tmp_path: Path) -> None:
