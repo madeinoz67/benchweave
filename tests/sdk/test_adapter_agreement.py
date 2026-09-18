@@ -610,19 +610,22 @@ def test_version_triplet() -> None:
 
 
 def _recorded_gitlink(root: Path) -> str:
-    """The submodule commit the superproject has staged for packages/sdk."""
+    """The submodule commit COMMITTED for packages/sdk (HEAD's tree entry).
+
+    Deliberately not the staged index entry: a staged-but-uncommitted pointer
+    move must fail this pin, not pass it — the committed pointer is what CI
+    checks out and what the agreement is against.
+    """
     result = subprocess.run(
-        ["git", "-C", str(root), "ls-files", "-s", "packages/sdk"],
+        ["git", "-C", str(root), "rev-parse", "HEAD:packages/sdk"],
         capture_output=True,
         text=True,
         check=False,
     )
-    assert result.returncode == 0, "git ls-files failed against the worktree"
-    fields = result.stdout.split()
-    assert fields and fields[0] == "160000", (
-        f"packages/sdk is not recorded as a submodule: {result.stdout!r}"
+    assert result.returncode == 0, (
+        f"git rev-parse HEAD:packages/sdk failed: {result.stderr.strip()}"
     )
-    return fields[1]
+    return result.stdout.strip()
 
 
 def test_submodule_head_matches_the_recorded_gitlink() -> None:
@@ -630,9 +633,10 @@ def test_submodule_head_matches_the_recorded_gitlink() -> None:
 
     A detached or moved packages/sdk at any other commit (a stale standalone
     checkout swapped in, a WIP SDK branch) would otherwise test green locally
-    — the provenance assertion checks the tree, not the version. The Makefile
-    already requires HEAD == pointer before any sync; this is that predicate
-    as a CI pin.
+    — the provenance assertion checks the tree, not the version. The
+    comparison is against the COMMITTED gitlink (HEAD:packages/sdk), so a
+    staged-but-uncommitted pointer move fails too — the index would agree
+    with the move and pass silently.
     """
     head = subprocess.run(
         ["git", "-C", str(ROOT / "packages" / "sdk"), "rev-parse", "HEAD"],
