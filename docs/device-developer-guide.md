@@ -401,7 +401,7 @@ Firmware: [exact supported versions or explicitly unresolved].
 Connection: [protocol/backend/settings and available evidence].
 Intended operations/channels: [list].
 Evidence: [manual revisions, local files and reference exchanges].
-Target: OTDP 0.1.1, adapter API 1.1, architecture 1.5.
+Target: OTDP 0.1.2, adapter API 1.1, architecture 1.5.
 Delivery location and packaging: [repository path; local-only or shared release].
 
 Read docs/device-developer-guide.md and the linked normative contracts.

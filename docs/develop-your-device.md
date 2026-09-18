@@ -4,7 +4,7 @@ Use AI to build a BenchWeave device plugin for an existing instrument or your ow
 
 **Describe → Build → Integrate → Prove → Package and share**
 
-This quickstart adds no protocol requirements. The [device developer guide](device-developer-guide.md) and its linked normative specifications define the contracts. Its documented baseline is architecture 1.5, OTDP 0.1.1 and adapter API 1.1. Confirm the versions in your chosen BenchWeave revision before starting.
+This quickstart adds no protocol requirements. The [device developer guide](device-developer-guide.md) and its linked normative specifications define the contracts. Its documented baseline is architecture 1.5, OTDP 0.1.2 and adapter API 1.1. Confirm the versions in your chosen BenchWeave revision before starting.
 
 ## Choose your path
 
@@ -86,7 +86,7 @@ The repository contains package admission and cache-loading components, but thes
 - `load_plugin` in the same module checks an implementation entry's cached bytes against the manifest, dynamically loads the verified Python code and calls its factory. The host still has to open and attach the instance.
 - `admit_startup_bench` in `src/benchweave/interfaces/bootstrap.py` populates bench inventory from startup fixtures. This is not a general runtime plugin installer.
 
-**External OTDP support is limited to the tested bridge scope.** The documented [OTDP API 1.1](../standards/otdp/0.1.1/otdp-specification.md#8-python-adapter-abi-11) uses `create_plugin()` and async `open`/`execute`/`next_event`/`close`. The new `load_otdp_plugin` in `src/benchweave/registry/otdp_loading.py` verifies cached package files and uses `OTDPBridge` to adapt identify, scalar read and scalar write to the host. It supports package-relative and standard-library imports and requires caller-supplied scoped services. Profile actions, capture/streaming and arbitrary third-party dependencies need further integration. The legacy `load_plugin` path still uses clock-injected factories and the synchronous simulator interface; choose the correct loader. Passing the SDK example does not establish compatibility or hardware qualification for every external package.
+**External OTDP support is limited to the tested bridge scope.** The documented [OTDP API 1.1](../standards/otdp/0.1.2/otdp-specification.md#8-python-adapter-abi-11) uses `create_plugin()` and async `open`/`execute`/`next_event`/`close`. The new `load_otdp_plugin` in `src/benchweave/registry/otdp_loading.py` verifies cached package files and uses `OTDPBridge` to adapt identify, scalar read and scalar write to the host. It supports package-relative and standard-library imports and requires caller-supplied scoped services. Profile actions, capture/streaming and arbitrary third-party dependencies need further integration. The legacy `load_plugin` path still uses clock-injected factories and the synchronous simulator interface; choose the correct loader. Passing the SDK example does not establish compatibility or hardware qualification for every external package.
 
 The optional [plugin SDK](plugin-sdk.md) now provides offline contracts, types, mocks, conformance helpers and an independently buildable starter. It is a minimal authoring SDK, not a complete production host. Copying a folder or running `pip install` does not complete admission, bench configuration and activation.
 

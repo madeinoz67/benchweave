@@ -14,7 +14,7 @@ The gateway is an instrument-control system. Unattended operation is conditional
 
 This document defines architectural contracts and the initial operating model. It does not prescribe electrical protective circuits or establish numeric safety limits. Bench-specific values are mandatory commissioning inputs under §15; they are not guessed architectural defaults.
 
-The supplied OTDP v0.1 specification and schema have been reviewed and reconciled. New integrations target the accompanying OTDP **0.1.1 specification**, **descriptor schema**, **runtime schema** and **Python adapter API 1.1** in `otdp/0.1.1/`. The agent authoring procedure, host interfaces, transport rules, conformance obligations and reference protocols are part of that package. The schemas are interface artefacts; they are not a gateway implementation or proof of hardware behaviour.
+The supplied OTDP v0.1 specification and schema have been reviewed and reconciled. New integrations target the accompanying OTDP **0.1.2 specification**, **descriptor schema**, **runtime schema** and **Python adapter API 1.1** in `otdp/0.1.2/`. The agent authoring procedure, host interfaces, transport rules, conformance obligations and reference protocols are part of that package. The schemas are interface artefacts; they are not a gateway implementation or proof of hardware behaviour.
 
 OTDP owns the device-description and integration boundary. STG owns commissioning, authorisation, ownership, DUT safety policy, execution and recovery. Existing v0.1 descriptors require reviewed migration; changing a version field does not make them compatible. The accompanying `otdp-architecture-reconciliation.md` records the original defects and their resolution. No missing-document dependency remains.
 
