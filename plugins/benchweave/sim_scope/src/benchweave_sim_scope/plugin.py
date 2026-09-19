@@ -369,6 +369,10 @@ class SimScopePlugin:
         # line of validation under host-ABI use, so the closed trigger form
         # (kind set; edge requires source_channel/slope/level_v; external
         # requires source_channel) is enforced here, not only in the lanes.
+        # Residual: the corpus keys beyond these (additionalProperties: false
+        # on the trigger object, the source_channel naming pattern) are
+        # lanes-only — dispatch does not reject unknown trigger keys or
+        # oddly-named source channels.
         trigger = action_input.get("trigger")
         if not isinstance(trigger, dict) or trigger.get("kind") not in TRIGGER_KINDS:
             return self._reject(
@@ -542,6 +546,16 @@ class SimScopePlugin:
                     f"acquisition {acquisition_id} is not complete and allow_partial is false",
                 )
             samples = round(shape["pretrigger_fraction"] * shape["sample_count"])
+            if samples < 1:
+                # Zero-acquired samples is the trigger's cause, not a budget
+                # cause: even an ample max_bytes cannot fetch what was never
+                # acquired. Refuse naming the true reason.
+                return self._reject(
+                    request,
+                    ErrorCode.DEVICE_REJECTED,
+                    "trigger has not fired and the pretrigger buffer is empty; "
+                    "no samples acquired yet",
+                )
             status = "partial"
             reason = "trigger has not fired; pretrigger buffer only"
         width = 8  # float64 elements

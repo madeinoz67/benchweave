@@ -764,3 +764,37 @@ def test_configure_refuses_unknown_trigger_kind(scope: Any) -> None:
 def test_configure_accepts_external_trigger_with_source(scope: Any) -> None:
     result = _configure_trigger(scope, {"kind": "external", "source_channel": "ch1"})
     assert result.status.value == "ok"
+
+
+# --- empty pretrigger buffer refuses with the true cause (review wave 1) --------
+
+
+def test_fetch_empty_pretrigger_buffer_names_the_trigger_cause(scope: Any) -> None:
+    """pretrigger_fraction 0 + unfired trigger: nothing is acquired yet, and
+    the refusal must name that cause — not max_bytes, which is ample."""
+    result = scope.dispatch(
+        _invoke(
+            "otdp.oscilloscope.configure/1.0.0",
+            {
+                "configuration_id": "cfg-1",
+                "channels": LOW_NOISE_PAIR,
+                "sample_rate_hz": 1000.0,
+                "sample_count": 1024,
+                "pretrigger_fraction": 0.0,
+                "trigger": {
+                    "kind": "edge",
+                    "source_channel": "ch1",
+                    "slope": "rising",
+                    "level_v": 0.5,
+                },
+            },
+        ),
+        deadline_ns=10**12,
+    )
+    assert result.status.value == "ok"
+    assert _arm(scope).status.value == "ok"
+    refused = _fetch(scope, 1_048_576, True)
+    assert refused.status.value == "error"
+    assert refused.error.code.value == "DEVICE_REJECTED"
+    assert "pretrigger" in refused.error.message
+    assert "max_bytes" not in refused.error.message
