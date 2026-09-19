@@ -35,6 +35,28 @@ c:accent}` → the winner is `a`, whose visible default still claims first;
 the discriminating hidden-not-starving row is `{a:muted, b:accent+hidden,
 c:accent}` → `c`) and was corrected against the implementation rather than
 the other way round.
+
+### Forge wave 2026-09-19 — cross-vendor audit (FC1/FC2)
+
+RED: **43 collected / 2 failed** — the real-render test (new, unmocked
+echarts) got `expected 'Time (s)' to contain 'Warning limit'` for the
+all-hidden threshold-1.2 case (the SVG carried only the axis name: exactly
+the audit's SSR falsification — the empty-data carrier draws nothing
+outside the default [0,1] extent, and the mock suite had been green through
+it), and the legend-swatch pin got `expected '' to be '#777777'`. GREEN:
+**43/43** (16 files; the render file's visible-data control included).
+
+- **FC1**: the threshold carrier now carries two invisible data points
+  spanning `threshold.value`, so the value participates in the y-axis
+  extent (echarts does not expand extent for markLine values). The
+  real-render file (`EngineeringPlot.render.test.tsx`) runs the repo's own
+  echarts SVG renderer against the mounted component in jsdom — no
+  `setOption` mock — closing the payload-vs-render blind spot for this
+  class.
+- **FC2**: legend marker colours come from the shared
+  `resolveStyles`/`readTokens` output via an inline `--legend-swatch`
+  custom property (`data-line` keeps the dash pattern); the CSS
+  index-structure colour rules are gone.
 - **C2**: threshold renders on an empty-data carrier series when no visible
   series remains; pinned with all three channels hidden.
 - **C3**: hidden legend rows carry an explicit accessible name

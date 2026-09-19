@@ -55,6 +55,30 @@ carry the same authority:
    hidden later claimants), each row pinning the exact winner set, zero
    accents where no visible claimant remains.
 
+### Forge wave 2026-09-19 — cross-vendor audit (FC1/FC2)
+
+1. **FC1 (carrier visibility — the C2 amendment's mechanism was wrong at
+   real-render time).** The empty-data carrier (`data: []` + markLine)
+   records a correct-looking option payload but draws NOTHING when the
+   threshold lies outside the default [0,1] y-axis extent: echarts does not
+   expand axis extent for markLine values (falsified with the repo's own
+   echarts 6.1.0 via SSR — no mark line, no label; the mock suite stayed
+   green through all of it because the mock records `setOption` and never
+   renders). Fix: the carrier carries two invisible data points spanning
+   `threshold.value`, so the value participates in the extent. The mock
+   blind spot is closed structurally: a new UNMOCKED render test runs the
+   real echarts SVG renderer against the component and asserts the
+   threshold label appears at a threshold (1.2) outside [0,1].
+2. **FC2 (legend swatch honesty).** The HTML legend's marker colour was
+   derived from index structure in CSS (`accent` for solid rows, severity
+   token for dashed), ignoring pass-2 resolution — a muted trace kept an
+   accent/amber swatch and the sanctioned composition showed the
+   accent-rendering trace with a severity-amber dashed swatch. The legend
+   is the disclosure key: each row's marker now carries the SAME colour the
+   chart resolved for that trace (inline `--legend-swatch` custom property
+   from the shared `resolveStyles`/`readTokens` output; `data-line` keeps
+   the dash pattern only).
+
 
 Reading verified on `main` at `8bc83a5`. Every claim below cites the file and line it was
 read at. **Review tier: Tier 3** — the change touches `standards/`, edits JSON Schema, and

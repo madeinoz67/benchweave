@@ -2,7 +2,7 @@ import * as echarts from "echarts/core";
 import { GridComponent, LegendComponent, MarkLineComponent, TooltipComponent } from "echarts/components";
 import { LineChart } from "echarts/charts";
 import { SVGRenderer } from "echarts/renderers";
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useMemo, useRef, type CSSProperties } from "react";
 
 import "./engineering-plot.css";
 
@@ -86,11 +86,37 @@ function resolveStyles(
   });
 }
 
+/** Read the theme tokens once for one resolution rule shared by the chart
+ *  canvas and the legend swatches: a missing muted token leaves the role
+ *  undefined, so a muted hint falls back to the trace's pass-1 default
+ *  (design rule 5) — never a hardcoded literal, which would paint one
+ *  theme's contrast into the other. */
+function readTokens(
+  severity: "warning" | "critical" | undefined,
+  styles: CSSStyleDeclaration,
+) {
+  const mutedToken = styles.getPropertyValue("--bw-text-muted").trim() || undefined;
+  return {
+    text: mutedToken ?? "#5b6a73",
+    muted: mutedToken,
+    border: styles.getPropertyValue("--bw-border").trim() || "#c3cfd5",
+    accent: styles.getPropertyValue("--bw-accent").trim() || "#0b7181",
+    alert: styles.getPropertyValue(`--bw-${severity ?? "warning"}`).trim() || "#a96608",
+  };
+}
+
 export function EngineeringPlot({ kind, title, x, traces, threshold, hints }: EngineeringPlotProps) {
   const chartElement = useRef<HTMLDivElement>(null);
   const descriptionId = useId();
   const visible = (trace: PlotTrace) => hints?.get(trace.id)?.visible !== false;
   const description = `${x.label} in ${x.unit}; ${traces.filter(visible).map((trace) => `${trace.label} in ${trace.unit}`).join("; ")}`;
+  // The legend is the disclosure key: its swatches resolve through the same
+  // two-pass styling as the chart, read from the document theme (the canvas
+  // inherits the same variables, so the two reads agree).
+  const legendStyles = useMemo(
+    () => resolveStyles(traces, hints, readTokens(threshold?.severity, getComputedStyle(document.documentElement))),
+    [traces, hints, threshold],
+  );
 
   useEffect(() => {
     const element = chartElement.current;
@@ -100,18 +126,7 @@ export function EngineeringPlot({ kind, title, x, traces, threshold, hints }: En
       width: element.clientWidth || 640,
       height: element.clientHeight || 256,
     });
-    const styles = getComputedStyle(element);
-    // A missing muted token leaves the role undefined, so a muted hint falls
-    // back to the trace's pass-1 default (design rule 5) — never a hardcoded
-    // literal, which would paint one theme's contrast into the other.
-    const mutedToken = styles.getPropertyValue("--bw-text-muted").trim() || undefined;
-    const tokens = {
-      text: mutedToken ?? "#5b6a73",
-      muted: mutedToken,
-      border: styles.getPropertyValue("--bw-border").trim() || "#c3cfd5",
-      accent: styles.getPropertyValue("--bw-accent").trim() || "#0b7181",
-      alert: styles.getPropertyValue(`--bw-${threshold?.severity ?? "warning"}`).trim() || "#a96608",
-    };
+    const tokens = readTokens(threshold?.severity, getComputedStyle(element));
     // Two passes: index-derived defaults over the full list, then hint bias.
     const resolved = resolveStyles(traces, hints, tokens);
     const visibleTraces = traces.filter((trace) => hints?.get(trace.id)?.visible !== false);
@@ -134,9 +149,13 @@ export function EngineeringPlot({ kind, title, x, traces, threshold, hints }: En
     });
     if (markLine !== undefined && visibleTraces.length === 0) {
       // Every channel presentation-hidden still owes the viewer the limit:
-      // echarts attaches mark lines to a series, so an empty-data carrier
-      // renders the threshold and nothing else. Dropping it here would
-      // launder "no limit plotted" as "no limit configured".
+      // echarts attaches mark lines to a series, so a carrier renders the
+      // threshold and nothing else. Dropping it here would launder "no limit
+      // plotted" as "no limit configured". The carrier's two invisible data
+      // points span the threshold value because echarts does NOT expand the
+      // y-axis extent for markLine values — an empty-data carrier leaves a
+      // threshold outside the default [0,1] extent undrawn (falsified with
+      // the repo's own echarts via SSR render).
       series.push({
         id: "__threshold",
         name: threshold!.label,
@@ -145,7 +164,7 @@ export function EngineeringPlot({ kind, title, x, traces, threshold, hints }: En
         symbol: "circle",
         lineStyle: { color: "transparent", type: "solid", width: 0 },
         itemStyle: { color: "transparent" },
-        data: [],
+        data: [[0, threshold!.value], [1, threshold!.value]],
         markLine,
       });
     }
@@ -182,6 +201,7 @@ export function EngineeringPlot({ kind, title, x, traces, threshold, hints }: En
               data-line={index % 2 === 0 ? "solid" : "dashed"}
               data-hidden={isHidden ? "true" : undefined}
               aria-label={isHidden ? `${trace.label} · ${trace.unit} (hidden by presentation preference)` : undefined}
+              style={{ "--legend-swatch": legendStyles[index].color } as CSSProperties}
             >
               {trace.label} · {trace.unit}
               {isHidden ? <span className="bw-plot__legend-hidden">hidden</span> : null}

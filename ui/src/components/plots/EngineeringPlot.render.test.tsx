@@ -11,7 +11,7 @@ const traces: PlotTrace[] = [
   { id: "b", label: "Channel B", unit: "V", values: [[0, 1], [1, 0]] },
 ];
 
-function canvasSvg(container: HTMLElement): SVGSVGElement {
+function canvasSvg(container: HTMLElement): Element {
   const svg = container.querySelector(".bw-plot__canvas svg");
   expect(svg, "echarts rendered an SVG into the canvas").toBeTruthy();
   return svg!;
