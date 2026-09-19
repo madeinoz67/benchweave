@@ -556,7 +556,7 @@ names the lanes that must each produce evidence.
 
 **KILL if:** any legal-expression class cannot be admitted without also admitting a
 reject class (grammar unimplementable as specified); or evaluation determinism cannot be
-guaranteed on the fixed operation sequence (platform float divergence on the census);
+guaranteed on the fixed operation sequence (float divergence between the platforms where the census actually runs — Linux and macOS; no Windows lane exists);
 or the schema bump cannot pass `check-sdk-standards`/identity derivations without
 touching the interface standard (scope explosion). Any of these means the design's core
 claim is false — stop and record the negative.
@@ -603,6 +603,11 @@ claim is then unproven.
    swept with the docs obligation.
 4. **Float determinism across platforms.** The census pins one operation sequence; CPython
    floats are C doubles and none of the four operators are platform-variant in practice.
+   *Coverage, stated honestly (2026-09-19 fix-wave amendment):* the census runs on Linux
+   (CI `gates`) and macOS (dev), plus the dedicated OS-matrix lane added with this branch
+   — no Windows lane exists, so cross-platform agreement is proven where the census runs
+   and beyond that rests on the structural argument (IEEE-754 binary64,
+   single-operation semantics with a fixed evaluation order), not on measurement.
    *Falsifier:* the census itself (kill direction 2) — this is precisely why the
    acceptance rule runs both implementations over one vendored vector file rather than
    trusting the argument.
