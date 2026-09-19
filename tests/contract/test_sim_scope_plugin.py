@@ -336,6 +336,71 @@ def test_configure_rejects_out_of_envelope_probe_ratio(scope: Any) -> None:
     assert result.error.code.value == "INVALID_ARGUMENT"
 
 
+# --- configure-carried averaging (OTDP 0.2.0, issue #64) ------------------------
+
+
+def _configure_with_averaging(
+    scope: Any, averaging_count: object, configuration_id: str = "cfg-1"
+) -> Any:
+    request = _invoke(
+        "otdp.oscilloscope.configure/1.0.0",
+        {
+            "configuration_id": configuration_id,
+            "channels": [CHANNEL_ITEM],
+            "sample_rate_hz": 1000.0,
+            "sample_count": 1024,
+            "pretrigger_fraction": 0.0,
+            "trigger": {"kind": "immediate"},
+            "averaging_count": averaging_count,
+        },
+    )
+    return scope.dispatch(request, deadline_ns=10**12)
+
+
+def test_configure_applies_averaging_count_and_reads_back(scope: Any) -> None:
+    """The anti-laundry control for the 0.2.0 admission: a configure-carried
+    averaging_count must reach device state. READ — not the echo — is the
+    proof; before the revision the plugin silently ignored the key while
+    returning OK, which would have made corpus-admitted presets evidence
+    laundering a no-op."""
+    result = _configure_with_averaging(scope, 8)
+    assert result.status.value == "ok"
+    assert result.data["result"]["effective_configuration"]["averaging_count"] == 8
+    read = scope.dispatch(
+        OperationRequest.read("op-2", parameter="averaging_count"), deadline_ns=10**12
+    )
+    assert read.data.value == 8
+
+
+def test_configure_refuses_averaging_out_of_envelope(scope: Any) -> None:
+    """65 matches the descriptor's authored range [1, 64]: the refusal is the
+    envelope's, not the corpus's (the corpus maximum is the same 64)."""
+    result = _configure_with_averaging(scope, 65)
+    assert result.status.value == "error"
+    assert result.error.code.value == "INVALID_ARGUMENT"
+    assert result.error.dispatch_state is DispatchState.NOT_DISPATCHED
+
+
+def test_configure_omitted_averaging_preserves_state_and_echoes_effective(scope: Any) -> None:
+    """Omission is not a reset: the in-force depth survives a configure that
+    does not carry the key, and the echo reports that effective depth —
+    device-classes.md section 6 requires the effective configuration actually
+    in force, so 16 (previously written) proves the echo reads state rather
+    than parroting a constant default."""
+    written = scope.dispatch(
+        OperationRequest.write("op-1", parameter="averaging_count", value=16),
+        deadline_ns=TICK,
+    )
+    assert written.status is OperationStatus.OK
+    result = scope.dispatch(_configure([CHANNEL_ITEM]), deadline_ns=10**12)
+    assert result.status.value == "ok"
+    assert result.data["result"]["effective_configuration"]["averaging_count"] == 16
+    read = scope.dispatch(
+        OperationRequest.read("op-2", parameter="averaging_count"), deadline_ns=10**12
+    )
+    assert read.data.value == 16
+
+
 # --- lifecycle: arm / trigger / fetch / abort ----------------------------------
 
 
