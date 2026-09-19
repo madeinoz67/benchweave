@@ -354,6 +354,10 @@ All notable changes to this project will be documented in this file.
 - Advance packages/sdk to the FC1/FC2 renderer refresh
 - Advance packages/sdk to the otdp 0.1.2 vendoring
 - Advance packages/sdk to the reconciled dual-standard tip
+- Grant code-reviewer + increment-builder gortex read/query tools
+- Grant the four review-lane agents gortex read/query tools
+- Frontmatter + gortex read/query grant for standards-governor
+- Muninndb-benchweave read/query grants for designer, adversary, critic
 
 ### Refactoring
 
