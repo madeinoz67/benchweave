@@ -51,7 +51,7 @@
       "name": "write_wrong_type_invalid_framing",
       "setup": [],
       "request": {"verb": "write", "arguments": {"parameter": "voltage_setpoint_v", "value": "twelve"}},
-      "expect": {"status": "error", "error_code": "DEVICE_REJECTED", "dispatch_state": "dispatched"}
+      "expect": {"status": "error", "error_code": "INVALID_ARGUMENT", "dispatch_state": "not_dispatched"}
     },
     {
       "name": "ovp_trip_latches_and_reports",
@@ -179,6 +179,30 @@
         }
       },
       "expect": {"status": "error", "error_code": "DEVICE_REJECTED", "dispatch_state": "dispatched"}
+    },
+    {
+      "name": "invoke_measure_nonstring_token_invalid_argument",
+      "setup": [],
+      "request": {
+        "verb": "invoke",
+        "arguments": {
+          "action_id": "otdp.dc_psu.measure/1.0.0",
+          "input": {"configuration_id": 123, "channels": ["ch1"]}
+        }
+      },
+      "expect": {"status": "error", "error_code": "INVALID_ARGUMENT", "dispatch_state": "not_dispatched"}
+    },
+    {
+      "name": "invoke_output_nonstring_token_invalid_argument",
+      "setup": [],
+      "request": {
+        "verb": "invoke",
+        "arguments": {
+          "action_id": "otdp.dc_psu.output/1.0.0",
+          "input": {"channel": "ch1", "enabled": true, "configuration_id": 123}
+        }
+      },
+      "expect": {"status": "error", "error_code": "INVALID_ARGUMENT", "dispatch_state": "not_dispatched"}
     },
     {
       "name": "invoke_configure_trip_reports_dispatched",

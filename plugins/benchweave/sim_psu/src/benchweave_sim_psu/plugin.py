@@ -215,12 +215,15 @@ class SimPsuPlugin:
             )
         if parameter in WRITABLE_BOUNDS:
             low, high = WRITABLE_BOUNDS[parameter]
-            in_bounds = (
-                isinstance(value, (int, float))
-                and not isinstance(value, bool)
-                and low <= value <= high
-            )
-            if not in_bounds:
+            # Typing precedes the envelope (the R1 taxonomy, REG-2): a
+            # non-numeric value violates the action's input typing before any
+            # device-state semantics exist, so it is INVALID_ARGUMENT /
+            # not_dispatched; only a well-typed value reaches the envelope.
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                return self._reject(
+                    request, ErrorCode.INVALID_ARGUMENT, f"bad type for {parameter}"
+                )
+            if not low <= value <= high:
                 return self._state_reject(
                     request, f"{parameter} out of bounds [{low}, {high}]"
                 )
@@ -402,6 +405,14 @@ class SimPsuPlugin:
                 request, ErrorCode.INVALID_ARGUMENT, "output requires boolean enabled"
             )
         token = action_input.get("configuration_id")
+        # The catalog makes the token optional on output but string-typed
+        # when present: a non-string token is a framing failure (R1),
+        # absence stays legal, and a mismatched string is still the device
+        # evaluating it (_state_reject).
+        if token is not None and not isinstance(token, str):
+            return self._reject(
+                request, ErrorCode.INVALID_ARGUMENT, "output requires string configuration_id"
+            )
         if token is not None and token != self._configuration_id:
             return self._state_reject(
                 request, "configuration_id does not match the stored configuration"
@@ -419,7 +430,17 @@ class SimPsuPlugin:
         self, request: OperationRequest, action_input: dict[str, Any]
     ) -> OperationResult:
         configuration_id = action_input.get("configuration_id")
-        if not isinstance(configuration_id, str) or configuration_id != self._configuration_id:
+        # R1 taxonomy: a non-string or empty token violates the action input
+        # typing (the catalog declares configuration_id string, minLength 1)
+        # before any device state is evaluated — INVALID_ARGUMENT /
+        # not_dispatched, same as _action_configure. A well-typed string that
+        # does not match the stored configuration stays the device's own
+        # refusal (_state_reject, DISPATCHED).
+        if not isinstance(configuration_id, str) or not configuration_id:
+            return self._reject(
+                request, ErrorCode.INVALID_ARGUMENT, "measure requires configuration_id"
+            )
+        if configuration_id != self._configuration_id:
             return self._state_reject(
                 request, "measure requires the current configuration_id"
             )

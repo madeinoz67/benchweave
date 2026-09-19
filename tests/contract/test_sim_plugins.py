@@ -273,13 +273,15 @@ def test_psu_write_out_of_bounds_is_device_rejected(psu: Any) -> None:
     assert result.error.dispatch_state is DispatchState.DISPATCHED
 
 
-def test_psu_write_wrong_type_on_bounded_parameter_reports_dispatched(psu: Any) -> None:
-    """Wrong type lands in the envelope branch, so it flips with it (D1).
+def test_psu_write_wrong_type_on_bounded_parameter_is_invalid_argument(psu: Any) -> None:
+    """Wrong type is a framing failure; the envelope sees only well-typed values.
 
-    The bounds check runs before type coercion, so a non-numeric value for
-    a bounded parameter is refused by the envelope the device owns — the
-    same evaluation work as an out-of-range value. Reclassifying it to
-    INVALID_ARGUMENT is #63's classification question, not this slice's.
+    The bounds branch types the value before evaluating the envelope
+    (REG-2 dispatch-state honesty), so a non-numeric value for a bounded
+    parameter refuses INVALID_ARGUMENT / not_dispatched — the same taxonomy
+    as _action_configure's numeric field checks and the profile catalog's
+    string-typed configuration_id. A well-typed but out-of-range value
+    stays DEVICE_REJECTED / dispatched (write_setpoint_out_of_bounds).
     """
     plugin = psu
     result = plugin.dispatch(
@@ -287,8 +289,8 @@ def test_psu_write_wrong_type_on_bounded_parameter_reports_dispatched(psu: Any) 
         deadline_ns=TICK,
     )
     assert result.status is OperationStatus.ERROR
-    assert result.error is not None and result.error.code is ErrorCode.DEVICE_REJECTED
-    assert result.error.dispatch_state is DispatchState.DISPATCHED
+    assert result.error is not None and result.error.code is ErrorCode.INVALID_ARGUMENT
+    assert result.error.dispatch_state is DispatchState.NOT_DISPATCHED
 
 
 def test_psu_ovp_trip_latches_until_reset(psu: Any) -> None:
