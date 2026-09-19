@@ -185,6 +185,20 @@ def test_l1a_averaging_within_envelope_admitted(
     assert "invalid_settings" not in findings(preset_report(admitted.read_bytes()))
 
 
+def test_l1a_averaging_at_corpus_maximum_admitted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Drift pin (refute row R1): lane 1 admits the endpoint 64 itself.
+    Paired with the 65-refusal row below, a corpus maximum that drifts below
+    64 (say 63) turns THIS row red instead of silently narrowing the
+    envelope — the interior-8 row cannot catch that."""
+    preset = json.loads(PRESET_PAIR.read_bytes())
+    preset["settings"]["averaging_count"] = 64
+    admitted = write_document(tmp_path / "at-max.json", preset)
+    assert lane1(monkeypatch, admitted) == 0
+    assert "invalid_settings" not in findings(preset_report(admitted.read_bytes()))
+
+
 def test_l1a_averaging_above_corpus_maximum_refused(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

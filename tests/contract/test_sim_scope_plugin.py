@@ -401,6 +401,25 @@ def test_configure_omitted_averaging_preserves_state_and_echoes_effective(scope:
     assert read.data.value == 16
 
 
+def test_configure_averaging_at_corpus_endpoints_admits_and_reads_back(scope: Any) -> None:
+    """Drift pin (refute row R1): the envelope endpoints 1 and 64 exist as
+    three independent constants — corpus schema, descriptor
+    input_constraints, and the plugin's AVERAGING_MAX — and committed tests
+    pinned only the interior (8) and the far side (65/0), so a 64→63 drift in
+    any one authority would leave every test green. Both endpoints are pinned
+    here through the real dispatch path with read-back; behavior is correct
+    today (proved by direct execution during review), so this is a pin, not a
+    RED control."""
+    for endpoint in (1, 64):
+        result = _configure_with_averaging(scope, endpoint)
+        assert result.status.value == "ok"
+        assert result.data["result"]["effective_configuration"]["averaging_count"] == endpoint
+        read = scope.dispatch(
+            OperationRequest.read("op-2", parameter="averaging_count"), deadline_ns=10**12
+        )
+        assert read.data.value == endpoint
+
+
 # --- lifecycle: arm / trigger / fetch / abort ----------------------------------
 
 
