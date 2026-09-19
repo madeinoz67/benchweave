@@ -1,7 +1,7 @@
 """Derived-variable grammar, statics and evaluation over the vendored census.
 
-The census (``standards/otdp/0.1.2/examples/derivation-vectors.json``) is the
-normative machine truth for the OTDP 0.1.2 derived-variable feature
+The census (``standards/otdp/0.2.0/examples/derivation-vectors.json``) is the
+normative machine truth for the OTDP 0.2.0 derived-variable feature
 (measurement-model.md §8/M15, otdp-specification.md S19): every grammar,
 static and evaluation row must agree with
 ``benchweave.measurement.derivation`` exactly — accept, reject with the
@@ -30,7 +30,7 @@ from benchweave.measurement.derivation import (
 )
 
 ROOT = Path(__file__).resolve().parents[2]
-VECTORS = ROOT / "standards" / "otdp" / "0.1.2" / "examples" / "derivation-vectors.json"
+VECTORS = ROOT / "standards" / "otdp" / "0.2.0" / "examples" / "derivation-vectors.json"
 
 
 def _census() -> dict[str, Any]:

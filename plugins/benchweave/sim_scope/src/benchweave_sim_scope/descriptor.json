@@ -1,5 +1,5 @@
 {
-  "otdp_version": "0.1.2",
+  "otdp_version": "0.2.0",
   "descriptor_version": "1.0.0",
   "id": "dev.benchweave.sim-scope",
   "display_name": "BenchWeave simulated oscilloscope",
@@ -9,7 +9,9 @@
     "manufacturer": "benchweave-sim",
     "model": "sim-scope-1",
     "firmware_policy": "listed",
-    "supported_firmware": ["sim-1.0.0"]
+    "supported_firmware": [
+      "sim-1.0.0"
+    ]
   },
   "integration": {
     "mode": "adapter",
@@ -18,7 +20,9 @@
       "api_version": "1.1",
       "version": "1.0.0",
       "dependencies": [],
-      "permissions": ["scoped_transport"]
+      "permissions": [
+        "scoped_transport"
+      ]
     }
   },
   "transport": {
@@ -33,7 +37,12 @@
       "max_frame_bytes": 65536
     }
   },
-  "capabilities": ["identify", "read", "write", "invoke"],
+  "capabilities": [
+    "identify",
+    "read",
+    "write",
+    "invoke"
+  ],
   "operations": {
     "identify": {
       "timeout_ms": 1000,
@@ -72,9 +81,18 @@
       "access": "rw",
       "semantic": "configuration",
       "unit": "1",
-      "range": [1.0, 50.0],
-      "binding": {"kind": "adapter", "key": "ch1_probe_ratio"},
-      "read_policy": {"max_age_ms": 0, "destructive": false},
+      "range": [
+        1.0,
+        50.0
+      ],
+      "binding": {
+        "kind": "adapter",
+        "key": "ch1_probe_ratio"
+      },
+      "read_policy": {
+        "max_age_ms": 0,
+        "destructive": false
+      },
       "write_policy": {
         "effect": "setting",
         "completion": "readback",
@@ -91,9 +109,18 @@
       "access": "rw",
       "semantic": "configuration",
       "unit": "V",
-      "range": [-10.0, 10.0],
-      "binding": {"kind": "adapter", "key": "ch1_offset_v"},
-      "read_policy": {"max_age_ms": 0, "destructive": false},
+      "range": [
+        -10.0,
+        10.0
+      ],
+      "binding": {
+        "kind": "adapter",
+        "key": "ch1_offset_v"
+      },
+      "read_policy": {
+        "max_age_ms": 0,
+        "destructive": false
+      },
       "write_policy": {
         "effect": "setting",
         "completion": "readback",
@@ -110,9 +137,18 @@
       "access": "rw",
       "semantic": "configuration",
       "unit": "V",
-      "range": [0.001, 10.0],
-      "binding": {"kind": "adapter", "key": "ch1_range_v"},
-      "read_policy": {"max_age_ms": 0, "destructive": false},
+      "range": [
+        0.001,
+        10.0
+      ],
+      "binding": {
+        "kind": "adapter",
+        "key": "ch1_range_v"
+      },
+      "read_policy": {
+        "max_age_ms": 0,
+        "destructive": false
+      },
       "write_policy": {
         "effect": "setting",
         "completion": "readback",
@@ -128,9 +164,19 @@
       "type": "enum",
       "access": "rw",
       "semantic": "configuration",
-      "enum_values": ["ac", "dc", "ground"],
-      "binding": {"kind": "adapter", "key": "ch1_coupling"},
-      "read_policy": {"max_age_ms": 0, "destructive": false},
+      "enum_values": [
+        "ac",
+        "dc",
+        "ground"
+      ],
+      "binding": {
+        "kind": "adapter",
+        "key": "ch1_coupling"
+      },
+      "read_policy": {
+        "max_age_ms": 0,
+        "destructive": false
+      },
       "write_policy": {
         "effect": "setting",
         "completion": "readback",
@@ -147,9 +193,18 @@
       "access": "rw",
       "semantic": "configuration",
       "unit": "1",
-      "range": [1.0, 50.0],
-      "binding": {"kind": "adapter", "key": "ch2_probe_ratio"},
-      "read_policy": {"max_age_ms": 0, "destructive": false},
+      "range": [
+        1.0,
+        50.0
+      ],
+      "binding": {
+        "kind": "adapter",
+        "key": "ch2_probe_ratio"
+      },
+      "read_policy": {
+        "max_age_ms": 0,
+        "destructive": false
+      },
       "write_policy": {
         "effect": "setting",
         "completion": "readback",
@@ -166,9 +221,18 @@
       "access": "rw",
       "semantic": "configuration",
       "unit": "V",
-      "range": [-10.0, 10.0],
-      "binding": {"kind": "adapter", "key": "ch2_offset_v"},
-      "read_policy": {"max_age_ms": 0, "destructive": false},
+      "range": [
+        -10.0,
+        10.0
+      ],
+      "binding": {
+        "kind": "adapter",
+        "key": "ch2_offset_v"
+      },
+      "read_policy": {
+        "max_age_ms": 0,
+        "destructive": false
+      },
       "write_policy": {
         "effect": "setting",
         "completion": "readback",
@@ -185,9 +249,18 @@
       "access": "rw",
       "semantic": "configuration",
       "unit": "V",
-      "range": [0.001, 10.0],
-      "binding": {"kind": "adapter", "key": "ch2_range_v"},
-      "read_policy": {"max_age_ms": 0, "destructive": false},
+      "range": [
+        0.001,
+        10.0
+      ],
+      "binding": {
+        "kind": "adapter",
+        "key": "ch2_range_v"
+      },
+      "read_policy": {
+        "max_age_ms": 0,
+        "destructive": false
+      },
       "write_policy": {
         "effect": "setting",
         "completion": "readback",
@@ -203,9 +276,19 @@
       "type": "enum",
       "access": "rw",
       "semantic": "configuration",
-      "enum_values": ["ac", "dc", "ground"],
-      "binding": {"kind": "adapter", "key": "ch2_coupling"},
-      "read_policy": {"max_age_ms": 0, "destructive": false},
+      "enum_values": [
+        "ac",
+        "dc",
+        "ground"
+      ],
+      "binding": {
+        "kind": "adapter",
+        "key": "ch2_coupling"
+      },
+      "read_policy": {
+        "max_age_ms": 0,
+        "destructive": false
+      },
       "write_policy": {
         "effect": "setting",
         "completion": "readback",
@@ -222,9 +305,18 @@
       "access": "rw",
       "semantic": "configuration",
       "unit": "1",
-      "range": [1.0, 50.0],
-      "binding": {"kind": "adapter", "key": "ch3_probe_ratio"},
-      "read_policy": {"max_age_ms": 0, "destructive": false},
+      "range": [
+        1.0,
+        50.0
+      ],
+      "binding": {
+        "kind": "adapter",
+        "key": "ch3_probe_ratio"
+      },
+      "read_policy": {
+        "max_age_ms": 0,
+        "destructive": false
+      },
       "write_policy": {
         "effect": "setting",
         "completion": "readback",
@@ -241,9 +333,18 @@
       "access": "rw",
       "semantic": "configuration",
       "unit": "V",
-      "range": [-10.0, 10.0],
-      "binding": {"kind": "adapter", "key": "ch3_offset_v"},
-      "read_policy": {"max_age_ms": 0, "destructive": false},
+      "range": [
+        -10.0,
+        10.0
+      ],
+      "binding": {
+        "kind": "adapter",
+        "key": "ch3_offset_v"
+      },
+      "read_policy": {
+        "max_age_ms": 0,
+        "destructive": false
+      },
       "write_policy": {
         "effect": "setting",
         "completion": "readback",
@@ -260,9 +361,18 @@
       "access": "rw",
       "semantic": "configuration",
       "unit": "V",
-      "range": [0.001, 10.0],
-      "binding": {"kind": "adapter", "key": "ch3_range_v"},
-      "read_policy": {"max_age_ms": 0, "destructive": false},
+      "range": [
+        0.001,
+        10.0
+      ],
+      "binding": {
+        "kind": "adapter",
+        "key": "ch3_range_v"
+      },
+      "read_policy": {
+        "max_age_ms": 0,
+        "destructive": false
+      },
       "write_policy": {
         "effect": "setting",
         "completion": "readback",
@@ -278,9 +388,19 @@
       "type": "enum",
       "access": "rw",
       "semantic": "configuration",
-      "enum_values": ["ac", "dc", "ground"],
-      "binding": {"kind": "adapter", "key": "ch3_coupling"},
-      "read_policy": {"max_age_ms": 0, "destructive": false},
+      "enum_values": [
+        "ac",
+        "dc",
+        "ground"
+      ],
+      "binding": {
+        "kind": "adapter",
+        "key": "ch3_coupling"
+      },
+      "read_policy": {
+        "max_age_ms": 0,
+        "destructive": false
+      },
       "write_policy": {
         "effect": "setting",
         "completion": "readback",
@@ -297,9 +417,18 @@
       "access": "rw",
       "semantic": "configuration",
       "unit": "1",
-      "range": [1.0, 50.0],
-      "binding": {"kind": "adapter", "key": "ch4_probe_ratio"},
-      "read_policy": {"max_age_ms": 0, "destructive": false},
+      "range": [
+        1.0,
+        50.0
+      ],
+      "binding": {
+        "kind": "adapter",
+        "key": "ch4_probe_ratio"
+      },
+      "read_policy": {
+        "max_age_ms": 0,
+        "destructive": false
+      },
       "write_policy": {
         "effect": "setting",
         "completion": "readback",
@@ -316,9 +445,18 @@
       "access": "rw",
       "semantic": "configuration",
       "unit": "V",
-      "range": [-10.0, 10.0],
-      "binding": {"kind": "adapter", "key": "ch4_offset_v"},
-      "read_policy": {"max_age_ms": 0, "destructive": false},
+      "range": [
+        -10.0,
+        10.0
+      ],
+      "binding": {
+        "kind": "adapter",
+        "key": "ch4_offset_v"
+      },
+      "read_policy": {
+        "max_age_ms": 0,
+        "destructive": false
+      },
       "write_policy": {
         "effect": "setting",
         "completion": "readback",
@@ -335,9 +473,18 @@
       "access": "rw",
       "semantic": "configuration",
       "unit": "V",
-      "range": [0.001, 10.0],
-      "binding": {"kind": "adapter", "key": "ch4_range_v"},
-      "read_policy": {"max_age_ms": 0, "destructive": false},
+      "range": [
+        0.001,
+        10.0
+      ],
+      "binding": {
+        "kind": "adapter",
+        "key": "ch4_range_v"
+      },
+      "read_policy": {
+        "max_age_ms": 0,
+        "destructive": false
+      },
       "write_policy": {
         "effect": "setting",
         "completion": "readback",
@@ -353,9 +500,19 @@
       "type": "enum",
       "access": "rw",
       "semantic": "configuration",
-      "enum_values": ["ac", "dc", "ground"],
-      "binding": {"kind": "adapter", "key": "ch4_coupling"},
-      "read_policy": {"max_age_ms": 0, "destructive": false},
+      "enum_values": [
+        "ac",
+        "dc",
+        "ground"
+      ],
+      "binding": {
+        "kind": "adapter",
+        "key": "ch4_coupling"
+      },
+      "read_policy": {
+        "max_age_ms": 0,
+        "destructive": false
+      },
       "write_policy": {
         "effect": "setting",
         "completion": "readback",
@@ -367,14 +524,23 @@
     },
     {
       "name": "averaging_count",
-      "description": "Model averaging depth. Live-write-only: no profile action schema carries an averaging count, so this setting cannot ride preset settings under the closed 0.1.x action schemas.",
+      "description": "Model averaging depth. Since OTDP 0.2.0 the oscilloscope configure action carries averaging_count (bounded [1, 64] at class level), so presets express it in settings; the live write remains valid and equivalent.",
       "type": "int",
       "access": "rw",
       "semantic": "configuration",
       "unit": "1",
-      "range": [1, 64],
-      "binding": {"kind": "adapter", "key": "averaging_count"},
-      "read_policy": {"max_age_ms": 0, "destructive": false},
+      "range": [
+        1,
+        64
+      ],
+      "binding": {
+        "kind": "adapter",
+        "key": "averaging_count"
+      },
+      "read_policy": {
+        "max_age_ms": 0,
+        "destructive": false
+      },
       "write_policy": {
         "effect": "setting",
         "completion": "readback",
@@ -390,9 +556,18 @@
       "type": "string",
       "access": "ro",
       "semantic": "state",
-      "string_constraints": {"min_length": 1, "max_length": 64},
-      "binding": {"kind": "adapter", "key": "identity_model"},
-      "read_policy": {"max_age_ms": 0, "destructive": false}
+      "string_constraints": {
+        "min_length": 1,
+        "max_length": 64
+      },
+      "binding": {
+        "kind": "adapter",
+        "key": "identity_model"
+      },
+      "read_policy": {
+        "max_age_ms": 0,
+        "destructive": false
+      }
     }
   ],
   "required_features": [
@@ -423,61 +598,117 @@
       "id": "ch1",
       "label": "Simulated channel 1",
       "role": "analogue_input",
-      "quantities": ["voltage"],
-      "parameter_names": ["ch1_probe_ratio", "ch1_offset_v", "ch1_range_v", "ch1_coupling"]
+      "quantities": [
+        "voltage"
+      ],
+      "parameter_names": [
+        "ch1_probe_ratio",
+        "ch1_offset_v",
+        "ch1_range_v",
+        "ch1_coupling"
+      ]
     },
     {
       "id": "ch2",
       "label": "Simulated channel 2",
       "role": "analogue_input",
-      "quantities": ["voltage"],
-      "parameter_names": ["ch2_probe_ratio", "ch2_offset_v", "ch2_range_v", "ch2_coupling"]
+      "quantities": [
+        "voltage"
+      ],
+      "parameter_names": [
+        "ch2_probe_ratio",
+        "ch2_offset_v",
+        "ch2_range_v",
+        "ch2_coupling"
+      ]
     },
     {
       "id": "ch3",
       "label": "Simulated channel 3",
       "role": "analogue_input",
-      "quantities": ["voltage"],
-      "parameter_names": ["ch3_probe_ratio", "ch3_offset_v", "ch3_range_v", "ch3_coupling"]
+      "quantities": [
+        "voltage"
+      ],
+      "parameter_names": [
+        "ch3_probe_ratio",
+        "ch3_offset_v",
+        "ch3_range_v",
+        "ch3_coupling"
+      ]
     },
     {
       "id": "ch4",
       "label": "Simulated channel 4",
       "role": "analogue_input",
-      "quantities": ["voltage"],
-      "parameter_names": ["ch4_probe_ratio", "ch4_offset_v", "ch4_range_v", "ch4_coupling"]
+      "quantities": [
+        "voltage"
+      ],
+      "parameter_names": [
+        "ch4_probe_ratio",
+        "ch4_offset_v",
+        "ch4_range_v",
+        "ch4_coupling"
+      ]
     }
   ],
-  "profiles": ["otdp.oscilloscope/1.0.0"],
+  "profiles": [
+    "otdp.oscilloscope/1.0.0"
+  ],
   "contracts": [
     {
-      "id": "urn:otdp:profile-catalog:0.1.2",
+      "id": "urn:otdp:profile-catalog:0.2.0",
       "path": "device-profile-catalog.json",
-      "sha256": "75db66a242e9916bfc7fe35e711de19ad53f6866c25289c05eac962d60f03796"
+      "sha256": "dc776ec3dd02f3b37e02005f79434597f220b5acb5d6c23c98b844aa3e63d923"
     },
     {
-      "id": "urn:otdp:measurement:0.1.2",
+      "id": "urn:otdp:measurement:0.2.0",
       "path": "otdp-measurement.schema.json",
-      "sha256": "0765a320d837f7099001707127da913374e9a09db3376ac8c981cb5c9a9e3363"
+      "sha256": "e911d0efec92a5167788dc59c40acdbf62e99f82249fcc99bf2e57ffe5331382"
     }
   ],
   "actions": {
     "otdp.oscilloscope.configure/1.0.0": {
-      "binding": {"kind": "adapter", "key": "otdp.oscilloscope.configure/1.0.0"},
+      "binding": {
+        "kind": "adapter",
+        "key": "otdp.oscilloscope.configure/1.0.0"
+      },
       "input_constraints": {
         "properties": {
           "channels": {
             "items": {
               "properties": {
-                "channel": {"pattern": "^ch[1-4]$"},
-                "probe_ratio": {"enum": [1, 10, 20, 50]},
-                "range_v": {"minimum": 0.001, "maximum": 10.0},
-                "offset_v": {"minimum": -10.0, "maximum": 10.0}
+                "channel": {
+                  "pattern": "^ch[1-4]$"
+                },
+                "probe_ratio": {
+                  "enum": [
+                    1,
+                    10,
+                    20,
+                    50
+                  ]
+                },
+                "range_v": {
+                  "minimum": 0.001,
+                  "maximum": 10.0
+                },
+                "offset_v": {
+                  "minimum": -10.0,
+                  "maximum": 10.0
+                }
               }
             }
           },
-          "sample_rate_hz": {"maximum": 1000000},
-          "sample_count": {"maximum": 1000000}
+          "sample_rate_hz": {
+            "maximum": 1000000
+          },
+          "sample_count": {
+            "maximum": 1000000
+          },
+          "averaging_count": {
+            "minimum": 1,
+            "maximum": 64
+          }
         }
       },
       "timeout_ms": 30000,
@@ -486,7 +717,10 @@
       "retry": "never"
     },
     "otdp.oscilloscope.arm/1.0.0": {
-      "binding": {"kind": "adapter", "key": "otdp.oscilloscope.arm/1.0.0"},
+      "binding": {
+        "kind": "adapter",
+        "key": "otdp.oscilloscope.arm/1.0.0"
+      },
       "input_constraints": {},
       "timeout_ms": 30000,
       "side_effect": "state_change",
@@ -494,7 +728,10 @@
       "retry": "never"
     },
     "otdp.oscilloscope.trigger/1.0.0": {
-      "binding": {"kind": "adapter", "key": "otdp.oscilloscope.trigger/1.0.0"},
+      "binding": {
+        "kind": "adapter",
+        "key": "otdp.oscilloscope.trigger/1.0.0"
+      },
       "input_constraints": {},
       "timeout_ms": 30000,
       "side_effect": "state_change",
@@ -502,7 +739,10 @@
       "retry": "never"
     },
     "otdp.oscilloscope.fetch/1.0.0": {
-      "binding": {"kind": "adapter", "key": "otdp.oscilloscope.fetch/1.0.0"},
+      "binding": {
+        "kind": "adapter",
+        "key": "otdp.oscilloscope.fetch/1.0.0"
+      },
       "input_constraints": {},
       "timeout_ms": 30000,
       "side_effect": "none",
@@ -510,7 +750,10 @@
       "retry": "never"
     },
     "otdp.oscilloscope.abort/1.0.0": {
-      "binding": {"kind": "adapter", "key": "otdp.oscilloscope.abort/1.0.0"},
+      "binding": {
+        "kind": "adapter",
+        "key": "otdp.oscilloscope.abort/1.0.0"
+      },
       "input_constraints": {},
       "timeout_ms": 30000,
       "side_effect": "state_change",

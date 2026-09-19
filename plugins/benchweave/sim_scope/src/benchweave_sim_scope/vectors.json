@@ -119,6 +119,92 @@
       }
     },
     {
+      "name": "configure_applies_averaging_count",
+      "setup": [],
+      "request": {
+        "verb": "invoke",
+        "arguments": {
+          "action_id": "otdp.oscilloscope.configure/1.0.0",
+          "input": {
+            "configuration_id": "cfg-1",
+            "channels": [
+              {
+                "channel": "ch1",
+                "coupling": "dc",
+                "range_v": 1.0,
+                "offset_v": 0.05,
+                "probe_ratio": 10
+              },
+              {
+                "channel": "ch3",
+                "coupling": "ac",
+                "range_v": 1.0,
+                "offset_v": -0.05,
+                "probe_ratio": 10
+              }
+            ],
+            "sample_rate_hz": 1000.0,
+            "sample_count": 1024,
+            "pretrigger_fraction": 0.25,
+            "trigger": {
+              "kind": "edge",
+              "source_channel": "ch1",
+              "slope": "rising",
+              "level_v": 0.5
+            },
+            "averaging_count": 8
+          }
+        }
+      },
+      "expect": {
+        "status": "ok"
+      }
+    },
+    {
+      "name": "configure_refuses_averaging_out_of_envelope",
+      "setup": [],
+      "request": {
+        "verb": "invoke",
+        "arguments": {
+          "action_id": "otdp.oscilloscope.configure/1.0.0",
+          "input": {
+            "configuration_id": "cfg-1",
+            "channels": [
+              {
+                "channel": "ch1",
+                "coupling": "dc",
+                "range_v": 1.0,
+                "offset_v": 0.05,
+                "probe_ratio": 10
+              },
+              {
+                "channel": "ch3",
+                "coupling": "ac",
+                "range_v": 1.0,
+                "offset_v": -0.05,
+                "probe_ratio": 10
+              }
+            ],
+            "sample_rate_hz": 1000.0,
+            "sample_count": 1024,
+            "pretrigger_fraction": 0.25,
+            "trigger": {
+              "kind": "edge",
+              "source_channel": "ch1",
+              "slope": "rising",
+              "level_v": 0.5
+            },
+            "averaging_count": 65
+          }
+        }
+      },
+      "expect": {
+        "status": "error",
+        "error_code": "INVALID_ARGUMENT",
+        "dispatch_state": "not_dispatched"
+      }
+    },
+    {
       "name": "configure_rejects_unknown_channel",
       "setup": [],
       "request": {

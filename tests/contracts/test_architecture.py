@@ -76,10 +76,10 @@ def test_documents_ignores_markdown_links_inside_fenced_code_blocks(
 @pytest.mark.parametrize(
     ("suite", "relative_path", "old", "new", "expected"),
     [
-        ("devices", "otdp/0.1.2/otdp-measurement.schema.json", "", "\n", "pinned"),
+        ("devices", "otdp/0.2.0/otdp-measurement.schema.json", "", "\n", "pinned"),
         (
             "devices",
-            "otdp/0.1.2/examples/derivation-vectors.json",
+            "otdp/0.2.0/examples/derivation-vectors.json",
             '"values": [\n            9.0\n          ]',
             '"values": [\n            9.1\n          ]',
             "census",

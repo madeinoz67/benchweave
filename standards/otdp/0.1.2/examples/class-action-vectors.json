@@ -322,7 +322,6 @@
             "sample_rate_hz": 1000000,
             "sample_count": 4,
             "pretrigger_fraction": 0,
-            "averaging_count": 8,
             "trigger": {
               "kind": "software"
             }
@@ -358,7 +357,6 @@
               "sample_rate_hz": 1000000,
               "sample_count": 4,
               "pretrigger_fraction": 0,
-              "averaging_count": 8,
               "trigger": {
                 "kind": "software"
               }

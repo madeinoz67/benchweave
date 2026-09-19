@@ -29,8 +29,8 @@ from benchweave.measurement.derivation import (
 )
 
 ROOT = Path(__file__).resolve().parents[2]
-VECTORS = ROOT / "standards" / "otdp" / "0.1.2" / "examples" / "derivation-vectors.json"
-CLASS_EXAMPLE = ROOT / "standards" / "otdp" / "0.1.2" / "examples" / "class-dc_psu.json"
+VECTORS = ROOT / "standards" / "otdp" / "0.2.0" / "examples" / "derivation-vectors.json"
+CLASS_EXAMPLE = ROOT / "standards" / "otdp" / "0.2.0" / "examples" / "class-dc_psu.json"
 SDK_SRC = ROOT / "packages" / "sdk" / "src"
 
 if not SDK_SRC.is_dir():
@@ -57,7 +57,7 @@ def _census() -> dict[str, Any]:
 
 
 def _base_descriptor() -> dict[str, Any]:
-    """A schema-valid OTDP 0.1.2 descriptor to carry census declarations.
+    """A schema-valid OTDP 0.2.0 descriptor to carry census declarations.
 
     The corpus class example is the honest base: it is the descriptor the
     architecture validator already admits, and ``derived_variables`` is a
@@ -65,7 +65,7 @@ def _base_descriptor() -> dict[str, Any]:
     """
 
     descriptor: dict[str, Any] = json.loads(CLASS_EXAMPLE.read_bytes())
-    assert descriptor["otdp_version"] == "0.1.2"
+    assert descriptor["otdp_version"] == "0.2.0"
     return descriptor
 
 
@@ -140,7 +140,7 @@ def test_census_bytes_are_identical_in_the_vendored_tree() -> None:
         / "benchweave_sdk"
         / "standards"
         / "otdp"
-        / "0.1.2"
+        / "0.2.0"
         / "examples"
         / "derivation-vectors.json"
     )

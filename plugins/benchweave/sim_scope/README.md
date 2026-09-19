@@ -41,7 +41,7 @@ gateway-issued token (CTL-7 marks `configuration_id` issued) — a mechanism
 that cannot attach to this full-form descriptor, whose actions declare no
 issued keys.
 
-Unlike sim_psu/sim_controller, this descriptor is full OTDP 0.1.2 form and
+Unlike sim_psu/sim_controller, this descriptor is full OTDP 0.2.0 form and
 passes `benchweave-sdk check`. That also means it is NOT admissible by the
 runtime execution-contract path (`control/documents.py` requires the minimal
 list dialect) — sim_scope is a presentation/presets vehicle, not an
@@ -50,9 +50,11 @@ descriptor dialect fork is reconciled.
 
 Settings are writable `semantic: configuration` parameters with
 `effect: "setting"` write policies — a settings bundle implies no
-energisation. Model averaging is the one settings family with no action-input
-home (the closed 0.1.x action schemas cannot represent it in preset
-settings), so `averaging_count` is a live-write-only parameter.
+energisation. Since OTDP 0.2.0 the configure action carries
+`averaging_count` (class-bounded [1, 64]), so a named setup expresses its
+averaging depth in preset settings — `low-noise-pair.json` ships
+`averaging_count: 16` while `fast-survey.json` deliberately omits it, pinning
+presence and omission. The live write stays valid and equivalent.
 
 ## Fetch semantics
 
@@ -84,9 +86,14 @@ recorded state evidence refers to.
 
 The acquisition envelopes are authored for the simulator, not measured on
 hardware: `sample_rate_hz` is capped at 1e6 and `sample_count` at 1e6 samples
-per acquisition (32 MB of float64 across four channels). Both bounds are
-declared twice, in the descriptor's configure `input_constraints` (enforced by
-`check-ui` on presets) and in the plugin's dispatch validation.
+per acquisition (32 MB of float64 across four channels). Since OTDP 0.2.0 the
+sample-count bound is declared at three authorities: the class catalog (both
+SDK lanes — the bound lives in the settings-schema bytes), the descriptor's
+configure `input_constraints` (AND-ed onto presets by `check-ui`), and the
+plugin's dispatch validation. The authorities coincide numerically today and
+need not tomorrow — a class-ceiling revision must not silently raise the
+simulator's honest envelope. `averaging_count` [1, 64] is declared at the same
+three authorities.
 
 ## Compatibility
 

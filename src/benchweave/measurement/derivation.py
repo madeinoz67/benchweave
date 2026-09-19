@@ -1,6 +1,6 @@
 """Derived variables: a fixed-grammar expression over dataset variables.
 
-OTDP 0.1.2 lets a device descriptor declare that measurement datasets gain
+OTDP (since 0.1.2) lets a device descriptor declare that measurement datasets gain
 variables computed from other variables (``derived_variables[]``;
 measurement-model.md §8/M15, otdp-specification.md S19). This module is the
 one implementation the gateway runs, at two seams: control admission
@@ -16,7 +16,7 @@ keys — never as code — and expression length (256) and parenthesis nesting
 chains recurse against the length cap rather than the parenthesis depth —
 still bounded, microsecond-scale). The grammar,
 the evaluation order and the failure semantics are pinned by the
-digest-pinned census ``standards/otdp/0.1.2/examples/derivation-vectors.json``
+digest-pinned census ``standards/otdp/0.2.0/examples/derivation-vectors.json``
 and tested in ``tests/unit/test_derivation.py`` and
 ``tests/faults/test_derivation_faults.py``.
 

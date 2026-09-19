@@ -388,6 +388,15 @@ class SimScopePlugin:
             return self._reject(
                 request, ErrorCode.INVALID_ARGUMENT, "pretrigger_fraction must be in [0, 1]"
             )
+        # Configure-carried averaging (OTDP 0.2.0): validated up front through
+        # the same envelope as the equivalent live write, then applied through
+        # the state write path. Accepting the key without applying it would
+        # return OK for a no-op — laundered evidence.
+        averaging_count = action_input.get("averaging_count")
+        if averaging_count is not None:
+            refusal = self._validate("averaging_count", averaging_count)
+            if refusal is not None:
+                return self._reject(request, ErrorCode.INVALID_ARGUMENT, refusal)
         # Trigger shape per the corpus action schema: dispatch is the last
         # line of validation under host-ABI use, so the closed trigger form
         # (kind set; edge requires source_channel/slope/level_v; external
@@ -424,6 +433,10 @@ class SimScopePlugin:
                 applied = self._write_parameter(request, parameter, item[field])
                 if applied.status is not OperationStatus.OK:
                     return applied
+        if averaging_count is not None:
+            applied = self._write_parameter(request, "averaging_count", averaging_count)
+            if applied.status is not OperationStatus.OK:
+                return applied
         self._enabled = [item["channel"] for item in channels]
         self._acquisition_shape = {
             "sample_rate_hz": sample_rate_hz,
@@ -446,6 +459,10 @@ class SimScopePlugin:
                         "sample_rate_hz": sample_rate_hz,
                         "sample_count": sample_count,
                         "pretrigger_fraction": pretrigger_fraction,
+                        # The depth in force, read from state: the applied
+                        # value when the input carried it, the last written
+                        # value when it did not (omission is not a reset).
+                        "averaging_count": self._state["averaging_count"],
                         "trigger": dict(trigger),
                     },
                 }
