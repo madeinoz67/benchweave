@@ -71,6 +71,15 @@ acquisition-scoped with a per-acquisition fetch counter, and the dataset
 carries the configuration snapshotted at arm, so a reconfigure between arm
 and fetch cannot re-attribute the evidence.
 
+Dispatch-state posture inside actions: refusals on device state mid-invoke
+(incomplete acquisition, aborted acquisition, byte budget, single-use id
+violations) report `DEVICE_REJECTED` with dispatch state `DISPATCHED` — the
+invoke reached the handler and the plugin did work. Input-shape validation
+failures before any handler state is touched report `INVALID_ARGUMENT` with
+`NOT_DISPATCHED`. Acquisition ids are single-use: re-arming under an
+existing id, live or aborted, is refused rather than silently discarding the
+recorded state evidence refers to.
+
 ## Authored envelopes
 
 The acquisition envelopes are authored for the simulator, not measured on

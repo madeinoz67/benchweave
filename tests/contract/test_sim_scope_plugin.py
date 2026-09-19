@@ -798,3 +798,75 @@ def test_fetch_empty_pretrigger_buffer_names_the_trigger_cause(scope: Any) -> No
     assert refused.error.code.value == "DEVICE_REJECTED"
     assert "pretrigger" in refused.error.message
     assert "max_bytes" not in refused.error.message
+
+
+# --- post-dispatch state refusals report DISPATCHED (forge wave FR1) ------------
+
+
+def test_fetch_incomplete_refusal_reports_dispatched(scope: Any) -> None:
+    """An invoke already dispatched into the handler that refuses on device
+    state reports DISPATCHED, mirroring _write_parameter's mid-invoke
+    posture — claiming not_dispatched would deny work the plugin did."""
+    _configure_edge(scope)
+    assert _arm(scope).status.value == "ok"
+    refused = _fetch(scope, 1_048_576, False)
+    assert refused.status.value == "error"
+    assert refused.error.code.value == "DEVICE_REJECTED"
+    assert refused.error.dispatch_state is DispatchState.DISPATCHED
+
+
+def test_trigger_on_aborted_refusal_reports_dispatched(scope: Any) -> None:
+    _configure_edge(scope)
+    assert _arm(scope).status.value == "ok"
+    scope.dispatch(
+        _invoke("otdp.oscilloscope.abort/1.0.0", {"acquisition_id": "acq-1"}),
+        deadline_ns=10**12,
+    )
+    refused = scope.dispatch(
+        _invoke("otdp.oscilloscope.trigger/1.0.0", {"acquisition_id": "acq-1"}),
+        deadline_ns=10**12,
+    )
+    assert refused.status.value == "error"
+    assert refused.error.code.value == "DEVICE_REJECTED"
+    assert refused.error.dispatch_state is DispatchState.DISPATCHED
+
+
+def test_fetch_on_aborted_refusal_reports_dispatched(scope: Any) -> None:
+    _configure_edge(scope)
+    assert _arm(scope).status.value == "ok"
+    scope.dispatch(
+        _invoke("otdp.oscilloscope.abort/1.0.0", {"acquisition_id": "acq-1"}),
+        deadline_ns=10**12,
+    )
+    refused = _fetch(scope, 1_048_576, True)
+    assert refused.status.value == "error"
+    assert refused.error.code.value == "DEVICE_REJECTED"
+    assert refused.error.dispatch_state is DispatchState.DISPATCHED
+
+
+# --- acquisition ids are single-use (forge wave FR2) -----------------------------
+
+
+def test_rearm_of_aborted_acquisition_is_refused(scope: Any) -> None:
+    """arm -> abort -> arm under the same id must not resurrect the aborted
+    record (its started_at, configuration snapshot and fetch count) —
+    acquisition ids are single-use."""
+    _configure_edge(scope)
+    assert _arm(scope, acquisition_id="acq-2").status.value == "ok"
+    aborted = scope.dispatch(
+        _invoke("otdp.oscilloscope.abort/1.0.0", {"acquisition_id": "acq-2"}),
+        deadline_ns=10**12,
+    )
+    assert aborted.status.value == "ok"
+    resurrected = _arm(scope, acquisition_id="acq-2")
+    assert resurrected.status.value == "error"
+    assert resurrected.error.code.value == "DEVICE_REJECTED"
+    assert "single-use" in resurrected.error.message
+
+
+def test_rearm_of_live_acquisition_is_refused(scope: Any) -> None:
+    _configure_edge(scope)
+    assert _arm(scope, acquisition_id="acq-3").status.value == "ok"
+    again = _arm(scope, acquisition_id="acq-3")
+    assert again.status.value == "error"
+    assert again.error.code.value == "DEVICE_REJECTED"

@@ -173,6 +173,9 @@ Authoring rules the instance demonstrates:
   is corpus-legal but outside your declared envelope passes `check-preset`
   and is refused only by `check-ui` (or by the plugin at apply time). Declare
   the full envelope in `input_constraints`, not only the channel pattern.
+  `check-ui` applies that canonical and envelope validation only to presets
+  the binding references; a preset asset no binding names is digest-checked
+  but never settings-validated.
 - **A preset's `configuration_id` is a placeholder.** The runtime treats that
   key as gateway-issued; any future apply path must substitute the issued
   token, never replay the literal. Selecting a preset performs no I/O and

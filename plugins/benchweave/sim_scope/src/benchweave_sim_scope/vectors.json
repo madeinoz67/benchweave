@@ -8,32 +8,74 @@
     {
       "name": "identify_returns_device_identity",
       "setup": [],
-      "request": {"verb": "identify", "arguments": {}},
-      "expect": {"status": "ok", "data_manufacturer": "benchweave-sim"}
+      "request": {
+        "verb": "identify",
+        "arguments": {}
+      },
+      "expect": {
+        "status": "ok",
+        "data_manufacturer": "benchweave-sim"
+      }
     },
     {
       "name": "read_identity_model",
       "setup": [],
-      "request": {"verb": "read", "arguments": {"parameter": "identity_model"}},
-      "expect": {"status": "ok", "data_value": "sim-scope-1"}
+      "request": {
+        "verb": "read",
+        "arguments": {
+          "parameter": "identity_model"
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "data_value": "sim-scope-1"
+      }
     },
     {
       "name": "write_averaging_in_envelope",
       "setup": [],
-      "request": {"verb": "write", "arguments": {"parameter": "averaging_count", "value": 8}},
-      "expect": {"status": "ok"}
+      "request": {
+        "verb": "write",
+        "arguments": {
+          "parameter": "averaging_count",
+          "value": 8
+        }
+      },
+      "expect": {
+        "status": "ok"
+      }
     },
     {
       "name": "write_averaging_out_of_envelope",
       "setup": [],
-      "request": {"verb": "write", "arguments": {"parameter": "averaging_count", "value": 0}},
-      "expect": {"status": "error", "error_code": "INVALID_ARGUMENT", "dispatch_state": "not_dispatched"}
+      "request": {
+        "verb": "write",
+        "arguments": {
+          "parameter": "averaging_count",
+          "value": 0
+        }
+      },
+      "expect": {
+        "status": "error",
+        "error_code": "INVALID_ARGUMENT",
+        "dispatch_state": "not_dispatched"
+      }
     },
     {
       "name": "write_probe_ratio_out_of_envelope",
       "setup": [],
-      "request": {"verb": "write", "arguments": {"parameter": "ch1_probe_ratio", "value": 3}},
-      "expect": {"status": "error", "error_code": "INVALID_ARGUMENT", "dispatch_state": "not_dispatched"}
+      "request": {
+        "verb": "write",
+        "arguments": {
+          "parameter": "ch1_probe_ratio",
+          "value": 3
+        }
+      },
+      "expect": {
+        "status": "error",
+        "error_code": "INVALID_ARGUMENT",
+        "dispatch_state": "not_dispatched"
+      }
     },
     {
       "name": "configure_applies_and_echoes",
@@ -45,17 +87,36 @@
           "input": {
             "configuration_id": "cfg-1",
             "channels": [
-              {"channel": "ch1", "coupling": "dc", "range_v": 1.0, "offset_v": 0.05, "probe_ratio": 10},
-              {"channel": "ch3", "coupling": "ac", "range_v": 1.0, "offset_v": -0.05, "probe_ratio": 10}
+              {
+                "channel": "ch1",
+                "coupling": "dc",
+                "range_v": 1.0,
+                "offset_v": 0.05,
+                "probe_ratio": 10
+              },
+              {
+                "channel": "ch3",
+                "coupling": "ac",
+                "range_v": 1.0,
+                "offset_v": -0.05,
+                "probe_ratio": 10
+              }
             ],
             "sample_rate_hz": 1000.0,
             "sample_count": 1024,
             "pretrigger_fraction": 0.25,
-            "trigger": {"kind": "edge", "source_channel": "ch1", "slope": "rising", "level_v": 0.5}
+            "trigger": {
+              "kind": "edge",
+              "source_channel": "ch1",
+              "slope": "rising",
+              "level_v": 0.5
+            }
           }
         }
       },
-      "expect": {"status": "ok"}
+      "expect": {
+        "status": "ok"
+      }
     },
     {
       "name": "configure_rejects_unknown_channel",
@@ -67,16 +128,28 @@
           "input": {
             "configuration_id": "cfg-1",
             "channels": [
-              {"channel": "ch9", "coupling": "dc", "range_v": 1.0, "offset_v": 0.0, "probe_ratio": 1}
+              {
+                "channel": "ch9",
+                "coupling": "dc",
+                "range_v": 1.0,
+                "offset_v": 0.0,
+                "probe_ratio": 1
+              }
             ],
             "sample_rate_hz": 1000.0,
             "sample_count": 1024,
             "pretrigger_fraction": 0.0,
-            "trigger": {"kind": "immediate"}
+            "trigger": {
+              "kind": "immediate"
+            }
           }
         }
       },
-      "expect": {"status": "error", "error_code": "INVALID_ARGUMENT", "dispatch_state": "not_dispatched"}
+      "expect": {
+        "status": "error",
+        "error_code": "INVALID_ARGUMENT",
+        "dispatch_state": "not_dispatched"
+      }
     },
     {
       "name": "arm_requires_current_configuration_token",
@@ -88,12 +161,20 @@
             "input": {
               "configuration_id": "cfg-1",
               "channels": [
-                {"channel": "ch1", "coupling": "dc", "range_v": 1.0, "offset_v": 0.0, "probe_ratio": 1}
+                {
+                  "channel": "ch1",
+                  "coupling": "dc",
+                  "range_v": 1.0,
+                  "offset_v": 0.0,
+                  "probe_ratio": 1
+                }
               ],
               "sample_rate_hz": 1000.0,
               "sample_count": 1024,
               "pretrigger_fraction": 0.0,
-              "trigger": {"kind": "immediate"}
+              "trigger": {
+                "kind": "immediate"
+              }
             }
           }
         }
@@ -102,10 +183,18 @@
         "verb": "invoke",
         "arguments": {
           "action_id": "otdp.oscilloscope.arm/1.0.0",
-          "input": {"configuration_id": "preset-low-noise-pair", "acquisition_id": "acq-1", "max_duration_ms": 1000}
+          "input": {
+            "configuration_id": "preset-low-noise-pair",
+            "acquisition_id": "acq-1",
+            "max_duration_ms": 1000
+          }
         }
       },
-      "expect": {"status": "error", "error_code": "DEVICE_REJECTED", "dispatch_state": "not_dispatched"}
+      "expect": {
+        "status": "error",
+        "error_code": "DEVICE_REJECTED",
+        "dispatch_state": "not_dispatched"
+      }
     },
     {
       "name": "fetch_covers_configured_channels_only",
@@ -117,13 +206,27 @@
             "input": {
               "configuration_id": "cfg-1",
               "channels": [
-                {"channel": "ch1", "coupling": "dc", "range_v": 1.0, "offset_v": 0.05, "probe_ratio": 10},
-                {"channel": "ch3", "coupling": "ac", "range_v": 1.0, "offset_v": -0.05, "probe_ratio": 10}
+                {
+                  "channel": "ch1",
+                  "coupling": "dc",
+                  "range_v": 1.0,
+                  "offset_v": 0.05,
+                  "probe_ratio": 10
+                },
+                {
+                  "channel": "ch3",
+                  "coupling": "ac",
+                  "range_v": 1.0,
+                  "offset_v": -0.05,
+                  "probe_ratio": 10
+                }
               ],
               "sample_rate_hz": 1000.0,
               "sample_count": 16,
               "pretrigger_fraction": 0.0,
-              "trigger": {"kind": "immediate"}
+              "trigger": {
+                "kind": "immediate"
+              }
             }
           }
         },
@@ -131,7 +234,11 @@
           "verb": "invoke",
           "arguments": {
             "action_id": "otdp.oscilloscope.arm/1.0.0",
-            "input": {"configuration_id": "cfg-1", "acquisition_id": "acq-1", "max_duration_ms": 1000}
+            "input": {
+              "configuration_id": "cfg-1",
+              "acquisition_id": "acq-1",
+              "max_duration_ms": 1000
+            }
           }
         }
       ],
@@ -139,10 +246,16 @@
         "verb": "invoke",
         "arguments": {
           "action_id": "otdp.oscilloscope.fetch/1.0.0",
-          "input": {"acquisition_id": "acq-1", "max_bytes": 1048576, "allow_partial": false}
+          "input": {
+            "acquisition_id": "acq-1",
+            "max_bytes": 1048576,
+            "allow_partial": false
+          }
         }
       },
-      "expect": {"status": "ok"}
+      "expect": {
+        "status": "ok"
+      }
     },
     {
       "name": "abort_transitions_the_acquisition",
@@ -154,12 +267,20 @@
             "input": {
               "configuration_id": "cfg-1",
               "channels": [
-                {"channel": "ch1", "coupling": "dc", "range_v": 1.0, "offset_v": 0.0, "probe_ratio": 1}
+                {
+                  "channel": "ch1",
+                  "coupling": "dc",
+                  "range_v": 1.0,
+                  "offset_v": 0.0,
+                  "probe_ratio": 1
+                }
               ],
               "sample_rate_hz": 1000.0,
               "sample_count": 1024,
               "pretrigger_fraction": 0.0,
-              "trigger": {"kind": "immediate"}
+              "trigger": {
+                "kind": "immediate"
+              }
             }
           }
         },
@@ -167,7 +288,11 @@
           "verb": "invoke",
           "arguments": {
             "action_id": "otdp.oscilloscope.arm/1.0.0",
-            "input": {"configuration_id": "cfg-1", "acquisition_id": "acq-1", "max_duration_ms": 1000}
+            "input": {
+              "configuration_id": "cfg-1",
+              "acquisition_id": "acq-1",
+              "max_duration_ms": 1000
+            }
           }
         }
       ],
@@ -175,10 +300,14 @@
         "verb": "invoke",
         "arguments": {
           "action_id": "otdp.oscilloscope.abort/1.0.0",
-          "input": {"acquisition_id": "acq-1"}
+          "input": {
+            "acquisition_id": "acq-1"
+          }
         }
       },
-      "expect": {"status": "ok"}
+      "expect": {
+        "status": "ok"
+      }
     },
     {
       "name": "fetch_after_abort_is_refused",
@@ -190,12 +319,20 @@
             "input": {
               "configuration_id": "cfg-1",
               "channels": [
-                {"channel": "ch1", "coupling": "dc", "range_v": 1.0, "offset_v": 0.0, "probe_ratio": 1}
+                {
+                  "channel": "ch1",
+                  "coupling": "dc",
+                  "range_v": 1.0,
+                  "offset_v": 0.0,
+                  "probe_ratio": 1
+                }
               ],
               "sample_rate_hz": 1000.0,
               "sample_count": 1024,
               "pretrigger_fraction": 0.0,
-              "trigger": {"kind": "immediate"}
+              "trigger": {
+                "kind": "immediate"
+              }
             }
           }
         },
@@ -203,14 +340,20 @@
           "verb": "invoke",
           "arguments": {
             "action_id": "otdp.oscilloscope.arm/1.0.0",
-            "input": {"configuration_id": "cfg-1", "acquisition_id": "acq-1", "max_duration_ms": 1000}
+            "input": {
+              "configuration_id": "cfg-1",
+              "acquisition_id": "acq-1",
+              "max_duration_ms": 1000
+            }
           }
         },
         {
           "verb": "invoke",
           "arguments": {
             "action_id": "otdp.oscilloscope.abort/1.0.0",
-            "input": {"acquisition_id": "acq-1"}
+            "input": {
+              "acquisition_id": "acq-1"
+            }
           }
         }
       ],
@@ -218,10 +361,18 @@
         "verb": "invoke",
         "arguments": {
           "action_id": "otdp.oscilloscope.fetch/1.0.0",
-          "input": {"acquisition_id": "acq-1", "max_bytes": 1048576, "allow_partial": false}
+          "input": {
+            "acquisition_id": "acq-1",
+            "max_bytes": 1048576,
+            "allow_partial": false
+          }
         }
       },
-      "expect": {"status": "error", "error_code": "DEVICE_REJECTED", "dispatch_state": "not_dispatched"}
+      "expect": {
+        "status": "error",
+        "error_code": "DEVICE_REJECTED",
+        "dispatch_state": "dispatched"
+      }
     }
   ]
 }

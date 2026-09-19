@@ -116,6 +116,25 @@ class SimScopePlugin:
             dispatch_state=DispatchState.NOT_DISPATCHED,
         )
 
+    def _state_reject(
+        self, request: OperationRequest, message: str
+    ) -> OperationResult:
+        """Refuse on device state mid-invoke, reporting DISPATCHED.
+
+        The invoke has already been dispatched into the handler (the same
+        posture _write_parameter pins for mid-apply write failures): the
+        plugin did work, so claiming not_dispatched would deny it. Input
+        validation failures before any handler state is touched keep the
+        NOT_DISPATCHED form via _reject.
+        """
+        return OperationResult.failure(
+            request.operation_id,
+            request.verb,
+            code=ErrorCode.DEVICE_REJECTED,
+            message=message,
+            dispatch_state=DispatchState.DISPATCHED,
+        )
+
     def dispatch(self, request: OperationRequest, *, deadline_ns: int) -> OperationResult:
         if self._monotonic_ns() >= deadline_ns:
             return self._reject(request, ErrorCode.TIMEOUT, "deadline already passed")
@@ -199,7 +218,11 @@ class SimScopePlugin:
         if parameter == "averaging_count":
             return int(value) if isinstance(value, float) else value  # type: ignore[return-value]
         if parameter.endswith("_coupling"):
-            return value if isinstance(value, str) else ""
+            if not isinstance(value, str):
+                # Unreachable past _validate; a silent sentinel here would
+                # launder a validation gap into device state.
+                raise ValueError(f"{parameter} passed validation without a string value")
+            return value
         return float(value) if isinstance(value, int) else value  # type: ignore[return-value]
 
     def _write(self, request: OperationRequest) -> OperationResult:
@@ -417,11 +440,13 @@ class SimScopePlugin:
                     "configuration_id": configuration_id,
                     "effective_configuration": {
                         "configuration_id": configuration_id,
-                        "channels": channels,
+                        # Rebuilt, not referenced: the caller's input dicts
+                        # must not alias into the result.
+                        "channels": [dict(item) for item in channels],
                         "sample_rate_hz": sample_rate_hz,
                         "sample_count": sample_count,
                         "pretrigger_fraction": pretrigger_fraction,
-                        "trigger": trigger,
+                        "trigger": dict(trigger),
                     },
                 }
             },
@@ -450,6 +475,14 @@ class SimScopePlugin:
         ):
             return self._reject(
                 request, ErrorCode.INVALID_ARGUMENT, "arm requires a positive max_duration_ms"
+            )
+        if acquisition_id in self._acquisitions:
+            # Acquisition ids are single-use: re-arming under an existing id
+            # (live or aborted) would silently discard the recorded state —
+            # started_at, configuration snapshot, fetch count — that evidence
+            # already refers to.
+            return self._state_reject(
+                request, f"acquisition {acquisition_id} already exists; ids are single-use"
             )
         # An immediate trigger condition is met at arm time; every other kind
         # waits for the trigger action. The acquisition start is the arm time.
@@ -491,9 +524,7 @@ class SimScopePlugin:
                 request, ErrorCode.INVALID_ARGUMENT, f"unknown acquisition {acquisition_id}"
             )
         if self._acquisitions[acquisition_id]["state"] == "aborted":
-            return self._reject(
-                request, ErrorCode.DEVICE_REJECTED, f"acquisition {acquisition_id} was aborted"
-            )
+            return self._state_reject(request, f"acquisition {acquisition_id} was aborted")
         # The operator fired the trigger; the deterministic acquisition fills
         # immediately, so the state transitions to complete.
         self._acquisitions[acquisition_id]["state"] = "complete"
@@ -526,9 +557,7 @@ class SimScopePlugin:
             )
         acquisition = self._acquisitions[acquisition_id]
         if acquisition["state"] == "aborted":
-            return self._reject(
-                request, ErrorCode.DEVICE_REJECTED, f"acquisition {acquisition_id} was aborted"
-            )
+            return self._state_reject(request, f"acquisition {acquisition_id} was aborted")
         # Materialize from the snapshot taken at arm, not live state.
         snapshot = acquisition["configuration"]
         shape = snapshot["shape"]
@@ -540,9 +569,8 @@ class SimScopePlugin:
         reason: str | None = None
         if acquisition["state"] != "complete":
             if not allow_partial:
-                return self._reject(
+                return self._state_reject(
                     request,
-                    ErrorCode.DEVICE_REJECTED,
                     f"acquisition {acquisition_id} is not complete and allow_partial is false",
                 )
             samples = round(shape["pretrigger_fraction"] * shape["sample_count"])
@@ -550,9 +578,8 @@ class SimScopePlugin:
                 # Zero-acquired samples is the trigger's cause, not a budget
                 # cause: even an ample max_bytes cannot fetch what was never
                 # acquired. Refuse naming the true reason.
-                return self._reject(
+                return self._state_reject(
                     request,
-                    ErrorCode.DEVICE_REJECTED,
                     "trigger has not fired and the pretrigger buffer is empty; "
                     "no samples acquired yet",
                 )
@@ -563,18 +590,16 @@ class SimScopePlugin:
         needed = len(channels) * samples * width
         if needed > max_bytes:
             if not allow_partial:
-                return self._reject(
+                return self._state_reject(
                     request,
-                    ErrorCode.DEVICE_REJECTED,
                     f"insufficient max_bytes: {needed} bytes needed, {max_bytes} given",
                 )
             samples = max_bytes // (width * len(channels))
             status = "partial"
             reason = f"truncated to {samples} samples per channel by max_bytes"
         if samples < 1:
-            return self._reject(
+            return self._state_reject(
                 request,
-                ErrorCode.DEVICE_REJECTED,
                 "max_bytes is below one sample per channel; no representable dataset",
             )
         acquisition["fetches"] += 1
