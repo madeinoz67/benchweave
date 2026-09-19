@@ -362,3 +362,172 @@ def test_huge_int_element_ends_the_step_typed_not_an_escape(tmp_path: Path) -> N
     assert measure_event["status"] == "error"
     assert measure_event["error_code"] == "DERIVATION_INVALID"
     assert "derivation_dtype_mismatch:" in body.reasons[-1], body.reasons
+
+
+def _scalar(vid: str, value: object, marker: dict[str, Any] | None = None) -> dict[str, Any]:
+    variable: dict[str, Any] = {
+        "id": vid,
+        "quantity": "voltage",
+        "unit": "V",
+        "channel_ids": ["ch1"],
+        "dtype": "float64",
+        "dimensions": [],
+        "values": [value],
+        "uncertainty": {"status": "unknown"},
+        "calibration": {"status": "unknown"},
+        "status": "valid",
+    }
+    if marker is not None:
+        variable["derivation"] = marker
+    return variable
+
+
+class _MarkerPoisonPlugin:
+    """DevicePlugin stand-in whose dataset carries a poisoned marker.
+
+    A plugin-emitted recorded derivation marker whose expression contains a
+    Unicode digit-class character: the liar-check parse raises an untyped
+    ValueError. The executor seam must contain ANY escape (RB2) — ending
+    the step DERIVATION_INVALID with the exception class recorded —
+    because at this seam an escape skips the protective transition.
+    """
+
+    @property
+    def simulation(self) -> Any:
+        return type("SimulationInfo", (), {"simulated": True, "label": "marker-poison"})()
+
+    def plugin_open(self, services: Any) -> None:
+        pass
+
+    def plugin_close(self) -> None:
+        pass
+
+    def dispatch(self, request: Any, *, deadline_ns: int) -> Any:
+        if request.arguments.get("action_id") != "otdp.dc_psu.measure/1.0.0":
+            return OperationResult.ok(
+                request.operation_id, request.verb, {"result": {"ok": True}}
+            )
+        dataset = {
+            "dataset_id": "dataset-marker-poison",
+            "kind": "scalar_set",
+            "configuration_id": FIXTURE_CONFIGURATION_ID,
+            "acquisition_id": None,
+            "started_at": None,
+            "clock": {
+                "domain_id": "marker-poison",
+                "timestamp_source": "host",
+                "synchronisation": "unknown",
+                "uncertainty_s": None,
+            },
+            "axes": [],
+            "variables": [
+                _scalar("voltage_a", 5.0),
+                _scalar(
+                    "computed_v",
+                    6.0,
+                    marker={
+                        "kind": "expression",
+                        "expression": "voltage_a + ²",
+                        "operand_ids": ["voltage_a"],
+                    },
+                ),
+            ],
+            "trigger": {"source": "immediate", "time_relative_s": None},
+            "status": "complete",
+            "context": {},
+        }
+        return OperationResult.ok(
+            request.operation_id, request.verb, {"result": dataset}
+        )
+
+
+def test_marker_poison_is_contained_as_derivation_invalid(tmp_path: Path) -> None:
+    clock = TestClock()
+    plugins: dict[str, DevicePlugin] = {
+        "psu": _MarkerPoisonPlugin(),
+        "controller": _plugins(clock)["controller"],
+    }
+    ledger: dict[tuple[str, str, tuple[int, ...]], dict[str, Any]] = {}
+    docs = readmit_mutated(tmp_path, _derived_procedure)
+    executor = Executor(
+        plugins=plugins,
+        binding=resolve_binding(docs),
+        policy=docs.policy,
+        clock=clock,
+        wall=clock,
+        occurrence_ledger=ledger,
+        derived_variables={
+            device_id: descriptor.get("derived_variables", [])
+            for device_id, descriptor in docs.descriptors.items()
+        },
+    )
+    body = executor.run_body(
+        docs.procedure,
+        run_id=RUN_ID,
+        body_deadline_ns=clock.now_ns() + int(docs.procedure["max_body_ms"]) * 1_000_000,
+    )
+    assert body.body_outcome == "execution_error", body.reasons
+    measure_event = next(
+        event
+        for event in body.step_events
+        if event["kind"] == "invoke" and event["occurrence"][1] == "measure"
+    )
+    assert measure_event["status"] == "error"
+    assert measure_event["error_code"] == "DERIVATION_INVALID"
+    # The containment records the exception class — nothing is silent. The
+    # marker poison is typed post-RB1 (DerivationRejected); the truly
+    # unexpected-exception case is pinned separately below.
+    assert measure_event["derivation_error"], measure_event
+    assert "derivation_grammar" in measure_event["derivation_error"], measure_event
+    assert "DerivationRejected" in body.reasons[-1], body.reasons
+
+
+def test_unexpected_derivation_exception_is_contained(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    """RB2 containment ruling: ANY exception at the seam ends the body.
+
+    An unexpected exception (not a typed refusal) escaping _apply_derivation
+    would skip the protective transition; the broad catch must end the step
+    DERIVATION_INVALID with the class recorded in the step event.
+    """
+
+    import benchweave.control.executor as executor_module
+
+    def _explode(dataset: object, derived: object) -> object:
+        raise RuntimeError("simulated evaluator crash")
+
+    monkeypatch.setattr(executor_module, "derive_dataset_variables", _explode)
+    clock = TestClock()
+    plugins: dict[str, DevicePlugin] = {
+        "psu": _MarkerPoisonPlugin(),
+        "controller": _plugins(clock)["controller"],
+    }
+    ledger: dict[tuple[str, str, tuple[int, ...]], dict[str, Any]] = {}
+    docs = readmit_mutated(tmp_path, _derived_procedure)
+    executor = Executor(
+        plugins=plugins,
+        binding=resolve_binding(docs),
+        policy=docs.policy,
+        clock=clock,
+        wall=clock,
+        occurrence_ledger=ledger,
+        derived_variables={
+            device_id: descriptor.get("derived_variables", [])
+            for device_id, descriptor in docs.descriptors.items()
+        },
+    )
+    body = executor.run_body(
+        docs.procedure,
+        run_id=RUN_ID,
+        body_deadline_ns=clock.now_ns() + int(docs.procedure["max_body_ms"]) * 1_000_000,
+    )
+    assert body.body_outcome == "execution_error", body.reasons
+    measure_event = next(
+        event
+        for event in body.step_events
+        if event["kind"] == "invoke" and event["occurrence"][1] == "measure"
+    )
+    assert measure_event["error_code"] == "DERIVATION_INVALID"
+    assert "RuntimeError" in measure_event["derivation_error"], measure_event
+    assert "RuntimeError" in body.reasons[-1], body.reasons

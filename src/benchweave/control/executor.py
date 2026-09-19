@@ -93,8 +93,6 @@ from benchweave.host.types import (
     WriteReceipt,
 )
 from benchweave.measurement.derivation import (
-    DerivationRefused,
-    DerivationRejected,
     derive_dataset_variables,
 )
 
@@ -876,11 +874,19 @@ class Executor:
             return result
         try:
             derived_payload = derive_dataset_variables(payload, declarations)
-        except (DerivationRefused, DerivationRejected) as error:
+        except Exception as error:
+            # Containment ruling (refute RB2): at this seam ANY escape —
+            # typed refusal, or an unexpected exception from data the
+            # plugin returned — would skip the protective transition
+            # (an A12 ending without the safe transition). The broad catch
+            # records the exception class and message in the step event and
+            # ends DERIVATION_INVALID; nothing is silent.
             event["status"] = "error"
             event["error_code"] = "DERIVATION_INVALID"
+            event["derivation_error"] = f"{type(error).__name__}: {error}"
             body.terminate(
-                BODY_EXECUTION_ERROR, f"derivation_invalid: {step_id}: {error}"
+                BODY_EXECUTION_ERROR,
+                f"derivation_invalid: {step_id}: {type(error).__name__}: {error}",
             )
             return result
         rebuilt = dict(data)

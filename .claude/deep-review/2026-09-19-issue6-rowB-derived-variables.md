@@ -316,11 +316,14 @@ For each derived variable, at evaluation:
   single `null` is **not** fabricated — see below;
 - all operands have `dtype: "float64"`, inline `values`, finite elements (nulls allowed,
   M04/M05 semantics), and identical `dimensions` lists (exact equality; no broadcasting);
-- `+`/`-` node operands must carry **exactly equal `unit` strings** (machine reason
-  `derivation_unit_mismatch:`). `*` and `/` impose no operand-unit rule in increment 1:
-  the declared `quantity`/`unit` of the derived variable is the author's responsibility.
-  This residual is stated in the guard's docstring and in M15 (claim discipline: the guard
-  says what it does not catch).
+- `+`/`-` nodes compare units **between identifier-leaf operand pairs only** (machine
+  reason `derivation_unit_mismatch:`): ``a + c`` with (V, A) refuses, but
+  ``a + b + c`` with (V, V, A) computes, because the outer node's left operand is a
+  sub-expression that carries no trackable unit in increment 1 — a numeric literal
+  likewise. Whole-subexpression unit algebra stays deferred (§5). `*` and `/` impose no
+  operand-unit rule: the declared `quantity`/`unit` of the derived variable is the
+  author's responsibility. This residual is stated in the guard's docstring and in M15
+  (claim discipline: the guard says what it does not catch).
 
 Failure semantics, elementwise (mirroring M05's partial-variable rules):
 

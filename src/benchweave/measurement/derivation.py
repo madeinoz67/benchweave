@@ -64,6 +64,12 @@ MAX_NESTING = 32
 #: exactly representable (even values) is still refused; "mechanically
 #: checkable and total" beats "maximally permissive" at a data boundary.
 MAX_EXACT_INT = 2**53
+#: The grammar's ``digits`` are exactly ASCII 0-9 (the OTDP schema pattern's
+#: class). ``str.isdigit`` would admit Unicode digit-class characters —
+#: superscripts crash ``float()`` with an untyped ValueError, and Arabic-
+#: Indic/fullwidth digits silently evaluate as their numeric values,
+#: disagreeing with the schema lane on identical content.
+_ASCII_DIGITS = frozenset("0123456789")
 
 _IDENTIFIER = re.compile(r"[a-z][a-z0-9_]*")
 
@@ -117,19 +123,19 @@ def _tokenize(expression: str) -> list[tuple[str, str]]:
             tokens.append((char, char))
             index += 1
             continue
-        if char.isdigit() or char == ".":
+        if char in _ASCII_DIGITS or char == ".":
             start = index
-            if char.isdigit():
-                while index < length and expression[index].isdigit():
+            if char in _ASCII_DIGITS:
+                while index < length and expression[index] in _ASCII_DIGITS:
                     index += 1
             if index < length and expression[index] == ".":
                 index += 1
-                if index >= length or not expression[index].isdigit():
+                if index >= length or expression[index] not in _ASCII_DIGITS:
                     raise DerivationRejected(
                         f"derivation_grammar: malformed number at {start} "
                         f"in {expression!r} (digits required after the decimal point)"
                     )
-                while index < length and expression[index].isdigit():
+                while index < length and expression[index] in _ASCII_DIGITS:
                     index += 1
             if index == start:  # a lone "." that never matched a digit
                 raise DerivationRejected(
@@ -216,8 +222,16 @@ class _Parser:
         kind, text = token
         if kind == "num":
             # One decimal-string -> binary64 conversion, at parse time: the
-            # same literal text always yields the same value.
-            return ("num", float(text), text)
+            # same literal text always yields the same value. ASCII-only
+            # digit text cannot fail this conversion; the except is
+            # defensive totality so no path out of the parser is untyped.
+            try:
+                return ("num", float(text), text)
+            except (OverflowError, ValueError) as error:
+                raise DerivationRejected(
+                    f"derivation_grammar: number {text!r} is not convertible "
+                    "to binary64"
+                ) from error
         if kind == "id":
             return ("id", text)
         if kind == "(":
@@ -431,12 +445,19 @@ def _check_recorded_marker(variable: dict[str, Any]) -> None:
             f"derivation_marker_mismatch: variable {variable.get('id')!r} carries "
             "a marker that is not a closed expression record"
         )
-    if not isinstance(operand_ids, list) or not all(
-        isinstance(item, str) for item in operand_ids
+    if (
+        not isinstance(operand_ids, list)
+        or not operand_ids
+        or not all(isinstance(item, str) for item in operand_ids)
+        or len(set(operand_ids)) != len(operand_ids)
+        or any(not re.fullmatch(r"[a-z][a-z0-9_]*", str(item)) for item in operand_ids)
     ):
+        # The schema's own bounds on operand_ids (minItems 1, uniqueItems,
+        # id pattern) — the liar-check enforces them rather than trust a
+        # record that already violates its declared shape.
         raise DerivationRefused(
             f"derivation_marker_mismatch: variable {variable.get('id')!r} carries "
-            "non-string operand_ids"
+            "operand_ids that are not a non-empty list of unique variable ids"
         )
     node = _parse(expression)
     ordered: list[str] = []
@@ -701,6 +722,20 @@ def derive_dataset_variables(
     index_by_id: dict[str, int] = {
         str(variable.get("id")): position for position, variable in enumerate(working)
     }
+    if len(index_by_id) != len(working):
+        # M01 laundering: with duplicate ids, operand resolution would
+        # silently read the LAST duplicate — mirroring the derived-id
+        # collision stance for pre-existing duplicates refuses instead.
+        counts: dict[str, int] = {}
+        for variable in working:
+            identifier = str(variable.get("id"))
+            counts[identifier] = counts.get(identifier, 0) + 1
+        duplicates = sorted(key for key, count in counts.items() if count > 1)
+        raise DerivationRefused(
+            f"derivation_duplicate_variable: dataset carries duplicate variable "
+            f"id(s) {duplicates}; derivation reads refuse rather than resolve "
+            "operands to an arbitrary duplicate"
+        )
     for declaration in derived:
         identifier = str(declaration["id"])
         if identifier in index_by_id:

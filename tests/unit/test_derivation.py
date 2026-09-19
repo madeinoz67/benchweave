@@ -315,6 +315,60 @@ def test_empty_declaration_list_is_a_no_op() -> None:
 # --- the float64 conversion boundary (mechanism-critic B1/B2) -------------------
 
 
+# --- liar-check bounds and duplicate-id datasets (refute RB4) ------------------
+
+
+def test_marker_with_empty_operand_ids_refuses() -> None:
+    """The liar-check enforces its own schema bounds: operand_ids minItems 1."""
+
+    constant = _operand("constant", 3.0)
+    constant["derivation"] = {
+        "kind": "expression",
+        "expression": "42",
+        "operand_ids": [],
+    }
+    with pytest.raises(DerivationRefused, match="derivation_marker_mismatch:"):
+        derive_dataset_variables(
+            _dataset([constant]),
+            [{"id": "d", "quantity": "q", "unit": "1", "expression": "constant + 1"}],
+        )
+
+
+def test_marker_with_duplicate_operand_ids_refuses() -> None:
+    """The liar-check enforces its own schema bounds: operand_ids uniqueItems."""
+
+    a = _operand("a1", 1.0)
+    forged = _operand("sum_ok", 2.0)
+    forged["derivation"] = {
+        "kind": "expression",
+        "expression": "a1 + a1",
+        "operand_ids": ["a1", "a1"],
+    }
+    with pytest.raises(DerivationRefused, match="derivation_marker_mismatch:"):
+        derive_dataset_variables(
+            _dataset([a, forged]),
+            [{"id": "d", "quantity": "q", "unit": "1", "expression": "a1 + 1"}],
+        )
+
+
+def test_duplicate_dataset_variable_ids_refuse_derivation() -> None:
+    """A duplicate-id dataset (M01 violation) refuses derivation reads.
+
+    Silent last-duplicate-wins operand resolution would launder which
+    variable fed the computation — the same stance the derived-id
+    collision refusal takes for derived ids, mirrored for pre-existing
+    duplicates.
+    """
+
+    twin_a = _operand("v1", 1.0)
+    twin_b = _operand("v1", 9.0)  # same id, different values
+    with pytest.raises(DerivationRefused, match="derivation_duplicate_variable:"):
+        derive_dataset_variables(
+            _dataset([twin_a, twin_b]),
+            [{"id": "d", "quantity": "q", "unit": "1", "expression": "v1 + 1"}],
+        )
+
+
 @pytest.mark.parametrize(
     ("element", "readable"),
     [

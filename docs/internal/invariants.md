@@ -170,8 +170,10 @@ rather than rewriting the history — that is how this file earns trust.
   failures (null operands, division by zero, non-finite results) and
   unresolved operands as in-band partial/invalid variables with `null`
   elements — never `inf`/`NaN` — and treats structural contradictions
-  (derived-id collision, malformed dataset, unit/dtype/shape disagreement)
-  as step failures (`DERIVATION_INVALID`, body `execution_error`, raw
+  (derived-id collision, malformed or duplicate-variable-id dataset,
+  dtype/shape disagreement, and `+`/`-` unit mismatch between
+  identifier-leaf operand pairs — sub-expression and literal operands
+  carry no trackable unit) as step failures (`DERIVATION_INVALID`, body `execution_error`, raw
   dataset kept in scope) — `src/benchweave/measurement/derivation.py`,
   `control/documents.py _check_descriptor`, `control/executor.py
   _apply_derivation`, pinned by `tests/unit/test_derivation.py`,
