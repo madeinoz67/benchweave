@@ -202,6 +202,8 @@ All notable changes to this project will be documented in this file.
 - Apply the issue-#6 retrospective workflow rules (#69)
 - Governor-pass fixes on the #69 rules
 - Commit the issue-#64 design record on the branch
+- Commit the issue-#62 design record on the branch
+- State the orphan-sweep size residual in the 0.2.0 README
 
 ### Features
 
@@ -297,6 +299,7 @@ All notable changes to this project will be documented in this file.
 - Pure module + admission + executor wiring (issue #6 row B)
 - OTDP 0.1.2 — derived variables in the measurement model
 - OTDP 0.2.0 — configure-carried averaging + class sample_count bound
+- Plugin-ui 0.2.0 — lane-1 descriptor envelopes + unreferenced-preset refusal
 
 ### Hardware Evidence
 
@@ -361,6 +364,7 @@ All notable changes to this project will be documented in this file.
 - Frontmatter + gortex read/query grant for standards-governor
 - Muninndb-benchweave read/query grants for designer, adversary, critic
 - Advance packages/sdk to the OTDP 0.2.0 vendoring
+- Advance packages/sdk to the plugin-ui 0.2.0 vendoring
 
 ### Refactoring
 
@@ -420,6 +424,7 @@ All notable changes to this project will be documented in this file.
 - Sync-stamp literal follows the otdp 0.2.0 lock
 - Complete the 0.2.0 literal sweep in two missed docstring paths
 - Pin the averaging envelope endpoints 1 and 64 (refute R1)
+- RED controls for plugin-ui 0.2.0 lane-1 envelopes + orphan refusal
 
 ### Build
 
