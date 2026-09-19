@@ -101,6 +101,11 @@ All notable changes to this project will be documented in this file.
 - Name the true cause when the pretrigger buffer is empty
 - Carry the probe_ratio enum in the parameter descriptions; re-pin the digest chain
 - Forge-wave honesty — dispatched state refusals, single-use acquisition ids, small fixes
+- Accent arbitration, threshold carrier, a11y disclosure, token fallback (C1-C4)
+- Hidden traces release the accent claim (W1) + cross-product wording (W2)
+- Carrier participates in axis extent; legend swatches follow resolution (FC1/FC2)
+- Muted-x-absent cross-product cell, ruled fallback pin, renderer version (FC3-FC5)
+- Declare plugin-ui 0.1.1 in the ui resources
 
 ### Documentation
 
@@ -178,6 +183,9 @@ All notable changes to this project will be documented in this file.
 - State the input_constraints lane split in the presets section
 - Fetch semantics in the README; design-record residual corrections
 - Review-wave prose corrections — parameter count, copy wording, simulator inventory scope
+- Issue #6 row C per-channel display hints design record
+- Record the forge-tail evidence in the 0.1.1 report
+- Scope the W1/C4 amendment claims; pin first-visible mark line (review-C)
 
 ### Features
 
@@ -269,6 +277,7 @@ All notable changes to this project will be documented in this file.
 - Derive-check identity.adapter_api against the descriptor schema const
 - Sim_scope settings-presets simulator + host-ABI dispatch suite
 - Sim_scope ui resources, both SDK lanes, eight RED controls
+- Plugin-ui 0.1.1 channel_hints + two-pass renderer
 
 ### Hardware Evidence
 
@@ -322,6 +331,10 @@ All notable changes to this project will be documented in this file.
 - Advance SDK pointer — styleguide v0.2 brand
 - Bump packages/sdk to 17d6ecb (star CTA + header wrap)
 - Bump packages/sdk to 5da15c7 (gateway links to project website)
+- Advance packages/sdk to the pushed plugin-ui 0.1.1 SDK branch
+- Advance packages/sdk to the C1-C4 renderer refresh
+- Advance packages/sdk to the W1 renderer refresh
+- Advance packages/sdk to the FC1/FC2 renderer refresh
 
 ### Refactoring
 
@@ -370,6 +383,11 @@ All notable changes to this project will be documented in this file.
 - Pin the submodule HEAD to the recorded gitlink
 - Pin the submodule HEAD against the committed gitlink, not the index
 - Pin test_sdk resolution to the pinned submodule tree (#53)
+- RED for plugin-ui 0.1.1 channel_hints
+- RED for row C mechanism-critique fix wave (C1-C4)
+- Jsdom-robust accessibility assertions for hidden legend rows
+- RED for hidden-claimant accent release (W1) + honest table naming (W2)
+- RED for real-render carrier visibility (FC1) + legend swatches (FC2)
 
 ### Build
 
