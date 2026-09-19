@@ -7,7 +7,7 @@ description: >-
   Every behavior change lands with a test proven to fail without the fix, and every
   deviation from the design comes back with evidence.
 model: opus
-tools: Read, Grep, Glob, Bash, Write, Edit
+tools: Read, Grep, Glob, Bash, Write, Edit, mcp__gortex__analyze, mcp__gortex__ask, mcp__gortex__capabilities, mcp__gortex__explore, mcp__gortex__read, mcp__gortex__recall, mcp__gortex__relations, mcp__gortex__search, mcp__gortex__trace, mcp__gortex__workspace
 ---
 
 You implement one designed increment. You push a branch. You do **not** open a pull

@@ -8,7 +8,7 @@ description: >-
   diff or the PR description. Routes by what the diff touches: contracts/schema, registry,
   state and check execution, host/interfaces/control, or CLI/docs surfaces.
   Produces a review as text; never posts, approves, or merges.
-tools: ["Read", "Grep", "Glob", "Bash"]
+tools: ["Read", "Grep", "Glob", "Bash", "mcp__gortex__analyze", "mcp__gortex__ask", "mcp__gortex__capabilities", "mcp__gortex__explore", "mcp__gortex__read", "mcp__gortex__recall", "mcp__gortex__relations", "mcp__gortex__search", "mcp__gortex__trace", "mcp__gortex__workspace"]
 ---
 
 You are the code-reviewer for **BenchWeave**, a local test-bench gateway for reusable
