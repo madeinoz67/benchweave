@@ -151,3 +151,24 @@ def test_stale_otdp_version_refused(tmp_path: Path) -> None:
         AdmissionRejected, match=r"schema: descriptor\[psu\] \$.otdp_version"
     ):
         readmit_mutated(tmp_path, _mutated_scope(mutate))
+
+
+SLIM_CONTROL = ROOT / "tests" / "control" / "fixtures" / "descriptor-slim-control.json"
+
+
+def test_slim_dialect_control_bytes_are_refused(tmp_path: Path) -> None:
+    """Dialect death: the pre-conversion slim psu bytes (committed here as a
+    control) are refused with a schema: prefix — a descriptor that is not
+    OTDP-valid is not execution-admissible. Before the slim branch was
+    removed these bytes still admitted; that asymmetry was this control's
+    RED."""
+
+    def mutate(graph: dict[str, Any]) -> None:
+        slim = json.loads(SLIM_CONTROL.read_text())
+        graph["descriptors"]["psu"] = slim
+        device = next(d for d in graph["bench"]["devices"] if d["id"] == "psu")
+        device["descriptor"]["id"] = slim["id"]
+        device["descriptor"]["version"] = slim["version"]
+
+    with pytest.raises(AdmissionRejected, match=r"^schema: descriptor\[psu\]"):
+        readmit_mutated(tmp_path, mutate)

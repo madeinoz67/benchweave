@@ -2,13 +2,19 @@
 
 Decodes each admission input with the exact-byte JSON decoder, validates the
 five execution-contract documents against the vendored execution/0.1.0
-schemas, and verifies the digest pin lattice between them. The package lock
-and device descriptors have no vendored schema this work package, so they are
-decoded exactly and gated by a minimal structural check instead.
+schemas, and verifies the digest pin lattice between them. Device descriptors
+are full-form OTDP documents: each validates against the ACTIVE vendored OTDP
+descriptor schema (version derived from the vendored standards manifest, never
+a hardcoded constant), the S01/S02 semantic mirrors and the gateway-owned
+``x-stg-issued-inputs`` extension, then projects the execution view
+binding/semantics/coordinator read (CON-10). The package lock keeps a minimal
+structural check (id and version strings) — it has no vendored schema.
 
-Structure and pins only: semantic admission (profile satisfaction, policy
-envelope evaluation, binding completeness) belongs to later stages. Every
-rejection carries a machine-matchable prefix: ``schema:`` (structure),
+Structure and pins only for the contract documents: semantic admission
+(profile satisfaction, policy envelope evaluation, binding completeness)
+belongs to later stages; the descriptor gate's semantic checks are the SDK's
+own S01/S02, mirrored here. Every rejection carries a machine-matchable
+prefix: ``schema:`` (structure, including the mirrors and the issued map),
 ``digest_mismatch:`` (a pin disagrees with the bytes it names), or
 ``pin_absent:`` (a required pin or descriptor is missing). File-level errors
 for the given paths propagate unchanged.
@@ -143,44 +149,9 @@ def _require_string(doc: dict[str, Any], field: str, logical: str) -> None:
         raise AdmissionRejected(f"schema: {logical} requires non-empty string {field}")
 
 
-def _require_string_list(doc: dict[str, Any], field: str, logical: str) -> None:
-    value = doc.get(field)
-    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
-        raise AdmissionRejected(f"schema: {logical} requires {field} to be a list of strings")
-
-
 def _check_package_lock(lock: dict[str, Any]) -> None:
     _require_string(lock, "id", "package_lock")
     _require_string(lock, "version", "package_lock")
-
-
-def _check_descriptor(device_id: str, descriptor: dict[str, Any]) -> None:
-    logical = f"descriptor[{device_id}]"
-    _require_string(descriptor, "id", logical)
-    _require_string(descriptor, "version", logical)
-    _require_string_list(descriptor, "profiles", logical)
-    _require_string_list(descriptor, "parameters", logical)
-    actions = descriptor.get("actions")
-    if not isinstance(actions, list):
-        raise AdmissionRejected(f"schema: {logical} requires actions to be a list")
-    for action in actions:
-        if not isinstance(action, dict):
-            raise AdmissionRejected(f"schema: {logical} requires each action to be an object")
-        _require_string(action, "action_id", f"{logical} action")
-        if "issued" in action and (
-            not isinstance(action["issued"], list)
-            or not all(isinstance(item, str) for item in action["issued"])
-        ):
-            raise AdmissionRejected(
-                f"schema: {logical} action {action.get('action_id')!r} requires "
-                "issued to be a list of strings"
-            )
-    # OTDP 0.1.2 M15/S19: grammar and static checks at admission, so a
-    # malformed expression cannot reach a run. NOT checked here: operand
-    # existence (datasets vary by action) and unit agreement (operand
-    # units live in datasets) — both are evaluation-time in
-    # benchweave.measurement.derivation.
-    _check_derived(logical, descriptor.get("derived_variables"))
 
 
 def _check_semantic_mirrors(logical: str, descriptor: dict[str, Any]) -> None:
@@ -323,17 +294,14 @@ def _project_full_form(device_id: str, descriptor: dict[str, Any]) -> dict[str, 
 def _project_descriptor(device_id: str, descriptor: dict[str, Any]) -> dict[str, Any]:
     """Validate one descriptor and return the execution view (CON-10).
 
-    A full-form OTDP descriptor (the single descriptor dialect) validates
-    against the active vendored schema plus the mirrors and the issued
-    extension, and projects the slim view binding, semantics and the
-    coordinator read. The legacy slim dialect is still structurally gated
-    and passes through as its own view (the dual-accept interim of issue
-    #63; the tree converts and the slim branch dies there).
+    A device descriptor is a full-form OTDP document: it validates against
+    the active vendored schema plus the S01/S02 mirrors and the gateway's
+    issued-input extension, then projects the execution view binding,
+    semantics and the coordinator read. The pre-conversion slim list
+    dialect is refused — it fails the schema; a descriptor that is not
+    OTDP-valid is not execution-admissible.
     """
-    if "otdp_version" in descriptor:
-        return _project_full_form(device_id, descriptor)
-    _check_descriptor(device_id, descriptor)
-    return descriptor
+    return _project_full_form(device_id, descriptor)
 
 
 def _verify_pin(
