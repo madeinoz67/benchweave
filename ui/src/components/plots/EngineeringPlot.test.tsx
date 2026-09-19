@@ -234,9 +234,10 @@ describe("EngineeringPlot", () => {
       />,
     );
 
-    const hidden = screen.getByRole("listitem", { name: /hidden/i });
+    const hidden = screen.getByText("Channel B · V").closest("li");
+    expect(hidden).not.toBeNull();
     expect(hidden).toHaveAttribute("data-hidden", "true");
-    expect(hidden.textContent).toContain("Channel B · V");
+    expect(hidden).toHaveAccessibleName(/hidden/i);
     const shown = screen.getAllByRole("listitem").filter((item) => item !== hidden);
     expect(shown).toHaveLength(2);
     for (const item of shown) {
@@ -284,8 +285,12 @@ describe("EngineeringPlot", () => {
     expect(carrier.markLine).toBeDefined();
     expect(carrier.markLine!.lineStyle.color).toBe("#a96608");
     // The plot discloses that all channels are presentation-hidden: the
-    // description names no traces, and every legend row is struck through.
+    // description names no traces, and every legend row discloses its state.
     expect(screen.getByRole("img", { name: "All hidden" }).textContent).toBe("");
-    expect(screen.getAllByRole("listitem", { name: /hidden/i })).toHaveLength(3);
+    const rows = screen.getAllByRole("listitem");
+    expect(rows).toHaveLength(3);
+    for (const row of rows) {
+      expect(row).toHaveAccessibleName(/hidden/i);
+    }
   });
 });
