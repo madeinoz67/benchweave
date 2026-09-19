@@ -171,16 +171,20 @@ Authoring rules the instance demonstrates:
   configure-carried `averaging_count` through the same write path as the live
   write and echoes the depth in force.
 - **Validate with both SDK lanes**: `benchweave-sdk check-preset` per preset
-  and `benchweave-sdk check-ui` over the package. Only the latter performs the
-  both-schemas clause, and only the latter enforces the descriptor action's
-  `input_constraints`: `check-preset` validates settings against the
-  settings-schema file and never consults descriptor actions, so a value that
-  is corpus-legal but outside your declared envelope passes `check-preset`
-  and is refused only by `check-ui` (or by the plugin at apply time). Declare
-  the full envelope in `input_constraints`, not only the channel pattern.
-  `check-ui` applies that canonical and envelope validation only to presets
-  the binding references; a preset asset no binding names is digest-checked
-  but never settings-validated.
+  and `benchweave-sdk check-ui` over the package. Since plugin-ui 0.2.0 both
+  lanes enforce the descriptor action's `input_constraints` AND the canonical
+  action schema: `check-preset` resolves the action from the preset's own
+  settings-schema identity — when the schema's `$id` is a corpus action
+  input-schema `$id` (the pinned-copy rule above), that action's envelope
+  applies to the default invocation, and `--action` forces a named action (an
+  action the descriptor does not declare is refused, never silently skipped).
+  A settings schema with a custom `$id` gets no envelope in lane 1 — the
+  command says so in its success message — and needs `check-ui` (or the
+  explicit flag) for full coverage. Declare the full envelope in
+  `input_constraints`, not only the channel pattern. `check-ui` validates
+  every preset a configuration target declares, whether or not a binding
+  lists it, and refuses a preset-shaped asset no target declares
+  (`unreferenced_preset`) rather than guessing its wiring.
 - **A preset's `configuration_id` is a placeholder.** The runtime treats that
   key as gateway-issued; any future apply path must substitute the issued
   token, never replay the literal. Selecting a preset performs no I/O and
