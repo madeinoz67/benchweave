@@ -26,6 +26,7 @@ from jsonschema import Draft202012Validator, FormatChecker
 
 from benchweave.content.json_document import DocumentRejected, load_document
 from benchweave.measurement.derivation import DerivationRejected, check_derived_variables
+from benchweave.standards.manifest import DESCRIPTOR_SCHEMA_NAME, StandardsError
 from benchweave.vendoring import contract_family
 
 #: The vendored execution contracts (packaged in the wheel, repo-relative
@@ -33,6 +34,12 @@ from benchweave.vendoring import contract_family
 _CONTRACTS = contract_family("execution/0.1.0")
 _PACKAGE_LOCK_FILENAME = "package-lock.json"
 _MAX_DOCUMENT_BYTES = 1_048_576
+
+#: The gateway-owned OTDP extension key carrying the issued-input map
+#: (action_id -> input fields accepting the gateway-issued token, CTL-7).
+#: OTDP tooling ignores x- keys by contract; the gateway refuses an x-map
+#: naming an action the descriptor does not declare.
+_ISSUED_INPUTS_KEY = "x-stg-issued-inputs"
 
 _SCHEMA_FILES = {
     "procedure": "procedure.schema.json",
@@ -56,7 +63,7 @@ class AdmittedDocuments:
     bench: dict[str, Any]
     binding: dict[str, Any]
     commissioning: dict[str, Any]
-    descriptors: dict[str, dict[str, Any]]  # device_id -> descriptor doc
+    descriptors: dict[str, dict[str, Any]]  # device_id -> projected descriptor view
     digests: dict[str, str]  # logical name -> sha256 hex
 
 
@@ -66,6 +73,44 @@ def _validator(schema_filename: str) -> Any:
         schema = json.loads((_CONTRACTS / schema_filename).read_text(encoding="utf-8"))
         validator = Draft202012Validator(schema, format_checker=FormatChecker())
         _VALIDATORS[schema_filename] = validator
+    return validator
+
+
+def _descriptor_validator() -> Any:
+    """The ACTIVE vendored OTDP descriptor schema's validator, cached.
+
+    The active version derives from the vendored standards manifest — the
+    same authority :func:`benchweave.standards.manifest.validate_identity`
+    resolves the descriptor schema by for identity derivation — never a
+    hardcoded gateway constant; the schema's ``otdp_version`` const then
+    enforces corpus alignment itself.
+    """
+    validator = _VALIDATORS.get(DESCRIPTOR_SCHEMA_NAME)
+    if validator is None:
+        # contract_family serves both layouts (``_vendored/contracts`` in a
+        # wheel, ``standards`` in a checkout); the corpus root is its parent
+        # and carries the standards manifest beside the version dirs.
+        corpus = contract_family("otdp").parent
+        manifest = json.loads(
+            (corpus / "standards-manifest.json").read_text(encoding="utf-8")
+        )
+        matches = [
+            relative
+            for entry in manifest["standards"]
+            if entry.get("id") == "otdp"
+            for relative in entry["normative"]
+            if Path(relative).name == DESCRIPTOR_SCHEMA_NAME
+        ]
+        if len(matches) != 1:
+            raise StandardsError(
+                f"descriptor_schema_unresolved: {DESCRIPTOR_SCHEMA_NAME} is not "
+                "named exactly once in the otdp entry's normative list"
+            )
+        schema = json.loads(
+            (corpus / matches[0].removeprefix("standards/")).read_text(encoding="utf-8")
+        )
+        validator = Draft202012Validator(schema, format_checker=FormatChecker())
+        _VALIDATORS[DESCRIPTOR_SCHEMA_NAME] = validator
     return validator
 
 
@@ -141,6 +186,138 @@ def _check_descriptor(device_id: str, descriptor: dict[str, Any]) -> None:
             check_derived_variables(derived)
         except DerivationRejected as exc:
             raise AdmissionRejected(f"schema: {logical} derivation: {exc}") from exc
+
+
+def _check_semantic_mirrors(logical: str, descriptor: dict[str, Any]) -> None:
+    """The SDK's S01/S02 descriptor checks, mirrored at the gateway.
+
+    The SDK is not a gateway dependency (REG-4 pins the protocol by reading
+    its tree in tests, not by importing it); the census in
+    ``tests/sdk/test_descriptor_equivalence.py`` pins this mirror
+    equivalent to ``benchweave_sdk.validation.validate_descriptor`` over
+    the in-tree corpus x mutation matrix.
+    """
+    capabilities = descriptor["capabilities"]
+    if len(capabilities) != len(set(capabilities)) or set(capabilities) != set(
+        descriptor["operations"]
+    ):
+        raise AdmissionRejected(
+            f"schema: {logical} S01: capabilities and operation policies must match"
+        )
+    names = [parameter["name"] for parameter in descriptor["parameters"]]
+    if len(names) != len(set(names)):
+        # Load-bearing for binding: _check_declared_usage builds a set from
+        # the names, so a duplicate must be structurally refused, not
+        # silently deduped.
+        raise AdmissionRejected(f"schema: {logical} S01: parameter names must be unique")
+    for parameter in descriptor["parameters"]:
+        bounds = parameter.get("range")
+        # The dict branch mirrors the SDK's S02 verbatim; the array branch
+        # is the live one on 0.2.0-valid documents — the schema admits only
+        # the two-number array form, so the SDK's dict branch cannot fire
+        # there (the census pins this gateway as strictly stricter).
+        reversed_bounds = isinstance(bounds, dict) and bounds.get("min", 0) > bounds.get(
+            "max", 0
+        )
+        if not reversed_bounds and isinstance(bounds, list):
+            reversed_bounds = (
+                len(bounds) == 2
+                and all(
+                    isinstance(bound, (int, float)) and not isinstance(bound, bool)
+                    for bound in bounds
+                )
+                and bounds[0] > bounds[1]
+            )
+        if reversed_bounds:
+            raise AdmissionRejected(f"schema: {logical} S02: parameter bounds are reversed")
+
+
+def _check_issued_map(logical: str, descriptor: dict[str, Any]) -> dict[str, Any]:
+    """Validate the gateway-owned issued-input extension; return the map.
+
+    Shape-checked only (action_id -> list of strings, keys restricted to
+    declared actions): verifying the field names against the profile
+    catalog's action inputs is the deferred profile-satisfaction stage.
+    """
+    issued_map = descriptor.get(_ISSUED_INPUTS_KEY)
+    if issued_map is None:
+        return {}
+    if not isinstance(issued_map, dict):
+        raise AdmissionRejected(
+            f"schema: {logical} issued_map: {_ISSUED_INPUTS_KEY} must be an object "
+            "of action_id to a list of input field names"
+        )
+    for action_id, fields in issued_map.items():
+        if action_id not in descriptor["actions"]:
+            raise AdmissionRejected(
+                f"schema: {logical} issued_map: names undeclared action {action_id!r}"
+            )
+        if not isinstance(fields, list) or not all(
+            isinstance(field, str) for field in fields
+        ):
+            raise AdmissionRejected(
+                f"schema: {logical} issued_map: action {action_id!r} requires "
+                "a list of input field names"
+            )
+    return issued_map
+
+
+def _project_full_form(device_id: str, descriptor: dict[str, Any]) -> dict[str, Any]:
+    """Validate a full-form OTDP descriptor; project the execution view.
+
+    Schema first (the active vendored corpus schema), then the S01/S02
+    mirrors, then the issued-input extension, then the projection — a
+    total function of the schema-guaranteed fields, so nothing downstream
+    can see an unvalidated shape.
+    """
+    logical = f"descriptor[{device_id}]"
+    error = next(iter(_descriptor_validator().iter_errors(descriptor)), None)
+    if error is not None:
+        raise AdmissionRejected(f"schema: {logical} {error.json_path}: {error.message}")
+    _check_semantic_mirrors(logical, descriptor)
+    issued_map = _check_issued_map(logical, descriptor)
+    derived = descriptor.get("derived_variables")
+    if derived is not None:
+        # Same admission posture as the slim branch: grammar and static
+        # checks here (M15/S19), operand existence and unit agreement at
+        # evaluation time.
+        try:
+            check_derived_variables(derived)
+        except DerivationRejected as exc:
+            raise AdmissionRejected(f"schema: {logical} derivation: {exc}") from exc
+    actions: list[dict[str, Any]] = []
+    for action_id in descriptor["actions"]:
+        entry: dict[str, Any] = {"action_id": action_id}
+        fields = issued_map.get(action_id, [])
+        if fields:
+            entry["issued"] = list(fields)
+        actions.append(entry)
+    view: dict[str, Any] = {
+        "id": descriptor["id"],
+        "version": descriptor["descriptor_version"],
+        "profiles": list(descriptor.get("profiles", [])),
+        "parameters": [parameter["name"] for parameter in descriptor["parameters"]],
+        "actions": actions,
+    }
+    if derived is not None:
+        view["derived_variables"] = derived
+    return view
+
+
+def _project_descriptor(device_id: str, descriptor: dict[str, Any]) -> dict[str, Any]:
+    """Validate one descriptor and return the execution view (CON-10).
+
+    A full-form OTDP descriptor (the single descriptor dialect) validates
+    against the active vendored schema plus the mirrors and the issued
+    extension, and projects the slim view binding, semantics and the
+    coordinator read. The legacy slim dialect is still structurally gated
+    and passes through as its own view (the dual-accept interim of issue
+    #63; the tree converts and the slim branch dies there).
+    """
+    if "otdp_version" in descriptor:
+        return _project_full_form(device_id, descriptor)
+    _check_descriptor(device_id, descriptor)
+    return descriptor
 
 
 def _verify_pin(
@@ -291,16 +468,18 @@ def admit_documents(
         descriptor, descriptor_digest = _decode(
             descriptor_paths[device_id], f"descriptor[{device_id}]"
         )
-        _check_descriptor(device_id, descriptor)
+        view = _project_descriptor(device_id, descriptor)
+        # The pin verifies against the RAW document's identity and the RAW
+        # bytes' digest; consumers see the projected view.
         _verify_pin(
             pin,
             f"bench.devices[{device_id}].descriptor",
             "descriptor",
             doc_id=descriptor["id"],
-            version=descriptor["version"],
+            version=view["version"],
             digest=descriptor_digest,
         )
-        descriptors[device_id] = descriptor
+        descriptors[device_id] = view
         descriptor_digests[f"descriptor/{device_id}"] = descriptor_digest
 
     pinned_by_binding = {
