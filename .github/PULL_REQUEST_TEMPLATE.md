@@ -18,3 +18,6 @@ All run locally before review:
 ## Notes for reviewers
 
 <!-- Anything non-obvious: design trade-offs, follow-ups, evidence pointers. -->
+
+- [ ] Every deferral named in this PR body cites an open issue (created at PR-open
+      time if absent) — orphan deferrals block merge (#69).

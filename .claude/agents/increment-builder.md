@@ -87,6 +87,29 @@ re-sync; a `pyproject.toml` dependency change means `uv.lock` in the same commit
 whose outcome depends on repo secrets must match the workflow's materialisation, and a
 workflow change gets a cold full-suite run.
 
+## Push discipline for shared surfaces (#69)
+
+CI tests the MERGE RESULT (your branch + current `origin/main`), not your base. Before
+pushing a branch that bumps a standard, moves the SDK pointer, or shares a proof-vehicle
+plugin with a sibling row:
+
+1. **Merge-result pre-check**: simulate your branch + current `origin/main` (a scratch
+   worktree with both applied), and run the sibling rows' lane tests against that tree.
+   An in-tree artifact that landed on main after your base — declaring the version your
+   bump retires — fails your CI exactly here, before it costs a cycle.
+2. **Tripwire**: `git diff origin/main...HEAD -- standards/` showing DELETIONS means
+   your branch is dropping a merged standard's state (stale base). Re-roll onto main.
+3. **Version motion is part of the bump**: every in-tree artifact declaring the old
+   version moves in-arc with it (descriptor/envelope/manifest/presets + the full digest
+   re-pin chain) — in the same arc, not a follow-up.
+4. When parked behind a sibling (shared surface): stand by at review-complete and
+   rebase onto the merged predecessor exactly once.
+5. **Check your inbox before reporting "standing by"** — queued instructions crossed
+   mid-wave five times in the issue-#6 run. Process everything queued, then report.
+6. **Verify file bytes, not in-memory state** — after any digest/pin edit, re-parse the
+   FILE and compare against the authority (a hand-typed hex literal and an in-memory
+   "verification" shipped a stale pin through three green suites).
+
 ## Rules that are not negotiable
 
 - **Synthetic fixtures only.** Invented names — not a real colleague, customer, contact,

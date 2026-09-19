@@ -44,6 +44,12 @@ Run the diff's file list through these rules, top to bottom. First match wins.
 - adds, removes, or re-pins a dependency (`pyproject.toml`, `uv.lock`)
 - advances the `packages/sdk` submodule pointer
 
+**Standards-governor mandate (#69):** any diff touching `standards/` (corpus, prose, or
+either manifest), plugin contract locks, the SDK vendored tree, or standard-version
+strings dispatches the `standards-governor` agent as a mandatory pre-merge pass — the
+same standing as the Tier-3 refute. A governance review that never ran is a skipped
+gate.
+
 **TIER 2 — standard.** Any other change to Python logic under `src/`, `scripts/`, `tests/`,
 `.github/`, or root config (`pyproject.toml`, hatchling config). Test-only changes sit here,
 not in Tier 1 — the CI contract and the fixture lockstep live in the test tree.
@@ -63,6 +69,12 @@ fixtures, commit message, and filenames — for `mk_`, `mdb_`, `gorag_`, `ghp_`,
 `sk-`, `Bearer ` literals, and private paths. Any hit → **BLOCK**. This is the one finding
 whose severity is never downgraded; a key in git history is unfixable after the fact, and a
 scrub of the tip is not a scrub.
+
+**G-render (UI diffs): render companions (#69).** A payload-pinned test (asserting on
+what was passed to a mocked renderer) cannot falsify a *draw-visibility* claim — the
+issue-#6 run shipped a threshold that rendered nothing in real echarts while the mocked
+suite stayed green. Any claim that something IS or IS NOT drawn needs a real-render
+companion (SSR / `renderToSVGString` against the real renderer).
 
 **G1 Static gates (all tiers).** `uv run ruff check .` and `uv run mypy` — **bare, never
 with path args**: explicit paths override `[tool.mypy] files =` and silently drop

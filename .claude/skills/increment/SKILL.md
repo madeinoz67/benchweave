@@ -72,7 +72,13 @@ or a public surface, run the loop.
    check (mechanism disabled → effect gone), and where correlation is involved, a
    timestamp-shuffle / permutation null. Report the number.
 7. **Land.** PR into `main` (working branches only — never commit to `main` directly),
-   title + body naming what shipped + what's deferred, referencing the design. Watch CI
+   title + body naming what shipped + what's deferred, referencing the design — and
+   **every deferral in the body must cite an open issue, created at PR-open time if
+   absent; an orphan deferral blocks the merge** (#69). Multiple PRs from one work use
+   **PR stacks**: each dependent PR opens with base = its predecessor's branch (so it
+   shows only its own delta); merge bottom-up, retargeting successors to `main` as
+   their base lands. **A run is complete only when every PR it raised — in BOTH repos —
+   is merged**; SDK PRs open stacked at pointer-commit time, not end-of-run. Watch CI
    to green (`gh pr checks --watch`). Merge when all-green and authorized; otherwise hand
    off. If a gate is red or a finding is unfixed, HOLD and report — do not merge.
 
@@ -99,3 +105,13 @@ about device behavior cite captured evidence or say `speculative`.
 While one increment's build/refute runs, design the next (agents notify on completion).
 Keep the owner's roadmap and any contributor backlog both advancing. Run several loops in
 sequence for a big push; stay in the loop between them.
+
+**Parallelism is surface-aware (#69).** Dispatch increments in parallel only across
+DISJOINT surfaces. Increments sharing a surface — `main`'s merge result, the SDK
+submodule pointer, a proof-vehicle plugin, one standard's tree — serialize on it by
+design: the second one **parks at review-complete** (not CI-green) and rebases onto the
+merged predecessor exactly once. Before ANY push of a branch that bumps a standard or
+moves the SDK pointer, run a **merge-result pre-check**: simulate the branch + current
+`origin/main`, run the sibling rows' lane tests against that tree (CI tests the merge
+result, not your base), and trip on `git diff origin/main...HEAD -- standards/` showing
+deletions — deletions mean your bump is dropping a merged standard's state.

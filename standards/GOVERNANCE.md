@@ -29,6 +29,14 @@ declare and pin it:
 | Deprecation | none (status) | Status change only; the version stays, digest-frozen |
 | Deletion of a version | never | Retired corpora live in git history, not the tree |
 
+**Bump minimization (#69).** One bump per (standard, release train): queued changes
+to the SAME standard that share a train batch into a single bump (one copy step from
+the current active version, one repin). Never stack a bump on an unmerged bump — if the
+predecessor merges first, re-copy from the new predecessor. Different standards may
+share a merge only when they are one increment. CI tests the merge result, so every
+in-tree artifact declaring the old version moves in-arc with the bump — the in-tree
+motion is part of the bump, not a follow-up.
+
 **Bump mechanics — copy, never move.** A version bump copies the old version
 dir to the new version and edits bytes only in the copy; the old dir and its
 corpus-manifest rows stay in place, digest-frozen. Moving or in-place-editing a
