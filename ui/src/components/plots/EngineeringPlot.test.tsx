@@ -162,27 +162,43 @@ describe("EngineeringPlot", () => {
     expect(seriesOf("c").lineStyle.color).toBe("#a96608");
   });
 
-  it("never renders more than one visible accent-coloured series, for any hints map", () => {
-    // C1 invariant, table-driven: uniqueness of the emphasis colour holds for
-    // every composition, including hinted-vs-hinted collisions.
-    const cases: Array<Record<string, TraceHint>> = [
-      {},
-      { b: { colorRole: "accent" } },
-      { b: { colorRole: "accent" }, c: { colorRole: "accent" } },
-      { a: { colorRole: "accent" }, b: { colorRole: "accent" }, c: { colorRole: "accent" } },
-      { a: { colorRole: "muted" }, b: { colorRole: "accent" } },
-      { a: { colorRole: "muted" }, b: { colorRole: "accent" }, c: { colorRole: "accent" } },
-      { a: { colorRole: "muted" }, b: { visible: false }, c: { colorRole: "accent" } },
-      { b: { colorRole: "muted" }, c: { visible: false } },
+  it("keeps visible accent uniqueness across the enumerated claimant-state cross-product", () => {
+    // C1/W1 invariant, table-driven over the claimant-state cross-product
+    // (index-0 claimant default/muted/hidden × later-trace accent hint
+    // present/absent, plus hidden later claimants). Each row pins the exact
+    // winner set: a hidden claimant releases its claim exactly as a muted one
+    // does, so "no emphasis rendered" is never laundered from "no emphasis
+    // requested" — but where a visible claimant exists, exactly one accent
+    // renders.
+    const cases: Array<[Record<string, TraceHint>, string[]]> = [
+      [{}, ["a"]],
+      [{ b: { colorRole: "accent" } }, ["a"]],
+      [{ b: { colorRole: "accent" }, c: { colorRole: "accent" } }, ["a"]],
+      [{ a: { colorRole: "accent" }, b: { colorRole: "accent" }, c: { colorRole: "accent" } }, ["a"]],
+      [{ a: { colorRole: "muted" }, b: { colorRole: "accent" } }, ["b"]],
+      [{ a: { colorRole: "muted" }, b: { colorRole: "accent" }, c: { colorRole: "accent" } }, ["b"]],
+      [{ a: { colorRole: "muted" }, b: { visible: false }, c: { colorRole: "accent" } }, ["c"]],
+      [{ b: { colorRole: "muted" }, c: { visible: false } }, ["a"]],
+      // W1: the hidden index-0 claimant releases; the later hint wins.
+      [{ a: { visible: false }, b: { colorRole: "accent" } }, ["b"]],
+      [{ a: { colorRole: "accent", visible: false }, b: { colorRole: "accent" } }, ["b"]],
+      // A hidden later trace neither claims nor starves a visible one.
+      [{ b: { colorRole: "accent", visible: false }, c: { colorRole: "accent" } }, ["c"]],
+      // No visible claimant at all: zero accents is the honest render.
+      [{ a: { colorRole: "accent", visible: false } }, []],
+      [{ a: { colorRole: "muted", visible: false } }, []],
     ];
-    for (const hints of cases) {
+    // The muted token is stubbed so muted hints actually mute (a missing
+    // token would revert them to the pass-1 default, which claims accent).
+    stubMutedToken("#777777");
+    for (const [hints, expected] of cases) {
       setOption.mockClear();
       plot(new Map(Object.entries(hints)));
       const accents = series().filter((entry) => entry.lineStyle.color === "#0b7181");
       expect(
         accents.map((entry) => entry.id),
         `hints ${JSON.stringify(hints)}`,
-      ).toHaveLength(1);
+      ).toEqual(expected);
     }
   });
 
