@@ -17,7 +17,9 @@ carry the same authority:
    hint on a non-index-0 trace loses silently to it, so uniqueness of the
    emphasis colour holds on every composition (pinned table-driven over all
    hint maps: visible accent-coloured series ≤ 1, count exactly 1 over
-   non-empty visible sets). The sanctioned emphasis composition — mute index
+   non-empty visible CLAIMANT sets — a muted index 0 with no later accent
+   hint renders zero accents, which is the no-laundering principle, not a
+   violation). The sanctioned emphasis composition — mute index
    0, accent a later trace — keeps working and is pinned. Hints still never
    cascade: index 0 keeps its default when another trace's accent hint loses.
 2. **C2 (threshold residual, closing the §2.4 rule-4 gap).** §2.4 said a hint
@@ -78,6 +80,34 @@ carry the same authority:
    chart resolved for that trace (inline `--legend-swatch` custom property
    from the shared `resolveStyles`/`readTokens` output; `data-line` keeps
    the dash pattern only).
+
+### Forge tail 2026-09-19 — FC3–FC6
+
+1. **FC3 (LOW — the muted×absent cell).** The claimant cross-product table
+   omitted `{muted index-0, no later accent hint}` — zero visible accents,
+   correct per the no-laundering principle and now pinned as a table row.
+   The C1 amendment's "count exactly 1 over non-empty visible sets" was
+   overstated by that composition and is reworded to "non-empty visible
+   CLAIMANT sets" so prose, table and mechanism agree.
+2. **FC4 (NIT, ruled intended).** With the muted token ABSENT, a muted
+   index-0 falls back to its pass-1 accent default and claims first, so a
+   later accent hint loses — the "muted" trace renders as the emphasis.
+   Ruled intended: that is the C4 fallback chain composed with the C1 claim
+   rule (the host kept authority; the preference could not be honored).
+   Pinned as a documented cross-product row so the inversion is specified
+   behavior, not surprise.
+3. **FC5 (NIT, ruled).** The SDK preview inventory's `renderer_version`
+   stayed 0.1.0 through behavior-changing renderer refreshes (the freshness
+   gate is hash-keyed and does not notice). Ruled: bump it on
+   behavior-changing refreshes — ui package version 0.1.0 → 0.1.1, which
+   the inventory build stamps from `package.json`; consumers (the served
+   preview document via `build_preview_model`, the TUI's display line, the
+   ui decoder's text validation) treat it as display text, so the field
+   turns honest for free.
+4. **FC6 (NIT, accepted — no code here).** Theme-switch token staleness
+   (tokens resolved once per effect run; a dark/light switch does not
+   re-resolve) is pre-existing at base and accepted; the manifest-driven
+   plot-rendering increment owns it.
 
 
 Reading verified on `main` at `8bc83a5`. Every claim below cites the file and line it was

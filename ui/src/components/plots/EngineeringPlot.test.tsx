@@ -191,6 +191,10 @@ describe("EngineeringPlot", () => {
       // No visible claimant at all: zero accents is the honest render.
       [{ a: { colorRole: "accent", visible: false } }, []],
       [{ a: { colorRole: "muted", visible: false } }, []],
+      // FC3: the muted×absent cell — a muted index 0 with no later accent
+      // hint also renders zero accents (no claimant), correct per the
+      // no-laundering principle.
+      [{ a: { colorRole: "muted" } }, []],
     ];
     // The muted token is stubbed so muted hints actually mute (a missing
     // token would revert them to the pass-1 default, which claims accent).
@@ -282,6 +286,19 @@ describe("EngineeringPlot", () => {
     expect(carrier).toBeDefined();
     expect(carrier!.id).toBe("a");
     expect(carrier!.markLine!.lineStyle.color).toBe("#a96608");
+  });
+
+  it("muted-without-token falls back to the claiming pass-1 default (ruled)", () => {
+    // FC4, ruled intended: with --bw-text-muted ABSENT (jsdom native), a
+    // muted index-0 falls back to its pass-1 accent default AND claims
+    // first — the later accent hint loses. This is the C4 fallback chain
+    // composed with the C1 claim rule: the host kept authority, the
+    // preference could not be honored. Pinned so the inversion is
+    // documented behavior, not surprise.
+    plot(new Map([["a", { colorRole: "muted" }], ["b", { colorRole: "accent" }]]));
+
+    expect(seriesOf("a").lineStyle.color).toBe("#0b7181");
+    expect(seriesOf("b").lineStyle.color).toBe("#a96608");
   });
 
   it("drives legend swatch colours from the resolved trace styles", () => {
