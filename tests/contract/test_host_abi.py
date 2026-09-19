@@ -1,7 +1,7 @@
 """WP04 S1 — the published host ABI against the OTDP runtime contract.
 
 Every invariant asserted here mirrors a conditional in
-contracts/otdp/0.1.2/otdp-runtime.schema.json: the ABI is the contract in
+standards/otdp/0.2.0/otdp-runtime.schema.json: the ABI is the contract in
 Python, not a reinterpretation of it.
 """
 

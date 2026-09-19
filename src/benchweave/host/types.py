@@ -1,7 +1,7 @@
-"""OTDP runtime 0.1.2 envelopes as typed Python.
+"""OTDP runtime 0.2.0 envelopes as typed Python.
 
 Every dataclass here mirrors a ``$defs`` entry in
-standards/otdp/0.1.2/otdp-runtime.schema.json, and every ``__post_init__``
+standards/otdp/0.2.0/otdp-runtime.schema.json, and every ``__post_init__``
 invariant enforces one of that schema's conditionals in code. The contract
 is the authority; this module is its Python projection. Pure: no I/O, no
 clock — callers supply timestamps.

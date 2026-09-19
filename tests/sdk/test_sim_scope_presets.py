@@ -129,6 +129,21 @@ def repin_manifest_and_envelope(package: Path) -> None:
     write_document(envelope_path, envelope)
 
 
+def _repin_descriptor_sha256(package: Path) -> None:
+    """Re-pin descriptor_sha256 in every document that carries it.
+
+    check-ui verifies the descriptor digest in the manifest, the envelope and
+    the binding catalogue, so a tmp-package descriptor edit must move all
+    three or the package reports digest_mismatch instead of the finding the
+    control targets."""
+    pin = digest((package / "descriptor.json").read_bytes())
+    for name in ("ui/manifest.json", "presentation.json", "binding-catalogue.json"):
+        path = package / name
+        document = json.loads(path.read_bytes())
+        document["descriptor_sha256"] = pin
+        write_document(path, document)
+
+
 # --- the two acceptance lanes over the shipped package -------------------------
 
 
@@ -156,13 +171,55 @@ def test_l1a_schema_violating_settings_refused(
     assert "invalid_settings" in findings(preset_report(broken.read_bytes()))
 
 
-def test_l1a_smuggled_averaging_key_refused(
+def test_l1a_averaging_within_envelope_admitted(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The pinned refusal of Reading 1: model averaging is structurally
-    unrepresentable in preset settings under the closed action schemas."""
+    """The admission control of the OTDP 0.2.0 catalog revision (issue #64):
+    an in-envelope averaging_count rides preset settings and passes lane 1.
+    Under 0.1.2 this exact document was refused as an unknown key — the
+    pinned refusal this test replaces."""
     preset = json.loads(PRESET_PAIR.read_bytes())
     preset["settings"]["averaging_count"] = 8
+    admitted = write_document(tmp_path / "admitted.json", preset)
+    assert lane1(monkeypatch, admitted) == 0
+    assert "invalid_settings" not in findings(preset_report(admitted.read_bytes()))
+
+
+def test_l1a_averaging_at_corpus_maximum_admitted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Drift pin (refute row R1): lane 1 admits the endpoint 64 itself.
+    Paired with the 65-refusal row below, a corpus maximum that drifts below
+    64 (say 63) turns THIS row red instead of silently narrowing the
+    envelope — the interior-8 row cannot catch that."""
+    preset = json.loads(PRESET_PAIR.read_bytes())
+    preset["settings"]["averaging_count"] = 64
+    admitted = write_document(tmp_path / "at-max.json", preset)
+    assert lane1(monkeypatch, admitted) == 0
+    assert "invalid_settings" not in findings(preset_report(admitted.read_bytes()))
+
+
+def test_l1a_averaging_above_corpus_maximum_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression pin, not a RED control: 65 is refused before the revision
+    (unknown key) and after it (above the corpus maximum of 64) — the
+    observable that distinguishes the worlds is the in-envelope admission
+    above, not this refusal."""
+    preset = json.loads(PRESET_PAIR.read_bytes())
+    preset["settings"]["averaging_count"] = 65
+    broken = write_document(tmp_path / "broken.json", preset)
+    assert lane1(monkeypatch, broken) != 0
+    assert "invalid_settings" in findings(preset_report(broken.read_bytes()))
+
+
+def test_l1a_averaging_below_corpus_minimum_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression pin, not a RED control: 0 is refused before the revision
+    (unknown key) and after it (below the corpus minimum of 1)."""
+    preset = json.loads(PRESET_PAIR.read_bytes())
+    preset["settings"]["averaging_count"] = 0
     broken = write_document(tmp_path / "broken.json", preset)
     assert lane1(monkeypatch, broken) != 0
     assert "invalid_settings" in findings(preset_report(broken.read_bytes()))
@@ -222,11 +279,13 @@ def test_l1d_foreign_plugin_identity_refused(
 # --- RED controls: lane 2 (check-ui) -------------------------------------------
 
 
-def test_l2a_key_outside_action_schema_refused_by_canonical_check(
+def test_l2a_canonical_corpus_bounds_averaging_not_the_file(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The shipped-artifact twin of test_preset_cannot_bypass_canonical_action_schema:
-    even a permissive settings file cannot smuggle averaging past the corpus."""
+    even a permissive settings file cannot launder averaging past the corpus —
+    and since OTDP 0.2.0 the refusing authority is the corpus bound (65 > 64),
+    not the unknown-key rule the permissive file defeated."""
     package = copy_package(tmp_path)
     schema_path = package / "ui" / "settings" / "oscilloscope-configure.schema.json"
     schema = json.loads(schema_path.read_bytes())
@@ -235,12 +294,39 @@ def test_l2a_key_outside_action_schema_refused_by_canonical_check(
     write_document(schema_path, schema)
     preset_path = package / "ui" / "presets" / "low-noise-pair.json"
     preset = json.loads(preset_path.read_bytes())
-    preset["settings"]["averaging_count"] = 8
+    preset["settings"]["averaging_count"] = 65
     preset["settings_schema"]["sha256"] = digest(schema_path.read_bytes())
     write_document(preset_path, preset)
     repin_manifest_and_envelope(package)
     assert lane2(monkeypatch, package) != 0
     assert "invalid_settings" in findings(ui_report(package))
+
+
+def test_l2_descriptor_constraints_tighter_than_corpus_still_refuse(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Descriptor input_constraints AND onto corpus-legal settings: a tmp
+    descriptor narrowing averaging to [1, 8] refuses a corpus-legal 16 in
+    lane 2, while lane 1 — which never consults descriptor actions — still
+    passes. Pins the descriptor-AND vs corpus-OR role split the 0.2.0
+    class bound relies on."""
+    package = copy_package(tmp_path)
+    descriptor_path = package / "descriptor.json"
+    descriptor = json.loads(descriptor_path.read_bytes())
+    constraints = descriptor["actions"]["otdp.oscilloscope.configure/1.0.0"][
+        "input_constraints"
+    ]
+    constraints["properties"]["averaging_count"] = {"minimum": 1, "maximum": 8}
+    write_document(descriptor_path, descriptor)
+    _repin_descriptor_sha256(package)
+    preset_path = package / "ui" / "presets" / "low-noise-pair.json"
+    preset = json.loads(preset_path.read_bytes())
+    preset["settings"]["averaging_count"] = 16
+    write_document(preset_path, preset)
+    repin_manifest_and_envelope(package)
+    assert lane2(monkeypatch, package) != 0
+    assert "invalid_settings" in findings(ui_report(package))
+    assert lane1(monkeypatch, preset_path) == 0
 
 
 def test_l2b_value_outside_input_constraints_refused(
@@ -311,6 +397,7 @@ def test_presets_carry_no_presentation_fields() -> None:
         "sample_count",
         "pretrigger_fraction",
         "trigger",
+        "averaging_count",
     }
     channel_keys = {"channel", "coupling", "range_v", "offset_v", "probe_ratio"}
     for path in SHIPPED_PRESETS:
@@ -337,7 +424,11 @@ def test_descriptor_labels_units_present() -> None:
 # byte copy) and never consults the descriptor's action input_constraints, so
 # it cannot refuse a corpus-legal value that violates the descriptor envelope.
 # Lane 2 is where the declared envelope bites (input_constraints are AND-ed
-# onto preset settings in the configuration-binding loop).
+# onto preset settings in the configuration-binding loop). Since OTDP 0.2.0
+# (issue #64) this residual applies to descriptor-only envelopes (range_v,
+# offset_v): corpus-bounded fields — sample_count's class maximum, the
+# averaging_count range — are refused by lane 1 too, because the bound lives
+# in the settings-schema bytes themselves (top-level census below).
 
 ENVELOPE_MATRIX = [
     ("range_v", 25.0, True),
@@ -421,10 +512,13 @@ def test_descriptor_envelope_census(
         assert lane1_exit == 0 and lane2_exit == 0, (field, value)
 
 
-# Top-level settings fields carry their own envelope (fix wave R1: the rate
-# got a 1e6 cap; the count initially got nothing — a 1e12-count preset passed
-# both lanes and would OOM the plugin at fetch). Same census shape as the
-# channel fields; same lane-1 structural residual (settings-schema file only).
+# Top-level settings fields carry their own envelope. The plugin-authored
+# caps (fix wave R1: 1e6 rate/count ceilings) became class-level corpus
+# bounds in OTDP 0.2.0 (issue #64): the catalog input schema — which the
+# shipped settings-schema file copies byte-for-byte — now refuses a 1e12
+# count in BOTH lanes. Unlike the channel census above there is no lane-1
+# residual: the bound lives in the settings-schema bytes, which is exactly
+# what lane 1 checks.
 
 TOP_LEVEL_MATRIX = [
     ("sample_count", 10**12, True),
@@ -452,7 +546,10 @@ def test_settings_envelope_census_top_level(
     if should_refuse:
         assert not plugin_ok, (field, value)
         assert lane2_exit != 0, (field, value)
-        assert lane1_exit == 0, (field, value)
+        # THE FLIP (issue #64): the corpus maximum reached the shipped
+        # settings-schema bytes, so lane 1 now refuses too — under 0.1.2 a
+        # 1e12-count preset passed lane 1 clean.
+        assert lane1_exit != 0, (field, value)
     else:
         assert plugin_ok, (field, value)
         assert lane1_exit == 0 and lane2_exit == 0, (field, value)

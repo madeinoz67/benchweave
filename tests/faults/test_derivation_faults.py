@@ -23,7 +23,7 @@ from benchweave.measurement.derivation import (
 )
 
 ROOT = Path(__file__).resolve().parents[2]
-VECTORS = ROOT / "standards" / "otdp" / "0.1.2" / "examples" / "derivation-vectors.json"
+VECTORS = ROOT / "standards" / "otdp" / "0.2.0" / "examples" / "derivation-vectors.json"
 
 
 def _census_refusals() -> list[dict[str, Any]]:

@@ -46,7 +46,7 @@ def test_first_sync_writes_lock_and_vendored_tree(tmp_path: Path) -> None:
     stamp = sdk / "src/benchweave_sdk/standards/otdp/_GENERATED.txt"
     first_line = stamp.read_text().splitlines()[0]
     assert first_line.startswith("otdp/")
-    assert first_line.endswith("Generated from otdp@0.1.2 — do not edit")
+    assert first_line.endswith("Generated from otdp@0.2.0 — do not edit")
     # Stamps live beside files that stay byte-identical to the bundle.
     document = json.loads((bundle / "bundle-manifest.json").read_bytes())
     entry = next(s["files"][0] for s in document["standards"] if s["id"] == "otdp")
