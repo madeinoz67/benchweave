@@ -48,14 +48,31 @@ reconciliation (#63), not this increment. Pinned by
 ## Fault-matrix knock-on (the vectors the issue predicted)
 
 `vectors.json` in both plugins is replayed verbatim by
-`tests/contract/test_fault_matrix.py`; no digest pins them (verified by search; the
-WP05 plan prescribes extending them this way).
+`tests/contract/test_fault_matrix.py`; the WP05 plan prescribes extending them this
+way.
 
 - sim_psu: `write_setpoint_out_of_bounds`, `write_wrong_type_invalid_framing`,
   `invoke_measure_requires_current_configuration` → `dispatched`.
   New vectors: `write_while_tripped_reports_dispatched`,
   `invoke_output_stale_token_reports_dispatched` (previously unpinned sites).
 - sim_controller: `write_note_too_long_device_rejected` → `dispatched`.
+
+**Refute correction (2026-09-19):** an earlier draft of this section claimed "no
+digest pins them (verified by search)" — true for `vectors.json`, false for the
+plugin sources themselves: the registry fixture lattice
+(`fixtures/registry/origin-*/benchweave/*`) embeds the plugin bytes in signed
+`payload.zip`s, and `tests/contract/test_registry_admission.py` asserts byte-identity
+with the live source (G5 lockstep). The initial gate run missed that suite; the
+adversary refute caught it (Finding 1, HIGH). Fixed by rebuilding the lattice via
+`scripts/registry/build_fixtures.py --out fixtures/registry` in this branch — the
+same-commit rebuild precedent is `9505db0`.
+
+**Refute disclosure addendum (Finding 2, LOW):** the `_action_measure` token check
+fuses type and mismatch (`not isinstance(configuration_id, str) or … !=`), so a
+non-string measure token also reports DEVICE_REJECTED + DISPATCHED on this branch,
+where `_action_configure` refuses a non-string token as INVALID_ARGUMENT /
+not_dispatched. Same judgment class as D1, same #63 deferral; splitting the fused
+check is row-called in the PR rather than silently reclassified here.
 
 ## Invariant impacts
 
