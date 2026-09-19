@@ -39,18 +39,28 @@ def run(monkeypatch: pytest.MonkeyPatch, *arguments: str | Path) -> int:
     return exit_code
 
 
-def lane1(monkeypatch: pytest.MonkeyPatch, preset: Path, *, firmware: str = FIRMWARE) -> int:
-    return run(
-        monkeypatch,
+def lane1(
+    monkeypatch: pytest.MonkeyPatch,
+    preset: Path,
+    *,
+    firmware: str = FIRMWARE,
+    descriptor: Path = DESCRIPTOR,
+    settings_schema: Path = SETTINGS_SCHEMA,
+    action: str | None = None,
+) -> int:
+    arguments: list[str | Path] = [
         "check-preset",
         preset,
         "--descriptor",
-        DESCRIPTOR,
+        descriptor,
         "--settings-schema",
-        SETTINGS_SCHEMA,
+        settings_schema,
         "--firmware",
         firmware,
-    )
+    ]
+    if action is not None:
+        arguments += ["--action", action]
+    return run(monkeypatch, *arguments)
 
 
 def lane2(monkeypatch: pytest.MonkeyPatch, package: Path = PACKAGE) -> int:
@@ -77,12 +87,12 @@ def digest(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
-def preset_report(raw: bytes) -> Any:
+def preset_report(raw: bytes, *, settings_schema: Path = SETTINGS_SCHEMA) -> Any:
     presentation = importlib.import_module("benchweave_sdk.presentation")
     return presentation.validate_preset(
         raw,
         descriptor_raw=DESCRIPTOR.read_bytes(),
-        settings_schema_raw=SETTINGS_SCHEMA.read_bytes(),
+        settings_schema_raw=settings_schema.read_bytes(),
         firmware=FIRMWARE,
     )
 
@@ -276,6 +286,86 @@ def test_l1d_foreign_plugin_identity_refused(
     assert "identity_mismatch" in findings(preset_report(broken.read_bytes()))
 
 
+# --- issue #62 gap 1: lane-1 descriptor envelopes --------------------------------
+
+
+def test_l1_default_resolves_action_by_schema_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The default invocation resolves the action from the preset's own
+    settings-schema identity: the shipped schema carries the corpus action
+    $id, so the descriptor-only range_v envelope refuses in lane 1 with no
+    flag. Under 0.1.1 this exact document passed lane 1 clean (the design's
+    measured BEFORE: exit 0)."""
+    preset = json.loads(PRESET_FAST.read_bytes())
+    preset["settings"]["channels"][0]["range_v"] = 25.0
+    census = write_document(tmp_path / "census.json", preset)
+    assert lane1(monkeypatch, census) != 0
+    assert "invalid_settings" in findings(preset_report(census.read_bytes()))
+
+
+def test_l1_custom_settings_schema_applies_no_envelope_loudly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The optionality CONTROL (design metric C): a settings schema carrying
+    a custom $id resolves to no corpus action, so lane 1 applies no envelope
+    and a descriptor-violating value still passes — green in both worlds by
+    design (it pins the requirement the resolution must not over-tighten).
+    The loud printed note for this case is asserted in
+    test_l1_explicit_action_flag_forces_envelope."""
+    preset = json.loads(PRESET_FAST.read_bytes())
+    preset["settings"]["channels"][0]["range_v"] = 25.0
+    schema = json.loads(SETTINGS_SCHEMA.read_bytes())
+    schema["$id"] = "urn:test:custom-settings"
+    schema_path = write_document(tmp_path / "custom.schema.json", schema)
+    preset["settings_schema"]["id"] = schema["$id"]
+    preset["settings_schema"]["sha256"] = digest(schema_path.read_bytes())
+    custom = write_document(tmp_path / "custom.json", preset)
+    assert lane1(monkeypatch, custom, settings_schema=schema_path) == 0
+    report = preset_report(custom.read_bytes(), settings_schema=schema_path)
+    assert "invalid_settings" not in findings(report)
+
+
+def test_l1_explicit_action_flag_forces_envelope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """--action forces the envelope onto a custom-$id preset (the flag the
+    loud negative names), an absent action is refused loudly, and the CLI
+    note states which world it is in — envelope applied, or the honest
+    no-envelope negative."""
+    preset = json.loads(PRESET_FAST.read_bytes())
+    preset["settings"]["channels"][0]["range_v"] = 25.0
+    schema = json.loads(SETTINGS_SCHEMA.read_bytes())
+    schema["$id"] = "urn:test:custom-settings"
+    schema_path = write_document(tmp_path / "custom.schema.json", schema)
+    preset["settings_schema"]["id"] = schema["$id"]
+    preset["settings_schema"]["sha256"] = digest(schema_path.read_bytes())
+    custom = write_document(tmp_path / "custom.json", preset)
+    # A: the flag forces the configure envelope onto the custom-schema preset.
+    assert lane1(monkeypatch, custom, settings_schema=schema_path,
+                 action="otdp.oscilloscope.configure/1.0.0") != 0
+    # B: naming an action the descriptor does not declare is refused, never
+    # silently skipped.
+    assert lane1(monkeypatch, custom, settings_schema=schema_path,
+                 action="otdp.oscilloscope.absent/9.9.9") != 0
+    presentation = importlib.import_module("benchweave_sdk.presentation")
+    report = presentation.validate_preset(
+        custom.read_bytes(),
+        descriptor_raw=DESCRIPTOR.read_bytes(),
+        settings_schema_raw=schema_path.read_bytes(),
+        firmware=FIRMWARE,
+        action_id="otdp.oscilloscope.absent/9.9.9",
+    )
+    assert "unresolved_reference" in findings(report)
+    # C: the loud negative — a passing custom-schema run prints WHY no
+    # envelope applied instead of passing silently.
+    assert lane1(monkeypatch, custom, settings_schema=schema_path) == 0
+    assert "no descriptor envelope applied" in capsys.readouterr().out
+    # D: a passing shipped-schema run names the envelope it applied.
+    assert lane1(monkeypatch, PRESET_FAST) == 0
+    assert "envelope applied: otdp.oscilloscope.configure/1.0.0" in capsys.readouterr().out
+
+
 # --- RED controls: lane 2 (check-ui) -------------------------------------------
 
 
@@ -305,11 +395,14 @@ def test_l2a_canonical_corpus_bounds_averaging_not_the_file(
 def test_l2_descriptor_constraints_tighter_than_corpus_still_refuse(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Descriptor input_constraints AND onto corpus-legal settings: a tmp
-    descriptor narrowing averaging to [1, 8] refuses a corpus-legal 16 in
-    lane 2, while lane 1 — which never consults descriptor actions — still
-    passes. Pins the descriptor-AND vs corpus-OR role split the 0.2.0
-    class bound relies on."""
+    """Descriptor input_constraints AND onto corpus-legal settings in BOTH
+    lanes: a tmp descriptor narrowing averaging to [1, 8] refuses a
+    corpus-legal 16 in lane 2 and — since plugin-ui 0.2.0 resolves the
+    action by settings-schema identity — in lane 1 against the same
+    narrowed descriptor. Against the SHIPPED descriptor ([1, 64] admits 16)
+    lane 1 still passes: the descriptor AND tightens, it never narrows what
+    the corpus admits. Pins the descriptor-AND vs corpus-OR role split the
+    OTDP 0.2.0 class bound relies on."""
     package = copy_package(tmp_path)
     descriptor_path = package / "descriptor.json"
     descriptor = json.loads(descriptor_path.read_bytes())
@@ -326,6 +419,11 @@ def test_l2_descriptor_constraints_tighter_than_corpus_still_refuse(
     repin_manifest_and_envelope(package)
     assert lane2(monkeypatch, package) != 0
     assert "invalid_settings" in findings(ui_report(package))
+    # The added assertion (issue #62): lane 1 against the package's narrowed
+    # descriptor consults descriptor actions and refuses the corpus-legal 16.
+    assert lane1(monkeypatch, preset_path, descriptor=descriptor_path) != 0
+    # Kept from the 0.1.1 world and still true: the shipped descriptor's
+    # [1, 64] averaging envelope admits 16, so lane 1 on shipped bytes passes.
     assert lane1(monkeypatch, preset_path) == 0
 
 
@@ -373,6 +471,76 @@ def test_l2d_catalogue_naming_missing_preset_asset_refused(
     assert "unresolved_reference" in findings(ui_report(package))
 
 
+# --- issue #62 gap 2: unreferenced and declared-unlisted presets -----------------
+
+
+def _add_preset_asset(package: Path, preset_id: str, *, range_v: float | None) -> None:
+    """Declare an extra manifest asset that is a preset-shaped document.
+
+    range_v None keeps the copied settings in-envelope; a value outside the
+    descriptor's [0.001, 10] channel range makes the copy envelope-violating.
+    """
+    source = json.loads((package / "ui/presets/low-noise-pair.json").read_bytes())
+    source["id"] = preset_id
+    if range_v is not None:
+        source["settings"]["channels"][0]["range_v"] = range_v
+    path = package / "ui" / "presets" / f"{preset_id}.json"
+    write_document(path, source)
+    manifest_path = package / "ui/manifest.json"
+    manifest = json.loads(manifest_path.read_bytes())
+    manifest["assets"].append(
+        {"id": preset_id, "path": f"presets/{preset_id}.json", "sha256": digest(path.read_bytes())}
+    )
+    write_document(manifest_path, manifest)
+
+
+def test_l2e_unreferenced_preset_asset_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A declared, preset-shaped asset no configuration target declares is
+    REFUSED (unreferenced_preset), not silently digest-checked — and it is
+    refused for its wiring, not settings-validated (invalid_settings must
+    not appear even though the orphan envelope-violates). Under 0.1.1 this
+    package exited 0 (the design's measured BEFORE)."""
+    package = copy_package(tmp_path)
+    _add_preset_asset(package, "preset-orphan", range_v=25.0)
+    repin_manifest_and_envelope(package)
+    assert lane2(monkeypatch, package) != 0
+    report = ui_report(package)
+    assert "unreferenced_preset" in findings(report)
+    assert "invalid_settings" not in findings(report)
+
+
+def test_l2f_target_declared_unlisted_preset_validated(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A target-declared preset the binding does not list is fully validated
+    (the author wired it; binding exposure is a UI choice): the
+    envelope-violating copy is refused with invalid_settings, and the metric
+    B2 control — a VALID extra declared-unlisted preset — still exits 0."""
+    package = copy_package(tmp_path / "violating")
+    _add_preset_asset(package, "preset-unlisted", range_v=25.0)
+    catalogue_path = package / "binding-catalogue.json"
+    catalogue = json.loads(catalogue_path.read_bytes())
+    target = catalogue["targets"][0]
+    target["preset_asset_ids"] = [*target["preset_asset_ids"], "preset-unlisted"]
+    write_document(catalogue_path, catalogue)
+    repin_manifest_and_envelope(package)
+    assert lane2(monkeypatch, package) != 0
+    assert "invalid_settings" in findings(ui_report(package))
+    assert "unreferenced_preset" not in findings(ui_report(package))
+
+    control = copy_package(tmp_path / "control")
+    _add_preset_asset(control, "preset-unlisted", range_v=None)
+    catalogue_path = control / "binding-catalogue.json"
+    catalogue = json.loads(catalogue_path.read_bytes())
+    target = catalogue["targets"][0]
+    target["preset_asset_ids"] = [*target["preset_asset_ids"], "preset-unlisted"]
+    write_document(catalogue_path, catalogue)
+    repin_manifest_and_envelope(control)
+    assert lane2(monkeypatch, control) == 0
+
+
 # --- structure pins (design §7.2 point 4) --------------------------------------
 
 
@@ -416,19 +584,20 @@ def test_descriptor_labels_units_present() -> None:
             assert parameter.get("unit") == "V", parameter["name"]
 
 
-# --- descriptor-envelope census (fix wave F1) -----------------------------------
+# --- descriptor-envelope census (fix wave F1; issue #62 closes the lane-1 gap) ---
 # {field, value} x {lane 1 check-preset, lane 2 check-ui, plugin dispatch}.
 # The plugin column is the envelope's definition; the lanes are the preset
-# verification mechanism. Lane 1 is pinned at its honest structural behavior:
-# check-preset validates settings against the settings-schema FILE (the corpus
-# byte copy) and never consults the descriptor's action input_constraints, so
-# it cannot refuse a corpus-legal value that violates the descriptor envelope.
-# Lane 2 is where the declared envelope bites (input_constraints are AND-ed
-# onto preset settings in the configuration-binding loop). Since OTDP 0.2.0
-# (issue #64) this residual applies to descriptor-only envelopes (range_v,
-# offset_v): corpus-bounded fields — sample_count's class maximum, the
-# averaging_count range — are refused by lane 1 too, because the bound lives
-# in the settings-schema bytes themselves (top-level census below).
+# verification mechanism. Since plugin-ui 0.2.0 (issue #62) BOTH lanes apply
+# the descriptor envelope: lane 1 resolves the action by settings-schema
+# identity (the shipped settings-schema file carries the corpus action $id,
+# pinned parsed-equal by test_settings_schema_tracks_corpus) and ANDs the
+# canonical corpus action schema and the descriptor input_constraints onto
+# preset settings; lane 2 keeps the same enforcement via the catalogue
+# target. A preset whose authored settings schema carries a custom $id gets
+# no lane-1 envelope by design (no inference) — the loud-negative row is
+# test_l1_custom_settings_schema_applies_no_envelope_loudly below.
+# Corpus-bounded fields (sample_count, averaging_count) were already refused
+# by lane 1 through the settings-schema bytes (top-level census below).
 
 ENVELOPE_MATRIX = [
     ("range_v", 25.0, True),
@@ -506,7 +675,10 @@ def test_descriptor_envelope_census(
     if should_refuse:
         assert not plugin_ok, (field, value)
         assert lane2_exit != 0, (field, value)
-        assert lane1_exit == 0, (field, value)
+        # THE FLIP (issue #62): lane 1 resolves the action by settings-schema
+        # identity, so the descriptor-only channel envelope now refuses in
+        # both lanes — under plugin-ui 0.1.1 all six True rows passed lane 1.
+        assert lane1_exit != 0, (field, value)
     else:
         assert plugin_ok, (field, value)
         assert lane1_exit == 0 and lane2_exit == 0, (field, value)
