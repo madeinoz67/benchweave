@@ -62,8 +62,10 @@ function resolveStyles(
   // the VISIBLE traces in trace order: pass-1 index-0 accent is the FIRST
   // claim, so an accent hint on a later trace loses silently to it (no
   // cascade: index 0 keeps its default). A hidden trace releases its claim
-  // exactly as a muted one does — neither claims nor starves — so "no
-  // emphasis rendered" is never laundered from "no emphasis requested".
+  // and neither claims nor starves — so "no emphasis rendered" is never
+  // laundered from "no emphasis requested". A muted trace releases its claim
+  // only when the theme provides the muted token: a token-less muted hint
+  // falls back to its pass-1 default, which still claims for index 0.
   // Muting index 0 is the sanctioned emphasis composition; among visible
   // traces hinting accent, the earliest in trace order wins while the others
   // revert to their pass-1 defaults.

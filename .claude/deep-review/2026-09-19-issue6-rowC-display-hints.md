@@ -37,7 +37,10 @@ carry the same authority:
 4. **C4 (token fallback).** §2.4 rule 5 implemented as written: a theme
    missing `--bw-text-muted` makes a muted hint fall back to the trace's
    pass-1 default. The interim implementation's `|| "#5b6a73"` literal —
-   exactly the hardcoded-literal class the colour enum excludes — is gone.
+   exactly the hardcoded-literal class the colour enum excludes — is gone
+   from the HINT path; the same literal survives as the pre-existing
+   axis-text fallback in `readTokens` (base behaviour, out of this
+   change's scope).
 
 ### Third wave 2026-09-19 — refute-C (W1/W2)
 
@@ -45,8 +48,11 @@ carry the same authority:
    hiding index 0 did not release its accent claim (only muting did), so
    `hints {a: visible:false, b: accent}` rendered zero visible emphasis — a
    hidden trace starved a visible one. Ruling: accent-claim arbitration runs
-   over the VISIBLE traces; a hidden trace releases its claim exactly as a
-   muted one does and neither claims nor starves. This is the C2
+   over the VISIBLE traces; a hidden trace releases its claim and neither
+   claims nor starves. (A muted trace releases its claim only when the theme
+   provides the muted token — a token-less muted hint falls back to its
+   pass-1 default, which still claims for index 0; the FC4 ruling pins that
+   composed case.) This is the C2
    no-laundering principle applied to emphasis: "no emphasis rendered" is
    never laundered from "no emphasis requested".
 2. **W2 (claim discipline on the same hole).** The C1 amendment above said

@@ -288,6 +288,30 @@ describe("EngineeringPlot", () => {
     expect(carrier!.markLine!.lineStyle.color).toBe("#a96608");
   });
 
+  it("moves the threshold mark line to the first VISIBLE series when index 0 is hidden", () => {
+    // NIT-4: the b-hidden and all-hidden cases were pinned; this is the
+    // remaining edge — the mark line must ride the first visible series (b),
+    // not vanish with the hidden index-0 carrier.
+    const hints = new Map<string, TraceHint>([["a", { visible: false }]]);
+    render(
+      <EngineeringPlot
+        kind="time_series"
+        title="Index zero hidden"
+        x={{ label: "Time", unit: "s" }}
+        traces={traces}
+        threshold={{ value: 1.2, label: "Warning limit", severity: "warning" }}
+        hints={hints}
+      />,
+    );
+
+    const rendered = series();
+    expect(rendered.map((entry) => entry.id)).toEqual(["b", "c"]);
+    const carrier = rendered.find((entry) => entry.markLine !== undefined);
+    expect(carrier).toBeDefined();
+    expect(carrier!.id).toBe("b");
+    expect(carrier!.markLine!.lineStyle.color).toBe("#a96608");
+  });
+
   it("muted-without-token falls back to the claiming pass-1 default (ruled)", () => {
     // FC4, ruled intended: with --bw-text-muted ABSENT (jsdom native), a
     // muted index-0 falls back to its pass-1 accent default AND claims
