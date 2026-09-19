@@ -198,7 +198,9 @@ rather than rewriting the history — that is how this file earns trust.
   the active vendored OTDP schema plus the S01/S02 semantic mirrors (the SDK's
   checks mirrored at the gateway — the SDK is not a gateway dependency, REG-4's
   read-not-import pattern), validates the gateway-owned `x-stg-issued-inputs`
-  extension (shape + declared-actions only, refusal prefix `issued_map:`), and
+  extension (shape, declared actions, and fields the target action itself
+  declares in `input_constraints.properties` — an action with no declared
+  properties names no issuable fields; refusal prefix `issued_map:`), and
   projects a total execution view (`{id, version = descriptor_version, profiles
   (absent → []), parameter names, actions + issued, derived_variables
   passthrough}`) that binding, semantics and the coordinator read; the bench pin

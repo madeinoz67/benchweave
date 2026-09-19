@@ -145,6 +145,15 @@ tree converts to full-form so one dialect remains.
 3. Read `x-stg-issued-inputs`; refuse unless it is an object of
    action_id → list-of-strings whose keys are all declared `actions`
    (`schema: descriptor[<id>] issued_map: …` machine-matchable prefix).
+   Amendment (mechanism-critique F1, 2026-09-19): each FIELD must also be an
+   input the target action itself declares (`actions[<id>].input_constraints
+   .properties`; an action declaring no properties names no issuable fields —
+   the conservative close). The shape-only residual is not loud: a typo'd
+   field would admit, the procedure would issue at exactly that key, the
+   executor mints, and a plugin reading only the correctly-spelled optional
+   token never refuses — output energises with the token undelivered.
+   Descriptor-internal only; the catalog-field check (§10 item 2) stays
+   deferred.
 4. Project the execution view and return it:
 
 ```python
@@ -435,6 +444,12 @@ the reconciled classification upward.
 - **CTL-7**: mechanically unchanged — issued fields still come from the
   descriptor; the view carries them. The wording "the role's device descriptor
   marks issued" remains true (the x- key is part of the descriptor).
+  Disclosure (mechanism-critique Q3, 2026-09-19): execution-contract.md:53
+  permits `$stg_issue` only at REQUIRED input fields of configuring/arming
+  actions; this mechanism admits any issued-marked key, including optional
+  tokens. Safe by device evaluation — a fresh mint never equals the stored
+  token, so the action refuses DEVICE_REJECTED — but the wider admission is
+  real and stated here rather than left implicit.
 - **CON-2 / fixture lattice**: the digest cascade in §6 items 5-9 is exactly
   this obligation discharged same-commit.
 - Tier: on-disk formats change (plugin descriptors, fixture lattice bytes,

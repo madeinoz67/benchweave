@@ -145,10 +145,13 @@ condition for admission, pinned equivalent over the in-tree corpus by
 declared actions accept the gateway-issued token (`$stg_issue`, CTL-7). OTDP
 tooling ignores `x-` keys by the extension contract, so `benchweave-sdk
 check` stays clean with it present; the gateway is its only reader. It must
-name only actions the descriptor declares — a map naming an unknown action
-is an admission refusal (`schema: descriptor[<id>] issued_map:`). Field
-names are shape-checked (strings) only: verifying them against the profile
-catalog's action inputs belongs to the deferred profile-satisfaction stage.
+name only actions the descriptor declares, and each field must be an input
+the action itself declares (`input_constraints.properties` — an action with
+no declared properties names no issuable fields). A map naming an unknown
+action or an undeclared field is an admission refusal
+(`schema: descriptor[<id>] issued_map:`). Verifying the fields against the
+profile catalog's canonical action inputs belongs to the deferred
+profile-satisfaction stage.
 
 ### Named settings as presets
 

@@ -201,9 +201,16 @@ def _check_semantic_mirrors(logical: str, descriptor: dict[str, Any]) -> None:
 def _check_issued_map(logical: str, descriptor: dict[str, Any]) -> dict[str, Any]:
     """Validate the gateway-owned issued-input extension; return the map.
 
-    Shape-checked only (action_id -> list of strings, keys restricted to
-    declared actions): verifying the field names against the profile
-    catalog's action inputs is the deferred profile-satisfaction stage.
+    Keys are restricted to declared actions, and each field must be an
+    input the target action itself declares (its
+    ``input_constraints.properties``); an action declaring no properties
+    names no inputs, so no field may be marked issued for it — the
+    conservative close. Verifying the fields against the profile catalog's
+    canonical action inputs remains the deferred profile-satisfaction
+    stage; this closes the in-descriptor silent path (a typo'd field would
+    otherwise admit, the executor would mint at exactly that key, and the
+    plugin would read only the correctly-spelled one — an optional token's
+    absence is legal, so nothing would refuse).
     """
     issued_map = descriptor.get(_ISSUED_INPUTS_KEY)
     if issued_map is None:
@@ -214,7 +221,8 @@ def _check_issued_map(logical: str, descriptor: dict[str, Any]) -> dict[str, Any
             "of action_id to a list of input field names"
         )
     for action_id, fields in issued_map.items():
-        if action_id not in descriptor.get("actions", {}):
+        action = descriptor.get("actions", {}).get(action_id)
+        if action is None:
             raise AdmissionRejected(
                 f"schema: {logical} issued_map: names undeclared action {action_id!r}"
             )
@@ -225,6 +233,15 @@ def _check_issued_map(logical: str, descriptor: dict[str, Any]) -> dict[str, Any
                 f"schema: {logical} issued_map: action {action_id!r} requires "
                 "a list of input field names"
             )
+        constraints = action.get("input_constraints")
+        properties = constraints.get("properties") if isinstance(constraints, dict) else None
+        declared = properties if isinstance(properties, dict) else {}
+        for field in fields:
+            if field not in declared:
+                raise AdmissionRejected(
+                    f"schema: {logical} issued_map: action {action_id!r} "
+                    f"issued field {field!r} is not a declared action input"
+                )
     return issued_map
 
 

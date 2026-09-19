@@ -72,16 +72,20 @@ def test_full_form_descriptor_admits_and_projects(tmp_path: Path) -> None:
 
 
 def test_issued_map_names_declared_action(tmp_path: Path) -> None:
-    """A well-formed issued map projects onto the declared action only."""
+    """A well-formed issued map projects onto the declared action only.
+
+    The field must be one of the action's own declared inputs
+    (input_constraints.properties): sample_rate_hz is a configure input of
+    sim_scope's descriptor."""
 
     def mutate(descriptor: dict[str, Any]) -> None:
         descriptor["x-stg-issued-inputs"] = {
-            "otdp.oscilloscope.configure/1.0.0": ["probe_token"]
+            "otdp.oscilloscope.configure/1.0.0": ["sample_rate_hz"]
         }
 
     docs = readmit_mutated(tmp_path, _mutated_scope(mutate))
     actions = {a["action_id"]: a for a in docs.descriptors["psu"]["actions"]}
-    assert actions["otdp.oscilloscope.configure/1.0.0"]["issued"] == ["probe_token"]
+    assert actions["otdp.oscilloscope.configure/1.0.0"]["issued"] == ["sample_rate_hz"]
     assert "issued" not in actions["otdp.oscilloscope.arm/1.0.0"]
 
 
@@ -101,6 +105,44 @@ def test_issued_map_fields_must_be_strings(tmp_path: Path) -> None:
     def mutate(descriptor: dict[str, Any]) -> None:
         descriptor["x-stg-issued-inputs"] = {
             "otdp.oscilloscope.configure/1.0.0": [123]
+        }
+
+    with pytest.raises(
+        AdmissionRejected, match=r"schema: descriptor\[psu\] issued_map:"
+    ):
+        readmit_mutated(tmp_path, _mutated_scope(mutate))
+
+
+def test_issued_map_typo_field_refused(tmp_path: Path) -> None:
+    """F1 (mechanism critique): the shape-only residual is NOT loud. A typo'd
+    field ("confguration_id") admits shape-only, a procedure then issues at
+    exactly that key, the executor mints, and the plugin reads only the
+    correctly-spelled optional token — absent is legal, so output energises
+    with the token never delivered and nothing refuses. The field must be
+    one of the action's own declared inputs (input_constraints.properties),
+    refused here at admission."""
+
+    def mutate(descriptor: dict[str, Any]) -> None:
+        descriptor["x-stg-issued-inputs"] = {
+            "otdp.oscilloscope.configure/1.0.0": ["confguration_id"]
+        }
+
+    with pytest.raises(
+        AdmissionRejected,
+        match=r"schema: descriptor\[psu\] issued_map: action 'otdp.oscilloscope.configure/1.0.0' "
+        "issued field 'confguration_id'",
+    ):
+        readmit_mutated(tmp_path, _mutated_scope(mutate))
+
+
+def test_issued_map_on_action_without_input_surface_refused(tmp_path: Path) -> None:
+    """Conservative close: an action whose input_constraints declares no
+    properties (sim_scope's arm carries an empty input_constraints) names
+    no inputs, so no field may be marked issued for it."""
+
+    def mutate(descriptor: dict[str, Any]) -> None:
+        descriptor["x-stg-issued-inputs"] = {
+            "otdp.oscilloscope.arm/1.0.0": ["anything"]
         }
 
     with pytest.raises(
