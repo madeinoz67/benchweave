@@ -113,6 +113,8 @@ All notable changes to this project will be documented in this file.
 - Review items R-F5-R-F7
 - C's multi-channel specimen cites the active measurement URN
 - The measurement contract pin hashes the active corpus (F9)
+- Report DISPATCHED on post-dispatch device-state refusals
+- Rebuild sim fixture lattice for the dispatch-posture change
 
 ### Documentation
 
