@@ -37,6 +37,24 @@ carry the same authority:
    pass-1 default. The interim implementation's `|| "#5b6a73"` literal —
    exactly the hardcoded-literal class the colour enum excludes — is gone.
 
+### Third wave 2026-09-19 — refute-C (W1/W2)
+
+1. **W1 (hidden claimant).** The C1 arbitration had an unstated asymmetry:
+   hiding index 0 did not release its accent claim (only muting did), so
+   `hints {a: visible:false, b: accent}` rendered zero visible emphasis — a
+   hidden trace starved a visible one. Ruling: accent-claim arbitration runs
+   over the VISIBLE traces; a hidden trace releases its claim exactly as a
+   muted one does and neither claims nor starves. This is the C2
+   no-laundering principle applied to emphasis: "no emphasis rendered" is
+   never laundered from "no emphasis requested".
+2. **W2 (claim discipline on the same hole).** The C1 amendment above said
+   "table-driven over ALL hint maps"; the table enumerated hand-picked maps
+   with no hidden-claimant dimension. The pin is now phrased as what it is —
+   the enumerated claimant-state cross-product (index-0 claimant
+   default/muted/hidden × later-trace accent hint present/absent, plus
+   hidden later claimants), each row pinning the exact winner set, zero
+   accents where no visible claimant remains.
+
 
 Reading verified on `main` at `8bc83a5`. Every claim below cites the file and line it was
 read at. **Review tier: Tier 3** — the change touches `standards/`, edits JSON Schema, and

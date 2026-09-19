@@ -58,23 +58,27 @@ function resolveStyles(
     lineType: index % 2 === 0 ? "solid" : "dashed",
   }));
   if (hints === undefined) return defaults;
-  // Uniqueness of the emphasis colour is a host invariant, arbitrated in
-  // trace order: pass-1 index-0 accent is the FIRST claim, so an accent hint
-  // on a later trace loses silently to it (no cascade: index 0 keeps its
-  // default). Muting index 0 releases its claim — that is the sanctioned
-  // emphasis composition — and among traces hinting accent, the earliest in
-  // trace order wins while the others revert to their pass-1 defaults.
+  // Uniqueness of the emphasis colour is a host invariant, arbitrated over
+  // the VISIBLE traces in trace order: pass-1 index-0 accent is the FIRST
+  // claim, so an accent hint on a later trace loses silently to it (no
+  // cascade: index 0 keeps its default). A hidden trace releases its claim
+  // exactly as a muted one does — neither claims nor starves — so "no
+  // emphasis rendered" is never laundered from "no emphasis requested".
+  // Muting index 0 is the sanctioned emphasis composition; among visible
+  // traces hinting accent, the earliest in trace order wins while the others
+  // revert to their pass-1 defaults.
   let accentClaimed = false;
   return traces.map((trace, index) => {
     const hint = hints.get(trace.id);
+    const hidden = hint?.visible === false;
     if (hint?.colorRole === "muted" && tokens.muted !== undefined) {
       return { ...defaults[index], color: tokens.muted };
     }
-    if (defaults[index].color === tokens.accent) {
+    if (!hidden && defaults[index].color === tokens.accent) {
       accentClaimed = true;
       return defaults[index];
     }
-    if (hint?.colorRole === "accent" && !accentClaimed) {
+    if (!hidden && hint?.colorRole === "accent" && !accentClaimed) {
       accentClaimed = true;
       return { ...defaults[index], color: tokens.accent };
     }

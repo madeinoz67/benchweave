@@ -182,8 +182,12 @@ describe("EngineeringPlot", () => {
       // W1: the hidden index-0 claimant releases; the later hint wins.
       [{ a: { visible: false }, b: { colorRole: "accent" } }, ["b"]],
       [{ a: { colorRole: "accent", visible: false }, b: { colorRole: "accent" } }, ["b"]],
-      // A hidden later trace neither claims nor starves a visible one.
-      [{ b: { colorRole: "accent", visible: false }, c: { colorRole: "accent" } }, ["c"]],
+      // A hidden later trace neither claims nor starves — but index 0's
+      // visible default still claims ahead of it.
+      [{ b: { colorRole: "accent", visible: false }, c: { colorRole: "accent" } }, ["a"]],
+      // The discriminating hidden-not-starving row: with index 0 muted, the
+      // hidden accent hint on b leaves the accent to c.
+      [{ a: { colorRole: "muted" }, b: { colorRole: "accent", visible: false }, c: { colorRole: "accent" } }, ["c"]],
       // No visible claimant at all: zero accents is the honest render.
       [{ a: { colorRole: "accent", visible: false } }, []],
       [{ a: { colorRole: "muted", visible: false } }, []],

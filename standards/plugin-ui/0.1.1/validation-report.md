@@ -16,8 +16,25 @@ the fix wave: **12/0**.
 - **C1**: `resolveStyles` arbitrates accent in trace order with pass-1
   index-0 accent as the first claim; pinned by the ruling test, the
   sanctioned mute-0+accent-N composition, the earliest-hint-wins collision
-  (with index 0 muted), and a table-driven invariant over eight hint maps
-  (exactly one visible accent series in each).
+  (with index 0 muted), and a table-driven invariant over the enumerated
+  claimant-state cross-product (14 rows: index-0 claimant
+  default/muted/hidden × later accent hint present/absent, plus hidden later
+  claimants), each row pinning the exact winner set.
+
+### Third wave 2026-09-19 — refute-C (W1/W2)
+
+RED: **12 collected / 1 failed** — `hints {"a":{"visible":false},
+"b":{"colorRole":"accent"}}: expected [] to deeply equal [ 'b' ]` (the hidden
+index-0 claimant starved the visible hint). GREEN after the fix: **12/0**.
+`resolveStyles` arbitrates over the VISIBLE traces: a hidden trace releases
+its claim exactly as a muted one does, and neither claims nor starves. The
+invariant table grew the hidden-claimant rows and was renamed to what it
+enumerates (claimant-state cross-product, not "any hints map"); one of the
+new rows' first-draft expectations was itself wrong (`{b:accent+hidden,
+c:accent}` → the winner is `a`, whose visible default still claims first;
+the discriminating hidden-not-starving row is `{a:muted, b:accent+hidden,
+c:accent}` → `c`) and was corrected against the implementation rather than
+the other way round.
 - **C2**: threshold renders on an empty-data carrier series when no visible
   series remains; pinned with all three channels hidden.
 - **C3**: hidden legend rows carry an explicit accessible name
