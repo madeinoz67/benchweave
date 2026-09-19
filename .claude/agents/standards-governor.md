@@ -12,7 +12,9 @@ placement taxonomy is `docs/doc-taxonomy.md`.
 1. **Change-class correctness**: classify each corpus change (prose / errata /
    breaking / admission / deprecation / reset) against GOVERNANCE.md and check
    the version bump matches the class. An additive errata at a MINOR bump, or a
-   breaking change at a PATCH, is a finding. No bump with changed normative
+   breaking change at a PATCH, is a finding — **carve-out: a batched bump takes the
+   HIGHEST change class it contains** (errata batched with a breaking change in one
+   release train correctly bumps MINOR; #69). No bump with changed normative
    bytes is CRITICAL (the drift gates should have refused it — if they did not,
    find out why).
 2. **Digest-lock integrity**: recompute every corpus-manifest row's sha256

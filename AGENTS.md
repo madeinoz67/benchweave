@@ -71,10 +71,19 @@ forgotten.
 (`madeinoz67/benchweave-sdk`) and its own CI. Editing anything under
 `packages/sdk` is always **two commits, in this order**:
 
-1. Commit inside the submodule and **push it** (the SDK repo's CI and releases
-   run from its own remote — an unpushed submodule commit is invisible there
-   and breaks main-repo CI, which checks out submodules by SHA).
+1. Commit inside the submodule, **push it**, and **open the SDK PR now** — stacked
+   (`base` = the predecessor SDK branch when one is in flight) — not at end-of-run.
+   The SDK repo's CI and releases run from its own remote, and an unpushed submodule
+   commit is invisible there, breaking main-repo CI, which checks out submodules by
+   SHA. A pinned SHA reachable only via an unmerged feature branch stays reachable
+   only while that branch lives — the MERGE makes the lineage durable; the PR
+   tracks it (#69).
 2. Then commit the advanced submodule pointer in the main repository.
+
+**Multi-PR work uses PR stacks (#69):** dependent PRs open with `base` = the
+predecessor's branch so each shows only its own delta; merge bottom-up, retargeting
+each successor to `main` as its base lands. **A work is complete only when every PR
+it raised — in both repos — is merged**; main-repo merges alone never call done.
 
 `make sync-sdk-standards` enforces the order: it refuses to run against a
 submodule working tree with uncommitted changes, and its report reminds you
