@@ -54,5 +54,7 @@ def test_vector(vector):
 
 def test_packaged_descriptor():
     descriptor = json.loads(files(PACKAGE).joinpath("descriptor.json").read_text())
-    assert descriptor["id"] == "descriptor-sim-controller"
-    assert descriptor["profiles"] == []
+    assert descriptor["id"] == "dev.benchweave.sim-controller"
+    # Core-only descriptor: no profiles key (the schema forbids an empty
+    # list); the projection yields [].
+    assert descriptor.get("profiles", []) == []

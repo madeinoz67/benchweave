@@ -108,7 +108,7 @@ An image or IQ dataset representation does not establish camera or RF-receiver c
 
 Use the [independent device project layout](#repository-layout-for-device-plugins). Keep descriptors and their referenced vectors in the Python package so the wheel contains them; keep project tests, pinned conformance inputs and development documentation at the model project root. Include firmware for custom devices in that same project, with a separate firmware build rather than an automatic Python installation hook.
 
-The integration contract requires a package README, descriptor and referenced evidence; executable integrations also need their Python package and tests. The simulator projects now live at `plugins/benchweave/sim_psu/`, `plugins/benchweave/sim_controller/` and `plugins/benchweave/sim_scope/`; `benchweave` denotes their maintainer, not a physical manufacturer. The legacy pair (`sim_psu`, `sim_controller`) each own their `src/benchweave_sim_*/` package, execution descriptor projection, replay vectors, project tests and `pyproject.toml`; `sim_scope` owns its package, replay vectors and `pyproject.toml` but has no execution descriptor projection (the descriptor dialect fork below) — its behavioral tests live in the main repository. These legacy test plugins are an explicit exception to the external-plugin boundary: they still require the private synchronous API in `benchweave==0.1.0`. Their wheels can be tested outside this checkout with a supplied gateway wheel, but they are not yet independent of core at runtime or qualified API 1.1 adapters. The current public bridge lacks their profile actions. Preserve that distinction until the bridge and simulator API migration are reviewed together. Core execution descriptors remain integration snapshots checked against the project-owned projections. The `firmware/esp32_reference/` placeholder was retired 2026-09-16; maintained firmware lives in each device plugin's own project (see below). Local development packaging and cache loading are described in §10; a source layout alone does not establish runtime compatibility.
+The integration contract requires a package README, descriptor and referenced evidence; executable integrations also need their Python package and tests. The simulator projects now live at `plugins/benchweave/sim_psu/`, `plugins/benchweave/sim_controller/` and `plugins/benchweave/sim_scope/`; `benchweave` denotes their maintainer, not a physical manufacturer. The legacy pair (`sim_psu`, `sim_controller`) each own their `src/benchweave_sim_*/` package, full-form execution descriptor, replay vectors, project tests and `pyproject.toml`; `sim_scope` owns its package, replay vectors and `pyproject.toml` — its behavioral tests live in the main repository. These legacy test plugins are an explicit exception to the external-plugin boundary: they still require the private synchronous API in `benchweave==0.1.0`. Their wheels can be tested outside this checkout with a supplied gateway wheel, but they are not yet independent of core at runtime or qualified API 1.1 adapters. The current public bridge lacks their profile actions. Preserve that distinction until the bridge and simulator API migration are reviewed together. Core execution descriptors remain integration snapshots checked against the project-owned documents. The `firmware/esp32_reference/` placeholder was retired 2026-09-16; maintained firmware lives in each device plugin's own project (see below). Local development packaging and cache loading are described in §10; a source layout alone does not establish runtime compatibility.
 
 Use uv for Python dependencies. Retain its lockfile and the exact tested runtime/dependency evidence. The registry's `package-lock.schema.json` describes a different lock: registry package identities, versions and manifest digests. An implementation release needs both its executable dependency closure and its registry dependency closure; neither substitutes for the other.
 
@@ -127,8 +127,28 @@ Use the [descriptor schema](../standards/otdp/0.2.0/otdp-device-descriptor.schem
 | Required features | Declare core plus applicable adapter, profile-actions, measurement and exact profile feature IDs. Unknown required features fail admission. |
 | Contract files | Pin exact local catalog/schema bytes and hashes. Resolve contract paths from the admitted bundle root without escape. |
 | Provenance | Record real source revisions and vectors. Vector paths resolve relative to the descriptor and must remain inside the package. |
+| Gateway-issued inputs | If the gateway issues a token for an action input (for example `$stg_issue` for `configuration_id`), declare it in the descriptor-root `x-stg-issued-inputs` map — see below. |
 
 Validate all applicable **S01–S18**, **C01–C12** and **M01–M14** obligations from the linked specifications. Schema validity covers only part of admission.
+
+**Full-form is the execution-admitted form.** Runtime admission validates the
+descriptor against the active vendored OTDP descriptor schema plus the S01
+and S02 semantic checks — the same contract `benchweave-sdk check` enforces —
+and projects the execution view the gateway consumes from it (identity,
+version, profiles, parameter names, actions). A descriptor that is not
+`check`-clean is not execution-admissible: `check`-clean is a necessary
+condition for admission, pinned equivalent over the in-tree corpus by
+`tests/sdk/test_descriptor_equivalence.py`. The one gateway-owned addition:
+
+**The `x-stg-issued-inputs` extension.** A descriptor-root object
+`{action_id: [input field, ...]}` naming which invoke inputs of which
+declared actions accept the gateway-issued token (`$stg_issue`, CTL-7). OTDP
+tooling ignores `x-` keys by the extension contract, so `benchweave-sdk
+check` stays clean with it present; the gateway is its only reader. It must
+name only actions the descriptor declares — a map naming an unknown action
+is an admission refusal (`schema: descriptor[<id>] issued_map:`). Field
+names are shape-checked (strings) only: verifying them against the profile
+catalog's action inputs belongs to the deferred profile-satisfaction stage.
 
 ### Named settings as presets
 
@@ -138,7 +158,7 @@ configuration binding, settings schema and presets. Its layout:
 
 ```text
 src/benchweave_sim_scope/
-  descriptor.json                                  # full OTDP 0.1.1 form
+  descriptor.json                                  # full OTDP 0.2.0 form
   presentation.json                                # envelope: resource_root ui, manifest pinned by sha256
   binding-catalogue.json                           # one configuration target
   ui/manifest.json                                 # sha256-pinned assets, binding, configuration page
@@ -192,9 +212,11 @@ Authoring rules the instance demonstrates:
   procedure.
 
 `sim_scope` is a presentation and presets vehicle: its full-form descriptor
-passes `benchweave-sdk check` but is not admissible by the runtime
-execution-contract path, which expects the minimal descriptor dialect the
-legacy simulators use.
+is both `benchweave-sdk check`-clean and execution-admissible — the
+descriptor-dialect fork closed with zero byte changes to it, which was the
+proof the projection gate (not a rewrite) did the work. Its own
+`x-stg-issued-inputs` declaration is deferred until a procedure actually
+`$stg_issue`s one of its actions.
 
 ## 5. Implement the adapter lifecycle
 

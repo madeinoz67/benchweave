@@ -175,17 +175,12 @@ def _check_descriptor(device_id: str, descriptor: dict[str, Any]) -> None:
                 f"schema: {logical} action {action.get('action_id')!r} requires "
                 "issued to be a list of strings"
             )
-    derived = descriptor.get("derived_variables")
-    if derived is not None:
-        # OTDP 0.1.2 M15/S19: grammar and static checks at admission, so a
-        # malformed expression cannot reach a run. NOT checked here: operand
-        # existence (datasets vary by action) and unit agreement (operand
-        # units live in datasets) — both are evaluation-time in
-        # benchweave.measurement.derivation.
-        try:
-            check_derived_variables(derived)
-        except DerivationRejected as exc:
-            raise AdmissionRejected(f"schema: {logical} derivation: {exc}") from exc
+    # OTDP 0.1.2 M15/S19: grammar and static checks at admission, so a
+    # malformed expression cannot reach a run. NOT checked here: operand
+    # existence (datasets vary by action) and unit agreement (operand
+    # units live in datasets) — both are evaluation-time in
+    # benchweave.measurement.derivation.
+    _check_derived(logical, descriptor.get("derived_variables"))
 
 
 def _check_semantic_mirrors(logical: str, descriptor: dict[str, Any]) -> None:
@@ -248,7 +243,7 @@ def _check_issued_map(logical: str, descriptor: dict[str, Any]) -> dict[str, Any
             "of action_id to a list of input field names"
         )
     for action_id, fields in issued_map.items():
-        if action_id not in descriptor["actions"]:
+        if action_id not in descriptor.get("actions", {}):
             raise AdmissionRejected(
                 f"schema: {logical} issued_map: names undeclared action {action_id!r}"
             )
@@ -262,6 +257,21 @@ def _check_issued_map(logical: str, descriptor: dict[str, Any]) -> dict[str, Any
     return issued_map
 
 
+def _check_derived(logical: str, derived: Any) -> None:
+    """Run the S19 grammar/static checks; refuse with the derivation prefix.
+
+    A no-op when ``derived`` is None (the descriptor declares none) or
+    well-formed; ``DerivationRejected`` becomes an admission refusal
+    carrying ``derivation:`` followed by the ``derivation_*:`` reason.
+    """
+    if derived is None:
+        return
+    try:
+        check_derived_variables(derived)
+    except DerivationRejected as exc:
+        raise AdmissionRejected(f"schema: {logical} derivation: {exc}") from exc
+
+
 def _project_full_form(device_id: str, descriptor: dict[str, Any]) -> dict[str, Any]:
     """Validate a full-form OTDP descriptor; project the execution view.
 
@@ -271,22 +281,28 @@ def _project_full_form(device_id: str, descriptor: dict[str, Any]) -> dict[str, 
     can see an unvalidated shape.
     """
     logical = f"descriptor[{device_id}]"
+    derived = descriptor.get("derived_variables")
     error = next(iter(_descriptor_validator().iter_errors(descriptor)), None)
     if error is not None:
+        # Mirror the SDK's precedence (validate_descriptor's except branch):
+        # when derived_variables is present, the S19 grammar/static checks
+        # run even on a schema-invalid document, because the derivation_*
+        # reason is the actionable one for the author and both checkers
+        # then agree on the reason. The gateway runs them for ANY present
+        # value, not only lists, so a non-list array keeps the
+        # derivation_shape refusal this seam has always pinned; otherwise
+        # the schema refusal stands.
+        _check_derived(logical, derived)
         raise AdmissionRejected(f"schema: {logical} {error.json_path}: {error.message}")
     _check_semantic_mirrors(logical, descriptor)
     issued_map = _check_issued_map(logical, descriptor)
-    derived = descriptor.get("derived_variables")
     if derived is not None:
         # Same admission posture as the slim branch: grammar and static
         # checks here (M15/S19), operand existence and unit agreement at
         # evaluation time.
-        try:
-            check_derived_variables(derived)
-        except DerivationRejected as exc:
-            raise AdmissionRejected(f"schema: {logical} derivation: {exc}") from exc
+        _check_derived(logical, derived)
     actions: list[dict[str, Any]] = []
-    for action_id in descriptor["actions"]:
+    for action_id in descriptor.get("actions", {}):
         entry: dict[str, Any] = {"action_id": action_id}
         fields = issued_map.get(action_id, [])
         if fields:
