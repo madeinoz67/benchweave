@@ -382,7 +382,11 @@ def check_derived_variables(derived: list[dict[str, Any]]) -> None:
     NOT checked here (the residual): whether an operand id exists in any
     dataset (datasets vary by action — an unresolved operand degrades
     in-band at evaluation), and any unit agreement (operand units live in
-    datasets; see the module docstring). Extra object keys beyond the four
+    datasets; see the module docstring). The liar-check parses recorded
+    markers only when the device carries derived declarations — a forged
+    marker on a declaration-free device is never parsed (within
+    provenance-not-authority: the marker grants nothing by
+    existing). Extra object keys beyond the four
     required ones are ignored — the OTDP descriptor schema is the
     closed-world authority where one applies.
     """
