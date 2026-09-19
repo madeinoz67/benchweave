@@ -324,7 +324,13 @@ fixtures, so no lattice cascade):
    against).
 22. `plugins/fnirsi/dps150/contracts/lock.json` — repointed at
    `standards/otdp/0.2.0` with the corpus digests; `revision` cites the commit
-   that introduced the 0.2.0 corpus (#80 merge `64f64a9`).
+   that introduced the 0.2.0 corpus (#80 merge `64f64a9`). Amendment
+   (2026-09-19, builder follow-up): the lock's `otdp_version` field — stale
+   at `"0.3.0"`, a version that never existed as a corpus (a relic of the
+   pre-consolidation `standards/otdp-v0.3.0` naming) — is corrected to
+   `"0.2.0"` with the repoint; nothing reads the field, and a contradicting
+   version beside the machine authority inside one document is
+   prose-vs-machine drift.
 23. `plugins/fnirsi/dps150/tests/test_adapter.py:32` — `SCHEMAS` literal →
    `contracts/otdp-0.2.0` (plus any lock-verification assertions the file
    carries — the builder walks them).
