@@ -231,7 +231,7 @@ def multi_channel_specimen(specimen: Specimen, y_count: int) -> Specimen:
         "kind": "dataset",
         "action_id": "otdp.oscilloscope.fetch/1.0.0",
         "profile_ids": descriptor["profiles"],
-        "measurement_schema_id": "urn:otdp:measurement:0.1.1",
+        "measurement_schema_id": "urn:otdp:measurement:0.1.2",
         "variables": variables,
     }
     manifest = {
