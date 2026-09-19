@@ -1724,6 +1724,9 @@ def test_journey_second_install_reuse(journey_wheel: Path, tmp_path: Path) -> No
         if path.is_file()
         and "__pycache__" not in path.parts
         and path.suffix != ".pyc"
+        # Transient virtualenvs a concurrent uv run may leave under a
+        # plugin project are not plugin source (refute hit this live).
+        and not {"venv", ".venv"}.intersection(path.parts)
     }
     assert primary.plugin_digests() == repo_digests
 

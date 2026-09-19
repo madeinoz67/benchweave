@@ -394,7 +394,12 @@ Evidence, in order of authority:
   non-string/empty `configuration_id` → `_reject(INVALID_ARGUMENT, "measure
   requires configuration_id")`; string mismatch → `_state_reject` (unchanged;
   still pinned by `invoke_measure_requires_current_configuration` as
-  DEVICE_REJECTED/dispatched).
+  DEVICE_REJECTED/dispatched). Amendment (refute RF2, 2026-09-19): ABSENCE is
+  a member of the split — `None` fails the isinstance and a missing argument
+  is the missing-argument convention, so measure with no `configuration_id`
+  key is INVALID_ARGUMENT/not_dispatched (the catalog makes the token
+  optional, but this plugin requires the current token to measure); pinned by
+  `invoke_measure_absent_token_invalid_argument`.
 - **`_action_output`** (`plugin.py:455-459`): `token is not None and not
   isinstance(token, str)` → INVALID_ARGUMENT (the catalog makes the token
   optional on output; absence stays legal, mismatched string stays
@@ -404,6 +409,15 @@ Evidence, in order of authority:
   INVALID_ARGUMENT, "bad type for …")`; numeric out-of-bounds →
   `_state_reject` (unchanged; still pinned by
   `write_setpoint_out_of_bounds` as DEVICE_REJECTED/dispatched).
+  Amendment (refute RF1, 2026-09-19): the typing checks (bounded-numeric,
+  `output_enabled` bool, `operator_note` str) are HOISTED above the trip
+  latch — the original placement let `tripped + wrong-type` reach
+  DEVICE_REJECTED/dispatched, falsifying the REG-2 amendment's "never" on the
+  one path that evaluated state before typing. Pinned by
+  `write_wrong_type_on_tripped_device_invalid_argument` (RED against the
+  pre-hoist code) and the over-rotation pin
+  `write_out_of_bounds_on_tripped_device_reports_dispatched` (a WELL-TYPED
+  value on a tripped device stays DEVICE_REJECTED/dispatched).
 - **R2**: `vectors.json:51` `write_wrong_type_invalid_framing` expectation
   flips to `INVALID_ARGUMENT` / `not_dispatched` — the name becomes honest
   with no rename. The dispatched-refusal class keeps coverage via

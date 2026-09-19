@@ -209,28 +209,32 @@ class SimPsuPlugin:
             return self._reject(
                 request, ErrorCode.INVALID_ARGUMENT, f"unknown parameter {parameter}"
             )
+        # Argument typing precedes ALL device-state evaluation (REG-2
+        # dispatch-state honesty, RF1): a malformed write is a framing
+        # failure — it never reaches the trip latch or the envelope, exactly
+        # as the *_invalid_framing vectors pin on the healthy path. A
+        # WELL-TYPED value remains the device's to evaluate: tripped or
+        # out-of-bounds stays DEVICE_REJECTED / dispatched.
+        if parameter in WRITABLE_BOUNDS and (
+            isinstance(value, bool) or not isinstance(value, (int, float))
+        ):
+            return self._reject(
+                request, ErrorCode.INVALID_ARGUMENT, f"bad type for {parameter}"
+            )
+        if parameter == "output_enabled" and not isinstance(value, bool):
+            return self._reject(request, ErrorCode.INVALID_ARGUMENT, "output_enabled is boolean")
+        if parameter == "operator_note" and not isinstance(value, str):
+            return self._reject(request, ErrorCode.INVALID_ARGUMENT, "operator_note is a string")
         if self._tripped:
             return self._state_reject(
                 request, f"tripped ({self._tripped}); reset required"
             )
         if parameter in WRITABLE_BOUNDS:
             low, high = WRITABLE_BOUNDS[parameter]
-            # Typing precedes the envelope (the R1 taxonomy, REG-2): a
-            # non-numeric value violates the action's input typing before any
-            # device-state semantics exist, so it is INVALID_ARGUMENT /
-            # not_dispatched; only a well-typed value reaches the envelope.
-            if isinstance(value, bool) or not isinstance(value, (int, float)):
-                return self._reject(
-                    request, ErrorCode.INVALID_ARGUMENT, f"bad type for {parameter}"
-                )
             if not low <= value <= high:
                 return self._state_reject(
                     request, f"{parameter} out of bounds [{low}, {high}]"
                 )
-        if parameter == "output_enabled" and not isinstance(value, bool):
-            return self._reject(request, ErrorCode.INVALID_ARGUMENT, "output_enabled is boolean")
-        if parameter == "operator_note" and not isinstance(value, str):
-            return self._reject(request, ErrorCode.INVALID_ARGUMENT, "operator_note is a string")
         typed_value = self._coerce(parameter, value)
         if typed_value is None:
             return self._reject(request, ErrorCode.INVALID_ARGUMENT, f"bad type for {parameter}")
