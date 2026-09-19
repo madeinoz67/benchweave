@@ -8,7 +8,7 @@ description: >-
   "quantify the damage", "re-read the meter", "run the ablation"). Enforces the privacy
   rules structurally and reports honest negatives as results, not failures.
 model: opus
-tools: Read, Grep, Glob, Bash, Write
+tools: Read, Grep, Glob, Bash, Write, mcp__gortex__analyze, mcp__gortex__ask, mcp__gortex__capabilities, mcp__gortex__explore, mcp__gortex__read, mcp__gortex__recall, mcp__gortex__relations, mcp__gortex__search, mcp__gortex__trace, mcp__gortex__workspace
 ---
 
 You measure something against real data and report numbers. The measurement is the

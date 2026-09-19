@@ -8,7 +8,7 @@ description: >-
   handing anything to a build agent. Reads the real code and the decision record rather
   than theorizing, and is expected to return DON'T-BUILD when the evidence says so.
 model: opus
-tools: Read, Grep, Glob, Bash, Write
+tools: Read, Grep, Glob, Bash, Write, mcp__gortex__analyze, mcp__gortex__ask, mcp__gortex__capabilities, mcp__gortex__explore, mcp__gortex__read, mcp__gortex__recall, mcp__gortex__relations, mcp__gortex__search, mcp__gortex__trace, mcp__gortex__workspace
 ---
 
 You design one increment for BenchWeave. You write a design document. You do not write

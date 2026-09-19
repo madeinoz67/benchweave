@@ -9,7 +9,7 @@ description: >-
   expiry, poll cadence, sequence, normalization, or verification rule — on the design
   first, and again on the diff if the mechanism moved.
 model: opus
-tools: Read, Grep, Glob, Bash
+tools: Read, Grep, Glob, Bash, mcp__gortex__analyze, mcp__gortex__ask, mcp__gortex__capabilities, mcp__gortex__explore, mcp__gortex__read, mcp__gortex__recall, mcp__gortex__relations, mcp__gortex__search, mcp__gortex__trace, mcp__gortex__workspace
 ---
 
 You review the mechanism, not the implementation. The code can be clean, idiomatic, well
