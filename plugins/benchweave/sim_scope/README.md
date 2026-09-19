@@ -41,7 +41,7 @@ gateway-issued token (CTL-7 marks `configuration_id` issued) — a mechanism
 that cannot attach to this full-form descriptor, whose actions declare no
 issued keys.
 
-Unlike sim_psu/sim_controller, this descriptor is full OTDP 0.1.1 form and
+Unlike sim_psu/sim_controller, this descriptor is full OTDP 0.1.2 form and
 passes `benchweave-sdk check`. That also means it is NOT admissible by the
 runtime execution-contract path (`control/documents.py` requires the minimal
 list dialect) — sim_scope is a presentation/presets vehicle, not an
@@ -51,7 +51,7 @@ descriptor dialect fork is reconciled.
 Settings are writable `semantic: configuration` parameters with
 `effect: "setting"` write policies — a settings bundle implies no
 energisation. Model averaging is the one settings family with no action-input
-home (the closed 0.1.1 action schemas cannot represent it in preset
+home (the closed 0.1.x action schemas cannot represent it in preset
 settings), so `averaging_count` is a live-write-only parameter.
 
 ## Fetch semantics

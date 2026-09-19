@@ -613,7 +613,7 @@ def test_fetch_dataset_matches_otdp_schema(scope: Any) -> None:
     assert _arm(scope).status.value == "ok"
     result = _fetch(scope, 1_048_576, True)
     schema = _json.loads(
-        (Path(__file__).resolve().parents[2] / "standards/otdp/0.1.1/otdp-measurement.schema.json")
+        (Path(__file__).resolve().parents[2] / "standards/otdp/0.1.2/otdp-measurement.schema.json")
         .read_text(encoding="utf-8")
     )
     Draft202012Validator(schema).validate(result.data["result"])
