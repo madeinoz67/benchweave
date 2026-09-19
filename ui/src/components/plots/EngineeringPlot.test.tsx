@@ -284,6 +284,31 @@ describe("EngineeringPlot", () => {
     expect(carrier!.markLine!.lineStyle.color).toBe("#a96608");
   });
 
+  it("drives legend swatch colours from the resolved trace styles", () => {
+    // FC2: the legend is the disclosure key — each row's marker must carry
+    // the SAME colour the chart resolved for that trace (pass-2 included),
+    // not an index-structure guess from CSS.
+    stubMutedToken("#777777");
+    render(
+      <EngineeringPlot
+        kind="waveform"
+        title="Legend swatches"
+        x={{ label: "Time", unit: "s" }}
+        traces={traces}
+        hints={new Map([
+          ["a", { colorRole: "muted" }],
+          ["c", { colorRole: "accent" }],
+        ])}
+      />,
+    );
+
+    const swatch = (label: string) =>
+      screen.getByText(label).closest("li")!.style.getPropertyValue("--legend-swatch");
+    expect(swatch("Channel A · V")).toBe("#777777");
+    expect(swatch("Channel B · V")).toBe("#a96608");
+    expect(swatch("Channel C · V")).toBe("#0b7181");
+  });
+
   it("renders the threshold carrier-independently when every trace is hidden", () => {
     // C2: all-visible:false is schema-legal and validator-clean; the limit
     // line must not vanish with the series — it renders on a carrier series
