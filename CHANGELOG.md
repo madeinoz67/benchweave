@@ -201,6 +201,7 @@ All notable changes to this project will be documented in this file.
 - M15 states the int-exactness rule and the M02 suspension
 - Apply the issue-#6 retrospective workflow rules (#69)
 - Governor-pass fixes on the #69 rules
+- Commit the issue-#64 design record on the branch
 
 ### Features
 
@@ -295,6 +296,7 @@ All notable changes to this project will be documented in this file.
 - Plugin-ui 0.1.1 channel_hints + two-pass renderer
 - Pure module + admission + executor wiring (issue #6 row B)
 - OTDP 0.1.2 — derived variables in the measurement model
+- OTDP 0.2.0 — configure-carried averaging + class sample_count bound
 
 ### Hardware Evidence
 
@@ -358,6 +360,7 @@ All notable changes to this project will be documented in this file.
 - Grant the four review-lane agents gortex read/query tools
 - Frontmatter + gortex read/query grant for standards-governor
 - Muninndb-benchweave read/query grants for designer, adversary, critic
+- Advance packages/sdk to the OTDP 0.2.0 vendoring
 
 ### Refactoring
 
@@ -413,6 +416,10 @@ All notable changes to this project will be documented in this file.
 - RED for real-render carrier visibility (FC1) + legend swatches (FC2)
 - RED suite + normative census for issue #6 row B
 - Sync-stamp literal follows the otdp 0.1.2 lock
+- RED controls for OTDP 0.2.0 averaging admission + sample_count bound
+- Sync-stamp literal follows the otdp 0.2.0 lock
+- Complete the 0.2.0 literal sweep in two missed docstring paths
+- Pin the averaging envelope endpoints 1 and 64 (refute R1)
 
 ### Build
 
