@@ -51,6 +51,26 @@
       "sha256": "3c59fc11f4fd31d418c698adc96a3d16568ed95dec4d389c52f0b94e3ed7ff8a"
     },
     {
+      "path": "plugin-ui/0.2.0/binding-catalogue.schema.json",
+      "source": "standards/plugin-ui/0.1.1/binding-catalogue.schema.json",
+      "sha256": "70fbf8a37df0a1de6ea30db1beb2b009e680be195a9ac3bb6f19ef72cdbe5855"
+    },
+    {
+      "path": "plugin-ui/0.2.0/configuration-preset.schema.json",
+      "source": "standards/plugin-ui/0.1.1/configuration-preset.schema.json",
+      "sha256": "c95795abdcf840ccc3c3cb7e24016aa31e18df3e8a94754c7bc3fa43905d3e43"
+    },
+    {
+      "path": "plugin-ui/0.2.0/presentation-envelope.schema.json",
+      "source": "standards/plugin-ui/0.1.1/presentation-envelope.schema.json",
+      "sha256": "24bd911887e61ee719a7d25f4b7ae91ada954e79621a6de528cc4e73b89ba761"
+    },
+    {
+      "path": "plugin-ui/0.2.0/ui-manifest.schema.json",
+      "source": "standards/plugin-ui/0.1.1/ui-manifest.schema.json",
+      "sha256": "d6fb056a0f3354eeaa2c885f50dcdd52cba5d6bc6bda447fb8f1e6437aae0a81"
+    },
+    {
       "path": "plugin-ui-preview/0.1.0/fixture.schema.json",
       "source": "docs/plugin-ui-preview-v1/fixture.schema.json",
       "sha256": "134878f178bd58879aa1b626ee6fa7782581fffed540bcd6ce31c97b375d14de"

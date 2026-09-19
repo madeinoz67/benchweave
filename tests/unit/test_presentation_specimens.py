@@ -31,7 +31,7 @@ def load(name: str) -> JsonObject:
 @pytest.fixture
 def specimen() -> Specimen:
     documents: dict[str, JsonObject] = {}
-    for directory in ("otdp/0.2.0", "plugin-ui/0.1.1"):
+    for directory in ("otdp/0.2.0", "plugin-ui/0.2.0"):
         for path in (ROOT / "standards" / directory).glob("*.schema.json"):
             document = json.loads(path.read_bytes())
             documents[document["$id"]] = document
@@ -42,7 +42,7 @@ def specimen() -> Specimen:
     schema = catalog["actions"][action]["input_schema"]
     schema_raw = encode(schema)
     preset = {
-        "contract_version": "0.1.1",
+        "contract_version": "0.2.0",
         "id": "synthetic-3v3",
         "title": "Synthetic 3.3 V configuration",
         "revision": "1.0.0",
@@ -70,7 +70,7 @@ def specimen() -> Specimen:
         "preset_asset_ids": ["preset"],
     }
     manifest = {
-        "contract_version": "0.1.1",
+        "contract_version": "0.2.0",
         "plugin_id": descriptor["id"],
         "descriptor_sha256": digest(encode(descriptor)),
         "bindings": [
@@ -110,12 +110,12 @@ def validate(specimen: Specimen, *, features: frozenset[str] = frozenset()) -> V
     ]
     manifest_raw = encode(manifest)
     catalogue = {
-        "contract_version": "0.1.1",
+        "contract_version": "0.2.0",
         "descriptor_sha256": digest(descriptor_raw),
         "targets": [target],
     }
     envelope = {
-        "contract_version": "0.1.1",
+        "contract_version": "0.2.0",
         "descriptor_sha256": digest(descriptor_raw),
         "resource_root": "ui",
         "manifest": {"path": "manifest.json", "sha256": digest(manifest_raw)},
@@ -172,7 +172,7 @@ def scope_specimen(specimen: Specimen) -> Specimen:
         ],
     }
     manifest = {
-        "contract_version": "0.1.1",
+        "contract_version": "0.2.0",
         "bindings": [{"id": "capture", "kind": "dataset", "target_id": "waveform"}],
         "pages": [
             {
@@ -201,7 +201,7 @@ def test_dataset_requires_descriptor_measurement_contract(specimen: Specimen) ->
     assert not validate(scope).valid
 
 
-# --- channel_hints (plugin-ui 0.1.1) on a multi-y dataset specimen ---
+# --- channel_hints (plugin-ui, introduced 0.1.1) on a multi-y dataset specimen ---
 
 FEATURE_CONDITIONS: tuple[frozenset[str], ...] = (
     frozenset(),
@@ -235,7 +235,7 @@ def multi_channel_specimen(specimen: Specimen, y_count: int) -> Specimen:
         "variables": variables,
     }
     manifest = {
-        "contract_version": "0.1.1",
+        "contract_version": "0.2.0",
         "plugin_id": descriptor["id"],
         "bindings": [{"id": "capture", "kind": "dataset", "target_id": "waveform"}],
         "pages": [

@@ -9,7 +9,7 @@ from jsonschema import Draft202012Validator
 from referencing import Registry, Resource
 
 ROOT = Path(__file__).resolve().parents[2]
-DIRECTORY = ROOT / "standards/plugin-ui/0.1.1"
+DIRECTORY = ROOT / "standards/plugin-ui/0.2.0"
 NAMES = ("ui-manifest", "configuration-preset", "presentation-envelope", "binding-catalogue")
 
 
@@ -26,7 +26,7 @@ def schemas() -> dict[str, dict[str, Any]]:
 
 def test_all_contract_schemas_are_valid_and_versioned() -> None:
     for name, schema in schemas().items():
-        expected = f"https://benchweave.dev/contracts/plugin-ui/0.1.1/{name}.schema.json"
+        expected = f"https://benchweave.dev/contracts/plugin-ui/0.2.0/{name}.schema.json"
         assert schema["$id"] == expected
 
 
@@ -37,7 +37,7 @@ def test_minimal_manifest_needs_no_graph_and_rejects_unknown_fields(extra: bool)
         (value["$id"], Resource.from_contents(value)) for value in documents.values()
     )
     document = {
-        "contract_version": "0.1.1",
+        "contract_version": "0.2.0",
         "plugin_id": "test.plugin",
         "descriptor_sha256": "0" * 64,
         "pages": [],
@@ -59,7 +59,7 @@ def _plot_validator() -> Draft202012Validator:
 
 def _plot_document(hints: Any) -> dict[str, Any]:
     return {
-        "contract_version": "0.1.1",
+        "contract_version": "0.2.0",
         "plugin_id": "test.plugin",
         "descriptor_sha256": "0" * 64,
         "bindings": [{"id": "capture", "kind": "dataset", "target_id": "waveform"}],

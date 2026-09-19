@@ -89,11 +89,14 @@ hardware: `sample_rate_hz` is capped at 1e6 and `sample_count` at 1e6 samples
 per acquisition (32 MB of float64 across four channels). Since OTDP 0.2.0 the
 sample-count bound is declared at three authorities: the class catalog (both
 SDK lanes — the bound lives in the settings-schema bytes), the descriptor's
-configure `input_constraints` (AND-ed onto presets by `check-ui`), and the
-plugin's dispatch validation. The authorities coincide numerically today and
-need not tomorrow — a class-ceiling revision must not silently raise the
-simulator's honest envelope. `averaging_count` [1, 64] is declared at the same
-three authorities.
+configure `input_constraints` (AND-ed onto presets by both SDK lanes since
+plugin-ui 0.2.0), and the plugin's dispatch validation. The authorities
+coincide numerically today and need not tomorrow — a class-ceiling revision
+must not silently raise the simulator's honest envelope. `averaging_count`
+[1, 64] and the channel envelopes (`range_v` [0.001, 10], `offset_v`
+[-10, 10], `probe_ratio` enum, `^ch[1-4]$`) are declared at the descriptor
+and dispatch authorities, and reach both lanes through the identity-resolved
+envelope.
 
 ## Compatibility
 

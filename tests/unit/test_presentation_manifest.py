@@ -27,7 +27,7 @@ def digest(raw: bytes) -> str:
 def bundle() -> Bundle:
     descriptor = (ROOT / "standards/otdp/0.2.0/examples/reference-psu.json").read_bytes()
     documents: dict[str, JsonObject] = {}
-    for path in (ROOT / "standards/plugin-ui/0.1.1").glob("*.schema.json"):
+    for path in (ROOT / "standards/plugin-ui/0.2.0").glob("*.schema.json"):
         schema = json.loads(path.read_bytes())
         documents[schema["$id"]] = schema
     target = {
@@ -46,12 +46,12 @@ def bundle() -> Bundle:
         ],
     }
     catalogue = {
-        "contract_version": "0.1.1",
+        "contract_version": "0.2.0",
         "descriptor_sha256": digest(descriptor),
         "targets": [target],
     }
     manifest = {
-        "contract_version": "0.1.1",
+        "contract_version": "0.2.0",
         "plugin_id": json.loads(descriptor)["id"],
         "descriptor_sha256": digest(descriptor),
         "bindings": [{"id": "reading", "kind": "observation", "target_id": "voltage"}],
@@ -82,7 +82,7 @@ def validate(
     descriptor, documents, catalogue, manifest = bundle
     manifest_raw = encode(manifest)
     envelope = {
-        "contract_version": "0.1.1",
+        "contract_version": "0.2.0",
         "descriptor_sha256": digest(descriptor),
         "resource_root": "ui",
         "manifest": {"path": "manifest.json", "sha256": digest(manifest_raw)},
@@ -192,7 +192,7 @@ def test_unknown_executable_field_is_rejected(bundle: Bundle) -> None:
     assert not validate(bundle).valid
 
 
-# --- channel_hints (plugin-ui 0.1.1): P1/P2 equivalence and P3 catches ---
+# --- channel_hints (plugin-ui, introduced 0.1.1): P1/P2 equivalence and P3 catches ---
 
 
 def test_hinted_and_unhinted_manifests_validate_identically(bundle: Bundle) -> None:
