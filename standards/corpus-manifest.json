@@ -468,7 +468,7 @@
     {
       "path": "otdp/0.1.2/examples/derivation-vectors.json",
       "source": "standards/otdp/0.1.2/examples/derivation-vectors.json",
-      "sha256": "57a3b7d8e81a672e07e16fe8186d966d8d51dc40516b91d7fa4b06e5345f279a"
+      "sha256": "f4c3bab4a0871488c13ffa22adcab64a0f1e799a95106d14bcb9c8a3a777cfa6"
     },
     {
       "path": "otdp/0.1.2/examples/measurement-vectors.json",

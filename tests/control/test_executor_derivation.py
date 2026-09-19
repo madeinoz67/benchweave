@@ -475,11 +475,11 @@ def test_marker_poison_is_contained_as_derivation_invalid(tmp_path: Path) -> Non
     assert measure_event["status"] == "error"
     assert measure_event["error_code"] == "DERIVATION_INVALID"
     # The containment records the exception class — nothing is silent. The
-    # marker poison is typed post-RB1 (DerivationRejected); the truly
-    # unexpected-exception case is pinned separately below.
+    # marker poison is a typed forged-marker refusal (wave-3 item 4); the
+    # truly unexpected-exception case is pinned separately below.
     assert measure_event["derivation_error"], measure_event
-    assert "derivation_grammar" in measure_event["derivation_error"], measure_event
-    assert "DerivationRejected" in body.reasons[-1], body.reasons
+    assert "derivation_marker_mismatch" in measure_event["derivation_error"], measure_event
+    assert "DerivationRefused" in body.reasons[-1], body.reasons
 
 
 def test_unexpected_derivation_exception_is_contained(

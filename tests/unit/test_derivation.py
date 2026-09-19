@@ -351,6 +351,28 @@ def test_marker_with_duplicate_operand_ids_refuses() -> None:
         )
 
 
+def test_marker_with_unparseable_expression_refuses_as_a_forged_marker() -> None:
+    """Wave-3 finding 4: marker-liar failures are uniform.
+
+    A recorded marker whose expression fails to parse is a forged record —
+    DerivationRefused under derivation_marker_mismatch:, not a
+    DerivationRejected grammar error (the declaration path's family).
+    """
+
+    a = _operand("a7", 1.0)
+    forged = _operand("bad_marker", 2.0)
+    forged["derivation"] = {
+        "kind": "expression",
+        "expression": "a7 +",
+        "operand_ids": ["a7"],
+    }
+    with pytest.raises(DerivationRefused, match="derivation_marker_mismatch:"):
+        derive_dataset_variables(
+            _dataset([a, forged]),
+            [{"id": "d", "quantity": "q", "unit": "1", "expression": "a7 + 1"}],
+        )
+
+
 def test_duplicate_dataset_variable_ids_refuse_derivation() -> None:
     """A duplicate-id dataset (M01 violation) refuses derivation reads.
 

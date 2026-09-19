@@ -135,7 +135,9 @@ associativity are standard and unambiguous: `*` `/` bind tighter than
 tighter than binary operators. An expression must reference at least one
 identifier (constant-only expressions cannot carry the marker's
 `operand_ids`). Expressions are at most 256 characters with parenthesis
-nesting at most 32. The machine truth for this grammar — including every
+nesting at most 32; unary operator chains recurse against the length cap
+(a 255-character chain, not the parenthesis depth), still bounded and
+microsecond-scale. The machine truth for this grammar — including every
 reject class — is `examples/derivation-vectors.json`.
 
 ### 8.2 Operands and static checks
@@ -190,8 +192,18 @@ and the empty `values` with empty `dimensions` suspend M02 count-agreement
 Structural contradictions refuse the whole derivation loudly (a
 descriptor/dataset structural lie is a conformance failure, and the raw
 dataset stays in scope as evidence): a derived id already present in the
-dataset, a malformed `variables` list, or a recorded `derivation` marker
-whose `operand_ids` disagree with its own expression.
+dataset, a malformed `variables` list, duplicate variable ids in the
+dataset (operand resolution must never silently select an arbitrary
+duplicate — M01), or a recorded `derivation` marker that is forged
+(non-parseable expression, `operand_ids` violating their declared shape,
+or disagreeing with the parsed expression).
+
+Evaluation is IEEE-754 honest about signed zero: negating a
+positive zero records `-0.0`, deterministically and replay-stably — the
+value is not normalized, because normalizing post-hoc would change the
+arithmetic semantics the expression pinned (a future second
+implementation that serializes differently must answer for its own
+encoding, not change this one's).
 
 The derived variable's `channel_ids` is the ordered union of its operand
 variables' `channel_ids` (provenance by construction); `dtype` is

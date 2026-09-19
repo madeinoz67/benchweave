@@ -180,3 +180,39 @@ def test_recovery_surfaces_a_poisoned_descriptor_instead_of_raising(
         assert "derivation_grammar" in joined, joined
     finally:
         store.close()
+
+
+def test_recovery_surfaces_a_structurally_broken_lattice_instead_of_raising(
+    tmp_path: Any, caplog: Any
+) -> None:
+    """Wave-3 finding 2: containment covers the WHOLE lattice read.
+
+    A truncated run-binding.json is not an AdmissionRejected — it is a
+    JSONDecodeError from the pre-try lattice read, and it killed gateway
+    construction exactly like the poisoned descriptor did. "One poisoned
+    stored document must never kill gateway startup" covers structurally
+    broken bytes too: logged, surfaced, recovery skipped, gateway
+    constructs.
+    """
+
+    import logging
+
+    from benchweave.interfaces.app import _recover_interrupted_runs
+    from benchweave.state.store import Store
+
+    fixtures = _poisoned_fixtures(tmp_path)
+    (fixtures / "run-binding.json").write_text('{"contract_version": "0.1.0", "')  # truncated
+    store = Store.open(tmp_path / "recovery-broken.db")
+    try:
+        with caplog.at_level(logging.ERROR):
+            recovered = _recover_interrupted_runs(
+                store,
+                fixtures,
+                emit_keep=16,
+                now_iso=lambda: "2026-09-19T00:00:00Z",
+            )
+        assert recovered == []
+        joined = "\n".join(record.getMessage() for record in caplog.records)
+        assert "recovery_admission_rejected" in joined, joined
+    finally:
+        store.close()

@@ -167,9 +167,11 @@ rather than rewriting the history — that is how this file earns trust.
   variables carrying the closed `derivation` marker (expression + operand
   ids, verified against the parse — a forged marker refuses), emits
   structurally-unknown uncertainty and calibration, degrades elementwise
-  failures (null operands, division by zero, non-finite results) and
-  unresolved operands as in-band partial/invalid variables with `null`
-  elements — never `inf`/`NaN` — and treats structural contradictions
+  failures (null operands, division by zero, non-finite results) as
+  in-band partial/invalid variables with `null` elements — never
+  `inf`/`NaN` — emits unresolved operands as invalid variables with EMPTY
+  values (no element is fabricated for a shape that was never
+  established) — and treats structural contradictions
   (derived-id collision, malformed or duplicate-variable-id dataset,
   dtype/shape disagreement, and `+`/`-` unit mismatch between
   identifier-leaf operand pairs — sub-expression and literal operands

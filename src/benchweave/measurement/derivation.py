@@ -12,7 +12,9 @@ recursive-descent parser over the closed token set ``+ - * / ( ) number
 identifier`` (space is whitespace). ``eval``, ``compile`` and ``ast.parse``
 appear nowhere in this module, identifiers are data looked up as dictionary
 keys — never as code — and expression length (256) and parenthesis nesting
-(32) are capped, so parse cost is bounded by construction. The grammar,
+(32) are capped, so parse cost is bounded by construction (unary operator
+chains recurse against the length cap rather than the parenthesis depth —
+still bounded, microsecond-scale). The grammar,
 the evaluation order and the failure semantics are pinned by the
 digest-pinned census ``standards/otdp/0.1.2/examples/derivation-vectors.json``
 and tested in ``tests/unit/test_derivation.py`` and
@@ -459,9 +461,20 @@ def _check_recorded_marker(variable: dict[str, Any]) -> None:
             f"derivation_marker_mismatch: variable {variable.get('id')!r} carries "
             "operand_ids that are not a non-empty list of unique variable ids"
         )
-    node = _parse(expression)
+    try:
+        node = _parse(expression)
+    except DerivationRejected as error:
+        # A recorded marker whose expression does not parse is a forged
+        # record — the refusal family of this check, not the declaration
+        # path's grammar-rejection family.
+        raise DerivationRefused(
+            f"derivation_marker_mismatch: variable {variable.get('id')!r} records "
+            f"an unparseable expression {expression!r}"
+        ) from error
     ordered: list[str] = []
     _identifiers(node, ordered, set())
+    # Set-based agreement: the schema declares uniqueItems, so order is not
+    # semantic — the ids as a set must match the parsed projection exactly.
     if set(operand_ids) != set(ordered):
         raise DerivationRefused(
             f"derivation_marker_mismatch: variable {variable.get('id')!r} records "

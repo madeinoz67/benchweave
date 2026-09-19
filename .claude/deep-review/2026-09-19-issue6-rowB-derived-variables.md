@@ -496,6 +496,15 @@ existing architecture-validator invocation cover it. Runtime cost: one descripto
 at admission; per invoke-with-dataset, one evaluation — CPU-only, bounded by
 `maxLength`/nesting caps, no I/O.
 
+*2026-09-19 amendment (fix waves):* the draft text above mis-splits the
+failure families — "refuses unit/dtype/shape mismatches as in-band
+invalid/partial variables" is wrong on both limbs. The landed CON-9
+(`docs/internal/invariants.md`) is authoritative: unit/dtype/shape
+disagreement, derived-id collision, malformed or duplicate-variable-id
+datasets, and forged markers are REFUSALS (step failures,
+`DERIVATION_INVALID`); null operands, division by zero, non-finite
+results and unresolved operands are the in-band degradations.
+
 **Invariant impacts:** no CTL/STO/CON/REG row changes (derivation is post-dispatch,
 pre-scope; it does not touch policy checks, deadlines, the protective transition, the
 store, or plugin admission). Proposed **new** invariants.md entry (Contracts family,
