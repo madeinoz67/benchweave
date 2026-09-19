@@ -870,3 +870,36 @@ def test_rearm_of_live_acquisition_is_refused(scope: Any) -> None:
     again = _arm(scope, acquisition_id="acq-3")
     assert again.status.value == "error"
     assert again.error.code.value == "DEVICE_REJECTED"
+
+
+def test_descriptor_contract_pins_match_the_active_corpus() -> None:
+    """F9 lane: the descriptor's contracts[] pins must hash the ACTIVE corpus.
+
+    No other lane verifies a plugin descriptor's contract pins — a stale
+    digest from a superseded corpus version is otherwise silent (the URN
+    moves with a re-version while the digest forgets to). The pins must
+    match the active-version bytes exactly.
+    """
+
+    import hashlib
+    import json as _json
+
+    descriptor_path = (
+        Path(__file__).resolve().parents[2]
+        / "plugins/benchweave/sim_scope/src/benchweave_sim_scope/descriptor.json"
+    )
+    descriptor = _json.loads(descriptor_path.read_bytes())
+    active = descriptor["otdp_version"]
+    for contract in descriptor["contracts"]:
+        corpus = (
+            Path(__file__).resolve().parents[2]
+            / "standards/otdp"
+            / active
+            / contract["path"]
+        )
+        assert corpus.is_file(), f"active corpus file absent: {corpus}"
+        digest = hashlib.sha256(corpus.read_bytes()).hexdigest()
+        assert contract["sha256"] == digest, (
+            f"{contract['id']} pins a stale digest (expected the active "
+            f"{active} bytes)"
+        )

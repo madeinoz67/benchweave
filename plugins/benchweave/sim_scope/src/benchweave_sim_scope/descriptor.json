@@ -458,7 +458,7 @@
     {
       "id": "urn:otdp:measurement:0.1.2",
       "path": "otdp-measurement.schema.json",
-      "sha256": "e2d6bb9d45339ca35f4a3ecec95971356251e0b6cc2b6038759140af00ff621d"
+      "sha256": "0765a320d837f7099001707127da913374e9a09db3376ac8c981cb5c9a9e3363"
     }
   ],
   "actions": {
