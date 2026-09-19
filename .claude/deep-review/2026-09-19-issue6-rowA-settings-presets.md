@@ -145,7 +145,9 @@ to match).
   - `averaging_count` (int, range `[1, 64]`) — the one family with no
     action-input home;
   - `identity_model` (ro, string) for identify/read smoke coverage.
-  **Units live here and only here.** 17 parameters total.
+  **Units live here and only here.** 18 parameters total (16 per-channel +
+  `averaging_count` + `identity_model`; corrected in the review wave — first
+  written as 17, counting only the writable surface).
 - **`actions{}`** — dict form, each entry with the six required fields; the
   configure entry carries a real `input_constraints` narrowing (the plugin's
   actual envelope, AND-ed onto preset settings and, in future apply paths,
@@ -174,9 +176,12 @@ src/benchweave_sim_scope/
     presets/low-noise-pair.json
 ```
 
-- **`ui/settings/oscilloscope-configure.schema.json`** — a byte copy of the
-  corpus action input schema, extracted from
+- **`ui/settings/oscilloscope-configure.schema.json`** — an exact copy,
+  pinned parsed-equal, of the corpus action input schema, extracted from
   `device-profile-catalog.json → actions["otdp.oscilloscope.configure/1.0.0"].input_schema`
+  (no standalone corpus bytes exist for an embedded action schema; the shipped
+  file is a compact re-serialization whose parsed equality with the corpus is
+  test-pinned)
   (the specimen test's own construction, `tests/unit/test_presentation_specimens.py:42-43`).
   It must carry the corpus `$id`
   (`urn:otdp:action:oscilloscope.configure:1.0.0:input`) because the binding
