@@ -137,6 +137,24 @@ def test_validate_identity_accepts_the_canonical_corpus() -> None:
     validate_identity(load_manifest(ROOT), ROOT)
 
 
+def test_descriptor_schema_otdp_const_matches_manifest_version() -> None:
+    """The two version-authority heads are pinned together (#63, F2).
+
+    The active descriptor schema's ``otdp_version`` const and the standards
+    manifest's otdp entry version independently declare "the active
+    corpus"; a bump that moves the version directory and the manifest but
+    forgets the const would leave the schema silently enforcing the OLD
+    corpus against every admitted descriptor — exactly the dps150
+    condition before its re-version. (Discrimination proven by
+    scratch-mutating one side: const -> 9.9.9 fails this test, restored
+    byte-identical after.)"""
+    schema = json.loads((ROOT / _active_descriptor_relative()).read_bytes())
+    manifest_version = next(
+        entry.version for entry in load_manifest(ROOT).standards if entry.id == "otdp"
+    )
+    assert schema["properties"]["otdp_version"]["const"] == manifest_version
+
+
 def test_load_identity_fails_closed_without_an_identity_block(tmp_path: Path) -> None:
     (tmp_path / "standards").mkdir()
     (tmp_path / "standards/corpus-manifest.json").write_text(json.dumps({"files": []}))
