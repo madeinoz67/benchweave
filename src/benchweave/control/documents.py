@@ -318,6 +318,10 @@ def _project_descriptor(device_id: str, descriptor: dict[str, Any]) -> dict[str,
     dialect is refused — it fails the schema; a descriptor that is not
     OTDP-valid is not execution-admissible.
     """
+    # The CON-10 anchor: the single admission path. The dual-accept branch
+    # that lived here during the tree conversion is gone by design — do not
+    # hunt for it; the slim-death control (test_documents_fullform) pins its
+    # absence.
     return _project_full_form(device_id, descriptor)
 
 

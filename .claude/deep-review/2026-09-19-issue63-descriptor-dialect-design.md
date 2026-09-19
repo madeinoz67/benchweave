@@ -237,7 +237,9 @@ deterministic, keys committed — the #66 lesson `3fab509`):
    `sim-0.1.0` — what the plugin's identify reports), integration adapter
    (entry_point `benchweave_sim_psu.plugin:create_plugin`, api_version `1.1`),
    declarative serial transport, capabilities `[identify, read, write,
-   invoke]` + matching `operations`, 11 parameter objects (each with
+   get_errors, reset, invoke]` + matching `operations` (review R1: the six
+   verbs the plugin's dispatch table actually carries; the four-verb line
+   here was record drift), 11 parameter objects (each with
    binding/read_policy/write_policy mirroring the sim's actual bounds — the
    WRITABLE_BOUNDS tables in `plugin.py:29-41` become the declared `range`s),
    `required_features` `[otdp.core, otdp.adapter, otdp.profile_actions,
@@ -328,9 +330,13 @@ fixtures, so no lattice cascade):
    `descriptor.json == build_descriptor()`, `tests/test_adapter.py:176`) —
    synced with the two version fields.
 21. `plugins/fnirsi/dps150/contracts/otdp-0.2.0/` — new vendored copy of the
-   eight corpus files (the old `contracts/otdp-0.1.0/` dir STAYS: plugin-level
-   copy-never-move, preserving the evidence trail of what 0.1.0 validated
-   against).
+   eight corpus files. Correction (review R2): BOTH corpus dirs
+   (`otdp-0.1.0/` and `otdp-0.2.0/`) are gitignored local materializations
+   (`.gitignore:113`; the plugin's fetch script recreates them from the
+   lock) — on a fresh clone neither exists. The in-repo anchor is the
+   tracked `contracts/lock.json`; its digest-equality with the standards
+   tree is pinned main-side by `tests/contract/test_dps150_lock.py`
+   (§11 risk 6's promised falsifier, made executable).
 22. `plugins/fnirsi/dps150/contracts/lock.json` — repointed at
    `standards/otdp/0.2.0` with the corpus digests; `revision` cites the commit
    that introduced the 0.2.0 corpus (#80 merge `64f64a9`). Amendment
