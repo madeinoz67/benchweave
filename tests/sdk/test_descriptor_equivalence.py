@@ -1,8 +1,11 @@
 """Gateway admission vs ``benchweave-sdk check`` over the in-tree corpus.
 
-CON-10's equivalence pin: over {sim_psu, sim_controller, sim_scope} x
-{clean, id-pattern violation, profiles scalar, actions-as-list, duplicate
-parameter name, reversed range, issued-map unknown action} (21 cells):
+CON-10's equivalence pin: over {sim_psu, sim_controller, sim_scope, dps150}
+x {clean, id-pattern violation, profiles scalar, actions-as-list, duplicate
+parameter name, reversed range, issued-map unknown action} — 28 cells;
+dps150's core-only shape (no actions/profiles keys) is the interesting
+boundary: the actions-as-list and issued-map mutations add the minimal
+object/map to it.
 
 - a descriptor the SDK check refuses is never gateway-admissible
   (check-clean is a necessary condition for admission), and
@@ -49,17 +52,32 @@ CORPUS: dict[str, Path] = {
     "sim_controller": ROOT
     / "plugins/benchweave/sim_controller/src/benchweave_sim_controller/descriptor.json",
     "sim_scope": ROOT / "plugins/benchweave/sim_scope/src/benchweave_sim_scope/descriptor.json",
+    "dps150": ROOT
+    / "plugins/fnirsi/dps150/src/benchweave_fnirsi_dps150/descriptor.json",
 }
 #: Which bench slot each corpus descriptor is swapped into (pin repointed).
-SLOT: dict[str, str] = {"sim_psu": "psu", "sim_controller": "controller", "sim_scope": "psu"}
+SLOT: dict[str, str] = {
+    "sim_psu": "psu",
+    "sim_controller": "controller",
+    "sim_scope": "psu",
+    "dps150": "controller",  # core-only, like sim_controller
+}
 
 Mutation = Callable[[dict[str, Any]], None]
 
 
 def _reverse_primary_range(descriptor: dict[str, Any]) -> None:
+    """Reverse one parameter's bounds: the first that carries a range, else
+    the first numeric parameter with a reversed range attached (dps150's
+    read-only parameters carry none)."""
     for parameter in descriptor["parameters"]:
-        if parameter["name"] in ("voltage_setpoint_v", "ch1_offset_v", "uptime_s"):
-            parameter["range"] = [30.0, 0.0]
+        if "range" in parameter:
+            parameter["range"] = [parameter["range"][1], parameter["range"][0]]
+            return
+    for parameter in descriptor["parameters"]:
+        if parameter["type"] in ("float", "int"):
+            parameter["range"] = [1.0, 0.0]
+            return
 
 
 #: name -> (expectation, mutator). Expectation is one of both-clean,
