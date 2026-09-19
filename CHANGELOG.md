@@ -106,6 +106,13 @@ All notable changes to this project will be documented in this file.
 - Carrier participates in axis extent; legend swatches follow resolution (FC1/FC2)
 - Muted-x-absent cross-product cell, ruled fallback pin, renderer version (FC3-FC5)
 - Declare plugin-ui 0.1.1 in the ui resources
+- Total and exact float64 element boundary (B1/B2)
+- ASCII digit gate, marker bounds, duplicate-id refusal, containment (RB1-RB5)
+- Move to OTDP 0.1.2 with the active corpus (CI merge result)
+- Wave-3 audit findings (forge-B)
+- Review items R-F5-R-F7
+- C's multi-channel specimen cites the active measurement URN
+- The measurement contract pin hashes the active corpus (F9)
 
 ### Documentation
 
@@ -186,6 +193,10 @@ All notable changes to this project will be documented in this file.
 - Issue #6 row C per-channel display hints design record
 - Record the forge-tail evidence in the 0.1.1 report
 - Scope the W1/C4 amendment claims; pin first-visible mark line (review-C)
+- Issue #6 row B — declarative derived variables design record
+- Sweep remaining version claims to the otdp 0.1.2 corpus
+- Complete the 0.1.2 link sweep (reviewer, quickstart, architecture, development)
+- M15 states the int-exactness rule and the M02 suspension
 
 ### Features
 
@@ -278,6 +289,8 @@ All notable changes to this project will be documented in this file.
 - Sim_scope settings-presets simulator + host-ABI dispatch suite
 - Sim_scope ui resources, both SDK lanes, eight RED controls
 - Plugin-ui 0.1.1 channel_hints + two-pass renderer
+- Pure module + admission + executor wiring (issue #6 row B)
+- OTDP 0.1.2 — derived variables in the measurement model
 
 ### Hardware Evidence
 
@@ -335,6 +348,8 @@ All notable changes to this project will be documented in this file.
 - Advance packages/sdk to the C1-C4 renderer refresh
 - Advance packages/sdk to the W1 renderer refresh
 - Advance packages/sdk to the FC1/FC2 renderer refresh
+- Advance packages/sdk to the otdp 0.1.2 vendoring
+- Advance packages/sdk to the reconciled dual-standard tip
 
 ### Refactoring
 
@@ -388,6 +403,8 @@ All notable changes to this project will be documented in this file.
 - Jsdom-robust accessibility assertions for hidden legend rows
 - RED for hidden-claimant accent release (W1) + honest table naming (W2)
 - RED for real-render carrier visibility (FC1) + legend swatches (FC2)
+- RED suite + normative census for issue #6 row B
+- Sync-stamp literal follows the otdp 0.1.2 lock
 
 ### Build
 
@@ -402,6 +419,10 @@ All notable changes to this project will be documented in this file.
 - Gate-only package lane; SDK distribution moves to PyPI
 - Push CHANGELOG.md via changelog app token
 - Add manual trigger
+
+### Ci+docs
+
+- Census runs on the OS matrix; coverage claims state it
 
 ### Review
 
