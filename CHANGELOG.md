@@ -94,6 +94,13 @@ All notable changes to this project will be documented in this file.
 - Refuse string-mediated adapter access and state the pin's true boundary
 - Pin the envelope comparison shape, not just the literal's presence
 - Make the identity block closed-world
+- Declare the range_v/offset_v configure envelope in input_constraints
+- Make fetch honest — acquisition state, byte budget, corpus axes
+- Bound sample_count in both the descriptor envelope and dispatch
+- Snapshot the configuration at arm; validate trigger shape at dispatch
+- Name the true cause when the pretrigger buffer is empty
+- Carry the probe_ratio enum in the parameter descriptions; re-pin the digest chain
+- Forge-wave honesty — dispatched state refusals, single-use acquisition ids, small fixes
 
 ### Documentation
 
@@ -165,6 +172,12 @@ All notable changes to this project will be documented in this file.
 - Complete the adapter-protocol obligation touch-set and hook triggers
 - Correct four remaining baseline lines to the machine versions
 - Sweep remaining stale version claims to the machine truth (#54)
+- Issue #6 row A settings-as-presets design record
+- Named settings as presets — the sim_scope reference instance
+- Correct the token-replay claim — mismatch-only, and the design's range text
+- State the input_constraints lane split in the presets section
+- Fetch semantics in the README; design-record residual corrections
+- Review-wave prose corrections — parameter count, copy wording, simulator inventory scope
 
 ### Features
 
@@ -254,6 +267,8 @@ All notable changes to this project will be documented in this file.
 - The build loop — agents, skills, drift guard, design records, constitution (#42)
 - Benchweave.standards repin — the mechanical pin writer (#46) (#52)
 - Derive-check identity.adapter_api against the descriptor schema const
+- Sim_scope settings-presets simulator + host-ABI dispatch suite
+- Sim_scope ui resources, both SDK lanes, eight RED controls
 
 ### Hardware Evidence
 
