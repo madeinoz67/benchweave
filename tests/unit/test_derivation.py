@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import copy
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -306,6 +307,61 @@ def test_empty_declaration_list_is_a_no_op() -> None:
     dataset = _dataset([_operand("v", 1.0)])
     output = derive_dataset_variables(dataset, [])
     assert output["variables"] == dataset["variables"]
+
+
+# --- the float64 conversion boundary is pinned below ----------------------------------------
+
+
+# --- the float64 conversion boundary (mechanism-critic B1/B2) -------------------
+
+
+@pytest.mark.parametrize(
+    ("element", "readable"),
+    [
+        (None, True),  # the unavailable marker, propagates as null
+        (42, True),  # small int: exactly binary64
+        (2**53, True),  # the exact-representability boundary itself
+        (2**53 + 1, False),  # the first int binary64 silently rounds (B2)
+        (int(sys.float_info.max), False),  # far past the boundary, though finite
+        (10**400, False),  # raises OverflowError on float() unguarded (B1)
+        (True, False),  # bool is not a float64 element
+        ("7", False),  # strings are data, not numbers
+        (float("nan"), False),  # never NaN (measurement-model.md section 3)
+        (float("inf"), False),  # never Infinity
+        (0.5, True),  # ordinary finite float
+    ],
+    ids=[
+        "null", "small-int", "two-pow-53", "two-pow-53-plus-1",
+        "max-float-int", "huge-int", "bool", "string", "nan", "inf", "float",
+    ],
+)
+def test_element_boundary_table(element: object, readable: bool) -> None:
+    """Every element class either derives exactly or refuses TYPED.
+
+    The guard must be total (no untyped exception — an OverflowError from
+    ``float(10**400)`` would escape the executor's typed handling and skip
+    the protective transition) and exact (an int beyond 2^53 would be
+    silently rounded by the conversion, laundering a representation change
+    through a "valid" result).
+    """
+
+    dataset = _dataset([_operand("probe", element)])
+    declaration = [
+        {"id": "d", "quantity": "probe", "unit": "1", "expression": "probe + 0"}
+    ]
+    if not readable:
+        with pytest.raises(DerivationRefused, match="derivation_dtype_mismatch:"):
+            derive_dataset_variables(dataset, declaration)
+        return
+    output = derive_dataset_variables(dataset, declaration)
+    derived = output["variables"][1]
+    if element is None:
+        assert derived["values"] == [None]
+        assert derived["status"] == "invalid"
+        return
+    expected: object = element if isinstance(element, float) else float(int(str(element))) + 0.0
+    assert derived["values"] == [expected]
+    assert derived["status"] == "valid"
 
 
 def test_uncertainty_and_calibration_are_structurally_unknown() -> None:

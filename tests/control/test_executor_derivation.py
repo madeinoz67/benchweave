@@ -25,6 +25,7 @@ from benchweave.control.clocking import TestClock
 from benchweave.control.documents import AdmittedDocuments
 from benchweave.control.executor import Executor
 from benchweave.host.plugin import DevicePlugin
+from benchweave.host.types import OperationResult
 
 PLUGINS_ROOT = ROOT / "plugins"
 RUN_ID = "run-derivation"
@@ -242,3 +243,122 @@ def test_known_uncertainty_requirement_refuses_derived_samples(tmp_path: Path) -
     assert rail_event["status"] == "error"
     assert rail_event["error_code"] == "INVALID_SAMPLE"
     assert "unknown_uncertainty" in body.reasons[-1], body.reasons
+
+
+class _HugeIntPlugin:
+    """DevicePlugin stand-in whose measure dataset carries a huge int.
+
+    A JSON-legal finite number beyond binary64 (10**400) arrives as a Python
+    int from a plugin: the derivation seam must refuse it TYPED, not let an
+    OverflowError escape the executor (which would skip the protective
+    transition — mechanism-critic B1).
+    """
+
+    @property
+    def simulation(self) -> Any:
+        return type("SimulationInfo", (), {"simulated": True, "label": "huge-int-probe"})()
+
+    def plugin_open(self, services: Any) -> None:
+        pass
+
+    def plugin_close(self) -> None:
+        pass
+
+    def dispatch(self, request: Any, *, deadline_ns: int) -> Any:
+        if request.arguments.get("action_id") != "otdp.dc_psu.measure/1.0.0":
+            return OperationResult.ok(
+                request.operation_id, request.verb, {"result": {"ok": True}}
+            )
+        dataset = {
+            "dataset_id": "dataset-huge-int",
+            "kind": "scalar_set",
+            "configuration_id": FIXTURE_CONFIGURATION_ID,
+            "acquisition_id": None,
+            "started_at": None,
+            "clock": {
+                "domain_id": "huge-int",
+                "timestamp_source": "host",
+                "synchronisation": "unknown",
+                "uncertainty_s": None,
+            },
+            "axes": [],
+            "variables": [
+                {
+                    "id": "voltage_a",
+                    "quantity": "voltage",
+                    "unit": "V",
+                    "channel_ids": ["ch1"],
+                    "dtype": "float64",
+                    "dimensions": [],
+                    "values": [10**400],
+                    "uncertainty": {"status": "unknown"},
+                    "calibration": {"status": "unknown"},
+                    "status": "valid",
+                },
+                {
+                    "id": "voltage_b",
+                    "quantity": "voltage",
+                    "unit": "V",
+                    "channel_ids": ["ch1"],
+                    "dtype": "float64",
+                    "dimensions": [],
+                    "values": [1.0],
+                    "uncertainty": {"status": "unknown"},
+                    "calibration": {"status": "unknown"},
+                    "status": "valid",
+                },
+            ],
+            "trigger": {"source": "immediate", "time_relative_s": None},
+            "status": "complete",
+            "context": {},
+        }
+        return OperationResult.ok(
+            request.operation_id, request.verb, {"result": dataset}
+        )
+
+
+def test_huge_int_element_ends_the_step_typed_not_an_escape(tmp_path: Path) -> None:
+    def mutate(graph: dict[str, Any]) -> None:
+        _derived_procedure(graph)
+        graph["descriptors"]["psu"]["derived_variables"] = [
+            {
+                "id": "rail_offset",
+                "quantity": "voltage",
+                "unit": "V",
+                "expression": "voltage_a - 4.5",
+            }
+        ]
+
+    clock = TestClock()
+    plugins: dict[str, DevicePlugin] = {
+        "psu": _HugeIntPlugin(),
+        "controller": _plugins(clock)["controller"],
+    }
+    ledger: dict[tuple[str, str, tuple[int, ...]], dict[str, Any]] = {}
+    docs = readmit_mutated(tmp_path, mutate)
+    executor = Executor(
+        plugins=plugins,
+        binding=resolve_binding(docs),
+        policy=docs.policy,
+        clock=clock,
+        wall=clock,
+        occurrence_ledger=ledger,
+        derived_variables={
+            device_id: descriptor.get("derived_variables", [])
+            for device_id, descriptor in docs.descriptors.items()
+        },
+    )
+    body = executor.run_body(
+        docs.procedure,
+        run_id=RUN_ID,
+        body_deadline_ns=clock.now_ns() + int(docs.procedure["max_body_ms"]) * 1_000_000,
+    )
+    assert body.body_outcome == "execution_error", body.reasons
+    measure_event = next(
+        event
+        for event in body.step_events
+        if event["kind"] == "invoke" and event["occurrence"][1] == "measure"
+    )
+    assert measure_event["status"] == "error"
+    assert measure_event["error_code"] == "DERIVATION_INVALID"
+    assert "derivation_dtype_mismatch:" in body.reasons[-1], body.reasons

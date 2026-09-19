@@ -56,6 +56,14 @@ __all__ = [
 
 MAX_EXPRESSION_LENGTH = 256
 MAX_NESTING = 32
+#: Ints at or below 2^53 are exactly representable in binary64; above it,
+#: conversion silently rounds (9007199254740993 -> 9007199254740992.0).
+#: Ints beyond the boundary are refused rather than read through a
+#: representation change the record never consented to. The boundary is
+#: deliberately conservative — an int in (2^53, 2^63) that happens to be
+#: exactly representable (even values) is still refused; "mechanically
+#: checkable and total" beats "maximally permissive" at a data boundary.
+MAX_EXACT_INT = 2**53
 
 _IDENTIFIER = re.compile(r"[a-z][a-z0-9_]*")
 
@@ -279,6 +287,28 @@ def _describe(node: _Node) -> str:
     return f"{_describe(node[2])} {node[1]} {_describe(node[3])}"
 
 
+def _element_is_readable(element: Any) -> bool:
+    """True when an inline element can be read as an exact binary64 value.
+
+    The guard this backs must be TOTAL (every element class decides — an
+    untyped ``OverflowError`` from ``float(10**400)`` would escape the
+    executor's typed handling and skip the protective transition) and
+    EXACT (nulls are the unavailable marker; finite floats are read; ints
+    only up to ``MAX_EXACT_INT``). Bools, strings and non-finite floats are
+    not float64 elements and refuse with ``derivation_dtype_mismatch:``.
+    """
+
+    if element is None:
+        return True
+    if isinstance(element, bool):
+        return False
+    if isinstance(element, int):
+        return -MAX_EXACT_INT <= element <= MAX_EXACT_INT
+    if isinstance(element, float):
+        return math.isfinite(element)
+    return False
+
+
 # --- static checks (admission seam) --------------------------------------------
 
 
@@ -453,7 +483,17 @@ def _evaluate(
         value = values[node[1]]
         if value is None:
             return None
-        return float(value)
+        try:
+            return float(value)
+        except (OverflowError, ValueError) as error:
+            # Defensive totality: the operand guard already refused
+            # non-convertible elements, so reaching here means the guard
+            # was bypassed — refuse typed rather than let the conversion
+            # exception escape the pure module.
+            raise DerivationRefused(
+                "derivation_dtype_mismatch: operand element of type "
+                f"{type(value).__name__} is not convertible to binary64"
+            ) from error
     if kind == "unary":
         child = _evaluate(node[2], values, causes)
         if child is None:
@@ -547,16 +587,12 @@ def _derive_one(
                 f"inline {'values' in variable})"
             )
         for element in variable["values"]:
-            if element is None or (
-                isinstance(element, (int, float))
-                and not isinstance(element, bool)
-                and math.isfinite(float(element))
-            ):
-                continue
-            raise DerivationRefused(
-                f"derivation_dtype_mismatch: operand {operand!r} carries a "
-                f"non-float64 element {element!r}"
-            )
+            if not _element_is_readable(element):
+                raise DerivationRefused(
+                    f"derivation_dtype_mismatch: operand {operand!r} carries a "
+                    f"non-float64 or non-exactly-representable element "
+                    f"({type(element).__name__})"
+                )
 
     reference_dimensions = operands[ordered[0]].get("dimensions")
     reference_length = len(operands[ordered[0]]["values"])
