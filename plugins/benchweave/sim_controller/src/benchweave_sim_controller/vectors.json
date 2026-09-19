@@ -40,7 +40,7 @@
       "name": "write_note_too_long_device_rejected",
       "setup": [],
       "request": {"verb": "write", "arguments": {"parameter": "operator_note", "value": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}},
-      "expect": {"status": "error", "error_code": "DEVICE_REJECTED", "dispatch_state": "not_dispatched"}
+      "expect": {"status": "error", "error_code": "DEVICE_REJECTED", "dispatch_state": "dispatched"}
     },
     {
       "name": "read_missing_parameter_invalid_framing",

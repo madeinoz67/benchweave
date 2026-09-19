@@ -63,6 +63,21 @@ class SimControllerPlugin:
             dispatch_state=DispatchState.NOT_DISPATCHED,
         )
 
+    def _state_reject(self, request: OperationRequest, message: str) -> OperationResult:
+        """Refuse on device state after dispatch, reporting DISPATCHED.
+
+        The write reached the device and its storage limit refused it —
+        claiming not_dispatched would deny work the device did. Input
+        validation failures keep the NOT_DISPATCHED form via _reject.
+        """
+        return OperationResult.failure(
+            request.operation_id,
+            request.verb,
+            code=ErrorCode.DEVICE_REJECTED,
+            message=message,
+            dispatch_state=DispatchState.DISPATCHED,
+        )
+
     def dispatch(self, request: OperationRequest, *, deadline_ns: int) -> OperationResult:
         if self._monotonic_ns() >= deadline_ns:
             return self._reject(request, ErrorCode.TIMEOUT, "deadline already passed")
@@ -125,8 +140,8 @@ class SimControllerPlugin:
                 request, ErrorCode.INVALID_ARGUMENT, "only operator_note (string) is writable"
             )
         if len(value) > MAX_NOTE_LENGTH:
-            return self._reject(
-                request, ErrorCode.DEVICE_REJECTED, f"operator_note longer than {MAX_NOTE_LENGTH}"
+            return self._state_reject(
+                request, f"operator_note longer than {MAX_NOTE_LENGTH}"
             )
         self._operator_note = value
         receipt = WriteReceipt(
