@@ -197,6 +197,8 @@ All notable changes to this project will be documented in this file.
 - Sweep remaining version claims to the otdp 0.1.2 corpus
 - Complete the 0.1.2 link sweep (reviewer, quickstart, architecture, development)
 - M15 states the int-exactness rule and the M02 suspension
+- Apply the issue-#6 retrospective workflow rules (#69)
+- Governor-pass fixes on the #69 rules
 
 ### Features
 
