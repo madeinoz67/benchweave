@@ -106,6 +106,12 @@ rather than rewriting the history — that is how this file earns trust.
   `src/benchweave/content/json_document.py` `load_document`. *A14: the interface preserves
   original document bytes for digest verification — validation operates on the bytes that
   were pinned, not on a re-serialization of them.*
+  Amendment (2026-09-19, issue #63): device descriptors — previously "no vendored schema,
+  minimal structural check" — now validate against the **active vendored OTDP descriptor
+  schema** at admission (packaged-first via `contract_family`, active version derived from
+  the vendored standards manifest, never a hardcoded gateway constant; the schema's
+  `otdp_version` const enforces corpus alignment). Exact-byte decode and digest pins
+  unchanged; see CON-10 for the projection.
 - **[CON-2]** The digest pin lattice between the execution-contract documents is verified
   at admission; the fixture lattice moves in lockstep (`fixtures/registry/` ↔
   `scripts/registry/build_fixtures.py` ↔ `catalogue.json` ↔ the digest-pinning tests),
@@ -187,6 +193,32 @@ rather than rewriting the history — that is how this file earns trust.
   loss), A12 (declaration order is the evaluation order — the admission
   acyclicity check makes it total).*
 
+- **[CON-10]** One descriptor dialect, projected (2026-09-19, issue #63): a device
+  descriptor is a full-form OTDP document; execution admission validates it against
+  the active vendored OTDP schema plus the S01/S02 semantic mirrors (the SDK's
+  checks mirrored at the gateway — the SDK is not a gateway dependency, REG-4's
+  read-not-import pattern), validates the gateway-owned `x-stg-issued-inputs`
+  extension (shape, declared actions, and fields the target action itself
+  declares in `input_constraints.properties` — an action with no declared
+  properties names no issuable fields; refusal prefix `issued_map:`), and
+  projects a total execution view (`{id, version = descriptor_version, profiles
+  (absent → []), parameter names, actions + issued, derived_variables
+  passthrough}`) that binding, semantics and the coordinator read; the bench pin
+  verifies against the RAW document's `id`/`descriptor_version` and the raw bytes'
+  digest — `src/benchweave/control/documents.py` `_project_descriptor`. The slim
+  list dialect (`id`/`version`/string-lists) is refused: `check`-clean is a
+  necessary condition for admissibility. Gateway admission and `benchweave-sdk
+  check` are pinned equivalent over the in-tree descriptor corpus × mutation
+  matrix by `tests/sdk/test_descriptor_equivalence.py`, whose two sanctioned
+  gateway-stricter cells are named there (the x- key, ignorable by contract, and
+  the S02 array-form range the SDK's dict-only branch cannot reach on 0.2.0-valid
+  documents); the census covers that corpus and matrix, not all possible
+  descriptors. *Two gates built against two notions of "a descriptor" with no
+  shared authority is how zero of four in-tree descriptors were both check-clean
+  and admissible (#63 §1); one dialect plus a projection is the structural fix,
+  and sim_scope admitting with zero byte changes was the proof the mechanism,
+  not a rewrite, closed the fork.*
+
 ## Registry & plugin invariants
 
 - **[REG-1]** A plugin is imported with no side effects, then explicitly opened with a
@@ -198,6 +230,13 @@ rather than rewriting the history — that is how this file earns trust.
   TIMEOUT with dispatch state DISPATCHED or UNKNOWN — never silently retries, and never
   claims `not_dispatched` for work already sent — `host/plugin.py`. *A06 made explicit:
   the ambiguity is preserved, not laundered into a clean answer.*
+  Amendment (2026-09-19, issue #63, R1 from #66): dispatch-state honesty is a typing
+  boundary too — `not_dispatched` is reserved for failures that precede any device
+  evaluation, and an argument that violates its action's input typing (the profile
+  catalog types the field) never reaches device evaluation: a wrong-typed argument can
+  never yield `DEVICE_REJECTED`. A well-typed argument rejected against device state or
+  envelope stays `DEVICE_REJECTED`/`dispatched`. Pinned by the sim_psu fault matrix
+  (`write_wrong_type_invalid_framing`, `invoke_measure/output_nonstring_token_*`).
 - **[REG-3]** Registry admission pins the complete dependency closure; publication and
   installation never authorize control (A11) — `src/benchweave/registry/admission.py`,
   pinned by `tests/contract/test_registry_admission.py`. *A downloaded package is data

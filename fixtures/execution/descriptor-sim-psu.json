@@ -1,34 +1,514 @@
 {
-  "id": "descriptor-sim-psu",
-  "version": "0.1.0",
+  "otdp_version": "0.2.0",
+  "descriptor_version": "1.0.0",
+  "id": "dev.benchweave.sim-psu",
+  "display_name": "BenchWeave simulated DC supply",
+  "description": "Deterministic simulated DC supply with finite hard bounds, OVP/OCP trip latch cleared only by reset, and the dc_psu profile actions. No hardware, no qualification.",
+  "identity": {
+    "strategy": "adapter",
+    "manufacturer": "benchweave-sim",
+    "model": "sim-psu-1",
+    "firmware_policy": "listed",
+    "supported_firmware": [
+      "sim-0.1.0"
+    ]
+  },
+  "integration": {
+    "mode": "adapter",
+    "adapter": {
+      "entry_point": "benchweave_sim_psu.plugin:create_plugin",
+      "api_version": "1.1",
+      "version": "1.0.0",
+      "dependencies": [],
+      "permissions": [
+        "scoped_transport"
+      ]
+    }
+  },
+  "transport": {
+    "type": "serial",
+    "connection_key": "sim_psu",
+    "settings": {
+      "baud": 115200,
+      "data_bits": 8,
+      "parity": "none",
+      "stop_bits": 1,
+      "rtscts": false,
+      "max_frame_bytes": 65536
+    }
+  },
+  "capabilities": [
+    "identify",
+    "read",
+    "write",
+    "get_errors",
+    "reset",
+    "invoke"
+  ],
+  "operations": {
+    "identify": {
+      "timeout_ms": 1000,
+      "side_effect": "none",
+      "retry": "never",
+      "cancellable": false,
+      "completion": "acknowledged"
+    },
+    "read": {
+      "timeout_ms": 1000,
+      "side_effect": "none",
+      "retry": "never",
+      "cancellable": true,
+      "completion": "acknowledged"
+    },
+    "write": {
+      "timeout_ms": 1000,
+      "side_effect": "state_change",
+      "retry": "never",
+      "cancellable": true,
+      "completion": "readback"
+    },
+    "get_errors": {
+      "timeout_ms": 1000,
+      "side_effect": "none",
+      "retry": "never",
+      "cancellable": false,
+      "completion": "acknowledged"
+    },
+    "reset": {
+      "timeout_ms": 1000,
+      "side_effect": "state_change",
+      "retry": "never",
+      "cancellable": true,
+      "completion": "acknowledged"
+    },
+    "invoke": {
+      "timeout_ms": 30000,
+      "side_effect": "state_change",
+      "retry": "never",
+      "cancellable": true,
+      "completion": "acknowledged"
+    }
+  },
+  "parameters": [
+    {
+      "name": "voltage_setpoint_v",
+      "description": "Output voltage setpoint; the write path applies it thresholds-first so an unsafe setpoint trips exactly as a raw WRITE would.",
+      "type": "float",
+      "access": "rw",
+      "semantic": "setpoint",
+      "unit": "V",
+      "range": [
+        0.0,
+        30.0
+      ],
+      "binding": {
+        "kind": "adapter",
+        "key": "voltage_setpoint_v"
+      },
+      "read_policy": {
+        "max_age_ms": 0,
+        "destructive": false
+      },
+      "write_policy": {
+        "effect": "setting",
+        "completion": "readback",
+        "retry": "never",
+        "verification_parameter": "voltage_setpoint_v",
+        "settling_timeout_ms": 1
+      },
+      "hazard_class": "none"
+    },
+    {
+      "name": "current_limit_a",
+      "description": "Output current limit; the simulated output current is capped by it.",
+      "type": "float",
+      "access": "rw",
+      "semantic": "setpoint",
+      "unit": "A",
+      "range": [
+        0.0,
+        5.0
+      ],
+      "binding": {
+        "kind": "adapter",
+        "key": "current_limit_a"
+      },
+      "read_policy": {
+        "max_age_ms": 0,
+        "destructive": false
+      },
+      "write_policy": {
+        "effect": "setting",
+        "completion": "readback",
+        "retry": "never",
+        "verification_parameter": "current_limit_a",
+        "settling_timeout_ms": 1
+      },
+      "hazard_class": "none"
+    },
+    {
+      "name": "ovp_threshold_v",
+      "description": "Over-voltage protection threshold; a setpoint above it while enabled latches OVP_TRIP until reset.",
+      "type": "float",
+      "access": "rw",
+      "semantic": "configuration",
+      "unit": "V",
+      "range": [
+        0.0,
+        30.0
+      ],
+      "binding": {
+        "kind": "adapter",
+        "key": "ovp_threshold_v"
+      },
+      "read_policy": {
+        "max_age_ms": 0,
+        "destructive": false
+      },
+      "write_policy": {
+        "effect": "setting",
+        "completion": "readback",
+        "retry": "never",
+        "verification_parameter": "ovp_threshold_v",
+        "settling_timeout_ms": 1
+      },
+      "hazard_class": "low"
+    },
+    {
+      "name": "ocp_threshold_a",
+      "description": "Over-current protection threshold; a load above it while enabled latches OCP_TRIP until reset.",
+      "type": "float",
+      "access": "rw",
+      "semantic": "configuration",
+      "unit": "A",
+      "range": [
+        0.0,
+        5.0
+      ],
+      "binding": {
+        "kind": "adapter",
+        "key": "ocp_threshold_a"
+      },
+      "read_policy": {
+        "max_age_ms": 0,
+        "destructive": false
+      },
+      "write_policy": {
+        "effect": "setting",
+        "completion": "readback",
+        "retry": "never",
+        "verification_parameter": "ocp_threshold_a",
+        "settling_timeout_ms": 1
+      },
+      "hazard_class": "low"
+    },
+    {
+      "name": "load_a",
+      "description": "Simulated load drawn from the supply while the output is enabled.",
+      "type": "float",
+      "access": "rw",
+      "semantic": "configuration",
+      "unit": "A",
+      "range": [
+        0.0,
+        5.0
+      ],
+      "binding": {
+        "kind": "adapter",
+        "key": "load_a"
+      },
+      "read_policy": {
+        "max_age_ms": 0,
+        "destructive": false
+      },
+      "write_policy": {
+        "effect": "setting",
+        "completion": "readback",
+        "retry": "never",
+        "verification_parameter": "load_a",
+        "settling_timeout_ms": 1
+      },
+      "hazard_class": "none"
+    },
+    {
+      "name": "output_enabled",
+      "description": "Output relay state; enabling with the setpoint above the OVP threshold trips immediately.",
+      "type": "bool",
+      "access": "rw",
+      "semantic": "configuration",
+      "binding": {
+        "kind": "adapter",
+        "key": "output_enabled"
+      },
+      "read_policy": {
+        "max_age_ms": 0,
+        "destructive": false
+      },
+      "write_policy": {
+        "effect": "energise",
+        "completion": "readback",
+        "retry": "never",
+        "verification_parameter": "output_enabled",
+        "settling_timeout_ms": 1
+      },
+      "hazard_class": "low"
+    },
+    {
+      "name": "operator_note",
+      "description": "Free-form operator annotation stored in device state; the simulator applies no length limit of its own, so the declared envelope is the only bound.",
+      "type": "string",
+      "access": "rw",
+      "semantic": "configuration",
+      "string_constraints": {
+        "min_length": 0,
+        "max_length": 4096
+      },
+      "binding": {
+        "kind": "adapter",
+        "key": "operator_note"
+      },
+      "read_policy": {
+        "max_age_ms": 0,
+        "destructive": false
+      },
+      "write_policy": {
+        "effect": "setting",
+        "completion": "acknowledged",
+        "retry": "never"
+      },
+      "hazard_class": "none"
+    },
+    {
+      "name": "output_voltage_v",
+      "description": "Output voltage reading; zero while tripped or disabled.",
+      "type": "float",
+      "access": "ro",
+      "semantic": "measurement",
+      "unit": "V",
+      "binding": {
+        "kind": "adapter",
+        "key": "output_voltage_v"
+      },
+      "read_policy": {
+        "max_age_ms": 0,
+        "destructive": false
+      }
+    },
+    {
+      "name": "output_current_a",
+      "description": "Output current reading; min(load, current_limit), zero while tripped or disabled.",
+      "type": "float",
+      "access": "ro",
+      "semantic": "measurement",
+      "unit": "A",
+      "binding": {
+        "kind": "adapter",
+        "key": "output_current_a"
+      },
+      "read_policy": {
+        "max_age_ms": 0,
+        "destructive": false
+      }
+    },
+    {
+      "name": "output_power_w",
+      "description": "Output power reading; voltage times current rounded to six decimals.",
+      "type": "float",
+      "access": "ro",
+      "semantic": "measurement",
+      "unit": "W",
+      "binding": {
+        "kind": "adapter",
+        "key": "output_power_w"
+      },
+      "read_policy": {
+        "max_age_ms": 0,
+        "destructive": false
+      }
+    },
+    {
+      "name": "identity_model",
+      "description": "Reported device model, for identify/read smoke coverage.",
+      "type": "string",
+      "access": "ro",
+      "semantic": "state",
+      "string_constraints": {
+        "min_length": 1,
+        "max_length": 64
+      },
+      "binding": {
+        "kind": "adapter",
+        "key": "identity_model"
+      },
+      "read_policy": {
+        "max_age_ms": 0,
+        "destructive": false
+      }
+    }
+  ],
+  "required_features": [
+    "otdp.core/0.1.0",
+    "otdp.adapter/0.1.0",
+    "otdp.profile_actions/0.1.0",
+    "otdp.measurement/0.1.0",
+    "otdp.dc_psu/1.0.0"
+  ],
+  "provenance": {
+    "sources": [
+      {
+        "title": "BenchWeave simulator protocol (synthetic)",
+        "reference": "README.md",
+        "revision": "1.0.0"
+      }
+    ],
+    "test_vectors": [
+      {
+        "id": "sim-psu-actions",
+        "path": "vectors.json",
+        "purpose": "Synthetic dc_psu action exchanges; not a device simulator protocol capture"
+      }
+    ]
+  },
+  "channels": [
+    {
+      "id": "ch1",
+      "label": "Simulated output channel",
+      "role": "source",
+      "quantities": [
+        "voltage",
+        "current"
+      ],
+      "parameter_names": [
+        "voltage_setpoint_v",
+        "current_limit_a",
+        "ovp_threshold_v",
+        "ocp_threshold_a",
+        "load_a"
+      ]
+    }
+  ],
   "profiles": [
     "otdp.dc_psu/1.0.0"
   ],
-  "actions": [
+  "contracts": [
     {
-      "action_id": "otdp.dc_psu.configure/1.0.0",
-      "issued": [
-        "configuration_id"
-      ]
+      "id": "urn:otdp:profile-catalog:0.2.0",
+      "path": "device-profile-catalog.json",
+      "sha256": "dc776ec3dd02f3b37e02005f79434597f220b5acb5d6c23c98b844aa3e63d923"
     },
     {
-      "action_id": "otdp.dc_psu.output/1.0.0"
-    },
-    {
-      "action_id": "otdp.dc_psu.measure/1.0.0"
+      "id": "urn:otdp:measurement:0.2.0",
+      "path": "otdp-measurement.schema.json",
+      "sha256": "e911d0efec92a5167788dc59c40acdbf62e99f82249fcc99bf2e57ffe5331382"
     }
   ],
-  "parameters": [
-    "voltage_setpoint_v",
-    "current_limit_a",
-    "ovp_threshold_v",
-    "ocp_threshold_a",
-    "load_a",
-    "output_enabled",
-    "operator_note",
-    "output_voltage_v",
-    "output_current_a",
-    "output_power_w",
-    "identity_model"
-  ]
+  "actions": {
+    "otdp.dc_psu.configure/1.0.0": {
+      "binding": {
+        "kind": "adapter",
+        "key": "otdp.dc_psu.configure/1.0.0"
+      },
+      "input_constraints": {
+        "properties": {
+          "configuration_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "channel": {
+            "pattern": "^ch1$"
+          },
+          "voltage_v": {
+            "minimum": 0,
+            "maximum": 30.0
+          },
+          "current_limit_a": {
+            "exclusiveMinimum": 0,
+            "maximum": 5.0
+          },
+          "ovp_v": {
+            "exclusiveMinimum": 0,
+            "maximum": 30.0
+          },
+          "ocp_a": {
+            "exclusiveMinimum": 0,
+            "maximum": 5.0
+          }
+        },
+        "required": [
+          "configuration_id",
+          "channel",
+          "voltage_v",
+          "current_limit_a",
+          "ovp_v",
+          "ocp_a"
+        ]
+      },
+      "timeout_ms": 30000,
+      "side_effect": "state_change",
+      "cancellable": true,
+      "retry": "never"
+    },
+    "otdp.dc_psu.output/1.0.0": {
+      "binding": {
+        "kind": "adapter",
+        "key": "otdp.dc_psu.output/1.0.0"
+      },
+      "input_constraints": {
+        "properties": {
+          "channel": {
+            "pattern": "^ch1$"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "configuration_id": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "channel",
+          "enabled"
+        ]
+      },
+      "timeout_ms": 30000,
+      "side_effect": "state_change",
+      "cancellable": true,
+      "retry": "never"
+    },
+    "otdp.dc_psu.measure/1.0.0": {
+      "binding": {
+        "kind": "adapter",
+        "key": "otdp.dc_psu.measure/1.0.0"
+      },
+      "input_constraints": {
+        "properties": {
+          "channels": {
+            "items": {
+              "pattern": "^ch1$"
+            },
+            "uniqueItems": true,
+            "minItems": 1
+          },
+          "configuration_id": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "configuration_id",
+          "channels"
+        ]
+      },
+      "timeout_ms": 30000,
+      "side_effect": "none",
+      "cancellable": true,
+      "retry": "never"
+    }
+  },
+  "x-stg-issued-inputs": {
+    "otdp.dc_psu.configure/1.0.0": [
+      "configuration_id"
+    ]
+  }
 }

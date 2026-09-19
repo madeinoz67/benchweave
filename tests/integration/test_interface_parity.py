@@ -165,7 +165,7 @@ _CLOSED_EMPTY_DETAILS: dict[str, object] = {
     "current_sequence": None,
     "retry_after_ms": None,
 }
-DEVICE = "descriptor-sim-controller"  # bootstrap keys rows by descriptor id
+DEVICE = "dev.benchweave.sim-controller"  # bootstrap keys rows by descriptor id
 BINDING_SHA = hashlib.sha256((FIXTURES / "run-binding.json").read_bytes()).hexdigest()
 BINDING_REF = {"id": "req-voltage-check-1", "version": "1.0.0", "sha256": BINDING_SHA}
 ARTIFACT_BYTES = b"0123456789abcdefghij"  # 20 bytes — chunk reassembly target

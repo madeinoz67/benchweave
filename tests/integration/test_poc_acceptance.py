@@ -647,6 +647,10 @@ def journey_discover_admit_select(app: Gateway, tokens: Tokens) -> Admitted:
         device for device in devices if device["profiles"] == [DC_PSU_PROFILE]
     ]
     assert len(psu_devices) == 1, devices
+    # Anti-fabrication pin: the inventory reports the descriptor's own
+    # version (full-form descriptor_version), never a defaulted "1".
+    assert psu_devices[0]["descriptor"]["version"] == "1.0.0", psu_devices[0]
+    assert psu_devices[0]["descriptor"]["id"] == "dev.benchweave.sim-psu"
 
     # Step 3: select the versioned fixture/policy/procedure — the
     # commissioning document (the bench's stored configuration) pins all
@@ -1720,6 +1724,9 @@ def test_journey_second_install_reuse(journey_wheel: Path, tmp_path: Path) -> No
         if path.is_file()
         and "__pycache__" not in path.parts
         and path.suffix != ".pyc"
+        # Transient virtualenvs a concurrent uv run may leave under a
+        # plugin project are not plugin source (refute hit this live).
+        and not {"venv", ".venv"}.intersection(path.parts)
     }
     assert primary.plugin_digests() == repo_digests
 

@@ -1,17 +1,17 @@
 {
   "repository": "https://github.com/madeinoz67/benchweave",
-  "revision": "9263578be8208de082c5eaf20e518dd2c45c930a",
-  "directory": "standards/otdp/0.1.0",
-  "otdp_version": "0.3.0",
+  "revision": "64f64a963e3062c20e77ef5813dafacc6f9b983c",
+  "directory": "standards/otdp/0.2.0",
+  "otdp_version": "0.2.0",
   "adapter_api_version": "1.1",
   "sha256": {
-    "otdp-device-descriptor.schema.json": "dce68f3d5023a9a1abdc1ed1e716701760cec048fb44050f13a184381264469a",
-    "otdp-runtime.schema.json": "e51fd99159241956c46481e333cc077e1013c9acea644b85e3d78e1be0f9935c",
-    "otdp-specification.md": "6ec8159abd38480420a8437faa07c7750dcb78b79fdedb5e1767850d6e38c3e9",
+    "otdp-device-descriptor.schema.json": "281656778c306a903e99e00e8e19ec9204c03b5f6af4295ef2ebee45ceb30860",
+    "otdp-runtime.schema.json": "8fd15cc8d95336f0f61deeeab9d4d6dd65f7d278a44b066f47d9be74fe08c867",
+    "otdp-specification.md": "d36746ffc0c29a74283b97da1dcbacfa6f987d1031d98ee1d3e81aba9dd4306a",
     "extension-contract.md": "736bf1e2e75b3d548dd6c5af745e3e7b9f7865ca4009cc7cc6366d5579ab37d3",
-    "device-classes.md": "1f145098fd046cfa62d9e2738753f64c9f14c8fa4ae71e3b5f11d8c465f072c4",
-    "measurement-model.md": "7a3fdc7a0aca0bf275222e5f54052c705ac697ccacfd0cd5a53d01cbbed6d730",
-    "otdp-measurement.schema.json": "705c9fbe72f01899a681a0927d11c86e5692ed98493732ccb885ac62686b8c0b",
-    "device-profile-catalog.json": "0c709d14714a5425fca62c60be335b43e7df854067dc276b3191fb008f6c260b"
+    "device-classes.md": "59cb07686997442762c7c72509ed84729a5234f5edc713bfaaecd735f00bd444",
+    "measurement-model.md": "a5e0cb7ac691a2b88f106f21ac1d225a5d423e1768beccac938d6e1b013c0585",
+    "otdp-measurement.schema.json": "e911d0efec92a5167788dc59c40acdbf62e99f82249fcc99bf2e57ffe5331382",
+    "device-profile-catalog.json": "dc776ec3dd02f3b37e02005f79434597f220b5acb5d6c23c98b844aa3e63d923"
   }
 }
