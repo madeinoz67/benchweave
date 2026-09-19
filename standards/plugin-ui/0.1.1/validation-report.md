@@ -57,6 +57,33 @@ it), and the legend-swatch pin got `expected '' to be '#777777'`. GREEN:
   `resolveStyles`/`readTokens` output via an inline `--legend-swatch`
   custom property (`data-line` keeps the dash pattern); the CSS
   index-structure colour rules are gone.
+
+### Forge tail 2026-09-19 — FC3–FC6
+
+- **FC3**: the cross-product table gains the muted×absent cell
+  (`{a: muted}` → zero visible accents — the no-laundering principle);
+  coverage pin of already-correct behavior, so no RED exists by
+  construction — the row encodes the counterexample that falsified the
+  amendment's overstated "non-empty visible sets" phrasing, now reworded
+  to "non-empty visible CLAIMANT sets".
+- **FC4 (ruled intended)**: pinned — muted token absent ⇒ muted index-0
+  falls back to its pass-1 accent default AND claims first; the later
+  accent hint loses. The C4 fallback chain composed with the C1 claim
+  rule.
+- **FC5 (ruled)**: ui package version 0.1.0 → 0.1.1 (lock synced); the
+  preview inventory stamps `renderer_version` from it — verified 0.1.1 in
+  the regenerated inventory, SDK commit `6299b93`. Consumers checked:
+  `build_preview_model`'s served preview document, the TUI display line,
+  and the ui decoder's text validation — display text only.
+- **FC6**: accepted as pre-existing, no code here; theme-switch token
+  re-resolution is owned by the manifest-driven plot-rendering
+  increment.
+
+Gates at the tail tip: ui **44/44** (16 files), tsc + eslint clean; full
+pytest **1010 collected** with the single pre-pointer failure being the
+gitlink pin (green on re-run after the pointer commit `05ccb3f`); ruff 0;
+bare mypy clean; standards check and `matrix --check` clean; renderer
+freshness zero-diff before the pointer commit.
 - **C2**: threshold renders on an empty-data carrier series when no visible
   series remains; pinned with all three channels hidden.
 - **C3**: hidden legend rows carry an explicit accessible name
