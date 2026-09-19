@@ -44,12 +44,6 @@ Run the diff's file list through these rules, top to bottom. First match wins.
 - adds, removes, or re-pins a dependency (`pyproject.toml`, `uv.lock`)
 - advances the `packages/sdk` submodule pointer
 
-**Standards-governor mandate (#69):** any diff touching `standards/` (corpus, prose, or
-either manifest), plugin contract locks, the SDK vendored tree, or standard-version
-strings dispatches the `standards-governor` agent as a mandatory pre-merge pass — the
-same standing as the Tier-3 refute. A governance review that never ran is a skipped
-gate.
-
 **TIER 2 — standard.** Any other change to Python logic under `src/`, `scripts/`, `tests/`,
 `.github/`, or root config (`pyproject.toml`, hatchling config). Test-only changes sit here,
 not in Tier 1 — the CI contract and the fixture lockstep live in the test tree.
@@ -58,6 +52,12 @@ not in Tier 1 — the CI contract and the fixture lockstep live in the test tree
 Tier 3.
 
 State the tier and the rule that triggered it at the top of your review.
+
+**Standards-governor mandate (#69) — applies regardless of tier:** any diff touching
+`standards/` (corpus, prose, or either manifest), plugin contract locks, the SDK
+vendored tree, or standard-version strings dispatches the `standards-governor` agent
+as a mandatory pre-merge pass — the same standing as the Tier-3 refute. A governance
+review that never ran is a skipped gate.
 
 ## Step 2 — Evidence gates (run every gate in scope; attach real output)
 

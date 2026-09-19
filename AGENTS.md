@@ -76,7 +76,8 @@ forgotten.
    The SDK repo's CI and releases run from its own remote, and an unpushed submodule
    commit is invisible there, breaking main-repo CI, which checks out submodules by
    SHA. A pinned SHA reachable only via an unmerged feature branch stays reachable
-   only while that branch lives — the PR is what makes the lineage durable (#69).
+   only while that branch lives — the MERGE makes the lineage durable; the PR
+   tracks it (#69).
 2. Then commit the advanced submodule pointer in the main repository.
 
 **Multi-PR work uses PR stacks (#69):** dependent PRs open with `base` = the

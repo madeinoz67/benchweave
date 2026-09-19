@@ -63,7 +63,9 @@ or a public surface, run the loop.
 5. **Adversarial refute.** Spawn the `adversary` agent with a REFUTE mandate. **Tier-3
    per the review rubric (contracts, standards artifacts, persisted format, registry
    seam, fixture digests, concurrency, dependencies, the SDK submodule pointer) → the
-   refute pass is mandatory.** For anything moving a deadline, threshold, digest rule or
+   refute pass is mandatory.** Any diff touching `standards/`, contract locks, the SDK
+   vendored tree, or version strings ALSO dispatches the `standards-governor` agent
+   (tier-independent; #69) — a governance review that never ran is a skipped gate. For anything moving a deadline, threshold, digest rule or
    lease computation, also run the `mechanism-critic`. Reconcile: both clean → stands; a
    real evidenced defect → fix it; a genuine correctness split → DEFER to the owner. Fix
    every real finding, with RED-proven guards.
@@ -74,7 +76,8 @@ or a public surface, run the loop.
 7. **Land.** PR into `main` (working branches only — never commit to `main` directly),
    title + body naming what shipped + what's deferred, referencing the design — and
    **every deferral in the body must cite an open issue, created at PR-open time if
-   absent; an orphan deferral blocks the merge** (#69). Multiple PRs from one work use
+   absent — an orphan deferral blocks the merge (reviewer-enforced; no mechanical
+   gate yet)** (#69). Multiple PRs from one work use
    **PR stacks**: each dependent PR opens with base = its predecessor's branch (so it
    shows only its own delta); merge bottom-up, retargeting successors to `main` as
    their base lands. **A run is complete only when every PR it raised — in BOTH repos —
@@ -113,5 +116,9 @@ design: the second one **parks at review-complete** (not CI-green) and rebases o
 merged predecessor exactly once. Before ANY push of a branch that bumps a standard or
 moves the SDK pointer, run a **merge-result pre-check**: simulate the branch + current
 `origin/main`, run the sibling rows' lane tests against that tree (CI tests the merge
-result, not your base), and trip on `git diff origin/main...HEAD -- standards/` showing
-deletions — deletions mean your bump is dropping a merged standard's state.
+result, not your base). Two distinct tripwires, not one: **(a) branch-side** —
+`git diff origin/main...HEAD -- standards/` showing deletions means YOUR branch deletes
+standards bytes, which is itself a copy-never-move violation regardless of base staleness;
+**(b) stale base** — inside the merge-result tree, `git diff origin/main -- standards/`
+(two-dot) showing deletions means the merge result drops main's standards state — your
+base predates a sibling's merged bump and the branch must re-roll onto main.

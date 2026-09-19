@@ -20,4 +20,4 @@ All run locally before review:
 <!-- Anything non-obvious: design trade-offs, follow-ups, evidence pointers. -->
 
 - [ ] Every deferral named in this PR body cites an open issue (created at PR-open
-      time if absent) — orphan deferrals block merge (#69).
+      time if absent) — orphan deferrals block merge, reviewer-enforced (#69).

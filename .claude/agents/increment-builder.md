@@ -97,13 +97,16 @@ plugin with a sibling row:
    worktree with both applied), and run the sibling rows' lane tests against that tree.
    An in-tree artifact that landed on main after your base — declaring the version your
    bump retires — fails your CI exactly here, before it costs a cycle.
-2. **Tripwire**: `git diff origin/main...HEAD -- standards/` showing DELETIONS means
-   your branch is dropping a merged standard's state (stale base). Re-roll onto main.
+2. **Two tripwires**: (a) `git diff origin/main...HEAD -- standards/` (three-dot)
+   showing deletions = YOUR branch deletes standards bytes — a copy-never-move
+   violation regardless of base; (b) STALE BASE is silent under (a): in the
+   merge-result tree, `git diff origin/main -- standards/` (two-dot) showing
+   deletions = the merge drops main's standards state — re-roll onto main.
 3. **Version motion is part of the bump**: every in-tree artifact declaring the old
    version moves in-arc with it (descriptor/envelope/manifest/presets + the full digest
    re-pin chain) — in the same arc, not a follow-up.
-4. When parked behind a sibling (shared surface): stand by at review-complete and
-   rebase onto the merged predecessor exactly once.
+4. When parked behind a sibling (shared surface): stand by at review-complete (NOT
+   CI-green) and rebase onto the merged predecessor exactly once.
 5. **Check your inbox before reporting "standing by"** — queued instructions crossed
    mid-wave five times in the issue-#6 run. Process everything queued, then report.
 6. **Verify file bytes, not in-memory state** — after any digest/pin edit, re-parse the
