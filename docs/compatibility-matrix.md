@@ -15,5 +15,5 @@ committed file is stale. Commit SHAs are not pinned here — run
 | registry | 0.1.0 | stable | 0.0.2 | >=0.1.0 | — | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
 | execution | 0.1.0 | stable | 0.0.2 | >=0.1.0 | — | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
 | interface | 0.1.0 | stable | 0.0.2 | >=0.1.0 | — | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
-| plugin-ui | 0.1.0 | stable | 0.0.2 | >=0.1.0 | — | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
+| plugin-ui | 0.1.1 | stable | 0.0.2 | >=0.1.0 | Supersedes 0.1.0 | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
 | plugin-ui-preview | 0.1.0 | stable | 0.0.2 | >=0.1.0 | — | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |

@@ -31,7 +31,7 @@ def load(name: str) -> JsonObject:
 @pytest.fixture
 def specimen() -> Specimen:
     documents: dict[str, JsonObject] = {}
-    for directory in ("otdp/0.1.1", "plugin-ui/0.1.0"):
+    for directory in ("otdp/0.1.1", "plugin-ui/0.1.1"):
         for path in (ROOT / "standards" / directory).glob("*.schema.json"):
             document = json.loads(path.read_bytes())
             documents[document["$id"]] = document
@@ -42,7 +42,7 @@ def specimen() -> Specimen:
     schema = catalog["actions"][action]["input_schema"]
     schema_raw = encode(schema)
     preset = {
-        "contract_version": "0.1.0",
+        "contract_version": "0.1.1",
         "id": "synthetic-3v3",
         "title": "Synthetic 3.3 V configuration",
         "revision": "1.0.0",
@@ -70,7 +70,7 @@ def specimen() -> Specimen:
         "preset_asset_ids": ["preset"],
     }
     manifest = {
-        "contract_version": "0.1.0",
+        "contract_version": "0.1.1",
         "plugin_id": descriptor["id"],
         "descriptor_sha256": digest(encode(descriptor)),
         "bindings": [
@@ -100,7 +100,7 @@ def specimen() -> Specimen:
     )
 
 
-def validate(specimen: Specimen) -> ValidationReport:
+def validate(specimen: Specimen, *, features: frozenset[str] = frozenset()) -> ValidationReport:
     descriptor, documents, target, manifest, assets = specimen
     descriptor_raw = encode(descriptor)
     manifest["descriptor_sha256"] = digest(descriptor_raw)
@@ -110,12 +110,12 @@ def validate(specimen: Specimen) -> ValidationReport:
     ]
     manifest_raw = encode(manifest)
     catalogue = {
-        "contract_version": "0.1.0",
+        "contract_version": "0.1.1",
         "descriptor_sha256": digest(descriptor_raw),
         "targets": [target],
     }
     envelope = {
-        "contract_version": "0.1.0",
+        "contract_version": "0.1.1",
         "descriptor_sha256": digest(descriptor_raw),
         "resource_root": "ui",
         "manifest": {"path": "manifest.json", "sha256": digest(manifest_raw)},
@@ -128,7 +128,7 @@ def validate(specimen: Specimen) -> ValidationReport:
         resources=resources,
         binding_catalogue=catalogue,
         schema_documents=documents,
-        supported_features=frozenset(),
+        supported_features=features,
         supported_panels=frozenset(),
         firmware="1.0",
     )
@@ -172,7 +172,7 @@ def scope_specimen(specimen: Specimen) -> Specimen:
         ],
     }
     manifest = {
-        "contract_version": "0.1.0",
+        "contract_version": "0.1.1",
         "bindings": [{"id": "capture", "kind": "dataset", "target_id": "waveform"}],
         "pages": [
             {
@@ -199,3 +199,112 @@ def test_dataset_requires_descriptor_measurement_contract(specimen: Specimen) ->
     scope = scope_specimen(specimen)
     scope[0]["contracts"] = []
     assert not validate(scope).valid
+
+
+# --- channel_hints (plugin-ui 0.1.1) on a multi-y dataset specimen ---
+
+FEATURE_CONDITIONS: tuple[frozenset[str], ...] = (
+    frozenset(),
+    frozenset({"legend/1.0.0"}),
+)
+
+
+def multi_channel_specimen(specimen: Specimen, y_count: int) -> Specimen:
+    """Dual-and-more-channel waveform: the only target kind that can plot several
+    y variables at once (observation targets carry exactly one value variable)."""
+    descriptor = load("examples/class-oscilloscope.json")
+    y_variables = [
+        {
+            "id": f"trace{index:02d}",
+            "type": "number",
+            "shape": "vector",
+            "unit": "V",
+            "axis_role": "y",
+        }
+        for index in range(1, y_count + 1)
+    ]
+    variables = [
+        {"id": "time", "type": "number", "shape": "vector", "unit": "s", "axis_role": "x"}
+    ] + y_variables
+    target = {
+        "id": "waveform",
+        "kind": "dataset",
+        "action_id": "otdp.oscilloscope.fetch/1.0.0",
+        "profile_ids": descriptor["profiles"],
+        "measurement_schema_id": "urn:otdp:measurement:0.1.1",
+        "variables": variables,
+    }
+    manifest = {
+        "contract_version": "0.1.1",
+        "plugin_id": descriptor["id"],
+        "bindings": [{"id": "capture", "kind": "dataset", "target_id": "waveform"}],
+        "pages": [
+            {
+                "id": "waveform",
+                "kind": "dataset",
+                "title": "Waveform",
+                "bindings": ["capture"],
+                "required": True,
+                "plots": [
+                    {
+                        "kind": "waveform",
+                        "binding_id": "capture",
+                        "x": "time",
+                        "y": [f"trace{index:02d}" for index in range(1, y_count + 1)],
+                    }
+                ],
+            }
+        ],
+    }
+    return descriptor, specimen[1], target, manifest, {}
+
+
+def test_multi_channel_hinted_specimen_pair_is_equivalent(specimen: Specimen) -> None:
+    """Metric 1 on the multi-y case hints exist for: hinted vs unhinted twin,
+    both feature conditions, identical finding-free reports."""
+    scope = multi_channel_specimen(specimen, y_count=2)
+    baseline = {features: validate(scope, features=features) for features in FEATURE_CONDITIONS}
+    assert all(report.valid for report in baseline.values()), baseline
+    scope[3]["pages"][0]["plots"][0]["channel_hints"] = [
+        {"variable_id": "trace02", "color_role": "accent"},
+        {"variable_id": "trace01", "visible": False},
+    ]
+    for features, unhinted in baseline.items():
+        report = validate(scope, features=features)
+        assert report.valid, report.findings
+        assert report.findings == unhinted.findings
+
+
+@pytest.mark.parametrize("with_plots", [False, True], ids=["configuration", "waveform"])
+def test_specimen_hint_pairs_are_equivalent(specimen: Specimen, with_plots: bool) -> None:
+    """Metric 1 on the remaining corpus: the configuration specimen (no plots,
+    so the pair is byte-identical — hints have nowhere to attach) and the
+    waveform specimen (single-y hint), each at both feature conditions."""
+    scope = scope_specimen(specimen) if with_plots else specimen
+    baseline = {features: validate(scope, features=features) for features in FEATURE_CONDITIONS}
+    assert all(report.valid for report in baseline.values()), baseline
+    if with_plots:
+        scope[3]["pages"][0]["plots"][0]["channel_hints"] = [
+            {"variable_id": "signal", "color_role": "muted"}
+        ]
+    for features, unhinted in baseline.items():
+        report = validate(scope, features=features)
+        assert report.valid, report.findings
+        assert report.findings == unhinted.findings
+
+
+def test_seventeenth_hint_on_sixteen_channel_plot_is_rejected(specimen: Specimen) -> None:
+    """Metric 2 variant 6: schema maxItems mirrors y's own 16-channel ceiling.
+
+    Lives here (not with the other five variants) because a 16-y plot needs a
+    dataset target: observation targets with more than one value variable fail
+    ``capability_mismatch`` independently of any hint.
+    """
+    scope = multi_channel_specimen(specimen, y_count=16)
+    hints: list[dict[str, str | bool]] = [
+        {"variable_id": f"trace{index:02d}", "color_role": "muted"} for index in range(1, 17)
+    ]
+    hints.append({"variable_id": "time", "visible": False})
+    scope[3]["pages"][0]["plots"][0]["channel_hints"] = hints
+    report = validate(scope)
+    assert [finding.code for finding in report.findings] == ["invalid_document"]

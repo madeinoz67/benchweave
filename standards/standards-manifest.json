@@ -87,15 +87,15 @@
     },
     {
       "id": "plugin-ui",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "status": "stable",
-      "released": "2026-09-16",
-      "supersedes": null,
+      "released": "2026-09-19",
+      "supersedes": "0.1.0",
       "normative": [
-        "standards/plugin-ui/0.1.0/binding-catalogue.schema.json",
-        "standards/plugin-ui/0.1.0/configuration-preset.schema.json",
-        "standards/plugin-ui/0.1.0/presentation-envelope.schema.json",
-        "standards/plugin-ui/0.1.0/ui-manifest.schema.json",
+        "standards/plugin-ui/0.1.1/binding-catalogue.schema.json",
+        "standards/plugin-ui/0.1.1/configuration-preset.schema.json",
+        "standards/plugin-ui/0.1.1/presentation-envelope.schema.json",
+        "standards/plugin-ui/0.1.1/ui-manifest.schema.json",
         "src/benchweave/presentation/contracts.py"
       ]
     },

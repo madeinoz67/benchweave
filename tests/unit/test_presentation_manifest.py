@@ -27,7 +27,7 @@ def digest(raw: bytes) -> str:
 def bundle() -> Bundle:
     descriptor = (ROOT / "standards/otdp/0.1.1/examples/reference-psu.json").read_bytes()
     documents: dict[str, JsonObject] = {}
-    for path in (ROOT / "standards/plugin-ui/0.1.0").glob("*.schema.json"):
+    for path in (ROOT / "standards/plugin-ui/0.1.1").glob("*.schema.json"):
         schema = json.loads(path.read_bytes())
         documents[schema["$id"]] = schema
     target = {
@@ -46,12 +46,12 @@ def bundle() -> Bundle:
         ],
     }
     catalogue = {
-        "contract_version": "0.1.0",
+        "contract_version": "0.1.1",
         "descriptor_sha256": digest(descriptor),
         "targets": [target],
     }
     manifest = {
-        "contract_version": "0.1.0",
+        "contract_version": "0.1.1",
         "plugin_id": json.loads(descriptor)["id"],
         "descriptor_sha256": digest(descriptor),
         "bindings": [{"id": "reading", "kind": "observation", "target_id": "voltage"}],
@@ -77,11 +77,12 @@ def validate(
     resources: dict[str, bytes] | None = None,
     envelope_updates: JsonObject | None = None,
     panels: frozenset[str] = frozenset(),
+    features: frozenset[str] = frozenset(),
 ) -> contracts.ValidationReport:
     descriptor, documents, catalogue, manifest = bundle
     manifest_raw = encode(manifest)
     envelope = {
-        "contract_version": "0.1.0",
+        "contract_version": "0.1.1",
         "descriptor_sha256": digest(descriptor),
         "resource_root": "ui",
         "manifest": {"path": "manifest.json", "sha256": digest(manifest_raw)},
@@ -94,7 +95,7 @@ def validate(
         resources=resources if resources is not None else {"manifest.json": manifest_raw},
         binding_catalogue=catalogue,
         schema_documents=documents,
-        supported_features=frozenset(),
+        supported_features=features,
         supported_panels=panels,
         firmware="1.0",
     )
@@ -189,3 +190,72 @@ def test_asset_digest_is_checked(bundle: Bundle) -> None:
 def test_unknown_executable_field_is_rejected(bundle: Bundle) -> None:
     bundle[3]["execute"] = "shell command"
     assert not validate(bundle).valid
+
+
+# --- channel_hints (plugin-ui 0.1.1): P1/P2 equivalence and P3 catches ---
+
+
+def test_hinted_and_unhinted_manifests_validate_identically(bundle: Bundle) -> None:
+    """P1/P2: well-formed hints change no validation result, on any feature set.
+
+    A host with no hint-consuming renderer feature (empty feature set) and a
+    host with features declared both validate the hint-bearing document
+    identically to the hint-free one: hints are inert data, never a
+    ``required_ui_features`` entry.
+    """
+    baseline = {
+        features: validate(bundle, features=features)
+        for features in (frozenset(), frozenset({"legend/1.0.0"}))
+    }
+    assert all(report.valid for report in baseline.values())
+    bundle[3]["pages"][0]["plots"][0]["channel_hints"] = [
+        {"variable_id": "value", "color_role": "muted"}
+    ]
+    for features, unhinted in baseline.items():
+        report = validate(bundle, features=features)
+        assert report.valid, report.findings
+        assert report.findings == unhinted.findings
+        assert report.unavailable_pages == unhinted.unavailable_pages
+
+
+def test_hint_for_unknown_variable_is_rejected(bundle: Bundle) -> None:
+    bundle[3]["pages"][0]["plots"][0]["channel_hints"] = [
+        {"variable_id": "unknown", "color_role": "accent"}
+    ]
+    report = validate(bundle)
+    assert [finding.code for finding in report.findings] == ["unresolved_reference"]
+    assert report.findings[0].path == "pages.readings.plots.channel_hints"
+
+
+def test_hint_for_target_variable_outside_plot_y_is_rejected(bundle: Bundle) -> None:
+    """``time`` is a variable of the bound target but the plot's x axis, not a y channel."""
+    bundle[3]["pages"][0]["plots"][0]["channel_hints"] = [
+        {"variable_id": "time", "visible": False}
+    ]
+    report = validate(bundle)
+    assert [finding.code for finding in report.findings] == ["unresolved_reference"]
+
+
+def test_duplicate_hint_variable_is_rejected(bundle: Bundle) -> None:
+    bundle[3]["pages"][0]["plots"][0]["channel_hints"] = [
+        {"variable_id": "value", "color_role": "accent"},
+        {"variable_id": "value", "visible": False},
+    ]
+    report = validate(bundle)
+    assert [finding.code for finding in report.findings] == ["invalid_document"]
+    assert "Duplicate identifiers" in report.findings[0].message
+
+
+def test_unknown_color_role_is_rejected(bundle: Bundle) -> None:
+    """Severity roles are deliberately outside the hint vocabulary (schema job)."""
+    bundle[3]["pages"][0]["plots"][0]["channel_hints"] = [
+        {"variable_id": "value", "color_role": "critical"}
+    ]
+    report = validate(bundle)
+    assert [finding.code for finding in report.findings] == ["invalid_document"]
+
+
+def test_vacuous_hint_object_is_rejected(bundle: Bundle) -> None:
+    bundle[3]["pages"][0]["plots"][0]["channel_hints"] = [{"variable_id": "value"}]
+    report = validate(bundle)
+    assert [finding.code for finding in report.findings] == ["invalid_document"]
