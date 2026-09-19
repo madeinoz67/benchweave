@@ -4,7 +4,7 @@ The SDK's authoring lane re-implements the derived-variable grammar/static
 subset offline (``benchweave_sdk.validation.validate_descriptor``, check
 S19) because the SDK is self-contained and cannot import the gateway
 module. This suite pins both implementations to the same vendored census
-(``standards/otdp/0.1.2/examples/derivation-vectors.json``, byte-identical
+(``standards/otdp/0.2.0/examples/derivation-vectors.json``, byte-identical
 in the SDK's vendored tree by the CON-4 lock): every grammar and static row
 must produce the same accept/reject decision — and the same
 ``derivation_*:`` reason prefix — from
