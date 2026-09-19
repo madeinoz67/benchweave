@@ -67,7 +67,7 @@
   "parameters": [
     {
       "name": "ch1_probe_ratio",
-      "description": "Attenuation ratio for channel 1; discrete supported values are declared by the configure action input constraints.",
+      "description": "Attenuation ratio for channel 1; the supported values are the discrete set 1x/10x/20x/50x, declared as an enum by the configure action input constraints. The numeric range below spans that set; it does not enumerate it.",
       "type": "float",
       "access": "rw",
       "semantic": "configuration",
@@ -142,7 +142,7 @@
     },
     {
       "name": "ch2_probe_ratio",
-      "description": "Attenuation ratio for channel 2; discrete supported values are declared by the configure action input constraints.",
+      "description": "Attenuation ratio for channel 2; the supported values are the discrete set 1x/10x/20x/50x, declared as an enum by the configure action input constraints. The numeric range below spans that set; it does not enumerate it.",
       "type": "float",
       "access": "rw",
       "semantic": "configuration",
@@ -217,7 +217,7 @@
     },
     {
       "name": "ch3_probe_ratio",
-      "description": "Attenuation ratio for channel 3; discrete supported values are declared by the configure action input constraints.",
+      "description": "Attenuation ratio for channel 3; the supported values are the discrete set 1x/10x/20x/50x, declared as an enum by the configure action input constraints. The numeric range below spans that set; it does not enumerate it.",
       "type": "float",
       "access": "rw",
       "semantic": "configuration",
@@ -292,7 +292,7 @@
     },
     {
       "name": "ch4_probe_ratio",
-      "description": "Attenuation ratio for channel 4; discrete supported values are declared by the configure action input constraints.",
+      "description": "Attenuation ratio for channel 4; the supported values are the discrete set 1x/10x/20x/50x, declared as an enum by the configure action input constraints. The numeric range below spans that set; it does not enumerate it.",
       "type": "float",
       "access": "rw",
       "semantic": "configuration",
