@@ -10,7 +10,7 @@ Prefer independent repositories and externally hosted releases for new device pl
 
 External hosting distributes source and release files. Admitted executable plugins run on the bench gateway through scoped host services. Hosting a repository does not provide registry admission, hardware commissioning or remote execution.
 
-**Baseline:** architecture 1.5 · OTDP 0.1.1 · adapter API 1.1 · registry 0.1.0 · execution 0.1.0 · interface 0.1.0.
+**Baseline:** architecture 1.5 · OTDP 0.1.2 · adapter API 1.1 · registry 0.1.0 · execution 0.1.0 · interface 0.1.0.
 
 **Current status:** the repository provides architecture contracts, synthetic fixtures, a Python scaffold, architecture CI, and the **gateway side of the registry contract**: strict schema loaders, an ed25519-authenticated fixture catalogue, configured-origin resolution, admission with a content-addressed package cache and package lock, idle-boundary activation, and a cache plugin loader — plus an **unsigned development loop** (see §10). The registry *service* side (search, submission, review pipeline, TUF distribution, public endpoints) and the device-install command do not yet exist. A minimal [plugin developer SDK](plugin-sdk.md) now provides offline authoring tools, packaged contracts, a standalone starter and mock checks; it is not a hardware-qualified production SDK. You can develop descriptors, adapters and deterministic tests against the published ABI now, package and run them locally through the dev loop, and exercise admission against the committed signed catalogue. Host hardware qualification requires the corresponding implementation and bench evidence.
 
@@ -28,7 +28,7 @@ This guide explains the workflow; it introduces no new protocol requirements. Th
 | Run integrations on a gateway | Host ABI, bench configuration and execution contracts | Scoped host services, admission, ownership, evidence and qualified deployment |
 | Share an integration | Registry contract and compatible existing packages | Immutable package, release metadata, provenance and conformance evidence |
 
-Read the [core specification](../standards/otdp/0.1.1/otdp-specification.md), [profile/adapter extension](../standards/otdp/0.1.1/extension-contract.md), [device classes](../standards/otdp/0.1.1/device-classes.md) and [measurement model](../standards/otdp/0.1.1/measurement-model.md) before writing a class-capable integration. The [documentation index](project-index.md) links the remaining contracts.
+Read the [core specification](../standards/otdp/0.1.2/otdp-specification.md), [profile/adapter extension](../standards/otdp/0.1.2/extension-contract.md), [device classes](../standards/otdp/0.1.2/device-classes.md) and [measurement model](../standards/otdp/0.1.2/measurement-model.md) before writing a class-capable integration. The [documentation index](project-index.md) links the remaining contracts.
 
 ### Repository layout for device plugins
 
@@ -114,11 +114,11 @@ Use uv for Python dependencies. Retain its lockfile and the exact tested runtime
 
 ### Descriptor authoring checklist
 
-Use the [descriptor schema](../standards/otdp/0.1.1/otdp-device-descriptor.schema.json) and a suitable [class descriptor example](../standards/otdp/0.1.1/examples/class-dc_psu.json) as references. Copying a fixture does not transfer its evidence to your hardware.
+Use the [descriptor schema](../standards/otdp/0.1.2/otdp-device-descriptor.schema.json) and a suitable [class descriptor example](../standards/otdp/0.1.2/examples/class-dc_psu.json) as references. Copying a fixture does not transfer its evidence to your hardware.
 
 | Field group | Authoring rule |
 |---|---|
-| Versions and identity | Use OTDP 0.1.1, a versioned descriptor and a namespaced model ID. Keep model identity separate from physical instance identity. |
+| Versions and identity | Use OTDP 0.1.2, a versioned descriptor and a namespaced model ID. Keep model identity separate from physical instance identity. |
 | Integration | Choose declarative or adapter. For an adapter, declare the reviewed factory as `package.module:create_plugin` and API 1.1. |
 | Transport | Supply supported protocol settings and a `connection_key`; the host resolves the actual commissioned connection. |
 | Capabilities and policies | Advertise only implemented verbs, with exactly matching policies. `identify` is mandatory. |
@@ -189,7 +189,7 @@ legacy simulators use.
 
 ## 5. Implement the adapter lifecycle
 
-The normative factory and methods are in [core specification §8](../standards/otdp/0.1.1/otdp-specification.md#8-python-adapter-abi-11). They use structural Python interfaces. The optional [plugin SDK](plugin-sdk.md) supplies typing protocols, offline validation and mocks for development; plugin runtime code need not import it.
+The normative factory and methods are in [core specification §8](../standards/otdp/0.1.2/otdp-specification.md#8-python-adapter-abi-11). They use structural Python interfaces. The optional [plugin SDK](plugin-sdk.md) supplies typing protocols, offline validation and mocks for development; plugin runtime code need not import it.
 
 | Entry point | Required behaviour |
 |---|---|
@@ -238,7 +238,7 @@ Native UART JSON uses strict UTF-8 NDJSON with LF termination, bounded frames an
 
 Advertise only the implemented subset. Document boot/reset/serial-control-line behaviour, watchdog behaviour and loss-of-host behaviour, with qualification evidence where applicable. Firmware flashing is a separate controlled activity, not plugin admission or `open()` behaviour.
 
-Use the [synthetic controller descriptor](../standards/otdp/0.1.1/examples/reference-controller.json), [reference protocol](../standards/otdp/0.1.1/examples/reference-protocols.md) and [runtime schema](../standards/otdp/0.1.1/otdp-runtime.schema.json) for exact examples. They are authoring targets, not ready-to-flash ESP32 firmware.
+Use the [synthetic controller descriptor](../standards/otdp/0.1.2/examples/reference-controller.json), [reference protocol](../standards/otdp/0.1.2/examples/reference-protocols.md) and [runtime schema](../standards/otdp/0.1.2/otdp-runtime.schema.json) for exact examples. They are authoring targets, not ready-to-flash ESP32 firmware.
 
 ## 7. Publish measurements correctly
 
@@ -253,7 +253,54 @@ Select the real dataset meaning: scalar set, waveform, digital trace, spectrum, 
 
 Payload creation/writing requires `artifact_writer`; reading authorised upload inputs requires `artifact_reader`. Finalising bytes does not validate their physical meaning: the manifest must still pass the dataset and class checks. Partial data must not become a complete successful acquisition merely because the file was written.
 
-See the [measurement model](../standards/otdp/0.1.1/measurement-model.md) for all M01–M14 rules and the [extension contract](../standards/otdp/0.1.1/extension-contract.md) for host method signatures.
+See the [measurement model](../standards/otdp/0.1.2/measurement-model.md) for all M01–M15 rules and the [extension contract](../standards/otdp/0.1.2/extension-contract.md) for host method signatures.
+
+### Declare derived variables (optional)
+
+A device descriptor may declare dataset variables the host computes from
+other dataset variables — no adapter code required. Add a top-level
+`derived_variables` array to the descriptor; the execution-side descriptor
+your bench admits carries the same array verbatim:
+
+```json
+"derived_variables": [
+  {
+    "id": "resistance",
+    "quantity": "resistance",
+    "unit": "Ohm",
+    "expression": "voltage / current"
+  }
+]
+```
+
+Expressions are fixed-grammar arithmetic over **dataset variable ids** (not
+channel ids — a channel can carry several quantities): `+ - * /`,
+parentheses, unary signs, decimal literals and identifiers, standard
+precedence, no functions and no exponent notation. Declarations are evaluated in declaration order,
+and an expression may reference only dataset variables and EARLIER-declared
+derived variables — backward-only references; a forward or circular
+reference is an admission failure (measurement-model.md §8.2 is the
+normative home). The full grammar, the
+static checks and the failure semantics are normative in
+[measurement-model.md §8](../standards/otdp/0.1.2/measurement-model.md);
+the machine census lives at
+[derivation-vectors.json](../standards/otdp/0.1.2/examples/derivation-vectors.json).
+A declaration is validated when the descriptor is admitted (malformed
+expressions cannot reach a run) and evaluated by the host after each
+dataset-returning invoke: the derived variable gains computed `values`,
+the union of the operands' `channel_ids`, structurally-unknown uncertainty
+and calibration, and a closed `derivation` marker recording the expression
+and operand ids for replay. A `sample` step selects it by `variable_id` and
+`unit` exactly like a plugin-emitted variable — but a sample requiring known
+uncertainty refuses it (honest unknown, by design).
+
+What the host refuses loudly: derived ids that collide with a dataset
+variable, operands that are not inline `float64`, disagreeing dimensions,
+or a `+`/`-` between variables of different units — the run records
+`DERIVATION_INVALID`. What degrades in-band: division by zero, non-finite
+results and null operands become null elements with `partial`/`invalid`
+status; an operand the dataset does not carry yields an `invalid` variable
+naming it.
 
 ## 8. Test before hardware qualification
 
@@ -358,7 +405,7 @@ Firmware: [exact supported versions or explicitly unresolved].
 Connection: [protocol/backend/settings and available evidence].
 Intended operations/channels: [list].
 Evidence: [manual revisions, local files and reference exchanges].
-Target: OTDP 0.1.1, adapter API 1.1, architecture 1.5.
+Target: OTDP 0.1.2, adapter API 1.1, architecture 1.5.
 Delivery location and packaging: [repository path; local-only or shared release].
 
 Read docs/device-developer-guide.md and the linked normative contracts.

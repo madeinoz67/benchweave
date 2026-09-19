@@ -598,6 +598,10 @@ class RunCoordinator:
             clock=prepared.clock,
             wall=self._wall,
             occurrence_ledger=self.occurrence_ledger,
+            derived_variables={
+                device_id: list(descriptor.get("derived_variables") or [])
+                for device_id, descriptor in self._docs.descriptors.items()
+            },
         )
         body_deadline_ns = prepared.acceptance_ns + int(
             self._docs.procedure["max_body_ms"]

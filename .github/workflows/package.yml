@@ -35,6 +35,12 @@ jobs:
         # Gate moved from the deleted release-sdk job: refuse to build while
         # the vendored standards tree is out of sync with the lock.
         run: make check-sdk-standards
+      - name: Derived-variable census
+        # The OTDP 0.1.2 derivation census pins exact binary64 outputs; this
+        # matrix lane (ubuntu + macos) is where cross-platform agreement is
+        # actually measured. No Windows lane exists — coverage claims state
+        # that honestly (design record, risk 4).
+        run: uv run pytest -q tests/unit/test_derivation.py tests/faults/test_derivation_faults.py
       - run: uv lock --check
       - name: Build sdists and wheels; test installed SDK and external adapter
         run: >-

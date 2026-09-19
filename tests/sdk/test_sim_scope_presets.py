@@ -293,8 +293,11 @@ def test_l2d_catalogue_naming_missing_preset_asset_refused(
 def test_settings_schema_tracks_corpus() -> None:
     """Parsed equality with the vendored corpus action input schema: the
     shipped copy cannot silently drift when the corpus moves."""
+    sdk = importlib.import_module("benchweave_sdk")
     validation = importlib.import_module("benchweave_sdk.validation")
-    catalog = validation.contract_documents()["otdp/0.1.1/device-profile-catalog.json"]
+    catalog = validation.contract_documents()[
+        f"otdp/{sdk.OTDP_VERSION}/device-profile-catalog.json"
+    ]
     corpus = catalog["actions"]["otdp.oscilloscope.configure/1.0.0"]["input_schema"]
     shipped = json.loads(SETTINGS_SCHEMA.read_bytes())
     assert shipped == corpus

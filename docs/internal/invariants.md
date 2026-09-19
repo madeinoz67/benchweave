@@ -161,6 +161,32 @@ rather than rewriting the history — that is how this file earns trust.
   main-side (issue #44: three doc surfaces carried a stale adapter API version with
   every gate green).*
 
+- **[CON-9]** Derived-variable evaluation is a pure post-dispatch function of
+  the plugin-returned dataset and the digest-pinned descriptor declaration:
+  it never mutates plugin-returned data, never re-dispatches, appends
+  variables carrying the closed `derivation` marker (expression + operand
+  ids, verified against the parse — a forged marker refuses), emits
+  structurally-unknown uncertainty and calibration, degrades elementwise
+  failures (null operands, division by zero, non-finite results) as
+  in-band partial/invalid variables with `null` elements — never
+  `inf`/`NaN` — emits unresolved operands as invalid variables with EMPTY
+  values (no element is fabricated for a shape that was never
+  established) — and treats structural contradictions
+  (derived-id collision, malformed or duplicate-variable-id dataset,
+  dtype/shape disagreement, and `+`/`-` unit mismatch between
+  identifier-leaf operand pairs — sub-expression and literal operands
+  carry no trackable unit) as step failures (`DERIVATION_INVALID`, body `execution_error`, raw
+  dataset kept in scope) — `src/benchweave/measurement/derivation.py`,
+  `control/documents.py _check_descriptor`, `control/executor.py
+  _apply_derivation`, pinned by `tests/unit/test_derivation.py`,
+  `tests/faults/test_derivation_faults.py`,
+  `tests/control/test_documents_derivation.py`,
+  `tests/control/test_executor_derivation.py`, and the census execution in
+  `scripts/architecture/check_devices.py`. *M15/S19; A02 (unknown is not
+  fabricated qualification), A06 (loud structural refusal, in-band quality
+  loss), A12 (declaration order is the evaluation order — the admission
+  acyclicity check makes it total).*
+
 ## Registry & plugin invariants
 
 - **[REG-1]** A plugin is imported with no side effects, then explicitly opened with a

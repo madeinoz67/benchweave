@@ -25,6 +25,7 @@ from typing import Any
 from jsonschema import Draft202012Validator, FormatChecker
 
 from benchweave.content.json_document import DocumentRejected, load_document
+from benchweave.measurement.derivation import DerivationRejected, check_derived_variables
 from benchweave.vendoring import contract_family
 
 #: The vendored execution contracts (packaged in the wheel, repo-relative
@@ -129,6 +130,17 @@ def _check_descriptor(device_id: str, descriptor: dict[str, Any]) -> None:
                 f"schema: {logical} action {action.get('action_id')!r} requires "
                 "issued to be a list of strings"
             )
+    derived = descriptor.get("derived_variables")
+    if derived is not None:
+        # OTDP 0.1.2 M15/S19: grammar and static checks at admission, so a
+        # malformed expression cannot reach a run. NOT checked here: operand
+        # existence (datasets vary by action) and unit agreement (operand
+        # units live in datasets) — both are evaluation-time in
+        # benchweave.measurement.derivation.
+        try:
+            check_derived_variables(derived)
+        except DerivationRejected as exc:
+            raise AdmissionRejected(f"schema: {logical} derivation: {exc}") from exc
 
 
 def _verify_pin(

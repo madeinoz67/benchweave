@@ -434,7 +434,7 @@ def verify_tree(dest: Path, paths: dict[str, str]) -> None:
     for rel in (
         "reference/cli/index.html",
         "standards/index.html",
-        "standards/otdp/0.1.1/otdp-runtime.schema.json",  # corpus copied beside the prose
+        "standards/otdp/0.1.2/otdp-runtime.schema.json",  # corpus copied beside the prose
         "user-guide/changelog.html",
         "llms.txt",
         "llms-full.txt",
