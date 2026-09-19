@@ -166,7 +166,10 @@ At evaluation, per derived variable: every operand must resolve in the
 dataset under derivation, be inline `float64` with finite-or-null elements
 (artifact-backed, non-float64 or non-numeric operands refuse — no
 broadcasting in this revision), and all operands must carry exactly equal
-`dimensions` lists and equal value counts. At `+` and `-` nodes whose two
+`dimensions` lists and equal value counts. Integer elements are read only
+when exactly representable in binary64 (magnitude at most 2^53): a larger
+integer refuses as a dtype mismatch rather than being silently rounded by
+the conversion — a representation change the record never consented to. At `+` and `-` nodes whose two
 operands are both identifiers, the operand variables' `unit` strings must
 be exactly equal; a numeric literal or a nested sub-expression carries no
 trackable unit and is not compared (the residual), and `*` and `/` impose
@@ -180,7 +183,10 @@ these reasons the variable's status is `partial` with a `status_reason`
 naming the failing operations and operands; if every element failed it is
 `invalid`. An unresolved operand yields an `invalid` variable whose
 `status_reason` names the operand, with empty `values` and `dimensions` —
-no element is fabricated for a shape that could not be established.
+no element is fabricated for a shape that could not be established. M02's flattened-count agreement presumes the
+variable's shape was established; for these records the shape is unknown,
+and the empty `values` with empty `dimensions` suspend M02 count-agreement
+(no element count is asserted for a shape that was never established).
 Structural contradictions refuse the whole derivation loudly (a
 descriptor/dataset structural lie is a conformance failure, and the raw
 dataset stays in scope as evidence): a derived id already present in the

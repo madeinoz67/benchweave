@@ -276,7 +276,11 @@ your bench admits carries the same array verbatim:
 Expressions are fixed-grammar arithmetic over **dataset variable ids** (not
 channel ids — a channel can carry several quantities): `+ - * /`,
 parentheses, unary signs, decimal literals and identifiers, standard
-precedence, no functions and no exponent notation. The full grammar, the
+precedence, no functions and no exponent notation. Declarations are evaluated in declaration order,
+and an expression may reference only dataset variables and EARLIER-declared
+derived variables — backward-only references; a forward or circular
+reference is an admission failure (measurement-model.md §8.2 is the
+normative home). The full grammar, the
 static checks and the failure semantics are normative in
 [measurement-model.md §8](../standards/otdp/0.1.2/measurement-model.md);
 the machine census lives at
