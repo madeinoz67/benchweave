@@ -169,6 +169,71 @@ def test_straddled_version_dir_counts_once(tmp_path: Path) -> None:
     check_train_windows(repo, FLOOR_48H)  # clean: one bump, no self-pair
 
 
+def test_same_commit_double_version_is_a_zero_gap_violation(tmp_path: Path) -> None:
+    # Two version directories of one standard in a single commit is the
+    # most extreme window violation (0h by GOVERNANCE's "each new version
+    # directory"); it must refuse, not collapse to the last-listed version.
+    repo = _scratch_repo(tmp_path)
+    _commit(repo, T0, ("standards/otdp/0.1.0/x.schema.json", "{}\n"))
+    _commit(
+        repo,
+        "2026-09-22T12:00:00+08:00",
+        ("standards/otdp/0.2.0/a.json", "{}\n"),
+        ("standards/otdp/0.3.0/a.json", "{}\n"),
+    )
+    with pytest.raises(TrainWindowError, match="otdp 0.2.0 -> 0.3.0"):
+        check_train_windows(repo, FLOOR_48H)
+
+
+def test_delete_and_readd_does_not_reanchor_the_clock(tmp_path: Path) -> None:
+    # A landed violation must survive the module being dropped and re-added
+    # (revert + re-land is ordinary GitHub flow); the anchor is the FIRST
+    # arrival of the module, not the newest add git happens to list.
+    repo = _scratch_repo(tmp_path)
+    _commit(repo, T0, ("standards/otdp/0.1.0/x.schema.json", "{}\n"))
+    _commit(repo, "2026-09-22T12:00:00+08:00", ("standards/otdp/0.2.0/x.json", "{}\n"))
+    _commit(repo, "2026-09-22T13:00:00+08:00", ("standards/otdp/0.2.1/x.json", "{}\n"))
+    with pytest.raises(TrainWindowError, match="otdp 0.2.0 -> 0.2.1"):
+        check_train_windows(repo, FLOOR_48H)
+    module = repo / "src/benchweave/standards/train_window.py"
+    subprocess.run(
+        ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t",
+         "rm", "-q", str(module.relative_to(repo))],
+        check=True, capture_output=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t",
+         "commit", "-m", "rm"],
+        check=True, capture_output=True,
+        env={**os.environ, "GIT_AUTHOR_DATE": "2026-09-22T15:00:00+08:00",
+             "GIT_COMMITTER_DATE": "2026-09-22T15:00:00+08:00"},
+    )
+    _commit(repo, "2026-09-22T16:00:00+08:00",
+            ("src/benchweave/standards/train_window.py", "# re-landed\n"))
+    with pytest.raises(TrainWindowError, match="otdp 0.2.0 -> 0.2.1"):
+        check_train_windows(repo, FLOOR_48H)
+
+
+def test_shallow_clone_of_a_violating_repo_refuses_to_judge(tmp_path: Path) -> None:
+    # A depth-1 clone grafts every standards file onto HEAD as Added; the
+    # surviving per-standard version reads as admission and launders the
+    # violation clean. The collector must detect a shallow repository and
+    # refuse rather than judge.
+    repo = _scratch_repo(tmp_path)
+    _commit(repo, T0, ("standards/otdp/0.1.0/x.schema.json", "{}\n"))
+    _commit(repo, "2026-09-23T12:00:00+08:00", ("standards/otdp/0.2.0/x.json", "{}\n"))
+    _commit(repo, "2026-09-23T13:00:00+08:00", ("standards/otdp/0.2.1/x.json", "{}\n"))
+    shallow = tmp_path / "shallow"
+    subprocess.run(
+        ["git", "clone", "-q", "--depth", "1", "--no-local", str(repo), str(shallow)],
+        check=True, capture_output=True,
+    )
+    (shallow / "src/benchweave/standards").mkdir(parents=True, exist_ok=True)
+    (shallow / "src/benchweave/standards/train_window.py").write_text("# present\n")
+    with pytest.raises(TrainWindowError, match="train_window_history_unreadable"):
+        collect_bump_entries(shallow)
+
+
 def test_real_tree_post_anchor_sequence_is_clean() -> None:
     # The real tree correctly collects zero post-anchor bumps (the anchor is
     # this module's arrival in THIS repository's history). The scratch family

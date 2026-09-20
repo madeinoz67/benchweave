@@ -9,8 +9,11 @@ by 26 seconds). Reset-class commits (one commit adding version directories
 for three or more standards — a heuristic matching the 2026-09-16
 signature, not the Resets section's full definition) contribute no entries:
 each standard's next non-exempt bump opens a fresh window. The chronological
-first non-exempt version of a standard is its admission and likewise opens
-the window rather than being judged.
+first version of a standard over all history (reset-class flag included) is
+its admission and likewise opens the window rather than being judged.
+Residual: a path git C-quotes (non-ASCII or control characters) is invisible
+to the prefix match — unreachable while copy-never-move keeps version-dir
+filenames canonical ASCII, stated rather than guarded.
 
 The clock self-anchors: only version-directory additions whose committer
 timestamp is at or after the commit that added this module are checked, so
@@ -112,15 +115,34 @@ def collect_bump_entries(root: Path) -> tuple[BumpEntry, ...]:
         "--",
         "standards",
     )
-    anchor_raw = _git(
-        root,
-        "log",
-        "--diff-filter=A",
-        "--format=%ct",
-        "-1",
-        "--",
-        str(_MODULE_RELATIVE),
-    ).strip()
+    if (
+        _git(root, "rev-parse", "--is-shallow-repository").strip() == "true"
+        and (root / _MODULE_RELATIVE).exists()
+    ):
+        raise TrainWindowError(
+            "train_window_history_unreadable: shallow repository — a grafted "
+            "boundary lists every standards file as Added at one timestamp "
+            "and launders verdicts (clean or violated) out of nothing; "
+            "fetch full history (fetch-depth: 0) before judging any window"
+        )
+    # The anchor is the FIRST arrival of this module (oldest add), not the
+    # newest: a delete + re-add (revert and re-land is ordinary GitHub
+    # flow) must not re-anchor the clock and grandfather standing
+    # violations.
+    anchor_log = [
+        line
+        for line in _git(
+            root,
+            "log",
+            "--diff-filter=A",
+            "--format=%ct",
+            "--reverse",
+            "--",
+            str(_MODULE_RELATIVE),
+        ).splitlines()
+        if line.strip()
+    ]
+    anchor_raw = anchor_log[0].strip() if anchor_log else ""
     if not anchor_raw and (root / _MODULE_RELATIVE).exists():
         raise TrainWindowError(
             "train_window_history_unreadable: the anchor commit (this "
@@ -131,18 +153,23 @@ def collect_bump_entries(root: Path) -> tuple[BumpEntry, ...]:
     anchor = int(anchor_raw) if anchor_raw else 0
 
     # Chronological, oldest-first: git log walks newest first, and the
-    # admission and dedup passes both need landing order.
+    # admission and dedup passes both need landing order. Every
+    # (standard, version) pair in a commit is recorded — a commit adding
+    # two versions of one standard is a zero-gap double bump, not a
+    # collapse onto the last-listed path. Ties on timestamp resolve to the
+    # non-exempt record so equal-dated commits are judged, not excused.
     landed: dict[tuple[str, str], tuple[int, bool]] = {}
     for block in sorted(_split_log(raw), key=lambda item: item.timestamp):
-        standards_in_commit: dict[str, str] = {}
+        pairs: set[tuple[str, str]] = set()
         for path in block.paths:
             match = _VERSION_PATH.match(path)
             if match:
-                standards_in_commit[match.group(1)] = match.group(2)
-        is_reset_class = len(standards_in_commit) >= RESET_CLASS_STANDARD_COUNT
-        for standard, version in standards_in_commit.items():
-            key = (standard, version)
-            if key not in landed or block.timestamp < landed[key][0]:
+                pairs.add((match.group(1), match.group(2)))
+        is_reset_class = len({standard for standard, _ in pairs}) >= (
+            RESET_CLASS_STANDARD_COUNT
+        )
+        for key in sorted(pairs):
+            if key not in landed or (block.timestamp, is_reset_class) < landed[key]:
                 landed[key] = (block.timestamp, is_reset_class)
 
     by_standard: dict[str, list[tuple[int, str, bool]]] = {}
