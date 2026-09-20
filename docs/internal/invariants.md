@@ -235,8 +235,9 @@ rather than rewriting the history — that is how this file earns trust.
   body, never the `__main__` block) and byte-pinned to a live devices-suite
   run by `tests/contracts/test_architecture.py::test_validation_report_matches_live_run`
   (sorted rendering, so the pinned bytes are a function of the check set only,
-  not platform glob order; two tamper cases prove the comparison detects a
-  flipped line and a bumped headline, and the `docs/README.md` row is tied to
+  not platform glob order; three tamper cases prove the comparison detects a
+  flipped line, a reordered check list, and a bumped headline, and the
+  `docs/README.md` row is tied to
   the headline count). Superseded versions' reports are frozen historical
   evidence, never regenerated. *A hand-transcribed count beside the corpus it
   claims to verify is an assertion; before the pin, in-place edits to the

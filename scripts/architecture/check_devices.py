@@ -49,7 +49,10 @@ def _active_otdp_version(standards_root: Path) -> str:
 
 
 OTDP_VERSION = _active_otdp_version(STANDARDS)
-OUT = STANDARDS / "otdp" / OTDP_VERSION
+# Resolved once: the pinned check compares .resolve()d contract paths against
+# OUT, and an unresolved OUT (macOS /var→/private/var TMPDIR, symlinked
+# roots) fails every pinned check (24 today) vacuously on a clean tree (#119).
+OUT = (STANDARDS / "otdp" / OTDP_VERSION).resolve()
 
 
 def load(name):
