@@ -80,6 +80,12 @@ forgotten.
    tracks it (#69).
 2. Then commit the advanced submodule pointer in the main repository.
 
+**Single issue stream:** all issues — for either repository — file on THIS
+tracker (`madeinoz67/benchweave/issues`); the `benchweave-sdk` tracker is retired
+(principal directive 2026-09-20; first use of the rule was issue #107). SDK-side
+work tracks under a gateway issue, and an SDK PR notes in its body that no
+SDK-side issue exists by design.
+
 **Multi-PR work uses PR stacks (#69):** dependent PRs open with `base` = the
 predecessor's branch so each shows only its own delta; merge bottom-up, retargeting
 each successor to `main` as its base lands. **A work is complete only when every PR
