@@ -12,9 +12,12 @@ strings in `title` and `description` against its standard's active version:
 
 - `description` hits: exactly 1 — `standards/otdp/0.2.0/otdp-device-descriptor.schema.json`
   naming `0.2.0`, its own. Zero stale, zero cross-standard.
-- The evidence sweep's "21 schema descriptions" (EVIDENCE-annotations-and-versions.md)
-  counted `interface/0.1.0/mcp-tools.json`, which the guard's `*.schema.json` filter
-  already excludes; the guard-relevant set is the one file above.
+- The evidence sweep's "21 schema descriptions" (EVIDENCE-annotations-and-versions.md,
+  a local-untracked read-only-sweep artifact at the main-checkout root) reconciles
+  two ways: 17 are nested tool descriptions inside `interface/0.1.0/mcp-tools.json`,
+  excluded by the guard's `*.schema.json` filter; the other 3 are descriptors in
+  SUPERSEDED otdp dirs (0.1.0–0.1.2), excluded because the guard reads only the
+  active manifest's normative list. The guard-relevant set is the one file above.
 
 So the extension lands on a clean tree: no corpus fix, no bump, no repin.
 

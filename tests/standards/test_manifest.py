@@ -66,6 +66,11 @@ def _annotation_offenders(standards_root: Path) -> list[str]:
     """Reset residue in vendored schema annotations, both keys the corpus
     carries (#47's title rule, extended to description per #97).
 
+    Scope: each schema DOCUMENT ROOT's title/description only — nested
+    property-level annotations are not walked (inherited from #47's shape;
+    currently zero divergence between root-only and recursive counts on
+    the active set).
+
     A human-readable annotation may name its standard's version (the
     2026-09-16 reset line) or omit it; naming a different one is reset
     residue — the corpus shipped "…datasets 0.3.0" under otdp@0.1.0 (#45).
