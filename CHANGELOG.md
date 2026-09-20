@@ -234,6 +234,8 @@ All notable changes to this project will be documented in this file.
 - Design record for issue #97 bind-the-train
 - Design record for #102 D2 — manifest-driven version discovery
 - Refute fold — name the platform condition; scope the residue case (#102 D2 G6)
+- Design record for #97 description-guard extension
+- Review fold — reconciliation precise; root-only scope stated (#97)
 
 ### Features
 
@@ -485,6 +487,7 @@ All notable changes to this project will be documented in this file.
 - Prove the issue-107 fix — symlinked-destination scaffold, typed symlink refusal, errno guard
 - RED — bump-window arms against the absent train_window module
 - RED — OUT/title must follow the manifest's active otdp version (#102 D2)
+- Extend the #47 annotation guard to description (#97)
 
 ### Build
 
