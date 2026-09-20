@@ -83,6 +83,24 @@ def test_manifest_valid_roundtrip() -> None:
     assert loaded.content["package_id"] == "benchweave/dc-psu-profile"
 
 
+def test_manifest_skill_role_accepted() -> None:
+    """Issue #71: the payload-file role enum admits agent-facing skill
+    documents (the SKILL.md convention). Kind-agnostic by design — pinned
+    here on a profile manifest."""
+    doc = _valid_manifest()
+    doc["payload"]["files"].append(
+        {"path": "skills/drive-device/SKILL.md", "role": "skill", "bytes": 1, "sha256": "c" * 64}
+    )
+    raw = _dump(doc)
+    loaded = load_manifest_document(raw, _digest(raw), max_bytes=1_000_000)
+    skill_files = [
+        f for f in loaded.content["payload"]["files"] if f["path"] == "skills/drive-device/SKILL.md"
+    ]
+    assert skill_files == [
+        {"path": "skills/drive-device/SKILL.md", "role": "skill", "bytes": 1, "sha256": "c" * 64}
+    ]
+
+
 def test_manifest_unknown_field_rejected() -> None:
     doc = _valid_manifest()
     doc["surprise"] = 1
