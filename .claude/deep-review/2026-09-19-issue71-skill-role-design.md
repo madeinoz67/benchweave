@@ -351,8 +351,28 @@ stamps; (15) `validation.py:28`; (16) new `tests/sdk/test_registry_contract.py`.
 Slice 2: SDK `scaffold.py` (templates + `contents` + AI-GUIDE layout paragraph);
 new main-side tests (sibling §8); README five-steps + `user_guide/plugin-sdk.qmd`
 + docs-site content (obligations 1–2, the docs slice); the SDK version bump
-(sibling §9). In-flight-PR hazard stands: re-grep `registry/0.1.0` at each merge
-result.
+(sibling §9). In-flight-PR hazard stands: re-grep `registry[ /]0\.1\.0` at each
+merge result — the character class is load-bearing: a slash-only grep finds the
+path links and misses the space-separated prose baseline claims
+("registry 0.1.0", "registry contract 0.1.0"), which is exactly the class the
+build-run sweep missed and the review's F1 prose wave caught.
+
+**Amended at fold-wave 2 (2026-09-20), on-branch.** Deliberate-unchanged
+disposition, recorded so the re-grep exclusions are auditable: the four
+`standards/otdp/{0.1.0,0.1.1,0.1.2,0.2.0}/otdp-specification.md` §"STG 1.2
+adds the companion registry contract 0.1.0" links are historical-addition
+statements (they date the companion contract's introduction, and their
+`../../registry/0.1.0/` targets remain present, digest-frozen, in the corpus)
+— retained as written; the superseded versions are frozen regardless, and the
+0.2.0 prose is an authoring-time statement of the same class. The same
+reading covers the companion headers in
+`standards/execution/0.1.0/execution-contract.md:3` and
+`standards/interface/0.1.0/interface-contract.md:3` (their "OTDP 0.1.0" was
+already superseded by the #64 OTDP 0.2.0 train and that merge's review
+accepted the authoring-time reading), and the digest-frozen
+`standards/plugin-ui/{0.1.0,0.1.1}/README.md` lines. Live baseline claims
+(the six sites folded: device-developer-guide, README, architecture-v1.5,
+development, ai-device-reviewer, plugin-ui/0.2.0 README) now say 0.1.1.
 
 ## 9. Run slice map and deferral dispositions (amended per the team-lead decision)
 

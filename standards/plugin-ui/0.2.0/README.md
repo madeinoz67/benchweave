@@ -47,7 +47,7 @@ The default SDK starter remains read-only and has no presentation files. `--with
 | `binding-catalogue.schema.json` | Host-provided descriptor binding metadata, including action/schema relationships and observation/dataset variables. |
 | `configuration-preset.schema.json` | Complete settings, plugin/profile/firmware compatibility, settings schema identity/hash and provenance. |
 
-Each schema has an exact 0.2.0 identifier. Fields are closed except explicitly namespaced manifest extensions. The three smaller schemas refer to shared definitions in the manifest schema; validators resolve them from the local corpus. This directory is the canonical machine corpus; its bytes are pinned row-by-row by `standards/corpus-manifest.json`. This version supersedes 0.1.1 (digest-frozen, still in the corpus); OTDP 0.2.0, adapter API 1.1 and registry 0.1.0 remain unchanged.
+Each schema has an exact 0.2.0 identifier. Fields are closed except explicitly namespaced manifest extensions. The three smaller schemas refer to shared definitions in the manifest schema; validators resolve them from the local corpus. This directory is the canonical machine corpus; its bytes are pinned row-by-row by `standards/corpus-manifest.json`. This version supersedes 0.1.1 (digest-frozen, still in the corpus); OTDP 0.2.0 and adapter API 1.1 remain unchanged; the registry contract is 0.1.1.
 
 IDs within pages, bindings, targets, variables and assets must be unique. A binding identifies a catalogue target and retains its kind. Observation targets identify readable descriptor parameters and compatible units/types. Action targets identify a declared action and the profiles which supply it. Dataset schema identities must appear in the descriptor's admitted contract references.
 

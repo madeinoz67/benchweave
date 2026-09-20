@@ -10,7 +10,7 @@ Prefer independent repositories and externally hosted releases for new device pl
 
 External hosting distributes source and release files. Admitted executable plugins run on the bench gateway through scoped host services. Hosting a repository does not provide registry admission, hardware commissioning or remote execution.
 
-**Baseline:** architecture 1.5 · OTDP 0.2.0 · adapter API 1.1 · registry 0.1.0 · execution 0.1.0 · interface 0.1.0.
+**Baseline:** architecture 1.5 · OTDP 0.2.0 · adapter API 1.1 · registry 0.1.1 · execution 0.1.0 · interface 0.1.0.
 
 **Current status:** the repository provides architecture contracts, synthetic fixtures, a Python scaffold, architecture CI, and the **gateway side of the registry contract**: strict schema loaders, an ed25519-authenticated fixture catalogue, configured-origin resolution, admission with a content-addressed package cache and package lock, idle-boundary activation, and a cache plugin loader — plus an **unsigned development loop** (see §10). The registry *service* side (search, submission, review pipeline, TUF distribution, public endpoints) and the device-install command do not yet exist. A minimal [plugin developer SDK](plugin-sdk.md) now provides offline authoring tools, packaged contracts, a standalone starter and mock checks; it is not a hardware-qualified production SDK. You can develop descriptors, adapters and deterministic tests against the published ABI now, package and run them locally through the dev loop, and exercise admission against the committed signed catalogue. Host hardware qualification requires the corresponding implementation and bench evidence.
 
