@@ -2,10 +2,15 @@
 
 GOVERNANCE.md's bump-window paragraph is enforced here, not remembered: a
 standard may not bump more than once per floor (48h starting figure) measured
-between the committer timestamps of the commits that added each new version
-directory. Exempt from the pair sequence: a standard's first version
-(admission) and a reset-class commit (one commit adding version directories
-for three or more standards — the 2026-09-16 signature).
+between the committer timestamps of the commits that added each version
+directory. A version directory whose files land across several commits
+counts once, at the earliest commit (the real corpus straddles otdp 0.1.2
+by 26 seconds). Reset-class commits (one commit adding version directories
+for three or more standards — a heuristic matching the 2026-09-16
+signature, not the Resets section's full definition) contribute no entries:
+each standard's next non-exempt bump opens a fresh window. The chronological
+first non-exempt version of a standard is its admission and likewise opens
+the window rather than being judged.
 
 The clock self-anchors: only version-directory additions whose committer
 timestamp is at or after the commit that added this module are checked, so
@@ -23,8 +28,13 @@ from pathlib import Path
 RESET_CLASS_STANDARD_COUNT = 3
 """Version directories for this many standards in one commit read as a reset."""
 
+# The anchor query keys this exact path. DO NOT repoint it if this module is
+# moved: the arrival commit of the ORIGINAL path is the rule's ratification
+# moment, and repointing would re-anchor to the move commit and grandfather
+# the interim history (git records moves as fresh adds without rename
+# detection).
 _MODULE_RELATIVE = Path("src/benchweave/standards/train_window.py")
-_VERSION_DIR = re.compile(r"^standards/([a-z0-9-]+)/(\d+\.\d+\.\d+)/$")
+_VERSION_PATH = re.compile(r"^standards/([a-z0-9-]+)/(\d+\.\d+\.\d+)/")
 
 
 class TrainWindowError(ValueError):
@@ -45,11 +55,10 @@ def window_violations(
 ) -> tuple[str, ...]:
     """Return one prefixed message per same-standard pair inside the floor.
 
-    Entries are inspected in timestamp order; admission exemption (a
-    standard's first entry) and reset-class exemption (applied upstream by
-    the collector) are both outside this function — it only judges gaps.
-    The boundary case (gap exactly equal to the floor) passes: the window
-    is a strict less-than refusal.
+    Exemptions (admission, reset-class, pre-anchor) are applied upstream by
+    the collector — this function only judges gaps. The boundary case (gap
+    exactly equal to the floor) passes: the window is a strict less-than
+    refusal.
     """
 
     messages: list[str] = []
@@ -83,11 +92,15 @@ def _git(root: Path, *arguments: str) -> str:
 def collect_bump_entries(root: Path) -> tuple[BumpEntry, ...]:
     """Read version-directory additions from git history, post-anchor only.
 
+    git log emits FILE paths (never bare directories), so version
+    directories are derived from the files inside them.
+
     The anchor is the committer timestamp of the commit that added this
     module; additions before it are the grandfathered history the rule was
-    written against. Fails loud (never silent) when the history read is
-    empty but the module is tracked — a shallow clone masquerading as a
-    clean window is worse than a crash.
+    written against. Fails loud when that anchor is unreadable while the
+    module exists on disk — under a shallow boundary git lists every
+    standards file as Added at one timestamp, which without this guard
+    would fabricate gap-0 verdicts instead of refusing to judge.
     """
 
     raw = _git(
@@ -108,34 +121,46 @@ def collect_bump_entries(root: Path) -> tuple[BumpEntry, ...]:
         "--",
         str(_MODULE_RELATIVE),
     ).strip()
-    module_tracked = bool(anchor_raw)
-    if module_tracked and not raw.strip():
+    if not anchor_raw and (root / _MODULE_RELATIVE).exists():
         raise TrainWindowError(
-            "train_window_history_unreadable: git log returned no standards "
-            "history while this module is tracked — fetch full history "
-            "(fetch-depth: 0) before trusting a clean window"
+            "train_window_history_unreadable: the anchor commit (this "
+            "module's own arrival) is unreachable but the module exists on "
+            "disk — the history read is incomplete; fetch full history "
+            "(fetch-depth: 0) before trusting any window verdict"
         )
-    anchor = int(anchor_raw) if module_tracked else 0
+    anchor = int(anchor_raw) if anchor_raw else 0
 
-    added: list[BumpEntry] = []
-    seen_standards: set[str] = set()
-    for block in _split_log(raw):
-        timestamp = block.timestamp
-        standards_in_commit: dict[str, tuple[str, str]] = {}
+    # Chronological, oldest-first: git log walks newest first, and the
+    # admission and dedup passes both need landing order.
+    landed: dict[tuple[str, str], tuple[int, bool]] = {}
+    for block in sorted(_split_log(raw), key=lambda item: item.timestamp):
+        standards_in_commit: dict[str, str] = {}
         for path in block.paths:
-            match = _VERSION_DIR.match(f"{path}/")
+            match = _VERSION_PATH.match(path)
             if match:
                 standards_in_commit[match.group(1)] = match.group(2)
-        if not standards_in_commit:
-            continue
         is_reset_class = len(standards_in_commit) >= RESET_CLASS_STANDARD_COUNT
         for standard, version in standards_in_commit.items():
-            first = standard not in seen_standards
-            seen_standards.add(standard)
-            if timestamp < anchor or first or is_reset_class:
+            key = (standard, version)
+            if key not in landed or block.timestamp < landed[key][0]:
+                landed[key] = (block.timestamp, is_reset_class)
+
+    by_standard: dict[str, list[tuple[int, str, bool]]] = {}
+    for (standard, version), (timestamp, exempt) in sorted(landed.items()):
+        by_standard.setdefault(standard, []).append((timestamp, version, exempt))
+    entries: list[BumpEntry] = []
+    for standard, versions in by_standard.items():
+        versions.sort()
+        # Admission is the standard's chronological FIRST version over all
+        # history, exempt-flag included — a version that arrived in a
+        # reset-class commit is still that standard's first, so the next
+        # bump after a reset is judged, not silently admitted.
+        first_version = versions[0][1]
+        for timestamp, version, exempt in versions:
+            if timestamp < anchor or exempt or version == first_version:
                 continue
-            added.append(BumpEntry(standard, version, timestamp))
-    return tuple(sorted(added, key=lambda item: item.timestamp))
+            entries.append(BumpEntry(standard, version, timestamp))
+    return tuple(sorted(entries, key=lambda item: item.timestamp))
 
 
 def check_train_windows(root: Path, floor_seconds: int) -> tuple[str, ...]:
@@ -154,7 +179,12 @@ class _LogBlock:
 
 
 def _split_log(raw: str) -> list[_LogBlock]:
-    """Split `--format=%ct%x00%H --name-only` output into per-commit blocks."""
+    """Split `--format=%ct%x00%H --name-only` output into per-commit blocks.
+
+    A header line carries an all-digit timestamp before the NUL; accepting
+    any digit run (not a fixed hash length) keeps parsing correct under
+    SHA-256 object format.
+    """
 
     blocks: list[_LogBlock] = []
     current_timestamp: int | None = None
@@ -163,7 +193,7 @@ def _split_log(raw: str) -> list[_LogBlock]:
         if not line:
             continue
         header = line.split("\x00", 1)
-        if len(header) == 2 and header[0].isdigit() and len(header[1]) == 40:
+        if len(header) == 2 and header[0].isdigit():
             if current_timestamp is not None:
                 blocks.append(_LogBlock(current_timestamp, tuple(current_paths)))
             current_timestamp = int(header[0])

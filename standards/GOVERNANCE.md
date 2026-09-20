@@ -46,8 +46,11 @@ timestamps of the commits that added each new version directory. A queued change
 standard still inside its window WAITS — it batches into the next bump of that standard
 (the highest-class rule above already governs what the batch becomes). The window is
 per standard: bumping otdp does not open or close a window for registry. Exempt: a
-standard's first version (admission), and a reset-class commit (one commit adding
-version directories for three or more standards — the 2026-09-16 signature). Enforced
+standard's first version (admission), and a reset-class commit — identified by a
+shape heuristic (one commit adding version directories for three or more standards,
+the 2026-09-16 signature), not by the Resets section's full definition; the known
+residual is that a coordinated multi-standard increment of that same shape also
+escapes the window, accepted because resets are executive-rare. Enforced
 mechanically by `benchweave.standards.train_window` in the standards suite; the clock
 self-anchors at that module's own arrival commit, so history before the rule is
 grandfathered by mechanism. The 48-hour floor is a starting figure ratified with this

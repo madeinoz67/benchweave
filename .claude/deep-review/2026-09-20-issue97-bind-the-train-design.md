@@ -134,3 +134,48 @@ Triggered once, resolved: the first sketch of this design re-used the bump metad
 are hand-maintained prose-grade fields (the measurement showed them honest so far, but
 nothing pins them), while git committer timestamps are the actual landing record the
 window is about. The git-history form is the one that cannot drift from reality.
+
+## 9. Corrections (fold wave, post-review — appended, §1-8 above left as written)
+
+Both pre-merge reviews (standards-governor: FIX FIRST; code-reviewer: NEEDS WORK)
+found the GREEN collector structurally dead and more behind it. Folded on-branch:
+
+- **C1 (their CRITICAL/HIGH, both reviews):** `--name-only` emits FILE paths, never
+  bare directories — the anchored `$` regex matched 0 of 192 real path lines and the
+  collector returned `()` on all real input; the suite was vacuously green. Fixed:
+  prefix-match file paths. §2's "collector" description above was written against
+  directories; the mechanism as shipped matches files.
+- **C2 (HIGH, both):** `git log` walks newest-first, so the admission pass exempted
+  each standard's NEWEST addition. Fixed: chronological processing; admission is the
+  standard's first version over ALL history (exempt flag included — a version that
+  arrived in a reset-class commit is still the standard's first, so the bump after a
+  reset is judged, not silently admitted).
+- **C3 (MEDIUM, code-reviewer only):** no (standard, version) dedup — the real corpus
+  straddles otdp 0.1.2 across two commits 26 seconds apart, a false 0.01h violation
+  once C1 unmasked. Fixed: one entry per (standard, version) at its earliest commit.
+- **C4 (MEDIUM):** the shallow-clone guard as designed fires on the wrong signal (and
+  a shallow boundary lists every standards file as Added at one timestamp → fabricated
+  gap-0 verdicts, not the distinct refusal). Fixed: raise when the anchor is
+  unreachable while the module exists on disk; §7 risk 3's claim is thereby honest.
+- **C5 (MEDIUM):** the promised exemption arms were not shipped; the grandfather arm
+  encoded its own vacuity (`or entries == ()`). Fixed: a scratch-repository family
+  (git init in tmp_path, committer dates pinned via env) drives the REAL collector —
+  non-empty collection asserted, refusal, admission, reset-opens-fresh-windows,
+  straddle-counts-once. The real-tree row now states it pins deployment state, with
+  the scratch family carrying non-vacuity.
+- **C6 (both):** strict-mypy errors (dict mistyped tuple). Fixed; scoped strict
+  `mypy src/benchweave/standards/train_window.py` clean.
+- **C7:** §1 and the test comment's "4.8-hour otdp pair" was author-date arithmetic;
+  the committer timestamps (what the window measures) read 09:15:27 → 12:10:40
+  +08 = **2.92h** (`709de25a`/`30a775b7`). Direction unchanged, number corrected
+  here and in the test comment.
+- **C8:** §6's "all 4 tests" — 5 shipped then, 8 after the fold. Count drift noted;
+  the acceptance rule's substance (RED watched, GREEN full) held.
+- **C9:** the governor's device-plugins fetch-depth concern resolved factually: that
+  job's pytest runs inside the isolated `plugins/fnirsi/dps150` copy
+  (`device-plugins.yml:21,33`), never the gateway suite — gates remains the only
+  lane needing `fetch-depth: 0`.
+- **C10:** reset-class exemption reworded in GOVERNANCE as a shape heuristic with its
+  accepted residual (the governor's F4) — a coordinated 3-standard increment of that
+  shape also escapes; disclosed in the ratified text.
+
