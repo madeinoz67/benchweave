@@ -122,6 +122,8 @@ All notable changes to this project will be documented in this file.
 - #85 fold — malformed bench/binding refuse startup typed, recovery containment pinned
 - Fold refute F1 + NIT-1 — convention-vs-mechanism disclosure, reorder tamper mode
 - Sweep miss — gateway lock emitter and test pins for 0.1.1
+- Collector reads file paths; chronological admission; dedup; real shallow guard (#97 review fold)
+- Refute fold — zero-gap double bumps, first-add anchor, shallow refusal (#97 G6)
 
 ### Documentation
 
@@ -228,6 +230,7 @@ All notable changes to this project will be documented in this file.
 - Re-anchor the edit grant on the freshness gate (review R1+R2)
 - Row 14 — agent tool-grant surface (review F3, folded)
 - Recall the memory vault before proposing or diagnosing
+- Design record for issue #97 bind-the-train
 
 ### Features
 
@@ -331,6 +334,7 @@ All notable changes to this project will be documented in this file.
 - #85 — route startup through the admission gate before any store write
 - Machine-written, byte-pinned OTDP validation report
 - Registry 0.1.1 — admit the skill payload-file role (issue #71 slice 1)
+- The prescriptive bump window, enforced (#97)
 
 ### Hardware Evidence
 
@@ -475,6 +479,7 @@ All notable changes to this project will be documented in this file.
 - Pin the sdist to the declared surface — PKG-2's detector
 - RED for the agent-native seeded tree (issue #71 slice 2)
 - Prove the issue-107 fix — symlinked-destination scaffold, typed symlink refusal, errno guard
+- RED — bump-window arms against the absent train_window module
 
 ### Build
 
