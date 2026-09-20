@@ -83,8 +83,12 @@ def window_violations(
 
 
 def _git(root: Path, *arguments: str) -> str:
-    completed = subprocess.run(
-        ["git", "-C", str(root), *arguments],
+    # Argument-array form: no shell, no interpolation — the program is the
+    # literal "git" and every argument is a repo path or a module constant
+    # from trusted callers, never request data (the S603 audit); "git" from
+    # PATH is the intent (S607), matching the daemon's own CLI posture.
+    completed = subprocess.run(  # noqa: S603 — audited argument array
+        ["git", "-C", str(root), *arguments],  # noqa: S607 — PATH lookup intended
         check=True,
         capture_output=True,
         text=True,
