@@ -10,8 +10,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from benchweave.standards.train_window import (
     BumpEntry,
     check_train_windows,
