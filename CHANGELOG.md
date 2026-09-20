@@ -124,6 +124,7 @@ All notable changes to this project will be documented in this file.
 - Sweep miss — gateway lock emitter and test pins for 0.1.1
 - Collector reads file paths; chronological admission; dedup; real shallow guard (#97 review fold)
 - Refute fold — zero-gap double bumps, first-add anchor, shallow refusal (#97 G6)
+- Derive the devices mutation fixtures; GOVERNANCE claim scoped (D2 review fold)
 
 ### Documentation
 
@@ -231,6 +232,8 @@ All notable changes to this project will be documented in this file.
 - Row 14 — agent tool-grant surface (review F3, folded)
 - Recall the memory vault before proposing or diagnosing
 - Design record for issue #97 bind-the-train
+- Design record for #102 D2 — manifest-driven version discovery
+- Refute fold — name the platform condition; scope the residue case (#102 D2 G6)
 
 ### Features
 
@@ -335,6 +338,7 @@ All notable changes to this project will be documented in this file.
 - Machine-written, byte-pinned OTDP validation report
 - Registry 0.1.1 — admit the skill payload-file role (issue #71 slice 1)
 - The prescriptive bump window, enforced (#97)
+- Manifest-driven OTDP version discovery in the validator + pin (#102 D2)
 
 ### Hardware Evidence
 
@@ -480,6 +484,7 @@ All notable changes to this project will be documented in this file.
 - RED for the agent-native seeded tree (issue #71 slice 2)
 - Prove the issue-107 fix — symlinked-destination scaffold, typed symlink refusal, errno guard
 - RED — bump-window arms against the absent train_window module
+- RED — OUT/title must follow the manifest's active otdp version (#102 D2)
 
 ### Build
 
