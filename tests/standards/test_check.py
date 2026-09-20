@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import shutil
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -39,6 +41,28 @@ def test_real_tree_is_clean() -> None:
     from benchweave.standards.check import run_check
 
     assert run_check(ROOT) == []
+
+
+def test_cli_versions_fails_styled_on_an_invalid_identity_block(tmp_path: Path) -> None:
+    """versions fails like check and repin do: styled error, exit 1, no traceback."""
+    broken = tmp_path / "root"
+    (broken / "standards").mkdir(parents=True)
+    (broken / "standards/standards-manifest.json").write_bytes(
+        (ROOT / "standards/standards-manifest.json").read_bytes()
+    )
+    (broken / "standards/corpus-manifest.json").write_text(json.dumps({"files": []}))
+    (broken / "pyproject.toml").write_text('[project]\nname = "broken"\nversion = "0.0.0"\n')
+    result = subprocess.run(
+        [sys.executable, "-m", "benchweave.standards", "versions"],
+        cwd=broken,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 1
+    combined = result.stdout + result.stderr
+    assert "standards versions error: identity_block_invalid" in combined
+    assert "Traceback" not in combined, "the versions path must fail styled, not raw"
 
 
 def test_version_mismatch_between_manifest_and_lock(tmp_path: Path) -> None:

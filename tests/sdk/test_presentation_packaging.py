@@ -77,9 +77,23 @@ def test_sdk_wheel_rebuilt_from_sdist_contains_locked_standards_tree(tmp_path: P
     unpacked = tmp_path / "source"
     unpacked.mkdir()
     with tarfile.open(next(dist.glob("*.tar.gz"))) as archive:
+        sdist_names = archive.getnames()
         archive.extractall(unpacked, filter="data")
     source = next(unpacked.iterdir())
     assert (source / "standards-lock.json").is_file(), "sdist omits the standards lock"
+    # PKG-2, pinned at the sdist too: no repo/VCS metadata or agent
+    # configuration ships past the declared five-entry include list. Caught
+    # live in the issue-#71 fold — an unanchored "README.md" include matched
+    # .claude/deep-review/README.md at depth, and hatchling force-includes
+    # .gitignore into every sdist past include/exclude entirely (stopped in
+    # the SDK's build hook; this pin is the main-side detector).
+    forbidden_files = {".gitignore", ".mcp.json", "AGENTS.md", "CLAUDE.md"}
+    leaked = [
+        name
+        for name in sdist_names
+        if Path(name).name in forbidden_files or "/.claude/" in f"/{name}"
+    ]
+    assert not leaked, f"sdist leaks repo files past the include list: {sorted(leaked)}"
     rebuilt = tmp_path / "rebuilt"
     subprocess.run(
         ["uv", "build", "--wheel", str(source), "--out-dir", str(rebuilt)],

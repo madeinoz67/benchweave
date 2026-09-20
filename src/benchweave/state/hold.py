@@ -89,9 +89,24 @@ def hold_path(db_path: Path) -> Path:
     help — verified against ``MoveFileExW``). Living outside the swapped
     directory, the held lock also stays anchored to the same inode across
     the swap, so the swap window never exists un-anchored.
+
+    The data dir is RESOLVED before the marker is derived, so every
+    spelling of one directory (a symlink alias and its real path, a
+    relative and an absolute form) derives the SAME marker — without this,
+    two coordinators using two spellings hold simultaneously and
+    ``os.replace`` can swap the store out from under a live holder. The
+    hold is therefore per data dir, not per database file: two stores in
+    one resolved directory share one marker (``demo``'s per-store probing
+    walks each db file's marker and sees the shared file twice — the
+    contention is real, not spurious). A bare relative db filename maps to
+    the current directory's marker, safe-direction contention. One-release
+    note: a deployment whose data dir is ITSELF a symlink previously
+    derived its marker from the alias spelling; after this change the
+    marker lives beside the RESOLVED directory, and the old spelling's
+    marker is a stale leftover to delete.
     """
     db_path = Path(db_path)
-    data_dir = db_path.parent
+    data_dir = db_path.parent.resolve()
     return data_dir.parent / (data_dir.name + ".hold")
 
 

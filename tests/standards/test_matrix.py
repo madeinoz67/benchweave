@@ -37,6 +37,7 @@ def _deprecated_repo(tmp_path: Path, notes: str | None) -> tuple[Path, Path]:
     document["standards"] = [document["standards"][0]]
     document["standards"][0]["status"] = "deprecated"
     (repo / "standards/standards-manifest.json").write_text(json.dumps(document))
+    entry = document["standards"][0]
     sdk = tmp_path / "sdk"
     sdk.mkdir()
     (sdk / "standards-lock.json").write_text(
@@ -44,7 +45,12 @@ def _deprecated_repo(tmp_path: Path, notes: str | None) -> tuple[Path, Path]:
             {
                 "lock_version": 1,
                 "standards": [
-                    {"id": "otdp", "version": "0.1.0", "status": "deprecated", "files": []}
+                    {
+                        "id": entry["id"],
+                        "version": entry["version"],
+                        "status": "deprecated",
+                        "files": [],
+                    }
                 ],
                 "compatibility": {
                     "main_project": ">=0.1.0",
@@ -137,7 +143,10 @@ def test_deprecated_standard_renders_migration_guidance(tmp_path: Path) -> None:
         tmp_path, "Migrate device profiles to the 0.4 catalog before upgrading."
     )
     rendered = render_matrix(repo, sdk)
-    assert "| otdp | 0.1.0 | deprecated |" in rendered
+    # The synthetic lock mirrors the real manifest entry, so the row names
+    # whatever version the corpus currently carries — not a hardcoded one.
+    entry = json.loads((repo / "standards/standards-manifest.json").read_bytes())["standards"][0]
+    assert f"| {entry['id']} | {entry['version']} | deprecated |" in rendered
     assert "Migrate device profiles to the 0.4 catalog before upgrading." in rendered
 
 

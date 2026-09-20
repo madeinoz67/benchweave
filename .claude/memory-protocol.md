@@ -1,5 +1,3 @@
-# Provenance: adopted 2026-09-10 from the muninndb repository's memory system (hooks + protocol, verbatim). Its measured history (declaration rates, transcript counts, incident numbers) is muninndb's, kept for the mechanism's rationale. This repo drains to the `benchweave` vault.
-
 # Memory proposals — how a finding survives the session
 
 A session produces knowledge. Most of it is recoverable from git, the PR, or the issue
@@ -55,6 +53,14 @@ too: a pollution analysis found 74% of supersession pairs were template junk, an
 collapsed the analysis that depended on them. A drain with no bar is a pollution pump.
 
 ## How to append
+
+**Recall before you propose.** Before appending a proposal, spend one `muninn_recall` on
+the vault using the fact's own concepts. If the vault already holds the fact, do not mint a
+rival copy: correct the existing engram with `muninn_evolve`, or skip the proposal and cite
+the existing one instead. This is the proposing session's judgment — never a hook and never
+a drain-side gate (see *What the drain deliberately does not do*); the pipe stays dumb.
+Added 2026-09-20: the rtk pytest-counts trap reached four vault copies through four
+independent rediscoveries, none of which recalled first.
 
 **Use the helper.** It validates before it writes, fills in `vault`, and refuses a batch
 rather than queueing a bad line. Every proposal carries **at least one tag** — tags are the

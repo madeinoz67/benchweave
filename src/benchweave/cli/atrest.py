@@ -87,10 +87,16 @@ MANIFEST_NAME = "manifest.json"
 #: runtime sidecars — ``-wal``/``-shm`` — and the deliberately-unbacked
 #: credential file (the operator re-places ``benchweave.env`` in a restored
 #: data dir per the guide). All are live-state, never backup content. The
-#: advisory hold marker needs no carve-out: it lives BESIDE the data dir
-#: (``<data_dir>.hold``), outside any verified tree.
+#: advisory hold marker lives BESIDE the data dir (``<data_dir>.hold``),
+#: outside any verified tree — but pre-relocation releases left the OLD
+#: in-dir marker (``<data_dir>/state.sqlite.hold``) behind on release
+#: (unlock-without-unlink), so every dir ever served or backed up before
+#: the relocation carries it; tolerating that fixed, known name as
+#: live-state keeps ``verify`` off honest trees (an attacker gains
+#: nothing: the name is not attacker-chosen and carries no provenance
+#: claim).
 _UNLISTED_OK = frozenset(
-    {MANIFEST_NAME, CREDENTIAL_FILE, DB_NAME + "-wal", DB_NAME + "-shm"}
+    {MANIFEST_NAME, CREDENTIAL_FILE, DB_NAME + "-wal", DB_NAME + "-shm", DB_NAME + ".hold"}
 )
 #: The registry session's work tree root. ``app_entry`` places it under
 #: ``<data_dir>/registry/`` (cache, ``packages.lock.json``, activations) —

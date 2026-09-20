@@ -74,6 +74,7 @@ from typing import Any, cast
 import httpx
 import pytest
 import uvicorn
+from _failure_detail import dump_at_rest_runs, format_run_failure
 from jsonschema import Draft202012Validator
 
 from benchweave.content.store import ContentStore
@@ -310,6 +311,18 @@ def _run_get(gateway: SimpleNamespace, run_id: str) -> dict[str, Any]:
     return data
 
 
+def _outcome_detail(gateway: SimpleNamespace, run_id: str) -> str:
+    """A self-describing failure body for an outcome mismatch (issue #48):
+    the terminal record's reasons (the executor's exception mapping) plus
+    the run's error events, from the store the test already holds — so the
+    next CI occurrence reports its own root cause instead of a truncated
+    ``{...}`` repr."""
+    stored = gateway.store.get_run(run_id)
+    terminal = stored["terminal"] if stored else None
+    events = list(gateway.store.read_events(f"run:{run_id}"))
+    return format_run_failure(run_id, terminal, events)
+
+
 def _start_run(
     gateway: SimpleNamespace, request_id: str, binding_ref: dict[str, Any]
 ) -> str:
@@ -404,7 +417,7 @@ def test_worker_survives_poisoned_build_run(
             poisoned = _start_run(gateway, "req-poison", POISON_REF)
             _poll_run(gateway, poisoned, want="terminal")
         honest = _run_get(gateway, poisoned)
-        assert honest["outcome"] == "outcome_unknown"
+        assert honest["outcome"] == "outcome_unknown", _outcome_detail(gateway, poisoned)
         assert honest["safe_state"] == "unknown"
         assert honest["terminal_record"] is None, "no record may be fabricated"
         assert poisoned in caplog.text and "Error" in caplog.text, (
@@ -413,7 +426,7 @@ def test_worker_survives_poisoned_build_run(
 
         good = _start_run(gateway, "req-voltage-check-1", BINDING_REF)
         final = _poll_run(gateway, good, want="terminal", timeout=30.0)
-        assert final["outcome"] == "passed", final
+        assert final["outcome"] == "passed", _outcome_detail(gateway, good)
 
         events = _bench_events(gateway)
         poisoned_events = [e for e in events if e.get("run_id") == poisoned]
@@ -447,7 +460,7 @@ def test_kill_mid_run_staged_crash_recovers_interrupted(tmp_path: Path) -> None:
     gateway = _launch(tmp_path)
     try:
         final = _poll_run(gateway, crashed, want="terminal", timeout=10.0)
-        assert final["outcome"] == "interrupted", final
+        assert final["outcome"] == "interrupted", _outcome_detail(gateway, crashed)
         assert final["safe_state"] == "unknown"
         assert final["terminal_record"] is not None, "recovery writes a real record"
 
@@ -487,7 +500,7 @@ def test_same_request_retry_after_recovery_returns_existing_run(tmp_path: Path) 
     gateway = _launch(tmp_path)
     try:
         recovered = _poll_run(gateway, crashed, want="terminal", timeout=10.0)
-        assert recovered["outcome"] == "interrupted"
+        assert recovered["outcome"] == "interrupted", _outcome_detail(gateway, crashed)
 
         events_before = _bench_events(gateway)
         resp = gateway.client.post(
@@ -626,7 +639,7 @@ def test_kill_mid_run_child_process_recovers_interrupted(tmp_path: Path) -> None
                 break
             assert time.monotonic() < deadline, f"run never recovered: {data}"
             time.sleep(0.2)
-        assert data["outcome"] == "interrupted", data
+        assert data["outcome"] == "interrupted", dump_at_rest_runs(db)
         assert data["safe_state"] == "unknown"
         assert data["terminal_record"] is not None
 
@@ -737,7 +750,10 @@ def test_device_disconnect_yields_uncertain_truth(tmp_path: Path) -> None:
         try:
             run_id = _start_run(gateway, "req-voltage-check-1", BINDING_REF)
             final = _poll_run(gateway, run_id, want="terminal", timeout=30.0)
-            assert final["outcome"] in ("execution_error", "outcome_unknown"), final
+            assert final["outcome"] in (
+                "execution_error",
+                "outcome_unknown",
+            ), _outcome_detail(gateway, run_id)
             assert final["outcome"] != "passed"
             assert final["terminal_record"] is not None
 
@@ -892,7 +908,7 @@ def test_run_start_with_lease_takeover_over_http(tmp_path: Path) -> None:
         assert started.status_code == 202, started.text
         run_id = str(started.json()["data"]["run_id"])
         final = _poll_run(gateway, run_id, want="terminal", timeout=30.0)
-        assert final["outcome"] == "passed", final  # reserve() survived
+        assert final["outcome"] == "passed", _outcome_detail(gateway, run_id)  # reserve() survived
 
         events = _bench_events(gateway)
         matches = [e for e in events if e["kind"] == "authority_changed"]
@@ -987,12 +1003,12 @@ def test_second_run_start_on_live_run_conflicts_and_frees_after_terminal(
 
             release.set()  # the parked body proceeds
             first_final = _poll_run(gateway, first, want="terminal", timeout=30.0)
-            assert first_final["outcome"] == "passed", first_final
+            assert first_final["outcome"] == "passed", _outcome_detail(gateway, first)
 
             # The bench freed: the second binding now starts cleanly.
             after = _start_run(gateway, "req-voltage-check-2", SECOND_REF)
             after_final = _poll_run(gateway, after, want="terminal", timeout=30.0)
-            assert after_final["outcome"] == "passed", after_final
+            assert after_final["outcome"] == "passed", _outcome_detail(gateway, after)
         finally:
             release.set()  # never leave the body parked
             _shutdown(gateway)

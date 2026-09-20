@@ -61,7 +61,7 @@ The requesting developer or maintainer supplies:
 
 Missing inputs should produce specific evidence requests. They need not stop independent static review. Record missing inputs in the verdict for the affected stage.
 
-The current project baseline is architecture 1.5, OTDP 0.1.0, adapter API 0.1.0, registry 0.1.0, execution 0.1.0 and interface 0.1.0. If a candidate declares another version, obtain the corresponding contract; do not silently judge it against a different one.
+The current project baseline is architecture 1.5, OTDP 0.2.0, adapter API 1.1, registry 0.1.1, execution 0.1.0 and interface 0.1.0. If a candidate declares another version, obtain the corresponding contract; do not silently judge it against a different one.
 
 ## Review matrix
 
@@ -85,14 +85,14 @@ Mark each applicable S/C/M requirement `satisfied`, `violated` or `unverified`, 
 
 Normative references:
 
-- [OTDP core and S01–S18](../standards/otdp/0.1.0/otdp-specification.md)
-- [Adapter/profile extension and C01–C12](../standards/otdp/0.1.0/extension-contract.md)
-- [Measurement model and M01–M14](../standards/otdp/0.1.0/measurement-model.md)
-- [Device classes](../standards/otdp/0.1.0/device-classes.md)
+- [OTDP core and S01–S19](../standards/otdp/0.2.0/otdp-specification.md)
+- [Adapter/profile extension and C01–C12](../standards/otdp/0.2.0/extension-contract.md)
+- [Measurement model and M01–M15](../standards/otdp/0.2.0/measurement-model.md)
+- [Device classes](../standards/otdp/0.2.0/device-classes.md)
 - [Architecture](smart-test-gateway-architecture-v1.5.md)
 - [Execution contract](../standards/execution/0.1.0/execution-contract.md)
 - [Interface contract](../standards/interface/0.1.0/interface-contract.md)
-- [Registry contract](../standards/registry/0.1.0/registry-specification.md)
+- [Registry contract](../standards/registry/0.1.1/registry-specification.md)
 
 ## SDK maintenance surface
 

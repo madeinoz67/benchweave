@@ -89,6 +89,7 @@ _KNOWN_PUBLIC_SECRETS = frozenset(
         b"wp08-task-twelve-secret",  # tests/cli/test_render.py
         b"wp08-task-fourteen-live-secret",  # retired from the tree; public via git history
         b"wp09-task-four-secret",  # tests/integration/test_poc_acceptance.py
+        b"issue85-startup-admission-secret",  # tests/integration/test_startup_admission_refusal.py
         b"test-issuer-secret",  # tests/unit/test_seam_admin.py
     }
 )

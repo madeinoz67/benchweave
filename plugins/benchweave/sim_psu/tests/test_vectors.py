@@ -54,5 +54,5 @@ def test_vector(vector):
 
 def test_packaged_descriptor():
     descriptor = json.loads(files(PACKAGE).joinpath("descriptor.json").read_text())
-    assert descriptor["id"] == "descriptor-sim-psu"
+    assert descriptor["id"] == "dev.benchweave.sim-psu"
     assert descriptor["profiles"] == ["otdp.dc_psu/1.0.0"]
