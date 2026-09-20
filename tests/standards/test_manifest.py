@@ -59,23 +59,90 @@ def test_load_manifest_rejects_duplicate_standard_ids(tmp_path: Path) -> None:
         load_manifest(tmp_path)
 
 
-def test_vendored_schema_titles_match_standard_version() -> None:
-    # A human-readable title may name its version (the 2026-09-16 reset line)
-    # or omit it, but naming a different one is reset residue: the corpus
-    # shipped "…datasets 0.3.0" under otdp@0.1.0 (#45).
+ANNOTATION_KEYS = ("title", "description")
+
+
+def _annotation_offenders(standards_root: Path) -> list[str]:
+    """Reset residue in vendored schema annotations, both keys the corpus
+    carries (#47's title rule, extended to description per #97).
+
+    A human-readable annotation may name its standard's version (the
+    2026-09-16 reset line) or omit it; naming a different one is reset
+    residue — the corpus shipped "…datasets 0.3.0" under otdp@0.1.0 (#45).
+    """
+
     version_like = re.compile(r"\d+\.\d+\.\d+")
     offenders: list[str] = []
-    for entry in load_manifest(ROOT).standards:
+    for entry in load_manifest(standards_root).standards:
         for relative in entry.normative:
             if not relative.startswith("standards/") or not relative.endswith(".schema.json"):
                 continue
-            title = json.loads((ROOT / relative).read_bytes()).get("title")
-            if not isinstance(title, str):
-                continue
-            stale = [t for t in version_like.findall(title) if t != entry.version]
-            if stale:
-                offenders.append(f"{relative}: {stale} under {entry.id}@{entry.version}")
-    assert not offenders, "reset residue in vendored titles:\n" + "\n".join(offenders)
+            document = json.loads((standards_root / relative).read_bytes())
+            for key in ANNOTATION_KEYS:
+                value = document.get(key)
+                if not isinstance(value, str):
+                    continue
+                stale = [v for v in version_like.findall(value) if v != entry.version]
+                if stale:
+                    offenders.append(
+                        f"{relative} ({key}): {stale} under {entry.id}@{entry.version}"
+                    )
+    return offenders
+
+
+def test_vendored_schema_titles_match_standard_version() -> None:
+    assert not _annotation_offenders(ROOT), (
+        "reset residue in vendored schema annotations:\n"
+        + "\n".join(_annotation_offenders(ROOT))
+    )
+
+
+def _planted_tree(tmp_path: Path, schema: dict[str, object]) -> Path:
+    """A minimal repo-shaped tree: the manifest's normative paths are
+    ROOT-relative ("standards/..."), so the returned root is the standards
+    directory's PARENT — the same shape `_annotation_offenders(ROOT)` sees."""
+
+    (tmp_path / "standards" / "demo" / "0.1.0").mkdir(parents=True)
+    (tmp_path / "standards" / "demo" / "0.1.0" / "demo.schema.json").write_text(
+        json.dumps(schema), encoding="utf-8"
+    )
+    (tmp_path / "standards" / "standards-manifest.json").write_text(
+        json.dumps(
+            {
+                "manifest_version": 1,
+                "standards": [
+                    {
+                        "id": "demo",
+                        "version": "0.1.0",
+                        "status": "stable",
+                        "released": "2026-09-20",
+                        "normative": ["standards/demo/0.1.0/demo.schema.json"],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    return tmp_path
+
+
+def test_stale_description_is_refused(tmp_path: Path) -> None:
+    # The #97 extension's RED-honesty arm: the pre-change guard read titles
+    # only, so a stale DESCRIPTION under a clean title sailed through.
+    standards = _planted_tree(
+        tmp_path,
+        {"title": "Demo schema", "description": "Demo datasets 0.9.9 contract"},
+    )
+    offenders = _annotation_offenders(standards)
+    assert any("(description)" in line and "0.9.9" in line for line in offenders), offenders
+
+
+def test_versionless_annotations_pass(tmp_path: Path) -> None:
+    # The #47 rule's other half, on both keys: no version at all is fine.
+    standards = _planted_tree(
+        tmp_path, {"title": "Demo schema", "description": "No version mentioned"}
+    )
+    assert _annotation_offenders(standards) == []
 
 
 def test_missing_normative_file_fails(tmp_path: Path) -> None:
