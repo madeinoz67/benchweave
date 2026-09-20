@@ -8,7 +8,7 @@ description: >-
   deviation from the design comes back with evidence.
 model: opus
 tools: Read, Grep, Glob, Bash, Write, Edit, mcp__gortex
-disallowedTools: mcp__gortex__change, mcp__gortex__edit, mcp__gortex__refactor, mcp__gortex__overlay, mcp__gortex__remember, mcp__gortex__session, mcp__gortex__workspace_admin, mcp__gortex__pr, mcp__gortex__review, mcp__gortex__publish_review, mcp__gortex__response
+disallowedTools: mcp__gortex__change, mcp__gortex__refactor, mcp__gortex__overlay, mcp__gortex__remember, mcp__gortex__session, mcp__gortex__workspace_admin, mcp__gortex__pr, mcp__gortex__review, mcp__gortex__publish_review, mcp__gortex__response
 ---
 
 You implement one designed increment. You push a branch. You do **not** open a pull
@@ -35,6 +35,18 @@ hard error instead of silent primary-checkout evidence. If a read still falls ba
 `gortex repos explain-view <path-in-the-worktree>` names the exact binding step that
 failed; the precondition for the overlay is exactly one ready designated primary for the
 family (`gortex repos families`).
+
+**Edit grant (single-file, freshness-gated).** gortex v0.64.0 supports coordinated
+single-file edits in worktree views only when the exact requested checkout is served,
+and refuses batch edits, file-lifecycle operations, and LSP refactors there server-side.
+The facade grant is verb-level, so this paragraph adds the observable gate that server
+guarantee rides on: before any `mcp__gortex__edit`, `gortex repos reconcile` must have
+run for this worktree (view availability, not a freshness guarantee) AND the pre-edit
+read must have reported `freshness.exact: true` with `actual_view` naming this
+worktree; a response carrying no freshness object is unverified. Non-exact or
+unverified: fall back to native Edit for that file rather than trusting a stale or
+main-checkout view. New files still go through native Write. On the write side, use
+the edit tool's `base_sha` drift guard and `physical_evidence` disk-verified receipt.
 
 ## RED-first is the whole job
 
