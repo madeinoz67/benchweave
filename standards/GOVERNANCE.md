@@ -65,11 +65,14 @@ through `uv run python -m benchweave.standards repin` — the loop is
 edit → repin → export, never a hand-spliced digest. A bump carrying OTDP
 corpus bytes into a new version regenerates that version's validation report
 via the writer (`check_devices.py --write-report`). By convention the bump
-also moves the script's `OUT` and the pin test's report path — both now DERIVE
-from `standards-manifest.json`'s active otdp entry (#102 D2: the script reads
-the manifest and refuses loudly without it; the pin test derives its report
-path the same way), so a bump makes no hand-moves here. With the version moved,
-the pin fails on the copied stale report until the regen runs.
+The script's `OUT`, its report title, and the pin test's report path all
+DERIVE from `standards-manifest.json`'s active otdp entry (#102 D2: the
+script reads the manifest and refuses loudly without it; the pin test
+derives its report path and its devices mutation fixtures the same way), so
+a bump makes no hand-moves on those. The `docs/README.md` row linking the
+report remains a conventional move, caught mechanically by the pin's
+exactly-once link assert. With the version moved, the pin fails on the
+copied stale report until the regen runs.
 
 ## Retention
 

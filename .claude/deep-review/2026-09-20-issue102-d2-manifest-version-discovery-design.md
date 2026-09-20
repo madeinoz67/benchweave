@@ -81,3 +81,24 @@ narrowed.
 Not triggered: the mechanism is one manifest read replacing two literals and one test
 path; no new architecture, no lockfile, no resolver — everything the #97 re-scope
 withdrew stays withdrawn.
+
+## 7. Review corrections (fold wave, appended)
+
+- §2's second refusal name `otdp_manifest_version_unreadable:` never materialized:
+  the implementation uses one prefix (`otdp_manifest_absent:`) for both absence
+  modes, with disambiguating message text. An unparseable manifest raises
+  `json.JSONDecodeError` — loud, but outside the named family; accepted residual,
+  not silently claimed (code-review F2/F5).
+- The two devices regression-fixture params (schema + derivation-vectors paths)
+  were still hardcoded `otdp/0.2.0` — post-bump they would mutate the retained
+  version nothing reads, record zero failures, and break hint-free: the exact
+  sweep-miss class this increment closes, surviving in the same file. Now derived
+  from the same manifest read, with the derivation-vectors byte-pattern obligation
+  stated inline (code-review F1). GOVERNANCE's clause reworded to drop the stale
+  "by convention" lead-in and scope the claim: OUT/title/pin/fixtures derive; the
+  README row remains a conventional move, caught by the pin's exactly-once assert.
+- `_active_report_path` now mirrors the script's isinstance/version guard and
+  states the first-match residual inline (code-review F3).
+- `docs/internal/invariants.md` CON-11's parenthetical literal and
+  drift-and-obligations row 13's literal stay (both currently true; both move at
+  the next bump per the ordinary obligation — the governor deferred, noted).
