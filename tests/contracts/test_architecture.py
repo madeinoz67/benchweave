@@ -12,7 +12,26 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 SUITES = ("devices", "registry", "execution", "interface", "closure", "planning", "documents")
-REPORT_PATH = "otdp/0.2.0/validation-report.md"
+
+
+def _active_report_path() -> str:
+    """The active report's path, derived from the manifest (#102 D2) — the
+    pin follows the manifest's active otdp version, never a literal.
+
+    First-match on the otdp entry: CON-8 keeps the manifest single-row per
+    standard, so first == active while the manifest is well-formed.
+    """
+
+    manifest = json.loads(
+        (ROOT / "standards" / "standards-manifest.json").read_text(encoding="utf-8")
+    )
+    entry = next(item for item in manifest["standards"] if item["id"] == "otdp")
+    version = entry["version"]
+    assert isinstance(version, str) and version
+    return f"otdp/{version}/validation-report.md"
+
+
+REPORT_PATH = _active_report_path()
 REPORT_REGEN = "uv run python scripts/architecture/check_devices.py --write-report"
 
 
@@ -40,7 +59,7 @@ def test_architecture(suite: str) -> None:
 def report_failures(docs: Path, standards: Path) -> list[str]:
     """``[]`` when the committed OTDP report equals a fresh render; else one failure.
 
-    The committed ``standards/otdp/0.2.0/validation-report.md`` is machine-written
+    The committed active report (``REPORT_PATH``, manifest-derived) is machine-written
     by its validator; this is the staleness gate the ``gates`` job runs. Byte
     equality is over the sorted rendering, so it is a function of the check set
     only, immune to platform glob order.
@@ -74,7 +93,7 @@ def test_validation_report_matches_live_run() -> None:
         if f"(../standards/{REPORT_PATH})" in line
     ]
     assert len(rows) == 1, f"docs/README.md must link {REPORT_PATH} exactly once"
-    # The href itself carries version digits (otdp/0.2.0), so the count is the
+    # The href itself carries the active version's digits, so the count is the
     # first integer after the link, not the first integer in the row.
     row_count = re.search(r"\d+", rows[0].split(")", 1)[1])
     assert row_count is not None, "docs/README.md row carries no count"
@@ -163,10 +182,28 @@ def test_documents_ignores_markdown_links_inside_fenced_code_blocks(
 @pytest.mark.parametrize(
     ("suite", "relative_path", "old", "new", "expected"),
     [
-        ("devices", "otdp/0.2.0/otdp-measurement.schema.json", "", "\n", "pinned"),
+        # The devices rows mutate the ACTIVE version's files (path derived
+        # below via the manifest, #102 D2) — a hardcoded prior version would
+        # mutate a retained tree nothing reads, record zero failures, and
+        # break this assertion hint-free on the CI lane (ubuntu). macOS
+        # local runs cannot re-prove that: the pinned check's
+        # is_relative_to(OUT) fails on /var-symlinked TMPDIR, so any tmp
+        # copytree already fails all 24 pinned checks with zero mutations —
+        # see the routed follow-up. The second row's byte pattern must
+        # exist in the active derivation-vectors.json; a corpus edit that
+        # removes it moves this pattern with it (ordinary corpus obligation).
         (
             "devices",
-            "otdp/0.2.0/examples/derivation-vectors.json",
+            _active_report_path().rsplit("/", 1)[0]
+            + "/otdp-measurement.schema.json",
+            "",
+            "\n",
+            "pinned",
+        ),
+        (
+            "devices",
+            _active_report_path().rsplit("/", 1)[0]
+            + "/examples/derivation-vectors.json",
             '"values": [\n            9.0\n          ]',
             '"values": [\n            9.1\n          ]',
             "census",
