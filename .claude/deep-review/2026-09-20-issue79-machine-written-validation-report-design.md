@@ -178,7 +178,7 @@ of that equality.
 | Risk | Falsifier |
 |---|---|
 | Check-name duplicates or unstable names make sorted rendering still non-deterministic | RED phase: render twice locally in one process and across processes; any diff kills the byte-pin (rule 7.4). |
-| The pin hardcodes `otdp/0.2.0` and goes stale-silent after the next bump | It cannot go stale silently: on a bump that copies the report, the pin FAILS (live render points at the new dir's corpus via the script's `OUT`), naming the regen command; D2 removes the hardcode when that fires. |
+| The pin hardcodes `otdp/0.2.0` and goes stale-silent after the next bump | CONDITIONAL, not mechanical: the pin fails on the copied stale report iff the bump also hand-moves the script's `OUT` and the pin test's `REPORT_PATH` — nothing forces those moves (no drift-guard rule watches these paths), so a bump that forgets them leaves both comparison sides frozen and gates green while the active version's report is unpinned. D2 (manifest-driven version discovery in check_devices + pin) is the structural closer; the residual is disclosed here rather than hidden. |
 | The writer is used to launder a failing run | Structural: writer refuses on any failure; CI path cannot write at all (run_name + read-only pin). |
 | Prose numbers inside the template drift from reality while the count stays right | Stated residual (D3): the pin guarantees check lines and headline, not in-prose numbers; the honest-limits paragraph is review-guarded, and the guard's "does not catch" statement says so. |
 | Reviewers mistake the one-time reorder for content change | Rule 7.3 requires the permutation-only diff in the PR; reviewer verifies sorted(old lines) == sorted(new lines). |

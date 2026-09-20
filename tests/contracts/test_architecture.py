@@ -83,7 +83,7 @@ def test_validation_report_matches_live_run() -> None:
     )
 
 
-@pytest.mark.parametrize("mode", ["flip_pass", "bump_count"])
+@pytest.mark.parametrize("mode", ["flip_pass", "bump_count", "reorder_lines"])
 def test_validation_report_tampering_is_detected(tmp_path: Path, mode: str) -> None:
     docs = tmp_path / "docs"
     standards = tmp_path / "standards"
@@ -94,6 +94,15 @@ def test_validation_report_tampering_is_detected(tmp_path: Path, mode: str) -> N
     if mode == "flip_pass":
         assert "- PASS: " in original, "report must carry PASS lines to tamper with"
         mutated = original.replace("- PASS: ", "- FAIL: ", 1)
+    elif mode == "reorder_lines":
+        # The platform-drift case the sorted renderer exists for: an unsorted
+        # check list is a permutation the live (sorted) render can never match.
+        lines = original.splitlines(keepends=True)
+        passes = [i for i, line in enumerate(lines) if line.startswith("- PASS: ")]
+        assert len(passes) >= 2, "report must carry PASS lines to reorder"
+        lines[passes[0]], lines[passes[-1]] = lines[passes[-1]], lines[passes[0]]
+        mutated = "".join(lines)
+        assert mutated != original, "reorder mutation must change the report"
     else:
         mutated = re.sub(
             r"(\d+)/(\d+)",
