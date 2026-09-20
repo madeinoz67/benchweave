@@ -19,6 +19,16 @@ from benchweave.presentation.admission import validate_attachment
 type JsonObject = dict[str, Any]
 
 ROOT = Path(__file__).resolve().parents[2]
+#: The ACTIVE plugin-ui version, derived from the manifest — the module
+#: tests the vendoring seam against the corpus the gateway actually pins,
+#: and a literal here would go stale at the next bump (#102 D2's lesson).
+_PLUGIN_UI = next(
+    entry["version"]
+    for entry in json.loads(
+        (ROOT / "standards" / "standards-manifest.json").read_text(encoding="utf-8")
+    )["standards"]
+    if entry["id"] == "plugin-ui"
+)
 
 
 def encode(value: object) -> bytes:
@@ -35,13 +45,14 @@ def codes(report: contracts.ValidationReport) -> set[str]:
 
 @pytest.fixture
 def descriptor_raw() -> bytes:
+    # A superseded-version descriptor: admission parses it and does not pin its version.
     return (ROOT / "standards/otdp/0.1.0/examples/reference-psu.json").read_bytes()
 
 
 @pytest.fixture
 def schema_documents() -> dict[str, JsonObject]:
     documents: dict[str, JsonObject] = {}
-    for path in (ROOT / "standards/plugin-ui/0.1.0").glob("*.schema.json"):
+    for path in (ROOT / "standards" / "plugin-ui" / _PLUGIN_UI).glob("*.schema.json"):
         schema = json.loads(path.read_bytes())
         documents[schema["$id"]] = schema
     return documents
@@ -49,7 +60,7 @@ def schema_documents() -> dict[str, JsonObject]:
 
 def build_manifest(descriptor_raw: bytes) -> JsonObject:
     return {
-        "contract_version": "0.1.0",
+        "contract_version": _PLUGIN_UI,
         "plugin_id": json.loads(descriptor_raw)["id"],
         "descriptor_sha256": digest(descriptor_raw),
         "bindings": [{"id": "reading", "kind": "observation", "target_id": "voltage"}],
@@ -70,7 +81,7 @@ def build_manifest(descriptor_raw: bytes) -> JsonObject:
 
 def build_catalogue(descriptor_raw: bytes) -> JsonObject:
     return {
-        "contract_version": "0.1.0",
+        "contract_version": _PLUGIN_UI,
         "descriptor_sha256": digest(descriptor_raw),
         "targets": [
             {
@@ -112,7 +123,7 @@ def admit(
     manifest_raw = encode(manifest if manifest is not None else build_manifest(descriptor_raw))
     if envelope_raw is None:
         envelope: JsonObject = {
-            "contract_version": "0.1.0",
+            "contract_version": _PLUGIN_UI,
             "descriptor_sha256": digest(descriptor_raw),
             "resource_root": "ui",
             "manifest": {"path": "manifest.json", "sha256": digest(manifest_raw)},
