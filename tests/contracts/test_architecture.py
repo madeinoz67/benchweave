@@ -12,7 +12,20 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 SUITES = ("devices", "registry", "execution", "interface", "closure", "planning", "documents")
-REPORT_PATH = "otdp/0.2.0/validation-report.md"
+
+
+def _active_report_path() -> str:
+    """The active report's path, derived from the manifest (#102 D2) — the
+    pin follows the manifest's active otdp version, never a literal."""
+
+    manifest = json.loads(
+        (ROOT / "standards" / "standards-manifest.json").read_text(encoding="utf-8")
+    )
+    entry = next(item for item in manifest["standards"] if item["id"] == "otdp")
+    return f"otdp/{entry['version']}/validation-report.md"
+
+
+REPORT_PATH = _active_report_path()
 REPORT_REGEN = "uv run python scripts/architecture/check_devices.py --write-report"
 
 
