@@ -89,6 +89,12 @@ or a public surface, run the loop.
    is merged**; SDK PRs open stacked at pointer-commit time, not end-of-run. Watch CI
    to green (`gh pr checks --watch`). Merge when all-green and authorized; otherwise hand
    off. If a gate is red or a finding is unfixed, HOLD and report — do not merge.
+8. **Run close.** After the final merge of a work: fold the worktrees, delete the
+   merged LOCAL branches (remote deletions take the owner's word), and sweep
+   untracked artifacts from the shared checkouts — sync-tool duplicates (iCloud's
+   `name 2.ext` suffix) are deleted only when the non-suffixed sibling exists;
+   other sessions' live files are never touched. Ledger the retrospective before
+   the run reports closed.
 
 ## Contributor PRs
 
