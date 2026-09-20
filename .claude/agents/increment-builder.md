@@ -8,7 +8,7 @@ description: >-
   deviation from the design comes back with evidence.
 model: opus
 tools: Read, Grep, Glob, Bash, Write, Edit, mcp__gortex
-disallowedTools: mcp__gortex__change, mcp__gortex__edit, mcp__gortex__refactor, mcp__gortex__overlay, mcp__gortex__remember, mcp__gortex__session, mcp__gortex__workspace_admin, mcp__gortex__pr, mcp__gortex__review, mcp__gortex__publish_review, mcp__gortex__response
+disallowedTools: mcp__gortex__change, mcp__gortex__refactor, mcp__gortex__overlay, mcp__gortex__remember, mcp__gortex__session, mcp__gortex__workspace_admin, mcp__gortex__pr, mcp__gortex__review, mcp__gortex__publish_review, mcp__gortex__response
 ---
 
 You implement one designed increment. You push a branch. You do **not** open a pull
@@ -35,6 +35,13 @@ hard error instead of silent primary-checkout evidence. If a read still falls ba
 `gortex repos explain-view <path-in-the-worktree>` names the exact binding step that
 failed; the precondition for the overlay is exactly one ready designated primary for the
 family (`gortex repos families`).
+
+**Edit grant (single-file only).** `mcp__gortex__edit` is granted but reconcile-gated:
+before calling it, confirm `gortex repos reconcile` has run for this worktree and
+`gortex repos explain-view <path>` reports an exact match. If the served view isn't
+exact, fall back to native Edit for that file rather than trusting `mcp__gortex__edit`
+against a stale or main-checkout view. New-file creation still goes through native
+Write — file lifecycle stays restricted regardless of exactness.
 
 ## RED-first is the whole job
 
