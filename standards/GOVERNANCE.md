@@ -40,6 +40,22 @@ share a merge only when they are one increment. CI tests the merge result, so ev
 in-tree artifact declaring the old version moves in-arc (in the same change/PR) with the bump —
 the in-tree motion is part of the bump, not a follow-up.
 
+**Bump window (#97).** The train rule is prescriptive, not descriptive: a standard
+may not bump more than once per **48-hour window**, measured between the committer
+timestamps of the commits that added each new version directory. A queued change to a
+standard still inside its window WAITS — it batches into the next bump of that standard
+(the highest-class rule above already governs what the batch becomes). The window is
+per standard: bumping otdp does not open or close a window for registry. Exempt: a
+standard's first version (admission), and a reset-class commit — identified by a
+shape heuristic (one commit adding version directories for three or more standards,
+the 2026-09-16 signature), not by the Resets section's full definition; the known
+residual is that a coordinated multi-standard increment of that same shape also
+escapes the window, accepted because resets are executive-rare. Enforced
+mechanically by `benchweave.standards.train_window` in the standards suite; the clock
+self-anchors at that module's own arrival commit, so history before the rule is
+grandfathered by mechanism. The 48-hour floor is a starting figure ratified with this
+rule; it is revisited after three windows, not silently.
+
 **Bump mechanics — copy, never move.** A version bump copies the old version
 dir to the new version and edits bytes only in the copy; the old dir and its
 corpus-manifest rows stay in place, digest-frozen. Moving or in-place-editing a
