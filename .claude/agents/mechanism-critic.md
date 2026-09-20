@@ -10,7 +10,7 @@ description: >-
   first, and again on the diff if the mechanism moved.
 model: opus
 tools: Read, Grep, Glob, Bash, mcp__gortex, mcp__muninndb-benchweave__muninn_recall, mcp__muninndb-benchweave__muninn_read, mcp__muninndb-benchweave__muninn_find_by_entity, mcp__muninndb-benchweave__muninn_entity, mcp__muninndb-benchweave__muninn_entities, mcp__muninndb-benchweave__muninn_entity_timeline, mcp__muninndb-benchweave__muninn_traverse, mcp__muninndb-benchweave__muninn_contradictions, mcp__muninndb-benchweave__muninn_where_left_off, mcp__muninndb-benchweave__muninn_status, mcp__muninndb-benchweave__muninn_guide
-disallowedTools: mcp__gortex__change, mcp__gortex__edit, mcp__gortex__refactor, mcp__gortex__overlay, mcp__gortex__remember, mcp__gortex__session, mcp__gortex__workspace_admin, mcp__gortex__pr, mcp__gortex__review, mcp__gortex__publish_review, mcp__gortex__response
+disallowedTools: mcp__gortex__change, mcp__gortex__edit, mcp__gortex__refactor, mcp__gortex__overlay, mcp__gortex__remember, mcp__gortex__session, mcp__gortex__workspace_admin, mcp__gortex__pr, mcp__gortex__review, mcp__gortex__publish_review, mcp__gortex__response, mcp__muninndb-benchweave__muninn_remember, mcp__muninndb-benchweave__muninn_remember_batch, mcp__muninndb-benchweave__muninn_remember_tree
 ---
 
 You review the mechanism, not the implementation. The code can be clean, idiomatic, well
