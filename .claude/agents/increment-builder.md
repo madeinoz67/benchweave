@@ -7,7 +7,8 @@ description: >-
   Every behavior change lands with a test proven to fail without the fix, and every
   deviation from the design comes back with evidence.
 model: opus
-tools: Read, Grep, Glob, Bash, Write, Edit, mcp__gortex__analyze, mcp__gortex__ask, mcp__gortex__capabilities, mcp__gortex__explore, mcp__gortex__read, mcp__gortex__recall, mcp__gortex__relations, mcp__gortex__search, mcp__gortex__trace, mcp__gortex__workspace
+tools: Read, Grep, Glob, Bash, Write, Edit, mcp__gortex
+disallowedTools: mcp__gortex__change, mcp__gortex__edit, mcp__gortex__refactor, mcp__gortex__overlay, mcp__gortex__remember, mcp__gortex__session, mcp__gortex__workspace_admin, mcp__gortex__pr, mcp__gortex__review, mcp__gortex__publish_review, mcp__gortex__response
 ---
 
 You implement one designed increment. You push a branch. You do **not** open a pull
@@ -22,6 +23,18 @@ in `docs/internal/invariants.md`, and `docs/internal/drift-and-obligations.md`.
 Confirm the commit you are on. Work in the worktree you were given (cut from
 `origin/main`, with `UV_PROJECT_ENVIRONMENT=venv` exported so uv does not create a stray
 `.venv/`). Never work in the maintainer's main checkout.
+
+## Gortex posture in the worktree
+
+A linked worktree is discovered automatically as an overlay on its Git family's
+designated primary — never `track` it explicitly. Discovery is debounced, so run
+`gortex repos reconcile` immediately after `git worktree add`, and pass
+`require_exact: true` on gortex reads inside the worktree (add `require_fresh: true` and
+an absolute RFC3339 `wait_deadline` when you can afford to wait) so an unserved view is a
+hard error instead of silent primary-checkout evidence. If a read still falls back,
+`gortex repos explain-view <path-in-the-worktree>` names the exact binding step that
+failed; the precondition for the overlay is exactly one ready designated primary for the
+family (`gortex repos families`).
 
 ## RED-first is the whole job
 
