@@ -298,7 +298,7 @@ Remaining engineering activities: gateway and plugin implementation, library sel
 
 ## 18. Central registry and shared integrations
 
-The companion [registry contract](../standards/registry/0.1.0/registry-specification.md) defines distribution of reusable class profiles, model descriptors and executable implementations. It provides central discovery, publisher ownership, immutable releases, compatibility metadata, licence/provenance, test evidence, maintenance status, advisories and private mirrors. Source repositories support contributions; signed releases support reproducible adoption.
+The companion [registry contract](../standards/registry/0.1.1/registry-specification.md) defines distribution of reusable class profiles, model descriptors and executable implementations. It provides central discovery, publisher ownership, immutable releases, compatibility metadata, licence/provenance, test evidence, maintenance status, advisories and private mirrors. Source repositories support contributions; signed releases support reproducible adoption.
 
 Registry contract 0.1.0 is a packaging/distribution companion to OTDP 0.2.0 and adapter API 1.1; their runtime interfaces remain unchanged. Publication requires the release manifest and applicable evidence. Local-only plugin authoring remains supported. The central service never grants bench authority.
 

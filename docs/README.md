@@ -10,8 +10,8 @@
 | File | Purpose |
 |---|---|
 | [Architecture](smart-test-gateway-architecture-v1.5.md) | System responsibilities, protection, ownership, recovery and commissioning |
-| [Central registry](../standards/registry/0.1.0/registry-specification.md) | Shared packages, discovery, publication, metadata, trust and offline adoption |
-| [Registry checks](../standards/registry/0.1.0/validation-report.md) | 63 passing metadata-contract checks |
+| [Central registry](../standards/registry/0.1.1/registry-specification.md) | Shared packages, discovery, publication, metadata, trust and offline adoption |
+| [Registry checks](../standards/registry/0.1.1/validation-report.md) | 64 passing metadata-contract checks |
 | [Procedure and bench contracts](../standards/execution/0.1.0/execution-contract.md) | Bounded execution, wiring/resources, safety policy, commissioning and outcomes |
 | [Execution checks](../standards/execution/0.1.0/validation-report.md) | 150 passing document/schema checks; six linked synthetic examples |
 | [REST/MCP contract](../standards/interface/0.1.0/interface-contract.md) | Twenty REST operations, seventeen MCP tools, authentication and recovery |
@@ -64,4 +64,4 @@ From the 0.1.0 baseline forward, superseded versions are retained digest-frozen 
 
 ## Baseline verification
 
-978 document/schema and selected semantic/coverage checks passed: OTDP 495, registry 63, execution 150, interface 254 and closure 16. These checks are not a complete runtime or hardware conformance suite. These counts record the architecture review baseline; they are not results from the repository CI.
+979 document/schema and selected semantic/coverage checks passed: OTDP 495, registry 64, execution 150, interface 254 and closure 16. These checks are not a complete runtime or hardware conformance suite. These counts record the architecture review baseline; they are not results from the repository CI.

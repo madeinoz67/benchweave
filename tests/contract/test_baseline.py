@@ -27,6 +27,7 @@ ADMITTED_DIRS = (
     "otdp/0.1.2",
     "otdp/0.2.0",
     "registry/0.1.0",
+    "registry/0.1.1",
     "execution/0.1.0",
     "interface/0.1.0",
 )

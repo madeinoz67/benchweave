@@ -92,7 +92,7 @@ Normative references:
 - [Architecture](smart-test-gateway-architecture-v1.5.md)
 - [Execution contract](../standards/execution/0.1.0/execution-contract.md)
 - [Interface contract](../standards/interface/0.1.0/interface-contract.md)
-- [Registry contract](../standards/registry/0.1.0/registry-specification.md)
+- [Registry contract](../standards/registry/0.1.1/registry-specification.md)
 
 ## SDK maintenance surface
 

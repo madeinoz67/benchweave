@@ -411,9 +411,9 @@ Choose the correct registry kind:
 
 Avoid a descriptor/implementation dependency cycle. The normal shape is a profile consumed by an implementation bundling its descriptors; a separate downstream descriptor may depend on that implementation. A descriptor-free generic library is an ordinary language dependency, not a new registry kind.
 
-Supply the [release manifest](../standards/registry/0.1.0/release-manifest.schema.json): registry/package/version identity, publisher and maintainers, support links, licence and bundled licence file, immutable source revision, compatibility/runtime matrix, device targets, exact dependencies, permissions, file inventory and hashes, test evidence, changelog and migration notes. Executable releases also need an SBOM, build provenance and exact dependency lock. The manifest sits outside its payload archive to avoid a circular hash.
+Supply the [release manifest](../standards/registry/0.1.1/release-manifest.schema.json): registry/package/version identity, publisher and maintainers, support links, licence and bundled licence file, immutable source revision, compatibility/runtime matrix, device targets, exact dependencies, permissions, file inventory and hashes, test evidence, changelog and migration notes. Executable releases also need an SBOM, build provenance and exact dependency lock. The manifest sits outside its payload archive to avoid a circular hash.
 
-Use a new package ID for a fork and preserve lineage. Do not publish private endpoints, credentials, instance serial selection, bench safety policy or private captures. Do not assume rights to redistribute manuals or SDKs. Required metadata and review/evidence states are defined in the [registry specification](../standards/registry/0.1.0/registry-specification.md).
+Use a new package ID for a fork and preserve lineage. Do not publish private endpoints, credentials, instance serial selection, bench safety policy or private captures. Do not assume rights to redistribute manuals or SDKs. Required metadata and review/evidence states are defined in the [registry specification](../standards/registry/0.1.1/registry-specification.md).
 
 ### Registry operator
 
