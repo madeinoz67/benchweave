@@ -185,7 +185,11 @@ def test_documents_ignores_markdown_links_inside_fenced_code_blocks(
         # The devices rows mutate the ACTIVE version's files (path derived
         # below via the manifest, #102 D2) — a hardcoded prior version would
         # mutate a retained tree nothing reads, record zero failures, and
-        # break this assertion hint-free. The second row's byte pattern must
+        # break this assertion hint-free on the CI lane (ubuntu). macOS
+        # local runs cannot re-prove that: the pinned check's
+        # is_relative_to(OUT) fails on /var-symlinked TMPDIR, so any tmp
+        # copytree already fails all 24 pinned checks with zero mutations —
+        # see the routed follow-up. The second row's byte pattern must
         # exist in the active derivation-vectors.json; a corpus edit that
         # removes it moves this pattern with it (ordinary corpus obligation).
         (

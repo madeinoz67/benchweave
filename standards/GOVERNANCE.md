@@ -70,9 +70,10 @@ DERIVE from `standards-manifest.json`'s active otdp entry (#102 D2: the
 script reads the manifest and refuses loudly without it; the pin test
 derives its report path and its devices mutation fixtures the same way), so
 a bump makes no hand-moves on those. The `docs/README.md` row linking the
-report remains a conventional move, caught mechanically by the pin's
-exactly-once link assert. With the version moved, the pin fails on the
-copied stale report until the regen runs.
+report remains a conventional move; a FORGOTTEN row is caught mechanically
+by the pin's exactly-once link assert (a stale row left beside the new one
+is not — copy-never-move keeps the old target resolving). With the version
+moved, the pin fails on the copied stale report until the regen runs.
 
 ## Retention
 
