@@ -79,6 +79,8 @@ injected clock, or a direct call into the structure under test.
 
 ## Verify like the gate will
 
+When gate output looks wrong (a count that cannot be true, a summary line that vanishes, an errno naming the wrong thing), recall the memory vault with the symptom before diagnosing from scratch — recurring tool traps are usually already in there. Without a Muninn tool, name the suspicion in your report instead of self-diagnosing.
+
 From the repo root, with `UV_PROJECT_ENVIRONMENT=venv`:
 
 ```
