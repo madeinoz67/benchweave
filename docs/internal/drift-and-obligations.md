@@ -98,6 +98,16 @@ and remain the reviewer's job.
     (invariants CON-11). Superseded versions' reports are frozen historical evidence and
     are not regenerated.
 
+14. **An agent tool-grant change** (`.claude/agents/*.md` `tools:`/`disallowedTools:`
+    frontmatter) → re-extract every sibling agent's frontmatter and diff the effective
+    grant sets, so any exception is visible against the standing posture; document the
+    exception in the agent's own file (prose, not frontmatter alone — the frontmatter
+    says what is granted, the prose says what enforces it); name the reference set
+    (issue #74's deliberate exclusions) in the commit message; keep the frontmatter
+    serialization consistent across the seven files (comma-separated scalar lists, not
+    JSON arrays). Second surface arrival here in as many days (#110, then #112) — the
+    row lands per obligation 12's own principle.
+
 ## CI map
 
 | Job | What it catches |
