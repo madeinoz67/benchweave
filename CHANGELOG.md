@@ -396,6 +396,7 @@ All notable changes to this project will be documented in this file.
 - Advance packages/sdk to the registry 0.1.1 vendoring
 - Regenerate the lattice single-cause after the #87 rebase
 - Advance packages/sdk to the /src anchor + .hgignore widen
+- Advance packages/sdk to the agent-native scaffold (0.0.3, fold wave 1)
 
 ### Refactoring
 
@@ -465,6 +466,7 @@ All notable changes to this project will be documented in this file.
 - Pin the OTDP validation report to a live devices-suite render
 - RED for the skill payload-file role (issue #71 slice 1)
 - Pin the sdist to the declared surface — PKG-2's detector
+- RED for the agent-native seeded tree (issue #71 slice 2)
 
 ### Build
 
