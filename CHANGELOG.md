@@ -115,6 +115,10 @@ All notable changes to this project will be documented in this file.
 - The measurement contract pin hashes the active corpus (F9)
 - Report DISPATCHED on post-dispatch device-state refusals
 - Rebuild sim fixture lattice for the dispatch-posture change
+- Split argument typing from device evaluation (R1/R2, #66 absorbed)
+- Issued-map fields must be declared action inputs (F1, #63)
+- Fold R1-R4 — record corrections, lock pin test, census obligation (#63)
+- Typing precedes the trip latch in _write (RF1); absence pin + poc walk flake kill (#63)
 
 ### Documentation
 
@@ -204,6 +208,9 @@ All notable changes to this project will be documented in this file.
 - Commit the issue-#64 design record on the branch
 - Commit the issue-#62 design record on the branch
 - State the orphan-sweep size residual in the 0.2.0 README
+- Issue #63 descriptor dialect reconciliation design
+- Issue #63 design update — dps150 absorbed (slice 5), 28-cell census, registry-decoupling correction
+- Record the dps150 lock otdp_version stale-field correction in item 22
 
 ### Features
 
@@ -300,6 +307,10 @@ All notable changes to this project will be documented in this file.
 - OTDP 0.1.2 — derived variables in the measurement model
 - OTDP 0.2.0 — configure-carried averaging + class sample_count bound
 - Plugin-ui 0.2.0 — lane-1 descriptor envelopes + unreferenced-preset refusal
+- Descriptor admission validates and projects full-form OTDP (#63)
+- The tree converts to full-form OTDP — one dialect (#63)
+- The slim descriptor dialect dies (#63)
+- Re-version to OTDP 0.2.0 — check-clean, absorbed (#83 into #63)
 
 ### Hardware Evidence
 
@@ -365,6 +376,7 @@ All notable changes to this project will be documented in this file.
 - Muninndb-benchweave read/query grants for designer, adversary, critic
 - Advance packages/sdk to the OTDP 0.2.0 vendoring
 - Advance packages/sdk to the plugin-ui 0.2.0 vendoring
+- Drop Finder-style duplicate artifacts swept in by add -A
 
 ### Refactoring
 
@@ -425,6 +437,7 @@ All notable changes to this project will be documented in this file.
 - Complete the 0.2.0 literal sweep in two missed docstring paths
 - Pin the averaging envelope endpoints 1 and 64 (refute R1)
 - RED controls for plugin-ui 0.2.0 lane-1 envelopes + orphan refusal
+- Pin the descriptor schema's otdp const to the manifest version (F2, #63)
 
 ### Build
 
