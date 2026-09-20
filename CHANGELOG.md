@@ -225,6 +225,8 @@ All notable changes to this project will be documented in this file.
 - Record deferral citations per amended rule 3 + G4 sweep-gap note
 - Adopt retrospective row 4 — run-close junk sweep as step 8
 - Single issue stream — all issues file on the gateway tracker
+- Re-anchor the edit grant on the freshness gate (review R1+R2)
+- Row 14 — agent tool-grant surface (review F3, folded)
 
 ### Features
 
@@ -400,6 +402,7 @@ All notable changes to this project will be documented in this file.
 - Advance packages/sdk to the agent-native scaffold (0.0.3, fold wave 1)
 - Migrate gortex grants to official server-pattern + disallowedTools shape
 - Deny muninndb write tools on the muninn-carrying agents
+- Grant mcp__gortex__edit to increment-builder, reconcile-gated
 
 ### Refactoring
 
