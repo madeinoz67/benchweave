@@ -104,7 +104,9 @@ flag that it needs the refute pass. The rules below are how you carry the rubric
    finding; do not limit these checks to diffs that happen to touch `docs/`.
 
 4. **Verify claims, don't trust the PR description.** If it says "all green" / "no behavior
-   change" / "backwards compatible," confirm it yourself.
+   change" / "backwards compatible," confirm it yourself. The same discipline covers odd
+   tool output: recall the memory vault with the symptom before diagnosing it from scratch
+   (recurring traps live there); without a Muninn tool, flag the suspicion in the review.
 
 5. **Block any secret in committed content.** This repo wires a memory vault and other
    services; scan the diff — source, tests, comments, fixtures, commit message, and
