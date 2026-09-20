@@ -158,6 +158,30 @@ def test_validation_is_read_only(tmp_path: Path) -> None:
     assert snapshot(standards) == before_standards, "Validation changed the corpus"
 
 
+def test_pinned_checks_pass_through_symlinked_standards_alias(tmp_path: Path) -> None:
+    """The pinned check must survive an unresolved STANDARDS root (#119).
+
+    On macOS, raw TMPDIR (``/var/folders/…``) sits under the ``/var`` →
+    ``/private/var`` symlink: with an unresolved ``STANDARDS`` root the pinned
+    check compared ``.resolve()``d contract paths against an unresolved
+    ``OUT`` and every pinned check failed vacuously on a clean tree. (pytest's
+    own ``tmp_path`` is pre-resolved, which is why the pytest arms never saw
+    this — anything anchored at raw TMPDIR did.) ``OUT`` is now resolved once
+    at derivation, so the comparison is resolved-to-resolved; a symlinked
+    alias of the real tree is the portable way to demand that on any platform.
+    """
+    docs = tmp_path / "docs"
+    standards = tmp_path / "standards"
+    shutil.copytree(ROOT / "docs", docs)
+    shutil.copytree(ROOT / "standards", standards)
+    alias = tmp_path / "standards-alias"
+    alias.symlink_to(standards, target_is_directory=True)
+    failures = [name for name, passed in run_checks("devices", docs, alias) if not passed]
+    assert failures == [], f"symlinked clean tree must run clean: {len(failures)} failed:\n" + (
+        "\n".join(failures)
+    )
+
+
 def test_documents_ignores_markdown_links_inside_fenced_code_blocks(
     tmp_path: Path,
 ) -> None:
@@ -185,13 +209,14 @@ def test_documents_ignores_markdown_links_inside_fenced_code_blocks(
         # The devices rows mutate the ACTIVE version's files (path derived
         # below via the manifest, #102 D2) — a hardcoded prior version would
         # mutate a retained tree nothing reads, record zero failures, and
-        # break this assertion hint-free on the CI lane (ubuntu). macOS
-        # local runs cannot re-prove that: the pinned check's
-        # is_relative_to(OUT) fails on /var-symlinked TMPDIR, so any tmp
-        # copytree already fails all 24 pinned checks with zero mutations —
-        # see the routed follow-up. The second row's byte pattern must
-        # exist in the active derivation-vectors.json; a corpus edit that
-        # removes it moves this pattern with it (ordinary corpus obligation).
+        # break this assertion hint-free on the CI lane (ubuntu). Vacuous
+        # pinned failures on tmp trees were a raw-TMPDIR (/var-anchored)
+        # harness wound, fixed by resolving OUT once (#119) and pinned by
+        # the symlinked-alias test; pytest's tmp_path is pre-resolved, so
+        # these arms always saw real mutation failures. The second row's
+        # byte pattern must exist in the active derivation-vectors.json; a
+        # corpus edit that removes it moves this pattern with it (ordinary
+        # corpus obligation).
         (
             "devices",
             _active_report_path().rsplit("/", 1)[0]
