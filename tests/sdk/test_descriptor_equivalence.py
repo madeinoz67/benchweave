@@ -96,6 +96,15 @@ MUTATIONS: dict[str, tuple[str, Mutation]] = {
         "both-refuse",
         lambda d: d.__setitem__("actions", [{"action_id": "otdp.dc_psu.configure/1.0.0"}]),
     ),
+    # S01 layering (measured 2026-09-20, issue #85): duplicate names are
+    # the mirror's live branch — the 0.2.0 schema does not enforce
+    # parameter-name uniqueness, so this shape passes the schema and is
+    # refused by the gateway's S01 mirror proper. The caps/ops-set half of
+    # S01 is schema-shadowed on 0.2.0: the schema's `not` conditional at
+    # $.operations refuses an operation policy whose capability is absent
+    # BEFORE the mirror runs, so that shape census-pins as a schema
+    # refusal, never as an S01 mirror refusal
+    # (test_s01_layering_on_020_documents pins both directions).
     "duplicate-parameter-name": (
         "both-refuse",
         lambda d: d["parameters"].append(copy.deepcopy(d["parameters"][0])),
@@ -265,6 +274,34 @@ def test_gateway_admission_matches_sdk_check(
             f"{corpus}/{mutation}: refusal is not the sanctioned stricter layer: "
             f"{gateway_message}"
         )
+
+
+def test_s01_layering_on_020_documents(tmp_path: Path) -> None:
+    """Which gateway layer each S01 half fires on (issue #85 census note).
+
+    The caps/ops-set half of the S01 mirror is schema-shadowed on 0.2.0:
+    the vendored schema's ``not`` conditional at ``$.operations`` refuses
+    an operation policy whose capability is absent before the mirror runs.
+    Duplicate parameter names pass the schema (it does not enforce name
+    uniqueness — the census cell above) and are refused by the S01 mirror
+    proper. A test that means to exercise the mirror itself mutates a
+    duplicate name, never a caps/ops removal.
+    """
+    base = json.loads(CORPUS["sim_psu"].read_text())
+
+    caps = copy.deepcopy(base)
+    caps["capabilities"].remove("invoke")
+    admitted, message = _admit(tmp_path, "psu", caps)
+    assert not admitted and message.startswith("schema: descriptor[psu] $"), (
+        f"caps/ops removal must be refused by the schema layer: {message}"
+    )
+
+    duplicate = copy.deepcopy(base)
+    duplicate["parameters"].append(copy.deepcopy(duplicate["parameters"][0]))
+    admitted, message = _admit(tmp_path, "psu", duplicate)
+    assert not admitted and "S01: parameter names must be unique" in message, (
+        f"duplicate names must reach the S01 mirror: {message}"
+    )
 
 
 def test_clean_cells_project_the_execution_view(tmp_path: Path) -> None:

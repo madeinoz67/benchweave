@@ -112,6 +112,14 @@ rather than rewriting the history — that is how this file earns trust.
   the vendored standards manifest, never a hardcoded gateway constant; the schema's
   `otdp_version` const enforces corpus alignment). Exact-byte decode and digest pins
   unchanged; see CON-10 for the projection.
+  Amendment (2026-09-20, issue #85): startup/bootstrap joins execution and recovery as the
+  third admission caller — `bootstrap.admit_fixture_lattice` (the recovery path's
+  resolution+admission body, extracted) runs before any store write, so a lattice that
+  fails admission refuses gateway startup (`startup_admission_rejected:` carries the typed
+  prefixes; uvicorn fails the lifespan) leaving the store untouched — no bench row, no
+  device row, no content row, no generation bump. Device rows iterate the bench's pinned
+  set through the CON-10 projection (descriptor-id keying preserved); the descriptor
+  family stays cache-only in the content store and meets the gate when a binding pins it.
 - **[CON-2]** The digest pin lattice between the execution-contract documents is verified
   at admission; the fixture lattice moves in lockstep (`fixtures/registry/` ↔
   `scripts/registry/build_fixtures.py` ↔ `catalogue.json` ↔ the digest-pinning tests),

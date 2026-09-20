@@ -143,6 +143,22 @@ def _decode(
     return document.content, digest
 
 
+def decode_resolution_document(path: Path, logical: str) -> dict[str, Any]:
+    """Exact-byte decode of one document the resolution step reads (typed).
+
+    ``bootstrap.admit_fixture_lattice`` parses the binding and the bench
+    before ``admit_documents`` decodes them; those resolution parses run
+    through the same exact-byte decoder gates (duplicate keys, non-finite
+    numbers, size) so a malformed document refuses with the typed
+    ``schema:`` prefix instead of a raw ``JSONDecodeError`` traceback.
+    Both documents are decoded again — with their schemas — inside
+    ``admit_documents``; this wrapper owns the resolution step's refusal
+    channel only.
+    """
+    document, _digest = _decode(path, logical)
+    return document
+
+
 def _require_string(doc: dict[str, Any], field: str, logical: str) -> None:
     value = doc.get(field)
     if not isinstance(value, str) or not value:
