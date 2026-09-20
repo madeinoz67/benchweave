@@ -119,6 +119,8 @@ All notable changes to this project will be documented in this file.
 - Issued-map fields must be declared action inputs (F1, #63)
 - Fold R1-R4 — record corrections, lock pin test, census obligation (#63)
 - Typing precedes the trip latch in _write (RF1); absence pin + poc walk flake kill (#63)
+- Fold refute F1 + NIT-1 — convention-vs-mechanism disclosure, reorder tamper mode
+- Sweep miss — gateway lock emitter and test pins for 0.1.1
 
 ### Documentation
 
@@ -212,6 +214,12 @@ All notable changes to this project will be documented in this file.
 - Issue #63 design update — dps150 absorbed (slice 5), 28-cell census, registry-decoupling correction
 - Record the dps150 lock otdp_version stale-field correction in item 22
 - Amend deferral rule 3 — table rows are first-class merge citations (#98)
+- Leg-(a) comment classifies by failure kind, not evaluation order (refute NIT)
+- Issue #79 machine-written, CI-pinned OTDP validation report
+- Issue #71 skill-role slice 1 — pre-committed acceptance rules
+- Align live baseline prose to 0.1.1; amend the sweep grep class
+- Record deferral citations per amended rule 3 + G4 sweep-gap note
+- Adopt retrospective row 4 — run-close junk sweep as step 8
 
 ### Features
 
@@ -312,6 +320,8 @@ All notable changes to this project will be documented in this file.
 - The tree converts to full-form OTDP — one dialect (#63)
 - The slim descriptor dialect dies (#63)
 - Re-version to OTDP 0.2.0 — check-clean, absorbed (#83 into #63)
+- Machine-written, byte-pinned OTDP validation report
+- Registry 0.1.1 — admit the skill payload-file role (issue #71 slice 1)
 
 ### Hardware Evidence
 
@@ -378,6 +388,9 @@ All notable changes to this project will be documented in this file.
 - Advance packages/sdk to the OTDP 0.2.0 vendoring
 - Advance packages/sdk to the plugin-ui 0.2.0 vendoring
 - Drop Finder-style duplicate artifacts swept in by add -A
+- Advance packages/sdk to the registry 0.1.1 vendoring
+- Regenerate the lattice single-cause after the #87 rebase
+- Advance packages/sdk to the /src anchor + .hgignore widen
 
 ### Refactoring
 
@@ -394,6 +407,7 @@ All notable changes to this project will be documented in this file.
 ### Style
 
 - Extract the execute-call fixture constant to clear E501
+- Ruff/mypy cleanups in the registry-contract instrument
 
 ### Testing
 
@@ -439,6 +453,10 @@ All notable changes to this project will be documented in this file.
 - Pin the averaging envelope endpoints 1 and 64 (refute R1)
 - RED controls for plugin-ui 0.2.0 lane-1 envelopes + orphan refusal
 - Pin the descriptor schema's otdp const to the manifest version (F2, #63)
+- Pin executor dispatch-state composition (#73)
+- Pin the OTDP validation report to a live devices-suite render
+- RED for the skill payload-file role (issue #71 slice 1)
+- Pin the sdist to the declared surface — PKG-2's detector
 
 ### Build
 

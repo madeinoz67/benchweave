@@ -7,7 +7,7 @@ from jsonschema import Draft202012Validator, FormatChecker
 
 DOCS = globals().get("DOCS", Path(__file__).resolve().parents[2] / "docs")
 STANDARDS = globals().get("STANDARDS", Path(__file__).resolve().parents[2] / "standards")
-CONTRACT_DIR = STANDARDS / "registry/0.1.0"
+CONTRACT_DIR = STANDARDS / "registry/0.1.1"
 results = []
 
 
@@ -55,6 +55,11 @@ for path in ("../escape", "/absolute", "a/../../escape", "a\\escape"):
     x = copy.deepcopy(m)
     x["payload"]["files"][0]["path"] = path
     check("reject path " + path, not v.is_valid(x))
+x = copy.deepcopy(m)
+# The example carries a skill-role file since 0.1.1; mutating its role to a
+# near-miss must fail — the role enum stays closed, one admitted member.
+next(f for f in x["payload"]["files"] if f["role"] == "skill")["role"] = "skillx"
+check("reject payload role skillx", not v.is_valid(x))
 x = copy.deepcopy(m)
 x["device_targets"][0]["firmware"]["versions"] = []
 check("listed firmware cannot be empty", not v.is_valid(x))

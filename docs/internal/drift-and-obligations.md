@@ -88,6 +88,16 @@ and remain the reviewer's job.
     when that stage lands; hardware-evidence docs get theirs at WP10+ commissioning. Add
     the row at the moment the surface arrives, not after the first drift bug.
 
+13. **The active OTDP validation report** → a change to the `otdp/0.2.0` corpus or to
+    `check_devices.py`'s checks reruns
+    `uv run python scripts/architecture/check_devices.py --write-report` in the same
+    change; the `docs/README.md` row linking the report moves with the count. The pin
+    test (`test_validation_report_matches_live_run` in `tests/contracts/test_architecture.py`)
+    is the mechanical half — it byte-compares the committed report to a fresh sorted
+    render of a live devices-suite run and ties the README count to the headline
+    (invariants CON-11). Superseded versions' reports are frozen historical evidence and
+    are not regenerated.
+
 ## CI map
 
 | Job | What it catches |

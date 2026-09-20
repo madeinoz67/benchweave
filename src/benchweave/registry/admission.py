@@ -339,7 +339,7 @@ def _lock_document(closure: ResolvedClosure, approval: Approval) -> bytes:
     roots = _root_releases(closure)
     packages = sorted(closure.releases, key=_release_key)
     lock = {
-        "lock_version": "0.1.0",
+        "lock_version": "0.1.1",
         "created_at": roots[0].status["updated_at"],
         "roots": [_release_row(r) for r in roots],
         "packages": [_release_row(r) for r in packages],

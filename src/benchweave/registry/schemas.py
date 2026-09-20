@@ -19,7 +19,7 @@ from benchweave.vendoring import contract_family
 #: repo-relative in a dev checkout — :mod:`benchweave.vendoring`). The
 #: schema bytes are pinned in ``contracts/manifest.json`` and verified by
 #: ``tests/contract/test_baseline.py``.
-_CONTRACTS = contract_family("registry/0.1.0")
+_CONTRACTS = contract_family("registry/0.1.1")
 
 
 class RegistryRejected(ValueError):

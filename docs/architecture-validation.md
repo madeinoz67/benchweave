@@ -1,7 +1,7 @@
 # Architecture validation
 
-Architecture contracts are executable review surfaces. The **Architecture
-contracts** job in GitHub CI validates them on every push and pull request,
+Architecture contracts are executable review surfaces. The **gates** job in
+GitHub CI validates them on every push and pull request via `pytest -q`,
 without path filters. Schema violations, contract drift and failed rejection
 cases fail the job. Configure this job as a required status check when enabling
 GitHub branch protection; adding a workflow alone does not enforce merge rules.
@@ -38,8 +38,12 @@ The pytest entry point and validation regression tests live in
 
 The first five retain the original 978 review checks, plus three checks against
 stored interface/composition fixtures. Planning and document-integrity checks
-extend that baseline. Current counts and failures are printed by pytest; counts
-in existing validation reports remain historical review evidence.
+extend that baseline. Current counts and failures are printed by pytest; the
+active-version OTDP report (`standards/otdp/0.2.0/validation-report.md`) is
+machine-written by its validator and byte-pinned to a live devices-suite run by
+`tests/contracts/test_architecture.py` (a corpus or check change reruns
+`--write-report` in the same change). Superseded versions' and the other
+suites' reports remain historical review evidence.
 
 ## Validation safeguards
 
@@ -62,4 +66,8 @@ anchors or availability of external websites.
 When changing a contract, add or update its rejection cases and linked fixtures
 in the same change. Update pinned fixture hashes only after reviewing the
 underlying contract change. Keep validators read-only; CI must report drift
-rather than regenerate expected files to make the check pass.
+rather than regenerate expected files to make the check pass. The one
+author-side exception is the active OTDP validation report:
+`uv run python scripts/architecture/check_devices.py --write-report` is its
+explicit regeneration path (it refuses to write when any check fails), and the
+suite byte-pins the committed file to a fresh render.

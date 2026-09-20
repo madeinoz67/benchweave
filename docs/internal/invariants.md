@@ -227,6 +227,25 @@ rather than rewriting the history — that is how this file earns trust.
   and sim_scope admitting with zero byte changes was the proof the mechanism,
   not a rewrite, closed the fork.*
 
+- **[CON-11]** The active OTDP validation report
+  (`standards/otdp/0.2.0/validation-report.md`) is machine-written by its own
+  validator (`render_report` in `scripts/architecture/check_devices.py`; the
+  author-side path `--write-report` refuses to write when any check fails and
+  the pytest harness cannot reach it — `runpy.run_path` executes the module
+  body, never the `__main__` block) and byte-pinned to a live devices-suite
+  run by `tests/contracts/test_architecture.py::test_validation_report_matches_live_run`
+  (sorted rendering, so the pinned bytes are a function of the check set only,
+  not platform glob order; two tamper cases prove the comparison detects a
+  flipped line and a bumped headline, and the `docs/README.md` row is tied to
+  the headline count). Superseded versions' reports are frozen historical
+  evidence, never regenerated. *A hand-transcribed count beside the corpus it
+  claims to verify is an assertion; before the pin, in-place edits to the
+  report landed gate-free (tier-2 prose is not digest-pinned by design —
+  exactly the hole for a report that carries a measured count). The pin does
+  not catch in-prose numbers ("Twelve class profiles", "fifty … contracts")
+  drifting while the check lines stay right — that residual is deferred and
+  review-guarded.*
+
 ## Registry & plugin invariants
 
 - **[REG-1]** A plugin is imported with no side effects, then explicitly opened with a

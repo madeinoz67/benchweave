@@ -23,7 +23,7 @@ def _digest(raw: bytes) -> str:
 
 def _valid_manifest() -> dict[str, Any]:
     return {
-        "manifest_version": "0.1.0",
+        "manifest_version": "0.1.1",
         "registry_id": "origin-main",
         "package_id": "benchweave/dc-psu-profile",
         "version": "1.0.0",
@@ -81,6 +81,24 @@ def test_manifest_valid_roundtrip() -> None:
     raw = _dump(_valid_manifest())
     loaded = load_manifest_document(raw, _digest(raw), max_bytes=1_000_000)
     assert loaded.content["package_id"] == "benchweave/dc-psu-profile"
+
+
+def test_manifest_skill_role_accepted() -> None:
+    """Issue #71: the payload-file role enum admits agent-facing skill
+    documents (the SKILL.md convention). Kind-agnostic by design — pinned
+    here on a profile manifest."""
+    doc = _valid_manifest()
+    doc["payload"]["files"].append(
+        {"path": "skills/drive-device/SKILL.md", "role": "skill", "bytes": 1, "sha256": "c" * 64}
+    )
+    raw = _dump(doc)
+    loaded = load_manifest_document(raw, _digest(raw), max_bytes=1_000_000)
+    skill_files = [
+        f for f in loaded.content["payload"]["files"] if f["path"] == "skills/drive-device/SKILL.md"
+    ]
+    assert skill_files == [
+        {"path": "skills/drive-device/SKILL.md", "role": "skill", "bytes": 1, "sha256": "c" * 64}
+    ]
 
 
 def test_manifest_unknown_field_rejected() -> None:
@@ -143,7 +161,7 @@ def test_manifest_kind_conditional_enforced() -> None:
 
 def test_status_and_lock_loaders() -> None:
     status = {
-        "status_version": "0.1.0",
+        "status_version": "0.1.1",
         "release": {
             "registry_id": "origin-main",
             "package_id": "benchweave/dc-psu-profile",
@@ -164,7 +182,7 @@ def test_status_and_lock_loaders() -> None:
     assert load_status_document(raw, _digest(raw), max_bytes=100_000).content["sequence"] == 1
 
     lock = {
-        "lock_version": "0.1.0",
+        "lock_version": "0.1.1",
         "created_at": "2026-09-11T00:00:00Z",
         "roots": [
             {
@@ -191,7 +209,7 @@ def test_status_and_lock_loaders() -> None:
     }
     raw_lock = _dump(lock)
     loaded_lock = load_lock_document(raw_lock, _digest(raw_lock), max_bytes=100_000)
-    assert loaded_lock.content["lock_version"] == "0.1.0"
+    assert loaded_lock.content["lock_version"] == "0.1.1"
 
 
 def test_digest_mismatch_still_rejected_by_content_layer() -> None:
