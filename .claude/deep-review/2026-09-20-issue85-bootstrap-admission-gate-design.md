@@ -88,8 +88,11 @@ strict caller.
 
 - **Admission first, writes second.** `docs = admit_fixture_lattice(fixtures_dir)` is the
   first statement; no `bump_generation`, no `put_bench`, no content row exists before
-  admission succeeds. Refusal leaves the store untouched — all-or-nothing startup admission
-  (this also closes the partial-write hazard from §1).
+  admission succeeds. Refusal leaves the store untouched — all-or-nothing for admission
+  refusals: they precede every write. (Fold F1, 2026-09-20: this does NOT close the whole
+  of §1's partial-write hazard — a write-phase failure *after* admission, e.g. a truncated
+  unpinned family member crashing the cache loop's parse mid-write, remains possible;
+  pre-existing, now D6 below. Refute reproduced it: benches 1, devices 2, generations 1.)
 - Bench/commissioning handling, generation logic, and the `put_bench` line stay verbatim
   (the read bytes are still needed for the content store).
 - **Device rows now iterate `docs.bench["devices"]`** (the pinned set), not the glob:
@@ -248,6 +251,15 @@ pre-fix tree; commit 4 = the wiring (GREEN); commit 5 = docs sweep.
 - **D5 — unpinned procedure/descriptor family members** stored cache-only, validated when
   a binding pins them (run admission). Home: this record §7; the run-time gate is the
   backstop.
+- **D6 — write-phase failure after admission** (added by fold F1, 2026-09-20, from refute):
+  an unpinned family member that is not valid exact-byte JSON (truncated, duplicate-keyed
+  in a way the cache loop's bare `json.loads` rejects) crashes bootstrap's cache loops
+  AFTER admission has passed and rows are already written — refute reproduced benches 1,
+  devices 2, generations 1 on such a lattice. Pre-existing shape (the loops predate #85);
+  the admission gate cannot catch it because the document is unpinned by definition.
+  Home: this record §7. Take it up when the first consumer decodes unpinned family
+  members, or alongside the D5 run-gate work (exact-byte-decode the cache-loop parses, or
+  defer their writes).
 
 ## 8. Invariant impacts
 

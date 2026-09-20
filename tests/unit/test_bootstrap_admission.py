@@ -245,6 +245,47 @@ def test_recovery_contains_a_malformed_bench_lattice_unchanged(tmp_path: Path) -
     assert _recovery_documents(lattice) is None
 
 
+def test_duplicate_key_bench_document_refuses_startup_typed(tmp_path: Path) -> None:
+    """Design §2 row 2, decoder gate: duplicate keys refuse typed.
+
+    A bare ``json.loads`` silently keeps the last duplicate; the exact-byte
+    decoder refuses, and the refusal carries the decoder's reason inside
+    the typed prefix.
+    """
+    lattice = _lattice_copy(tmp_path, "dup-key-bench")
+    (lattice / "bench.json").write_text(
+        '{"id": "sim-bench", "id": "sim-bench-clone", "devices": []}'
+    )
+    store = Store.open(tmp_path / "dup-key-bench.db")
+    content = ContentStore(store)
+    try:
+        with pytest.raises(AdmissionRejected, match=r"^schema: bench \(duplicate_key\)"):
+            admit_startup_bench(store, content, lattice, now=NOW)
+        _assert_store_untouched(store, content, lattice)
+    finally:
+        store.close()
+
+
+def test_nonfinite_number_binding_document_refuses_startup_typed(tmp_path: Path) -> None:
+    """Design §2 row 2, decoder gate: non-finite numbers refuse typed.
+
+    Bare ``NaN``/``Infinity`` tokens — a bare ``json.loads`` accepts them
+    as floats; the exact-byte decoder's parse-constant gate refuses.
+    """
+    lattice = _lattice_copy(tmp_path, "nonfinite-binding")
+    (lattice / "run-binding.json").write_text(
+        '{"procedure": {"sha256": NaN}, "bench": {"sha256": Infinity}}'
+    )
+    store = Store.open(tmp_path / "nonfinite-binding.db")
+    content = ContentStore(store)
+    try:
+        with pytest.raises(AdmissionRejected, match=r"^schema: binding \(nonfinite_number\)"):
+            admit_startup_bench(store, content, lattice, now=NOW)
+        _assert_store_untouched(store, content, lattice)
+    finally:
+        store.close()
+
+
 def test_unpinned_extra_descriptor_gains_no_device_row(tmp_path: Path) -> None:
     """Surface 3 of the design's laundering list: rows follow the pins.
 

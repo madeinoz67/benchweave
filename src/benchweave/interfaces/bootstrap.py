@@ -114,9 +114,11 @@ def admit_startup_bench(
 ) -> dict[str, Any]:
     # Admission first, writes second (issue #85): the lattice passes the
     # same gate execution and recovery pass before the store holds a bench
-    # row, a device row, a content row or a bumped generation. A refusal is
-    # all-or-nothing — this also closes the partial-write hazard of a
-    # mid-loop crash after bump_generation/put_bench.
+    # row, a device row, a content row or a bumped generation. Every
+    # ADMISSION refusal precedes all writes (all-or-nothing for refusals);
+    # a write-phase failure after admission — e.g. a truncated unpinned
+    # family member crashing the cache loop's parse mid-write — is a
+    # pre-existing residual, not closed here (design record D6).
     try:
         docs = admit_fixture_lattice(fixtures_dir)
     except Exception as error:

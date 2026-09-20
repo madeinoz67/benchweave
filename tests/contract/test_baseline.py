@@ -196,8 +196,14 @@ def _derived_corpus_dirs(
     requires every bump to cite. A source naming a ``standards/`` path with
     no matching row still contributes its dir (the chain gap then fires in
     the derived-actual direction). What this derivation does not catch:
-    file-vs-manifest drift inside a dir — the manifest-listing and hash
-    tests own that; this owns dir-level justification only.
+    file-vs-manifest drift inside a dir (the manifest-listing and hash
+    tests own that; this owns dir-level justification only); a cyclic
+    source chain (a→b→a self-justifies both dirs — the visited set
+    terminates the traversal, but termination is not origination, and no
+    ``docs/`` root is required); and traversal-shaped source tokens
+    (``standards/a/0.1.0/../../b/0.1.0/x`` contributes its literal first
+    two segments and the chain breaks cleanly at the unmatched row —
+    paths are split, never opened, so there is no escape and no crash).
     """
     active: set[str] = set()
     for entry in standards_manifest["standards"]:
