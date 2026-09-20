@@ -2,7 +2,7 @@
   "identity": {
     "architecture": "STG 1.5",
     "otdp": "0.2.0",
-    "registry": "0.1.0",
+    "registry": "0.1.1",
     "execution": "0.1.0",
     "interface": "0.1.0",
     "mcp": "2026-07-28",
@@ -689,6 +689,36 @@
       "path": "registry/0.1.0/release-status.schema.json",
       "source": "docs/registry-v1.0.0/release-status.schema.json",
       "sha256": "fb95ef0827892ac0ee080e28735f2185903a660277dc211780ea83c307f94112"
+    },
+    {
+      "path": "registry/0.1.1/examples/package-lock.json",
+      "source": "standards/registry/0.1.0/examples/package-lock.json",
+      "sha256": "18b47c8f62df3c33dd47713c1395ae98c272e12a958edab7b04205ced8758b10"
+    },
+    {
+      "path": "registry/0.1.1/examples/release-manifest.json",
+      "source": "standards/registry/0.1.0/examples/release-manifest.json",
+      "sha256": "ab97111d4ce91cce86609478be810d41e40479b6f328e1edc11a56736416e858"
+    },
+    {
+      "path": "registry/0.1.1/examples/release-status.json",
+      "source": "standards/registry/0.1.0/examples/release-status.json",
+      "sha256": "6b873b57e99f6ec8896d1ef97dc7dda658d808e350ac7be588c9f61dd0f72daa"
+    },
+    {
+      "path": "registry/0.1.1/package-lock.schema.json",
+      "source": "standards/registry/0.1.0/package-lock.schema.json",
+      "sha256": "ef4caf3761fd05538a5554bda9ebc138f6e019c571c86fc4d977bd57a5d12d42"
+    },
+    {
+      "path": "registry/0.1.1/release-manifest.schema.json",
+      "source": "standards/registry/0.1.0/release-manifest.schema.json",
+      "sha256": "67be145d12d337aa80e5c227a11d67a741c36111b750af3b8b2106d7c6770fff"
+    },
+    {
+      "path": "registry/0.1.1/release-status.schema.json",
+      "source": "standards/registry/0.1.0/release-status.schema.json",
+      "sha256": "638256957baf214a0c9d2a2f69e929eabb83e3bd710cdc8642cef89a8d8844f4"
     }
   ]
 }

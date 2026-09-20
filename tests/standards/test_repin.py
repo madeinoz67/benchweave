@@ -31,7 +31,7 @@ from benchweave.standards.manifest import (
 ROOT = Path(__file__).resolve().parents[2]
 CORPUS_MANIFEST = "standards/corpus-manifest.json"
 # One regenerable (normative) row and one frozen (superseded otdp/0.1.0) row.
-REGENERABLE = "registry/0.1.0/examples/package-lock.json"
+REGENERABLE = "registry/0.1.1/examples/package-lock.json"
 FROZEN = "otdp/0.1.0/device-profile-catalog.json"
 _HEX64 = re.compile(r"^[0-9a-f]{64}$")
 

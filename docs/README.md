@@ -10,8 +10,8 @@
 | File | Purpose |
 |---|---|
 | [Architecture](smart-test-gateway-architecture-v1.5.md) | System responsibilities, protection, ownership, recovery and commissioning |
-| [Central registry](../standards/registry/0.1.0/registry-specification.md) | Shared packages, discovery, publication, metadata, trust and offline adoption |
-| [Registry checks](../standards/registry/0.1.0/validation-report.md) | 63 passing metadata-contract checks |
+| [Central registry](../standards/registry/0.1.1/registry-specification.md) | Shared packages, discovery, publication, metadata, trust and offline adoption |
+| [Registry checks](../standards/registry/0.1.1/validation-report.md) | 64 passing metadata-contract checks |
 | [Procedure and bench contracts](../standards/execution/0.1.0/execution-contract.md) | Bounded execution, wiring/resources, safety policy, commissioning and outcomes |
 | [Execution checks](../standards/execution/0.1.0/validation-report.md) | 150 passing document/schema checks; six linked synthetic examples |
 | [REST/MCP contract](../standards/interface/0.1.0/interface-contract.md) | Twenty REST operations, seventeen MCP tools, authentication and recovery |
@@ -52,7 +52,7 @@ Registry contract 0.1.0 adds immutable release manifests, mutable release status
 
 Supply this entire package together with the instrument's protocol manual, model/firmware details and available reference exchanges:
 
-> Search configured registries for compatible existing integrations first, then reuse, contribute or fork with attribution as appropriate. For a new integration, create an STG device integration targeting OTDP 0.2.0 and adapter API 1.1. Read the core specification, extension contract, applicable device classes, measurement model and schemas. Select supported profiles, declare real channels and device constraints, and implement all claimed actions using verified protocol evidence. For registry publication, also supply the release manifest and evidence required by registry contract 0.1.0. Bundle the pinned local contracts and deliver the descriptor, adapter where required, dependencies, tests and supporting evidence. Apply the specification's semantic/conformance obligations and applicable class/dataset checks. Report missing device facts; do not invent commands or unsupported capabilities. Distinguish mock conformance from live qualification. Do not modify bench safety limits or energise equipment as part of code authoring.
+> Search configured registries for compatible existing integrations first, then reuse, contribute or fork with attribution as appropriate. For a new integration, create an STG device integration targeting OTDP 0.2.0 and adapter API 1.1. Read the core specification, extension contract, applicable device classes, measurement model and schemas. Select supported profiles, declare real channels and device constraints, and implement all claimed actions using verified protocol evidence. For registry publication, also supply the release manifest and evidence required by registry contract 0.1.1. Bundle the pinned local contracts and deliver the descriptor, adapter where required, dependencies, tests and supporting evidence. Apply the specification's semantic/conformance obligations and applicable class/dataset checks. Report missing device facts; do not invent commands or unsupported capabilities. Distinguish mock conformance from live qualification. Do not modify bench safety limits or energise equipment as part of code authoring.
 
 These documents define the interfaces; a gateway host or plugin implementation is not included. Schema validation does not prove lifecycle correctness, protocol truth, hardware compatibility or physical protection.
 
@@ -64,4 +64,4 @@ From the 0.1.0 baseline forward, superseded versions are retained digest-frozen 
 
 ## Baseline verification
 
-978 document/schema and selected semantic/coverage checks passed: OTDP 495, registry 63, execution 150, interface 254 and closure 16. These checks are not a complete runtime or hardware conformance suite. These counts record the architecture review baseline; they are not results from the repository CI.
+979 document/schema and selected semantic/coverage checks passed: OTDP 495, registry 64, execution 150, interface 254 and closure 16. These checks are not a complete runtime or hardware conformance suite. These counts record the architecture review baseline; they are not results from the repository CI.

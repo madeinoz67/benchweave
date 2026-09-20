@@ -173,7 +173,7 @@ def test_documents_ignores_markdown_links_inside_fenced_code_blocks(
         ),
         (
             "registry",
-            "registry/0.1.0/examples/release-manifest.json",
+            "registry/0.1.1/examples/release-manifest.json",
             '"version": "1.0.0"',
             '"version": "latest"',
             "positive fixture",

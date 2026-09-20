@@ -37,17 +37,17 @@
     },
     {
       "id": "registry",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "status": "stable",
-      "released": "2026-09-16",
-      "supersedes": null,
+      "released": "2026-09-20",
+      "supersedes": "0.1.0",
       "normative": [
-        "standards/registry/0.1.0/examples/package-lock.json",
-        "standards/registry/0.1.0/examples/release-manifest.json",
-        "standards/registry/0.1.0/examples/release-status.json",
-        "standards/registry/0.1.0/package-lock.schema.json",
-        "standards/registry/0.1.0/release-manifest.schema.json",
-        "standards/registry/0.1.0/release-status.schema.json"
+        "standards/registry/0.1.1/examples/package-lock.json",
+        "standards/registry/0.1.1/examples/release-manifest.json",
+        "standards/registry/0.1.1/examples/release-status.json",
+        "standards/registry/0.1.1/package-lock.schema.json",
+        "standards/registry/0.1.1/release-manifest.schema.json",
+        "standards/registry/0.1.1/release-status.schema.json"
       ]
     },
     {
