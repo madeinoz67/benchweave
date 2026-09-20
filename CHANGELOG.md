@@ -224,6 +224,7 @@ All notable changes to this project will be documented in this file.
 - Align live baseline prose to 0.1.1; amend the sweep grep class
 - Record deferral citations per amended rule 3 + G4 sweep-gap note
 - Adopt retrospective row 4 — run-close junk sweep as step 8
+- Single issue stream — all issues file on the gateway tracker
 
 ### Features
 
