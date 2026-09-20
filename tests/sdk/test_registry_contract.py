@@ -30,7 +30,12 @@ LOCK = json.loads((SDK_ROOT / "standards-lock.json").read_text(encoding="utf-8")
 #: The skill payload entry under test: an agent-facing skill document in the
 #: cross-harness SKILL.md convention (design section 1.2; invented fixture
 #: path — no real plugin project is named).
-SKILL_ENTRY = {"path": "skills/drive-device/SKILL.md", "role": "skill", "bytes": 1, "sha256": "c" * 64}
+SKILL_ENTRY: dict[str, Any] = {
+    "path": "skills/drive-device/SKILL.md",
+    "role": "skill",
+    "bytes": 1,
+    "sha256": "c" * 64,
+}
 
 
 def _registry_standard() -> dict[str, Any]:
@@ -40,7 +45,7 @@ def _registry_standard() -> dict[str, Any]:
 def _manifest_schema_key() -> str:
     registry_files = _registry_standard()["files"]
     entry = next(f for f in registry_files if f["path"].endswith("release-manifest.schema.json"))
-    return entry["path"]
+    return str(entry["path"])
 
 
 def _manifest(role: str) -> dict[str, Any]:
