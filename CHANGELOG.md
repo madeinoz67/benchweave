@@ -211,6 +211,7 @@ All notable changes to this project will be documented in this file.
 - Issue #63 descriptor dialect reconciliation design
 - Issue #63 design update — dps150 absorbed (slice 5), 28-cell census, registry-decoupling correction
 - Record the dps150 lock otdp_version stale-field correction in item 22
+- Amend deferral rule 3 — table rows are first-class merge citations (#98)
 
 ### Features
 
