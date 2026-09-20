@@ -84,6 +84,11 @@ All notable changes to this project will be documented in this file.
 - D4 — every event kind emits the closed document-ref evidence
 - Review-fix wave — poison-emit guard, fallback log, hygiene
 - Pin the symmetric stray/stamp gates across all three check lanes (#9)
+- Portable store hold; the gateway now runs on Windows checkouts
+- Reject delimiter injection at issue time; fail fast on absent fixtures
+- Validate each scope element at issue time, not just the joined field
+- The hold marker lives beside the data dir, so restore can swap it on Windows
+- Resolve the data dir before deriving the hold marker; tolerate the legacy in-dir name in verify (PR #35 review fold)
 - Otdp 0.1.1 — byte-errata of 0.1.0 (#45) (#47)
 - Make the adapter-call AST pin total over the _adapter name
 - Pin Adapter protocol data members, not only methods
@@ -125,6 +130,7 @@ All notable changes to this project will be documented in this file.
 - Collector reads file paths; chronological admission; dedup; real shallow guard (#97 review fold)
 - Refute fold — zero-gap double bumps, first-add anchor, shallow refusal (#97 G6)
 - Derive the devices mutation fixtures; GOVERNANCE claim scoped (D2 review fold)
+- Audit-annotate train_window's git subprocess under the S-band; merge main
 
 ### Documentation
 
@@ -394,6 +400,7 @@ All notable changes to this project will be documented in this file.
 - Advance SDK pointer — styleguide v0.2 brand
 - Bump packages/sdk to 17d6ecb (star CTA + header wrap)
 - Bump packages/sdk to 5da15c7 (gateway links to project website)
+- Enable the security lint the tree's suppressions were written for
 - Advance packages/sdk to the pushed plugin-ui 0.1.1 SDK branch
 - Advance packages/sdk to the C1-C4 renderer refresh
 - Advance packages/sdk to the W1 renderer refresh
@@ -457,6 +464,7 @@ All notable changes to this project will be documented in this file.
 - Unchanged, clarification and breaking scenarios
 - F5-quiet exercises the idempotency path it names
 - WP11 carried minors — T1-1/T1-3/T2-6/T2-8/T5-9/T5-10
+- Fresh clones pass-or-skip; fork PRs stop failing on absent secrets
 - Outcome failures dump terminal reasons + error events (#48) (#50)
 - #48 review rows 1-2 — structural reasons render + mode=ro claim truth (#51)
 - Pin the adapter protocol three-way — expected literals, SDK, gateway, corpus
