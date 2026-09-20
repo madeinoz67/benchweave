@@ -470,6 +470,7 @@ All notable changes to this project will be documented in this file.
 - RED for the skill payload-file role (issue #71 slice 1)
 - Pin the sdist to the declared surface — PKG-2's detector
 - RED for the agent-native seeded tree (issue #71 slice 2)
+- Prove the issue-107 fix — symlinked-destination scaffold, typed symlink refusal, errno guard
 
 ### Build
 
