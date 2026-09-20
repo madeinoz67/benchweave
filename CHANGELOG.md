@@ -119,6 +119,7 @@ All notable changes to this project will be documented in this file.
 - Issued-map fields must be declared action inputs (F1, #63)
 - Fold R1-R4 — record corrections, lock pin test, census obligation (#63)
 - Typing precedes the trip latch in _write (RF1); absence pin + poc walk flake kill (#63)
+- Fold refute F1 + NIT-1 — convention-vs-mechanism disclosure, reorder tamper mode
 
 ### Documentation
 
@@ -213,6 +214,7 @@ All notable changes to this project will be documented in this file.
 - Record the dps150 lock otdp_version stale-field correction in item 22
 - Amend deferral rule 3 — table rows are first-class merge citations (#98)
 - Leg-(a) comment classifies by failure kind, not evaluation order (refute NIT)
+- Issue #79 machine-written, CI-pinned OTDP validation report
 
 ### Features
 
@@ -313,6 +315,7 @@ All notable changes to this project will be documented in this file.
 - The tree converts to full-form OTDP — one dialect (#63)
 - The slim descriptor dialect dies (#63)
 - Re-version to OTDP 0.2.0 — check-clean, absorbed (#83 into #63)
+- Machine-written, byte-pinned OTDP validation report
 
 ### Hardware Evidence
 
@@ -441,6 +444,7 @@ All notable changes to this project will be documented in this file.
 - RED controls for plugin-ui 0.2.0 lane-1 envelopes + orphan refusal
 - Pin the descriptor schema's otdp const to the manifest version (F2, #63)
 - Pin executor dispatch-state composition (#73)
+- Pin the OTDP validation report to a live devices-suite render
 
 ### Build
 
