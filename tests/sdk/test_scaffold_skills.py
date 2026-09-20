@@ -53,7 +53,9 @@ def _generate(tmp_path: Path) -> Path:
 
 
 def _relative_files(project: Path) -> list[str]:
-    return sorted(path.relative_to(project).as_posix() for path in project.rglob("*") if path.is_file())
+    return sorted(
+        path.relative_to(project).as_posix() for path in project.rglob("*") if path.is_file()
+    )
 
 
 def test_new_seeds_skills_and_claude_md(tmp_path: Path) -> None:
@@ -80,10 +82,12 @@ def test_seeded_skill_frontmatter_present(tmp_path: Path) -> None:
     """An output pin on our own bytes, not a format rule (D2 stays deferred):
     each SKILL.md leads with a name/description block, names carrying the
     package so skills from multiple plugins cannot collide in one harness
-    skill directory."""
+    skill directory; the name hyphenates the package, matching the
+    generated pyproject project name and descriptor id practice."""
+    dashed = PACKAGE.replace("_", "-")
     expected_names = {
-        f"src/{PACKAGE}/skills/develop-plugin/SKILL.md": f"{PACKAGE}-plugin-development",
-        f"src/{PACKAGE}/skills/drive-device/SKILL.md": f"{PACKAGE}-device-operation",
+        f"src/{PACKAGE}/skills/develop-plugin/SKILL.md": f"{dashed}-plugin-development",
+        f"src/{PACKAGE}/skills/drive-device/SKILL.md": f"{dashed}-device-operation",
     }
     project = _generate(tmp_path)
     for relative, skill_name in expected_names.items():
@@ -101,8 +105,54 @@ def test_seeded_skill_frontmatter_present(tmp_path: Path) -> None:
 def test_claude_md_references_real_commands(tmp_path: Path) -> None:
     project = _generate(tmp_path)
     text = (project / "CLAUDE.md").read_text(encoding="utf-8")
-    for needle in ("pytest", "uv build", "benchweave-sdk check", "AI-GUIDE.md", f"src/{PACKAGE}/skills/"):
+    for needle in (
+        "pytest",
+        "uv build",
+        "benchweave-sdk check",
+        "AI-GUIDE.md",
+        f"src/{PACKAGE}/skills/",
+    ):
         assert needle in text, f"CLAUDE.md does not reference {needle}"
+    # Facts-only needles: every claim in CLAUDE.md is a fact of the generated
+    # project (R11-adjacent honesty pins; grep showed zero coverage pre-fold).
+    for needle in ("synthetic BenchWeave device plugin", "developer tooling", "Safety rails"):
+        assert needle in text, f"CLAUDE.md drops its facts-only content: {needle!r}"
+
+
+def test_drive_device_honesty_label_pinned(tmp_path: Path) -> None:
+    """R11's mitigation is text in the skill itself: the seeded device skill
+    states it drives the synthetic protocol, not a real instrument, and says
+    to rewrite it for the real device (the synthetic-adapter honesty
+    pattern)."""
+    project = _generate(tmp_path)
+    text = (project / f"src/{PACKAGE}/skills/drive-device/SKILL.md").read_text(encoding="utf-8")
+    for needle in ("not a real instrument", "Rewrite this skill for the real device"):
+        assert needle in text, f"drive-device skill drops its honesty label: {needle!r}"
+
+
+def test_root_docs_stay_out_of_the_built_wheel(tmp_path: Path) -> None:
+    """The CLAUDE.md shipping claim the templates make is the WHEEL one:
+    `packages = ["src/<package>"]` keeps root-level docs out of wheel
+    members. (The sdist is deliberately NOT asserted - hatchling's default
+    sdist ships the whole tree, and no exclusion is emitted.)"""
+    import subprocess
+    import zipfile
+
+    project = _generate(tmp_path)
+    dist = tmp_path / "dist"
+    subprocess.run(
+        ["uv", "build", "--wheel", str(project), "--out-dir", str(dist)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    wheel = next(dist.glob("*.whl"))
+    names = zipfile.ZipFile(wheel).namelist()
+    for root_doc in ("CLAUDE.md", "AI-GUIDE.md", "README.md"):
+        assert root_doc not in names, f"{root_doc} leaked into the built wheel"
+    assert any(name.startswith(f"{PACKAGE}/skills/") for name in names), (
+        "the seeded skills are not in the wheel"
+    )
 
 
 def test_ai_guide_names_seeded_files(tmp_path: Path) -> None:
