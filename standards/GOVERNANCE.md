@@ -46,7 +46,11 @@ corpus-manifest rows stay in place, digest-frozen. Moving or in-place-editing a
 retained version is a governance violation, not a shortcut. The new version's
 rows record the old corpus path as their `source`. Digest pins move only
 through `uv run python -m benchweave.standards repin` — the loop is
-edit → repin → export, never a hand-spliced digest.
+edit → repin → export, never a hand-spliced digest. A bump carrying OTDP
+corpus bytes into a new version regenerates that version's validation report
+via the writer (`check_devices.py --write-report`) — moving the script's `OUT`
+and the pin test's report path are already part of the bump's script/test
+touch-set, and the pin fails on the copied stale report until the regen runs.
 
 ## Retention
 
