@@ -212,6 +212,7 @@ All notable changes to this project will be documented in this file.
 - Issue #63 design update — dps150 absorbed (slice 5), 28-cell census, registry-decoupling correction
 - Record the dps150 lock otdp_version stale-field correction in item 22
 - Amend deferral rule 3 — table rows are first-class merge citations (#98)
+- Leg-(a) comment classifies by failure kind, not evaluation order (refute NIT)
 
 ### Features
 
@@ -439,6 +440,7 @@ All notable changes to this project will be documented in this file.
 - Pin the averaging envelope endpoints 1 and 64 (refute R1)
 - RED controls for plugin-ui 0.2.0 lane-1 envelopes + orphan refusal
 - Pin the descriptor schema's otdp const to the manifest version (F2, #63)
+- Pin executor dispatch-state composition (#73)
 
 ### Build
 
