@@ -1,5 +1,6 @@
 """SDK UI scaffolding remains optional and operates without device access."""
 
+import errno
 import importlib
 import json
 from pathlib import Path
@@ -221,3 +222,56 @@ def test_scaffold_hint_pair_validates_identically(
     # feature-declaring host. Both must accept the hinted twin identically.
     assert check(monkeypatch, hinted, firmware="1.0.0") == 0
     assert check(monkeypatch, hinted, firmware="1.0.0", feature="legend/1.0.0") == 0
+
+
+def test_new_with_ui_succeeds_under_symlinked_ancestor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    real = tmp_path / "real"
+    real.mkdir()
+    link = tmp_path / "link"
+    link.symlink_to(real)
+    assert run(monkeypatch, "new", link / "proj", "--with-ui") == 0
+    package = real / "proj/src/example_plugin"
+    for name in (
+        "presentation.json",
+        "binding-catalogue.json",
+        "ui/manifest.json",
+        "ui/fixtures/normal.json",
+    ):
+        assert (package / name).is_file()
+    assert (real / "proj/UI-GUIDE.md").is_file()
+    assert (real / "proj/tests/test_presentation_preview.py").is_file()
+
+    # SRF-1 control: the same package scaffolded through a canonical path must
+    # be byte-identical — the fix changes where writes happen, never what.
+    control = tmp_path / "control"
+    assert run(monkeypatch, "new", control, "--with-ui") == 0
+    generated = sorted(
+        path.relative_to(real / "proj") for path in (real / "proj").rglob("*") if path.is_file()
+    )
+    assert generated == sorted(
+        path.relative_to(control) for path in control.rglob("*") if path.is_file()
+    )
+    for relative in generated:
+        assert (real / "proj" / relative).read_bytes() == (control / relative).read_bytes()
+
+
+def test_check_ui_refuses_symlinked_ancestor_with_prefix(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    run(monkeypatch, "new", tmp_path / "real", "--with-ui")
+    link = tmp_path / "link"
+    link.symlink_to(tmp_path / "real")
+    assert check(monkeypatch, link / "src/example_plugin") == 1
+    assert "path_symlink_component:" in capsys.readouterr().err
+
+
+def test_read_file_propagates_genuine_not_directory(tmp_path: Path) -> None:
+    presentation = importlib.import_module("benchweave_sdk.presentation")
+    blocker = tmp_path / "blocker"
+    blocker.write_bytes(b"regular file\n")
+    with pytest.raises(OSError) as details:
+        presentation.read_file(blocker / "descriptor.json")
+    assert details.value.errno == errno.ENOTDIR
+    assert "path_symlink_component" not in str(details.value)
