@@ -219,6 +219,7 @@ All notable changes to this project will be documented in this file.
 - Issue #71 skill-role slice 1 — pre-committed acceptance rules
 - Align live baseline prose to 0.1.1; amend the sweep grep class
 - Record deferral citations per amended rule 3 + G4 sweep-gap note
+- Adopt retrospective row 4 — run-close junk sweep as step 8
 
 ### Features
 
