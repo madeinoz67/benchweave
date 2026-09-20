@@ -131,6 +131,7 @@ All notable changes to this project will be documented in this file.
 - Refute fold — zero-gap double bumps, first-add anchor, shallow refusal (#97 G6)
 - Derive the devices mutation fixtures; GOVERNANCE claim scoped (D2 review fold)
 - Audit-annotate train_window's git subprocess under the S-band; merge main
+- Resolve OUT once so the pinned check compares resolved-to-resolved (#119)
 
 ### Documentation
 
