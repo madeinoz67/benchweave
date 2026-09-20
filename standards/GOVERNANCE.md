@@ -46,7 +46,16 @@ corpus-manifest rows stay in place, digest-frozen. Moving or in-place-editing a
 retained version is a governance violation, not a shortcut. The new version's
 rows record the old corpus path as their `source`. Digest pins move only
 through `uv run python -m benchweave.standards repin` — the loop is
-edit → repin → export, never a hand-spliced digest.
+edit → repin → export, never a hand-spliced digest. A bump carrying OTDP
+corpus bytes into a new version regenerates that version's validation report
+via the writer (`check_devices.py --write-report`). By convention the bump
+also moves the script's `OUT` and the pin test's report path — **this is a
+convention, not a mechanism**: nothing mechanically forces those moves (no
+drift-guard rule watches these paths), so a bump that forgets them leaves the
+pin comparing two stale sides and green while the active version's report is
+unpinned. The structural closer is manifest-driven version discovery
+(`check_devices.py` + pin), tracked as D2 of the #79 follow-on. With the
+moves made, the pin fails on the copied stale report until the regen runs.
 
 ## Retention
 
