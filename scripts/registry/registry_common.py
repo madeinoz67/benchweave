@@ -31,6 +31,8 @@ ROLE_BY_SUFFIX: dict[str, str] = {
     "CHANGELOG.md": "documentation",
     "MIGRATION.md": "documentation",
     "simulated.md": "documentation",
+    "SKILL.md": "skill",
+    "CLAUDE.md": "documentation",
     "dc-psu.json": "profile",
     "sim-psu.json": "descriptor",
     "sim-controller.json": "descriptor",
@@ -118,7 +120,7 @@ def _manifest(
 ) -> dict[str, Any]:
     impl = kind == "implementation"
     return {
-        "manifest_version": "0.1.0",
+        "manifest_version": "0.1.1",
         "registry_id": registry_id,
         "package_id": package_id,
         "version": "1.0.0",
@@ -176,7 +178,7 @@ def _status(
     expires: str = STATUS_EXPIRES,
 ) -> dict[str, Any]:
     return {
-        "status_version": "0.1.0",
+        "status_version": "0.1.1",
         "release": {
             "registry_id": registry_id,
             "package_id": package_id,
@@ -201,7 +203,33 @@ def _common_members() -> list[tuple[str, bytes]]:
         ("CHANGELOG.md", b"# 1.0.0\n- fixture release\n"),
         ("MIGRATION.md", b"# Migration\n\nNone.\n"),
         ("evidence/simulated.md", b"# Simulated evidence\n\nStructural + simulated only.\n"),
+        _skill_member(),
     ]
+
+
+def _skill_member() -> tuple[str, bytes]:
+    """A real skill-role payload member, live-fired through admission.
+
+    Invented fixture content in the cross-harness skills format (frontmatter
+    ``name`` + ``description``), deliberately decoupled from the scaffold's
+    template: this member proves the ROLE (registry 0.1.1 admission), the
+    template proves the SEEDING — sharing bytes would couple two proofs to
+    one edit (issue #71 design section 1.3).
+    """
+    return (
+        "skills/drive-device/SKILL.md",
+        b"---\n"
+        b"name: drive-device-fixture\n"
+        b"description: Drive the synthetic device fixture through its sim\n"
+        b"  transport; registry-admission fixture content only.\n"
+        b"---\n"
+        b"\n"
+        b"# Driving the device fixture\n"
+        b"\n"
+        b"Connect via the sim transport, apply the fixture profile, and read\n"
+        b"the simulated measurements. Synthetic fixture content proving the\n"
+        b"skill payload-file role end to end.\n",
+    )
 
 
 def _impl_extras() -> list[tuple[str, bytes]]:
@@ -216,7 +244,7 @@ def _impl_extras() -> list[tuple[str, bytes]]:
 
 def _profile_member() -> tuple[str, bytes]:
     """Structural dc_psu profile derived from the vendored OTDP class contract
-    (``standards/otdp/0.1.0/examples/class-dc_psu.json``): class identity, the
+    (``standards/otdp/0.2.0/examples/class-dc_psu.json``): class identity, the
     three profile actions with their class-contract properties, and one
     conformance vector per action. Kept small — a fixture, not a device model.
     """

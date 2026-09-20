@@ -10,11 +10,11 @@ Prefer independent repositories and externally hosted releases for new device pl
 
 External hosting distributes source and release files. Admitted executable plugins run on the bench gateway through scoped host services. Hosting a repository does not provide registry admission, hardware commissioning or remote execution.
 
-**Baseline:** architecture 1.5 · OTDP 0.1.0 · adapter API 0.1.0 · registry 0.1.0 · execution 0.1.0 · interface 0.1.0.
+**Baseline:** architecture 1.5 · OTDP 0.2.0 · adapter API 1.1 · registry 0.1.1 · execution 0.1.0 · interface 0.1.0.
 
 **Current status:** the repository provides architecture contracts, synthetic fixtures, a Python scaffold, architecture CI, and the **gateway side of the registry contract**: strict schema loaders, an ed25519-authenticated fixture catalogue, configured-origin resolution, admission with a content-addressed package cache and package lock, idle-boundary activation, and a cache plugin loader — plus an **unsigned development loop** (see §10). The registry *service* side (search, submission, review pipeline, TUF distribution, public endpoints) and the device-install command do not yet exist. A minimal [plugin developer SDK](plugin-sdk.md) now provides offline authoring tools, packaged contracts, a standalone starter and mock checks; it is not a hardware-qualified production SDK. You can develop descriptors, adapters and deterministic tests against the published ABI now, package and run them locally through the dev loop, and exercise admission against the committed signed catalogue. Host hardware qualification requires the corresponding implementation and bench evidence.
 
-**External plugin runtime status:** package admission, activation records and cache loaders are components, not a complete live installation workflow. The legacy simulator interface uses clock-injected factories and `plugin_open`/`dispatch`/`plugin_close`. The new `load_otdp_plugin` loader and `OTDPBridge` support no-argument factories and async adapter API 0.1.0 for identify, scalar read and scalar write. They verify cached inventory and isolate package versions, while the caller supplies admitted scoped services and a matching monotonic clock. Profile actions, capture/streaming and automatic activation through a live gateway are not provided by this bridge. The [SDK guide](plugin-sdk.md) explains the tested scope. See [package formats, current gaps and Docker deployment](develop-your-device.md#package-format-and-gateway-installation). The recommended Docker model persists verified packages and bench configuration outside the container image; it does not grant device access or resolve dependencies automatically.
+**External plugin runtime status:** package admission, activation records and cache loaders are components, not a complete live installation workflow. The legacy simulator interface uses clock-injected factories and `plugin_open`/`dispatch`/`plugin_close`. The new `load_otdp_plugin` loader and `OTDPBridge` support no-argument factories and async adapter API 1.1 for identify, scalar read and scalar write. They verify cached inventory and isolate package versions, while the caller supplies admitted scoped services and a matching monotonic clock. Profile actions, capture/streaming and automatic activation through a live gateway are not provided by this bridge. The [SDK guide](plugin-sdk.md) explains the tested scope. See [package formats, current gaps and Docker deployment](develop-your-device.md#package-format-and-gateway-installation). The recommended Docker model persists verified packages and bench configuration outside the container image; it does not grant device access or resolve dependencies automatically.
 
 This guide explains the workflow; it introduces no new protocol requirements. The linked specifications and schemas define the contracts. If prose and schema disagree, record a contract defect and resolve it explicitly before relying on the disputed behaviour.
 
@@ -28,7 +28,7 @@ This guide explains the workflow; it introduces no new protocol requirements. Th
 | Run integrations on a gateway | Host ABI, bench configuration and execution contracts | Scoped host services, admission, ownership, evidence and qualified deployment |
 | Share an integration | Registry contract and compatible existing packages | Immutable package, release metadata, provenance and conformance evidence |
 
-Read the [core specification](../standards/otdp/0.1.0/otdp-specification.md), [profile/adapter extension](../standards/otdp/0.1.0/extension-contract.md), [device classes](../standards/otdp/0.1.0/device-classes.md) and [measurement model](../standards/otdp/0.1.0/measurement-model.md) before writing a class-capable integration. The [documentation index](project-index.md) links the remaining contracts.
+Read the [core specification](../standards/otdp/0.2.0/otdp-specification.md), [profile/adapter extension](../standards/otdp/0.2.0/extension-contract.md), [device classes](../standards/otdp/0.2.0/device-classes.md) and [measurement model](../standards/otdp/0.2.0/measurement-model.md) before writing a class-capable integration. The [documentation index](project-index.md) links the remaining contracts.
 
 ### Repository layout for device plugins
 
@@ -108,17 +108,17 @@ An image or IQ dataset representation does not establish camera or RF-receiver c
 
 Use the [independent device project layout](#repository-layout-for-device-plugins). Keep descriptors and their referenced vectors in the Python package so the wheel contains them; keep project tests, pinned conformance inputs and development documentation at the model project root. Include firmware for custom devices in that same project, with a separate firmware build rather than an automatic Python installation hook.
 
-The integration contract requires a package README, descriptor and referenced evidence; executable integrations also need their Python package and tests. The simulator projects now live at `plugins/benchweave/sim_psu/` and `plugins/benchweave/sim_controller/`; `benchweave` denotes their maintainer, not a physical manufacturer. Each owns its `src/benchweave_sim_*/` package, execution descriptor projection, replay vectors, tests and `pyproject.toml`. These legacy test plugins are an explicit exception to the external-plugin boundary: they still require the private synchronous API in `benchweave==0.1.0`. Their wheels can be tested outside this checkout with a supplied gateway wheel, but they are not yet independent of core at runtime or qualified API 1.1 adapters. The current public bridge lacks their profile actions. Preserve that distinction until the bridge and simulator API migration are reviewed together. Core execution descriptors remain integration snapshots checked against the project-owned projections. The `firmware/esp32_reference/` placeholder was retired 2026-09-16; maintained firmware lives in each device plugin's own project (see below). Local development packaging and cache loading are described in §10; a source layout alone does not establish runtime compatibility.
+The integration contract requires a package README, descriptor and referenced evidence; executable integrations also need their Python package and tests. The simulator projects now live at `plugins/benchweave/sim_psu/`, `plugins/benchweave/sim_controller/` and `plugins/benchweave/sim_scope/`; `benchweave` denotes their maintainer, not a physical manufacturer. The legacy pair (`sim_psu`, `sim_controller`) each own their `src/benchweave_sim_*/` package, full-form execution descriptor, replay vectors, project tests and `pyproject.toml`; `sim_scope` owns its package, replay vectors and `pyproject.toml` — its behavioral tests live in the main repository. These legacy test plugins are an explicit exception to the external-plugin boundary: they still require the private synchronous API in `benchweave==0.1.0`. Their wheels can be tested outside this checkout with a supplied gateway wheel, but they are not yet independent of core at runtime or qualified API 1.1 adapters. The current public bridge lacks their profile actions. Preserve that distinction until the bridge and simulator API migration are reviewed together. Core execution descriptors remain integration snapshots checked against the project-owned documents. The `firmware/esp32_reference/` placeholder was retired 2026-09-16; maintained firmware lives in each device plugin's own project (see below). Local development packaging and cache loading are described in §10; a source layout alone does not establish runtime compatibility.
 
 Use uv for Python dependencies. Retain its lockfile and the exact tested runtime/dependency evidence. The registry's `package-lock.schema.json` describes a different lock: registry package identities, versions and manifest digests. An implementation release needs both its executable dependency closure and its registry dependency closure; neither substitutes for the other.
 
 ### Descriptor authoring checklist
 
-Use the [descriptor schema](../standards/otdp/0.1.0/otdp-device-descriptor.schema.json) and a suitable [class descriptor example](../standards/otdp/0.1.0/examples/class-dc_psu.json) as references. Copying a fixture does not transfer its evidence to your hardware.
+Use the [descriptor schema](../standards/otdp/0.2.0/otdp-device-descriptor.schema.json) and a suitable [class descriptor example](../standards/otdp/0.2.0/examples/class-dc_psu.json) as references. Copying a fixture does not transfer its evidence to your hardware.
 
 | Field group | Authoring rule |
 |---|---|
-| Versions and identity | Use OTDP 0.1.0, a versioned descriptor and a namespaced model ID. Keep model identity separate from physical instance identity. |
+| Versions and identity | Use OTDP 0.2.0, a versioned descriptor and a namespaced model ID. Keep model identity separate from physical instance identity. |
 | Integration | Choose declarative or adapter. For an adapter, declare the reviewed factory as `package.module:create_plugin` and API 1.1. |
 | Transport | Supply supported protocol settings and a `connection_key`; the host resolves the actual commissioned connection. |
 | Capabilities and policies | Advertise only implemented verbs, with exactly matching policies. `identify` is mandatory. |
@@ -127,12 +127,103 @@ Use the [descriptor schema](../standards/otdp/0.1.0/otdp-device-descriptor.schem
 | Required features | Declare core plus applicable adapter, profile-actions, measurement and exact profile feature IDs. Unknown required features fail admission. |
 | Contract files | Pin exact local catalog/schema bytes and hashes. Resolve contract paths from the admitted bundle root without escape. |
 | Provenance | Record real source revisions and vectors. Vector paths resolve relative to the descriptor and must remain inside the package. |
+| Gateway-issued inputs | If the gateway issues a token for an action input (for example `$stg_issue` for `configuration_id`), declare it in the descriptor-root `x-stg-issued-inputs` map — see below. |
 
 Validate all applicable **S01–S18**, **C01–C12** and **M01–M14** obligations from the linked specifications. Schema validity covers only part of admission.
 
+**Full-form is the execution-admitted form.** Runtime admission validates the
+descriptor against the active vendored OTDP descriptor schema plus the S01
+and S02 semantic checks — the same contract `benchweave-sdk check` enforces —
+and projects the execution view the gateway consumes from it (identity,
+version, profiles, parameter names, actions). A descriptor that is not
+`check`-clean is not execution-admissible: `check`-clean is a necessary
+condition for admission, pinned equivalent over the in-tree corpus by
+`tests/sdk/test_descriptor_equivalence.py`. The one gateway-owned addition:
+
+**The `x-stg-issued-inputs` extension.** A descriptor-root object
+`{action_id: [input field, ...]}` naming which invoke inputs of which
+declared actions accept the gateway-issued token (`$stg_issue`, CTL-7). OTDP
+tooling ignores `x-` keys by the extension contract, so `benchweave-sdk
+check` stays clean with it present; the gateway is its only reader. It must
+name only actions the descriptor declares, and each field must be an input
+the action itself declares (`input_constraints.properties` — an action with
+no declared properties names no issuable fields). A map naming an unknown
+action or an undeclared field is an admission refusal
+(`schema: descriptor[<id>] issued_map:`). Verifying the fields against the
+profile catalog's canonical action inputs belongs to the deferred
+profile-satisfaction stage.
+
+### Named settings as presets
+
+`plugins/benchweave/sim_scope/` is the reference instance for shipping named,
+redistributable device setups alongside a plugin: the first in-tree
+configuration binding, settings schema and presets. Its layout:
+
+```text
+src/benchweave_sim_scope/
+  descriptor.json                                  # full OTDP 0.2.0 form
+  presentation.json                                # envelope: resource_root ui, manifest pinned by sha256
+  binding-catalogue.json                           # one configuration target
+  ui/manifest.json                                 # sha256-pinned assets, binding, configuration page
+  ui/settings/oscilloscope-configure.schema.json   # corpus action input schema, exact copy pinned parsed-equal
+  ui/presets/fast-survey.json                      # complete settings documents
+  ui/presets/low-noise-pair.json
+```
+
+Authoring rules the instance demonstrates:
+
+- **Labels and units live in the descriptor and only there.** Every channel
+  carries a human `label`; every numeric parameter carries its `unit`
+  (`"1"` for dimensionless). Preset settings and UI resources never repeat or
+  override them — a preset is a complete action-input document, nothing else.
+- **The settings schema is an exact copy, pinned parsed-equal, of the corpus
+  action input schema** for the bound configure action, carrying the corpus
+  `$id`, because the binding loop checks asset identity against the corpus.
+  No standalone corpus bytes exist for an embedded action schema — the
+  shipped file is a compact re-serialization, so the parsed-equality test
+  against the vendored catalog is what makes "exact" true; keep it.
+- **Preset `settings` validate against both the settings schema and the
+  canonical action schema, plus the descriptor action's `input_constraints`.**
+  The action schemas are closed (`additionalProperties: false`), so a setting
+  with no action-input home is structurally unrepresentable in a preset; it
+  belongs on a writable `semantic: configuration` parameter, not in preset
+  settings, until a catalog revision admits it. Model averaging was the live
+  example until OTDP 0.2.0 admitted `averaging_count` on
+  `otdp.oscilloscope.configure` — now preset-carried by `low-noise-pair.json`
+  — and an admitted key still needs the plugin to apply it: sim_scope routes
+  configure-carried `averaging_count` through the same write path as the live
+  write and echoes the depth in force.
+- **Validate with both SDK lanes**: `benchweave-sdk check-preset` per preset
+  and `benchweave-sdk check-ui` over the package. Since plugin-ui 0.2.0 both
+  lanes enforce the descriptor action's `input_constraints` AND the canonical
+  action schema: `check-preset` resolves the action from the preset's own
+  settings-schema identity — when the schema's `$id` is a corpus action
+  input-schema `$id` (the pinned-copy rule above), that action's envelope
+  applies to the default invocation, and `--action` forces a named action (an
+  action the descriptor does not declare is refused, never silently skipped).
+  A settings schema with a custom `$id` gets no envelope in lane 1 — the
+  command says so in its success message — and needs `check-ui` (or the
+  explicit flag) for full coverage. Declare the full envelope in
+  `input_constraints`, not only the channel pattern. `check-ui` validates
+  every preset a configuration target declares, whether or not a binding
+  lists it, and refuses a preset-shaped asset no target declares
+  (`unreferenced_preset`) rather than guessing its wiring.
+- **A preset's `configuration_id` is a placeholder.** The runtime treats that
+  key as gateway-issued; any future apply path must substitute the issued
+  token, never replay the literal. Selecting a preset performs no I/O and
+  confers no authority; applying settings remains a separately approved
+  procedure.
+
+`sim_scope` is a presentation and presets vehicle: its full-form descriptor
+is both `benchweave-sdk check`-clean and execution-admissible — the
+descriptor-dialect fork closed with zero byte changes to it, which was the
+proof the projection gate (not a rewrite) did the work. Its own
+`x-stg-issued-inputs` declaration is deferred until a procedure actually
+`$stg_issue`s one of its actions.
+
 ## 5. Implement the adapter lifecycle
 
-The normative factory and methods are in [core specification §8](../standards/otdp/0.1.0/otdp-specification.md#8-python-adapter-abi-11). They use structural Python interfaces. The optional [plugin SDK](plugin-sdk.md) supplies typing protocols, offline validation and mocks for development; plugin runtime code need not import it.
+The normative factory and methods are in [core specification §8](../standards/otdp/0.2.0/otdp-specification.md#8-python-adapter-abi-11). They use structural Python interfaces. The optional [plugin SDK](plugin-sdk.md) supplies typing protocols, offline validation and mocks for development; plugin runtime code need not import it.
 
 | Entry point | Required behaviour |
 |---|---|
@@ -181,7 +272,7 @@ Native UART JSON uses strict UTF-8 NDJSON with LF termination, bounded frames an
 
 Advertise only the implemented subset. Document boot/reset/serial-control-line behaviour, watchdog behaviour and loss-of-host behaviour, with qualification evidence where applicable. Firmware flashing is a separate controlled activity, not plugin admission or `open()` behaviour.
 
-Use the [synthetic controller descriptor](../standards/otdp/0.1.0/examples/reference-controller.json), [reference protocol](../standards/otdp/0.1.0/examples/reference-protocols.md) and [runtime schema](../standards/otdp/0.1.0/otdp-runtime.schema.json) for exact examples. They are authoring targets, not ready-to-flash ESP32 firmware.
+Use the [synthetic controller descriptor](../standards/otdp/0.2.0/examples/reference-controller.json), [reference protocol](../standards/otdp/0.2.0/examples/reference-protocols.md) and [runtime schema](../standards/otdp/0.2.0/otdp-runtime.schema.json) for exact examples. They are authoring targets, not ready-to-flash ESP32 firmware.
 
 ## 7. Publish measurements correctly
 
@@ -196,7 +287,54 @@ Select the real dataset meaning: scalar set, waveform, digital trace, spectrum, 
 
 Payload creation/writing requires `artifact_writer`; reading authorised upload inputs requires `artifact_reader`. Finalising bytes does not validate their physical meaning: the manifest must still pass the dataset and class checks. Partial data must not become a complete successful acquisition merely because the file was written.
 
-See the [measurement model](../standards/otdp/0.1.0/measurement-model.md) for all M01–M14 rules and the [extension contract](../standards/otdp/0.1.0/extension-contract.md) for host method signatures.
+See the [measurement model](../standards/otdp/0.2.0/measurement-model.md) for all M01–M15 rules and the [extension contract](../standards/otdp/0.2.0/extension-contract.md) for host method signatures.
+
+### Declare derived variables (optional)
+
+A device descriptor may declare dataset variables the host computes from
+other dataset variables — no adapter code required. Add a top-level
+`derived_variables` array to the descriptor; the execution-side descriptor
+your bench admits carries the same array verbatim:
+
+```json
+"derived_variables": [
+  {
+    "id": "resistance",
+    "quantity": "resistance",
+    "unit": "Ohm",
+    "expression": "voltage / current"
+  }
+]
+```
+
+Expressions are fixed-grammar arithmetic over **dataset variable ids** (not
+channel ids — a channel can carry several quantities): `+ - * /`,
+parentheses, unary signs, decimal literals and identifiers, standard
+precedence, no functions and no exponent notation. Declarations are evaluated in declaration order,
+and an expression may reference only dataset variables and EARLIER-declared
+derived variables — backward-only references; a forward or circular
+reference is an admission failure (measurement-model.md §8.2 is the
+normative home). The full grammar, the
+static checks and the failure semantics are normative in
+[measurement-model.md §8](../standards/otdp/0.2.0/measurement-model.md);
+the machine census lives at
+[derivation-vectors.json](../standards/otdp/0.2.0/examples/derivation-vectors.json).
+A declaration is validated when the descriptor is admitted (malformed
+expressions cannot reach a run) and evaluated by the host after each
+dataset-returning invoke: the derived variable gains computed `values`,
+the union of the operands' `channel_ids`, structurally-unknown uncertainty
+and calibration, and a closed `derivation` marker recording the expression
+and operand ids for replay. A `sample` step selects it by `variable_id` and
+`unit` exactly like a plugin-emitted variable — but a sample requiring known
+uncertainty refuses it (honest unknown, by design).
+
+What the host refuses loudly: derived ids that collide with a dataset
+variable, operands that are not inline `float64`, disagreeing dimensions,
+or a `+`/`-` between variables of different units — the run records
+`DERIVATION_INVALID`. What degrades in-band: division by zero, non-finite
+results and null operands become null elements with `partial`/`invalid`
+status; an operand the dataset does not carry yields an `invalid` variable
+naming it.
 
 ## 8. Test before hardware qualification
 
@@ -273,9 +411,9 @@ Choose the correct registry kind:
 
 Avoid a descriptor/implementation dependency cycle. The normal shape is a profile consumed by an implementation bundling its descriptors; a separate downstream descriptor may depend on that implementation. A descriptor-free generic library is an ordinary language dependency, not a new registry kind.
 
-Supply the [release manifest](../standards/registry/0.1.0/release-manifest.schema.json): registry/package/version identity, publisher and maintainers, support links, licence and bundled licence file, immutable source revision, compatibility/runtime matrix, device targets, exact dependencies, permissions, file inventory and hashes, test evidence, changelog and migration notes. Executable releases also need an SBOM, build provenance and exact dependency lock. The manifest sits outside its payload archive to avoid a circular hash.
+Supply the [release manifest](../standards/registry/0.1.1/release-manifest.schema.json): registry/package/version identity, publisher and maintainers, support links, licence and bundled licence file, immutable source revision, compatibility/runtime matrix, device targets, exact dependencies, permissions, file inventory and hashes, test evidence, changelog and migration notes. Executable releases also need an SBOM, build provenance and exact dependency lock. The manifest sits outside its payload archive to avoid a circular hash.
 
-Use a new package ID for a fork and preserve lineage. Do not publish private endpoints, credentials, instance serial selection, bench safety policy or private captures. Do not assume rights to redistribute manuals or SDKs. Required metadata and review/evidence states are defined in the [registry specification](../standards/registry/0.1.0/registry-specification.md).
+Use a new package ID for a fork and preserve lineage. Do not publish private endpoints, credentials, instance serial selection, bench safety policy or private captures. Do not assume rights to redistribute manuals or SDKs. Required metadata and review/evidence states are defined in the [registry specification](../standards/registry/0.1.1/registry-specification.md).
 
 ### Registry operator
 
@@ -301,7 +439,7 @@ Firmware: [exact supported versions or explicitly unresolved].
 Connection: [protocol/backend/settings and available evidence].
 Intended operations/channels: [list].
 Evidence: [manual revisions, local files and reference exchanges].
-Target: OTDP 0.1.0, adapter API 0.1.0, architecture 1.5.
+Target: OTDP 0.2.0, adapter API 1.1, architecture 1.5.
 Delivery location and packaging: [repository path; local-only or shared release].
 
 Read docs/device-developer-guide.md and the linked normative contracts.

@@ -44,7 +44,7 @@ JSON
 Read `.claude/memory-protocol.md` for the bar (a noisy vault is worse than a small one, and
 the "do not propose" list is as load-bearing as the "do"). The ledger is gitignored and is
 subject to the same rule as committed content: no credentials, no client identifiers.
-Proposals drain themselves into the `benchweave` MuninnDB vault on `PreCompact` /
+Proposals drain themselves into the `benchweave` memory vault on `PreCompact` /
 `SessionEnd` / a debounced `Stop` via `.claude/hooks/memory-drain.mjs`, and
 `memory-freshness.mjs` reads the drain receipt back at `SessionStart` and speaks up when
 the queue is stale. Direct `muninn_remember` over MCP stays available; the ledger is what
@@ -64,7 +64,6 @@ severity, LOW and NIT included, each with its disposition: fixed / deferred /
 accepted-risk) is proposed to the ledger before the session ends. The skill files stay
 generic; this repo's protocol is what binds them here. Review findings are never
 forgotten.
-(Memory system adopted 2026-09-10 from the muninndb repository.)
 
 ## Two-repo discipline: the SDK submodule
 
@@ -72,10 +71,25 @@ forgotten.
 (`madeinoz67/benchweave-sdk`) and its own CI. Editing anything under
 `packages/sdk` is always **two commits, in this order**:
 
-1. Commit inside the submodule and **push it** (the SDK repo's CI and releases
-   run from its own remote — an unpushed submodule commit is invisible there
-   and breaks main-repo CI, which checks out submodules by SHA).
+1. Commit inside the submodule, **push it**, and **open the SDK PR now** — stacked
+   (`base` = the predecessor SDK branch when one is in flight) — not at end-of-run.
+   The SDK repo's CI and releases run from its own remote, and an unpushed submodule
+   commit is invisible there, breaking main-repo CI, which checks out submodules by
+   SHA. A pinned SHA reachable only via an unmerged feature branch stays reachable
+   only while that branch lives — the MERGE makes the lineage durable; the PR
+   tracks it (#69).
 2. Then commit the advanced submodule pointer in the main repository.
+
+**Single issue stream:** all issues — for either repository — file on THIS
+tracker (`madeinoz67/benchweave/issues`); the `benchweave-sdk` tracker is retired
+(principal directive 2026-09-20; first use of the rule was issue #107). SDK-side
+work tracks under a gateway issue, and an SDK PR notes in its body that no
+SDK-side issue exists by design.
+
+**Multi-PR work uses PR stacks (#69):** dependent PRs open with `base` = the
+predecessor's branch so each shows only its own delta; merge bottom-up, retargeting
+each successor to `main` as its base lands. **A work is complete only when every PR
+it raised — in both repos — is merged**; main-repo merges alone never call done.
 
 `make sync-sdk-standards` enforces the order: it refuses to run against a
 submodule working tree with uncommitted changes, and its report reminds you

@@ -1,0 +1,21 @@
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "benchweave-sim-scope"
+version = "1.0.0"
+description = "BenchWeave deterministic oscilloscope simulator (settings-presets reference instance)"
+readme = "README.md"
+requires-python = ">=3.13"
+license = {text = "Proprietary"}
+dependencies = ["benchweave==0.1.0"]
+
+[project.optional-dependencies]
+test = ["pytest==9.1.1"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/benchweave_sim_scope"]
+
+[tool.hatch.build.targets.sdist]
+include = ["/src", "/README.md", "/pyproject.toml"]

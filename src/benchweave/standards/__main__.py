@@ -1,4 +1,4 @@
-"""Command line: python -m benchweave.standards export|check|versions."""
+"""Command line: python -m benchweave.standards export|check|matrix|versions|repin."""
 
 from __future__ import annotations
 
@@ -18,6 +18,9 @@ def main() -> int:
         "--check", action="store_true", help="compare the committed file; exit 1 when stale"
     )
     sub.add_parser("versions", help="print main, standard, SDK lock and submodule versions")
+    sub.add_parser(
+        "repin", help="recompute corpus-manifest sha256 rows from the on-disk corpus"
+    )
     arguments = parser.parse_args()
     root = Path.cwd()
     if arguments.command == "export":
@@ -68,8 +71,26 @@ def main() -> int:
     if arguments.command == "versions":
         from .check import version_lines
 
-        for line in version_lines(root):
+        try:
+            lines = version_lines(root)
+        except ValueError as exc:
+            print(f"standards versions error: {exc}", file=sys.stderr)
+            return 1
+        for line in lines:
             print(line)
+        return 0
+    if arguments.command == "repin":
+        from .repin import repin_manifest
+
+        try:
+            changed = repin_manifest(root)
+        except ValueError as exc:
+            print(f"standards repin error: {exc}", file=sys.stderr)
+            return 1
+        if changed:
+            print(f"re-pinned {len(changed)} row(s): {', '.join(changed)}")
+        else:
+            print("corpus manifest already current")
         return 0
     return 2
 

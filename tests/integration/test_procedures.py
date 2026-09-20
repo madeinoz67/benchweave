@@ -215,39 +215,47 @@ def test_extra_descriptor_pin_rejected() -> None:
         )
 
 
-def _descriptor_id_empty(graph: dict[str, Any]) -> None:
-    graph["descriptors"]["psu"]["id"] = ""
-
-
 def _descriptor_profiles_scalar(graph: dict[str, Any]) -> None:
     graph["descriptors"]["psu"]["profiles"] = "otdp:dc_psu/1.0.0"
 
 
-def _descriptor_actions_scalar(graph: dict[str, Any]) -> None:
-    graph["descriptors"]["psu"]["actions"] = "configure"
-
-
-def _descriptor_action_not_object(graph: dict[str, Any]) -> None:
-    graph["descriptors"]["psu"]["actions"] = ["configure"]
-
-
-def _descriptor_action_missing_id(graph: dict[str, Any]) -> None:
-    graph["descriptors"]["psu"]["actions"] = [{"issued": ["configuration_id"]}]
-
-
-def _descriptor_action_issued_scalar(graph: dict[str, Any]) -> None:
+def _descriptor_actions_as_list(graph: dict[str, Any]) -> None:
     graph["descriptors"]["psu"]["actions"] = [
-        {"action_id": "otdp.dc_psu.configure/1.0.0", "issued": "configuration_id"}
+        {"action_id": "otdp.dc_psu.configure/1.0.0"}
     ]
 
 
+def _descriptor_version_pattern(graph: dict[str, Any]) -> None:
+    graph["descriptors"]["psu"]["descriptor_version"] = "1.0"
+
+
+def _descriptor_duplicate_parameter(graph: dict[str, Any]) -> None:
+    parameters = graph["descriptors"]["psu"]["parameters"]
+    parameters.append(copy.deepcopy(parameters[0]))
+
+
+def _descriptor_reversed_range(graph: dict[str, Any]) -> None:
+    for parameter in graph["descriptors"]["psu"]["parameters"]:
+        if parameter["name"] == "voltage_setpoint_v":
+            parameter["range"] = [30.0, 0.0]
+
+
+def _descriptor_issued_map_unknown_action(graph: dict[str, Any]) -> None:
+    graph["descriptors"]["psu"]["x-stg-issued-inputs"] = {
+        "otdp.oscilloscope.configure/1.0.0": ["configuration_id"]
+    }
+
+
 DESCRIPTOR_FAULTS: list[tuple[Callable[[dict[str, Any]], None], str]] = [
-    (_descriptor_id_empty, r"schema: descriptor\[psu\] requires non-empty string id"),
-    (_descriptor_profiles_scalar, r"requires profiles to be a list of strings"),
-    (_descriptor_actions_scalar, r"requires actions to be a list"),
-    (_descriptor_action_not_object, r"requires each action to be an object"),
-    (_descriptor_action_missing_id, r"action requires non-empty string action_id"),
-    (_descriptor_action_issued_scalar, r"requires issued to be a list of strings"),
+    (_descriptor_profiles_scalar, r"schema: descriptor\[psu\] \$.profiles"),
+    (_descriptor_actions_as_list, r"schema: descriptor\[psu\] \$.actions"),
+    (_descriptor_version_pattern, r"schema: descriptor\[psu\] \$.descriptor_version"),
+    (_descriptor_duplicate_parameter, r"schema: descriptor\[psu\] S01: parameter names"),
+    (_descriptor_reversed_range, r"schema: descriptor\[psu\] S02: parameter bounds"),
+    (
+        _descriptor_issued_map_unknown_action,
+        r"schema: descriptor\[psu\] issued_map: names undeclared action",
+    ),
 ]
 
 
@@ -255,8 +263,12 @@ DESCRIPTOR_FAULTS: list[tuple[Callable[[dict[str, Any]], None], str]] = [
 def test_descriptor_structural_rejection(
     tmp_path: Path, mutate: Callable[[dict[str, Any]], None], message: str
 ) -> None:
-    """Descriptors have no vendored schema: every _check_descriptor branch
-    is the only structural fence, and each rejects at admission."""
+    """The full-form descriptor gate's every layer gets a breaker here:
+    schema structure (profiles/actions/version), the S01/S02 semantic
+    mirrors, and the gateway-owned issued-input extension — each refuses
+    at admission with its own machine-matchable prefix (the census in
+    tests/sdk/test_descriptor_equivalence.py pins the layers equivalent
+    to benchweave-sdk check)."""
     with pytest.raises(AdmissionRejected, match=message):
         readmit_mutated(tmp_path, mutate)
 
@@ -661,7 +673,10 @@ def test_unknown_device_rejected(tmp_path: Path) -> None:
 
 def test_missing_profile_rejected(tmp_path: Path) -> None:
     def mutate(graph: dict[str, Any]) -> None:
-        graph["descriptors"]["psu"]["profiles"] = []
+        # Full-form profiles is minItems 1, so "declares nothing" is not
+        # expressible; declaring a version the role does not require is the
+        # equivalent miss.
+        graph["descriptors"]["psu"]["profiles"] = ["otdp.dc_psu/0.9.0"]
 
     with pytest.raises(BindingError, match=r"^missing_profile:"):
         resolve_binding(readmit_mutated(tmp_path, mutate))

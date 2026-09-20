@@ -92,6 +92,12 @@ Close architectural ambiguity without inventing bench-specific requirements. Thi
 
 **Selected:** New plugins target the accompanying reconciled OTDP 0.1.0 specification, descriptor/runtime schemas and adapter API 0.1.0. Gateway runtime safety and ownership remain explicit separate contracts.
 
+*2026-09-19 annotation:* the active corpus versions are now OTDP 0.1.1 (a byte-errata of 0.1.0) and adapter API 1.1 — see `standards/corpus-manifest.json` identity. The decision text above is the historical record and is unchanged.
+
+*2026-09-19 annotation (later the same day):* the active OTDP corpus version is now 0.1.2 — an additive derived-variables revision (descriptor `derived_variables[]`, measurement `derivation` marker; M15/S19). Adapter API stays 1.1. Same authority: `standards/corpus-manifest.json` identity.
+
+*2026-09-19 annotation (issue #64):* the active OTDP corpus version is now 0.2.0 — a MINOR revision admitting `averaging_count` on the oscilloscope configure action (class-bounded [1, 64]) and bounding acquisition `sample_count` at 1e6 across the oscilloscope, logic-analyser and DAQ configure inputs and their echoes (a tightening, so descriptors and presets re-version/repin). Adapter API stays 1.1. Same authority: `standards/corpus-manifest.json` identity.
+
 **Alternatives:** Accept v0.1 structural validation as sufficient; embed gateway policy into optional descriptor extensions.
 
 **Reason:** Review confirmed that v0.1 allows inconsistent capability claims and incomplete mappings. The revised contract separates capabilities from integration mode, tightens validation and specifies the plugin authoring/lifecycle requirements.
