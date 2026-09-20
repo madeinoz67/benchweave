@@ -65,7 +65,11 @@ and remain the reviewer's job.
    the orphan identity literal in `tests/contract/test_baseline.py`
    (`test_manifest_identity_pins_admitted_versions`). `make check-sdk-standards`
    carries the identity-vs-schema/manifest derivation checks; the agreement test
-   carries the protocol shape (invariants CON-8/REG-4).
+   carries the protocol shape (invariants CON-8/REG-4). The SDK-tree mirror family
+   has a second gate: the descriptor-semantics census
+   (`tests/sdk/test_descriptor_equivalence.py`) pins the gateway's S01/S02 mirrors
+   equivalent to the SDK checker over the in-tree corpus (CON-10) — a semantics
+   bump on either side surfaces there.
 
 9. **`deploy/systemd/` templates** 🪝 → the `systemd` CI job renders the template and
    `systemd-analyze verify`s it against rehearsed preconditions (dedicated user, one

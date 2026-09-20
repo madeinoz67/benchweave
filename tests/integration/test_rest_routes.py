@@ -70,8 +70,8 @@ ROUTE_CASES: list[tuple[str, str, int, Any]] = [
     ("get", f"/v1/benches/{BENCH}", 200, None),  # bench_get
     ("get", f"/v1/benches/{BENCH}/devices?limit=10&cursor=", 200, None),  # device_list
     # Bootstrap keys device rows by the descriptor document's own ``id``
-    # (``descriptor-sim-controller``), not the bench doc's short device id.
-    ("get", f"/v1/benches/{BENCH}/devices/descriptor-sim-controller", 200, None),
+    # (``dev.benchweave.sim-controller``), not the bench doc's short device id.
+    ("get", f"/v1/benches/{BENCH}/devices/dev.benchweave.sim-controller", 200, None),
     ("get", "/v1/documents/{sha}", 200, None),  # document_get
     ("post", f"/v1/benches/{BENCH}/run-checks", 200, {"binding_ref": BINDING_REF}),
     # A §9 replay of the setup run (same request id, same binding pin, fence
