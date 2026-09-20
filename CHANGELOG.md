@@ -397,6 +397,8 @@ All notable changes to this project will be documented in this file.
 - Regenerate the lattice single-cause after the #87 rebase
 - Advance packages/sdk to the /src anchor + .hgignore widen
 - Advance packages/sdk to the agent-native scaffold (0.0.3, fold wave 1)
+- Migrate gortex grants to official server-pattern + disallowedTools shape
+- Deny muninndb write tools on the muninn-carrying agents
 
 ### Refactoring
 
