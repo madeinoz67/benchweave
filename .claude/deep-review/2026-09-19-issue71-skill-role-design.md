@@ -354,8 +354,13 @@ new main-side tests (sibling §8); README five-steps + `user_guide/plugin-sdk.qm
 (sibling §9). In-flight-PR hazard stands: re-grep `registry[ /]0\.1\.0` at each
 merge result — the character class is load-bearing: a slash-only grep finds the
 path links and misses the space-separated prose baseline claims
-("registry 0.1.0", "registry contract 0.1.0"), which is exactly the class the
-build-run sweep missed and the review's F1 prose wave caught.
+("registry 0.1.0"), which is exactly the class the build-run sweep missed and
+the review's F1 prose wave caught. Known non-catch, stated per G4 rather than
+papered over: the class does not match phrasings with intervening words
+("registry contract 0.1.0", "registry specification 0.1.0"); verified at the
+fold-wave-2 head that zero live baseline sites sit in that blind spot (the
+wave-2 execution grep used the wider `registry (contract )?0\.1\.0` form to
+clear them), but a future site phrased that way would pass this grep unseen.
 
 **Amended at fold-wave 2 (2026-09-20), on-branch.** Deliberate-unchanged
 disposition, recorded so the re-grep exclusions are auditable: the four
@@ -378,8 +383,10 @@ development, ai-device-reviewer, plugin-ui/0.2.0 README) now say 0.1.1.
 
 Everything found during this task rolls INTO the run as slices with their own
 design passes; nothing found goes to the backlog. The only true deferrals are
-the issue's own pre-declared ones, and both get follow-up issues filed before
-the slice-1 main PR merges (orphan deferrals block merge).
+the issue's own pre-declared ones; per amended rule 3 (merge commit a6d4b76),
+a deferral row is a first-class merge citation — it cites its carrier issue,
+or carries its reopen trigger in-row when no issue is filed (the one-issue
+cap holds: at most one follow-up issue per deferral pair).
 
 - **Slice 1** — registry `skill` role + D4 mechanics (§1). Design: ACCEPTED.
 - **Slice 2** — agent-native scaffold: D3's seeding + skills content + CLAUDE.md
@@ -396,10 +403,16 @@ the slice-1 main PR merges (orphan deferrals block merge).
   `check_registry.py`/`schemas.py`/`validation.py` (ends the §8 literal-sweep
   class). Own design pass; the natural slot is the NEXT registry bump, so this
   run does not widen regression surface across 16+ files mid-train.
-- **D1 (richer `skills` manifest array) and D2 (standardising the skills
-  format)** — remain true deferrals, the issue's own; follow-up issues filed
-  before the slice-1 main PR merges. D2's boundary is load-bearing three times:
-  no check-lane skill-content validation, no prose parsing in the content test,
+- **D1 (richer `skills` manifest array)** — deferred, the issue's own; carried
+  by gateway issue #103 (filed, OPEN — its body carries the carrier framing
+  and the reopen trigger: lift a skill document's frontmatter
+  name/description/trigger into searchable manifest metadata if
+  search-by-skill-topic demand materialises).
+- **D2 (standardising the skills format)** — deferred, the issue's own; no
+  second issue (the one-issue cap holds) — reopen trigger recorded in-row per
+  its R12 origin: reopen when a harness changes the skills convention the
+  skill role references. D2's boundary is load-bearing three times: no
+  check-lane skill-content validation, no prose parsing in the content test,
   no format schema in the scaffold.
 
 ## 10. Top risks, each with its falsifier
