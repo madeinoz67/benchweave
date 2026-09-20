@@ -227,6 +227,7 @@ All notable changes to this project will be documented in this file.
 - Single issue stream — all issues file on the gateway tracker
 - Re-anchor the edit grant on the freshness gate (review R1+R2)
 - Row 14 — agent tool-grant surface (review F3, folded)
+- Recall the memory vault before proposing or diagnosing
 
 ### Features
 
