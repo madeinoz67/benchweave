@@ -109,7 +109,10 @@ class OTDPBridge:
                 context.cancelled = True
                 raise
 
-        assert self._runner is not None
+        if self._runner is None:
+            # Survives python -O: the bridge must never run an operation
+            # without its owning runner.
+            raise RuntimeError("bridge invariant violated: no runner bound")
         return self._runner.run(bounded())
 
     @staticmethod

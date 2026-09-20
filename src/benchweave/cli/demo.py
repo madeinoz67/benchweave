@@ -47,6 +47,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 from benchweave.cli.atrest import DB_NAME, daemon_holds
 from benchweave.cli.client import GatewayClient, GatewayError
+from benchweave.state.hold import hold_path
 
 if TYPE_CHECKING:
     import uvicorn
@@ -134,8 +135,8 @@ def resolve_fixtures(explicit: Path | None) -> Path:
     fixtures = explicit or Path(os.environ.get("BENCHWEAVE_FIXTURES", str(DEFAULT_FIXTURES)))
     if not (fixtures / BINDING_FILE).is_file():
         raise DemoError(
-            f"fixture lattice not found at {fixtures} — pass --fixtures pointing at a "
-            f"directory carrying {BINDING_FILE}"
+            f"fixture lattice not found at {fixtures} — pass --fixtures (or set "
+            f"BENCHWEAVE_FIXTURES) pointing at a directory carrying {BINDING_FILE}"
         )
     return fixtures
 
@@ -579,10 +580,16 @@ def _teardown_scratch(root: Path, *, remove_root: bool, keep: bool) -> None:
         return
     if remove_root:
         shutil.rmtree(root, ignore_errors=True)
+        # The advisory hold marker is a sibling of the data dir, not inside
+        # it — hold_path owns that layout knowledge; sweep through it.
+        with contextlib.suppress(OSError):
+            hold_path(root / DB_NAME).unlink()
         return
-    for suffix in ("", "-wal", "-shm", ".hold"):
+    for suffix in ("", "-wal", "-shm"):
         with contextlib.suppress(OSError):
             (root / (DB_NAME + suffix)).unlink()
+    with contextlib.suppress(OSError):
+        hold_path(root / DB_NAME).unlink()
 
 
 def run_simulation(

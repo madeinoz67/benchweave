@@ -1607,7 +1607,7 @@ def journey_wheel(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
     disclosed in the Task-6 report)."""
     root = tmp_path_factory.mktemp("poc-reuse")
     dist = root / "dist"
-    build = subprocess.run(  # noqa: S603, S607 - fixed argv; uv is the toolchain
+    build = subprocess.run(
         ["uv", "build", "--out-dir", str(dist)],
         cwd=str(REPO_ROOT),
         capture_output=True,
@@ -1624,7 +1624,7 @@ def journey_wheel(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
 def _install_wheel(wheel: Path, root: Path) -> WheelTree:
     """Install the built wheel into a throwaway venv (never the dev venv)
     — the clean-install idiom."""
-    created = subprocess.run(  # noqa: S603, S607 - fixed argv; uv is the toolchain
+    created = subprocess.run(
         ["uv", "venv", str(root / "venv")],
         capture_output=True,
         text=True,
@@ -1632,7 +1632,7 @@ def _install_wheel(wheel: Path, root: Path) -> WheelTree:
         check=False,
     )
     assert created.returncode == 0, f"uv venv failed:\n{created.stderr}"
-    installed = subprocess.run(  # noqa: S603, S607
+    installed = subprocess.run(
         [
             "uv",
             "pip",
@@ -1662,7 +1662,7 @@ def _demo_end_to_end(install: WheelTree, scratch: Path) -> dict[str, Any]:
     env = {
         key: value for key, value in os.environ.items() if not key.startswith("BENCHWEAVE_")
     }
-    result = subprocess.run(  # noqa: S603 - fixed argv, no shell
+    result = subprocess.run(
         [
             str(install.binary),
             "demo",

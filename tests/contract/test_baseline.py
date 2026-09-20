@@ -77,7 +77,8 @@ def _walk(value: Any, base: str) -> list[tuple[Any, str]]:
 
 def test_manifest_lists_every_contract_file() -> None:
     listed = {entry["path"] for entry in _manifest()["files"]}
-    actual = {str(p.relative_to(CONTRACTS)) for p in _contract_files()}
+    # as_posix(): the manifest records forward-slash paths on every OS.
+    actual = {p.relative_to(CONTRACTS).as_posix() for p in _contract_files()}
     assert listed == actual, f"manifest drift: missing={actual - listed} extra={listed - actual}"
 
 
@@ -153,7 +154,7 @@ def test_schema_references_resolve_within_corpus() -> None:
                 try:
                     scoped.resolver(base).lookup(ref)
                 except Unresolvable:
-                    unresolved.append(f"{path.relative_to(CONTRACTS)} -> {ref}")
+                    unresolved.append(f"{path.relative_to(CONTRACTS).as_posix()} -> {ref}")
     assert not unresolved, f"unresolvable $refs: {unresolved}"
 
 

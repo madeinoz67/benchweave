@@ -73,8 +73,8 @@ def main_version(root: Path) -> str:
 
 
 def submodule_sha(sdk: Path) -> str:
-    result = subprocess.run(
-        ["git", "-C", str(sdk), "rev-parse", "--short", "HEAD"],
+    result = subprocess.run(  # noqa: S603 — fixed argv
+        ["git", "-C", str(sdk), "rev-parse", "--short", "HEAD"],  # noqa: S607 — PATH git is the supported invocation
         capture_output=True,
         text=True,
         check=False,

@@ -144,7 +144,8 @@ def test_stale_marker_from_a_dead_holder_does_not_block(tmp_path: Path) -> None:
     leftover file body is ignored — the flock, not the content, is truth."""
     data = tmp_path / "data"
     db = _initialized(data)
-    (data / "state.sqlite.hold").write_text(
+    # The marker is a sibling of the data dir (see state/hold.hold_path).
+    (tmp_path / "data.hold").write_text(
         json.dumps({"pid": 999999, "label": "gateway gw-dead", "acquired_at": "2026-01-01"}),
         encoding="utf-8",
     )
@@ -440,17 +441,19 @@ def test_restore_refuses_unlisted_extra_files_in_the_archive(tmp_path: Path) -> 
 def test_verify_still_accepts_live_sidecars_beside_the_manifest(tmp_path: Path) -> None:
     """The extras gate carves out the store's runtime sidecars and the
     deliberately-unbacked credential file: a restored data dir that has
-    since served traffic (``-wal``/``-shm``/the ``.hold`` marker) and
-    carries the operator's re-placed ``benchweave.env`` still verifies
-    clean — live-state, not tampering."""
+    since served traffic (``-wal``/``-shm``) and carries the operator's
+    re-placed ``benchweave.env`` still verifies clean — live-state, not
+    tampering. The advisory hold marker lives BESIDE the data dir and so
+    never enters the verified tree at all."""
     data = tmp_path / "data"
     _initialized(data)
     archive = backup(data, tmp_path / "out")
     fresh = tmp_path / "fresh"
     restore(archive, fresh)
-    for sidecar in ("state.sqlite-wal", "state.sqlite-shm", "state.sqlite.hold"):
+    for sidecar in ("state.sqlite-wal", "state.sqlite-shm"):
         (fresh / sidecar).write_bytes(b"live-state")
     (fresh / "benchweave.env").write_text("BENCHWEAVE_SECRET=replaced\n")
+    (tmp_path / "fresh.hold").write_bytes(b"live-state")  # sibling marker: outside the tree
     assert verify(fresh) == 0
 
 
@@ -489,3 +492,21 @@ def test_setup_refusal_while_the_store_is_held_is_handled_not_a_traceback(
     combined = _combined(result)
     assert "held" in combined
     assert "gw-unit" in combined and "424242" in combined, "must name the holder"
+
+
+def test_verify_tolerates_the_legacy_in_dir_hold_marker(tmp_path: Path) -> None:
+    """Pre-relocation releases left ``<data_dir>/state.sqlite.hold`` behind
+    on release (unlock-without-unlink); every dir ever served or backed up
+    before the marker moved beside the tree carries it. The fixed, known
+    name is tolerated as live-state — the SIBLING marker stays outside the
+    tree (the relocation's whole point), pinned by the sidecar test above
+    (PR #35 MEDIUM).
+    """
+
+    data = tmp_path / "data"
+    _initialized(data)
+    archive = backup(data, tmp_path / "out")
+    fresh = tmp_path / "fresh"
+    restore(archive, fresh)
+    (fresh / "state.sqlite.hold").write_bytes(b"legacy in-dir marker")
+    assert verify(fresh) == 0
