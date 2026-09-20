@@ -24,7 +24,11 @@ from pathlib import Path
 from typing import Any
 
 from benchweave.content.store import ContentStore
-from benchweave.control.documents import AdmittedDocuments, admit_documents
+from benchweave.control.documents import (
+    AdmittedDocuments,
+    admit_documents,
+    decode_resolution_document,
+)
 from benchweave.registry.admission import AdmissionLimits
 from benchweave.registry.authenticity import TrustRoot, load_trust_root
 from benchweave.registry.manifests import Key
@@ -61,13 +65,16 @@ def admit_fixture_lattice(fixtures_dir: Path) -> AdmittedDocuments:
     ``descriptor-*.json`` family (absent → ``FileNotFoundError`` naming the
     device and sha prefix); then ``admit_documents`` — exact-byte decode,
     the vendored schemas, the S01/S02 mirrors, the issued-input extension
-    and the full digest-pin lattice. Typed refusals (``schema:`` /
+    and the full digest-pin lattice. The resolution parses (binding,
+    bench) decode through the exact-byte decoder too, so a malformed
+    document refuses with the typed ``schema:`` prefix instead of a raw
+    ``JSONDecodeError``. Typed refusals (``schema:`` /
     ``digest_mismatch:`` / ``pin_absent:``) and file-level errors propagate
     to the caller: bootstrap logs ``startup_admission_rejected:`` and
     re-raises (refusing startup); recovery contains them
     (``recovery_admission_rejected:`` → skip run recovery).
     """
-    binding = json.loads((fixtures_dir / "run-binding.json").read_bytes())
+    binding = decode_resolution_document(fixtures_dir / "run-binding.json", "binding")
     procedure_sha = str(binding["procedure"]["sha256"])
     procedure_path = next(
         (
@@ -79,7 +86,7 @@ def admit_fixture_lattice(fixtures_dir: Path) -> AdmittedDocuments:
     )
     if procedure_path is None:
         raise FileNotFoundError("binding-pinned procedure not found under fixtures")
-    bench = json.loads((fixtures_dir / "bench.json").read_bytes())
+    bench = decode_resolution_document(fixtures_dir / "bench.json", "bench")
     by_sha = _descriptor_paths_by_sha(fixtures_dir)
     descriptor_paths: dict[str, Path] = {}
     for device in bench["devices"]:

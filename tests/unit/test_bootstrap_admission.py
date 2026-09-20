@@ -29,6 +29,7 @@ import pytest
 
 from benchweave.content.store import ContentStore
 from benchweave.control.documents import AdmissionRejected
+from benchweave.interfaces.app import _recovery_documents
 from benchweave.interfaces.bootstrap import admit_startup_bench
 from benchweave.state.store import Store
 
@@ -194,6 +195,54 @@ def test_v5_binding_pinned_procedure_absent_refuses_startup(tmp_path: Path) -> N
         _assert_store_untouched(store, content, lattice)
     finally:
         store.close()
+
+
+def test_malformed_bench_document_refuses_startup_typed(tmp_path: Path) -> None:
+    """Design §2 row 2, closed: a malformed bench arrives as ``schema:``.
+
+    The resolution step parses bench.json before ``admit_documents`` sees
+    it; that parse runs through the exact-byte decoder so the truncated /
+    duplicate-key / non-finite shapes refuse with the typed prefix
+    instead of a raw JSONDecodeError traceback.
+    """
+    lattice = _lattice_copy(tmp_path, "malformed-bench")
+    (lattice / "bench.json").write_text('{"id": "sim-bench", "devices": [')
+    store = Store.open(tmp_path / "malformed-bench.db")
+    content = ContentStore(store)
+    try:
+        with pytest.raises(AdmissionRejected, match=r"^schema: bench"):
+            admit_startup_bench(store, content, lattice, now=NOW)
+        _assert_store_untouched(store, content, lattice)
+    finally:
+        store.close()
+
+
+def test_malformed_binding_document_refuses_startup_typed(tmp_path: Path) -> None:
+    """Same channel for run-binding.json, the other resolution parse."""
+    lattice = _lattice_copy(tmp_path, "malformed-binding")
+    (lattice / "run-binding.json").write_text("not json at all")
+    store = Store.open(tmp_path / "malformed-binding.db")
+    content = ContentStore(store)
+    try:
+        with pytest.raises(AdmissionRejected, match=r"^schema: binding"):
+            admit_startup_bench(store, content, lattice, now=NOW)
+        _assert_store_untouched(store, content, lattice)
+    finally:
+        store.close()
+
+
+def test_recovery_contains_a_malformed_bench_lattice_unchanged(tmp_path: Path) -> None:
+    """The typed wrap changes the recovery caller's exception class only.
+
+    Before the exact-byte decode, the resolution parse raised raw
+    JSONDecodeError; after it, AdmissionRejected — the containment
+    outcome is identical either way (logged ``recovery_admission_rejected``,
+    ``None``, run recovery skipped), which is the "semantics identical"
+    claim pinned as a test line.
+    """
+    lattice = _lattice_copy(tmp_path, "recovery-malformed")
+    (lattice / "bench.json").write_text('{"id": "sim-bench", ')
+    assert _recovery_documents(lattice) is None
 
 
 def test_unpinned_extra_descriptor_gains_no_device_row(tmp_path: Path) -> None:
