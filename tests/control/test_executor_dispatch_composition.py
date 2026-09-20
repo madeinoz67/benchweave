@@ -151,10 +151,12 @@ def test_pre_dispatch_input_refusal_is_execution_error(tmp_path: Path) -> None:
         dict(_CONFIGURE),
         {
             # A bare string where the plugin's input validation demands a
-            # list: a framing failure the device refuses without evaluating
-            # anything (INVALID_ARGUMENT / not_dispatched). The descriptor's
-            # channel item patterns do not type the array itself, so an
-            # admitted procedure can legitimately carry it to dispatch.
+            # list: a framing failure classified by KIND (input shape, not
+            # device state) as INVALID_ARGUMENT / not_dispatched — the token
+            # check may run first, but a shape failure never reports as a
+            # device evaluation. The descriptor's channel item patterns do
+            # not type the array itself, so an admitted procedure can
+            # legitimately carry it to dispatch.
             "id": "probe-framing",
             "kind": "invoke",
             "role": "supply",
