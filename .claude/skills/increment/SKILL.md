@@ -77,9 +77,9 @@ or a public surface, run the loop.
    title + body naming what shipped + what's deferred, referencing the design — and
    **every deferral must cite its home (reviewer-enforced; no mechanical gate yet)**
    (#69, amended 2026-09-20 by the backlog triage council): either (a) an open issue,
-   created at PR-open time, whose body names its carrier increment or its fired reopen
-   trigger, or (b) a row in the design record's deferral table carrying that same
-   trigger. Issues are reserved for deferrals whose carrier is scheduled or externally
+   created at PR-open time if absent, whose body names its carrier increment and its
+   reopen trigger (the condition that justifies reopening), or (b) a row in the design
+   record's deferral table that records that same reopen trigger. Issues are reserved for deferrals whose carrier is scheduled or externally
    arriving — at most ONE follow-on issue per merged PR; all others defer as
    documentation. Every merge runs a GO/CLOSE pass over its own deferral list; "keep
    open just in case" fails the gate. Multiple PRs from one work use
