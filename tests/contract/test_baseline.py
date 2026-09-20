@@ -22,14 +22,6 @@ from referencing.jsonschema import DRAFT202012
 
 ROOT = Path(__file__).resolve().parents[2]
 CONTRACTS = ROOT / "standards"
-ADMITTED_DIRS = (
-    "otdp/0.1.1",
-    "otdp/0.1.2",
-    "otdp/0.2.0",
-    "registry/0.1.0",
-    "execution/0.1.0",
-    "interface/0.1.0",
-)
 
 
 def _strict_loads(text: str) -> Any:
@@ -175,3 +167,184 @@ def test_manifest_tamper_is_detected() -> None:
             test_manifest_hashes_match_contract_files()
     finally:
         target.write_bytes(original)
+
+
+# --- #78: the corpus dir closed world is derived, never hand-listed ------------
+
+
+def _standards_manifest() -> dict[str, Any]:
+    manifest = _load_strict(CONTRACTS / "standards-manifest.json")
+    assert isinstance(manifest, dict)
+    return manifest
+
+
+def _version_dir(relative: str) -> str:
+    """The ``<family>/<version>`` dir a corpus path or source lives in."""
+    return "/".join(relative.split("/")[:2])
+
+
+def _derived_corpus_dirs(
+    standards_manifest: dict[str, Any], corpus_rows: list[dict[str, Any]]
+) -> set[str]:
+    """The closed world of corpus version-dirs, derived (never hand-listed).
+
+    Active: version-dirs of the standards manifest's normative paths that
+    live under ``standards/`` (normative paths elsewhere — e.g. a
+    presentation package's ``src/`` tree — are not corpus dirs). Retained:
+    the transitive closure of corpus-manifest ``source`` chains while they
+    stay under ``standards/`` — the copy-never-move lineage GOVERNANCE
+    requires every bump to cite. A source naming a ``standards/`` path with
+    no matching row still contributes its dir (the chain gap then fires in
+    the derived-actual direction). What this derivation does not catch:
+    file-vs-manifest drift inside a dir — the manifest-listing and hash
+    tests own that; this owns dir-level justification only.
+    """
+    active: set[str] = set()
+    for entry in standards_manifest["standards"]:
+        for path in entry["normative"]:
+            if path.startswith("standards/"):
+                active.add(_version_dir(path.removeprefix("standards/")))
+    by_path = {str(row["path"]): row for row in corpus_rows}
+    retained: set[str] = set()
+    for row in corpus_rows:
+        source = row.get("source")
+        # The visited set makes a source cycle terminate (the real corpus is
+        # acyclic; a synthetic or tampered cycle must not hang the guard).
+        visited: set[str] = set()
+        while isinstance(source, str) and source not in visited:
+            if not source.startswith("standards/"):
+                break
+            visited.add(source)
+            retained.add(_version_dir(source.removeprefix("standards/")))
+            cited = by_path.get(source.removeprefix("standards/"))
+            if cited is None:
+                break
+            source = cited.get("source")
+    return active | retained
+
+
+def _corpus_dir_justification(
+    standards_manifest: dict[str, Any], corpus_rows: list[dict[str, Any]]
+) -> tuple[list[str], list[str]]:
+    """``(stray, missing)``: dirs unjustified by derivation / justified but absent."""
+    derived = _derived_corpus_dirs(standards_manifest, corpus_rows)
+    actual = {_version_dir(str(row["path"])) for row in corpus_rows}
+    return sorted(actual - derived), sorted(derived - actual)
+
+
+def test_corpus_dirs_match_derived_closed_world() -> None:
+    """Every corpus version-dir is justified by derivation, both directions.
+
+    Replaces the dead ``ADMITTED_DIRS`` hand-list, which had drifted four
+    version-dirs behind the real corpus while nothing read it. The derived
+    set is the active dirs (standards-manifest normative paths under
+    ``standards/``) plus the retained dirs (the transitive closure of
+    corpus-manifest ``source`` chains while they stay under ``standards/`` —
+    the copy-never-move lineage GOVERNANCE requires every bump to cite).
+    This guard does NOT catch file-vs-manifest drift inside a justified
+    dir: ``test_manifest_lists_every_contract_file`` and the hash tests own
+    that surface; this owns dir-level justification only.
+    """
+    stray, missing = _corpus_dir_justification(
+        _standards_manifest(), _manifest()["files"]
+    )
+    assert not stray, (
+        "corpus dir(s) not justified by the standards manifest or any source "
+        f"chain (stray family/version): {stray}"
+    )
+    assert not missing, (
+        "justified dir(s) missing from the corpus (copy-never-move deletion "
+        f"or broken source chain): {missing}"
+    )
+
+
+def _sm_entry(standard_id: str, paths: list[str]) -> dict[str, Any]:
+    return {"id": standard_id, "normative": paths}
+
+
+def _row(path: str, source: str | None = None) -> dict[str, Any]:
+    row: dict[str, Any] = {"path": path, "sha256": "0" * 64}
+    if source is not None:
+        row["source"] = source
+    return row
+
+
+def test_derived_dir_guard_matched_control() -> None:
+    """Synthetic matched corpus: active dir + one retained hop, equality."""
+    manifest = {"standards": [_sm_entry("alpha", ["standards/alpha/0.2.0/a.schema.json"])]}
+    rows = [
+        _row("alpha/0.2.0/a.schema.json", "standards/alpha/0.1.0/a.schema.json"),
+        _row("alpha/0.1.0/a.schema.json", "docs/alpha/a.schema.json"),
+    ]
+    stray, missing = _corpus_dir_justification(manifest, rows)
+    assert stray == []
+    assert missing == []
+
+
+def test_derived_dir_guard_stray_dir_fires_actual_minus_derived() -> None:
+    """A dir no manifest entry names and no chain retains fires stray only."""
+    manifest = {"standards": [_sm_entry("alpha", ["standards/alpha/0.2.0/a.schema.json"])]}
+    rows = [
+        _row("alpha/0.2.0/a.schema.json", "docs/alpha/a.schema.json"),
+        _row("ghost/9.9.9/a.schema.json", "docs/ghost/a.schema.json"),
+    ]
+    stray, missing = _corpus_dir_justification(manifest, rows)
+    assert stray == ["ghost/9.9.9"]
+    assert missing == []
+
+
+def test_derived_dir_guard_deleted_retained_dir_fires_derived_minus_actual() -> None:
+    """A citing row whose retained dir's rows were deleted fires missing only."""
+    manifest = {"standards": [_sm_entry("alpha", ["standards/alpha/0.2.0/a.schema.json"])]}
+    rows = [_row("alpha/0.2.0/a.schema.json", "standards/alpha/0.1.0/a.schema.json")]
+    stray, missing = _corpus_dir_justification(manifest, rows)
+    assert stray == []
+    assert missing == ["alpha/0.1.0"]
+
+
+def test_derived_dir_guard_active_version_move_keeps_equality() -> None:
+    """A compliant bump (new active dir, old one retained by chain) holds."""
+    manifest = {"standards": [_sm_entry("alpha", ["standards/alpha/0.3.0/a.schema.json"])]}
+    rows = [
+        _row("alpha/0.3.0/a.schema.json", "standards/alpha/0.2.0/a.schema.json"),
+        _row("alpha/0.2.0/a.schema.json", "docs/alpha/a.schema.json"),
+    ]
+    stray, missing = _corpus_dir_justification(manifest, rows)
+    assert stray == []
+    assert missing == []
+
+
+def test_derived_dir_guard_chain_gap_fires_derived_minus_actual() -> None:
+    """The gap one hop beyond the citing row: closure, not one-hop matching.
+
+    0.3.0 cites 0.2.0 (rows present) and 0.2.0 cites 0.1.0 (rows absent):
+    a one-hop derivation would hold equality here; the transitive closure
+    must flag 0.1.0.
+    """
+    manifest = {"standards": [_sm_entry("alpha", ["standards/alpha/0.3.0/a.schema.json"])]}
+    rows = [
+        _row("alpha/0.3.0/a.schema.json", "standards/alpha/0.2.0/a.schema.json"),
+        _row("alpha/0.2.0/a.schema.json", "standards/alpha/0.1.0/a.schema.json"),
+    ]
+    stray, missing = _corpus_dir_justification(manifest, rows)
+    assert stray == []
+    assert missing == ["alpha/0.1.0"]
+
+
+def test_derived_dir_guard_ignores_non_standards_normative_paths() -> None:
+    """Normative paths outside standards/ contribute no corpus dir."""
+    manifest = {
+        "standards": [
+            _sm_entry(
+                "ui",
+                ["standards/ui/0.2.0/a.schema.json", "src/plugin_ui/presentation.ts"],
+            )
+        ]
+    }
+    rows = [
+        _row("ui/0.2.0/a.schema.json", "standards/ui/0.1.0/a.schema.json"),
+        _row("ui/0.1.0/a.schema.json", "docs/ui/a.schema.json"),
+    ]
+    stray, missing = _corpus_dir_justification(manifest, rows)
+    assert stray == []
+    assert missing == []
