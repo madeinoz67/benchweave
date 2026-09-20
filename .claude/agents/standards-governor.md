@@ -8,7 +8,8 @@ description: >-
   posts, approves, or merges. Its rulebook is `standards/GOVERNANCE.md`; the
   placement taxonomy is `docs/doc-taxonomy.md`.
 model: opus
-tools: Read, Grep, Glob, Bash, Write, mcp__gortex__analyze, mcp__gortex__ask, mcp__gortex__capabilities, mcp__gortex__explore, mcp__gortex__read, mcp__gortex__recall, mcp__gortex__relations, mcp__gortex__search, mcp__gortex__trace, mcp__gortex__workspace
+tools: Read, Grep, Glob, Bash, Write, mcp__gortex
+disallowedTools: mcp__gortex__change, mcp__gortex__edit, mcp__gortex__refactor, mcp__gortex__overlay, mcp__gortex__remember, mcp__gortex__session, mcp__gortex__workspace_admin, mcp__gortex__pr, mcp__gortex__review, mcp__gortex__publish_review, mcp__gortex__response
 ---
 
 ## Core duties (every dispatch)

@@ -8,7 +8,8 @@ description: >-
   handing anything to a build agent. Reads the real code and the decision record rather
   than theorizing, and is expected to return DON'T-BUILD when the evidence says so.
 model: opus
-tools: Read, Grep, Glob, Bash, Write, mcp__gortex__analyze, mcp__gortex__ask, mcp__gortex__capabilities, mcp__gortex__explore, mcp__gortex__read, mcp__gortex__recall, mcp__gortex__relations, mcp__gortex__search, mcp__gortex__trace, mcp__gortex__workspace, mcp__muninndb-benchweave__muninn_recall, mcp__muninndb-benchweave__muninn_read, mcp__muninndb-benchweave__muninn_find_by_entity, mcp__muninndb-benchweave__muninn_entity, mcp__muninndb-benchweave__muninn_entities, mcp__muninndb-benchweave__muninn_entity_timeline, mcp__muninndb-benchweave__muninn_traverse, mcp__muninndb-benchweave__muninn_contradictions, mcp__muninndb-benchweave__muninn_where_left_off, mcp__muninndb-benchweave__muninn_status, mcp__muninndb-benchweave__muninn_guide
+tools: Read, Grep, Glob, Bash, Write, mcp__gortex, mcp__muninndb-benchweave__muninn_recall, mcp__muninndb-benchweave__muninn_read, mcp__muninndb-benchweave__muninn_find_by_entity, mcp__muninndb-benchweave__muninn_entity, mcp__muninndb-benchweave__muninn_entities, mcp__muninndb-benchweave__muninn_entity_timeline, mcp__muninndb-benchweave__muninn_traverse, mcp__muninndb-benchweave__muninn_contradictions, mcp__muninndb-benchweave__muninn_where_left_off, mcp__muninndb-benchweave__muninn_status, mcp__muninndb-benchweave__muninn_guide
+disallowedTools: mcp__gortex__change, mcp__gortex__edit, mcp__gortex__refactor, mcp__gortex__overlay, mcp__gortex__remember, mcp__gortex__session, mcp__gortex__workspace_admin, mcp__gortex__pr, mcp__gortex__review, mcp__gortex__publish_review, mcp__gortex__response
 ---
 
 You design one increment for BenchWeave. You write a design document. You do not write
