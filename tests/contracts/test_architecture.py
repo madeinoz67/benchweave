@@ -182,6 +182,42 @@ def test_pinned_checks_pass_through_symlinked_standards_alias(tmp_path: Path) ->
     )
 
 
+def test_pinned_check_detects_path_escape(tmp_path: Path) -> None:
+    """The pinned check's escape arm must fail an escaped contract path (#125).
+
+    The regression rows pin the hash-mismatch and census arms; this dedicated
+    arm pins ``is_relative_to(OUT)``. The contract's bytes are copied UNCHANGED
+    to one directory above the active version directory, and the descriptor's
+    contract path is rewritten to ``../``-reach it, so the recorded sha256
+    still matches and the file still exists — by construction the only clause
+    that can fail is the escape itself, never the hash or existence. The
+    resolve-equality guard pins the geometry: if the copy target and the
+    ``../`` resolution ever drift apart (the vacuous shape this test replaced),
+    the guard fails loudly rather than passing for the wrong reason.
+
+    Ordinary corpus obligation: class-dc_psu.json must keep a non-empty
+    ``contracts`` array and its ``profiles`` key — the construction is generic
+    over whichever contract is ``contracts[0]``.
+    """
+    docs = tmp_path / "docs"
+    standards = tmp_path / "standards"
+    shutil.copytree(ROOT / "docs", docs)
+    shutil.copytree(ROOT / "standards", standards)
+    version_dir = standards / _active_report_path().rsplit("/", 1)[0]
+    descriptor_path = version_dir / "examples" / "class-dc_psu.json"
+    descriptor = json.loads(descriptor_path.read_text(encoding="utf-8"))
+    contract = descriptor["contracts"][0]
+    escaped = version_dir.parent / "escaped-contract.json"
+    escaped.write_bytes((version_dir / contract["path"]).read_bytes())
+    assert (version_dir / "../escaped-contract.json").resolve() == escaped.resolve(), (
+        "escape target must be exactly where the descriptor's ../ lands"
+    )
+    contract["path"] = "../escaped-contract.json"
+    descriptor_path.write_text(json.dumps(descriptor, indent=2), encoding="utf-8")
+    failures = [name for name, passed in run_checks("devices", docs, standards) if not passed]
+    assert failures == [f"class-dc_psu.json pinned {contract['id']}"], failures
+
+
 def test_documents_ignores_markdown_links_inside_fenced_code_blocks(
     tmp_path: Path,
 ) -> None:
