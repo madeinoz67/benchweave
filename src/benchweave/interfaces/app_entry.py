@@ -135,7 +135,8 @@ def _require_production_secret(secret: bytes) -> None:
         "BENCHWEAVE_SECRET (empty or whitespace, or a publicly known value "
         "— any secret literal committed to the repository, e.g. the "
         "default test secret) — set a real secret (e.g. the one "
-        "`benchweave setup` wrote to benchweave.env, kept mode 0600)"
+        "`benchweave setup` wrote to benchweave.env, kept mode 0600, or on "
+        "Windows kept restricted to the gateway's account)"
     )
 
 

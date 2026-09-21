@@ -22,13 +22,18 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import stat
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 from click.testing import CliRunner, Result
 
+from benchweave.cli import atrest
 from benchweave.cli.atrest import (
+    AtRestError,
     backup,
     daemon_holds,
     restore,
@@ -59,6 +64,36 @@ def _read_secret(data_dir: Path) -> str:
     raise AssertionError("credential file carries no BENCHWEAVE_SECRET")
 
 
+def _windows_access_entries(path: Path) -> list[str]:
+    """``icacls`` output for ``path``, one string per access entry."""
+    system32 = Path(os.environ.get("SYSTEMROOT", r"C:\Windows")) / "System32"
+    listing = subprocess.run(
+        [str(system32 / "icacls.exe"), str(path)], capture_output=True, text=True, check=True
+    ).stdout
+    entries = []
+    for line in listing.replace(str(path), "", 1).splitlines():
+        entry = line.strip()
+        if entry and "(" in entry:  # the trailing "Successfully processed" line has no rights
+            entries.append(entry)
+    return entries
+
+
+def _assert_owner_only(credential: Path) -> None:
+    """Mode 0600 where mode bits mean something; one explicit entry for this user where not."""
+    if sys.platform != "win32":
+        assert stat.S_IMODE(credential.stat().st_mode) == 0o600, "credential file must be 0600"
+        return
+    system32 = Path(os.environ.get("SYSTEMROOT", r"C:\Windows")) / "System32"
+    me = subprocess.run(
+        [str(system32 / "whoami.exe")], capture_output=True, text=True, check=True
+    ).stdout.strip()
+    entries = _windows_access_entries(credential)
+    assert len(entries) == 1, f"credential file must carry exactly one access entry: {entries}"
+    assert entries[0].casefold().startswith(me.casefold() + ":"), entries
+    assert "(F)" in entries[0], entries
+    assert "(I)" not in entries[0], f"the entry must be explicit, not inherited: {entries}"
+
+
 def _initialized(data_dir: Path) -> Path:
     result = CliRunner().invoke(cli, ["setup", "--data-dir", str(data_dir)])
     assert result.exit_code == 0, _combined(result)
@@ -75,7 +110,7 @@ def test_setup_creates_layout_migrations_and_0600_credential_file(tmp_path: Path
     assert (data / "content").is_dir()
     credential = data / "benchweave.env"
     assert credential.is_file()
-    assert stat.S_IMODE(credential.stat().st_mode) == 0o600, "credential file must be 0600"
+    _assert_owner_only(credential)
     secret = _read_secret(data)
     assert len(secret) >= 32, "generated secret must have real entropy"
     # Migrations ran exactly as at app boot: same Store.open path, same version.
@@ -84,6 +119,89 @@ def test_setup_creates_layout_migrations_and_0600_credential_file(tmp_path: Path
         assert store.schema_version() > 0
     finally:
         store.close()
+
+
+def test_credential_is_restricted_before_the_secret_is_written(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#137: on Windows the secret must never sit behind an inherited access list.
+
+    The writer is plain file I/O around one restriction call, so with that call
+    replaced the ordering is provable on any platform: at the moment of
+    restriction the (staged) file exists and is empty.
+    """
+    seen: list[bytes] = []
+    monkeypatch.setattr(atrest, "_restrict_to_current_user", lambda p: seen.append(p.read_bytes()))
+    credential = tmp_path / "benchweave.env"
+    atrest._write_owner_only_windows(credential, b"BENCHWEAVE_SECRET=s3cret\n")
+    assert seen == [b""], "the file must exist, empty, when the access list is restricted"
+    assert credential.read_bytes() == b"BENCHWEAVE_SECRET=s3cret\n"
+
+
+def test_credential_is_not_written_when_it_cannot_be_restricted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#137: a volume with no access lists gets a refusal, not an unprotected secret."""
+
+    def refuse(path: Path) -> None:
+        raise AtRestError(f"cannot restrict {path} to the current user")
+
+    monkeypatch.setattr(atrest, "_restrict_to_current_user", refuse)
+    credential = tmp_path / "benchweave.env"
+    with pytest.raises(AtRestError, match="cannot restrict"):
+        atrest._write_owner_only_windows(credential, b"BENCHWEAVE_SECRET=s3cret\n")
+    assert list(tmp_path.iterdir()) == [], "no credential file and no staging directory may remain"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="access lists are the Windows half of 0600")
+def test_credential_is_born_private_under_a_permissive_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#137: a handle opened before the restriction would still read the secret afterwards.
+
+    Windows checks access when a handle is opened, so restricting a file that
+    was created permissive leaves a window. The data directory here grants
+    every authenticated account Modify, inheritably (the posture of a
+    directory on a data drive). At the moment of restriction, which is before
+    any secret exists, the file must already carry nothing from that grant.
+    """
+    data = tmp_path / "data"
+    data.mkdir()
+    system32 = Path(os.environ.get("SYSTEMROOT", r"C:\Windows")) / "System32"
+    subprocess.run(
+        [str(system32 / "icacls.exe"), str(data), "/grant", "*S-1-5-11:(OI)(CI)M"],
+        capture_output=True,
+        check=True,
+    )
+    granted = [entry for entry in _windows_access_entries(data) if "(I)" not in entry]
+    assert len(granted) == 1, granted  # the grant above, under its localised name
+    everyone_signed_in = granted[0].split(":", 1)[0]
+
+    at_restriction: list[list[str]] = []
+    restrict = atrest._restrict_to_current_user
+
+    def spy(path: Path) -> None:
+        at_restriction.append(_windows_access_entries(path))
+        restrict(path)
+
+    monkeypatch.setattr(atrest, "_restrict_to_current_user", spy)
+    credential = data / "benchweave.env"
+    atrest._write_owner_only_windows(credential, b"BENCHWEAVE_SECRET=s3cret\n")
+
+    assert len(at_restriction) == 1 and at_restriction[0], at_restriction
+    assert not any(entry.startswith(everyone_signed_in + ":") for entry in at_restriction[0]), (
+        f"the file was reachable through the directory's grant before it was restricted: "
+        f"{at_restriction[0]}"
+    )
+    _assert_owner_only(credential)
+    assert sorted(p.name for p in data.iterdir()) == ["benchweave.env"], "staging must be removed"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="icacls and whoami are Windows tools")
+def test_restriction_failure_is_a_named_refusal(tmp_path: Path) -> None:
+    """#137: icacls failing (here: the file is absent) surfaces as AtRestError, never silence."""
+    with pytest.raises(AtRestError, match="no secret was written"):
+        atrest._restrict_to_current_user(tmp_path / "absent.env")
 
 
 def test_setup_secret_never_reaches_stdout_without_show_secret(tmp_path: Path) -> None:
@@ -95,6 +213,8 @@ def test_setup_secret_never_reaches_stdout_without_show_secret(tmp_path: Path) -
     combined = _combined(result)
     assert "benchweave.env" in combined
     assert "0600" in combined
+    # ... and says what that means where mode bits mean nothing (#137).
+    assert ("restricted to your account" in combined) is (sys.platform == "win32")
 
 
 def test_setup_show_secret_is_the_explicit_stdout_opt_in(tmp_path: Path) -> None:

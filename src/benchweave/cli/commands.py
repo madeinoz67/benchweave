@@ -83,7 +83,8 @@ _DATA_DIR_HELP = "At-rest data directory (holds state.sqlite + content/)."
     is_flag=True,
     help=(
         "Print the generated gateway secret to stdout. Default: the secret is "
-        "written only to <data-dir>/benchweave.env (mode 0600) and never printed."
+        "written only to <data-dir>/benchweave.env (mode 0600; on Windows, access "
+        "restricted to your account) and never printed."
     ),
 )
 @click.option(
@@ -105,10 +106,17 @@ def setup(data_dir: Path, show_secret: bool, json_output: bool) -> None:
         # a refusal naming the holder, not a traceback.
         raise click.ClickException(str(error)) from error
     secret_file = data_dir / atrest.CREDENTIAL_FILE
+    # Mode bits mean nothing to a Windows access list; there setup restricts
+    # the file's access list to the current account instead (#137).
+    keep = (
+        "its access is restricted to your account (the Windows equivalent of 0600), keep it so"
+        if sys.platform == "win32"
+        else "keep it 0600"
+    )
     click.echo(
         f"initialized {data_dir}\n"
         f"store: {db} (migrations applied at creation, as at app boot)\n"
-        f"secret: written to {secret_file} — keep it 0600; it is never printed"
+        f"secret: written to {secret_file} — {keep}; it is never printed"
         + ("" if show_secret else " (use --show-secret to print it)"),
         err=True,
     )

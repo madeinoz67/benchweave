@@ -26,7 +26,9 @@ Backup layout (``out/backup-<iso>/``)::
     manifest.json  # {"files": {path: sha256}, "wal_included": bool, ...}
 
 Secret posture: ``setup`` generates the gateway secret and writes it ONLY
-to ``benchweave.env`` (mode 0600). The library never returns or prints it;
+to ``benchweave.env`` (mode 0600; on Windows, where mode bits do not reach
+the access list, an access list holding the current user alone). The
+library never returns or prints it;
 the CLI's ``--show-secret`` flag is the single explicit opt-in that puts it
 on stdout. Credentials are operator-held state, deliberately excluded from
 backups (a restored deployment re-uses the operator's kept credential file).
@@ -34,12 +36,16 @@ backups (a restored deployment re-uses the operator's kept credential file).
 
 from __future__ import annotations
 
+import csv
 import hashlib
 import json
 import os
+import re
 import secrets
 import shutil
 import sqlite3
+import subprocess
+import sys
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
@@ -78,6 +84,9 @@ DB_NAME = "state.sqlite"
 CONTENT_DIR = "content"
 #: The 0600 credential file written by setup.
 CREDENTIAL_FILE = "benchweave.env"
+#: A Windows security identifier, as ``whoami /user`` prints it.
+_SID = re.compile(r"S-1-[0-9]+(?:-[0-9]+)+")
+_ACL_TIMEOUT_SECONDS = 30
 #: The env key carrying the gateway secret inside the credential file.
 SECRET_ENV_KEY = "BENCHWEAVE_SECRET"  # noqa: S105 — an env var NAME, not a credential
 #: The digest manifest name (in backups and in restored data dirs).
@@ -153,14 +162,91 @@ def _is_live_state(rel: str) -> bool:
 
 
 def _write_credential_file(path: Path, secret: str) -> None:
+    payload = f"{SECRET_ENV_KEY}={secret}\n".encode()
+    if sys.platform == "win32":
+        _write_owner_only_windows(path, payload)
+        return
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     try:
-        os.write(fd, f"{SECRET_ENV_KEY}={secret}\n".encode())
+        os.write(fd, payload)
         os.fsync(fd)
     finally:
         os.close(fd)
     # os.open's mode is umask-masked; pin the mode exactly.
     os.chmod(path, 0o600)
+
+
+def _write_owner_only_windows(path: Path, payload: bytes) -> None:
+    """The Windows half of the 0600 promise (#137).
+
+    Mode bits do not reach a Windows access list: ``os.chmod`` only toggles
+    the read-only attribute, so the file would keep whatever its directory
+    hands down, which outside the user profile lets every local account read
+    and modify it.
+
+    Restricting the file after creating it in place is not enough either:
+    Windows checks access when a handle is opened, so an account that opened
+    the still-permissive empty file keeps its handle and reads the secret
+    once it lands. The file is therefore born private. ``tempfile.mkdtemp``
+    makes a staging directory with mode 0o700, which on Windows (Python 3.13)
+    is applied atomically as an owner, Administrators and SYSTEM only access
+    list that children inherit. The file is created there, restricted to the
+    current user alone, given the secret, and only then moved into place; a
+    move within a volume keeps the explicit list.
+
+    If the restriction fails (a FAT or exFAT volume has no access lists)
+    nothing is written at ``path``: refusing beats writing a secret that
+    cannot be protected.
+    """
+    staging = Path(tempfile.mkdtemp(prefix=".credential-", dir=path.parent))
+    try:
+        staged = staging / path.name
+        os.close(os.open(staged, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600))
+        _restrict_to_current_user(staged)
+        with staged.open("wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(staged, path)
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+
+
+def _restrict_to_current_user(path: Path) -> None:
+    """Replace ``path``'s inherited access list with one entry: the current user, full control.
+
+    ``whoami`` and ``icacls`` ship with Windows, so this adds no dependency;
+    both are run from the system directory by absolute path, with fixed
+    arguments. The user is named by SID, which needs no name resolution.
+    """
+    system32 = Path(os.environ.get("SYSTEMROOT", r"C:\Windows")) / "System32"
+    try:
+        identity = subprocess.run(  # noqa: S603 — fixed argv, absolute path
+            [str(system32 / "whoami.exe"), "/user", "/fo", "csv", "/nh"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=_ACL_TIMEOUT_SECONDS,
+        )
+        row = next(csv.reader(identity.stdout.splitlines()), [])
+        sid = row[-1].strip() if row else ""
+        if identity.returncode != 0 or _SID.fullmatch(sid) is None:
+            raise AtRestError(f"cannot protect {path}: the current user's SID could not be read")
+        restricted = subprocess.run(  # noqa: S603 — fixed argv, absolute path
+            [str(system32 / "icacls.exe"), str(path), "/inheritance:r", "/grant:r", f"*{sid}:F"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=_ACL_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise AtRestError(f"cannot protect {path}: {error}") from error
+    if restricted.returncode != 0:
+        detail = (restricted.stderr or restricted.stdout).strip().splitlines()
+        raise AtRestError(
+            f"cannot restrict {path} to the current user, so no secret was written"
+            + (f": {detail[0]}" if detail else "")
+        )
 
 
 def _load_manifest(target: Path) -> dict[str, Any] | None:
