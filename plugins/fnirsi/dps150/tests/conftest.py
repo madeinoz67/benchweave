@@ -17,8 +17,12 @@ from benchweave_fnirsi_dps150.session import BAUD_NEGOTIATE, SESSION_OPEN
 def pytest_sessionstart() -> None:
     root = Path(__file__).resolve().parents[1]
     lock = json.loads((root / "contracts/lock.json").read_text())
+    # Same destination formula as scripts/fetch_contracts.py: the lock's
+    # directory field names the corpus, the local dir is its last two parts
+    # joined on a dash (standards/otdp/0.2.0 -> contracts/otdp-0.2.0).
+    contracts = root / "contracts" / "-".join(Path(lock["directory"]).parts[-2:])
     for name, expected in lock["sha256"].items():
-        path = root / "contracts/otdp-0.1.0" / name
+        path = contracts / name
         if not path.is_file():
             raise RuntimeError("Run python scripts/fetch_contracts.py before the offline tests")
         if hashlib.sha256(path.read_bytes()).hexdigest() != expected:

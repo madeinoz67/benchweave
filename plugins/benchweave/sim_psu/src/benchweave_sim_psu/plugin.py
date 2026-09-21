@@ -111,6 +111,23 @@ class SimPsuPlugin:
             dispatch_state=DispatchState.NOT_DISPATCHED,
         )
 
+    def _state_reject(self, request: OperationRequest, message: str) -> OperationResult:
+        """Refuse on device state after dispatch, reporting DISPATCHED.
+
+        The operation reached the handler and the device evaluated it (the
+        trip latch, the envelope bounds, the stored configuration token) —
+        the same posture _write_parameter pins for mid-apply write failures.
+        Input validation failures before any handler state is touched keep
+        the NOT_DISPATCHED form via _reject.
+        """
+        return OperationResult.failure(
+            request.operation_id,
+            request.verb,
+            code=ErrorCode.DEVICE_REJECTED,
+            message=message,
+            dispatch_state=DispatchState.DISPATCHED,
+        )
+
     def dispatch(self, request: OperationRequest, *, deadline_ns: int) -> OperationResult:
         if self._monotonic_ns() >= deadline_ns:
             return self._reject(request, ErrorCode.TIMEOUT, "deadline already passed")
@@ -192,27 +209,32 @@ class SimPsuPlugin:
             return self._reject(
                 request, ErrorCode.INVALID_ARGUMENT, f"unknown parameter {parameter}"
             )
-        if self._tripped:
+        # Argument typing precedes ALL device-state evaluation (REG-2
+        # dispatch-state honesty, RF1): a malformed write is a framing
+        # failure — it never reaches the trip latch or the envelope, exactly
+        # as the *_invalid_framing vectors pin on the healthy path. A
+        # WELL-TYPED value remains the device's to evaluate: tripped or
+        # out-of-bounds stays DEVICE_REJECTED / dispatched.
+        if parameter in WRITABLE_BOUNDS and (
+            isinstance(value, bool) or not isinstance(value, (int, float))
+        ):
             return self._reject(
-                request, ErrorCode.DEVICE_REJECTED, f"tripped ({self._tripped}); reset required"
+                request, ErrorCode.INVALID_ARGUMENT, f"bad type for {parameter}"
             )
-        if parameter in WRITABLE_BOUNDS:
-            low, high = WRITABLE_BOUNDS[parameter]
-            in_bounds = (
-                isinstance(value, (int, float))
-                and not isinstance(value, bool)
-                and low <= value <= high
-            )
-            if not in_bounds:
-                return self._reject(
-                    request,
-                    ErrorCode.DEVICE_REJECTED,
-                    f"{parameter} out of bounds [{low}, {high}]",
-                )
         if parameter == "output_enabled" and not isinstance(value, bool):
             return self._reject(request, ErrorCode.INVALID_ARGUMENT, "output_enabled is boolean")
         if parameter == "operator_note" and not isinstance(value, str):
             return self._reject(request, ErrorCode.INVALID_ARGUMENT, "operator_note is a string")
+        if self._tripped:
+            return self._state_reject(
+                request, f"tripped ({self._tripped}); reset required"
+            )
+        if parameter in WRITABLE_BOUNDS:
+            low, high = WRITABLE_BOUNDS[parameter]
+            if not low <= value <= high:
+                return self._state_reject(
+                    request, f"{parameter} out of bounds [{low}, {high}]"
+                )
         typed_value = self._coerce(parameter, value)
         if typed_value is None:
             return self._reject(request, ErrorCode.INVALID_ARGUMENT, f"bad type for {parameter}")
@@ -387,11 +409,17 @@ class SimPsuPlugin:
                 request, ErrorCode.INVALID_ARGUMENT, "output requires boolean enabled"
             )
         token = action_input.get("configuration_id")
-        if token is not None and token != self._configuration_id:
+        # The catalog makes the token optional on output but string-typed
+        # when present: a non-string token is a framing failure (R1),
+        # absence stays legal, and a mismatched string is still the device
+        # evaluating it (_state_reject).
+        if token is not None and not isinstance(token, str):
             return self._reject(
-                request,
-                ErrorCode.DEVICE_REJECTED,
-                "configuration_id does not match the stored configuration",
+                request, ErrorCode.INVALID_ARGUMENT, "output requires string configuration_id"
+            )
+        if token is not None and token != self._configuration_id:
+            return self._state_reject(
+                request, "configuration_id does not match the stored configuration"
             )
         applied = self._write_parameter(request, "output_enabled", enabled)
         if applied.status is not OperationStatus.OK:
@@ -406,11 +434,19 @@ class SimPsuPlugin:
         self, request: OperationRequest, action_input: dict[str, Any]
     ) -> OperationResult:
         configuration_id = action_input.get("configuration_id")
-        if not isinstance(configuration_id, str) or configuration_id != self._configuration_id:
+        # R1 taxonomy: a non-string or empty token violates the action input
+        # typing (the catalog declares configuration_id string, minLength 1)
+        # before any device state is evaluated — INVALID_ARGUMENT /
+        # not_dispatched, same as _action_configure. A well-typed string that
+        # does not match the stored configuration stays the device's own
+        # refusal (_state_reject, DISPATCHED).
+        if not isinstance(configuration_id, str) or not configuration_id:
             return self._reject(
-                request,
-                ErrorCode.DEVICE_REJECTED,
-                "measure requires the current configuration_id",
+                request, ErrorCode.INVALID_ARGUMENT, "measure requires configuration_id"
+            )
+        if configuration_id != self._configuration_id:
+            return self._state_reject(
+                request, "measure requires the current configuration_id"
             )
         channels = action_input.get("channels")
         if not isinstance(channels, list) or any(

@@ -84,6 +84,55 @@ All notable changes to this project will be documented in this file.
 - D4 — every event kind emits the closed document-ref evidence
 - Review-fix wave — poison-emit guard, fallback log, hygiene
 - Pin the symmetric stray/stamp gates across all three check lanes (#9)
+- Portable store hold; the gateway now runs on Windows checkouts
+- Reject delimiter injection at issue time; fail fast on absent fixtures
+- Validate each scope element at issue time, not just the joined field
+- The hold marker lives beside the data dir, so restore can swap it on Windows
+- Resolve the data dir before deriving the hold marker; tolerate the legacy in-dir name in verify (PR #35 review fold)
+- Otdp 0.1.1 — byte-errata of 0.1.0 (#45) (#47)
+- Make the adapter-call AST pin total over the _adapter name
+- Pin Adapter protocol data members, not only methods
+- Require envelope key sets in enforcement position, not mere presence
+- Derive identity standard-version keys against the standards manifest
+- Reject duplicate standard ids at manifest load
+- Fail styled, not raw, from the versions command
+- Refuse string-mediated adapter access and state the pin's true boundary
+- Pin the envelope comparison shape, not just the literal's presence
+- Make the identity block closed-world
+- Declare the range_v/offset_v configure envelope in input_constraints
+- Make fetch honest — acquisition state, byte budget, corpus axes
+- Bound sample_count in both the descriptor envelope and dispatch
+- Snapshot the configuration at arm; validate trigger shape at dispatch
+- Name the true cause when the pretrigger buffer is empty
+- Carry the probe_ratio enum in the parameter descriptions; re-pin the digest chain
+- Forge-wave honesty — dispatched state refusals, single-use acquisition ids, small fixes
+- Accent arbitration, threshold carrier, a11y disclosure, token fallback (C1-C4)
+- Hidden traces release the accent claim (W1) + cross-product wording (W2)
+- Carrier participates in axis extent; legend swatches follow resolution (FC1/FC2)
+- Muted-x-absent cross-product cell, ruled fallback pin, renderer version (FC3-FC5)
+- Declare plugin-ui 0.1.1 in the ui resources
+- Total and exact float64 element boundary (B1/B2)
+- ASCII digit gate, marker bounds, duplicate-id refusal, containment (RB1-RB5)
+- Move to OTDP 0.1.2 with the active corpus (CI merge result)
+- Wave-3 audit findings (forge-B)
+- Review items R-F5-R-F7
+- C's multi-channel specimen cites the active measurement URN
+- The measurement contract pin hashes the active corpus (F9)
+- Report DISPATCHED on post-dispatch device-state refusals
+- Rebuild sim fixture lattice for the dispatch-posture change
+- Split argument typing from device evaluation (R1/R2, #66 absorbed)
+- Issued-map fields must be declared action inputs (F1, #63)
+- Fold R1-R4 — record corrections, lock pin test, census obligation (#63)
+- Typing precedes the trip latch in _write (RF1); absence pin + poc walk flake kill (#63)
+- #85 fold — malformed bench/binding refuse startup typed, recovery containment pinned
+- Fold refute F1 + NIT-1 — convention-vs-mechanism disclosure, reorder tamper mode
+- Sweep miss — gateway lock emitter and test pins for 0.1.1
+- Collector reads file paths; chronological admission; dedup; real shallow guard (#97 review fold)
+- Refute fold — zero-gap double bumps, first-add anchor, shallow refusal (#97 G6)
+- Derive the devices mutation fixtures; GOVERNANCE claim scoped (D2 review fold)
+- Audit-annotate train_window's git subprocess under the S-band; merge main
+- Resolve OUT once so the pinned check compares resolved-to-resolved (#119)
+- Precision folds from the first review wave (#102 D1, review F3/F5/F6/LOW-1/NIT-2)
 
 ### Documentation
 
@@ -148,6 +197,64 @@ All notable changes to this project will be documented in this file.
 - Report via private advisory, not personal email
 - Add permanent Discord invite to README, SUPPORT and site (#33)
 - D4 + D14-details CLOSED by the interface-errata slice (#16)
+- Review rubric, hard invariants and drift obligations (#41)
+- Record the adapter-api identity and agreement invariants; correct stale baseline lines
+- Correct the remaining device-guide baseline claims (OTDP 0.1.1 / adapter API 1.1)
+- Commit the #44 design record
+- Complete the adapter-protocol obligation touch-set and hook triggers
+- Correct four remaining baseline lines to the machine versions
+- Sweep remaining stale version claims to the machine truth (#54)
+- Issue #6 row A settings-as-presets design record
+- Named settings as presets — the sim_scope reference instance
+- Correct the token-replay claim — mismatch-only, and the design's range text
+- State the input_constraints lane split in the presets section
+- Fetch semantics in the README; design-record residual corrections
+- Review-wave prose corrections — parameter count, copy wording, simulator inventory scope
+- Issue #6 row C per-channel display hints design record
+- Record the forge-tail evidence in the 0.1.1 report
+- Scope the W1/C4 amendment claims; pin first-visible mark line (review-C)
+- Issue #6 row B — declarative derived variables design record
+- Sweep remaining version claims to the otdp 0.1.2 corpus
+- Complete the 0.1.2 link sweep (reviewer, quickstart, architecture, development)
+- M15 states the int-exactness rule and the M02 suspension
+- Apply the issue-#6 retrospective workflow rules (#69)
+- Governor-pass fixes on the #69 rules
+- Commit the issue-#64 design record on the branch
+- Commit the issue-#62 design record on the branch
+- State the orphan-sweep size residual in the 0.2.0 README
+- Issue #63 descriptor dialect reconciliation design
+- Issue #63 design update — dps150 absorbed (slice 5), 28-cell census, registry-decoupling correction
+- Record the dps150 lock otdp_version stale-field correction in item 22
+- Amend deferral rule 3 — table rows are first-class merge citations (#98)
+- Issue #85 bootstrap routes descriptors through the admission gate (absorbing #78)
+- #85 — startup admission refusal on the operator, device-author and invariant surfaces
+- #85 — fold refute F1-F3 (DEFENDED verdict)
+- Leg-(a) comment classifies by failure kind, not evaluation order (refute NIT)
+- Issue #79 machine-written, CI-pinned OTDP validation report
+- Issue #71 skill-role slice 1 — pre-committed acceptance rules
+- Align live baseline prose to 0.1.1; amend the sweep grep class
+- Record deferral citations per amended rule 3 + G4 sweep-gap note
+- Adopt retrospective row 4 — run-close junk sweep as step 8
+- Single issue stream — all issues file on the gateway tracker
+- Re-anchor the edit grant on the freshness gate (review R1+R2)
+- Row 14 — agent tool-grant surface (review F3, folded)
+- Recall the memory vault before proposing or diagnosing
+- Design record for issue #97 bind-the-train
+- Design record for #102 D2 — manifest-driven version discovery
+- Refute fold — name the platform condition; scope the residue case (#102 D2 G6)
+- Design record for #97 description-guard extension
+- Review fold — reconciliation precise; root-only scope stated (#97)
+- Design record for #125 pinned-escape coverage
+- Refute folds — revival-set precision, honest Windows posture (#125)
+- Issue #102 D1+D3 validation-report family design record
+- CON-11 family amendment, drift row 13, GOVERNANCE generalization, validation doc (#102 D1)
+- CON-11 structural reason + residual; wave-2 folds recorded (#102 D1, review R-F3 + A-F4)
+- Increment loop amendments from the #129 retrospective
+- Issue #43 capture & streaming design of record
+- Record owner calls on all four forks (agreed 2026-09-21)
+- Explicit §6 disposition — multi-device concurrency and time correlation
+- Issue #133 retrospective skill design of record
+- Review folds — archive+git evidence lanes, moment pinning, dead tag (#133)
 
 ### Features
 
@@ -234,6 +341,32 @@ All notable changes to this project will be documented in this file.
 - "What surprised us" and a validated "Where it stands"
 - Align the main site to public-site styleguide v0.2
 - Star-on-GitHub header CTA with live count
+- The build loop — agents, skills, drift guard, design records, constitution (#42)
+- Benchweave.standards repin — the mechanical pin writer (#46) (#52)
+- Derive-check identity.adapter_api against the descriptor schema const
+- Sim_scope settings-presets simulator + host-ABI dispatch suite
+- Sim_scope ui resources, both SDK lanes, eight RED controls
+- Plugin-ui 0.1.1 channel_hints + two-pass renderer
+- Pure module + admission + executor wiring (issue #6 row B)
+- OTDP 0.1.2 — derived variables in the measurement model
+- OTDP 0.2.0 — configure-carried averaging + class sample_count bound
+- Plugin-ui 0.2.0 — lane-1 descriptor envelopes + unreferenced-preset refusal
+- Descriptor admission validates and projects full-form OTDP (#63)
+- The tree converts to full-form OTDP — one dialect (#63)
+- The slim descriptor dialect dies (#63)
+- Re-version to OTDP 0.2.0 — check-clean, absorbed (#83 into #63)
+- #85 — route startup through the admission gate before any store write
+- Machine-written, byte-pinned OTDP validation report
+- Registry 0.1.1 — admit the skill payload-file role (issue #71 slice 1)
+- The prescriptive bump window, enforced (#97)
+- Manifest-driven OTDP version discovery in the validator + pin (#102 D2)
+- Shared validation-report writer; check_devices delegates (#102 D1)
+- Registry validation report joins the writer family (#102 D1)
+- Execution validation report joins the writer family (#102 D1)
+- Interface validation report joins the writer family (#102 D1)
+- Closure validation report joins the writer family (#102 D1)
+- Otdp coverage prose derives its counts (#102 D3)
+- Retrospective — standardized end-of-period report with sub-agent review (#133)
 
 ### Hardware Evidence
 
@@ -287,6 +420,27 @@ All notable changes to this project will be documented in this file.
 - Advance SDK pointer — styleguide v0.2 brand
 - Bump packages/sdk to 17d6ecb (star CTA + header wrap)
 - Bump packages/sdk to 5da15c7 (gateway links to project website)
+- Enable the security lint the tree's suppressions were written for
+- Advance packages/sdk to the pushed plugin-ui 0.1.1 SDK branch
+- Advance packages/sdk to the C1-C4 renderer refresh
+- Advance packages/sdk to the W1 renderer refresh
+- Advance packages/sdk to the FC1/FC2 renderer refresh
+- Advance packages/sdk to the otdp 0.1.2 vendoring
+- Advance packages/sdk to the reconciled dual-standard tip
+- Grant code-reviewer + increment-builder gortex read/query tools
+- Grant the four review-lane agents gortex read/query tools
+- Frontmatter + gortex read/query grant for standards-governor
+- Muninndb-benchweave read/query grants for designer, adversary, critic
+- Advance packages/sdk to the OTDP 0.2.0 vendoring
+- Advance packages/sdk to the plugin-ui 0.2.0 vendoring
+- Drop Finder-style duplicate artifacts swept in by add -A
+- Advance packages/sdk to the registry 0.1.1 vendoring
+- Regenerate the lattice single-cause after the #87 rebase
+- Advance packages/sdk to the /src anchor + .hgignore widen
+- Advance packages/sdk to the agent-native scaffold (0.0.3, fold wave 1)
+- Migrate gortex grants to official server-pattern + disallowedTools shape
+- Deny muninndb write tools on the muninn-carrying agents
+- Grant mcp__gortex__edit to increment-builder, reconcile-gated
 
 ### Refactoring
 
@@ -299,6 +453,12 @@ All notable changes to this project will be documented in this file.
 - Id/version tree — standards/<id>/<version>/ with retention
 - Reset every standard to 0.1.0 — the governance starting point
 - Id/version tree, full 0.1.0 reset, and governance layer (#21)
+- Single-source the family marker; refusal-family honesty (#102 D1, review R-F5 + A-F3)
+
+### Style
+
+- Extract the execute-call fixture constant to clear E501
+- Ruff/mypy cleanups in the registry-contract instrument
 
 ### Testing
 
@@ -325,11 +485,51 @@ All notable changes to this project will be documented in this file.
 - Unchanged, clarification and breaking scenarios
 - F5-quiet exercises the idempotency path it names
 - WP11 carried minors — T1-1/T1-3/T2-6/T2-8/T5-9/T5-10
+- Fresh clones pass-or-skip; fork PRs stop failing on absent secrets
+- Outcome failures dump terminal reasons + error events (#48) (#50)
+- #48 review rows 1-2 — structural reasons render + mode=ro claim truth (#51)
+- Pin the adapter protocol three-way — expected literals, SDK, gateway, corpus
+- Pin the submodule HEAD to the recorded gitlink
+- Pin the submodule HEAD against the committed gitlink, not the index
+- Pin test_sdk resolution to the pinned submodule tree (#53)
+- RED for plugin-ui 0.1.1 channel_hints
+- RED for row C mechanism-critique fix wave (C1-C4)
+- Jsdom-robust accessibility assertions for hidden legend rows
+- RED for hidden-claimant accent release (W1) + honest table naming (W2)
+- RED for real-render carrier visibility (FC1) + legend swatches (FC2)
+- RED suite + normative census for issue #6 row B
+- Sync-stamp literal follows the otdp 0.1.2 lock
+- RED controls for OTDP 0.2.0 averaging admission + sample_count bound
+- Sync-stamp literal follows the otdp 0.2.0 lock
+- Complete the 0.2.0 literal sweep in two missed docstring paths
+- Pin the averaging envelope endpoints 1 and 64 (refute R1)
+- RED controls for plugin-ui 0.2.0 lane-1 envelopes + orphan refusal
+- Pin the descriptor schema's otdp const to the manifest version (F2, #63)
+- #78 — replace the dead ADMITTED_DIRS hand-list with a derived closed-world dir guard
+- #85 RED — poisoned-lattice startup refusals, watched failing pre-fix
+- #85 fold — pin the S01 layering in the descriptor-equivalence census
+- Pin executor dispatch-state composition (#73)
+- Pin the OTDP validation report to a live devices-suite render
+- RED for the skill payload-file role (issue #71 slice 1)
+- Pin the sdist to the declared surface — PKG-2's detector
+- RED for the agent-native seeded tree (issue #71 slice 2)
+- Prove the issue-107 fix — symlinked-destination scaffold, typed symlink refusal, errno guard
+- RED — bump-window arms against the absent train_window module
+- RED — OUT/title must follow the manifest's active otdp version (#102 D2)
+- Extend the #47 annotation guard to description (#97)
+- Pin the pinned check's path-escape arm (#125)
+- RED family pin for the machine-written validation reports (#102 D1)
+- Share one real-tree execution per suite between pin and guard (#102 D1)
+- Adapt #125 path-escape test to the family report-path signature (rebase resolution)
+- Report-family census — registered writers, classified artifacts (#102 D1, review F2)
+- Harden the family pin — duplicate names, byte compare, POSIX absoluteness (#102 D1, review F4/F7/F8)
+- Tamper fixture asserts its vacuous-green precondition (#102 D1, review A-F2)
 
 ### Build
 
 - Bundle versioned UI preview renderer
 - Mount benchweave-sdk as a submodule at packages/sdk
+- Pull _validation_report into strict mypy scope; honest NoReturn (#102 D1, review R-F4)
 
 ### Ci
 
@@ -339,6 +539,10 @@ All notable changes to this project will be documented in this file.
 - Gate-only package lane; SDK distribution moves to PyPI
 - Push CHANGELOG.md via changelog app token
 - Add manual trigger
+
+### Ci+docs
+
+- Census runs on the OS matrix; coverage claims state it
 
 ### Review
 

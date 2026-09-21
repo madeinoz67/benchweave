@@ -1457,13 +1457,18 @@ class Operations:
         """Contract device object; descriptor ref from the stored raw text."""
         descriptor_text = row["descriptor_json"]
         descriptor = json.loads(descriptor_text)
+        # Full-form descriptors carry descriptor_version (there is no
+        # ``version`` key); rows admitted before the conversion still carry
+        # ``version``. The "1" tail is the pre-dialect fallback for rows
+        # predating both — never fabricated for a full-form row.
+        version = descriptor.get("version") or descriptor.get("descriptor_version")
         return {
             "device_id": row["device_id"],
             "generation": row["generation"],
             "profiles": json.loads(row["profiles_json"]),
             "descriptor": {
                 "id": str(descriptor.get("id", row["device_id"])),
-                "version": str(descriptor.get("version", "1")),
+                "version": str(version if version is not None else "1"),
                 "sha256": hashlib.sha256(descriptor_text.encode()).hexdigest(),
             },
             "identity_state": row["identity_state"],

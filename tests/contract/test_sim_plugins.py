@@ -31,7 +31,7 @@ from benchweave.host import (
 
 ROOT = Path(__file__).resolve().parents[2]
 PLUGINS = ROOT / "plugins"
-CONTRACTS = ROOT / "standards" / "otdp/0.1.0"
+CONTRACTS = ROOT / "standards" / "otdp/0.2.0"
 NOW = "2026-09-11T00:00:00Z"
 TICK = 1_000_000
 
@@ -132,6 +132,21 @@ def test_controller_rejects_non_note_writes() -> None:
     )
     assert result.status is OperationStatus.ERROR
     assert result.error is not None and result.error.code is ErrorCode.INVALID_ARGUMENT
+    plugin.plugin_close()
+
+
+def test_controller_note_too_long_is_dispatched_device_rejection() -> None:
+    """The note-length refusal is device state: the write reached the device."""
+    clock = Clock()
+    plugin = make_sim_controller(clock)
+    plugin.plugin_open(NullServices())
+    result = plugin.dispatch(
+        OperationRequest.write("op-1", parameter="operator_note", value="x" * 201),
+        deadline_ns=10**12,
+    )
+    assert result.status is OperationStatus.ERROR
+    assert result.error is not None and result.error.code is ErrorCode.DEVICE_REJECTED
+    assert result.error.dispatch_state is DispatchState.DISPATCHED
     plugin.plugin_close()
 
 
@@ -255,6 +270,27 @@ def test_psu_write_out_of_bounds_is_device_rejected(psu: Any) -> None:
     )
     assert result.status is OperationStatus.ERROR
     assert result.error is not None and result.error.code is ErrorCode.DEVICE_REJECTED
+    assert result.error.dispatch_state is DispatchState.DISPATCHED
+
+
+def test_psu_write_wrong_type_on_bounded_parameter_is_invalid_argument(psu: Any) -> None:
+    """Wrong type is a framing failure; the envelope sees only well-typed values.
+
+    The bounds branch types the value before evaluating the envelope
+    (REG-2 dispatch-state honesty), so a non-numeric value for a bounded
+    parameter refuses INVALID_ARGUMENT / not_dispatched — the same taxonomy
+    as _action_configure's numeric field checks and the profile catalog's
+    string-typed configuration_id. A well-typed but out-of-range value
+    stays DEVICE_REJECTED / dispatched (write_setpoint_out_of_bounds).
+    """
+    plugin = psu
+    result = plugin.dispatch(
+        OperationRequest.write("op-1", parameter="voltage_setpoint_v", value="twelve"),
+        deadline_ns=TICK,
+    )
+    assert result.status is OperationStatus.ERROR
+    assert result.error is not None and result.error.code is ErrorCode.INVALID_ARGUMENT
+    assert result.error.dispatch_state is DispatchState.NOT_DISPATCHED
 
 
 def test_psu_ovp_trip_latches_until_reset(psu: Any) -> None:
@@ -281,6 +317,8 @@ def test_psu_ovp_trip_latches_until_reset(psu: Any) -> None:
         deadline_ns=TICK,
     )
     assert blocked.status is OperationStatus.ERROR
+    assert blocked.error is not None and blocked.error.code is ErrorCode.DEVICE_REJECTED
+    assert blocked.error.dispatch_state is DispatchState.DISPATCHED
     reset = plugin.dispatch(OperationRequest("op-6", OperationVerb.RESET), deadline_ns=TICK)
     assert reset.status is OperationStatus.OK and reset.data["acknowledged"] is True
     recovered = plugin.dispatch(
@@ -451,6 +489,7 @@ def test_invoke_measure_requires_current_configuration(psu: Any) -> None:
     )
     assert result.status.value == "error"
     assert result.error.code.value == "DEVICE_REJECTED"
+    assert result.error.dispatch_state is DispatchState.DISPATCHED
 
 
 def test_invoke_measure_dataset_matches_otdp_schema(psu: Any) -> None:
@@ -509,6 +548,7 @@ def test_invoke_output_with_stale_configuration_id_is_device_rejected(psu: Any) 
     )
     assert result.status.value == "error"
     assert result.error.code.value == "DEVICE_REJECTED"
+    assert result.error.dispatch_state is DispatchState.DISPATCHED
 
 
 def test_invoke_configure_rejects_bad_channel_and_non_numeric_fields(psu: Any) -> None:

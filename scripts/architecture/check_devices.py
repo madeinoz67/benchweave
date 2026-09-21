@@ -3,16 +3,39 @@ import hashlib
 import json
 import math
 import re
+import sys
 from datetime import datetime
 from pathlib import Path
 
 from jsonschema import Draft202012Validator, FormatChecker
 from referencing import Registry, Resource
 
+from benchweave.measurement.derivation import (
+    DerivationRefused,
+    DerivationRejected,
+    check_derived_variables,
+    derive_dataset_variables,
+)
+
 "Document/schema conformance checks, not instrument implementation."
 DOCS = globals().get("DOCS", Path(__file__).resolve().parents[2] / "docs")
 STANDARDS = globals().get("STANDARDS", Path(__file__).resolve().parents[2] / "standards")
-OUT = STANDARDS / "otdp/0.1.0"
+
+
+# runpy.run_path does not put the script's directory on sys.path (measured:
+# the sibling import fails there), so the shared report writer needs the
+# bootstrap. __file__ is set in both execution modes (direct python and
+# runpy.run_path with init_globals).
+_HERE = str(Path(__file__).resolve().parent)
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
+import _validation_report  # noqa: E402
+
+OTDP_VERSION = _validation_report.active_standard_version(STANDARDS, "otdp")
+# Resolved once: the pinned check compares .resolve()d contract paths against
+# OUT, and an unresolved OUT (macOS /var→/private/var TMPDIR, symlinked
+# roots) fails every pinned check (24 today) vacuously on a clean tree (#119).
+OUT = (STANDARDS / "otdp" / OTDP_VERSION).resolve()
 
 
 def load(name):
@@ -192,11 +215,101 @@ def dataset_errors(d):
     return e
 
 
+census = load("examples/derivation-vectors.json")
+
+
+def canonical(value):
+    return json.dumps(value, sort_keys=True, separators=(",", ":"))
+
+
+def census_row_ok(row):
+    derived = row.get("derived")
+    if derived is None:
+        derived = [
+            {
+                "id": "probe0",
+                "quantity": "probe",
+                "unit": "1",
+                "expression": row["expression"],
+            }
+        ]
+    if row["expect"] == "refused":
+        try:
+            derive_dataset_variables(copy.deepcopy(row["dataset"]), derived)
+        except DerivationRefused as error:
+            return str(error).startswith(row["reason_prefix"])
+        return False
+    if row["expect"] == "reject":
+        try:
+            check_derived_variables(derived)
+        except DerivationRejected as error:
+            return str(error).startswith(row["reason_prefix"])
+        return False
+    if row["expect"] == "accept":
+        try:
+            check_derived_variables(derived)
+            return True
+        except DerivationRejected:
+            return False
+    output = derive_dataset_variables(copy.deepcopy(row["dataset"]), derived)
+    appended = output["variables"][len(row["dataset"]["variables"]) :]
+    return [canonical(v) for v in appended] == [canonical(v) for v in row["expected"]]
+
+
+for row in census["grammar"] + census["static"] + census["evaluation"]:
+    check(row["id"] + " derivation census", census_row_ok(row))
+check(
+    "derivation census meets the minimum row counts",
+    len(census["grammar"]) >= 30
+    and sum(1 for r in census["grammar"] if r["expect"] == "accept") >= 15
+    and sum(1 for r in census["grammar"] if r["expect"] == "reject") >= 15
+    and len(census["evaluation"]) >= 12,
+)
+for name, descriptor in sorted(descriptors.items()):
+    if "derived_variables" in descriptor:
+        try:
+            check_derived_variables(descriptor["derived_variables"])
+            check(name + " derived declarations", True)
+        except DerivationRejected as error:
+            check(name + " derived declarations: " + str(error), False)
+
+
 data = load("examples/measurement-vectors.json")["datasets"]
 for name, d in data.items():
     errors = list(mv.iter_errors(d))
     check(name + " measurement structure", not errors)
     check(name + " shape/selected metrology rules", not dataset_errors(d))
+for name, d in data.items():
+    recorded = [v for v in d["variables"] if "derivation" in v]
+    if not recorded:
+        continue
+    # Replay through the public API: strip the derived variables, re-derive
+    # them from the recorded markers, and require the exact recorded
+    # variables back — the corpus example IS what the evaluator produces.
+    operands_only = copy.deepcopy(d)
+    operands_only["variables"] = [
+        v for v in operands_only["variables"] if "derivation" not in v
+    ]
+    declarations = [
+        {
+            "id": v["id"],
+            "quantity": v["quantity"],
+            "unit": v["unit"],
+            "expression": v["derivation"]["expression"],
+        }
+        for v in recorded
+    ]
+    try:
+        replayed = derive_dataset_variables(operands_only, declarations)
+        appended = replayed["variables"][len(operands_only["variables"]) :]
+        check(
+            name + " derived example replays exactly",
+            [canonical(v) for v in appended] == [canonical(v) for v in recorded],
+        )
+    except (DerivationRefused, DerivationRejected) as error:
+        check(name + " derived example replays: " + str(error), False)
+
+
 vectors = load("examples/class-action-vectors.json")["vectors"]
 covered = set()
 for v in vectors:
@@ -306,9 +419,46 @@ check(
     fg.is_valid(inp) and (not validator(fg_constraints).is_valid(inp)),
 )
 CHECKS = checks
+
+GENERATED_MARKER = _validation_report.marker("scripts/architecture/check_devices.py")
+REPORT_TITLE = f"# OTDP {OTDP_VERSION} specification verification"
+REPORT_COVERAGE = (
+    f"{len(profile_map)} class profiles and {len(covered)} input/output action contracts "
+    "were checked against Draft 2020-12. Each action has a positive vector. Descriptor "
+    "declarations, pinned contract hashes, runtime envelopes, typed datasets and selected "
+    "rejection/semantic boundaries were checked."
+)
+REPORT_LIMIT = (
+    "**Limit:** These are document/schema checks. No gateway, plugin, device simulator, "
+    "hardware interaction or complete C01–C12/M01–M14 behavioural validator is claimed. "
+    "Structural reference descriptors intentionally do not contain real manufacturer "
+    "evidence or commissioned electrical limits."
+)
+
+
+def render_report(checks: list[tuple[str, bool]]) -> str:
+    """Render the validation report markdown from a devices-suite check list.
+
+    Pure and order-canonical: the ``## Checks`` list is emitted sorted by name
+    because the suite's accumulation order is partly glob order
+    (directory-entry order), which is not portable across platforms. The
+    rendered bytes are a function of the check set only.
+    """
+    return _validation_report.render(
+        [(str(name), bool(ok)) for name, ok in checks],
+        marker=GENERATED_MARKER,
+        title=REPORT_TITLE,
+        coverage=REPORT_COVERAGE,
+        limit=REPORT_LIMIT,
+    )
+
+
 if __name__ == "__main__":
-    failures = [name for name, ok in CHECKS if not ok]
-    for failure in failures:
-        print("FAIL:", failure)
-    print(f"{len(CHECKS) - len(failures)}/{len(CHECKS)} checks passed")
-    raise SystemExit(bool(failures))
+    _validation_report.main(
+        CHECKS,
+        OUT / "validation-report.md",
+        script="scripts/architecture/check_devices.py",
+        title=REPORT_TITLE,
+        coverage=REPORT_COVERAGE,
+        limit=REPORT_LIMIT,
+    )

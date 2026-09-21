@@ -47,6 +47,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 from benchweave.cli.atrest import DB_NAME, daemon_holds
 from benchweave.cli.client import GatewayClient, GatewayError
+from benchweave.state.hold import hold_path
 
 if TYPE_CHECKING:
     import uvicorn
@@ -580,15 +581,15 @@ def _teardown_scratch(root: Path, *, remove_root: bool, keep: bool) -> None:
     if remove_root:
         shutil.rmtree(root, ignore_errors=True)
         # The advisory hold marker is a sibling of the data dir, not inside
-        # it (see state/hold.hold_path) — sweep it too.
+        # it — hold_path owns that layout knowledge; sweep through it.
         with contextlib.suppress(OSError):
-            root.parent.joinpath(root.name + ".hold").unlink()
+            hold_path(root / DB_NAME).unlink()
         return
     for suffix in ("", "-wal", "-shm"):
         with contextlib.suppress(OSError):
             (root / (DB_NAME + suffix)).unlink()
     with contextlib.suppress(OSError):
-        root.parent.joinpath(root.name + ".hold").unlink()
+        hold_path(root / DB_NAME).unlink()
 
 
 def run_simulation(

@@ -11,9 +11,7 @@ mount so its ``/v1`` routes win.
 
 from __future__ import annotations
 
-import hashlib
 import importlib.util
-import json
 import logging
 import sys
 import tempfile
@@ -29,9 +27,16 @@ from fastapi import FastAPI
 from benchweave.content.store import ContentStore, RetainingServices
 from benchweave.control.clocking import MonotonicClock, SystemClock, WallClock
 from benchweave.control.coordinator import RunCoordinator, _PreparedRun, _RunMonitor
-from benchweave.control.documents import AdmittedDocuments, admit_documents
+from benchweave.control.documents import (
+    AdmittedDocuments,
+    admit_documents,
+)
 from benchweave.host.plugin import DevicePlugin
-from benchweave.interfaces.bootstrap import RegistrySession, admit_startup_bench
+from benchweave.interfaces.bootstrap import (
+    RegistrySession,
+    admit_fixture_lattice,
+    admit_startup_bench,
+)
 from benchweave.interfaces.mcp import build_mcp
 from benchweave.interfaces.operations import Operations, append_bench_event
 from benchweave.interfaces.rest import build_router
@@ -140,43 +145,36 @@ def _spool_documents(
     }
 
 
-def _recovery_documents(fixtures_dir: Path) -> AdmittedDocuments:
+def _recovery_documents(fixtures_dir: Path) -> AdmittedDocuments | None:
     """Admit the startup lattice for recovery (Task 11 wiring).
 
     ``RunCoordinator.recover_interrupted`` only reads the admitted bench's
     identity, but recovery holds itself to the same admission standard as
     execution: the fixture lattice is fully admitted and pin-verified. The
     procedure is the binding-pinned one (the lattice may carry a family).
+
+    Delegates to ``bootstrap.admit_fixture_lattice`` — the one resolution
+    and admission path startup has (issue #85: bootstrap is the strict
+    caller that refuses gateway startup; recovery is the contained one).
+    The ENTIRE lattice read — binding parse, digest lookup, file reads and
+    admission — is contained: a lattice that fails returns ``None``
+    instead of raising. Recovery runs at app construction, and one
+    poisoned stored document (a derivation-unparseable descriptor, a
+    drifted pin, truncated or structurally broken bytes) must never kill
+    gateway startup. The failure is surfaced (logged, machine-prefixed,
+    exception class named) and the caller skips run recovery for that
+    lattice — finalising runs against a bench it could not admit would be
+    the less safe direction.
     """
-    binding = json.loads((fixtures_dir / "run-binding.json").read_bytes())
-    procedure_sha = str(binding["procedure"]["sha256"])
-    procedure_path = next(
-        (
-            path
-            for path in sorted(fixtures_dir.glob("procedure-*.json"))
-            if hashlib.sha256(path.read_bytes()).hexdigest() == procedure_sha
-        ),
-        None,
-    )
-    if procedure_path is None:
-        raise FileNotFoundError("binding-pinned procedure not found under fixtures")
-    bench = json.loads((fixtures_dir / "bench.json").read_bytes())
-    by_sha = {
-        hashlib.sha256(path.read_bytes()).hexdigest(): path
-        for path in sorted(fixtures_dir.glob("descriptor-*.json"))
-    }
-    descriptor_paths = {
-        str(device["id"]): by_sha[str(device["descriptor"]["sha256"])]
-        for device in bench["devices"]
-    }
-    return admit_documents(
-        procedure_path=procedure_path,
-        policy_path=fixtures_dir / "safety-policy.json",
-        bench_path=fixtures_dir / "bench.json",
-        binding_path=fixtures_dir / "run-binding.json",
-        commissioning_path=fixtures_dir / "commissioning.json",
-        descriptor_paths=descriptor_paths,
-    )
+    try:
+        return admit_fixture_lattice(fixtures_dir)
+    except Exception as error:
+        # Containment mirrors the executor seam's ruling: recovery runs at
+        # app construction, so ANY failure here — a typed admission
+        # rejection, truncated JSON, a missing pinned file, a structural
+        # surprise — is logged with its class and skipped, never raised.
+        _LOG.error("recovery_admission_rejected: %s: %s", type(error).__name__, error)
+        return None
 
 
 def _recover_interrupted_runs(
@@ -203,6 +201,16 @@ def _recover_interrupted_runs(
     ``create_run``), unwedging the request id for a fresh attempt.
     """
     docs = _recovery_documents(fixtures_dir)
+    if docs is None:
+        # Startup survives a poisoned lattice; run recovery does not. The
+        # dangling-request reconciliation below needs no admitted documents
+        # and still runs — a wedged request id is repairable regardless.
+        _LOG.error(
+            "recovery_skipped: startup lattice failed admission; runs left for "
+            "recovery after the lattice is repaired and the gateway restarts"
+        )
+        store.reconcile_dangling_requests()
+        return []
     coordinator = RunCoordinator(store, {}, SystemClock(), SystemClock(), docs)
     recovered = coordinator.recover_interrupted()
     # D13 crash-window reconciliation rides the same startup path: a §9

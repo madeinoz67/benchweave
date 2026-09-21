@@ -492,3 +492,21 @@ def test_setup_refusal_while_the_store_is_held_is_handled_not_a_traceback(
     combined = _combined(result)
     assert "held" in combined
     assert "gw-unit" in combined and "424242" in combined, "must name the holder"
+
+
+def test_verify_tolerates_the_legacy_in_dir_hold_marker(tmp_path: Path) -> None:
+    """Pre-relocation releases left ``<data_dir>/state.sqlite.hold`` behind
+    on release (unlock-without-unlink); every dir ever served or backed up
+    before the marker moved beside the tree carries it. The fixed, known
+    name is tolerated as live-state — the SIBLING marker stays outside the
+    tree (the relocation's whole point), pinned by the sidecar test above
+    (PR #35 MEDIUM).
+    """
+
+    data = tmp_path / "data"
+    _initialized(data)
+    archive = backup(data, tmp_path / "out")
+    fresh = tmp_path / "fresh"
+    restore(archive, fresh)
+    (fresh / "state.sqlite.hold").write_bytes(b"legacy in-dir marker")
+    assert verify(fresh) == 0

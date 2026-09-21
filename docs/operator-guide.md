@@ -122,6 +122,19 @@ disk — if `BENCHWEAVE_SECRET` is unset, empty/whitespace, or a publicly
 known value (the repo's test secret or the deploy example's placeholder).
 Generate a real one: `openssl rand -hex 32`.
 
+**Startup admission gate.** Before the gateway serves anything, the
+fixture lattice passes the same admission gate execution and recovery
+use: every document is decoded exactly, validated against the vendored
+schemas (the OTDP device descriptors included) and pin-verified against
+the bench's digest lattice. A lattice that fails refuses startup — the
+process exits with `Application startup failed` and logs one
+`startup_admission_rejected:` line carrying the typed reason
+(`schema:`, `digest_mismatch:` or `pin_absent:`; an absent pinned file
+raises a `FileNotFoundError` naming the device and digest prefix).
+Nothing is written to the store by a refused startup, so a repair (fix
+the lattice, restart) starts from a clean inventory. Under systemd the
+unit then restart-loops (§7) and that log line is the diagnosis surface.
+
 For the deployment env file, copy and fill the shipped example:
 
 ```sh
@@ -284,6 +297,18 @@ stop the serving gateway (`sudo systemctl stop benchweave`) before
 `backup`, `restore`, or pointing the demo's scratch at a held tree. The OS
 releases the hold if the process died; a wedged gate self-clears on
 process death.
+
+**`startup_admission_rejected: ...` / `Application startup failed`** —
+the fixture lattice failed the startup admission gate: a document is
+schema-invalid (`schema:`), a digest pin disagrees with the bytes it
+names (`digest_mismatch:`), a required pin or descriptor is missing
+(`pin_absent:`), or a pinned file is absent from the lattice (a
+`FileNotFoundError` naming the device and digest prefix). The gateway
+refuses to boot and writes nothing to the store — the empty inventory is
+by design, not data loss. Fix the lattice so every pinned document
+agrees byte-for-byte with its pins and restart. The same damaged lattice
+also logs `recovery_skipped` on any gateway that did boot before the
+gate was wired; after repair those runs recover on the next restart.
 
 **`fixture lattice not found at ...`** — the demo (or a gateway in
 fresh-install posture) could not resolve the fixture lattice. Pass
