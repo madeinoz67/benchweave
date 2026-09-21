@@ -7,6 +7,7 @@ import re
 import runpy
 import shutil
 import sys
+from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -148,7 +149,9 @@ def _drift_failures(suite: str, docs: Path, standards: Path, rendered: str) -> l
     committed = _report_root(root_kind, docs, standards) / relpath
     if not committed.is_file():
         return [f"stale_report: {relpath} absent; run {regen}"]
-    if committed.read_text(encoding="utf-8") != rendered:
+    # Byte-for-byte, not read_text: universal newlines would launder CRLF
+    # into a matching LF comparison and hide a line-ending drift.
+    if committed.read_bytes() != rendered.encode("utf-8"):
         return [f"stale_report: {relpath} differs from a live {suite}-suite render; run {regen}"]
     return []
 
@@ -391,18 +394,40 @@ def test_check_names_are_path_portable(suite: str) -> None:
     Sorted rendering is byte-stable across platforms only if names are
     host-independent; a name built from ``str(CONTRACT_DIR / ...)`` bakes
     ``/Users/...`` (or the CI checkout path) into the pinned report bytes.
-    Runs on the real tree so the absolute prefix is the true repository root.
+    Runs on the real tree so the absolute prefix is the true repository
+    root. The absoluteness arm fails any name starting with ``/`` on its
+    own — the absolute-path property, not just membership under this
+    repository's two roots. Not caught (stated): relative but
+    machine-specific fragments (a hostname or username pasted relative to
+    the roots), Windows-shaped absolute paths (``C:\\`` — POSIX
+    absoluteness only), and path-like strings that name neither of the
+    suite's roots.
     """
     docs, standards = ROOT / "docs", ROOT / "standards"
     absolute_roots = (str(docs), str(standards))
     offenders = [
         name
         for name, _ in _real_tree_checks(suite)
-        if any(root in name for root in absolute_roots)
+        if name.startswith("/") or any(root in name for root in absolute_roots)
     ]
     assert offenders == [], (
-        f"{suite}: check names embed absolute roots (unportable report bytes): {offenders}"
+        f"{suite}: check names embed absolute paths (unportable report bytes): {offenders}"
     )
+
+
+@pytest.mark.parametrize("suite", FAMILY_SUITES)
+def test_check_names_are_unique(suite: str) -> None:
+    """Every family check name is a distinct identity.
+
+    Duplicates would still render deterministically (tuple sort), but two
+    checks sharing a name under-report the suite to any reader scanning
+    names, and a mutation fixture matching by name would bite an ambiguous
+    pair. Set-equality of live vs committed check sets was verified when
+    the family landed; this pins distinctness so it stays true.
+    """
+    names = [name for name, _ in _real_tree_checks(suite)]
+    duplicated = sorted({name for name, count in Counter(names).items() if count > 1})
+    assert duplicated == [], f"{suite}: duplicated check names: {duplicated}"
 
 
 def test_report_writer_refuses_failing_checks(
