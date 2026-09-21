@@ -1,10 +1,13 @@
 """Execute the versioned architecture checks without modifying the document baseline."""
 
 import hashlib
+import importlib.util
 import json
 import re
 import runpy
 import shutil
+import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -14,25 +17,55 @@ ROOT = Path(__file__).resolve().parents[2]
 SUITES = ("devices", "registry", "execution", "interface", "closure", "planning", "documents")
 
 
-def _active_report_path() -> str:
-    """The active report's path, derived from the manifest (#102 D2) — the
-    pin follows the manifest's active otdp version, never a literal.
+def _active_standard_dir(standard_id: str) -> str:
+    """The active version dir for a standard, derived from the manifest.
 
-    First-match on the otdp entry: CON-8 keeps the manifest single-row per
-    standard, so first == active while the manifest is well-formed.
+    First-match on the standard's entry: CON-8 keeps the manifest single-row
+    per standard, so first == active while the manifest is well-formed. The
+    #102 D2 rule, generalized — pins follow the manifest's active version,
+    never a literal.
     """
 
     manifest = json.loads(
         (ROOT / "standards" / "standards-manifest.json").read_text(encoding="utf-8")
     )
-    entry = next(item for item in manifest["standards"] if item["id"] == "otdp")
+    entry = next(item for item in manifest["standards"] if item["id"] == standard_id)
     version = entry["version"]
     assert isinstance(version, str) and version
-    return f"otdp/{version}/validation-report.md"
+    return f"{standard_id}/{version}"
 
 
-REPORT_PATH = _active_report_path()
-REPORT_REGEN = "uv run python scripts/architecture/check_devices.py --write-report"
+def _active_report_path(standard_id: str) -> str:
+    return _active_standard_dir(standard_id) + "/validation-report.md"
+
+
+def _standards_report_spec(suite: str, standard_id: str) -> tuple[str, str, str]:
+    return (
+        "standards",
+        _active_report_path(standard_id),
+        f"uv run python scripts/architecture/check_{suite}.py --write-report",
+    )
+
+
+# The machine-written validation-report family (#102 D1): suite → (report root
+# kind, report path relative to that root, author-side regen command). The four
+# standards suites derive their paths from the manifest's active versions;
+# closure's report is the docs-side acceptance surface.
+REPORT_SPECS: dict[str, tuple[str, str, str]] = {
+    "devices": _standards_report_spec("devices", "otdp"),
+    "registry": _standards_report_spec("registry", "registry"),
+    "execution": _standards_report_spec("execution", "execution"),
+    "interface": _standards_report_spec("interface", "interface"),
+    "closure": (
+        "docs",
+        "acceptance/validation-report.md",
+        "uv run python scripts/architecture/check_closure.py --write-report",
+    ),
+}
+FAMILY_SUITES = tuple(REPORT_SPECS)
+# README rows link the four standards-tree reports exactly once each; closure's
+# docs-side report has no row and none is added.
+README_ROW_SUITES = ("devices", "registry", "execution", "interface")
 
 
 def load_suite(suite: str, docs: Path, standards: Path) -> dict[str, Any]:
@@ -48,6 +81,17 @@ def run_checks(suite: str, docs: Path, standards: Path) -> list[tuple[str, bool]
     return [(str(name), bool(passed)) for name, passed in checks]
 
 
+def _load_shared_writer() -> Any:
+    """Load ``scripts/architecture/_validation_report.py``, the family writer."""
+    path = ROOT / "scripts" / "architecture" / "_validation_report.py"
+    assert path.is_file(), f"Missing shared validation-report writer: {path}"
+    spec = importlib.util.spec_from_file_location("_validation_report", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 @pytest.mark.parametrize("suite", SUITES)
 def test_architecture(suite: str) -> None:
     checks = run_checks(suite, ROOT / "docs", ROOT / "standards")
@@ -56,85 +100,180 @@ def test_architecture(suite: str) -> None:
     print(f"{suite}: {len(checks)} checks passed")
 
 
-def report_failures(docs: Path, standards: Path) -> list[str]:
-    """``[]`` when the committed OTDP report equals a fresh render; else one failure.
+def _report_root(root_kind: str, docs: Path, standards: Path) -> Path:
+    return standards if root_kind == "standards" else docs
 
-    The committed active report (``REPORT_PATH``, manifest-derived) is machine-written
-    by its validator; this is the staleness gate the ``gates`` job runs. Byte
-    equality is over the sorted rendering, so it is a function of the check set
-    only, immune to platform glob order.
-    """
-    namespace = load_suite("devices", docs, standards)
+
+def _render_suite_report(suite: str, namespace: dict[str, Any]) -> str:
     assert "render_report" in namespace, (
-        "check_devices.py lacks render_report — the validation-report pin needs the writer"
+        f"check_{suite}.py lacks render_report — the validation-report pin needs the writer"
     )
     checks = namespace["CHECKS"]
-    assert isinstance(checks, list) and checks, "No checks executed by devices"
-    committed = standards / REPORT_PATH
-    if not committed.is_file():
-        return [f"stale_report: {REPORT_PATH} absent; run {REPORT_REGEN}"]
+    assert isinstance(checks, list) and checks, f"No checks executed by {suite}"
     rendered = namespace["render_report"]([(str(name), bool(passed)) for name, passed in checks])
+    assert isinstance(rendered, str), f"check_{suite}.py render_report must return str"
+    return rendered
+
+
+def _drift_failures(suite: str, docs: Path, standards: Path, rendered: str) -> list[str]:
+    """``[]`` when the committed family report equals ``rendered``; else one failure.
+
+    The pure byte-comparison half of the staleness gate, split out so the
+    tamper arms can reuse one rendered snapshot across their three mutation
+    modes. Byte equality is over the sorted rendering, so it is a function of
+    the check set only, immune to platform glob order.
+    """
+    root_kind, relpath, regen = REPORT_SPECS[suite]
+    committed = _report_root(root_kind, docs, standards) / relpath
+    if not committed.is_file():
+        return [f"stale_report: {relpath} absent; run {regen}"]
     if committed.read_text(encoding="utf-8") != rendered:
-        return [
-            f"stale_report: {REPORT_PATH} differs from a live devices-suite render; "
-            f"run {REPORT_REGEN}"
-        ]
+        return [f"stale_report: {relpath} differs from a live {suite}-suite render; run {regen}"]
     return []
 
 
-def test_validation_report_matches_live_run() -> None:
-    assert report_failures(ROOT / "docs", ROOT / "standards") == []
-    report = (ROOT / "standards" / REPORT_PATH).read_text(encoding="utf-8")
-    headline = re.search(r"(\d+)/\d+ checks passed", report)
-    assert headline is not None, f"{REPORT_PATH} lacks a headline count"
-    passed = int(headline.group(1))
-    rows = [
-        line for line in (ROOT / "docs" / "README.md").read_text(encoding="utf-8").splitlines()
-        if f"(../standards/{REPORT_PATH})" in line
-    ]
-    assert len(rows) == 1, f"docs/README.md must link {REPORT_PATH} exactly once"
-    # The href itself carries the active version's digits, so the count is the
-    # first integer after the link, not the first integer in the row.
-    row_count = re.search(r"\d+", rows[0].split(")", 1)[1])
-    assert row_count is not None, "docs/README.md row carries no count"
-    assert int(row_count.group()) == passed, (
-        f"docs/README.md says {row_count.group()}; {REPORT_PATH} pins {passed}"
+@pytest.mark.parametrize("suite", FAMILY_SUITES)
+def test_validation_report_matches_live_run(suite: str) -> None:
+    docs, standards = ROOT / "docs", ROOT / "standards"
+    namespace = load_suite(suite, docs, standards)
+    checks = [(str(name), bool(passed)) for name, passed in namespace["CHECKS"]]
+    assert checks, f"No checks executed by {suite}"
+    passed = sum(1 for _, ok in checks if ok)
+    root_kind, relpath, _regen = REPORT_SPECS[suite]
+    report = _report_root(root_kind, docs, standards) / relpath
+    committed = report.read_text(encoding="utf-8")
+    if suite in README_ROW_SUITES:
+        rows = [
+            line
+            for line in (docs / "README.md").read_text(encoding="utf-8").splitlines()
+            if f"(../standards/{relpath})" in line
+        ]
+        assert len(rows) == 1, f"docs/README.md must link {relpath} exactly once"
+        # The href itself carries the active version's digits, so the count is the
+        # first integer after the link, not the first integer in the row.
+        row_count = re.search(r"\d+", rows[0].split(")", 1)[1])
+        assert row_count is not None, "docs/README.md row carries no count"
+        assert int(row_count.group()) == passed, (
+            f"docs/README.md says {row_count.group()}; the live {suite} suite pins {passed}"
+        )
+    headline = re.search(r"(\d+)/\d+ checks passed", committed)
+    assert headline is not None, f"{relpath} lacks a headline count"
+    assert int(headline.group(1)) == passed, (
+        f"{relpath} headline says {headline.group(1)}; the live {suite} suite passes {passed}"
     )
+    rendered = _render_suite_report(suite, namespace)
+    assert _drift_failures(suite, docs, standards, rendered) == []
+
+
+@pytest.fixture(scope="module")
+def rendered_family_report(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> Callable[[str], tuple[Path, Path, str, str]]:
+    """One suite execution per family suite, shared across the tamper modes.
+
+    Copies the trees once per suite and renders the live bytes on the pristine
+    copy — render-before-mutate stays the faithful order even if a suite ever
+    read its own report. Each mode mutates from the pristine committed bytes,
+    so modes cannot contaminate one another.
+    """
+    cache: dict[str, tuple[Path, Path, str, str]] = {}
+
+    def get(suite: str) -> tuple[Path, Path, str, str]:
+        if suite not in cache:
+            base = tmp_path_factory.mktemp(f"report-family-{suite}")
+            docs = base / "docs"
+            standards = base / "standards"
+            shutil.copytree(ROOT / "docs", docs)
+            shutil.copytree(ROOT / "standards", standards)
+            root_kind, relpath, _regen = REPORT_SPECS[suite]
+            pristine = (_report_root(root_kind, docs, standards) / relpath).read_text(
+                encoding="utf-8"
+            )
+            rendered = _render_suite_report(suite, load_suite(suite, docs, standards))
+            cache[suite] = (docs, standards, rendered, pristine)
+        return cache[suite]
+
+    return get
 
 
 @pytest.mark.parametrize("mode", ["flip_pass", "bump_count", "reorder_lines"])
-def test_validation_report_tampering_is_detected(tmp_path: Path, mode: str) -> None:
-    docs = tmp_path / "docs"
-    standards = tmp_path / "standards"
-    shutil.copytree(ROOT / "docs", docs)
-    shutil.copytree(ROOT / "standards", standards)
-    report = standards / REPORT_PATH
-    original = report.read_text(encoding="utf-8")
+@pytest.mark.parametrize("suite", FAMILY_SUITES)
+def test_validation_report_tampering_is_detected(
+    mode: str, suite: str, rendered_family_report: Callable[[str], tuple[Path, Path, str, str]]
+) -> None:
+    docs, standards, rendered, pristine = rendered_family_report(suite)
+    root_kind, relpath, regen = REPORT_SPECS[suite]
+    report = _report_root(root_kind, docs, standards) / relpath
     if mode == "flip_pass":
-        assert "- PASS: " in original, "report must carry PASS lines to tamper with"
-        mutated = original.replace("- PASS: ", "- FAIL: ", 1)
+        assert "- PASS: " in pristine, "report must carry PASS lines to tamper with"
+        mutated = pristine.replace("- PASS: ", "- FAIL: ", 1)
     elif mode == "reorder_lines":
         # The platform-drift case the sorted renderer exists for: an unsorted
         # check list is a permutation the live (sorted) render can never match.
-        lines = original.splitlines(keepends=True)
+        lines = pristine.splitlines(keepends=True)
         passes = [i for i, line in enumerate(lines) if line.startswith("- PASS: ")]
         assert len(passes) >= 2, "report must carry PASS lines to reorder"
         lines[passes[0]], lines[passes[-1]] = lines[passes[-1]], lines[passes[0]]
         mutated = "".join(lines)
-        assert mutated != original, "reorder mutation must change the report"
+        assert mutated != pristine, "reorder mutation must change the report"
     else:
         mutated = re.sub(
             r"(\d+)/(\d+)",
             lambda match: f"{int(match.group(1)) + 1}/{match.group(2)}",
-            original,
+            pristine,
             count=1,
         )
-        assert mutated != original, "headline-count mutation must change the report"
+        assert mutated != pristine, "headline-count mutation must change the report"
     report.write_text(mutated, encoding="utf-8", newline="\n")
-    failures = report_failures(docs, standards)
-    assert any(
-        REPORT_PATH in failure and REPORT_REGEN in failure for failure in failures
-    ), failures
+    failures = _drift_failures(suite, docs, standards, rendered)
+    assert any(relpath in failure and regen in failure for failure in failures), failures
+
+
+@pytest.mark.parametrize("suite", FAMILY_SUITES)
+def test_check_names_are_path_portable(suite: str) -> None:
+    """No family check name may embed an absolute tree path.
+
+    Sorted rendering is byte-stable across platforms only if names are
+    host-independent; a name built from ``str(CONTRACT_DIR / ...)`` bakes
+    ``/Users/...`` (or the CI checkout path) into the pinned report bytes.
+    Runs on the real tree so the absolute prefix is the true repository root.
+    """
+    docs, standards = ROOT / "docs", ROOT / "standards"
+    absolute_roots = (str(docs), str(standards))
+    offenders = [
+        name
+        for name, _ in run_checks(suite, docs, standards)
+        if any(root in name for root in absolute_roots)
+    ]
+    assert offenders == [], (
+        f"{suite}: check names embed absolute roots (unportable report bytes): {offenders}"
+    )
+
+
+def test_report_writer_refuses_failing_checks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The shared ``--write-report`` epilogue refuses to write on a red run.
+
+    One pin covers every family suite because the refuse path lives in the
+    shared writer module, not in each script (#102 D1).
+    """
+    writer = _load_shared_writer()
+    out = tmp_path / "validation-report.md"
+    monkeypatch.setattr(sys, "argv", ["check_family.py", "--write-report"])
+    with pytest.raises(SystemExit) as raised:
+        writer.main(
+            [("synthetic failing check", False), ("synthetic passing check", True)],
+            out,
+            script="scripts/architecture/check_family.py",
+            title="# synthetic",
+            coverage="synthetic coverage",
+        )
+    assert raised.value.code == 1
+    assert "refusing to write the validation report" in capsys.readouterr().out
+    assert not out.exists()
 
 
 def test_validation_is_read_only(tmp_path: Path) -> None:
@@ -255,37 +394,35 @@ def test_documents_ignores_markdown_links_inside_fenced_code_blocks(
         # corpus obligation).
         (
             "devices",
-            _active_report_path().rsplit("/", 1)[0]
-            + "/otdp-measurement.schema.json",
+            _active_standard_dir("otdp") + "/otdp-measurement.schema.json",
             "",
             "\n",
             "pinned",
         ),
         (
             "devices",
-            _active_report_path().rsplit("/", 1)[0]
-            + "/examples/derivation-vectors.json",
+            _active_standard_dir("otdp") + "/examples/derivation-vectors.json",
             '"values": [\n            9.0\n          ]',
             '"values": [\n            9.1\n          ]',
             "census",
         ),
         (
             "registry",
-            "registry/0.1.1/examples/release-manifest.json",
+            _active_standard_dir("registry") + "/examples/release-manifest.json",
             '"version": "1.0.0"',
             '"version": "latest"',
             "positive fixture",
         ),
         (
             "execution",
-            "execution/0.1.0/examples/run-record.json",
+            _active_standard_dir("execution") + "/examples/run-record.json",
             '"safe_state": "verified"',
             '"safe_state": "unknown"',
             "positive fixture",
         ),
         (
             "interface",
-            "interface/0.1.0/examples/operation-vectors.json",
+            _active_standard_dir("interface") + "/examples/operation-vectors.json",
             '"ok": true',
             '"ok": false',
             "Stored fixture agrees",
