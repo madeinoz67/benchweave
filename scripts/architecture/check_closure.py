@@ -117,8 +117,10 @@ check(
     # bake the host's checkout location into the pinned report bytes (the
     # portability guard in test_architecture.py pins this). CONTRACT_DIR is
     # built from DOCS by pure path arithmetic, so relative_to stays lexical.
+    # as_posix for the same reason: str() of a Windows path would bake the
+    # host's separator into those bytes (#138).
     "Stored fixture agrees: "
-    + str((CONTRACT_DIR / "composition-fixtures.json").relative_to(DOCS)),
+    + (CONTRACT_DIR / "composition-fixtures.json").relative_to(DOCS).as_posix(),
     json.loads((CONTRACT_DIR / "composition-fixtures.json").read_text(encoding="utf-8"))
     == json.loads(
         json.dumps(
