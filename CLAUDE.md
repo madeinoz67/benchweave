@@ -19,6 +19,21 @@ The mandate above stands — but graph queries *narrow scope*, they do not *repl
 
 Be especially deliberate with **behavior-critical code** — database migrations, retry / fallback / error-recovery paths, compatibility shims, concurrency-sensitive sections, and the tests that pin them. For these, call `get_symbol_source` and read the real implementation; never pass `compress_bodies:true`, which elides exactly the branches that carry the risk. Reserve compressed bodies and graph summaries for breadth (surveying many symbols); use full source for the few you are about to commit to.
 
+### Edit routing — which write path applies
+
+One decision point, not a per-edit judgment call. The mandate binds the main
+session's own edits, not only dispatched agents.
+
+| Situation | Path |
+|---|---|
+| File indexed, primary checkout | `mcp__gortex__edit` — `change(operation:"impact")` before, `change(operation:"detect")` after; signatures also `verify` |
+| Linked worktree overlay | gortex single-file edit when freshness reports `exact: true` with `actual_view` naming the worktree; otherwise native Edit, and the bypass names the caveat |
+| Branch-new / untracked file | native Write; visible to the graph after the next index pass |
+| Generated files (`preview_assets/`, `CHANGELOG_AUTO.md`, `docs/architecture/`, `wiki/`) | never hand-edited — regenerated |
+
+Every native bypass states which row covers it. Guessing `pytest -k` filters is
+the anti-pattern this table replaces — `change(operation:"tests")` names the files.
+
 ## Required workflow (every task on this repo)
 
 These are not suggestions — run each step at the trigger.
