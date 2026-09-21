@@ -59,10 +59,10 @@ describe("PreviewPlots real rendering (metric B)", () => {
     expect(container.querySelectorAll("figure.bw-plot")).toHaveLength(1);
     const svg = container.querySelector(".bw-plot__canvas svg");
     expect(svg, "echarts rendered an SVG into the canvas").toBeTruthy();
-    // The legend row is the disclosure key (label prettified from the
-    // variable id); the muted token must reach the drawn pixels, not just
-    // the option payload.
-    expect(screen.getByText("Value · V")).toBeVisible();
+    // The legend row is the disclosure key (the projected wire label passes
+    // through verbatim); the muted token must reach the drawn pixels, not
+    // just the option payload.
+    expect(screen.getByText("value · V")).toBeVisible();
     expect(svg!.innerHTML).toContain("#777777");
   });
 

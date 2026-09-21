@@ -423,4 +423,25 @@ describe("EngineeringPlot", () => {
     );
     expect(setOption).toHaveBeenCalledTimes(1);
   });
+
+  it("omits dangling unit separators for unitless traces and axes (R2)", () => {
+    // A null catalogue unit arrives as "" — the legend row, the accessible
+    // description and the series name must not carry a dangling "· " or
+    // "in " tail, and the axis name must not render empty parentheses.
+    render(
+      <EngineeringPlot
+        kind="time_series"
+        title="Unitless"
+        x={{ label: "State", unit: "" }}
+        traces={[{ id: "a", label: "Channel A", unit: "", values: [[0, 1]] }]}
+      />,
+    );
+
+    expect(screen.getByText("Channel A")).toBeVisible();
+    expect(screen.queryByText(/^Channel A ·/)).toBeNull();
+    expect(screen.getByRole("img", { name: "Unitless" })).toHaveAccessibleDescription("State; Channel A");
+    const payload = setOption.mock.calls[0][0];
+    expect(payload.series[0].name).toBe("Channel A");
+    expect(payload.xAxis.name).toBe("State");
+  });
 });

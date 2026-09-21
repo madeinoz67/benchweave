@@ -6,8 +6,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // jsdom's getComputedStyle returns no custom properties, so pass-1 fallback
 // literals apply unless a token is explicitly stubbed.
 const setOption = vi.fn();
+const initChart = vi.fn(() => ({ setOption, resize: () => undefined, dispose: () => undefined }));
 vi.mock("echarts/core", () => ({
-  init: () => ({ setOption, resize: () => undefined, dispose: () => undefined }),
+  init: () => initChart(),
   use: () => undefined,
 }));
 
@@ -62,6 +63,7 @@ function stubMutedToken(value: string) {
 
 beforeEach(() => {
   setOption.mockClear();
+  initChart.mockClear();
 });
 
 afterEach(() => {
@@ -73,8 +75,8 @@ describe("plotTraces (pure join)", () => {
     const join = plotTraces(view([channel(), channel({ variable_id: "ripple", label: "ripple" })]), scenario);
     expect(join.feedable).toBe(true);
     expect(join.traces).toEqual([
-      { id: "value", label: "Value", unit: "V", values: [[0, 12.5]] },
-      { id: "ripple", label: "Ripple", unit: "V", values: [[0, 12.5]] },
+      { id: "value", label: "value", unit: "V", values: [[0, 12.5]] },
+      { id: "ripple", label: "ripple", unit: "V", values: [[0, 12.5]] },
     ]);
   });
 
@@ -121,7 +123,7 @@ describe("PreviewPlots panel", () => {
     const detached: PreviewScenario = { ...scenario, observations: [] };
     const { container } = render(<PreviewPlots views={[waveform]} scenario={detached} />);
     expect(container.querySelectorAll("figure.bw-plot")).toHaveLength(1);
-    expect(screen.getByText("Value · V")).toBeVisible();
+    expect(screen.getByText("value · V")).toBeVisible();
     expect(screen.getByText("No preview data for this scenario")).toBeVisible();
     expect(setOption).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("status", { name: /threshold/i })).toBeNull();
@@ -151,5 +153,54 @@ describe("PreviewPlots panel", () => {
   it("renders nothing when the decoded document carries no plot views", () => {
     const { container } = render(<PreviewPlots views={[]} scenario={scenario} />);
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it("does not re-init chart instances on parent re-renders with unchanged data (R2)", () => {
+    // Role/theme/receipt changes re-render PreviewApp; the joined traces must
+    // keep referential stability so EngineeringPlot's effect (deps include
+    // traces) does not dispose and re-init every echarts instance per
+    // unrelated state change.
+    const views = [view([channel()])];
+    const { rerender } = render(<PreviewPlots views={views} scenario={scenario} />);
+    expect(initChart).toHaveBeenCalledTimes(1);
+    rerender(<PreviewPlots views={views} scenario={scenario} />);
+    rerender(<PreviewPlots views={views} scenario={scenario} />);
+    expect(initChart).toHaveBeenCalledTimes(1);
+    // Data changes still re-render: a different scenario re-inits.
+    rerender(<PreviewPlots views={views} scenario={{ ...scenario, id: "trip" }} />);
+    expect(initChart).toHaveBeenCalledTimes(2);
+  });
+
+  it("uses collision-safe keys for views whose page ids and titles contain ':' (R2)", () => {
+    // Manifest ids may contain ':' (the schema id pattern allows it), so
+    // `${page_id}:${title}` is separator-collidable: page "a" title "b:c"
+    // collides with page "a:b" title "c". React logs a duplicate-key error
+    // and drops a sibling.
+    const colliding: readonly PlotView[] = [
+      { ...view([channel()]), page_id: "a", title: "b:c" },
+      { ...view([channel()]), page_id: "a:b", title: "c" },
+    ];
+    const errors: string[] = [];
+    const spy = vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+      errors.push(args.map(String).join(" "));
+    });
+    try {
+      const { container } = render(<PreviewPlots views={colliding} scenario={scenario} />);
+      expect(errors.filter((line) => /same key/i.test(line))).toEqual([]);
+      expect(container.querySelectorAll("figure.bw-plot")).toHaveLength(2);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("prefers the projected channel label and falls back to prettifying the id (R2)", () => {
+    const join = plotTraces(
+      view([
+        channel({ label: "Line voltage" }),
+        channel({ variable_id: "ripple", label: "" }),
+      ]),
+      scenario,
+    );
+    expect(join.traces.map((trace) => trace.label)).toEqual(["Line voltage", "Ripple"]);
   });
 });

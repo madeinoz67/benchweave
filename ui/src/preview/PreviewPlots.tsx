@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import {
   EngineeringPlot,
   type PlotTrace,
@@ -39,7 +40,9 @@ export function plotTraces(view: PlotView, scenario: PreviewScenario): PlotJoin 
     }
     return {
       id: channelView.variable_id,
-      label: titleFor(channelView.variable_id),
+      // The projected label is the authoring authority; prettifying the id is
+      // the fallback when the wire label is empty, never a replacement.
+      label: channelView.label || titleFor(channelView.variable_id),
       unit: channelView.unit ?? "",
       values: feedable ? [[0, value]] : [],
     };
@@ -53,6 +56,19 @@ export interface PreviewPlotsProps {
 }
 
 export function PreviewPlots({ views, scenario }: PreviewPlotsProps) {
+  // Referential stability across unrelated parent re-renders (role, theme,
+  // receipt): the joined traces AND the axis object keep identity so
+  // EngineeringPlot's effect does not dispose and re-init every echarts
+  // instance per state change.
+  const plotted = useMemo(
+    () =>
+      views.map((viewItem) => ({
+        view: viewItem,
+        join: plotTraces(viewItem, scenario),
+        x: { label: titleFor(viewItem.x.label), unit: viewItem.x.unit ?? "" },
+      })),
+    [views, scenario],
+  );
   if (views.length === 0) return null;
   return (
     <section className="bw-preview__plots" aria-label="Declared plots">
@@ -60,25 +76,25 @@ export function PreviewPlots({ views, scenario }: PreviewPlotsProps) {
       <p className="bw-preview__plots-note">
         Preview scenarios carry one simulated value per observed target — not observation history.
       </p>
-      {views.map((view) => {
-        const join = plotTraces(view, scenario);
-        return (
-          <div className="bw-preview__plot" key={`${view.page_id}:${view.title}`}>
-            <EngineeringPlot
-              kind={view.kind}
-              title={view.title}
-              x={{ label: titleFor(view.x.label), unit: view.x.unit ?? "" }}
-              traces={join.traces}
-              hints={join.hints}
-            />
-            {join.feedable ? null : (
-              <p role="status" className="bw-preview__no-data">
-                No preview data for this scenario
-              </p>
-            )}
-          </div>
-        );
-      })}
+      {plotted.map(({ view, join, x }, index) => (
+        // Manifest ids may contain ':' (the schema id pattern allows it),
+        // so `${page_id}:${title}` is separator-collidable; the list
+        // position is the collision-free key for a fixed decoded array.
+        <div className="bw-preview__plot" key={index}>
+          <EngineeringPlot
+            kind={view.kind}
+            title={view.title}
+            x={x}
+            traces={join.traces}
+            hints={join.hints}
+          />
+          {join.feedable ? null : (
+            <p role="status" className="bw-preview__no-data">
+              No preview data for this scenario
+            </p>
+          )}
+        </div>
+      ))}
     </section>
   );
 }

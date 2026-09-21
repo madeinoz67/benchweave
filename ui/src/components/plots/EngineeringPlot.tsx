@@ -107,6 +107,12 @@ function readTokens(
   };
 }
 
+/** Unit-bearing display strings never dangle their separator: a null/empty
+ *  catalogue unit renders the bare label, not "label · " / "label in " /
+ *  "label ()". */
+const labelled = (label: string, unit: string): string => (unit ? `${label} · ${unit}` : label);
+const inUnit = (label: string, unit: string): string => (unit ? `${label} in ${unit}` : label);
+
 export function EngineeringPlot({ kind, title, x, traces, threshold, hints }: EngineeringPlotProps) {
   const figureElement = useRef<HTMLElement>(null);
   const chartElement = useRef<HTMLDivElement>(null);
@@ -114,7 +120,7 @@ export function EngineeringPlot({ kind, title, x, traces, threshold, hints }: En
   const [themeVersion, setThemeVersion] = useState(0);
   const [legendStyles, setLegendStyles] = useState<TraceStyle[]>([]);
   const visible = (trace: PlotTrace) => hints?.get(trace.id)?.visible !== false;
-  const description = `${x.label} in ${x.unit}; ${traces.filter(visible).map((trace) => `${trace.label} in ${trace.unit}`).join("; ")}`;
+  const description = `${inUnit(x.label, x.unit)}; ${traces.filter(visible).map((trace) => inUnit(trace.label, trace.unit)).join("; ")}`;
 
   // FC6: a theme switch mutates an ancestor's data-theme attribute — no data
   // dependency of this component changes, so tokens resolved once go stale.
@@ -169,7 +175,7 @@ export function EngineeringPlot({ kind, title, x, traces, threshold, hints }: En
       const style = resolved[traces.indexOf(trace)];
       return {
         id: trace.id,
-        name: `${trace.label} · ${trace.unit}`,
+        name: labelled(trace.label, trace.unit),
         type: "line",
         showSymbol: kind === "time_series",
         symbol: style.symbol,
@@ -204,7 +210,7 @@ export function EngineeringPlot({ kind, title, x, traces, threshold, hints }: En
       animation: !(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false),
       grid: { left: 58, right: 24, top: 24, bottom: 44 },
       tooltip: { trigger: "axis" },
-      xAxis: { type: "value", name: `${x.label} (${x.unit})`, nameLocation: "middle", nameGap: 28, axisLabel: { color: tokens.text }, axisLine: { lineStyle: { color: tokens.border } }, splitLine: { lineStyle: { color: tokens.border, opacity: 0.45 } } },
+      xAxis: { type: "value", name: x.unit ? `${x.label} (${x.unit})` : x.label, nameLocation: "middle", nameGap: 28, axisLabel: { color: tokens.text }, axisLine: { lineStyle: { color: tokens.border } }, splitLine: { lineStyle: { color: tokens.border, opacity: 0.45 } } },
       yAxis: { type: "value", axisLabel: { color: tokens.text }, axisLine: { lineStyle: { color: tokens.border } }, splitLine: { lineStyle: { color: tokens.border, opacity: 0.45 } } },
       // Visibility filters AFTER style resolution (indices never shift); the
       // threshold mark line rides the first visible series, or the carrier
@@ -232,10 +238,10 @@ export function EngineeringPlot({ kind, title, x, traces, threshold, hints }: En
               key={trace.id}
               data-line={index % 2 === 0 ? "solid" : "dashed"}
               data-hidden={isHidden ? "true" : undefined}
-              aria-label={isHidden ? `${trace.label} · ${trace.unit} (hidden by presentation preference)` : undefined}
+              aria-label={isHidden ? `${labelled(trace.label, trace.unit)} (hidden by presentation preference)` : undefined}
               style={{ "--legend-swatch": legendStyles[index]?.color ?? "" } as CSSProperties}
             >
-              {trace.label} · {trace.unit}
+              {labelled(trace.label, trace.unit)}
               {isHidden ? <span className="bw-plot__legend-hidden">hidden</span> : null}
             </li>
           );
