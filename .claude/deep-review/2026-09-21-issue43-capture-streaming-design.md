@@ -407,13 +407,29 @@ standalone leg:
   configuration — host-managed storage stays normative in-gateway, and standalone path
   selection exists only outside the gateway boundary.
 - **Layout and manifest parity.** Each capture event is one directory keyed by
-  `capture_id` (the "stem"): the primary artifact file, a sidecar manifest
-  (`{capture_id}.json`) carrying the gateway-manifest integrity fields — real
-  per-artifact SHA-256 + byte_length computed at finalise over the actual bytes (the
-  prototype's missing-digest gap, closed) — plus format/sample metadata, and any
-  renderings the plugin writes alongside as ordinary files. The contributor's
-  capture-event grouping model is thereby realized where it genuinely lives:
-  standalone, where no store exists to admit or refuse renderings.
+  `capture_id` (the "stem"). The directory tree, pinned:
+
+  ```
+  <capture-root>/                  # captures/ under the plugin dir, or BENCHWEAVE_CAPTURE_DIR
+  └── <capture_id>/                # one capture event
+      ├── manifest.json            # fixed name; integrity + metadata for the event
+      ├── staging/                 # chunk files during capture; removed at finalise
+      ├── <capture_id>.<ext>       # primary artifact; ext from the format
+      │                            #   (waveform_f64le → .f64, raw_binary → .bin)
+      └── renderings/              # optional; plugin-written ordinary files
+  ```
+
+  `manifest.json` carries the gateway-manifest integrity fields — real per-artifact
+  SHA-256 + byte_length computed at finalise over the actual bytes (the prototype's
+  missing-digest gap, closed) — plus `capture_id`, `format`, `state`
+  (`finalised`), `started_at`, and waveform metadata when applicable. Staging chunks
+  live under `staging/` so a crashed capture is distinguishable from published data;
+  finalise concatenates staging into the primary artifact and removes `staging/`;
+  **abort removes the event directory entirely** (standalone is development tooling —
+  no forensic marker is required, unlike the gateway's abort-marker evidence row).
+  Renderings live in `renderings/` so the three-class split (Decision 7) is visible
+  in the tree: the contributor's capture-event grouping model realized where it
+  genuinely lives — standalone, where no store exists to admit or refuse renderings.
 - **Integrity is not optional standalone.** At publish, everything is integrity-bound
   identically (Decision 7's rule) in both modes: digest over real bytes, length over
   real bytes, abort leaves zero chunk residue.
