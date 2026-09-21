@@ -281,9 +281,14 @@ run of record because it executes on the committed branch after this document.
 1. **Re-vacuation drift (the draft-1 defect class).** The escape target
    drifting from where `../` resolves makes the test pass for the wrong
    reason. *Falsified by:* the resolve-equality guard (fails loudly on drift)
-   plus the step-4 control at build and review time. Only removing both the
-   guard and moving the target revives it — a two-edit mistake the control
-   still catches.
+   plus the step-4 control at build and review time. The revival set is wider
+   than location drift alone (refute F1): a single edit that corrupts the
+   COPIED BYTES (e.g. `escaped.write_bytes(b"corrupted" + …)`) or the
+   rewritten escape-string literal also regresses the test to
+   non-discrimination — measured GREEN under both arm states — because the
+   guard checks location, never bytes, and re-derives its own literal. The
+   step-4 arm-off control at build and review time is the layer that catches
+   such edits; the guard alone does not.
 2. **Exact-equality over-pinning.** A future devices-suite check that also
    inspects contract paths adds a second failure and breaks this test.
    *Accepted deliberately:* the failure is loud and cheap to update, and the
@@ -304,10 +309,12 @@ run of record because it executes on the committed branch after this document.
    script, and empirically — the arm-on probe produced exactly one failure).
    If a future check pins descriptor bytes, this test's exact-equality
    assertion surfaces it immediately.
-6. **Windows lane.** No local Windows execution; CI's windows leg is the
-   evidence lane (standing rule). `Path.resolve()`/`is_relative_to` semantics
-   with `..` are the platform-sensitive surface; the geometry guard makes any
-   drift loud there rather than silent.
+6. **Windows lane.** No local Windows execution, and this repo's CI has no
+   Windows leg (only the SDK repo's does) — Windows behavior of this test is
+   simply unverified (refute F2). Nothing in it is plausibly
+   platform-fragile (pure `pathlib`/`json`); `Path.resolve()`/`is_relative_to`
+   semantics with `..` are the platform-sensitive surface, and the geometry
+   guard makes any drift loud there rather than silent.
 
 ## 9. Deferrals (explicit)
 
