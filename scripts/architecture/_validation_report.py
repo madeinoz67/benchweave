@@ -9,7 +9,7 @@ manifest derivation to every suite with a machine-written report).
 import json
 import sys
 from pathlib import Path
-from typing import Any
+from typing import NoReturn
 
 
 def active_standard_version(standards_root: Path, standard_id: str) -> str:
@@ -93,14 +93,15 @@ def main(
     title: str,
     coverage: str,
     limit: str | None = None,
-) -> Any:
+) -> NoReturn:
     """The shared author-side epilogue: report, then maybe write the report.
 
     Only reachable under a real ``__main__`` — each family script calls this
     from its own ``if __name__ == "__main__":`` block, and ``runpy.run_path``
     executes the module body with ``__name__ == "<run_path>"``, so the
     pytest harness can never reach the writer. Refuses (exit 1) to write
-    when any check fails.
+    when any check fails. Always raises ``SystemExit`` (the refuse path with
+    code 1, the tail with the run's overall verdict) — hence ``NoReturn``.
     """
 
     failures = [name for name, ok in checks if not ok]
