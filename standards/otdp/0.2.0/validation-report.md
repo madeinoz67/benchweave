@@ -4,7 +4,7 @@
 
 **Result: 569/569 checks passed; 0 failed.**
 
-Twelve class profiles and fifty input/output action contracts were checked against Draft 2020-12. Each action has a positive vector. Descriptor declarations, pinned contract hashes, runtime envelopes, typed datasets and selected rejection/semantic boundaries were checked.
+12 class profiles and 50 input/output action contracts were checked against Draft 2020-12. Each action has a positive vector. Descriptor declarations, pinned contract hashes, runtime envelopes, typed datasets and selected rejection/semantic boundaries were checked.
 
 **Limit:** These are document/schema checks. No gateway, plugin, device simulator, hardware interaction or complete C01–C12/M01–M14 behavioural validator is claimed. Structural reference descriptors intentionally do not contain real manufacturer evidence or commissioned electrical limits.
 

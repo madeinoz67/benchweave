@@ -426,10 +426,10 @@ GENERATED_MARKER = (
 )
 REPORT_TITLE = f"# OTDP {OTDP_VERSION} specification verification"
 REPORT_COVERAGE = (
-    "Twelve class profiles and fifty input/output action contracts were checked against "
-    "Draft 2020-12. Each action has a positive vector. Descriptor declarations, pinned "
-    "contract hashes, runtime envelopes, typed datasets and selected rejection/semantic "
-    "boundaries were checked."
+    f"{len(profile_map)} class profiles and {len(covered)} input/output action contracts "
+    "were checked against Draft 2020-12. Each action has a positive vector. Descriptor "
+    "declarations, pinned contract hashes, runtime envelopes, typed datasets and selected "
+    "rejection/semantic boundaries were checked."
 )
 REPORT_LIMIT = (
     "**Limit:** These are document/schema checks. No gateway, plugin, device simulator, "
