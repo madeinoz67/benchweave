@@ -262,15 +262,19 @@ these are absence-presence gates, not statistical claims.
 | 7 | Retention-policy schema corpus promotion (execution package) | Documentation here | A policy needing to travel with a package or bench definition |
 | 8 | Host-side spooling for large captures | Documentation here | Risk-2 throughput measurement below the fetch deadline budget |
 
-## Forks for the owner (decisions taken neither here nor in the issue)
+## Owner calls on the forks (resolved 2026-09-21)
 
-1. **Per-project retention** requires a project entity the gateway does not have.
-   Recommendation: global + per-data-class (+ per-bench) now; introduce a project entity
-   only when more than retention wants it.
-2. **Retention-policy home at birth:** gateway-local (recommended, this design) vs
-   corpus-side from day one (portable, but a standards train for a first slice).
-3. **Derived renderings:** this design admits none to the artifact store (stricter than
-   the contributor's "cache at most"). If renderings must be gateway-served, they need a
-   non-evidence artifact class — a corpus-adjacent decision.
-4. **Telemetry surface:** run-internal only (this design) vs caller-facing subscription
-   reads (row 5's interface-corpus train).
+All four forks went to the owner with recommendations; all four recommendations were
+agreed the same day. They are decisions of record, and the implementation slices
+inherit them:
+
+1. **Per-project retention — resolved: global + per-data-class (+ per-bench) now.** No
+   project entity is introduced inside #43; one arrives only when more than retention
+   wants it.
+2. **Retention-policy home — resolved: gateway-local validated configuration.** Corpus
+   promotion stays row 7's trigger.
+3. **Derived renderings — resolved: none admitted to the artifact store.** Gateway-served
+   renderings would need a new non-evidence artifact class (corpus-adjacent); not taken
+   here.
+4. **Telemetry surface — resolved: run-internal only.** Caller-facing subscription reads
+   stay with row 5's interface-corpus train.
