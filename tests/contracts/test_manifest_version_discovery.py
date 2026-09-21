@@ -52,3 +52,23 @@ def test_manifest_absence_is_a_loud_refusal(tmp_path: Path) -> None:
     (standards / "standards-manifest.json").unlink()
     with pytest.raises(SystemExit, match="otdp_manifest_absent"):
         runpy.run_path(str(SCRIPT), init_globals={"STANDARDS": standards})
+
+
+def test_entry_absence_is_a_loud_refusal(tmp_path: Path) -> None:
+    """The shared lookup's second refusal branch: manifest present, entry
+    missing (#102 D1 review F5).
+
+    A manifest that omits the standard's entry must refuse loudly with the
+    prefixed message — never fall through to a literal, never silently pick
+    a directory. Pinned through the registry script so the prefix is shown
+    to carry the standard id, not the historical otdp bytes.
+    """
+    standards = tmp_path / "standards"
+    shutil.copytree(ROOT / "standards", standards)
+    manifest_path = standards / "standards-manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["standards"] = [e for e in manifest["standards"] if e["id"] != "registry"]
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    registry_script = ROOT / "scripts" / "architecture" / "check_registry.py"
+    with pytest.raises(SystemExit, match="registry_manifest_absent"):
+        runpy.run_path(str(registry_script), init_globals={"STANDARDS": standards})

@@ -55,7 +55,11 @@ or a public surface, run the loop.
 3. **Build, RED-first.** The `increment-builder` agent works in a fresh worktree off
    `origin/main` (`UV_PROJECT_ENVIRONMENT=venv`). For every behavior change: write the
    test, show it FAILS without the code, then implement. `tests/faults/` runs for
-   anything touching `state/`, `control/`, or concurrency.
+   anything touching `state/`, `control/`, or concurrency. Every worktree dispatch
+   brief carries the gortex fallback recipe: repo-prefixed MCP reads resolve to the
+   PRIMARY checkout, so branch-new files need absolute paths, and `git show`/`git diff`
+   is the evidence path when MCP reads stat-fail or serve stale primary bytes (two
+   #129 reviewers hit this independently).
 4. **Vet (you, independently).** `uv run ruff check .` and bare `uv run mypy` clean;
    focused `uv run pytest` for the touched modules plus the fault suite. RED-check the
    key guards discriminate (toggle off → fail) using a `cp` backup, NEVER `git checkout`
@@ -66,7 +70,12 @@ or a public surface, run the loop.
    refute pass is mandatory.** Any diff touching `standards/`, contract locks, the SDK
    vendored tree, or version strings ALSO dispatches the `standards-governor` agent
    (tier-independent; #69) — a governance review that never ran is a skipped gate. For anything moving a deadline, threshold, digest rule or
-   lease computation, also run the `mechanism-critic`. Reconcile: both clean → stands; a
+   lease computation, also run the `mechanism-critic`. **The slate scales with the diff**
+   (no new rule, codified): full four-lane slate for Tier-3 / standards-touching work;
+   lighter diffs scale down (adversary always; governor only when its trigger fires —
+   already the rule; critic only on mechanism moves), and only ONE lane re-runs the full
+   gate battery — the others read the diff and probe (#129: three lanes redundantly
+   re-ran full gates + RED). Reconcile: both clean → stands; a
    real evidenced defect → fix it; a genuine correctness split → DEFER to the owner. Fix
    every real finding, with RED-proven guards.
 6. **Measure — the acceptance gate.** The `bench-measurer` agent proves real value on
@@ -93,8 +102,9 @@ or a public surface, run the loop.
    merged LOCAL branches (remote deletions take the owner's word), and sweep
    untracked artifacts from the shared checkouts — sync-tool duplicates (iCloud's
    `name 2.ext` suffix) are deleted only when the non-suffixed sibling exists;
-   other sessions' live files are never touched. Ledger the retrospective before
-   the run reports closed.
+   other sessions' live files are never touched. Ledger the retrospective — carrying
+   the facts the `retrospective` skill's entry-shape note names — before the run
+   reports closed; at period close, the `retrospective` skill harvests these entries.
 
 ## Contributor PRs
 
@@ -124,10 +134,13 @@ sequence for a big push; stay in the loop between them.
 DISJOINT surfaces. Increments sharing a surface — `main`'s merge result, the SDK
 submodule pointer, a proof-vehicle plugin, one standard's tree — serialize on it by
 design: the second one **parks at review-complete** (not CI-green) and rebases onto the
-merged predecessor exactly once. Before ANY push of a branch that bumps a standard or
-moves the SDK pointer, run a **merge-result pre-check**: simulate the branch + current
-`origin/main`, run the sibling rows' lane tests against that tree (CI tests the merge
-result, not your base). Two distinct tripwires, not one: **(a) branch-side** —
+merged predecessor exactly once. Before EVERY push (and again after any rebase):
+`git fetch origin` first, then a **merge-result pre-check** on the branch + current
+`origin/main` — a textually clean merge can still carry a SEMANTIC conflict (a sibling's
+new test calling a helper signature your branch changed merges clean and TypeErrors only
+in post-merge CI; the #129 arc caught one at review that every local gate was blind to),
+so run the touched lanes against the merge-result tree (CI tests the merge result, not
+your base). Two distinct tripwires, not one: **(a) branch-side** —
 `git diff origin/main...HEAD -- standards/` showing deletions means YOUR branch deletes
 standards bytes, which is itself a copy-never-move violation regardless of base staleness;
 **(b) stale base** — inside the merge-result tree, `git diff origin/main -- standards/`

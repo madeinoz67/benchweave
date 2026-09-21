@@ -62,18 +62,27 @@ corpus-manifest rows stay in place, digest-frozen. Moving or in-place-editing a
 retained version is a governance violation, not a shortcut. The new version's
 rows record the old corpus path as their `source`. Digest pins move only
 through `uv run python -m benchweave.standards repin` — the loop is
-edit → repin → export, never a hand-spliced digest. A bump carrying OTDP
-corpus bytes into a new version regenerates that version's validation report
-via the writer (`check_devices.py --write-report`). By convention the bump
-The script's `OUT`, its report title, and the pin test's report path all
-DERIVE from `standards-manifest.json`'s active otdp entry (#102 D2: the
-script reads the manifest and refuses loudly without it; the pin test
-derives its report path and its devices mutation fixtures the same way), so
-a bump makes no hand-moves on those. The `docs/README.md` row linking the
-report remains a conventional move; a FORGOTTEN row is caught mechanically
-by the pin's exactly-once link assert (a stale row left beside the new one
-is not — copy-never-move keeps the old target resolving). With the version
-moved, the pin fails on the copied stale report until the regen runs.
+edit → repin → export, never a hand-spliced digest. A bump carrying corpus
+bytes for any standard with a machine-written validation report (otdp,
+registry, execution, interface) regenerates that version's report via its
+writer (`check_<suite>.py --write-report`, which refuses on a failing run).
+The four standards-tree family scripts derive their corpus directory from
+`standards-manifest.json`'s active entry for their standard — devices names
+it `OUT`, the siblings name it `CONTRACT_DIR` — and the pin test's report
+paths and mutation fixtures derive the same way (#102 D2, generalized to
+the family by D1: each script reads the manifest and refuses loudly
+without it), so a bump makes no hand-moves on those. Report titles are
+version-free constants needing no derivation (`# Registry contract
+verification`, `# Procedure and bench contract verification`, …) —
+devices' alone embeds its derived version (`# OTDP {version}
+specification verification`). Closure's report is docs-rooted
+(`CONTRACT_DIR = DOCS / "acceptance"` — no version directory to derive);
+its CROSS-standard contract reads are manifest-derived like the rest. The
+`docs/README.md` rows linking the reports remain
+conventional moves; a FORGOTTEN row is caught mechanically by the pin's
+exactly-once link assert (a stale row left beside the new one is not —
+copy-never-move keeps the old target resolving). With the version moved,
+the pin fails on the copied stale report until the regen runs.
 
 ## Retention
 

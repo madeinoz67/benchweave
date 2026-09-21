@@ -17,7 +17,7 @@
 | [REST/MCP contract](../standards/interface/0.1.0/interface-contract.md) | Twenty REST operations, seventeen MCP tools, authentication and recovery |
 | [OpenAPI](../standards/interface/0.1.0/openapi.json) | REST routes and schema references |
 | [MCP tools](../standards/interface/0.1.0/mcp-tools.json) | Input/output schemas for the pinned MCP baseline |
-| [Interface checks](../standards/interface/0.1.0/validation-report.md) | 254 document/mapping checks and explicit verification limits |
+| [Interface checks](../standards/interface/0.1.0/validation-report.md) | 256 document/mapping checks and explicit verification limits |
 | [Interface errata 1.1.1](../standards/interface/0.1.0/README.md) | D2 amendment: `change_apply` body admits the optional `approver_token`; 1.1.0 bytes untouched |
 | [Closure register](architecture-closure.md) | Review disposition, normative versions and qualification boundaries |
 | [Registry composition review](acceptance/registry-composition-review.md) | Sixteen package reuse/compatibility scenarios |

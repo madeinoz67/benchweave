@@ -235,8 +235,9 @@ rather than rewriting the history — that is how this file earns trust.
   body, never the `__main__` block) and byte-pinned to a live devices-suite
   run by `tests/contracts/test_architecture.py::test_validation_report_matches_live_run`
   (sorted rendering, so the pinned bytes are a function of the check set only,
-  not platform glob order; two tamper cases prove the comparison detects a
-  flipped line and a bumped headline, and the `docs/README.md` row is tied to
+  not platform glob order; three tamper cases prove the comparison detects a
+  flipped line, a reordered check list, and a bumped headline, and the
+  `docs/README.md` row is tied to
   the headline count). Superseded versions' reports are frozen historical
   evidence, never regenerated. *A hand-transcribed count beside the corpus it
   claims to verify is an assertion; before the pin, in-place edits to the
@@ -245,6 +246,32 @@ rather than rewriting the history — that is how this file earns trust.
   not catch in-prose numbers ("Twelve class profiles", "fifty … contracts")
   drifting while the check lines stay right — that residual is deferred and
   review-guarded.*
+
+  *Amendment (#102 D1):* the machine-written report family now covers the
+  four standards suites — OTDP (`check_devices.py`), registry, execution,
+  interface — and the closure docs-surface report
+  (`docs/acceptance/validation-report.md` via `check_closure.py`). Each is
+  written only by its own validator's `--write-report` epilogue (the shared
+  module `scripts/architecture/_validation_report.py`; refuses on any
+  failing check; structurally unreachable from the `runpy` harness — the
+  argv gate sits in each script's `__main__` block, and `runpy.run_path`
+  executes the module body with `__name__ == "<run_path>"`, so the harness
+  never enters it. Residual: the shared MODULE is directly callable — the
+  refuse pin itself calls `main()` — and refuse-on-red is the guard on
+  that path) and byte-pinned to a
+  live sorted render by the parametrized
+  `test_validation_report_matches_live_run` and tamper arms. In-prose counts
+  are now DERIVED from the values the suite computes (f-strings over
+  `len(profile_map)`/`len(covered)`, the named schema tuples, `len(vec)`,
+  the closure scenario-count variables) — the residual disclosed above is
+  closed. Check names must stay path-portable (no absolute tree roots —
+  `test_check_names_are_path_portable` anchors it), because sorted-render
+  byte equality is only sound over host-independent names.
+  `standards/plugin-ui/*/validation-report.md` are train evidence records,
+  not suite renderings, and stay hand-committed historical evidence by
+  design (issue #102 D1 design record §10: no checks-list substrate, the
+  substance is not recomputable, and the live claims are already pinned by
+  the pytest suites in gates).
 
 ## Registry & plugin invariants
 
