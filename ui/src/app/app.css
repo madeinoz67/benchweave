@@ -40,3 +40,34 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
+
+.bw-preview__plots {
+  margin-top: var(--bw-space-5);
+  display: grid;
+  gap: var(--bw-space-4);
+}
+
+.bw-preview__plots-heading {
+  font-size: 1rem;
+  margin: 0;
+}
+
+.bw-preview__plots-note {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--bw-text-muted);
+}
+
+.bw-preview__plot {
+  display: grid;
+  gap: var(--bw-space-2);
+}
+
+.bw-preview__no-data {
+  margin: 0;
+  padding: 0.35rem 0.6rem;
+  border: 1px dashed var(--bw-border);
+  border-radius: 0.375rem;
+  font-size: 0.8rem;
+  color: var(--bw-text-muted);
+}

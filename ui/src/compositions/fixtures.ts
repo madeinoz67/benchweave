@@ -44,7 +44,9 @@ export const warningWorkbench: DeviceWorkbenchFixture = {
 
 const severityFor = (severity: PreviewSeverity): Severity => severity === "trip" ? "critical" : severity;
 const displayValue = (value: boolean | number | string | null): string => value === null ? "—" : typeof value === "boolean" ? (value ? "On" : "Off") : String(value);
-const titleFor = (bindingId: string): string => bindingId.split(/[._-]/).map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
+/** The house prettifier for id-shaped labels (binding ids, variable ids):
+ *  split on separator characters, capitalise each part. */
+export const titleFor = (bindingId: string): string => bindingId.split(/[._-]/).map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
 
 export function scenarioToWorkbenchFixture(scenario: PreviewScenario, preview: PreviewDocument): DeviceWorkbenchFixture {
   const numeric = scenario.observations.filter((observation): observation is typeof observation & { value: number } => typeof observation.value === "number");
