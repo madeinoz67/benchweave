@@ -469,6 +469,7 @@ All notable changes to this project will be documented in this file.
 - Advance packages/sdk to 168cefb (disclosure wording)
 - Advance packages/sdk to 4263cc3 (scaffold numeric-target fix)
 - Advance packages/sdk to 57a3441 (generated-test syntax fix)
+- Advance packages/sdk to v0.1.0; reversed-range becomes both-refuse
 
 ### Performance
 
