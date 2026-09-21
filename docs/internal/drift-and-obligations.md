@@ -84,9 +84,14 @@ and remain the reviewer's job.
     secret names (the reviewer's G0 secret scan catches leaks; this catches drift between
     the posture text and the posture).
 
-12. **Reserved for later stages** — the UI/console surface gets its doc home named here
-    when that stage lands; hardware-evidence docs get theirs at WP10+ commissioning. Add
-    the row at the moment the surface arrives, not after the first drift bug.
+12. **The UI/preview renderer surface** (ui components + compositions, the SDK
+    preview stack, and the served wire document) → plugin-visible rendering
+    behavior: `docs/device-developer-guide.md` (presentation section);
+    component behavior: the ui component tests and Storybook stories; the
+    wire shape: `standards/plugin-ui-preview/<active>/preview-document.schema.json`,
+    conformance-tested from both the Python emitter and the TS decoder. The
+    renderer freshness gate (obligation 7) carries the committed
+    `preview_assets` half.
 
 13. **The machine-written validation-report family** → a change to a family suite's
     corpus or checks reruns that suite's writer in the same change:

@@ -221,6 +221,29 @@ proof the projection gate (not a rewrite) did the work. Its own
 `x-stg-issued-inputs` declaration is deferred until a procedure actually
 `$stg_issue`s one of its actions.
 
+### Declared plots and the UI preview
+
+A manifest page of kind `readings` or `dataset` may declare `plots`
+(`time_series` over an observation binding, `waveform` over a dataset
+binding; axis ids resolve against the binding catalogue's variables, and
+`channel_hints` carry the plugin's `color_role`/`visible` presentation
+preferences). Since plugin-ui-preview 0.1.1 the SDK preview renders every
+declared plot: `preview-ui` projects each one into the served document
+(resolved axis units and hint fields included) and the bundled renderer
+draws it, with hints applied as preferences under the host theme — a hint
+can bias a trace colour to `accent`/`muted` or hide a channel from the
+drawing, and can never carry severity semantics or a threshold.
+
+Preview plot values are **per-scenario snapshots**: the preview data model
+carries one simulated value per binding per scenario, so a feedable plot
+draws an honest single point, not observation history — the panel states
+this beside every plot it renders. A declared plot whose binding has no
+feedable value in the current scenario (waveform/dataset plots, or
+loading/disconnected states) still renders its structure — title, axes,
+legend — with a visible "no preview data" row; declaring a plot is never
+silently dropped. Plots never fabricate a limit line: `$defs.plot` carries
+no threshold, and the preview adds none.
+
 ## 5. Implement the adapter lifecycle
 
 The normative factory and methods are in [core specification §8](../standards/otdp/0.2.0/otdp-specification.md#8-python-adapter-abi-11). They use structural Python interfaces. The optional [plugin SDK](plugin-sdk.md) supplies typing protocols, offline validation and mocks for development; plugin runtime code need not import it.
