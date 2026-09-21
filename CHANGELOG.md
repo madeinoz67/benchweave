@@ -269,6 +269,9 @@ All notable changes to this project will be documented in this file.
 - Declared-plot preview behavior + obligation 12's doc home
 - Review-wave amendment — guard wording, matrix sequencing, claim scoping, scaffold fix
 - One edit-routing card — which write path applies
+- Docstrings for the four worst-documented public vocabularies
+- Align development.md with what CI actually runs
+- Describe the CI gate this branch's workflow actually runs
 
 ### Features
 
@@ -558,6 +561,7 @@ All notable changes to this project will be documented in this file.
 - Cover the vendoring resolution seam and presentation admission
 - Keep docs/ and standards/ siblings in the regression-detection cases
 - The unmutated copy must run clean before a regression case mutates it
+- Pin the served MCP tool descriptions to the vendored corpus
 
 ### Build
 
