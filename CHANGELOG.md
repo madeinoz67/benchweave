@@ -267,6 +267,7 @@ All notable changes to this project will be documented in this file.
 - Issue #67 manifest-driven plot rendering design of record
 - Declared-plot preview behavior + obligation 12's doc home
 - Review-wave amendment — guard wording, matrix sequencing, claim scoping, scaffold fix
+- One edit-routing card — which write path applies
 
 ### Features
 
@@ -381,6 +382,7 @@ All notable changes to this project will be documented in this file.
 - Retrospective — standardized end-of-period report with sub-agent review (#133)
 - Plugin-ui-preview 0.1.0 -> 0.1.1 — plot_views on the wire
 - Manifest-declared plots render in the preview (0.1.2)
+- Gortex-write-gate — deny native edits in tracked primaries
 
 ### Hardware Evidence
 
