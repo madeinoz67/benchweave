@@ -137,6 +137,7 @@ All notable changes to this project will be documented in this file.
 - Disclosure names observed targets, not bindings
 - Preview workbench passes no fabricated threshold (R1b)
 - Render-quality batch — stable joins, safe keys, unit guards, wire labels (R2)
+- Sweep the presentation-admission seam onto the active plugin-ui version
 
 ### Documentation
 
@@ -462,6 +463,10 @@ All notable changes to this project will be documented in this file.
 - Advance packages/sdk to 4263cc3 (scaffold numeric-target fix)
 - Advance packages/sdk to 57a3441 (generated-test syntax fix)
 
+### Performance
+
+- Copy the docs tree once per session in the architecture tests
+
 ### Refactoring
 
 - Keyless builders extracted to registry_common — dev loop loads no cryptography (surface-audit wave 2, item 15)
@@ -548,6 +553,11 @@ All notable changes to this project will be documented in this file.
 - Scaffold plot selection — numeric-first, non-numeric-first, none
 - Unmocked disclosure arms, divergent-id join pin, trace-level colour (R3+R4)
 - Generated conformance test compiles and runs both variants
+- Add coverage measurement (report-only)
+- Honest slow-marker wording; bounded fault-test waits
+- Cover the vendoring resolution seam and presentation admission
+- Keep docs/ and standards/ siblings in the regression-detection cases
+- The unmutated copy must run clean before a regression case mutates it
 
 ### Build
 
