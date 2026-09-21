@@ -9,6 +9,10 @@ the rest bless as proposed).
 Two load-bearing mechanism claims were checkably false and are corrected in place; the
 safety-monitoring, quota, and acceptance-rule machinery is now designed rather than
 assumed. See **Amendment 1** at the end for provenance and the change list.
+**Amendment 2 (2026-09-21):** standalone capture mode added as slice-1 scope
+(Decision 9) — plugin-local capture for development and bench testing without the
+gateway: same `CaptureServices` shape, filesystem backend, default location under
+the plugin directory, path configurable.
 
 ## 0. Grounding corrections — checked against code and corpus, not the issue prose
 
@@ -333,7 +337,9 @@ that becomes decision-input is admitted as evidence at that moment (the only pro
 path, and it is deliberate); (b) the version-dependence is disclosed in the guide's
 rendering section. Separately, deferral row 2's trigger is re-examined at slice-2 merge
 with the contributor's own migration comment in hand — it arguably satisfies the trigger
-today, and the re-examination is scheduled, not left to chance.
+today, and the re-examination is scheduled, not left to chance. The grouping model's
+**first shipping home is standalone mode** (Decision 9); the dataset lane remains its
+corpus home.
 
 ## Decision 8 — retention & reporting: report first, dispose never (until audited)
 
@@ -381,6 +387,49 @@ today, and the re-examination is scheduled, not left to chance.
 - **Granularity:** global default + per-data-class in slice 3 (per-bench is a natural
   key and comes free). Per-project is **resolved: not in #43** (Owner call 1).
 
+## Decision 9 — standalone capture mode: plugin-local, hostless (slice-1 scope, added by Amendment 2)
+
+Plugin and device development — and bench testing — happen on machines that never run
+the gateway. The contributor's own prototype (one `stem` per capture event: primary
+artifact + sidecar metadata + renderings) is exactly this mode, and #43's capture path
+as previously written was host-driven end to end, leaving it unserved. Slice 1 adds the
+standalone leg:
+
+- **Same shape, second backend.** The SDK ships a standalone implementation of the
+  existing `CaptureServices` protocol (`artifact_append`/`artifact_finalise`/
+  `artifact_abort` — verified in `interfaces.py`; additive SDK code, the normative
+  interface shape is unchanged, no corpus byte moves). An adapter written against
+  `CaptureServices` runs unchanged against either backend: the gateway's composing
+  object (Decision 3) or the standalone file writer.
+- **Where data lives.** Default: `captures/` under the plugin directory. Configurable,
+  precedence named once: explicit constructor argument > `BENCHWEAVE_CAPTURE_DIR`
+  environment variable > the plugin-directory default. The gateway never reads this
+  configuration — host-managed storage stays normative in-gateway, and standalone path
+  selection exists only outside the gateway boundary.
+- **Layout and manifest parity.** Each capture event is one directory keyed by
+  `capture_id` (the "stem"): the primary artifact file, a sidecar manifest
+  (`{capture_id}.json`) carrying the gateway-manifest integrity fields — real
+  per-artifact SHA-256 + byte_length computed at finalise over the actual bytes (the
+  prototype's missing-digest gap, closed) — plus format/sample metadata, and any
+  renderings the plugin writes alongside as ordinary files. The contributor's
+  capture-event grouping model is thereby realized where it genuinely lives:
+  standalone, where no store exists to admit or refuse renderings.
+- **Integrity is not optional standalone.** At publish, everything is integrity-bound
+  identically (Decision 7's rule) in both modes: digest over real bytes, length over
+  real bytes, abort leaves zero chunk residue.
+- **Writer semantics mirror the gateway writer where mode-independent:** writer states
+  `open → finalise/abort → terminal`; appends after terminal are refused; cancellation
+  honored at append (`is_cancelled()` is already on the SDK context); one capture in
+  flight per services instance (§8).
+- **Boundary (crisp).** Standalone mode never runs in-gateway; the bridge and the
+  composing capture-services object never read `BENCHWEAVE_CAPTURE_DIR` or any
+  plugin-local path configuration. No automatic import of standalone captures into the
+  gateway — ingest is a separate, deliberate path (likely riding the dataset lane,
+  deferral row 2, where the grouping model's corpus home already exists).
+- **Acceptance:** R9 below. **Guide obligation:** the device-developer guide's capture
+  section documents standalone mode (default location, path configuration, manifest
+  layout).
+
 ## §11 open questions — resolved or deferred
 
 | Item | Disposition |
@@ -401,8 +450,10 @@ today, and the re-examination is scheduled, not left to chance.
    and `max_subscriptions` quota fields with defaults), `dispatch(capture)` with manifest
    conversion and the G4 cross-checks, abort semantics incl. host-side epilogue and
    close/poison sweeps, permission gating at registry admission, capture-deadline
-   derivation policy, docstring amendment, **and the monitor-gap measurement** (Risk 1's
-   slice-1 quantities).
+   derivation policy, **the standalone capture services (Decision 9) as the slice's
+   SDK-side leg** (new additive module in `benchweave-sdk`; SDK commit + push first,
+   gateway pointer after — TWO-1), docstring amendment, **and the monitor-gap
+   measurement** (Risk 1's slice-1 quantities).
 2. **Slice 2 — streaming** (Decision 4), including the poll engine as named scope.
 3. **Slice 3 — retention reports** (Decision 8).
 
@@ -455,12 +506,20 @@ findings or build-time discovery) meets the same absence-presence standard befor
 - **R8 (permission gate):** an adapter admitted without `artifact_writer` gets no
   capture writer and a `capture` dispatch is refused `not_dispatched` before any writer
   exists; the negative path is asserted, not just the positive.
+- **R9 (standalone integrity parity):** the standalone writer's finalise manifest digest
+  equals recomputation over the published artifact file; `artifact_abort` leaves zero
+  chunk residue on disk; appends after terminal are refused; a cancelled append writes
+  nothing; and the standalone manifest carries the same integrity fields as the gateway
+  manifest, so one adapter's capture is structurally identical in both modes.
 
 ## Invariant and cross-surface impacts
 
-- **STD-1/2/3/5, TWO-1:** untouched in slices 1–3 — no vendored byte moves,
-  `sync-standards --check` stays green, no SDK push needed (slices 1–2 change no SDK
-  surface; `CaptureServices` is already vendored in `interfaces.py`).
+- **STD-1/2/3/5:** untouched in slices 1–3 — no vendored byte moves,
+  `sync-standards --check` stays green. **TWO-1 now applies at slice 1:** the standalone
+  capture services (Decision 9) are an additive SDK module — no interface shape change,
+  no corpus change — landing as an SDK commit + push with the gateway pointer advancing
+  after. Slices 2–3 change no SDK surface (`CaptureServices` is already vendored in
+  `interfaces.py`).
 - **Slice 1 adds one store migration** (the staging table) — in the gateway's own
   versioned migration sequence, with the recovery sweep; this is new scope named by
   Amendment 1, previously unstated.
@@ -549,3 +608,14 @@ minted IDs, the abort-after-deadline chain, the R-control shape, the unbounded
 `sample_rate_hz` rationale, report-first retention, the two-lane split, slice 3's small
 scope. Verdict after integration: the record is implementable as written; slices 1–2
 are construction (named as such), not wiring.
+
+**Amendment 2 (2026-09-21): standalone capture mode (Decision 9).** Principal
+directive: account for standalone plugin/device capture — development and bench testing
+without the gateway — with data under the plugin directory by default and a configurable
+path. Added Decision 9 (same `CaptureServices` shape, filesystem backend, default
+`captures/` under the plugin dir, `BENCHWEAVE_CAPTURE_DIR` override with named
+precedence, manifest parity with real digests, crisp in-gateway boundary, no automatic
+ingest) and placed it in slice 1 as the SDK-side leg. Acceptance rule gains R9
+(integrity parity); slice 1 now carries an additive SDK module under TWO-1 (SDK commit
++ push first, gateway pointer after); Decision 7 notes the grouping model's first
+shipping home is standalone.
