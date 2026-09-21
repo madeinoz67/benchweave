@@ -205,6 +205,114 @@ def test_scaffold_hint_pair_validates_identically(
     assert check(monkeypatch, hinted, firmware="1.0.0", feature="legend/1.0.0") == 0
 
 
+def _numeric_target_ids(catalogue_path: Path) -> list[str]:
+    catalogue = json.loads(catalogue_path.read_bytes())
+    return [
+        str(row["id"])
+        for row in catalogue["targets"]
+        if next(
+            variable
+            for variable in row["variables"]
+            if variable.get("axis_role") != "receipt_time"
+        )["type"]
+        in ("number", "integer")
+    ]
+
+
+def _scaffold_with_leading_parameter(
+    tmp_path: Path, parameter_type: str, *, only: bool = False
+) -> Path:
+    """Scaffold UI resources over a descriptor whose FIRST readable parameter
+    is non-numeric (bool or string) — the shape the refute lane's HIGH shipped
+    on. ``only=True`` rewrites the whole parameter list non-numeric."""
+    presentation = importlib.import_module("benchweave_sdk.presentation")
+    scaffold = importlib.import_module("benchweave_sdk.scaffold")
+    project = tmp_path / f"ui-{parameter_type}-first"
+    scaffold.create_project(project, "example_plugin")
+    descriptor_path = project / "src/example_plugin/descriptor.json"
+    descriptor = json.loads(descriptor_path.read_bytes())
+    leading = dict(descriptor["parameters"][0])
+    leading.update(
+        {
+            "name": "ready",
+            "type": parameter_type,
+            "description": f"Synthetic {parameter_type} leading parameter",
+        }
+    )
+    leading["binding"] = {"kind": "adapter", "key": "ready"}
+    if parameter_type == "string":
+        # The descriptor schema requires string_constraints on string
+        # parameters and no numeric unit rides them.
+        leading.pop("unit", None)
+        leading["string_constraints"] = {"min_length": 0, "max_length": 40}
+    if only:
+        descriptor["parameters"] = [leading]
+    else:
+        descriptor["parameters"].insert(0, leading)
+    descriptor_path.write_text(json.dumps(descriptor, indent=2) + "\n", encoding="utf-8")
+    presentation.create_ui_resources(project, "example_plugin")
+    return project / "src/example_plugin"
+
+
+@pytest.mark.parametrize("parameter_type", ["bool", "string"])
+def test_scaffold_plot_attaches_to_the_first_numeric_observation_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, parameter_type: str
+) -> None:
+    """Refute HIGH (reproduced): a non-numeric-first descriptor must still get
+    a working plot example.
+
+    The plot example binds the first NUMERIC observation target — the same
+    number/integer test the presentation validator applies to plot axes — not
+    targets[0], because _ui_targets admits bool/string parameters while
+    _plot_findings refuses non-numeric axes. Pinning the example to targets[0]
+    made the scaffold emit a plot check-ui rejects (invalid_plot) and
+    load_validated_preview_inputs refuse the whole preview.
+    """
+    fixtures = importlib.import_module("benchweave_sdk.fixtures")
+    presentation = importlib.import_module("benchweave_sdk.presentation")
+    package = _scaffold_with_leading_parameter(tmp_path, parameter_type)
+
+    assert check(monkeypatch, package, firmware="1.0.0") == 0
+
+    candidate = presentation.load_validated_preview_inputs(
+        package / "presentation.json",
+        package / "descriptor.json",
+        package,
+        package / "binding-catalogue.json",
+        firmware="1.0.0",
+        features=frozenset(),
+        panels=frozenset(),
+    )
+    views = fixtures.build_preview_model(candidate).plot_views
+    assert views, "the scaffold plot example must project for a numeric-capable descriptor"
+    assert views[0].binding_id == _numeric_target_ids(package / "binding-catalogue.json")[0]
+
+
+def test_scaffold_without_numeric_targets_skips_the_plot_example(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No numeric observation target => no example plot: a disclosed
+    degradation, never a plot check-ui rejects."""
+    fixtures = importlib.import_module("benchweave_sdk.fixtures")
+    presentation = importlib.import_module("benchweave_sdk.presentation")
+    package = _scaffold_with_leading_parameter(tmp_path, "bool", only=True)
+
+    assert check(monkeypatch, package, firmware="1.0.0") == 0
+
+    manifest = json.loads((package / "ui/manifest.json").read_bytes())
+    assert "plots" not in manifest["pages"][0]
+    candidate = presentation.load_validated_preview_inputs(
+        package / "presentation.json",
+        package / "descriptor.json",
+        package,
+        package / "binding-catalogue.json",
+        firmware="1.0.0",
+        features=frozenset(),
+        panels=frozenset(),
+    )
+    assert fixtures.build_preview_model(candidate).plot_views == ()
+
+
 def test_new_with_ui_succeeds_under_symlinked_ancestor(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
