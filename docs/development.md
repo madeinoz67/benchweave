@@ -20,6 +20,11 @@ Add dependencies with `uv add` or `uv add --dev`, and commit both
 `pyproject.toml` and `uv.lock`. CI rejects a stale lockfile. Build dependencies
 are resolved separately using the build-system requirements in `pyproject.toml`.
 
+Coverage is measured but not gated: `uv run pytest --cov` produces a branch
+coverage report for `src/benchweave` (configured under `[tool.coverage.*]` in
+`pyproject.toml`). The report is informational — no threshold is enforced
+locally or in CI.
+
 ## UI toolchain
 
 The `ui/` directory holds the Layered Precision workbench style guide and the

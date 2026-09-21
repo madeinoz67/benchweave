@@ -69,6 +69,10 @@ def test_origin_b_collision_present() -> None:
 
 
 def _build(out: Path) -> None:
+    # Stays a subprocess: build_fixtures.py imports its sibling registry_common
+    # via the script directory on sys.path (scripts/registry is not a package)
+    # and main() parses --out from sys.argv, so an in-process call would need
+    # sys.path/argv surgery that couples the test to the script's layout.
     subprocess.run(
         ["uv", "run", "python", "scripts/registry/build_fixtures.py", "--out", str(out)],
         check=True,

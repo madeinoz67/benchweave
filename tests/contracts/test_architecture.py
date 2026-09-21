@@ -18,6 +18,23 @@ ROOT = Path(__file__).resolve().parents[2]
 SUITES = ("devices", "registry", "execution", "interface", "closure", "planning", "documents")
 
 
+@pytest.fixture(scope="session")
+def pristine_trees(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, Path]:
+    """One repository→tmp copy of ``docs/`` and ``standards/`` per session.
+
+    Walking the repository trees is the expensive part (230 files), so the
+    tests that take this fixture never re-copy from the repository: each
+    takes a cheap per-test copy from this pristine pair and leaves the pair
+    itself untouched (``test_validation_is_read_only`` proves the checkers
+    cannot dirty a tree they are pointed at). The report-family, symlink and
+    path-escape tests still copy from the repository themselves.
+    """
+    base = tmp_path_factory.mktemp("architecture-pristine")
+    shutil.copytree(ROOT / "docs", base / "docs")
+    shutil.copytree(ROOT / "standards", base / "standards")
+    return base / "docs", base / "standards"
+
+
 def _active_standard_dir(standard_id: str) -> str:
     """The active version dir for a standard, derived from the manifest.
 
@@ -473,11 +490,12 @@ def test_report_writer_refuses_failing_checks(
     assert not out.exists()
 
 
-def test_validation_is_read_only(tmp_path: Path) -> None:
+def test_validation_is_read_only(tmp_path: Path, pristine_trees: tuple[Path, Path]) -> None:
+    pristine_docs, pristine_standards = pristine_trees
     docs = tmp_path / "docs"
     standards = tmp_path / "standards"
-    shutil.copytree(ROOT / "docs", docs)
-    shutil.copytree(ROOT / "standards", standards)
+    shutil.copytree(pristine_docs, docs)
+    shutil.copytree(pristine_standards, standards)
 
     def snapshot(root: Path) -> dict[str, str]:
         return {
@@ -649,17 +667,38 @@ def test_documents_ignores_markdown_links_inside_fenced_code_blocks(
     ],
 )
 def test_contract_regressions_are_detected(
-    tmp_path: Path, suite: str, relative_path: str, old: str, new: str, expected: str
+    tmp_path: Path,
+    pristine_trees: tuple[Path, Path],
+    suite: str,
+    relative_path: str,
+    old: str,
+    new: str,
+    expected: str,
 ) -> None:
+    # Both trees are copied per case (tmp→tmp, from the session's pristine
+    # pair — the expensive repository walk still happens once): docs/ and
+    # standards/ MUST stay siblings under one root, because the docs tree
+    # links into ../standards/ throughout and a split topology fails every
+    # such cross-tree link as "local link" — the exact substring the docs
+    # mutation case asserts on, which would let it pass without detecting
+    # the injected break. Path resolution mirrors the original: standards
+    # wins when the relative path exists in both trees.
+    pristine_docs, pristine_standards = pristine_trees
     docs = tmp_path / "docs"
     standards = tmp_path / "standards"
-    shutil.copytree(ROOT / "docs", docs)
-    shutil.copytree(ROOT / "standards", standards)
-    path = (
-        standards / relative_path
-        if (standards / relative_path).is_file()
-        else docs / relative_path
-    )
+    shutil.copytree(pristine_docs, docs)
+    shutil.copytree(pristine_standards, standards)
+    # The assertion at the bottom is a substring match over failing check
+    # names, so any failure the copy already carries can satisfy it without
+    # the mutation being detected (this is what let the docs case pass on a
+    # split topology). The unmutated copy must therefore run clean first:
+    # an ambient failure then fails here, loudly, instead of feeding the match.
+    ambient = [name for name, passed in run_checks(suite, docs, standards) if not passed]
+    assert ambient == [], f"{suite}: the unmutated copy must run clean, got {ambient}"
+    if (standards / relative_path).is_file():
+        path = standards / relative_path
+    else:
+        path = docs / relative_path
     original = path.read_text(encoding="utf-8")
     assert not old or old in original, "Mutation must change the intended fixture"
     changed = original.replace(old, new, 1) if old else original + new
