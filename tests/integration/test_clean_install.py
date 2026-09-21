@@ -36,6 +36,7 @@ import re
 import shutil
 import stat
 import subprocess
+import sys
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -152,7 +153,10 @@ def test_clean_install_operator_flow(wheel: WheelInstall, tmp_path: Path) -> Non
     assert "secret" not in setup_payload, "setup never prints the secret unasked"
     credential = data_dir / "benchweave.env"
     assert credential.is_file()
-    assert stat.S_IMODE(credential.stat().st_mode) == 0o600
+    if sys.platform != "win32":
+        # Mode bits do not reach a Windows access list; the owner-only list
+        # setup applies there is pinned in tests/cli/test_atrest.py (#137).
+        assert stat.S_IMODE(credential.stat().st_mode) == 0o600
     secret_before = credential.read_bytes()
 
     # Step 2 — fresh-install demo: SIMULATION-labelled, fixtures explicit

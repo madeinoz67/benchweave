@@ -213,6 +213,8 @@ def test_setup_secret_never_reaches_stdout_without_show_secret(tmp_path: Path) -
     combined = _combined(result)
     assert "benchweave.env" in combined
     assert "0600" in combined
+    # ... and says what that means where mode bits mean nothing (#137).
+    assert ("restricted to your account" in combined) is (sys.platform == "win32")
 
 
 def test_setup_show_secret_is_the_explicit_stdout_opt_in(tmp_path: Path) -> None:
