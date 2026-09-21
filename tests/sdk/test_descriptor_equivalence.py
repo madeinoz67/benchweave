@@ -12,17 +12,19 @@ object/map to it.
 - outside the two sanctioned gateway-stricter cells below, the gates agree
   in both directions.
 
-The sanctioned asymmetric cells, both gateway-strictly-stricter, both
-pinned as such (a symmetric-everywhere census would be unbuildable
-without editing standards bytes — the extension contract is what makes
-check ignore x- keys):
+The sanctioned asymmetric cell, gateway-strictly-stricter, pinned as
+such (a symmetric-everywhere census would be unbuildable without
+editing standards bytes — the extension contract is what makes check
+ignore x- keys):
 
 - issued-map unknown action: x- keys are ignorable OTDP metadata by
   contract, so check stays clean while the gateway refuses
   (``issued_map:``) — the gateway owns the extension's semantics.
-- reversed range: the SDK's S02 checks a dict-form range the 0.2.0 schema
-  no longer admits (it cannot fire on schema-valid documents); the
-  gateway mirror also checks the array form the schema does admit.
+
+Reversed range is both-refuse since benchweave-sdk v0.1.0: S02 was dead
+there (it checked a dict form the 0.2.0 schema no longer admits) until
+the repair taught it the array form the schema does admit, agreeing with
+the gateway mirror.
 
 The gateway leg runs through the REAL ``admit_documents`` over the
 fixture lattice (never the projection function directly), so the pin
@@ -109,7 +111,7 @@ MUTATIONS: dict[str, tuple[str, Mutation]] = {
         "both-refuse",
         lambda d: d["parameters"].append(copy.deepcopy(d["parameters"][0])),
     ),
-    "reversed-range": ("gateway-stricter", _reverse_primary_range),
+    "reversed-range": ("both-refuse", _reverse_primary_range),
     "issued-map-unknown-action": (
         "gateway-stricter",
         lambda d: d.__setitem__(
