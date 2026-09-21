@@ -363,7 +363,7 @@ def test_pinned_check_detects_path_escape(tmp_path: Path) -> None:
     standards = tmp_path / "standards"
     shutil.copytree(ROOT / "docs", docs)
     shutil.copytree(ROOT / "standards", standards)
-    version_dir = standards / _active_report_path().rsplit("/", 1)[0]
+    version_dir = standards / _active_report_path("otdp").rsplit("/", 1)[0]
     descriptor_path = version_dir / "examples" / "class-dc_psu.json"
     descriptor = json.loads(descriptor_path.read_text(encoding="utf-8"))
     contract = descriptor["contracts"][0]
