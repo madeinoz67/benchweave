@@ -255,6 +255,7 @@ All notable changes to this project will be documented in this file.
 - Explicit §6 disposition — multi-device concurrency and time correlation
 - Issue #133 retrospective skill design of record
 - Review folds — archive+git evidence lanes, moment pinning, dead tag (#133)
+- Amendment 1 — integrate 12-analyst RedTeam findings into #43 record
 
 ### Features
 
