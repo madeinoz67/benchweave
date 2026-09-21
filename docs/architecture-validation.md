@@ -39,11 +39,14 @@ The pytest entry point and validation regression tests live in
 The first five retain the original 978 review checks, plus three checks against
 stored interface/composition fixtures. Planning and document-integrity checks
 extend that baseline. Current counts and failures are printed by pytest; the
-active-version OTDP report (`standards/otdp/0.2.0/validation-report.md`) is
-machine-written by its validator and byte-pinned to a live devices-suite run by
-`tests/contracts/test_architecture.py` (a corpus or check change reruns
-`--write-report` in the same change). Superseded versions' and the other
-suites' reports remain historical review evidence.
+five family reports — the active versions of otdp, registry, execution and
+interface (`standards/<id>/<version>/validation-report.md`) and the closure
+review (`docs/acceptance/validation-report.md`) — are machine-written by their
+validators and byte-pinned to live sorted renders by
+`tests/contracts/test_architecture.py` (a corpus or check change reruns that
+suite's `uv run python scripts/architecture/check_<suite>.py --write-report`
+in the same change). Superseded versions' reports and plugin-ui's train
+records remain historical evidence, never regenerated.
 
 ## Validation safeguards
 
@@ -66,8 +69,8 @@ anchors or availability of external websites.
 When changing a contract, add or update its rejection cases and linked fixtures
 in the same change. Update pinned fixture hashes only after reviewing the
 underlying contract change. Keep validators read-only; CI must report drift
-rather than regenerate expected files to make the check pass. The one
-author-side exception is the active OTDP validation report:
-`uv run python scripts/architecture/check_devices.py --write-report` is its
+rather than regenerate expected files to make the check pass. The author-side
+exception is the machine-written report family: each suite's
+`uv run python scripts/architecture/check_<suite>.py --write-report` is its
 explicit regeneration path (it refuses to write when any check fails), and the
 suite byte-pins the committed file to a fresh render.

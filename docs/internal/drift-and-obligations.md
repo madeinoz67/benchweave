@@ -88,15 +88,19 @@ and remain the reviewer's job.
     when that stage lands; hardware-evidence docs get theirs at WP10+ commissioning. Add
     the row at the moment the surface arrives, not after the first drift bug.
 
-13. **The active OTDP validation report** → a change to the `otdp/0.2.0` corpus or to
-    `check_devices.py`'s checks reruns
-    `uv run python scripts/architecture/check_devices.py --write-report` in the same
-    change; the `docs/README.md` row linking the report moves with the count. The pin
-    test (`test_validation_report_matches_live_run` in `tests/contracts/test_architecture.py`)
-    is the mechanical half — it byte-compares the committed report to a fresh sorted
-    render of a live devices-suite run and ties the README count to the headline
-    (invariants CON-11). Superseded versions' reports are frozen historical evidence and
-    are not regenerated.
+13. **The machine-written validation-report family** → a change to a family suite's
+    corpus or checks reruns that suite's writer in the same change:
+    `uv run python scripts/architecture/check_<suite>.py --write-report` for
+    devices/registry/execution/interface (reports land in the manifest-active version
+    dirs) and closure (its corpus is the `docs/acceptance` review set — content changes
+    there rerun its writer into `docs/acceptance/validation-report.md`); the
+    `docs/README.md` rows linking the four standards-tree reports move with the counts.
+    The pin tests (`test_validation_report_matches_live_run` and the tamper arms in
+    `tests/contracts/test_architecture.py`) are the mechanical half — they byte-compare
+    each committed report to a fresh sorted render of a live run and tie the README
+    counts to the live counts (invariants CON-11). Superseded versions' reports are
+    frozen historical evidence and are not regenerated; plugin-ui's reports are train
+    records, not family members.
 
 14. **An agent tool-grant change** (`.claude/agents/*.md` `tools:`/`disallowedTools:`
     frontmatter) → re-extract every sibling agent's frontmatter and diff the effective

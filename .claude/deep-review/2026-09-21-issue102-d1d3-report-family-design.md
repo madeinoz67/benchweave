@@ -314,3 +314,20 @@ record** for the 0.2.0 increment (issue #62). Verified at this baseline:
 
 A pin to nothing is worse than no pin; this is a reasoned exclusion, not a deferral of work someone
 forgot. Its reopen trigger is structural (D1-a).
+
+## 11. Maintainer decisions (appended pre-build)
+
+Three row calls made by the maintainer loop before the build started; the build applies them
+rather than re-litigating (the D2 record's appended-corrections pattern).
+
+1. **D3 = digits — confirmed as designed (§2.2).** Word form drops for digits; the numbers
+   are derived at module scope from the values the suites already compute.
+2. **The EVIDENCE re-point is DROPPED.** §4's row for `EVIDENCE-annotations-and-versions.md`
+   is removed: that file is untracked local-only data in the maintainer's main checkout
+   (absent from `origin/main`), so a PR cannot carry the edit and the file is not this
+   build's to touch. Accepted consequence, recorded here instead of in code: the file's
+   three execution-report line citations (its rows at its lines 109/110 and the narrative
+   at 886, citing `validation-report.md:128/129`) go stale when the execution report
+   regenerates; the quoted content in those rows is unchanged.
+3. **D1-b (plugin-ui test-path literals) becomes a follow-on issue**, filed by the
+   maintainer loop at PR-open time — not part of this build.
