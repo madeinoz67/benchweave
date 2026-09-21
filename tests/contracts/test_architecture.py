@@ -348,6 +348,15 @@ def rendered_family_report(
                 encoding="utf-8"
             )
             rendered = _render_suite_report(suite, load_suite(suite, docs, standards))
+            # The tamper arms prove detection by mutating pristine and
+            # expecting drift from rendered; if the two already differ on the
+            # UN-mutated tree, every arm could stay green without proving
+            # anything (#119-class vacuous green). Equal on the pristine tree
+            # is the precondition the modes silently assume — assert it here.
+            assert rendered == pristine, (
+                f"{suite}: tmp-tree render diverges from the pristine committed report "
+                f"({relpath}) — tamper arms would be vacuously green"
+            )
             cache[suite] = (docs, standards, rendered, pristine)
         return cache[suite]
 
