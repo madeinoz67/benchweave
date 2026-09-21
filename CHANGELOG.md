@@ -259,6 +259,7 @@ All notable changes to this project will be documented in this file.
 - #43 Amendment 2 — standalone capture mode (Decision 9), slice-1 scope
 - #43 Amendment 2 — pin the standalone capture directory layout
 - #43 Amendment 2 — standalone formats (plain text first-class) + declaration chain
+- #43 Amendment 3 — integrate external review (platima)
 
 ### Features
 
