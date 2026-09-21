@@ -210,7 +210,7 @@ def _check_coverage(root: Path, pinned: set[str]) -> None:
     """Rows == machine files on disk, both directions (test_baseline's set)."""
     corpus = root / "standards"
     on_disk = {
-        str(path.relative_to(corpus))
+        path.relative_to(corpus).as_posix()  # manifest rows are '/'-separated (#138)
         for path in corpus.rglob("*.json")
         if path.name not in _MANIFESTS
     }

@@ -146,7 +146,7 @@ def _compare_tree(document: dict[str, Any], sdk: Path) -> list[str]:
             for path in _digests(row)
         }
     present = {
-        str(path.relative_to(tree))
+        path.relative_to(tree).as_posix()  # lock rows are '/'-separated (#138)
         for path in tree.rglob("*")
         if path.is_file() and "__pycache__" not in path.parts
     }
@@ -172,7 +172,7 @@ def _compare_tree(document: dict[str, Any], sdk: Path) -> list[str]:
         if not stamp.is_file():
             failures.append(f"stale_generated: {VENDORED}/{identifier}/{STAMP_NAME} missing")
             continue
-        if set(stamp.read_text().splitlines()) != expected_lines:
+        if set(stamp.read_text(encoding="utf-8").splitlines()) != expected_lines:
             failures.append(
                 f"stale_generated: {VENDORED}/{identifier}/{STAMP_NAME} does not "
                 "match the exported standard"
