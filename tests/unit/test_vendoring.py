@@ -27,6 +27,20 @@ def test_contract_family_prefers_packaged_tree(
     assert vendoring.contract_family("interface/0.1.0") == family
 
 
+def test_contract_family_prefers_packaged_when_both_trees_exist(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The both-exist case is the seam's whole point: a stray ``_vendored``
+    tree beside a dev checkout (the shape .gitignore names as CON-4's threat
+    model) must never shadow the packaged tree a wheel actually shipped."""
+    packaged, repo = _fake_roots(monkeypatch, tmp_path)
+    shipped = packaged / "contracts" / "interface" / "0.1.0"
+    shipped.mkdir(parents=True)
+    stray = repo / "standards" / "interface" / "0.1.0"
+    stray.mkdir(parents=True)
+    assert vendoring.contract_family("interface/0.1.0") == shipped
+
+
 def test_contract_family_falls_back_to_repo_layout(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -65,6 +79,19 @@ def test_sim_plugins_root_prefers_packaged_tree(
     plugins = packaged / "plugins" / "benchweave"
     plugins.mkdir(parents=True)
     assert vendoring.sim_plugins_root() == plugins
+
+
+def test_sim_plugins_root_prefers_packaged_when_both_trees_exist(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Same discriminator as the contract family: both roots populated,
+    the packaged tree wins."""
+    packaged, repo = _fake_roots(monkeypatch, tmp_path)
+    shipped = packaged / "plugins" / "benchweave"
+    shipped.mkdir(parents=True)
+    stray = repo / "plugins" / "benchweave"
+    stray.mkdir(parents=True)
+    assert vendoring.sim_plugins_root() == shipped
 
 
 def test_sim_plugins_root_falls_back_to_repo_layout(
