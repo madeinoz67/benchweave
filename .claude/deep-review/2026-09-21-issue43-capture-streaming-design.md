@@ -13,6 +13,10 @@ assumed. See **Amendment 1** at the end for provenance and the change list.
 (Decision 9) — plugin-local capture for development and bench testing without the
 gateway: same `CaptureServices` shape, filesystem backend, default location under
 the plugin directory, path configurable.
+**Amendment 3 (2026-09-21):** external-review integration — 10 findings from a
+source-grounded contributor review, 9 confirmed outright and 1 confirmed-with-correction;
+all integrated, including withdrawal of an Amendment 1 sentence that had propagated an
+unverified internal RedTeam claim. See **Amendment 3** at the end.
 
 ## 0. Grounding corrections — checked against code and corpus, not the issue prose
 
@@ -79,13 +83,16 @@ worker thread. Four consequences are disclosed and priced, not deferred:
    Accepted with the same policy bound; named here so it is a decision, not a surprise.
 4. **Queued runs delay** behind a long capture. Part of the same measured trade.
 
-**Capture deadline policy (new, slice-1 scope).** Nothing in the tree grants a capture
-dispatch its deadline today: the monitor wrapper slices dispatches at bench poll cadence,
-under which any realistic capture (seconds of acquisition) would be cancelled and
-poisoned **by construction**. Slice 1 therefore defines the derivation: a capture
-dispatch's `deadline_ns` is capture-scaled — taken from the procedure's capture budget
-(procedure-declared, validated against G1–G3 arithmetic at admission), never the poll
-slice. The `bounded()` timeout and the unknown/poison posture on over-deadline captures
+**Capture deadline policy (corrected in Amendment 3).** A dispatch's deadline is not
+poll-sliced: the executor's own contract — *"each dispatched ``deadline_ns`` is
+``min(now + timeout_ms, body_deadline)`` — shortened only, never extended"* — derives
+it from the step's `timeout_ms` clamped to the body deadline; the monitor slices
+*waits* (`wait_ns`), never in-flight dispatches. The prior revision's "cancelled by
+construction" sentence misread this (it propagated an unverified internal RedTeam
+claim) and is withdrawn. The capture budget mechanism therefore already exists: a
+capture step declares a capture-scaled `timeout_ms`, and G1–G3 arithmetic bounds what
+that budget must cover — no new procedure-budget mechanism, no execution-standard
+bump. The `bounded()` timeout and the unknown/poison posture on over-deadline captures
 are unchanged.
 
 **Measurement timing (amended).** The Option-A-decisive mechanism is observable in
@@ -131,10 +138,17 @@ QuotaLimits field"):
   path, reference-checked against published digests.
 - **Crash recovery:** a startup/reconcile sweep reclaims staging orphaned by host death
   mid-capture, mirroring the existing `reconcile_dangling_requests` pattern.
-- **Byte accounting:** charge-per-append with refund on abort/timeout; the writer refuses
-  (RESOURCE_LIMIT receipt, not session poison — a resource condition is not a protocol
-  lie) when an append exceeds the allowance, and refuses appends after the SDK context
-  reports cancellation (`is_cancelled()` is already on every `artifact_append` call).
+- **Byte accounting:** charge-per-append with refund on abort/timeout; appends after the
+  SDK context reports cancellation are refused (`is_cancelled()` is already on every
+  `artifact_append` call). **Refusal channel (built, not assumed):** the corpus ABI
+  gives `artifact_append` no return value — a quota refusal can only be an exception,
+  and any exception out of `adapter.execute` otherwise poisons the session (`_failed`),
+  which would contradict the resource-not-protocol-lie posture. Slice 1 therefore
+  builds a **capture-aware failure classification in the bridge**: a writer-raised
+  `CaptureQuotaExceeded` is caught at the dispatch boundary and converted to a clean
+  per-operation failure (`RESOURCE_LIMIT`, non-poisoning — the session survives), while
+  every other exception keeps the existing poison posture. Staging rows are reclaimed
+  by the host-side abort path on that failure.
 - **Writer states:** `open → finalise/abort → terminal`; appends after terminal are
   refused. Host-side abort wiring: the **bridge**, not the adapter, runs a bounded
   abort epilogue in the dispatch failure/timeout path, and `plugin_close` sweeps any
@@ -155,7 +169,7 @@ string/negative/absent `capture_limits` must not crash the caller):
 |---|---|---|
 | G1 arithmetic | `waveform_f64le`: `sample_count × 8 ≤ max_bytes` | §7 (count×8 is spec *prose*, line 154 — the schema pins field presence only) |
 | G2 descriptor | `sample_count ≤ capture_limits.max_samples` ∧ `max_bytes ≤ capture_limits.max_bytes`; format ∈ descriptor `capture_formats`; subscription ceiling from host `QuotaLimits` (Decision 4) | §7 *"Requests must satisfy both descriptor and host limits"* |
-| G3 quota | writer allowance **checked and reserved** (decrement at gate time; refund on abort/timeout/poison); allowance = `min(max_capture_bytes, max_dataset_bytes − used)`; per-append enforcement then lives in the writer | QuotaLimits docstring; §7 |
+| G3 quota | writer allowance **checked and reserved** (decrement at gate time; refund on abort/timeout/poison); allowance = `min(max_capture_bytes, max_dataset_bytes − used)` — the `used` accounting is produced by the staged writer's charge-per-append ledger (built in slice 1; `QuotaLimits` has zero construction sites in-tree today, all updated in the same PR); per-append enforcement then lives in the writer | QuotaLimits docstring; §7 |
 
 **G4 (new): finalise-time byte validation.** Spec line 204 mandates it —
 *"artifact_finalise accepts format/start time and optional waveform metadata, **validates
@@ -165,18 +179,23 @@ sample_count × 8` for `waveform_f64le`, and cross-checks the manifest's `sample
 `format`, and `capture_id` against the dispatch request (host-minted id echoed wrong is
 refused). A lying or truncated capture is refused at finalise, never published.
 
-**Two-sided manifest contract (named).** Host-computed fields (`byte_length`, `sha256`)
+**Two-sided manifest contract (corrected).** Host-computed fields (`byte_length`, `sha256`)
 are override-proof by construction — the digest source is the store. Adapter-supplied
 waveform fields (`unit`, `sample_interval_s` — mandatory per the schema's allOf and spec
-line 154, arriving through the adapter's finalise metadata, the only channel that carries
-them) are **validated** at finalise against the descriptor's declared waveform metadata;
-a descriptor that does not declare them cannot admit a `waveform_f64le` capture.
+§7 "waveform metadata is mandatory", arriving through the adapter's finalise metadata,
+the only channel that carries them) are **validated** at finalise by host-side shape
+checks and cross-check against the dispatch request — the 0.2.0 descriptor carries no
+waveform-metadata field to validate against (the prior revision claimed one), and
+adding it is a corpus revision this design declines; the validation is built in
+slice 1, not read from the descriptor.
 
-**Permission gating (named).** Spec §8/S15: *"Only artifact_writer permission grants
-these services."* Registry admission — which already owns S-checks — is the gating site:
-an adapter admitted without `artifact_writer` gets no capture writer (the composing
-capture-services object omits it), and a `capture` dispatch from such an adapter is
-refused `not_dispatched` at the gate. `event_sink` gets the same treatment at slice 2.
+**Permission gating (named — a build, not a wiring).** Spec §8/S15: *"Only
+artifact_writer permission grants these services."* Registry admission — which already
+owns S-checks — is the gating site: an adapter admitted without `artifact_writer` gets
+no capture writer (the composing capture-services object omits it), and a `capture`
+dispatch from such an adapter is refused `not_dispatched` at the gate. The read of
+`integration.adapter.permissions` is **new slice-1 code** — nothing in the gateway
+reads permissions today — and `event_sink` gets the same treatment at slice 2.
 
 **Quota context-key pinned.** The composing services object passes a **host-minted
 run/session context key**, never a caller-supplied one — the caller-controlled key in the
@@ -213,11 +232,19 @@ capture members).
   sets; **subscription IDs are host-minted globally-unique uuid4 opaques** (mirroring the
   bridge's operation ids), echoed by the adapter, **never parsed by host code** — the
   bridge's registry keys on the full id only, so the format stays reversible.
-- `stream_limits` enforced at G2 against **both** the descriptor's declared values and a
-  host ceiling: `min_interval_ms` is a floor validated ≥ 1 and the descriptor's value is
-  advisory pacing, not enforcement; `max_subscriptions` is checked against the new host
-  `QuotaLimits` field — an author-claimed descriptor value alone would allow unbounded
-  bridge state growth.
+- `stream_limits` enforced at G2: `min_interval_ms` is a **normative floor** — spec §7
+  *"requested intervals cannot be shorter"* — so a requested interval below the
+  descriptor's declared value is refused, and `max_subscriptions` is additionally
+  checked against the new host `QuotaLimits` field (an author-claimed value alone would
+  allow unbounded bridge state growth). **Delivery ceiling (stated, with derivation):**
+  `next_event` returns one event per call, events flow only inside the poll rhythm, and
+  the poll floor (10 ms) makes the shared budget ≈ 100 events/s across all live
+  subscriptions; a device with N variables at R Hz demands N×R events/s, so a device
+  whose product approaches the budget belongs on the capture or dataset lane, streaming
+  a decimated signal at most. The rhythm itself exists today only inside `delay` steps
+  (`wait_ns`'s single call site) — a procedure that subscribes and never sleeps polls
+  nothing; driving polls outside delay steps is part of the slice-2 poll engine's named
+  scope (below).
 - **The poll loop is slice-2 construction, named.** No round-robin engine exists in the
   tree. The slice-2 poll engine multiplexes `next_event` across live subscriptions inside
   the executor's existing wait-slice rhythm: each `next_event` is bounded to one poll
@@ -395,17 +422,30 @@ artifact + sidecar metadata + renderings) is exactly this mode, and #43's captur
 as previously written was host-driven end to end, leaving it unserved. Slice 1 adds the
 standalone leg:
 
-- **Same shape, second backend.** The SDK ships a standalone implementation of the
-  existing `CaptureServices` protocol (`artifact_append`/`artifact_finalise`/
-  `artifact_abort` — verified in `interfaces.py`; additive SDK code, the normative
-  interface shape is unchanged, no corpus byte moves). An adapter written against
-  `CaptureServices` runs unchanged against either backend: the gateway's composing
-  object (Decision 3) or the standalone file writer.
-- **Where data lives.** Default: `captures/` under the plugin directory. Configurable,
-  precedence named once: explicit constructor argument > `BENCHWEAVE_CAPTURE_DIR`
-  environment variable > the plugin-directory default. The gateway never reads this
+- **Same capture shape, second backend — at the protocol's true size.**
+  `CaptureServices` inherits all five `HostServices` members (`monotonic`, `utc_now`,
+  `transfer`, `close_transport`, `record_evidence`) plus the three capture methods —
+  **eight members**, and `transfer`/`close_transport` are device I/O a file writer
+  cannot supply. The SDK ships the standalone **capture writer** (the three capture
+  methods; additive module, normative interface unchanged, no corpus byte moves), and
+  the standalone runtime bundles it with a transport-backed services object — the
+  working pattern exists (a serial `HostServices` implementing all eight over one link
+  is ~100 lines; credited as the worked example). The unchanged-adapter claim is scoped
+  honestly: the capture path is identical in both modes; device I/O always comes from
+  a transport the runner supplies.
+- **Where data lives (corrected).** Default: `captures/` under the **current working
+  directory** (the plugin dev project) — never inside the installed package tree, where
+  the SDK's own inventory verification refuses unlisted files and run data does not
+  belong. Precedence: explicit constructor argument > `BENCHWEAVE_CAPTURE_DIR`
+  environment variable > the working-directory default. The gateway never reads this
   configuration — host-managed storage stays normative in-gateway, and standalone path
   selection exists only outside the gateway boundary.
+- **capture_id is minted and path-safe (added).** The standalone harness mints
+  `capture_id` (uuid4 slug); the writer enforces segment rules **before any filesystem
+  call** — no separators or `..` components, no Windows device names (`CON`, `NUL`,
+  …), case-folded collision check, bounded length — the refusal class the repo already
+  applies to plugin-ui resource paths (the in-tree precedent). A hostile or clumsy id
+  can no longer name a directory outside the capture root.
 - **Layout and manifest parity.** Each capture event is one directory keyed by
   `capture_id` (the "stem"). The directory tree, pinned:
 
@@ -425,32 +465,44 @@ standalone leg:
   missing-digest gap, closed) — plus `capture_id`, `format`, `state`
   (`finalised`), `started_at`, and waveform metadata when applicable. Staging chunks
   live under `staging/` so a crashed capture is distinguishable from published data;
-  finalise concatenates staging into the primary artifact and removes `staging/`;
-  **abort removes the event directory entirely** (standalone is development tooling —
-  no forensic marker is required, unlike the gateway's abort-marker evidence row).
-  Renderings live in `renderings/` so the three-class split (Decision 7) is visible
-  in the tree: the contributor's capture-event grouping model realized where it
-  genuinely lives — standalone, where no store exists to admit or refuse renderings.
-- **Formats: not limited to the core-lane enum.** The gateway's core capture lane
-  admits `waveform_f64le`/`raw_binary` (corpus-owned, spec §5/§7); standalone mode
-  runs outside that gate and accepts **any plugin-declared format — plain text
-  included** (`csv`, `json`, `txt`, `vcd`, …). The writer is content-agnostic: it
-  names, digests, and lengths bytes; it never interprets them, so the integrity
-  machinery applies identically to text and binary. Extensions come from a small
-  known-format map (`waveform_f64le` → `.f64`, `raw_binary` → `.bin`, `csv` →
-  `.csv`, `text` → `.txt`, `vcd` → `.vcd`), otherwise `.data`; `manifest.json`'s
-  `format` field is always the source of truth. Plain-text captures are first-class
-  here — the contributor's ADC prototype already writes `{stem}.csv`.
-- **Format declaration (two surfaces, one chain).** Authoring-time: the plugin's
-  **descriptor** declares `capture_formats` — already normative in the corpus, the same
-  declaration in both modes. Capture-time: the adapter states the format for the
-  capture at hand — the `capture` request in gateway mode, the finalise `metadata`
-  (`format` field) in standalone mode; `manifest.json` records what was declared.
-  Standalone validation is light but honest: a finalise format **not in the
-  descriptor's declared `capture_formats` is refused** with an error naming the
-  declared list (the standalone test harness loads the plugin's descriptor anyway, so
-  nothing extra to configure — and a format outside the declared set is almost
-  certainly a bug, per the corpus's "describe only verified capabilities").
+  finalise concatenates staging into the primary artifact **atomically (temp name +
+  rename, so a crash across finalise leaves a `.tmp` remnant, never a half-written
+  primary)** and removes `staging/`; **abort deletes only `staging/` and the in-flight
+  primary** — after finalise, or for an id this writer never opened, abort is a no-op
+  (mirroring the gateway's no-op-retract pin, so the record's own unconditional
+  `finally: artifact_abort()` idiom cannot delete a published capture or the user's
+  renderings; standalone is development tooling, so no forensic marker replaces the
+  gateway's abort-marker evidence row). Renderings live in `renderings/` so the
+  three-class split (Decision 7) is visible in the tree; the manifest's optional
+  `renderings[]` entries carry plugin-reported `{file, byte_length, sha256}`
+  (advisory digests — standalone has no host to enforce them). A tool that writes its
+  own file (sigrok-cli, ffmpeg) has no adopt path yet — the append-only writer forces
+  a copy-through; adopting pre-existing files into an event is deferred (row 10).
+- **Formats: standalone is not limited to the core-lane enum — but declaration needs
+  the extension key.** The gateway's core capture lane admits the two corpus formats
+  (`waveform_f64le`, `raw_binary`), and the descriptor schema **enum-closes**
+  `capture_formats` to exactly those (`items.enum`, `otdp-device-descriptor.schema.json`) —
+  the prior revision's "any descriptor-declared format" was wrong as written: `csv`
+  could not be declared, so the refusal rule would have refused every format this
+  amendment exists to enable. The declaration site that moves no corpus byte: the
+  descriptor root already admits `x-<vendor>-<name>` extension keys (checks ignore
+  them today), so standalone capture formats are declared in `x-capture-formats` (or
+  the standalone runner's configuration). The writer is content-agnostic — it names,
+  digests, and lengths bytes; it never interprets them, so integrity is identical for
+  text and binary. Extensions come from a small known-format map (`waveform_f64le` →
+  `.f64`, `raw_binary` → `.bin`, `csv` → `.csv`, `text` → `.txt`, `vcd` → `.vcd`),
+  otherwise `.data`; `manifest.json`'s `format` field is always the source of truth.
+  Plain-text captures are first-class here — the contributor's ADC prototype already
+  writes `{stem}.csv`.
+- **Format declaration (two surfaces, one chain — corrected).** Authoring-time:
+  in-gateway, the descriptor's `capture_formats` (closed enum); standalone, the
+  `x-capture-formats` extension key or the runner's configuration. Capture-time: the
+  adapter states the format for the capture at hand — the `capture` request in gateway
+  mode, the finalise `metadata` (`format` field) in standalone mode; `manifest.json`
+  records what was declared. Standalone validation: a finalise format **not in the
+  declared set is refused**, with the declared set named in the error — the
+  declaration chain stays honest in both modes, and widening the gateway enum remains
+  a corpus revision this design does not make.
 - **Integrity is not optional standalone.** At publish, everything is integrity-bound
   identically (Decision 7's rule) in both modes: digest over real bytes, length over
   real bytes, abort leaves zero chunk residue.
@@ -535,9 +587,13 @@ findings or build-time discovery) meets the same absence-presence standard befor
   leaves zero published artifact rows, zero staging rows, `unknown` outcome with the
   poison posture — and the cancellation control asserts the bridge's bounded abort
   epilogue ran (staging reclaimed) without depending on adapter cooperation.
-- **R6 (non-cooperative cleanup is bounded):** an adapter whose cleanup never yields
-  cannot wedge dispatch longer than the bridge's abort-epilogue timeout; `plugin_close`
-  completes and the session reaches its failed posture deterministically.
+- **R6 (cooperative cleanup is bounded; blocking cleanup is disclosed):** an adapter
+  whose cleanup yields but overstays is cut off by the bridge's abort-epilogue timeout
+  and `plugin_close` completes. A cleanup that **never yields** cannot be preempted by
+  any asyncio timeout — the bridge would wedge, and only a process restart with the
+  reconcile sweep recovers. That residual is a disclosed consequence of the serial
+  model (Decision 1), with a thread-level watchdog deferred (row 11); R6 does not
+  claim what asyncio cannot deliver.
 - **R7 (cross-session isolation):** an adapter appending to another session's
   `capture_id` is refused (writer keyed per session; echo correlation at finalise).
 - **R8 (permission gate):** an adapter admitted without `artifact_writer` gets no
@@ -546,8 +602,10 @@ findings or build-time discovery) meets the same absence-presence standard befor
 - **R9 (standalone integrity parity):** the standalone writer's finalise manifest digest
   equals recomputation over the published artifact file; `artifact_abort` leaves zero
   chunk residue on disk; appends after terminal are refused; a cancelled append writes
-  nothing; and the standalone manifest carries the same integrity fields as the gateway
-  manifest, so one adapter's capture is structurally identical in both modes.
+  nothing; the standalone manifest carries the same integrity fields as the gateway
+  manifest, so one adapter's capture is structurally identical in both modes; and an
+  unconditional post-finalise `artifact_abort` does NOT delete the published artifact
+  or `renderings/` (mirrors the gateway no-op-retract pin).
 
 ## Invariant and cross-surface impacts
 
@@ -597,6 +655,8 @@ findings or build-time discovery) meets the same absence-presence standard befor
 | 7 | Retention-policy schema corpus promotion (execution package) | Documentation here | A policy needing to travel with a package or bench definition |
 | 8 | Host-side spooling for large captures | Documentation here | Risk-3 throughput measurement below budget |
 | 9 | Run-engine capture driving (activation wiring: constructing real bridges with capture-services over the worker-thread store, procedure-step shape for capture verbs) | Issue at slice-2 merge | First real capture-class plugin — without it #43 ships capability-without-activation; the tracker must own that gap |
+| 10 | External-tool capture adopt/ingest (adopting a pre-existing file into a capture event — sigrok-cli, ffmpeg workflows) | Documentation here | A real workflow needing adopted (not writer-produced) captures standalone or in-gateway |
+| 11 | Thread-level watchdog for non-yielding adapter cleanup | Documentation here; issue at slice-1 merge if the disclosed residual is unacceptable to a real integration | First real plugin whose cleanup blocks (sync I/O in a `finally`), or an operator mandate |
 
 ## Owner calls on the forks (resolved 2026-09-21)
 
@@ -656,3 +716,31 @@ ingest) and placed it in slice 1 as the SDK-side leg. Acceptance rule gains R9
 (integrity parity); slice 1 now carries an additive SDK module under TWO-1 (SDK commit
 + push first, gateway pointer after); Decision 7 notes the grouping model's first
 shipping home is standalone.
+
+**Amendment 3 (2026-09-21): external-review integration (platima).** A 10-finding
+source-grounded external review (itself triple-refuted before posting) was verified
+finding-by-finding against this record and source: 9 confirmed, 1
+confirmed-with-correction, 1 citation wrong. All ten integrated. Decision 1: the
+capture-deadline policy rebuilt on the executor's real `min(now + timeout_ms,
+body_deadline)` contract — Amendment 1's poll-cadence sentence, which had propagated
+an unverified internal RedTeam claim, is withdrawn; the step's `timeout_ms` already is
+the capture budget. Decision 3: `artifact_append`'s missing refusal channel answered
+with a bridge-side capture-aware failure classification (built — the corpus ABI gives
+append no return value, so an unclassified exception would poison); the three
+"check against" gating sites (quota `used` producer, permissions read, descriptor
+waveform-metadata field) reworded as builds — the descriptor field does not exist in
+0.2.0. Decision 4: `stream_limits` corrected to the spec's normative floor ("requested
+intervals cannot be shorter") and the delivery-ceiling derivation stated (≈100
+events/s shared at the 10 ms poll floor; N×R devices belong on capture/dataset lanes).
+Decision 9: the format-declaration chain rebuilt on the closed-enum fact with the
+`x-capture-formats` extension-key site; the protocol's true size (eight members)
+stated with transport composition and the worked example credited; capture_id minting
++ segment rules added; abort scoped to staging + in-flight primary (no-op-retract pin
+mirrored); capture root moved out of the package tree; atomic finalise; advisory
+renderings digests. R6 narrowed to what asyncio can deliver, with the blocking-cleanup
+residual disclosed and deferred (row 11); row 10 (external-tool adopt) added; R9
+extended to the post-finalise no-op. Both of the review's asks actioned: row 2
+promoted to a tracked issue (dataset/invoke lane) and row 6 re-keyed to transport
+providers with a carrier issue. One citation in the review itself was wrong (the cited
+SDK `standards_sync._segment_problem` precedent does not exist; the real in-tree
+precedent is the plugin-ui unsafe-resource-path refusals) and is corrected here.
