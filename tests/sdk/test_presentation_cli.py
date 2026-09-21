@@ -3,6 +3,9 @@
 import errno
 import importlib
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -311,6 +314,61 @@ def test_scaffold_without_numeric_targets_skips_the_plot_example(
         panels=frozenset(),
     )
     assert fixtures.build_preview_model(candidate).plot_views == ()
+
+
+def test_generated_conformance_test_compiles_and_runs(tmp_path: Path) -> None:
+    """The generator's OUTPUT executes, not just gets inspected.
+
+    CI's sdk_smoke installs the starter and RUNS its generated conformance
+    test; a template that emits a syntactically invalid assert (the trailing
+    comma after the message) is pytest exit 2 at collection there while every
+    local gate stayed green — none executed the file. Both template variants
+    (numeric descriptor -> plot assertion; all-non-numeric -> empty
+    assertion) are compiled here, then executed in a subprocess exactly the
+    way CI runs them, so this class stays caught locally.
+    """
+    presentation = importlib.import_module("benchweave_sdk.presentation")
+    scaffold = importlib.import_module("benchweave_sdk.scaffold")
+    sdk_source = Path(__file__).resolve().parents[2] / "packages/sdk/src"
+
+    with_plot_project = tmp_path / "with-plot"
+    scaffold.create_project(with_plot_project, "example_plugin")
+    presentation.create_ui_resources(with_plot_project, "example_plugin")
+    no_plot_package = _scaffold_with_leading_parameter(tmp_path / "generated", "bool", only=True)
+    no_plot_project = no_plot_package.parents[1]
+
+    for name, project in (("with-plot", with_plot_project), ("no-plot", no_plot_project)):
+        conformance = project / "tests" / "test_presentation_preview.py"
+        source = conformance.read_text()
+        compile(source, str(conformance), "exec")
+        environment = {
+            **os.environ,
+            "PYTHONPATH": os.pathsep.join([str(sdk_source), str(project / "src")]),
+        }
+        executed = subprocess.run(
+            [sys.executable, "-m", "pytest", "-q", str(conformance)],
+            capture_output=True,
+            text=True,
+            env=environment,
+            check=False,
+        )
+        assert executed.returncode == 0, f"{name}: {executed.stdout}{executed.stderr}"
+
+
+def test_generated_conformance_test_compiles(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The scaffold's generated conformance test must be importable Python.
+
+    The smoke job executes it against the installed SDK; a template syntax
+    error leaves every local gate green (they validate scaffold output
+    without executing it) while CI goes red. Compiling both template arms —
+    plot-present and plot-absent — pins the generator's output as code.
+    """
+    for case, only in (("with-plot", False), ("no-plot", True)):
+        package = _scaffold_with_leading_parameter(tmp_path / case, "bool", only=only)
+        generated = package.parent.parent / "tests" / "test_presentation_preview.py"
+        compile(generated.read_text(encoding="utf-8"), str(generated), "exec")
 
 
 def test_new_with_ui_succeeds_under_symlinked_ancestor(
