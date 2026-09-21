@@ -132,6 +132,7 @@ All notable changes to this project will be documented in this file.
 - Derive the devices mutation fixtures; GOVERNANCE claim scoped (D2 review fold)
 - Audit-annotate train_window's git subprocess under the S-band; merge main
 - Resolve OUT once so the pinned check compares resolved-to-resolved (#119)
+- Precision folds from the first review wave (#102 D1, review F3/F5/F6/LOW-1/NIT-2)
 
 ### Documentation
 
@@ -245,6 +246,9 @@ All notable changes to this project will be documented in this file.
 - Review fold — reconciliation precise; root-only scope stated (#97)
 - Design record for #125 pinned-escape coverage
 - Refute folds — revival-set precision, honest Windows posture (#125)
+- Issue #102 D1+D3 validation-report family design record
+- CON-11 family amendment, drift row 13, GOVERNANCE generalization, validation doc (#102 D1)
+- CON-11 structural reason + residual; wave-2 folds recorded (#102 D1, review R-F3 + A-F4)
 
 ### Features
 
@@ -350,6 +354,12 @@ All notable changes to this project will be documented in this file.
 - Registry 0.1.1 — admit the skill payload-file role (issue #71 slice 1)
 - The prescriptive bump window, enforced (#97)
 - Manifest-driven OTDP version discovery in the validator + pin (#102 D2)
+- Shared validation-report writer; check_devices delegates (#102 D1)
+- Registry validation report joins the writer family (#102 D1)
+- Execution validation report joins the writer family (#102 D1)
+- Interface validation report joins the writer family (#102 D1)
+- Closure validation report joins the writer family (#102 D1)
+- Otdp coverage prose derives its counts (#102 D3)
 
 ### Hardware Evidence
 
@@ -436,6 +446,7 @@ All notable changes to this project will be documented in this file.
 - Id/version tree — standards/<id>/<version>/ with retention
 - Reset every standard to 0.1.0 — the governance starting point
 - Id/version tree, full 0.1.0 reset, and governance layer (#21)
+- Single-source the family marker; refusal-family honesty (#102 D1, review R-F5 + A-F3)
 
 ### Style
 
@@ -500,11 +511,18 @@ All notable changes to this project will be documented in this file.
 - RED — OUT/title must follow the manifest's active otdp version (#102 D2)
 - Extend the #47 annotation guard to description (#97)
 - Pin the pinned check's path-escape arm (#125)
+- RED family pin for the machine-written validation reports (#102 D1)
+- Share one real-tree execution per suite between pin and guard (#102 D1)
+- Adapt #125 path-escape test to the family report-path signature (rebase resolution)
+- Report-family census — registered writers, classified artifacts (#102 D1, review F2)
+- Harden the family pin — duplicate names, byte compare, POSIX absoluteness (#102 D1, review F4/F7/F8)
+- Tamper fixture asserts its vacuous-green precondition (#102 D1, review A-F2)
 
 ### Build
 
 - Bundle versioned UI preview renderer
 - Mount benchweave-sdk as a submodule at packages/sdk
+- Pull _validation_report into strict mypy scope; honest NoReturn (#102 D1, review R-F4)
 
 ### Ci
 
