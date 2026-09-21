@@ -23,10 +23,11 @@ def pristine_trees(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, Path
     """One repository→tmp copy of ``docs/`` and ``standards/`` per session.
 
     Walking the repository trees is the expensive part (230 files), so the
-    mutating tests below never re-copy from the repository: each takes a
-    cheap per-test copy from this pristine pair and leaves the pair itself
-    untouched (``test_validation_is_read_only`` proves the checkers cannot
-    dirty a tree they are pointed at).
+    tests that take this fixture never re-copy from the repository: each
+    takes a cheap per-test copy from this pristine pair and leaves the pair
+    itself untouched (``test_validation_is_read_only`` proves the checkers
+    cannot dirty a tree they are pointed at). The report-family, symlink and
+    path-escape tests still copy from the repository themselves.
     """
     base = tmp_path_factory.mktemp("architecture-pristine")
     shutil.copytree(ROOT / "docs", base / "docs")
@@ -679,6 +680,13 @@ def test_contract_regressions_are_detected(
     standards = tmp_path / "standards"
     shutil.copytree(pristine_docs, docs)
     shutil.copytree(pristine_standards, standards)
+    # The assertion at the bottom is a substring match over failing check
+    # names, so any failure the copy already carries can satisfy it without
+    # the mutation being detected (this is what let the docs case pass on a
+    # split topology). The unmutated copy must therefore run clean first:
+    # an ambient failure then fails here, loudly, instead of feeding the match.
+    ambient = [name for name, passed in run_checks(suite, docs, standards) if not passed]
+    assert ambient == [], f"{suite}: the unmutated copy must run clean, got {ambient}"
     if (standards / relative_path).is_file():
         path = standards / relative_path
     else:
