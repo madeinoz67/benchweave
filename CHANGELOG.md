@@ -256,6 +256,9 @@ All notable changes to this project will be documented in this file.
 - Issue #133 retrospective skill design of record
 - Review folds — archive+git evidence lanes, moment pinning, dead tag (#133)
 - Amendment 1 — integrate 12-analyst RedTeam findings into #43 record
+- #43 Amendment 2 — standalone capture mode (Decision 9), slice-1 scope
+- #43 Amendment 2 — pin the standalone capture directory layout
+- #43 Amendment 2 — standalone formats (plain text first-class) + declaration chain
 
 ### Features
 
