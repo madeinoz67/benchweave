@@ -120,6 +120,11 @@ def _shutdown(
 ) -> None:
     server.should_exit = True
     thread.join(timeout=5)
+    # join() returns on timeout as well as on exit. Closing the connection
+    # under a server that is still running would turn a slow shutdown into
+    # concurrent-use errors, so a thread that has not stopped fails here and
+    # the store is left open.
+    assert not thread.is_alive(), "uvicorn did not stop within 5s; the store was left open"
     if close_store:
         _close_store(server.config.app)
 
@@ -178,25 +183,28 @@ def test_restore_refuses_under_live_gateway_and_leaves_target_untouched(
     server, thread = _boot(app)
     before = _sha256(db)
     try:
-        _wait_held(db, expected=True)
-        result = CliRunner().invoke(
-            cli, ["restore", "--archive", str(archive), "--data-dir", str(target)]
-        )
-        assert result.exit_code != 0
-        combined = _combined(result)
-        assert "held" in combined
-        assert GATEWAY_ID in combined
-    finally:
-        # The store stays open across the byte comparison: closing the last
-        # connection checkpoints the WAL into state.sqlite, which would change
-        # the very bytes the comparison is about.
-        _shutdown(server, thread, close_store=False)
+        try:
+            _wait_held(db, expected=True)
+            result = CliRunner().invoke(
+                cli, ["restore", "--archive", str(archive), "--data-dir", str(target)]
+            )
+            assert result.exit_code != 0
+            combined = _combined(result)
+            assert "held" in combined
+            assert GATEWAY_ID in combined
+        finally:
+            # The store stays open across the byte comparison: closing the last
+            # connection checkpoints the WAL into state.sqlite, which would
+            # change the very bytes the comparison is about.
+            _shutdown(server, thread, close_store=False)
 
-    try:
         assert _sha256(db) == before, "a refused restore must not touch the live store"
         assert not list(tmp_path.glob("live.pre-restore-*"))
     finally:
-        _close_store(app)
+        # Whatever failed above, the connection is closed exactly once, and
+        # only after _shutdown has confirmed the server thread stopped.
+        if not thread.is_alive():
+            _close_store(app)
 
     # After shutdown the same restore completes and verifies green.
     result = CliRunner().invoke(
