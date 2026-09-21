@@ -29,7 +29,9 @@ export function App() {
         </Button>
       </div>
       <h1>BenchWeave UI workbench</h1>
-      <DeviceWorkbench fixture={warningWorkbench} />
+      {/* The standalone demo keeps its illustrative limit; the preview passes
+          none — a threshold is caller-supplied configuration, never a default. */}
+      <DeviceWorkbench fixture={warningWorkbench} threshold={{ value: 1.9, label: "Current warning limit", severity: "warning" }} />
     </main>
   );
 }

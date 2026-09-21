@@ -19,7 +19,7 @@ This repository carries the BenchWeave implementation (packages WP01–WP07) alo
 - [Registry v0.1.1](../standards/registry/0.1.1/registry-specification.md)
 - [Execution v0.1.0](../standards/execution/0.1.0/execution-contract.md)
 - [Interface v0.1.0](../standards/interface/0.1.0/interface-contract.md)
-- [Plugin UI v0.2.0](../standards/plugin-ui/0.2.0/README.md) and [Plugin UI preview v1](../standards/plugin-ui-preview/0.1.0/fixture.schema.json) (fixture and served-document schemas for the simulation-only preview workflow)
+- [Plugin UI v0.2.0](../standards/plugin-ui/0.2.0/README.md) and [Plugin UI preview v1](../standards/plugin-ui-preview/0.1.1/fixture.schema.json) (fixture and served-document schemas for the simulation-only preview workflow)
 - [Acceptance closure](acceptance/end-to-end-review.md)
 
 

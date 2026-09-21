@@ -309,7 +309,15 @@ def test_family_census_detects_unclassified_reports_and_unregistered_writers(
     standards = tmp_path / "standards"
     shutil.copytree(ROOT / "docs", docs)
     shutil.copytree(ROOT / "standards", standards)
-    bogus = standards / "plugin-ui-preview" / "0.1.0" / "validation-report.md"
+    # Under the ACTIVE plugin-ui-preview version: a superseded version's
+    # report is legitimately classified as frozen history, so the arm must
+    # drop its bogus report where no exemption applies (derived from the
+    # manifest so a future bump cannot silently kill this arm again).
+    manifest = json.loads((ROOT / "standards/standards-manifest.json").read_text(encoding="utf-8"))
+    active_preview = next(
+        entry["version"] for entry in manifest["standards"] if entry["id"] == "plugin-ui-preview"
+    )
+    bogus = standards / "plugin-ui-preview" / active_preview / "validation-report.md"
     bogus.write_text("# bogus train record\n", encoding="utf-8")
     failures = _artifact_census_failures(docs, standards)
     assert any("plugin-ui-preview" in failure for failure in failures), failures

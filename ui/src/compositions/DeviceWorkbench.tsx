@@ -16,9 +16,13 @@ export interface DeviceWorkbenchProps {
   fixture: DeviceWorkbenchFixture;
   onRequestSetPoint?(value: number): void;
   requestEnabled?: boolean;
+  /** A threshold is caller-supplied configuration, never a workbench default:
+   *  the preview passes none (simulated snapshot data has no qualified limit),
+   *  and the gateway demo supplies its own. */
+  threshold?: { value: number; label: string; severity: "warning" | "critical" };
 }
 
-export function DeviceWorkbench({ fixture, onRequestSetPoint = () => undefined, requestEnabled = true }: DeviceWorkbenchProps) {
+export function DeviceWorkbench({ fixture, onRequestSetPoint = () => undefined, requestEnabled = true, threshold }: DeviceWorkbenchProps) {
   const [stagedVoltage, setStagedVoltage] = useState(fixture.stagedVoltage);
   return (
     <section className="bw-workbench" aria-labelledby="device-workbench-title">
@@ -51,7 +55,7 @@ export function DeviceWorkbench({ fixture, onRequestSetPoint = () => undefined, 
           </div>
         </Panel>
         <Panel title="Output activity" eyebrow="Last 60 seconds" recessed>
-          <EngineeringPlot kind="time_series" title="Output activity" x={{ label: "Receipt time", unit: "s" }} traces={fixture.traces} threshold={{ value: 1.9, label: "Current warning limit", severity: "warning" }} />
+          <EngineeringPlot kind="time_series" title="Output activity" x={{ label: "Receipt time", unit: "s" }} traces={fixture.traces} threshold={threshold} />
         </Panel>
       </div>
 

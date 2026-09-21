@@ -102,13 +102,13 @@
     },
     {
       "id": "plugin-ui-preview",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "status": "stable",
-      "released": "2026-09-16",
-      "supersedes": null,
+      "released": "2026-09-21",
+      "supersedes": "0.1.0",
       "normative": [
-        "standards/plugin-ui-preview/0.1.0/fixture.schema.json",
-        "standards/plugin-ui-preview/0.1.0/preview-document.schema.json"
+        "standards/plugin-ui-preview/0.1.1/fixture.schema.json",
+        "standards/plugin-ui-preview/0.1.1/preview-document.schema.json"
       ]
     }
   ]

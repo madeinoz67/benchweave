@@ -3,6 +3,9 @@
 import errno
 import importlib
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -165,14 +168,15 @@ def test_ui_check_rejects_resource_root_escape(
 def test_scaffold_hint_pair_validates_identically(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Metric 1's fourth pair: the scaffold-generated example with an
-    author-added hinted plot vs its unhinted twin, both feature conditions.
+    """Metric 1's fourth pair: the scaffold's own hinted plot vs its unhinted
+    twin, both feature conditions.
 
-    The scaffold emits no plots, so the author-side step mirrors what a plugin
-    developer does: add a receipt-time variable to the catalogue target and a
-    time-series plot to the manifest. check-ui must accept both members
-    identically (P1/P2) — and the scaffold must declare the ACTIVE contract
-    version or this fails before hints are even considered.
+    Since the scaffold emits a receipt-time axis and one time-series plot with
+    a muted-channel hint, the author-side step is exactly hint authoring:
+    strip or keep the scaffold's channel_hints (re-pinning the manifest
+    digest). check-ui must accept both members identically (P1/P2) — and the
+    scaffold must declare the ACTIVE contract version or this fails before
+    hints are even considered.
     """
     hashlib = importlib.import_module("hashlib")
     presentation = importlib.import_module("benchweave_sdk.presentation")
@@ -183,36 +187,16 @@ def test_scaffold_hint_pair_validates_identically(
         scaffold.create_project(project, "example_plugin")
         presentation.create_ui_resources(project, "example_plugin")
         package = project / "src/example_plugin"
-        catalogue_path = package / "binding-catalogue.json"
-        catalogue = json.loads(catalogue_path.read_bytes())
-        catalogue["targets"][0]["variables"].insert(
-            0,
-            {
-                "id": "time",
-                "type": "number",
-                "unit": "s",
-                "shape": "scalar",
-                "axis_role": "receipt_time",
-            },
-        )
-        catalogue_path.write_text(json.dumps(catalogue, indent=2) + "\n", encoding="utf-8")
-        manifest_path = package / "ui/manifest.json"
-        manifest = json.loads(manifest_path.read_bytes())
-        plot: dict[str, object] = {
-            "kind": "time_series",
-            "binding_id": manifest["bindings"][0]["id"],
-            "x": "time",
-            "y": ["value"],
-        }
-        if hints is not None:
-            plot["channel_hints"] = hints
-        manifest["pages"][0]["plots"] = [plot]
-        manifest_raw = json.dumps(manifest, indent=2) + "\n"
-        manifest_path.write_text(manifest_raw, encoding="utf-8")
-        envelope_path = package / "presentation.json"
-        envelope = json.loads(envelope_path.read_bytes())
-        envelope["manifest"]["sha256"] = hashlib.sha256(manifest_raw.encode()).hexdigest()
-        envelope_path.write_text(json.dumps(envelope, indent=2) + "\n", encoding="utf-8")
+        if hints is None:
+            manifest_path = package / "ui/manifest.json"
+            manifest = json.loads(manifest_path.read_bytes())
+            manifest["pages"][0]["plots"][0].pop("channel_hints", None)
+            manifest_raw = json.dumps(manifest, indent=2) + "\n"
+            manifest_path.write_text(manifest_raw, encoding="utf-8")
+            envelope_path = package / "presentation.json"
+            envelope = json.loads(envelope_path.read_bytes())
+            envelope["manifest"]["sha256"] = hashlib.sha256(manifest_raw.encode()).hexdigest()
+            envelope_path.write_text(json.dumps(envelope, indent=2) + "\n", encoding="utf-8")
         return package
 
     plain = authored(None)
@@ -222,6 +206,169 @@ def test_scaffold_hint_pair_validates_identically(
     # feature-declaring host. Both must accept the hinted twin identically.
     assert check(monkeypatch, hinted, firmware="1.0.0") == 0
     assert check(monkeypatch, hinted, firmware="1.0.0", feature="legend/1.0.0") == 0
+
+
+def _numeric_target_ids(catalogue_path: Path) -> list[str]:
+    catalogue = json.loads(catalogue_path.read_bytes())
+    return [
+        str(row["id"])
+        for row in catalogue["targets"]
+        if next(
+            variable
+            for variable in row["variables"]
+            if variable.get("axis_role") != "receipt_time"
+        )["type"]
+        in ("number", "integer")
+    ]
+
+
+def _scaffold_with_leading_parameter(
+    tmp_path: Path, parameter_type: str, *, only: bool = False
+) -> Path:
+    """Scaffold UI resources over a descriptor whose FIRST readable parameter
+    is non-numeric (bool or string) — the shape the refute lane's HIGH shipped
+    on. ``only=True`` rewrites the whole parameter list non-numeric."""
+    presentation = importlib.import_module("benchweave_sdk.presentation")
+    scaffold = importlib.import_module("benchweave_sdk.scaffold")
+    project = tmp_path / f"ui-{parameter_type}-first"
+    scaffold.create_project(project, "example_plugin")
+    descriptor_path = project / "src/example_plugin/descriptor.json"
+    descriptor = json.loads(descriptor_path.read_bytes())
+    leading = dict(descriptor["parameters"][0])
+    leading.update(
+        {
+            "name": "ready",
+            "type": parameter_type,
+            "description": f"Synthetic {parameter_type} leading parameter",
+        }
+    )
+    leading["binding"] = {"kind": "adapter", "key": "ready"}
+    if parameter_type == "string":
+        # The descriptor schema requires string_constraints on string
+        # parameters and no numeric unit rides them.
+        leading.pop("unit", None)
+        leading["string_constraints"] = {"min_length": 0, "max_length": 40}
+    if only:
+        descriptor["parameters"] = [leading]
+    else:
+        descriptor["parameters"].insert(0, leading)
+    descriptor_path.write_text(json.dumps(descriptor, indent=2) + "\n", encoding="utf-8")
+    presentation.create_ui_resources(project, "example_plugin")
+    return project / "src/example_plugin"
+
+
+@pytest.mark.parametrize("parameter_type", ["bool", "string"])
+def test_scaffold_plot_attaches_to_the_first_numeric_observation_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, parameter_type: str
+) -> None:
+    """Refute HIGH (reproduced): a non-numeric-first descriptor must still get
+    a working plot example.
+
+    The plot example binds the first NUMERIC observation target — the same
+    number/integer test the presentation validator applies to plot axes — not
+    targets[0], because _ui_targets admits bool/string parameters while
+    _plot_findings refuses non-numeric axes. Pinning the example to targets[0]
+    made the scaffold emit a plot check-ui rejects (invalid_plot) and
+    load_validated_preview_inputs refuse the whole preview.
+    """
+    fixtures = importlib.import_module("benchweave_sdk.fixtures")
+    presentation = importlib.import_module("benchweave_sdk.presentation")
+    package = _scaffold_with_leading_parameter(tmp_path, parameter_type)
+
+    assert check(monkeypatch, package, firmware="1.0.0") == 0
+
+    candidate = presentation.load_validated_preview_inputs(
+        package / "presentation.json",
+        package / "descriptor.json",
+        package,
+        package / "binding-catalogue.json",
+        firmware="1.0.0",
+        features=frozenset(),
+        panels=frozenset(),
+    )
+    views = fixtures.build_preview_model(candidate).plot_views
+    assert views, "the scaffold plot example must project for a numeric-capable descriptor"
+    assert views[0].binding_id == _numeric_target_ids(package / "binding-catalogue.json")[0]
+
+
+def test_scaffold_without_numeric_targets_skips_the_plot_example(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No numeric observation target => no example plot: a disclosed
+    degradation, never a plot check-ui rejects."""
+    fixtures = importlib.import_module("benchweave_sdk.fixtures")
+    presentation = importlib.import_module("benchweave_sdk.presentation")
+    package = _scaffold_with_leading_parameter(tmp_path, "bool", only=True)
+
+    assert check(monkeypatch, package, firmware="1.0.0") == 0
+
+    manifest = json.loads((package / "ui/manifest.json").read_bytes())
+    assert "plots" not in manifest["pages"][0]
+    candidate = presentation.load_validated_preview_inputs(
+        package / "presentation.json",
+        package / "descriptor.json",
+        package,
+        package / "binding-catalogue.json",
+        firmware="1.0.0",
+        features=frozenset(),
+        panels=frozenset(),
+    )
+    assert fixtures.build_preview_model(candidate).plot_views == ()
+
+
+def test_generated_conformance_test_compiles_and_runs(tmp_path: Path) -> None:
+    """The generator's OUTPUT executes, not just gets inspected.
+
+    CI's sdk_smoke installs the starter and RUNS its generated conformance
+    test; a template that emits a syntactically invalid assert (the trailing
+    comma after the message) is pytest exit 2 at collection there while every
+    local gate stayed green — none executed the file. Both template variants
+    (numeric descriptor -> plot assertion; all-non-numeric -> empty
+    assertion) are compiled here, then executed in a subprocess exactly the
+    way CI runs them, so this class stays caught locally.
+    """
+    presentation = importlib.import_module("benchweave_sdk.presentation")
+    scaffold = importlib.import_module("benchweave_sdk.scaffold")
+    sdk_source = Path(__file__).resolve().parents[2] / "packages/sdk/src"
+
+    with_plot_project = tmp_path / "with-plot"
+    scaffold.create_project(with_plot_project, "example_plugin")
+    presentation.create_ui_resources(with_plot_project, "example_plugin")
+    no_plot_package = _scaffold_with_leading_parameter(tmp_path / "generated", "bool", only=True)
+    no_plot_project = no_plot_package.parents[1]
+
+    for name, project in (("with-plot", with_plot_project), ("no-plot", no_plot_project)):
+        conformance = project / "tests" / "test_presentation_preview.py"
+        source = conformance.read_text()
+        compile(source, str(conformance), "exec")
+        environment = {
+            **os.environ,
+            "PYTHONPATH": os.pathsep.join([str(sdk_source), str(project / "src")]),
+        }
+        executed = subprocess.run(
+            [sys.executable, "-m", "pytest", "-q", str(conformance)],
+            capture_output=True,
+            text=True,
+            env=environment,
+            check=False,
+        )
+        assert executed.returncode == 0, f"{name}: {executed.stdout}{executed.stderr}"
+
+
+def test_generated_conformance_test_compiles(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The scaffold's generated conformance test must be importable Python.
+
+    The smoke job executes it against the installed SDK; a template syntax
+    error leaves every local gate green (they validate scaffold output
+    without executing it) while CI goes red. Compiling both template arms —
+    plot-present and plot-absent — pins the generator's output as code.
+    """
+    for case, only in (("with-plot", False), ("no-plot", True)):
+        package = _scaffold_with_leading_parameter(tmp_path / case, "bool", only=only)
+        generated = package.parent.parent / "tests" / "test_presentation_preview.py"
+        compile(generated.read_text(encoding="utf-8"), str(generated), "exec")
 
 
 def test_new_with_ui_succeeds_under_symlinked_ancestor(

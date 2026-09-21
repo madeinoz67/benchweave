@@ -3,6 +3,7 @@ import { AlertBubble } from "../components/feedback/AlertBubble";
 import { DeviceWorkbench } from "../compositions/DeviceWorkbench";
 import { scenarioToWorkbenchFixture } from "../compositions/fixtures";
 import { fetchPreview, requestSimulatedAction, type PreviewDocument, type SimulatedReceipt } from "./api";
+import { PreviewPlots } from "./PreviewPlots";
 
 export interface PreviewAppProps { apiBase?: string }
 
@@ -58,5 +59,6 @@ export function PreviewApp({ apiBase }: PreviewAppProps) {
     {receipt ? <AlertBubble severity={receipt.outcome === "accepted" ? "success" : "warning"} title={receipt.outcome === "accepted" ? "Simulated request accepted" : "Simulated request rejected"} message={receipt.message} source={receipt.binding_id} /> : null}
     {!canRequest ? <p role="status">Controls are read-only for this simulated authority state.</p> : null}
     <DeviceWorkbench key={scenario.id} fixture={fixture} requestEnabled={canRequest} onRequestSetPoint={requestSetPoint} />
+    <PreviewPlots views={preview.plot_views} scenario={scenario} />
   </main>;
 }
