@@ -18,7 +18,9 @@ uv build
 The lint/type/test trio mirrors CI's main gate, which runs `uv sync`,
 `uv run ruff check .`, `uv run mypy`, `uv run pytest -q` and
 `make check-sdk-standards`. `ruff format` is available
-locally but is not a CI gate. When this page and the workflow disagree,
+locally but is not part of that main gate; the one place CI enforces it is
+`device-plugins.yml`, which runs `ruff format --check` inside the DPS-150
+plugin project. When this page and the workflow disagree,
 `.github/workflows/ci.yml` is the authority.
 
 Add dependencies with `uv add` or `uv add --dev`, and commit both
