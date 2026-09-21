@@ -243,17 +243,21 @@ def test_served_preview_document_conforms_to_wire_schema(tmp_path: Path) -> None
 
 
 def preview_candidate(
-    pages: list[dict[str, object]], targets: list[dict[str, object]]
+    pages: list[dict[str, object]],
+    targets: list[dict[str, object]],
+    bindings: list[dict[str, object]] | None = None,
 ) -> object:
     """Build the frozen validated-input value directly from corpus shapes.
 
     In production only ``load_validated_preview_inputs`` constructs this after
     a clean validation report; the tests hand the projection the same frozen
     type over shapes that validator admits, so the projection's reads-only
-    contract is exercised without re-running validation.
+    contract is exercised without re-running validation. ``bindings``
+    overrides the default one-binding-per-target derivation (the
+    divergent-id pin uses it).
     """
     presentation = importlib.import_module("benchweave_sdk.presentation")
-    bindings = [
+    derived = [
         {"id": str(row["id"]), "kind": "observation", "target_id": str(row["id"])}
         if row.get("kind") == "observation"
         else {"id": f"{row['id']}-capture", "kind": "dataset", "target_id": str(row["id"])}
@@ -264,7 +268,7 @@ def preview_candidate(
         manifest={
             "contract_version": "0.2.0",
             "plugin_id": "dev.example.plugin",
-            "bindings": bindings,
+            "bindings": bindings if bindings is not None else derived,
             "pages": pages,
         },
         binding_catalogue={"contract_version": "0.2.0", "targets": targets},
@@ -306,10 +310,12 @@ def waveform_target(y_names: list[str]) -> dict[str, object]:
     }
 
 
-def time_series_page(hints: list[dict[str, object]] | None = None) -> list[dict[str, object]]:
+def time_series_page(
+    hints: list[dict[str, object]] | None = None, binding_id: str = "voltage"
+) -> list[dict[str, object]]:
     plot: dict[str, object] = {
         "kind": "time_series",
-        "binding_id": "voltage",
+        "binding_id": binding_id,
         "x": "time",
         "y": ["value"],
     }
@@ -320,7 +326,7 @@ def time_series_page(hints: list[dict[str, object]] | None = None) -> list[dict[
             "id": "readings",
             "title": "Readings",
             "kind": "readings",
-            "bindings": ["voltage"],
+            "bindings": [binding_id],
             "required": True,
             "plots": [plot],
         }
@@ -448,6 +454,32 @@ def test_projection_titles_multi_plot_pages_by_index() -> None:
     ]
     views = fixtures.project_plot_views(preview_candidate(pages, [VOLTAGE_TARGET]))
     assert [view.title for view in views] == ["Readings (1/2)", "Readings (2/2)"]
+
+
+def test_projection_resolves_the_join_key_to_the_target_id() -> None:
+    """Divergent-ids pin: manifest binding 'reading' -> target 'voltage'.
+
+    Preview observations speak target ids (baselines and author fixtures
+    alike), so the projected view's join key is the bound TARGET id — the
+    manifest binding's own id would ship a dead join for every plugin whose
+    binding ids diverge from target ids. The rest of the committed corpus
+    uses equal ids; this pins the namespace contract and proves the join
+    feeds end to end.
+    """
+    fixtures = fixtures_module()
+    pages = time_series_page(binding_id="reading")
+    candidate = preview_candidate(
+        pages,
+        [VOLTAGE_TARGET],
+        bindings=[{"id": "reading", "kind": "observation", "target_id": "voltage"}],
+    )
+    views = fixtures.project_plot_views(candidate)
+    assert [view.binding_id for view in views] == ["voltage"]
+    # The join feeds: the scenario side keys the same target id, so the
+    # renderer's find-by-binding_id resolves against baseline observations.
+    model = fixtures.build_preview_model(candidate)
+    normal = next(row for row in model.scenarios if row.id == "normal")
+    assert views[0].binding_id in {row.binding_id for row in normal.observations}
 
 
 def test_two_variable_observation_target_builds_a_preview() -> None:
