@@ -69,10 +69,15 @@ def _sha256(path: Path) -> str:
 
 
 def _compose(db_path: Path) -> FastAPI:
-    """The T9 boot composition over a chosen database file."""
+    """The T9 boot composition over a chosen database file.
+
+    The app does not own the store it is handed (its lifespan only takes
+    and drops the hold), so the harness keeps it on ``app.state`` for
+    ``_close_store`` to close.
+    """
     store = Store.open(db_path, check_same_thread=False)
     content = ContentStore(store)
-    return create_app(
+    app = create_app(
         store=store,
         content=content,
         secret=SECRET,
@@ -82,6 +87,19 @@ def _compose(db_path: Path) -> FastAPI:
         now_iso=lambda: NOW_ISO,
         now_epoch=lambda: NOW_EPOCH,
     )
+    app.state.harness_store = store
+    return app
+
+
+def _close_store(app: Any) -> None:
+    """Close the connection ``_compose`` opened.
+
+    In production the process exits and the OS closes it. In-process it
+    stays open, which POSIX forgives and Windows does not: a directory
+    holding an open file cannot be renamed there, so a restore after
+    shutdown failed with WinError 5 (#136).
+    """
+    app.state.harness_store.close()
 
 
 def _boot(app: FastAPI) -> tuple[uvicorn.Server, threading.Thread]:
@@ -97,9 +115,13 @@ def _boot(app: FastAPI) -> tuple[uvicorn.Server, threading.Thread]:
     return server, thread
 
 
-def _shutdown(server: uvicorn.Server, thread: threading.Thread) -> None:
+def _shutdown(
+    server: uvicorn.Server, thread: threading.Thread, *, close_store: bool = True
+) -> None:
     server.should_exit = True
     thread.join(timeout=5)
+    if close_store:
+        _close_store(server.config.app)
 
 
 def _wait_held(db: Path, *, expected: bool, timeout: float = 5.0) -> None:
@@ -165,10 +187,16 @@ def test_restore_refuses_under_live_gateway_and_leaves_target_untouched(
         assert "held" in combined
         assert GATEWAY_ID in combined
     finally:
-        _shutdown(server, thread)
+        # The store stays open across the byte comparison: closing the last
+        # connection checkpoints the WAL into state.sqlite, which would change
+        # the very bytes the comparison is about.
+        _shutdown(server, thread, close_store=False)
 
-    assert _sha256(db) == before, "a refused restore must not touch the live store"
-    assert not list(tmp_path.glob("live.pre-restore-*"))
+    try:
+        assert _sha256(db) == before, "a refused restore must not touch the live store"
+        assert not list(tmp_path.glob("live.pre-restore-*"))
+    finally:
+        _close_store(app)
 
     # After shutdown the same restore completes and verifies green.
     result = CliRunner().invoke(
@@ -362,6 +390,7 @@ def test_second_gateway_boot_is_refused_while_the_first_holds_the_store(
             "a second gateway must not boot on a store the first one holds"
         )
         second_thread.join(timeout=5)
+        _close_store(second)
         _wait_held(db, expected=True)  # the FIRST holder is unchanged
     finally:
         _shutdown(server, thread)
