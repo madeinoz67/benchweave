@@ -77,10 +77,17 @@ only incidentally, and incidentally is not reliably.
 
 ### 2. Process findings — worked/didn't, with evidence
 
-Two harvest lanes:
+Three harvest lanes:
 
-- Vault recall on the `benchweave` vault — tag-scoped (`retrospective`, `workflow`,
-  `review-tail`) and `since`/`before`-filtered to the window.
+- Vault recall on the `benchweave` vault — tag-scoped (`retrospective`, `workflow`)
+  and `since`/`before`-filtered to the window. Review records carry their own tags
+  (review / code-review / governance-review shapes); they are found via the archive
+  lane below, not by recall vocabulary.
+- The drained archive `.claude/memory-proposals.drained.jsonl` — every ledger-routed
+  vault entry minted in the window (by `drained_at`), including review records whose
+  tags fall outside the recall vocabulary; the deterministic index when recall
+  under-returns. It does not cover MCP-direct vault writes, and it carries no window
+  index — window by `drained_at`.
 - The review-finding dispositions carried in fix-wave commit messages: the messages
   name the finding IDs they fold (`review F3/F5/F6/LOW-1/NIT-2` shape).
 
@@ -93,7 +100,10 @@ standards-governor, mechanism-critic, code-reviewer, bench-measurer — the `inc
 loop's lanes). Verdict and findings yield are `[harvested]` from the period's review
 records and per-run retrospective entries: every review lane already ledgers its
 findings record with dispositions (the review-findings exemption), so this section
-**cites** those records — it never re-ledgers them. Dispatch counts, stalls/swaps and
+**cites** those records — it never re-ledgers them — and finds them via the §2
+archive lane, not recall alone. Evidence may also live in the period's design-record
+fold sections and PR bodies in git: when a lane's yield is recorded there, cite the
+file path + section, not a vault id. Dispatch counts, stalls/swaps and
 brief-quality misses are `[narrated]` or `not recorded` wherever no entry carries
 them. Gate-redundancy observations (three lanes redundantly re-running full gates, as
 #129 recorded) come from the per-run entries when present.
@@ -134,6 +144,10 @@ table padded to look thorough.
 - `git log --since "<from>" --until "<to>" -- .claude/ docs/` — skill, agent and doc
   amendments landed in-window.
 
+Archive and queue counts are render-time measurements of append-only sources — pin
+them "as at <the drain-receipt `at` timestamp>" so a verifier re-derives at the same
+moment.
+
 ## The entry-shape note
 
 Section 3 is only as harvestable as the per-run entries `increment` step 8 mandates. A
@@ -172,6 +186,6 @@ be harvested rather than excavated.
 - **The step-8 pointer dangling.** If this skill is renamed or moved, `increment`
   step 8's cross-reference lies; any skills move re-checks it (the reviewer's
   prose-cross-reference walk — no mechanical guard claimed).
-- **Vault recall missing a period's entry.** Observed once (2026-09-21): a known
-  entry ranked ~7th on a good query. Use tag-scoped and `since`/`before`-filtered
+- **Vault recall missing a period's entry.** Observed once (2026-09-21, the #129 run
+  entry): it ranked ~7th on a good query. Use tag-scoped and `since`/`before`-filtered
   recall — both deterministic lanes — not free-text only.
