@@ -253,7 +253,12 @@ rather than rewriting the history — that is how this file earns trust.
   (`docs/acceptance/validation-report.md` via `check_closure.py`). Each is
   written only by its own validator's `--write-report` epilogue (the shared
   module `scripts/architecture/_validation_report.py`; refuses on any
-  failing check, unreachable from the `runpy` harness) and byte-pinned to a
+  failing check; structurally unreachable from the `runpy` harness — the
+  argv gate sits in each script's `__main__` block, and `runpy.run_path`
+  executes the module body with `__name__ == "<run_path>"`, so the harness
+  never enters it. Residual: the shared MODULE is directly callable — the
+  refuse pin itself calls `main()` — and refuse-on-red is the guard on
+  that path) and byte-pinned to a
   live sorted render by the parametrized
   `test_validation_report_matches_live_run` and tamper arms. In-prose counts
   are now DERIVED from the values the suite computes (f-strings over

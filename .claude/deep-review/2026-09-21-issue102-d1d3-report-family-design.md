@@ -366,3 +366,31 @@ is not rewritten.
   train-record exclusion), F4 duplicate-name census, F7 byte-for-byte drift comparison
   (CRLF can no longer launder through universal newlines), F8 POSIX-absoluteness arm on
   the portability guard with its not-caught disclosure.
+
+Wave-2 folds (appended after the first wave):
+
+- **A-F2 (tamper precondition):** the tamper fixture now asserts `rendered == pristine`
+  on the un-mutated tmp tree before any mode runs — the 15 arms prove detection by
+  mutating pristine against rendered, and pre-existing divergence would have kept them
+  vacuously green (#119-class). Lands green; its RED story is a tmp-only render
+  divergence, now loud at the fixture.
+- **R-F4 (typing scope):** `_validation_report.py` joined `[tool.mypy]` files (the one
+  CI-load-bearing module; the sibling check scripts keep their historical exclusion) and
+  types clean under strict; `main()` is honestly `-> NoReturn` (it always raises
+  `SystemExit`).
+- **R-F5 (marker single-sourcing):** `_marker` is public `marker()` and the five
+  per-suite `GENERATED_MARKER` literals delegate to it; byte-stability proven (all five
+  regens to a zero diff, pins green).
+- **A-F3 (refusal-family honesty):** the docstring discloses that an unparseable
+  manifest raises `json.JSONDecodeError` — loud, outside the
+  `{standard_id}_manifest_absent:` prefix family — and that duplicate-row first-match
+  stands as-is (manifest.py precedent).
+- **R-F3 (CON-11 structural reason):** the amendment's "unreachable from the runpy
+  harness" now carries its reason inline (argv gate in `__main__`; `runpy` runs with
+  `__name__ == "<run_path>"`) plus the residual (the module is callable — the refuse pin
+  calls `main()`; refuse-on-red is the guard there).
+- **A-F4 (accepted risk, record only):** the README row-count parser assumes the count
+  is the first integer after the row's closing paren (the href carries version digits).
+  If row prose ever leads with an integer-like token, the assert fails confusingly —
+  naming the row and both numbers — never silently. Accepted: a loud confusing failure
+  beats a green lie, and the exactly-once link assert bounds the row's shape.
