@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The mock captures every setOption payload so trace styling is asserted on the
@@ -55,6 +55,21 @@ function plot(hints?: Map<string, TraceHint>, extra?: { threshold?: boolean }) {
 function stubMutedToken(value: string) {
   vi.stubGlobal("getComputedStyle", () => ({
     getPropertyValue: (name: string) => (name === "--bw-text-muted" ? value : ""),
+  }));
+}
+
+/** FC6 (metric D): tokens keyed to the DOM — the stub answers from the
+ *  element's closest [data-theme] ancestor, so flipping the DOM attribute
+ *  changes the answer and the test input stays coupled to the mutation
+ *  (light accent #0b7181, dark accent #42cee2). */
+function stubThemeTokens() {
+  vi.stubGlobal("getComputedStyle", (element: Element) => ({
+    getPropertyValue: (name: string) => {
+      const theme = element.closest("[data-theme]")?.getAttribute("data-theme") ?? "light";
+      if (name === "--bw-accent") return theme === "dark" ? "#42cee2" : "#0b7181";
+      if (name === "--bw-text-muted") return theme === "dark" ? "#9fb4bd" : "#5b6a73";
+      return "";
+    },
   }));
 }
 
@@ -378,5 +393,34 @@ describe("EngineeringPlot", () => {
     for (const row of rows) {
       expect(row).toHaveAccessibleName(/hidden/i);
     }
+  });
+
+  it("re-resolves trace colours when the theme attribute flips (FC6)", async () => {
+    stubThemeTokens();
+    const { container } = render(
+      <div data-theme="light">
+        <EngineeringPlot kind="time_series" title="Theme flip" x={{ label: "Time", unit: "s" }} traces={traces} />
+      </div>,
+    );
+    expect(seriesOf("a").lineStyle.color).toBe("#0b7181");
+    const swatch = () =>
+      screen.getByText("Channel A · V").closest("li")!.style.getPropertyValue("--legend-swatch");
+    expect(swatch()).toBe("#0b7181");
+
+    container.firstElementChild!.setAttribute("data-theme", "dark");
+    await waitFor(() => expect(setOption).toHaveBeenCalledTimes(2));
+    const second = setOption.mock.calls[1][0].series as Array<{ id: string; lineStyle: { color: string } }>;
+    expect(second.find((entry) => entry.id === "a")!.lineStyle.color).toBe("#42cee2");
+    expect(swatch()).toBe("#42cee2");
+  });
+
+  it("does not re-resolve without an attribute flip (FC6 control)", () => {
+    stubThemeTokens();
+    render(
+      <div data-theme="light">
+        <EngineeringPlot kind="time_series" title="Stable" x={{ label: "Time", unit: "s" }} traces={traces} />
+      </div>,
+    );
+    expect(setOption).toHaveBeenCalledTimes(1);
   });
 });

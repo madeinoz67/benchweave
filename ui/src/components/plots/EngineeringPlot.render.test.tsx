@@ -1,5 +1,5 @@
-import { render } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { render, waitFor } from "@testing-library/react";
+import { describe, expect, it, vi, afterEach } from "vitest";
 
 // No echarts mock in this file: these assertions run the REAL renderer
 // against the component's output, closing the setOption-mock blind spot —
@@ -51,4 +51,37 @@ describe("EngineeringPlot real rendering", () => {
 
     expect(canvasSvg(container).textContent).toContain("Warning limit");
   });
+
+  it("redraws the SVG with the flipped theme's accent (FC6, real renderer)", async () => {
+    // Metric D at the FC1 bar: the theme tokens are keyed to the DOM
+    // (light accent #0b7181, dark accent #42cee2) and the flip must reach
+    // the drawn pixels through a fresh render, not just a recorded option.
+    vi.stubGlobal("getComputedStyle", (element: Element) => ({
+      getPropertyValue: (name: string) => {
+        const theme = element.closest("[data-theme]")?.getAttribute("data-theme") ?? "light";
+        if (name === "--bw-accent") return theme === "dark" ? "#42cee2" : "#0b7181";
+        if (name === "--bw-text-muted") return theme === "dark" ? "#9fb4bd" : "#5b6a73";
+        return "";
+      },
+    }));
+    const { container } = render(
+      <div data-theme="light">
+        <EngineeringPlot
+          kind="time_series"
+          title="Theme flip"
+          x={{ label: "Time", unit: "s" }}
+          traces={traces}
+        />
+      </div>,
+    );
+    expect(canvasSvg(container).innerHTML).toContain("#0b7181");
+
+    container.firstElementChild!.setAttribute("data-theme", "dark");
+    await waitFor(() => expect(canvasSvg(container).innerHTML).toContain("#42cee2"));
+    expect(canvasSvg(container).innerHTML).not.toContain("#0b7181");
+  });
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });

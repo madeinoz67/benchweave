@@ -2,7 +2,7 @@ import * as echarts from "echarts/core";
 import { GridComponent, LegendComponent, MarkLineComponent, TooltipComponent } from "echarts/components";
 import { LineChart } from "echarts/charts";
 import { SVGRenderer } from "echarts/renderers";
-import { useEffect, useId, useMemo, useRef, type CSSProperties } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 
 import "./engineering-plot.css";
 
@@ -108,17 +108,44 @@ function readTokens(
 }
 
 export function EngineeringPlot({ kind, title, x, traces, threshold, hints }: EngineeringPlotProps) {
+  const figureElement = useRef<HTMLElement>(null);
   const chartElement = useRef<HTMLDivElement>(null);
   const descriptionId = useId();
+  const [themeVersion, setThemeVersion] = useState(0);
+  const [legendStyles, setLegendStyles] = useState<TraceStyle[]>([]);
   const visible = (trace: PlotTrace) => hints?.get(trace.id)?.visible !== false;
   const description = `${x.label} in ${x.unit}; ${traces.filter(visible).map((trace) => `${trace.label} in ${trace.unit}`).join("; ")}`;
+
+  // FC6: a theme switch mutates an ancestor's data-theme attribute — no data
+  // dependency of this component changes, so tokens resolved once go stale.
+  // Observe the closest [data-theme] ancestor (documentElement fallback,
+  // deduped when identical — covers both the gateway app that themes a
+  // wrapper element and the preview that themes the document root) and bump
+  // a version the legend resolution and the chart effect both depend on.
+  useLayoutEffect(() => {
+    const element = figureElement.current;
+    if (element === null || typeof MutationObserver === "undefined") return;
+    const themed = element.closest("[data-theme]") ?? document.documentElement;
+    const observer = new MutationObserver((records) => {
+      if (records.some((record) => record.attributeName === "data-theme")) {
+        setThemeVersion((version) => version + 1);
+      }
+    });
+    observer.observe(themed, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => observer.disconnect();
+  }, []);
+
   // The legend is the disclosure key: its swatches resolve through the same
-  // two-pass styling as the chart, read from the document theme (the canvas
-  // inherits the same variables, so the two reads agree).
-  const legendStyles = useMemo(
-    () => resolveStyles(traces, hints, readTokens(threshold?.severity, getComputedStyle(document.documentElement))),
-    [traces, hints, threshold],
-  );
+  // two-pass styling as the chart, read from the component's own root — the
+  // subtree that inherits the active theme whichever ancestor carries
+  // data-theme, so legend and chart can never disagree (the gateway-app
+  // always-light-legend manifestation). Refs are not attached during render,
+  // so the read happens post-attach and lands in state before paint.
+  useLayoutEffect(() => {
+    const element = figureElement.current;
+    if (element === null) return;
+    setLegendStyles(resolveStyles(traces, hints, readTokens(threshold?.severity, getComputedStyle(element))));
+  }, [traces, hints, threshold, themeVersion]);
 
   useEffect(() => {
     const element = chartElement.current;
@@ -128,7 +155,10 @@ export function EngineeringPlot({ kind, title, x, traces, threshold, hints }: En
       width: element.clientWidth || 640,
       height: element.clientHeight || 256,
     });
-    const tokens = readTokens(threshold?.severity, getComputedStyle(element));
+    // Same read source as the legend (the component's own root): the canvas
+    // div inherits the same theme variables, and one read source means the
+    // two resolutions cannot diverge.
+    const tokens = readTokens(threshold?.severity, getComputedStyle(figureElement.current ?? element));
     // Two passes: index-derived defaults over the full list, then hint bias.
     const resolved = resolveStyles(traces, hints, tokens);
     const visibleTraces = traces.filter((trace) => hints?.get(trace.id)?.visible !== false);
@@ -187,10 +217,10 @@ export function EngineeringPlot({ kind, title, x, traces, threshold, hints }: En
       window.removeEventListener("resize", resize);
       chart.dispose();
     };
-  }, [kind, threshold, traces, x, hints]);
+  }, [kind, threshold, traces, x, hints, themeVersion]);
 
   return (
-    <figure className="bw-plot">
+    <figure className="bw-plot" ref={figureElement}>
       <figcaption>{title}</figcaption>
       <div ref={chartElement} className="bw-plot__canvas" role="img" aria-label={title} aria-describedby={descriptionId} />
       <p className="bw-visually-hidden" id={descriptionId}>{description}</p>
@@ -203,7 +233,7 @@ export function EngineeringPlot({ kind, title, x, traces, threshold, hints }: En
               data-line={index % 2 === 0 ? "solid" : "dashed"}
               data-hidden={isHidden ? "true" : undefined}
               aria-label={isHidden ? `${trace.label} · ${trace.unit} (hidden by presentation preference)` : undefined}
-              style={{ "--legend-swatch": legendStyles[index].color } as CSSProperties}
+              style={{ "--legend-swatch": legendStyles[index]?.color ?? "" } as CSSProperties}
             >
               {trace.label} · {trace.unit}
               {isHidden ? <span className="bw-plot__legend-hidden">hidden</span> : null}
