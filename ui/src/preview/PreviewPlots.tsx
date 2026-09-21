@@ -14,10 +14,11 @@ export interface PlotJoin {
 
 /** Pure join: one projected view × one scenario → traces + hints.
  *
- *  The preview data model is ONE simulated value per binding per scenario,
- *  not observation history — every feedable trace is an honest single point
- *  at x = 0, and the panel carries the standing disclosure line. Feedability
- *  is per binding: the observation must exist and carry a finite number.
+ *  The preview data model is ONE simulated value per observation target
+ *  per scenario, not observation history — every feedable trace is an honest
+ *  single point at x = 0, and the panel carries the standing disclosure line.
+ *  Feedability is per target: the observation must exist and carry a finite
+ *  number. Bindings that share a target share that single observation.
  *  Hints ride as projected preferences (row C): color_role/visible merge
  *  onto the trace hint the plot component already consumes, and the map is
  *  omitted entirely when no channel declares a preference. No threshold is
@@ -57,7 +58,7 @@ export function PreviewPlots({ views, scenario }: PreviewPlotsProps) {
     <section className="bw-preview__plots" aria-label="Declared plots">
       <h2 className="bw-preview__plots-heading">Declared plots</h2>
       <p className="bw-preview__plots-note">
-        Preview scenarios carry one simulated value per binding — not observation history.
+        Preview scenarios carry one simulated value per observed target — not observation history.
       </p>
       {views.map((view) => {
         const join = plotTraces(view, scenario);

@@ -110,7 +110,7 @@ describe("PreviewPlots panel", () => {
   it("renders the standing snapshot disclosure beside every panel", () => {
     render(<PreviewPlots views={[view([channel()])]} scenario={scenario} />);
     expect(
-      screen.getByText("Preview scenarios carry one simulated value per binding — not observation history."),
+      screen.getByText("Preview scenarios carry one simulated value per observed target — not observation history."),
     ).toBeVisible();
   });
 

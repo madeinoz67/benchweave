@@ -235,7 +235,7 @@ can bias a trace colour to `accent`/`muted` or hide a channel from the
 drawing, and can never carry severity semantics or a threshold.
 
 Preview plot values are **per-scenario snapshots**: the preview data model
-carries one simulated value per binding per scenario, so a feedable plot
+carries one simulated value per observation target per scenario, so a feedable plot
 draws an honest single point, not observation history — the panel states
 this beside every plot it renders. A declared plot whose binding has no
 feedable value in the current scenario (waveform/dataset plots, or
