@@ -102,8 +102,9 @@ or a public surface, run the loop.
    merged LOCAL branches (remote deletions take the owner's word), and sweep
    untracked artifacts from the shared checkouts — sync-tool duplicates (iCloud's
    `name 2.ext` suffix) are deleted only when the non-suffixed sibling exists;
-   other sessions' live files are never touched. Ledger the retrospective before
-   the run reports closed.
+   other sessions' live files are never touched. Ledger the retrospective — carrying
+   the facts the `retrospective` skill's entry-shape note names — before the run
+   reports closed; at period close, the `retrospective` skill harvests these entries.
 
 ## Contributor PRs
 
