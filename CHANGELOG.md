@@ -577,6 +577,7 @@ All notable changes to this project will be documented in this file.
 - Gate-only package lane; SDK distribution moves to PyPI
 - Push CHANGELOG.md via changelog app token
 - Add manual trigger
+- Consistent action pinning, locked syncs, honest workflow behaviour
 
 ### Ci+docs
 
