@@ -568,6 +568,7 @@ All notable changes to this project will be documented in this file.
 - Pin the served MCP tool descriptions to the vendored corpus
 - The harness closes the Store it opened (#136)
 - Close the store only once the server thread has stopped (#136)
+- Pin packaged-first precedence when both trees exist
 
 ### Build
 
