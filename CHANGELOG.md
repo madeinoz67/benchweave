@@ -249,6 +249,7 @@ All notable changes to this project will be documented in this file.
 - Issue #102 D1+D3 validation-report family design record
 - CON-11 family amendment, drift row 13, GOVERNANCE generalization, validation doc (#102 D1)
 - CON-11 structural reason + residual; wave-2 folds recorded (#102 D1, review R-F3 + A-F4)
+- Increment loop amendments from the #129 retrospective
 
 ### Features
 
