@@ -243,6 +243,8 @@ All notable changes to this project will be documented in this file.
 - Refute fold — name the platform condition; scope the residue case (#102 D2 G6)
 - Design record for #97 description-guard extension
 - Review fold — reconciliation precise; root-only scope stated (#97)
+- Design record for #125 pinned-escape coverage
+- Refute folds — revival-set precision, honest Windows posture (#125)
 
 ### Features
 
@@ -497,6 +499,7 @@ All notable changes to this project will be documented in this file.
 - RED — bump-window arms against the absent train_window module
 - RED — OUT/title must follow the manifest's active otdp version (#102 D2)
 - Extend the #47 annotation guard to description (#97)
+- Pin the pinned check's path-escape arm (#125)
 
 ### Build
 
