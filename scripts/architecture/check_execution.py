@@ -1,6 +1,7 @@
 import copy
 import hashlib
 import json
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -9,7 +10,19 @@ from jsonschema import Draft202012Validator, FormatChecker
 "Document-contract review checks; not a production interpreter or admission service."
 DOCS = globals().get("DOCS", Path(__file__).resolve().parents[2] / "docs")
 STANDARDS = globals().get("STANDARDS", Path(__file__).resolve().parents[2] / "standards")
-CONTRACT_DIR = STANDARDS / "execution/0.1.0"
+# runpy.run_path does not put the script's directory on sys.path (measured:
+# the sibling import fails there), so the shared report writer needs the
+# bootstrap. __file__ is set in both execution modes (direct python and
+# runpy.run_path with init_globals).
+_HERE = str(Path(__file__).resolve().parent)
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
+import _validation_report  # noqa: E402
+
+# Manifest-derived, resolved once (#102 D2 generalized; the #119 lesson).
+CONTRACT_DIR = (
+    STANDARDS / "execution" / _validation_report.active_standard_version(STANDARDS, "execution")
+).resolve()
 E = CONTRACT_DIR / "examples"
 results = []
 
@@ -36,7 +49,15 @@ def dt(v):
 schemas = {}
 ex = {}
 validators = {}
-for name in ("procedure", "bench", "safety-policy", "commissioning", "run-binding", "run-record"):
+SCHEMA_NAMES = (
+    "procedure",
+    "bench",
+    "safety-policy",
+    "commissioning",
+    "run-binding",
+    "run-record",
+)
+for name in SCHEMA_NAMES:
     s = json.loads((CONTRACT_DIR / (name + ".schema.json")).read_text(encoding="utf-8"))
     schemas[name] = s
     Draft202012Validator.check_schema(s)
@@ -300,7 +321,12 @@ x = copy.deepcopy(policy)
 x["continuous_conditions"][1]["unit"] = "A"
 check("monitor unit mismatch", "condition unit" in bench_errors(b, x))
 catalog = json.loads(
-    (STANDARDS / "otdp/0.2.0/device-profile-catalog.json").read_text(encoding="utf-8")
+    (
+        STANDARDS
+        / "otdp"
+        / _validation_report.active_standard_version(STANDARDS, "otdp")
+        / "device-profile-catalog.json"
+    ).read_text(encoding="utf-8")
 )
 
 
@@ -469,9 +495,45 @@ check("nominal boundary cannot hide uncertainty", not interval_pass(5.1, 0.01, 4
 check("contained uncertainty interval passes", interval_pass(5.0, 0.01, 4.9, 5.1))
 check("unknown required uncertainty is not pass", not interval_pass(5.0, None, 4.9, 5.1))
 CHECKS = results
+
+GENERATED_MARKER = _validation_report.marker("scripts/architecture/check_execution.py")
+REPORT_TITLE = "# Procedure and bench contract verification"
+REPORT_COVERAGE = (
+    f"Checked {len(SCHEMA_NAMES)} Draft 2020-12 schemas, linked synthetic fixtures, "
+    "required fields, bounded/lexical procedure cases, channel/resource/net references, "
+    "policy budgets, sample predicate structure, resolved class inputs and terminal "
+    "outcome consistency. Actual cross-document fixture hashes were checked."
+)
+REPORT_LIMIT = (
+    "**Limits:** No engine, full semantic validator, signature verification, scheduler, "
+    "physical protection, live test or commissioning evidence was executed. External "
+    "zero-digest references and invented identities/limits label non-admissible synthetic "
+    "fixtures. Full P01–P10/B01–B10 and failure-path conformance remain obligations for "
+    "future implementations."
+)
+
+
+def render_report(checks: list[tuple[str, bool]]) -> str:
+    """Render the validation report markdown from an execution-suite check list.
+
+    Pure and order-canonical (sorted ``## Checks``, a function of the check
+    set only); the shared template lives in ``_validation_report.render``.
+    """
+    return _validation_report.render(
+        [(str(name), bool(ok)) for name, ok in checks],
+        marker=GENERATED_MARKER,
+        title=REPORT_TITLE,
+        coverage=REPORT_COVERAGE,
+        limit=REPORT_LIMIT,
+    )
+
+
 if __name__ == "__main__":
-    failures = [name for name, ok in CHECKS if not ok]
-    for failure in failures:
-        print("FAIL:", failure)
-    print(f"{len(CHECKS) - len(failures)}/{len(CHECKS)} checks passed")
-    raise SystemExit(bool(failures))
+    _validation_report.main(
+        CHECKS,
+        CONTRACT_DIR / "validation-report.md",
+        script="scripts/architecture/check_execution.py",
+        title=REPORT_TITLE,
+        coverage=REPORT_COVERAGE,
+        limit=REPORT_LIMIT,
+    )

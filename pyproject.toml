@@ -101,6 +101,16 @@ select = ["E", "F", "I", "UP", "B", "SIM", "S", "RUF100"]
 [tool.mypy]
 python_version = "3.13"
 strict = true
-files = ["src/benchweave", "tests", "scripts/registry", "packages/sdk/src", "scripts/sdk_smoke.py"]
+# scripts/architecture stays out of scope except _validation_report.py — it is
+# CI-load-bearing (the report family's writer/pin substrate), so it types clean
+# on its own; the sibling check scripts keep their historical exclusion.
+files = [
+    "src/benchweave",
+    "tests",
+    "scripts/registry",
+    "packages/sdk/src",
+    "scripts/sdk_smoke.py",
+    "scripts/architecture/_validation_report.py",
+]
 # Independent manufacturer/model projects use their own environments and CI checks.
 exclude = ['^plugins/[^/]+/[^/]+/']
