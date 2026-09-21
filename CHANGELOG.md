@@ -133,6 +133,10 @@ All notable changes to this project will be documented in this file.
 - Audit-annotate train_window's git subprocess under the S-band; merge main
 - Resolve OUT once so the pinned check compares resolved-to-resolved (#119)
 - Precision folds from the first review wave (#102 D1, review F3/F5/F6/LOW-1/NIT-2)
+- EngineeringPlot re-resolves theme tokens on data-theme flips (FC6)
+- Disclosure names observed targets, not bindings
+- Preview workbench passes no fabricated threshold (R1b)
+- Render-quality batch — stable joins, safe keys, unit guards, wire labels (R2)
 
 ### Documentation
 
@@ -260,6 +264,9 @@ All notable changes to this project will be documented in this file.
 - #43 Amendment 2 — pin the standalone capture directory layout
 - #43 Amendment 2 — standalone formats (plain text first-class) + declaration chain
 - #43 Amendment 3 — integrate external review (platima)
+- Issue #67 manifest-driven plot rendering design of record
+- Declared-plot preview behavior + obligation 12's doc home
+- Review-wave amendment — guard wording, matrix sequencing, claim scoping, scaffold fix
 
 ### Features
 
@@ -372,6 +379,8 @@ All notable changes to this project will be documented in this file.
 - Closure validation report joins the writer family (#102 D1)
 - Otdp coverage prose derives its counts (#102 D3)
 - Retrospective — standardized end-of-period report with sub-agent review (#133)
+- Plugin-ui-preview 0.1.0 -> 0.1.1 — plot_views on the wire
+- Manifest-declared plots render in the preview (0.1.2)
 
 ### Hardware Evidence
 
@@ -446,6 +455,10 @@ All notable changes to this project will be documented in this file.
 - Migrate gortex grants to official server-pattern + disallowedTools shape
 - Deny muninndb write tools on the muninn-carrying agents
 - Grant mcp__gortex__edit to increment-builder, reconcile-gated
+- Advance packages/sdk to 1c700bf (issue #67 SDK arc)
+- Advance packages/sdk to 168cefb (disclosure wording)
+- Advance packages/sdk to 4263cc3 (scaffold numeric-target fix)
+- Advance packages/sdk to 57a3441 (generated-test syntax fix)
 
 ### Refactoring
 
@@ -529,6 +542,10 @@ All notable changes to this project will be documented in this file.
 - Report-family census — registered writers, classified artifacts (#102 D1, review F2)
 - Harden the family pin — duplicate names, byte compare, POSIX absoluteness (#102 D1, review F4/F7/F8)
 - Tamper fixture asserts its vacuous-green precondition (#102 D1, review A-F2)
+- Pin the projection and the relaxation (metrics A/E/F)
+- Scaffold plot selection — numeric-first, non-numeric-first, none
+- Unmocked disclosure arms, divergent-id join pin, trace-level colour (R3+R4)
+- Generated conformance test compiles and runs both variants
 
 ### Build
 
