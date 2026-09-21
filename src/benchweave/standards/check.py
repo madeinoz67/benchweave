@@ -172,7 +172,7 @@ def _compare_tree(document: dict[str, Any], sdk: Path) -> list[str]:
         if not stamp.is_file():
             failures.append(f"stale_generated: {VENDORED}/{identifier}/{STAMP_NAME} missing")
             continue
-        if set(stamp.read_text().splitlines()) != expected_lines:
+        if set(stamp.read_text(encoding="utf-8").splitlines()) != expected_lines:
             failures.append(
                 f"stale_generated: {VENDORED}/{identifier}/{STAMP_NAME} does not "
                 "match the exported standard"
