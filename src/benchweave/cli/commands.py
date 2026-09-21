@@ -83,7 +83,8 @@ _DATA_DIR_HELP = "At-rest data directory (holds state.sqlite + content/)."
     is_flag=True,
     help=(
         "Print the generated gateway secret to stdout. Default: the secret is "
-        "written only to <data-dir>/benchweave.env (mode 0600) and never printed."
+        "written only to <data-dir>/benchweave.env (mode 0600; on Windows, access "
+        "restricted to your account) and never printed."
     ),
 )
 @click.option(

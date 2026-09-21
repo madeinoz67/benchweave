@@ -90,6 +90,18 @@ secret is never printed unless you opt in:
 benchweave setup --data-dir /var/lib/benchweave --show-secret --json
 ```
 
+On Windows, mode bits do not reach a file's access list, so `setup` does the
+equivalent instead: `benchweave.env` is created in a private staging
+directory, stripped of inherited entries and granted to the account running
+`setup` alone, and only then given the secret and moved into place, so no
+other account can open it at any point. Check it with
+`icacls <data-dir>\benchweave.env`, which should list
+one entry. Run the gateway under that same account. On a volume with no
+access lists (FAT, exFAT) `setup` refuses rather than write a secret it cannot
+protect. Only the credential file is restricted; the rest of the data
+directory keeps whatever access its location gives it, so choose that
+location as you would on Linux.
+
 `--data-dir` can come from `BENCHWEAVE_DATA_DIR` instead of the flag (true
 for `setup`, `backup`, `restore`, `report`, and `verify`). Every command
 also takes `--json` for the stable machine contract.
