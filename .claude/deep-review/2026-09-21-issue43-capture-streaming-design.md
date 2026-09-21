@@ -415,7 +415,8 @@ standalone leg:
       ├── manifest.json            # fixed name; integrity + metadata for the event
       ├── staging/                 # chunk files during capture; removed at finalise
       ├── <capture_id>.<ext>       # primary artifact; ext from the format
-      │                            #   (waveform_f64le → .f64, raw_binary → .bin)
+      │                            #   (waveform_f64le → .f64, raw_binary → .bin,
+      │                            #    csv → .csv, unknown format → .data)
       └── renderings/              # optional; plugin-written ordinary files
   ```
 
@@ -430,6 +431,26 @@ standalone leg:
   Renderings live in `renderings/` so the three-class split (Decision 7) is visible
   in the tree: the contributor's capture-event grouping model realized where it
   genuinely lives — standalone, where no store exists to admit or refuse renderings.
+- **Formats: not limited to the core-lane enum.** The gateway's core capture lane
+  admits `waveform_f64le`/`raw_binary` (corpus-owned, spec §5/§7); standalone mode
+  runs outside that gate and accepts **any plugin-declared format — plain text
+  included** (`csv`, `json`, `txt`, `vcd`, …). The writer is content-agnostic: it
+  names, digests, and lengths bytes; it never interprets them, so the integrity
+  machinery applies identically to text and binary. Extensions come from a small
+  known-format map (`waveform_f64le` → `.f64`, `raw_binary` → `.bin`, `csv` →
+  `.csv`, `text` → `.txt`, `vcd` → `.vcd`), otherwise `.data`; `manifest.json`'s
+  `format` field is always the source of truth. Plain-text captures are first-class
+  here — the contributor's ADC prototype already writes `{stem}.csv`.
+- **Format declaration (two surfaces, one chain).** Authoring-time: the plugin's
+  **descriptor** declares `capture_formats` — already normative in the corpus, the same
+  declaration in both modes. Capture-time: the adapter states the format for the
+  capture at hand — the `capture` request in gateway mode, the finalise `metadata`
+  (`format` field) in standalone mode; `manifest.json` records what was declared.
+  Standalone validation is light but honest: a finalise format **not in the
+  descriptor's declared `capture_formats` is refused** with an error naming the
+  declared list (the standalone test harness loads the plugin's descriptor anyway, so
+  nothing extra to configure — and a format outside the declared set is almost
+  certainly a bug, per the corpus's "describe only verified capabilities").
 - **Integrity is not optional standalone.** At publish, everything is integrity-bound
   identically (Decision 7's rule) in both modes: digest over real bytes, length over
   real bytes, abort leaves zero chunk residue.
