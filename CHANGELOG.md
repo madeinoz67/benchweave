@@ -140,6 +140,8 @@ All notable changes to this project will be documented in this file.
 - Sweep the presentation-admission seam onto the active plugin-ui version
 - Render repository-relative paths with forward slashes on every platform (#138)
 - Read the _GENERATED.txt stamps as UTF-8 (#139)
+- Keep the 0600 promise on Windows by restricting benchweave.env's access list (#137)
+- Say what 0600 means on Windows in the remaining messages and tests (#137)
 
 ### Documentation
 
