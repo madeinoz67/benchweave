@@ -588,3 +588,55 @@ were checked and cleared:
   rendering them would have required fabricating data or shipping empty charts as a
   "feature", and the honest answer would have been to defer until a vector fixture model
   existed. The observation time_series case is what makes the slice real.
+
+---
+
+## Amendment 2026-09-21 — review-wave corrections (governor / reviewer / refute / RedTeam)
+
+Appended, not rewritten, per the invariants-file convention. These corrections carry the
+same authority as the body; where they contradict it, they win.
+
+1. **§3.2's "structural guard" is overstated (refute Finding 2, LOW).**
+   `ValidatedPreviewInputs` is a public constructible dataclass: `_load_ui_candidate`
+   builds it before validity is known, the CLI re-constructs it via `type(candidate)(...)`
+   for the fixtures override, and the metric tests construct it directly. The guard is
+   call-site discipline — the sanctioned path (`load_validated_preview_inputs`) gates on
+   a clean report — not structure. The input-type convention still earns its keep (it
+   makes the discipline the path of least resistance); the claim no longer says
+   "structurally unrepresentable."
+2. **§5's single matrix regeneration is wrong sequencing (governor ruling).** The matrix
+   derives its SDK column from the submodule's `standards-lock.json`, so it regenerates
+   at BOTH the standards commit (row moves; SDK column stays at the then-pinned lock —
+   0.0.2 at `1553d4f`) AND the pointer commit (SDK column moves — 0.0.4). Each commit's
+   committed matrix equals a fresh render of its own tree; a bisect never sees a lying
+   matrix. The design's implied one-shot regen would have left the standards commit
+   failing `matrix --check`.
+3. **Claim scoping on "a renderer consumes the model" (RedTeam PT-2).** What renders FED
+   this slice is the single-channel time_series path — decoding, projection, join,
+   composition. Waveform and multi-channel views render structure-plus-disclosure; their
+   semantics stay doctrine until the deferred vector-values fixture model exists. The
+   honest close-out phrase is "the plot model is rendered," not "validated" in full.
+   Corollaries: the TS decoder + Ajv ARE a second, bounded, conformance-pinned SHAPE
+   mirror — only RESOLUTION stays single-language; and in a loopback preview the
+   authority-split framing of §2 is rhetoric (one principal on both sides) — the
+   drift/pinning leg is what actually carried the fork decision.
+4. **§3.4's snapshot datum (RedTeam PT-2, recorded).** `values: [[0, value]]` places the
+   single point at x = 0 on a receipt-time axis — an arbitrary-but-labeled datum,
+   disclosed by the standing line. The no-fabrication principle this design states is
+   scoped to thresholds and severity; kept as-is, recorded so the scoping is visible.
+5. **The PATCH class stands (governor, COMPLIANT).** The fixture-const flip's document
+   incompatibility was weighed against the OTDP tightening→MINOR precedent; the ruling
+   follows the row-C/plugin-ui-0.1.1 in-tree precedent (versioned documents declare
+   their version; old documents stay valid against the frozen old tree) — a version-key
+   mechanism, not a validation-semantics tightening.
+6. **§3.6's scaffold example pinned to `targets[0]` — reproduced HIGH, fixed (refute).**
+   The scaffold emitted a plot its own check-ui rejected whenever the descriptor's
+   first readable parameter was bool or string (`targets[0]` selection vs
+   `_plot_findings`' number/integer axis rule); the committed tests covered only the
+   float-first starter — the coverage gap that let it ship. Fixed at SDK `4263cc3`:
+   plot target selection is the first observation target whose value variable is
+   number/integer (the validator's own test), with the receipt-time axis and the hinted
+   plot bound there; a descriptor with no numeric observation target ships no example
+   plot (no `plots` key, a conditional generated conformance assertion, and a UI-GUIDE
+   disclosure). RED: 3/3 new tests failed against `168cefb` (bool-first, string-first,
+   all-non-numeric); GREEN at `4263cc3`.
