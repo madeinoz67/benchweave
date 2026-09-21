@@ -17,9 +17,11 @@ def active_standard_version(standards_root: Path, standard_id: str) -> str:
 
     Never a hardcoded literal and never a silent fallback: a missing manifest
     or a manifest without the standard's entry is a loud refusal — the corpus
-    a family script validates IS the manifest's active version. The refusal
-    prefix ``{standard_id}_manifest_absent:`` reproduces the historical
-    ``otdp_manifest_absent:`` bytes for devices (the #119/#125 surfaces).
+    a family script validates IS the manifest's active version. Only the
+    refusal PREFIX is byte-stable across the family: ``{standard_id}_manifest_absent:``
+    is byte-identical to the historical ``otdp_manifest_absent:`` for devices
+    (what the #119/#125 surfaces match on); the message text after the prefix
+    is generic and lowercase ("active otdp", not the historical "active OTDP").
     """
 
     manifest_path = standards_root / "standards-manifest.json"

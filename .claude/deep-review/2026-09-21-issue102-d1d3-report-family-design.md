@@ -200,7 +200,7 @@ corpus-manifest rows move — reports are not digest-pinned by design). **No CI 
 | D1-b | plugin-ui test-path literals (`tests/architecture/test_plugin_ui_contracts.py` `DIRECTORY`, `tests/standards/test_scenarios.py` `NORMATIVE`/`PIN_KEY` hardcode `plugin-ui/0.2.0`) — post-bump they would validate the frozen tree silently (D2's F1 class, different files). | **The one follow-on issue** (if the maintainer wants it tracked; otherwise this row). | Next plugin-ui bump. |
 | D1-c | `check_planning.py`'s absolute-path `Stored fixture agrees` name — same normalization, no report consumer exists; guard scope stays family-only. | This row. | Planning gains a report/pin consumer, or its next touch. |
 | D3-a | Count-bearing **check names** stay static (scope decision, §2.2). | This record §2.2. | A stale-name incident, or a rename-tolerant window. |
-| D3-b | Hand-written doc numbers stay review-guarded: `docs/architecture-validation.md` coverage table ("twelve profiles, fifty action contracts", "Twenty REST operations, seventeen MCP tools", historical "978"), `docs/README.md` execution row's "six linked synthetic examples". Machine derivation is only sound in machine-written files. | This row. | Any doc-number drift incident; then reword to mechanism-names or add row asserts. |
+| D3-b | Hand-written doc numbers stay review-guarded: `docs/architecture-validation.md` coverage table ("twelve profiles, fifty action contracts", "Twenty REST operations, seventeen MCP tools", historical "978"), `docs/README.md` execution row's "six linked synthetic examples". Machine derivation is only sound in machine-written files. `docs/README.md`'s baseline-verification sentence ("OTDP 495, registry 64, execution 150, interface 254 and closure 16") is FROZEN HISTORY — the 0.1.0 architecture-review baseline, explicitly "not results from the repository CI" — and is never "corrected" when live counts move (review NIT-2). | This row. | Any doc-number drift incident; then reword to mechanism-names or add row asserts. |
 
 ## 6. Invariant, drift and tier impact
 
@@ -331,3 +331,38 @@ rather than re-litigating (the D2 record's appended-corrections pattern).
    regenerates; the quoted content in those rows is unchanged.
 3. **D1-b (plugin-ui test-path literals) becomes a follow-on issue**, filed by the
    maintainer loop at PR-open time — not part of this build.
+
+## 12. Review folds (appended)
+
+Corrections from the first review wave (mechanism-critic 8 findings, standards-governor
+LOW + NITs), appended per the D2 appended-corrections pattern — committed history above
+is not rewritten.
+
+- **F5 (wording):** §2.1's "reproduces the existing `otdp_manifest_absent:` bytes exactly
+  for devices" overstated: only the refusal PREFIX is byte-stable; the message text after
+  the prefix is generic lowercase ("active otdp", not the historical "active OTDP"). The
+  shared module's docstring now says exactly that, and a new pin covers the second
+  refusal branch (manifest present, entry missing → `registry_manifest_absent` through
+  the registry script).
+- **F3 (lens):** §2.2's interface row derived the prose count from `len(vec)` (a list)
+  while the pin checked the name-set cardinality — equal today, divergent under a
+  duplicate catalog entry. Both now read one `unique_operations` var (closure's pattern);
+  the regen diff after the change was empty (byte stability proven by the pin).
+- **F1 (rebase):** main's #125 run landed mid-review; the branch rebased cleanly onto it
+  with one semantic adaptation (#125's zero-arg `_active_report_path()` call takes
+  `"otdp"` now). The rebase moved no report bytes (pre/post-rebase diff over standards/
+  and docs/acceptance/ empty).
+- **NIT-2 (frozen history):** `docs/README.md`'s baseline-verification sentence ("OTDP
+  495, registry 64, execution 150, interface 254 and closure 16") is named in the D3-b
+  deferral row as frozen 0.1.0-review history that is never "corrected" when live counts
+  move.
+- **F6/LOW-1 (GOVERNANCE precision):** the derivation sentence now distinguishes the
+  four standards-tree scripts' manifest-derived corpus directories (devices' variable is
+  `OUT`) from their version-free title constants (devices' title alone embeds the
+  version), and carries the closure carve-out (docs-rooted `CONTRACT_DIR`; cross-standard
+  reads manifest-derived).
+- Also folded without record-level correction (code/test-side only): F2 census guard
+  (writers ↔ REPORT_SPECS symmetry + full artifact classification with the plugin-ui
+  train-record exclusion), F4 duplicate-name census, F7 byte-for-byte drift comparison
+  (CRLF can no longer launder through universal newlines), F8 POSIX-absoluteness arm on
+  the portability guard with its not-caught disclosure.

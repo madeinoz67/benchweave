@@ -138,7 +138,11 @@ for o in catalog["operations"]:
             {k: val for k, val in t["outputSchema"].items() if k != "$defs"} == o["output_schema"],
         )
     vec.append({"operation": name, "input": req, "output": out})
-check("20 unique REST operations", len({o["name"] for o in catalog["operations"]}) == 20)
+# The prose's count and this pin read the same lens — the set cardinality,
+# not the per-operation vector list (equal today because each operation
+# appears once; a duplicate catalog entry would diverge them).
+unique_operations = len({o["name"] for o in catalog["operations"]})
+check("20 unique REST operations", unique_operations == 20)
 check("17 unique MCP tools", len(maptools) == 17)
 check(
     "administration absent from MCP",
@@ -310,7 +314,8 @@ GENERATED_MARKER = (
 )
 REPORT_TITLE = "# Interface contract verification"
 REPORT_COVERAGE = (
-    f"Checked shared/tool JSON Schemas, {len(vec)} synthetic operation vectors, required "
+    f"Checked shared/tool JSON Schemas, {unique_operations} synthetic operation vectors, "
+    "required "
     "fields, REST/MCP mapping equality, local OpenAPI references, error mappings and "
     "selected lifecycle/chunk rejections. The OpenAPI mapping was checked structurally "
     "against the catalog; no full OpenAPI meta-validator or live protocol suite was run."

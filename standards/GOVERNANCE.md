@@ -66,12 +66,19 @@ edit → repin → export, never a hand-spliced digest. A bump carrying corpus
 bytes for any standard with a machine-written validation report (otdp,
 registry, execution, interface) regenerates that version's report via its
 writer (`check_<suite>.py --write-report`, which refuses on a failing run).
-Each family script's `CONTRACT_DIR`, its report title, and the pin test's
-report path all DERIVE from `standards-manifest.json`'s active entry for
-that standard (#102 D2, generalized to the family by D1: the script reads
-the manifest and refuses loudly without it; the pin test derives its report
-paths and its mutation fixtures the same way), so a bump makes no
-hand-moves on those. The `docs/README.md` rows linking the reports remain
+The four standards-tree family scripts derive their corpus directory from
+`standards-manifest.json`'s active entry for their standard — devices names
+it `OUT`, the siblings name it `CONTRACT_DIR` — and the pin test's report
+paths and mutation fixtures derive the same way (#102 D2, generalized to
+the family by D1: each script reads the manifest and refuses loudly
+without it), so a bump makes no hand-moves on those. Report titles are
+version-free constants needing no derivation (`# Registry contract
+verification`, `# Procedure and bench contract verification`, …) —
+devices' alone embeds its derived version (`# OTDP {version}
+specification verification`). Closure's report is docs-rooted
+(`CONTRACT_DIR = DOCS / "acceptance"` — no version directory to derive);
+its CROSS-standard contract reads are manifest-derived like the rest. The
+`docs/README.md` rows linking the reports remain
 conventional moves; a FORGOTTEN row is caught mechanically by the pin's
 exactly-once link assert (a stale row left beside the new one is not —
 copy-never-move keeps the old target resolving). With the version moved,
