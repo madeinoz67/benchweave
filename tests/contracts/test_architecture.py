@@ -186,6 +186,140 @@ def test_validation_report_matches_live_run(suite: str) -> None:
     assert _drift_failures(suite, docs, standards, rendered) == []
 
 
+def _suites_exposing_writer(docs: Path, standards: Path, scripts_dir: Path) -> set[str]:
+    """Suites under ``scripts_dir`` whose validator namespace exposes the
+    family writer (``render_report``). Family suites on the real tree reuse
+    the shared real-tree execution; everything else (planning, documents,
+    foreign scripts in a RED-sanity tree) executes fresh.
+    """
+    exposing: set[str] = set()
+    real_tree = (docs, standards) == (ROOT / "docs", ROOT / "standards")
+    for script in sorted(scripts_dir.glob("check_*.py")):
+        suite = script.stem.removeprefix("check_")
+        if real_tree and suite in REPORT_SPECS:
+            namespace: dict[str, Any] = _real_tree_namespace(suite)
+        else:
+            namespace = runpy.run_path(
+                str(script), init_globals={"DOCS": docs, "STANDARDS": standards}
+            )
+        if "render_report" in namespace:
+            exposing.add(suite)
+    return exposing
+
+
+def _suite_census_failures(docs: Path, standards: Path, scripts_dir: Path) -> list[str]:
+    """Script half of the family census: the suites whose validator exposes
+    ``render_report`` are exactly ``REPORT_SPECS``' keys — a writer without a
+    spec, or a spec without a writer, is an unregistered family member.
+    """
+    exposing = _suites_exposing_writer(docs, standards, scripts_dir)
+    specd = set(REPORT_SPECS)
+    failures = []
+    for suite in sorted(exposing - specd):
+        failures.append(
+            f"unregistered_family_suite: check_{suite}.py exposes render_report but has "
+            "no REPORT_SPECS entry — register the suite or drop the writer"
+        )
+    for suite in sorted(specd - exposing):
+        failures.append(
+            f"stale_report_spec: REPORT_SPECS carries {suite} but check_{suite}.py lacks "
+            "render_report"
+        )
+    return failures
+
+
+def _artifact_census_failures(docs: Path, standards: Path) -> list[str]:
+    """Artifact half of the family census: every ``validation-report.md``
+    under the standards tree and docs/acceptance is claimed by exactly one
+    admitted class — a family spec (machine-written, pinned), a superseded
+    version's frozen historical report, or plugin-ui's ACTIVE train record
+    (the designed exclusion: train evidence, not a suite rendering). Anything
+    else is unclassified and must be adjudicated, never silently absorbed.
+    """
+    manifest = json.loads(
+        (standards / "standards-manifest.json").read_text(encoding="utf-8")
+    )
+    active = {
+        entry["id"]: entry["version"]
+        for entry in manifest.get("standards", [])
+        if isinstance(entry.get("version"), str) and entry["version"]
+    }
+    family_reports = {
+        (_report_root(kind, docs, standards) / relpath).resolve()
+        for kind, relpath, _regen in REPORT_SPECS.values()
+    }
+    reports = list(standards.rglob("validation-report.md"))
+    acceptance = docs / "acceptance"
+    if acceptance.is_dir():
+        reports += list(acceptance.glob("validation-report.md"))
+    failures = []
+    for report in sorted(reports):
+        resolved = report.resolve()
+        if resolved in family_reports:
+            continue
+        reason = None
+        try:
+            parts = report.relative_to(standards).parts
+        except ValueError:
+            parts = ()
+        if len(parts) == 3 and parts[2] == "validation-report.md":
+            standard_id, version, _ = parts
+            if standard_id == "plugin-ui" and version == active.get("plugin-ui"):
+                reason = "plugin-ui train record (designed exclusion)"
+            elif standard_id in active and version != active[standard_id]:
+                reason = "superseded version (frozen historical evidence)"
+        if reason is None:
+            where = report
+            for root in (standards, docs):
+                try:
+                    where = report.relative_to(root)
+                except ValueError:
+                    continue
+                break
+            failures.append(
+                f"unclassified_report: {where} matches no "
+                "family spec, superseded-version freeze, or plugin-ui train-record "
+                "exclusion — adjudicate it in REPORT_SPECS or extend the census"
+            )
+    return failures
+
+
+def test_validation_report_family_census() -> None:
+    """Both halves of the report-family census, on the real tree."""
+    docs, standards = ROOT / "docs", ROOT / "standards"
+    failures = _suite_census_failures(
+        docs, standards, ROOT / "scripts" / "architecture"
+    ) + _artifact_census_failures(docs, standards)
+    assert failures == [], failures
+
+
+def test_family_census_detects_unclassified_reports_and_unregistered_writers(
+    tmp_path: Path,
+) -> None:
+    """RED-sanity for the census: each half must actually bite.
+
+    Artifact arm: a report dropped under an active, non-family, non-plugin-ui
+    standard (plugin-ui-preview) is unclassified. Script arm: a validator
+    exposing render_report with no REPORT_SPECS entry is unregistered.
+    """
+    docs = tmp_path / "docs"
+    standards = tmp_path / "standards"
+    shutil.copytree(ROOT / "docs", docs)
+    shutil.copytree(ROOT / "standards", standards)
+    bogus = standards / "plugin-ui-preview" / "0.1.0" / "validation-report.md"
+    bogus.write_text("# bogus train record\n", encoding="utf-8")
+    failures = _artifact_census_failures(docs, standards)
+    assert any("plugin-ui-preview" in failure for failure in failures), failures
+    scripts = tmp_path / "architecture"
+    scripts.mkdir()
+    (scripts / "check_bogus.py").write_text(
+        "CHECKS = [('only', True)]\n\n\ndef render_report(checks):\n    return ''\n",
+        encoding="utf-8",
+    )
+    failures = _suite_census_failures(docs, standards, scripts)
+    assert any("check_bogus" in failure for failure in failures), failures
+
+
 @pytest.fixture(scope="module")
 def rendered_family_report(
     tmp_path_factory: pytest.TempPathFactory,
