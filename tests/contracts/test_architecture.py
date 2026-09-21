@@ -81,6 +81,27 @@ def run_checks(suite: str, docs: Path, standards: Path) -> list[tuple[str, bool]
     return [(str(name), bool(passed)) for name, passed in checks]
 
 
+_REAL_TREE_NAMESPACES: dict[str, dict[str, Any]] = {}
+
+
+def _real_tree_checks(suite: str) -> list[tuple[str, bool]]:
+    checks = _real_tree_namespace(suite)["CHECKS"]
+    assert isinstance(checks, list) and checks, f"No checks executed by {suite}"
+    return [(str(name), bool(passed)) for name, passed in checks]
+
+
+def _real_tree_namespace(suite: str) -> dict[str, Any]:
+    """One real-tree execution per family suite, shared by its read-only
+    consumers (the byte pin and the portability guard) — the designed cost
+    model is one clean execution per suite, not one per test. The cached
+    namespaces are only ever read (``CHECKS`` and the pure ``render_report``),
+    so sharing cannot leak state between the consumers.
+    """
+    if suite not in _REAL_TREE_NAMESPACES:
+        _REAL_TREE_NAMESPACES[suite] = load_suite(suite, ROOT / "docs", ROOT / "standards")
+    return _REAL_TREE_NAMESPACES[suite]
+
+
 def _load_shared_writer() -> Any:
     """Load ``scripts/architecture/_validation_report.py``, the family writer."""
     path = ROOT / "scripts" / "architecture" / "_validation_report.py"
@@ -135,7 +156,7 @@ def _drift_failures(suite: str, docs: Path, standards: Path, rendered: str) -> l
 @pytest.mark.parametrize("suite", FAMILY_SUITES)
 def test_validation_report_matches_live_run(suite: str) -> None:
     docs, standards = ROOT / "docs", ROOT / "standards"
-    namespace = load_suite(suite, docs, standards)
+    namespace = _real_tree_namespace(suite)
     checks = [(str(name), bool(passed)) for name, passed in namespace["CHECKS"]]
     assert checks, f"No checks executed by {suite}"
     passed = sum(1 for _, ok in checks if ok)
@@ -242,7 +263,7 @@ def test_check_names_are_path_portable(suite: str) -> None:
     absolute_roots = (str(docs), str(standards))
     offenders = [
         name
-        for name, _ in run_checks(suite, docs, standards)
+        for name, _ in _real_tree_checks(suite)
         if any(root in name for root in absolute_roots)
     ]
     assert offenders == [], (
