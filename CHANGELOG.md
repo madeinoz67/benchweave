@@ -138,6 +138,8 @@ All notable changes to this project will be documented in this file.
 - Preview workbench passes no fabricated threshold (R1b)
 - Render-quality batch — stable joins, safe keys, unit guards, wire labels (R2)
 - Sweep the presentation-admission seam onto the active plugin-ui version
+- Render repository-relative paths with forward slashes on every platform (#138)
+- Read the _GENERATED.txt stamps as UTF-8 (#139)
 
 ### Documentation
 
@@ -562,6 +564,8 @@ All notable changes to this project will be documented in this file.
 - Keep docs/ and standards/ siblings in the regression-detection cases
 - The unmutated copy must run clean before a regression case mutates it
 - Pin the served MCP tool descriptions to the vendored corpus
+- The harness closes the Store it opened (#136)
+- Close the store only once the server thread has stopped (#136)
 
 ### Build
 
