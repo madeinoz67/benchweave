@@ -185,6 +185,7 @@ docstring naming the other. No merge, no rename, no contract-test change.
 | Retention granularity | **Resolved for slices:** global + per-data-class (+ per-bench); per-project = Fork 1. |
 | Disposition audit trail / archival tier | **Defer** (row 3), gated before any automated disposition (Decision 8). |
 | Buffering (in-memory vs spooled) | **Resolved by mechanism:** no whole-capture buffer exists — the writer appends in ≤ 64 KiB chunks straight to the store; memory is bounded by chunk size regardless of capture size. Host-side spooling is unnecessary while sqlite throughput holds (Risk 2 is its trigger). |
+| Multi-device concurrency & time correlation (issue §6) | **Concurrency resolved in Decision 1:** N bridges run concurrently at the coordinator, each serialized per §8 — one plugin instance is one instrument, and a run correlates the devices. **Time:** per-capture `started_at` and manifest timing are already normative (`$defs/captureManifest`), and §5's rule stands — sharing an acquisition ID or a time axis does not prove cross-device synchronisation. Full per-channel timing (offsets, skew uncertainty) is measurement-model content riding the deferred dataset lane (row 2). Nothing in slices 1–3 assumes synchronisation. |
 | Transport providers (UVC / vendor SDKs) | **Defer** (row 6): separately reviewed host-provider contracts (extension-contract §6 says so verbatim). |
 
 ## Minimal first increment and slice order
