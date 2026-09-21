@@ -2,22 +2,30 @@
 
 For integration authoring and hosting, see the [Device developer guide](device-developer-guide.md).
 
-Use Python 3.13 (as pinned in `.python-version`) and uv. CI pins uv 0.11.16.
-From the project root:
+Use Python 3.13 (as pinned in `.python-version`) and uv. From the project
+root:
 
 ```sh
 uv python install
 uv sync --locked --dev
 uv run --no-sync ruff check .
-uv run --no-sync ruff format --check .
 uv run --no-sync mypy
 uv run --no-sync pytest
 uv run --no-sync benchweave
 uv build
 ```
 
+The lint/type/test trio mirrors CI's main gate, which runs `uv sync`,
+`uv run ruff check .`, `uv run mypy`, `uv run pytest -q` and
+`make check-sdk-standards`. `ruff format` is available
+locally but is not part of that main gate; the one place CI enforces it is
+`device-plugins.yml`, which runs `ruff format --check` inside the DPS-150
+plugin project. When this page and the workflow disagree,
+`.github/workflows/ci.yml` is the authority.
+
 Add dependencies with `uv add` or `uv add --dev`, and commit both
-`pyproject.toml` and `uv.lock`. CI rejects a stale lockfile. Build dependencies
+`pyproject.toml` and `uv.lock`; `uv sync --locked --dev` enforces lockfile
+freshness locally. Build dependencies
 are resolved separately using the build-system requirements in `pyproject.toml`.
 
 Coverage is measured but not gated: `uv run pytest --cov` produces a branch
@@ -84,7 +92,8 @@ Change propagation, end to end:
 
 ## GitHub workflows
 
-- **CI** runs the Python gates (ruff, config-driven mypy, pytest) plus a
+- **CI** runs the Python gates (sync, ruff check, config-driven mypy,
+  pytest) and the standards sync check (`make check-sdk-standards`), plus a
   **systemd** template-verification job and a **ui** job (typecheck, lint,
   unit tests, Storybook build, renderer freshness gate, `npm audit`) on Linux.
 - **Device plugins** checks independent manufacturer/model plugin projects in

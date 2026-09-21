@@ -521,6 +521,15 @@ def test_wire_tools_list_exact_set_and_schemas(gateway: SimpleNamespace) -> None
         assert tool["inputSchema"] == {
             key: value for key, value in vendored.items() if key != "$defs"
         }, f"{tool['name']} wire schema drifted (D5 pin: vendored minus $defs)"
+        # The handlers carry docstrings, and FastMCP serves ``__doc__`` whenever
+        # no explicit description reaches it. What keeps the wire on the vendored
+        # text is the explicit ``description=`` in ``_register`` plus FastMCP's
+        # precedence; an empty vendored description would also be served as-is.
+        description = VENDORED_TOOLS[tool["name"]]["description"]
+        assert description, f"{tool['name']} has no vendored description to serve"
+        assert tool["description"] == description, (
+            f"{tool['name']} wire description drifted from the vendored corpus"
+        )
 
 
 # --- per-operation success parity: FULL envelope equality --------------------

@@ -105,6 +105,7 @@ def build_router(
 
         @wraps(handler)
         async def wrapped(*args: P.args, **kwargs: P.kwargs) -> JSONResponse:
+            """Run the handler; every failure becomes its mapped status."""
             try:
                 return await handler(*args, **kwargs)
             except OperationFailure as fail:
@@ -187,11 +188,14 @@ def build_router(
     @router.get("/v1")
     @_guard
     async def gateway_info(request: Request) -> JSONResponse:
+        """The gateway's identity/limits snapshot — the observe-tier hello."""
         return _reply(operations.gateway_info(_identity(request)), 200)
 
     @router.get("/v1/benches")
     @_guard
     async def bench_list(request: Request) -> JSONResponse:
+        """One page of the bench inventory; ``limit`` clamps to
+        [1, max_page_size]."""
         identity = _identity(request)
         limit = max(1, min(_int_param(request, "limit"), max_page_size))
         items, next_cursor = operations.bench_list(
@@ -202,11 +206,14 @@ def build_router(
     @router.get("/v1/benches/{bench_id}")
     @_guard
     async def bench_get(bench_id: str, request: Request) -> JSONResponse:
+        """One bench's projection by id."""
         return _reply(operations.bench_get(_identity(request), bench_id), 200)
 
     @router.get("/v1/benches/{bench_id}/devices")
     @_guard
     async def device_list(bench_id: str, request: Request) -> JSONResponse:
+        """One page of a bench's devices; ``limit`` clamps to
+        [1, max_page_size]."""
         identity = _identity(request)
         limit = max(1, min(_int_param(request, "limit"), max_page_size))
         items, next_cursor = operations.device_list(
@@ -217,6 +224,7 @@ def build_router(
     @router.get("/v1/benches/{bench_id}/devices/{device_id}")
     @_guard
     async def device_get(bench_id: str, device_id: str, request: Request) -> JSONResponse:
+        """One device's projection by bench and device id."""
         return _reply(
             operations.device_get(_identity(request), bench_id, device_id), 200
         )
@@ -224,16 +232,20 @@ def build_router(
     @router.get("/v1/documents/{sha256}")
     @_guard
     async def document_get(sha256: str, request: Request) -> JSONResponse:
+        """A stored document by content hash."""
         return _reply(operations.document_get(_identity(request), sha256), 200)
 
     @router.get("/v1/runs/{run_id}")
     @_guard
     async def run_get(run_id: str, request: Request) -> JSONResponse:
+        """One run's projection by id (observe tier — the D1 pin)."""
         return _reply(operations.run_get(_identity(request), run_id), 200)
 
     @router.get("/v1/benches/{bench_id}/events")
     @_guard
     async def events_get(bench_id: str, request: Request) -> JSONResponse:
+        """A bench's event window after cursor ``after``; ``limit`` clamps
+        to [1, max_page_size]."""
         identity = _identity(request)
         limit = max(1, min(_int_param(request, "limit"), max_page_size))
         return _reply(
@@ -249,11 +261,14 @@ def build_router(
     @router.get("/v1/evidence/{evidence_id}")
     @_guard
     async def evidence_get(evidence_id: str, request: Request) -> JSONResponse:
+        """One evidence record by id."""
         return _reply(operations.evidence_get(_identity(request), evidence_id), 200)
 
     @router.get("/v1/artifacts/{artifact_id}/chunks")
     @_guard
     async def artifact_read(artifact_id: str, request: Request) -> JSONResponse:
+        """One artifact chunk; ``offset`` floors at 0, ``length`` clamps
+        to [1, max_chunk_bytes]."""
         offset = max(0, _int_param(request, "offset"))
         length = max(1, min(_int_param(request, "length"), max_chunk_bytes))
         return _reply(
@@ -266,6 +281,7 @@ def build_router(
     @router.post("/v1/benches/{bench_id}/run-checks")
     @_guard
     async def run_check(bench_id: str, request: Request) -> JSONResponse:
+        """The advisory §5 precheck — mutates nothing, so it runs ungated."""
         body = await _json_body(request)
         return _reply(
             operations.run_check(_identity(request), bench_id, _field(body, "binding_ref")),
@@ -275,6 +291,8 @@ def build_router(
     @router.post("/v1/benches/{bench_id}/runs", status_code=202)
     @_guard
     async def run_start(bench_id: str, request: Request) -> JSONResponse:
+        """Accept a run at 202 (§9 idempotent by ``request_id``), under
+        the write gate."""
         body = await _json_body(request)
         with gate:
             result = operations.run_start(
@@ -290,11 +308,13 @@ def build_router(
     @router.get("/v1/requests/{request_id}")
     @_guard
     async def run_find(request_id: str, request: Request) -> JSONResponse:
+        """Resolve a §9 ``request_id`` to the run it accepted."""
         return _reply(operations.run_find(_identity(request), request_id), 200)
 
     @router.post("/v1/runs/{run_id}/cancellations")
     @_guard
     async def run_cancel(run_id: str, request: Request) -> JSONResponse:
+        """Request cancellation (§9 idempotent), under the write gate."""
         body = await _json_body(request)
         with gate:
             result = operations.run_cancel(
@@ -310,6 +330,8 @@ def build_router(
     @router.post("/v1/benches/{bench_id}/leases", status_code=201)
     @_guard
     async def lease_create(bench_id: str, request: Request) -> JSONResponse:
+        """Issue a bench lease at the next sequence (201), under the write
+        gate."""
         body = await _json_body(request)
         with gate:
             result = operations.lease_create(
@@ -324,6 +346,8 @@ def build_router(
     @router.post("/v1/leases/{lease_id}/renewals")
     @_guard
     async def lease_renew(lease_id: str, request: Request) -> JSONResponse:
+        """Renew a lease — same identity at the next sequence — under the
+        write gate."""
         body = await _json_body(request)
         with gate:
             result = operations.lease_renew(
@@ -338,6 +362,7 @@ def build_router(
     @router.post("/v1/leases/{lease_id}/releases")
     @_guard
     async def lease_release(lease_id: str, request: Request) -> JSONResponse:
+        """Release a held lease, under the write gate."""
         body = await _json_body(request)
         with gate:
             result = operations.lease_release(
@@ -353,6 +378,8 @@ def build_router(
     @router.post("/v1/admin/changes", status_code=201)
     @_guard
     async def change_submit(request: Request) -> JSONResponse:
+        """File a two-phase change proposal (201), under the write gate —
+        REST-only per the catalog: admin ops have no MCP twin."""
         body = await _json_body(request)
         with gate:
             result = operations.change_submit(
@@ -369,6 +396,8 @@ def build_router(
     @router.post("/v1/admin/changes/{change_id}/apply")
     @_guard
     async def change_apply(change_id: str, request: Request) -> JSONResponse:
+        """Apply a proposed change under its generation fence and detached
+        approval token — the check-then-act the write gate exists for."""
         body = await _json_body(request)
         with gate:
             result = operations.change_apply(
@@ -384,6 +413,7 @@ def build_router(
     @router.get("/v1/admin/changes/{change_id}")
     @_guard
     async def change_get(change_id: str, request: Request) -> JSONResponse:
+        """One change record by id."""
         return _reply(operations.change_get(_identity(request), change_id), 200)
 
     return router
