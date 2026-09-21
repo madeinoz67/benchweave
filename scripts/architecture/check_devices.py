@@ -22,33 +22,16 @@ DOCS = globals().get("DOCS", Path(__file__).resolve().parents[2] / "docs")
 STANDARDS = globals().get("STANDARDS", Path(__file__).resolve().parents[2] / "standards")
 
 
-def _active_otdp_version(standards_root: Path) -> str:
-    """The active OTDP version, derived from the standards manifest (#102 D2).
+# runpy.run_path does not put the script's directory on sys.path (measured:
+# the sibling import fails there), so the shared report writer needs the
+# bootstrap. __file__ is set in both execution modes (direct python and
+# runpy.run_path with init_globals).
+_HERE = str(Path(__file__).resolve().parent)
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
+import _validation_report  # noqa: E402
 
-    Never a hardcoded literal and never a silent fallback: a missing manifest
-    or a manifest without an otdp entry is a loud refusal — the corpus this
-    script validates IS the manifest's active version.
-    """
-
-    manifest_path = standards_root / "standards-manifest.json"
-    if not manifest_path.is_file():
-        raise SystemExit(
-            "otdp_manifest_absent: standards-manifest.json not found — the "
-            "active OTDP version cannot be derived"
-        )
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    for entry in manifest.get("standards", []):
-        if entry.get("id") == "otdp":
-            version = entry.get("version")
-            if isinstance(version, str) and version:
-                return version
-    raise SystemExit(
-        "otdp_manifest_absent: standards-manifest.json carries no otdp entry "
-        "with a version — the active OTDP version cannot be derived"
-    )
-
-
-OTDP_VERSION = _active_otdp_version(STANDARDS)
+OTDP_VERSION = _validation_report.active_standard_version(STANDARDS, "otdp")
 # Resolved once: the pinned check compares .resolve()d contract paths against
 # OUT, and an unresolved OUT (macOS /var→/private/var TMPDIR, symlinked
 # roots) fails every pinned check (24 today) vacuously on a clean tree (#119).
@@ -464,39 +447,21 @@ def render_report(checks: list[tuple[str, bool]]) -> str:
     (directory-entry order), which is not portable across platforms. The
     rendered bytes are a function of the check set only.
     """
-    passed = sum(1 for _, ok in checks if ok)
-    lines = [
-        GENERATED_MARKER,
-        "",
-        REPORT_TITLE,
-        "",
-        f"**Result: {passed}/{len(checks)} checks passed; {len(checks) - passed} failed.**",
-        "",
-        REPORT_COVERAGE,
-        "",
-        REPORT_LIMIT,
-        "",
-        "## Checks",
-        "",
-    ]
-    lines.extend(f"- {'PASS' if ok else 'FAIL'}: {name}" for name, ok in sorted(checks))
-    lines.append("")
-    return "\n".join(lines)
+    return _validation_report.render(
+        [(str(name), bool(ok)) for name, ok in checks],
+        marker=GENERATED_MARKER,
+        title=REPORT_TITLE,
+        coverage=REPORT_COVERAGE,
+        limit=REPORT_LIMIT,
+    )
 
 
 if __name__ == "__main__":
-    failures = [name for name, ok in CHECKS if not ok]
-    for failure in failures:
-        print("FAIL:", failure)
-    print(f"{len(CHECKS) - len(failures)}/{len(CHECKS)} checks passed")
-    if "--write-report" in sys.argv[1:]:
-        if failures:
-            print(f"refusing to write the validation report: {len(failures)} failing check(s)")
-            raise SystemExit(1)
-        (OUT / "validation-report.md").write_text(
-            render_report([(str(name), bool(ok)) for name, ok in CHECKS]),
-            encoding="utf-8",
-            newline="\n",
-        )
-        print(f"wrote {OUT / 'validation-report.md'}")
-    raise SystemExit(bool(failures))
+    _validation_report.main(
+        CHECKS,
+        OUT / "validation-report.md",
+        script="scripts/architecture/check_devices.py",
+        title=REPORT_TITLE,
+        coverage=REPORT_COVERAGE,
+        limit=REPORT_LIMIT,
+    )
