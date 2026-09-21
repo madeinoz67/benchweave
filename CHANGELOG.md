@@ -253,6 +253,8 @@ All notable changes to this project will be documented in this file.
 - Issue #43 capture & streaming design of record
 - Record owner calls on all four forks (agreed 2026-09-21)
 - Explicit §6 disposition — multi-device concurrency and time correlation
+- Issue #133 retrospective skill design of record
+- Review folds — archive+git evidence lanes, moment pinning, dead tag (#133)
 
 ### Features
 
@@ -364,6 +366,7 @@ All notable changes to this project will be documented in this file.
 - Interface validation report joins the writer family (#102 D1)
 - Closure validation report joins the writer family (#102 D1)
 - Otdp coverage prose derives its counts (#102 D3)
+- Retrospective — standardized end-of-period report with sub-agent review (#133)
 
 ### Hardware Evidence
 
