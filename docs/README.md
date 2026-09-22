@@ -26,11 +26,12 @@
 | [Device classes](../standards/otdp/0.2.1/device-classes.md) | Twelve class profiles, physical semantics, acquisition lifecycle and explicit exclusions |
 | [Core specification](../standards/otdp/0.2.1/otdp-specification.md) | Plugin authoring, runtime and host contracts |
 | [Extension contract](../standards/otdp/0.2.1/extension-contract.md) | Typed actions, local schema admission and adapter API 1.1 |
+| [Transport providers](../standards/otdp/0.2.1/transport-providers.md) | Provider contracts for non-scoped transports: declaration, review tiers and the grant boundary |
 | [Measurement model](../standards/otdp/0.2.1/measurement-model.md) | Units, axes, channels, complex/digital data, timing, calibration and uncertainty |
 | [Profile catalog](../standards/otdp/0.2.1/device-profile-catalog.json) | Fifty actions with exact input/output schemas |
 | [Validation report](../standards/otdp/0.2.1/validation-report.md) | 605 passing document/schema checks and their limits |
 
-The package also includes descriptor, runtime, measurement and catalog schemas; twelve class descriptor fixtures; fifty action exchange vectors; thirteen dataset examples; and the four migrated core reference descriptors and their protocol vectors. Current normative device contracts are in `otdp/0.2.1/`.
+The package also includes descriptor, runtime, measurement, catalog and transport-provider schemas; twelve class descriptor fixtures; fifty action exchange vectors; thirteen dataset examples; and the five reference descriptors (four with protocol vectors, one pinning a provider contract). Current normative device contracts are in `otdp/0.2.1/`.
 
 ## Device-class coverage
 
@@ -38,7 +39,7 @@ The defined profiles cover DC power supplies, digital multimeters, oscilloscopes
 
 Each profile defines its required base actions and optional features. A device may compose profiles. Real model restrictions narrow the standard schemas, and shared hardware remains subject to shared ownership. The class document states required quantities, lifecycle rules and failure evidence.
 
-This is a bounded class baseline, not universal feature coverage. AC power sources, RF conversion/modulation families, cameras, environmental chambers and other specialised devices require additional profiles. GPIB, USB-HID, arbitrary USB bulk and vendor SDKs require separately admitted host-provider contracts. Structural fixtures are neither implemented plugins nor qualified instruments.
+This is a bounded class baseline, not universal feature coverage. AC power sources, RF conversion/modulation families, cameras, environmental chambers and other specialised devices require additional profiles. GPIB, USB-HID, arbitrary USB bulk and vendor SDKs require separately admitted host-provider contracts (transport-providers.md). Structural fixtures are neither implemented plugins nor qualified instruments.
 
 ## Procedure and bench provision
 
