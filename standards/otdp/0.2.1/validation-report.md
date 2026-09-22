@@ -2,9 +2,9 @@
 
 # OTDP 0.2.1 specification verification
 
-**Result: 569/569 checks passed; 0 failed.**
+**Result: 605/605 checks passed; 0 failed.**
 
-12 class profiles and 50 input/output action contracts were checked against Draft 2020-12. Each action has a positive vector. Descriptor declarations, pinned contract hashes, runtime envelopes, typed datasets and selected rejection/semantic boundaries were checked.
+12 class profiles and 50 input/output action contracts were checked against Draft 2020-12. Each action has a positive vector. Descriptor declarations, pinned contract hashes, runtime envelopes, typed datasets and selected rejection/semantic boundaries were checked. Transport-provider declarations, their pinned contract documents and the provider grammar subschemas were checked; connection-to-grant resolution is commissioned state and stays gateway-side.
 
 **Limit:** These are document/schema checks. No gateway, plugin, device simulator, hardware interaction or complete C01–C12/M01–M14 behavioural validator is claimed. Structural reference descriptors intentionally do not contain real manufacturer evidence or commissioned electrical limits.
 
@@ -19,14 +19,23 @@
 - PASS: Reject arbitrary waveform without asset
 - PASS: Reject downgraded source action
 - PASS: Reject duplicate channel
+- PASS: Reject duplicate provider grammar kind
 - PASS: Reject incomplete edge trigger
 - PASS: Reject incomplete optional sweep group
 - PASS: Reject known uncertainty without value
 - PASS: Reject malformed complex element
+- PASS: Reject malformed provider digest
 - PASS: Reject missing VNA port pair
 - PASS: Reject missing base action semantically
 - PASS: Reject missing logarithmic reference
 - PASS: Reject null hidden as valid
+- PASS: Reject orphan transport feature
+- PASS: Reject provider additional properties
+- PASS: Reject provider approval without evidence
+- PASS: Reject provider identity disagreement
+- PASS: Reject provider on scoped transport
+- PASS: Reject provider scope beyond commissioned connection
+- PASS: Reject provider without required feature entry
 - PASS: Reject shape mismatch
 - PASS: Reject unknown dimension
 - PASS: Reject unknown feature despite valid syntax
@@ -38,72 +47,84 @@
 - PASS: class-daq.json known required features
 - PASS: class-daq.json pinned urn:otdp:measurement:0.2.1
 - PASS: class-daq.json pinned urn:otdp:profile-catalog:0.2.1
+- PASS: class-daq.json provider declaration
 - PASS: class-daq.json vector file resolves
 - PASS: class-dc_psu.json class membership/effects
 - PASS: class-dc_psu.json descriptor structure
 - PASS: class-dc_psu.json known required features
 - PASS: class-dc_psu.json pinned urn:otdp:measurement:0.2.1
 - PASS: class-dc_psu.json pinned urn:otdp:profile-catalog:0.2.1
+- PASS: class-dc_psu.json provider declaration
 - PASS: class-dc_psu.json vector file resolves
 - PASS: class-dmm.json class membership/effects
 - PASS: class-dmm.json descriptor structure
 - PASS: class-dmm.json known required features
 - PASS: class-dmm.json pinned urn:otdp:measurement:0.2.1
 - PASS: class-dmm.json pinned urn:otdp:profile-catalog:0.2.1
+- PASS: class-dmm.json provider declaration
 - PASS: class-dmm.json vector file resolves
 - PASS: class-electronic_load.json class membership/effects
 - PASS: class-electronic_load.json descriptor structure
 - PASS: class-electronic_load.json known required features
 - PASS: class-electronic_load.json pinned urn:otdp:measurement:0.2.1
 - PASS: class-electronic_load.json pinned urn:otdp:profile-catalog:0.2.1
+- PASS: class-electronic_load.json provider declaration
 - PASS: class-electronic_load.json vector file resolves
 - PASS: class-embedded_controller.json class membership/effects
 - PASS: class-embedded_controller.json descriptor structure
 - PASS: class-embedded_controller.json known required features
 - PASS: class-embedded_controller.json pinned urn:otdp:measurement:0.2.1
 - PASS: class-embedded_controller.json pinned urn:otdp:profile-catalog:0.2.1
+- PASS: class-embedded_controller.json provider declaration
 - PASS: class-embedded_controller.json vector file resolves
 - PASS: class-function_generator.json class membership/effects
 - PASS: class-function_generator.json descriptor structure
 - PASS: class-function_generator.json known required features
 - PASS: class-function_generator.json pinned urn:otdp:measurement:0.2.1
 - PASS: class-function_generator.json pinned urn:otdp:profile-catalog:0.2.1
+- PASS: class-function_generator.json provider declaration
 - PASS: class-function_generator.json vector file resolves
 - PASS: class-logic_analyser.json class membership/effects
 - PASS: class-logic_analyser.json descriptor structure
 - PASS: class-logic_analyser.json known required features
 - PASS: class-logic_analyser.json pinned urn:otdp:measurement:0.2.1
 - PASS: class-logic_analyser.json pinned urn:otdp:profile-catalog:0.2.1
+- PASS: class-logic_analyser.json provider declaration
 - PASS: class-logic_analyser.json vector file resolves
 - PASS: class-oscilloscope.json class membership/effects
 - PASS: class-oscilloscope.json descriptor structure
 - PASS: class-oscilloscope.json known required features
 - PASS: class-oscilloscope.json pinned urn:otdp:measurement:0.2.1
 - PASS: class-oscilloscope.json pinned urn:otdp:profile-catalog:0.2.1
+- PASS: class-oscilloscope.json provider declaration
 - PASS: class-oscilloscope.json vector file resolves
 - PASS: class-smu.json class membership/effects
 - PASS: class-smu.json descriptor structure
 - PASS: class-smu.json known required features
 - PASS: class-smu.json pinned urn:otdp:measurement:0.2.1
 - PASS: class-smu.json pinned urn:otdp:profile-catalog:0.2.1
+- PASS: class-smu.json provider declaration
 - PASS: class-smu.json vector file resolves
 - PASS: class-spectrum_analyser.json class membership/effects
 - PASS: class-spectrum_analyser.json descriptor structure
 - PASS: class-spectrum_analyser.json known required features
 - PASS: class-spectrum_analyser.json pinned urn:otdp:measurement:0.2.1
 - PASS: class-spectrum_analyser.json pinned urn:otdp:profile-catalog:0.2.1
+- PASS: class-spectrum_analyser.json provider declaration
 - PASS: class-spectrum_analyser.json vector file resolves
 - PASS: class-switch_matrix.json class membership/effects
 - PASS: class-switch_matrix.json descriptor structure
 - PASS: class-switch_matrix.json known required features
 - PASS: class-switch_matrix.json pinned urn:otdp:measurement:0.2.1
 - PASS: class-switch_matrix.json pinned urn:otdp:profile-catalog:0.2.1
+- PASS: class-switch_matrix.json provider declaration
 - PASS: class-switch_matrix.json vector file resolves
 - PASS: class-vna.json class membership/effects
 - PASS: class-vna.json descriptor structure
 - PASS: class-vna.json known required features
 - PASS: class-vna.json pinned urn:otdp:measurement:0.2.1
 - PASS: class-vna.json pinned urn:otdp:profile-catalog:0.2.1
+- PASS: class-vna.json provider declaration
 - PASS: class-vna.json vector file resolves
 - PASS: daq measurement structure
 - PASS: daq shape/selected metrology rules
@@ -342,6 +363,7 @@
 - PASS: otdp-device-descriptor.schema.json meta-schema
 - PASS: otdp-measurement.schema.json meta-schema
 - PASS: otdp-runtime.schema.json meta-schema
+- PASS: otdp-transport-provider.schema.json meta-schema
 - PASS: otdp.daq.abort/1.0.0 input_schema meta-schema
 - PASS: otdp.daq.abort/1.0.0 output_schema meta-schema
 - PASS: otdp.daq.arm/1.0.0 input_schema meta-schema
@@ -444,15 +466,25 @@
 - PASS: otdp.vna.trigger/1.0.0 output_schema meta-schema
 - PASS: reference-can.json descriptor structure
 - PASS: reference-can.json known required features
+- PASS: reference-can.json provider declaration
 - PASS: reference-can.json vector file resolves
 - PASS: reference-capture.json descriptor structure
 - PASS: reference-capture.json known required features
+- PASS: reference-capture.json provider declaration
 - PASS: reference-capture.json vector file resolves
 - PASS: reference-controller.json descriptor structure
 - PASS: reference-controller.json known required features
+- PASS: reference-controller.json provider declaration
 - PASS: reference-controller.json vector file resolves
+- PASS: reference-hid-meter.json descriptor structure
+- PASS: reference-hid-meter.json known required features
+- PASS: reference-hid-meter.json pinned provider urn:otdp:transport-provider:reference-hid:1.0.0
+- PASS: reference-hid-meter.json provider contract structure
+- PASS: reference-hid-meter.json provider declaration
+- PASS: reference-hid-meter.json vector file resolves
 - PASS: reference-psu.json descriptor structure
 - PASS: reference-psu.json known required features
+- PASS: reference-psu.json provider declaration
 - PASS: reference-psu.json vector file resolves
 - PASS: s-01 derivation census
 - PASS: s-02 derivation census
@@ -552,6 +584,10 @@
 - PASS: switch_matrix-route correlated identity
 - PASS: switch_matrix-route request envelope
 - PASS: switch_matrix-route result envelope
+- PASS: urn:otdp:transport-provider:reference-hid:1.0.0 hid_input_report request_schema meta-schema
+- PASS: urn:otdp:transport-provider:reference-hid:1.0.0 hid_input_report result_schema meta-schema
+- PASS: urn:otdp:transport-provider:reference-hid:1.0.0 hid_output_report request_schema meta-schema
+- PASS: urn:otdp:transport-provider:reference-hid:1.0.0 hid_output_report result_schema meta-schema
 - PASS: vna measurement structure
 - PASS: vna shape/selected metrology rules
 - PASS: vna-abort action input

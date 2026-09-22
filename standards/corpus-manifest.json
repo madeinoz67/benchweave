@@ -783,7 +783,7 @@
     {
       "path": "otdp/0.2.1/otdp-device-descriptor.schema.json",
       "source": "standards/otdp/0.2.0/otdp-device-descriptor.schema.json",
-      "sha256": "91023148f3f9bdce497b1eb40582287dbe525cf352758929faa0c40a8a91df0d"
+      "sha256": "a1ea17abe92dba7481e2905e7df70daf924f7c8dbc9da504b566509a8e222bc5"
     },
     {
       "path": "otdp/0.2.1/otdp-measurement.schema.json",
@@ -791,9 +791,9 @@
       "sha256": "100f4a9120ab671d18bc40c129e5040e838d1f25619920b602896ddfc305da07"
     },
     {
-      "path": "otdp/0.2.1/examples/reference-hid_meter.json",
-      "source": "standards/otdp/0.2.1/examples/reference-hid_meter.json",
-      "sha256": "21338cb931a5351a5de3d852f7f4f38c9880c9ccca29b0dfb13b41bfd0e7e907"
+      "path": "otdp/0.2.1/examples/reference-hid-meter.json",
+      "source": "standards/otdp/0.2.1/examples/reference-hid-meter.json",
+      "sha256": "e0dea2eccff879882b64844d2363e6057ff028aa7180e419581a632a863c79ad"
     },
     {
       "path": "otdp/0.2.1/examples/reference-provider.json",

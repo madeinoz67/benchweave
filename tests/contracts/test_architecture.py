@@ -621,6 +621,36 @@ def test_documents_ignores_markdown_links_inside_fenced_code_blocks(
             '"values": [\n            9.1\n          ]',
             "census",
         ),
+        # Transport-provider declaration faults (issue #147): each row breaks one
+        # offline-refusable rule from the 1.4 table and must be caught by name.
+        (
+            "devices",
+            _active_standard_dir("otdp") + "/examples/reference-hid-meter.json",
+            '"otdp.transport.reference_hid/1.0.0"',
+            '"otdp.transport.other/1.0.0"',
+            "provider",
+        ),
+        (
+            "devices",
+            _active_standard_dir("otdp") + "/examples/reference-hid-meter.json",
+            '"sha256": "4a7f53b4313f6279f003737a756151516033ed1573cffd5c14b00ddfa0b3dc79"',
+            '"sha256": "4a7f53b4313f6279f003737a756151516033ed1573cffd5c14b00ddfa0b3dc7"',
+            "pinned provider",
+        ),
+        (
+            "devices",
+            _active_standard_dir("otdp") + "/examples/reference-hid-meter.json",
+            '"path": "reference-provider.json"',
+            '"path": "../../../execution/0.1.0/commissioning.schema.json"',
+            "pinned provider",
+        ),
+        (
+            "devices",
+            _active_standard_dir("otdp") + "/examples/reference-hid-meter.json",
+            '    "otdp.core/0.1.0",',
+            '    "otdp.core/0.1.0",\n    "otdp.transport.ghost/1.0.0",',
+            "provider declaration",
+        ),
         (
             "registry",
             _active_standard_dir("registry") + "/examples/release-manifest.json",

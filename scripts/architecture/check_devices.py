@@ -430,54 +430,64 @@ check("Reject incomplete optional sweep group", "incomplete sweep group" in clas
 d = copy.deepcopy(base)
 d["channels"].append(copy.deepcopy(d["channels"][0]))
 check("Reject duplicate channel", "duplicate channel" in class_errors(d))
-hid = descriptors["reference-hid_meter.json"]
+hid = descriptors["reference-hid-meter.json"]
 hid_provider_id = "urn:otdp:transport-provider:reference-hid:1.0.0"
-d = copy.deepcopy(hid)
-d["required_features"].remove("otdp.transport.reference_hid/1.0.0")
-check(
-    "Reject provider without required feature entry",
-    "provider feature missing" in provider_errors(d, provider_docs),
-)
-d = copy.deepcopy(hid)
-d["required_features"].append("otdp.transport.ghost/1.0.0")
-check(
-    "Reject orphan transport feature",
-    "provider transport undeclared" in provider_errors(d, provider_docs),
-)
-d = copy.deepcopy(hid)
-d["transport"]["provider"]["sha256"] = "0" * 63
-check("Reject malformed provider digest", not dv.is_valid(d))
-d = copy.deepcopy(hid)
-d["transport"]["settings"] = copy.deepcopy(descriptors["class-daq.json"]["transport"]["settings"])
-d["transport"]["type"] = "serial"
-check("Reject provider on scoped transport", not dv.is_valid(d))
-d = copy.deepcopy(hid)
-d["transport"]["provider"]["extra"] = True
-check("Reject provider additional properties", not dv.is_valid(d))
-d = copy.deepcopy(hid)
-mismatched_docs = dict(provider_docs)
-mismatched_docs[hid_provider_id] = {
-    **provider_docs[hid_provider_id],
-    "feature_id": "otdp.transport.other/1.0.0",
-}
-check(
-    "Reject provider identity disagreement",
-    "provider identity disagrees" in provider_errors(d, mismatched_docs),
-)
-duplicated = copy.deepcopy(provider_docs[hid_provider_id])
-duplicated["transaction_grammar"].append(copy.deepcopy(duplicated["transaction_grammar"][0]))
-check(
-    "Reject duplicate provider grammar kind",
-    "duplicate grammar kind"
-    in provider_errors(d, {hid_provider_id: duplicated}),
-)
-check(
-    "Reject provider scope beyond commissioned connection",
-    not provider_validator.is_valid({**duplicated, "security_scope": "filesystem"}),
-)
-approvalless = copy.deepcopy(provider_docs[hid_provider_id])
-approvalless["approval"].pop("evidence")
-check("Reject provider approval without evidence", not provider_validator.is_valid(approvalless))
+if hid_provider_id not in provider_docs:
+    # The corpus's own reference pin is broken (or the example moved): the
+    # fault-injection arms below would KeyError on the missing document, so
+    # they degrade to this named failure instead of crashing the suite.
+    check("Reference provider contract admitted", False)
+else:
+    d = copy.deepcopy(hid)
+    d["required_features"].remove("otdp.transport.reference_hid/1.0.0")
+    check(
+        "Reject provider without required feature entry",
+        "provider feature missing" in provider_errors(d, provider_docs),
+    )
+    d = copy.deepcopy(hid)
+    d["required_features"].append("otdp.transport.ghost/1.0.0")
+    check(
+        "Reject orphan transport feature",
+        "provider transport undeclared" in provider_errors(d, provider_docs),
+    )
+    d = copy.deepcopy(hid)
+    d["transport"]["provider"]["sha256"] = "0" * 63
+    check("Reject malformed provider digest", not dv.is_valid(d))
+    d = copy.deepcopy(hid)
+    d["transport"]["settings"] = copy.deepcopy(
+        descriptors["class-daq.json"]["transport"]["settings"]
+    )
+    d["transport"]["type"] = "serial"
+    check("Reject provider on scoped transport", not dv.is_valid(d))
+    d = copy.deepcopy(hid)
+    d["transport"]["provider"]["extra"] = True
+    check("Reject provider additional properties", not dv.is_valid(d))
+    d = copy.deepcopy(hid)
+    mismatched_docs = dict(provider_docs)
+    mismatched_docs[hid_provider_id] = {
+        **provider_docs[hid_provider_id],
+        "feature_id": "otdp.transport.other/1.0.0",
+    }
+    check(
+        "Reject provider identity disagreement",
+        "provider identity disagrees" in provider_errors(d, mismatched_docs),
+    )
+    duplicated = copy.deepcopy(provider_docs[hid_provider_id])
+    duplicated["transaction_grammar"].append(copy.deepcopy(duplicated["transaction_grammar"][0]))
+    check(
+        "Reject duplicate provider grammar kind",
+        "duplicate grammar kind"
+        in provider_errors(d, {hid_provider_id: duplicated}),
+    )
+    check(
+        "Reject provider scope beyond commissioned connection",
+        not provider_validator.is_valid({**duplicated, "security_scope": "filesystem"}),
+    )
+    approvalless = copy.deepcopy(provider_docs[hid_provider_id])
+    approvalless["approval"].pop("evidence")
+    check(
+        "Reject provider approval without evidence", not provider_validator.is_valid(approvalless)
+    )
 for cls in ("dc_psu", "electronic_load", "smu", "function_generator"):
     v = validator(catalog["actions"][f"otdp.{cls}.output/1.0.0"]["input_schema"])
     check(cls + " enable requires config", not v.is_valid({"channel": "ch1", "enabled": True}))

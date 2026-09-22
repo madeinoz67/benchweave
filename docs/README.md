@@ -28,7 +28,7 @@
 | [Extension contract](../standards/otdp/0.2.1/extension-contract.md) | Typed actions, local schema admission and adapter API 1.1 |
 | [Measurement model](../standards/otdp/0.2.1/measurement-model.md) | Units, axes, channels, complex/digital data, timing, calibration and uncertainty |
 | [Profile catalog](../standards/otdp/0.2.1/device-profile-catalog.json) | Fifty actions with exact input/output schemas |
-| [Validation report](../standards/otdp/0.2.1/validation-report.md) | 569 passing document/schema checks and their limits |
+| [Validation report](../standards/otdp/0.2.1/validation-report.md) | 605 passing document/schema checks and their limits |
 
 The package also includes descriptor, runtime, measurement and catalog schemas; twelve class descriptor fixtures; fifty action exchange vectors; thirteen dataset examples; and the four migrated core reference descriptors and their protocol vectors. Current normative device contracts are in `otdp/0.2.1/`.
 

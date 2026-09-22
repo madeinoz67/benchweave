@@ -1,13 +1,13 @@
 {
   "otdp_version": "0.2.1",
   "descriptor_version": "1.0.0",
-  "id": "dev.local.reference-hid_meter",
-  "display_name": "Illustrative reference-hid_meter",
+  "id": "dev.local.reference-hid-meter",
+  "display_name": "Illustrative reference-hid-meter",
   "description": "Reference provider declaration only; not a qualified commercial instrument or admitted host provider.",
   "identity": {
     "strategy": "adapter",
     "manufacturer": "OTDP Reference",
-    "model": "reference-hid_meter",
+    "model": "reference-hid-meter",
     "firmware_policy": "listed",
     "supported_firmware": [
       "1.0"
