@@ -371,6 +371,18 @@ class EvidenceStamp:
     operation_id: str | None
 
 
+@dataclass(frozen=True)
+class LandingStamp:
+    """Landing-origin identity bound to ONE subscription (the event-landing
+    equivalent of :class:`CaptureStamp`): the token is the landing module's
+    private sentinel and the subscription_id binds the stamp to the poll
+    whose landing may classify on it — class identity alone proves nothing
+    (the C3 discipline, applied to the poll path by the review wave)."""
+
+    token: object
+    subscription_id: str | None
+
+
 class CaptureQuotaExceeded(RuntimeError):
     """The capture byte quota refused an open or an append.
 

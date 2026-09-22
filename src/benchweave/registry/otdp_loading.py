@@ -177,6 +177,7 @@ def load_otdp_plugin(
     services: Any,
     simulation: SimulationInfo,
     capture: Any = None,
+    stream: Any = None,
 ) -> OTDPBridge:
     """Construct an unopened read-only bridge from an admitted package.
 
@@ -251,6 +252,7 @@ def load_otdp_plugin(
             services=services,
             simulation=simulation,
             capture=capture,
+            stream=stream,
         )
         bridge._release_loader = release
         return bridge

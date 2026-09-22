@@ -315,7 +315,16 @@ def _build_run_factory(
             **_spool_documents(content, binding_ref, fixtures_dir, Path(spool.name))
         )
         clock = SystemClock()
-        services = RetainingServices(content, quota=quota, now=now_iso())
+        # The streaming-slice members (emit_event, register_reading_sink)
+        # get the run's context key and a fresh-stamp clock: an emitted host
+        # event lands on the run's event dimension with a live timestamp.
+        services = RetainingServices(
+            content,
+            quota=quota,
+            now=now_iso(),
+            wall=now_iso,
+            context_key=f"run:{run_id}",
+        )
         plugins: dict[str, DevicePlugin] = {}
         for device_id, name in _SIM_PLUGINS:
             plugin = _load_sim_plugin(name).create_plugin(

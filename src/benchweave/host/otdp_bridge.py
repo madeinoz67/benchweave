@@ -2,10 +2,17 @@
 
 Identify, scalar read and scalar write are supported, plus single-channel
 capture (the ``artifact_writer``-gated capture verb: staged appends, a
-host-computed manifest, and an abort with a forensic record on failure).
-Dataset, profile and stream semantics need a native async host — for poll
-multiplexing across devices on one thread and the eventual invoke/dataset
-scheduling, explicitly NOT for capture/stream correctness. Services are
+host-computed manifest, and an abort with a forensic record on failure)
+and streaming (the ``event_sink``-gated subscribe/unsubscribe verbs with
+``next_event`` poll mediation: host-minted subscription ids, a normative
+interval floor, validated events landed as ``event_log`` evidence, gap
+annotations for unannounced sequence jumps, and host-cause teardown
+markers on quota exhaustion, poison and close).
+Dataset and profile semantics still need a native async host — for poll
+multiplexing across devices on one thread (subscriptions on ONE bridge
+multiplex synchronously through the poll engine) and the eventual
+invoke/dataset scheduling, explicitly NOT for capture/stream correctness.
+Services are
 caller-supplied, including the SAME monotonic timebase used for host
 deadlines (seconds versus nanoseconds). No transport provider is created.
 Adapters are trusted Python, not sandboxed; deadlines require cooperative
@@ -28,18 +35,25 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import json
 import math
 import re
 import sqlite3
 import threading
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
+from dataclasses import dataclass
 from typing import Any
 from uuid import uuid4
 
 from benchweave.content.capture_services import evidence_originated
 from benchweave.content.capture_store import writer_originated
 from benchweave.content.store import EvidenceQuotaExceeded
+from benchweave.content.stream_services import (
+    LandedEvent,
+    StreamLimitExceeded,
+    landing_originated,
+)
 from benchweave.host.plugin import SimulationInfo
 from benchweave.host.types import (
     Assurance,
@@ -78,6 +92,45 @@ class _Context:
         self.dispatched = True
 
 
+class InvalidEvent(ValueError):
+    """The event validator's refusal channel: the closed ``$defs/event``
+    (or its reading subschema, or event-level JSON serializability) did
+    not hold. A subclass of ValueError so existing ValueError handling is
+    unchanged; poll_event maps it to the PROTOCOL_ERROR poison posture
+    WITH the validator's message — the honest invalid-event class, never
+    the generic failed-or-late wording (G1/G3, Forge wave)."""
+
+
+@dataclass(frozen=True)
+class PollOutcome:
+    """One ``next_event`` poll's honest outcome — the mediation shape the
+    poll engine consumes. The outcome families:
+
+    * ``event`` set (all else clear): one validated event (Decision 4's
+      landing contract already landed) with the host's ``host_received_at``
+      receipt stamp.
+    * all fields clear: a quiet stream (the adapter returned None — no
+      error, no landing; spec §8 raises no timeout error for a healthy
+      quiet stream).
+    * ``refusal`` alone: a clean typed refusal — unknown or ended
+      subscription (INVALID_ARGUMENT not_dispatched), no stream controller
+      (UNSUPPORTED), an expired poll deadline (TIMEOUT not_dispatched), or
+      quota exhaustion at the landing boundary (RESOURCE_LIMIT dispatched,
+      with the subscription torn down — never session poison).
+    * ``refusal`` together with ``session_failed``: this bridge will do no
+      further work — the adapter lied, hung or returned an invalid event
+      (poison: the registry is cleared with host-cause ended markers), or
+      the bridge was never opened or already closed (no session failure
+      occurred, but no work is possible either — every later poll and
+      dispatch refuses all the same).
+    """
+
+    event: dict[str, Any] | None = None
+    host_received_at: str | None = None
+    refusal: OperationError | None = None
+    session_failed: bool = False
+
+
 class OTDPBridge:
     """An unopened DevicePlugin wrapping an async adapter with explicit authority."""
 
@@ -90,6 +143,7 @@ class OTDPBridge:
         simulation: SimulationInfo,
         lifecycle_timeout: float = 5.0,
         capture: Any = None,
+        stream: Any = None,
     ) -> None:
         if not isinstance(simulation, SimulationInfo):
             raise TypeError("explicit SimulationInfo required")
@@ -100,11 +154,14 @@ class OTDPBridge:
         self._adapter = adapter
         self._descriptor = copy.deepcopy(descriptor)
         self._services = services
-        # §0.3: capture control flows ONLY through this controller object,
-        # never through self._services (the pinned exercised services
-        # subset stays {monotonic} until the streaming slice). None = the
-        # session was constructed without the artifact_writer permission.
+        # §0.3: capture and streaming control flow ONLY through these
+        # controller objects, never through self._services (the pinned
+        # exercised services subset stays {monotonic} — the streaming slice
+        # landed the stream controller beside the capture one; neither
+        # touches the services members). None = the session was constructed
+        # without the artifact_writer / event_sink permission respectively.
         self._capture = capture
+        self._stream = stream
         self._simulation = simulation
         self._lifecycle_timeout = lifecycle_timeout
         self._runner: asyncio.Runner | None = None
@@ -192,6 +249,12 @@ class OTDPBridge:
                 if self._capture is not None:
                     with suppress(Exception):
                         self._capture.sweep_open(reason="plugin_close")
+                if self._stream is not None:
+                    # No stream outlives its host-owned subscription
+                    # authority: close tears down every live subscription
+                    # with a host-cause ended marker (§7/§8).
+                    with suppress(Exception):
+                        self._stream.sweep(reason="plugin_close")
                 self._closed = True
                 self._opened = False
                 try:
@@ -220,12 +283,14 @@ class OTDPBridge:
                 "read": {"parameter"},
                 "write": {"parameter", "value"},
                 "capture": {"capture_id", "format", "sample_count", "max_bytes"},
+                "stream_subscribe": {"subscription_id", "parameters", "min_interval_ms"},
+                "stream_unsubscribe": {"subscription_id"},
             }
             expected = supported.get(request.verb.value)
             if expected is None:
                 return reject(
                     ErrorCode.UNSUPPORTED,
-                    "Bridge supports identify, read, write and capture",
+                    "Bridge supports identify, read, write, capture and stream verbs",
                 )
             if set(request.arguments) != expected:
                 return reject(ErrorCode.UNSUPPORTED, "Unsupported arguments for bridge operation")
@@ -238,6 +303,17 @@ class OTDPBridge:
                 if isinstance(gate, OperationResult):
                     return gate
                 capture_id = gate
+            subscription_id: str | None = None
+            if request.verb.value == "stream_subscribe":
+                gate = self._subscribe_gate(request)
+                if isinstance(gate, OperationResult):
+                    return gate
+                subscription_id = gate
+            elif request.verb.value == "stream_unsubscribe":
+                preflight = self._unsubscribe_preflight(request)
+                if preflight is not None:
+                    return preflight
+                subscription_id = str(request.arguments["subscription_id"])
             context = _Context(request.operation_id, deadline, self._services)
             envelope = {
                 "operation_id": request.operation_id,
@@ -263,6 +339,22 @@ class OTDPBridge:
                     # Success: retire the capture — no epilogue, no forensic
                     # record; a published, acknowledged capture stands.
                     self._capture.retire(capture_id)
+                if subscription_id is not None and self._stream is not None:
+                    if converted.status is OperationStatus.OK:
+                        # A successful unsubscribe closes the subscription
+                        # (no marker — the unsubscribe result is the record);
+                        # a successful subscribe keeps the reservation live.
+                        if request.verb.value == "stream_unsubscribe":
+                            self._stream.mark_closed(subscription_id)
+                    elif request.verb.value == "stream_subscribe":
+                        # The subscription did not establish: release the
+                        # reservation (nothing streamed, no marker).
+                        self._stream.release(subscription_id)
+                if self._failed:
+                    # Poison by result (an error envelope claiming dispatch
+                    # or unknown): clear the registry — a poisoned session
+                    # cannot leak live subscriptions until close.
+                    self._stream_clear()
                 return converted
             except (
                 CaptureQuotaExceeded,
@@ -281,8 +373,18 @@ class OTDPBridge:
                 if not self._capture_originated(exc, capture_id, request):
                     if capture_id is not None:
                         self._abort_contained(capture_id, request.operation_id)
+                    self._stream_clear()
                     return poison(exc)
                 self._abort_contained(capture_id, request.operation_id)
+                if (
+                    subscription_id is not None
+                    and self._stream is not None
+                    and request.verb.value == "stream_subscribe"
+                ):
+                    # The dispatch failed without poisoning the session: the
+                    # reservation it held is released (nothing streamed). An
+                    # unsubscribe failure keeps its subscription live.
+                    self._stream.release(subscription_id)
                 return OperationResult.failure(
                     request.operation_id,
                     request.verb,
@@ -296,6 +398,7 @@ class OTDPBridge:
             except (Exception, asyncio.CancelledError) as exc:
                 if capture_id is not None:
                     self._abort_contained(capture_id, request.operation_id)
+                self._stream_clear()
                 return poison(exc)
 
     # The interoperable integer range (spec §4): values outside −(2^53−1)
@@ -303,6 +406,7 @@ class OTDPBridge:
     # structural sqlite-bind safety bound.
     _INT_MAX = 2**53 - 1
     _CAPTURE_ID_PATTERN = re.compile(r"[a-z][a-z0-9_.-]*")
+    _STREAM_PARAMETER_PATTERN = re.compile(r"[a-z][a-z0-9_]*")
     _CAPTURE_FORMATS = ("waveform_f64le", "raw_binary")
 
     def _capture_gate(self, request: OperationRequest) -> str | OperationResult:
@@ -438,6 +542,447 @@ class OTDPBridge:
                 dispatch_state=DispatchState.NOT_DISPATCHED,
             )
         return capture_id
+
+    def _subscribe_gate(self, request: OperationRequest) -> str | OperationResult:
+        """The pre-dispatch stream_subscribe gates (the _capture_gate mirror).
+
+        Permission first (no event_sink -> no event services at all), then
+        exact-typed argument shapes (the corpus $defs/operationRequest
+        stream_subscribe branch), then the descriptor's ``stream_limits`` —
+        ``min_interval_ms`` is a NORMATIVE FLOOR (spec §7: requested
+        intervals cannot be shorter — refused, never clamped) and
+        ``max_subscriptions`` caps admitted live subscriptions — then the
+        host ceiling via the controller's check-and-reserve. Every refusal
+        is a clean typed rejection with zero adapter calls; the gate region
+        has no exception frame, so malformed descriptor limits are
+        type-validated here rather than trusted.
+        """
+        if self._stream is None:
+            return OperationResult.failure(
+                request.operation_id,
+                request.verb,
+                code=ErrorCode.UNSUPPORTED,
+                message="stream_subscribe requires event_sink permission",
+                dispatch_state=DispatchState.NOT_DISPATCHED,
+            )
+        arguments = request.arguments
+        subscription_id = arguments.get("subscription_id")
+        if not isinstance(subscription_id, str) or not subscription_id:
+            return self._invalid(
+                request, "subscription_id must be a non-empty string (a host-minted opaque)"
+            )
+        parameters = arguments.get("parameters")
+        if not isinstance(parameters, list) or not parameters:
+            return self._invalid(request, "parameters must be a non-empty list")
+        if any(
+            not isinstance(parameter, str)
+            or not self._STREAM_PARAMETER_PATTERN.fullmatch(parameter)
+            for parameter in parameters
+        ):
+            return self._invalid(
+                request, "each parameter must match ^[a-z][a-z0-9_]*$ (the corpus pattern)"
+            )
+        if len(set(parameters)) != len(parameters):
+            return self._invalid(request, "parameters must be unique (uniqueItems)")
+        interval = self._exact_int(arguments.get("min_interval_ms"))
+        if interval is None or interval < 1:
+            return self._invalid(
+                request, "min_interval_ms must be an integer >= 1 (the corpus minimum)"
+            )
+        # G2 descriptor: stream_limits read with type validation — malformed
+        # limits are a clean refusal, never an exception (the capture
+        # gate's discipline, applied to the stream limits).
+        limits = self._descriptor.get("stream_limits")
+        if not isinstance(limits, dict):
+            return self._invalid(request, "descriptor stream_limits must be an object")
+        floor = self._exact_int(limits.get("min_interval_ms"))
+        if floor is None or floor < 1:
+            return self._invalid(
+                request, "descriptor stream_limits.min_interval_ms must be an integer >= 1"
+            )
+        limit_count = self._exact_int(limits.get("max_subscriptions"))
+        if limit_count is None or limit_count < 1:
+            return self._invalid(
+                request, "descriptor stream_limits.max_subscriptions must be an integer >= 1"
+            )
+        if interval < floor:
+            return self._invalid(
+                request,
+                f"requested min_interval_ms {interval} is shorter than the descriptor "
+                f"floor {floor} (spec §7: requested intervals cannot be shorter)",
+            )
+        if len(self._stream.live_subscription_ids()) + 1 > limit_count:
+            return self._invalid(
+                request,
+                "admitted subscription count cannot exceed the descriptor limit "
+                f"{limit_count} (spec §7)",
+            )
+        # The host ceiling: check-and-reserve against QuotaLimits
+        # .max_subscriptions (an author-claimed value alone would allow
+        # unbounded bridge state growth).
+        try:
+            self._stream.reserve(
+                subscription_id=subscription_id,
+                parameters=tuple(str(parameter) for parameter in parameters),
+                min_interval_ms=interval,
+            )
+        except StreamLimitExceeded as exc:
+            return OperationResult.failure(
+                request.operation_id,
+                request.verb,
+                code=ErrorCode.RESOURCE_LIMIT,
+                message=f"host subscription ceiling reached: {exc}",
+                dispatch_state=DispatchState.NOT_DISPATCHED,
+            )
+        except ValueError as exc:
+            return self._invalid(request, f"subscription refused: {exc}")
+        return subscription_id
+
+    def _unsubscribe_preflight(self, request: OperationRequest) -> OperationResult | None:
+        """The stream_unsubscribe host-side preflight.
+
+        None = proceed to the adapter (an active subscription). An
+        OperationResult is a terminal host answer with ZERO adapter calls:
+        UNSUPPORTED without event_sink, INVALID_ARGUMENT for an unknown id
+        (spec §7: unknown subscriptions are rejected by the host), or the
+        idempotent OK for a known terminal subscription (already closed or
+        ended — §7: "idempotent for an already-closed known subscription";
+        the host already knows it is done, so no re-dispatch).
+        """
+        if self._stream is None:
+            return OperationResult.failure(
+                request.operation_id,
+                request.verb,
+                code=ErrorCode.UNSUPPORTED,
+                message="stream_unsubscribe requires event_sink permission",
+                dispatch_state=DispatchState.NOT_DISPATCHED,
+            )
+        subscription_id = request.arguments.get("subscription_id")
+        if not isinstance(subscription_id, str) or not subscription_id:
+            return self._invalid(request, "subscription_id must be a non-empty string")
+        if not self._stream.is_known(subscription_id):
+            return self._invalid(
+                request,
+                f"unknown subscription {subscription_id!r}: rejected by the host (spec §7)",
+            )
+        if not self._stream.is_live(subscription_id):
+            return OperationResult.ok(
+                request.operation_id, request.verb, {"subscription_id": subscription_id}
+            )
+        return None
+
+    def _stream_clear(self) -> None:
+        """Poison clears the subscription registry (Decision 4): every live
+        subscription tears down with a host-cause ``ended`` marker, so a
+        poisoned session cannot leak live subscriptions until close. Fully
+        contained like the abort epilogue — never replaces the result being
+        returned."""
+        if self._stream is None:
+            return
+        with suppress(Exception):
+            self._stream.sweep(reason="session poisoned")
+
+    # The closed event vocabulary ($defs/event) and its key set: the
+    # x-extension pattern is schema-legal, everything else additional.
+    _EVENT_KINDS = ("telemetry", "alarm", "gap", "ended")
+    _EVENT_KEYS = frozenset({"subscription_id", "sequence", "kind", "reading", "code", "message"})
+    _READING_KEYS = frozenset(
+        {"parameter", "value", "unit", "observed_at", "age_ms", "quality", "source"}
+    )
+    _X_KEY_PATTERN = re.compile(r"x-[a-z0-9]+-[a-z0-9_-]+")
+
+    def poll_event(self, subscription_id: str, *, deadline_ns: int) -> PollOutcome:
+        """Mediate one host-driven ``next_event`` poll (spec §8: host-driven,
+        one event or None, no hidden background task, a bounded polling
+        budget — the deadline the poll engine slices).
+
+        The refusal taxonomy is Decision 4's: unknown or ended subscription
+        -> clean INVALID_ARGUMENT not_dispatched (zero adapter calls); quota
+        exhaustion at the landing boundary -> clean RESOURCE_LIMIT dispatched
+        plus teardown with a host-cause ended marker, never session poison;
+        every protocol lie (non-schema event, wrong subscription id,
+        non-increasing sequence, an event after ended) poisons and clears
+        the registry.
+        """
+        self._require_sync()
+        with self._lock:
+            if not self._opened or self._closed or self._failed:
+                return PollOutcome(
+                    refusal=OperationError(
+                        ErrorCode.INTERNAL_ERROR,
+                        "A fresh opened bridge is required",
+                        DispatchState.NOT_DISPATCHED,
+                    ),
+                    session_failed=True,
+                )
+            if self._stream is None:
+                return PollOutcome(
+                    refusal=OperationError(
+                        ErrorCode.UNSUPPORTED,
+                        "stream polling requires event_sink permission",
+                        DispatchState.NOT_DISPATCHED,
+                    )
+                )
+            if not self._stream.is_known(subscription_id):
+                return PollOutcome(
+                    refusal=OperationError(
+                        ErrorCode.INVALID_ARGUMENT,
+                        f"unknown subscription {subscription_id!r}",
+                        DispatchState.NOT_DISPATCHED,
+                    )
+                )
+            if not self._stream.is_live(subscription_id):
+                return PollOutcome(
+                    refusal=OperationError(
+                        ErrorCode.INVALID_ARGUMENT,
+                        f"subscription {subscription_id!r} is already ended or closed",
+                        DispatchState.NOT_DISPATCHED,
+                    )
+                )
+            deadline = deadline_ns / 1_000_000_000
+            if not math.isfinite(deadline) or self._services.monotonic() >= deadline:
+                return PollOutcome(
+                    refusal=OperationError(
+                        ErrorCode.TIMEOUT,
+                        "poll deadline expired",
+                        DispatchState.NOT_DISPATCHED,
+                    )
+                )
+            state = self._stream.subscription(subscription_id)
+            if state is None:  # defensive: is_live just proved otherwise
+                return PollOutcome(
+                    refusal=OperationError(
+                        ErrorCode.INTERNAL_ERROR,
+                        "registry invariant violated",
+                        DispatchState.NOT_DISPATCHED,
+                    )
+                )
+            context = _Context(str(uuid4()), deadline, self._services)
+            sequence: int | None = None
+            try:
+                event = self._run(
+                    self._adapter.next_event(subscription_id, context), context
+                )
+                if event is None:
+                    # A healthy quiet stream produced no data — no error
+                    # (spec §8), no landing, no state change.
+                    return PollOutcome()
+                validated = self._validate_event(
+                    subscription_id,
+                    event,
+                    last_sequence=state.last_sequence,
+                    last_kind=state.last_kind,
+                )
+                receipt = self._stream.now_iso()
+                sequence = int(validated["sequence"])
+                kind = str(validated["kind"])
+                # Gap honesty (R4's host mechanism): a forward jump the
+                # stream did not preface with a gap event is recorded, not
+                # silently accepted as contiguous — including a first event
+                # that did not start at zero (§7: sequence starts at zero).
+                if state.last_sequence is None:
+                    if sequence > 0:
+                        self._stream.note_sequence_jump(
+                            subscription_id, from_sequence=None, to_sequence=sequence
+                        )
+                elif sequence > state.last_sequence + 1 and state.last_kind != "gap":
+                    self._stream.note_sequence_jump(
+                        subscription_id,
+                        from_sequence=state.last_sequence,
+                        to_sequence=sequence,
+                    )
+                self._stream.record_event(subscription_id, sequence=sequence, kind=kind)
+                # land_events' max_event_batch bound is a host-contract
+                # check (the bridge always presents single-event batches);
+                # a ValueError from it is a host bug surfacing through the
+                # poison channel below — disclosed, not classified.
+                self._stream.land_events([LandedEvent(validated, receipt)])
+                return PollOutcome(event=validated, host_received_at=receipt)
+            except EvidenceQuotaExceeded as exc:
+                # Quota exhaustion at a landing boundary: a resource
+                # condition, not a protocol lie — clean refusal plus
+                # teardown with a host-cause ended marker, never poison.
+                # The discriminator (F2, review wave): only a LANDING-
+                # originated refusal (token identity + subscription
+                # binding) classifies; a bare or replayed raise keeps the
+                # poison posture, exactly like the dispatch path's C3.
+                # mark_ended_at_boundary (not mark_ended): the discarded
+                # event may itself be the terminal `ended` event — the
+                # registry already flipped — and the marker must land
+                # anyway, carrying the discarded sequence (F1, review
+                # wave).
+                if not landing_originated(exc, subscription_id):
+                    self._failed = True
+                    self._stream_clear()
+                    return PollOutcome(
+                        refusal=OperationError(
+                            ErrorCode.PROTOCOL_ERROR,
+                            "Invalid, failed or late adapter event; no replay",
+                            DispatchState.UNKNOWN,
+                        ),
+                        session_failed=True,
+                    )
+                with suppress(Exception):
+                    self._stream.mark_ended_at_boundary(
+                        subscription_id,
+                        cause="event quota exhausted",
+                        discarded_sequence=sequence,
+                    )
+                return PollOutcome(
+                    refusal=OperationError(
+                        ErrorCode.RESOURCE_LIMIT,
+                        "event quota exhausted at the landing boundary; "
+                        "the subscription is torn down",
+                        DispatchState.DISPATCHED,
+                    )
+                )
+            except InvalidEvent as exc:
+                # The honest invalid-event class (G1/G3, Forge wave): the
+                # validator's own refusal — non-schema shape, an invalid
+                # conditional-key value, or content the host cannot store —
+                # poisons WITH its message, never the generic failed-or-late
+                # wording that would mislabel an unserializable-but-legal
+                # x-extension value as adapter misconduct.
+                self._failed = True
+                self._stream_clear()
+                return PollOutcome(
+                    refusal=OperationError(
+                        ErrorCode.PROTOCOL_ERROR,
+                        f"invalid event: {exc}",
+                        DispatchState.UNKNOWN,
+                    ),
+                    session_failed=True,
+                )
+            except (Exception, asyncio.CancelledError) as exc:
+                self._failed = True
+                self._stream_clear()
+                return PollOutcome(
+                    refusal=OperationError(
+                        ErrorCode.TIMEOUT
+                        if isinstance(exc, TimeoutError)
+                        else ErrorCode.PROTOCOL_ERROR,
+                        "Invalid, failed or late adapter event; no replay",
+                        DispatchState.UNKNOWN,
+                    ),
+                    session_failed=True,
+                )
+
+    def _validate_event(
+        self,
+        subscription_id: str,
+        event: Any,
+        *,
+        last_sequence: int | None,
+        last_kind: str | None,
+    ) -> dict[str, Any]:
+        """Enforce the closed ``$defs/event`` (R4). Raises
+        :class:`InvalidEvent` — the poison channel — on any protocol lie:
+        a non-schema shape, an unknown kind, a subscription_id other than
+        the polled subscription (cross-subscription laundering), a
+        non-increasing sequence (equal = duplicate, lower = regression),
+        an event after the terminal ``ended``, a telemetry event without a
+        reading, a non-telemetry event without code+message, an
+        INVALID VALUE under any present conditional key (the corpus
+        declares ``reading`` and ``code``/``message`` unconditionally —
+        the if/then blocks govern presence only; G1, Forge wave), or
+        content the host cannot store (JSON-serializability, G3).
+        ``x-`` extension keys are schema-legal and pass through.
+
+        The after-ended rule is enforced HERE even though the registry gate
+        above refuses polling a dead subscription first (the clean
+        INVALID_ARGUMENT arm): the validator is the structural enforcement
+        for any path that presents one.
+        """
+        if not isinstance(event, dict):
+            raise InvalidEvent("event must be an object")
+        for key in event:
+            if key not in self._EVENT_KEYS and not self._X_KEY_PATTERN.fullmatch(str(key)):
+                raise InvalidEvent(f"event carries an undeclared key {key!r}")
+        if event.get("subscription_id") != subscription_id:
+            raise InvalidEvent("event subscription_id does not match the polled subscription")
+        kind = event.get("kind")
+        if kind not in self._EVENT_KINDS:
+            raise InvalidEvent(f"unknown event kind {kind!r}")
+        sequence = event.get("sequence")
+        if type(sequence) is not int or sequence < 0:
+            raise InvalidEvent("event sequence must be an integer >= 0")
+        if last_kind == "ended":
+            raise InvalidEvent("event after the terminal ended event")
+        if last_sequence is not None and sequence <= last_sequence:
+            raise InvalidEvent(
+                f"sequence {sequence} is not strictly increasing "
+                f"(last received {last_sequence}; an equal sequence is a duplicate)"
+            )
+        # Presence by kind (the if/then blocks)...
+        if kind == "telemetry":
+            if event.get("reading") is None:
+                raise InvalidEvent("telemetry event requires a reading")
+        else:
+            code = event.get("code")
+            message = event.get("message")
+            if (
+                not isinstance(code, str)
+                or not code
+                or not isinstance(message, str)
+                or not message
+            ):
+                raise InvalidEvent(f"{kind} event requires code and message strings")
+        # ...and VALUE unconditionally: the corpus declares reading and
+        # code/message with their shapes on every kind (G1, Forge wave) —
+        # a gap event carrying a garbage reading is corpus-illegal.
+        if "reading" in event:
+            self._event_reading(event["reading"])
+        if "code" in event:
+            code_value = event["code"]
+            if not isinstance(code_value, str) or not code_value:
+                raise InvalidEvent("event code, when present, must be a non-empty string")
+        if "message" in event:
+            message_value = event["message"]
+            if not isinstance(message_value, str) or not message_value:
+                raise InvalidEvent("event message, when present, must be a non-empty string")
+        # Serializability (G3, Forge wave): the corpus admits any
+        # x-extension VALUE, and a circular or pathologically deep one is
+        # legal content the host cannot STORE — refuse it here, before the
+        # landing's json.dumps would raise mid-transaction, as the honest
+        # invalid-event class rather than a protocol lie about the adapter.
+        try:
+            json.dumps(event, sort_keys=True, default=str)
+        except (TypeError, ValueError) as exc:
+            raise InvalidEvent(
+                "event is not JSON-serializable (an x-extension value the "
+                f"host cannot store): {exc}"
+            ) from exc
+        return event
+
+    @classmethod
+    def _event_reading(cls, reading: Any) -> None:
+        """The ``$defs/reading`` subschema for telemetry events: all seven
+        fields present with corpus-valid shapes (no request parameter to
+        correlate against — the subscription's parameters are the context)."""
+        if not isinstance(reading, dict):
+            raise InvalidEvent("telemetry reading must be an object")
+        for key in reading:
+            if key not in cls._READING_KEYS and not cls._X_KEY_PATTERN.fullmatch(str(key)):
+                raise InvalidEvent(f"telemetry reading carries an undeclared key {key!r}")
+        for key in cls._READING_KEYS:
+            if key not in reading:
+                raise InvalidEvent(f"telemetry reading requires {key}")
+        if not isinstance(reading["parameter"], str) or not cls._STREAM_PARAMETER_PATTERN.fullmatch(
+            reading["parameter"]
+        ):
+            raise InvalidEvent("telemetry reading parameter must match ^[a-z][a-z0-9_]*$")
+        if not cls._scalar(reading["value"]):
+            raise InvalidEvent("telemetry reading requires a finite scalar value")
+        if reading["unit"] is not None and not isinstance(reading["unit"], str):
+            raise InvalidEvent("telemetry reading unit must be a string or null")
+        if not isinstance(reading["observed_at"], str) or not reading["observed_at"]:
+            raise InvalidEvent("telemetry reading requires an observed_at string")
+        if type(reading["age_ms"]) is not int or reading["age_ms"] < 0:
+            raise InvalidEvent("telemetry reading age_ms must be an integer >= 0")
+        if reading["quality"] not in ("valid", "stale", "invalid"):
+            raise InvalidEvent("telemetry reading quality is not in the corpus enum")
+        if reading["source"] not in ("device", "cache", "commissioned"):
+            raise InvalidEvent("telemetry reading source is not in the corpus enum")
 
     @staticmethod
     def _capture_originated(
@@ -605,6 +1150,17 @@ class OTDPBridge:
             value = self._reading(data, request.arguments["parameter"])
         elif request.verb.value == "capture":
             value = self._capture_manifest(request, data)
+        elif request.verb.value in ("stream_subscribe", "stream_unsubscribe"):
+            # Echo correlation (the _convert operation-id precedent,
+            # extended to subscription ids — Decision 4): the success data
+            # must echo the request's host-minted id; anything else is a
+            # protocol lie and poisons through the raise.
+            echoed = data.get("subscription_id")
+            if not isinstance(echoed, str) or not echoed:
+                raise ValueError("stream result requires a subscription_id string")
+            if echoed != request.arguments["subscription_id"]:
+                raise ValueError("uncorrelated subscription id")
+            value = {"subscription_id": echoed}
         else:
             if (
                 data.get("parameter") != request.arguments["parameter"]
