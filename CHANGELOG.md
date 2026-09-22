@@ -150,6 +150,9 @@ All notable changes to this project will be documented in this file.
 - The ended-at-quota-boundary teardown marker (F1, review wave)
 - The landing-origin stamp — the poll path's C3 discriminator (F2, review wave)
 - The event validator enforces the corpus's unconditional keys and refuses unserializable content honestly (G1+G3, Forge wave)
+- Mirror lane refuses a moved submodule by name; no str()-laundered lock values (issue #158 review wave F1+F3)
+- Matrix CLI fails styled on OSError too (issue #158 review wave F2)
+- Uninitialized-submodule refusal names initialization, not the superproject HEAD (issue #158 measurer fold)
 
 ### Documentation
 
@@ -289,6 +292,9 @@ All notable changes to this project will be documented in this file.
 - Narrow the develop-your-device loader sentence; pin it gateway-side
 - The streaming documentation surface — delivery ceiling, guide section, loader sentence
 - REG-4's gap enumeration follows the machine source; the on_event escape residual named (G2 + row-9 note, Forge wave)
+- Issue #158 — matrix render must be a pure function of committed state
+- CON-12 invariant, GOVERNANCE identity sentence, obligation-6 extension (issue #158)
+- CON-12/GOVERNANCE name the pin as the mirror's authority (issue #158 review wave F4+NIT-1)
 
 ### Features
 
@@ -413,6 +419,8 @@ All notable changes to this project will be documented in this file.
 - Bridge stream dispatch — subscribe/unsubscribe verbs, gates, registry wiring
 - Bridge next_event mediation — validation, refusal taxonomy, gap honesty (R4)
 - The stream poll engine — poll-slice multiplexing with monitor ticks between polls
+- Matrix render reads committed state only (issue #158)
+- Run_check enforces the sdk_compatibility mirror (issue #158)
 
 ### Hardware Evidence
 
@@ -601,6 +609,7 @@ All notable changes to this project will be documented in this file.
 - Drop the dead Migration import pair in _apply_subset
 - Complete the dead-pair removal — drop the del Migration line
 - The slice-2 review wave — real delivery budget, timebase pin, rotation pin, record erratum
+- Spec10 throwaway SDK roots declare the mirrored version
 
 ### Build
 
