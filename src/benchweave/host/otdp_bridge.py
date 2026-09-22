@@ -16,8 +16,12 @@ Capture budget: a capture dispatch's deadline is the step's ``timeout_ms``
 clamped to the body deadline (``min(now + timeout_ms, body_deadline)``,
 shortened only — no new budget mechanism). The asyncio timeout is the
 detection bound for yielding adapters; blocking SQLite under store
-contention may hold the dispatch up to the store's ``busy_timeout`` before
-failing as a classified RESOURCE_LIMIT.
+contention may hold a FAILED dispatch up to twice the store's
+``busy_timeout`` (the append's BEGIN and the abort epilogue's BEGIN each
+busy-wait, and the gate region may add a third stretch) before failing
+as a classified RESOURCE_LIMIT. A deadline-aware busy-timeout clamp is
+deferred to the activation slice (row 9) where real contention exists
+to design it against.
 """
 
 from __future__ import annotations
