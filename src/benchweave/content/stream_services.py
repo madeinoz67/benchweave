@@ -233,11 +233,13 @@ class StreamController:
     # --- gap honesty ---------------------------------------------------------------
 
     def note_sequence_jump(
-        self, subscription_id: str, *, from_sequence: int, to_sequence: int
+        self, subscription_id: str, *, from_sequence: int | None, to_sequence: int
     ) -> None:
         """The host's jump-without-gap evidence annotation (R4's pinned
         mechanism): a forward sequence jump the stream did not preface with
-        a ``gap`` event is recorded, never silently accepted as contiguous."""
+        a ``gap`` event is recorded, never silently accepted as contiguous.
+        ``from_sequence=None`` records a first event that did not start at
+        zero (spec §7: sequence starts at zero per subscription)."""
         self._marker(
             subscription_id,
             marker="sequence_jump_without_gap",
@@ -245,6 +247,11 @@ class StreamController:
             from_sequence=from_sequence,
             to_sequence=to_sequence,
         )
+
+    def now_iso(self) -> str:
+        """A fresh wall read (the receipt-stamp source for poll mediation —
+        never a construction-frozen stamp)."""
+        return self._wall()
 
     # --- the landing ------------------------------------------------------------------
 

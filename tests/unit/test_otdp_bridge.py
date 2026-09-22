@@ -1269,7 +1269,13 @@ class StreamHarness:
     CaptureHarness sibling; the descriptor admits BOTH lanes so the gates'
     refusal codes are attributable to the stream gates alone)."""
 
-    def __init__(self, tmp_path: Path, *, max_subscriptions: int = 2) -> None:
+    def __init__(
+        self,
+        tmp_path: Path,
+        *,
+        max_subscriptions: int = 2,
+        evidence_quota: int = 50,
+    ) -> None:
         import pathlib
 
         self.store = Store.open(pathlib.Path(tmp_path) / "bridge-stream.db")
@@ -1303,7 +1309,7 @@ class StreamHarness:
             wall=lambda: "2026-09-22T00:00:00Z",
             quota=QuotaLimits(
                 max_dataset_bytes=8192,
-                max_evidence_entries=50,
+                max_evidence_entries=evidence_quota,
                 max_event_batch=10,
                 max_subscriptions=max_subscriptions,
             ),
@@ -1690,6 +1696,415 @@ def test_poison_on_an_unrelated_dispatch_clears_live_subscriptions(
         markers = harness.stream_rows({"marker": "host_ended"})
         assert len(markers) == 1
         assert markers[0]["id"] == request.arguments["subscription_id"]
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+# --- issue #43 slice 2: next_event mediation (R4 + the refusal taxonomy) -----------
+
+
+def a_reading() -> dict[str, Any]:
+    return {
+        "parameter": "temperature",
+        "value": 21.5,
+        "unit": "Cel",
+        "observed_at": "2026-09-22T00:00:00Z",
+        "age_ms": 0,
+        "quality": "valid",
+        "source": "device",
+    }
+
+
+def an_event(subscription_id: str, sequence: int, kind: str = "telemetry") -> dict[str, Any]:
+    event: dict[str, Any] = {
+        "subscription_id": subscription_id,
+        "sequence": sequence,
+        "kind": kind,
+    }
+    if kind == "telemetry":
+        event["reading"] = a_reading()
+    else:
+        event["code"] = "DROP"
+        event["message"] = "discarded telemetry"
+    return event
+
+
+class StreamingAdapter(StreamAdapter):
+    """Answers next_event from a script (one event or None per call)."""
+
+    def __init__(self, script: list[dict[str, Any] | None] | None = None) -> None:
+        super().__init__()
+        self.script: list[dict[str, Any] | None] = list(script or [])
+        self.polls = 0
+
+    async def next_event(self, subscription_id: str, context: Any) -> dict[str, Any] | None:
+        self.polls += 1
+        if not self.script:
+            return None
+        return self.script.pop(0)
+
+
+def a_live_subscription(harness: StreamHarness, plugin: OTDPBridge) -> str:
+    request = a_subscribe_request()
+    assert plugin.dispatch(request, deadline_ns=10_000_000_000).status is OperationStatus.OK
+    return str(request.arguments["subscription_id"])
+
+
+def correlate(
+    script: list[dict[str, Any] | None], subscription_id: str, *indices: int
+) -> None:
+    """Point the scripted events at the real subscription id (mypy-narrowed)."""
+    for index in indices or range(len(script)):
+        event = script[index]
+        assert event is not None
+        event["subscription_id"] = subscription_id
+
+
+def test_a_quiet_stream_polls_none_without_landing(tmp_path: Path) -> None:
+    harness = StreamHarness(tmp_path)
+    try:
+        adapter = StreamingAdapter(script=[None, None])
+        plugin = harness.bridge(adapter)
+        plugin.plugin_open(object())
+        subscription_id = a_live_subscription(harness, plugin)
+        first = plugin.poll_event(subscription_id, deadline_ns=10_000_000_000)
+        assert first.event is None and first.refusal is None and not first.session_failed
+        assert harness.stream_rows() == []  # nothing landed for a quiet poll
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+def test_a_validated_telemetry_event_lands_with_the_decision_4_row(tmp_path: Path) -> None:
+    harness = StreamHarness(tmp_path)
+    try:
+        adapter = StreamingAdapter(script=[an_event("placeholder", 0)])
+        plugin = harness.bridge(adapter)
+        plugin.plugin_open(object())
+        subscription_id = a_live_subscription(harness, plugin)
+        correlate(adapter.script, subscription_id, 0)
+        outcome = plugin.poll_event(subscription_id, deadline_ns=10_000_000_000)
+        assert outcome.event is not None
+        assert outcome.event["sequence"] == 0
+        assert outcome.host_received_at == "2026-09-22T00:00:00Z"
+        rows = harness.stream_rows()
+        assert len(rows) == 1
+        reference = rows[0]
+        # R4's row-shape arm: every landing-contract field present.
+        assert reference["subscription_id"] == subscription_id
+        assert reference["sequence"] == 0
+        assert reference["kind"] == "telemetry"
+        assert reference["host_received_at"] == "2026-09-22T00:00:00Z"
+        assert reference["sha256"] == hashlib.sha256(
+            _json.dumps(outcome.event, sort_keys=True).encode()
+        ).hexdigest()
+        assert reference["capture_id"] is None
+        assert reference["dataset_id"] is None
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+def test_the_ended_event_is_terminal_for_polling(tmp_path: Path) -> None:
+    harness = StreamHarness(tmp_path)
+    try:
+        adapter = StreamingAdapter(script=[an_event("placeholder", 0, kind="ended")])
+        plugin = harness.bridge(adapter)
+        plugin.plugin_open(object())
+        subscription_id = a_live_subscription(harness, plugin)
+        correlate(adapter.script, subscription_id, 0)
+        ended = plugin.poll_event(subscription_id, deadline_ns=10_000_000_000)
+        assert ended.event is not None and ended.event["kind"] == "ended"
+        assert not harness.controller.is_live(subscription_id)
+        # The refusal taxonomy: known-but-already-ended is a CLEAN refusal
+        # (INVALID_ARGUMENT not_dispatched), zero adapter calls.
+        polls_before = adapter.polls
+        refused = plugin.poll_event(subscription_id, deadline_ns=10_000_000_000)
+        assert refused.event is None
+        assert refused.refusal is not None
+        assert refused.refusal.code is ErrorCode.INVALID_ARGUMENT
+        assert refused.refusal.dispatch_state is DispatchState.NOT_DISPATCHED
+        assert adapter.polls == polls_before
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+def test_an_unknown_subscription_poll_is_refused_before_the_adapter(tmp_path: Path) -> None:
+    harness = StreamHarness(tmp_path)
+    try:
+        adapter = StreamingAdapter()
+        plugin = harness.bridge(adapter)
+        plugin.plugin_open(object())
+        outcome = plugin.poll_event(mint_subscription_id(), deadline_ns=10_000_000_000)
+        assert outcome.refusal is not None
+        assert outcome.refusal.code is ErrorCode.INVALID_ARGUMENT
+        assert outcome.refusal.dispatch_state is DispatchState.NOT_DISPATCHED
+        assert adapter.polls == 0
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+@pytest.mark.parametrize(
+    ("mutation", "label"),
+    [
+        ({"sequence": 0}, "duplicate sequence"),
+        ({"sequence": 0, "kind": "alarm", "code": "X", "message": "m"}, "regression"),
+        ({"subscription_id": "other"}, "wrong subscription id"),
+        ({"kind": "status"}, "unknown kind"),
+        ({"kind": "alarm"}, "telemetry without reading"),
+    ],
+)
+def test_protocol_lies_poison_the_session(
+    tmp_path: Path, mutation: dict[str, Any], label: str
+) -> None:
+    """R4's poison arms: a duplicate or regressing sequence, a
+    cross-subscription event, a non-schema kind, a telemetry event without
+    a reading — all protocol lies, all poison."""
+    harness = StreamHarness(tmp_path)
+    try:
+        adapter = StreamingAdapter(
+            script=[an_event("placeholder", 0), an_event("placeholder", 1)]
+        )
+        plugin = harness.bridge(adapter)
+        plugin.plugin_open(object())
+        subscription_id = a_live_subscription(harness, plugin)
+        correlate(adapter.script, subscription_id, 0)
+        correlate(adapter.script, subscription_id, 1)
+        mutated_event = adapter.script[1]
+        assert mutated_event is not None
+        mutated_event.update(mutation)
+        first = plugin.poll_event(subscription_id, deadline_ns=10_000_000_000)
+        assert first.event is not None
+        second = plugin.poll_event(subscription_id, deadline_ns=10_000_000_000)
+        assert second.session_failed, label
+        assert second.refusal is not None
+        assert second.refusal.code is ErrorCode.PROTOCOL_ERROR, label
+        follow = plugin.dispatch(
+            OperationRequest.identify("op-next"), deadline_ns=10_000_000_000
+        )
+        assert follow.error is not None  # poisoned
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+def test_an_event_after_ended_is_refused_by_the_validator(tmp_path: Path) -> None:
+    """R4's after-ended arm, enforced at the validator (structural): the
+    registry gate above already refuses polling a dead subscription
+    cleanly, so the sequential path cannot reach the adapter — this pin
+    holds the PROTOCOL_ERROR rule itself for any path that presents one."""
+    harness = StreamHarness(tmp_path)
+    try:
+        plugin = harness.bridge(StreamingAdapter())
+        plugin.plugin_open(object())
+        with pytest.raises(ValueError, match="ended"):
+            plugin._validate_event(
+                "sub-x",
+                an_event("sub-x", 5),
+                last_sequence=1,
+                last_kind="ended",
+            )
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+def test_an_alarm_without_code_and_message_poisons(tmp_path: Path) -> None:
+    harness = StreamHarness(tmp_path)
+    try:
+        adapter = StreamingAdapter(script=[an_event("placeholder", 0, kind="gap")])
+        plugin = harness.bridge(adapter)
+        plugin.plugin_open(object())
+        subscription_id = a_live_subscription(harness, plugin)
+        correlate(adapter.script, subscription_id, 0)
+        gap_event = adapter.script[0]
+        assert gap_event is not None
+        del gap_event["code"]
+        outcome = plugin.poll_event(subscription_id, deadline_ns=10_000_000_000)
+        assert outcome.session_failed
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+def test_poison_from_a_poll_clears_live_subscriptions(tmp_path: Path) -> None:
+    harness = StreamHarness(tmp_path)
+    try:
+        adapter = StreamingAdapter(
+            script=[an_event("placeholder", 5)]  # first event jumps — lands with annotation
+        )
+        plugin = harness.bridge(adapter)
+        plugin.plugin_open(object())
+        subscription_id = a_live_subscription(harness, plugin)
+        correlate(adapter.script, subscription_id, 0)
+        assert plugin.poll_event(subscription_id, deadline_ns=10_000_000_000).event is not None
+        second_request = a_subscribe_request()
+        assert plugin.dispatch(second_request, deadline_ns=10_000_000_000).status is (
+            OperationStatus.OK
+        )
+        other_id = str(second_request.arguments["subscription_id"])
+        adapter.script.append(an_event(other_id, 0))  # fine for the other stream
+        adapter.script.append(an_event(other_id, 0))  # duplicate -> poison
+        assert plugin.poll_event(other_id, deadline_ns=10_000_000_000).event is not None
+        poisoned = plugin.poll_event(other_id, deadline_ns=10_000_000_000)
+        assert poisoned.session_failed
+        # The registry is cleared: no live subscriptions remain.
+        assert harness.controller.live_subscription_ids() == []
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+def test_a_forward_jump_without_gap_is_recorded_by_the_host(tmp_path: Path) -> None:
+    """R4's gap-honesty arm, pinned on the HOST mechanism: after a
+    simulated drop (0 -> 7, no gap event), the host's annotation row is
+    present and the events themselves still land."""
+    harness = StreamHarness(tmp_path)
+    try:
+        adapter = StreamingAdapter(
+            script=[
+                an_event("placeholder", 0),
+                an_event("placeholder", 7),
+            ]
+        )
+        plugin = harness.bridge(adapter)
+        plugin.plugin_open(object())
+        subscription_id = a_live_subscription(harness, plugin)
+        correlate(adapter.script, subscription_id)
+        assert plugin.poll_event(subscription_id, deadline_ns=10_000_000_000).event
+        assert plugin.poll_event(subscription_id, deadline_ns=10_000_000_000).event
+        annotations = harness.stream_rows({"marker": "sequence_jump_without_gap"})
+        assert len(annotations) == 1
+        assert annotations[0]["id"] == subscription_id
+        assert annotations[0]["from_sequence"] == 0
+        assert annotations[0]["to_sequence"] == 7
+        # Both events landed (the jump is recorded, not refused).
+        landed = [row for row in harness.stream_rows() if "marker" not in row]
+        assert [row["sequence"] for row in landed] == [0, 7]
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+def test_a_preceding_gap_event_covers_the_jump_without_annotation(tmp_path: Path) -> None:
+    harness = StreamHarness(tmp_path)
+    try:
+        adapter = StreamingAdapter(
+            script=[
+                an_event("placeholder", 0),
+                an_event("placeholder", 1, kind="gap"),
+                an_event("placeholder", 7),
+            ]
+        )
+        plugin = harness.bridge(adapter)
+        plugin.plugin_open(object())
+        subscription_id = a_live_subscription(harness, plugin)
+        correlate(adapter.script, subscription_id)
+        for _ in adapter.script:
+            assert plugin.poll_event(subscription_id, deadline_ns=10_000_000_000).event
+        assert harness.stream_rows({"marker": "sequence_jump_without_gap"}) == []
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+def test_a_first_event_past_zero_is_annotated(tmp_path: Path) -> None:
+    """Spec §7: sequence starts at zero per subscription — a first event
+    already past zero is a delivery gap the host records."""
+    harness = StreamHarness(tmp_path)
+    try:
+        adapter = StreamingAdapter(script=[an_event("placeholder", 4)])
+        plugin = harness.bridge(adapter)
+        plugin.plugin_open(object())
+        subscription_id = a_live_subscription(harness, plugin)
+        correlate(adapter.script, subscription_id, 0)
+        assert plugin.poll_event(subscription_id, deadline_ns=10_000_000_000).event
+        annotations = harness.stream_rows({"marker": "sequence_jump_without_gap"})
+        assert len(annotations) == 1
+        assert annotations[0]["from_sequence"] is None
+        assert annotations[0]["to_sequence"] == 4
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+def test_quota_exhaustion_at_landing_is_a_clean_refusal_with_teardown(
+    tmp_path: Path,
+) -> None:
+    """Decision 4's refusal taxonomy: quota exhaustion at a landing
+    boundary is a clean RESOURCE_LIMIT refusal plus teardown with a
+    host-cause ended marker — never session poison."""
+    harness = StreamHarness(tmp_path, evidence_quota=1)
+    try:
+        # The event dimension holds one row: the first event lands, the
+        # second refuses at the landing boundary.
+        adapter = StreamingAdapter(
+            script=[an_event("placeholder", 0), an_event("placeholder", 1)]
+        )
+        plugin = harness.bridge(adapter)
+        plugin.plugin_open(object())
+        subscription_id = a_live_subscription(harness, plugin)
+        correlate(adapter.script, subscription_id)
+        first = plugin.poll_event(subscription_id, deadline_ns=10_000_000_000)
+        assert first.event is not None
+        second = plugin.poll_event(subscription_id, deadline_ns=10_000_000_000)
+        assert second.event is None
+        assert second.refusal is not None
+        assert second.refusal.code is ErrorCode.RESOURCE_LIMIT
+        assert second.refusal.dispatch_state is DispatchState.DISPATCHED
+        assert not second.session_failed
+        assert not harness.controller.is_live(subscription_id)
+        markers = harness.stream_rows({"marker": "host_ended"})
+        assert len(markers) == 1
+        assert markers[0]["cause"] == "event quota exhausted"
+        # Never poison: the session survives.
+        follow = plugin.dispatch(
+            OperationRequest.identify("op-next"), deadline_ns=10_000_000_000
+        )
+        assert follow.status is OperationStatus.OK
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+def test_a_hanging_poll_poisons_as_a_timeout(tmp_path: Path) -> None:
+    harness = StreamHarness(tmp_path)
+    try:
+        class Hanging(StreamingAdapter):
+            async def next_event(self, subscription_id: str, context: Any) -> Any:
+                self.polls += 1
+                await asyncio.sleep(1.0)  # blows the 0.3s poll budget
+                return an_event(subscription_id, 0)
+
+        plugin = harness.bridge(Hanging())
+        plugin.plugin_open(object())
+        subscription_id = a_live_subscription(harness, plugin)
+        outcome = plugin.poll_event(subscription_id, deadline_ns=300_000_000)
+        assert outcome.session_failed
+        assert outcome.refusal is not None
+        assert outcome.refusal.code is ErrorCode.TIMEOUT
+        assert harness.controller.live_subscription_ids() == []
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+def test_polling_without_a_stream_controller_refuses_unsupported(tmp_path: Path) -> None:
+    harness = StreamHarness(tmp_path)
+    try:
+        plugin = OTDPBridge(
+            StreamingAdapter(),
+            descriptor=dict(STREAM_DESCRIPTOR),
+            services=SimpleNamespace(monotonic=lambda: 0.0),
+            simulation=SimulationInfo(True, "Synthetic"),
+        )
+        plugin.plugin_open(object())
+        outcome = plugin.poll_event(mint_subscription_id(), deadline_ns=10_000_000_000)
+        assert outcome.refusal is not None
+        assert outcome.refusal.code is ErrorCode.UNSUPPORTED
         plugin.plugin_close()
     finally:
         harness.close()

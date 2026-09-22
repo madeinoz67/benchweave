@@ -81,11 +81,13 @@ EXPECTED_BRIDGE_CALLS: dict[str, tuple[int, bool, bool]] = {
     # member -> (positional arguments, keyword arguments used, starred arguments)
     "open": (3, False, False),
     "execute": (2, False, False),
+    "next_event": (2, False, False),
     "close": (1, False, False),
 }
-# documented gap: declared by the SDK protocol, never called by the bridge
-# (identify/read/write only — the otdp_bridge module docstring)
-ADAPTER_GAPS = frozenset({"next_event"})
+# documented gap: none since the streaming slice (issue #43 slice 2) — the
+# bridge now mediates next_event through poll_event, so the Adapter protocol
+# is fully exercised (identify/read/write/capture dispatch + streaming polls)
+ADAPTER_GAPS = frozenset[str]()
 EXPECTED_HOST_SERVICES = frozenset(
     {"monotonic", "utc_now", "transfer", "close_transport", "record_evidence"}
 )
