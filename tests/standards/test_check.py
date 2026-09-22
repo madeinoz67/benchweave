@@ -37,6 +37,23 @@ def _prefixes(failures: list[str]) -> set[str]:
     return {line.split(":", 1)[0] for line in failures}
 
 
+def _standards_root(tmp_path: Path) -> Path:
+    """A non-git root carrying the real standards tree and parity validator.
+
+    No gitlink and no submodule repository: both submodule-state SHAs read
+    None, so run_check's mirror lane runs the lock-content comparison — the
+    harness shape for feeding synthetic locks. (A detached sdk copy against
+    ROOT itself is now refused as a submodule-state mismatch, correctly.)
+    """
+    root = tmp_path / "root"
+    root.mkdir()
+    shutil.copytree(ROOT / "standards", root / "standards")
+    parity = root / "src/benchweave/presentation/contracts.py"
+    parity.parent.mkdir(parents=True)
+    shutil.copy2(ROOT / "src/benchweave/presentation/contracts.py", parity)
+    return root
+
+
 def test_real_tree_is_clean() -> None:
     from benchweave.standards.check import run_check
 
@@ -149,7 +166,7 @@ def test_run_check_refuses_mirror_lock_drift(tmp_path: Path) -> None:
     lock = _lock(sdk)
     lock["compatibility"]["sdk"] = "9.9.9"
     _write_lock(sdk, lock)
-    failures = run_check(ROOT, sdk)
+    failures = run_check(_standards_root(tmp_path), sdk)
     assert "sdk_compatibility_drift" in _prefixes(failures)
 
 
@@ -165,7 +182,7 @@ def test_mirror_drift_names_each_field(tmp_path: Path) -> None:
         "notes": "regenerated",
     }
     _write_lock(sdk, lock)
-    failures = run_check(ROOT, sdk)
+    failures = run_check(_standards_root(tmp_path), sdk)
     drift = sorted(line for line in failures if line.startswith("sdk_compatibility_drift:"))
     assert len(drift) == 3
     assert any(" manifest main_project=" in line for line in drift)
@@ -181,5 +198,100 @@ def test_mirror_null_and_empty_notes_normalise_equal(tmp_path: Path) -> None:
     lock = _lock(sdk)
     lock["compatibility"]["notes"] = ""
     _write_lock(sdk, lock)
-    failures = run_check(ROOT, sdk)
+    failures = run_check(_standards_root(tmp_path), sdk)
     assert "sdk_compatibility_drift" not in _prefixes(failures)
+
+
+def _git(*args: str, cwd: Path) -> None:
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=BenchWeave Tests",
+            "-c",
+            "user.email=tests@example.invalid",
+            # Local-path submodule clones need the file transport (refused by
+            # default since git 2.38.1); this fixture only ever clones from
+            # this repository's own pinned checkout into a temp dir.
+            "-c",
+            "protocol.file.allow=always",
+            *args,
+        ],
+        cwd=cwd,
+        capture_output=True,
+        check=True,
+    )
+
+
+def _repo_with_submodule(tmp_path: Path) -> Path:
+    """A real parent repo whose gitlink pins the real submodule checkout.
+
+    The submodule is cloned from the local ``packages/sdk`` (HEAD at the
+    gitlink the parent records), so moving it is one commit inside it — the
+    maintainer's measured issue-#158 shape.
+    """
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    shutil.copytree(ROOT / "standards", repo / "standards")
+    parity = repo / "src/benchweave/presentation/contracts.py"
+    parity.parent.mkdir(parents=True)
+    shutil.copy2(ROOT / "src/benchweave/presentation/contracts.py", parity)
+    _git("init", cwd=repo)
+    _git(
+        "submodule",
+        "add",
+        "--name",
+        "packages/sdk",
+        str(ROOT / "packages/sdk"),
+        "packages/sdk",
+        cwd=repo,
+    )
+    _git("add", "-A", cwd=repo)
+    _git("commit", "-m", "scratch: standards tree with the pinned submodule", cwd=repo)
+    return repo
+
+
+def test_mirror_refuses_moved_submodule_with_honest_message(tmp_path: Path) -> None:
+    """CON-12: a working tree away from the gitlink is refused by name.
+
+    Following a manifest edit there would mirror a version the gitlink does
+    not pin — the message must point at the submodule state, never at
+    standards-manifest.json.
+    """
+    from benchweave.standards.check import run_check
+
+    repo = _repo_with_submodule(tmp_path)
+    sdk = repo / "packages/sdk"
+    lock = _lock(sdk)
+    lock["compatibility"]["sdk"] = "0.0.5"
+    _write_lock(sdk, lock)
+    _git("add", "-A", cwd=sdk)
+    _git("commit", "-m", "scratch: bump compatibility.sdk", cwd=sdk)
+    failures = run_check(repo)
+    assert len(failures) == 1
+    assert failures[0].startswith(
+        "sdk_compatibility_drift: submodule working tree is not at the pinned commit"
+    )
+    assert "run git submodule update --init packages/sdk" in failures[0]
+    assert "update standards-manifest.json" not in failures[0]
+    # Restoring the pin greens the check: the pinned lock matches the mirror.
+    _git("submodule", "update", "--init", "packages/sdk", cwd=repo)
+    assert run_check(repo) == []
+
+
+def test_mirror_refuses_non_string_lock_values_without_laundering(tmp_path: Path) -> None:
+    """A non-string lock value is malformed and named as such — never
+    str()-laundered into a comparison or a quoted '0' that reads as a string."""
+    from benchweave.standards.check import run_check
+
+    sdk = _sdk_copy(tmp_path)
+    lock = _lock(sdk)
+    lock["compatibility"]["sdk"] = 0
+    lock["compatibility"]["notes"] = 0
+    _write_lock(sdk, lock)
+    failures = run_check(_standards_root(tmp_path), sdk)
+    drift = [line for line in failures if line.startswith("sdk_compatibility_drift:")]
+    assert len(drift) == 2
+    assert any("SDK lock sdk is not a string or null (int)" in line for line in drift)
+    assert any("SDK lock notes is not a string or null (int)" in line for line in drift)
+    assert "'0'" not in "\n".join(drift)
