@@ -1084,3 +1084,53 @@ def test_a_saved_stamped_exception_replayed_on_a_write_dispatch_keeps_poison(
         plugin.plugin_close()
     finally:
         harness.close()
+
+
+def test_gate_region_lock_contention_is_resource_limit_not_dispatched(tmp_path: Path) -> None:
+    """F6: the same writer-originated condition (a stamped OperationalError
+    from the writer's BEGIN) classifies RESOURCE_LIMIT at the gate too —
+    C2's resource-condition claim is unqualified by site, and C5 named the
+    gate and append sites as one family. Nothing was opened (A6's
+    no-epilogue rule holds: zero forensic rows, zero staging rows) and the
+    adapter is never called."""
+    import threading
+
+    harness = CaptureHarness(tmp_path)
+    try:
+        db_path = str(
+            harness.store.connection.execute("PRAGMA database_list").fetchone()[2]
+        )
+        harness.store.connection.execute("PRAGMA busy_timeout=80")
+        holder_lock = threading.Event()
+        release = threading.Event()
+
+        def holder() -> None:
+            contender = sqlite3.connect(db_path, timeout=5.0)
+            contender.execute("BEGIN IMMEDIATE")
+            contender.execute(
+                "INSERT INTO benches (bench_id, generation, qualification,"
+                " configuration_json, licence, updated_at)"
+                " VALUES ('gate-held', 1, 'q', '{}', 'l', 't')"
+            )
+            holder_lock.set()
+            release.wait(10)
+            contender.rollback()
+            contender.close()
+
+        holder_thread = threading.Thread(target=holder)
+        holder_thread.start()
+        assert holder_lock.wait(10), "holder never took the write lock"
+        try:
+            plugin, result = a_capture_dispatch(harness, Adapter(), a_capture_request())
+            assert result.error is not None
+            assert result.error.code is ErrorCode.RESOURCE_LIMIT
+            assert result.error.dispatch_state is DispatchState.NOT_DISPATCHED
+            assert harness.adapter.calls == 0
+            assert harness.staged_count() == 0  # nothing was opened
+            assert harness.forensic_count() == 0  # A6's no-epilogue rule
+        finally:
+            release.set()
+            holder_thread.join(10)
+        plugin.plugin_close()
+    finally:
+        harness.close()

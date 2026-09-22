@@ -404,6 +404,27 @@ class OTDPBridge:
                 message=f"capture id refused: {exc}",
                 dispatch_state=DispatchState.NOT_DISPATCHED,
             )
+        except sqlite3.OperationalError as exc:
+            # F6: a writer-originated OperationalError at the gate (lock
+            # contention on open_capture's BEGIN) is the SAME resource
+            # condition C5 names mid-capture — RESOURCE_LIMIT, not
+            # INTERNAL_ERROR — verified by the identity+binding stamp.
+            # Nothing was opened, so A6's no-epilogue rule still holds.
+            if writer_originated(exc, capture_id):
+                return OperationResult.failure(
+                    request.operation_id,
+                    request.verb,
+                    code=ErrorCode.RESOURCE_LIMIT,
+                    message=f"capture open contended: {exc}",
+                    dispatch_state=DispatchState.NOT_DISPATCHED,
+                )
+            return OperationResult.failure(
+                request.operation_id,
+                request.verb,
+                code=ErrorCode.INTERNAL_ERROR,
+                message=f"capture open failed: {exc}",
+                dispatch_state=DispatchState.NOT_DISPATCHED,
+            )
         except Exception as exc:
             return OperationResult.failure(
                 request.operation_id,
