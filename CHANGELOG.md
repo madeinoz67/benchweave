@@ -142,6 +142,11 @@ All notable changes to this project will be documented in this file.
 - Read the _GENERATED.txt stamps as UTF-8 (#139)
 - Keep the 0600 promise on Windows by restricting benchweave.env's access list (#137)
 - Say what 0600 means on Windows in the remaining messages and tests (#137)
+- Forensic once-guard keys durability and lifecycle, not identity
+- The stamp discriminator requires identity and dispatch binding
+- Gate-region lock contention classifies RESOURCE_LIMIT
+- The writer's stamp frame covers the COMMIT sites; sweep return documented
+- Finalise enforces the session key on the publishing path
 
 ### Documentation
 
@@ -276,6 +281,9 @@ All notable changes to this project will be documented in this file.
 - Docstrings for the four worst-documented public vocabularies
 - Align development.md with what CI actually runs
 - Describe the CI gate this branch's workflow actually runs
+- Bridge docstring — version fix, real async-host boundary, capture-budget disclosure
+- The busy-timeout disclosure prices the full failed-dispatch path
+- Narrow the develop-your-device loader sentence; pin it gateway-side
 
 ### Features
 
@@ -391,6 +399,10 @@ All notable changes to this project will be documented in this file.
 - Plugin-ui-preview 0.1.0 -> 0.1.1 — plot_views on the wire
 - Manifest-declared plots render in the preview (0.1.2)
 - Gortex-write-gate — deny native edits in tracked primaries
+- V5 capture-staging migration + refuse-newer guard + hygiene pins
+- Staged-append capture writer (open/append/finalise/abort/sweep/ledger)
+- Composing capture-services bundle + controller + permission read
+- Bridge dispatch(capture) — gates, manifest conversion, classification, epilogue
 
 ### Hardware Evidence
 
@@ -470,6 +482,9 @@ All notable changes to this project will be documented in this file.
 - Advance packages/sdk to 4263cc3 (scaffold numeric-target fix)
 - Advance packages/sdk to 57a3441 (generated-test syntax fix)
 - Advance packages/sdk to v0.1.0; reversed-range becomes both-refuse
+- Capture-store module stub — RED collection scaffold
+- Capture-services module stub — RED collection scaffold
+- Drop the dead EvidenceQuotaExceeded re-export; operator guide names refuse_newer_schema
 
 ### Performance
 
@@ -570,6 +585,11 @@ All notable changes to this project will be documented in this file.
 - The harness closes the Store it opened (#136)
 - Close the store only once the server thread has stopped (#136)
 - Pin packaged-first precedence when both trees exist
+- The slice-1 sequential-model measurement (issue #43)
+- The contention arm asserts eventual reclaim, not overshoot timing
+- A6's INTERNAL_ERROR gate arm gets its home (review R1)
+- Drop the dead Migration import pair in _apply_subset
+- Complete the dead-pair removal — drop the del Migration line
 
 ### Build
 
