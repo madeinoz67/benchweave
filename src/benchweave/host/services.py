@@ -17,17 +17,31 @@ from benchweave.host.types import Reading
 
 @dataclass(frozen=True)
 class QuotaLimits:
-    """Finite limits enforced BEFORE any write or retention happens."""
+    """Finite limits enforced BEFORE any write or retention happens.
+
+    ``max_capture_bytes`` and ``max_subscriptions`` are the fork-3 HINT
+    defaults (16 MiB covers the 16 MB class-lane worst case at 2x the 8 MB
+    core-lane anchor; 16 subscriptions) — commissioned values come from
+    bench qualification (A02), and ``max_subscriptions`` is unread until
+    the streaming slice. ``max_dataset_bytes`` stays REQUIRED: explicit at
+    every construction site, and it is honestly a per-context CAPTURE-byte
+    ceiling in the G3 allowance formula (evidence-lane artifact bytes are
+    excluded — the record scopes ``used`` to the capture ledger).
+    """
 
     max_dataset_bytes: int
     max_evidence_entries: int
     max_event_batch: int
+    max_capture_bytes: int = 16 * 1024 * 1024
+    max_subscriptions: int = 16
 
     def __post_init__(self) -> None:
         for name, value in (
             ("max_dataset_bytes", self.max_dataset_bytes),
             ("max_evidence_entries", self.max_evidence_entries),
             ("max_event_batch", self.max_event_batch),
+            ("max_capture_bytes", self.max_capture_bytes),
+            ("max_subscriptions", self.max_subscriptions),
         ):
             if value < 1:
                 raise ValueError(f"{name} must be >= 1")

@@ -181,6 +181,23 @@ class CaptureStagingStore:
         ).fetchone()
         return int(found[0])
 
+    def staged_capture(self, capture_id: str) -> dict[str, Any] | None:
+        """The staged (open) capture's row: format and declared sample_count,
+        the host-side authority the manifest's echo fields derive from —
+        None when the id is unknown or no longer staged."""
+        found = self._conn.execute(
+            "SELECT format, sample_count, reserved_bytes FROM capture_staging"
+            " WHERE capture_id = ? AND state = ?",
+            (capture_id, _STATE_STAGED),
+        ).fetchone()
+        if found is None:
+            return None
+        return {
+            "format": found[0],
+            "sample_count": found[1],
+            "reserved_bytes": int(found[2]),
+        }
+
     def append(self, capture_id: str, data: bytes, context_key: str) -> None:
         """Append one ordered chunk under the capture's reservation."""
         if not data:
