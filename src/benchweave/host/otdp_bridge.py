@@ -94,20 +94,25 @@ class _Context:
 @dataclass(frozen=True)
 class PollOutcome:
     """One ``next_event`` poll's honest outcome — the mediation shape the
-    poll engine consumes. Exactly one of:
+    poll engine consumes. The outcome families:
 
-    * ``event`` set: one validated event (Decision 4's landing contract
-      already landed) with the host's ``host_received_at`` receipt stamp.
-    * all clear: a quiet stream (the adapter returned None — no error, no
-      landing; spec §8 raises no timeout error for a healthy quiet stream).
-    * ``refusal`` set: a clean typed refusal — unknown or ended
+    * ``event`` set (all else clear): one validated event (Decision 4's
+      landing contract already landed) with the host's ``host_received_at``
+      receipt stamp.
+    * all fields clear: a quiet stream (the adapter returned None — no
+      error, no landing; spec §8 raises no timeout error for a healthy
+      quiet stream).
+    * ``refusal`` alone: a clean typed refusal — unknown or ended
       subscription (INVALID_ARGUMENT not_dispatched), no stream controller
       (UNSUPPORTED), an expired poll deadline (TIMEOUT not_dispatched), or
       quota exhaustion at the landing boundary (RESOURCE_LIMIT dispatched,
       with the subscription torn down — never session poison).
-    * ``session_failed``: the adapter lied, hung or returned an invalid
-      event — poison, the registry is cleared with host-cause ended
-      markers, and every later operation refuses.
+    * ``refusal`` together with ``session_failed``: this bridge will do no
+      further work — the adapter lied, hung or returned an invalid event
+      (poison: the registry is cleared with host-cause ended markers), or
+      the bridge was never opened or already closed (no session failure
+      occurred, but no work is possible either — every later poll and
+      dispatch refuses all the same).
     """
 
     event: dict[str, Any] | None = None
@@ -777,6 +782,10 @@ class OTDPBridge:
                         to_sequence=sequence,
                     )
                 self._stream.record_event(subscription_id, sequence=sequence, kind=kind)
+                # land_events' max_event_batch bound is a host-contract
+                # check (the bridge always presents single-event batches);
+                # a ValueError from it is a host bug surfacing through the
+                # poison channel below — disclosed, not classified.
                 self._stream.land_events([LandedEvent(validated, receipt)])
                 return PollOutcome(event=validated, host_received_at=receipt)
             except EvidenceQuotaExceeded as exc:

@@ -26,7 +26,14 @@ SLICE_NS = 10_000_000  # one poll slice: 10 ms
 
 @dataclass
 class Harness:
-    """A recording fake poller + tick + live registry over a TestClock."""
+    """A recording fake poller + tick + live registry over a TestClock.
+
+    The fake models the bridge's refusal taxonomy exactly: an
+    INVALID_ARGUMENT (unknown/ended) or RESOURCE_LIMIT (quota teardown)
+    refusal has ended the subscription by the time it is reported, so it
+    leaves the live registry; a TIMEOUT-at-entry refusal changes no
+    registry state (M3, review wave) — the still-live subscription is
+    re-polled while live() lists it."""
 
     clock: TestClock = field(default_factory=TestClock)
     ticks: int = 0
@@ -35,6 +42,9 @@ class Harness:
     # subscription_id -> scripted outcomes popped per poll; None (absent)
     # means quiet
     script: dict[str, list[PollOutcome]] = field(default_factory=dict)
+    # subscriptions whose every poll yields a fresh event (the saturated
+    # budget pin) — checked before script
+    always: set[str] = field(default_factory=set)
     live: list[str] = field(default_factory=lambda: ["sub-a", "sub-b"])
     stop_after_ticks: int | None = None
 
@@ -46,12 +56,20 @@ class Harness:
 
     def poll(self, subscription_id: str, *, deadline_ns: int) -> PollOutcome:
         self.polls.append((subscription_id, self.clock.now_ns(), deadline_ns))
+        if subscription_id in self.always:
+            return an_event_outcome(
+                len([p for p in self.polls if p[0] == subscription_id]),
+                subscription_id,
+            )
         queue = self.script.get(subscription_id)
         if queue:
             outcome = queue.pop(0)
-            if outcome.refusal is not None:
-                # The fake mirrors the real registry contract: a refusal has
-                # always ended the subscription by the time it is reported.
+            if outcome.refusal is not None and outcome.refusal.code in (
+                ErrorCode.INVALID_ARGUMENT,
+                ErrorCode.RESOURCE_LIMIT,
+            ):
+                # The fake mirrors the real registry: these refusal classes
+                # have ended the subscription by the time they are reported.
                 self.live = [sid for sid in self.live if sid != subscription_id]
             return outcome
         return PollOutcome()
@@ -67,9 +85,9 @@ class Harness:
         )
 
 
-def an_event_outcome(sequence: int = 0) -> PollOutcome:
+def an_event_outcome(sequence: int = 0, subscription_id: str = "sub-a") -> PollOutcome:
     return PollOutcome(
-        event={"subscription_id": "sub-a", "sequence": sequence, "kind": "telemetry"},
+        event={"subscription_id": subscription_id, "sequence": sequence, "kind": "telemetry"},
         host_received_at="2026-09-22T00:00:00Z",
     )
 
@@ -196,6 +214,43 @@ def test_one_round_drives_polls_outside_delay_steps() -> None:
     assert refused == []
     assert [poll[0] for poll in harness.polls] == ["sub-a", "sub-b"]
     assert len(harness.polls) == 2  # exactly once each, no pacing wait
+
+
+def test_a_timeout_refusal_does_not_drop_a_live_subscription_from_rotation() -> None:
+    """M3 (review wave): only refusals that ENDED the subscription drop it
+    from rotation — a poll-deadline TIMEOUT refusal (reachable only when
+    the engine clock and the services clock diverge) changes no registry
+    state, so the still-live subscription is re-polled on the next round.
+    The live registry is the authority, re-read every round."""
+    harness = Harness()
+    harness.script["sub-a"] = [a_refusal(ErrorCode.TIMEOUT)]
+    engine = harness.engine()
+    refused = engine.poll_until(
+        deadline_ns=harness.clock.now_ns() + 3 * SLICE_NS,
+        on_event=lambda *args: None,
+    )
+    assert refused == ["sub-a"]  # reported once
+    a_polls = [poll for poll in harness.polls if poll[0] == "sub-a"]
+    assert len(a_polls) >= 2  # ...and re-polled while still live
+
+
+def test_the_saturated_round_budget_is_one_event_per_stream_per_slice() -> None:
+    """F3 (review wave): the REAL delivery budget, pinned by measurement —
+    a round polls EVERY live subscription then waits one slice, so two
+    always-flowing streams deliver two events per slice (~200/s at a 10 ms
+    slice), not the single ~100/s number the first guide prose claimed;
+    100/s shared is only the all-blocking asymptote."""
+    harness = Harness()
+    harness.always = {"sub-a", "sub-b"}
+    engine = harness.engine()
+    events: list[str] = []
+    window_slices = 3
+    engine.poll_until(
+        deadline_ns=harness.clock.now_ns() + window_slices * SLICE_NS,
+        on_event=lambda subscription_id, event, receipt: events.append(subscription_id),
+    )
+    # 3 slices x 2 always-flowing streams = 6 events: 2 per slice.
+    assert len(events) == window_slices * 2
 
 
 def a_quiet_pace(outcomes: dict[str, list[PollOutcome]]) -> Any:

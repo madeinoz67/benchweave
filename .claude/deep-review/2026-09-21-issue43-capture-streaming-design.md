@@ -744,3 +744,32 @@ promoted to a tracked issue (dataset/invoke lane) and row 6 re-keyed to transpor
 providers with a carrier issue. One citation in the review itself was wrong (the cited
 SDK `standards_sync._segment_problem` precedent does not exist; the real in-tree
 precedent is the plugin-ui unsafe-resource-path refusals) and is corrected here.
+
+**Erratum (2026-09-22, slice-2 review wave).** Two quota/derivation
+sentences in this record did not survive implementation review:
+
+1. *Decision 4's quota-stack sentence* — "``max_evidence_entries`` keeps
+   meaning only what ``retain_evidence`` consumed" — is not absolute:
+   streamed events, the capture bundle's ``record_evidence`` entries and
+   forensic abort markers all land as ``event_log``-kind rows, so they
+   share ONE kind-scoped accounting dimension and consume each other's
+   ceiling (both starvation directions were demonstrated in review: a
+   chatty stream can refuse the bundle's next evidence retention, and a
+   retention-heavy session can tear down a stream early). The implemented
+   posture, disclosed in ``stream_services.py``, is that the shared
+   dimension is the conservative direction for the stream (its ceiling
+   fills no later) and is required by this record's own landing kind
+   ("``event_log``-kind evidence"); splitting the dimension would need
+   distinct evidence kinds — a corpus revision, not a slice-2 edit.
+2. *Decision 4's delivery derivation* — "the poll floor (10 ms) makes the
+   shared budget ≈ 100 events/s across all live subscriptions" — mis-modeled
+   the round: a round polls EVERY live subscription and then waits one
+   slice, so the shared budget is ``N/(S + ΣLᵢ)`` events/s (instant polls:
+   ``N/S`` — two subscriptions at a 10 ms slice ≈ 200/s; every poll
+   blocking its full slice: converges to ``1/S`` ≈ 100/s shared). The
+   measured pin (two always-flowing streams, 10 ms slice → 2 events/slice)
+   falsified the single-number claim; the guide and the engine docstring
+   now carry the corrected derivation with both asymptotes, and the
+   10 ms figure is ``bench_poll_ns``'s *default* (its floor is 1 ms), with
+   the slice-vs-cadence binding belonging to the row-9 wiring rather than
+   the engine.

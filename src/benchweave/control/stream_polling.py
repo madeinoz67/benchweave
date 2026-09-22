@@ -10,7 +10,11 @@ subscriptions on the caller's thread:
   mirroring the ``_MonitoringClock.wait_ns`` contract — deadline-sliced, a
   tick at each slice boundary. A long poll is thereby never a monitoring
   blackout: no single ``next_event`` call can outrun the slice the engine
-  handed it, because the bridge's asyncio timeout cuts it at that deadline.
+  handed it, because the bridge's asyncio timeout cuts it at that deadline
+  — one residual, the R6 class: a ``next_event`` that never yields cannot
+  be preempted by any asyncio timeout, and deadlines require cooperative
+  adapters (the bridge docstring's boundary); the thread-level watchdog
+  stays deferral row 11.
 * **Monitor ticks between polls.** The injected ``tick`` (the run monitor's
   own) runs at every round boundary and between every pair of polls, so
   condition evaluation, cancel detection and lease-loss detection keep
@@ -20,17 +24,37 @@ subscriptions on the caller's thread:
   it; ``poll_until`` paces rounds to the poll slice until the engine
   deadline. The pre-slice rhythm existed only inside ``delay`` steps; this
   engine is the mechanism the record names for polling independent of them.
-* **Honest rotation.** A refused subscription (unknown, ended, or torn down
-  for quota) is reported and never re-polled — the live registry the engine
-  reads each round is the authority. A failed bridge session stops the
-  whole engine: the session is dead, not one stream.
+* **Honest rotation.** A refusal that ended the subscription (unknown,
+  ended, or torn down for quota) is reported and the live registry — the
+  authority, re-read every round — stops listing it. A poll-deadline
+  TIMEOUT refusal changes no registry state, so a still-live subscription
+  is re-polled. A failed bridge session stops the whole engine: the
+  session is dead, not one stream.
 
-Delivery ceiling (the derivation the device guide carries): one event per
-``next_event`` call and a 10 ms poll floor (``bench_poll_ns``'s default)
-make the shared budget approximately 100 events/s across all live
-subscriptions; a device whose N-variables × R-Hz product approaches that
-budget belongs on the capture or dataset lane, streaming a decimated
-signal at most.
+Delivery budget (the derivation the device guide carries, corrected by the
+review wave): one event per ``next_event`` call; a round polls every live
+subscription once and then waits one slice ``S``, so with per-poll
+latencies ``L_i`` a round lasts ``S + ΣL_i``. The shared budget is
+``N/(S + ΣL_i)`` events/s and each subscription sees at most
+``1/(S + ΣL_i)``. Two asymptotes bound it: instant polls give ``N/S``
+shared (two subscriptions at a 10 ms slice ≈ 200 events/s), and every poll
+blocking for its full slice converges to ``1/S`` (≈100 events/s shared at
+10 ms; sixteen blocking subscriptions ≈ 94 events/s). A device whose
+N-variables × R-Hz product approaches the budget its poll behaviour
+implies belongs on the capture or dataset lane, streaming a decimated
+signal at most. The engine itself floors the slice at 1 ns
+(``max(1, poll_slice_ns)``); the bench poll cadence — ``bench_poll_ns``:
+the minimum declared signal ``poll_ms``, defaulting to 10 ms and floored
+at 1 ms — binds ``poll_slice_ns`` at the run-engine wiring (deferral
+row 9), not here.
+
+Timebase identity (the M2 invariant): the engine slices deadlines on its
+injected ``MonotonicClock`` (ns) while the bridge cuts on
+``services.monotonic()`` (s) — the slice bound is only as real as those
+being ONE timebase (seconds = nanoseconds/1e9 of the same clock). The
+binding is the run-engine wiring's (row 9); the composition test pins it
+with a shared clock and a hang-past-slice adapter whose asyncio cut
+lands at the slice.
 """
 
 from __future__ import annotations
@@ -83,12 +107,15 @@ class StreamPollEngine:
     ) -> list[str]:
         """Poll every live subscription exactly once, no pacing wait.
 
-        Returns the subscriptions whose poll refused (dropped from
-        rotation — the live registry is the authority; a refusal has always
-        ended the subscription by the time it is reported). Stops early on
-        a terminal monitor cause, the engine deadline, or a failed bridge
-        session (latched: ``session_failed`` stays set for later rounds
-        too — a dead session must never be re-polled by this engine)."""
+        Returns the subscriptions whose poll refused. Rotation is the live
+        registry's call, re-read every round: the taxonomy's unknown,
+        ended and quota refusals end the subscription before they are
+        reported, but a poll-deadline TIMEOUT refusal changes no registry
+        state — a still-live subscription is re-polled on the next round.
+        Stops early on a terminal monitor cause, the engine deadline, or a
+        failed bridge session (latched: ``session_failed`` stays set for
+        later rounds too — a dead session must never be re-polled by this
+        engine)."""
         refused: list[str] = []
         for subscription_id in self._live():
             self._tick()  # monitor ticks run between polls

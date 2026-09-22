@@ -9,8 +9,10 @@ run, so this test pins their composition works before that wiring exists.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
+import time
 from pathlib import Path
 from typing import Any
 
@@ -289,3 +291,92 @@ class _FrozenMonotonic:
 
     def monotonic(self) -> float:
         return 0.0
+
+
+class _SharedMonotonic:
+    """The bridge's services subset reading ONE TestClock in seconds — the
+    timebase-identity invariant (M2): the engine slices deadlines on the
+    same clock the bridge cuts on."""
+
+    def __init__(self, clock: TestClock) -> None:
+        self._clock = clock
+
+    def monotonic(self) -> float:
+        return self._clock.now_ns() / 1_000_000_000
+
+
+def test_a_hanging_poll_is_cut_at_the_slice_on_one_shared_timebase(
+    tmp_path: Path,
+) -> None:
+    """M2 (review wave): the engine's injected MonotonicClock and the
+    bridge's services.monotonic() must be ONE timebase — with them shared,
+    a next_event that overstays its slice is cut by the bridge's asyncio
+    timeout at that slice (wall time stays near the slice, not the
+    adapter's own one-second sleep), the poll returns the TIMEOUT poison,
+    and the registry is cleared."""
+    store = Store.open(tmp_path / "stream-poll.db")
+    try:
+        content_digest = _admit_descriptor(store)
+        controller = build_stream_services(
+            descriptor_digest=content_digest,
+            store=store,
+            wall=lambda: "2026-09-22T00:00:00Z",
+            quota=QuotaLimits(
+                max_dataset_bytes=8192,
+                max_evidence_entries=50,
+                max_event_batch=10,
+                max_subscriptions=1,
+            ),
+            context_key="poll-engine-session",
+        )
+        assert controller is not None
+        clock = TestClock()
+
+        class Overstaying(StreamingAdapter):
+            async def next_event(self, subscription_id: str, context: Any) -> Any:
+                self.polls.append((subscription_id, context.deadline_monotonic, 0))
+                await asyncio.sleep(1.0)  # real: far past the 10 ms slice
+                raise AssertionError("unreachable")  # pragma: no cover
+
+        adapter = Overstaying(script={})
+        plugin = OTDPBridge(
+            adapter,
+            descriptor=dict(STREAM_DESCRIPTOR),
+            services=_SharedMonotonic(clock),
+            simulation=SimulationInfo(True, "Synthetic"),
+            stream=controller,
+        )
+        plugin.plugin_open(object())
+        assert plugin.dispatch(
+            OperationRequest(
+                "op-hang",
+                OperationVerb.STREAM_SUBSCRIBE,
+                {
+                    "subscription_id": "sub-hang",
+                    "parameters": ["temperature"],
+                    "min_interval_ms": 10,
+                },
+            ),
+            deadline_ns=10_000_000_000,
+        ).status is OperationStatus.OK
+
+        engine = StreamPollEngine(
+            poll=plugin.poll_event,
+            live=controller.live_subscription_ids,
+            clock=clock,
+            tick=lambda: None,
+            poll_slice_ns=10_000_000,
+        )
+        started = time.monotonic()
+        engine.poll_round(
+            deadline_ns=clock.now_ns() + 10_000_000,
+            on_event=lambda *args: None,
+        )
+        elapsed = time.monotonic() - started
+        assert engine.session_failed  # the cut produced the TIMEOUT poison
+        assert len(adapter.polls) == 1
+        assert elapsed < 0.5  # near the 10 ms slice, not the adapter's 1 s
+        assert controller.live_subscription_ids() == []  # registry cleared
+        plugin.plugin_close()
+    finally:
+        store.close()

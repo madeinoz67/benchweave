@@ -143,7 +143,10 @@ class ContentStore:
             # one retention path is never repriced by another path's rows
             # (issue #43 slice 2 — the streaming quota stack). The re-scope is
             # invisible while one context key sees a single kind, which was
-            # every pre-streaming context.
+            # every pre-streaming context — an empirical claim: the legacy
+            # retain_evidence path keys rows by caller-supplied key, so a
+            # caller key colliding with a session key could have seen both
+            # kinds; no live gateway path did.
             count = self._conn.execute(
                 "SELECT COUNT(*) FROM evidence WHERE context_key = ? AND kind = ?",
                 (context_key, kind),
