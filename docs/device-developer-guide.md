@@ -287,6 +287,16 @@ A successful result with actual readback evidence has this shape:
 
 The action must belong to the admitted profile, channel and instance. Never return this success envelope as a placeholder. Enabling a source additionally requires the profile's verified configuration state and current host authorisation.
 
+### Capture: single-channel acquisition
+
+The `capture` verb is the retained core lane (spec §7): one channel per capture, `waveform_f64le` (contiguous little-endian float64, byte length = sample_count×8, waveform metadata mandatory) or `raw_binary`. The request carries `{capture_id, format, sample_count, max_bytes}`; the host supplies the capture id, and the successful result's data is the finalised manifest — whose `artifact_id`, `sha256` and `byte_length` the host computes over the real published bytes. Adapter-supplied digest or length values are ignored, never trusted; a short capture (delivered bytes below the declared sample_count×8) is refused at finalise and never published.
+
+**Permission:** only `artifact_writer` grants the capture services (spec §8/S15). Declare the permission in `integration.adapter.permissions`; without it the composing services object has no capture members at all and a `capture` dispatch is refused `UNSUPPORTED` before the device. Requests must satisfy both the descriptor limits (`capture_limits.max_samples/max_bytes`, and `capture_formats`) and the host quota.
+
+**Budget:** a capture dispatch's deadline is the procedure step's `timeout_ms` clamped to the body deadline (`min(now + timeout_ms, body_deadline)`, shortened only) — size `timeout_ms` to cover the acquisition. Monitor ticks freeze for the capture's duration (the serial model's disclosed cost); the bridge's abort epilogue reclaims staging and writes a forensic record on failure without depending on adapter cooperation, and `artifact_abort` after finalise is a no-op retract — a published capture stands.
+
+**Standalone mode (no gateway):** plugin and bench development can capture hostlessly with the SDK's `StandaloneCaptureWriter` (`benchweave_sdk.capture`) — the same three capture methods over one directory per capture. The capture root is an explicit argument, then the `BENCHWEAVE_CAPTURE_DIR` environment variable, then `captures/` under the working directory; a root inside the installed package tree is refused. Each event directory holds `manifest.json` (real digest and length over the published bytes; standalone extras under `x-standalone-*` keys), a `staging/` tree while chunks accumulate, the primary artifact (`<capture_id>.f64`/`.bin`/`.csv`/`.txt`/`.vcd`, else `.data`) and an optional `renderings/` tree the plugin writes itself. There is no automatic import of standalone captures into the gateway — ingest is a separate, deliberate path.
+
 ## 6. Create controller firmware
 
 For an ESP32 or another controller, first decide whether firmware implements native OTDP UART JSON or a documented protocol behind an adapter. Keep firmware pin assignments and electrical behaviour explicit; OTDP does not choose a safe board configuration.

@@ -24,6 +24,7 @@ from typing import Any
 
 from fastapi import FastAPI
 
+from benchweave.content.capture_store import CaptureStagingStore
 from benchweave.content.store import ContentStore, RetainingServices
 from benchweave.control.clocking import MonotonicClock, SystemClock, WallClock
 from benchweave.control.coordinator import RunCoordinator, _PreparedRun, _RunMonitor
@@ -210,6 +211,11 @@ def _recover_interrupted_runs(
             "recovery after the lattice is repaired and the gateway restarts"
         )
         store.reconcile_dangling_requests()
+        # Slice 1: capture staging orphaned by host death reclaims on the
+        # same startup path, BOTH branches — a wedged capture quota is
+        # repairable regardless of document admission (the sweep constructs
+        # its own writer; no quota envelope is needed to only reclaim).
+        CaptureStagingStore(store).reclaim_orphans(now_iso())
         return []
     coordinator = RunCoordinator(store, {}, SystemClock(), SystemClock(), docs)
     recovered = coordinator.recover_interrupted()
@@ -224,6 +230,9 @@ def _recover_interrupted_runs(
     # observable happened (no run, no dispatch) and the seven-kind fence
     # has no vocabulary for it; the purged keys are the caller's evidence.
     store.reconcile_dangling_requests()
+    # Slice 1: the capture-staging sweep rides the same startup path (both
+    # branches — see the lattice-failed early return above).
+    CaptureStagingStore(store).reclaim_orphans(now_iso())
     bench_id = str(docs.bench["id"])
     for run_id in recovered:
         store.put_run_state(run_id, bench_id, "terminal", now_iso())
