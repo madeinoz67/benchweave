@@ -32,7 +32,7 @@
       "descriptor": {
         "id": "dev.benchweave.sim-psu",
         "version": "1.0.0",
-        "sha256": "4d64ef581008b84a2b613767c3ef488a1db824078792d5b34194f143a83f6647"
+        "sha256": "510dce53914a9b245fe942552a1258cad1b2657b1c0f332e5c753305091a3194"
       },
       "identity_record_id": "ident-psu",
       "connection_key": "sim_psu_local",
@@ -46,7 +46,7 @@
       "descriptor": {
         "id": "dev.benchweave.sim-controller",
         "version": "1.0.0",
-        "sha256": "2df7ad4f28109f91074cfaa87df3bd02aa846250ae0436d16e2d03d3509ee585"
+        "sha256": "1975e607b3b67d2854c1b9deb3cb6910082aa47635b0fbba371907c56edeac9e"
       },
       "identity_record_id": "ident-controller",
       "connection_key": "sim_controller_local",
