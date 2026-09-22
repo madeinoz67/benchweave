@@ -1202,3 +1202,16 @@ def test_a_non_quota_open_failure_is_internal_error_not_dispatched(tmp_path: Pat
         harness.close()
     finally:
         store.close()
+
+
+def test_develop_your_device_compatibility_sentence_covers_capture() -> None:
+    """R2 (review wave 3): docs/develop-your-device.md's loader paragraph
+    must not claim capture needs further integration once this slice lands
+    — the same sentence family the SDK guide carried. Streaming and
+    profile actions genuinely remain pending their slices."""
+    doc = (
+        Path(__file__).resolve().parents[2] / "docs" / "develop-your-device.md"
+    ).read_text(encoding="utf-8")
+    assert "capture/streaming" not in doc
+    assert "single-channel capture" in doc
+    assert "Profile actions" in doc and "streaming" in doc
