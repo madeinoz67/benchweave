@@ -28,11 +28,14 @@
         "standards/otdp/0.2.1/examples/reference-can.json",
         "standards/otdp/0.2.1/examples/reference-capture.json",
         "standards/otdp/0.2.1/examples/reference-controller.json",
+        "standards/otdp/0.2.1/examples/reference-hid_meter.json",
+        "standards/otdp/0.2.1/examples/reference-provider.json",
         "standards/otdp/0.2.1/examples/reference-psu.json",
         "standards/otdp/0.2.1/examples/reference-vectors.json",
         "standards/otdp/0.2.1/otdp-device-descriptor.schema.json",
         "standards/otdp/0.2.1/otdp-measurement.schema.json",
-        "standards/otdp/0.2.1/otdp-runtime.schema.json"
+        "standards/otdp/0.2.1/otdp-runtime.schema.json",
+        "standards/otdp/0.2.1/otdp-transport-provider.schema.json"
       ]
     },
     {
