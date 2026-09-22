@@ -984,3 +984,21 @@ def test_plugin_close_sweeps_still_open_captures(tmp_path: Path) -> None:
         assert harness.forensic_count("cap-open") == 1
     finally:
         harness.close()
+
+
+def test_bridge_docstring_names_the_version_boundary_and_budget() -> None:
+    """Record item 7 (the docstring amendment): the version drift is fixed,
+    the async-host sentence names the real boundary (poll multiplexing and
+    invoke/dataset scheduling — explicitly NOT capture/stream correctness),
+    and the capture-budget disclosure (the step's timeout_ms is the budget,
+    clamped by min(now + timeout_ms, body_deadline); busy_timeout under
+    contention) lands in the same docstring."""
+    import benchweave.host.otdp_bridge as bridge_module
+
+    doc = " ".join((bridge_module.__doc__ or "").split())  # wrap-normalised
+    assert "OTDP 0.2.0" in doc and "0.3" not in doc
+    assert "poll multiplexing" in doc
+    assert "NOT for capture/stream" in doc
+    assert "timeout_ms" in doc
+    assert "busy_timeout" in doc
+    assert "native async host" in doc

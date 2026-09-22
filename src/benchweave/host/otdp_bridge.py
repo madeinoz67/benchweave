@@ -1,11 +1,23 @@
-"""Explicit OTDP 0.3/API 1.1 compatibility for the synchronous host.
+"""Explicit OTDP 0.2.0/adapter API 1.1 compatibility for the synchronous host.
 
-Identify, scalar read and scalar write are supported. Dataset, profile and stream
-semantics need a native async host. Services are caller-supplied, including the
-SAME monotonic timebase used for host deadlines (seconds versus nanoseconds).
-No transport provider is created. Adapters are trusted Python, not sandboxed;
-deadlines require cooperative async code. Each bridge owns one event loop and
-serialises its lifecycle and dispatch. An uncertain failure poisons the session.
+Identify, scalar read and scalar write are supported, plus single-channel
+capture (the ``artifact_writer``-gated capture verb: staged appends, a
+host-computed manifest, and an abort with a forensic record on failure).
+Dataset, profile and stream semantics need a native async host — for poll
+multiplexing across devices on one thread and the eventual invoke/dataset
+scheduling, explicitly NOT for capture/stream correctness. Services are
+caller-supplied, including the SAME monotonic timebase used for host
+deadlines (seconds versus nanoseconds). No transport provider is created.
+Adapters are trusted Python, not sandboxed; deadlines require cooperative
+async code. Each bridge owns one event loop and serialises its lifecycle
+and dispatch. An uncertain failure poisons the session.
+
+Capture budget: a capture dispatch's deadline is the step's ``timeout_ms``
+clamped to the body deadline (``min(now + timeout_ms, body_deadline)``,
+shortened only — no new budget mechanism). The asyncio timeout is the
+detection bound for yielding adapters; blocking SQLite under store
+contention may hold the dispatch up to the store's ``busy_timeout`` before
+failing as a classified RESOURCE_LIMIT.
 """
 
 from __future__ import annotations
