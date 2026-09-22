@@ -256,6 +256,11 @@ class CaptureController:
             max_bytes=max_bytes,
             now=self._wall(),
         )
+        # The once-guard keys LIFECYCLE, not identity: a same-id retry (legal
+        # — a prior abort deleted the staging row, so the writer re-opens
+        # it) gets a fresh forensic lifecycle. A stale _recorded entry would
+        # suppress the retry's abort and leak its row + reservation.
+        self._recorded.discard(capture_id)
         self._open[capture_id] = max_bytes
 
     def finalise_record(self, capture_id: str) -> dict[str, Any] | None:
@@ -287,8 +292,6 @@ class CaptureController:
         staged = self._writer.staged_bytes(capture_id)
         published = self._writer.finalise_record(capture_id)
         reclaimed = self._writer.abort(capture_id)
-        self._open.pop(capture_id, None)
-        self._recorded.add(capture_id)
         payload = {
             "capture_id": capture_id,
             "operation_id": operation_id,
@@ -312,6 +315,15 @@ class CaptureController:
         self._content.put_evidence(
             "event_log", reference, artifact_id, self._context_key, now, quota=None
         )
+        # Only NOW is the forensic record durable: retire from _open and mark
+        # recorded AFTER the writes land. A forensic-write failure (suppressed
+        # by the bridge's containment) leaves the capture in _open, so
+        # plugin_close's sweep — B15-iii's designated in-process retry —
+        # retries the record instead of losing it permanently. The retry's
+        # payload then reflects post-reclaim state (staged_bytes zero): an
+        # honest record of the retry, not of the failed first attempt.
+        self._open.pop(capture_id, None)
+        self._recorded.add(capture_id)
         return reclaimed
 
     def sweep_open(self, *, reason: str) -> list[str]:
