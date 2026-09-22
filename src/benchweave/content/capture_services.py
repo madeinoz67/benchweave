@@ -59,8 +59,10 @@ class ScopedServicesBundle:
 
     One bundle per plugin session, bound at ``open``. Clocks are injected
     callables read FRESH on every call; evidence is retained under the
-    host-minted session context key with the existing all-kind COUNT quota
-    semantics (kind-scoped counting is the streaming slice's design).
+    host-minted session context key on the kind-scoped accounting dimension
+    (``(context_key, kind)`` — the streaming slice's quota-stack design,
+    landed): the bundle's ``event_log`` rows count toward their own
+    dimension, never toward another retention path's number.
     """
 
     def __init__(

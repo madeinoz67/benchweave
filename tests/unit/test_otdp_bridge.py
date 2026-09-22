@@ -864,9 +864,9 @@ def test_a_bare_unstamped_quota_raise_keeps_the_poison_posture(tmp_path: Path) -
 
 
 def test_evidence_quota_is_resource_limit_and_the_session_survives(tmp_path: Path) -> None:
-    """B8: the bundle's record_evidence keeps all-kind COUNT semantics and
-    stamps its refusals — quota is a resource condition, not a protocol
-    lie, so the session survives."""
+    """B8: the bundle's record_evidence counts on its own kind-scoped
+    dimension and stamps its refusals — quota is a resource condition, not
+    a protocol lie, so the session survives."""
     harness = CaptureHarness(tmp_path, evidence_quota=1)
     try:
         class Evidence(CaptureAdapter):

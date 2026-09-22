@@ -21,7 +21,11 @@ MAX_CHUNK_BYTES = 65536
 
 
 class EvidenceQuotaExceeded(RuntimeError):
-    """Context-keyed evidence entries reached the configured quota.
+    """Evidence entries reached the configured quota on their kind's
+    accounting dimension — ``(context_key, kind)`` since the streaming
+    slice (issue #43 slice 2): a row counts toward the quota of its own
+    kind only, so a number published for one retention path is never
+    repriced by another path's rows.
 
     Instances raised by a capture-services bundle carry an
     ``EvidenceStamp`` (``capture_stamp``) — the bundle-originated record
@@ -129,12 +133,20 @@ class ContentStore:
         quota: int | None = None,
     ) -> str:
         if quota is not None and context_key is not None:
+            # The accounting dimension is (context_key, kind): a row counts
+            # toward the quota of its own kind only, so a number published for
+            # one retention path is never repriced by another path's rows
+            # (issue #43 slice 2 — the streaming quota stack). The re-scope is
+            # invisible while one context key sees a single kind, which was
+            # every pre-streaming context.
             count = self._conn.execute(
-                "SELECT COUNT(*) FROM evidence WHERE context_key = ?", (context_key,)
+                "SELECT COUNT(*) FROM evidence WHERE context_key = ? AND kind = ?",
+                (context_key, kind),
             ).fetchone()[0]
             if count >= quota:
                 raise EvidenceQuotaExceeded(
-                    f"evidence quota {quota} reached for {context_key!r}"
+                    f"evidence quota {quota} reached for {context_key!r} "
+                    f"(kind {kind!r})"
                 )
         # One evidence id per retention: the quota counts retentions per
         # context key, so identical payloads must still occupy distinct rows.
