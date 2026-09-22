@@ -44,6 +44,12 @@ and remain the reviewer's job.
    refuses drift between the main-repo standards, the SDK lock and the vendored tree.
    Pins move via `uv run python -m benchweave.standards repin` (the loop is
    edit → repin → export); hand-splicing digests is not a path.
+   The manifest's `sdk_compatibility` mirror moves with the SDK lock's
+   `compatibility` block — `standards check` refuses drift
+   (`sdk_compatibility_drift`, invariants CON-12) — and `matrix --check` is
+   checkout-invariant: it renders committed state only (manifest + mirror +
+   `pyproject.toml` `[project.urls]` + `.gitmodules`), so fork and
+   uninitialised-submodule checkouts render byte-identical upstream bytes.
 
 7. **The `packages/sdk` pointer** → the submodule commit must **exist and be pushed** to
    the SDK remote before the pointer lands here — CI checks out submodules by SHA, so an

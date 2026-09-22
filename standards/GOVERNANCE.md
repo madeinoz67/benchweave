@@ -18,6 +18,15 @@ declare and pin it:
 - `standards/corpus-manifest.json` — byte truth: one sha256 per machine file,
   rows relative to `standards/`
 
+Repo identity lives in committed data outside the corpus: the compatibility
+matrix's Sources cell renders `pyproject.toml` `[project.urls] Repository`
+and the `.gitmodules` submodule URL, while `standards-manifest.json`'s
+top-level `sdk_compatibility` block mirrors the pinned SDK lock's
+`compatibility` block — equality-enforced by `benchweave.standards check`
+on every initialized checkout, never trusted (the lock stays the
+authority); none of these are digest-pinned, so they move no corpus rows
+and need no repin.
+
 ## Change classes and their bumps
 
 | Change | Bump | Notes |
