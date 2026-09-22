@@ -2,7 +2,7 @@
 
 # OTDP 0.2.1 specification verification
 
-**Result: 612/612 checks passed; 0 failed.**
+**Result: 616/616 checks passed; 0 failed.**
 
 12 class profiles and 50 input/output action contracts were checked against Draft 2020-12. Each action has a positive vector. Descriptor declarations, pinned contract hashes, runtime envelopes, typed datasets and selected rejection/semantic boundaries were checked. Transport-provider declarations, their pinned contract documents and the provider grammar subschemas were checked; connection-to-grant resolution is commissioned state and stays gateway-side.
 
@@ -493,6 +493,10 @@
 - PASS: reference-psu.json known required features
 - PASS: reference-psu.json provider declaration
 - PASS: reference-psu.json vector file resolves
+- PASS: reference-rawlink.json descriptor structure
+- PASS: reference-rawlink.json known required features
+- PASS: reference-rawlink.json provider declaration
+- PASS: reference-rawlink.json vector file resolves
 - PASS: s-01 derivation census
 - PASS: s-02 derivation census
 - PASS: s-03 derivation census

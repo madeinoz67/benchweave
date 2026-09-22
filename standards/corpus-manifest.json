@@ -776,6 +776,11 @@
       "sha256": "379238d28ef03a2761eccd2a2b8f8ab4f3c4b7743a52d7bfa5edaf61d2cf5007"
     },
     {
+      "path": "otdp/0.2.1/examples/reference-rawlink.json",
+      "source": "standards/otdp/0.2.1/examples/reference-rawlink.json",
+      "sha256": "50ff98c0535315021fe680b0fb7e6fe26e00c301f1da0fc191e21031004ca9e8"
+    },
+    {
       "path": "otdp/0.2.1/examples/reference-vectors.json",
       "source": "standards/otdp/0.2.0/examples/reference-vectors.json",
       "sha256": "6f476b31ec98f572c83127ed1684506fba18ed0205ea47869f90bdf0fe5fcef0"

@@ -29,9 +29,9 @@
 | [Transport providers](../standards/otdp/0.2.1/transport-providers.md) | Provider contracts for non-scoped transports: declaration, review tiers and the grant boundary |
 | [Measurement model](../standards/otdp/0.2.1/measurement-model.md) | Units, axes, channels, complex/digital data, timing, calibration and uncertainty |
 | [Profile catalog](../standards/otdp/0.2.1/device-profile-catalog.json) | Fifty actions with exact input/output schemas |
-| [Validation report](../standards/otdp/0.2.1/validation-report.md) | 612 passing document/schema checks and their limits |
+| [Validation report](../standards/otdp/0.2.1/validation-report.md) | 616 passing document/schema checks and their limits |
 
-The package also includes descriptor, runtime, measurement, catalog and transport-provider schemas; twelve class descriptor fixtures; fifty action exchange vectors; thirteen dataset examples; and the five reference descriptors (four with protocol vectors, one pinning a provider contract). Current normative device contracts are in `otdp/0.2.1/`.
+The package also includes descriptor, runtime, measurement, catalog and transport-provider schemas; twelve class descriptor fixtures; fifty action exchange vectors; thirteen dataset examples; and the six reference descriptors (four with protocol vectors, one pinning a provider contract, one an unbacked custom transport). Current normative device contracts are in `otdp/0.2.1/`.
 
 ## Device-class coverage
 

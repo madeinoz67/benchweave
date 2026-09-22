@@ -31,6 +31,7 @@
         "standards/otdp/0.2.1/examples/reference-hid-meter.json",
         "standards/otdp/0.2.1/examples/reference-provider.json",
         "standards/otdp/0.2.1/examples/reference-psu.json",
+        "standards/otdp/0.2.1/examples/reference-rawlink.json",
         "standards/otdp/0.2.1/examples/reference-vectors.json",
         "standards/otdp/0.2.1/otdp-device-descriptor.schema.json",
         "standards/otdp/0.2.1/otdp-measurement.schema.json",
