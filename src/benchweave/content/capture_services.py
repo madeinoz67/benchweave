@@ -36,6 +36,11 @@ from benchweave.control.documents import adapter_permissions
 #: The one permission slice 1 gates on (spec §8/S15).
 ARTIFACT_WRITER = "artifact_writer"
 
+#: The bundle-originated record for classification (module-level so both
+#: bundle classes stamp with the same token; the bridge requires presence,
+#: not identity).
+_BUNDLE_STAMP = object()
+
 
 class ScopedServicesBundle:
     """The five-member ``HostServices`` shape (§8) over gateway capabilities.
@@ -87,14 +92,22 @@ class ScopedServicesBundle:
             "version": "1",
             "sha256": hashlib.sha256(blob).hexdigest(),
         }
-        self._content.put_evidence(
-            "event_log",
-            reference,
-            artifact_id,
-            self._context_key,
-            now,
-            quota=self._quota_evidence,
-        )
+        try:
+            self._content.put_evidence(
+                "event_log",
+                reference,
+                artifact_id,
+                self._context_key,
+                now,
+                quota=self._quota_evidence,
+            )
+        except EvidenceQuotaExceeded as error:
+            # The bundle-originated record: quota exhaustion raised through
+            # adapter.execute joins the bridge's NON-POISONING classification
+            # (a resource condition, not a protocol lie) — the stamp is the
+            # discriminator, so a bare raise of the class stays poison.
+            error.writer_stamp = _BUNDLE_STAMP
+            raise
 
     async def transfer(self, transaction: dict[str, Any], context: Any) -> dict[str, Any]:
         """One bounded transport exchange, through the injected provider."""
@@ -249,6 +262,12 @@ class CaptureController:
         """The writer's published record, for the bridge's G4 cross-checks."""
         return self._writer.finalise_record(capture_id)
 
+    def retire(self, capture_id: str) -> None:
+        """Retire a SUCCESSFULLY completed capture: no forensic record, no
+        sweep at close — a published, acknowledged capture stands."""
+        self._open.pop(capture_id, None)
+        self._recorded.discard(capture_id)
+
     def abort(self, capture_id: str, *, reason: str, operation_id: str | None) -> bool:
         """Reclaim the capture and write its forensic record — once.
 
@@ -266,12 +285,18 @@ class CaptureController:
             return False
         reserved = self._open[capture_id]
         staged = self._writer.staged_bytes(capture_id)
+        published = self._writer.finalise_record(capture_id)
         reclaimed = self._writer.abort(capture_id)
         self._open.pop(capture_id, None)
         self._recorded.add(capture_id)
         payload = {
             "capture_id": capture_id,
             "operation_id": operation_id,
+            # None for a plain abort; the artifact id when the capture
+            # published and the dispatch then failed (the refused-after-
+            # publish and late-after-publish arms route identically — the
+            # payload's artifact_id distinguishes published cases).
+            "artifact_id": published["artifact_id"] if published else None,
             "reason": reason,
             "staged_bytes": staged,
             "reserved_bytes": reserved,

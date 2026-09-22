@@ -20,7 +20,14 @@ MAX_CHUNK_BYTES = 65536
 
 
 class EvidenceQuotaExceeded(RuntimeError):
-    """Context-keyed evidence entries reached the configured quota."""
+    """Context-keyed evidence entries reached the configured quota.
+
+    Instances raised by a capture-services bundle carry ``writer_stamp``
+    (the bundle-originated record the bridge's non-poisoning
+    classification catches require); the bare class keeps its old shape.
+    """
+
+    writer_stamp: object | None = None
 
 
 class ContentStore:

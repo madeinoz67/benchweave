@@ -27,6 +27,7 @@ bare raise of the same class from adapter code keeps the poison posture.
 from __future__ import annotations
 
 import hashlib
+import sqlite3
 from typing import Any
 
 from benchweave.content.store import ContentStore
@@ -75,6 +76,13 @@ class CaptureStagingStore:
         exception.writer_stamp = self._stamp
         return exception
 
+    def _restamp(self, exception: BaseException) -> None:
+        """Stamp a writer-originated ``sqlite3.OperationalError`` (B1/C2):
+        lock contention is a resource condition the bridge classifies —
+        but only when the record proves the writer raised it."""
+        if isinstance(exception, sqlite3.OperationalError):
+            exception.writer_stamp = self._stamp  # type: ignore[attr-defined]
+
     def _staged_row(self, capture_id: str) -> tuple[Any, ...] | None:
         found: tuple[Any, ...] | None = self._conn.execute(
             "SELECT context_key, state, reserved_bytes, format, sample_count"
@@ -103,7 +111,13 @@ class CaptureStagingStore:
                 "max_capture_bytes and max_dataset_bytes are required at "
                 "every construction site that opens captures"
             )
-        self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            self._conn.execute("BEGIN IMMEDIATE")
+        except sqlite3.OperationalError as error:
+            # The BEGIN itself can lose the lock race — stamp it too (the
+            # writer-originated record the bridge's classification reads).
+            self._restamp(error)
+            raise
         try:
             existing = self._conn.execute(
                 "SELECT 1 FROM capture_staging WHERE capture_id = ?", (capture_id,)
@@ -145,7 +159,8 @@ class CaptureStagingStore:
                     now,
                 ),
             )
-        except BaseException:
+        except BaseException as error:
+            self._restamp(error)
             if self._conn.in_transaction:
                 self._conn.execute("ROLLBACK")
             raise
@@ -204,7 +219,13 @@ class CaptureStagingStore:
             raise self._reject(
                 CaptureFinaliseRejected("empty append refused (A4 parity)")
             )
-        self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            self._conn.execute("BEGIN IMMEDIATE")
+        except sqlite3.OperationalError as error:
+            # The BEGIN itself can lose the lock race — stamp it too (the
+            # writer-originated record the bridge's classification reads).
+            self._restamp(error)
+            raise
         try:
             staged = self._staged_row(capture_id)
             if staged is None:
@@ -244,7 +265,8 @@ class CaptureStagingStore:
                 " VALUES (?, ?, ?, ?)",
                 (capture_id, int(seq), data, len(data)),
             )
-        except BaseException:
+        except BaseException as error:
+            self._restamp(error)
             if self._conn.in_transaction:
                 self._conn.execute("ROLLBACK")
             raise
@@ -268,7 +290,13 @@ class CaptureStagingStore:
         the chunk rows, COMMIT.
         """
         hasher = self._hashers.get(capture_id)
-        self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            self._conn.execute("BEGIN IMMEDIATE")
+        except sqlite3.OperationalError as error:
+            # The BEGIN itself can lose the lock race — stamp it too (the
+            # writer-originated record the bridge's classification reads).
+            self._restamp(error)
+            raise
         try:
             staged = self._staged_row(capture_id)
             if staged is None:
@@ -340,7 +368,8 @@ class CaptureStagingStore:
             self._conn.execute(
                 "DELETE FROM capture_chunks WHERE capture_id = ?", (capture_id,)
             )
-        except BaseException:
+        except BaseException as error:
+            self._restamp(error)
             if self._conn.in_transaction:
                 self._conn.execute("ROLLBACK")
             raise
@@ -379,7 +408,13 @@ class CaptureStagingStore:
         staging rows holds literally). A no-op (False) for unknown ids and
         after finalise — the no-op-retract pin: a published capture
         stands."""
-        self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            self._conn.execute("BEGIN IMMEDIATE")
+        except sqlite3.OperationalError as error:
+            # The BEGIN itself can lose the lock race — stamp it too (the
+            # writer-originated record the bridge's classification reads).
+            self._restamp(error)
+            raise
         try:
             staged = self._staged_row(capture_id)
             if staged is None or staged[1] != _STATE_STAGED:
@@ -391,7 +426,8 @@ class CaptureStagingStore:
             self._conn.execute(
                 "DELETE FROM capture_staging WHERE capture_id = ?", (capture_id,)
             )
-        except BaseException:
+        except BaseException as error:
+            self._restamp(error)
             if self._conn.in_transaction:
                 self._conn.execute("ROLLBACK")
             raise
@@ -412,7 +448,13 @@ class CaptureStagingStore:
         transactions into one: the mark-time refund is the property that
         bounds the quota-hostage window to one startup.
         """
-        self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            self._conn.execute("BEGIN IMMEDIATE")
+        except sqlite3.OperationalError as error:
+            # The BEGIN itself can lose the lock race — stamp it too (the
+            # writer-originated record the bridge's classification reads).
+            self._restamp(error)
+            raise
         try:
             rows = self._conn.execute(
                 "SELECT capture_id FROM capture_staging WHERE state = ?",
@@ -425,7 +467,8 @@ class CaptureStagingStore:
                     " WHERE capture_id = ?",
                     (_STATE_ABORTED, now, capture_id),
                 )
-        except BaseException:
+        except BaseException as error:
+            self._restamp(error)
             if self._conn.in_transaction:
                 self._conn.execute("ROLLBACK")
             raise
@@ -443,7 +486,13 @@ class CaptureStagingStore:
         nothing — deleting by state, not by id list, is what makes the
         sweep complete a predecessor's interrupted reclamation.
         """
-        self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            self._conn.execute("BEGIN IMMEDIATE")
+        except sqlite3.OperationalError as error:
+            # The BEGIN itself can lose the lock race — stamp it too (the
+            # writer-originated record the bridge's classification reads).
+            self._restamp(error)
+            raise
         try:
             self._conn.execute(
                 "DELETE FROM capture_chunks WHERE capture_id IN"
@@ -453,7 +502,8 @@ class CaptureStagingStore:
             self._conn.execute(
                 "DELETE FROM capture_staging WHERE state = ?", (_STATE_ABORTED,)
             )
-        except BaseException:
+        except BaseException as error:
+            self._restamp(error)
             if self._conn.in_transaction:
                 self._conn.execute("ROLLBACK")
             raise

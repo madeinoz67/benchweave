@@ -176,6 +176,7 @@ def load_otdp_plugin(
     descriptor: dict[str, Any],
     services: Any,
     simulation: SimulationInfo,
+    capture: Any = None,
 ) -> OTDPBridge:
     """Construct an unopened read-only bridge from an admitted package.
 
@@ -245,7 +246,11 @@ def load_otdp_plugin(
         if not callable(factory):
             raise ActivationRejected("unsupported_plugin_module")
         bridge = OTDPBridge(
-            factory(), descriptor=descriptor, services=services, simulation=simulation
+            factory(),
+            descriptor=descriptor,
+            services=services,
+            simulation=simulation,
+            capture=capture,
         )
         bridge._release_loader = release
         return bridge

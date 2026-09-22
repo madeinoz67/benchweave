@@ -12,6 +12,7 @@ import pytest
 from benchweave.host.otdp_bridge import OTDPBridge
 from benchweave.host.plugin import SimulationInfo
 from benchweave.registry.activation import ActivationRejected
+from benchweave.state.store import Store
 
 ENTRY = (
     b"from .helper import VALUE\nfrom importlib.resources import files\n"
@@ -166,3 +167,158 @@ def test_close_releases_importer_and_modules(tmp_path: Path) -> None:
     assert any(name.startswith("_benchweave_otdp_") for name in added)
     plugin.plugin_close()
     assert not any(name in sys.modules for name in added if name.startswith("_benchweave_otdp_"))
+
+
+# --- issue #43 slice 1: the composing services ride the real load path (A11) ---
+
+CAPTURE_ENTRY = (
+    b"class Recording:\n"
+    b"    services = None\n"
+    b"    async def open(self, descriptor, services, context):\n"
+    b"        self.services = services\n"
+    b"    async def close(self, context):\n"
+    b"        pass\n"
+    b"def create_plugin():\n"
+    b"    return Recording()\n"
+)
+
+
+def _capture_services(tmp_path: Path) -> tuple[Store, tuple[Any, Any]]:
+    import hashlib
+    import json
+
+    from benchweave.content.capture_services import build_capture_services
+    from benchweave.content.capture_store import CaptureStagingStore
+    from benchweave.content.store import ContentStore
+    from benchweave.host.services import QuotaLimits
+    from benchweave.state.store import Store
+
+    store = Store.open(tmp_path / "load-capture.db")
+    content = ContentStore(store)
+    raw = {
+        "id": "dev.local.load-path",
+        "descriptor_version": "1.0.0",
+        "integration": {
+            "adapter": {
+                "permissions": ["scoped_transport", "artifact_writer"]
+            }
+        },
+    }
+    blob = json.dumps(raw, sort_keys=True).encode()
+    digest = hashlib.sha256(blob).hexdigest()
+    content.put_document(blob, digest, raw, "otdp-descriptor", "2026-09-22T00:00:00Z")
+    writer = CaptureStagingStore(store, max_capture_bytes=64, max_dataset_bytes=64)
+    return store, build_capture_services(
+        descriptor_digest=digest,
+        content=content,
+        writer=writer,
+        clock=lambda: 0.0,
+        wall=lambda: "2026-09-22T00:00:00Z",
+        quota=QuotaLimits(
+            max_dataset_bytes=64, max_evidence_entries=10, max_event_batch=5
+        ),
+        context_key="load-path-session",
+    )
+
+
+def test_the_real_load_path_hands_the_adapter_the_capture_bundle(tmp_path: Path) -> None:
+    """A11: the caller of load_otdp_plugin constructs via
+    build_capture_services and passes services=bundle, capture=controller —
+    plugin_open hands the adapter the bundle, the ONLY mechanism that
+    reaches it at open."""
+    from benchweave.registry.otdp_loading import load_otdp_plugin
+
+    payload = {
+        "src/example/__init__.py": b"",
+        "src/example/plugin.py": CAPTURE_ENTRY,
+    }
+    manifest, digest = bundle(tmp_path, payload)
+    store, (services, controller) = _capture_services(tmp_path)
+    assert controller is not None
+    try:
+        plugin = load_otdp_plugin(
+            tmp_path,
+            manifest,
+            digest,
+            entry_relpath="src/example/plugin.py",
+            descriptor={},
+            services=services,
+            simulation=SimulationInfo(True, "test"),
+            capture=controller,
+        )
+        plugin.plugin_open(object())
+        received = plugin._adapter.services
+        assert received is services
+        for member in (
+            "monotonic",
+            "utc_now",
+            "transfer",
+            "close_transport",
+            "record_evidence",
+            "artifact_append",
+            "artifact_finalise",
+            "artifact_abort",
+        ):
+            assert hasattr(received, member), member  # the 8-member bundle
+        plugin.plugin_close()
+    finally:
+        store.close()
+
+
+def test_the_load_path_hands_over_the_scoped_shape_without_permission(tmp_path: Path) -> None:
+    from benchweave.registry.otdp_loading import load_otdp_plugin
+
+    payload = {
+        "src/example/__init__.py": b"",
+        "src/example/plugin.py": CAPTURE_ENTRY,
+    }
+    manifest, digest = bundle(tmp_path, payload)
+    store, (services, controller) = _capture_services(tmp_path)
+    assert controller is not None
+    # A raw descriptor WITHOUT artifact_writer: the factory returns the
+    # five-member shape and no controller.
+    import hashlib
+    import json
+
+    from benchweave.content.capture_services import build_capture_services
+    from benchweave.content.capture_store import CaptureStagingStore
+    from benchweave.content.store import ContentStore
+    from benchweave.host.services import QuotaLimits
+
+    content = ContentStore(store)
+    raw = {
+        "id": "dev.local.load-path",
+        "descriptor_version": "1.0.0",
+        "integration": {"adapter": {"permissions": ["scoped_transport"]}},
+    }
+    blob = json.dumps(raw, sort_keys=True).encode()
+    negative_digest = hashlib.sha256(blob).hexdigest()
+    content.put_document(blob, negative_digest, raw, "otdp-descriptor", "t")
+    scoped, no_controller = build_capture_services(
+        descriptor_digest=negative_digest,
+        content=content,
+        writer=CaptureStagingStore(store, max_capture_bytes=64, max_dataset_bytes=64),
+        clock=lambda: 0.0,
+        wall=lambda: "t",
+        quota=QuotaLimits(max_dataset_bytes=64, max_evidence_entries=10, max_event_batch=5),
+        context_key="load-path-session",
+    )
+    assert no_controller is None
+    try:
+        plugin = load_otdp_plugin(
+            tmp_path,
+            manifest,
+            digest,
+            entry_relpath="src/example/plugin.py",
+            descriptor={},
+            services=scoped,
+            simulation=SimulationInfo(True, "test"),
+        )
+        plugin.plugin_open(object())
+        received = plugin._adapter.services
+        assert received is scoped
+        for member in ("artifact_append", "artifact_finalise", "artifact_abort"):
+            assert not hasattr(received, member), member  # structural absence
+        plugin.plugin_close()
+    finally:
+        store.close()

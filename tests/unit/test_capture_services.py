@@ -402,6 +402,7 @@ def test_abort_reclaims_and_writes_exactly_one_forensic_row(store: Store) -> Non
     assert decoded == {
         "capture_id": "cap-1",
         "operation_id": "op-1",
+        "artifact_id": None,  # nothing published: the plain-abort shape
         "reason": "dispatch failed",
         "staged_bytes": 8,
         "reserved_bytes": 32,
