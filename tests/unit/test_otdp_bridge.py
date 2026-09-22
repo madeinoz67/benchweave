@@ -1134,3 +1134,71 @@ def test_gate_region_lock_contention_is_resource_limit_not_dispatched(tmp_path: 
         plugin.plugin_close()
     finally:
         harness.close()
+
+
+def test_a_non_quota_open_failure_is_internal_error_not_dispatched(tmp_path: Path) -> None:
+    """R1 (review wave 3): A6's INTERNAL_ERROR gate arm — any non-quota,
+    non-duplicate-id exception from open_capture returns
+    INTERNAL_ERROR not_dispatched with the adapter never called and zero
+    forensic rows. Derivation: the post-F6 gate classification table has
+    exactly two store-failure classes — a WRITER-ORIGINATED stamped
+    OperationalError -> RESOURCE_LIMIT not_dispatched (pinned by
+    test_gate_region_lock_contention_is_resource_limit_not_dispatched)
+    and every OTHER failure -> INTERNAL_ERROR not_dispatched (this arm).
+    The cheapest honest trigger is the envelope-less writer: its
+    open_capture raises RuntimeError('capture quota envelope not
+    configured'). The refusal CODE is asserted, not the message (the
+    message carries the exception)."""
+    import pathlib
+
+    from benchweave.content.capture_store import CaptureStagingStore
+    from benchweave.state.store import Store
+
+    db_root = pathlib.Path(tmp_path)
+    store = Store.open(db_root / "envelope-less.db", check_same_thread=False)
+    try:
+        harness = CaptureHarness(tmp_path)
+        content = ContentStore(store)
+        import hashlib as _hashlib
+
+        raw = {
+            "id": "dev.local.capture-harness",
+            "descriptor_version": "1.0.0",
+            "integration": {
+                "adapter": {"permissions": ["scoped_transport", "artifact_writer"]}
+            },
+        }
+        blob = _json.dumps(raw, sort_keys=True).encode()
+        digest = _hashlib.sha256(blob).hexdigest()
+        content.put_document(blob, digest, raw, "otdp-descriptor", "t")
+        bundle, controller = build_capture_services(
+            descriptor_digest=digest,
+            content=content,
+            writer=CaptureStagingStore(store),  # NO quota envelope
+            clock=lambda: 0.0,
+            wall=lambda: "t",
+            quota=QuotaLimits(
+                max_dataset_bytes=8192, max_evidence_entries=50, max_event_batch=10
+            ),
+            context_key="envelope-less-session",
+        )
+        assert controller is not None
+        adapter = CaptureAdapter()
+        plugin = OTDPBridge(
+            adapter,
+            descriptor=dict(CAPTURE_DESCRIPTOR),
+            services=bundle,
+            simulation=SimulationInfo(True, "Synthetic"),
+            capture=controller,
+        )
+        plugin.plugin_open(object())
+        result = plugin.dispatch(a_capture_request(), deadline_ns=10_000_000_000)
+        assert result.error is not None
+        assert result.error.code is ErrorCode.INTERNAL_ERROR
+        assert result.error.dispatch_state is DispatchState.NOT_DISPATCHED
+        assert adapter.calls == 0
+        assert harness.forensic_count() == 0
+        plugin.plugin_close()
+        harness.close()
+    finally:
+        store.close()
