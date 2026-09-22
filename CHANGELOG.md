@@ -147,6 +147,9 @@ All notable changes to this project will be documented in this file.
 - Gate-region lock contention classifies RESOURCE_LIMIT
 - The writer's stamp frame covers the COMMIT sites; sweep return documented
 - Finalise enforces the session key on the publishing path
+- The ended-at-quota-boundary teardown marker (F1, review wave)
+- The landing-origin stamp — the poll path's C3 discriminator (F2, review wave)
+- The event validator enforces the corpus's unconditional keys and refuses unserializable content honestly (G1+G3, Forge wave)
 
 ### Documentation
 
@@ -284,6 +287,8 @@ All notable changes to this project will be documented in this file.
 - Bridge docstring — version fix, real async-host boundary, capture-budget disclosure
 - The busy-timeout disclosure prices the full failed-dispatch path
 - Narrow the develop-your-device loader sentence; pin it gateway-side
+- The streaming documentation surface — delivery ceiling, guide section, loader sentence
+- REG-4's gap enumeration follows the machine source; the on_event escape residual named (G2 + row-9 note, Forge wave)
 
 ### Features
 
@@ -403,6 +408,11 @@ All notable changes to this project will be documented in this file.
 - Staged-append capture writer (open/append/finalise/abort/sweep/ledger)
 - Composing capture-services bundle + controller + permission read
 - Bridge dispatch(capture) — gates, manifest conversion, classification, epilogue
+- Kind-scoped evidence quota accounting — the (context_key, kind) dimension
+- The stream controller — registry, event landing, event_sink admission
+- Bridge stream dispatch — subscribe/unsubscribe verbs, gates, registry wiring
+- Bridge next_event mediation — validation, refusal taxonomy, gap honesty (R4)
+- The stream poll engine — poll-slice multiplexing with monitor ticks between polls
 
 ### Hardware Evidence
 
@@ -590,6 +600,7 @@ All notable changes to this project will be documented in this file.
 - A6's INTERNAL_ERROR gate arm gets its home (review R1)
 - Drop the dead Migration import pair in _apply_subset
 - Complete the dead-pair removal — drop the del Migration line
+- The slice-2 review wave — real delivery budget, timebase pin, rotation pin, record erratum
 
 ### Build
 
