@@ -46,10 +46,13 @@ def test_first_sync_writes_lock_and_vendored_tree(tmp_path: Path) -> None:
     stamp = sdk / "src/benchweave_sdk/standards/otdp/_GENERATED.txt"
     first_line = stamp.read_text(encoding="utf-8").splitlines()[0]
     assert first_line.startswith("otdp/")
-    assert first_line.endswith("Generated from otdp@0.2.0 — do not edit")
-    # Stamps live beside files that stay byte-identical to the bundle.
+    # Stamps live beside files that stay byte-identical to the bundle; the
+    # version in the stamp line is the bundle's, derived — never a literal
+    # that goes stale at the next corpus bump.
     document = json.loads((bundle / "bundle-manifest.json").read_bytes())
-    entry = next(s["files"][0] for s in document["standards"] if s["id"] == "otdp")
+    otdp_row = next(s for s in document["standards"] if s["id"] == "otdp")
+    assert first_line.endswith(f"Generated from otdp@{otdp_row['version']} — do not edit")
+    entry = otdp_row["files"][0]
     vendored = sdk / "src/benchweave_sdk/standards" / entry["path"]
     assert vendored.read_bytes() == (bundle / "files" / entry["path"]).read_bytes()
 

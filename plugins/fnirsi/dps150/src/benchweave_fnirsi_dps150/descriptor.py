@@ -42,7 +42,7 @@ def build_descriptor() -> dict[str, Any]:
             parameter["enum_values"] = list(choices)
         parameters.append(parameter)
     return {
-        "otdp_version": "0.2.0",
+        "otdp_version": "0.2.1",
         "descriptor_version": "0.2.0",
         "id": "org.benchweave.fnirsi-dps150",
         "display_name": "FNIRSI DPS-150 (read-only, KochC empty-GET dialect)",
