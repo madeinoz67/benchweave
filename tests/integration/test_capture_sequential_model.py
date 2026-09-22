@@ -478,22 +478,45 @@ def test_store_contention_mid_capture_stretches_then_classifies(tmp_path: Path) 
         t2 = threading.Thread(target=arm2_capture)
         t2.start()
         assert appended.wait(timeout=10), "arm 2 capture never appended"
-        over_holder = threading.Thread(target=hold_lock, args=(0.6,))
+        # Held PAST the busy-retry horizon (busy_timeout=300 ms places the
+        # final retry near 633 ms; 1.2 s is beyond it), so the dispatch-time
+        # state is deterministic instead of riding SQLite sleep overshoot.
+        over_holder = threading.Thread(target=hold_lock, args=(1.2,))
         over_holder.start()
         t2.join(timeout=30)
-        over_holder.join(timeout=10)
         result = arm2_result["result"]
         assert result.error is not None
         assert result.error.code is ErrorCode.RESOURCE_LIMIT
         assert result.error.dispatch_state is DispatchState.DISPATCHED
-        staged = harness.store.connection.execute(
+        # F3's honest dispatch-time shape: the row is NOT yet reclaimed and
+        # the forensic record is NOT yet written (the epilogue's own abort
+        # BEGIN contended too and was suppressed).
+        staged_at_return = harness.store.connection.execute(
             "SELECT COUNT(*) FROM capture_staging WHERE state = 'staged'"
         ).fetchone()[0]
-        assert staged == 0  # the epilogue reclaimed once the holder released
+        forensic_at_return = harness.store.connection.execute(
+            "SELECT COUNT(*) FROM evidence WHERE kind = ?"
+            " AND content_ref_json LIKE ?",
+            ("event_log", '%"cap-contention"%'),
+        ).fetchone()[0]
+        assert staged_at_return == 1
+        assert forensic_at_return == 0
+        over_holder.join(timeout=10)
         follow = harness.bridge.dispatch(
             OperationRequest.read("op-after", parameter="temp"),
             deadline_ns=harness.deadline_ns(2000),
         )
         assert follow.status is OperationStatus.OK  # the session survives
+        harness.bridge.plugin_close()  # B15-iii's in-process retry
+        staged_after_close = harness.store.connection.execute(
+            "SELECT COUNT(*) FROM capture_staging WHERE state = 'staged'"
+        ).fetchone()[0]
+        forensic_after_close = harness.store.connection.execute(
+            "SELECT COUNT(*) FROM evidence WHERE kind = ?"
+            " AND content_ref_json LIKE ?",
+            ("event_log", '%"cap-contention"%'),
+        ).fetchone()[0]
+        assert staged_after_close == 0  # reclamation is eventual — and real
+        assert forensic_after_close == 1  # exactly one forensic record
     finally:
         harness.close()
