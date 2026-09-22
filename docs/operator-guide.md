@@ -81,7 +81,7 @@ the sources verbatim — no plugin source was modified to repeat the demo.
 benchweave setup --data-dir /var/lib/benchweave
 ```
 
-Creates `<data-dir>/state.sqlite` (migrations applied as at app boot),
+Creates `<data-dir>/state.sqlite` (migrations applied as at app boot; a store refusing to open with `refuse_newer_schema:` was written by a NEWER gateway — downgrade is refused, open it with a gateway that knows the schema),
 `<data-dir>/content/`, and the 0600 credential file
 `<data-dir>/benchweave.env` holding the generated gateway secret. The
 secret is never printed unless you opt in:

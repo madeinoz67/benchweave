@@ -414,6 +414,3 @@ def build_capture_services(
     )
     return scoped, None
 
-
-# Re-exported for the bridge's classification arm (imported name only).
-_ = EvidenceQuotaExceeded
