@@ -2073,6 +2073,43 @@ def test_quota_exhaustion_at_landing_is_a_clean_refusal_with_teardown(
         harness.close()
 
 
+def test_an_ended_event_refused_at_the_quota_boundary_still_marks_teardown(
+    tmp_path: Path,
+) -> None:
+    """F1 (review wave): the terminal ``ended`` event discarded at the
+    event-quota boundary must still leave exactly one durable host_ended
+    marker — carrying the discarded event's sequence — after close.
+    Decision 4's contract is teardown WITH a host-cause ended marker; a
+    registry flip without a durable record is a silent ending."""
+    harness = StreamHarness(tmp_path, evidence_quota=1)
+    try:
+        adapter = StreamingAdapter(
+            script=[
+                an_event("placeholder", 0),
+                an_event("placeholder", 1, kind="ended"),
+            ]
+        )
+        plugin = harness.bridge(adapter)
+        plugin.plugin_open(object())
+        subscription_id = a_live_subscription(harness, plugin)
+        correlate(adapter.script, subscription_id)
+        first = plugin.poll_event(subscription_id, deadline_ns=10_000_000_000)
+        assert first.event is not None
+        second = plugin.poll_event(subscription_id, deadline_ns=10_000_000_000)
+        assert second.refusal is not None
+        assert second.refusal.code is ErrorCode.RESOURCE_LIMIT
+        assert not second.session_failed
+        assert not harness.controller.is_live(subscription_id)
+        plugin.plugin_close()
+        markers = harness.stream_rows({"marker": "host_ended"})
+        assert len(markers) == 1
+        assert markers[0]["id"] == subscription_id
+        assert markers[0]["cause"] == "event quota exhausted"
+        assert markers[0]["discarded_sequence"] == 1
+    finally:
+        harness.close()
+
+
 def test_a_hanging_poll_poisons_as_a_timeout(tmp_path: Path) -> None:
     harness = StreamHarness(tmp_path)
     try:

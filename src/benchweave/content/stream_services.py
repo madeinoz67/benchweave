@@ -214,6 +214,30 @@ class StreamController:
         )
         return True
 
+    def mark_ended_at_boundary(
+        self, subscription_id: str, *, cause: str, discarded_sequence: int | None = None
+    ) -> bool:
+        """Teardown at a landing boundary (F1, review wave): ALWAYS writes
+        the terminal marker, whether or not the registry still holds the
+        subscription ACTIVE — the discarded event may itself be the
+        terminal ``ended`` event (``record_event`` flips the registry
+        before the landing attempt), and Decision 4's contract is a
+        durable host-cause ended marker either way. The discarded event's
+        sequence rides the marker (the review's LOW: the record names
+        WHICH event was dropped). Returns whether the registry transitioned
+        ACTIVE -> ENDED here."""
+        entry = self._subscriptions.get(subscription_id)
+        was_active = entry is not None and entry.state == _ACTIVE
+        if entry is not None and entry.state == _ACTIVE:
+            entry.state = _ENDED
+        self._marker(
+            subscription_id,
+            marker="host_ended",
+            cause=cause,
+            discarded_sequence=discarded_sequence,
+        )
+        return was_active
+
     def sweep(self, *, reason: str) -> list[str]:
         """Tear down every live subscription with a host-cause ``ended``
         marker (``plugin_close`` and poison both arrive here — no stream

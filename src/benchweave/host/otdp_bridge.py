@@ -739,6 +739,7 @@ class OTDPBridge:
                     )
                 )
             context = _Context(str(uuid4()), deadline, self._services)
+            sequence: int | None = None
             try:
                 event = self._run(
                     self._adapter.next_event(subscription_id, context), context
@@ -778,8 +779,17 @@ class OTDPBridge:
                 # Quota exhaustion at a landing boundary: a resource
                 # condition, not a protocol lie — clean refusal plus
                 # teardown with a host-cause ended marker, never poison.
+                # mark_ended_at_boundary (not mark_ended): the discarded
+                # event may itself be the terminal `ended` event — the
+                # registry already flipped — and the marker must land
+                # anyway, carrying the discarded sequence (F1, review
+                # wave).
                 with suppress(Exception):
-                    self._stream.mark_ended(subscription_id, cause="event quota exhausted")
+                    self._stream.mark_ended_at_boundary(
+                        subscription_id,
+                        cause="event quota exhausted",
+                        discarded_sequence=sequence,
+                    )
                 return PollOutcome(
                     refusal=OperationError(
                         ErrorCode.RESOURCE_LIMIT,
