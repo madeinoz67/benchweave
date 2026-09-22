@@ -196,12 +196,21 @@ class CaptureStagingStore:
                     now,
                 ),
             )
+        except BaseException:
+            if self._conn.in_transaction:
+                self._conn.execute("ROLLBACK")
+            raise
+        try:
+            self._conn.execute("COMMIT")
         except BaseException as error:
+            # F7: a COMMIT-site failure (SQLITE_FULL/IO shapes; not
+            # reachable via WAL contention) is as writer-originated as any
+            # statement failure — stamp it and roll the still-open
+            # transaction back so nothing leaks half-applied.
             self._restamp(error, capture_id)
             if self._conn.in_transaction:
                 self._conn.execute("ROLLBACK")
             raise
-        self._conn.execute("COMMIT")
         # B3: ALWAYS (re)initialise the hasher entry for this id — a
         # reused-after-abort id starts a fresh digest, never a stale one.
         self._hashers[capture_id] = hashlib.sha256()
@@ -307,12 +316,21 @@ class CaptureStagingStore:
                 " VALUES (?, ?, ?, ?)",
                 (capture_id, int(seq), data, len(data)),
             )
+        except BaseException:
+            if self._conn.in_transaction:
+                self._conn.execute("ROLLBACK")
+            raise
+        try:
+            self._conn.execute("COMMIT")
         except BaseException as error:
+            # F7: a COMMIT-site failure (SQLITE_FULL/IO shapes; not
+            # reachable via WAL contention) is as writer-originated as any
+            # statement failure — stamp it and roll the still-open
+            # transaction back so nothing leaks half-applied.
             self._restamp(error, capture_id)
             if self._conn.in_transaction:
                 self._conn.execute("ROLLBACK")
             raise
-        self._conn.execute("COMMIT")
         hasher = self._hashers.get(capture_id)
         if hasher is not None:
             hasher.update(data)
@@ -416,12 +434,21 @@ class CaptureStagingStore:
             self._conn.execute(
                 "DELETE FROM capture_chunks WHERE capture_id = ?", (capture_id,)
             )
+        except BaseException:
+            if self._conn.in_transaction:
+                self._conn.execute("ROLLBACK")
+            raise
+        try:
+            self._conn.execute("COMMIT")
         except BaseException as error:
+            # F7: a COMMIT-site failure (SQLITE_FULL/IO shapes; not
+            # reachable via WAL contention) is as writer-originated as any
+            # statement failure — stamp it and roll the still-open
+            # transaction back so nothing leaks half-applied.
             self._restamp(error, capture_id)
             if self._conn.in_transaction:
                 self._conn.execute("ROLLBACK")
             raise
-        self._conn.execute("COMMIT")
         # B3: finalise removes the hasher entry.
         self._hashers.pop(capture_id, None)
         return {
@@ -474,12 +501,21 @@ class CaptureStagingStore:
             self._conn.execute(
                 "DELETE FROM capture_staging WHERE capture_id = ?", (capture_id,)
             )
+        except BaseException:
+            if self._conn.in_transaction:
+                self._conn.execute("ROLLBACK")
+            raise
+        try:
+            self._conn.execute("COMMIT")
         except BaseException as error:
+            # F7: a COMMIT-site failure (SQLITE_FULL/IO shapes; not
+            # reachable via WAL contention) is as writer-originated as any
+            # statement failure — stamp it and roll the still-open
+            # transaction back so nothing leaks half-applied.
             self._restamp(error, capture_id)
             if self._conn.in_transaction:
                 self._conn.execute("ROLLBACK")
             raise
-        self._conn.execute("COMMIT")
         # B3: abort removes the hasher entry.
         self._hashers.pop(capture_id, None)
         return True
@@ -495,6 +531,13 @@ class CaptureStagingStore:
         (idempotent — a later sweep completes it). NEVER collapse the two
         transactions into one: the mark-time refund is the property that
         bounds the quota-hostage window to one startup.
+
+        The return lists THIS process's orphans only (the ids tx1 marked
+        this run): tx2 deletes by state, so a run that completes a dead
+        predecessor's interrupted reclamation deletes those rows without
+        reporting them. The startup caller ignores the return; if a future
+        caller needs the full deleted set, it must read it from tx2, not
+        from this list.
         """
         try:
             self._conn.execute("BEGIN IMMEDIATE")
@@ -550,12 +593,21 @@ class CaptureStagingStore:
             self._conn.execute(
                 "DELETE FROM capture_staging WHERE state = ?", (_STATE_ABORTED,)
             )
+        except BaseException:
+            if self._conn.in_transaction:
+                self._conn.execute("ROLLBACK")
+            raise
+        try:
+            self._conn.execute("COMMIT")
         except BaseException as error:
+            # F7: a COMMIT-site failure (SQLITE_FULL/IO shapes; not
+            # reachable via WAL contention) is as writer-originated as any
+            # statement failure — stamp it and roll the still-open
+            # transaction back so nothing leaks half-applied.
             self._restamp(error, None)
             if self._conn.in_transaction:
                 self._conn.execute("ROLLBACK")
             raise
-        self._conn.execute("COMMIT")
 
     # --- the ledger ---------------------------------------------------------------
 

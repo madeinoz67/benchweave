@@ -25,6 +25,7 @@ Derivations (from primary sources, not the plan's restatement):
 from __future__ import annotations
 
 import hashlib
+import sqlite3
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -506,3 +507,59 @@ def test_writer_exceptions_are_stamped_and_a_bare_raise_is_not(store: Store) -> 
     bare = gateway_types.CaptureQuotaExceeded("adapter code can raise the class too")
     assert bare.capture_stamp is None
     assert not writer_originated(bare, "cap-1")  # the discriminator refuses it
+
+
+# --- F7: the stamp frame covers the COMMIT sites -------------------------------
+
+
+class _CommitFailingConn:
+    """A delegating connection proxy whose Nth COMMIT fails with the real
+    condition class (the refuter could not reach COMMIT-busy on WAL —
+    the reachable shapes are SQLITE_FULL/IO at exactly the COMMIT of a
+    mid-capture write — so the arm injects at the real call site)."""
+
+    def __init__(self, inner: Any, fail_on: int) -> None:
+        self._inner = inner
+        self._commits = 0
+        self._fail_on = fail_on
+
+    def execute(self, sql: str, *args: Any) -> Any:
+        if sql.strip().upper().startswith("COMMIT"):
+            self._commits += 1
+            if self._commits == self._fail_on:
+                raise sqlite3.OperationalError("disk I/O error (injected)")
+        return self._inner.execute(sql, *args)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._inner, name)
+
+
+def test_commit_site_failures_are_stamped(store: Store) -> None:
+    """F7: 'every exception this writer raises is writer-stamped' must
+    include the COMMIT sites — an OperationalError from COMMIT itself is a
+    store-resource condition the bridge classifies non-poison, not a
+    protocol lie."""
+    from benchweave.content.capture_store import writer_originated
+
+    writer = a_writer(store)
+    original = writer._conn
+    writer._conn = _CommitFailingConn(original, fail_on=1)  # type: ignore[assignment]
+    try:
+        with pytest.raises(sqlite3.OperationalError, match="injected"):
+            open_capture(writer, "cap-1", fmt="raw_binary", sample_count=None, max_bytes=16)
+    finally:
+        writer._conn = original
+    # The staged row the failed COMMIT left behind is rolled back.
+    assert row(store, "cap-1") is None
+    # RED on the unfixed tree: the COMMIT failure escapes unstamped.
+    # Re-raise through the proxy once more to inspect the stamp directly.
+    writer._conn = _CommitFailingConn(original, fail_on=2)  # type: ignore[assignment]
+    try:
+        open_capture(  # commit 1 succeeds under the proxy
+            writer, "cap-2", fmt="raw_binary", sample_count=None, max_bytes=16
+        )
+        with pytest.raises(sqlite3.OperationalError, match="injected") as caught:
+            writer.append("cap-2", b"\x01" * 8, "session-a")  # commit 2 fails
+    finally:
+        writer._conn = original
+    assert writer_originated(caught.value, "cap-2")
