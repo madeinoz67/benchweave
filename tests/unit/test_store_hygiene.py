@@ -146,7 +146,7 @@ def test_d13_events_cursor_read_is_served_by_the_migration_index(
     an index that exists but is not used fails this pin."""
     store = Store.open(tmp_path / "hygiene.db")
     try:
-        assert store.schema_version() == MIGRATIONS[-1].version == 4
+        assert store.schema_version() == MIGRATIONS[-1].version == 5
         plans = store.connection.execute(
             "EXPLAIN QUERY PLAN " + _CURSOR_READ_SQL, ("bench.sim-bench", 0, 100)
         ).fetchall()
@@ -319,3 +319,158 @@ def test_d13_release_and_consume_are_one_guarded_transition(
         assert store.get_active_lease("bench-h") is None
     finally:
         store.close()
+
+
+# --- issue #43 slice 1: v5 capture staging --------------------------------------
+
+
+# The crash-recovery sweep's serving read, verbatim from the writer's
+# reclaim path — the query the v5 state index must serve.
+_SWEEP_READ_SQL = "SELECT capture_id FROM capture_staging WHERE state = 'staged'"
+
+
+def _table_columns(store: Store, table: str) -> list[str]:
+    rows = store.connection.execute(f"PRAGMA table_info({table})").fetchall()
+    return [str(row[1]) for row in rows]
+
+
+def _apply_subset(tmp_path: Path, versions: int) -> None:
+    """Hand-apply the first ``versions`` migrations the way the store does,
+    so a database can be created AT an older schema version for upgrade
+    arms (the migration list itself stays global and untouched)."""
+    import sqlite3
+
+    connection = sqlite3.connect(str(tmp_path / "upgrade.db"), isolation_level=None)
+    connection.execute("PRAGMA journal_mode=WAL")
+    connection.execute("PRAGMA synchronous=FULL")
+    connection.execute(
+        "CREATE TABLE IF NOT EXISTS schema_migrations ("
+        "version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)"
+    )
+    for migration in MIGRATIONS[:versions]:
+        connection.execute("BEGIN IMMEDIATE")
+        try:
+            for statement in migration.statements:
+                connection.execute(statement)
+            connection.execute(
+                "INSERT INTO schema_migrations (version, applied_at)"
+                " VALUES (?, 'applied-by-migration')",
+                (migration.version,),
+            )
+        except BaseException:
+            connection.execute("ROLLBACK")
+            raise
+        connection.execute("COMMIT")
+    connection.close()
+
+
+def test_v5_capture_staging_tables_and_the_sweep_serving_index(
+    tmp_path: Path,
+) -> None:
+    """Fresh database: v5 lands (the D13 pin above now names 5), both
+    staging tables exist with the designed columns — nullable
+    ``artifact_id``/``started_at`` so the capture→artifact linkage survives
+    chunk deletion — and the sweep's state read is served by the named,
+    migration-tracked index (an index that exists but is not used fails
+    this pin, exactly like the v4 events pin)."""
+    store = Store.open(tmp_path / "v5.db")
+    try:
+        assert store.schema_version() == 5
+        assert _table_columns(store, "capture_staging") == [
+            "capture_id",
+            "context_key",
+            "state",
+            "reserved_bytes",
+            "charged_bytes",
+            "format",
+            "sample_count",
+            "artifact_id",
+            "started_at",
+            "created_at",
+            "updated_at",
+        ]
+        assert _table_columns(store, "capture_chunks") == [
+            "capture_id",
+            "seq",
+            "data",
+            "byte_length",
+        ]
+        plans = store.connection.execute(
+            "EXPLAIN QUERY PLAN " + _SWEEP_READ_SQL
+        ).fetchall()
+        detail = " | ".join(str(row[3]) for row in plans)
+        assert "USING INDEX idx_capture_staging_state" in detail, detail
+        assert "SCAN capture_staging" not in detail, detail
+    finally:
+        store.close()
+
+
+def test_v5_upgrade_from_a_v4_database(tmp_path: Path) -> None:
+    """A database left at v4 by an older gateway upgrades in place: opening
+    applies only v5 (one empty-table transaction) and lands at 5."""
+    _apply_subset(tmp_path, 4)
+    store = Store.open(tmp_path / "upgrade.db")
+    try:
+        assert store.schema_version() == 5
+        assert _table_columns(store, "capture_staging"), "v5 tables must exist"
+    finally:
+        store.close()
+
+
+def test_refuse_newer_schema_is_loud(tmp_path: Path) -> None:
+    """B6: a database written by a NEWER gateway (on-disk MAX(version)
+    above the newest known migration) is refused loudly at open — the
+    family has paid for silent downgrade twice; v5 makes downgrade
+    reachable for the first time."""
+    import sqlite3
+
+    path = tmp_path / "newer.db"
+    connection = sqlite3.connect(str(path), isolation_level=None)
+    connection.execute(
+        "CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY,"
+        " applied_at TEXT NOT NULL)"
+    )
+    connection.execute(
+        "INSERT INTO schema_migrations (version, applied_at) VALUES (6, 'future')"
+    )
+    connection.close()
+    with pytest.raises(RuntimeError, match="refuse_newer_schema"):
+        Store.open(path)
+
+
+def test_a_failing_migration_rolls_back_whole(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The sabotage guard (external-review arm): a crafted migration whose
+    SECOND statement fails must leave zero partial tables behind — the
+    whole migration rolls back and the schema stays at the last good
+    version. Pins the per-migration BEGIN IMMEDIATE / ROLLBACK discipline
+    against regression."""
+    from benchweave.state import store as store_module
+    from benchweave.state.migrations import Migration
+
+    sabotaged = MIGRATIONS + (
+        Migration(
+            version=99,
+            statements=(
+                "CREATE TABLE sabotage_probe (id INTEGER)",
+                "INSERT INTO no_such_table VALUES (1)",
+            ),
+        ),
+    )
+    monkeypatch.setattr(store_module, "MIGRATIONS", sabotaged)
+    with pytest.raises(Exception, match="no_such_table"):
+        Store.open(tmp_path / "sabotage.db")
+    monkeypatch.undo()  # reopen under the REAL migration list
+    reopened = Store.open(tmp_path / "sabotage.db")
+    try:
+        tables = {
+            str(row[0])
+            for row in reopened.connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        }
+        assert "sabotage_probe" not in tables, "a failed migration left partial state"
+        assert reopened.schema_version() == MIGRATIONS[-1].version
+    finally:
+        reopened.close()

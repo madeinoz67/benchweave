@@ -104,6 +104,22 @@ class Store:
             "CREATE TABLE IF NOT EXISTS schema_migrations ("
             "version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)"
         )
+        # B6: refuse-newer guard. A database written by a newer gateway
+        # (on-disk MAX(version) above the newest known migration) would
+        # otherwise open as silently "migrated", lying about its schema;
+        # v5 makes downgrade reachable for the first time and the family
+        # has paid for silent downgrade twice.
+        on_disk = int(
+            self._conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0]
+            or 0
+        )
+        if on_disk > MIGRATIONS[-1].version:
+            raise RuntimeError(
+                f"refuse_newer_schema: on-disk schema version {on_disk} is newer "
+                f"than the newest known migration ({MIGRATIONS[-1].version}); "
+                "downgrade is refused — run a gateway version that knows this "
+                "schema before opening this database"
+            )
         for migration in MIGRATIONS:
             applied = self._conn.execute(
                 "SELECT COUNT(*) FROM schema_migrations WHERE version = ?", (migration.version,)

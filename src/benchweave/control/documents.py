@@ -538,3 +538,30 @@ def admit_documents(
         descriptors=descriptors,
         digests=digests,
     )
+
+
+def adapter_permissions(descriptor: dict[str, Any]) -> frozenset[str]:
+    """The adapter's declared permission set from a RAW full-form descriptor.
+
+    The CON-10 projected execution view deliberately drops ``integration``,
+    so post-admission callers cannot read permissions from what they hold —
+    the capture factory re-derives the raw form by pinned digest (one
+    ``get_document`` call) and reads this. Total: absent integration (the
+    declarative mode), a missing adapter, a non-list or non-string-bearing
+    permissions field all yield the empty set — no permission is granted by
+    a malformed shape. The vocabulary lives in the descriptor schema's
+    ``$defs.adapter.properties.permissions``; slice 1 gates only on
+    ``artifact_writer``.
+    """
+    integration = descriptor.get("integration")
+    if not isinstance(integration, dict):
+        return frozenset()
+    adapter = integration.get("adapter")
+    if not isinstance(adapter, dict):
+        return frozenset()
+    permissions = adapter.get("permissions")
+    if not isinstance(permissions, list):
+        return frozenset()
+    return frozenset(
+        permission for permission in permissions if isinstance(permission, str)
+    )
