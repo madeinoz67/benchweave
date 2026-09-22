@@ -139,6 +139,9 @@ rather than rewriting the history — that is how this file earns trust.
   between the main-repo standards, the SDK lock and the vendored tree. *Two copies of a
   standard disagree the moment one is edited; the check keeps the disagreement out of
   `main`.*
+  Amendment (2026-09-23, issue #158): the same gate carries the manifest
+  `sdk_compatibility` mirror ↔ SDK-lock comparison (CON-12) — the mirror is
+  a derived copy whose authority stays with the lock.
 - **[CON-5]** REST v1 and MCP share typed operation/result contracts and durable core run
   identity (A13: 20 REST operations, 17 MCP tools — three administration operations are
   REST-only by design). Transport adapters are adapters: behavior is pinned against the
@@ -272,6 +275,26 @@ rather than rewriting the history — that is how this file earns trust.
   design (issue #102 D1 design record §10: no checks-list substrate, the
   substance is not recomputable, and the live claims are already pinned by
   the pytest suites in gates).
+
+- **[CON-12]** The compatibility-matrix render is a pure function of committed
+  state — no remote URL, no submodule init or working-tree state enters it;
+  the manifest's `sdk_compatibility` mirror equals the `compatibility` block
+  of the SDK lock at the pinned gitlink commit — enforced wherever the
+  submodule working tree sits at that pin (CI both lanes); a working tree
+  away from the pin is refused by name before any comparison, never mirrored
+  from — and the render fails closed rather than degrading when a committed
+  source is absent — `src/benchweave/standards/matrix.py` `render_matrix` (rows from
+  the standards manifest, SDK version/range/notes from the mirrored
+  `sdk_compatibility` block, Sources from `pyproject.toml`
+  `[project.urls] Repository` and the committed `.gitmodules`), the mirror
+  comparison in `src/benchweave/standards/check.py` `run_check`
+  (`sdk_compatibility_drift`), pinned by `tests/standards/test_matrix.py`
+  and `tests/standards/test_check.py`. *A staleness gate that renders
+  working-tree or remote state reds on correct committed files and teaches
+  its readers to ignore it or "fix" it by committing checkout-state bytes
+  (issue #158: a fork's `matrix --check` failed on a correct file, fork
+  regeneration poisoned the Sources cells, and a moved submodule working
+  tree reds the maintainer's own clone).*
 
 ## Registry & plugin invariants
 

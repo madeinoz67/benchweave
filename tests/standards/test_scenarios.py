@@ -55,6 +55,16 @@ def _synced_sdk(tmp_path: Path, bundle: Path) -> Path:
     sdk = tmp_path / "sdk"
     (sdk / "src/benchweave_sdk").mkdir(parents=True)
     (sdk / "src/benchweave_sdk/__init__.py").write_text("")
+    # A real SDK root declares its version in pyproject; the sync copies it
+    # into the lock's compatibility block, and run_check refuses drift between
+    # that block and the manifest's sdk_compatibility mirror (CON-12). The
+    # throwaway root must carry the mirrored version, not "unknown".
+    mirror = json.loads((ROOT / "standards/standards-manifest.json").read_bytes())[
+        "sdk_compatibility"
+    ]
+    (sdk / "pyproject.toml").write_text(
+        f'[project]\nname = "benchweave-sdk"\nversion = "{mirror["sdk"]}"\n'
+    )
     first = sync(bundle, sdk)
     assert set(first.added) == ALL_IDS
     return sdk
