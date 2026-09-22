@@ -421,6 +421,7 @@ All notable changes to this project will be documented in this file.
 - The stream poll engine — poll-slice multiplexing with monitor ticks between polls
 - Matrix render reads committed state only (issue #158)
 - Run_check enforces the sdk_compatibility mirror (issue #158)
+- Bump-window floor revisited 48h -> 24h (owner ruling)
 
 ### Hardware Evidence
 
