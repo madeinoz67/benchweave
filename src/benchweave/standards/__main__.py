@@ -50,24 +50,30 @@ def main() -> int:
     if arguments.command == "matrix":
         from .matrix import DOCS_PATH, check_matrix, render_matrix
 
-        if arguments.check:
-            failures = check_matrix(root)
-            for line in failures:
-                print(line)
-            if failures:
-                print(
-                    "stale compatibility matrix; run "
-                    "uv run python -m benchweave.standards matrix",
-                    file=sys.stderr,
-                )
-                return 1
-            print("compatibility matrix clean: committed file matches the rendered matrix")
+        try:
+            if arguments.check:
+                failures = check_matrix(root)
+                for line in failures:
+                    print(line)
+                if failures:
+                    print(
+                        "stale compatibility matrix; run "
+                        "uv run python -m benchweave.standards matrix",
+                        file=sys.stderr,
+                    )
+                    return 1
+                print("compatibility matrix clean: committed file matches the rendered matrix")
+                return 0
+            target = root / DOCS_PATH
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(render_matrix(root), encoding="utf-8")
+            print(f"compatibility matrix written to {target}")
             return 0
-        target = root / DOCS_PATH
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(render_matrix(root), encoding="utf-8")
-        print(f"compatibility matrix written to {target}")
-        return 0
+        except ValueError as exc:
+            # Fail-closed renders (a committed source absent) fail styled like
+            # the check/versions/repin lanes, never as a raw traceback.
+            print(f"standards matrix error: {exc}", file=sys.stderr)
+            return 1
     if arguments.command == "versions":
         from .check import version_lines
 
