@@ -2,10 +2,17 @@
 
 Identify, scalar read and scalar write are supported, plus single-channel
 capture (the ``artifact_writer``-gated capture verb: staged appends, a
-host-computed manifest, and an abort with a forensic record on failure).
-Dataset, profile and stream semantics need a native async host — for poll
-multiplexing across devices on one thread and the eventual invoke/dataset
-scheduling, explicitly NOT for capture/stream correctness. Services are
+host-computed manifest, and an abort with a forensic record on failure)
+and streaming (the ``event_sink``-gated subscribe/unsubscribe verbs with
+``next_event`` poll mediation: host-minted subscription ids, a normative
+interval floor, validated events landed as ``event_log`` evidence, gap
+annotations for unannounced sequence jumps, and host-cause teardown
+markers on quota exhaustion, poison and close).
+Dataset and profile semantics still need a native async host — for poll
+multiplexing across devices on one thread (subscriptions on ONE bridge
+multiplex synchronously through the poll engine) and the eventual
+invoke/dataset scheduling, explicitly NOT for capture/stream correctness.
+Services are
 caller-supplied, including the SAME monotonic timebase used for host
 deadlines (seconds versus nanoseconds). No transport provider is created.
 Adapters are trusted Python, not sandboxed; deadlines require cooperative

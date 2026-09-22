@@ -1211,17 +1211,20 @@ def test_a_non_quota_open_failure_is_internal_error_not_dispatched(tmp_path: Pat
         store.close()
 
 
-def test_develop_your_device_compatibility_sentence_covers_capture() -> None:
-    """R2 (review wave 3): docs/develop-your-device.md's loader paragraph
-    must not claim capture needs further integration once this slice lands
-    — the same sentence family the SDK guide carried. Streaming and
-    profile actions genuinely remain pending their slices."""
+def test_develop_your_device_compatibility_sentence_covers_capture_and_streaming() -> None:
+    """R2 (review wave 3) + the slice-2 flip: docs/develop-your-device.md's
+    loader paragraph must not claim capture or streaming need further
+    integration now that both lanes are mediated — only profile actions and
+    third-party dependencies genuinely remain pending."""
     doc = (
         Path(__file__).resolve().parents[2] / "docs" / "develop-your-device.md"
     ).read_text(encoding="utf-8")
     assert "capture/streaming" not in doc
     assert "single-channel capture" in doc
-    assert "Profile actions" in doc and "streaming" in doc
+    assert "streaming subscriptions" in doc
+    assert "Profile actions" in doc
+    # The stale pending claim (slice 1's wording) must be gone.
+    assert "Profile actions, streaming and arbitrary" not in doc
 
 
 # --- issue #43 slice 2: stream dispatch ------------------------------------------
