@@ -29,7 +29,12 @@ subscriptions on the caller's thread:
   authority, re-read every round — stops listing it. A poll-deadline
   TIMEOUT refusal changes no registry state, so a still-live subscription
   is re-polled. A failed bridge session stops the whole engine: the
-  session is dead, not one stream.
+  session is dead, not one stream. One residual (the row-9 wiring's): a
+  raising ``on_event`` callback escapes ``poll_round``/``poll_until``
+  without the engine tearing down live subscriptions — "no stream
+  outlives its host-owned subscription authority" then rests on the
+  run-engine exit path that owns the callback, named here so the
+  activation wiring carries it.
 
 Delivery budget (the derivation the device guide carries, corrected by the
 review wave): one event per ``next_event`` call; a round polls every live

@@ -302,8 +302,8 @@ rather than rewriting the history — that is how this file earns trust.
   (`src/benchweave/host/otdp_bridge.py`: `_Context`, the AST-extracted `self._adapter`
   call set, the enforced envelope key sets) ↔ the active corpus schema (`$defs`
   envelopes and the four vocabularies in `src/benchweave/host/types.py`) — by
-  `tests/sdk/test_adapter_agreement.py`, whose documented gaps (next_event, the
-  HostServices transport/evidence members, CaptureServices, dataset_id, the error
+  `tests/sdk/test_adapter_agreement.py`, whose documented gaps (the HostServices
+  transport/evidence members, CaptureServices, dataset_id, the error
   `^x-` extension-key delta) carry their own presence assertions so silent narrowing
   becomes a visible diff. Structure only, not semantics: names, arity,
   keyword-only-ness, coroutine-ness, key/enum sets. *The hand-mirror is otherwise
