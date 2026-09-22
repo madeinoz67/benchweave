@@ -11,9 +11,10 @@ import hashlib
 import json
 import sqlite3
 import uuid
+from collections.abc import Callable
 from typing import Any
 
-from benchweave.host.services import HostServices, QuotaState
+from benchweave.host.services import HostServices, QuotaState, ReadingSinks
 from benchweave.host.types import EvidenceStamp
 from benchweave.state.store import Store
 
@@ -188,14 +189,33 @@ class RetainingServices(HostServices):
     """The real HostServices evidence implementation (retain_evidence).
 
     Explicitly inherits the protocol so mypy pins full conformance here.
-    Only retain_evidence is live in this slice; the remaining members raise
-    loudly (never silently no-op) until their owning slices land.
+    ``retain_evidence``, ``emit_event`` and ``register_reading_sink`` are
+    live (emit_event and the sinks since the streaming slice, issue #43
+    slice 2); the remaining members raise loudly (never silently no-op)
+    until their owning slices land.
     """
 
-    def __init__(self, content: ContentStore, *, quota: int, now: str) -> None:
+    def __init__(
+        self,
+        content: ContentStore,
+        *,
+        quota: int,
+        now: str,
+        wall: Callable[[], str] | None = None,
+        context_key: str | None = None,
+        reading_sinks: ReadingSinks | None = None,
+    ) -> None:
         self._content = content
         self._quota = quota
         self._now = now
+        # A fresh wall stamp per emitted event when a clock is supplied;
+        # the construction-frozen ``now`` is the fallback (this class's
+        # existing posture — the capture path's fresh-stamp rule is the
+        # composing bundle's, and emit_event prefers the live clock when
+        # the construction site provides one).
+        self._wall = wall
+        self._context_key = context_key
+        self.reading_sinks = reading_sinks if reading_sinks is not None else ReadingSinks()
 
     def retain_evidence(self, key: str, payload: object) -> str:
         blob = json.dumps(payload, sort_keys=True, default=str).encode()
@@ -211,10 +231,38 @@ class RetainingServices(HostServices):
         )
 
     def emit_event(self, kind: str, body: dict[str, Any]) -> None:
-        raise NotImplementedError(f"emit_event ({kind!r}) is not part of the retention slice")
+        """Emit one host event within the event quota (live since the
+        streaming slice): the ``{kind, body}`` payload is content-addressed
+        and an ``event_log`` evidence row lands on the kind-scoped event
+        dimension under the instance's context key. Without a context key
+        the member refuses loudly — silently keying somewhere else would be
+        a quota dimension the caller never chose."""
+        if self._context_key is None:
+            raise ValueError(
+                "emit_event requires a context key at construction: the event "
+                "dimension is (context_key, kind)"
+            )
+        stamp = self._wall() if self._wall is not None else self._now
+        payload = {"kind": kind, "body": body, "host_received_at": stamp}
+        blob = json.dumps(payload, sort_keys=True, default=str).encode()
+        artifact_id = self._content.put_artifact(blob, stamp)
+        reference = {
+            "id": "hostevent-" + uuid.uuid4().hex,
+            "version": "1",
+            "sha256": hashlib.sha256(blob).hexdigest(),
+            "kind": kind,
+            "host_received_at": stamp,
+        }
+        self._content.put_evidence(
+            "event_log", reference, artifact_id, self._context_key, stamp, quota=self._quota
+        )
 
     def quota_state(self) -> QuotaState:
         raise NotImplementedError("quota_state is not part of the retention slice")
 
     def register_reading_sink(self, sink: Any) -> None:
-        raise NotImplementedError("register_reading_sink is not part of the retention slice")
+        """Register a callable receiving every Reading the plugin produces
+        (live since the streaming slice). Sinks are stored on the
+        instance's :class:`ReadingSinks` container; delivery happens as
+        telemetry readings land, and is contained."""
+        self.reading_sinks.register(sink)

@@ -54,6 +54,33 @@ class QuotaState:
     events_emitted: int
 
 
+class ReadingSinks:
+    """The ``register_reading_sink`` surface, live since the streaming
+    slice (issue #43 slice 2): callable receivers for every Reading a
+    plugin produces, delivered as telemetry events land. Delivery is
+    contained — a raising sink is counted on ``failures``, never allowed
+    to fail the landing that carries the reading."""
+
+    def __init__(self) -> None:
+        self._sinks: list[Any] = []
+        self.failures = 0
+
+    def register(self, sink: Any) -> None:
+        """Register one callable; a non-callable is refused loudly (the
+        member stores receivers — a silent no-op would look like delivery)."""
+        if not callable(sink):
+            raise TypeError("reading sink must be callable")
+        self._sinks.append(sink)
+
+    def deliver(self, reading: Any) -> None:
+        """Hand one landed reading to every sink, containing failures."""
+        for sink in self._sinks:
+            try:
+                sink(reading)
+            except Exception:
+                self.failures += 1
+
+
 class HostServices(Protocol):
     """The complete scoped surface a device plugin may touch."""
 
