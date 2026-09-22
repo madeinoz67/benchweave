@@ -48,7 +48,11 @@ from uuid import uuid4
 from benchweave.content.capture_services import evidence_originated
 from benchweave.content.capture_store import writer_originated
 from benchweave.content.store import EvidenceQuotaExceeded
-from benchweave.content.stream_services import LandedEvent, StreamLimitExceeded
+from benchweave.content.stream_services import (
+    LandedEvent,
+    StreamLimitExceeded,
+    landing_originated,
+)
 from benchweave.host.plugin import SimulationInfo
 from benchweave.host.types import (
     Assurance,
@@ -775,15 +779,30 @@ class OTDPBridge:
                 self._stream.record_event(subscription_id, sequence=sequence, kind=kind)
                 self._stream.land_events([LandedEvent(validated, receipt)])
                 return PollOutcome(event=validated, host_received_at=receipt)
-            except EvidenceQuotaExceeded:
+            except EvidenceQuotaExceeded as exc:
                 # Quota exhaustion at a landing boundary: a resource
                 # condition, not a protocol lie — clean refusal plus
                 # teardown with a host-cause ended marker, never poison.
+                # The discriminator (F2, review wave): only a LANDING-
+                # originated refusal (token identity + subscription
+                # binding) classifies; a bare or replayed raise keeps the
+                # poison posture, exactly like the dispatch path's C3.
                 # mark_ended_at_boundary (not mark_ended): the discarded
                 # event may itself be the terminal `ended` event — the
                 # registry already flipped — and the marker must land
                 # anyway, carrying the discarded sequence (F1, review
                 # wave).
+                if not landing_originated(exc, subscription_id):
+                    self._failed = True
+                    self._stream_clear()
+                    return PollOutcome(
+                        refusal=OperationError(
+                            ErrorCode.PROTOCOL_ERROR,
+                            "Invalid, failed or late adapter event; no replay",
+                            DispatchState.UNKNOWN,
+                        ),
+                        session_failed=True,
+                    )
                 with suppress(Exception):
                     self._stream.mark_ended_at_boundary(
                         subscription_id,

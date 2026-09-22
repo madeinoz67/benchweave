@@ -12,7 +12,7 @@ import pytest
 
 from benchweave.content.capture_services import build_capture_services
 from benchweave.content.capture_store import CaptureStagingStore
-from benchweave.content.store import ContentStore
+from benchweave.content.store import ContentStore, EvidenceQuotaExceeded
 from benchweave.content.stream_services import (
     StreamController,
     build_stream_services,
@@ -2145,6 +2145,43 @@ def test_polling_without_a_stream_controller_refuses_unsupported(tmp_path: Path)
         outcome = plugin.poll_event(mint_subscription_id(), deadline_ns=10_000_000_000)
         assert outcome.refusal is not None
         assert outcome.refusal.code is ErrorCode.UNSUPPORTED
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+def test_a_bare_unstamped_evidence_quota_raise_from_a_poll_keeps_poison(
+    tmp_path: Path,
+) -> None:
+    """F2 (review wave): the C3 mirror on the poll path — the landing's
+    quota refusal must prove LANDING origin (token identity + subscription
+    binding), never class identity alone. A bare EvidenceQuotaExceeded
+    raised by adapter code from next_event keeps the poison posture: no
+    clean RESOURCE_LIMIT, no false 'event quota exhausted' marker (the
+    poison sweep's markers are correct and stay)."""
+    harness = StreamHarness(tmp_path)
+    try:
+        class Bare(StreamingAdapter):
+            async def next_event(self, subscription_id: str, context: Any) -> Any:
+                self.polls += 1
+                raise EvidenceQuotaExceeded("adapter code can raise the class too")
+
+        plugin = harness.bridge(Bare())
+        plugin.plugin_open(object())
+        subscription_id = a_live_subscription(harness, plugin)
+        outcome = plugin.poll_event(subscription_id, deadline_ns=10_000_000_000)
+        assert outcome.session_failed
+        assert outcome.refusal is not None
+        assert outcome.refusal.code is ErrorCode.PROTOCOL_ERROR
+        # No false quota marker — the only teardown markers are the poison
+        # sweep's, with the poison cause.
+        assert harness.stream_rows({"cause": "event quota exhausted"}) == []
+        markers = harness.stream_rows({"marker": "host_ended"})
+        assert all(marker["cause"] == "session poisoned" for marker in markers)
+        follow = plugin.dispatch(
+            OperationRequest.identify("op-next"), deadline_ns=10_000_000_000
+        )
+        assert follow.error is not None  # poisoned
         plugin.plugin_close()
     finally:
         harness.close()

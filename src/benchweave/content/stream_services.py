@@ -41,14 +41,35 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from benchweave.content.store import ContentStore
+from benchweave.content.store import ContentStore, EvidenceQuotaExceeded
 from benchweave.control.documents import adapter_permissions
 from benchweave.host.services import QuotaLimits, ReadingSinks
+from benchweave.host.types import LandingStamp
 from benchweave.state.store import Store
 
 #: The one permission slice 2 gates on (spec §8/S15: "Event production uses
 #: next_event and requires ``event_sink`` permission for streaming adapters").
 EVENT_SINK = "event_sink"
+
+#: The landing module's private identity token (the C3 discipline on the
+#: poll path, added by the review wave): the bridge's classification
+#: compares `is` against it via :func:`landing_originated`, so class
+#: identity, a forged attribute, or a saved stamped instance replayed on
+#: another subscription proves nothing.
+_LANDING_STAMP_TOKEN = object()
+
+
+def landing_originated(exception: BaseException, subscription_id: str) -> bool:
+    """True iff the exception carries THIS module's token bound to the named
+    subscription — the discriminator for evidence-quota refusals raised by
+    the landing (a resource condition the bridge classifies cleanly);
+    everything else keeps the poison posture."""
+    stamp = getattr(exception, "landing_stamp", None)
+    return (
+        isinstance(stamp, LandingStamp)
+        and stamp.token is _LANDING_STAMP_TOKEN
+        and stamp.subscription_id == subscription_id
+    )
 
 #: The landing kind — Decision 4: event rows land as ``event_log``-kind
 #: evidence, sharing the kind-scoped dimension with the bundle's
@@ -320,16 +341,26 @@ class StreamController:
                     "capture_id": subscription.capture_id if subscription else None,
                     "dataset_id": subscription.dataset_id if subscription else None,
                 }
-                evidence_ids.append(
-                    self._content.put_evidence(
-                        EVENT_KIND,
-                        reference,
-                        artifact_id,
-                        self._context_key,
-                        entry.host_received_at,
-                        quota=int(self._quota.max_evidence_entries),
+                try:
+                    evidence_ids.append(
+                        self._content.put_evidence(
+                            EVENT_KIND,
+                            reference,
+                            artifact_id,
+                            self._context_key,
+                            entry.host_received_at,
+                            quota=int(self._quota.max_evidence_entries),
+                        )
                     )
-                )
+                except EvidenceQuotaExceeded as error:
+                    # Stamp the refusal with THIS module's token bound to
+                    # the subscription whose landing refused — the bridge's
+                    # poll classification requires identity + binding, never
+                    # class identity alone (the C3 discipline, review wave).
+                    error.landing_stamp = LandingStamp(
+                        _LANDING_STAMP_TOKEN, str(event["subscription_id"])
+                    )
+                    raise
             self._conn.execute("COMMIT")
         except BaseException:
             if self._conn.in_transaction:

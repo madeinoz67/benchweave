@@ -15,7 +15,7 @@ from collections.abc import Callable
 from typing import Any
 
 from benchweave.host.services import HostServices, QuotaState, ReadingSinks
-from benchweave.host.types import EvidenceStamp
+from benchweave.host.types import EvidenceStamp, LandingStamp
 from benchweave.state.store import Store
 
 MAX_CHUNK_BYTES = 65536
@@ -31,10 +31,14 @@ class EvidenceQuotaExceeded(RuntimeError):
     Instances raised by a capture-services bundle carry an
     ``EvidenceStamp`` (``capture_stamp``) — the bundle-originated record
     the bridge's non-poisoning classification requires, bound to the
-    operation; the bare class keeps its old shape.
+    operation; instances raised by the event landing carry a
+    ``LandingStamp`` (``landing_stamp``) bound to the subscription. The
+    bare class keeps its old shape: neither stamp is proof of origin
+    without its module token.
     """
 
     capture_stamp: EvidenceStamp | None = None
+    landing_stamp: LandingStamp | None = None
 
 
 class ContentStore:
