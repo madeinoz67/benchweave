@@ -278,10 +278,12 @@ rather than rewriting the history — that is how this file earns trust.
 
 - **[CON-12]** The compatibility-matrix render is a pure function of committed
   state — no remote URL, no submodule init or working-tree state enters it;
-  the manifest's `sdk_compatibility` mirror equals the SDK lock's
-  `compatibility` block on every initialized checkout (CI both lanes), and
-  the render fails closed rather than degrading when a committed source is
-  absent — `src/benchweave/standards/matrix.py` `render_matrix` (rows from
+  the manifest's `sdk_compatibility` mirror equals the `compatibility` block
+  of the SDK lock at the pinned gitlink commit — enforced wherever the
+  submodule working tree sits at that pin (CI both lanes); a working tree
+  away from the pin is refused by name before any comparison, never mirrored
+  from — and the render fails closed rather than degrading when a committed
+  source is absent — `src/benchweave/standards/matrix.py` `render_matrix` (rows from
   the standards manifest, SDK version/range/notes from the mirrored
   `sdk_compatibility` block, Sources from `pyproject.toml`
   `[project.urls] Repository` and the committed `.gitmodules`), the mirror
