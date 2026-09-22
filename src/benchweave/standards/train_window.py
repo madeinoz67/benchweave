@@ -1,7 +1,8 @@
 """Bump-window enforcement for the prescriptive release train (#97).
 
 GOVERNANCE.md's bump-window paragraph is enforced here, not remembered: a
-standard may not bump more than once per floor (48h starting figure) measured
+standard may not bump more than once per floor (24h floor, owner-revisited
+2026-09-23) measured
 between the committer timestamps of the commits that added each version
 directory. A version directory whose files land across several commits
 counts once, at the earliest commit (the real corpus straddles otdp 0.1.2
