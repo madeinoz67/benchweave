@@ -1,4 +1,4 @@
-# Open Test Device Protocol — Specification 0.2.1
+# Open Test Device Protocol — Specification 0.2.2
 
 **Status:** Core and twelve device-class design profiles; implementation and hardware qualification remain separate  
 **Date:** 9 September 2026  
@@ -34,7 +34,7 @@ The agent MUST NOT create or widen bench limits, auto-install a descriptor-adver
 
 ## 3. Descriptor model
 
-The descriptor schema is Draft 2020-12, identified by `urn:otdp:device-descriptor:0.2.1`. It is a local artefact identifier, not a URL to fetch. `otdp_version` is exactly `0.2.1`. `descriptor_version` uses `major.minor.patch` with nonnegative integers and no leading zeroes. This revision does not accept prerelease/build suffixes.
+The descriptor schema is Draft 2020-12, identified by `urn:otdp:device-descriptor:0.2.2`. It is a local artefact identifier, not a URL to fetch. `otdp_version` is exactly `0.2.2`. `descriptor_version` uses `major.minor.patch` with nonnegative integers and no leading zeroes. This revision does not accept prerelease/build suffixes.
 
 Required top-level information is version, namespaced model `id`, display name, description, identity contract, integration mode, transport, capabilities, operation policies, parameters, required features and provenance. Exact field types and conditional requirements are in the schema. Numeric conformance levels are removed: implementation mode and capability availability are independent.
 
@@ -239,7 +239,7 @@ All transaction objects reject unspecified fields. Data is a Python `bytes` valu
 
 CAN receive is scoped to the admitted integration's bus and authorised filter; error/RTR frames are not returned as ordinary data. CAN send requires adapter mode and gateway authorisation. I²C segments use repeated starts between segments and one final STOP at the commissioned seven-bit address; unusual transaction behaviour requires a future supported host-service extension, not direct OS access. SPI asserts the commissioned chip select for the entire full-duplex transfer, returns one byte per transmitted byte and then deasserts it. Register bytes and dummy clocks are adapter responsibility.
 
-The initial generic HostServices has no `custom` transaction kind. A `custom` transport is admitted in two states. Without `provider` it remains the honestly-incomplete posture (§6.4, extension-contract §6): the descriptor is structurally admissible and no agent may mark it complete using these generic services alone. When the device needs a non-scoped transport, the descriptor declares the pinned transport-provider contract (§6.4, extension-contract §6, transport-providers.md), and its `transaction_grammar` extends this table for that provider only: the host validates provider transactions against the admitted contract's grammar, never against this generic table. The extension is additive and disjoint — a provider grammar introduces new kinds and never shadows an entry of this table; the generic kinds above are reserved. Provider transactions are `transfer` calls on the commissioned connection — they reject unspecified fields, carry no host/path/credential fields, inherit transfer's deadline, cancellation and evidence enforcement, and remain governed by the `scoped_transport` permission. The core never falls back to unrestricted I/O.
+The initial generic HostServices has no `custom` transaction kind. A `custom` transport is admitted in two states. Without `provider` it remains the honestly-incomplete posture (§6.4, extension-contract §6): the descriptor is structurally admissible and no agent may mark it complete using these generic services alone. When the device needs a non-scoped transport, the descriptor declares the pinned transport-provider contract (§6.4, extension-contract §6, transport-providers.md), and its `transaction_grammar` extends this table for that provider only: the host validates provider transactions against the admitted contract's grammar, never against this generic table. The extension is additive and disjoint — a provider grammar introduces new kinds and never shadows an entry of this table; the generic kinds above are reserved. Provider transactions are `transfer` calls on the commissioned connection: they inherit transfer's deadline, cancellation and evidence enforcement unconditionally, and remain governed by the `scoped_transport` permission; they reject unspecified fields and carry no host/path/credential fields when the admitted grammar is authored that way — the contract's own schemas decide its transaction shape, and that authorship is admission-review surface, not a schema guarantee (transport-providers.md §4). The core never falls back to unrestricted I/O.
 
 ## 9. Lifecycle, ownership and security invariants
 

@@ -1,4 +1,4 @@
-# OTDP transport providers 0.2.1
+# OTDP transport providers 0.2.2
 
 **Status:** Mechanism for non-scoped transports; host admission and provider implementations are separate acts  
 **Companions:** `otdp-specification.md` (§6.4, §8.1), `extension-contract.md` (§6), `otdp-transport-provider.schema.json`, `examples/reference-provider.json`
@@ -30,7 +30,7 @@ A descriptor with `transport.type: "custom"` may carry one optional `provider` o
 
 `{id, path, sha256}` is the contract-reference shape: digest-pinned, resolved inside the admitted bundle after symlink resolution, never a URL or executable module. The provider triple resolves **relative to the descriptor's own package root** — the same bundle-root rule extension-contract §1 states for the root `contracts` array governs that array; the provider object names its path descriptor-relative, so a plugin and its pinned contract travel one package. The pin makes "the bytes that were reviewed" deterministic; it grants nothing by itself.
 
-The descriptor schema's version const is exact-matching, not a compatibility claim: a descriptor declaring `otdp_version` 0.2.0 is refused by the 0.2.1 schema's const by construction — the designed exact-matching posture, not a break — while every 0.2.0-valid document keeps its validity under its own pinned version's schema.
+The descriptor schema's version const is exact-matching, not a compatibility claim: a descriptor declaring `otdp_version` 0.2.0 is refused by the 0.2.2 schema's const by construction — the designed exact-matching posture, not a break — while every 0.2.0-valid document keeps its validity under its own pinned version's schema.
 
 When `provider` is absent, `custom` behaves as before: the integration is honestly incomplete for that device. Nothing about a connection key implies a provider.
 
@@ -46,7 +46,7 @@ Extension is additive and disjoint: a provider grammar introduces **new** kinds 
 
 `limits` keys are provider-defined and review-read: they state what the reviewer understood the implementation to bound. Actual byte-bound enforcement is `transfer`'s own, not `limits`' — a `limits` entry neither widens nor narrows what the transport layer enforces.
 
-Grammar subschemas type the transaction dict's JSON-representable fields. `data` fields are bytes at the adapter ABI (§8.1) and base64 text in contract documents and offline checks. Provider transactions are `HostServices.transfer` calls on the commissioned connection: they reject unspecified fields, carry no host/path/credential fields, inherit transfer's deadline, cancellation, byte-bounds and evidence enforcement, and remain governed by the `scoped_transport` permission. No new permission name exists for providers because a provider transfer *is* a scoped transport.
+Grammar subschemas type the transaction dict's JSON-representable fields. `data` fields are bytes at the adapter ABI (§8.1) and base64 text in contract documents and offline checks. Provider transactions are `HostServices.transfer` calls on the commissioned connection: they inherit transfer's deadline, cancellation, byte-bounds and evidence enforcement unconditionally, and remain governed by the `scoped_transport` permission; they reject unspecified fields and carry no host/path/credential fields when the grammar is authored that way — a contract's own schemas decide its transaction shape, and that authorship is review surface (§4), not a schema guarantee. No new permission name exists for providers because a provider transfer *is* a scoped transport.
 
 ## 4. The security surface
 
