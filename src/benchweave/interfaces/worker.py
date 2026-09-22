@@ -23,6 +23,7 @@ from __future__ import annotations
 import logging
 import queue
 import threading
+import time
 from collections.abc import Callable
 from typing import Any
 
@@ -47,6 +48,10 @@ class RunWorker:
     a ``run_changed`` event and a gateway-log ERROR line carry the
     failure (D4: the event pins the binding document; the error text
     rides the log), and the drain continues with the next queued run.
+    Completion bookkeeping is contained the same way (issue #156): a
+    projection or completion-emit failure on a successful run is logged
+    and skipped — the durable run record, not the bench-stream
+    projection, is the truth — and the drain continues.
     """
 
     def __init__(
@@ -97,18 +102,33 @@ class RunWorker:
     def stop(self) -> None:
         self._stopping.set()
 
-    def join(self, timeout: float | None = None) -> None:
-        """Wait for the queue to drain.
+    def join(self, timeout: float | None = None) -> bool:
+        """Wait for the queue to drain. True: drained (and, after
+        :meth:`stop`, the thread exited within bounds). False: the queue
+        did not drain in bounds, or the worker thread is gone with work
+        outstanding — nothing will ever drain it; hanging would be a lie.
 
-        Fast path: without :meth:`stop`, once every submitted run is done
-        the worker is parked on its next poll — return immediately instead
-        of burning the full thread-join timeout. After :meth:`stop`, wait
-        for the thread to actually exit.
+        ``unfinished_tasks`` is the exact predicate ``queue.join()`` waits
+        on; polling it lets the caller's timeout bound the whole join
+        (``Queue.join`` accepts no timeout — in the old shape the queue
+        wait was unbounded, so the caller's ``timeout`` only ever bounded
+        the trailing thread join). Callers submit strictly before joining
+        (tests submit then join; shutdown has stopped accepting first), so
+        a concurrent submit racing this poll is not a reachable shape.
         """
-        self._queue.join()
+        deadline = None if timeout is None else time.monotonic() + timeout
+        while self._queue.unfinished_tasks:
+            if not self._thread.is_alive():
+                return False
+            if deadline is not None and time.monotonic() >= deadline:
+                return False
+            time.sleep(0.05)
         if not self._stopping.is_set() and self._done == self._submitted_count:
-            return
+            return True  # fast path: worker parked on its next poll
+        if deadline is not None:
+            timeout = max(0.0, deadline - time.monotonic())
         self._thread.join(timeout=timeout)
+        return not self._thread.is_alive()
 
     def cancel(self, run_id: str, principal_id: str) -> None:
         """Forward a cancellation to the active coordinator when it owns the
@@ -161,7 +181,15 @@ class RunWorker:
                 # the worker error itself rides the gateway log), and the
                 # drain continues. The emit is itself guarded: a raising
                 # call inside the poison handler would defeat the guard.
-                store.put_run_state(run_id, bench_id, "terminal", self._now_iso())
+                try:
+                    store.put_run_state(run_id, bench_id, "terminal", self._now_iso())
+                except Exception:
+                    # Same containment one line earlier (issue #156): a
+                    # failing terminal projection must not defeat the
+                    # poison guard either.
+                    _LOG.exception(
+                        "run_worker poison projection failed run_id=%s", run_id
+                    )
                 _LOG.error(
                     "run_worker poison run_id=%s error=%s: %s",
                     run_id, type(error).__name__, error,
@@ -176,8 +204,19 @@ class RunWorker:
                         "run_worker poison emit failed run_id=%s", run_id
                     )
             else:
-                store.put_run_state(run_id, bench_id, "terminal", self._now_iso())
-                self._emit_completion(store, coordinator, run_id, bench_id)
+                # Contained per job, symmetric with the poison guard's own
+                # emit guard: no completion-bookkeeping failure may kill the
+                # drain (issue #156 — an emit refusal used to strand every
+                # queued run and hang shutdown). Catches Exception
+                # (precedent width): a BaseException during completion
+                # bookkeeping still ends the drain — stated residual.
+                try:
+                    store.put_run_state(run_id, bench_id, "terminal", self._now_iso())
+                    self._emit_completion(store, coordinator, run_id, bench_id)
+                except Exception:
+                    _LOG.exception(
+                        "run_worker completion close failed run_id=%s", run_id
+                    )
             finally:
                 self._done += 1
                 self._queue.task_done()

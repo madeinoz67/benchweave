@@ -147,6 +147,20 @@ Nothing is written to the store by a refused startup, so a repair (fix
 the lattice, restart) starts from a clean inventory. Under systemd the
 unit then restart-loops (§7) and that log line is the diagnosis surface.
 
+### Shutdown drain
+
+On shutdown the gateway stops the run worker, then gives it a bounded
+drain: 5 seconds for in-flight and queued runs to finish. Runs that
+complete within the bound close normally. Anything still outstanding when
+the bound expires is not waited out — the gateway logs one
+`run worker did not drain at shutdown` line and exits, and the next
+startup's recovery sweep records those runs `interrupted` (never a
+fabricated outcome) and applies the protective transition before anything
+new executes. The worker thread is a daemon and the bound is a fixed
+grace in the gateway's shutdown path, so an external service manager (§7)
+remains the real limit on total shutdown time; plan restarts accordingly
+when runs can exceed the grace.
+
 For the deployment env file, copy and fill the shipped example:
 
 ```sh

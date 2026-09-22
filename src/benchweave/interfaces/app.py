@@ -428,7 +428,16 @@ def create_app(
                     yield
             finally:
                 worker.stop()
-                worker.join(timeout=5.0)
+                if not worker.join(timeout=5.0):
+                    # Issue #156: the join bound is now real — a wedged or
+                    # dead worker no longer hangs shutdown forever. The
+                    # unwind is the CTL-9 honest one: the startup recovery
+                    # sweep records outstanding runs `interrupted`.
+                    _LOG.error(
+                        "run worker did not drain at shutdown (submitted=%d); "
+                        "outstanding runs are recorded interrupted at next startup",
+                        worker.submitted,
+                    )
         finally:
             if hold is not None:
                 hold.release()
