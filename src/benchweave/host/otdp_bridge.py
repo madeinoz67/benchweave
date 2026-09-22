@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import json
 import math
 import re
 import sqlite3
@@ -89,6 +90,15 @@ class _Context:
         if self.cancelled or self.services.monotonic() >= self.deadline_monotonic:
             raise TimeoutError("dispatch deadline expired")
         self.dispatched = True
+
+
+class InvalidEvent(ValueError):
+    """The event validator's refusal channel: the closed ``$defs/event``
+    (or its reading subschema, or event-level JSON serializability) did
+    not hold. A subclass of ValueError so existing ValueError handling is
+    unchanged; poll_event maps it to the PROTOCOL_ERROR poison posture
+    WITH the validator's message — the honest invalid-event class, never
+    the generic failed-or-late wording (G1/G3, Forge wave)."""
 
 
 @dataclass(frozen=True)
@@ -826,6 +836,23 @@ class OTDPBridge:
                         DispatchState.DISPATCHED,
                     )
                 )
+            except InvalidEvent as exc:
+                # The honest invalid-event class (G1/G3, Forge wave): the
+                # validator's own refusal — non-schema shape, an invalid
+                # conditional-key value, or content the host cannot store —
+                # poisons WITH its message, never the generic failed-or-late
+                # wording that would mislabel an unserializable-but-legal
+                # x-extension value as adapter misconduct.
+                self._failed = True
+                self._stream_clear()
+                return PollOutcome(
+                    refusal=OperationError(
+                        ErrorCode.PROTOCOL_ERROR,
+                        f"invalid event: {exc}",
+                        DispatchState.UNKNOWN,
+                    ),
+                    session_failed=True,
+                )
             except (Exception, asyncio.CancelledError) as exc:
                 self._failed = True
                 self._stream_clear()
@@ -848,14 +875,18 @@ class OTDPBridge:
         last_sequence: int | None,
         last_kind: str | None,
     ) -> dict[str, Any]:
-        """Enforce the closed ``$defs/event`` (R4). Raises ValueError — the
-        poison channel — on any protocol lie: a non-schema shape, an
-        unknown kind, a subscription_id other than the polled subscription
-        (cross-subscription laundering), a non-increasing sequence (equal =
-        duplicate, lower = regression), an event after the terminal
-        ``ended``, a telemetry event without a schema-valid reading, and a
-        non-telemetry event without code+message. ``x-`` extension keys are
-        schema-legal and pass through.
+        """Enforce the closed ``$defs/event`` (R4). Raises
+        :class:`InvalidEvent` — the poison channel — on any protocol lie:
+        a non-schema shape, an unknown kind, a subscription_id other than
+        the polled subscription (cross-subscription laundering), a
+        non-increasing sequence (equal = duplicate, lower = regression),
+        an event after the terminal ``ended``, a telemetry event without a
+        reading, a non-telemetry event without code+message, an
+        INVALID VALUE under any present conditional key (the corpus
+        declares ``reading`` and ``code``/``message`` unconditionally —
+        the if/then blocks govern presence only; G1, Forge wave), or
+        content the host cannot store (JSON-serializability, G3).
+        ``x-`` extension keys are schema-legal and pass through.
 
         The after-ended rule is enforced HERE even though the registry gate
         above refuses polling a dead subscription first (the clean
@@ -863,30 +894,29 @@ class OTDPBridge:
         for any path that presents one.
         """
         if not isinstance(event, dict):
-            raise ValueError("event must be an object")
+            raise InvalidEvent("event must be an object")
         for key in event:
             if key not in self._EVENT_KEYS and not self._X_KEY_PATTERN.fullmatch(str(key)):
-                raise ValueError(f"event carries an undeclared key {key!r}")
+                raise InvalidEvent(f"event carries an undeclared key {key!r}")
         if event.get("subscription_id") != subscription_id:
-            raise ValueError("event subscription_id does not match the polled subscription")
+            raise InvalidEvent("event subscription_id does not match the polled subscription")
         kind = event.get("kind")
         if kind not in self._EVENT_KINDS:
-            raise ValueError(f"unknown event kind {kind!r}")
+            raise InvalidEvent(f"unknown event kind {kind!r}")
         sequence = event.get("sequence")
         if type(sequence) is not int or sequence < 0:
-            raise ValueError("event sequence must be an integer >= 0")
+            raise InvalidEvent("event sequence must be an integer >= 0")
         if last_kind == "ended":
-            raise ValueError("event after the terminal ended event")
+            raise InvalidEvent("event after the terminal ended event")
         if last_sequence is not None and sequence <= last_sequence:
-            raise ValueError(
+            raise InvalidEvent(
                 f"sequence {sequence} is not strictly increasing "
                 f"(last received {last_sequence}; an equal sequence is a duplicate)"
             )
+        # Presence by kind (the if/then blocks)...
         if kind == "telemetry":
-            reading = event.get("reading")
-            if reading is None:
-                raise ValueError("telemetry event requires a reading")
-            self._event_reading(reading)
+            if event.get("reading") is None:
+                raise InvalidEvent("telemetry event requires a reading")
         else:
             code = event.get("code")
             message = event.get("message")
@@ -896,7 +926,32 @@ class OTDPBridge:
                 or not isinstance(message, str)
                 or not message
             ):
-                raise ValueError(f"{kind} event requires code and message strings")
+                raise InvalidEvent(f"{kind} event requires code and message strings")
+        # ...and VALUE unconditionally: the corpus declares reading and
+        # code/message with their shapes on every kind (G1, Forge wave) —
+        # a gap event carrying a garbage reading is corpus-illegal.
+        if "reading" in event:
+            self._event_reading(event["reading"])
+        if "code" in event:
+            code_value = event["code"]
+            if not isinstance(code_value, str) or not code_value:
+                raise InvalidEvent("event code, when present, must be a non-empty string")
+        if "message" in event:
+            message_value = event["message"]
+            if not isinstance(message_value, str) or not message_value:
+                raise InvalidEvent("event message, when present, must be a non-empty string")
+        # Serializability (G3, Forge wave): the corpus admits any
+        # x-extension VALUE, and a circular or pathologically deep one is
+        # legal content the host cannot STORE — refuse it here, before the
+        # landing's json.dumps would raise mid-transaction, as the honest
+        # invalid-event class rather than a protocol lie about the adapter.
+        try:
+            json.dumps(event, sort_keys=True, default=str)
+        except (TypeError, ValueError) as exc:
+            raise InvalidEvent(
+                "event is not JSON-serializable (an x-extension value the "
+                f"host cannot store): {exc}"
+            ) from exc
         return event
 
     @classmethod
@@ -905,29 +960,29 @@ class OTDPBridge:
         fields present with corpus-valid shapes (no request parameter to
         correlate against — the subscription's parameters are the context)."""
         if not isinstance(reading, dict):
-            raise ValueError("telemetry reading must be an object")
+            raise InvalidEvent("telemetry reading must be an object")
         for key in reading:
             if key not in cls._READING_KEYS and not cls._X_KEY_PATTERN.fullmatch(str(key)):
-                raise ValueError(f"telemetry reading carries an undeclared key {key!r}")
+                raise InvalidEvent(f"telemetry reading carries an undeclared key {key!r}")
         for key in cls._READING_KEYS:
             if key not in reading:
-                raise ValueError(f"telemetry reading requires {key}")
+                raise InvalidEvent(f"telemetry reading requires {key}")
         if not isinstance(reading["parameter"], str) or not cls._STREAM_PARAMETER_PATTERN.fullmatch(
             reading["parameter"]
         ):
-            raise ValueError("telemetry reading parameter must match ^[a-z][a-z0-9_]*$")
+            raise InvalidEvent("telemetry reading parameter must match ^[a-z][a-z0-9_]*$")
         if not cls._scalar(reading["value"]):
-            raise ValueError("telemetry reading requires a finite scalar value")
+            raise InvalidEvent("telemetry reading requires a finite scalar value")
         if reading["unit"] is not None and not isinstance(reading["unit"], str):
-            raise ValueError("telemetry reading unit must be a string or null")
+            raise InvalidEvent("telemetry reading unit must be a string or null")
         if not isinstance(reading["observed_at"], str) or not reading["observed_at"]:
-            raise ValueError("telemetry reading requires an observed_at string")
+            raise InvalidEvent("telemetry reading requires an observed_at string")
         if type(reading["age_ms"]) is not int or reading["age_ms"] < 0:
-            raise ValueError("telemetry reading age_ms must be an integer >= 0")
+            raise InvalidEvent("telemetry reading age_ms must be an integer >= 0")
         if reading["quality"] not in ("valid", "stale", "invalid"):
-            raise ValueError("telemetry reading quality is not in the corpus enum")
+            raise InvalidEvent("telemetry reading quality is not in the corpus enum")
         if reading["source"] not in ("device", "cache", "commissioned"):
-            raise ValueError("telemetry reading source is not in the corpus enum")
+            raise InvalidEvent("telemetry reading source is not in the corpus enum")
 
     @staticmethod
     def _capture_originated(

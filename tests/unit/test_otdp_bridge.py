@@ -2186,3 +2186,100 @@ def test_a_bare_unstamped_evidence_quota_raise_from_a_poll_keeps_poison(
     finally:
         harness.close()
 
+
+@pytest.mark.parametrize(
+    ("kind", "field", "value", "label"),
+    [
+        ("gap", "reading", "garbage", "garbage reading on a gap event"),
+        ("ended", "reading", 7, "non-object reading on an ended event"),
+        ("telemetry", "code", 5, "non-string code on a telemetry event"),
+        ("telemetry", "message", "", "empty message on a telemetry event"),
+    ],
+)
+def test_conditional_key_values_are_validated_regardless_of_kind(
+    tmp_path: Path, kind: str, field: str, value: Any, label: str
+) -> None:
+    """G1 (Forge wave): $defs/event declares ``reading`` ($defs/reading)
+    and ``code``/``message`` (minLength 1) UNCONDITIONALLY — the if/then
+    blocks govern PRESENCE only — so any present conditional key with an
+    invalid value is corpus-illegal whatever the kind, and must poison."""
+    harness = StreamHarness(tmp_path)
+    try:
+        adapter = StreamingAdapter(script=[an_event("placeholder", 0, kind=kind)])
+        plugin = harness.bridge(adapter)
+        plugin.plugin_open(object())
+        subscription_id = a_live_subscription(harness, plugin)
+        correlate(adapter.script, subscription_id)
+        event = adapter.script[0]
+        assert event is not None
+        event[field] = value
+        outcome = plugin.poll_event(subscription_id, deadline_ns=10_000_000_000)
+        assert outcome.session_failed, label
+        assert outcome.refusal is not None
+        assert outcome.refusal.code is ErrorCode.PROTOCOL_ERROR, label
+        # No event row landed (the poison sweep's teardown markers may
+        # exist; the illegal event never became evidence).
+        landed = [row for row in harness.stream_rows() if "marker" not in row]
+        assert landed == []
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+def test_a_valid_reading_on_a_gap_event_is_corpus_legal_and_lands(
+    tmp_path: Path,
+) -> None:
+    """G1's positive arm: a schema-VALID reading carried on a non-telemetry
+    event is corpus-legal (presence is what the if/then blocks govern) —
+    the unconditional value check must not over-tighten into a refusal."""
+    harness = StreamHarness(tmp_path)
+    try:
+        adapter = StreamingAdapter(script=[an_event("placeholder", 0, kind="gap")])
+        plugin = harness.bridge(adapter)
+        plugin.plugin_open(object())
+        subscription_id = a_live_subscription(harness, plugin)
+        correlate(adapter.script, subscription_id)
+        gap_event = adapter.script[0]
+        assert gap_event is not None
+        gap_event["reading"] = a_reading()
+        outcome = plugin.poll_event(subscription_id, deadline_ns=10_000_000_000)
+        assert outcome.event is not None
+        rows = [row for row in harness.stream_rows() if "marker" not in row]
+        assert len(rows) == 1 and rows[0]["kind"] == "gap"
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+def test_an_unserializable_x_extension_value_refuses_as_an_invalid_event(
+    tmp_path: Path,
+) -> None:
+    """G3 (Forge wave): the corpus admits any x-extension VALUE
+    (patternProperties {}), so a circular one is legal content the host
+    cannot STORE — the refusal must name that (the honest invalid-event
+    class), not the generic 'Invalid, failed or late adapter event'
+    protocol-lie wording; nothing lands and the posture stays poison."""
+    harness = StreamHarness(tmp_path)
+    try:
+        adapter = StreamingAdapter(script=[an_event("placeholder", 0)])
+        plugin = harness.bridge(adapter)
+        plugin.plugin_open(object())
+        subscription_id = a_live_subscription(harness, plugin)
+        correlate(adapter.script, subscription_id)
+        loop: dict[str, Any] = {}
+        loop["self"] = loop
+        loop_event = adapter.script[0]
+        assert loop_event is not None
+        loop_event["x-vendor-loop"] = loop
+        outcome = plugin.poll_event(subscription_id, deadline_ns=10_000_000_000)
+        assert outcome.session_failed
+        assert outcome.refusal is not None
+        assert outcome.refusal.code is ErrorCode.PROTOCOL_ERROR
+        assert "serializ" in outcome.refusal.message
+        assert "Invalid, failed or late" not in outcome.refusal.message
+        landed = [row for row in harness.stream_rows() if "marker" not in row]
+        assert landed == []
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
