@@ -1002,3 +1002,85 @@ def test_bridge_docstring_names_the_version_boundary_and_budget() -> None:
     assert "timeout_ms" in doc
     assert "busy_timeout" in doc
     assert "native async host" in doc
+
+
+def test_a_forged_stamp_attribute_keeps_the_poison_posture(tmp_path: Path) -> None:
+    """C3 as amended by the refutation (F4): the discriminator requires
+    module-token IDENTITY, not attribute presence — an adapter assigning
+    its own stamp attribute (the refuter's probe_forge3 shape: a hostile
+    or confused adapter is one attribute assignment away from a non-poison
+    failure) must keep the poison posture."""
+    harness = CaptureHarness(tmp_path)
+    try:
+        import sqlite3
+
+        class ForgedStamp(CaptureAdapter):
+            async def execute(self, request: Any, context: Any) -> dict[str, Any]:
+                if request["verb"] != "capture":
+                    return await Adapter.execute(self, request, context)
+                self.calls += 1
+                error = sqlite3.OperationalError("adapter-forged condition")
+                error.writer_stamp = object()  # type: ignore[attr-defined]  # a plausible-looking stamp
+                raise error
+
+        plugin, result = a_capture_dispatch(harness, ForgedStamp(), a_capture_request())
+        assert result.status is OperationStatus.UNKNOWN
+        assert result.error is not None
+        assert result.error.code is ErrorCode.PROTOCOL_ERROR
+        follow = plugin.dispatch(
+            OperationRequest.identify("op-next"), deadline_ns=10_000_000_000
+        )
+        assert follow.error is not None  # poisoned
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+def test_a_saved_stamped_exception_replayed_on_a_write_dispatch_keeps_poison(
+    tmp_path: Path,
+) -> None:
+    """F4's second shape (probe_stamp2): the adapter SAVES a genuine
+    writer-stamped exception from a real capture failure, then raises it
+    during an unrelated WRITE dispatch to buy a clean non-poison failure.
+    The stamp must bind to the capture (and the bundle's to the operation):
+    a replay on another dispatch keeps the poison posture."""
+    harness = CaptureHarness(tmp_path)
+    try:
+        saved: dict[str, BaseException] = {}
+
+        class Replay(CaptureAdapter):
+            async def execute(self, request: Any, context: Any) -> dict[str, Any]:
+                self.calls += 1
+                if request["verb"] == "write":
+                    raise saved["exc"]  # the genuine saved stamp, replayed
+                if request["verb"] == "capture":
+                    await self.services.artifact_append("cap-1", b"\x01" * 40, context)
+                    try:
+                        await self.services.artifact_append(
+                            "cap-1", b"\x01" * 40, context
+                        )
+                    except CaptureQuotaExceeded as exc:
+                        saved["exc"] = exc  # keep the REAL stamped instance
+                        raise
+                    raise AssertionError("unreachable")  # pragma: no cover
+                return await Adapter.execute(self, request, context)
+
+        plugin = harness.bridge(Replay())
+        plugin.plugin_open(object())
+        first = plugin.dispatch(a_capture_request(max_bytes=64), deadline_ns=10_000_000_000)
+        assert first.error is not None
+        assert first.error.code is ErrorCode.RESOURCE_LIMIT  # genuine stamp, real capture
+        follow = plugin.dispatch(
+            OperationRequest.write("op-w", parameter="temp", value=1),
+            deadline_ns=10_000_000_000,
+        )
+        assert follow.status is OperationStatus.UNKNOWN  # replay -> poison
+        assert follow.error is not None
+        assert follow.error.code is ErrorCode.PROTOCOL_ERROR
+        after = plugin.dispatch(
+            OperationRequest.identify("op-after"), deadline_ns=10_000_000_000
+        )
+        assert after.error is not None  # the session did not survive
+        plugin.plugin_close()
+    finally:
+        harness.close()

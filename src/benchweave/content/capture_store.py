@@ -19,9 +19,11 @@ open iff ``max_bytes > min(max_capture_bytes, max_dataset_bytes − used)``,
 where ``used`` is Σ reserved over staged + Σ charged over finalised rows
 for the context key — ``used`` appears ONLY in the dataset term.
 
-Every exception this writer raises is writer-stamped (``writer_stamp``):
-the bridge's non-poisoning classification catches require the stamp, so a
-bare raise of the same class from adapter code keeps the poison posture.
+Every exception this writer raises is stamped with this module's private
+identity token bound to the capture (``capture_stamp``); the bridge's
+non-poisoning classification requires that identity AND binding, so a bare
+raise, a forged attribute, or a saved instance replayed on another dispatch
+keeps the poison posture.
 """
 
 from __future__ import annotations
@@ -31,8 +33,35 @@ import sqlite3
 from typing import Any
 
 from benchweave.content.store import ContentStore
-from benchweave.host.types import CaptureFinaliseRejected, CaptureQuotaExceeded
+from benchweave.host.types import (
+    CaptureFinaliseRejected,
+    CaptureQuotaExceeded,
+    CaptureStamp,
+)
 from benchweave.state.store import Store
+
+#: The writer module's private identity token (C3 as amended): the bridge's
+#: classification compares `is` against it via :func:`writer_originated`, so
+#: presence alone, a forged attribute, or a replayed genuine stamp on another
+#: dispatch do not classify. Importing this token in-process remains possible
+#: — adapters are trusted Python (the bridge module docstring's boundary) —
+#: the stamp separates accidental class collision from writer origin and
+#: binds that origin to one capture; it does not prove origin against a
+#: deliberately hostile adapter.
+_WRITER_STAMP_TOKEN = object()
+
+
+def writer_originated(exception: BaseException, capture_id: str) -> bool:
+    """True iff the exception carries THIS module's token bound to the named
+    capture — the classification discriminator (identity + binding, never
+    attribute presence)."""
+    stamp = getattr(exception, "capture_stamp", None)
+    return (
+        isinstance(stamp, CaptureStamp)
+        and stamp.token is _WRITER_STAMP_TOKEN
+        and stamp.capture_id == capture_id
+    )
+
 
 _STATE_STAGED = "staged"
 _STATE_FINALISED = "finalised"
@@ -61,27 +90,33 @@ class CaptureStagingStore:
         self._content = ContentStore(store)
         self._max_capture_bytes = max_capture_bytes
         self._max_dataset_bytes = max_dataset_bytes
-        # C3: the stamp every writer-raised exception carries. A unique
-        # object per writer instance; classification catches require it.
-        self._stamp = object()
         self._hashers: dict[str, Any] = {}
 
     # --- internal helpers ---------------------------------------------------
 
-    def _reject(self, exception: CaptureFinaliseRejected) -> CaptureFinaliseRejected:
-        exception.writer_stamp = self._stamp
+    def _reject(
+        self, exception: CaptureFinaliseRejected, capture_id: str
+    ) -> CaptureFinaliseRejected:
+        exception.capture_stamp = CaptureStamp(_WRITER_STAMP_TOKEN, capture_id)
         return exception
 
-    def _quota(self, exception: CaptureQuotaExceeded) -> CaptureQuotaExceeded:
-        exception.writer_stamp = self._stamp
+    def _quota(
+        self, exception: CaptureQuotaExceeded, capture_id: str
+    ) -> CaptureQuotaExceeded:
+        exception.capture_stamp = CaptureStamp(_WRITER_STAMP_TOKEN, capture_id)
         return exception
 
-    def _restamp(self, exception: BaseException) -> None:
+    def _restamp(self, exception: BaseException, capture_id: str | None) -> None:
         """Stamp a writer-originated ``sqlite3.OperationalError`` (B1/C2):
         lock contention is a resource condition the bridge classifies —
-        but only when the record proves the writer raised it."""
+        but only when the record proves the writer raised it, bound to the
+        capture whose dispatch may classify on it."""
         if isinstance(exception, sqlite3.OperationalError):
-            exception.writer_stamp = self._stamp  # type: ignore[attr-defined]
+            setattr(  # noqa: B010 — sqlite3's C type has no stamp slot
+                exception,
+                "capture_stamp",
+                CaptureStamp(_WRITER_STAMP_TOKEN, capture_id),
+            )
 
     def _staged_row(self, capture_id: str) -> tuple[Any, ...] | None:
         found: tuple[Any, ...] | None = self._conn.execute(
@@ -116,7 +151,7 @@ class CaptureStagingStore:
         except sqlite3.OperationalError as error:
             # The BEGIN itself can lose the lock race — stamp it too (the
             # writer-originated record the bridge's classification reads).
-            self._restamp(error)
+            self._restamp(error, capture_id)
             raise
         try:
             existing = self._conn.execute(
@@ -126,7 +161,8 @@ class CaptureStagingStore:
                 raise self._reject(
                     CaptureFinaliseRejected(
                         f"capture id already exists: {capture_id!r}"
-                    )
+                    ),
+                    capture_id,
                 )
             used = self._used_bytes_locked(context_key)
             allowance = min(
@@ -139,7 +175,8 @@ class CaptureStagingStore:
                         f"{context_key!r}: requested {max_bytes} "
                         f"(min(max_capture_bytes={self._max_capture_bytes}, "
                         f"max_dataset_bytes−used={self._max_dataset_bytes}−{used}))"
-                    )
+                    ),
+                    capture_id,
                 )
             self._conn.execute(
                 "INSERT INTO capture_staging"
@@ -160,7 +197,7 @@ class CaptureStagingStore:
                 ),
             )
         except BaseException as error:
-            self._restamp(error)
+            self._restamp(error, capture_id)
             if self._conn.in_transaction:
                 self._conn.execute("ROLLBACK")
             raise
@@ -217,20 +254,22 @@ class CaptureStagingStore:
         """Append one ordered chunk under the capture's reservation."""
         if not data:
             raise self._reject(
-                CaptureFinaliseRejected("empty append refused (A4 parity)")
+                CaptureFinaliseRejected("empty append refused (A4 parity)"),
+                capture_id,
             )
         try:
             self._conn.execute("BEGIN IMMEDIATE")
         except sqlite3.OperationalError as error:
             # The BEGIN itself can lose the lock race — stamp it too (the
             # writer-originated record the bridge's classification reads).
-            self._restamp(error)
+            self._restamp(error, capture_id)
             raise
         try:
             staged = self._staged_row(capture_id)
             if staged is None:
                 raise self._reject(
-                    CaptureFinaliseRejected(f"unknown capture id: {capture_id!r}")
+                    CaptureFinaliseRejected(f"unknown capture id: {capture_id!r}"),
+                    capture_id,
                 )
             row_context, state, reserved, _fmt, _count = staged
             if state != _STATE_STAGED:
@@ -238,14 +277,16 @@ class CaptureStagingStore:
                     CaptureFinaliseRejected(
                         f"capture {capture_id!r} is terminal ({state}): "
                         "appends are refused"
-                    )
+                    ),
+                    capture_id,
                 )
             if row_context != context_key:
                 raise self._reject(
                     CaptureFinaliseRejected(
                         f"wrong session for capture {capture_id!r}: "
                         f"opened by {row_context!r}, append from {context_key!r}"
-                    )
+                    ),
+                    capture_id,
                 )
             already = self.staged_bytes(capture_id)
             if already + len(data) > int(reserved):
@@ -253,7 +294,8 @@ class CaptureStagingStore:
                     CaptureQuotaExceeded(
                         f"capture reservation exceeded for {capture_id!r}: "
                         f"{already} + {len(data)} > {reserved} bytes"
-                    )
+                    ),
+                    capture_id,
                 )
             seq = self._conn.execute(
                 "SELECT COALESCE(MAX(seq), -1) + 1 FROM capture_chunks"
@@ -266,7 +308,7 @@ class CaptureStagingStore:
                 (capture_id, int(seq), data, len(data)),
             )
         except BaseException as error:
-            self._restamp(error)
+            self._restamp(error, capture_id)
             if self._conn.in_transaction:
                 self._conn.execute("ROLLBACK")
             raise
@@ -295,13 +337,14 @@ class CaptureStagingStore:
         except sqlite3.OperationalError as error:
             # The BEGIN itself can lose the lock race — stamp it too (the
             # writer-originated record the bridge's classification reads).
-            self._restamp(error)
+            self._restamp(error, capture_id)
             raise
         try:
             staged = self._staged_row(capture_id)
             if staged is None:
                 raise self._reject(
-                    CaptureFinaliseRejected(f"unknown capture id: {capture_id!r}")
+                    CaptureFinaliseRejected(f"unknown capture id: {capture_id!r}"),
+                    capture_id,
                 )
             _context, state, _reserved, fmt, sample_count = staged
             if state != _STATE_STAGED:
@@ -309,7 +352,8 @@ class CaptureStagingStore:
                     CaptureFinaliseRejected(
                         f"capture {capture_id!r} is terminal ({state}): "
                         "finalise is refused"
-                    )
+                    ),
+                    capture_id,
                 )
             if hasher is None:
                 # A staged row whose writer session died: the startup sweep
@@ -318,7 +362,8 @@ class CaptureStagingStore:
                     CaptureFinaliseRejected(
                         f"capture {capture_id!r} has no live digest in this "
                         "writer session (restarted mid-capture?)"
-                    )
+                    ),
+                    capture_id,
                 )
             recompute = hashlib.sha256()
             payload = bytearray()
@@ -335,7 +380,8 @@ class CaptureStagingStore:
                     CaptureFinaliseRejected(
                         f"digest cross-check failed for {capture_id!r}: stored "
                         "bytes do not hash to the running capture digest"
-                    )
+                    ),
+                    capture_id,
                 )
             byte_length = len(payload)
             if byte_length == 0:
@@ -343,7 +389,8 @@ class CaptureStagingStore:
                     CaptureFinaliseRejected(
                         f"zero-byte finalise refused for {capture_id!r}: "
                         "failed/incomplete captures are aborted, not published"
-                    )
+                    ),
+                    capture_id,
                 )
             if (
                 fmt == "waveform_f64le"
@@ -356,7 +403,8 @@ class CaptureStagingStore:
                         f"staged but sample_count {sample_count} declares "
                         f"{int(sample_count) * 8} (spec §7: byte length "
                         "equals sample_count×8)"
-                    )
+                    ),
+                    capture_id,
                 )
             # The artifact row joins this transaction (same connection).
             artifact_id = self._content.put_artifact(bytes(payload), now)
@@ -369,7 +417,7 @@ class CaptureStagingStore:
                 "DELETE FROM capture_chunks WHERE capture_id = ?", (capture_id,)
             )
         except BaseException as error:
-            self._restamp(error)
+            self._restamp(error, capture_id)
             if self._conn.in_transaction:
                 self._conn.execute("ROLLBACK")
             raise
@@ -413,7 +461,7 @@ class CaptureStagingStore:
         except sqlite3.OperationalError as error:
             # The BEGIN itself can lose the lock race — stamp it too (the
             # writer-originated record the bridge's classification reads).
-            self._restamp(error)
+            self._restamp(error, capture_id)
             raise
         try:
             staged = self._staged_row(capture_id)
@@ -427,7 +475,7 @@ class CaptureStagingStore:
                 "DELETE FROM capture_staging WHERE capture_id = ?", (capture_id,)
             )
         except BaseException as error:
-            self._restamp(error)
+            self._restamp(error, capture_id)
             if self._conn.in_transaction:
                 self._conn.execute("ROLLBACK")
             raise
@@ -453,7 +501,7 @@ class CaptureStagingStore:
         except sqlite3.OperationalError as error:
             # The BEGIN itself can lose the lock race — stamp it too (the
             # writer-originated record the bridge's classification reads).
-            self._restamp(error)
+            self._restamp(error, None)
             raise
         try:
             rows = self._conn.execute(
@@ -468,7 +516,7 @@ class CaptureStagingStore:
                     (_STATE_ABORTED, now, capture_id),
                 )
         except BaseException as error:
-            self._restamp(error)
+            self._restamp(error, "")
             if self._conn.in_transaction:
                 self._conn.execute("ROLLBACK")
             raise
@@ -491,7 +539,7 @@ class CaptureStagingStore:
         except sqlite3.OperationalError as error:
             # The BEGIN itself can lose the lock race — stamp it too (the
             # writer-originated record the bridge's classification reads).
-            self._restamp(error)
+            self._restamp(error, None)
             raise
         try:
             self._conn.execute(
@@ -503,7 +551,7 @@ class CaptureStagingStore:
                 "DELETE FROM capture_staging WHERE state = ?", (_STATE_ABORTED,)
             )
         except BaseException as error:
-            self._restamp(error)
+            self._restamp(error, None)
             if self._conn.in_transaction:
                 self._conn.execute("ROLLBACK")
             raise

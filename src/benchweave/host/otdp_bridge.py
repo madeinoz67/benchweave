@@ -33,6 +33,8 @@ from contextlib import suppress
 from typing import Any
 from uuid import uuid4
 
+from benchweave.content.capture_services import evidence_originated
+from benchweave.content.capture_store import writer_originated
 from benchweave.content.store import EvidenceQuotaExceeded
 from benchweave.host.plugin import SimulationInfo
 from benchweave.host.types import (
@@ -264,9 +266,15 @@ class OTDPBridge:
                 sqlite3.OperationalError,
             ) as exc:
                 # Writer/bundle-originated resource conditions only: the
-                # stamp is the discriminator (a bare raise of any of these
-                # classes from adapter code keeps the poison posture).
-                if getattr(exc, "writer_stamp", None) is None:
+                # discriminator requires module-token identity AND binding to
+                # THIS dispatch (C3 as amended) — a bare raise, a forged
+                # attribute, or a genuine saved instance replayed on another
+                # dispatch keeps the poison posture. In-process forgery of the
+                # private tokens remains possible: adapters are trusted
+                # Python (the module docstring's boundary); the stamp
+                # separates accidental collision from origin, it does not
+                # prove origin against deliberate hostility.
+                if not self._capture_originated(exc, capture_id, request):
                     if capture_id is not None:
                         self._abort_contained(capture_id, request.operation_id)
                     return poison(exc)
@@ -405,6 +413,18 @@ class OTDPBridge:
                 dispatch_state=DispatchState.NOT_DISPATCHED,
             )
         return capture_id
+
+    @staticmethod
+    def _capture_originated(
+        exc: BaseException, capture_id: str | None, request: OperationRequest
+    ) -> bool:
+        """C3's discriminator as amended: the writer's stamp must carry the
+        writer module's token bound to THIS capture's id; the bundle's
+        evidence stamp must carry the bundle module's token bound to THIS
+        operation's id. Presence alone proves nothing."""
+        if isinstance(exc, EvidenceQuotaExceeded):
+            return evidence_originated(exc, request.operation_id)
+        return capture_id is not None and writer_originated(exc, capture_id)
 
     @staticmethod
     def _exact_int(value: Any) -> int | None:

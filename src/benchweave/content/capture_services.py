@@ -32,14 +32,26 @@ from typing import Any
 from benchweave.content.capture_store import CaptureStagingStore
 from benchweave.content.store import ContentStore, EvidenceQuotaExceeded
 from benchweave.control.documents import adapter_permissions
+from benchweave.host.types import EvidenceStamp
 
 #: The one permission slice 1 gates on (spec §8/S15).
 ARTIFACT_WRITER = "artifact_writer"
 
-#: The bundle-originated record for classification (module-level so both
-#: bundle classes stamp with the same token; the bridge requires presence,
-#: not identity).
-_BUNDLE_STAMP = object()
+#: The bundle module's private identity token (C3 as amended: identity +
+#: operation binding, never attribute presence).
+_BUNDLE_STAMP_TOKEN = object()
+
+
+def evidence_originated(exception: BaseException, operation_id: str) -> bool:
+    """True iff the exception carries THIS module's token bound to the named
+    operation — the classification discriminator for evidence-quota
+    refusals raised through the bundle's record_evidence."""
+    stamp = getattr(exception, "capture_stamp", None)
+    return (
+        isinstance(stamp, EvidenceStamp)
+        and stamp.token is _BUNDLE_STAMP_TOKEN
+        and stamp.operation_id == operation_id
+    )
 
 
 class ScopedServicesBundle:
@@ -104,9 +116,14 @@ class ScopedServicesBundle:
         except EvidenceQuotaExceeded as error:
             # The bundle-originated record: quota exhaustion raised through
             # adapter.execute joins the bridge's NON-POISONING classification
-            # (a resource condition, not a protocol lie) — the stamp is the
-            # discriminator, so a bare raise of the class stays poison.
-            error.writer_stamp = _BUNDLE_STAMP
+            # (a resource condition, not a protocol lie) — the stamp carries
+            # this module's token AND the operation id, so a bare raise, a
+            # forged attribute, or a saved instance replayed on another
+            # dispatch stays poison.
+            error.capture_stamp = EvidenceStamp(
+                _BUNDLE_STAMP_TOKEN,
+                getattr(context, "operation_id", None),
+            )
             raise
 
     async def transfer(self, transaction: dict[str, Any], context: Any) -> dict[str, Any]:

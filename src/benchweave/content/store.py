@@ -14,6 +14,7 @@ import uuid
 from typing import Any
 
 from benchweave.host.services import HostServices, QuotaState
+from benchweave.host.types import EvidenceStamp
 from benchweave.state.store import Store
 
 MAX_CHUNK_BYTES = 65536
@@ -22,12 +23,13 @@ MAX_CHUNK_BYTES = 65536
 class EvidenceQuotaExceeded(RuntimeError):
     """Context-keyed evidence entries reached the configured quota.
 
-    Instances raised by a capture-services bundle carry ``writer_stamp``
-    (the bundle-originated record the bridge's non-poisoning
-    classification catches require); the bare class keeps its old shape.
+    Instances raised by a capture-services bundle carry an
+    ``EvidenceStamp`` (``capture_stamp``) — the bundle-originated record
+    the bridge's non-poisoning classification requires, bound to the
+    operation; the bare class keeps its old shape.
     """
 
-    writer_stamp: object | None = None
+    capture_stamp: EvidenceStamp | None = None
 
 
 class ContentStore:

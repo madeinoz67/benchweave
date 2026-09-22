@@ -488,13 +488,21 @@ def test_the_state_vocabulary_is_code_enforced_and_raw_sql_is_unconstrained(
 
 
 def test_writer_exceptions_are_stamped_and_a_bare_raise_is_not(store: Store) -> None:
+    """C3 as amended (F4): the stamp carries the writer module's token
+    bound to the capture; writer_originated is the discriminator (identity
+    + binding), and a bare raise — or the same exception bound to ANOTHER
+    capture — does not classify."""
+    from benchweave.content.capture_store import writer_originated
+
     writer = a_writer(store)
     open_capture(writer, "cap-1", max_bytes=16)
     with pytest.raises(gateway_types.CaptureQuotaExceeded) as quota:
         writer.append("cap-1", b"\x00" * 17, "session-a")
-    assert quota.value.writer_stamp is not None  # C3: writer-stamped
+    assert writer_originated(quota.value, "cap-1")
+    assert not writer_originated(quota.value, "cap-other")  # binding, not just presence
     with pytest.raises(gateway_types.CaptureFinaliseRejected) as rejected:
         writer.finalise("cap-unknown", LATER)
-    assert rejected.value.writer_stamp is not None
+    assert rejected.value.capture_stamp is not None
     bare = gateway_types.CaptureQuotaExceeded("adapter code can raise the class too")
-    assert bare.writer_stamp is None  # the classification catches require the stamp
+    assert bare.capture_stamp is None
+    assert not writer_originated(bare, "cap-1")  # the discriminator refuses it
