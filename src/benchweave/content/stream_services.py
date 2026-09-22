@@ -161,6 +161,15 @@ class StreamController:
         """The registry entry (the bridge's refusal-taxonomy read)."""
         return self._subscriptions.get(subscription_id)
 
+    def is_known(self, subscription_id: str) -> bool:
+        """True iff the registry holds the id at all (live, ended or closed)."""
+        return subscription_id in self._subscriptions
+
+    def is_live(self, subscription_id: str) -> bool:
+        """True iff the subscription is still pollable."""
+        entry = self._subscriptions.get(subscription_id)
+        return entry is not None and entry.state == _ACTIVE
+
     def live_subscription_ids(self) -> list[str]:
         """The ids still pollable, sorted for deterministic rotation."""
         return sorted(

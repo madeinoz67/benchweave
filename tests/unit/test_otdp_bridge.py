@@ -13,6 +13,11 @@ import pytest
 from benchweave.content.capture_services import build_capture_services
 from benchweave.content.capture_store import CaptureStagingStore
 from benchweave.content.store import ContentStore
+from benchweave.content.stream_services import (
+    StreamController,
+    build_stream_services,
+    mint_subscription_id,
+)
 from benchweave.host.otdp_bridge import OTDPBridge
 from benchweave.host.plugin import SimulationInfo
 from benchweave.host.services import QuotaLimits
@@ -945,10 +950,12 @@ def test_writer_originated_lock_contention_is_resource_limit(tmp_path: Path) -> 
 # --- the UNSUPPORTED narrowing --------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "verb", [OperationVerb.STREAM_SUBSCRIBE, OperationVerb.STREAM_UNSUBSCRIBE, OperationVerb.INVOKE]
-)
-def test_non_capture_expansion_verbs_remain_unsupported(tmp_path: Path, verb: Any) -> None:
+@pytest.mark.parametrize("verb", [OperationVerb.INVOKE])
+def test_non_expansion_verbs_remain_unsupported(tmp_path: Path, verb: Any) -> None:
+    """The slice-2 pin movement (consciously narrowed): the stream verbs
+    left this list when the bridge grew their dispatch (issue #43 slice 2);
+    their own arms live in the stream section below. ``invoke`` (and the
+    never-supported self_test/get_errors/reset) stay refused."""
     harness = CaptureHarness(tmp_path)
     try:
         plugin = harness.bridge(Adapter())
@@ -1215,3 +1222,475 @@ def test_develop_your_device_compatibility_sentence_covers_capture() -> None:
     assert "capture/streaming" not in doc
     assert "single-channel capture" in doc
     assert "Profile actions" in doc and "streaming" in doc
+
+
+# --- issue #43 slice 2: stream dispatch ------------------------------------------
+#
+# Derivations (from primary sources): the three-argument subscribe request
+# and one-argument unsubscribe are the corpus $defs/operationRequest stream
+# branches (required {subscription_id, parameters, min_interval_ms} /
+# {subscription_id}; parameters minItems 1 uniqueItems pattern
+# ^[a-z][a-z0-9_]*$; min_interval_ms integer minimum 1) and spec §5 lines
+# 88-89; the normative floor ("requested intervals cannot be shorter") and
+# the max_subscriptions limit are §7 line 152; "Unknown subscriptions ...
+# are rejected by the host" and unsubscribe idempotence are §7 line 160;
+# event_sink gating is §8 line 216/S15; the echo-correlation refusal is the
+# _convert operation-id precedent extended to subscription ids (Decision 4).
+
+STREAM_DESCRIPTOR = {
+    "stream_limits": {"min_interval_ms": 100, "max_subscriptions": 2},
+    "capture_formats": ["waveform_f64le", "raw_binary"],
+    "capture_limits": {"max_samples": 1024, "max_bytes": 8192},
+}
+
+
+class StreamAdapter(Adapter):
+    """Echoes the request's subscription id (the correlated success shape)."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.seen_verbs: list[str] = []
+
+    async def execute(self, request: dict[str, Any], context: Any) -> dict[str, Any]:
+        self.calls += 1
+        self.seen_verbs.append(request["verb"])
+        if request["verb"] in ("stream_subscribe", "stream_unsubscribe"):
+            return {
+                "operation_id": request["operation_id"],
+                "verb": request["verb"],
+                "status": "ok",
+                "data": {"subscription_id": request["arguments"]["subscription_id"]},
+            }
+        return await Adapter.execute(self, request, context)
+
+
+class StreamHarness:
+    """A real store + stream controller + bridge over tmp_path (the
+    CaptureHarness sibling; the descriptor admits BOTH lanes so the gates'
+    refusal codes are attributable to the stream gates alone)."""
+
+    def __init__(self, tmp_path: Path, *, max_subscriptions: int = 2) -> None:
+        import pathlib
+
+        self.store = Store.open(pathlib.Path(tmp_path) / "bridge-stream.db")
+        self.content = ContentStore(self.store)
+        raw_descriptor = {
+            "id": "dev.local.stream-harness",
+            "descriptor_version": "1.0.0",
+            "integration": {
+                "mode": "adapter",
+                "adapter": {
+                    "entry_point": "harness:create_plugin",
+                    "api_version": "1.1",
+                    "version": "1.0.0",
+                    "dependencies": [],
+                    "permissions": ["scoped_transport", "artifact_writer", "event_sink"],
+                },
+            },
+        }
+        descriptor_bytes = _json.dumps(raw_descriptor, sort_keys=True).encode()
+        self.descriptor_digest = hashlib.sha256(descriptor_bytes).hexdigest()
+        self.content.put_document(
+            descriptor_bytes,
+            self.descriptor_digest,
+            raw_descriptor,
+            "otdp-descriptor",
+            "2026-09-22T00:00:00Z",
+        )
+        controller = build_stream_services(
+            descriptor_digest=self.descriptor_digest,
+            store=self.store,
+            wall=lambda: "2026-09-22T00:00:00Z",
+            quota=QuotaLimits(
+                max_dataset_bytes=8192,
+                max_evidence_entries=50,
+                max_event_batch=10,
+                max_subscriptions=max_subscriptions,
+            ),
+            context_key="stream-harness-session",
+        )
+        if controller is None:
+            raise AssertionError("stream harness descriptor must admit event_sink")
+        self.controller: StreamController = controller
+        self.adapter: Any = None
+
+    def bridge(self, adapter: Any, *, descriptor: dict[str, Any] | None = None) -> OTDPBridge:
+        self.adapter = adapter
+        return OTDPBridge(
+            adapter,
+            descriptor=dict(descriptor if descriptor is not None else STREAM_DESCRIPTOR),
+            services=SimpleNamespace(monotonic=lambda: 0.0),
+            simulation=SimulationInfo(True, "Synthetic"),
+            stream=self.controller,
+        )
+
+    def close(self) -> None:
+        self.store.close()
+
+    def stream_rows(self, reference: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        rows = self.store.connection.execute(
+            "SELECT content_ref_json FROM evidence WHERE kind = 'event_log'"
+        ).fetchall()
+        parsed = [_json.loads(row[0]) for row in rows]
+        if reference is None:
+            return parsed
+        return [
+            row
+            for row in parsed
+            if all(row.get(key) == value for key, value in reference.items())
+        ]
+
+
+def a_subscribe_request(**overrides: Any) -> OperationRequest:
+    arguments: dict[str, Any] = {
+        "subscription_id": mint_subscription_id(),
+        "parameters": ["temperature"],
+        "min_interval_ms": 100,
+    }
+    arguments.update(overrides)
+    return OperationRequest("op-s", OperationVerb.STREAM_SUBSCRIBE, arguments)
+
+
+def an_unsubscribe_request(subscription_id: str) -> OperationRequest:
+    return OperationRequest(
+        "op-u",
+        OperationVerb.STREAM_UNSUBSCRIBE,
+        {"subscription_id": subscription_id},
+    )
+
+
+def test_stream_subscribe_round_trip_registers_the_subscription(tmp_path: Path) -> None:
+    harness = StreamHarness(tmp_path)
+    try:
+        plugin = harness.bridge(StreamAdapter())
+        plugin.plugin_open(object())
+        request = a_subscribe_request()
+        result = plugin.dispatch(request, deadline_ns=10_000_000_000)
+        assert result.status is OperationStatus.OK
+        assert result.data == {"subscription_id": request.arguments["subscription_id"]}
+        assert harness.controller.is_live(str(request.arguments["subscription_id"]))
+        assert harness.adapter.seen_verbs == ["stream_subscribe"]
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+def test_stream_subscribe_without_event_sink_is_unsupported_not_dispatched(
+    tmp_path: Path,
+) -> None:
+    """The R8 mirror: no event_sink -> no event services at all, and the
+    dispatch is refused at the gate before any adapter call."""
+    harness = StreamHarness(tmp_path)
+    try:
+        plugin = OTDPBridge(
+            StreamAdapter(),
+            descriptor=dict(STREAM_DESCRIPTOR),
+            services=SimpleNamespace(monotonic=lambda: 0.0),
+            simulation=SimulationInfo(True, "Synthetic"),
+        )
+        plugin.plugin_open(object())
+        result = plugin.dispatch(a_subscribe_request(), deadline_ns=10_000_000_000)
+        assert result.error is not None
+        assert result.error.code is ErrorCode.UNSUPPORTED
+        assert result.error.dispatch_state is DispatchState.NOT_DISPATCHED
+        assert "event_sink" in result.error.message
+        assert plugin.dispatch(
+            an_unsubscribe_request(mint_subscription_id()), deadline_ns=10_000_000_000
+        ).error is not None
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+@pytest.mark.parametrize(
+    ("overrides", "label"),
+    [
+        ({"subscription_id": ""}, "empty subscription_id"),
+        ({"subscription_id": 42}, "non-string subscription_id"),
+        ({"parameters": []}, "empty parameters"),
+        ({"parameters": ["temperature", "temperature"]}, "duplicate parameters"),
+        ({"parameters": ["Bad-Name"]}, "non-pattern parameter"),
+        ({"parameters": "temperature"}, "non-list parameters"),
+        ({"min_interval_ms": True}, "bool min_interval_ms"),
+        ({"min_interval_ms": 2.5}, "float min_interval_ms"),
+        ({"min_interval_ms": 0}, "zero min_interval_ms"),
+    ],
+)
+def test_stream_subscribe_typing_is_exact(
+    tmp_path: Path, overrides: dict[str, Any], label: str
+) -> None:
+    harness = StreamHarness(tmp_path)
+    try:
+        plugin = harness.bridge(StreamAdapter())
+        plugin.plugin_open(object())
+        result = plugin.dispatch(a_subscribe_request(**overrides), deadline_ns=10_000_000_000)
+        assert result.error is not None
+        assert result.error.code is ErrorCode.INVALID_ARGUMENT, label
+        assert result.error.dispatch_state is DispatchState.NOT_DISPATCHED
+        assert harness.adapter.calls == 0, label
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+@pytest.mark.parametrize(
+    ("limits", "label"),
+    [
+        ("not-an-object", "non-dict stream_limits"),
+        ({"min_interval_ms": "100", "max_subscriptions": 2}, "string min_interval_ms"),
+        ({"min_interval_ms": 100}, "absent max_subscriptions"),
+        ({"min_interval_ms": 100, "max_subscriptions": 0}, "zero max_subscriptions"),
+        ({"min_interval_ms": -5, "max_subscriptions": 2}, "negative min_interval_ms"),
+    ],
+)
+def test_stream_malformed_descriptor_limits_refuse_cleanly(
+    tmp_path: Path, limits: Any, label: str
+) -> None:
+    """The gate region has no exception frame: a malformed descriptor's
+    stream_limits yield a clean INVALID_ARGUMENT, never an escaping
+    exception (the capture gate's malformed-descriptor discipline)."""
+    harness = StreamHarness(tmp_path)
+    adapter = StreamAdapter()
+    harness.adapter = adapter
+    try:
+        plugin = harness.bridge(
+            adapter, descriptor=dict(STREAM_DESCRIPTOR, stream_limits=limits)
+        )
+        plugin.plugin_open(object())
+        result = plugin.dispatch(a_subscribe_request(), deadline_ns=10_000_000_000)
+        assert result.error is not None
+        assert result.error.code is ErrorCode.INVALID_ARGUMENT, label
+        assert adapter.calls == 0, label
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+def test_a_requested_interval_below_the_descriptor_floor_is_refused(
+    tmp_path: Path,
+) -> None:
+    """Spec §7's normative floor: 'requested intervals cannot be shorter' —
+    refusal, never clamping."""
+    harness = StreamHarness(tmp_path)
+    try:
+        plugin = harness.bridge(StreamAdapter())
+        plugin.plugin_open(object())
+        result = plugin.dispatch(
+            a_subscribe_request(min_interval_ms=5), deadline_ns=10_000_000_000
+        )
+        assert result.error is not None
+        assert result.error.code is ErrorCode.INVALID_ARGUMENT
+        assert result.error.dispatch_state is DispatchState.NOT_DISPATCHED
+        assert "100" in result.error.message  # the declared floor is named
+        assert harness.adapter.calls == 0
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+def test_the_descriptor_subscription_limit_is_refused(tmp_path: Path) -> None:
+    harness = StreamHarness(tmp_path)
+    try:
+        plugin = harness.bridge(StreamAdapter())
+        plugin.plugin_open(object())
+        first = plugin.dispatch(a_subscribe_request(), deadline_ns=10_000_000_000)
+        second = plugin.dispatch(a_subscribe_request(), deadline_ns=10_000_000_000)
+        third = plugin.dispatch(a_subscribe_request(), deadline_ns=10_000_000_000)
+        assert first.status is OperationStatus.OK
+        assert second.status is OperationStatus.OK
+        assert third.error is not None
+        assert third.error.code is ErrorCode.INVALID_ARGUMENT
+        assert third.error.dispatch_state is DispatchState.NOT_DISPATCHED
+        assert harness.adapter.calls == 2
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+def test_the_host_subscription_ceiling_is_a_resource_limit(tmp_path: Path) -> None:
+    """The host QuotaLimits.max_subscriptions ceiling (an author-claimed
+    value alone would allow unbounded bridge state growth): RESOURCE_LIMIT,
+    not_dispatched, zero adapter calls."""
+    harness = StreamHarness(tmp_path, max_subscriptions=1)
+    try:
+        generous_descriptor = dict(
+            STREAM_DESCRIPTOR,
+            stream_limits={"min_interval_ms": 100, "max_subscriptions": 99},
+        )
+        plugin = harness.bridge(StreamAdapter(), descriptor=generous_descriptor)
+        plugin.plugin_open(object())
+        first = plugin.dispatch(a_subscribe_request(), deadline_ns=10_000_000_000)
+        second = plugin.dispatch(a_subscribe_request(), deadline_ns=10_000_000_000)
+        assert first.status is OperationStatus.OK
+        assert second.error is not None
+        assert second.error.code is ErrorCode.RESOURCE_LIMIT
+        assert second.error.dispatch_state is DispatchState.NOT_DISPATCHED
+        assert harness.adapter.calls == 1
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+def test_an_uncorrelated_subscription_echo_poisons(tmp_path: Path) -> None:
+    harness = StreamHarness(tmp_path)
+    try:
+        class Lying(StreamAdapter):
+            async def execute(self, request: dict[str, Any], context: Any) -> dict[str, Any]:
+                result = await super().execute(request, context)
+                if request["verb"] == "stream_subscribe":
+                    result["data"] = {"subscription_id": mint_subscription_id()}
+                return result
+
+        plugin = harness.bridge(Lying())
+        plugin.plugin_open(object())
+        result = plugin.dispatch(a_subscribe_request(), deadline_ns=10_000_000_000)
+        assert result.status is OperationStatus.UNKNOWN
+        follow = plugin.dispatch(
+            OperationRequest.identify("op-next"), deadline_ns=10_000_000_000
+        )
+        assert follow.error is not None  # poisoned
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+def test_a_failed_subscribe_releases_the_reservation(tmp_path: Path) -> None:
+    harness = StreamHarness(tmp_path)
+    try:
+        class Refused(StreamAdapter):
+            async def execute(self, request: dict[str, Any], context: Any) -> dict[str, Any]:
+                self.calls += 1
+                if request["verb"] == "stream_subscribe":
+                    return {
+                        "operation_id": request["operation_id"],
+                        "verb": request["verb"],
+                        "status": "error",
+                        "error": {
+                            "code": "DEVICE_REJECTED",
+                            "message": "device refused",
+                            "dispatch_state": "not_dispatched",
+                        },
+                    }
+                return await Adapter.execute(self, request, context)
+
+        plugin = harness.bridge(Refused())
+        plugin.plugin_open(object())
+        result = plugin.dispatch(a_subscribe_request(), deadline_ns=10_000_000_000)
+        assert result.error is not None
+        assert result.error.code is ErrorCode.DEVICE_REJECTED
+        assert harness.controller.live_subscription_ids() == []  # released
+        follow = plugin.dispatch(
+            OperationRequest.identify("op-next"), deadline_ns=10_000_000_000
+        )
+        assert follow.status is OperationStatus.OK  # session survived
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+def test_unsubscribe_unknown_is_rejected_by_the_host_before_the_adapter(
+    tmp_path: Path,
+) -> None:
+    """Spec §7: 'Unknown subscriptions owned by another connection/principal
+    are rejected by the host' — an id this session never registered never
+    reaches the adapter."""
+    harness = StreamHarness(tmp_path)
+    try:
+        plugin = harness.bridge(StreamAdapter())
+        plugin.plugin_open(object())
+        result = plugin.dispatch(
+            an_unsubscribe_request(mint_subscription_id()), deadline_ns=10_000_000_000
+        )
+        assert result.error is not None
+        assert result.error.code is ErrorCode.INVALID_ARGUMENT
+        assert result.error.dispatch_state is DispatchState.NOT_DISPATCHED
+        assert harness.adapter.calls == 0
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+def test_unsubscribe_closes_and_is_idempotent_for_known_terminal_subscriptions(
+    tmp_path: Path,
+) -> None:
+    harness = StreamHarness(tmp_path)
+    try:
+        plugin = harness.bridge(StreamAdapter())
+        plugin.plugin_open(object())
+        request = a_subscribe_request()
+        subscription_id = str(request.arguments["subscription_id"])
+        assert plugin.dispatch(request, deadline_ns=10_000_000_000).status is (
+            OperationStatus.OK
+        )
+        first = plugin.dispatch(
+            an_unsubscribe_request(subscription_id), deadline_ns=10_000_000_000
+        )
+        assert first.status is OperationStatus.OK
+        assert first.data == {"subscription_id": subscription_id}
+        assert not harness.controller.is_live(subscription_id)
+        calls_before = harness.adapter.calls
+        second = plugin.dispatch(
+            an_unsubscribe_request(subscription_id), deadline_ns=10_000_000_000
+        )
+        assert second.status is OperationStatus.OK  # idempotent (spec §7)
+        assert second.data == {"subscription_id": subscription_id}
+        assert harness.adapter.calls == calls_before  # no re-dispatch
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+def test_plugin_close_sweeps_live_subscriptions_with_ended_markers(
+    tmp_path: Path,
+) -> None:
+    harness = StreamHarness(tmp_path)
+    try:
+        plugin = harness.bridge(StreamAdapter())
+        plugin.plugin_open(object())
+        request = a_subscribe_request()
+        assert plugin.dispatch(request, deadline_ns=10_000_000_000).status is (
+            OperationStatus.OK
+        )
+        plugin.plugin_close()
+        assert harness.controller.live_subscription_ids() == []
+        markers = harness.stream_rows({"marker": "host_ended"})
+        assert len(markers) == 1
+        assert markers[0]["id"] == request.arguments["subscription_id"]
+        assert markers[0]["cause"] == "plugin_close"
+    finally:
+        harness.close()
+
+
+def test_poison_on_an_unrelated_dispatch_clears_live_subscriptions(
+    tmp_path: Path,
+) -> None:
+    """Decision 4: poison clears the bridge's subscription registry (with
+    host-cause ended markers), so a poisoned session cannot leak live
+    subscriptions until close."""
+    harness = StreamHarness(tmp_path)
+    try:
+        class Poisonous(StreamAdapter):
+            async def execute(self, request: dict[str, Any], context: Any) -> dict[str, Any]:
+                if request["verb"] == "identify":
+                    self.calls += 1
+                    raise RuntimeError("adapter exploded")
+                return await super().execute(request, context)
+
+        plugin = harness.bridge(Poisonous())
+        plugin.plugin_open(object())
+        request = a_subscribe_request()
+        assert plugin.dispatch(request, deadline_ns=10_000_000_000).status is (
+            OperationStatus.OK
+        )
+        poisoned = plugin.dispatch(
+            OperationRequest.identify("op-x"), deadline_ns=10_000_000_000
+        )
+        assert poisoned.status is OperationStatus.UNKNOWN
+        assert harness.controller.live_subscription_ids() == []
+        markers = harness.stream_rows({"marker": "host_ended"})
+        assert len(markers) == 1
+        assert markers[0]["id"] == request.arguments["subscription_id"]
+        plugin.plugin_close()
+    finally:
+        harness.close()
+

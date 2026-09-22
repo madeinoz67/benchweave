@@ -40,6 +40,7 @@ from uuid import uuid4
 from benchweave.content.capture_services import evidence_originated
 from benchweave.content.capture_store import writer_originated
 from benchweave.content.store import EvidenceQuotaExceeded
+from benchweave.content.stream_services import StreamLimitExceeded
 from benchweave.host.plugin import SimulationInfo
 from benchweave.host.types import (
     Assurance,
@@ -90,6 +91,7 @@ class OTDPBridge:
         simulation: SimulationInfo,
         lifecycle_timeout: float = 5.0,
         capture: Any = None,
+        stream: Any = None,
     ) -> None:
         if not isinstance(simulation, SimulationInfo):
             raise TypeError("explicit SimulationInfo required")
@@ -100,11 +102,14 @@ class OTDPBridge:
         self._adapter = adapter
         self._descriptor = copy.deepcopy(descriptor)
         self._services = services
-        # §0.3: capture control flows ONLY through this controller object,
-        # never through self._services (the pinned exercised services
-        # subset stays {monotonic} until the streaming slice). None = the
-        # session was constructed without the artifact_writer permission.
+        # §0.3: capture and streaming control flow ONLY through these
+        # controller objects, never through self._services (the pinned
+        # exercised services subset stays {monotonic} — the streaming slice
+        # landed the stream controller beside the capture one; neither
+        # touches the services members). None = the session was constructed
+        # without the artifact_writer / event_sink permission respectively.
         self._capture = capture
+        self._stream = stream
         self._simulation = simulation
         self._lifecycle_timeout = lifecycle_timeout
         self._runner: asyncio.Runner | None = None
@@ -192,6 +197,12 @@ class OTDPBridge:
                 if self._capture is not None:
                     with suppress(Exception):
                         self._capture.sweep_open(reason="plugin_close")
+                if self._stream is not None:
+                    # No stream outlives its host-owned subscription
+                    # authority: close tears down every live subscription
+                    # with a host-cause ended marker (§7/§8).
+                    with suppress(Exception):
+                        self._stream.sweep(reason="plugin_close")
                 self._closed = True
                 self._opened = False
                 try:
@@ -220,12 +231,14 @@ class OTDPBridge:
                 "read": {"parameter"},
                 "write": {"parameter", "value"},
                 "capture": {"capture_id", "format", "sample_count", "max_bytes"},
+                "stream_subscribe": {"subscription_id", "parameters", "min_interval_ms"},
+                "stream_unsubscribe": {"subscription_id"},
             }
             expected = supported.get(request.verb.value)
             if expected is None:
                 return reject(
                     ErrorCode.UNSUPPORTED,
-                    "Bridge supports identify, read, write and capture",
+                    "Bridge supports identify, read, write, capture and stream verbs",
                 )
             if set(request.arguments) != expected:
                 return reject(ErrorCode.UNSUPPORTED, "Unsupported arguments for bridge operation")
@@ -238,6 +251,17 @@ class OTDPBridge:
                 if isinstance(gate, OperationResult):
                     return gate
                 capture_id = gate
+            subscription_id: str | None = None
+            if request.verb.value == "stream_subscribe":
+                gate = self._subscribe_gate(request)
+                if isinstance(gate, OperationResult):
+                    return gate
+                subscription_id = gate
+            elif request.verb.value == "stream_unsubscribe":
+                preflight = self._unsubscribe_preflight(request)
+                if preflight is not None:
+                    return preflight
+                subscription_id = str(request.arguments["subscription_id"])
             context = _Context(request.operation_id, deadline, self._services)
             envelope = {
                 "operation_id": request.operation_id,
@@ -263,6 +287,22 @@ class OTDPBridge:
                     # Success: retire the capture — no epilogue, no forensic
                     # record; a published, acknowledged capture stands.
                     self._capture.retire(capture_id)
+                if subscription_id is not None and self._stream is not None:
+                    if converted.status is OperationStatus.OK:
+                        # A successful unsubscribe closes the subscription
+                        # (no marker — the unsubscribe result is the record);
+                        # a successful subscribe keeps the reservation live.
+                        if request.verb.value == "stream_unsubscribe":
+                            self._stream.mark_closed(subscription_id)
+                    elif request.verb.value == "stream_subscribe":
+                        # The subscription did not establish: release the
+                        # reservation (nothing streamed, no marker).
+                        self._stream.release(subscription_id)
+                if self._failed:
+                    # Poison by result (an error envelope claiming dispatch
+                    # or unknown): clear the registry — a poisoned session
+                    # cannot leak live subscriptions until close.
+                    self._stream_clear()
                 return converted
             except (
                 CaptureQuotaExceeded,
@@ -281,8 +321,18 @@ class OTDPBridge:
                 if not self._capture_originated(exc, capture_id, request):
                     if capture_id is not None:
                         self._abort_contained(capture_id, request.operation_id)
+                    self._stream_clear()
                     return poison(exc)
                 self._abort_contained(capture_id, request.operation_id)
+                if (
+                    subscription_id is not None
+                    and self._stream is not None
+                    and request.verb.value == "stream_subscribe"
+                ):
+                    # The dispatch failed without poisoning the session: the
+                    # reservation it held is released (nothing streamed). An
+                    # unsubscribe failure keeps its subscription live.
+                    self._stream.release(subscription_id)
                 return OperationResult.failure(
                     request.operation_id,
                     request.verb,
@@ -296,6 +346,7 @@ class OTDPBridge:
             except (Exception, asyncio.CancelledError) as exc:
                 if capture_id is not None:
                     self._abort_contained(capture_id, request.operation_id)
+                self._stream_clear()
                 return poison(exc)
 
     # The interoperable integer range (spec §4): values outside −(2^53−1)
@@ -303,6 +354,7 @@ class OTDPBridge:
     # structural sqlite-bind safety bound.
     _INT_MAX = 2**53 - 1
     _CAPTURE_ID_PATTERN = re.compile(r"[a-z][a-z0-9_.-]*")
+    _STREAM_PARAMETER_PATTERN = re.compile(r"[a-z][a-z0-9_]*")
     _CAPTURE_FORMATS = ("waveform_f64le", "raw_binary")
 
     def _capture_gate(self, request: OperationRequest) -> str | OperationResult:
@@ -438,6 +490,145 @@ class OTDPBridge:
                 dispatch_state=DispatchState.NOT_DISPATCHED,
             )
         return capture_id
+
+    def _subscribe_gate(self, request: OperationRequest) -> str | OperationResult:
+        """The pre-dispatch stream_subscribe gates (the _capture_gate mirror).
+
+        Permission first (no event_sink -> no event services at all), then
+        exact-typed argument shapes (the corpus $defs/operationRequest
+        stream_subscribe branch), then the descriptor's ``stream_limits`` —
+        ``min_interval_ms`` is a NORMATIVE FLOOR (spec §7: requested
+        intervals cannot be shorter — refused, never clamped) and
+        ``max_subscriptions`` caps admitted live subscriptions — then the
+        host ceiling via the controller's check-and-reserve. Every refusal
+        is a clean typed rejection with zero adapter calls; the gate region
+        has no exception frame, so malformed descriptor limits are
+        type-validated here rather than trusted.
+        """
+        if self._stream is None:
+            return OperationResult.failure(
+                request.operation_id,
+                request.verb,
+                code=ErrorCode.UNSUPPORTED,
+                message="stream_subscribe requires event_sink permission",
+                dispatch_state=DispatchState.NOT_DISPATCHED,
+            )
+        arguments = request.arguments
+        subscription_id = arguments.get("subscription_id")
+        if not isinstance(subscription_id, str) or not subscription_id:
+            return self._invalid(
+                request, "subscription_id must be a non-empty string (a host-minted opaque)"
+            )
+        parameters = arguments.get("parameters")
+        if not isinstance(parameters, list) or not parameters:
+            return self._invalid(request, "parameters must be a non-empty list")
+        if any(
+            not isinstance(parameter, str)
+            or not self._STREAM_PARAMETER_PATTERN.fullmatch(parameter)
+            for parameter in parameters
+        ):
+            return self._invalid(
+                request, "each parameter must match ^[a-z][a-z0-9_]*$ (the corpus pattern)"
+            )
+        if len(set(parameters)) != len(parameters):
+            return self._invalid(request, "parameters must be unique (uniqueItems)")
+        interval = self._exact_int(arguments.get("min_interval_ms"))
+        if interval is None or interval < 1:
+            return self._invalid(
+                request, "min_interval_ms must be an integer >= 1 (the corpus minimum)"
+            )
+        # G2 descriptor: stream_limits read with type validation — malformed
+        # limits are a clean refusal, never an exception (the capture
+        # gate's discipline, applied to the stream limits).
+        limits = self._descriptor.get("stream_limits")
+        if not isinstance(limits, dict):
+            return self._invalid(request, "descriptor stream_limits must be an object")
+        floor = self._exact_int(limits.get("min_interval_ms"))
+        if floor is None or floor < 1:
+            return self._invalid(
+                request, "descriptor stream_limits.min_interval_ms must be an integer >= 1"
+            )
+        limit_count = self._exact_int(limits.get("max_subscriptions"))
+        if limit_count is None or limit_count < 1:
+            return self._invalid(
+                request, "descriptor stream_limits.max_subscriptions must be an integer >= 1"
+            )
+        if interval < floor:
+            return self._invalid(
+                request,
+                f"requested min_interval_ms {interval} is shorter than the descriptor "
+                f"floor {floor} (spec §7: requested intervals cannot be shorter)",
+            )
+        if len(self._stream.live_subscription_ids()) + 1 > limit_count:
+            return self._invalid(
+                request,
+                "admitted subscription count cannot exceed the descriptor limit "
+                f"{limit_count} (spec §7)",
+            )
+        # The host ceiling: check-and-reserve against QuotaLimits
+        # .max_subscriptions (an author-claimed value alone would allow
+        # unbounded bridge state growth).
+        try:
+            self._stream.reserve(
+                subscription_id=subscription_id,
+                parameters=tuple(str(parameter) for parameter in parameters),
+                min_interval_ms=interval,
+            )
+        except StreamLimitExceeded as exc:
+            return OperationResult.failure(
+                request.operation_id,
+                request.verb,
+                code=ErrorCode.RESOURCE_LIMIT,
+                message=f"host subscription ceiling reached: {exc}",
+                dispatch_state=DispatchState.NOT_DISPATCHED,
+            )
+        except ValueError as exc:
+            return self._invalid(request, f"subscription refused: {exc}")
+        return subscription_id
+
+    def _unsubscribe_preflight(self, request: OperationRequest) -> OperationResult | None:
+        """The stream_unsubscribe host-side preflight.
+
+        None = proceed to the adapter (an active subscription). An
+        OperationResult is a terminal host answer with ZERO adapter calls:
+        UNSUPPORTED without event_sink, INVALID_ARGUMENT for an unknown id
+        (spec §7: unknown subscriptions are rejected by the host), or the
+        idempotent OK for a known terminal subscription (already closed or
+        ended — §7: "idempotent for an already-closed known subscription";
+        the host already knows it is done, so no re-dispatch).
+        """
+        if self._stream is None:
+            return OperationResult.failure(
+                request.operation_id,
+                request.verb,
+                code=ErrorCode.UNSUPPORTED,
+                message="stream_unsubscribe requires event_sink permission",
+                dispatch_state=DispatchState.NOT_DISPATCHED,
+            )
+        subscription_id = request.arguments.get("subscription_id")
+        if not isinstance(subscription_id, str) or not subscription_id:
+            return self._invalid(request, "subscription_id must be a non-empty string")
+        if not self._stream.is_known(subscription_id):
+            return self._invalid(
+                request,
+                f"unknown subscription {subscription_id!r}: rejected by the host (spec §7)",
+            )
+        if not self._stream.is_live(subscription_id):
+            return OperationResult.ok(
+                request.operation_id, request.verb, {"subscription_id": subscription_id}
+            )
+        return None
+
+    def _stream_clear(self) -> None:
+        """Poison clears the subscription registry (Decision 4): every live
+        subscription tears down with a host-cause ``ended`` marker, so a
+        poisoned session cannot leak live subscriptions until close. Fully
+        contained like the abort epilogue — never replaces the result being
+        returned."""
+        if self._stream is None:
+            return
+        with suppress(Exception):
+            self._stream.sweep(reason="session poisoned")
 
     @staticmethod
     def _capture_originated(
@@ -605,6 +796,17 @@ class OTDPBridge:
             value = self._reading(data, request.arguments["parameter"])
         elif request.verb.value == "capture":
             value = self._capture_manifest(request, data)
+        elif request.verb.value in ("stream_subscribe", "stream_unsubscribe"):
+            # Echo correlation (the _convert operation-id precedent,
+            # extended to subscription ids — Decision 4): the success data
+            # must echo the request's host-minted id; anything else is a
+            # protocol lie and poisons through the raise.
+            echoed = data.get("subscription_id")
+            if not isinstance(echoed, str) or not echoed:
+                raise ValueError("stream result requires a subscription_id string")
+            if echoed != request.arguments["subscription_id"]:
+                raise ValueError("uncorrelated subscription id")
+            value = {"subscription_id": echoed}
         else:
             if (
                 data.get("parameter") != request.arguments["parameter"]
