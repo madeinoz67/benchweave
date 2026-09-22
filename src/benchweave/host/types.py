@@ -348,3 +348,29 @@ class OperationResult:
                 dispatch_state=DispatchState.UNKNOWN,
             ),
         )
+
+
+class CaptureQuotaExceeded(RuntimeError):
+    """The capture byte quota refused an open or an append.
+
+    Raised by the staged capture writer only; every instance the writer
+    raises is writer-stamped (``writer_stamp``), and the bridge's
+    non-poisoning classification catches require the stamp — a bare raise
+    of this class from adapter code is NOT classified and keeps the poison
+    posture.
+    """
+
+    writer_stamp: object | None = None
+
+
+class CaptureFinaliseRejected(ValueError):
+    """Publication refused by the staged capture writer: a short capture,
+    zero staged bytes, an unknown id, a wrong session key, a post-terminal
+    append, a duplicate capture id, or a digest cross-check failure.
+
+    Not a quota condition: when raised through ``adapter.execute`` it keeps
+    the poison posture (the record's classification). Writer-stamped like
+    :class:`CaptureQuotaExceeded`.
+    """
+
+    writer_stamp: object | None = None
