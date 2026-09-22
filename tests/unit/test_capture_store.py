@@ -114,12 +114,12 @@ def test_open_admits_up_to_genuine_headroom_past_the_crossover(store: Store) -> 
         writer, "cap-held", fmt="raw_binary", sample_count=None, max_bytes=100
     )
     writer.append("cap-held", b"\x01" * 100, "session-a")
-    writer.finalise("cap-held", LATER)  # charged 100
+    writer.finalise("cap-held", LATER, "session-a")  # charged 100
     open_capture(
         writer, "cap-held-2", fmt="raw_binary", sample_count=None, max_bytes=50
     )
     writer.append("cap-held-2", b"\x02" * 50, "session-a")
-    writer.finalise("cap-held-2", LATER)  # charged 50: used = 150
+    writer.finalise("cap-held-2", LATER, "session-a")  # charged 50: used = 150
     assert writer.used_bytes("session-a") == 150
     with pytest.raises(gateway_types.CaptureQuotaExceeded, match="allowance"):
         open_capture(writer, "cap-over-headroom", max_bytes=51)
@@ -245,7 +245,7 @@ def test_finalise_publishes_and_flips_in_one_transaction(store: Store) -> None:
     payload = b"\x01" * 8 + b"\x02" * 8
     writer.append("cap-1", payload[:8], "session-a")
     writer.append("cap-1", payload[8:], "session-a")
-    record = writer.finalise("cap-1", LATER)
+    record = writer.finalise("cap-1", LATER, "session-a")
     digest = hashlib.sha256(payload).hexdigest()
     assert record == {
         "artifact_id": "art-" + digest,
@@ -290,7 +290,7 @@ def test_finalise_cross_checks_the_running_digest_against_stored_bytes(
         (b"\xff" * 16, "cap-1"),
     )
     with pytest.raises(gateway_types.CaptureFinaliseRejected, match="digest"):
-        writer.finalise("cap-1", LATER)
+        writer.finalise("cap-1", LATER, "session-a")
     assert row(store, "cap-1")["state"] == "staged"  # type: ignore[index]
     published = store.connection.execute("SELECT COUNT(*) FROM artifacts").fetchone()[0]
     assert published == 0
@@ -306,7 +306,7 @@ def test_zero_byte_finalise_is_refused_for_both_formats(
     writer = a_writer(store)
     open_capture(writer, "cap-empty", fmt=fmt, sample_count=None, max_bytes=16)
     with pytest.raises(gateway_types.CaptureFinaliseRejected, match="zero"):
-        writer.finalise("cap-empty", LATER)
+        writer.finalise("cap-empty", LATER, "session-a")
     assert row(store, "cap-empty") is not None  # still staged: abort owns it
 
 
@@ -318,7 +318,7 @@ def test_a_short_capture_is_refused_at_finalise(store: Store) -> None:
     open_capture(writer, "cap-short", max_bytes=32, sample_count=2)
     writer.append("cap-short", b"\x01" * 8, "session-a")
     with pytest.raises(gateway_types.CaptureFinaliseRejected, match="short capture"):
-        writer.finalise("cap-short", LATER)
+        writer.finalise("cap-short", LATER, "session-a")
     published = store.connection.execute("SELECT COUNT(*) FROM artifacts").fetchone()[0]
     assert published == 0
 
@@ -326,14 +326,14 @@ def test_a_short_capture_is_refused_at_finalise(store: Store) -> None:
 def test_finalise_refuses_unknown_and_post_terminal_ids(store: Store) -> None:
     writer = a_writer(store)
     with pytest.raises(gateway_types.CaptureFinaliseRejected, match="unknown"):
-        writer.finalise("cap-unknown", LATER)
+        writer.finalise("cap-unknown", LATER, "session-a")
     open_capture(writer, "cap-1", max_bytes=16)
     writer.append("cap-1", b"\x01" * 16, "session-a")
-    writer.finalise("cap-1", LATER)
+    writer.finalise("cap-1", LATER, "session-a")
     with pytest.raises(gateway_types.CaptureFinaliseRejected, match="terminal"):
         writer.append("cap-1", b"\x00", "session-a")
     with pytest.raises(gateway_types.CaptureFinaliseRejected, match="terminal"):
-        writer.finalise("cap-1", LATER)
+        writer.finalise("cap-1", LATER, "session-a")
 
 
 # --- abort: the single-transaction delete (§0.4) -------------------------------
@@ -359,7 +359,7 @@ def test_abort_is_a_noop_retract_after_finalise_and_for_unknown_ids(
     writer = a_writer(store)
     open_capture(writer, "cap-1", max_bytes=16)
     writer.append("cap-1", b"\x01" * 16, "session-a")
-    writer.finalise("cap-1", LATER)
+    writer.finalise("cap-1", LATER, "session-a")
     assert writer.abort("cap-1") is False  # a published capture stands
     assert row(store, "cap-1") is not None
     assert writer.abort("cap-never") is False
@@ -375,7 +375,7 @@ def test_reuse_after_abort_starts_a_fresh_digest(store: Store) -> None:
     writer.abort("cap-1")
     open_capture(writer, "cap-1", fmt="raw_binary", sample_count=None, max_bytes=32)
     writer.append("cap-1", b"second", "session-a")
-    record = writer.finalise("cap-1", LATER)
+    record = writer.finalise("cap-1", LATER, "session-a")
     assert record["sha256"] == hashlib.sha256(b"second").hexdigest()
     assert record["byte_length"] == 6
 
@@ -386,7 +386,7 @@ def test_hasher_entries_track_open_captures(store: Store) -> None:
     open_capture(writer, "cap-b", fmt="raw_binary", sample_count=None, max_bytes=16)
     assert len(writer._hashers) == 2
     writer.append("cap-a", b"a" * 4, "session-a")
-    writer.finalise("cap-a", LATER)  # finalise removes its entry
+    writer.finalise("cap-a", LATER, "session-a")  # finalise removes its entry
     assert len(writer._hashers) == 1
     writer.abort("cap-b")  # abort removes its entry
     assert len(writer._hashers) == 0
@@ -402,7 +402,7 @@ def test_used_bytes_counts_reserved_then_charged_and_refunds_on_abort(
     open_capture(writer, "cap-staged", max_bytes=40)
     open_capture(writer, "cap-final", max_bytes=60, sample_count=None, fmt="raw_binary")
     writer.append("cap-final", b"\x01" * 10, "session-a")
-    writer.finalise("cap-final", LATER)
+    writer.finalise("cap-final", LATER, "session-a")
     assert writer.used_bytes("session-a") == 40 + 10  # reserved + charged
     writer.abort("cap-staged")
     assert writer.used_bytes("session-a") == 10
@@ -414,7 +414,7 @@ def test_reclaim_orphans_marks_then_deletes_and_is_idempotent(store: Store) -> N
     open_capture(writer, "cap-b", max_bytes=16, context_key="session-b")
     open_capture(writer, "cap-c", max_bytes=16, context_key="session-a")
     writer.append("cap-c", b"\x01" * 16, "session-a")
-    writer.finalise("cap-c", LATER)
+    writer.finalise("cap-c", LATER, "session-a")
     reclaimed = writer.reclaim_orphans(LATER)
     assert sorted(reclaimed) == ["cap-a", "cap-b"]
     assert row(store, "cap-a") is None
@@ -463,7 +463,7 @@ def test_the_state_vocabulary_is_code_enforced_and_raw_sql_is_unconstrained(
     writer = a_writer(store)
     open_capture(writer, "cap-final", fmt="raw_binary", sample_count=None, max_bytes=16)
     writer.append("cap-final", b"\x00" * 16, "session-a")
-    writer.finalise("cap-final", LATER)
+    writer.finalise("cap-final", LATER, "session-a")
     open_capture(writer, "cap-crash", fmt="raw_binary", sample_count=None, max_bytes=16)
     # A normal abort DELETES its row, so 'aborted' is observable only in the
     # sweep's crash window: mark-only (delete patched out) — which also
@@ -502,7 +502,7 @@ def test_writer_exceptions_are_stamped_and_a_bare_raise_is_not(store: Store) -> 
     assert writer_originated(quota.value, "cap-1")
     assert not writer_originated(quota.value, "cap-other")  # binding, not just presence
     with pytest.raises(gateway_types.CaptureFinaliseRejected) as rejected:
-        writer.finalise("cap-unknown", LATER)
+        writer.finalise("cap-unknown", LATER, "session-a")
     assert rejected.value.capture_stamp is not None
     bare = gateway_types.CaptureQuotaExceeded("adapter code can raise the class too")
     assert bare.capture_stamp is None
@@ -563,3 +563,27 @@ def test_commit_site_failures_are_stamped(store: Store) -> None:
     finally:
         writer._conn = original
     assert writer_originated(caught.value, "cap-2")
+
+
+# --- R3: finalise enforces the session key on the publishing path --------
+
+
+def test_finalise_refuses_a_wrong_session_key(store: Store) -> None:
+    """Review wave 3, R3: append enforces the session key but finalise did
+    not — and A10's caller-supplied ids widened the asymmetry: a buggy
+    adapter finalising another session's known id published that capture
+    prematurely and terminally injured the victim's dispatch. The publishing
+    path now mirrors append's wrong-session refusal (the bridge's
+    finalise_record read stays deliberately session-free — G4's source)."""
+    writer = a_writer(store)
+    open_capture(writer, "cap-a", max_bytes=16, context_key="session-a")
+    writer.append("cap-a", b"\x01" * 16, "session-a")
+    with pytest.raises(gateway_types.CaptureFinaliseRejected, match="wrong session"):
+        writer.finalise("cap-a", LATER, "session-b")
+    # Nothing published; the victim's staging is intact and IT can finalise.
+    published = store.connection.execute("SELECT COUNT(*) FROM artifacts").fetchone()[0]
+    assert published == 0
+    staged = row(store, "cap-a")
+    assert staged is not None and staged["state"] == "staged"
+    record = writer.finalise("cap-a", LATER, "session-a")
+    assert record["byte_length"] == 16

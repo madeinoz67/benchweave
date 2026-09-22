@@ -337,7 +337,7 @@ class CaptureStagingStore:
 
     # --- finalise ---------------------------------------------------------------
 
-    def finalise(self, capture_id: str, now: str) -> dict[str, Any]:
+    def finalise(self, capture_id: str, now: str, context_key: str) -> dict[str, Any]:
         """Publish the capture as one explicit transaction (A2).
 
         Under BEGIN IMMEDIATE: read the ordered chunks, cross-check the
@@ -364,12 +364,27 @@ class CaptureStagingStore:
                     CaptureFinaliseRejected(f"unknown capture id: {capture_id!r}"),
                     capture_id,
                 )
-            _context, state, _reserved, fmt, sample_count = staged
+            row_context, state, _reserved, fmt, sample_count = staged
             if state != _STATE_STAGED:
                 raise self._reject(
                     CaptureFinaliseRejected(
                         f"capture {capture_id!r} is terminal ({state}): "
                         "finalise is refused"
+                    ),
+                    capture_id,
+                )
+            if row_context != context_key:
+                # R3: the publishing path enforces the session key exactly
+                # as append does — A10's caller-supplied ids made the
+                # asymmetry a capture-theft vector (a buggy adapter
+                # finalising another session's known id published that
+                # capture prematurely and terminally injured the victim's
+                # dispatch). finalise_record (the bridge's G4 source) stays
+                # deliberately session-free.
+                raise self._reject(
+                    CaptureFinaliseRejected(
+                        f"wrong session for capture {capture_id!r}: "
+                        f"opened by {row_context!r}, finalise from {context_key!r}"
                     ),
                     capture_id,
                 )

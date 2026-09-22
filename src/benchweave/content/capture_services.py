@@ -217,7 +217,9 @@ class CaptureServicesBundle(ScopedServicesBundle):
                         "waveform_f64le finalise requires waveform metadata: "
                         f"{field} is mandatory (the corpus captureManifest allOf)"
                     )
-        record = self._writer.finalise(capture_id, self._wall())  # fresh stamp
+        record = self._writer.finalise(
+            capture_id, self._wall(), self._context_key
+        )  # fresh stamp
         manifest: dict[str, Any] = {
             "capture_id": capture_id,
             "format": fmt,
