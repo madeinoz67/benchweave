@@ -808,7 +808,7 @@
     {
       "path": "otdp/0.2.1/otdp-transport-provider.schema.json",
       "source": "standards/otdp/0.2.1/otdp-transport-provider.schema.json",
-      "sha256": "1aa46b50b310d705527601a93fc3310be744f97a95ba782e451de14baeb39a4a"
+      "sha256": "88af7e2bb8ceac64d68d37b056d87e65491cf4c76500be186071f4b728059bbc"
     },
     {
       "path": "otdp/0.2.1/otdp-runtime.schema.json",

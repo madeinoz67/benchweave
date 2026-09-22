@@ -46,7 +46,7 @@ Extension is additive and disjoint: a provider grammar introduces **new** kinds 
 
 `limits` keys are provider-defined and review-read: they state what the reviewer understood the implementation to bound. Actual byte-bound enforcement is `transfer`'s own, not `limits`' — a `limits` entry neither widens nor narrows what the transport layer enforces.
 
-Grammar subschemas type the transaction dict's JSON-representable fields. `data` fields are bytes at the adapter ABI (§8.1) and base64 text in contract documents and offline checks. Provider transactions are `HostServices.transfer` calls on the commissioned connection: they reject unspecified fields, carry no host/path/credential fields, inherit transfer's deadline, cancellation, byte-bounds and evidence enforcement, and remain governed by the `scoped_transport` permission. No new permission name exists for providers because a provider transfer *is* a scoped transport.
+Grammar subschemas type the transaction dict's JSON-representable fields. `data` fields are bytes at the adapter ABI (§8.1) and base64 text in contract documents and offline checks. Provider transactions are `HostServices.transfer` calls on the commissioned connection: they inherit transfer's deadline, cancellation, byte-bounds and evidence enforcement unconditionally, and remain governed by the `scoped_transport` permission; they reject unspecified fields and carry no host/path/credential fields when the grammar is authored that way — a contract's own schemas decide its transaction shape, and that authorship is review surface (§4), not a schema guarantee. No new permission name exists for providers because a provider transfer *is* a scoped transport.
 
 ## 4. The security surface
 
