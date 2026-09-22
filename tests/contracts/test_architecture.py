@@ -626,15 +626,15 @@ def test_documents_ignores_markdown_links_inside_fenced_code_blocks(
         (
             "devices",
             _active_standard_dir("otdp") + "/examples/reference-hid-meter.json",
-            '"otdp.transport.reference_hid/1.0.0"',
+            '"otdp.transport.reference-hid/1.0.0"',
             '"otdp.transport.other/1.0.0"',
             "provider",
         ),
         (
             "devices",
             _active_standard_dir("otdp") + "/examples/reference-hid-meter.json",
-            '"sha256": "4a7f53b4313f6279f003737a756151516033ed1573cffd5c14b00ddfa0b3dc79"',
-            '"sha256": "4a7f53b4313f6279f003737a756151516033ed1573cffd5c14b00ddfa0b3dc7"',
+            '"sha256": "cf50392a5d9f996ebe40796800b3ee84ce72b420594acc902fed893efbf3cc47"',
+            '"sha256": "cf50392a5d9f996ebe40796800b3ee84ce72b420594acc902fed893efbf3cc4"',
             "pinned provider",
         ),
         (

@@ -32,10 +32,10 @@
       "protocol_reference": "Synthetic HID report protocol; the grammar is the pinned provider contract"
     },
     "provider": {
-      "feature_id": "otdp.transport.reference_hid/1.0.0",
+      "feature_id": "otdp.transport.reference-hid/1.0.0",
       "id": "urn:otdp:transport-provider:reference-hid:1.0.0",
       "path": "reference-provider.json",
-      "sha256": "4a7f53b4313f6279f003737a756151516033ed1573cffd5c14b00ddfa0b3dc79"
+      "sha256": "cf50392a5d9f996ebe40796800b3ee84ce72b420594acc902fed893efbf3cc47"
     }
   },
   "capabilities": [
@@ -79,7 +79,7 @@
   "required_features": [
     "otdp.core/0.1.0",
     "otdp.adapter/0.1.0",
-    "otdp.transport.reference_hid/1.0.0"
+    "otdp.transport.reference-hid/1.0.0"
   ],
   "provenance": {
     "sources": [

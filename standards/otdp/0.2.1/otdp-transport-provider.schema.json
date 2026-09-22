@@ -10,7 +10,8 @@
     },
     "feature_id": {
       "type": "string",
-      "pattern": "^[a-z][a-z0-9_.-]*/[0-9]+\\.[0-9]+(?:\\.[0-9]+)?$"
+      "pattern": "^otdp\\.transport\\.[a-z][a-z0-9-]*/[0-9]+\\.[0-9]+(?:\\.[0-9]+)?$",
+      "description": "The feature this contract registers on admission. Provider features live under otdp.transport. only — the otdp.* namespace is corpus-owned (extension-contract section 1) and a contract claiming any other reserved id is refused here, before any host could mint it."
     },
     "version": {
       "type": "string",

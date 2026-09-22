@@ -1,7 +1,7 @@
 {
   "contract_version": "0.1.0",
   "id": "urn:otdp:transport-provider:reference-hid:1.0.0",
-  "feature_id": "otdp.transport.reference_hid/1.0.0",
+  "feature_id": "otdp.transport.reference-hid/1.0.0",
   "version": "1.0.0",
   "description": "Synthetic USB-HID-class provider contract. Reference grammar only; not a vendor driver, not hardware-qualified, not an admitted host implementation.",
   "transport_kind": "usb_hid",

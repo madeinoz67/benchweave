@@ -10,6 +10,8 @@ The standard catalog is `device-profile-catalog.json`, validated by `device-prof
 
 `required_features` is now an extensible identifier list, but every identifier must be understood by the host before admission. Initial known features are core/0.1.0, adapter/0.1.0, passive_can/0.1.0, profile_actions/0.1.0, measurement/0.1.0 under the `otdp.` namespace, and the twelve catalog profile IDs. A well-formed unknown identifier is not automatically supported. This replaces v0.2's closed feature enumeration without weakening admission.
 
+The `otdp.*` namespace is corpus-owned. An `otdp.*` identifier is known exactly when the corpus admits it (the core lanes and catalog profile ids) or when a transport-provider object declares it through a hash-verified, host-admitted provider contract (section 6); any other `otdp.*` identifier is a refusal at every admission point, not an extension opportunity. Identifiers outside `otdp.*` remain vendor-namespaced and follow the understood-by-the-host rule above.
+
 Version matching is exact. This revision does not negotiate version ranges or silently choose a similar profile. A future profile revision gets its own ID, schemas, semantic rules and tests. Unknown optional `x-` metadata remains ignorable and cannot change required behaviour.
 
 ## 2. Action admission and invocation

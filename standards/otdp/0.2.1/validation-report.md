@@ -2,7 +2,7 @@
 
 # OTDP 0.2.1 specification verification
 
-**Result: 605/605 checks passed; 0 failed.**
+**Result: 612/612 checks passed; 0 failed.**
 
 12 class profiles and 50 input/output action contracts were checked against Draft 2020-12. Each action has a positive vector. Descriptor declarations, pinned contract hashes, runtime envelopes, typed datasets and selected rejection/semantic boundaries were checked. Transport-provider declarations, their pinned contract documents and the provider grammar subschemas were checked; connection-to-grant resolution is commissioned state and stays gateway-side.
 
@@ -32,7 +32,11 @@
 - PASS: Reject orphan transport feature
 - PASS: Reject provider additional properties
 - PASS: Reject provider approval without evidence
+- PASS: Reject provider feature outside the transport namespace
+- PASS: Reject provider grammar shadowing a generic kind
 - PASS: Reject provider identity disagreement
+- PASS: Reject provider identity name disagreement
+- PASS: Reject provider identity version disagreement
 - PASS: Reject provider on scoped transport
 - PASS: Reject provider scope beyond commissioned connection
 - PASS: Reject provider without required feature entry
@@ -481,6 +485,9 @@
 - PASS: reference-hid-meter.json pinned provider urn:otdp:transport-provider:reference-hid:1.0.0
 - PASS: reference-hid-meter.json provider contract structure
 - PASS: reference-hid-meter.json provider declaration
+- PASS: reference-hid-meter.json provider feature namespace
+- PASS: reference-hid-meter.json provider grammar disjoint from generic kinds
+- PASS: reference-hid-meter.json provider identity coherence
 - PASS: reference-hid-meter.json vector file resolves
 - PASS: reference-psu.json descriptor structure
 - PASS: reference-psu.json known required features

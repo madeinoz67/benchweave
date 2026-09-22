@@ -793,17 +793,17 @@
     {
       "path": "otdp/0.2.1/examples/reference-hid-meter.json",
       "source": "standards/otdp/0.2.1/examples/reference-hid-meter.json",
-      "sha256": "e0dea2eccff879882b64844d2363e6057ff028aa7180e419581a632a863c79ad"
+      "sha256": "33d1ee0cceaf2c21cffae019a983b15460cebedab162bc291d61d7fe5d16b754"
     },
     {
       "path": "otdp/0.2.1/examples/reference-provider.json",
       "source": "standards/otdp/0.2.1/examples/reference-provider.json",
-      "sha256": "4a7f53b4313f6279f003737a756151516033ed1573cffd5c14b00ddfa0b3dc79"
+      "sha256": "cf50392a5d9f996ebe40796800b3ee84ce72b420594acc902fed893efbf3cc47"
     },
     {
       "path": "otdp/0.2.1/otdp-transport-provider.schema.json",
       "source": "standards/otdp/0.2.1/otdp-transport-provider.schema.json",
-      "sha256": "f1990c6b9d78edb46310e616f8b28e8d6c204317a6b9dbc400171654279721a3"
+      "sha256": "1aa46b50b310d705527601a93fc3310be744f97a95ba782e451de14baeb39a4a"
     },
     {
       "path": "otdp/0.2.1/otdp-runtime.schema.json",
