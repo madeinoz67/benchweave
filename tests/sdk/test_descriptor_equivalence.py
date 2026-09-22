@@ -319,3 +319,307 @@ def test_clean_cells_project_the_execution_view(tmp_path: Path) -> None:
         assert {a["action_id"] for a in view["actions"]} == set(
             descriptor.get("actions", {})
         )
+
+
+# ---------------------------------------------------------------------------
+# 0.2.1 extension (gateway #147, PR-B content folded into PR A by the
+# design record's build-time amendment): the SDK checker over the corpus
+# example set and the shared provider lattice. The agreement property lives
+# here because only the parent sees both sides — the corpus bytes from this
+# tree, the checker from the pinned submodule.
+# ---------------------------------------------------------------------------
+
+EXAMPLES = ROOT / "standards" / "otdp" / "0.2.1" / "examples"
+
+
+def _example_descriptor_names() -> list[str]:
+    """Every descriptor-shaped 0.2.1 example (carries ``otdp_version``).
+
+    Vectors files and the provider contract itself are filtered by content,
+    not by name, so a new example kind joins the sweep without an edit here.
+    """
+    names = [
+        path.name
+        for path in sorted(EXAMPLES.glob("*.json"))
+        if "otdp_version" in json.loads(path.read_text())
+    ]
+    assert names, "the 0.2.1 example set has no descriptors"
+    return names
+
+
+def _sdk_check(path: Path) -> tuple[int, str]:
+    """Run the submodule's check CLI; (exit_code, first output line)."""
+    from benchweave_sdk.cli import cli as sdk_cli
+    from click.testing import CliRunner
+
+    result = CliRunner().invoke(sdk_cli, ["check", str(path)])
+    first = result.output.splitlines()[0] if result.output.strip() else ""
+    return int(result.exit_code), first
+
+
+@pytest.mark.parametrize("name", _example_descriptor_names())
+def test_sdk_checker_accepts_the_021_example_set(name: str) -> None:
+    """Every descriptor-shaped corpus example checks clean, in place.
+
+    The provider example's pin resolves descriptor-relative to its sibling
+    contract; the class examples' pins resolve beside the version dir. A
+    corpus example the pinned SDK refuses is corpus/check drift caught at
+    the parent, which is the point of housing this sweep here.
+    """
+    exit_code, output = _sdk_check(EXAMPLES / name)
+    assert exit_code == 0, f"{name}: {output}"
+
+
+def test_example_sweep_bites_on_a_mismatched_pin(tmp_path: Path) -> None:
+    """The sweep has teeth: a corrupted example pin is refused, not waved through.
+
+    The control arm the sweep needs so green means something: the corpus
+    reference pair copied verbatim checks clean, the same pair with the
+    provider digest pointed at the wrong bytes refuses with the pin prefix.
+    """
+    package = tmp_path / "mismatch-control"
+    package.mkdir()
+    (package / "reference-provider.json").write_bytes(
+        (EXAMPLES / "reference-provider.json").read_bytes()
+    )
+    descriptor = json.loads((EXAMPLES / "reference-hid-meter.json").read_text())
+    (package / "descriptor.json").write_text(json.dumps(descriptor, indent=2))
+    exit_code, output = _sdk_check(package / "descriptor.json")
+    assert exit_code == 0, output
+
+    sabotaged = json.loads(json.dumps(descriptor))
+    sabotaged["transport"]["provider"]["sha256"] = "b" * 64
+    (package / "descriptor.json").write_text(json.dumps(sabotaged, indent=2))
+    exit_code, output = _sdk_check(package / "descriptor.json")
+    assert exit_code == 1
+    assert "provider_contract_hash_mismatch:" in output
+
+
+# --- the shared provider lattice: 4 valid variants + 8 single faults ---
+
+
+def _base_pair() -> tuple[dict[str, Any], dict[str, Any]]:
+    """The corpus reference descriptor/contract pair as writable copies."""
+    descriptor = json.loads((EXAMPLES / "reference-hid-meter.json").read_text())
+    contract = json.loads((EXAMPLES / "reference-provider.json").read_text())
+    return descriptor, contract
+
+
+def _minimal_pair() -> tuple[dict[str, Any], dict[str, Any]]:
+    descriptor, contract = _base_pair()
+    descriptor["capabilities"] = ["identify"]
+    descriptor["operations"] = {"identify": descriptor["operations"]["identify"]}
+    descriptor["parameters"] = []
+    return descriptor, contract
+
+
+def _write_package(
+    tmp_path: Path,
+    name: str,
+    descriptor: dict[str, Any],
+    contract: dict[str, Any] | None,
+    *,
+    recompute_digest: bool = True,
+) -> Path:
+    """Write ``<tmp>/<name>/`` holding the descriptor and its pinned contract.
+
+    Mirrors the SDK lane's builder: the pin digest is recomputed from the
+    bytes actually written unless the fixture deliberately faults it.
+    """
+    package = tmp_path / name
+    package.mkdir(parents=True)
+    if contract is not None:
+        raw = (json.dumps(contract, indent=2) + "\n").encode()
+        (package / descriptor["transport"]["provider"]["path"]).write_bytes(raw)
+        if recompute_digest:
+            descriptor["transport"]["provider"]["sha256"] = hashlib.sha256(raw).hexdigest()
+    (package / "descriptor.json").write_text(json.dumps(descriptor, indent=2) + "\n")
+    return package / "descriptor.json"
+
+
+def _valid_minimal(tmp_path: Path) -> Path:
+    descriptor, contract = _minimal_pair()
+    return _write_package(tmp_path, "minimal", descriptor, contract)
+
+
+def _valid_with_class_profiles(tmp_path: Path) -> Path:
+    descriptor, contract = _minimal_pair()
+    catalog = json.loads(
+        (ROOT / "standards" / "otdp" / "0.2.1" / "device-profile-catalog.json").read_text()
+    )
+    profile_id = sorted(profile["id"] for profile in catalog["profiles"])[0]
+    descriptor["required_features"] += [
+        "otdp.profile_actions/0.1.0",
+        "otdp.measurement/0.1.0",
+        profile_id,
+    ]
+    return _write_package(tmp_path, "class-profiles", descriptor, contract)
+
+
+def _valid_with_x_settings(tmp_path: Path) -> Path:
+    descriptor, contract = _minimal_pair()
+    descriptor["transport"]["settings"]["x-report-timeout"] = 30
+    return _write_package(tmp_path, "x-settings", descriptor, contract)
+
+
+def _valid_corpus_reference(tmp_path: Path) -> Path:
+    # The corpus example's pin covers the corpus bytes; writing them verbatim
+    # is the only way the example's own digest verifies.
+    package = tmp_path / "corpus-reference"
+    package.mkdir()
+    (package / "reference-provider.json").write_bytes(
+        (EXAMPLES / "reference-provider.json").read_bytes()
+    )
+    (package / "descriptor.json").write_bytes(
+        (EXAMPLES / "reference-hid-meter.json").read_bytes()
+    )
+    return package / "descriptor.json"
+
+
+VALID_LATTICE: dict[str, Callable[[Path], Path]] = {
+    "minimal_provider": _valid_minimal,
+    "provider_with_class_profile_features": _valid_with_class_profiles,
+    "provider_with_x_settings": _valid_with_x_settings,
+    "corpus_reference_descriptor": _valid_corpus_reference,
+}
+
+Fault = tuple[dict[str, Any], dict[str, Any] | None, str]
+
+
+def _fault_feature_not_required() -> Fault:
+    descriptor, contract = _minimal_pair()
+    feature = descriptor["transport"]["provider"]["feature_id"]
+    descriptor["required_features"].remove(feature)
+    return descriptor, contract, "provider_feature_missing:"
+
+
+def _fault_orphan_transport_feature() -> Fault:
+    descriptor, _ = _minimal_pair()
+    del descriptor["transport"]["provider"]
+    return descriptor, None, "provider_transport_undeclared:"
+
+
+def _fault_unknown_otdp_feature() -> Fault:
+    descriptor, contract = _minimal_pair()
+    descriptor["required_features"].append("otdp.core/9.9.9")
+    return descriptor, contract, "unknown_otdp_feature:"
+
+
+def _fault_provider_on_serial() -> Fault:
+    # The transport arms are closed objects, so the oneOf refuses a provider
+    # on serial: the schema owns this fault (a "Contract validation failed"
+    # refusal, not a census prefix).
+    descriptor, contract = _minimal_pair()
+    descriptor["transport"] = {
+        "type": "serial",
+        "connection_key": "power_meter",
+        "settings": {
+            "baud": 115200,
+            "data_bits": 8,
+            "parity": "none",
+            "stop_bits": 1,
+            "rtscts": False,
+            "max_frame_bytes": 128,
+        },
+        "provider": descriptor["transport"]["provider"],
+    }
+    return descriptor, contract, "Contract validation failed"
+
+
+def _fault_without_adapter_mode() -> Fault:
+    # Custom transport requires adapter mode (specification section 6.4); the
+    # census's placement row names it even on the schema-refused document.
+    descriptor, contract = _minimal_pair()
+    descriptor["integration"] = {"mode": "declarative"}
+    descriptor["required_features"].remove("otdp.adapter/0.1.0")
+    return descriptor, contract, "provider_transport_undeclared:"
+
+
+def _fault_escaping_pin_path() -> Fault:
+    descriptor, _ = _minimal_pair()
+    descriptor["transport"]["provider"]["path"] = "../outside-provider.json"
+    return descriptor, None, "provider_contract_missing:"
+
+
+def _fault_wrong_pin_digest() -> Fault:
+    descriptor, contract = _minimal_pair()
+    descriptor["transport"]["provider"]["sha256"] = "a" * 64
+    return descriptor, contract, "provider_contract_hash_mismatch:"
+
+
+def _fault_provider_extra_property() -> Fault:
+    descriptor, contract = _minimal_pair()
+    descriptor["transport"]["provider"]["vendor_extra"] = "not sanctioned"
+    return descriptor, contract, "Contract validation failed"
+
+
+FAULT_LATTICE: dict[str, Callable[[], Fault]] = {
+    "feature_id_absent_from_required_features": _fault_feature_not_required,
+    "orphan_otdp_transport_feature": _fault_orphan_transport_feature,
+    "unknown_otdp_id": _fault_unknown_otdp_feature,
+    "provider_on_non_custom_transport": _fault_provider_on_serial,
+    "provider_without_adapter_mode": _fault_without_adapter_mode,
+    "escaping_pin_path": _fault_escaping_pin_path,
+    "wrong_pin_sha256": _fault_wrong_pin_digest,
+    "provider_object_with_additional_properties": _fault_provider_extra_property,
+}
+
+
+@pytest.mark.parametrize("build", list(VALID_LATTICE.values()), ids=list(VALID_LATTICE))
+def test_provider_lattice_valid_slots_check_clean(
+    tmp_path: Path, build: Callable[[Path], Path]
+) -> None:
+    """Metric 1, valid half: the four valid variants check clean (4/4)."""
+    exit_code, output = _sdk_check(build(tmp_path))
+    assert exit_code == 0, output
+
+
+@pytest.mark.parametrize("name", list(FAULT_LATTICE), ids=list(FAULT_LATTICE))
+def test_provider_lattice_fault_slots_refuse_with_named_prefixes(
+    tmp_path: Path, name: str
+) -> None:
+    """Metric 1, fault half: 8/8 refuse, five with census prefixes, three at
+    the schema surface ("Contract validation failed" — the honest mapping the
+    record's Metric-1 amendment pins)."""
+    descriptor, contract, expected = FAULT_LATTICE[name]()
+    slot = _write_package(tmp_path, name, descriptor, contract, recompute_digest=False)
+    exit_code, output = _sdk_check(slot)
+    assert exit_code == 1, f"{name}: unexpectedly clean"
+    assert expected in output, f"{name}: expected {expected!r}, got {output!r}"
+
+
+def test_bomd_provider_document_is_digest_governed(tmp_path: Path) -> None:
+    """EN-3 disposition (RedTeam wave, routed here): a BOM'd or UTF-16
+    provider document is ADMITTED when the pin covers its bytes, and refused
+    with the pin prefix when it does not — on both encodings alike.
+
+    This mirrors the corpus statement, not a wider claim: the pin is over
+    the raw bytes read from disk (transport-providers.md section 2 —
+    "digest-pinned"; the design record's PKG rows — "hashed from disk,
+    never fetched"), so the digest, never the encoding, is the refusal
+    surface. The gateway's increment-3 admission must decide its own
+    posture against this KNOWINGLY, the same disclosed-divergence posture
+    as the symlink question.
+    """
+    descriptor, contract = _minimal_pair()
+    plain = (json.dumps(contract, indent=2) + "\n").encode()
+    variants = {
+        "utf8-bom": b"\xef\xbb\xbf" + plain,
+        "utf16": plain.decode().encode("utf-16"),
+    }
+    for label, raw in variants.items():
+        package = tmp_path / label
+        package.mkdir()
+        (package / "reference-provider.json").write_bytes(raw)
+        pinned = json.loads(json.dumps(descriptor))
+        pinned["transport"]["provider"]["sha256"] = hashlib.sha256(raw).hexdigest()
+        (package / "descriptor.json").write_text(json.dumps(pinned, indent=2))
+        exit_code, output = _sdk_check(package / "descriptor.json")
+        assert exit_code == 0, f"{label}, pinned bytes: {output}"
+
+        mismatched = json.loads(json.dumps(descriptor))
+        mismatched["transport"]["provider"]["sha256"] = hashlib.sha256(plain).hexdigest()
+        (package / "descriptor.json").write_text(json.dumps(mismatched, indent=2))
+        exit_code, output = _sdk_check(package / "descriptor.json")
+        assert exit_code == 1, f"{label}, mismatched pin: unexpectedly clean"
+        assert "provider_contract_hash_mismatch:" in output, output
