@@ -69,9 +69,11 @@ def main() -> int:
             target.write_text(render_matrix(root), encoding="utf-8")
             print(f"compatibility matrix written to {target}")
             return 0
-        except ValueError as exc:
-            # Fail-closed renders (a committed source absent) fail styled like
-            # the check/versions/repin lanes, never as a raw traceback.
+        except (ValueError, OSError) as exc:
+            # Fail-closed renders fail styled like the check/versions/repin
+            # lanes, never as a raw traceback — a missing committed source is
+            # an OSError (absent pyproject/.gitmodules), a malformed one a
+            # ValueError (StandardsError, TOMLDecodeError).
             print(f"standards matrix error: {exc}", file=sys.stderr)
             return 1
     if arguments.command == "versions":

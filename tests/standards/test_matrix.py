@@ -236,3 +236,21 @@ def test_gate_still_bites_on_matrix_hand_edit_without_submodule(tmp_path: Path) 
     failures = check_matrix(repo)
     assert failures
     assert failures[0].startswith("stale_matrix:")
+
+
+def test_cli_matrix_check_fails_styled_without_pyproject(tmp_path: Path) -> None:
+    """A missing committed source is a styled refusal, never a raw traceback
+    (absent pyproject.toml raises OSError inside the render)."""
+    repo = _checkout_copy(tmp_path, "nopyproject", fork_origin=False)
+    (repo / "pyproject.toml").unlink()
+    result = subprocess.run(
+        [sys.executable, "-m", "benchweave.standards", "matrix", "--check"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 1
+    combined = result.stdout + result.stderr
+    assert "standards matrix error:" in combined
+    assert "Traceback" not in combined, "the matrix lane must fail styled, not raw"
