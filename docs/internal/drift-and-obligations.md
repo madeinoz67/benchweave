@@ -117,6 +117,19 @@ and remain the reviewer's job.
     JSON arrays). Second surface arrival here in as many days (#110, then #112) — the
     row lands per obligation 12's own principle.
 
+15. **The transport-provider lane** (OTDP 0.2.1's provider declaration: corpus schema
+    and prose in this repository, offline conformance in `packages/sdk`, gateway
+    admission/grant still increment 3 — gateway issue #147's implementation lane) → the
+    increment-2/3 pairing constraint (the #147 design record's AR-6 route): an SDK
+    provider sync proves the descriptor lane only — the gateway's admission seam is a
+    separate increment, and a corpus change that lands after the SDK synced re-opens
+    `make check-sdk-standards` (`content_drift_without_version` for the moved file)
+    until the next SDK train carries the bytes; `tests/sdk/test_descriptor_equivalence.py`
+    is the agreement surface that must stay green across the pair. The designed carrier
+    of the constraint is the SDK lock's `compatibility.notes` field; it is still null at
+    the `a2aaf5b` pointer (PR #44 merged before the route was homed), so this row
+    carries the constraint until an SDK train fills the field.
+
 ## CI map
 
 | Job | What it catches |
