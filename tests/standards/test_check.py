@@ -139,3 +139,47 @@ def test_unexpected_vendored_file_is_stale(tmp_path: Path) -> None:
     stray.write_text("{}\n")
     failures = run_check(ROOT, sdk)
     assert "stale_generated" in _prefixes(failures)
+
+
+def test_run_check_refuses_mirror_lock_drift(tmp_path: Path) -> None:
+    """CON-12: the manifest sdk_compatibility mirror must track the SDK lock."""
+    from benchweave.standards.check import run_check
+
+    sdk = _sdk_copy(tmp_path)
+    lock = _lock(sdk)
+    lock["compatibility"]["sdk"] = "9.9.9"
+    _write_lock(sdk, lock)
+    failures = run_check(ROOT, sdk)
+    assert "sdk_compatibility_drift" in _prefixes(failures)
+
+
+def test_mirror_drift_names_each_field(tmp_path: Path) -> None:
+    """Each drifted key is its own named failure — one per field, not one blob."""
+    from benchweave.standards.check import run_check
+
+    sdk = _sdk_copy(tmp_path)
+    lock = _lock(sdk)
+    lock["compatibility"] = {
+        "main_project": ">=9.0.0",
+        "sdk": "9.9.9",
+        "notes": "regenerated",
+    }
+    _write_lock(sdk, lock)
+    failures = run_check(ROOT, sdk)
+    drift = sorted(line for line in failures if line.startswith("sdk_compatibility_drift:"))
+    assert len(drift) == 3
+    assert any(" manifest main_project=" in line for line in drift)
+    assert any(" manifest sdk=" in line for line in drift)
+    assert any(" manifest notes=" in line for line in drift)
+
+
+def test_mirror_null_and_empty_notes_normalise_equal(tmp_path: Path) -> None:
+    """The lock's nullable notes semantics: null and "" are the same value."""
+    from benchweave.standards.check import run_check
+
+    sdk = _sdk_copy(tmp_path)
+    lock = _lock(sdk)
+    lock["compatibility"]["notes"] = ""
+    _write_lock(sdk, lock)
+    failures = run_check(ROOT, sdk)
+    assert "sdk_compatibility_drift" not in _prefixes(failures)

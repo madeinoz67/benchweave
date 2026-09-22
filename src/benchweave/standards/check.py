@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from .export import export_bundle
-from .manifest import load_identity, load_manifest
+from .manifest import load_identity, load_manifest, load_sdk_compatibility
 
 LOCK_NAME = "standards-lock.json"
 VENDORED = "src/benchweave_sdk/standards"
@@ -31,8 +31,8 @@ def run_check(root: Path, sdk_root: Path | None = None) -> list[str]:
     """Verify the pinned SDK against a fresh export; ``[]`` means clean.
 
     Re-exports the bundle into a temporary directory (never the working tree),
-    then compares versions, digests, the vendored file set and the
-    compatibility block.
+    then compares versions, digests, the vendored file set, the compatibility
+    block, and the manifest's ``sdk_compatibility`` mirror against the lock.
     """
     sdk = sdk_root if sdk_root is not None else root / "packages" / "sdk"
     workspace = Path(tempfile.mkdtemp(prefix="benchweave-standards-check-"))
@@ -49,6 +49,7 @@ def run_check(root: Path, sdk_root: Path | None = None) -> list[str]:
     failures.extend(_compare_lock(document, lock))
     failures.extend(_compare_tree(document, sdk))
     failures.extend(_compare_compatibility(document, lock))
+    failures.extend(_compare_mirror(root, lock))
     return failures
 
 
@@ -178,6 +179,37 @@ def _compare_tree(document: dict[str, Any], sdk: Path) -> list[str]:
                 "match the exported standard"
             )
     return failures
+
+
+def _compare_mirror(root: Path, lock: dict[str, Any]) -> list[str]:
+    """The manifest's ``sdk_compatibility`` mirror must equal the SDK lock's block.
+
+    The lock stays the authority; the mirror exists so the matrix render can
+    read committed state (CON-12). Every initialized checkout and CI lane
+    runs this comparison, so a lock compatibility change cannot merge without
+    the mirror moving. Empty-string and null notes normalise equal — the
+    lock's nullable semantics.
+    """
+    mirror = load_sdk_compatibility(root)
+    sdk_block = lock.get("compatibility")
+    sdk_block = sdk_block if isinstance(sdk_block, dict) else {}
+    failures: list[str] = []
+    for field in ("main_project", "notes", "sdk"):
+        expected = _nullable_text(getattr(mirror, field))
+        actual = _nullable_text(sdk_block.get(field))
+        if expected != actual:
+            failures.append(
+                f"sdk_compatibility_drift: manifest {field}={expected!r} vs SDK lock "
+                f"{field}={actual!r}; update standards-manifest.json sdk_compatibility"
+            )
+    return failures
+
+
+def _nullable_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value)
+    return text if text else None
 
 
 def _compare_compatibility(document: dict[str, Any], lock: dict[str, Any]) -> list[str]:
