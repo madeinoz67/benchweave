@@ -219,23 +219,31 @@ def _compare_mirror(root: Path, sdk: Path, lock: dict[str, Any]) -> list[str]:
 
 
 def _submodule_state_failures(root: Path, sdk: Path) -> list[str]:
-    """Refuse the mirror comparison when the working tree is not the pin.
+    """Refuse the mirror comparison unless the working tree IS the pin.
 
-    Both SHAs unknown (a non-git root, as in the test fixtures) carries no
-    submodule state to be wrong about — the comparison proceeds. Any
-    disagreement, including an uninitialized submodule against a recorded
-    gitlink, is refused with the submodule state named, never a manifest-edit
+    A parent that records no gitlink (a non-git root, as in the test
+    fixtures) carries no submodule state to be wrong about — the comparison
+    proceeds. Against a recorded gitlink, an uninitialized submodule (no
+    ``.git`` inside ``packages/sdk``) is refused by name with no SHAs:
+    rev-parse inside it would discover the superproject and report the
+    wrong repository's HEAD as submodule state. An initialized working tree
+    at another commit is refused with both SHAs named. Never a manifest-edit
     instruction.
     """
     pinned = _pinned_sdk_sha(root)
-    head = _sdk_head_sha(sdk)
-    if pinned is None and head is None:
+    if pinned is None:
         return []
-    if pinned == head:
+    if not (sdk / ".git").exists():
+        return [
+            "sdk_compatibility_drift: submodule packages/sdk is not initialized; "
+            "run git submodule update --init packages/sdk"
+        ]
+    head = _sdk_head_sha(sdk)
+    if head == pinned:
         return []
     return [
         "sdk_compatibility_drift: submodule working tree is not at the pinned "
-        f"commit (working {head or 'unknown'} vs pinned {pinned or 'unknown'}); "
+        f"commit (working {head or 'unknown'} vs pinned {pinned}); "
         "run git submodule update --init packages/sdk"
     ]
 

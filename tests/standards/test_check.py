@@ -251,6 +251,52 @@ def _repo_with_submodule(tmp_path: Path) -> Path:
     return repo
 
 
+def _repo_with_uninitialized_submodule(tmp_path: Path) -> Path:
+    """A real git root whose gitlink pins packages/sdk, never initialized.
+
+    The directory exists with no ``.git`` inside — the plain-clone-before-init
+    shape. git run inside it discovers the superproject, which is exactly the
+    misattribution the refusal must not make.
+    """
+    from benchweave.standards.check import _pinned_sdk_sha
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    shutil.copytree(ROOT / "standards", repo / "standards")
+    parity = repo / "src/benchweave/presentation/contracts.py"
+    parity.parent.mkdir(parents=True)
+    shutil.copy2(ROOT / "src/benchweave/presentation/contracts.py", parity)
+    _git("init", cwd=repo)
+    (repo / "packages/sdk").mkdir(parents=True)
+    _git("add", "-A", cwd=repo)
+    pinned = _pinned_sdk_sha(ROOT)
+    assert pinned is not None
+    _git("update-index", "--add", "--cacheinfo", f"160000,{pinned},packages/sdk", cwd=repo)
+    _git("commit", "-m", "scratch: gitlink pinned, submodule never initialized", cwd=repo)
+    return repo
+
+
+def test_mirror_refusal_names_uninitialized_submodule(tmp_path: Path) -> None:
+    """An uninitialized submodule is refused by name — never the
+    superproject's HEAD misattributed as submodule state."""
+    import re
+
+    from benchweave.standards.check import run_check
+
+    repo = _repo_with_uninitialized_submodule(tmp_path)
+    failures = run_check(repo)
+    state = [f for f in failures if f.startswith("sdk_compatibility_drift:")]
+    assert len(state) == 1
+    assert state[0].startswith(
+        "sdk_compatibility_drift: submodule packages/sdk is not initialized"
+    )
+    assert "run git submodule update --init packages/sdk" in state[0]
+    assert not re.search(r"[0-9a-f]{40}", state[0]), (
+        "the uninitialized refusal carries no SHAs — a superproject HEAD must "
+        "never be misattributed as submodule state"
+    )
+
+
 def test_mirror_refuses_moved_submodule_with_honest_message(tmp_path: Path) -> None:
     """CON-12: a working tree away from the gitlink is refused by name.
 
