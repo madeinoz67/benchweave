@@ -340,8 +340,6 @@ def _apply_subset(tmp_path: Path, versions: int) -> None:
     arms (the migration list itself stays global and untouched)."""
     import sqlite3
 
-    from benchweave.state.migrations import Migration
-
     connection = sqlite3.connect(str(tmp_path / "upgrade.db"), isolation_level=None)
     connection.execute("PRAGMA journal_mode=WAL")
     connection.execute("PRAGMA synchronous=FULL")
