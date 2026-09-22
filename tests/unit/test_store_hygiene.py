@@ -362,7 +362,6 @@ def _apply_subset(tmp_path: Path, versions: int) -> None:
             raise
         connection.execute("COMMIT")
     connection.close()
-    del Migration
 
 
 def test_v5_capture_staging_tables_and_the_sweep_serving_index(
