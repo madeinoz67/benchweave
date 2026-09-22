@@ -107,10 +107,15 @@ known_features = {
 # "known" exactly when a verified corpus contract registers it — the
 # admission shape of extension-contract section 6 (hosts know otdp.transport.*
 # ids by admitting contracts, never by list).
-provider_validator = validator(schemas["otdp-transport-provider.schema.json"])
+provider_schema_name = "otdp-transport-provider.schema.json"
+provider_validator = (
+    validator(schemas[provider_schema_name]) if provider_schema_name in schemas else None
+)
 provider_docs = {}
 provider_pin_failures = {}
 for p in sorted((OUT / "examples").glob("*.json")):
+    if provider_validator is None:
+        break  # active corpus predates transport providers; nothing to check
     probe = json.loads(p.read_text(encoding="utf-8"))
     pin = probe.get("transport", {}).get("provider")
     if not pin:
@@ -430,9 +435,11 @@ check("Reject incomplete optional sweep group", "incomplete sweep group" in clas
 d = copy.deepcopy(base)
 d["channels"].append(copy.deepcopy(d["channels"][0]))
 check("Reject duplicate channel", "duplicate channel" in class_errors(d))
-hid = descriptors["reference-hid-meter.json"]
 hid_provider_id = "urn:otdp:transport-provider:reference-hid:1.0.0"
-if hid_provider_id not in provider_docs:
+hid = descriptors.get("reference-hid-meter.json")
+if provider_validator is None:
+    pass  # active corpus predates transport providers; the arms have no subject
+elif hid is None or hid_provider_id not in provider_docs:
     # The corpus's own reference pin is broken (or the example moved): the
     # fault-injection arms below would KeyError on the missing document, so
     # they degrade to this named failure instead of crashing the suite.
