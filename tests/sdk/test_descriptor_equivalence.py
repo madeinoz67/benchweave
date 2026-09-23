@@ -9,7 +9,7 @@ object/map to it.
 
 - a descriptor the SDK check refuses is never gateway-admissible
   (check-clean is a necessary condition for admission), and
-- outside the three sanctioned gateway-stricter cells below, the gates agree
+- outside the four sanctioned gateway-stricter cells below, the gates agree
   in both directions.
 
 The sanctioned asymmetric cells, gateway-strictly-stricter, pinned as
@@ -30,6 +30,23 @@ editing standards bytes):
   inside ``provider_contract_invalid:``) while the SDK's bounded reader
   admits both encodings — the disclosed one-sided asymmetry, pinned here
   rather than "fixed" (the SDK RedTeam EN-3 disposition).
+- duplicate-key decode (fold wave A): a contract whose bytes carry a
+  duplicate key is SDK-clean (``json.loads`` keeps the last value) and
+  gateway-refused (the exact-byte decoder's ``duplicate_key`` gate inside
+  ``provider_contract_invalid:``) — gateway-stricter is the honest
+  direction; the reviewed bytes are the pinned bytes, and a silent
+  last-value collapse would rewrite them.
+
+Two disclosed alignment notes (fold wave A): the provider-pin read cap
+MIRRORS the SDK's 262144-byte bounded-read ``INPUT_BYTE_LIMIT`` — before
+the mirror, the size window (262144, 1048576] admitted gateway-side only;
+the oversize arm pins the window closed on both lanes and a cross-lane
+arm pins the constant equal. And symlinked ANCESTORS of the descriptor's
+package are refused by the SDK's no-follow reader but not by the
+gateway's sub-package segment check — an environment-conditional
+divergence (it manifests only where the package sits under a symlink,
+e.g. macOS ``/tmp`` → ``/private/tmp``); both lanes hold the strict
+no-follow posture for segments INSIDE the package.
 
 Reversed range is both-refuse since benchweave-sdk v0.1.0: S02 was dead
 there (it checked a dict form the 0.2.0 schema no longer admits) until
@@ -1009,3 +1026,107 @@ def test_corpus_known_feature_derivations_match_across_lanes() -> None:
     )
 
     assert gateway_known() == sdk_known()
+
+
+# ---------------------------------------------------------------------------
+# Fold wave A (review finding: two unnamed mismatched cells, pinned here):
+# the size window (closed BEHAVIOURALLY — the gateway's provider-pin read
+# cap mirrors the SDK's 262144-byte bounded-read INPUT_BYTE_LIMIT; before
+# the alignment the window (262144, 1048576] admitted gateway-side only)
+# and the duplicate-key decode (named as a sanctioned gateway-stricter
+# cell: the SDK's json.loads collapses duplicate keys, the gateway's
+# exact-byte decoder refuses them).
+# ---------------------------------------------------------------------------
+
+
+def test_oversize_contract_refuses_on_both_lanes_in_the_aligned_window(
+    tmp_path: Path,
+) -> None:
+    """The size window above the SDK's 262144-byte cap and below the
+    gateway's old 1 MiB admission cap: both lanes refuse now that the
+    provider-pin read cap mirrors the SDK's bound."""
+    descriptor, contract = _minimal_pair()
+    # A corpus-valid contract can exceed the cap: description carries no
+    # maxLength. Pad it past 262144 bytes total, under the old 1048576.
+    contract["description"] = "oversize arm " + "x" * 262_200
+    slot_path = _write_package(tmp_path, "oversize", descriptor, contract)
+    raw = (slot_path.parent / "reference-provider.json").read_bytes()
+    assert 262_144 < len(raw) < 1_048_576  # the arm's premise: the window
+    exit_code, output = _sdk_check(slot_path)
+    assert exit_code == 1, "SDK unexpectedly clean above its bounded-read cap"
+    assert "provider_contract_invalid:" in output, output
+    settings = _settings_for_package(slot_path.parent)
+    admitted, message = _admit(
+        tmp_path,
+        "psu",
+        descriptor,
+        descriptor_path=slot_path,
+        provider_settings=settings,
+        now_wall=NOW_WALL,
+    )
+    assert not admitted, "gateway admitted inside the (now closed) size window"
+    assert "provider_contract_invalid:" in message and "262144" in message, message
+
+
+def test_duplicate_key_contract_is_the_fourth_sanctioned_cell(
+    tmp_path: Path,
+) -> None:
+    """Sanctioned cell: a contract whose bytes carry a duplicate key is
+    SDK-clean (json.loads keeps the last value) and gateway-refused (the
+    exact-byte decoder's duplicate_key gate)."""
+    descriptor, contract = _minimal_pair()
+    plain = (json.dumps(contract, indent=2) + "\n").encode()
+    duplicated = plain.replace(
+        b'{\n  "contract_version": "0.1.0",',
+        b'{\n  "description": "first declaration",\n  "description": '
+        b'"second declaration",\n  "contract_version": "0.1.0",',
+        1,
+    )
+    assert duplicated != plain  # the arm's premise
+    package = tmp_path / "dupkey"
+    package.mkdir()
+    (package / "reference-provider.json").write_bytes(duplicated)
+    pinned = json.loads(json.dumps(descriptor))
+    pinned["transport"]["provider"]["sha256"] = hashlib.sha256(duplicated).hexdigest()
+    slot_path = package / "descriptor.json"
+    slot_path.write_text(json.dumps(pinned, indent=2) + "\n")
+    exit_code, output = _sdk_check(slot_path)
+    assert exit_code == 0, f"SDK unexpectedly dirty on a collapsed duplicate: {output}"
+    settings = {
+        "config_version": "1",
+        "admitted": [
+            {
+                "id": contract["id"],
+                "version": contract["version"],
+                "sha256": hashlib.sha256(plain).hexdigest(),
+                "feature_id": contract["feature_id"],
+                "document": "reference-provider.json",
+            }
+        ],
+        "connections": [],
+    }
+    settings_path = package / "transport-settings.json"
+    settings_path.write_text(json.dumps(settings, indent=2) + "\n")
+    # The settings lane cannot admit the duplicated bytes either; the cell
+    # is pinned at the descriptor-pin seam (settings=None).
+    admitted, message = _admit(
+        tmp_path,
+        "psu",
+        pinned,
+        descriptor_path=slot_path,
+        provider_settings=None,
+        now_wall=NOW_WALL,
+    )
+    assert not admitted
+    assert "provider_contract_invalid:" in message and "duplicate_key" in message, (
+        message
+    )
+
+
+def test_the_provider_pin_cap_mirrors_the_sdk_bound() -> None:
+    """The aligned cap is the SDK's own constant, pinned across lanes so a
+    future change on either side surfaces here first."""
+    from benchweave.control.documents import _PROVIDER_PIN_MAX_BYTES
+    from benchweave_sdk.presentation import INPUT_BYTE_LIMIT
+
+    assert _PROVIDER_PIN_MAX_BYTES == INPUT_BYTE_LIMIT == 262_144

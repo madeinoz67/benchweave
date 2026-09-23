@@ -88,6 +88,13 @@ _RESERVED_TRANSFER_KINDS = frozenset(
 #: well under the metaschema walk's recursion limits).
 _GRAMMAR_SUBSCHEMA_MAX_DEPTH = 32
 
+#: The provider-pin read cap — the SDK's bounded-read ``INPUT_BYTE_LIMIT``
+#: (presentation.py), mirrored so the two admission lanes agree on the size
+#: window (a corpus-valid contract can exceed it: ``description`` carries no
+#: maxLength). The cap is a shared resource bound, not a semantic judgement;
+#: the census pins the constant equal across lanes.
+_PROVIDER_PIN_MAX_BYTES = 262_144
+
 _SCHEMA_FILES = {
     "procedure": "procedure.schema.json",
     "policy": "safety-policy.schema.json",
@@ -610,12 +617,14 @@ def _verify_provider_pin(
                 "package"
             )
         size = target.stat().st_size
-        if size > _MAX_DOCUMENT_BYTES:
+        if size > _PROVIDER_PIN_MAX_BYTES:
             raise AdmissionRejected(
                 f"schema: {logical} provider_contract_invalid: {relative!r} is "
-                f"{size} bytes, above the {_MAX_DOCUMENT_BYTES}-byte admission "
-                "cap; the cap is a gateway resource bound, not a semantic "
-                "disagreement with the contract"
+                f"{size} bytes, above the {_PROVIDER_PIN_MAX_BYTES}-byte "
+                "provider-pin read cap (the SDK's bounded-read bound, mirrored "
+                "so both admission lanes agree on the window); the cap is a "
+                "shared resource bound, not a semantic disagreement with the "
+                "contract"
             )
         raw = target.read_bytes()
     except OSError as exc:
@@ -640,7 +649,7 @@ def _verify_provider_pin(
             f"{relative!r} hashes to {digest} but the descriptor pins {pinned}"
         )
     try:
-        contract = load_document(raw, digest, max_bytes=_MAX_DOCUMENT_BYTES)
+        contract = load_document(raw, digest, max_bytes=_PROVIDER_PIN_MAX_BYTES)
     except DocumentRejected as exc:
         raise AdmissionRejected(
             f"schema: {logical} provider_contract_invalid: {relative!r} ({exc}); "

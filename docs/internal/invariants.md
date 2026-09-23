@@ -262,11 +262,21 @@ rather than rewriting the history — that is how this file earns trust.
   not a rewrite, closed the fork.*
   Amendment (2026-09-23, issue #147 increment 3): the equivalence census extends to the
   provider lattice (the record §4 metric-1 fixtures: 4 valid + 8 single-fault, both legs
-  in-process), and the sanctioned gateway-stricter cells grow to THREE, each named in the
+  in-process), and the sanctioned gateway-stricter cells grow to FOUR, each named in the
   census module docstring — `issued_map:`; `provider_not_admitted:` (admission is
   gateway-only: the SDK cannot see commissioned state, so no offline prefix exists);
-  and the strict-UTF-8 decode (a BOM'd or UTF-16 provider document whose pin covers its
-  bytes is SDK-clean and gateway `invalid_json` inside `provider_contract_invalid:`).
+  the strict-UTF-8 decode (a BOM'd or UTF-16 provider document whose pin covers its
+  bytes is SDK-clean and gateway `invalid_json` inside `provider_contract_invalid:`);
+  and the duplicate-key decode (a contract whose bytes carry a duplicate key is
+  SDK-clean under `json.loads`'s last-value collapse and gateway-refused by the
+  exact-byte decoder's `duplicate_key` gate — gateway-stricter is the honest
+  direction: the reviewed bytes are the pinned bytes). Two alignment notes: the
+  provider-pin read cap mirrors the SDK's 262144-byte bounded-read `INPUT_BYTE_LIMIT`
+  (pinned equal across lanes; before the mirror the size window (262144, 1048576]
+  admitted gateway-side only), and symlinked ANCESTORS of the descriptor's package
+  are an environment-conditional divergence (the SDK's no-follow reader refuses them;
+  the gateway checks sub-package segments — both hold strict no-follow inside the
+  package).
   A set-equality arm pins the gateway's corpus-known feature derivation equal to the
   SDK's at the same vendored version (layer 1 of the two-layer union cannot drift
   silently). The projection itself is UNCHANGED: transport and provider stay
