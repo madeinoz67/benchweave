@@ -80,6 +80,11 @@ class RunStreamHost:
         self._run_id = run_id
         self._clock = clock
         self._devices: dict[str, _StreamDevice] = {}
+        # EVERY bridge the run constructed (F1): end-of-run close authority
+        # is ownership, not stream registration — an event_sink-less
+        # commissioned bridge leaks its Runner and adapter session if only
+        # the streaming registry is closed.
+        self._bridges: dict[str, OTDPBridge] = {}
         #: Run-visible failure counter for the contained ``on_event``
         #: dispatcher (Decision 5, clause 1).
         self.event_callback_failures = 0
@@ -112,6 +117,11 @@ class RunStreamHost:
         return dict(self._devices)
 
     @property
+    def bridges(self) -> dict[str, OTDPBridge]:
+        """Every constructed bridge keyed by bench device id (the close set)."""
+        return dict(self._bridges)
+
+    @property
     def armed(self) -> bool:
         return self.poll_slice_ns is not None
 
@@ -123,7 +133,16 @@ class RunStreamHost:
         """
         if device_id in self._devices:
             raise ValueError(f"stream device registered twice: {device_id!r}")
+        self.adopt(device_id, bridge)
         self._devices[device_id] = _StreamDevice(device_id, bridge, controller)
+
+    def adopt(self, device_id: str, bridge: OTDPBridge) -> None:
+        """Hold one constructed bridge for end-of-run close.
+
+        Every commissioned bridge is adopted — with or without event
+        services (F1): ``close()`` is the run's single close authority.
+        """
+        self._bridges[device_id] = bridge
 
     # -- arming (Decision 3) ----------------------------------------------------------
 
@@ -278,16 +297,19 @@ class RunStreamHost:
                 )
 
     def close(self) -> None:
-        """The last-resort sweep: close every registered bridge.
+        """The last-resort sweep: close every constructed bridge.
 
         Runs after the terminal record (protection needed the bridges
-        open); ``plugin_close`` is the bridge's own final sweep of anything
-        still live plus the loader/runner release. Contained — a close
-        failure is logged, never raised into the caller's ending.
+        open), and on every exit path that leaves bridges open — a raising
+        ``build_run`` or a raising ``start_run`` closes through here too
+        (F1). ``plugin_close`` is the bridge's own final sweep of anything
+        still live plus the loader/runner release, and is idempotent.
+        Contained — a close failure is logged, never raised into the
+        caller's ending.
         """
-        for device_id, entry in sorted(self._devices.items()):
+        for device_id, bridge in sorted(self._bridges.items()):
             try:
-                entry.bridge.plugin_close()
+                bridge.plugin_close()
             except Exception:
                 _LOG.exception(
                     "stream_close_failed: device=%s run=%s", device_id, self._run_id

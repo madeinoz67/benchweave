@@ -359,13 +359,17 @@ class _RetainingCoordinator(RunCoordinator):
         return body
 
     def start_run(self, run_id: str, principal_id: str) -> dict[str, Any]:
-        record = super().start_run(run_id, principal_id)
         # The last-resort sweep: after the terminal record and lease
         # release (protection needed the bridges open), close each
         # constructed bridge — its own final sweep of anything still live
-        # plus the loader/runner release. Contained inside the host.
-        if self.stream_host is not None:
-            self.stream_host.close()
+        # plus the loader/runner release. Contained inside the host, and
+        # the finally covers a raising lifecycle too (F1): bridges never
+        # leak past the coordinator that owns them.
+        try:
+            record = super().start_run(run_id, principal_id)
+        finally:
+            if self.stream_host is not None:
+                self.stream_host.close()
         return record
 
     @property
@@ -549,7 +553,9 @@ def _build_run_factory(
         key — and the committed fixture-sim tuple remains the declarative
         fallback leg. The quota seam refuses loudly BEFORE any device is
         opened when an adapter bridge would construct without the required
-        operator ceilings.
+        operator ceilings. Every constructed bridge is adopted by the
+        stream host, so every exit path that abandons the build closes
+        them (F1) — the Runner and adapter session never leak.
         """
         content = ContentStore(worker_store)
         spool = tempfile.TemporaryDirectory(prefix=f"stg-run-{run_id}-")
@@ -581,78 +587,93 @@ def _build_run_factory(
         context_key = f"run:{run_id}"
         stream_host = RunStreamHost(run_id=run_id, clock=clock)
         plugins: dict[str, DevicePlugin] = {}
-        for device_id, plan in plans.items():
-            if isinstance(plan, _BridgePlan):
-                if quota_limits is None:
-                    # Survives python -O: the survey above guarantees the
-                    # seam refused already when the keys were missing.
-                    raise RuntimeError(
-                        "run activation invariant violated: bridge plan "
-                        "without constructed quota limits"
+        # F1: every exit path that leaves opened bridges behind closes them
+        # through the host before the refusal propagates — a construction
+        # failure mid-loop (or a coordinator that never materialises) must
+        # not leak the Runner and adapter session.
+        try:
+            for device_id, plan in plans.items():
+                if isinstance(plan, _BridgePlan):
+                    if quota_limits is None:
+                        # Survives python -O: the survey above guarantees
+                        # the seam refused already when the keys were
+                        # missing.
+                        raise RuntimeError(
+                            "run activation invariant violated: bridge plan "
+                            "without constructed quota limits"
+                        )
+                    writer = CaptureStagingStore(
+                        worker_store,
+                        max_capture_bytes=quota_limits.max_capture_bytes,
+                        max_dataset_bytes=quota_limits.max_dataset_bytes,
                     )
-                writer = CaptureStagingStore(
-                    worker_store,
-                    max_capture_bytes=quota_limits.max_capture_bytes,
-                    max_dataset_bytes=quota_limits.max_dataset_bytes,
+                    bundle, capture_controller = build_capture_services(
+                        descriptor_digest=plan.digest,
+                        content=content,
+                        writer=writer,
+                        # M2 timebase identity: seconds = nanoseconds / 1e9
+                        # of the SAME clock the coordinator and poll engine
+                        # slice on (the design's Decision-3/5 pin).
+                        clock=lambda: clock.now_ns() / 1e9,
+                        wall=now_iso,
+                        quota=quota_limits,
+                        context_key=context_key,
+                    )
+                    stream_controller = build_stream_services(
+                        descriptor_digest=plan.digest,
+                        store=worker_store,
+                        wall=now_iso,
+                        quota=quota_limits,
+                        context_key=context_key,
+                        reading_sinks=sinks,
+                    )
+                    bridge = load_otdp_plugin(
+                        _require_registry_session(registry_session).cache_root,
+                        plan.closure.manifest,
+                        plan.closure.manifest_sha256,
+                        entry_relpath=plan.closure.entry_relpath,
+                        descriptor=plan.descriptor,
+                        services=bundle,
+                        simulation=SimulationInfo(
+                            simulated=simulated,
+                            label=str(plan.descriptor.get("id") or device_id),
+                        ),
+                        capture=capture_controller,
+                        stream=stream_controller,
+                    )
+                    bridge.plugin_open(bundle)
+                    plugins[device_id] = bridge
+                    if stream_controller is not None:
+                        stream_host.register(device_id, bridge, stream_controller)
+                    else:
+                        # F1: end-of-run close authority is ownership — a
+                        # commissioned bridge without event services is
+                        # adopted for close all the same.
+                        stream_host.adopt(device_id, bridge)
+                    continue
+                plugin = _load_sim_plugin(plan.name).create_plugin(
+                    now_fn=clock.now_iso, monotonic_ns_fn=clock.now_ns
                 )
-                bundle, capture_controller = build_capture_services(
-                    descriptor_digest=plan.digest,
-                    content=content,
-                    writer=writer,
-                    # M2 timebase identity: seconds = nanoseconds / 1e9 of
-                    # the SAME clock the coordinator and poll engine slice
-                    # on (the design's Decision-3/5 pin).
-                    clock=lambda: clock.now_ns() / 1e9,
-                    wall=now_iso,
-                    quota=quota_limits,
-                    context_key=context_key,
-                )
-                stream_controller = build_stream_services(
-                    descriptor_digest=plan.digest,
-                    store=worker_store,
-                    wall=now_iso,
-                    quota=quota_limits,
-                    context_key=context_key,
-                    reading_sinks=sinks,
-                )
-                bridge = load_otdp_plugin(
-                    _require_registry_session(registry_session).cache_root,
-                    plan.closure.manifest,
-                    plan.closure.manifest_sha256,
-                    entry_relpath=plan.closure.entry_relpath,
-                    descriptor=plan.descriptor,
-                    services=bundle,
-                    simulation=SimulationInfo(
-                        simulated=simulated,
-                        label=str(plan.descriptor.get("id") or device_id),
-                    ),
-                    capture=capture_controller,
-                    stream=stream_controller,
-                )
-                bridge.plugin_open(bundle)
-                plugins[device_id] = bridge
-                if stream_controller is not None:
-                    stream_host.register(device_id, bridge, stream_controller)
-                continue
-            plugin = _load_sim_plugin(plan.name).create_plugin(
-                now_fn=clock.now_iso, monotonic_ns_fn=clock.now_ns
+                plugin.plugin_open(services)
+                plugins[device_id] = plugin
+            return _RetainingCoordinator(
+                worker_store,
+                plugins,
+                clock,
+                clock,
+                docs,
+                # The monitor's retain hook is one-argument (the snapshot
+                # dict); RetainingServices keys evidence per context — one
+                # context per run, so the run's quota bounds its snapshot
+                # retentions.
+                retain=lambda snapshot: services.retain_evidence(f"run:{run_id}", snapshot),
+                spool=spool,
+                stream_host=stream_host,
+                services=services,
             )
-            plugin.plugin_open(services)
-            plugins[device_id] = plugin
-        return _RetainingCoordinator(
-            worker_store,
-            plugins,
-            clock,
-            clock,
-            docs,
-            # The monitor's retain hook is one-argument (the snapshot dict);
-            # RetainingServices keys evidence per context — one context per
-            # run, so the run's quota bounds its snapshot retentions.
-            retain=lambda snapshot: services.retain_evidence(f"run:{run_id}", snapshot),
-            spool=spool,
-            stream_host=stream_host,
-            services=services,
-        )
+        except BaseException:
+            stream_host.close()
+            raise
 
     return build_run
 

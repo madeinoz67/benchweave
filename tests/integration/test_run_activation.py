@@ -99,6 +99,8 @@ import time
 
 
 class DemoSupplyAdapter:
+    CLOSE_CALLS: int = 0
+
     def __init__(self) -> None:
         self.services = None
         self.descriptor = None
@@ -119,7 +121,7 @@ class DemoSupplyAdapter:
         self.services = services
 
     async def close(self, context) -> None:
-        pass
+        DemoSupplyAdapter.CLOSE_CALLS += 1
 
     def _reading(self, parameter, value, unit):
         return {
@@ -273,7 +275,9 @@ def _pin(document: dict[str, Any], path: Path) -> dict[str, str]:
     }
 
 
-def _mutated_descriptor(tmp_path: Path, *, stream_floor_ms: int = 10) -> Path:
+def _mutated_descriptor(
+    tmp_path: Path, *, stream_floor_ms: int = 10, streaming: bool = True
+) -> Path:
     """The committed sim-psu descriptor with the capture/stream permissions.
 
     Additive-only mutations (the fixture byte-mover is deferred as row D):
@@ -285,11 +289,17 @@ def _mutated_descriptor(tmp_path: Path, *, stream_floor_ms: int = 10) -> Path:
     descriptor = json.loads((EXECUTION_FIXTURES / "descriptor-sim-psu.json").read_text())
     adapter = descriptor["integration"]["adapter"]
     adapter["entry_point"] = "benchweave_sim_psu.plugin:create_plugin"
-    adapter["permissions"] = ["scoped_transport", "artifact_writer", "event_sink"]
-    descriptor["stream_limits"] = {
-        "min_interval_ms": stream_floor_ms,
-        "max_subscriptions": 4,
-    }
+    if streaming:
+        adapter["permissions"] = ["scoped_transport", "artifact_writer", "event_sink"]
+        descriptor["stream_limits"] = {
+            "min_interval_ms": stream_floor_ms,
+            "max_subscriptions": 4,
+        }
+    else:
+        # The committed fixture shape: transport-only permissions, no event
+        # services, no capture writer (the F1 leak case — a commissioned
+        # bridge the streaming registry never sees).
+        adapter["permissions"] = ["scoped_transport"]
     # The capture lane's descriptor bounds (the gate's G2 read): sized for
     # the measurement harness's smoke-scale captures.
     descriptor["capture_limits"] = {"max_samples": 1024, "max_bytes": 65536}
@@ -332,6 +342,8 @@ def _lattice(
     write_value: float = 5.0,
     enable_output: bool = False,
     stream_floor_ms: int = 10,
+    streaming: bool = True,
+    two_devices: bool = False,
 ) -> Path:
     """Author the activation lattice: one commissioned supply device.
 
@@ -341,8 +353,15 @@ def _lattice(
     that commissioned its closure.
     """
     tmp_path.mkdir(parents=True, exist_ok=True)
-    descriptor_path = _mutated_descriptor(tmp_path, stream_floor_ms=stream_floor_ms)
+    descriptor_path = _mutated_descriptor(
+        tmp_path, stream_floor_ms=stream_floor_ms, streaming=streaming
+    )
     descriptor = json.loads(descriptor_path.read_text())
+    controller_descriptor_path = tmp_path / "descriptor-controller.json"
+    if two_devices:
+        controller_descriptor_path.write_bytes(
+            (EXECUTION_FIXTURES / "descriptor-sim-controller.json").read_bytes()
+        )
 
     procedure: dict[str, Any] = {
         "contract_version": "0.1.0",
@@ -497,7 +516,25 @@ def _lattice(
                 "identity_record_id": "ident-psu",
                 "connection_key": "sim_psu_local",
                 "channels": ["ch1"],
-            }
+            },
+            *(
+                [
+                    {
+                        "id": "controller",
+                        "generation": 1,
+                        "descriptor": {
+                            "id": "dev.benchweave.sim-controller",
+                            "version": "1.0.0",
+                            "sha256": _sha(controller_descriptor_path.read_bytes()),
+                        },
+                        "identity_record_id": "ident-controller",
+                        "connection_key": "sim_controller_local",
+                        "channels": ["ch1"],
+                    }
+                ]
+                if two_devices
+                else []
+            ),
         ],
         "resources": [{"id": "dut-net", "device_ids": [DEVICE_ID], "depends_on": []}],
         "terminals": [
@@ -625,6 +662,8 @@ class _CommissionedHarness:
         write_value: float = 5.0,
         enable_output: bool = False,
         stream_floor_ms: int = 10,
+        streaming: bool = True,
+        two_devices: bool = False,
     ) -> None:
         self.root = tmp_path
         self.lattice_dir = _lattice(
@@ -635,6 +674,8 @@ class _CommissionedHarness:
             write_value=write_value,
             enable_output=enable_output,
             stream_floor_ms=stream_floor_ms,
+            streaming=streaming,
+            two_devices=two_devices,
         )
         descriptor_path = self.lattice_dir / "descriptor-demo-supply.json"
         plugin_dir = _write_plugin_source(tmp_path / "pluginroot")
@@ -1060,6 +1101,86 @@ def test_r15_fast_bench_signal_degrades_loudly(
         entry = coordinator.stream_host.devices[DEVICE_ID]
         assert entry.engine is None, "a sub-floor subscription must not go live"
         assert entry.controller.live_subscription_ids() == []
+    finally:
+        store.close()
+
+
+# --- fix wave F1: every commissioned bridge closes exactly once --------------------
+
+
+def test_f1_event_sink_less_bridge_closes_at_run_end(tmp_path: Path) -> None:
+    """F1 RED control: a commissioned bridge with NO event services (the
+    committed fixture shape — transport-only permissions) is outside the
+    streaming registry, so the run's only close path never saw it. It must
+    close exactly once at run end regardless of registration."""
+    harness = _CommissionedHarness(tmp_path, "req-f1a", streaming=False)
+    run_id = "run-f1a"
+    coordinator, store, content = _coordinator(harness, run_id, QUOTA_LIMITS)
+    try:
+        from benchweave.interfaces.app import _RetainingCoordinator
+
+        assert isinstance(coordinator, _RetainingCoordinator)
+        bridge = coordinator.plugins[DEVICE_ID]
+        assert isinstance(bridge, OTDPBridge)
+        before = type(bridge._adapter).CLOSE_CALLS
+        coordinator.start_run(run_id, "principal-activation")
+        assert bridge._closed, "event_sink-less bridge was never closed at run end"
+        assert before + 1 == type(bridge._adapter).CLOSE_CALLS
+    finally:
+        store.close()
+
+
+def test_f1_bridges_close_when_start_run_raises(tmp_path: Path) -> None:
+    """F1 RED control: a start_run that raises after construction (the §9
+    replay refusal is the natural arm) must still close the bridges it
+    opened — the Runner and adapter session do not leak past the raise."""
+    harness = _CommissionedHarness(tmp_path, "req-f1b", streaming=False)
+    store, content = harness.open_store()
+    try:
+        factory = harness.build_run(QUOTA_LIMITS)
+        first = factory("run-f1b1", "principal-activation", harness.binding_ref(), store)
+        first.start_run("run-f1b1", "principal-activation")
+        second = factory("run-f1b2", "principal-activation", harness.binding_ref(), store)
+        bridge = second.plugins[DEVICE_ID]
+        with pytest.raises(ValueError, match="never reusable"):
+            second.start_run("run-f1b2", "principal-activation")
+        assert bridge._closed, "bridges leaked past a raising start_run"
+    finally:
+        store.close()
+
+
+def test_f1_bridges_close_when_construction_raises_mid_loop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F1 RED control: a construction failure AFTER one bridge opened (the
+    second device's sim plugin fails to load) must close the opened bridge
+    before the refusal propagates."""
+    from benchweave.registry.otdp_loading import load_otdp_plugin as real_load_bridge
+
+    harness = _CommissionedHarness(
+        tmp_path, "req-f1c", streaming=False, two_devices=True
+    )
+    store, content = harness.open_store()
+    opened: list[OTDPBridge] = []
+
+    def capturing_load(*args: Any, **kwargs: Any) -> OTDPBridge:
+        bridge = real_load_bridge(*args, **kwargs)
+        opened.append(bridge)
+        return bridge
+
+    def broken_sim_load(name: str) -> Any:
+        raise ImportError(f"harness refuses to load sim plugin {name!r}")
+
+    import benchweave.interfaces.app as app_module
+
+    monkeypatch.setattr(app_module, "load_otdp_plugin", capturing_load)
+    monkeypatch.setattr(app_module, "_load_sim_plugin", broken_sim_load)
+    try:
+        factory = harness.build_run(QUOTA_LIMITS)
+        with pytest.raises(ImportError):
+            factory("run-f1c", "principal-activation", harness.binding_ref(), store)
+        assert opened, "the psu bridge never constructed before the refusal"
+        assert opened[0]._closed, "the opened bridge leaked past the raise"
     finally:
         store.close()
 
