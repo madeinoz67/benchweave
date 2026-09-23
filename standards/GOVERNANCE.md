@@ -162,12 +162,17 @@ re-lands after promotion.
 Rulings are recorded artifacts, never comments or habits:
 
 - **Contributor** — any developer; opens and edits heads through PRs, bound
-  by the governor lane and second-human review.
-- **Reviewer** — a human other than the author, required for any merge
-  touching corpus bytes or corpus-manifest rows. Single-operator self-merge
-  was the old normal; with more than one developer it is not defensible for
-  normative bytes, and the rule exists before the first multi-author head,
-  not after the first bad merge.
+  by the governor lane and single-reviewer review.
+- **Reviewer** — a single human reviewer other than the author, required for
+  any merge touching corpus bytes or corpus-manifest rows (owner ruling
+  2026-09-23: single reviewer, not an additional second human — until
+  further notice; re-review by 2027-03-23, the rule carrying its own review
+  trigger the same way the bump floor does). One carve-out: the standards
+  coordinator may be the author and the reviewer of their own corpus-byte
+  merges; non-coordinator contributors always need a human reviewer who is
+  not the author. Self-merge by anyone else remains indefensible for
+  normative bytes; the rule exists before the first multi-author head, not
+  after the first bad merge.
 - **Standards coordinator** — promotes batches (the timing and batching
   call), rules window exceptions and emergency early-promotions, closes
   stale and orphaned heads. The owner holds the role as ratified;

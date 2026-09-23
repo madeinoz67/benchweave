@@ -742,7 +742,32 @@ second patch to adjacent sentences.
   now (§13.2); the owner holds it, and any delegation is a future amendment.
 - **F6 (new):** second-human review for normative-byte merges — recommended effective
   immediately (before the first multi-author head), since heads are exactly the surface
-  that invites parallel edits.
+  that invites parallel edits. *Superseded 2026-09-23, same day, post-build: see §13.7 —
+  single human reviewer, not an additional second human, with a coordinator self-review
+  carve-out and a 2027-03-23 re-review date.*
 
 The verdict is unchanged — **BUILD-WITH-CALLS** — with the call count now six and the
 build still gated on nothing but the owner's word.
+
+### 13.7 Post-build owner ruling (2026-09-23): F6 superseded — single reviewer, coordinator carve-out, six-month re-review
+
+Three rulings arrived after the increment-1 build landed on its branch, amending
+F6 before any PR opened (the loud-ruling pattern the floor revisit set):
+
+1. **Single reviewer, not a second additional human.** Corpus-byte merges
+   (any merge touching corpus bytes or corpus-manifest rows) require ONE human
+   reviewer who is not the author — §13.2/§13.5's "second-human review"
+   phrasing is superseded by this ruling. Framing: "single reviewer until
+   further notice" — restorable to the second-human requirement by a future
+   owner ruling, the same recorded-ruling mechanism that moved the floor.
+2. **Coordinator self-review carve-out.** The standards coordinator (the
+   maintainer holding the F5 role) MAY be the author and the reviewer of
+   their own corpus-byte merges; non-coordinator contributors always need a
+   ≠-author human reviewer. The carve-out recognizes that the coordinator is
+   exactly who promotion batches and emergency folds will author.
+3. **Re-review by 2027-03-23** (six months, set at ruling time). The rule
+   carries its own review trigger — the #97 pattern — so nobody needs to
+   remember to remember; the date rides in the GOVERNANCE text itself.
+
+The GOVERNANCE "Roles and authority" section carries the amended rule verbatim;
+no machinery changed (review discipline is doctrine, not code).
