@@ -350,3 +350,67 @@ def test_mirror_refuses_non_string_lock_values_without_laundering(tmp_path: Path
     assert any("SDK lock sdk is not a string or null (int)" in line for line in drift)
     assert any("SDK lock notes is not a string or null (int)" in line for line in drift)
     assert "'0'" not in "\n".join(drift)
+
+
+# --- the RC candidate marker in the versions glance (devstage record §13.9) --------
+
+
+def _glance_root(tmp_path: Path, dev_block: dict[str, object] | None) -> Path:
+    """Minimal root for version_lines: pyproject, headed manifest, identity."""
+    root = tmp_path / "repo"
+    (root / "standards").mkdir(parents=True)
+    (root / "pyproject.toml").write_text('[project]\nversion = "0.1.0"\n', encoding="utf-8")
+    entry: dict[str, object] = {
+        "id": "demo",
+        "version": "0.1.0",
+        "status": "stable",
+        "released": "2026-09-20",
+        "normative": ["standards/demo/0.1.0/demo.schema.json"],
+    }
+    if dev_block is not None:
+        entry["dev"] = dev_block
+    (root / "standards/standards-manifest.json").write_text(
+        json.dumps({"manifest_version": 1, "standards": [entry]}), encoding="utf-8"
+    )
+    (root / "standards/corpus-manifest.json").write_text(
+        json.dumps({"files": [], "identity": {}}), encoding="utf-8"
+    )
+    return root
+
+
+def _glance_lines(root: Path) -> list[str]:
+    from benchweave.standards.check import version_lines
+
+    sdk = root / "sdk"
+    sdk.mkdir(exist_ok=True)
+    (sdk / "standards-lock.json").write_text('{"standards": []}', encoding="utf-8")
+    return version_lines(root, sdk)
+
+
+_HEAD_NO_CANDIDATE: dict[str, object] = {
+    "version": "0.2.0-dev",
+    "opened": "2026-09-23",
+    "normative": ["standards/demo/0.2.0-dev/demo.schema.json"],
+}
+
+
+def test_versions_glance_marks_a_candidate_head(tmp_path: Path) -> None:
+    root = _glance_root(
+        tmp_path, {**_HEAD_NO_CANDIDATE, "candidate": True}
+    )
+    lines = _glance_lines(root)
+    assert (
+        "standard demo dev-head 0.2.0-dev (opened 2026-09-23, release candidate)"
+        in lines
+    ), lines
+
+
+def test_versions_glance_head_line_is_unchanged_without_the_marker(tmp_path: Path) -> None:
+    # Absent and explicit-false render the SAME head line as before the
+    # marker existed — the authoring state is byte-identical.
+    for name, block in (
+        ("absent", _HEAD_NO_CANDIDATE),
+        ("explicit-false", {**_HEAD_NO_CANDIDATE, "candidate": False}),
+    ):
+        lines = _glance_lines(_glance_root(tmp_path / name, block))
+        assert "standard demo dev-head 0.2.0-dev (opened 2026-09-23)" in lines, lines

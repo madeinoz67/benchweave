@@ -526,3 +526,73 @@ def test_unpinned_dev_path_refuses(tmp_path: Path) -> None:
         StandardsError, match=r"normative_not_in_corpus_manifest: standards/demo/0\.2\.0-dev/"
     ):
         validate_manifest(load_manifest(root), root)
+
+
+# --- the RC candidate marker (owner ruling 2026-09-23, devstage record §13.9) ------
+
+
+def test_candidate_marker_loads(tmp_path: Path) -> None:
+    # true = the coordinator's believed-ready declaration; pure declaration,
+    # machine-readable, advisory (changes no enforcement).
+    root = _dev_head_tree(
+        tmp_path,
+        dev_block={
+            "version": "0.2.0-dev",
+            "opened": "2026-09-23",
+            "candidate": True,
+            "normative": ["standards/demo/0.2.0-dev/demo.schema.json"],
+        },
+    )
+    entry = load_manifest(root).standards[0]
+    assert entry.dev is not None and entry.dev.candidate is True
+
+
+def test_candidate_absent_is_the_authoring_state(tmp_path: Path) -> None:
+    root = _dev_head_tree(tmp_path)
+    entry = load_manifest(root).standards[0]
+    assert entry.dev is not None and entry.dev.candidate is False
+
+
+def test_candidate_false_is_the_authoring_state(tmp_path: Path) -> None:
+    root = _dev_head_tree(
+        tmp_path,
+        dev_block={
+            "version": "0.2.0-dev",
+            "opened": "2026-09-23",
+            "candidate": False,
+            "normative": ["standards/demo/0.2.0-dev/demo.schema.json"],
+        },
+    )
+    entry = load_manifest(root).standards[0]
+    assert entry.dev is not None and entry.dev.candidate is False
+
+
+def test_candidate_wrong_type_refuses(tmp_path: Path) -> None:
+    # A truthy string or 1 is not a declaration; the field is a boolean or
+    # absent, and a malformed one is refused, not truthiness-guessed.
+    root = _dev_head_tree(
+        tmp_path,
+        dev_block={
+            "version": "0.2.0-dev",
+            "opened": "2026-09-23",
+            "candidate": "yes",
+            "normative": ["standards/demo/0.2.0-dev/demo.schema.json"],
+        },
+    )
+    with pytest.raises(StandardsError, match=r"dev_block_invalid: demo: candidate"):
+        load_manifest(root)
+
+
+def test_candidate_true_without_opened_still_refuses(tmp_path: Path) -> None:
+    # Control: the marker does not weaken the block's shape requirements —
+    # the machine-readable open date stays mandatory under a candidate head.
+    root = _dev_head_tree(
+        tmp_path,
+        dev_block={
+            "version": "0.2.0-dev",
+            "candidate": True,
+            "normative": ["standards/demo/0.2.0-dev/demo.schema.json"],
+        },
+    )
+    with pytest.raises(StandardsError, match="dev_block_invalid"):
+        load_manifest(root)
