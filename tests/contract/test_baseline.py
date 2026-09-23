@@ -58,6 +58,10 @@ def _contract_files() -> list[Path]:
         p
         for p in CONTRACTS.rglob("*.json")
         if p.name not in ("corpus-manifest.json", "standards-manifest.json")
+        # Mirrors check_documents.py's exclusion (review row 2): a dev copy
+        # shares the active documents' $ids and shadows them — the mirror
+        # must not condemn released files for a head's edits either.
+        and not any(part.endswith("-dev") for part in p.relative_to(CONTRACTS).parts)
     )
 
 

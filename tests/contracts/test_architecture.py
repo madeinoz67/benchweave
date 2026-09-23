@@ -871,3 +871,35 @@ def test_family_census_runs_against_the_dev_head(
         failures
     )
     assert not (head / "validation-report.md").exists(), "a dev run must not write a report"
+
+
+# --- review row 2: the documents gate never sees a dev head -----------------------
+
+
+def test_documents_gate_ignores_a_dev_head(tmp_path: Path) -> None:
+    """A dev copy shares the active documents' $ids and, registered after
+    them (sort order), answers their lookups: a $defs anchor rename on the
+    head breaks ACTIVE documents' resolution — the adversary's shadowing
+    repro. The failure list must NEVER name an active/released file, and the
+    head must not be validated silently: it is invisible to the gate."""
+    standards = tmp_path / "standards"
+    shutil.copytree(ROOT / "standards", standards)
+    shutil.copytree(standards / "otdp" / "0.2.0", standards / "otdp" / "0.2.1-dev")
+    measurement = standards / "otdp" / "0.2.1-dev" / "otdp-measurement.schema.json"
+    document = json.loads(measurement.read_text(encoding="utf-8"))
+    document["$defs"]["dataset_staged"] = document["$defs"].pop("dataset")
+    measurement.write_text(json.dumps(document), encoding="utf-8")
+
+    namespace = runpy.run_path(
+        str(ROOT / "scripts" / "architecture" / "check_documents.py"),
+        init_globals={"DOCS": ROOT / "docs", "STANDARDS": standards},
+    )
+    checks = namespace["CHECKS"]
+
+    # The head is invisible: no check name — pass or fail — mentions it.
+    named = [name for name, _ in checks if "0.2.1-dev" in str(name)]
+    assert not named, f"the gate silently validated head bytes: {named[:3]}"
+    # The failure list never names an active/released file: pre-fix, the
+    # shadowed urn lookup fails INSIDE otdp/0.2.0's released catalog.
+    failed = [name for name, ok in checks if not ok]
+    assert failed == [], failed[:5]
