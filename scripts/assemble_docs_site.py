@@ -137,11 +137,16 @@ def standards_manifest() -> dict[str, str]:
     Mirrors the real tree. README.md files (the interface and plugin-ui
     standards keep their primary prose there) are staged as ``overview.qmd``
     because Great Docs drops README.md from custom sections. GOVERNANCE.md
-    stays at the top level.
+    stays at the top level. Dev-stage directories never stage (review row 1):
+    the site is a released-bytes surface, and a head's schemas ship beside
+    its prose — skipping the prose but shipping the schemas (or either alone)
+    breaks the staged tree's own link resolution.
     """
     manifest: dict[str, str] = {}
     for md in sorted((REPO / "standards").rglob("*.md")):
         rel = md.relative_to(REPO / "standards")
+        if _is_dev_tree(rel):
+            continue
         if md.name == "README.md":
             rel = rel.with_name("overview.md")
         parts = list(rel.parts)
@@ -292,6 +297,8 @@ def copy_standards_resources(docs_root: Path) -> None:
 
     Great Docs copies only asset-like subdirectories of a section; the
     schemas, catalogs and vectors the prose links to sit beside the prose.
+    Dev-stage directories are skipped on the same lexical rule as the page
+    staging (review row 1): never staged, never shipped, either half.
     """
     src_root = REPO / "standards"
     dst_root = docs_root / "standards"
@@ -301,12 +308,22 @@ def copy_standards_resources(docs_root: Path) -> None:
         )
     copied = 0
     for f in src_root.rglob("*"):
-        if f.is_file() and f.suffix != ".md":
+        if f.is_file() and f.suffix != ".md" and not _is_dev_tree(f.relative_to(src_root)):
             dst = dst_root / f.relative_to(src_root)
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(f, dst)
             copied += 1
     log(f"standards corpus: {copied} non-Markdown file(s) copied beside the rendered prose")
+
+
+def _is_dev_tree(relative: Path) -> bool:
+    """The packaging-side lexical rule, shared by the site's two halves.
+
+    Mirrors hatch_build.py: any path segment ending in ``-dev`` is a dev-stage
+    directory — no manifest read, so a stray head governance has not admitted
+    yet ships nowhere either.
+    """
+    return any(part.endswith("-dev") for part in relative.parts)
 
 
 def fit_to_square(img, size: int):

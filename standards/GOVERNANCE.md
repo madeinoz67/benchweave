@@ -110,7 +110,10 @@ it is created by a copy of the active version (its corpus rows cite the active
 path as `source`), edited in place across any number of changes — each edit
 follows the edit → repin loop, and validate treats dev pins exactly like
 active pins — and it never appears in the exported bundle, the SDK lock, the
-vendored tree, the compatibility matrix, or the identity block. The SDK never
+vendored tree, the compatibility matrix, the identity block, or the public
+docs site (the site assembly skips `-dev` directories on the packaging-side
+lexical rule — both the page staging and the corpus copy beside it). The SDK
+never
 consumes `-dev` bytes: immutability starts at release, and a lock pinned at a
 `-dev` version would have to churn its version per edit or carve an exemption
 into the same-version refusal — neither is sanctioned.
