@@ -82,7 +82,9 @@ deleted staging directory and cannot carry the retention chain alone. Both
 edges are walked by the derived corpus-dir guard
 (`tests/contract/test_baseline.py`), with the same historical-terminal rule
 for `-dev` segments; `repin` accepts the optional `lineage` field on rows
-and refuses one naming a `-dev` path (that edge is what `source` carries). Digest pins move only
+and refuses one naming a `-dev` path (that edge is what `source` carries) —
+ordinary supersession keeps both trees justified side by side, dev
+promotions included. Digest pins move only
 through `uv run python -m benchweave.standards repin` — the loop is
 edit → repin → export, never a hand-spliced digest. A bump carrying corpus
 bytes for any standard with a machine-written validation report (otdp,
