@@ -153,6 +153,8 @@ All notable changes to this project will be documented in this file.
 - Mirror lane refuses a moved submodule by name; no str()-laundered lock values (issue #158 review wave F1+F3)
 - Matrix CLI fails styled on OSError too (issue #158 review wave F2)
 - Uninitialized-submodule refusal names initialization, not the superproject HEAD (issue #158 measurer fold)
+- Contain success-path completion emit, bound RunWorker.join (issue #156)
+- Run-state-aware startup sweep leg — queued ghosts and stale projections unwedge at restart (issue #156 fix wave)
 
 ### Documentation
 
@@ -295,6 +297,7 @@ All notable changes to this project will be documented in this file.
 - Issue #158 — matrix render must be a pure function of committed state
 - CON-12 invariant, GOVERNANCE identity sentence, obligation-6 extension (issue #158)
 - CON-12/GOVERNANCE name the pin as the mirror's authority (issue #158 review wave F4+NIT-1)
+- Issue #156 run-worker emit-containment design record
 
 ### Features
 
