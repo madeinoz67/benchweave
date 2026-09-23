@@ -882,7 +882,12 @@ def test_documents_gate_ignores_a_dev_head(tmp_path: Path) -> None:
     head breaks ACTIVE documents' resolution — the adversary's shadowing
     repro. The failure list must NEVER name an active/released file, and the
     head must not be validated silently: it is invisible to the gate."""
-    standards = tmp_path / "standards"
+    # Both roots planted as siblings so cross-root markdown links keep the
+    # real tree's geometry (a split real-DOCS/planted-STANDARDS injection
+    # fails the link containment clause for reasons that are not the row).
+    docs = tmp_path / "root" / "docs"
+    standards = tmp_path / "root" / "standards"
+    shutil.copytree(ROOT / "docs", docs)
     shutil.copytree(ROOT / "standards", standards)
     shutil.copytree(standards / "otdp" / "0.2.0", standards / "otdp" / "0.2.1-dev")
     measurement = standards / "otdp" / "0.2.1-dev" / "otdp-measurement.schema.json"
@@ -892,7 +897,7 @@ def test_documents_gate_ignores_a_dev_head(tmp_path: Path) -> None:
 
     namespace = runpy.run_path(
         str(ROOT / "scripts" / "architecture" / "check_documents.py"),
-        init_globals={"DOCS": ROOT / "docs", "STANDARDS": standards},
+        init_globals={"DOCS": docs, "STANDARDS": standards},
     )
     checks = namespace["CHECKS"]
 
