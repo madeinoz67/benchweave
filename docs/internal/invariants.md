@@ -120,6 +120,26 @@ rather than rewriting the history — that is how this file earns trust.
   device row, no content row, no generation bump. Device rows iterate the bench's pinned
   set through the CON-10 projection (descriptor-id keying preserved); the descriptor
   family stays cache-only in the content store and meets the gate when a binding pins it.
+  Amendment (2026-09-23, issue #147 increment 3): descriptor admission gains the provider
+  rows — the census mirror (`_check_provider_mirror`, the SDK's five refusals
+  refusal-for-refusal and in order, over the two-layer known-features union:
+  corpus-derived layer 1 swept from the vendored tree, host-admitted layer 2), the
+  descriptor-relative pin verification (`_verify_provider_pin`: strict no-follow, hash,
+  exact-byte decode — strict UTF-8, BOM/UTF-16 refused there — the vendored provider
+  schema resolved manifest-derived, grammar meta-validation, kind uniqueness,
+  reserved-seven disjointness, the identity equalities plus the declaration-agreement
+  pair), and the gateway-only admission row (`provider_not_admitted:`: exact triple,
+  approval expiry judged against a caller-supplied `now_wall` — A04 arithmetic, a missing
+  `now_wall` refuses — and the S12-extended `connection_key` binding). The
+  machine-matchable refusal set gains the six SDK prefixes riding inside the existing
+  family prefixes (`provider_transport_undeclared:`, `provider_feature_missing:`,
+  `unknown_otdp_feature:`, `provider_contract_missing:`,
+  `provider_contract_hash_mismatch:`, `provider_contract_invalid:`) plus the
+  gateway-owned `provider_not_admitted:`. Provider documents and the operator's
+  `transport-settings.json` (validated before any descriptor is projected, identity-only
+  by schema — `src/benchweave/control/provider_settings.py`) decode through the
+  exact-byte decoder; the settings validator's own prefixes (`settings_schema:`,
+  `settings_digest_mismatch:`) join the same list.
 - **[CON-2]** The digest pin lattice between the execution-contract documents is verified
   at admission; the fixture lattice moves in lockstep (`fixtures/registry/` ↔
   `scripts/registry/build_fixtures.py` ↔ `catalogue.json` ↔ the digest-pinning tests),
@@ -240,6 +260,18 @@ rather than rewriting the history — that is how this file earns trust.
   and admissible (#63 §1); one dialect plus a projection is the structural fix,
   and sim_scope admitting with zero byte changes was the proof the mechanism,
   not a rewrite, closed the fork.*
+  Amendment (2026-09-23, issue #147 increment 3): the equivalence census extends to the
+  provider lattice (the record §4 metric-1 fixtures: 4 valid + 8 single-fault, both legs
+  in-process), and the sanctioned gateway-stricter cells grow to THREE, each named in the
+  census module docstring — `issued_map:`; `provider_not_admitted:` (admission is
+  gateway-only: the SDK cannot see commissioned state, so no offline prefix exists);
+  and the strict-UTF-8 decode (a BOM'd or UTF-16 provider document whose pin covers its
+  bytes is SDK-clean and gateway `invalid_json` inside `provider_contract_invalid:`).
+  A set-equality arm pins the gateway's corpus-known feature derivation equal to the
+  SDK's at the same vendored version (layer 1 of the two-layer union cannot drift
+  silently). The projection itself is UNCHANGED: transport and provider stay
+  unprojected; the grant seam (`build_capture_services`) re-derives the raw form by
+  digest exactly as the permissions precedent does.
 
 - **[CON-11]** The active OTDP validation report
   (`standards/otdp/0.2.0/validation-report.md`) is machine-written by its own
