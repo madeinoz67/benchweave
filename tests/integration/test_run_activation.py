@@ -182,6 +182,8 @@ class DemoSupplyAdapter:
         }
 
     async def next_event(self, subscription_id, context):
+        if HANG_NEXT_EVENT:
+            await asyncio.sleep(10.0)
         sequence = self.sequences.get(subscription_id, -1) + 1
         self.sequences[subscription_id] = sequence
         parameter = "output_voltage_v"
@@ -194,6 +196,7 @@ class DemoSupplyAdapter:
 
 
 DEMO_ADAPTER = True
+HANG_NEXT_EVENT = False
 
 
 def create_plugin():
@@ -222,7 +225,7 @@ def _pin(document: dict[str, Any], path: Path) -> dict[str, str]:
     }
 
 
-def _mutated_descriptor(tmp_path: Path) -> Path:
+def _mutated_descriptor(tmp_path: Path, *, stream_floor_ms: int = 10) -> Path:
     """The committed sim-psu descriptor with the capture/stream permissions.
 
     Additive-only mutations (the fixture byte-mover is deferred as row D):
@@ -235,7 +238,10 @@ def _mutated_descriptor(tmp_path: Path) -> Path:
     adapter = descriptor["integration"]["adapter"]
     adapter["entry_point"] = "benchweave_sim_psu.plugin:create_plugin"
     adapter["permissions"] = ["scoped_transport", "artifact_writer", "event_sink"]
-    descriptor["stream_limits"] = {"min_interval_ms": 10, "max_subscriptions": 4}
+    descriptor["stream_limits"] = {
+        "min_interval_ms": stream_floor_ms,
+        "max_subscriptions": 4,
+    }
     return _write(tmp_path / "descriptor-demo-supply.json", descriptor)
 
 
@@ -265,7 +271,16 @@ def _publish(plugin_dir: Path, descriptor: Path, out: Path) -> None:
     assert completed.returncode == 0, completed.stderr.decode()
 
 
-def _lattice(tmp_path: Path, request_id: str) -> Path:
+def _lattice(
+    tmp_path: Path,
+    request_id: str,
+    *,
+    signal_poll_ms: int = 50,
+    continuous_max: float = 5.5,
+    write_value: float = 5.0,
+    enable_output: bool = False,
+    stream_floor_ms: int = 10,
+) -> Path:
     """Author the activation lattice: one commissioned supply device.
 
     Mirrors the ``readmit_mutated`` pin discipline (tests/control/_harness.py)
@@ -274,7 +289,7 @@ def _lattice(tmp_path: Path, request_id: str) -> Path:
     that commissioned its closure.
     """
     tmp_path.mkdir(parents=True, exist_ok=True)
-    descriptor_path = _mutated_descriptor(tmp_path)
+    descriptor_path = _mutated_descriptor(tmp_path, stream_floor_ms=stream_floor_ms)
     descriptor = json.loads(descriptor_path.read_text())
 
     procedure: dict[str, Any] = {
@@ -295,9 +310,23 @@ def _lattice(tmp_path: Path, request_id: str) -> Path:
                 "kind": "write",
                 "role": "supply",
                 "parameter": "voltage_setpoint_v",
-                "value": 5.0,
+                "value": write_value,
                 "timeout_ms": 500,
             },
+            *(
+                [
+                    {
+                        "id": "enable",
+                        "kind": "write",
+                        "role": "supply",
+                        "parameter": "output_enabled",
+                        "value": True,
+                        "timeout_ms": 500,
+                    }
+                ]
+                if enable_output
+                else []
+            ),
             {"id": "settle", "kind": "delay", "duration_ms": 200},
             {
                 "id": "observe",
@@ -331,7 +360,13 @@ def _lattice(tmp_path: Path, request_id: str) -> Path:
                 "kind": "write",
                 "parameter": "voltage_setpoint_v",
                 "value_constraints": {"type": "number", "minimum": 0, "maximum": 5.5},
-            }
+            },
+            {
+                "device_id": DEVICE_ID,
+                "kind": "write",
+                "parameter": "output_enabled",
+                "value_constraints": {"type": "boolean"},
+            },
         ],
         "continuous_conditions": [
             {
@@ -340,7 +375,7 @@ def _lattice(tmp_path: Path, request_id: str) -> Path:
                 "signal": "dut-voltage",
                 "unit": "V",
                 "minimum": -0.1,
-                "maximum": 5.5,
+                "maximum": continuous_max,
             }
         ],
         "independent_protection": {
@@ -437,7 +472,7 @@ def _lattice(tmp_path: Path, request_id: str) -> Path:
                 "id": "dut-voltage",
                 "quantity": "voltage",
                 "unit": "V",
-                "poll_ms": 50,
+                "poll_ms": signal_poll_ms,
                 "max_age_ms": 500,
                 "absolute_error": 0.05,
                 "resource_id": "dut-net",
@@ -528,9 +563,27 @@ def _lattice(tmp_path: Path, request_id: str) -> Path:
 class _CommissionedHarness:
     """One admitted-and-activated dev closure plus its execution lattice."""
 
-    def __init__(self, tmp_path: Path, request_id: str) -> None:
+    def __init__(
+        self,
+        tmp_path: Path,
+        request_id: str,
+        *,
+        signal_poll_ms: int = 50,
+        continuous_max: float = 5.5,
+        write_value: float = 5.0,
+        enable_output: bool = False,
+        stream_floor_ms: int = 10,
+    ) -> None:
         self.root = tmp_path
-        self.lattice_dir = _lattice(tmp_path / "lattice", request_id)
+        self.lattice_dir = _lattice(
+            tmp_path / "lattice",
+            request_id,
+            signal_poll_ms=signal_poll_ms,
+            continuous_max=continuous_max,
+            write_value=write_value,
+            enable_output=enable_output,
+            stream_floor_ms=stream_floor_ms,
+        )
         descriptor_path = self.lattice_dir / "descriptor-demo-supply.json"
         plugin_dir = _write_plugin_source(tmp_path / "pluginroot")
         registry_root = tmp_path / "dev-registry"
@@ -734,6 +787,219 @@ def test_r16_quota_seam_refuses_before_plugin_open(
         store2.close()
 
 
+def _loaded_adapter_module() -> Any:
+    """The harness adapter's loaded module (found by its marker constant —
+    the bundle loader mints a unique module prefix per construction)."""
+    import sys as _sys
+
+    for _name, module in list(_sys.modules.items()):
+        if getattr(module, "DEMO_ADAPTER", False):
+            return module
+    raise AssertionError("harness adapter module not loaded")
+
+
+def _event_log_refs(store: Store, run_id: str) -> list[dict[str, Any]]:
+    """The run's landed ``event_log`` evidence rows (the report model's
+    store-connection enumeration idiom — the content tables have no list
+    API)."""
+    rows = store.connection.execute(
+        "SELECT content_ref_json FROM evidence WHERE context_key = ? AND kind = ?",
+        (f"run:{run_id}", "event_log"),
+    ).fetchall()
+    return [json.loads(row[0]) for row in rows]
+
+
+def _assert_subscriptions_terminal(coordinator: Any) -> None:
+    """Every subscription the run issued reached a terminal registry state."""
+    host = coordinator.stream_host
+    assert host is not None
+    for device_id, subscription_ids in host.subscriptions.items():
+        entry = host.devices[device_id]
+        for subscription_id in subscription_ids:
+            assert entry.controller.is_known(subscription_id), subscription_id
+            assert not entry.controller.is_live(subscription_id), subscription_id
+        assert entry.controller.live_subscription_ids() == []
+
+
+def test_r11_one_shared_reading_sinks_across_run_services_and_controllers(
+    commissioned: _CommissionedHarness,
+) -> None:
+    """R11: a sink registered through the run services
+    (``register_reading_sink``) receives a reading delivered by a stream
+    landing on a ``StreamController`` constructed in the same
+    ``build_run`` — the two-default-instances shape is unrepresentable."""
+    run_id = "run-r11"
+    coordinator, store, content = _coordinator(commissioned, run_id, QUOTA_LIMITS)
+    try:
+        from benchweave.interfaces.app import _RetainingCoordinator
+
+        assert isinstance(coordinator, _RetainingCoordinator)
+        assert coordinator.services is not None
+        readings: list[Any] = []
+        coordinator.services.register_reading_sink(readings.append)
+        record = coordinator.start_run(run_id, "principal-activation")
+        assert record["outcome"] == "passed"
+        assert readings, "the shared sink observed no landed telemetry reading"
+        voltages = [r["value"] for r in readings if r.get("parameter") == "output_voltage_v"]
+        assert voltages and all(isinstance(v, (int, float)) for v in voltages)
+        _assert_subscriptions_terminal(coordinator)
+    finally:
+        store.close()
+
+
+def test_r12_slice_binding_and_hang_cut_lands_at_the_slice(
+    commissioned: _CommissionedHarness,
+) -> None:
+    """R12: the composed engine's poll slice equals ``bench_poll_ns(bench)``
+    (asserted on the composed run), and a hang-past-slice adapter's asyncio
+    cut lands at the slice under the shared timebase — the production
+    instance of the M2 pin (seconds = nanoseconds/1e9 of the one clock)."""
+    import time as _time
+
+    from benchweave.control.protection import bench_poll_ns
+
+    run_id = "run-r12"
+    coordinator, store, content = _coordinator(commissioned, run_id, QUOTA_LIMITS)
+    try:
+        from benchweave.interfaces.app import _RetainingCoordinator
+
+        assert isinstance(coordinator, _RetainingCoordinator)
+        bench = json.loads((commissioned.lattice_dir / "bench.json").read_bytes())
+        assert coordinator.stream_host is not None
+        host = coordinator.stream_host
+        module = _loaded_adapter_module()
+        module.HANG_NEXT_EVENT = True
+        started = _time.monotonic()
+        record = coordinator.start_run(run_id, "principal-activation")
+        elapsed = _time.monotonic() - started
+        module.HANG_NEXT_EVENT = False
+        # The slice binding: equality with the one derivation.
+        assert host.poll_slice_ns == bench_poll_ns(bench)
+        # The cut: a 10 s hang sliced at 50 ms — the run cannot have waited
+        # the hang out (the asyncio timeout cut it at the slice deadline
+        # computed on the SAME clock the engine slices on).
+        assert elapsed < 5.0, f"run wall {elapsed:.2f}s — the hang was not cut"
+        entry = host.devices[DEVICE_ID]
+        assert entry.engine is not None and entry.engine.session_failed
+        # The ending is the honest one: a cut poll cannot prove the adapter
+        # did not hang (Decision 8) — session poison, uncertainty kept.
+        assert record["safe_state"] in {"unknown", "verified"}
+        assert record["outcome"] in {"outcome_unknown", "tripped", "execution_error"}
+        _assert_subscriptions_terminal(coordinator)
+    finally:
+        store.close()
+
+
+def test_r13_raising_on_event_consumer_is_contained(
+    commissioned: _CommissionedHarness,
+) -> None:
+    """R13: an ``on_event`` consumer that raises on every event — the body
+    completes its steps, the protective transition runs, the terminal
+    record is normal, every subscription reaches a terminal state, and the
+    failure counter is > 0."""
+
+    def raising_consumer(subscription_id: str, event: Any, receipt: str) -> None:
+        raise RuntimeError("harness on_event consumer raises on every event")
+
+    run_id = "run-r13"
+    coordinator, store, content = _coordinator(commissioned, run_id, QUOTA_LIMITS)
+    try:
+        from benchweave.interfaces.app import _RetainingCoordinator
+
+        assert isinstance(coordinator, _RetainingCoordinator)
+        assert coordinator.stream_host is not None
+        coordinator.stream_host.on_event = raising_consumer
+        record = coordinator.start_run(run_id, "principal-activation")
+        assert record["body_outcome"] == "completed"
+        assert record["outcome"] == "passed"
+        assert record["safe_state"] == "verified"
+        assert coordinator.stream_host.event_callback_failures > 0
+        _assert_subscriptions_terminal(coordinator)
+    finally:
+        store.close()
+
+
+def test_r14_streams_are_additive_to_protection(
+    tmp_path: Path,
+) -> None:
+    """R14, telemetry half: during a delay step, telemetry lands as
+    ``event_log`` evidence under ``run:{run_id}`` carrying the Decision-4
+    landing fields."""
+    harness = _CommissionedHarness(tmp_path, "req-activation-r14a")
+    run_id = "run-r14a"
+    coordinator, store, content = _coordinator(harness, run_id, QUOTA_LIMITS)
+    try:
+        coordinator.start_run(run_id, "principal-activation")
+        refs = _event_log_refs(store, run_id)
+        assert refs, "no event_log evidence landed under the run context"
+        telemetry = [ref for ref in refs if ref.get("kind") == "telemetry"]
+        assert telemetry
+        for ref in telemetry:
+            assert ref.get("subscription_id")
+            assert isinstance(ref.get("sequence"), int)
+            assert ref.get("host_received_at")
+        _assert_subscriptions_terminal(coordinator)
+    finally:
+        store.close()
+
+
+def test_r14_condition_trip_mid_delay_ends_body_tripped(
+    tmp_path: Path,
+) -> None:
+    """R14, protection half: a condition that trips mid-delay still ends
+    the body ``tripped`` — the read-based monitor gates; streams neither
+    replace nor mask it."""
+    harness = _CommissionedHarness(
+        tmp_path,
+        "req-activation-r14b",
+        continuous_max=4.5,
+        write_value=5.0,
+        enable_output=True,
+    )
+    run_id = "run-r14b"
+    coordinator, store, content = _coordinator(harness, run_id, QUOTA_LIMITS)
+    try:
+        record = coordinator.start_run(run_id, "principal-activation")
+        assert record["body_outcome"] == "tripped"
+        assert any("dut-voltage-bounds" in reason for reason in record["reasons"])
+        _assert_subscriptions_terminal(coordinator)
+    finally:
+        store.close()
+
+
+def test_r15_fast_bench_signal_degrades_loudly(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """R15: a bench signal commissioned faster than the descriptor's
+    declared floor — the subscription is refused cleanly, a
+    machine-prefixed log line names it, the run proceeds, no session
+    poison. The variant raises the descriptor's floor above the bench's
+    50 ms cadence (the same G2 refusal as a sub-floor signal, without a
+    bench-wide cadence so tight the monitor's own read budget flakes)."""
+    harness = _CommissionedHarness(tmp_path, "req-activation-r15", stream_floor_ms=100)
+    run_id = "run-r15"
+    coordinator, store, content = _coordinator(harness, run_id, QUOTA_LIMITS)
+    try:
+        import logging as _logging
+
+        from benchweave.interfaces.app import _RetainingCoordinator
+
+        assert isinstance(coordinator, _RetainingCoordinator)
+        with caplog.at_level(_logging.WARNING, logger="benchweave.control.stream_host"):
+            record = coordinator.start_run(run_id, "principal-activation")
+        assert record["outcome"] == "passed"
+        assert any(
+            "stream_subscribe_refused" in record_.message
+            for record_ in caplog.records
+        ), "the loud-degradation marker is absent from the log"
+        assert coordinator.stream_host is not None
+        entry = coordinator.stream_host.devices[DEVICE_ID]
+        assert entry.engine is None, "a sub-floor subscription must not go live"
+        assert entry.controller.live_subscription_ids() == []
+    finally:
+        store.close()
+
+
 def test_demo_lattice_without_commissioned_closure_keeps_declarative_fallback(
     tmp_path: Path,
 ) -> None:
@@ -766,7 +1032,7 @@ def test_demo_lattice_without_commissioned_closure_keeps_declarative_fallback(
         from benchweave.interfaces.app import _RetainingCoordinator
 
         assert isinstance(coordinator, _RetainingCoordinator)
-        for device_id, _name in _SIM_PLUGINS:
+        for device_id, _sim_name in _SIM_PLUGINS:
             plugin = coordinator.plugins[device_id]
             assert not isinstance(plugin, OTDPBridge), (
                 f"demo device {device_id} constructed a bridge without a "

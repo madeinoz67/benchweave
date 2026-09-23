@@ -313,7 +313,10 @@ class _RetainingCoordinator(RunCoordinator):
         stream_host: RunStreamHost | None = None,
         services: RetainingServices | None = None,
     ) -> None:
-        super().__init__(store, plugins, clock, wall, docs)
+        # The stream host rides BOTH layers: the base coordinator hands it
+        # to the monitoring clock (the wait-slice driver), this subclass
+        # arms and tears it down around the body.
+        super().__init__(store, plugins, clock, wall, docs, stream_host=stream_host)
         self._retain = retain
         self._spool_dir = spool  # cleaned up when the coordinator is collected
         self._last_monitor: _RunMonitor | None = None
@@ -327,7 +330,43 @@ class _RetainingCoordinator(RunCoordinator):
         prepared = super()._prepare_run(run_id, principal_id)
         prepared.monitor.retain = self._retain
         self._last_monitor = prepared.monitor
+        # Decision 3: arm AFTER monitor arming — the wrapped clock already
+        # holds the stream host, and the subscribe dispatches run through
+        # the wrapped plugins so monitor ticks wrap them like every
+        # dispatch. A refusal degrades loudly inside ``arm``; it never
+        # fails the run.
+        if self.stream_host is not None and self.stream_host.devices:
+            self.stream_host.arm(self._docs.bench, prepared.plugins, prepared.monitor)
         return prepared
+
+    def _run_and_record(self, prepared: _PreparedRun) -> Any:
+        body = super()._run_and_record(prepared)
+        # Decision 5, clause 2: teardown at body end, BEFORE protection
+        # (the protective transition dispatches through these bridges —
+        # they stay open until the terminal record lands). The monitor
+        # moves to the protecting phase so a terminal body cause cannot
+        # block the ending's own dispatches; the phase is "protecting"
+        # from here on either way.
+        if self.stream_host is not None and self.stream_host.armed:
+            prepared.monitor.phase = "protecting"
+            try:
+                self.stream_host.teardown(prepared.plugins)
+            except Exception:
+                _LOG.exception(
+                    "stream_teardown_failed run_id=%s — the close-path sweeps "
+                    "remain the last resort", prepared.run_id,
+                )
+        return body
+
+    def start_run(self, run_id: str, principal_id: str) -> dict[str, Any]:
+        record = super().start_run(run_id, principal_id)
+        # The last-resort sweep: after the terminal record and lease
+        # release (protection needed the bridges open), close each
+        # constructed bridge — its own final sweep of anything still live
+        # plus the loader/runner release. Contained inside the host.
+        if self.stream_host is not None:
+            self.stream_host.close()
+        return record
 
     @property
     def monitor(self) -> _RunMonitor | None:

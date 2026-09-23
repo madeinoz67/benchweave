@@ -62,6 +62,7 @@ from benchweave.control.protection import (
     read_signal_values,
 )
 from benchweave.control.semantics import check_semantics
+from benchweave.control.stream_host import RunStreamHost
 from benchweave.host.plugin import DevicePlugin
 from benchweave.host.services import HostServices
 from benchweave.host.types import (
@@ -365,12 +366,29 @@ class _MonitoringPlugin:
 
 class _MonitoringClock:
     """Monotonic clock wrapper slicing waits with monitor ticks (§3: delay
-    keeps monitoring active); a terminal cause ends the wait early."""
+    keeps monitoring active); a terminal cause ends the wait early.
 
-    def __init__(self, inner: MonotonicClock, monitor: _RunMonitor, poll_ns: int) -> None:
+    Issue #167 (CTL-8 amendment candidate, Decision 3): with a stream host
+    attached, each slice ALSO runs the host's poll round — poll rounds run
+    INSIDE the slices with the engine's own between-poll monitor ticks —
+    and the slice's unspent remainder is slept afterwards, so the wait's
+    total duration is preserved. A procedure with no wait step polls
+    nothing during the body (the disclosed residual: the monitor's
+    per-dispatch ticks still cover protection; "no hidden background task"
+    is §8's own rule).
+    """
+
+    def __init__(
+        self,
+        inner: MonotonicClock,
+        monitor: _RunMonitor,
+        poll_ns: int,
+        streams: RunStreamHost | None = None,
+    ) -> None:
         self._inner = inner
         self._monitor = monitor
         self._poll_ns = max(1, poll_ns)
+        self._streams = streams
 
     def now_ns(self) -> int:
         return self._inner.now_ns()
@@ -382,7 +400,14 @@ class _MonitoringClock:
             if self._monitor.cause is not None:
                 return  # protective intervention ends the wait
             slice_ns = min(self._poll_ns, remaining)
-            self._inner.wait_ns(slice_ns)
+            if self._streams is None:
+                self._inner.wait_ns(slice_ns)
+            else:
+                slice_start = self.now_ns()
+                self._streams.poll_slice(deadline_ns=slice_start + slice_ns)
+                spent = self.now_ns() - slice_start
+                if spent < slice_ns:
+                    self._inner.wait_ns(slice_ns - spent)
             remaining -= slice_ns
         self._monitor.tick()
 
@@ -411,12 +436,18 @@ class RunCoordinator:
         clock: MonotonicClock,
         wall: WallClock,
         docs: AdmittedDocuments,
+        *,
+        stream_host: RunStreamHost | None = None,
     ) -> None:
         self._store = store
         self._plugins = plugins
         self._clock = clock
         self._wall = wall
         self._docs = docs
+        #: The run's stream host (issue #167): the bridges/controllers the
+        #: run constructed; armed and driven per run by the composition
+        #: that owns it. ``None`` keeps the pre-activation behavior whole.
+        self._stream_host = stream_host
         #: Occurrence identities this coordinator will never re-dispatch.
         self.occurrence_ledger: dict[Occurrence, dict[str, Any]] = {}
         self._active_monitor: _RunMonitor | None = None
@@ -630,7 +661,9 @@ class RunCoordinator:
             device_id: _MonitoringPlugin(plugin, monitor)
             for device_id, plugin in self._plugins.items()
         }
-        wrapped_clock = _MonitoringClock(self._clock, monitor, bench_poll_ns(self._docs.bench))
+        wrapped_clock = _MonitoringClock(
+            self._clock, monitor, bench_poll_ns(self._docs.bench), streams=self._stream_host
+        )
         monitor.phase = "body"
         self._active_monitor = monitor
         monitor.tick()  # monitoring applies from acceptance (§7)
