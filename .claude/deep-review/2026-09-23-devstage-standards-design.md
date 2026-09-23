@@ -260,10 +260,16 @@ teardown. Class rules apply unchanged; the batch is whatever the head accumulate
 2. Version sweep in the copy ($ids, consts, titles/descriptions, urns, catalog refs) —
    the existing sweep; forgetfulness is caught by the annotation guard, the F2-style
    const tests, and `validate_identity`, exactly as in today's bumps.
-3. Author the promoted version's corpus rows citing **the dev path** as `source` (the
-   resets section's rule — "never a path that did not produce the bytes" — the dev path
-   produced them; it lives in git history after teardown, the same status as any retired
-   corpus). Delete the dev rows and directory; remove the `dev` block.
+3. Author the promoted version's corpus rows citing **the dev path** as `source` and
+   the pre-dev active version's corresponding paths as `lineage` (the resets section's
+   rule — "never a path that did not produce the bytes" — the dev path produced them;
+   it lives in git history after teardown, the same status as any retired corpus — a
+   status attaching to the dev path ALONE: the predecessor edge is carried by
+   `lineage`, not buried in git). Delete the dev rows and directory; remove the `dev`
+   block.
+   *Amended 2026-09-23 by the governor re-check ruling (§13.10): the lineage field is
+   REQUIRED — orphaning the predecessor was rejected.*
+
 4. Flip the active entry (version/released/supersedes/normative), `repin`, regenerate
    the validation report via its writer (`--write-report`, refuses on red — CON-11),
    `export`, SDK sync, pointer commit, matrix regen, docs rows, test/fixture stamp
@@ -838,3 +844,26 @@ Semantics, ruled minimal:
 - **RC-as-separate-released-dir stays rejected** per the design discussion:
   a release candidate is a state of the head, never a second directory the
   window could price or the corpus could pin.
+
+### 13.10 Governor re-check ruling (2026-09-23): row-3 amendment COMPLIANT; the lineage citation is required
+
+The re-review approved the -dev-terminal amendment as-is and ruled the orphan seam a
+defect, not a residual: GOVERNANCE as merged would prescribe a promotion flow its own
+derived-dir gate refuses at first use, and normative text shipping a known defect fails
+the docs-coverage duty. The contour, implemented verbatim:
+
+- Promoted rows cite the dev path as `source` (unchanged, the resets rule) AND the
+  pre-dev active version's corresponding paths as `lineage` — an optional string field
+  on corpus rows.
+- The derived corpus-dir guard seeds its walk from BOTH edges (per row and per cited
+  row); the -dev terminal applies to lineage identically; repin refuses a lineage
+  naming a `-dev` path outright (field confusion — the dev edge is what source carries).
+- `repin`'s row shape widens for exactly the optional string `lineage` under the
+  existing lexical rules; the ripple was traced to that one site (`_corpus_pins` maps
+  path→sha256 only; the SDK never sees corpus rows).
+
+The ruling's rationale for the shape, recorded for the PR body: rows-citing-paths is
+the #78-vetted retention mechanism (principle 9 — extend proven in-tree mechanisms);
+an entry-level lineage list would re-introduce the hand-list shape #78 replaced; and a
+manifest-supersedes derivation was traced and REJECTED (one hop patches one promotion
+and re-orphans the next generation).

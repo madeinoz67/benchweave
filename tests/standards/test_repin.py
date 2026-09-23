@@ -467,3 +467,43 @@ def test_dev_rows_without_the_block_stay_frozen(tmp_path: Path) -> None:
     raw = _manifest_bytes(root)
     _flip(root, "registry/0.2.0-dev/package-lock.schema.json")
     _refused_without_write(root, raw, "frozen_row_changed")
+
+
+# --- the lineage amendment (governor re-check ruling, 2026-09-23) ------------------
+
+
+def test_repin_accepts_a_row_with_lineage(tmp_path: Path) -> None:
+    """The optional string lineage rides the row through repin untouched —
+    digest rewrite only, byte-preserved like source and path."""
+    root = _repo(tmp_path)
+    document = json.loads(_manifest_bytes(root))
+    target = next(r for r in document["files"] if r["path"] == REGENERABLE)
+    target["lineage"] = "standards/registry/0.1.0/examples/package-lock.json"
+    (root / CORPUS_MANIFEST).write_text(
+        json.dumps(document, indent=2) + "\n", encoding="utf-8"
+    )
+    _flip(root, REGENERABLE)
+
+    changed = _repin()(root)
+
+    assert changed == [REGENERABLE]
+    after = json.loads(_manifest_bytes(root))
+    assert (
+        next(r for r in after["files"] if r["path"] == REGENERABLE)["lineage"]
+        == "standards/registry/0.1.0/examples/package-lock.json"
+    )
+
+
+def test_repin_refuses_a_lineage_naming_a_dev_path(tmp_path: Path) -> None:
+    """Lineage names the pre-dev RELEASED edge; the dev edge is what source
+    carries. A -dev lineage is a field confusion, refused with its own
+    prefix."""
+    root = _repo(tmp_path)
+    raw = _manifest_bytes(root)
+    document = json.loads(raw)
+    target = next(r for r in document["files"] if r["path"] == REGENERABLE)
+    target["lineage"] = "standards/registry/0.2.0-dev/examples/package-lock.json"
+    (root / CORPUS_MANIFEST).write_text(
+        json.dumps(document, indent=2) + "\n", encoding="utf-8"
+    )
+    _refused_without_write(root, _manifest_bytes(root), "pin_row_lineage_invalid")

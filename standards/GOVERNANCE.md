@@ -75,7 +75,14 @@ no longer bounds the edit.
 dir to the new version and edits bytes only in the copy; the old dir and its
 corpus-manifest rows stay in place, digest-frozen. Moving or in-place-editing a
 retained version is a governance violation, not a shortcut. The new version's
-rows record the old corpus path as their `source`. Digest pins move only
+rows record the old corpus path as their `source`. A dev-stage promotion adds
+one more edge: its rows also record the pre-dev active version's
+corresponding paths as `lineage` — the dev path named by `source` is a
+deleted staging directory and cannot carry the retention chain alone. Both
+edges are walked by the derived corpus-dir guard
+(`tests/contract/test_baseline.py`), with the same historical-terminal rule
+for `-dev` segments; `repin` accepts the optional `lineage` field on rows
+and refuses one naming a `-dev` path (that edge is what `source` carries). Digest pins move only
 through `uv run python -m benchweave.standards repin` — the loop is
 edit → repin → export, never a hand-spliced digest. A bump carrying corpus
 bytes for any standard with a machine-written validation report (otdp,
@@ -162,8 +169,13 @@ version directories only, and the active entry's version must be pure semver
 (`standards_entry_version_invalid` on anything else), so the window cannot be
 dodged by suffixing a release directory. Promotion is the bump event, and it
 is a bump in every existing respect: copy the dev directory to the released
-version (its corpus rows cite the dev path as `source`), apply the version
-sweep, delete the dev directory and its rows, remove the `dev` block, repin,
+version (its corpus rows cite the dev path as `source` and the pre-dev active
+version's corresponding paths as `lineage` — a dev promotion severs the
+copy-never-move chain the bump flow would otherwise carry: the promoted
+bytes' direct producer is the dev directory, which teardown deletes by
+design, so the predecessor edge is named separately rather than left to git
+history), apply the version sweep,
+delete the dev directory and its rows, remove the `dev` block, repin,
 regenerate the validation report, export and sync — under the change-class
 rules with the batch being everything the head accumulated; the head's
 version names the intended target, the class rule governs the promoted

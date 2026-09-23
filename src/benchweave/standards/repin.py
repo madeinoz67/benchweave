@@ -27,6 +27,11 @@ from typing import Any
 from .manifest import StandardsError, load_manifest, validate_manifest
 
 _ROW_KEYS = frozenset({"path", "source", "sha256"})
+# The lineage amendment (governor re-check ruling 2026-09-23): the optional
+# string a dev-stage promotion's rows carry naming the pre-dev active
+# version's corresponding path — the predecessor edge the deleted staging
+# directory cannot carry on its own.
+_OPTIONAL_ROW_KEYS = frozenset({"lineage"})
 _MANIFESTS = frozenset({"corpus-manifest.json", "standards-manifest.json"})
 
 
@@ -148,12 +153,31 @@ def _strict_loads(raw: bytes) -> Any:
 def _validate_rows(rows: list[Any]) -> None:
     seen: set[str] = set()
     for index, row in enumerate(rows):
-        if not isinstance(row, dict) or set(row) != _ROW_KEYS:
+        keys = set(row) if isinstance(row, dict) else set()
+        allowed = _ROW_KEYS | _OPTIONAL_ROW_KEYS
+        if not isinstance(row, dict) or not keys >= _ROW_KEYS or not keys <= allowed:
+            # Exact keys, plus the lineage amendment's optional string: the
+            # pre-dev predecessor edge a dev-stage promotion records on its
+            # rows (governor re-check ruling 2026-09-23). No other key may
+            # ride a row — the row shape stays closed-world.
             raise StandardsError(f"pin_row_invalid: {index}")
-        if not all(isinstance(row[key], str) for key in _ROW_KEYS):
+        if not all(isinstance(row[key], str) for key in keys):
             raise StandardsError(f"pin_row_invalid: {index}")
         path = str(row["path"])
         _check_row_path(path)
+        lineage = row.get("lineage")
+        if lineage is not None:
+            _check_row_path(str(lineage))
+            if any(part.endswith("-dev") for part in PurePosixPath(str(lineage)).parts):
+                # Lineage names the pre-dev RELEASED edge; the dev edge is
+                # what source carries. A -dev lineage is a field confusion,
+                # refused outright rather than walked terminally here (the
+                # derived-dir guard applies the same terminal to it as
+                # defense in depth).
+                raise StandardsError(
+                    f"pin_row_lineage_invalid: {path}: {lineage} "
+                    "(lineage names the pre-dev released edge; the dev edge is source's)"
+                )
         if path in seen:
             # Stricter than _corpus_pins, which collapses duplicates silently:
             # a duplicate row is a structural surprise, not a pin.
