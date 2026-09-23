@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import posixpath
 import re
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 
 VALID_STATUS = frozenset({"draft", "stable", "deprecated"})
@@ -162,6 +164,15 @@ def _load_dev_head(raw: object, entry_id: str, active_version: str) -> DevHead |
         raise StandardsError(
             f"dev_block_invalid: {entry_id}: opened {opened} is not an ISO YYYY-MM-DD date"
         )
+    try:
+        # Review row 4: the shape regex admits 9999-99-99 and 2027-13-45 —
+        # only a real parse refuses them. The machine-readable head age must
+        # not be a fiction.
+        date.fromisoformat(opened)
+    except ValueError:
+        raise StandardsError(
+            f"dev_block_invalid: {entry_id}: opened {opened} is not a real calendar date"
+        ) from None
     match = DEV_VERSION_PATTERN.fullmatch(version)
     if match is None:
         raise StandardsError(
@@ -189,7 +200,12 @@ def _load_dev_head(raw: object, entry_id: str, active_version: str) -> DevHead |
         )
     head_prefix = f"standards/{entry_id}/{version}/"
     for relative in normative:
-        if not relative.startswith(head_prefix):
+        # Review row 5: containment is checked on the LEXICALLY NORMALIZED
+        # path — the raw string's startswith admitted
+        # standards/<id>/<v>-dev/../<v-active>/… escapes into the active
+        # tree. Lexical, not filesystem resolution: the corpus's paths are
+        # split, never opened (repin's traversal-check posture).
+        if not posixpath.normpath(relative).startswith(head_prefix):
             # Dev bytes outside the head directory would make the head a
             # laundering surface for paths the active spine governs.
             raise StandardsError(

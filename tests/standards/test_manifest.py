@@ -596,3 +596,37 @@ def test_candidate_true_without_opened_still_refuses(tmp_path: Path) -> None:
     )
     with pytest.raises(StandardsError, match="dev_block_invalid"):
         load_manifest(root)
+
+
+# --- review rows 4 and 5: calendar-valid opened; real head containment ------------
+
+
+@pytest.mark.parametrize("impossible", ["9999-99-99", "2027-13-45", "2026-02-30"])
+def test_opened_must_be_a_real_calendar_date(tmp_path: Path, impossible: str) -> None:
+    # Row 4: the shape regex admits these; only a real parse refuses them —
+    # the machine-readable age must not be a fiction.
+    root = _dev_head_tree(
+        tmp_path / impossible,
+        dev_block={
+            "version": "0.2.0-dev",
+            "opened": impossible,
+            "normative": ["standards/demo/0.2.0-dev/demo.schema.json"],
+        },
+    )
+    with pytest.raises(StandardsError, match="dev_block_invalid"):
+        load_manifest(root)
+
+
+def test_dev_path_traversal_out_of_the_head_refuses(tmp_path: Path) -> None:
+    # Row 5: the prefix admit — a path that STRING-startswith the head
+    # prefix but normalizes outside it (into the active version's tree).
+    root = _dev_head_tree(
+        tmp_path,
+        dev_block={
+            "version": "0.2.0-dev",
+            "opened": "2026-09-23",
+            "normative": ["standards/demo/0.2.0-dev/../0.1.0/demo.schema.json"],
+        },
+    )
+    with pytest.raises(StandardsError, match="dev_path_outside_head"):
+        load_manifest(root)
