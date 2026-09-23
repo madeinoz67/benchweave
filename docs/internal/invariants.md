@@ -123,7 +123,9 @@ rather than rewriting the history — that is how this file earns trust.
   Amendment (2026-09-23, issue #147 increment 3): descriptor admission gains the provider
   rows — the census mirror (`_check_provider_mirror`, the SDK's five refusals
   refusal-for-refusal and in order, over the two-layer known-features union:
-  corpus-derived layer 1 swept from the vendored tree, host-admitted layer 2), the
+  corpus-derived layer 1 swept from the vendored tree + host-admitted layer 2 — the
+  union serves the `unknown_otdp_feature:` closure ONLY; admission proof is the
+  triple row below, which never consults the union), the
   descriptor-relative pin verification (`_verify_provider_pin`: strict no-follow, hash,
   exact-byte decode — strict UTF-8, BOM/UTF-16 refused there — the vendored provider
   schema resolved manifest-derived, grammar meta-validation, kind uniqueness,

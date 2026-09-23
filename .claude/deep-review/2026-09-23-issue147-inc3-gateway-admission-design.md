@@ -160,10 +160,19 @@ orphan `otdp.transport.*` sweep with the SDK's effective-declaration determiniza
   admitted set (§1.2).
 
 The SDK proves the declaration **well-formed** (layer 1 + declaration consistency);
-only the gateway can prove it **admitted** (layer 2). This is the two-layer model of
-the record §1.2 / transport-providers §6 made executable, and it is why the two
-lanes legitimately disagree on one cell: a well-formed descriptor pinning a
-contract the host has not admitted is SDK-clean and gateway-refused.
+only the gateway can prove it **admitted** — and the admission proof is the TRIPLE
+ROW of (b) below (`_check_provider_admission`: exact id+version+sha256 against the
+operator's admitted set), which never consults the union. Layer 2's role is
+narrower and different: it extends the KNOWN-FEATURES closure (the
+`unknown_otdp_feature:` row) so a feature declared through an admitted contract is
+not refused as corpus-unknown — it is not the admission proof, and the census
+mirror's union would not catch an unadmitted contract. *(Fold wave D correction,
+2026-09-23: the original text attributed admission proof to layer 2; the
+commissioned state the triple row checks is what admission means.)* This is the
+two-layer model of the record §1.2 / transport-providers §6 made executable, and
+it is why the two lanes legitimately disagree on one cell: a well-formed
+descriptor pinning a contract the host has not admitted is SDK-clean and
+gateway-refused.
 
 **(b) The gateway-only admission row.** New refusal prefix `provider_not_admitted:`
 — a gateway-owned prefix in the `issued_map:` tradition (the SDK cannot see
@@ -479,7 +488,7 @@ here by construction — dev bytes never vendor, so the gateway cannot see them.
 | 4 | Reserved-seven frozenset census fixture (derivation-vectors style) — both checkers hand-carry the set with spelling tests; extends record deferral 8 to both sides | Gateway tracker (single stream) | The §8.1 generic table grows |
 | 5 | Corpus prose refresh — 0.2.2 transport-providers §4's "until that admission lands" and §1's prefix-port sentence are satisfied by this increment; frozen prose is not edited in place | Next OTDP bump train | Any semantic OTDP bump |
 | 6 | Multi-fault compositions + provider-grammar fuzzing (record deferral 6) | Follow-on | The §3 underpowered signal fires |
-| 7 | The #43 row-9 activation gap — production wiring of the whole chain (bridge construction over the worker store) including the provider grant's first production call site | Issue #167 | First real capture-class or provider-backed plugin |
+| 7 | The #43 row-9 activation gap — production wiring of the whole chain (bridge construction over the worker store) including the provider grant's first production call site. Scope note (fold wave E): the grant gate has NO expiry axis — admission judges approval expiry at admit time against `now_wall`; a gate-side re-check (the gate re-derives the triple the way it re-checks permission and resolution) is #167's FIRST item, landing with the gate's first real caller rather than speculatively now | Issue #167 | First real capture-class or provider-backed plugin |
 | 8 | Draft-provenance check for grammar subschemas (dead Draft-07 keywords under 2020-12 — record §8 EN-7) | Gateway tracker (single stream) | A real provider contract authored off-corpus-tooling misses it |
 
 ## 7. Top risks — each with its falsifier
