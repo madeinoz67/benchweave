@@ -350,6 +350,7 @@ def _lattice(
     stream_floor_ms: int = 10,
     streaming: bool = True,
     two_devices: bool = False,
+    simulated: bool = True,
 ) -> Path:
     """Author the activation lattice: one commissioned supply device.
 
@@ -617,7 +618,7 @@ def _lattice(
                 "tested_at": "2026-09-11T00:00:00Z",
                 "scope": "Simulator envelope over the synthetic activation supply.",
                 "result": "passed",
-                "limitations": ["simulator-only"],
+                "limitations": ["simulator-only"] if simulated else [],
             }
         ],
     }
@@ -670,6 +671,8 @@ class _CommissionedHarness:
         stream_floor_ms: int = 10,
         streaming: bool = True,
         two_devices: bool = False,
+        simulated: bool = True,
+        commissioned: bool = True,
     ) -> None:
         self.root = tmp_path
         self.lattice_dir = _lattice(
@@ -682,6 +685,7 @@ class _CommissionedHarness:
             stream_floor_ms=stream_floor_ms,
             streaming=streaming,
             two_devices=two_devices,
+            simulated=simulated,
         )
         descriptor_path = self.lattice_dir / "descriptor-demo-supply.json"
         plugin_dir = _write_plugin_source(tmp_path / "pluginroot")
@@ -745,14 +749,17 @@ class _CommissionedHarness:
             high_water=self.session.high_water,
         )
         # The commissioning admin act: the activation record for generation
-        # 2 is what the bench device's declared generation links to.
-        activate(
-            self.admitted,
-            bench_generation=1,
-            bench_has_live_lease=False,
-            records_dir=self.session.records_dir / BENCH_ID,
-            activated_at=NOW_ISO,
-        )
+        # 2 is what the bench device's declared generation links to. A
+        # non-commissioned harness (the F3 refusal and disclosure legs)
+        # skips it — the device then has no commissioned closure.
+        if commissioned:
+            activate(
+                self.admitted,
+                bench_generation=1,
+                bench_has_live_lease=False,
+                records_dir=self.session.records_dir / BENCH_ID,
+                activated_at=NOW_ISO,
+            )
 
     def open_store(self) -> tuple[Store, ContentStore]:
         store = Store.open(self.root / "state.db")
@@ -1107,6 +1114,49 @@ def test_r15_fast_bench_signal_degrades_loudly(
         entry = coordinator.stream_host.devices[DEVICE_ID]
         assert entry.engine is None, "a sub-floor subscription must not go live"
         assert entry.controller.live_subscription_ids() == []
+    finally:
+        store.close()
+
+
+# --- fix wave F3: the sim fallback is gated on the simulation mark --------------------
+
+
+def test_f3_unmarked_bench_refuses_sim_substitution(tmp_path: Path) -> None:
+    """F3 RED control: an adapter-mode device with no commissioned closure
+    on a bench whose commissioning does NOT declare simulation must refuse
+    — never silently substitute the simulator plugin on a device-id
+    collision ({psu, controller}) and pass the run."""
+    harness = _CommissionedHarness(
+        tmp_path, "req-f3a", simulated=False, commissioned=False
+    )
+    store, content = harness.open_store()
+    try:
+        factory = harness.build_run(QUOTA_LIMITS)
+        with pytest.raises(ValueError, match="run_device_implementation_absent"):
+            factory("run-f3a", "principal-activation", harness.binding_ref(), store)
+    finally:
+        store.close()
+
+
+def test_f3_marked_fallback_discloses_in_record(tmp_path: Path) -> None:
+    """F3 RED control: on a simulation-declared bench the declarative
+    fallback runs AND the discriminator is record-visible — the terminal
+    record's reasons disclose which implementation produced the
+    evidence."""
+    harness = _CommissionedHarness(
+        tmp_path, "req-f3b", simulated=True, commissioned=False
+    )
+    run_id = "run-f3b"
+    coordinator, store, content = _coordinator(harness, run_id, QUOTA_LIMITS)
+    try:
+        record = coordinator.start_run(run_id, "principal-activation")
+        assert record["outcome"] == "passed"
+        assert any(
+            "implementation_disclosure" in reason
+            and DEVICE_ID in reason
+            and "declarative-sim-fallback" in reason
+            for reason in record["reasons"]
+        ), f"no implementation disclosure in reasons={record['reasons']}"
     finally:
         store.close()
 

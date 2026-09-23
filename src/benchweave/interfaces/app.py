@@ -312,11 +312,13 @@ class _RetainingCoordinator(RunCoordinator):
         spool: tempfile.TemporaryDirectory[str],
         stream_host: RunStreamHost | None = None,
         services: RetainingServices | None = None,
+        implementation_disclosures: list[str] | None = None,
     ) -> None:
         # The stream host rides BOTH layers: the base coordinator hands it
         # to the monitoring clock (the wait-slice driver), this subclass
         # arms and tears it down around the body.
         super().__init__(store, plugins, clock, wall, docs, stream_host=stream_host)
+        self.implementation_disclosures = list(implementation_disclosures or [])
         self._retain = retain
         self._spool_dir = spool  # cleaned up when the coordinator is collected
         self._last_monitor: _RunMonitor | None = None
@@ -368,6 +370,18 @@ class _RetainingCoordinator(RunCoordinator):
             finally:
                 prepared.monitor.on_violation = None
         return body
+
+    def _body_truth(self, prepared: _PreparedRun, body: Any) -> tuple[str, list[str]]:
+        """Append the run's implementation disclosures to the record's
+        reasons (F3): which implementation produced the evidence — a
+        commissioned closure (manifest digest) or the simulation-declared
+        bench's declarative fallback — is part of the record, not just the
+        gateway log."""
+        outcome, reasons = super()._body_truth(prepared, body)
+        for disclosure in self.implementation_disclosures:
+            if disclosure not in reasons:
+                reasons.append(disclosure)
+        return outcome, reasons
 
     def start_run(self, run_id: str, principal_id: str) -> dict[str, Any]:
         # The last-resort sweep: after the terminal record and lease
@@ -459,12 +473,26 @@ class _BridgePlan:
         self.descriptor = descriptor
         self.digest = digest
 
+    def disclosure(self, device_id: str) -> str:
+        return (
+            f"implementation_disclosure: device={device_id} "
+            f"kind=commissioned-closure "
+            f"manifest_sha256={self.closure.manifest_sha256[:12]}"
+        )
+
 
 class _SimPlan:
-    """One device on the declarative fixture-sim leg."""
+    """One device on the declarative fixture-sim leg.
+
+    ``disclosure`` is set only when the plan is the simulation-declared
+    bench's SUBSTITUTION for an uncommissioned adapter-mode device (the
+    record-visible discriminator, F3); a non-adapter descriptor's own sim
+    leg is the declared integration mode, not a substitution.
+    """
 
     def __init__(self, name: str) -> None:
         self.name = name
+        self.disclosure: str | None = None
 
 
 def _require_registry_session(session: RegistrySession | None) -> RegistrySession:
@@ -502,6 +530,7 @@ def _device_plans(
     """
     plans: dict[str, _BridgePlan | _SimPlan] = {}
     sim_names = dict(_SIM_PLUGINS)
+    simulated = _bench_declares_simulation(docs.commissioning)
     for device in docs.bench["devices"]:
         device_id = str(device["id"])
         digest = str(device["descriptor"]["sha256"])
@@ -520,20 +549,35 @@ def _device_plans(
             if closure is not None:
                 plans[device_id] = _BridgePlan(closure, descriptor, digest)
                 continue
-            if device_id not in sim_names:
+            if device_id not in sim_names or not simulated:
+                # F3: the fallback is a SIMULATION-declared bench's posture.
+                # An unmarked bench (commissioning evidence without the
+                # simulator-only limitation) never substitutes a simulator
+                # for an uncommissioned adapter device — the device-id
+                # collision with {psu, controller} is not authority.
                 raise ValueError(
-                    f"run_device_closure_absent: adapter-mode device {device_id!r} "
-                    f"on bench {bench_id!r} declares generation "
+                    "run_device_implementation_absent: adapter-mode device "
+                    f"{device_id!r} on bench {bench_id!r} declares generation "
                     f"{device.get('generation')!r} with no commissioned registry "
-                    "closure, and no declarative sim plugin exists for it — "
-                    "refusing to run the device on an uncommissioned implementation"
+                    "closure, and the bench's commissioning does not declare "
+                    "simulation — refusing to substitute a simulator "
+                    "implementation for uncommissioned hardware"
                 )
             _LOG.warning(
                 "run_device_declarative_fallback: device=%s run=%s bench=%s "
                 "adapter-mode descriptor has no commissioned closure for its "
-                "declared generation; running the committed sim plugin",
+                "declared generation; the simulation-declared bench runs the "
+                "committed sim plugin",
                 device_id, run_id, bench_id,
             )
+            fallback = _SimPlan(sim_names[device_id])
+            fallback.disclosure = (
+                f"implementation_disclosure: device={device_id} "
+                "kind=declarative-sim-fallback "
+                f"reason=no-commissioned-closure-for-generation-{device.get('generation')}"
+            )
+            plans[device_id] = fallback
+            continue
         if device_id in sim_names:
             plans[device_id] = _SimPlan(sim_names[device_id])
     return plans
@@ -667,6 +711,15 @@ def _build_run_factory(
                 )
                 plugin.plugin_open(services)
                 plugins[device_id] = plugin
+            disclosures = [
+                plan.disclosure(device_id)
+                for device_id, plan in plans.items()
+                if isinstance(plan, _BridgePlan)
+            ] + [
+                plan.disclosure
+                for plan in plans.values()
+                if isinstance(plan, _SimPlan) and plan.disclosure is not None
+            ]
             return _RetainingCoordinator(
                 worker_store,
                 plugins,
@@ -681,6 +734,7 @@ def _build_run_factory(
                 spool=spool,
                 stream_host=stream_host,
                 services=services,
+                implementation_disclosures=disclosures,
             )
         except BaseException:
             stream_host.close()
