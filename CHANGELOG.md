@@ -142,10 +142,6 @@ All notable changes to this project will be documented in this file.
 - Read the _GENERATED.txt stamps as UTF-8 (#139)
 - Keep the 0600 promise on Windows by restricting benchweave.env's access list (#137)
 - Say what 0600 means on Windows in the remaining messages and tests (#137)
-- Devices suite follows the manifest into pre-provider trees
-- Fold review wave — provider rules gain teeth, claims gain honesty
-- Fold adversary LOW — provider boundary claim scoped to security_scope
-- Stamp the in-tree descriptors to 0.2.1, lattice in lockstep — the disclosed window closes
 - Forensic once-guard keys durability and lifecycle, not identity
 - The stamp discriminator requires identity and dispatch binding
 - Gate-region lock contention classifies RESOURCE_LIMIT
@@ -159,6 +155,14 @@ All notable changes to this project will be documented in this file.
 - Uninitialized-submodule refusal names initialization, not the superproject HEAD (issue #158 measurer fold)
 - Contain success-path completion emit, bound RunWorker.join (issue #156)
 - Run-state-aware startup sweep leg — queued ghosts and stale projections unwedge at restart (issue #156 fix wave)
+- Close every commissioned bridge on every exit path (F1, issue #167 review wave)
+- Teardown-window violations escalate into the terminal record (F2, issue #167 review wave)
+- Gate the sim fallback on the commissioning simulation mark (F3, issue #167 review wave)
+- Closure resolution pins the served raw manifest digest (F4, issue #167 review wave)
+- Devices suite follows the manifest into pre-provider trees
+- Fold review wave — provider rules gain teeth, claims gain honesty
+- Fold adversary LOW — provider boundary claim scoped to security_scope
+- Stamp the in-tree descriptors to 0.2.1, lattice in lockstep — the disclosed window closes
 - 0.2.2 errata batch — the two-component feature-version tighten
 - The sdk_compatibility mirror follows the landing — notes and sdk aligned with the 0.2.2 lock
 - Dev-stage bytes never stage or ship — lexical skip in both halves (review row 1)
@@ -305,8 +309,6 @@ All notable changes to this project will be documented in this file.
 - Docstrings for the four worst-documented public vocabularies
 - Align development.md with what CI actually runs
 - Describe the CI gate this branch's workflow actually runs
-- Otdp 0.2.1 transport-provider prose — the mechanism behind the sentence
-- Obligation 15 — the transport-provider lane's increment-2/3 pairing constraint
 - Bridge docstring — version fix, real async-host boundary, capture-budget disclosure
 - The busy-timeout disclosure prices the full failed-dispatch path
 - Narrow the develop-your-device loader sentence; pin it gateway-side
@@ -316,6 +318,11 @@ All notable changes to this project will be documented in this file.
 - CON-12 invariant, GOVERNANCE identity sentence, obligation-6 extension (issue #158)
 - CON-12/GOVERNANCE name the pin as the mirror's authority (issue #158 review wave F4+NIT-1)
 - Issue #156 run-worker emit-containment design record
+- Issue #167 run-engine activation design record
+- Run-owned streaming + the adapter-run quota seam (issue #167 slice 3)
+- Review-battery disclosures — teardown aggregate bound, corrected M-B attribution, row-B measuring condition, F4-residual deferral row
+- Otdp 0.2.1 transport-provider prose — the mechanism behind the sentence
+- Obligation 15 — the transport-provider lane's increment-2/3 pairing constraint
 - Obligation 15 follows the actual heal path — same-version re-vendor is refused
 - The mutable -dev standards stage — design record (gateway #97 successor)
 - F6 superseded — single reviewer, coordinator carve-out, 2027-03-23 re-review (owner ruling)
@@ -443,9 +450,6 @@ All notable changes to this project will be documented in this file.
 - Plugin-ui-preview 0.1.0 -> 0.1.1 — plot_views on the wire
 - Manifest-declared plots render in the preview (0.1.2)
 - Gortex-write-gate — deny native edits in tracked primaries
-- OTDP 0.2.1 baseline — copy-never-move from 0.2.0, no semantic change
-- Otdp 0.2.1 — transport.custom gains the pinned provider declaration
-- Reference-rawlink — the custom-transport-without-provider example
 - V5 capture-staging migration + refuse-newer guard + hygiene pins
 - Staged-append capture writer (open/append/finalise/abort/sweep/ledger)
 - Composing capture-services bundle + controller + permission read
@@ -458,6 +462,11 @@ All notable changes to this project will be documented in this file.
 - Matrix render reads committed state only (issue #158)
 - Run_check enforces the sdk_compatibility mirror (issue #158)
 - Bump-window floor revisited 48h -> 24h (owner ruling)
+- Construct commissioned OTDP bridges in build_run (issue #167 slice 1)
+- Run-owned streaming composition — arm, drive, contain, tear down (issue #167 slice 2)
+- OTDP 0.2.1 baseline — copy-never-move from 0.2.0, no semantic change
+- Otdp 0.2.1 — transport.custom gains the pinned provider declaration
+- Reference-rawlink — the custom-transport-without-provider example
 - OTDP 0.2.2 — the fold re-rolled as a PATCH; 0.2.1 frozen at SDK-release bytes
 - The -dev stage — one optional dev head per manifest entry
 - The dev-proof lane — --corpus points a family census at the declared dev head (F3)
@@ -652,16 +661,18 @@ All notable changes to this project will be documented in this file.
 - The harness closes the Store it opened (#136)
 - Close the store only once the server thread has stopped (#136)
 - Pin packaged-first precedence when both trees exist
-- RED — 0.2.1 provider rules and synthetic examples ahead of the mechanism
-- Equivalence extension — SDK checker over the 0.2.1 examples, the shared provider lattice, the EN-3 disposition
 - The slice-1 sequential-model measurement (issue #43)
 - The contention arm asserts eventual reclaim, not overshoot timing
 - A6's INTERNAL_ERROR gate arm gets its home (review R1)
 - Drop the dead Migration import pair in _apply_subset
 - Complete the dead-pair removal — drop the del Migration line
-- The slice-1 corpus cite follows the active version (merge-result fix)
 - The slice-2 review wave — real delivery budget, timebase pin, rotation pin, record erratum
 - Spec10 throwaway SDK roots declare the mirrored version
+- Measurement harness machinery — spans, capture lane, fresh bindings (issue #167 slice 4)
+- M-A measurement seams — tick timestamps, saturated polls (F5, issue #167 review wave)
+- RED — 0.2.1 provider rules and synthetic examples ahead of the mechanism
+- Equivalence extension — SDK checker over the 0.2.1 examples, the shared provider lattice, the EN-3 disposition
+- The slice-1 corpus cite follows the active version (merge-result fix)
 - The cite class follows the active 0.2.2; provider-claims derives it (F2)
 - The mirror fixtures own their notes axis — recovery of the abbb144 cascade
 - The -dev stage RED arms — load rules, validate coverage, repin mutability
