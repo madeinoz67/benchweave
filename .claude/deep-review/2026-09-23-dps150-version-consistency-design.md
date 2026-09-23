@@ -1,7 +1,21 @@
 # dps150 version consistency across three consumers — slice-level design
 
 - Date: 2026-09-23
-- Status: design (pre-implementation; this record is the builder's commit one)
+- Status: design (pre-implementation; this record is the builder's commit one).
+  **Amended twice post-review (same date) — the resolution landed on main from
+  another session while this branch was in review, in two steps: `7722b99`
+  took §4 items 1–2 (the descriptor stamp + lock re-pin; the same resolution
+  §3 chose), and `e0e0e6d` + `1c761e8` took §4 item 3 (the `SCHEMAS`
+  derivation — measured need confirmed: between the two, the device-plugins
+  lane failed 78 of 247 at `7722b99`'s state, `FileNotFoundError` on the
+  hardcoded `contracts/otdp-0.2.0` path against the re-pinned 0.2.2 lock).
+  What this branch now carries is what neither landed: §4 item 4 — the
+  parent-side triangle guard — and this record. The lock's `revision` is
+  main's `8a080d1` (the #171 merge) over §4's `a103a4c`: both commits carry
+  byte-identical corpus (8/8 digests verified against each), and a rebase does
+  not re-open a landed decision. §2's history and §3's weighing stand
+  unchanged — they are the evidence for what the sweep had to move, and the
+  guard is what makes the next sweep unable to land half-done silently.**
 - References: CON-10 (`docs/internal/invariants.md`), `standards/GOVERNANCE.md`
   ("Bump mechanics — copy, never move"), gateway issue #147 (the landing that
   surfaced this), `tests/sdk/test_descriptor_equivalence.py`, `.github/workflows/device-plugins.yml`
