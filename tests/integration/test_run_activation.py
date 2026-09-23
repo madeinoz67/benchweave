@@ -23,6 +23,7 @@ import hashlib
 import json
 import subprocess
 import sys
+import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -33,6 +34,7 @@ import pytest
 from benchweave.content.capture_services import CaptureServicesBundle
 from benchweave.content.store import ContentStore
 from benchweave.host.otdp_bridge import OTDPBridge
+from benchweave.host.types import OperationRequest, OperationStatus, OperationVerb
 from benchweave.interfaces.app import _build_run_factory
 from benchweave.interfaces.bootstrap import admit_startup_bench
 from benchweave.interfaces.worker import RunWorker
@@ -93,6 +95,7 @@ ADAPTER_SOURCE = '''\
 from __future__ import annotations
 
 import asyncio
+import time
 
 
 class DemoSupplyAdapter:
@@ -105,6 +108,11 @@ class DemoSupplyAdapter:
         }
         self.sequences: dict[str, int] = {}
         self.dispatches: list[str] = []
+        # Measurement seams (the bench-measurer lane's machinery): every
+        # execute/next_event call records its verb and wall span, so M-A's
+        # per-poll latencies and M-B's dispatch wall-stretch read off the
+        # composed adapter without touching production code.
+        self.dispatch_spans: list[tuple[str, float, float]] = []
 
     async def open(self, descriptor, services, context) -> None:
         self.descriptor = descriptor
@@ -130,6 +138,13 @@ class DemoSupplyAdapter:
         return float(self.state["voltage_setpoint_v"])
 
     async def execute(self, envelope, context):
+        started = time.monotonic()
+        try:
+            return await self._execute(envelope, context)
+        finally:
+            self.dispatch_spans.append((envelope["verb"], started, time.monotonic()))
+
+    async def _execute(self, envelope, context):
         await context.mark_dispatch_started()
         verb = envelope["verb"]
         arguments = envelope["arguments"]
@@ -170,6 +185,32 @@ class DemoSupplyAdapter:
                 "status": "ok",
                 "data": {"subscription_id": arguments["subscription_id"]},
             }
+        if verb == "capture":
+            # The capture lane over the composed bundle: staged appends and
+            # a finalise whose manifest metadata the writer (not the
+            # adapter) computes the digest and length over.
+            capture_id = arguments["capture_id"]
+            waveform = arguments["format"] == "waveform_f64le"
+            data = bytes(arguments["sample_count"] * 8 if waveform else 8)
+            await context.services.artifact_append(capture_id, data, context)
+            return {
+                "operation_id": operation_id,
+                "verb": verb,
+                "status": "ok",
+                "data": await context.services.artifact_finalise(
+                    capture_id,
+                    {
+                        "format": arguments["format"],
+                        "started_at": self.services.utc_now(),
+                        **(
+                            {"sample_interval_s": 0.001, "unit": "V"}
+                            if waveform
+                            else {}
+                        ),
+                    },
+                    context,
+                ),
+            }
         return {
             "operation_id": operation_id,
             "verb": verb,
@@ -182,6 +223,13 @@ class DemoSupplyAdapter:
         }
 
     async def next_event(self, subscription_id, context):
+        started = time.monotonic()
+        try:
+            return await self._next_event(subscription_id, context)
+        finally:
+            self.dispatch_spans.append(("next_event", started, time.monotonic()))
+
+    async def _next_event(self, subscription_id, context):
         if HANG_NEXT_EVENT:
             await asyncio.sleep(10.0)
         sequence = self.sequences.get(subscription_id, -1) + 1
@@ -242,6 +290,10 @@ def _mutated_descriptor(tmp_path: Path, *, stream_floor_ms: int = 10) -> Path:
         "min_interval_ms": stream_floor_ms,
         "max_subscriptions": 4,
     }
+    # The capture lane's descriptor bounds (the gate's G2 read): sized for
+    # the measurement harness's smoke-scale captures.
+    descriptor["capture_limits"] = {"max_samples": 1024, "max_bytes": 65536}
+    descriptor["capture_formats"] = ["waveform_f64le", "raw_binary"]
     return _write(tmp_path / "descriptor-demo-supply.json", descriptor)
 
 
@@ -669,8 +721,20 @@ class _CommissionedHarness:
         )
         return factory
 
-    def binding_ref(self) -> dict[str, str]:
-        raw = (self.lattice_dir / "run-binding.json").read_bytes()
+    def binding_ref(self, request_id: str | None = None) -> dict[str, str]:
+        """The §5 binding ref, optionally under a FRESH request id.
+
+        Rewriting the request id (the only unpinned field — nothing pins
+        the binding) lets one lattice serve several runs: the measurer's
+        queued-run leg (M-C) submits a second run behind a live one
+        without re-authoring the lattice.
+        """
+        path = self.lattice_dir / "run-binding.json"
+        if request_id is not None:
+            binding = json.loads(path.read_bytes())
+            binding["request_id"] = request_id
+            path.write_text(json.dumps(binding, indent=2))
+        raw = path.read_bytes()
         return {
             "id": json.loads(raw)["request_id"],
             "version": "0.1.0",
@@ -996,6 +1060,56 @@ def test_r15_fast_bench_signal_degrades_loudly(
         entry = coordinator.stream_host.devices[DEVICE_ID]
         assert entry.engine is None, "a sub-floor subscription must not go live"
         assert entry.controller.live_subscription_ids() == []
+    finally:
+        store.close()
+
+
+# --- the measurement harness machinery (M-A/M-B/M-C support) -----------------------
+#
+# The bench-measurer lane's formal evidence is produced AFTER refute; what
+# lands here is the machinery it composes on: the adapter records a
+# (verb, started, ended) monotonic span per dispatch and per next_event
+# poll (M-A's per-poll latencies; M-B's dispatch wall-stretch), the stream
+# host's replaceable on_event consumer is the landing-time channel (M-A's
+# events/s windows), the composed bridge answers capture dispatches over
+# the real staged writer (M-B's contention shape), and binding_ref(mints
+# fresh request ids so a second run can queue behind a live one (M-C).
+
+
+def test_measurement_harness_capture_dispatch_over_the_composed_bridge(
+    commissioned: _CommissionedHarness,
+) -> None:
+    """Harness smoke: a capture dispatch through the composed bridge
+    (build_run-constructed, eight-member bundle, staged writer over the
+    worker store) publishes a manifest with host-computed digest and
+    length — the machinery M-B's contention measurement drives."""
+    run_id = "run-capture-smoke"
+    coordinator, store, content = _coordinator(commissioned, run_id, QUOTA_LIMITS)
+    try:
+        from benchweave.interfaces.app import _RetainingCoordinator
+
+        assert isinstance(coordinator, _RetainingCoordinator)
+        bridge = coordinator.plugins[DEVICE_ID]
+        assert isinstance(bridge, OTDPBridge)
+        request = OperationRequest(
+            operation_id="capture-smoke-1",
+            verb=OperationVerb.CAPTURE,
+            arguments={
+                "capture_id": "cap.smoke-1",
+                "format": "waveform_f64le",
+                "sample_count": 4,
+                "max_bytes": 64,
+            },
+        )
+        result = bridge.dispatch(request, deadline_ns=time.monotonic_ns() + 5_000_000_000)
+        assert result.status is OperationStatus.OK, result.error
+        manifest = result.data
+        assert manifest["capture_id"] == "cap.smoke-1"
+        assert manifest["byte_length"] == 32
+        assert manifest["sample_count"] == 4
+        assert len(manifest["sha256"]) == 64
+        spans = [span for span in bridge._adapter.dispatch_spans if span[0] == "capture"]
+        assert spans and spans[0][2] > spans[0][1]
     finally:
         store.close()
 
