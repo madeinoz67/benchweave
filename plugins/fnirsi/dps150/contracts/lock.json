@@ -1,17 +1,17 @@
 {
   "repository": "https://github.com/madeinoz67/benchweave",
-  "revision": "64f64a963e3062c20e77ef5813dafacc6f9b983c",
-  "directory": "standards/otdp/0.2.0",
-  "otdp_version": "0.2.0",
+  "revision": "8a080d149ebfb972f5ab697c252c73f9ebec4019",
+  "directory": "standards/otdp/0.2.2",
+  "otdp_version": "0.2.2",
   "adapter_api_version": "1.1",
   "sha256": {
-    "otdp-device-descriptor.schema.json": "281656778c306a903e99e00e8e19ec9204c03b5f6af4295ef2ebee45ceb30860",
-    "otdp-runtime.schema.json": "8fd15cc8d95336f0f61deeeab9d4d6dd65f7d278a44b066f47d9be74fe08c867",
-    "otdp-specification.md": "d36746ffc0c29a74283b97da1dcbacfa6f987d1031d98ee1d3e81aba9dd4306a",
-    "extension-contract.md": "736bf1e2e75b3d548dd6c5af745e3e7b9f7865ca4009cc7cc6366d5579ab37d3",
-    "device-classes.md": "59cb07686997442762c7c72509ed84729a5234f5edc713bfaaecd735f00bd444",
-    "measurement-model.md": "a5e0cb7ac691a2b88f106f21ac1d225a5d423e1768beccac938d6e1b013c0585",
-    "otdp-measurement.schema.json": "e911d0efec92a5167788dc59c40acdbf62e99f82249fcc99bf2e57ffe5331382",
-    "device-profile-catalog.json": "dc776ec3dd02f3b37e02005f79434597f220b5acb5d6c23c98b844aa3e63d923"
+    "otdp-device-descriptor.schema.json": "e43fe4583f5f118415f7fbf3dbe55ff681d4ee1e9dd3d4758e93207d9f07e11f",
+    "otdp-runtime.schema.json": "d2e62a22a118aad11e247c7a087947b24cf8fcf7c1cc3c77a71b5a249f8342ea",
+    "otdp-specification.md": "6469e40d9e98a2e52857c0165091fd639e47475893e66a6cc593ed4452c427e6",
+    "extension-contract.md": "3595b6655b012af350ccda1a4715c3515cdfbe8163120cc6f369d08922e5e627",
+    "device-classes.md": "712ec652c85033f84e79b4679e6756d9bf0eab93af319c55ca45b5962b0a3860",
+    "measurement-model.md": "1d40f0c32676149d360c127c6c974a2e227b2dfd190d9044fec24d8c3312305e",
+    "otdp-measurement.schema.json": "7905795bed6139b9705edfa17b7a17226b99cddda6656030d73bb63dc998a4b3",
+    "device-profile-catalog.json": "2e8c7841a397f794724ab2f484e7531cef47889c5f514ed68ff2c1273f0b493c"
   }
 }
