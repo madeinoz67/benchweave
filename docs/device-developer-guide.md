@@ -309,6 +309,49 @@ The `stream_subscribe`/`stream_unsubscribe` verbs open and close subscriptions (
 
 **Landing:** every accepted event lands as durable `event_log` evidence under the host's receipt stamp with its payload digest and capture/dataset linkage, before it is returned to the poll engine. Event rows consume a kind-scoped quota dimension; exhaustion mid-stream tears down that subscription with a host-cause `ended` marker — a resource condition, never a session failure. No stream outlives its host-owned subscription authority: subscriptions die with the run, and a failed session's streams are all torn down with markers.
 
+### How a run drives your stream (host-owned subscriptions)
+
+On a bench gateway, the **run engine** — not the procedure — owns the stream
+verbs (issue #167). When a run constructs your bridge (its bench device's
+declared generation carries the registry activation record that commissioned
+your package's closure), the run derives subscriptions solely from the
+admitted bench document's declared signals: for each signal whose source is
+your device, one subscription with `parameters=[signal.source.parameter]`
+and `min_interval_ms=signal.poll_ms`, issued as an ordinary
+`stream_subscribe` dispatch so monitoring wraps it like every dispatch. Your
+adapter never mints subscriptions on a run; it only answers them. If the
+bench commissions an interval shorter than your descriptor's
+`stream_limits.min_interval_ms`, the subscription is refused cleanly before
+your adapter is called and the run logs one `stream_subscribe_refused:` line
+— the signal simply has no stream and the monitor's read-based snapshot is
+unaffected. (Procedure-authored subscribe steps are a corpus question that
+has not been opened; the run-owned shape is the composed one today.)
+
+**The poll rhythm:** polls run only inside the run's wait-slice rhythm —
+during a procedure's `delay` steps, each poll bounded to one slice of the
+bench poll cadence (`bench_poll_ns`: the minimum declared signal `poll_ms`,
+defaulting to 10 ms and floored at 1 ms). A procedure with no wait step
+polls nothing during the body; per-dispatch monitor ticks still cover
+protection. There is no hidden background task polling your adapter.
+
+**Teardown is exit-path-owned:** at body end, before the protective
+transition, the run unsubscribes every live subscription (an ordinary
+`stream_unsubscribe` dispatch) and sweeps anything still live with a
+host-cause `run_body_end` ended marker; `close()` is the last-resort sweep.
+Emitting your own `ended` event remains good citizenship, but no stream
+outlives the run regardless of what your adapter does.
+
+**Sinks and the containment promise.** The run's host services expose
+`register_reading_sink` — callables receiving every Reading your telemetry
+lands, one shared sink set across the whole run (the same set the stream
+landing delivers into). Delivery is contained on both sides: a raising sink
+is counted on a run-visible failure counter and logged
+(`stream_on_event_contained:`), never allowed to fail the landing that
+carried the reading, and never visible to your adapter. Symmetrically, the
+run's own `on_event` consumer runs inside the same contained dispatcher —
+a raising consumer cannot derail the body, the protective transition, or
+your stream.
+
 ## 6. Create controller firmware
 
 For an ESP32 or another controller, first decide whether firmware implements native OTDP UART JSON or a documented protocol behind an adapter. Keep firmware pin assignments and electrical behaviour explicit; OTDP does not choose a safe board configuration.
