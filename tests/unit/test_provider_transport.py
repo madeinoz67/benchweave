@@ -340,3 +340,33 @@ def test_a_providerless_descriptor_is_untouched_by_the_gate(
 
     with pytest.raises(NotImplementedError, match="no transport is bound"):
         asyncio.run(bundle.transfer({"kind": "x"}, context=None))
+
+
+# --- fold wave C: $ref grammar subschemas (crash shape, then the ban) -----
+
+
+@pytest.mark.parametrize(
+    ("ref", "label"),
+    [
+        ({"$ref": "#"}, "self reference"),
+        ({"$ref": "https://example.invalid/grammar.json"}, "remote URI"),
+    ],
+)
+def test_ref_grammar_subschemas_refuse_with_the_transaction_discipline(
+    store: Store, ref: dict[str, str], label: str
+) -> None:
+    """Fold wave C: a grammar subschema carrying a $ref passes both
+    admission lanes (check_schema meta-validates it — resolution is not
+    meta-validation) and then crashes the guard's transfer with
+    RecursionError/_WrappedReferencingError — OUTSIDE the
+    provider_transaction: ValueError discipline. Watched failing (RED)
+    before the admission-side $ref ban; the arm asserts the discipline the
+    guard owes every transaction, whatever the grammar."""
+    mod = _module()
+    contract = json.loads((EXAMPLES / "reference-provider.json").read_text())
+    contract["transaction_grammar"][0]["request_schema"] = ref
+    import asyncio
+
+    guard = mod.ProviderTransport(contract=contract, runtime=_FakeRuntime([], result={}))
+    with pytest.raises(ValueError, match="provider_transaction:"):
+        asyncio.run(guard.transfer(dict(OUTPUT_REPORT), context=None)), label

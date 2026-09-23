@@ -488,13 +488,37 @@ def _exceeds_depth(node: object, limit: int) -> bool:
     return False
 
 
+def _carries_ref(node: object) -> bool:
+    """Whether a grammar subschema tree carries any ``$ref`` key anywhere.
+
+    Meta-validation cannot see this hole: ``check_schema`` validates a
+    ``$ref``-bearing subschema (references resolve at EVALUATION, not
+    meta-validation), and the runtime guard resolves nothing — an
+    unresolvable or self-referential grammar would crash transfer outside
+    the transaction discipline. Grammar subschemas are inline Draft 2020-12
+    by design; a reference is a refusal at admission, never a crash at
+    runtime.
+    """
+    stack: list[object] = [node]
+    while stack:
+        current = stack.pop()
+        if isinstance(current, dict):
+            if "$ref" in current:
+                return True
+            stack.extend(current.values())
+        elif isinstance(current, list):
+            stack.extend(current)
+    return False
+
+
 def _validate_provider_contract(
     logical: str, document: dict[str, Any], relative: str
 ) -> None:
     """A provider contract against the vendored schema plus the checks JSON
     Schema cannot express (mirror of the SDK's ``validate_transport_provider``):
-    grammar-subschema meta-validation, kind-string uniqueness, reserved-seven
-    disjointness, and the three identity equalities."""
+    grammar-subschema meta-validation, the inline-only ``$ref`` ban,
+    kind-string uniqueness, reserved-seven disjointness, and the three
+    identity equalities."""
     error = next(iter(provider_contract_validator().iter_errors(document)), None)
     if error is not None:
         raise AdmissionRejected(
@@ -513,6 +537,13 @@ def _validate_provider_contract(
                 "grammar extends the table and never shadows it"
             )
         for field in ("request_schema", "result_schema"):
+            if _carries_ref(entry[field]):
+                raise AdmissionRejected(
+                    f"schema: {logical} provider_contract_invalid: {kind}.{field} "
+                    "carries a $ref; grammar subschemas are inline Draft 2020-12 — "
+                    "the runtime guard resolves nothing, so a reference would be a "
+                    "fail-closed crash, not a grammar"
+                )
             if _exceeds_depth(entry[field], _GRAMMAR_SUBSCHEMA_MAX_DEPTH):
                 raise AdmissionRejected(
                     f"schema: {logical} provider_contract_invalid: {kind}.{field} "

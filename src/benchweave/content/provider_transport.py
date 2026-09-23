@@ -28,6 +28,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from jsonschema import Draft202012Validator
+from jsonschema.exceptions import _RefResolutionError
 
 from benchweave.control.documents import adapter_permissions
 
@@ -73,6 +74,28 @@ class ProviderTransport:
             self._validators[key] = validator
         return validator
 
+    def _first_error(self, kind: str, field: str, document: Any) -> Any:
+        """The first schema error over ``document``, or None — with an
+        UNEVALUABLE grammar converted to the transaction discipline's
+        ValueError, never a crash. Admission refuses ``$ref``-bearing
+        grammars, so every admitted contract evaluates; this arm exists
+        because the guard is directly constructible (tests, and later the
+        runtime-injection seam), and a RecursionError or an unresolvable
+        reference there would escape the ValueError contract transfer
+        documents (fold wave C)."""
+        try:
+            return next(
+                iter(self._schema_validator(kind, field).iter_errors(document)),
+                None,
+            )
+        except (RecursionError, _RefResolutionError) as exc:
+            raise ValueError(
+                f"provider_transaction: the grammar for {kind}.{field} could "
+                f"not be evaluated ({type(exc).__name__}); grammar subschemas "
+                "are inline Draft 2020-12 and references are refused at "
+                "admission"
+            ) from exc
+
     async def transfer(
         self, transaction: dict[str, Any], context: Any
     ) -> dict[str, Any]:
@@ -92,12 +115,7 @@ class ProviderTransport:
                 "table and never shadows it"
             )
         payload = {key: value for key, value in transaction.items() if key != "kind"}
-        error = next(
-            iter(
-                self._schema_validator(kind, "request_schema").iter_errors(payload)
-            ),
-            None,
-        )
+        error = self._first_error(kind, "request_schema", payload)
         if error is not None:
             raise ValueError(
                 f"provider_transaction: {kind} request violates the admitted "
@@ -115,12 +133,7 @@ class ProviderTransport:
             outcome: dict[str, Any] = await result
         else:
             outcome = result
-        error = next(
-            iter(
-                self._schema_validator(kind, "result_schema").iter_errors(outcome)
-            ),
-            None,
-        )
+        error = self._first_error(kind, "result_schema", outcome)
         if error is not None:
             raise ValueError(
                 f"provider_transaction: the runtime's {kind} result violates "

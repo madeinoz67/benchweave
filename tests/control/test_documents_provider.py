@@ -312,3 +312,17 @@ def test_corpus_known_features_derive_from_the_vendored_tree() -> None:
     }
     assert known == frozenset(lanes | {p["id"] for p in catalog["profiles"]})
     assert len(known) == 17
+
+
+def test_ref_bearing_grammar_subschemas_refuse_at_admission(
+    tmp_path: Path,
+) -> None:
+    """Fold wave C's admission pin: a grammar subschema carrying a $ref
+    (meta-valid — check_schema cannot see it) refuses with the census
+    prefix; the runtime guard resolves nothing, so a reference would be a
+    fail-closed crash, not a grammar."""
+    package, descriptor, contract = _package_pair(tmp_path, "refgrammar")
+    contract["transaction_grammar"][0]["request_schema"] = {"$ref": "#"}
+    slot = _write_package(package, descriptor, contract)
+    message = _admit_refusal(tmp_path, slot, _settings_for(package))
+    assert "provider_contract_invalid:" in message and "$ref" in message, message
