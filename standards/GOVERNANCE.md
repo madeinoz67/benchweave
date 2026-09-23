@@ -135,7 +135,12 @@ PR flow; an orphaned head (author unavailable) closes as an abandonment. A
 stale head (open, idle, target still open) is a coordinator ruling, not a
 gate — the block's `opened` date keeps its age machine-readable so the
 governor review sees it on every `standards/` touch, and a clock on
-authoring is exactly the conflation this stage removes.
+authoring is exactly the conflation this stage removes. The standards
+coordinator may declare a head a release candidate (the optional boolean
+`candidate` field on the dev block, owner ruling 2026-09-23): the
+declaration is advisory and machine-readable — it changes no enforcement,
+testing runs through the `--corpus` lane regardless, and a release
+candidate as a separate released directory stays rejected.
 
 The dev-proof lane: each standards-tree family script (devices, registry,
 execution, interface) accepts `--corpus <dir>`, which points its census at

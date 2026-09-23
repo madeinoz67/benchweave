@@ -807,3 +807,24 @@ plus the constraints ruled at promotion:
   reads (execution reading otdp's active descriptor, closure's manifest
   reads) follow the manifest's active entries regardless of the override;
   the lane overrides the script's OWN standard's corpus only.
+
+### 13.9 Post-build owner ruling (2026-09-23): the RC candidate marker — named candidate, promoted into increment 1
+
+The RC discussion's "named candidate" option was taken. The dev block gains an
+OPTIONAL boolean `candidate`: absent/false is the authoring state; `true` is the
+standards coordinator's believed-ready declaration. Same pattern as the F3
+promotion — an RC-related deferral row moves into increment 1 by owner ruling,
+landed as a follow-up commit while the review battery runs.
+
+Semantics, ruled minimal:
+
+- **Pure declaration, machine-readable.** The manifest carries it; the
+  `versions` head glance renders it ("release candidate" on the head line).
+- **Advisory — changes no enforcement.** No gate keys on it; testing runs
+  through the `--corpus` lane regardless of the marker; promotion is
+  unchanged. A non-boolean value refuses at load (`dev_block_invalid` naming
+  `candidate` — a truthy string or 1 is not a declaration), and the marker
+  weakens no shape requirement (a candidate block still requires `opened`).
+- **RC-as-separate-released-dir stays rejected** per the design discussion:
+  a release candidate is a state of the head, never a second directory the
+  window could price or the corpus could pin.

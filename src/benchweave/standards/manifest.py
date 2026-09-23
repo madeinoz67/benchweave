@@ -45,11 +45,15 @@ class DevHead:
     (F4) so a stale head is visible without git archaeology; every
     ``normative`` path lives under ``standards/<id>/<version>/``. At most one
     head per standard is structural — one optional field, not a list.
+    ``candidate`` (owner ruling 2026-09-23, §13.9) is the coordinator's
+    believed-ready declaration — advisory, machine-readable, changing no
+    enforcement: absent/false is the authoring state.
     """
 
     version: str
     opened: str
     normative: tuple[str, ...]
+    candidate: bool = False
 
 
 @dataclass(frozen=True)
@@ -146,6 +150,14 @@ def _load_dev_head(raw: object, entry_id: str, active_version: str) -> DevHead |
             "opened (an ISO YYYY-MM-DD date) and normative (a non-empty path "
             "list) are required"
         )
+    candidate = raw.get("candidate", False)
+    if not isinstance(candidate, bool):
+        # The RC marker is a boolean declaration, not a truthiness guess: a
+        # string or a 1 is refused rather than coerced (owner ruling §13.9).
+        raise StandardsError(
+            f"dev_block_invalid: {entry_id}: candidate must be a boolean when present "
+            f"(got {type(candidate).__name__})"
+        )
     if DEV_OPENED_PATTERN.fullmatch(opened) is None:
         raise StandardsError(
             f"dev_block_invalid: {entry_id}: opened {opened} is not an ISO YYYY-MM-DD date"
@@ -184,7 +196,9 @@ def _load_dev_head(raw: object, entry_id: str, active_version: str) -> DevHead |
                 f"dev_path_outside_head: {entry_id}: {relative} "
                 f"(dev paths must live under {head_prefix})"
             )
-    return DevHead(version=version, opened=opened, normative=tuple(normative))
+    return DevHead(
+        version=version, opened=opened, normative=tuple(normative), candidate=candidate
+    )
 
 
 def load_sdk_compatibility(root: Path) -> SdkCompatibility:
