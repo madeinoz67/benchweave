@@ -152,7 +152,7 @@ def test_the_projected_view_carries_no_integration() -> None:
     example = json.loads(
         (
             Path(__file__).resolve().parents[2]
-            / "standards/otdp/0.2.1/examples/reference-capture.json"
+            / "standards/otdp/0.2.2/examples/reference-capture.json"
         ).read_text(encoding="utf-8")
     )
     view = documents_module._project_full_form("dev-capture", example)

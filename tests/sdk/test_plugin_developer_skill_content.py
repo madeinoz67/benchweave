@@ -28,7 +28,7 @@ STANDARDS = SDK_SRC / "benchweave_sdk" / "standards"
 
 def _descriptor_schema() -> dict[str, Any]:
     document: dict[str, Any] = json.loads(
-        (STANDARDS / "otdp/0.2.1/otdp-device-descriptor.schema.json").read_text()
+        (STANDARDS / "otdp/0.2.2/otdp-device-descriptor.schema.json").read_text()
     )
     return document
 
@@ -125,7 +125,7 @@ def _expected_terms() -> dict[str, list[str]]:
         "class-ids": sorted(
             entry["id"]
             for entry in json.loads(
-                (STANDARDS / "otdp/0.2.1/device-profile-catalog.json").read_text()
+                (STANDARDS / "otdp/0.2.2/device-profile-catalog.json").read_text()
             )["profiles"]
         ),
         "manifest-roles": sorted(

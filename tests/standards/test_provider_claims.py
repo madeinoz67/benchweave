@@ -22,7 +22,22 @@ from pathlib import Path
 from jsonschema import Draft202012Validator
 
 ROOT = Path(__file__).resolve().parents[2]
-OTDP = ROOT / "standards" / "otdp" / "0.2.1"
+
+
+def _active_otdp_dir() -> Path:
+    """The active OTDP corpus dir, derived — never a version literal.
+
+    The #102 D2 pattern (family-scripts derivation): the standards manifest's
+    active entry names the version this test must judge, so a corpus bump
+    moves the pin with the tree instead of leaving this file citing a frozen
+    version that silently stops being the active surface.
+    """
+    manifest = json.loads((ROOT / "standards" / "standards-manifest.json").read_text())
+    entry = next(e for e in manifest["standards"] if e["id"] == "otdp")
+    return ROOT / "standards" / "otdp" / str(entry["version"])
+
+
+OTDP = _active_otdp_dir()
 
 SCHEMA_PATH = OTDP / "otdp-transport-provider.schema.json"
 PROSE_PATH = OTDP / "transport-providers.md"

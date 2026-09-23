@@ -329,11 +329,11 @@ def test_clean_cells_project_the_execution_view(tmp_path: Path) -> None:
 # tree, the checker from the pinned submodule.
 # ---------------------------------------------------------------------------
 
-EXAMPLES = ROOT / "standards" / "otdp" / "0.2.1" / "examples"
+EXAMPLES = ROOT / "standards" / "otdp" / "0.2.2" / "examples"
 
 
 def _example_descriptor_names() -> list[str]:
-    """Every descriptor-shaped 0.2.1 example (carries ``otdp_version``).
+    """Every descriptor-shaped active-version example (carries ``otdp_version``).
 
     Vectors files and the provider contract itself are filtered by content,
     not by name, so a new example kind joins the sweep without an edit here.
@@ -343,7 +343,7 @@ def _example_descriptor_names() -> list[str]:
         for path in sorted(EXAMPLES.glob("*.json"))
         if "otdp_version" in json.loads(path.read_text())
     ]
-    assert names, "the 0.2.1 example set has no descriptors"
+    assert names, "the active example set has no descriptors"
     return names
 
 
@@ -445,7 +445,7 @@ def _valid_minimal(tmp_path: Path) -> Path:
 def _valid_with_class_profiles(tmp_path: Path) -> Path:
     descriptor, contract = _minimal_pair()
     catalog = json.loads(
-        (ROOT / "standards" / "otdp" / "0.2.1" / "device-profile-catalog.json").read_text()
+        (ROOT / "standards" / "otdp" / "0.2.2" / "device-profile-catalog.json").read_text()
     )
     profile_id = sorted(profile["id"] for profile in catalog["profiles"])[0]
     descriptor["required_features"] += [

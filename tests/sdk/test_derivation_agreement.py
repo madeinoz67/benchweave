@@ -4,7 +4,7 @@ The SDK's authoring lane re-implements the derived-variable grammar/static
 subset offline (``benchweave_sdk.validation.validate_descriptor``, check
 S19) because the SDK is self-contained and cannot import the gateway
 module. This suite pins both implementations to the same vendored census
-(``standards/otdp/0.2.1/examples/derivation-vectors.json``, byte-identical
+(``standards/otdp/0.2.2/examples/derivation-vectors.json``, byte-identical
 in the SDK's vendored tree by the CON-4 lock): every grammar and static row
 must produce the same accept/reject decision — and the same
 ``derivation_*:`` reason prefix — from
@@ -33,8 +33,8 @@ from benchweave.measurement.derivation import (
 )
 
 ROOT = Path(__file__).resolve().parents[2]
-VECTORS = ROOT / "standards" / "otdp" / "0.2.1" / "examples" / "derivation-vectors.json"
-CLASS_EXAMPLE = ROOT / "standards" / "otdp" / "0.2.1" / "examples" / "class-dc_psu.json"
+VECTORS = ROOT / "standards" / "otdp" / "0.2.2" / "examples" / "derivation-vectors.json"
+CLASS_EXAMPLE = ROOT / "standards" / "otdp" / "0.2.2" / "examples" / "class-dc_psu.json"
 SDK_SRC = ROOT / "packages" / "sdk" / "src"
 
 if not SDK_SRC.is_dir():
@@ -69,7 +69,7 @@ def _base_descriptor() -> dict[str, Any]:
     """
 
     descriptor: dict[str, Any] = json.loads(CLASS_EXAMPLE.read_bytes())
-    assert descriptor["otdp_version"] == "0.2.1"
+    assert descriptor["otdp_version"] == "0.2.2"
     return descriptor
 
 
@@ -144,7 +144,7 @@ def test_census_bytes_are_identical_in_the_vendored_tree() -> None:
         / "benchweave_sdk"
         / "standards"
         / "otdp"
-        / "0.2.1"
+        / "0.2.2"
         / "examples"
         / "derivation-vectors.json"
     )
