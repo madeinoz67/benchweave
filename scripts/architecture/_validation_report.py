@@ -46,6 +46,100 @@ def active_standard_version(standards_root: Path, standard_id: str) -> str:
     )
 
 
+def corpus_directory(standards_root: Path, standard_id: str) -> Path:
+    """The corpus directory a family script validates (the dev-proof lane).
+
+    Default (no ``--corpus`` in argv): the manifest-active version's
+    directory, resolved — byte-identical to the per-script derivations this
+    replaced. With ``--corpus <dir>``: exactly the manifest-declared dev
+    head's directory for ``standard_id``, or a loud refusal. The override is
+    a view, never a mutation — this function resolves and returns a path and
+    touches nothing (the SDK lock, vendored tree and pointer are not on this
+    path at all; the acceptance replay's arm-B extension proves the stillness
+    live). ``--corpus`` cannot combine with ``--write-report``: the
+    machine-written reports are a property of released versions, and a dev
+    run is a check, not a report (devstage record §13.8).
+    """
+    argv = sys.argv[1:]
+    override = _corpus_override(argv)
+    if override is None:
+        return (
+            standards_root / standard_id / active_standard_version(standards_root, standard_id)
+        ).resolve()
+    head_version = _declared_dev_head(standards_root, standard_id)
+    expected = (standards_root / standard_id / head_version).resolve()
+    if Path(override).resolve() != expected:
+        raise SystemExit(
+            f"corpus_override_not_dev_head: {override} — the dev-proof lane accepts "
+            f"exactly the manifest-declared head for {standard_id} "
+            f"(standards/{standard_id}/{head_version})"
+        )
+    if "--write-report" in argv:
+        raise SystemExit(
+            "corpus_override_write_refused: --corpus and --write-report are mutually "
+            "exclusive — the machine-written reports are a property of released "
+            "versions; a dev run is a check, not a report"
+        )
+    return expected
+
+
+def _corpus_override(argv: list[str]) -> str | None:
+    """The ``--corpus`` value from argv (``--corpus=dir`` or ``--corpus dir``).
+
+    The family's epilogue reads ``--write-report`` positionally the same way;
+    a valueless or empty override is a usage refusal, not a silent default —
+    a typo'd proof run must not quietly prove the released tree instead.
+    """
+    for index, argument in enumerate(argv):
+        if argument == "--corpus":
+            if index + 1 >= len(argv) or not argv[index + 1]:
+                raise SystemExit(
+                    "corpus_override_invalid: --corpus requires a directory value "
+                    "(the manifest-declared dev head for this script's standard)"
+                )
+            return argv[index + 1]
+        if argument.startswith("--corpus="):
+            value = argument.removeprefix("--corpus=")
+            if not value:
+                raise SystemExit(
+                    "corpus_override_invalid: --corpus requires a directory value "
+                    "(the manifest-declared dev head for this script's standard)"
+                )
+            return value
+    return None
+
+
+def _declared_dev_head(standards_root: Path, standard_id: str) -> str:
+    """The dev head version declared for ``standard_id``, or a loud refusal.
+
+    Raw-json read in active_standard_version's loader posture (same
+    first-match precedent); a headless or malformed block is a refusal, never
+    a guess — the prefix follows the family's ``{standard_id}_`` shape.
+    """
+    manifest_path = standards_root / "standards-manifest.json"
+    if not manifest_path.is_file():
+        raise SystemExit(
+            f"{standard_id}_manifest_absent: standards-manifest.json not found — the "
+            f"dev head for {standard_id} cannot be derived"
+        )
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    for entry in manifest.get("standards", []):
+        if entry.get("id") == standard_id:
+            head = entry.get("dev")
+            if isinstance(head, dict):
+                version = head.get("version")
+                if isinstance(version, str) and version:
+                    return version
+            raise SystemExit(
+                f"{standard_id}_dev_head_absent: the manifest declares no dev head "
+                f"for {standard_id} — nothing for --corpus to prove"
+            )
+    raise SystemExit(
+        f"{standard_id}_manifest_absent: standards-manifest.json carries no {standard_id} "
+        f"entry — the dev head cannot be derived"
+    )
+
+
 def marker(script: str) -> str:
     """The family's generated-marker line, single-sourced: the per-suite
     ``GENERATED_MARKER`` constants and the writer's own output both call

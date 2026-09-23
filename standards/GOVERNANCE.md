@@ -137,6 +137,18 @@ gate — the block's `opened` date keeps its age machine-readable so the
 governor review sees it on every `standards/` touch, and a clock on
 authoring is exactly the conflation this stage removes.
 
+The dev-proof lane: each standards-tree family script (devices, registry,
+execution, interface) accepts `--corpus <dir>`, which points its census at
+the manifest-declared dev head for that script's standard — dev bytes are
+proven in place, before promotion, through the same checker lane that
+validates releases. The override accepts exactly the declared head
+(anything else refuses), never combines with `--write-report` (the
+machine-written reports are a property of released versions; a dev run is a
+check, not a report), and is read-only for the SDK's lock, vendored tree
+and pointer. Without the flag, every script resolves the manifest-active
+tree exactly as before. Cross-standard reads stay manifest-active
+regardless of the override.
+
 The bump window does not see the head — the collector counts pure-semver
 version directories only, and the active entry's version must be pure semver
 (`standards_entry_version_invalid` on anything else), so the window cannot be

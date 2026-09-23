@@ -760,6 +760,11 @@ def _headed_registry_tree(tmp_path: Path) -> Path:
     standards = tmp_path / "standards"
     shutil.copytree(ROOT / "standards", standards)
     shutil.copytree(standards / "registry" / "0.1.1", standards / "registry" / "0.2.0-dev")
+    # The committed report is a released-version artifact; a dev-open carries
+    # no report, and the lane's no-write assertion below needs it absent
+    # from the plant so its absence after the run proves the run wrote
+    # nothing (not that the copy never had one).
+    (standards / "registry" / "0.2.0-dev" / "validation-report.md").unlink()
     manifest_path = standards / "standards-manifest.json"
     document = json.loads(manifest_path.read_bytes())
     entry = next(e for e in document["standards"] if e["id"] == "registry")
