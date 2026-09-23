@@ -559,6 +559,7 @@ All notable changes to this project will be documented in this file.
 
 - Extract the execute-call fixture constant to clear E501
 - Ruff/mypy cleanups in the registry-contract instrument
+- Ruff-format the dps150 SCHEMAS expression
 
 ### Testing
 
