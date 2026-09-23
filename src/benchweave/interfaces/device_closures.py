@@ -71,10 +71,6 @@ class DeviceClosure:
     entry_relpath: str
 
 
-def _canonical(obj: object) -> bytes:
-    return (json.dumps(obj, sort_keys=True, separators=(",", ":")) + "\n").encode()
-
-
 def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
@@ -191,9 +187,15 @@ def commissioned_device_closure(
                 f"closure_origin_unknown: lock row {key} names an origin the "
                 "session does not route"
             )
-        raw, _served_digest = source.manifest_bytes(package_id, version)
+        # The registry chain pins RAW served-byte digests (load_document
+        # verifies expected_sha256 over the exact bytes — CON-1's exact-byte
+        # decoder); a content-identical manifest formatted differently from
+        # the canonical form admits, so the resolution compares the SERVED
+        # raw digest (F4), never a canonical re-encode that only coincides
+        # with the pin when registries format canonically.
+        raw, served_digest = source.manifest_bytes(package_id, version)
         manifest = json.loads(raw)
-        if _sha256(_canonical(manifest)) != str(row.get("manifest_sha256")):
+        if served_digest != str(row.get("manifest_sha256")):
             raise ClosureResolutionError(
                 "closure_manifest_drift: the served manifest for "
                 f"{key} does not match the admitted lock's pinned digest"

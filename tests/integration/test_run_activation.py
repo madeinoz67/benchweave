@@ -673,8 +673,10 @@ class _CommissionedHarness:
         two_devices: bool = False,
         simulated: bool = True,
         commissioned: bool = True,
+        release_mutator: Callable[[Path], None] | None = None,
     ) -> None:
         self.root = tmp_path
+        self._release_mutator = release_mutator
         self.lattice_dir = _lattice(
             tmp_path / "lattice",
             request_id,
@@ -691,6 +693,8 @@ class _CommissionedHarness:
         plugin_dir = _write_plugin_source(tmp_path / "pluginroot")
         registry_root = tmp_path / "dev-registry"
         _publish(plugin_dir, descriptor_path, registry_root)
+        if release_mutator is not None:
+            release_mutator(registry_root)
 
         origins: dict[str, OriginConfig] = {
             DEV_ID: OriginConfig(
@@ -1114,6 +1118,53 @@ def test_r15_fast_bench_signal_degrades_loudly(
         entry = coordinator.stream_host.devices[DEVICE_ID]
         assert entry.engine is None, "a sub-floor subscription must not go live"
         assert entry.controller.live_subscription_ids() == []
+    finally:
+        store.close()
+
+
+# --- fix wave F4: closure resolution pins the served raw digest ----------------------
+
+
+def _prettify_impl_manifest(registry_root: Path) -> None:
+    """Rewrite the implementation release's manifest with indent=2 bytes
+    and repin the (unsigned dev) status's manifest digest to the new raw
+    bytes — a content-identical, non-canonically-formatted release that
+    resolves and admits cleanly."""
+    release = registry_root / DEV_ID / IMPL_PACKAGE / PACKAGE_VERSION
+    manifest = json.loads((release / "manifest.json").read_bytes())
+    pretty = json.dumps(manifest, indent=2)
+    (release / "manifest.json").write_text(pretty)
+    status = json.loads((release / "status.json").read_bytes())
+    status["release"]["manifest_sha256"] = _sha(pretty.encode())
+    canonical_status = (
+        json.dumps(status, sort_keys=True, separators=(",", ":")) + "\n"
+    ).encode()
+    (release / "status.json").write_bytes(canonical_status)
+
+
+def test_f4_pretty_printed_manifest_closure_resolves(tmp_path: Path) -> None:
+    """F4 RED control: the registry chain pins RAW served-byte digests
+    (load_document verifies expected_sha256 over the exact bytes) — a
+    content-identical pretty-printed manifest admits, so the run-time
+    closure resolution must compare the SERVED raw digest, not a canonical
+    re-encode that only coincides when registries format canonically."""
+    from benchweave.interfaces.device_closures import commissioned_device_closure
+
+    harness = _CommissionedHarness(
+        tmp_path, "req-f4a", release_mutator=_prettify_impl_manifest
+    )
+    store, content = harness.open_store()
+    try:
+        bench = json.loads((harness.lattice_dir / "bench.json").read_bytes())
+        device = bench["devices"][0]
+        descriptor = json.loads(
+            (harness.lattice_dir / "descriptor-demo-supply.json").read_bytes()
+        )
+        closure = commissioned_device_closure(
+            harness.session, BENCH_ID, device, descriptor
+        )
+        assert closure is not None
+        assert closure.entry_relpath == "plugin/plugin.py"
     finally:
         store.close()
 
