@@ -67,8 +67,14 @@ packages = ["src/benchweave"]
 # The fixture lattice is deliberately NOT packaged: it is operator-supplied
 # input (--fixtures / BENCHWEAVE_FIXTURES, disclosed repo-relative default).
 [tool.hatch.build.targets.wheel.force-include]
-"standards" = "benchweave/_vendored/contracts"
 "plugins/benchweave" = "benchweave/_vendored/plugins/benchweave"
+# The contracts copy ("standards" -> "benchweave/_vendored/contracts") is
+# contributed per unit by hatch_build.py, not declared here: F1 (devstage
+# design record §13.3, ratified 2026-09-23) keeps dev-stage directories out
+# of wheels, exclude patterns provably cannot filter force-included trees,
+# and a build hook cannot delete a config-declared row. The hook ships the
+# same tree the whole-row mapping shipped, minus */<target>-dev/.
+[tool.hatch.build.hooks.custom]
 
 [tool.pytest.ini_options]
 addopts = "-q -p no:cacheprovider"
