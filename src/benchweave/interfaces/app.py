@@ -349,13 +349,24 @@ class _RetainingCoordinator(RunCoordinator):
         # from here on either way.
         if self.stream_host is not None and self.stream_host.armed:
             prepared.monitor.phase = "protecting"
+            # F2: a violation observed inside the teardown window still
+            # escalates into the terminal record's reasons (via
+            # cause_reasons, which _body_truth appends) — the body is
+            # already over, so this NEVER re-arms cause-blocking; before
+            # _finish_run arms engine.enter there is no other escalation
+            # path, and the record would report a bare outcome over a
+            # drifted bench.
+            prepared.monitor.on_violation = lambda fresh, _now: (
+                prepared.monitor.cause_reasons.extend(
+                    reason
+                    for reason in fresh
+                    if reason not in prepared.monitor.cause_reasons
+                )
+            )
             try:
                 self.stream_host.teardown(prepared.plugins)
-            except Exception:
-                _LOG.exception(
-                    "stream_teardown_failed run_id=%s — the close-path sweeps "
-                    "remain the last resort", prepared.run_id,
-                )
+            finally:
+                prepared.monitor.on_violation = None
         return body
 
     def start_run(self, run_id: str, principal_id: str) -> dict[str, Any]:

@@ -135,6 +135,8 @@ class DemoSupplyAdapter:
         }
 
     def _output_voltage(self):
+        if self.state.get("drifted"):
+            return 99.0
         if not self.state["output_enabled"]:
             return 0.0
         return float(self.state["voltage_setpoint_v"])
@@ -147,6 +149,9 @@ class DemoSupplyAdapter:
             self.dispatch_spans.append((envelope["verb"], started, time.monotonic()))
 
     async def _execute(self, envelope, context):
+        global TRIP_AFTER_UNSUBSCRIBE
+        if envelope["verb"] == "stream_unsubscribe" and TRIP_AFTER_UNSUBSCRIBE:
+            self.state["drifted"] = True
         await context.mark_dispatch_started()
         verb = envelope["verb"]
         arguments = envelope["arguments"]
@@ -247,6 +252,7 @@ class DemoSupplyAdapter:
 
 DEMO_ADAPTER = True
 HANG_NEXT_EVENT = False
+TRIP_AFTER_UNSUBSCRIBE = False
 
 
 def create_plugin():
@@ -1101,6 +1107,38 @@ def test_r15_fast_bench_signal_degrades_loudly(
         entry = coordinator.stream_host.devices[DEVICE_ID]
         assert entry.engine is None, "a sub-floor subscription must not go live"
         assert entry.controller.live_subscription_ids() == []
+    finally:
+        store.close()
+
+
+# --- fix wave F2: teardown-window violations reach the record ----------------------
+
+
+def test_f2_violation_during_teardown_window_reaches_the_record(
+    commissioned: _CommissionedHarness,
+) -> None:
+    """F2 RED control: a monitored-signal drift that begins exactly on the
+    ending stream_unsubscribe (inside the teardown window, after the body)
+    must appear in the terminal record's reasons — today the phase flip
+    disarms cause-blocking AND on_violation is not yet armed, so the
+    violation vanishes and the record reports a bare outcome with no
+    reason naming it."""
+    run_id = "run-f2"
+    coordinator, store, content = _coordinator(commissioned, run_id, QUOTA_LIMITS)
+    try:
+        from benchweave.interfaces.app import _RetainingCoordinator
+
+        assert isinstance(coordinator, _RetainingCoordinator)
+        module = _loaded_adapter_module()
+        module.TRIP_AFTER_UNSUBSCRIBE = True
+        record = coordinator.start_run(run_id, "principal-activation")
+        module.TRIP_AFTER_UNSUBSCRIBE = False
+        assert any(
+            "dut-voltage-bounds" in reason for reason in record["reasons"]
+        ), (
+            "the teardown-window violation vanished from the record "
+            f"(reasons={record['reasons']})"
+        )
     finally:
         store.close()
 
