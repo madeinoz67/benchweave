@@ -159,6 +159,17 @@ rather than rewriting the history — that is how this file earns trust.
   superseded-version rows — `src/benchweave/standards/repin.py`, pinned by
   `tests/standards/test_repin.py`. *Without it, the next contributor's fastest path is
   another hand-splice, and the frozen-row guarantee lives only in prose.*
+  Amendment (2026-09-23, the devstage design record): corpus rows carry a third
+  fate — **dev** (repin-mutable while a head is open: the head's `standards/`
+  paths join the regenerable set, so the edit → repin loop is the accumulation
+  flow), deleted with their directory at promotion or abandonment. The
+  "machine-rewritten only by repin" clause and the superseded-row freeze are
+  unchanged. A dev row whose block is gone classifies frozen (the
+  orphan-teardown catch); a leftover block after promotion refuses at load
+  (`dev_target_not_greater`; the class-escalated form `dev_head_stale`); the
+  active entry's version must be pure semver
+  (`standards_entry_version_invalid`) — a `-dev` suffix there would add a
+  release directory the train-window collector cannot count.
 - **[CON-8]** The corpus identity block is closed-world and derived-checked against
   its machine authorities at every export/check — an unknown key is refused
   (`identity_key_unknown`; a new key is a standards-governance event, not an

@@ -6,7 +6,10 @@ hand-authored under governance review (``standards/GOVERNANCE.md``), because a
 machine cannot know reset-import vs supersession-copy provenance.
 Superseded-version rows are verified against their pinned digests and never
 rewritten, so the command cannot launder an in-place edit of a retained
-version into a clean manifest. Every structural refusal fires before any
+version into a clean manifest. A dev head's rows are regenerable like the
+active rows' (the edit -> repin loop is the accumulation flow); rows with no
+manifest-declared owner — superseded versions, orphaned dev rows — are
+frozen. Every structural refusal fires before any
 byte is written; the one after-write exception is the validate_manifest
 self-check, which can raise on a missing non-standards normative parity
 path (unchecked pre-write) after the manifest is already correctly
@@ -184,7 +187,10 @@ def _regenerable_paths(root: Path, pinned: set[str]) -> set[str]:
     prefixes on row paths. A pinned machine file inside a current version dir
     that standards-manifest forgot to list classifies frozen, so editing its
     bytes is refused until the manifest gap is fixed: the failure points at
-    the real defect.
+    the real defect. A dev head's paths join the regenerable set the same way
+    (devstage §4.1): dev rows follow the edit -> repin loop until the head is
+    promoted or abandoned — dev rows without the block classify frozen, which
+    is the orphan-teardown catch, not a gap.
     """
     regenerable: set[str] = set()
     try:
@@ -196,7 +202,10 @@ def _regenerable_paths(root: Path, pinned: set[str]) -> set[str]:
             "standards_manifest_absent: standards/standards-manifest.json"
         ) from exc
     for entry in manifest.standards:
-        for relative in entry.normative:
+        relatives = list(entry.normative)
+        if entry.dev is not None:
+            relatives.extend(entry.dev.normative)
+        for relative in relatives:
             if not relative.startswith("standards/"):
                 continue  # The parity validator carries no pin (manifest.py).
             corpus_path = relative.removeprefix("standards/")

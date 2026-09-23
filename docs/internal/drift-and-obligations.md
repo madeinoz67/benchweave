@@ -44,6 +44,10 @@ and remain the reviewer's job.
    refuses drift between the main-repo standards, the SDK lock and the vendored tree.
    Pins move via `uv run python -m benchweave.standards repin` (the loop is
    edit → repin → export); hand-splicing digests is not a path.
+   A dev head's rows follow the same loop (dev pins are validated like active
+   pins); promotion of a head carries the FULL bump obligation set — this row
+   plus 7/8/13 — with the dev directory as the copy source and the block/rows/
+   directory teardown as part of the bump (GOVERNANCE "The dev stage").
    The manifest's `sdk_compatibility` mirror moves with the SDK lock's
    `compatibility` block — `standards check` refuses drift
    (`sdk_compatibility_drift`, invariants CON-12) — and `matrix --check` is
