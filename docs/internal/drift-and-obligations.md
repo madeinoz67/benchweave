@@ -123,18 +123,19 @@ and remain the reviewer's job.
     JSON arrays). Second surface arrival here in as many days (#110, then #112) — the
     row lands per obligation 12's own principle.
 
-15. **The transport-provider lane** (OTDP 0.2.1's provider declaration: corpus schema
+15. **The transport-provider lane** (OTDP 0.2.2's provider declaration: corpus schema
     and prose in this repository, offline conformance in `packages/sdk`, gateway
     admission/grant still increment 3 — gateway issue #147's implementation lane) → the
     increment-2/3 pairing constraint (the #147 design record's AR-6 route): an SDK
     provider sync proves the descriptor lane only — the gateway's admission seam is a
-    separate increment, and a corpus change that lands after the SDK synced re-opens
-    `make check-sdk-standards` (`content_drift_without_version` for the moved file)
-    until the next SDK train carries the bytes; `tests/sdk/test_descriptor_equivalence.py`
+    separate increment, and a corpus change that lands after the SDK synced CANNOT
+    re-vendor same-version (`standards_version_required` refuses it; measured on the
+    #147 fold) — the heal is a version-incrementing PATCH after the bump-window floor,
+    never a same-version byte swap; `tests/sdk/test_descriptor_equivalence.py`
     is the agreement surface that must stay green across the pair. The designed carrier
-    of the constraint is the SDK lock's `compatibility.notes` field; it is still null at
-    the `a2aaf5b` pointer (PR #44 merged before the route was homed), so this row
-    carries the constraint until an SDK train fills the field.
+    of the constraint is the SDK lock's `compatibility.notes` field, filled on the
+    SDK's `fix/147-fold-sync` train (the fill must ride the same commit as every sync —
+    the sync writer regenerates the lock with notes null).
 
 ## CI map
 
