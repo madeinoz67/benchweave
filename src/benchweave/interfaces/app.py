@@ -61,6 +61,14 @@ _SIM_PLUGINS: tuple[tuple[str, str], ...] = (
 #: the event pins the run's binding document.
 RECOVERY_RUN_CHANGED_REASON = "gateway restart recovery: run finalised as interrupted"
 
+#: The recovery ``run_changed`` for a run whose durable terminal record
+#: already existed and whose live projection the sweep reconciled (issue
+#: #156 fix wave): the record is the truth; only the stale queue-state row
+#: was wrong.
+RECOVERY_PROJECTION_REASON = (
+    "gateway restart recovery: stale projection reconciled to the durable terminal record"
+)
+
 _LOG = logging.getLogger(__name__)
 
 
@@ -200,6 +208,13 @@ def _recover_interrupted_runs(
     ``Store.reconcile_dangling_requests`` purges §9 keys whose run never
     materialized (a process death between ``accept_request`` and
     ``create_run``), unwedging the request id for a fresh attempt.
+
+    Issue #156 fix wave: ``recover_interrupted`` sweeps beyond lease
+    holders — a queued ghost left by the bounded shutdown drain records
+    ``interrupted``; a stale live projection over a durable terminal is
+    reconciled (never re-finalised). Both dispositions close the queue
+    projection below, so neither wedge can hold the §5 busy oracle past
+    a restart.
     """
     docs = _recovery_documents(fixtures_dir)
     if docs is None:
@@ -236,9 +251,20 @@ def _recover_interrupted_runs(
     bench_id = str(docs.bench["id"])
     for run_id in recovered:
         store.put_run_state(run_id, bench_id, "terminal", now_iso())
+        # The disposition rides the durable record (the authority): a run
+        # the sweep interrupted gets the interrupted reason; a run whose
+        # record already existed is only being projection-reconciled.
+        run = store.get_run(run_id)
+        record = run["terminal"] if run is not None else None
+        outcome = str(record.get("body_outcome")) if record is not None else ""
+        reason = (
+            RECOVERY_RUN_CHANGED_REASON
+            if outcome == "interrupted"
+            else RECOVERY_PROJECTION_REASON
+        )
         _LOG.info(
             "run_changed (recovery) run_id=%s reason=%s",
-            run_id, RECOVERY_RUN_CHANGED_REASON,
+            run_id, reason,
         )
         append_bench_event(
             store,
@@ -315,7 +341,16 @@ def _build_run_factory(
             **_spool_documents(content, binding_ref, fixtures_dir, Path(spool.name))
         )
         clock = SystemClock()
-        services = RetainingServices(content, quota=quota, now=now_iso())
+        # The streaming-slice members (emit_event, register_reading_sink)
+        # get the run's context key and a fresh-stamp clock: an emitted host
+        # event lands on the run's event dimension with a live timestamp.
+        services = RetainingServices(
+            content,
+            quota=quota,
+            now=now_iso(),
+            wall=now_iso,
+            context_key=f"run:{run_id}",
+        )
         plugins: dict[str, DevicePlugin] = {}
         for device_id, name in _SIM_PLUGINS:
             plugin = _load_sim_plugin(name).create_plugin(
@@ -419,7 +454,20 @@ def create_app(
                     yield
             finally:
                 worker.stop()
-                worker.join(timeout=5.0)
+                if not worker.join(timeout=5.0):
+                    # Issue #156: the join bound is now real — a wedged or
+                    # dead worker no longer hangs shutdown forever. The
+                    # unwind is the CTL-9 honest one: the startup recovery
+                    # sweep records outstanding runs `interrupted` (a run
+                    # whose durable record already completed only has its
+                    # stale projection reconciled).
+                    _LOG.error(
+                        "run worker did not drain at shutdown"
+                        " (submitted=%d done=%d); outstanding runs are"
+                        " recorded interrupted at next startup",
+                        worker.submitted,
+                        worker.done,
+                    )
         finally:
             if hold is not None:
                 hold.release()

@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from .export import export_bundle
-from .manifest import load_identity, load_manifest
+from .manifest import load_identity, load_manifest, load_sdk_compatibility
 
 LOCK_NAME = "standards-lock.json"
 VENDORED = "src/benchweave_sdk/standards"
@@ -31,8 +31,8 @@ def run_check(root: Path, sdk_root: Path | None = None) -> list[str]:
     """Verify the pinned SDK against a fresh export; ``[]`` means clean.
 
     Re-exports the bundle into a temporary directory (never the working tree),
-    then compares versions, digests, the vendored file set and the
-    compatibility block.
+    then compares versions, digests, the vendored file set, the compatibility
+    block, and the manifest's ``sdk_compatibility`` mirror against the lock.
     """
     sdk = sdk_root if sdk_root is not None else root / "packages" / "sdk"
     workspace = Path(tempfile.mkdtemp(prefix="benchweave-standards-check-"))
@@ -49,6 +49,7 @@ def run_check(root: Path, sdk_root: Path | None = None) -> list[str]:
     failures.extend(_compare_lock(document, lock))
     failures.extend(_compare_tree(document, sdk))
     failures.extend(_compare_compatibility(document, lock))
+    failures.extend(_compare_mirror(root, sdk, lock))
     return failures
 
 
@@ -178,6 +179,115 @@ def _compare_tree(document: dict[str, Any], sdk: Path) -> list[str]:
                 "match the exported standard"
             )
     return failures
+
+
+def _compare_mirror(root: Path, sdk: Path, lock: dict[str, Any]) -> list[str]:
+    """The manifest's ``sdk_compatibility`` mirror must equal the SDK lock's block.
+
+    The lock stays the authority; the mirror exists so the matrix render can
+    read committed state (CON-12). The authority is the lock of the PINNED
+    commit: a submodule working tree that sits away from the parent's gitlink
+    (moved, or locally committed past it) is refused by name before any
+    comparison — mirroring from it would commit bytes for a version the
+    gitlink does not pin, the issue-#158 defect class with a manifest-edit
+    instruction attached. Empty-string and null notes normalise equal — the
+    lock's nullable semantics.
+    """
+    state = _submodule_state_failures(root, sdk)
+    if state:
+        return state
+    mirror = load_sdk_compatibility(root)
+    sdk_block = lock.get("compatibility")
+    sdk_block = sdk_block if isinstance(sdk_block, dict) else {}
+    failures: list[str] = []
+    for field in ("main_project", "notes", "sdk"):
+        actual_raw = sdk_block.get(field)
+        if actual_raw is not None and not isinstance(actual_raw, str):
+            failures.append(
+                f"sdk_compatibility_drift: SDK lock {field} is not a string or null "
+                f"({type(actual_raw).__name__}); fix the SDK lock compatibility block"
+            )
+            continue
+        expected = _nullable_text(getattr(mirror, field))
+        actual = _nullable_text(actual_raw)
+        if expected != actual:
+            failures.append(
+                f"sdk_compatibility_drift: manifest {field}={expected!r} vs SDK lock "
+                f"{field}={actual!r}; update standards-manifest.json sdk_compatibility"
+            )
+    return failures
+
+
+def _submodule_state_failures(root: Path, sdk: Path) -> list[str]:
+    """Refuse the mirror comparison unless the working tree IS the pin.
+
+    A parent that records no gitlink (a non-git root, as in the test
+    fixtures) carries no submodule state to be wrong about — the comparison
+    proceeds. Against a recorded gitlink, an uninitialized submodule (no
+    ``.git`` inside ``packages/sdk``) is refused by name with no SHAs:
+    rev-parse inside it would discover the superproject and report the
+    wrong repository's HEAD as submodule state. An initialized working tree
+    at another commit is refused with both SHAs named. Never a manifest-edit
+    instruction.
+    """
+    pinned = _pinned_sdk_sha(root)
+    if pinned is None:
+        return []
+    if not (sdk / ".git").exists():
+        return [
+            "sdk_compatibility_drift: submodule packages/sdk is not initialized; "
+            "run git submodule update --init packages/sdk"
+        ]
+    head = _sdk_head_sha(sdk)
+    if head == pinned:
+        return []
+    return [
+        "sdk_compatibility_drift: submodule working tree is not at the pinned "
+        f"commit (working {head or 'unknown'} vs pinned {pinned}); "
+        "run git submodule update --init packages/sdk"
+    ]
+
+
+def _pinned_sdk_sha(root: Path) -> str | None:
+    """The gitlink the parent records for ``packages/sdk``; None when absent."""
+    result = subprocess.run(  # noqa: S603 — fixed argv
+        [  # noqa: S607 — PATH git is the supported invocation
+            "git",
+            "-C",
+            str(root),
+            "ls-tree",
+            "HEAD",
+            "packages/sdk",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return None
+    # "<mode> commit <sha>\t<path>"
+    tokens = result.stdout.split()
+    if len(tokens) >= 3 and len(tokens[2]) == 40:
+        return tokens[2]
+    return None
+
+
+def _sdk_head_sha(sdk: Path) -> str | None:
+    """The submodule working tree's HEAD commit; None when not a repository."""
+    result = subprocess.run(  # noqa: S603 — fixed argv
+        ["git", "-C", str(sdk), "rev-parse", "HEAD"],  # noqa: S607 — PATH git is the supported invocation
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip() or None
+
+
+def _nullable_text(value: str | None) -> str | None:
+    # "" and null are the same value — the lock's nullable notes semantics.
+    return value if value else None
 
 
 def _compare_compatibility(document: dict[str, Any], lock: dict[str, Any]) -> list[str]:

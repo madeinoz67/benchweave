@@ -37,6 +37,12 @@ dependencies = [
   "uvicorn>=0.52.4",
 ]
 
+# The committed home for repo identity: the compatibility-matrix Sources cell
+# renders this value (benchweave.standards.matrix), so a repo move edits data,
+# not code.
+[project.urls]
+Repository = "https://github.com/madeinoz67/benchweave"
+
 [dependency-groups]
 dev = [
   "anyio>=4",

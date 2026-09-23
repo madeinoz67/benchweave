@@ -1,5 +1,10 @@
 {
   "manifest_version": 1,
+  "sdk_compatibility": {
+    "main_project": ">=0.1.0",
+    "notes": null,
+    "sdk": "0.0.4"
+  },
   "standards": [
     {
       "id": "otdp",

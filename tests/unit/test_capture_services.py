@@ -264,11 +264,12 @@ def test_record_evidence_writes_under_the_host_minted_context_key(
     assert json.loads(bytes(payload)) == entry  # the entry is preserved verbatim
 
 
-def test_evidence_quota_keeps_all_kind_count_semantics(store: Store) -> None:
-    """B8: put_evidence is untouched — the bundle's record_evidence carries
-    a named cap with the existing all-kind COUNT semantics; exhaustion
-    raises EvidenceQuotaExceeded through execute (joining the
-    non-poisoning classification in the bridge)."""
+def test_evidence_quota_exhaustion_refuses_with_the_bundle_stamp(store: Store) -> None:
+    """B8: the bundle's record_evidence carries a named cap on its own
+    kind-scoped accounting dimension (``(context_key, kind)`` — re-scoped at
+    the streaming slice; every row this path writes is ``event_log``, so the
+    arm's outcome is unchanged); exhaustion raises EvidenceQuotaExceeded
+    through execute (joining the non-poisoning classification in the bridge)."""
     from benchweave.host.services import QuotaLimits as Limits
 
     bundle, _controller = a_factory(

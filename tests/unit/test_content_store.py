@@ -79,6 +79,23 @@ def test_evidence_quota_raises(content: tuple[ContentStore, Store]) -> None:
                         None, "run:r1", "2026-09-12T00:00:00Z", quota=2)
 
 
+def test_evidence_quota_counts_per_kind_dimension(
+    content: tuple[ContentStore, Store],
+) -> None:
+    """Issue #43 slice 2 (the quota stack): the accounting dimension is
+    ``(context_key, kind)`` — one row of each kind lands under a quota of 1,
+    and only a SECOND row of the same kind refuses. The re-scope is invisible
+    on pre-slice-2 data (the bases differ only once ``event_log`` and
+    ``dataset`` rows coexist under one context key, which streaming
+    introduces), so no published quota decision is repriced."""
+    cs, _ = content
+    ref = {"id": "e", "version": "1", "sha256": "0" * 64}
+    cs.put_evidence("dataset", ref, None, "run:r1", "2026-09-12T00:00:00Z", quota=1)
+    cs.put_evidence("event_log", ref, None, "run:r1", "2026-09-12T00:00:00Z", quota=1)
+    with pytest.raises(EvidenceQuotaExceeded):
+        cs.put_evidence("event_log", ref, None, "run:r1", "2026-09-12T00:00:00Z", quota=1)
+
+
 def test_artifact_and_evidence_ids_match_contract_pattern(
     content: tuple[ContentStore, Store],
 ) -> None:

@@ -40,6 +40,13 @@ class StandardsManifest:
     standards: tuple[StandardEntry, ...]
 
 
+@dataclass(frozen=True)
+class SdkCompatibility:
+    sdk: str
+    main_project: str
+    notes: str | None
+
+
 def load_manifest(root: Path) -> StandardsManifest:
     path = root / "standards/standards-manifest.json"
     document = json.loads(path.read_bytes())
@@ -65,6 +72,35 @@ def load_manifest(root: Path) -> StandardsManifest:
         seen.add(entry.id)
         entries.append(entry)
     return StandardsManifest(tuple(entries))
+
+
+def load_sdk_compatibility(root: Path) -> SdkCompatibility:
+    """Read the mirrored SDK compatibility block; fail closed when malformed.
+
+    The block mirrors the pinned SDK lock's ``compatibility`` — the lock stays
+    the authority and ``check.run_check`` refuses drift between the two.
+    ``sdk`` and ``main_project`` must be non-empty strings; ``notes`` mirrors
+    the lock's nullable semantics (string or null).
+    """
+    path = root / "standards/standards-manifest.json"
+    document = json.loads(path.read_bytes())
+    block = document.get("sdk_compatibility")
+    if not isinstance(block, dict):
+        raise StandardsError(
+            "sdk_compatibility_invalid: sdk_compatibility block absent or not an object"
+        )
+    for field in ("sdk", "main_project"):
+        value = block.get(field)
+        if not isinstance(value, str) or not value:
+            raise StandardsError(f"sdk_compatibility_invalid: {field} missing or empty")
+    notes = block.get("notes")
+    if notes is not None and not isinstance(notes, str):
+        raise StandardsError("sdk_compatibility_invalid: notes must be a string or null")
+    return SdkCompatibility(
+        sdk=str(block["sdk"]),
+        main_project=str(block["main_project"]),
+        notes=notes,
+    )
 
 
 def validate_manifest(manifest: StandardsManifest, root: Path) -> None:

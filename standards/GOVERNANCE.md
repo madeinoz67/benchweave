@@ -18,6 +18,16 @@ declare and pin it:
 - `standards/corpus-manifest.json` — byte truth: one sha256 per machine file,
   rows relative to `standards/`
 
+Repo identity lives in committed data outside the corpus: the compatibility
+matrix's Sources cell renders `pyproject.toml` `[project.urls] Repository`
+and the `.gitmodules` submodule URL, while `standards-manifest.json`'s
+top-level `sdk_compatibility` block mirrors the `compatibility` block of
+the SDK lock at the pinned gitlink commit — equality-enforced by
+`benchweave.standards check` wherever the submodule working tree sits at
+that pin; a moved working tree is refused by name, never mirrored from (the
+lock stays the authority); none of these are digest-pinned, so they move no
+corpus rows and need no repin (issue #158).
+
 ## Change classes and their bumps
 
 | Change | Bump | Notes |
@@ -41,7 +51,7 @@ in-tree artifact declaring the old version moves in-arc (in the same change/PR) 
 the in-tree motion is part of the bump, not a follow-up.
 
 **Bump window (#97).** The train rule is prescriptive, not descriptive: a standard
-may not bump more than once per **48-hour window**, measured between the committer
+may not bump more than once per **24-hour window**, measured between the committer
 timestamps of the commits that added each new version directory. A queued change to a
 standard still inside its window WAITS — it batches into the next bump of that standard
 (the highest-class rule above already governs what the batch becomes). The window is
@@ -53,8 +63,10 @@ residual is that a coordinated multi-standard increment of that same shape also
 escapes the window, accepted because resets are executive-rare. Enforced
 mechanically by `benchweave.standards.train_window` in the standards suite; the clock
 self-anchors at that module's own arrival commit, so history before the rule is
-grandfathered by mechanism. The 48-hour floor is a starting figure ratified with this
-rule; it is revisited after three windows, not silently.
+grandfathered by mechanism. The floor was ratified at 48 hours as a starting figure and
+revisited once, not silently: 2026-09-23, explicit owner ruling after one window ran —
+the observed cost was latency (a queued fold-after-release waited 34 hours for its
+train), not churn. The floor is 24 hours.
 
 **Bump mechanics — copy, never move.** A version bump copies the old version
 dir to the new version and edits bytes only in the copy; the old dir and its
