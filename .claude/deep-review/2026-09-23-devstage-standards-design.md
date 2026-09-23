@@ -56,6 +56,7 @@ first increment.
    `load_manifest`/`validate_manifest` rules + `repin`'s regenerable classification +
    a pure-semver guard on active versions + the GOVERNANCE paragraph.
 2. Deferred increment 2: the family-script `--corpus` override (dev-tree proof lane).
+   *Promoted into increment 1 post-build, §13.8 — the deferral trigger fired same-day.*
 3. Promotion is **not new code**: today's bump flow verbatim with the dev dir as copy
    source, plus the dev field/dir/row teardown — forgetfulness caught structurally.
 4. Deferred: the F1 release-review row; SDK repo needs **zero changes**.
@@ -347,6 +348,8 @@ GOVERNANCE paragraph draft:
   validated in place — whichever comes first. Until then, promotion's own
   validate-then-report flow (which runs on final bytes) is the floor, identical to
   today's bump.
+  *Promoted 2026-09-23, same day, post-build (§13.8): the trigger fired and the lane
+  shipped inside increment 1 — this row is history, not a deferral.*
 - **D-ii — the F1 release-review row** ("no release cut while a dev head is open"):
   rides the next walk of the release-review matrix (the SDK repo's
   `docs/internal/release-review-matrix.md` is the named matrix in the operator rules;
@@ -733,6 +736,8 @@ second patch to adjacent sentences.
 - **F3 (stands, trigger tightens):** dev-proof lane deferral — under three authors the
   reopen trigger (first head held over a working session, or first promotion failure
   from unvalidated dev bytes) will fire sooner; treat it as live, not eventual.
+  *Superseded 2026-09-23, same day, post-build: see §13.8 — the trigger fired and the
+  lane was promoted into increment 1.*
 - **F4 (new):** head cardinality/ownership — recommend one shared head per
   (standard, train), coordinator-promoted (§13.1); the per-author variant is documented
   and rejected on the window-serialization and lineage-merge grounds. Overturning F4
@@ -771,3 +776,34 @@ F6 before any PR opened (the loud-ruling pattern the floor revisit set):
 
 The GOVERNANCE "Roles and authority" section carries the amended rule verbatim;
 no machinery changed (review discipline is doctrine, not code).
+
+### 13.8 Post-build owner ruling (2026-09-23): F3 promoted to increment 1 — trigger fired
+
+D-i's reopen trigger ("the first dev head held open more than one working session, or
+the first promotion failure traceable to bytes that were never validated in place —
+whichever comes first") fired the same day the increment landed: the owner will test
+against dev bytes pre-promotion as a regular workflow, which is the first condition
+in exactly the form ruled on. The dev-proof lane therefore ships **inside increment 1**
+rather than as deferred increment 2; §6's D-i row and §1's slice shape carry inline
+pointers so the tables stay truthful as history.
+
+Specification = D-i's own text (the `--corpus <dir>` override on the four
+standards-tree family scripts — devices/registry/execution/interface — refusing any
+directory that is not the manifest-declared dev head for that script's standard),
+plus the constraints ruled at promotion:
+
+- **Read-only for SDK state.** The override never mutates the SDK's vendored
+  tree, lock, or submodule pointer — it changes only the invoking process's
+  view of the corpus root. Acceptance arm B's stillness proof extends to
+  cover the override run: the lock bytes are byte-identical across it.
+- **Default is today's behavior.** Without `--corpus`, the scripts resolve the
+  manifest-active released tree exactly as before (no flag, no changed path,
+  byte-identical derivation).
+- **Not a report lane.** `--corpus` and `--write-report` are mutually
+  exclusive (refused loudly): the machine-written reports are a property of
+  released versions — their paths and pins derive from the ACTIVE manifest —
+  and a dev run is a check, not a report.
+- **Cross-standard reads stay active.** A suite's cross-standard contract
+  reads (execution reading otdp's active descriptor, closure's manifest
+  reads) follow the manifest's active entries regardless of the override;
+  the lane overrides the script's OWN standard's corpus only.
