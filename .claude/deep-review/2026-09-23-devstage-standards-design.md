@@ -60,6 +60,9 @@ first increment.
 3. Promotion is **not new code**: today's bump flow verbatim with the dev dir as copy
    source, plus the dev field/dir/row teardown — forgetfulness caught structurally.
 4. Deferred: the F1 release-review row; SDK repo needs **zero changes**.
+   *Superseded in-arc, §13.3: exclusion shipped inside increment 1 (the hook-owned
+   wheel mapping), so the release-review row's residual is the post-exclusion
+   verification, not an open deferral.*
 5. Acceptance: the #147 fold replayed on a scratch branch with mechanical controls
    (SDK stillness, train-window RED control, edit-without-repin refusal).
 
@@ -355,7 +358,14 @@ GOVERNANCE paragraph draft:
   `docs/internal/release-review-matrix.md` is the named matrix in the operator rules;
   the main-repo equivalent surface, if any, is located by the builder when adding the
   row).
+  *Superseded in-arc, §13.3: F1 was re-called to exclusion and the exclusion shipped
+  inside increment 1, so this row's standing constraint ("no release while a head is
+  open") no longer applies — what rides the matrix walk is the wheel-listing
+  verification the exclusion's own pin test now carries.*
+
 - **D-iii — wheel exclusion machinery** (only if F1 is decided against acceptance).
+  *Shipped in increment 1 (§13.3's re-call): hatch_build.py owns the contracts
+  mapping per unit, `-dev` directories get no row. Moot as a deferral.*
 - **D-iv — dev-open/promotion tooling** (any automation beyond documented steps).
 
 Not in scope, ever, per §2: range pins, resolver, generated lockfile, forward-compat

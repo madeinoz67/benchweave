@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import tarfile
 import zipfile
 from pathlib import Path
 
@@ -70,3 +71,32 @@ def test_wheel_carries_no_dev_stage_bytes(tmp_path: Path) -> None:
     ), "the active contracts tree must keep shipping"
     for root_file in ("standards-manifest.json", "corpus-manifest.json"):
         assert f"benchweave/_vendored/contracts/{root_file}" in names
+
+
+@pytest.mark.slow
+def test_sdist_carriage_is_the_disclosed_posture(tmp_path: Path) -> None:
+    """Row 7: the SDIST carries dev bytes BY CHOICE — the ratified F1 call
+    names wheels, and the sdist is the repository's source tree. Pinned so
+    the posture is a decision, not drift: an accidental exclusion (or a
+    widening of the wheel rule) shows up here as a failing choice."""
+    root = _build_surface(tmp_path)
+    dist = tmp_path / "dist-sdist"
+    built = subprocess.run(
+        ["uv", "build", "--sdist", "--out-dir", str(dist)],
+        cwd=str(root),
+        capture_output=True,
+        text=True,
+        timeout=600,
+        check=False,
+    )
+    assert built.returncode == 0, f"uv build failed:\n{built.stderr}"
+    (archive,) = dist.glob("benchweave-*.tar.gz")
+    with tarfile.open(archive) as tar:
+        names = tar.getnames()
+    # Segment-suffix form (the wheel arm's convention): "-dev/" matches the
+    # staged directory but never "otdp-device-descriptor" ("-devi", not "-dev/").
+    dev_entries = [name for name in names if "-dev/" in name]
+    assert dev_entries, (
+        "the sdist lost its disclosed dev-byte carriage — posture drift, "
+        "not a ruled change"
+    )

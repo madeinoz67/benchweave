@@ -112,9 +112,9 @@ follows the edit → repin loop, and validate treats dev pins exactly like
 active pins — and it never appears in the exported bundle, the SDK lock, the
 vendored tree, the compatibility matrix, the identity block, or the public
 docs site (the site assembly skips `-dev` directories on the packaging-side
-lexical rule — both the page staging and the corpus copy beside it). The SDK
-never
-consumes `-dev` bytes: immutability starts at release, and a lock pinned at a
+lexical rule — both the page staging and the corpus copy beside it). The
+SDK never consumes `-dev` bytes: immutability starts at release, and a lock
+pinned at a
 `-dev` version would have to churn its version per edit or carve an exemption
 into the same-version refusal — neither is sanctioned.
 
@@ -187,7 +187,9 @@ Rulings are recorded artifacts, never comments or habits:
   any merge touching corpus bytes or corpus-manifest rows (owner ruling
   2026-09-23: single reviewer, not an additional second human — until
   further notice; re-review by 2027-03-23, the rule carrying its own review
-  trigger the same way the bump floor does). One carve-out: the standards
+  trigger the same way the bump floor does — and restorable to a
+  second-human requirement by a future owner ruling, the same recorded
+  mechanism that set it). One carve-out: the standards
   coordinator may be the author and the reviewer of their own corpus-byte
   merges; non-coordinator contributors always need a human reviewer who is
   not the author. Self-merge by anyone else remains indefensible for
