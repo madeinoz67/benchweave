@@ -20,9 +20,11 @@ if _HERE not in sys.path:
 import _validation_report  # noqa: E402
 
 # Manifest-derived, resolved once (#102 D2 generalized; the #119 lesson).
-CONTRACT_DIR = (
-    STANDARDS / "execution" / _validation_report.active_standard_version(STANDARDS, "execution")
-).resolve()
+# corpus_directory: the manifest-active tree, or the declared dev head when
+# --corpus names it (the dev-proof lane) — read-only either way. The otdp
+# cross-read below stays manifest-ACTIVE regardless: the lane overrides this
+# script's OWN standard's corpus only.
+CONTRACT_DIR = _validation_report.corpus_directory(STANDARDS, "execution")
 E = CONTRACT_DIR / "examples"
 results = []
 

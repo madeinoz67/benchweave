@@ -35,7 +35,9 @@ OTDP_VERSION = _validation_report.active_standard_version(STANDARDS, "otdp")
 # Resolved once: the pinned check compares .resolve()d contract paths against
 # OUT, and an unresolved OUT (macOS /var→/private/var TMPDIR, symlinked
 # roots) fails every pinned check (24 today) vacuously on a clean tree (#119).
-OUT = (STANDARDS / "otdp" / OTDP_VERSION).resolve()
+# corpus_directory resolves the manifest-active tree, or the declared dev
+# head when --corpus names it (the dev-proof lane) — read-only either way.
+OUT = _validation_report.corpus_directory(STANDARDS, "otdp")
 
 
 def load(name):

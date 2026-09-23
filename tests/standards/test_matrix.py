@@ -218,6 +218,10 @@ def test_gate_still_bites_on_manifest_change_without_submodule(tmp_path: Path) -
 
     repo = _checkout_copy(tmp_path, "fork", fork_origin=True)
     document = json.loads((repo / "standards/standards-manifest.json").read_bytes())
+    # Bumping the active version past a live head's target would refuse at
+    # load (dev_head_stale) before the stale-matrix bite could fire — the
+    # synthetic bump drops any head the live manifest carried.
+    document["standards"][0].pop("dev", None)
     document["standards"][0]["version"] = "9.9.9"
     (repo / "standards/standards-manifest.json").write_text(json.dumps(document))
     failures = check_matrix(repo)

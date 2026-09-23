@@ -6,7 +6,10 @@ hand-authored under governance review (``standards/GOVERNANCE.md``), because a
 machine cannot know reset-import vs supersession-copy provenance.
 Superseded-version rows are verified against their pinned digests and never
 rewritten, so the command cannot launder an in-place edit of a retained
-version into a clean manifest. Every structural refusal fires before any
+version into a clean manifest. A dev head's rows are regenerable like the
+active rows' (the edit -> repin loop is the accumulation flow); rows with no
+manifest-declared owner — superseded versions, orphaned dev rows — are
+frozen. Every structural refusal fires before any
 byte is written; the one after-write exception is the validate_manifest
 self-check, which can raise on a missing non-standards normative parity
 path (unchecked pre-write) after the manifest is already correctly
@@ -24,6 +27,11 @@ from typing import Any
 from .manifest import StandardsError, load_manifest, validate_manifest
 
 _ROW_KEYS = frozenset({"path", "source", "sha256"})
+# The lineage amendment (governor re-check ruling 2026-09-23): the optional
+# string a dev-stage promotion's rows carry naming the pre-dev active
+# version's corresponding path — the predecessor edge the deleted staging
+# directory cannot carry on its own.
+_OPTIONAL_ROW_KEYS = frozenset({"lineage"})
 _MANIFESTS = frozenset({"corpus-manifest.json", "standards-manifest.json"})
 
 
@@ -145,12 +153,31 @@ def _strict_loads(raw: bytes) -> Any:
 def _validate_rows(rows: list[Any]) -> None:
     seen: set[str] = set()
     for index, row in enumerate(rows):
-        if not isinstance(row, dict) or set(row) != _ROW_KEYS:
+        keys = set(row) if isinstance(row, dict) else set()
+        allowed = _ROW_KEYS | _OPTIONAL_ROW_KEYS
+        if not isinstance(row, dict) or not keys >= _ROW_KEYS or not keys <= allowed:
+            # Exact keys, plus the lineage amendment's optional string: the
+            # pre-dev predecessor edge a dev-stage promotion records on its
+            # rows (governor re-check ruling 2026-09-23). No other key may
+            # ride a row — the row shape stays closed-world.
             raise StandardsError(f"pin_row_invalid: {index}")
-        if not all(isinstance(row[key], str) for key in _ROW_KEYS):
+        if not all(isinstance(row[key], str) for key in keys):
             raise StandardsError(f"pin_row_invalid: {index}")
         path = str(row["path"])
         _check_row_path(path)
+        lineage = row.get("lineage")
+        if lineage is not None:
+            _check_row_path(str(lineage))
+            if any(part.endswith("-dev") for part in PurePosixPath(str(lineage)).parts):
+                # Lineage names the pre-dev RELEASED edge; the dev edge is
+                # what source carries. A -dev lineage is a field confusion,
+                # refused outright rather than walked terminally here (the
+                # derived-dir guard applies the same terminal to it as
+                # defense in depth).
+                raise StandardsError(
+                    f"pin_row_lineage_invalid: {path}: {lineage} "
+                    "(lineage names the pre-dev released edge; the dev edge is source's)"
+                )
         if path in seen:
             # Stricter than _corpus_pins, which collapses duplicates silently:
             # a duplicate row is a structural surprise, not a pin.
@@ -184,7 +211,10 @@ def _regenerable_paths(root: Path, pinned: set[str]) -> set[str]:
     prefixes on row paths. A pinned machine file inside a current version dir
     that standards-manifest forgot to list classifies frozen, so editing its
     bytes is refused until the manifest gap is fixed: the failure points at
-    the real defect.
+    the real defect. A dev head's paths join the regenerable set the same way
+    (devstage §4.1): dev rows follow the edit -> repin loop until the head is
+    promoted or abandoned — dev rows without the block classify frozen, which
+    is the orphan-teardown catch, not a gap.
     """
     regenerable: set[str] = set()
     try:
@@ -196,7 +226,10 @@ def _regenerable_paths(root: Path, pinned: set[str]) -> set[str]:
             "standards_manifest_absent: standards/standards-manifest.json"
         ) from exc
     for entry in manifest.standards:
-        for relative in entry.normative:
+        relatives = list(entry.normative)
+        if entry.dev is not None:
+            relatives.extend(entry.dev.normative)
+        for relative in relatives:
             if not relative.startswith("standards/"):
                 continue  # The parity validator carries no pin (manifest.py).
             corpus_path = relative.removeprefix("standards/")

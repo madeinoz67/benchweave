@@ -19,6 +19,12 @@
 | 10 | Working material | `superpowers/`, `internal/`, ISA | ephemeral, local | none | untracked by convention |
 | 11 | Public site source | `website/` (static front door), `great-docs.yml`, `index.qmd`, `scripts/assemble_docs_site.py` | living | docs workflow (assembly `verify_tree`) | `website/` + root config; build output (`user_guide/`, `standards_pages/`, `great-docs/`, `site/`) gitignored |
 
+A `standards/<id>/<target>-dev/` directory is the dev stage's staging state of
+classes 1–2 (GOVERNANCE "The dev stage"): same homes, same validation regime
+— pins, coverage and validate apply exactly as to a released version — but
+repin-mutable while the head is open and never exported, synced or packaged;
+promotion copies it to the released version and removes it.
+
 ## Rules
 
 1. **One home per class.** No class ever exists in two places; a second copy of any
