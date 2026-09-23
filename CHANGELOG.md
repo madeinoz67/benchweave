@@ -318,6 +318,8 @@ All notable changes to this project will be documented in this file.
 - F6 superseded — single reviewer, coordinator carve-out, 2027-03-23 re-review (owner ruling)
 - F3 promoted to increment 1 by owner ruling — trigger fired
 - The lineage paragraph gains the ruling's closing purpose clause
+- The dps150 version triangle — why the stamp cascade wins
+- Record amendment — the resolution landed on main in two steps; this branch lands the guard
 
 ### Features
 
@@ -656,6 +658,7 @@ All notable changes to this project will be documented in this file.
 - The RC candidate marker RED arms — boolean candidate on the dev block
 - The documents-gate dev-head arm plants both roots (row 2 fixup)
 - A -dev source segment is a historical terminal in the dir guard (review row 3)
+- The descriptor dialect triangle — red on the reverted stamp
 
 ### Build
 
