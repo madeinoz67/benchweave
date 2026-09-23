@@ -737,3 +737,132 @@ def test_contract_regressions_are_detected(
         json.loads(changed)  # Test semantic damage rather than invalid JSON syntax.
     failures = [name for name, passed in run_checks(suite, docs, standards) if not passed]
     assert any(expected in name for name in failures), failures
+
+
+# --- the dev-proof lane (devstage record §13.8, F3 promoted to increment 1) -------
+#
+# `--corpus <dir>` on the four standards-tree family scripts points the
+# census at the manifest-declared dev head for that script's standard, so
+# dev bytes are proven in place before promotion. The override is a view,
+# never a mutation: it resolves a directory and nothing else (the SDK lock,
+# vendored tree and pointer are structically untouched — the replay's arm-B
+# extension proves it live). Default (no flag) is today's byte-identical
+# active-tree derivation.
+
+
+def _headed_registry_tree(tmp_path: Path) -> Path:
+    """A planted standards tree with a registry dev head open at 0.2.0-dev.
+
+    The census reads files + the manifest's declared paths, not corpus rows,
+    so the plant is: copy the real tree, copy the active registry dir to the
+    head dir, declare the block. The head's bytes are the active bytes — the
+    lane's run must therefore pass every check the active run passes."""
+    standards = tmp_path / "standards"
+    shutil.copytree(ROOT / "standards", standards)
+    shutil.copytree(standards / "registry" / "0.1.1", standards / "registry" / "0.2.0-dev")
+    manifest_path = standards / "standards-manifest.json"
+    document = json.loads(manifest_path.read_bytes())
+    entry = next(e for e in document["standards"] if e["id"] == "registry")
+    entry["dev"] = {
+        "version": "0.2.0-dev",
+        "opened": "2026-09-23",
+        "normative": [
+            f"standards/registry/0.2.0-dev/{p.name}"
+            for p in sorted((standards / "registry" / "0.2.0-dev").glob("*.json"))
+            + sorted((standards / "registry" / "0.2.0-dev" / "examples").glob("*.json"))
+        ],
+    }
+    manifest_path.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+    return standards
+
+
+def _corpus_argv(monkeypatch: pytest.MonkeyPatch, argv: list[str]) -> None:
+    monkeypatch.setattr(sys, "argv", ["check_suite.py", *argv])
+
+
+def test_corpus_default_is_the_active_tree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    writer = _load_shared_writer()
+    _corpus_argv(monkeypatch, [])
+    resolved = writer.corpus_directory(ROOT / "standards", "otdp")
+    assert resolved == (
+        ROOT / "standards" / "otdp" / writer.active_standard_version(ROOT / "standards", "otdp")
+    ).resolve()
+
+
+def test_corpus_override_resolves_the_declared_dev_head(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    writer = _load_shared_writer()
+    standards = _headed_registry_tree(tmp_path)
+    head = (standards / "registry" / "0.2.0-dev").resolve()
+    _corpus_argv(monkeypatch, [f"--corpus={head}"])
+    assert writer.corpus_directory(standards, "registry") == head
+
+
+def test_corpus_override_refuses_a_non_head_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The active dir is the most tempting wrong answer — proving released
+    # bytes again is not a dev-proof lane, and neither is any arbitrary tree.
+    writer = _load_shared_writer()
+    standards = _headed_registry_tree(tmp_path)
+    active = (standards / "registry" / "0.1.1").resolve()
+    _corpus_argv(monkeypatch, ["--corpus", str(active)])
+    with pytest.raises(SystemExit, match="corpus_override_not_dev_head"):
+        writer.corpus_directory(standards, "registry")
+
+
+def test_corpus_override_refuses_without_a_declared_head(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A headless manifest names no dev tree; the flag is a claim the tree
+    # cannot back. The prefix follows the family's {standard_id}_… shape.
+    writer = _load_shared_writer()
+    standards = _headed_registry_tree(tmp_path)
+    document = json.loads((standards / "standards-manifest.json").read_bytes())
+    entry = next(e for e in document["standards"] if e["id"] == "registry")
+    entry.pop("dev")
+    (standards / "standards-manifest.json").write_text(json.dumps(document))
+    _corpus_argv(monkeypatch, ["--corpus", str(standards / "registry" / "0.2.0-dev")])
+    with pytest.raises(SystemExit, match="registry_dev_head_absent"):
+        writer.corpus_directory(standards, "registry")
+
+
+def test_corpus_override_refuses_to_combine_with_write_report(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The machine-written reports are a property of released versions; a dev
+    # run is a check, not a report.
+    writer = _load_shared_writer()
+    standards = _headed_registry_tree(tmp_path)
+    head = (standards / "registry" / "0.2.0-dev").resolve()
+    _corpus_argv(monkeypatch, ["--corpus", str(head), "--write-report"])
+    with pytest.raises(SystemExit, match="corpus_override_write_refused"):
+        writer.corpus_directory(standards, "registry")
+
+
+def test_corpus_flag_without_a_value_refuses(monkeypatch: pytest.MonkeyPatch) -> None:
+    writer = _load_shared_writer()
+    _corpus_argv(monkeypatch, ["--corpus"])
+    with pytest.raises(SystemExit, match="corpus_override_invalid"):
+        writer.corpus_directory(ROOT / "standards", "otdp")
+
+
+def test_family_census_runs_against_the_dev_head(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The end-to-end lane arm: the registry census executes against the
+    declared head (its bytes are the active bytes' copy, so every check the
+    active run passes must pass here) and writes nothing."""
+    standards = _headed_registry_tree(tmp_path)
+    head = (standards / "registry" / "0.2.0-dev").resolve()
+    _corpus_argv(monkeypatch, [f"--corpus={head}"])
+    namespace = load_suite("registry", ROOT / "docs", standards)
+    assert namespace["CONTRACT_DIR"] == head
+    failures = [name for name, passed in namespace["CHECKS"] if not passed]
+    assert failures == [], f"registry dev-head census: {len(failures)} failed:\n" + "\n".join(
+        failures
+    )
+    assert not (head / "validation-report.md").exists(), "a dev run must not write a report"
