@@ -237,6 +237,15 @@ class DemoSupplyAdapter:
             self.dispatch_spans.append(("next_event", started, time.monotonic()))
 
     async def _next_event(self, subscription_id, context):
+        global SLOW_NEXT_EVENT_MS
+        if SLOW_NEXT_EVENT_MS:
+            # The saturated-but-legal regime: consume nearly the whole poll
+            # deadline, then RETURN an event — unlike HANG (which poisons),
+            # this survives, so M-A's saturated windows can exist.
+            remaining = context.deadline_monotonic - context.services.monotonic()
+            await asyncio.sleep(
+                max(0.0, min(SLOW_NEXT_EVENT_MS / 1000.0, remaining - 0.005))
+            )
         if HANG_NEXT_EVENT:
             await asyncio.sleep(10.0)
         sequence = self.sequences.get(subscription_id, -1) + 1
@@ -253,6 +262,7 @@ class DemoSupplyAdapter:
 DEMO_ADAPTER = True
 HANG_NEXT_EVENT = False
 TRIP_AFTER_UNSUBSCRIBE = False
+SLOW_NEXT_EVENT_MS = 0
 
 
 def create_plugin():
@@ -1118,6 +1128,58 @@ def test_r15_fast_bench_signal_degrades_loudly(
         entry = coordinator.stream_host.devices[DEVICE_ID]
         assert entry.engine is None, "a sub-floor subscription must not go live"
         assert entry.controller.live_subscription_ids() == []
+    finally:
+        store.close()
+
+
+# --- fix wave F5: the M-A measurement seams (tick times, saturated polls) -------------
+
+
+def _worst_tick_gap(times: list[float]) -> float:
+    """The worst monitor-tick gap over one window (M-A's tick axis)."""
+    return max((b - a for a, b in zip(times, times[1:], strict=False)), default=0.0)
+
+
+def test_f5_measurement_seams_tick_times_and_saturated_polls(
+    commissioned: _CommissionedHarness,
+) -> None:
+    """F5 smoke (machinery, not an acceptance control): the tick recorder
+    times EVERY monitor tick (dispatch-driven and engine-driven), and the
+    saturated slow-poll mode overruns most of each slice while SURVIVING —
+    the regime M-A's worst-gap-over-windows rule measures. Without these
+    seams the pre-committed M-A rule is unmeasurable."""
+    run_id = "run-f5"
+    coordinator, store, content = _coordinator(commissioned, run_id, QUOTA_LIMITS)
+    try:
+        from benchweave.interfaces.app import _RetainingCoordinator
+
+        assert isinstance(coordinator, _RetainingCoordinator)
+        host = coordinator.stream_host
+        assert host is not None
+        tick_times: list[float] = []
+        host.tick_recorder = tick_times.append
+        landing_times: list[float] = []
+        host.on_event = lambda subscription_id, event, receipt: landing_times.append(
+            time.monotonic()
+        )
+        module = _loaded_adapter_module()
+        module.SLOW_NEXT_EVENT_MS = 100  # slice is 50 ms -> ~45 ms per poll
+        coordinator.start_run(run_id, "principal-activation")
+        module.SLOW_NEXT_EVENT_MS = 0
+        assert len(tick_times) >= 5, "the tick recorder observed no rhythm"
+        worst = _worst_tick_gap(tick_times)
+        assert worst >= 0.040, (
+            f"worst tick gap {worst * 1000:.1f} ms — saturated rounds absent"
+        )
+        assert landing_times, "no events landed in the saturated window"
+        entry = host.devices[DEVICE_ID]
+        assert entry.engine is not None
+        slow_polls = [
+            span for verb, started, ended in entry.bridge._adapter.dispatch_spans
+            if verb == "next_event" and (ended - started) >= 0.040
+            for span in [ended - started]
+        ]
+        assert slow_polls, "no overrun poll spans recorded"
     finally:
         store.close()
 

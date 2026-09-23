@@ -40,6 +40,7 @@ per run.
 from __future__ import annotations
 
 import logging
+import time
 from typing import TYPE_CHECKING, Any
 
 from benchweave.control.stream_polling import StreamPollEngine
@@ -100,6 +101,11 @@ class RunStreamHost:
         #: Subscription ids the run issued at arming (device_id -> ids) —
         #: the composition's own bookkeeping for teardown accounting.
         self.subscriptions: dict[str, list[str]] = {}
+        #: M-A measurement seam (F5): when set before the run starts, every
+        #: monitor tick — dispatch-driven and engine-driven alike — is
+        #: timestamped through it, so the worst-tick-gap-over-windows axis
+        #: reads off the composed run without touching the monitor.
+        self.tick_recorder: Any = None
 
     # -- construction-time surface --------------------------------------------------
 
@@ -164,6 +170,19 @@ class RunStreamHost:
         if self.armed:
             raise RuntimeError(f"stream host armed twice for run {self._run_id!r}")
         self.poll_slice_ns = bench_poll_ns(bench)
+        recorder = self.tick_recorder
+        if recorder is not None:
+            # The seam wraps the monitor's tick at the INSTANCE level, so
+            # every caller (dispatch wrappers, the engine's between-poll
+            # ticks, the wait-slice boundaries) is observed — a harness
+            # measurement hook, never a behavior change.
+            original_tick = monitor.tick
+
+            def observed_tick() -> None:
+                recorder(time.monotonic())
+                original_tick()
+
+            monitor.tick = observed_tick  # type: ignore[method-assign]
         for signal in bench.get("signals", []):
             source = signal.get("source") or {}
             if source.get("kind") != "parameter":
