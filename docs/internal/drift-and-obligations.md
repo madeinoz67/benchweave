@@ -129,7 +129,7 @@ and remain the reviewer's job.
 
 15. **The transport-provider lane** (OTDP 0.2.2's provider declaration: corpus schema
     and prose in this repository, offline conformance in `packages/sdk`, gateway
-    admission/grant still increment 3 — gateway issue #147's implementation lane) → the
+    admission/grant landed increment 3 — gateway issue #147's implementation lane) → the
     increment-2/3 pairing constraint (the #147 design record's AR-6 route): an SDK
     provider sync proves the descriptor lane only — the gateway's admission seam is a
     separate increment, and a corpus change that lands after the SDK synced CANNOT
@@ -140,6 +140,32 @@ and remain the reviewer's job.
     of the constraint is the SDK lock's `compatibility.notes` field, filled on the
     SDK's `fix/147-fold-sync` train (the fill must ride the same commit as every sync —
     the sync writer regenerates the lock with notes null).
+
+16. **The `transport-settings.json` surface** (issue #147 increment 3:
+    `src/benchweave/control/provider_settings.py`, consumed by
+    `admit_documents`/bootstrap and the `build_capture_services` grant gate) → the
+    schema is gateway source, NOT corpus (provider instances are deliberately versioned
+    elsewhere); it stays IDENTITY-ONLY by schema, not policy — `additionalProperties:
+    false` throughout and every string pattern-constrained except the settings-relative
+    document name, which carries the package-relative path rules. Any request for an
+    endpoint/secret/credential field is refused and routed to the deferred
+    execution-standard commissioning shape (the increment-3 design record's deferral 2;
+    reopen trigger: the first provider implementation) — an endpoint field would put
+    extension-contract §6's no-direct-access sentence one schema-edit away from false.
+    Promotion into the commissioning shape (pinned, expiring with the commissioning) is
+    the same deferred row's.
+
+17. **The hand-carried reserved-seven transfer kinds** (the gateway mirror's
+    `_RESERVED_TRANSFER_KINDS` in `src/benchweave/control/documents.py`; the SDK's
+    twin in `packages/sdk/src/benchweave_sdk/validation.py`) → both frozensets are
+    prose-carried (the vendored runtime schema does not enumerate transaction kinds,
+    transport-providers §3 does) and each side carries its own spelling test
+    (`tests/control/test_documents_provider.py`;
+    `packages/sdk/tests/test_transport_providers.py`) pinned from the corpus text — a
+    silent shrink of either set fails its own lane. Extends the #147 record's
+    deferral-8 posture to both sides; the derivation-vectors-style census fixture
+    (one corpus document feeding both checkers) stays the deferred fix shape when the
+    §8.1 generic table grows.
 
 ## CI map
 
