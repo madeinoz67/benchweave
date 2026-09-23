@@ -96,6 +96,13 @@ class RunWorker:
         """Total :meth:`submit` calls — a deduped replay must never move it."""
         return self._submitted_count
 
+    @property
+    def done(self) -> int:
+        """Jobs whose drain-side bookkeeping completed — the other half of
+        the submitted/done pair the shutdown log reports, separating "the
+        queue did not drain in bounds" from "the worker thread is gone"."""
+        return self._done
+
     def start(self) -> None:
         self._thread.start()
 
@@ -115,6 +122,13 @@ class RunWorker:
         the trailing thread join). Callers submit strictly before joining
         (tests submit then join; shutdown has stopped accepting first), so
         a concurrent submit racing this poll is not a reachable shape.
+
+        ``timeout=None`` is the unbounded graceful shape for a LIVE worker
+        — and its fallthrough is unbounded too: past the queue drain, if
+        the fast path does not hold (:meth:`stop` not called, accounting
+        not yet settled), the trailing ``thread.join(None)`` waits for a
+        parked worker that only :meth:`stop` ever ends. No current caller
+        passes ``None``; one that does must be prepared to wait forever.
         """
         deadline = None if timeout is None else time.monotonic() + timeout
         while self._queue.unfinished_tasks:

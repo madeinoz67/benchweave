@@ -453,9 +453,18 @@ class RunCoordinator:
         Discovery rides the bench leases this coordinator's bench declares:
         a run that crashed anywhere between ``create_run`` and
         ``finalize_run`` still holds (or left) an active lease whose holder
-        is ``run:{run_id}``. Recovered runs are recorded ``interrupted``
+        is ``run:{run_id}`. Recovered runs are recorded ``interrupted``
         with ``unknown`` physical assurance and their occurrence identities
         rebuilt from the durable event stream so they can never re-dispatch.
+
+        Issue #156 fix wave adds the run-state-aware leg, AFTER the lease
+        leg: live projection rows the lease scan cannot see — a queued
+        ghost abandoned by the bounded shutdown drain (accepted, never
+        started, no lease) or a stale projection over a durable terminal
+        (a contained worker close that failed at ``put_run_state``) — are
+        interrupted or reconciled here, so neither wedge can outlive a
+        restart. Reported run ids get their projection closed by the
+        interface's recovery loop, which owns the queue projection.
         """
         bench_id = str(self._docs.bench["id"])
         recovered: list[str] = []
@@ -488,6 +497,57 @@ class RunCoordinator:
                 self._rebuild_ledger_from_events(run_id)
                 recovered.append(run_id)
             self._store.release_lease(bench_id, lease.sequence, now)
+        # Run-state-aware leg (issue #156 fix wave). The lease leg above has
+        # by now released every active ``run:`` lease it saw, so a crash
+        # between ``finalize_run`` and the coordinator's lease release
+        # (durable terminal + stale lease + live projection — CTL-9's
+        # ordering makes the window narrow, not impossible) resolves through
+        # the composition: lease released above, projection reconciled here.
+        # The liveness predicate is the complement of the seam's
+        # LIVE_RUN_STATES ({accepted, running, protecting}): a projection row
+        # is live unless it is terminal.
+        holders = {
+            lease.holder[len("run:"):]
+            for lease in self._store.list_leases(bench_id)
+            if lease.state == "active" and lease.holder.startswith("run:")
+        }
+        for row in self._store.list_run_states(bench_id):
+            run_id = str(row["run_id"])
+            if row["state"] == "terminal" or run_id in recovered or run_id in holders:
+                continue
+            run = self._store.get_run(run_id)
+            if run is None or run["tombstoned"]:
+                # No durable row behind the projection: the ledgered
+                # create_run→put_run_state crash window (compatibility.md
+                # D13 batch B) — out of this leg's scope. A tombstoned
+                # run's end is owned by its tombstone, not the sweep.
+                continue
+            if run["terminal"] is None:
+                # Queued ghost: same interrupted record, same evidence and
+                # ledger semantics as the lease-held leg (a never-started
+                # run rebuilds zero occurrence identities — nothing
+                # dispatched, nothing to suppress).
+                now = self._wall.now_iso()
+                record = build_terminal_record(
+                    run_id=run_id,
+                    binding_pin=run["binding"],
+                    principal_id=run["principal_id"],
+                    started_at=run["started_at"],
+                    ended_at=now,
+                    body_outcome="interrupted",
+                    safe_state="unknown",
+                    reasons=[
+                        "gateway restart: run was not terminalised; body execution "
+                        "never resumes automatically"
+                    ],
+                    evidence_refs=self._recovery_evidence_refs(run_id, run["binding"]),
+                )
+                self._store.finalize_run(run_id, record)
+                self._rebuild_ledger_from_events(run_id)
+            # Stale projection over a durable terminal: report it for
+            # projection close only — the durable record is the truth and
+            # is never rewritten.
+            recovered.append(run_id)
         return recovered
 
     # -- pipeline ---------------------------------------------------------------

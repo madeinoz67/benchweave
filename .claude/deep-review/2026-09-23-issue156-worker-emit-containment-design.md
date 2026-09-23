@@ -103,6 +103,10 @@ already complete and truthful — the coordinator wrote its terminal record duri
 `start_run` (CTL-9), and only the bench-stream events (`run_changed`, possibly
 `trip`/`evidence_gap`) are lost, with a gateway-log ERROR carrying the failure (the
 D4-sanctioned home for worker operational context). The drain continues.
+(Fix-wave amendment: this paragraph is false for the sub-case where the failing
+line is the terminal `put_run_state` itself — the projection then stays `running`
+over the completed durable record until the startup sweep's run-state-aware leg
+reconciles it; see §11, F2.)
 
 **Edit B — bounded join** (`worker.py:100-111`). Return `bool`, bound the whole join
 when a timeout is given, and surface a dead worker immediately:
@@ -129,8 +133,9 @@ def join(self, timeout: float | None = None) -> bool:
     return not self._thread.is_alive()
 ```
 
-`unfinished_tasks` is the exact predicate `queue.join()` waits on and a documented
-`queue.Queue` attribute; polling at 50 ms keeps the existing fast-path pin green
+`unfinished_tasks` is the exact predicate `queue.join()` waits on and a
+typeshed-declared `queue.Queue` attribute (amended in the fix wave — it is not
+queue-module-documented); polling at 50 ms keeps the existing fast-path pin green
 (`tests/unit/test_seam_control.py:286-289` asserts join returns in <5 s when drained —
 the loop exits before its first sleep when the queue is empty). `timeout=None`
 preserves today's graceful unbounded drain for a LIVE worker, but a dead worker now
@@ -355,3 +360,55 @@ refute mandatory.
   tests/integration/test_capture_sequential_model.py`; then the full cold suite
   (Tier 3). Counts from `--junitxml` attributes / exit codes, never a filtered
   summary line. RED proofs run before merge and land in the review evidence.
+
+## 11. Fix-wave amendments (2026-09-23, post-refute)
+
+The adversarial refute pass executed two wedges the mechanism above left open,
+plus claim defects; all folded on `fix/issue156-unguarded-emit` with RED arms in
+`tests/faults/test_recovery_sweep_faults.py` (the adversary's executed probes as
+acceptance predicates).
+
+- **F1 (MEDIUM) — queued ghost wedges the bench forever.** Edit B/C make the
+  bounded shutdown drain abandon queued-not-started runs at 5 s; the startup
+  sweep discovered only active-lease holders, so an `accepted` projection with
+  no lease and no terminal survived every restart in `LIVE_RUN_STATES` and the
+  §5 busy oracle refused every future `run_start` on that bench, permanently.
+  **Fix (R1):** `recover_interrupted` gains a run-state-aware leg AFTER the
+  lease leg — live projection rows (non-terminal; the complement of the seam's
+  `{accepted, running, protecting}`) with no active `run:` lease and a durable
+  run row are interrupted (`body_outcome=interrupted`,
+  `safe_state=unknown`, the same record path, evidence refs and ledger
+  semantics as the lease-held leg) or, when a durable terminal already exists,
+  reported for projection reconcile only (the record is never rewritten).
+  Rows with no durable run behind them stay out of scope: that is the
+  `create_run`→`put_run_state` crash window already ledgered in
+  `docs/compatibility.md` D13 batch B (and D6 here). Tombstoned runs are
+  skipped — the tombstone owns that run's end.
+- **F2 (MEDIUM-LOW) — stale `running` projection over a durable terminal.**
+  Edit A's containment unit wraps `put_run_state` too; if that write fails the
+  projection stays `running` with the lease already released — invisible to
+  the lease scan, same wedge. Same fix leg (the reconcile arm).
+- **Order/edge probe (instruction):** durable terminal + active `run:` lease +
+  live projection — CTL-9's ordering (finalize → release → project) makes the
+  window narrow, not impossible (a crash between `finalize_run` and the lease
+  release lands there). Probed and pinned: the lease leg releases the stale
+  lease without interrupting; the run-state leg then reconciles the
+  projection; the bench un-wedges; the completed record is untouched.
+- **F3 (LOW) — `join(timeout=None)` fallthrough.** Docstring-only: names the
+  permanent-hang consequence of the fast-path fallthrough under `None`
+  (trailing `thread.join(None)` on a parked worker only `stop()` ends). No
+  current caller passes `None`.
+- **Critic MOVE — operator-guide over-claim.** "applies the protective
+  transition before anything new executes" removed: recovery records
+  `safe_state="unknown"` and never touches a device; the guide now says
+  exactly that and tells the operator to verify the bench's physical state.
+- **Critic LOW — shutdown log conflates join's two False meanings.** The
+  `_lifespan` ERROR line now reports `(submitted=%d done=%d)` via a new
+  read-only `RunWorker.done` property.
+- **NIT** — §2's "a documented `queue.Queue` attribute" corrected to
+  "typeshed-declared" (this section's Edit B paragraph, amended in place).
+- **Interface disposition (app.py):** the recovery loop distinguishes the two
+  legs by reading the durable record's `body_outcome` (the authority):
+  interrupted runs keep `RECOVERY_RUN_CHANGED_REASON`; reconciled runs log
+  the new `RECOVERY_PROJECTION_REASON`. Both close the queue projection and
+  emit one `run_changed`.

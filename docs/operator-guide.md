@@ -154,9 +154,12 @@ drain: 5 seconds for in-flight and queued runs to finish. Runs that
 complete within the bound close normally. Anything still outstanding when
 the bound expires is not waited out — the gateway logs one
 `run worker did not drain at shutdown` line and exits, and the next
-startup's recovery sweep records those runs `interrupted` (never a
-fabricated outcome) and applies the protective transition before anything
-new executes. The worker thread is a daemon and the bound is a fixed
+startup's recovery sweep records those runs `interrupted` with safe state
+`unknown` — an honest "we do not know how this ended", never a fabricated
+outcome. Recovery never touches the bench: verify the bench's physical
+state before starting new work. A run whose durable record already says
+it completed keeps that record; only its stale queue state is reconciled.
+The worker thread is a daemon and the bound is a fixed
 grace in the gateway's shutdown path, so an external service manager (§7)
 remains the real limit on total shutdown time; plan restarts accordingly
 when runs can exceed the grace.
