@@ -98,7 +98,7 @@ def installed_check(reference: Path, report: Path) -> None:
     assert version("benchweave") == expected["gateway_version"]
     assert version("benchweave-sdk") == expected["sdk_version"]
     assert benchweave_sdk.__version__ == expected["sdk_version"]
-    assert benchweave_sdk.OTDP_VERSION == "0.2.0"
+    assert expected["otdp_version"] == benchweave_sdk.OTDP_VERSION
     assert benchweave_sdk.ADAPTER_API_VERSION == "1.1"
     assert files("benchweave").joinpath("py.typed").is_file()
     assert files("benchweave_sdk").joinpath("py.typed").is_file()
@@ -217,7 +217,7 @@ def installed_check(reference: Path, report: Path) -> None:
             {
                 "gateway_version": expected["gateway_version"],
                 "sdk_version": expected["sdk_version"],
-                "otdp_version": "0.2.0",
+                "otdp_version": expected["otdp_version"],
                 "adapter_api_version": "1.1",
                 "standards_files_verified": len(locked_hashes),
                 "example": "wheel installed outside checkout; identify/read passed",
@@ -258,6 +258,9 @@ def build_and_check(out_dir: Path) -> None:
         "checkout": str(checkout),
         "gateway_version": gateway_metadata["project"]["version"],
         "sdk_version": sdk_metadata["project"]["version"],
+        "otdp_version": str(
+            next(standard["version"] for standard in standards if standard["id"] == "otdp")
+        ),
         "presentation_sha256": presentation_sha256,
         "standard_ids": sorted(str(standard["id"]) for standard in standards),
         "standards": {

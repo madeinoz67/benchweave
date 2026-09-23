@@ -120,6 +120,28 @@ rather than rewriting the history — that is how this file earns trust.
   device row, no content row, no generation bump. Device rows iterate the bench's pinned
   set through the CON-10 projection (descriptor-id keying preserved); the descriptor
   family stays cache-only in the content store and meets the gate when a binding pins it.
+  Amendment (2026-09-23, issue #147 increment 3): descriptor admission gains the provider
+  rows — the census mirror (`_check_provider_mirror`, the SDK's five refusals
+  refusal-for-refusal and in order, over the two-layer known-features union:
+  corpus-derived layer 1 swept from the vendored tree + host-admitted layer 2 — the
+  union serves the `unknown_otdp_feature:` closure ONLY; admission proof is the
+  triple row below, which never consults the union), the
+  descriptor-relative pin verification (`_verify_provider_pin`: strict no-follow, hash,
+  exact-byte decode — strict UTF-8, BOM/UTF-16 refused there — the vendored provider
+  schema resolved manifest-derived, grammar meta-validation, kind uniqueness,
+  reserved-seven disjointness, the identity equalities plus the declaration-agreement
+  pair), and the gateway-only admission row (`provider_not_admitted:`: exact triple,
+  approval expiry judged against a caller-supplied `now_wall` — A04 arithmetic, a missing
+  `now_wall` refuses — and the S12-extended `connection_key` binding). The
+  machine-matchable refusal set gains the six SDK prefixes riding inside the existing
+  family prefixes (`provider_transport_undeclared:`, `provider_feature_missing:`,
+  `unknown_otdp_feature:`, `provider_contract_missing:`,
+  `provider_contract_hash_mismatch:`, `provider_contract_invalid:`) plus the
+  gateway-owned `provider_not_admitted:`. Provider documents and the operator's
+  `transport-settings.json` (validated before any descriptor is projected, identity-only
+  by schema — `src/benchweave/control/provider_settings.py`) decode through the
+  exact-byte decoder; the settings validator's own prefixes (`settings_schema:`,
+  `settings_digest_mismatch:`) join the same list.
 - **[CON-2]** The digest pin lattice between the execution-contract documents is verified
   at admission; the fixture lattice moves in lockstep (`fixtures/registry/` ↔
   `scripts/registry/build_fixtures.py` ↔ `catalogue.json` ↔ the digest-pinning tests),
@@ -159,6 +181,17 @@ rather than rewriting the history — that is how this file earns trust.
   superseded-version rows — `src/benchweave/standards/repin.py`, pinned by
   `tests/standards/test_repin.py`. *Without it, the next contributor's fastest path is
   another hand-splice, and the frozen-row guarantee lives only in prose.*
+  Amendment (2026-09-23, the devstage design record): corpus rows carry a third
+  fate — **dev** (repin-mutable while a head is open: the head's `standards/`
+  paths join the regenerable set, so the edit → repin loop is the accumulation
+  flow), deleted with their directory at promotion or abandonment. The
+  "machine-rewritten only by repin" clause and the superseded-row freeze are
+  unchanged. A dev row whose block is gone classifies frozen (the
+  orphan-teardown catch); a leftover block after promotion refuses at load
+  (`dev_target_not_greater`; the class-escalated form `dev_head_stale`); the
+  active entry's version must be pure semver
+  (`standards_entry_version_invalid`) — a `-dev` suffix there would add a
+  release directory the train-window collector cannot count.
 - **[CON-8]** The corpus identity block is closed-world and derived-checked against
   its machine authorities at every export/check — an unknown key is refused
   (`identity_key_unknown`; a new key is a standards-governance event, not an
@@ -229,6 +262,28 @@ rather than rewriting the history — that is how this file earns trust.
   and admissible (#63 §1); one dialect plus a projection is the structural fix,
   and sim_scope admitting with zero byte changes was the proof the mechanism,
   not a rewrite, closed the fork.*
+  Amendment (2026-09-23, issue #147 increment 3): the equivalence census extends to the
+  provider lattice (the record §4 metric-1 fixtures: 4 valid + 8 single-fault, both legs
+  in-process), and the sanctioned gateway-stricter cells grow to FOUR, each named in the
+  census module docstring — `issued_map:`; `provider_not_admitted:` (admission is
+  gateway-only: the SDK cannot see commissioned state, so no offline prefix exists);
+  the strict-UTF-8 decode (a BOM'd or UTF-16 provider document whose pin covers its
+  bytes is SDK-clean and gateway `invalid_json` inside `provider_contract_invalid:`);
+  and the duplicate-key decode (a contract whose bytes carry a duplicate key is
+  SDK-clean under `json.loads`'s last-value collapse and gateway-refused by the
+  exact-byte decoder's `duplicate_key` gate — gateway-stricter is the honest
+  direction: the reviewed bytes are the pinned bytes). Two alignment notes: the
+  provider-pin read cap mirrors the SDK's 262144-byte bounded-read `INPUT_BYTE_LIMIT`
+  (pinned equal across lanes; before the mirror the size window (262144, 1048576]
+  admitted gateway-side only), and symlinked ANCESTORS of the descriptor's package
+  are an environment-conditional divergence (the SDK's no-follow reader refuses them;
+  the gateway checks sub-package segments — both hold strict no-follow inside the
+  package).
+  A set-equality arm pins the gateway's corpus-known feature derivation equal to the
+  SDK's at the same vendored version (layer 1 of the two-layer union cannot drift
+  silently). The projection itself is UNCHANGED: transport and provider stay
+  unprojected; the grant seam (`build_capture_services`) re-derives the raw form by
+  digest exactly as the permissions precedent does.
 
 - **[CON-11]** The active OTDP validation report
   (`standards/otdp/0.2.0/validation-report.md`) is machine-written by its own

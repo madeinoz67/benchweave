@@ -19,7 +19,7 @@ def pytest_sessionstart() -> None:
     lock = json.loads((root / "contracts/lock.json").read_text())
     # Same destination formula as scripts/fetch_contracts.py: the lock's
     # directory field names the corpus, the local dir is its last two parts
-    # joined on a dash (standards/otdp/0.2.0 -> contracts/otdp-0.2.0).
+    # joined on a dash (standards/otdp/0.2.2 -> contracts/otdp-0.2.2).
     contracts = root / "contracts" / "-".join(Path(lock["directory"]).parts[-2:])
     for name, expected in lock["sha256"].items():
         path = contracts / name

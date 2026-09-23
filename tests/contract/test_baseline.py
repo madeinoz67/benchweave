@@ -58,6 +58,10 @@ def _contract_files() -> list[Path]:
         p
         for p in CONTRACTS.rglob("*.json")
         if p.name not in ("corpus-manifest.json", "standards-manifest.json")
+        # Mirrors check_documents.py's exclusion (review row 2): a dev copy
+        # shares the active documents' $ids and shadows them — the mirror
+        # must not condemn released files for a head's edits either.
+        and not any(part.endswith("-dev") for part in p.relative_to(CONTRACTS).parts)
     )
 
 
@@ -101,7 +105,7 @@ def test_manifest_identity_pins_admitted_versions() -> None:
     assert identity["interface"] == "0.1.0"
     assert identity["registry"] == "0.1.1"
     assert identity["execution"] == "0.1.0"
-    assert identity["otdp"] == "0.2.0"
+    assert identity["otdp"] == "0.2.2"
     assert identity["mcp"] == "2026-07-28"
 
 
@@ -191,7 +195,8 @@ def _derived_corpus_dirs(
 
     Active: version-dirs of the standards manifest's normative paths that
     live under ``standards/`` (normative paths elsewhere — e.g. a
-    presentation package's ``src/`` tree — are not corpus dirs). Retained:
+    presentation package's ``src/`` tree — are not corpus dirs), plus the
+    version-dirs of any manifest-declared dev head's normative paths. Retained:
     the transitive closure of corpus-manifest ``source`` chains while they
     stay under ``standards/`` — the copy-never-move lineage GOVERNANCE
     requires every bump to cite. A source naming a ``standards/`` path with
@@ -208,25 +213,52 @@ def _derived_corpus_dirs(
     """
     active: set[str] = set()
     for entry in standards_manifest["standards"]:
-        for path in entry["normative"]:
+        paths = list(entry["normative"])
+        head = entry.get("dev")
+        # A manifest-declared dev head's dir is admitted by the same
+        # authority as an active dir (the standards manifest) — without
+        # this, every open head reads as a stray corpus dir and the guard
+        # reddens accumulation branches (caught live by the devstage
+        # replay; fixed with it).
+        if isinstance(head, dict):
+            paths.extend(head.get("normative") or [])
+        for path in paths:
             if path.startswith("standards/"):
                 active.add(_version_dir(path.removeprefix("standards/")))
     by_path = {str(row["path"]): row for row in corpus_rows}
     retained: set[str] = set()
     for row in corpus_rows:
-        source = row.get("source")
         # The visited set makes a source cycle terminate (the real corpus is
         # acyclic; a synthetic or tampered cycle must not hang the guard).
         visited: set[str] = set()
-        while isinstance(source, str) and source not in visited:
-            if not source.startswith("standards/"):
-                break
-            visited.add(source)
-            retained.add(_version_dir(source.removeprefix("standards/")))
-            cited = by_path.get(source.removeprefix("standards/"))
-            if cited is None:
-                break
-            source = cited.get("source")
+        # BOTH edges seed the walk (the lineage amendment): `source` is the
+        # direct producer, `lineage` the pre-dev active version a dev-stage
+        # promotion names separately — the deleted staging directory cannot
+        # carry the retention chain on its own.
+        for edge in ("source", "lineage"):
+            source = row.get(edge)
+            while isinstance(source, str) and source not in visited:
+                if not source.startswith("standards/"):
+                    break
+                visited.add(source)
+                relative = source.removeprefix("standards/")
+                if _version_dir(relative).split("/")[1].endswith("-dev"):
+                    # A -dev segment is a historical TERMINAL (review row 3,
+                    # extended to lineage identically by the governor's
+                    # ruling). The promoted version's rows cite the dev
+                    # directory as their producer (the resets rule: never a
+                    # path that did not produce the bytes), and that
+                    # directory is deleted by design at teardown — so it is
+                    # exempt from the missing direction (deletion is the
+                    # design, not a gap) and justifies nothing downstream
+                    # (an undeclared leftover dev dir stays stray;
+                    # provenance cannot launder it).
+                    break
+                retained.add(_version_dir(relative))
+                cited = by_path.get(relative)
+                if cited is None:
+                    break
+                source = cited.get("source")
     return active | retained
 
 
@@ -355,3 +387,93 @@ def test_derived_dir_guard_ignores_non_standards_normative_paths() -> None:
     stray, missing = _corpus_dir_justification(manifest, rows)
     assert stray == []
     assert missing == []
+
+
+# --- review row 3: a -dev source segment is a historical terminal -----------------
+
+
+def test_promoted_rows_citing_a_dev_source_are_justified() -> None:
+    """The governor's probe: a full promotion + teardown. The promoted
+    version's rows cite the (deleted) dev directory as their source — the
+    resets rule's "never a path that did not produce the bytes". A -dev
+    source is a historical terminal: the deleted staging dir is the DESIGN
+    of teardown, not a copy-never-move gap, so it must not fire missing."""
+    manifest = {"standards": [_sm_entry("alpha", ["standards/alpha/0.3.0/a.schema.json"])]}
+    rows = [_row("alpha/0.3.0/a.schema.json", "standards/alpha/0.2.0-dev/a.schema.json")]
+    stray, missing = _corpus_dir_justification(manifest, rows)
+    assert stray == []
+    assert missing == []
+    # Disclosed seam for the governor re-review this row is flagged for: on a
+    # REAL promotion the pre-dev active version's only justifier was the
+    # (deleted) dev row citing it, so the terminal walk orphans it — a
+    # minimal probe carries no predecessor dir and cannot see this; whether
+    # promotion keeps a lineage citation is a governance ruling, not a
+    # builder improvisation.
+
+
+def test_leftover_dev_dir_after_a_botched_teardown_is_stray() -> None:
+    """The adversary's fourth teardown shape: the promotion happened, the
+    dev block was removed, but the dev directory and its rows were left in
+    the tree. The leftover must fire STRAY — a -dev source justifies nothing
+    downstream, so no laundered provenance can keep an undeclared staging
+    dir admitted."""
+    manifest = {"standards": [_sm_entry("alpha", ["standards/alpha/0.3.0/a.schema.json"])]}
+    rows = [
+        _row("alpha/0.3.0/a.schema.json", "standards/alpha/0.2.0-dev/a.schema.json"),
+        # the leftover: rows for a directory no block declares
+        _row("alpha/0.2.0-dev/a.schema.json", "standards/alpha/0.2.1/a.schema.json"),
+        _row("alpha/0.2.1/a.schema.json", "standards/alpha/0.2.0/a.schema.json"),
+        _row("alpha/0.2.0/a.schema.json", "docs/alpha/a.schema.json"),
+    ]
+    stray, missing = _corpus_dir_justification(manifest, rows)
+    assert stray == ["alpha/0.2.0-dev"], stray
+    assert missing == []
+
+
+# --- the lineage amendment (governor re-check ruling, 2026-09-23) ------------------
+
+
+def _promotion_rows(with_lineage: bool) -> list[dict[str, Any]]:
+    """The real dev-stage promotion shape: promoted rows citing the (deleted)
+    dev directory as source, the pre-dev active version still retained with
+    its own chain — optionally carrying the predecessor edge as lineage."""
+    rows = [
+        _row("alpha/0.3.0/a.schema.json", "standards/alpha/0.2.0-dev/a.schema.json"),
+        _row("alpha/0.2.1/a.schema.json", "standards/alpha/0.2.0/a.schema.json"),
+        _row("alpha/0.2.0/a.schema.json", "docs/alpha/a.schema.json"),
+    ]
+    if with_lineage:
+        rows[0]["lineage"] = "standards/alpha/0.2.1/a.schema.json"
+    return rows
+
+
+_PROMOTION_MANIFEST = {
+    "standards": [_sm_entry("alpha", ["standards/alpha/0.3.0/a.schema.json"])]
+}
+
+
+def test_real_promotion_with_lineage_justifies_the_predecessor() -> None:
+    """The governor's contour: promoted rows cite the dev path as source AND
+    the pre-dev active version's corresponding paths as lineage — the
+    predecessor edge survives the teardown, walked by the same guard."""
+    stray, missing = _corpus_dir_justification(_PROMOTION_MANIFEST, _promotion_rows(True))
+    assert stray == []
+    assert missing == []
+
+
+def test_real_promotion_orphaned_predecessor_without_lineage() -> None:
+    """The named control: without the lineage edge the predecessor reads
+    stray — omitting the field is visible, never silent."""
+    stray, missing = _corpus_dir_justification(_PROMOTION_MANIFEST, _promotion_rows(False))
+    assert stray == ["alpha/0.2.1"], stray
+    assert missing == []
+
+
+def test_lineage_naming_a_dev_path_justifies_nothing() -> None:
+    """The terminal rule applies to lineage identically: a lineage naming a
+    -dev path launders no leftover — the dev edge is what source carries."""
+    rows = _promotion_rows(False)
+    rows[0]["lineage"] = "standards/alpha/0.2.0-dev/a.schema.json"
+    rows.append(_row("alpha/0.2.0-dev/a.schema.json", "standards/alpha/0.2.1/a.schema.json"))
+    stray, missing = _corpus_dir_justification(_PROMOTION_MANIFEST, rows)
+    assert stray == ["alpha/0.2.0-dev"], stray

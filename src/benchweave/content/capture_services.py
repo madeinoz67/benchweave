@@ -30,6 +30,10 @@ from collections.abc import Callable
 from typing import Any
 
 from benchweave.content.capture_store import CaptureStagingStore
+from benchweave.content.provider_transport import (
+    declares_provider,
+    provider_transport_for,
+)
 from benchweave.content.store import ContentStore, EvidenceQuotaExceeded
 from benchweave.control.documents import adapter_permissions
 from benchweave.host.types import EvidenceStamp
@@ -369,6 +373,7 @@ def build_capture_services(
     quota: Any,
     context_key: str,
     transport: Any = None,
+    providers: Any = None,
 ) -> tuple[ScopedServicesBundle, CaptureController | None]:
     """The permission gate's construction point (A11/A17).
 
@@ -378,6 +383,14 @@ def build_capture_services(
     eight-member capture bundle with its controller, or — without the
     ``artifact_writer`` permission — the five-member scoped bundle with NO
     controller: no capture writer exists at all.
+
+    The provider grant (issue #147 increment 3): when the re-derived raw
+    descriptor declares a transport provider and a validated
+    ``providers`` registry is supplied, the transport is the GRANT's —
+    the grammar guard over the admitted contract, or a bound refusal
+    naming the failed check (permission / admission / resolution) — never
+    the caller's injection. A provider-less descriptor is untouched: the
+    caller's ``transport`` stands exactly as before.
     """
     document = content.get_document(descriptor_digest)
     if document is None:
@@ -388,6 +401,8 @@ def build_capture_services(
             "cached when a binding pins them)"
         )
     permissions = adapter_permissions(document["content"])
+    if declares_provider(document["content"]):
+        transport = provider_transport_for(document["content"], providers)
     quota_evidence = int(quota.max_evidence_entries)
     if ARTIFACT_WRITER in permissions:
         bundle = CaptureServicesBundle(

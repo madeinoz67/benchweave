@@ -44,6 +44,14 @@ def _repo_copy(tmp_path: Path) -> Path:
     repo = tmp_path / "repo"
     repo.mkdir()
     shutil.copytree(ROOT / "standards", repo / "standards")
+    # The scenarios exercise sync semantics on normative bytes, not the
+    # compat-notes content: a fresh sync writes null notes (#170's writer
+    # default), so the copied mirror's notes are neutralised to match —
+    # otherwise every scenario drifts on whatever the live landing carries.
+    manifest = repo / "standards" / "standards-manifest.json"
+    document = json.loads(manifest.read_bytes())
+    document["sdk_compatibility"]["notes"] = None
+    manifest.write_text(json.dumps(document, indent=2) + "\n")
     parity = repo / PARITY
     parity.parent.mkdir(parents=True)
     shutil.copy2(ROOT / PARITY, parity)

@@ -1,4 +1,4 @@
-"""Mock-only OTDP 0.2.0 / adapter 1.1 conformance."""
+"""Mock-only OTDP 0.2.2 / adapter 1.1 conformance."""
 
 import asyncio
 import json
@@ -29,7 +29,14 @@ def commanded_sends(calls: list[tuple[dict[str, Any], Any]]) -> list[bytes]:
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = ROOT / "src/benchweave_fnirsi_dps150"
-SCHEMAS = ROOT / "contracts/otdp-0.2.0"
+# Same destination formula as scripts/fetch_contracts.py and tests/conftest.py:
+# the lock's directory field names the corpus; the local dir is its last two
+# parts joined on a dash (standards/otdp/0.2.2 -> contracts/otdp-0.2.2).
+SCHEMAS = (
+    ROOT
+    / "contracts"
+    / "-".join(Path(json.loads((ROOT / "contracts/lock.json").read_text())["directory"]).parts[-2:])
+)
 IDENTITY = bytes.fromhex("f0a1de074450532d3135308f f0a1e003312e3072")
 
 

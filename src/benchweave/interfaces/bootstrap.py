@@ -29,6 +29,7 @@ from benchweave.control.documents import (
     admit_documents,
     decode_resolution_document,
 )
+from benchweave.control.provider_settings import TRANSPORT_SETTINGS_FILENAME
 from benchweave.registry.admission import AdmissionLimits
 from benchweave.registry.authenticity import TrustRoot, load_trust_root
 from benchweave.registry.manifests import Key
@@ -54,7 +55,9 @@ def _descriptor_paths_by_sha(fixtures_dir: Path) -> dict[str, Path]:
     }
 
 
-def admit_fixture_lattice(fixtures_dir: Path) -> AdmittedDocuments:
+def admit_fixture_lattice(
+    fixtures_dir: Path, *, now_wall: str | None = None
+) -> AdmittedDocuments:
     """Resolve and admit the startup lattice (issue #85: CON-1's third caller).
 
     The resolution+admission body the recovery path has proven on every app
@@ -73,6 +76,12 @@ def admit_fixture_lattice(fixtures_dir: Path) -> AdmittedDocuments:
     to the caller: bootstrap logs ``startup_admission_rejected:`` and
     re-raises (refusing startup); recovery contains them
     (``recovery_admission_rejected:`` → skip run recovery).
+
+    The provider lane (issue #147 increment 3): an optional
+    ``transport-settings.json`` beside the lattice documents is passed to
+    admission when it exists (``None`` otherwise — the closed default
+    refuses provider-declaring descriptors), with ``now_wall`` for the
+    approval-expiry arithmetic.
     """
     binding = decode_resolution_document(fixtures_dir / "run-binding.json", "binding")
     procedure_sha = str(binding["procedure"]["sha256"])
@@ -99,6 +108,7 @@ def admit_fixture_lattice(fixtures_dir: Path) -> AdmittedDocuments:
                 f"not present under {fixtures_dir}"
             )
         descriptor_paths[device_id] = path
+    settings_path = fixtures_dir / TRANSPORT_SETTINGS_FILENAME
     return admit_documents(
         procedure_path=procedure_path,
         policy_path=fixtures_dir / "safety-policy.json",
@@ -106,6 +116,8 @@ def admit_fixture_lattice(fixtures_dir: Path) -> AdmittedDocuments:
         binding_path=fixtures_dir / "run-binding.json",
         commissioning_path=fixtures_dir / "commissioning.json",
         descriptor_paths=descriptor_paths,
+        provider_settings=settings_path if settings_path.is_file() else None,
+        now_wall=now_wall,
     )
 
 
@@ -120,7 +132,7 @@ def admit_startup_bench(
     # family member crashing the cache loop's parse mid-write — is a
     # pre-existing residual, not closed here (design record D6).
     try:
-        docs = admit_fixture_lattice(fixtures_dir)
+        docs = admit_fixture_lattice(fixtures_dir, now_wall=now)
     except Exception as error:
         # Mirrors recovery_admission_rejected's shape (class + message, the
         # typed prefixes ride inside); uvicorn turns the re-raised lifespan

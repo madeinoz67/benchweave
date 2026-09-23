@@ -106,6 +106,50 @@ location as you would on Linux.
 for `setup`, `backup`, `restore`, `report`, and `verify`). Every command
 also takes `--json` for the stable machine contract.
 
+### Optional: admitting transport providers (`transport-settings.json`)
+
+A descriptor may declare a transport provider (a pinned, reviewed
+provider contract — OTDP 0.2.2 `transport-providers.md`). The gateway
+refuses such a descriptor unless the operator has admitted its contract
+through an optional `transport-settings.json` placed in the fixtures
+directory (beside `bench.json` and `commissioning.json`):
+
+```json
+{
+  "config_version": "1",
+  "admitted": [
+    {
+      "id": "urn:otdp:transport-provider:reference-hid:1.0.0",
+      "version": "1.0.0",
+      "sha256": "<64-hex digest of the reviewed contract bytes>",
+      "feature_id": "otdp.transport.reference-hid/1.0.0",
+      "document": "providers/reference-provider.json"
+    }
+  ],
+  "connections": [
+    {"connection_key": "power_meter", "provider_id": "urn:otdp:transport-provider:reference-hid:1.0.0"}
+  ]
+}
+```
+
+The document is validated at gateway startup, before any lattice
+admission: `document` names a settings-relative file whose bytes must hash
+to the admitted `sha256` and validate as a provider contract — your
+admission record and the reviewed bytes are one act. The surface carries
+IDENTITY ONLY: there is no field for an endpoint, path, process,
+credential, or secret, by schema rather than by policy. Endpoint and
+secret configuration arrives with the first provider implementation
+through the execution-standard commissioning shape (deferred; see the
+issue #147 increment-3 design record), never through this file. An
+approval that has expired (`approval.expires_at` in the contract, judged
+at startup) is not an admitted contract; re-admit the renewed bytes.
+
+Run admission reads this same settings document: each run's spool resolves
+a descriptor's pinned provider contract beside it and threads the fixtures
+directory's `transport-settings.json` with a fresh wall stamp, so a
+provider-declaring lattice executes under the admissions recorded here —
+bootstrap and the run path apply one standard.
+
 ## 3. Serve — run the gateway
 
 `serve` composes the gateway from the environment and runs it under

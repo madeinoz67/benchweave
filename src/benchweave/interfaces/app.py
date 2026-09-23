@@ -11,6 +11,7 @@ mount so its ``/v1`` routes win.
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import logging
 import sys
@@ -34,6 +35,7 @@ from benchweave.control.documents import (
     AdmittedDocuments,
     admit_documents,
 )
+from benchweave.control.provider_settings import TRANSPORT_SETTINGS_FILENAME
 from benchweave.control.stream_host import RunStreamHost
 from benchweave.host.plugin import DevicePlugin, SimulationInfo
 from benchweave.host.services import QuotaLimits, ReadingSinks
@@ -115,6 +117,53 @@ def _load_sim_plugin(name: str) -> ModuleType:
     return module
 
 
+def _spool_provider_document(
+    content: ContentStore, fixtures_dir: Path, spool: Path, descriptor_sha: str
+) -> None:
+    """Spool a provider-declaring descriptor's pinned contract beside it.
+
+    The pin is DESCRIPTOR-relative, and the spooled descriptor lives at a
+    new filename in a fresh directory — so the pinned contract must be
+    found at the ORIGINAL descriptor's side (resolved by digest over the
+    fixtures' descriptor family, the bootstrap resolution pattern),
+    verified against the pin, and written into the spool at the pinned
+    relative path. Without this, run admission could never admit a
+    provider descriptor and the refusal would misattribute the cause
+    ("does not name a contained regular file" against a package that has
+    the file — fold wave B). Resolution failures return silently:
+    admission then refuses with its own honest prefix against the spool's
+    true state.
+    """
+    document = content.get_document(descriptor_sha)
+    if document is None:
+        return
+    descriptor = document["content"]
+    transport = descriptor.get("transport") if isinstance(descriptor, dict) else None
+    provider = transport.get("provider") if isinstance(transport, dict) else None
+    if not isinstance(provider, dict):
+        return
+    relative = provider.get("path")
+    original = next(
+        (
+            path
+            for path in sorted(fixtures_dir.glob("descriptor-*.json"))
+            if hashlib.sha256(path.read_bytes()).hexdigest() == descriptor_sha
+        ),
+        None,
+    )
+    if original is None or not isinstance(relative, str):
+        return
+    try:
+        raw = (original.parent / relative).read_bytes()
+    except OSError:
+        return
+    if hashlib.sha256(raw).hexdigest() != provider.get("sha256"):
+        return
+    target = spool / relative
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(raw)
+
+
 def _spool_documents(
     content: ContentStore, binding_ref: dict[str, Any], fixtures_dir: Path, spool: Path
 ) -> dict[str, Any]:
@@ -124,7 +173,11 @@ def _spool_documents(
     ContentStore by digest; the package lock is the one exception — the
     bootstrap contract deliberately never admits it, so it is resolved from
     the fixtures directory (admit_documents reads it from the bench
-    document's parent directory).
+    document's parent directory). A provider-declaring descriptor's pinned
+    contract is spooled beside it (descriptor-relative pin), and the
+    fixtures' optional ``transport-settings.json`` threads through so the
+    run path admits provider lattices exactly as bootstrap does (fold
+    wave B); the caller supplies ``now_wall``.
     """
     binding_sha = str(binding_ref.get("sha256", ""))
     binding_doc = content.get_document(binding_sha)
@@ -150,7 +203,11 @@ def _spool_documents(
         descriptor_paths[device_id] = spool_one(
             str(device["descriptor"]["sha256"]), f"descriptor-{device_id}.json"
         )
+        _spool_provider_document(
+            content, fixtures_dir, spool, str(device["descriptor"]["sha256"])
+        )
     (spool / "package-lock.json").write_bytes((fixtures_dir / "package-lock.json").read_bytes())
+    settings_path = fixtures_dir / TRANSPORT_SETTINGS_FILENAME
     return {
         "procedure_path": spool_one(str(binding["procedure"]["sha256"]), "procedure.json"),
         "policy_path": spool_one(str(binding["policy"]["sha256"]), "policy.json"),
@@ -160,10 +217,13 @@ def _spool_documents(
             str(binding["commissioning"]["sha256"]), "commissioning.json"
         ),
         "descriptor_paths": descriptor_paths,
+        "provider_settings": settings_path if settings_path.is_file() else None,
     }
 
 
-def _recovery_documents(fixtures_dir: Path) -> AdmittedDocuments | None:
+def _recovery_documents(
+    fixtures_dir: Path, *, now_wall: str | None = None
+) -> AdmittedDocuments | None:
     """Admit the startup lattice for recovery (Task 11 wiring).
 
     ``RunCoordinator.recover_interrupted`` only reads the admitted bench's
@@ -185,7 +245,7 @@ def _recovery_documents(fixtures_dir: Path) -> AdmittedDocuments | None:
     the less safe direction.
     """
     try:
-        return admit_fixture_lattice(fixtures_dir)
+        return admit_fixture_lattice(fixtures_dir, now_wall=now_wall)
     except Exception as error:
         # Containment mirrors the executor seam's ruling: recovery runs at
         # app construction, so ANY failure here — a typed admission
@@ -225,7 +285,7 @@ def _recover_interrupted_runs(
     projection below, so neither wedge can hold the §5 busy oracle past
     a restart.
     """
-    docs = _recovery_documents(fixtures_dir)
+    docs = _recovery_documents(fixtures_dir, now_wall=now_iso())
     if docs is None:
         # Startup survives a poisoned lattice; run recovery does not. The
         # dangling-request reconciliation below needs no admitted documents
@@ -615,7 +675,8 @@ def _build_run_factory(
         content = ContentStore(worker_store)
         spool = tempfile.TemporaryDirectory(prefix=f"stg-run-{run_id}-")
         docs = admit_documents(
-            **_spool_documents(content, binding_ref, fixtures_dir, Path(spool.name))
+            **_spool_documents(content, binding_ref, fixtures_dir, Path(spool.name)),
+            now_wall=now_iso(),
         )
         clock = SystemClock()
         bench_id = str(docs.bench["id"])
