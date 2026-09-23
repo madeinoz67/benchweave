@@ -192,13 +192,22 @@ def test_mirror_drift_names_each_field(tmp_path: Path) -> None:
 
 def test_mirror_null_and_empty_notes_normalise_equal(tmp_path: Path) -> None:
     """The lock's nullable notes semantics: null and "" are the same value."""
+    import json
+
     from benchweave.standards.check import run_check
 
     sdk = _sdk_copy(tmp_path)
     lock = _lock(sdk)
     lock["compatibility"]["notes"] = ""
     _write_lock(sdk, lock)
-    failures = run_check(_standards_root(tmp_path), sdk)
+    root = _standards_root(tmp_path)
+    # Control the manifest side too: the live notes are whatever the current
+    # landing carries, and this test owns the null-vs-empty pairing it pins.
+    manifest = root / "standards" / "standards-manifest.json"
+    m = json.loads(manifest.read_bytes())
+    m["sdk_compatibility"]["notes"] = None
+    manifest.write_text(json.dumps(m, indent=2))
+    failures = run_check(root, sdk)
     assert "sdk_compatibility_drift" not in _prefixes(failures)
 
 

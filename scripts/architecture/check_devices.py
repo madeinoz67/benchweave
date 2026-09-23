@@ -102,6 +102,122 @@ known_features = {
     "otdp.profile_actions/0.1.0",
 } | set(profile_map)
 
+# Transport providers (0.2.1): every pinned provider contract is loaded and
+# hash-verified before descriptor validation, so a provider feature id is
+# "known" exactly when a verified corpus contract registers it — the
+# admission shape of extension-contract section 6 (hosts know otdp.transport.*
+# ids by admitting contracts, never by list).
+def provider_identity_errors(doc):
+    """The three identity equalities (transport-providers.md section 1): the
+    urn-embedded version equals ``version``, the feature_id-embedded version
+    equals ``version``, and the feature_id name segment equals the urn's name
+    segment. A contract whose fields name two providers or two revisions is
+    refused at admission; this is the corpus-side arm of that rule.
+    """
+    errors = []
+    urn = doc["id"].removeprefix("urn:otdp:transport-provider:")
+    name, _, urn_version = urn.rpartition(":")
+    feature_name, _, feature_version = doc["feature_id"].rpartition("/")
+    if urn_version != doc["version"]:
+        errors.append("urn version disagrees")
+    if feature_version != doc["version"]:
+        errors.append("feature version disagrees")
+    if feature_name.removeprefix("otdp.transport.") != name:
+        errors.append("provider name disagrees")
+    return errors
+
+
+PROVIDER_FEATURE_RE = re.compile(r"^otdp\.transport\.[a-z][a-z0-9-]*/[0-9]+\.[0-9]+(?:\.[0-9]+)?$")
+# The generic transfer kinds a provider grammar extends additively and never
+# shadows (specification section 8.1; disjointness is admission-refusable).
+GENERIC_TRANSFER_KINDS = frozenset(
+    {
+        "stream_send",
+        "stream_receive",
+        "stream_exchange",
+        "can_receive",
+        "can_send",
+        "i2c_transfer",
+        "spi_transfer",
+    }
+)
+provider_schema_name = "otdp-transport-provider.schema.json"
+provider_validator = (
+    validator(schemas[provider_schema_name]) if provider_schema_name in schemas else None
+)
+provider_docs = {}
+provider_pin_failures = {}
+for p in sorted((OUT / "examples").glob("*.json")):
+    if provider_validator is None:
+        break  # active corpus predates transport providers; nothing to check
+    probe = json.loads(p.read_text(encoding="utf-8"))
+    pin = probe.get("transport", {}).get("provider")
+    if not pin:
+        continue
+    doc_path = (p.parent / pin["path"]).resolve()
+    pinned = (
+        doc_path.is_relative_to(OUT)
+        and doc_path.is_file()
+        and hashlib.sha256(doc_path.read_bytes()).hexdigest() == pin["sha256"]
+    )
+    check(p.name + " pinned provider " + pin["id"], pinned)
+    if not pinned:
+        provider_pin_failures[p.name] = ["provider contract missing"]
+        continue
+    doc = json.loads(doc_path.read_text(encoding="utf-8"))
+    doc_errors = list(provider_validator.iter_errors(doc))
+    check(p.name + " provider contract structure", not doc_errors)
+    for transfer in doc["transaction_grammar"]:
+        for side in ("request_schema", "result_schema"):
+            Draft202012Validator.check_schema(transfer[side])
+            check(doc["id"] + " " + transfer["kind"] + " " + side + " meta-schema", True)
+    identity_errors = provider_identity_errors(doc)
+    check(p.name + " provider identity coherence", not identity_errors)
+    namespace_error = not PROVIDER_FEATURE_RE.match(doc["feature_id"])
+    check(p.name + " provider feature namespace", not namespace_error)
+    shadowed = sorted(
+        {t["kind"] for t in doc["transaction_grammar"]} & GENERIC_TRANSFER_KINDS
+    )
+    check(p.name + " provider grammar disjoint from generic kinds", not shadowed)
+    if not doc_errors and not identity_errors and not namespace_error and not shadowed:
+        provider_docs[pin["id"]] = doc
+known_features |= {doc["feature_id"] for doc in provider_docs.values()}
+
+
+def provider_errors(d, docs):
+    """Provider declaration consistency (S04 extension, transport-providers.md).
+
+    Offline-refusable rows only: the declared feature id must be required, an
+    otdp.transport.* feature must be declared by a matching provider object,
+    and the pinned document's identity must agree with the declaration.
+    Connection-to-grant resolution needs commissioned state and stays
+    gateway-side (disclosed limitation, not checked here).
+    """
+    errors = []
+    transport = d.get("transport", {})
+    provider = transport.get("provider")
+    required = set(d.get("required_features", []))
+    if provider is not None:
+        if provider["feature_id"] not in required:
+            errors.append("provider feature missing")
+        if transport.get("type") != "custom":
+            errors.append("provider on non-custom transport")
+        doc = docs.get(provider["id"])
+        if doc is None:
+            errors.append("provider contract missing")
+        else:
+            if doc["feature_id"] != provider["feature_id"] or doc["id"] != provider["id"]:
+                errors.append("provider identity disagrees")
+            kinds = [t["kind"] for t in doc["transaction_grammar"]]
+            if len(set(kinds)) != len(kinds):
+                errors.append("duplicate grammar kind")
+    for feature in sorted(required):
+        if feature.startswith("otdp.transport.") and (
+            provider is None or provider["feature_id"] != feature
+        ):
+            errors.append("provider transport undeclared")
+    return errors
+
 
 def class_errors(d):
     errors = []
@@ -155,6 +271,10 @@ for p in sorted((OUT / "examples").glob("*.json")):
             )
     for entry in d["provenance"]["test_vectors"]:
         check(p.name + " vector file resolves", (p.parent / entry["path"]).is_file())
+    check(
+        p.name + " provider declaration",
+        not provider_errors(d, provider_docs) + provider_pin_failures.get(p.name, []),
+    )
 
 
 def dataset_errors(d):
@@ -357,6 +477,100 @@ check("Reject incomplete optional sweep group", "incomplete sweep group" in clas
 d = copy.deepcopy(base)
 d["channels"].append(copy.deepcopy(d["channels"][0]))
 check("Reject duplicate channel", "duplicate channel" in class_errors(d))
+hid_provider_id = "urn:otdp:transport-provider:reference-hid:1.0.0"
+hid = descriptors.get("reference-hid-meter.json")
+if provider_validator is None:
+    pass  # active corpus predates transport providers; the arms have no subject
+elif hid is None or hid_provider_id not in provider_docs:
+    # The corpus's own reference pin is broken (or the example moved): the
+    # fault-injection arms below would KeyError on the missing document, so
+    # they degrade to this named failure instead of crashing the suite.
+    check("Reference provider contract admitted", False)
+else:
+    hid_feature = "otdp.transport.reference-hid/1.0.0"
+    d = copy.deepcopy(hid)
+    if hid_feature not in d["required_features"]:
+        # The self-arm's literal follows the corpus: a rename that leaves it
+        # behind fails by name here instead of crashing on remove().
+        check("Self-arm provider feature literal present", False)
+    else:
+        d["required_features"].remove(hid_feature)
+        check(
+            "Reject provider without required feature entry",
+            "provider feature missing" in provider_errors(d, provider_docs),
+        )
+    d = copy.deepcopy(hid)
+    d["required_features"].append("otdp.transport.ghost/1.0.0")
+    check(
+        "Reject orphan transport feature",
+        "provider transport undeclared" in provider_errors(d, provider_docs),
+    )
+    d = copy.deepcopy(hid)
+    d["transport"]["provider"]["sha256"] = "0" * 63
+    check("Reject malformed provider digest", not dv.is_valid(d))
+    d = copy.deepcopy(hid)
+    d["transport"]["settings"] = copy.deepcopy(
+        descriptors["class-daq.json"]["transport"]["settings"]
+    )
+    d["transport"]["type"] = "serial"
+    check("Reject provider on scoped transport", not dv.is_valid(d))
+    d = copy.deepcopy(hid)
+    d["transport"]["provider"]["extra"] = True
+    check("Reject provider additional properties", not dv.is_valid(d))
+    d = copy.deepcopy(hid)
+    mismatched_docs = dict(provider_docs)
+    mismatched_docs[hid_provider_id] = {
+        **provider_docs[hid_provider_id],
+        "feature_id": "otdp.transport.other/1.0.0",
+    }
+    check(
+        "Reject provider identity disagreement",
+        "provider identity disagrees" in provider_errors(d, mismatched_docs),
+    )
+    duplicated = copy.deepcopy(provider_docs[hid_provider_id])
+    duplicated["transaction_grammar"].append(copy.deepcopy(duplicated["transaction_grammar"][0]))
+    check(
+        "Reject duplicate provider grammar kind",
+        "duplicate grammar kind"
+        in provider_errors(d, {hid_provider_id: duplicated}),
+    )
+    check(
+        "Reject provider scope beyond commissioned connection",
+        not provider_validator.is_valid({**duplicated, "security_scope": "filesystem"}),
+    )
+    approvalless = copy.deepcopy(provider_docs[hid_provider_id])
+    approvalless["approval"].pop("evidence")
+    check(
+        "Reject provider approval without evidence", not provider_validator.is_valid(approvalless)
+    )
+    reversioned = copy.deepcopy(provider_docs[hid_provider_id])
+    reversioned["version"] = "2.0.0"
+    check(
+        "Reject provider identity version disagreement",
+        provider_identity_errors(reversioned)
+        == ["urn version disagrees", "feature version disagrees"],
+    )
+    renamed = copy.deepcopy(provider_docs[hid_provider_id])
+    renamed["id"] = "urn:otdp:transport-provider:reference-other-hid:1.0.0"
+    check(
+        "Reject provider identity name disagreement",
+        provider_identity_errors(renamed) == ["provider name disagrees"],
+    )
+    reserved = copy.deepcopy(provider_docs[hid_provider_id])
+    reserved["feature_id"] = "otdp.core/9.9.9"
+    check(
+        "Reject provider feature outside the transport namespace",
+        not provider_validator.is_valid(reserved),
+    )
+    shadowing = copy.deepcopy(provider_docs[hid_provider_id])
+    shadowing["transaction_grammar"][0]["kind"] = "stream_send"
+    shadowed_kinds = sorted(
+        {t["kind"] for t in shadowing["transaction_grammar"]} & GENERIC_TRANSFER_KINDS
+    )
+    check(
+        "Reject provider grammar shadowing a generic kind",
+        shadowed_kinds == ["stream_send"],
+    )
 for cls in ("dc_psu", "electronic_load", "smu", "function_generator"):
     v = validator(catalog["actions"][f"otdp.{cls}.output/1.0.0"]["input_schema"])
     check(cls + " enable requires config", not v.is_valid({"channel": "ch1", "enabled": True}))
@@ -426,7 +640,9 @@ REPORT_COVERAGE = (
     f"{len(profile_map)} class profiles and {len(covered)} input/output action contracts "
     "were checked against Draft 2020-12. Each action has a positive vector. Descriptor "
     "declarations, pinned contract hashes, runtime envelopes, typed datasets and selected "
-    "rejection/semantic boundaries were checked."
+    "rejection/semantic boundaries were checked. Transport-provider declarations, their "
+    "pinned contract documents and the provider grammar subschemas were checked; "
+    "connection-to-grant resolution is commissioned state and stays gateway-side."
 )
 REPORT_LIMIT = (
     "**Limit:** These are document/schema checks. No gateway, plugin, device simulator, "

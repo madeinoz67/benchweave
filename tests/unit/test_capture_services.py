@@ -9,7 +9,8 @@ Derivations (from primary sources, not the plan's restatement):
   permission grants these services."
 - ``adapter_permissions`` reads ``integration.adapter.permissions`` from a
   RAW full-form descriptor (the projected execution view drops
-  ``integration`` — CON-10); shape: standards/otdp/0.2.0/examples/reference-capture.json
+  ``integration`` — CON-10); shape: the active-version
+  standards/otdp/<version>/examples/reference-capture.json
   carries ``["scoped_transport", "artifact_writer"]``.
 - The fresh-clock rule is the record's Decision 3: "a fresh timestamp per
   call — never a construction-frozen now".
@@ -151,7 +152,7 @@ def test_the_projected_view_carries_no_integration() -> None:
     example = json.loads(
         (
             Path(__file__).resolve().parents[2]
-            / "standards/otdp/0.2.0/examples/reference-capture.json"
+            / "standards/otdp/0.2.2/examples/reference-capture.json"
         ).read_text(encoding="utf-8")
     )
     view = documents_module._project_full_form("dev-capture", example)

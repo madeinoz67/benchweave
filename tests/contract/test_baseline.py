@@ -101,7 +101,7 @@ def test_manifest_identity_pins_admitted_versions() -> None:
     assert identity["interface"] == "0.1.0"
     assert identity["registry"] == "0.1.1"
     assert identity["execution"] == "0.1.0"
-    assert identity["otdp"] == "0.2.0"
+    assert identity["otdp"] == "0.2.2"
     assert identity["mcp"] == "2026-07-28"
 
 
