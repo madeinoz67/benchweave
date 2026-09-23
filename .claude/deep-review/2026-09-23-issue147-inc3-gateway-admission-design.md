@@ -208,6 +208,22 @@ otherwise). The CON-10 projected view does NOT change: transport and provider st
 unprojected; the grant seam re-derives the raw form by digest exactly as
 `build_capture_services` already does for permissions.
 
+**Build-time amendment (fold wave B, 2026-09-23): the run path.** The record above
+named only bootstrap as the settings carrier; the run factory
+(`app._build_run_factory` → `_spool_documents` → `admit_documents`) is the fourth
+admission caller and was silently outside the design. Folded: the run spool resolves
+a provider-declaring descriptor's pinned contract from the ORIGINAL descriptor's
+side (by digest over the fixtures' descriptor family — the bootstrap resolution
+pattern), verifies it against the pin, and writes it into the spool at the pinned
+relative path (the pin is descriptor-relative and the spooled descriptor lives at a
+new filename — without the spooled contract, run admission misattributed
+`provider_contract_missing:` to a package that has the file); `_spool_documents`
+threads the fixtures' optional `transport-settings.json` as `provider_settings` and
+`build_run` supplies `now_wall` from its wall callable. Resolution failures inside
+the spool helper return silently — admission then refuses with its own honest
+prefix against the spool's true state. The run path and bootstrap apply one
+standard; pinned by `tests/integration/test_run_path_provider.py`.
+
 ### 1.2 The commissioned settings surface NOW — `transport-settings.json`
 
 **Increment 3 is the moment for the identity axis, and no earlier than it.** The

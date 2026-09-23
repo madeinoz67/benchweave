@@ -144,6 +144,12 @@ issue #147 increment-3 design record), never through this file. An
 approval that has expired (`approval.expires_at` in the contract, judged
 at startup) is not an admitted contract; re-admit the renewed bytes.
 
+Run admission reads this same settings document: each run's spool resolves
+a descriptor's pinned provider contract beside it and threads the fixtures
+directory's `transport-settings.json` with a fresh wall stamp, so a
+provider-declaring lattice executes under the admissions recorded here —
+bootstrap and the run path apply one standard.
+
 ## 3. Serve — run the gateway
 
 `serve` composes the gateway from the environment and runs it under
