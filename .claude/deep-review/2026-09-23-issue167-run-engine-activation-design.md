@@ -172,6 +172,12 @@ re-litigate it per PR).
   the run owns the controllers it constructed), and `plugin_close` remains the last-resort sweep
   (`otdp_bridge.py:252–257`). No drain-before-unsubscribe: bounded endings (A12), the teardown
   marker is the record.
+- **Aggregate teardown bound (audit F2, disclosed 2026-09-23):** each `stream_unsubscribe`
+  carries its own `_DISPATCH_BUDGET_S` (5 s) deadline and the window has no shared cap, so
+  body-end to protection-enter can stretch to N x 5 s at the configured subscription ceiling
+  (default `max_subscriptions=16` -> ~80 s worst case). Per-dispatch bounding (A12) holds;
+  the aggregate worst case is disclosed, not bounded. A shared teardown-window deadline is
+  the named hardening if a commissioned envelope ever demands it.
 - **The monitor is unchanged**: protection keeps gating on the read-based snapshot
   (`read_signal_values` per tick). Streams add landed `event_log` evidence, gap honesty and sink
   delivery — they do not replace the protection authority (R14 pins this both ways).
@@ -322,11 +328,12 @@ One branch, RED→GREEN slices per commit, gates before each commit (`uv run ruf
 | # | Deferred | Home | Reopen trigger |
 |---|---|---|---|
 | A | Capture/stream **procedure-step shape** (corpus train: procedure schema + policy schema + contract prose) | This record §Decision 6 + the execution-train issue (open at this PR's merge, one issue) | First real capture-class plugin (row 9's own trigger), or the #146 dataset/invoke train — whichever first |
-| B | **Busy-timeout clamp build** (review closed, Decision 7) | This record §Decision 7 + the same train issue as row A | Measured contention stretch exceeding a commissioned step budget through the activated composition on a real bench, or the capture train — whichever first |
+| B | **Busy-timeout clamp build** (review closed, Decision 7) | This record §Decision 7 + the same train issue as row A | Measured contention stretch exceeding a commissioned step budget through the activated composition on a real bench, or the capture train — whichever first. Measuring condition (added 2026-09-23): the M-B run measured the held-from-start GATE arm only — the anchor's mid-capture 2x-busy shape (a second writer acquiring after the gate) is unmeasured through the activated composition |
 | C | **Quota-ceiling corpus promotion** (commissioning-doc fields) | This record §Decision 1 | A bench/commissioning definition needing ceilings to travel with the package (Decision-8 row-7 shape) |
 | D | **Fixture-lattice streaming demo** (sim-psu gaining `event_sink` + `stream_limits` + plugin `next_event`; lattice rebuild per obligation 5) | This record §0; tracked in the train issue | The capture train (row A) — it rebuilds the lattice anyway |
 | E | **Tick-boundary polling** (poll rounds at dispatch-boundary ticks, not just wait slices) | This record §Decision 3 residual | A real bench needing continuous telemetry through a wait-free procedure; or Option B (#159) |
 | F | **Configured poll-slice knob with the ≥ refusal** | This record §Decision 4 | A commissioned bench needing a coarser slice than `bench_poll_ns` |
+| G | **F4 loader-residual** — a non-canonical (re-serialized) manifest resolves at closure but refuses at `load_otdp_plugin` with `manifest_hash_mismatch` (the served-raw pin is stricter than the loader's canonical compare) | This record + the train issue | First real package whose manifest bytes are non-canonical, or the corpus train's manifest canonicalization pass — whichever first |
 
 ## Precedent (proven in-tree mechanisms this extends)
 
@@ -439,6 +446,20 @@ every number carries its denominator and names its harness):**
   because poll work is slice-bounded inside waits that already blocked the queue. Ships within
   2× the slice-1 anchor; a larger delay is a wiring defect (find the unbounded poll path), not
   Option-B evidence.
+
+**Measurement outcome note (2026-09-23, post-measurement; attribution corrected after the
+cross-vendor audit and the independent review converged on it):** all three axes conclusive —
+M-A and M-C shipped inside their bands; M-B read arm-3 UNFIRED on powered evidence (median
+5.199 s over 5 trials, spread 1.4%, vs the 10.73 s fire line). The composed finding's
+mechanism: under a held-from-start `BEGIN IMMEDIATE` the first contended write is the G3
+gate's `open_capture` check-and-reserve (`otdp_bridge.py:493` -> `capture_store.py:150`
+waits 1x `busy_timeout`; the F6 arm at `otdp_bridge.py:516` classifies
+`RESOURCE_LIMIT`/`NOT_DISPATCHED`) — NOT `mark_dispatch_started`, which is a flag set
+plus deadline check with no store access. **Anchor-path disclosure:** the slice-1 anchor
+shape (append + abort-epilogue, 2x `busy_timeout`, `DISPATCHED`) was NOT the measured
+path — it is reachable only under mid-capture contention, a second writer acquiring after
+the gate, and is unmeasured through the activated composition (row B's measuring condition).
+The refusal classification and the UNFIRED reading stand unchanged.
 
 ## Top risks and what falsifies this design
 
