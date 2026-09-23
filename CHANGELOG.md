@@ -161,6 +161,10 @@ All notable changes to this project will be documented in this file.
 - Run-state-aware startup sweep leg — queued ghosts and stale projections unwedge at restart (issue #156 fix wave)
 - 0.2.2 errata batch — the two-component feature-version tighten
 - The sdk_compatibility mirror follows the landing — notes and sdk aligned with the 0.2.2 lock
+- Dev-stage bytes never stage or ship — lexical skip in both halves (review row 1)
+- The documents gate never sees a dev head — $id shadowing closed (review row 2)
+- Calendar-valid opened + real head containment (review rows 4 and 5)
+- The --corpus lane resolves the head through the canonical loader (review row 6)
 
 ### Documentation
 
@@ -307,6 +311,10 @@ All notable changes to this project will be documented in this file.
 - CON-12/GOVERNANCE name the pin as the mirror's authority (issue #158 review wave F4+NIT-1)
 - Issue #156 run-worker emit-containment design record
 - Obligation 15 follows the actual heal path — same-version re-vendor is refused
+- The mutable -dev standards stage — design record (gateway #97 successor)
+- F6 superseded — single reviewer, coordinator carve-out, 2027-03-23 re-review (owner ruling)
+- F3 promoted to increment 1 by owner ruling — trigger fired
+- The lineage paragraph gains the ruling's closing purpose clause
 
 ### Features
 
@@ -438,6 +446,10 @@ All notable changes to this project will be documented in this file.
 - Run_check enforces the sdk_compatibility mirror (issue #158)
 - Bump-window floor revisited 48h -> 24h (owner ruling)
 - OTDP 0.2.2 — the fold re-rolled as a PATCH; 0.2.1 frozen at SDK-release bytes
+- The -dev stage — one optional dev head per manifest entry
+- The dev-proof lane — --corpus points a family census at the declared dev head (F3)
+- The RC candidate marker — optional boolean candidate on the dev block (owner ruling)
+- The lineage amendment — promotion keeps the predecessor edge (governor re-check ruling)
 
 ### Hardware Evidence
 
@@ -521,6 +533,7 @@ All notable changes to this project will be documented in this file.
 - Capture-services module stub — RED collection scaffold
 - Drop the dead EvidenceQuotaExceeded re-export; operator guide names refuse_newer_schema
 - Pointer advances to the 0.2.2 vendor (SDK PR #47, merge 6121c96)
+- Remove the two committed sync-interference strays (governor amendment)
 
 ### Performance
 
@@ -633,12 +646,19 @@ All notable changes to this project will be documented in this file.
 - Spec10 throwaway SDK roots declare the mirrored version
 - The cite class follows the active 0.2.2; provider-claims derives it (F2)
 - The mirror fixtures own their notes axis — recovery of the abbb144 cascade
+- The -dev stage RED arms — load rules, validate coverage, repin mutability
+- The suite tolerates an open dev head (devstage replay finding)
+- The dev-proof lane RED arms — --corpus override (F3, promoted)
+- The RC candidate marker RED arms — boolean candidate on the dev block
+- The documents-gate dev-head arm plants both roots (row 2 fixup)
+- A -dev source segment is a historical terminal in the dir guard (review row 3)
 
 ### Build
 
 - Bundle versioned UI preview renderer
 - Mount benchweave-sdk as a submodule at packages/sdk
 - Pull _validation_report into strict mypy scope; honest NoReturn (#102 D1, review R-F4)
+- Dev-stage bytes never ship — hook-owned contracts mapping (F1)
 
 ### Ci
 
