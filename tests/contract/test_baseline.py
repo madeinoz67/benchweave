@@ -236,8 +236,19 @@ def _derived_corpus_dirs(
             if not source.startswith("standards/"):
                 break
             visited.add(source)
-            retained.add(_version_dir(source.removeprefix("standards/")))
-            cited = by_path.get(source.removeprefix("standards/"))
+            relative = source.removeprefix("standards/")
+            if _version_dir(relative).split("/")[1].endswith("-dev"):
+                # Review row 3: a -dev source segment is a historical
+                # TERMINAL. The promoted version's rows cite the dev
+                # directory as their producer (the resets rule: never a path
+                # that did not produce the bytes), and that directory is
+                # deleted by design at teardown — so it is exempt from the
+                # missing direction (deletion is the design, not a gap) and
+                # justifies nothing downstream (an undeclared leftover dev
+                # dir stays stray; provenance cannot launder it).
+                break
+            retained.add(_version_dir(relative))
+            cited = by_path.get(relative)
             if cited is None:
                 break
             source = cited.get("source")
@@ -368,4 +379,45 @@ def test_derived_dir_guard_ignores_non_standards_normative_paths() -> None:
     ]
     stray, missing = _corpus_dir_justification(manifest, rows)
     assert stray == []
+    assert missing == []
+
+
+# --- review row 3: a -dev source segment is a historical terminal -----------------
+
+
+def test_promoted_rows_citing_a_dev_source_are_justified() -> None:
+    """The governor's probe: a full promotion + teardown. The promoted
+    version's rows cite the (deleted) dev directory as their source — the
+    resets rule's "never a path that did not produce the bytes". A -dev
+    source is a historical terminal: the deleted staging dir is the DESIGN
+    of teardown, not a copy-never-move gap, so it must not fire missing."""
+    manifest = {"standards": [_sm_entry("alpha", ["standards/alpha/0.3.0/a.schema.json"])]}
+    rows = [_row("alpha/0.3.0/a.schema.json", "standards/alpha/0.2.0-dev/a.schema.json")]
+    stray, missing = _corpus_dir_justification(manifest, rows)
+    assert stray == []
+    assert missing == []
+    # Disclosed seam for the governor re-review this row is flagged for: on a
+    # REAL promotion the pre-dev active version's only justifier was the
+    # (deleted) dev row citing it, so the terminal walk orphans it — a
+    # minimal probe carries no predecessor dir and cannot see this; whether
+    # promotion keeps a lineage citation is a governance ruling, not a
+    # builder improvisation.
+
+
+def test_leftover_dev_dir_after_a_botched_teardown_is_stray() -> None:
+    """The adversary's fourth teardown shape: the promotion happened, the
+    dev block was removed, but the dev directory and its rows were left in
+    the tree. The leftover must fire STRAY — a -dev source justifies nothing
+    downstream, so no laundered provenance can keep an undeclared staging
+    dir admitted."""
+    manifest = {"standards": [_sm_entry("alpha", ["standards/alpha/0.3.0/a.schema.json"])]}
+    rows = [
+        _row("alpha/0.3.0/a.schema.json", "standards/alpha/0.2.0-dev/a.schema.json"),
+        # the leftover: rows for a directory no block declares
+        _row("alpha/0.2.0-dev/a.schema.json", "standards/alpha/0.2.1/a.schema.json"),
+        _row("alpha/0.2.1/a.schema.json", "standards/alpha/0.2.0/a.schema.json"),
+        _row("alpha/0.2.0/a.schema.json", "docs/alpha/a.schema.json"),
+    ]
+    stray, missing = _corpus_dir_justification(manifest, rows)
+    assert stray == ["alpha/0.2.0-dev"], stray
     assert missing == []
