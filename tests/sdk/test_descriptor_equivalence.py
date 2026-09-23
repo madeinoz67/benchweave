@@ -1126,7 +1126,8 @@ def test_duplicate_key_contract_is_the_fourth_sanctioned_cell(
 def test_the_provider_pin_cap_mirrors_the_sdk_bound() -> None:
     """The aligned cap is the SDK's own constant, pinned across lanes so a
     future change on either side surfaces here first."""
-    from benchweave.control.documents import _PROVIDER_PIN_MAX_BYTES
     from benchweave_sdk.presentation import INPUT_BYTE_LIMIT
+
+    from benchweave.control.documents import _PROVIDER_PIN_MAX_BYTES
 
     assert _PROVIDER_PIN_MAX_BYTES == INPUT_BYTE_LIMIT == 262_144

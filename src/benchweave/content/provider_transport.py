@@ -28,7 +28,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from jsonschema import Draft202012Validator
-from jsonschema.exceptions import _RefResolutionError
+from referencing.exceptions import Unresolvable
 
 from benchweave.control.documents import adapter_permissions
 
@@ -88,7 +88,7 @@ class ProviderTransport:
                 iter(self._schema_validator(kind, field).iter_errors(document)),
                 None,
             )
-        except (RecursionError, _RefResolutionError) as exc:
+        except (RecursionError, Unresolvable) as exc:
             raise ValueError(
                 f"provider_transaction: the grammar for {kind}.{field} could "
                 f"not be evaluated ({type(exc).__name__}); grammar subschemas "

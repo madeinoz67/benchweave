@@ -19,8 +19,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-import pytest
-
 from benchweave.content.store import ContentStore
 from benchweave.control.documents import admit_documents
 from benchweave.interfaces import app as app_module
