@@ -9,17 +9,27 @@ object/map to it.
 
 - a descriptor the SDK check refuses is never gateway-admissible
   (check-clean is a necessary condition for admission), and
-- outside the two sanctioned gateway-stricter cells below, the gates agree
+- outside the three sanctioned gateway-stricter cells below, the gates agree
   in both directions.
 
-The sanctioned asymmetric cell, gateway-strictly-stricter, pinned as
+The sanctioned asymmetric cells, gateway-strictly-stricter, pinned as
 such (a symmetric-everywhere census would be unbuildable without
-editing standards bytes — the extension contract is what makes check
-ignore x- keys):
+editing standards bytes):
 
 - issued-map unknown action: x- keys are ignorable OTDP metadata by
   contract, so check stays clean while the gateway refuses
   (``issued_map:``) — the gateway owns the extension's semantics.
+- provider admission (issue #147 increment 3): the SDK cannot see
+  commissioned state, so a descriptor pinning a contract the host has not
+  admitted — no settings document, an unadmitted triple, an expired
+  approval, an unbound or differently-bound connection key — checks clean
+  while the gateway refuses (``provider_not_admitted:``). Admission is the
+  gateway's alone; no offline prefix is invented offline.
+- strict UTF-8 decode: the gateway's exact-byte decoder refuses a BOM'd or
+  UTF-16 provider document whose pin covers its bytes (``invalid_json``
+  inside ``provider_contract_invalid:``) while the SDK's bounded reader
+  admits both encodings — the disclosed one-sided asymmetry, pinned here
+  rather than "fixed" (the SDK RedTeam EN-3 disposition).
 
 Reversed range is both-refuse since benchweave-sdk v0.1.0: S02 was dead
 there (it checked a dict form the 0.2.0 schema no longer admits) until
@@ -127,9 +137,21 @@ def sdk_source(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _admit(
-    tmp_path: Path, slot: str, descriptor: dict[str, Any]
+    tmp_path: Path,
+    slot: str,
+    descriptor: dict[str, Any],
+    *,
+    descriptor_path: Path | None = None,
+    provider_settings: Path | None = None,
+    now_wall: str | None = None,
 ) -> tuple[bool, str]:
-    """Run one descriptor through the REAL admit_documents, pins repointed."""
+    """Run one descriptor through the REAL admit_documents, pins repointed.
+
+    ``descriptor_path`` keeps the slot's descriptor at its own file (a
+    provider fixture's package, where the descriptor-relative pin resolves)
+    instead of the spool copy; ``provider_settings``/``now_wall`` feed the
+    increment-3 admission seam.
+    """
     filenames = {
         "procedure": "procedure-voltage-check.json",
         "policy": "safety-policy.json",
@@ -152,6 +174,9 @@ def _admit(
 
     descriptor_paths: dict[str, Path] = {}
     for device_id, doc in descriptors.items():
+        if device_id == slot and descriptor_path is not None:
+            descriptor_paths[device_id] = descriptor_path
+            continue
         path = tmp_path / f"descriptor-{device_id}.json"
         path.write_text(json.dumps(doc, indent=2))
         descriptor_paths[device_id] = path
@@ -208,6 +233,8 @@ def _admit(
             binding_path=binding_path,
             commissioning_path=commissioning_path,
             descriptor_paths=descriptor_paths,
+            provider_settings=provider_settings,
+            now_wall=now_wall,
         )
     except AdmissionRejected as exc:
         return False, str(exc)
@@ -623,3 +650,362 @@ def test_bomd_provider_document_is_digest_governed(tmp_path: Path) -> None:
         exit_code, output = _sdk_check(package / "descriptor.json")
         assert exit_code == 1, f"{label}, mismatched pin: unexpectedly clean"
         assert "provider_contract_hash_mismatch:" in output, output
+
+
+# ---------------------------------------------------------------------------
+# Increment 3 (gateway #147 PR C): the gateway admission leg. The SDK leg
+# above proves the descriptor lane; these arms run the SAME lattice through
+# the REAL admit_documents with a settings document admitting each
+# fixture's provider triple, and pin the two gateway-stricter cells by
+# name (module docstring): provider_not_admitted: and the strict-UTF-8
+# decode. Agreement is accept/refuse with the SDK lane in-process.
+# ---------------------------------------------------------------------------
+
+NOW_WALL = "2026-09-23T00:00:00Z"  # inside the corpus approval window
+
+
+def _settings_for_package(package: Path) -> Path:
+    """``package/transport-settings.json`` admitting the package's contract.
+
+    The settings document lives beside the contract it admits, so the
+    settings-relative ``document`` name is the contract's own filename and
+    the triple's sha256 is the digest of the bytes actually written.
+    """
+    raw = (package / "reference-provider.json").read_bytes()
+    contract = json.loads(raw)
+    settings = {
+        "config_version": "1",
+        "admitted": [
+            {
+                "id": contract["id"],
+                "version": contract["version"],
+                "sha256": hashlib.sha256(raw).hexdigest(),
+                "feature_id": contract["feature_id"],
+                "document": "reference-provider.json",
+            }
+        ],
+        "connections": [
+            {"connection_key": "power_meter", "provider_id": contract["id"]}
+        ],
+    }
+    path = package / "transport-settings.json"
+    path.write_text(json.dumps(settings, indent=2) + "\n")
+    return path
+
+
+@pytest.mark.parametrize("build", list(VALID_LATTICE.values()), ids=list(VALID_LATTICE))
+def test_provider_lattice_valid_slots_admit_gateway(
+    tmp_path: Path, build: Callable[[Path], Path]
+) -> None:
+    """Metric A, valid half: the four valid variants admit through the real
+    gateway admission with admission state present (4/4)."""
+    slot_path = build(tmp_path)
+    descriptor = json.loads(slot_path.read_text())
+    settings = _settings_for_package(slot_path.parent)
+    admitted, message = _admit(
+        tmp_path,
+        "psu",
+        descriptor,
+        descriptor_path=slot_path,
+        provider_settings=settings,
+        now_wall=NOW_WALL,
+    )
+    assert admitted, message
+
+
+@pytest.mark.parametrize("name", list(FAULT_LATTICE), ids=list(FAULT_LATTICE))
+def test_provider_lattice_fault_slots_refuse_in_agreement(
+    tmp_path: Path, name: str
+) -> None:
+    """Metric A, fault half: 8/8 refuse on BOTH legs in agreement; where the
+    record's table names a census prefix (five of eight), the gateway mirror
+    carries the same prefix — the other three are schema-surface refusals on
+    both lanes (the honest mapping)."""
+    descriptor, contract, expected = FAULT_LATTICE[name]()
+    slot_path = _write_package(tmp_path, name, descriptor, contract, recompute_digest=False)
+    settings = _settings_for_package(slot_path.parent) if contract is not None else None
+    admitted, gateway_message = _admit(
+        tmp_path,
+        "psu",
+        descriptor,
+        descriptor_path=slot_path,
+        provider_settings=settings,
+        now_wall=NOW_WALL,
+    )
+    exit_code, output = _sdk_check(slot_path)
+    assert exit_code == 1, f"{name}: SDK leg unexpectedly clean"
+    assert not admitted, f"{name}: gateway leg unexpectedly admitted"
+    if expected != "Contract validation failed":
+        assert expected in output, f"{name}: SDK prefix {expected!r} missing: {output!r}"
+        assert expected in gateway_message, (
+            f"{name}: gateway mirror does not carry the SDK prefix "
+            f"{expected!r}: {gateway_message!r}"
+        )
+    else:
+        assert gateway_message.startswith("schema:"), (
+            f"{name}: gateway schema-surface refusal expected: {gateway_message!r}"
+        )
+
+
+def test_no_settings_refuses_a_provider_descriptor_sdk_clean(
+    tmp_path: Path,
+) -> None:
+    """Sanctioned cell: the closed default. A provider-declaring descriptor
+    with NO settings document is SDK-clean and gateway-refused with
+    provider_not_admitted: — missing requirements block control rather than
+    defaulting (A02)."""
+    descriptor, contract = _minimal_pair()
+    slot_path = _write_package(tmp_path, "no-settings", descriptor, contract)
+    exit_code, output = _sdk_check(slot_path)
+    assert exit_code == 0, output
+    admitted, message = _admit(
+        tmp_path,
+        "psu",
+        descriptor,
+        descriptor_path=slot_path,
+        provider_settings=None,
+        now_wall=NOW_WALL,
+    )
+    assert not admitted
+    assert "provider_not_admitted:" in message, message
+
+
+def test_unadmitted_triple_refuses_sdk_clean(tmp_path: Path) -> None:
+    """Sanctioned cell: the settings document admits a DIFFERENT triple —
+    the same identity at the same version with different reviewed bytes —
+    so the descriptor's declared triple is not exactly an admitted one,
+    while the descriptor's pin stays honest (SDK-clean)."""
+    descriptor, contract = _minimal_pair()
+    slot_path = _write_package(tmp_path, "other-bytes", descriptor, contract)
+    package = slot_path.parent
+    # The settings admit variant bytes for the same identity: the corpus
+    # example is byte-identical to its canonical re-serialization, so the
+    # description must actually change for the digest to move.
+    variant = json.loads(json.dumps(contract))
+    variant["description"] = contract["description"] + " (variant bytes)"
+    variant_raw = (json.dumps(variant, indent=2) + "\n").encode()
+    assert hashlib.sha256(variant_raw).hexdigest() != hashlib.sha256(
+        (package / "reference-provider.json").read_bytes()
+    ).hexdigest()  # the arm's premise: different reviewed bytes
+    (package / "variant-provider.json").write_bytes(variant_raw)
+    settings = {
+        "config_version": "1",
+        "admitted": [
+            {
+                "id": variant["id"],
+                "version": variant["version"],
+                "sha256": hashlib.sha256(variant_raw).hexdigest(),
+                "feature_id": variant["feature_id"],
+                "document": "variant-provider.json",
+            }
+        ],
+        "connections": [
+            {"connection_key": "power_meter", "provider_id": variant["id"]}
+        ],
+    }
+    settings_path = package / "transport-settings.json"
+    settings_path.write_text(json.dumps(settings, indent=2) + "\n")
+    exit_code, output = _sdk_check(slot_path)
+    assert exit_code == 0, output
+    admitted, message = _admit(
+        tmp_path,
+        "psu",
+        descriptor,
+        descriptor_path=slot_path,
+        provider_settings=settings_path,
+        now_wall=NOW_WALL,
+    )
+    assert not admitted
+    assert "provider_not_admitted:" in message and "exact triple" in message, message
+
+
+def test_expired_approval_is_not_an_admitted_contract(tmp_path: Path) -> None:
+    """An approval that expired before now_wall refuses — arithmetic on
+    declared values (A04), never an ambient clock read."""
+    descriptor, contract = _minimal_pair()
+    contract["approval"]["expires_at"] = "2026-01-01T00:00:00Z"
+    slot_path = _write_package(tmp_path, "expired", descriptor, contract)
+    settings = _settings_for_package(slot_path.parent)
+    exit_code, output = _sdk_check(slot_path)
+    assert exit_code == 0, output  # the SDK judges approval expiry nowhere offline
+    admitted, message = _admit(
+        tmp_path,
+        "psu",
+        descriptor,
+        descriptor_path=slot_path,
+        provider_settings=settings,
+        now_wall="2026-09-23T00:00:00Z",
+    )
+    assert not admitted
+    assert "provider_not_admitted:" in message and "expired" in message, message
+
+
+def test_connection_key_must_bind_the_same_admitted_contract(
+    tmp_path: Path,
+) -> None:
+    """The S12-extended row: a key bound to a DIFFERENT admitted contract
+    refuses even though the descriptor's own triple is admitted."""
+    descriptor, contract = _minimal_pair()
+    slot_path = _write_package(tmp_path, "crossbound", descriptor, contract)
+    package = slot_path.parent
+    # A second, genuinely different admitted provider (invented name) that
+    # the connection key binds to INSTEAD of the descriptor's contract.
+    other = json.loads(json.dumps(contract))
+    other["id"] = "urn:otdp:transport-provider:watt-link:1.0.0"
+    other["feature_id"] = "otdp.transport.watt-link/1.0.0"
+    other["description"] = "Synthetic second provider for the cross-bound arm"
+    other_raw = (json.dumps(other, indent=2) + "\n").encode()
+    (package / "second-provider.json").write_bytes(other_raw)
+    mine_raw = (package / "reference-provider.json").read_bytes()
+    mine = json.loads(mine_raw)
+    settings = {
+        "config_version": "1",
+        "admitted": [
+            {
+                "id": mine["id"],
+                "version": mine["version"],
+                "sha256": hashlib.sha256(mine_raw).hexdigest(),
+                "feature_id": mine["feature_id"],
+                "document": "reference-provider.json",
+            },
+            {
+                "id": other["id"],
+                "version": other["version"],
+                "sha256": hashlib.sha256(other_raw).hexdigest(),
+                "feature_id": other["feature_id"],
+                "document": "second-provider.json",
+            },
+        ],
+        "connections": [
+            {"connection_key": "power_meter", "provider_id": other["id"]}
+        ],
+    }
+    settings_path = package / "transport-settings.json"
+    settings_path.write_text(json.dumps(settings, indent=2) + "\n")
+    admitted, message = _admit(
+        tmp_path,
+        "psu",
+        descriptor,
+        descriptor_path=slot_path,
+        provider_settings=settings_path,
+        now_wall=NOW_WALL,
+    )
+    assert not admitted
+    assert "provider_not_admitted:" in message and "power_meter" in message, message
+
+
+def test_unbound_connection_key_refuses(tmp_path: Path) -> None:
+    """A key with no connection entry at all refuses (unresolvable key)."""
+    descriptor, contract = _minimal_pair()
+    slot_path = _write_package(tmp_path, "unbound", descriptor, contract)
+    settings = _settings_for_package(slot_path.parent)
+    settings_doc = json.loads(settings.read_text())
+    settings_doc["connections"] = []
+    settings.write_text(json.dumps(settings_doc, indent=2) + "\n")
+    admitted, message = _admit(
+        tmp_path,
+        "psu",
+        descriptor,
+        descriptor_path=slot_path,
+        provider_settings=settings,
+        now_wall=NOW_WALL,
+    )
+    assert not admitted
+    assert "provider_not_admitted:" in message, message
+
+
+def test_provider_admission_requires_now_wall_to_judge_expiry(
+    tmp_path: Path,
+) -> None:
+    """No now_wall, no expiry judgement: the closed default refuses rather
+    than assuming freshness."""
+    descriptor, contract = _minimal_pair()
+    slot_path = _write_package(tmp_path, "no-wall", descriptor, contract)
+    settings = _settings_for_package(slot_path.parent)
+    admitted, message = _admit(
+        tmp_path,
+        "psu",
+        descriptor,
+        descriptor_path=slot_path,
+        provider_settings=settings,
+        now_wall=None,
+    )
+    assert not admitted
+    assert "provider_not_admitted:" in message and "now_wall" in message, message
+
+
+def test_bom_and_utf16_contracts_refuse_gateway_strict_utf8(
+    tmp_path: Path,
+) -> None:
+    """Sanctioned cell: the pin covers the BOM'd/UTF-16 bytes — SDK-clean
+    (its bounded reader admits both encodings), gateway-refused by the
+    exact-byte decoder. The cell fires at the pin seam (no settings: the
+    settings lane cannot admit non-UTF-8 bytes either, refusing EARLIER
+    with settings_schema: — both arms pinned)."""
+    descriptor, contract = _minimal_pair()
+    plain = (json.dumps(contract, indent=2) + "\n").encode()
+    for label, raw in {
+        "utf8-bom": b"\xef\xbb\xbf" + plain,
+        "utf16": plain.decode().encode("utf-16"),
+    }.items():
+        package = tmp_path / label
+        package.mkdir()
+        (package / "reference-provider.json").write_bytes(raw)
+        pinned = json.loads(json.dumps(descriptor))
+        pinned["transport"]["provider"]["sha256"] = hashlib.sha256(raw).hexdigest()
+        slot_path = package / "descriptor.json"
+        slot_path.write_text(json.dumps(pinned, indent=2) + "\n")
+        # The settings lane refuses to admit the bytes at all — the exact-
+        # byte decoder governs every admitted document.
+        settings = {
+            "config_version": "1",
+            "admitted": [
+                {
+                    "id": contract["id"],
+                    "version": contract["version"],
+                    "sha256": hashlib.sha256(raw).hexdigest(),
+                    "feature_id": contract["feature_id"],
+                    "document": "reference-provider.json",
+                }
+            ],
+            "connections": [],
+        }
+        settings_path = package / "transport-settings.json"
+        settings_path.write_text(json.dumps(settings, indent=2) + "\n")
+        from benchweave.control.provider_settings import (
+            SettingsRejected,
+            load_transport_settings,
+        )
+
+        with pytest.raises(SettingsRejected, match="settings_schema:"):
+            load_transport_settings(settings_path)
+        # The descriptor-pin seam: SDK-clean, gateway invalid_json.
+        exit_code, output = _sdk_check(slot_path)
+        assert exit_code == 0, f"{label}: SDK unexpectedly dirty: {output}"
+        admitted, message = _admit(
+            tmp_path,
+            "psu",
+            pinned,
+            descriptor_path=slot_path,
+            provider_settings=None,
+            now_wall=NOW_WALL,
+        )
+        assert not admitted, f"{label}: gateway unexpectedly admitted"
+        assert "provider_contract_invalid:" in message and "invalid_json" in message, (
+            f"{label}: {message!r}"
+        )
+
+
+def test_corpus_known_feature_derivations_match_across_lanes() -> None:
+    """Metric A set-equality arm: the gateway's corpus-known derivation
+    (from THIS tree's vendored corpus) equals the SDK's at the same vendored
+    version — the two-layer union's layer 1 cannot drift silently."""
+    from benchweave_sdk.validation import (
+        _corpus_known_otdp_features as sdk_known,
+    )
+
+    from benchweave.control.documents import (
+        _corpus_known_otdp_features as gateway_known,
+    )
+
+    assert gateway_known() == sdk_known()

@@ -154,7 +154,9 @@ def _spool_documents(
     }
 
 
-def _recovery_documents(fixtures_dir: Path) -> AdmittedDocuments | None:
+def _recovery_documents(
+    fixtures_dir: Path, *, now_wall: str | None = None
+) -> AdmittedDocuments | None:
     """Admit the startup lattice for recovery (Task 11 wiring).
 
     ``RunCoordinator.recover_interrupted`` only reads the admitted bench's
@@ -176,7 +178,7 @@ def _recovery_documents(fixtures_dir: Path) -> AdmittedDocuments | None:
     the less safe direction.
     """
     try:
-        return admit_fixture_lattice(fixtures_dir)
+        return admit_fixture_lattice(fixtures_dir, now_wall=now_wall)
     except Exception as error:
         # Containment mirrors the executor seam's ruling: recovery runs at
         # app construction, so ANY failure here — a typed admission
@@ -216,7 +218,7 @@ def _recover_interrupted_runs(
     projection below, so neither wedge can hold the §5 busy oracle past
     a restart.
     """
-    docs = _recovery_documents(fixtures_dir)
+    docs = _recovery_documents(fixtures_dir, now_wall=now_iso())
     if docs is None:
         # Startup survives a poisoned lattice; run recovery does not. The
         # dangling-request reconciliation below needs no admitted documents

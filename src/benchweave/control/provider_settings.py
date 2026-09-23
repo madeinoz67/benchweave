@@ -280,6 +280,7 @@ def load_transport_settings(path: Path) -> ProviderRegistry:
 
     admitted: list[AdmittedProvider] = []
     seen_triples: set[tuple[str, str, str]] = set()
+    seen_id_versions: set[tuple[str, str]] = set()
     for entry in document.content["admitted"]:
         triple = (entry["id"], entry["version"], entry["sha256"])
         if triple in seen_triples:
@@ -289,6 +290,18 @@ def load_transport_settings(path: Path) -> ProviderRegistry:
                 "record is not one"
             )
         seen_triples.add(triple)
+        id_version = (entry["id"], entry["version"])
+        if id_version in seen_id_versions:
+            # Same identity at the same version but different bytes: two
+            # rival "reviewed bytes" claims for one contract version. A
+            # connection binds by provider id, so the ambiguity would be
+            # unresolvable downstream — refuse it here.
+            raise SettingsRejected(
+                f"settings_schema: {path.name} admits {entry['id']}"
+                f"@{entry['version']} twice with different sha256 values; one "
+                "contract version has one set of reviewed bytes"
+            )
+        seen_id_versions.add(id_version)
         relative = _relative_pin_path(entry["document"])
         target = path.parent
         for part in relative.parts:
