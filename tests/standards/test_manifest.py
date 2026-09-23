@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import shutil
@@ -321,3 +322,207 @@ def test_identity_fails_when_the_descriptor_is_not_in_the_normative_list(
     )
     with pytest.raises(StandardsError, match="identity_otdp_descriptor_missing"):
         validate_identity(StandardsManifest((without,)), root)
+
+
+# --- the -dev stage (the 2026-09-23 devstage design record §4.1) ------------------
+#
+# The canonical corpus carries NO dev head by design (the field is optional
+# and a head exists only while a batch is being authored), so every arm
+# stages this minimal planted shape: an active demo@0.1.0, a dev copy at
+# demo@0.2.0-dev whose corpus row cites the active path as ``source`` (the
+# dev-open flow), and both manifests. The load arms assert the structural
+# rules; the validate arms assert the head's paths are pinned and
+# hash-checked exactly like active paths — a stale dev pin is the same
+# defect class as a stale active pin, same refusal prefixes.
+
+
+def _write_dev_corpus(root: Path, *, skip_dev_row: bool = False) -> None:
+    """Corpus rows for the planted dev tree, digests computed from the bytes.
+
+    The dev row cites the active path as ``source`` (the dev-open rule); the
+    active row is its own admission provenance."""
+    rows = []
+    for relative in (
+        "demo/0.1.0/demo.schema.json",
+        "demo/0.2.0-dev/demo.schema.json",
+    ):
+        if skip_dev_row and "-dev/" in relative:
+            continue
+        rows.append(
+            {
+                "path": relative,
+                "source": "demo/0.1.0/demo.schema.json",
+                "sha256": hashlib.sha256(
+                    (root / "standards" / relative).read_bytes()
+                ).hexdigest(),
+            }
+        )
+    (root / "standards/corpus-manifest.json").write_text(
+        json.dumps({"files": rows}, indent=2) + "\n", encoding="utf-8"
+    )
+
+
+def _dev_head_tree(
+    tmp_path: Path,
+    *,
+    entry_overrides: dict[str, object] | None = None,
+    dev_block: dict[str, object] | None = None,
+    headless: bool = False,
+    skip_dev_row: bool = False,
+) -> Path:
+    """The planted dev-head tree; ``dev_block`` replaces the whole block when
+    given (``None`` = the well-formed default), ``headless`` plants no block."""
+    schema = {"title": "Demo schema", "description": "No version mentioned"}
+    for version in ("0.1.0", "0.2.0-dev"):
+        target = tmp_path / "standards" / "demo" / version
+        target.mkdir(parents=True)
+        (target / "demo.schema.json").write_text(json.dumps(schema), encoding="utf-8")
+    entry: dict[str, object] = {
+        "id": "demo",
+        "version": "0.1.0",
+        "status": "stable",
+        "released": "2026-09-20",
+        "normative": ["standards/demo/0.1.0/demo.schema.json"],
+    }
+    if not headless:
+        if dev_block is not None:
+            entry["dev"] = dev_block
+        else:
+            entry["dev"] = {
+                "version": "0.2.0-dev",
+                "opened": "2026-09-23",
+                "normative": ["standards/demo/0.2.0-dev/demo.schema.json"],
+            }
+    if entry_overrides:
+        entry.update(entry_overrides)
+    (tmp_path / "standards/standards-manifest.json").write_text(
+        json.dumps({"manifest_version": 1, "standards": [entry]}, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    _write_dev_corpus(tmp_path, skip_dev_row=skip_dev_row)
+    return tmp_path
+
+
+def test_dev_head_loads(tmp_path: Path) -> None:
+    root = _dev_head_tree(tmp_path)
+    entry = load_manifest(root).standards[0]
+    assert entry.dev is not None
+    assert entry.dev.version == "0.2.0-dev"
+    assert entry.dev.opened == "2026-09-23"
+    assert entry.dev.normative == ("standards/demo/0.2.0-dev/demo.schema.json",)
+
+
+def test_dev_head_left_after_promotion_refuses(tmp_path: Path) -> None:
+    # §4.4's forgetfulness catch: a promotion that forgets the teardown
+    # leaves target == active; load refuses, so the leftover block cannot
+    # ride along silently on every later load.
+    root = _dev_head_tree(tmp_path, entry_overrides={"version": "0.2.0"})
+    with pytest.raises(StandardsError, match="dev_target_not_greater"):
+        load_manifest(root)
+
+
+def test_dev_head_stale_refuses(tmp_path: Path) -> None:
+    # The class-escalated leftover: active was promoted HIGHER than the
+    # head's named target, so the head names a version below active.
+    root = _dev_head_tree(tmp_path, entry_overrides={"version": "0.2.1"})
+    with pytest.raises(StandardsError, match="dev_head_stale"):
+        load_manifest(root)
+
+
+def test_dev_path_outside_head_refuses(tmp_path: Path) -> None:
+    # The laundering shape: an active path listed as dev normative would
+    # make active bytes editable through the head's looser story; every dev
+    # path must live under standards/<id>/<target>-dev/.
+    root = _dev_head_tree(
+        tmp_path,
+        dev_block={
+            "version": "0.2.0-dev",
+            "opened": "2026-09-23",
+            "normative": ["standards/demo/0.1.0/demo.schema.json"],
+        },
+    )
+    with pytest.raises(StandardsError, match="dev_path_outside_head"):
+        load_manifest(root)
+
+
+def test_active_version_pure_semver_refuses(tmp_path: Path) -> None:
+    # The window-evasion hole the stage otherwise opens (§4.1, risk 2): a
+    # real release directory suffixed -dev would dodge train_window's
+    # pure-semver collector. The active entry must be pure semver; the
+    # suffix is legal only in a dev head.
+    _dev_head_tree(
+        tmp_path,
+        entry_overrides={
+            "version": "0.2.0-dev",
+            "normative": ["standards/demo/0.2.0-dev/demo.schema.json"],
+        },
+        headless=True,
+    )
+    with pytest.raises(StandardsError, match="standards_entry_version_invalid"):
+        load_manifest(tmp_path)
+
+
+def test_dev_version_shape_refuses(tmp_path: Path) -> None:
+    root = _dev_head_tree(
+        tmp_path,
+        dev_block={
+            "version": "0.2.0-dev.1",
+            "opened": "2026-09-23",
+            "normative": ["standards/demo/0.2.0-dev/demo.schema.json"],
+        },
+    )
+    with pytest.raises(StandardsError, match="dev_version_invalid"):
+        load_manifest(root)
+
+
+def test_dev_block_without_opened_refuses(tmp_path: Path) -> None:
+    # F4 (ratified): stale-head age must be machine-readable in the manifest
+    # block — an ``opened`` date is therefore required whenever a head
+    # exists, not an optional nicety.
+    root = _dev_head_tree(
+        tmp_path,
+        dev_block={
+            "version": "0.2.0-dev",
+            "normative": ["standards/demo/0.2.0-dev/demo.schema.json"],
+        },
+    )
+    with pytest.raises(StandardsError, match="dev_block_invalid"):
+        load_manifest(root)
+
+
+def test_validate_manifest_pins_dev_paths(tmp_path: Path) -> None:
+    # The well-formed head validates clean: dev pins are checked like
+    # active pins, not instead of them.
+    root = _dev_head_tree(tmp_path)
+    validate_manifest(load_manifest(root), root)
+
+
+def test_edited_dev_byte_without_repin_refuses(tmp_path: Path) -> None:
+    # Acceptance arm E's in-suite half: a dev byte edited without the
+    # edit -> repin loop re-exposes the drift refusal on the dev path —
+    # the honesty gate for accumulation.
+    root = _dev_head_tree(tmp_path)
+    target = root / "standards/demo/0.2.0-dev/demo.schema.json"
+    target.write_text(
+        json.dumps({"title": "Demo schema", "description": "Edited without repin"}),
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        StandardsError, match=r"normative_hash_mismatch: standards/demo/0\.2\.0-dev/"
+    ):
+        validate_manifest(load_manifest(root), root)
+
+
+def test_missing_dev_file_refuses(tmp_path: Path) -> None:
+    root = _dev_head_tree(tmp_path)
+    (root / "standards/demo/0.2.0-dev/demo.schema.json").unlink()
+    with pytest.raises(StandardsError, match=r"missing_normative_file: demo: .*0\.2\.0-dev"):
+        validate_manifest(load_manifest(root), root)
+
+
+def test_unpinned_dev_path_refuses(tmp_path: Path) -> None:
+    root = _dev_head_tree(tmp_path, skip_dev_row=True)
+    with pytest.raises(
+        StandardsError, match=r"normative_not_in_corpus_manifest: standards/demo/0\.2\.0-dev/"
+    ):
+        validate_manifest(load_manifest(root), root)
