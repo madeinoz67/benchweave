@@ -191,7 +191,8 @@ def _derived_corpus_dirs(
 
     Active: version-dirs of the standards manifest's normative paths that
     live under ``standards/`` (normative paths elsewhere — e.g. a
-    presentation package's ``src/`` tree — are not corpus dirs). Retained:
+    presentation package's ``src/`` tree — are not corpus dirs), plus the
+    version-dirs of any manifest-declared dev head's normative paths. Retained:
     the transitive closure of corpus-manifest ``source`` chains while they
     stay under ``standards/`` — the copy-never-move lineage GOVERNANCE
     requires every bump to cite. A source naming a ``standards/`` path with
@@ -208,7 +209,16 @@ def _derived_corpus_dirs(
     """
     active: set[str] = set()
     for entry in standards_manifest["standards"]:
-        for path in entry["normative"]:
+        paths = list(entry["normative"])
+        head = entry.get("dev")
+        # A manifest-declared dev head's dir is admitted by the same
+        # authority as an active dir (the standards manifest) — without
+        # this, every open head reads as a stray corpus dir and the guard
+        # reddens accumulation branches (caught live by the devstage
+        # replay; fixed with it).
+        if isinstance(head, dict):
+            paths.extend(head.get("normative") or [])
+        for path in paths:
             if path.startswith("standards/"):
                 active.add(_version_dir(path.removeprefix("standards/")))
     by_path = {str(row["path"]): row for row in corpus_rows}

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 import subprocess
@@ -60,6 +61,69 @@ def _bundle_paths(entry: StandardEntry) -> set[str]:
     }
 
 
+def test_export_carries_no_dev_head_bytes(tmp_path: Path) -> None:
+    """Devstage record §4.2, first table row: export iterates the active
+    spine — a properly-pinned dev head validates clean and never reaches the
+    bundle. A pin, not a bug-fix arm: _entry ignored dev paths before this
+    row existed; this holds the line against a future _entry change."""
+    root = tmp_path / "repo"
+    (root / "standards").mkdir(parents=True)
+    document = json.loads((ROOT / "standards/standards-manifest.json").read_bytes())
+    entry = next(e for e in document["standards"] if e["id"] == "otdp")
+    descriptor = next(
+        p for p in entry["normative"]
+        if Path(p).name == "otdp-device-descriptor.schema.json"
+    )
+    # The head targets one patch above whatever the live tree carries, so
+    # the pin holds on both headless and headed checkouts.
+    major, minor, patch = (int(part) for part in entry["version"].split("."))
+    dev_version = f"{major}.{minor}.{patch + 1}-dev"
+    dev_descriptor = descriptor.replace(f"/{entry['version']}/", f"/{dev_version}/")
+    entry.pop("dev", None)
+    entry["normative"] = [descriptor]
+    entry["dev"] = {
+        "version": dev_version,
+        "opened": "2026-09-23",
+        "normative": [dev_descriptor],
+    }
+    document["standards"] = [entry]
+    for relative in (descriptor, dev_descriptor):
+        target = root / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(ROOT / descriptor, target)
+    corpus = json.loads((ROOT / "standards/corpus-manifest.json").read_bytes())
+    active_row = next(
+        row
+        for row in corpus["files"]
+        if row["path"] == descriptor.removeprefix("standards/")
+    )
+    dev_row = dict(active_row)
+    dev_row["path"] = dev_descriptor.removeprefix("standards/")
+    dev_row["source"] = active_row["path"]
+    dev_row["sha256"] = hashlib.sha256((root / dev_descriptor).read_bytes()).hexdigest()
+    corpus["files"] = [active_row, dev_row]
+    for key in ("registry", "execution", "interface"):
+        corpus["identity"].pop(key)
+    (root / "standards/corpus-manifest.json").write_text(json.dumps(corpus))
+    (root / "standards/standards-manifest.json").write_text(json.dumps(document))
+
+    bundle_path = export_bundle(root, tmp_path / "out")
+    bundle = json.loads(bundle_path.read_bytes())
+
+    listed = {f["path"] for s in bundle["standards"] for f in s["files"]}
+    assert listed == {descriptor.removeprefix("standards/")}, listed
+    # Segment-level, not substring: "otdp-device-descriptor" contains "-dev".
+    assert not any(
+        part.endswith("-dev") for path in listed for part in path.split("/")
+    )
+    exported_files = {
+        str(p.relative_to(tmp_path / "out" / "files"))
+        for p in (tmp_path / "out" / "files").rglob("*")
+        if p.is_file()
+    }
+    assert exported_files == listed, "the dev byte must not be written to the bundle"
+
+
 def test_export_refuses_normative_paths_that_collide_in_the_bundle(tmp_path: Path) -> None:
     """Two normative paths mapping to one bundle path must fail closed."""
     broken = tmp_path / "repo"
@@ -67,6 +131,10 @@ def test_export_refuses_normative_paths_that_collide_in_the_bundle(tmp_path: Pat
     (broken / "src/benchweave/presentation/other").mkdir(parents=True)
     document = json.loads((ROOT / "standards/standards-manifest.json").read_bytes())
     entry = document["standards"][0]
+    # The synthetic corpus below is REDUCED (one row); a live dev head's
+    # paths have no rows there and validate would refuse them before the
+    # collision under test could fire — the reduced entry is headless.
+    entry.pop("dev", None)
     # Two non-contracts paths sharing a basename: both map to <id>/contracts.py
     # in the bundle - a silent file drop without the collision guard. The
     # descriptor stays named (and pinned) so identity validation passes and the
