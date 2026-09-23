@@ -320,6 +320,8 @@ All notable changes to this project will be documented in this file.
 - The lineage paragraph gains the ruling's closing purpose clause
 - The dps150 version triangle — why the stamp cascade wins
 - Record amendment — the resolution landed on main in two steps; this branch lands the guard
+- Issue #159 Option-B row-1 activation review record
+- Refresh #159 sequencing state after the coordinated landing
 
 ### Features
 
