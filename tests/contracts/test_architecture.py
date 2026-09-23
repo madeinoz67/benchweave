@@ -908,3 +908,46 @@ def test_documents_gate_ignores_a_dev_head(tmp_path: Path) -> None:
     # shadowed urn lookup fails INSIDE otdp/0.2.0's released catalog.
     failed = [name for name, ok in checks if not ok]
     assert failed == [], failed[:5]
+
+
+def test_corpus_refuses_a_stale_equal_head(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Row 6: a head whose target EQUALS active is a promotion teardown
+    forgot — the raw-read lane resolved its directory happily and pointed
+    the census at a tree the active spine owns. The canonical loader's
+    dev_target_not_greater refusal must reach the lane."""
+    standards = _headed_registry_tree(tmp_path)
+    shutil.copytree(standards / "registry" / "0.2.0-dev", standards / "registry" / "0.1.1-dev")
+    _rewrite_registry_head_version(standards, "0.1.1-dev")
+    _corpus_argv(monkeypatch, [f"--corpus={standards / 'registry' / '0.1.1-dev'}"])
+    writer = _load_shared_writer()
+    with pytest.raises(SystemExit, match="dev_target_not_greater"):
+        writer.corpus_directory(standards, "registry")
+
+
+def test_corpus_refuses_a_malformed_dev_version(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Row 6: dev_version_invalid reaches the lane — the raw read accepted
+    any string as the head version."""
+    standards = _headed_registry_tree(tmp_path)
+    shutil.copytree(
+        standards / "registry" / "0.2.0-dev", standards / "registry" / "0.2.0-dev.1"
+    )
+    _rewrite_registry_head_version(standards, "0.2.0-dev.1")
+    _corpus_argv(monkeypatch, [f"--corpus={standards / 'registry' / '0.2.0-dev.1'}"])
+    writer = _load_shared_writer()
+    with pytest.raises(SystemExit, match="dev_version_invalid"):
+        writer.corpus_directory(standards, "registry")
+
+
+def _rewrite_registry_head_version(standards: Path, version: str) -> None:
+    manifest_path = standards / "standards-manifest.json"
+    document = json.loads(manifest_path.read_bytes())
+    entry = next(e for e in document["standards"] if e["id"] == "registry")
+    entry["dev"]["version"] = version
+    entry["dev"]["normative"] = [
+        p.replace("0.2.0-dev", version) for p in entry["dev"]["normative"]
+    ]
+    manifest_path.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")

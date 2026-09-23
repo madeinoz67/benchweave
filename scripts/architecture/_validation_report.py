@@ -11,6 +11,8 @@ import sys
 from pathlib import Path
 from typing import NoReturn
 
+from benchweave.standards.manifest import load_manifest
+
 
 def active_standard_version(standards_root: Path, standard_id: str) -> str:
     """The active version of a standard, derived from the standards manifest.
@@ -112,24 +114,28 @@ def _corpus_override(argv: list[str]) -> str | None:
 def _declared_dev_head(standards_root: Path, standard_id: str) -> str:
     """The dev head version declared for ``standard_id``, or a loud refusal.
 
-    Raw-json read in active_standard_version's loader posture (same
-    first-match precedent); a headless or malformed block is a refusal, never
-    a guess — the prefix follows the family's ``{standard_id}_`` shape.
+    Resolved through the CANONICAL loader (review row 6): every dev-block
+    shape refusal ``load_manifest`` enforces — a malformed block, a
+    non-``<target>-dev`` version, a target that is not strictly greater
+    than active — is refused by the lane too, with the loader's own message.
+    A stale-equal head can therefore no longer point the lane at a
+    directory the active tree owns.
     """
-    manifest_path = standards_root / "standards-manifest.json"
-    if not manifest_path.is_file():
+    try:
+        manifest = load_manifest(standards_root.parent)
+    except FileNotFoundError:
         raise SystemExit(
             f"{standard_id}_manifest_absent: standards-manifest.json not found — the "
             f"dev head for {standard_id} cannot be derived"
-        )
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    for entry in manifest.get("standards", []):
-        if entry.get("id") == standard_id:
-            head = entry.get("dev")
-            if isinstance(head, dict):
-                version = head.get("version")
-                if isinstance(version, str) and version:
-                    return version
+        ) from None
+    except ValueError as exc:
+        # StandardsError and friends: the loader's prefixed message IS the
+        # lane's refusal — same words on both surfaces.
+        raise SystemExit(str(exc)) from None
+    for entry in manifest.standards:
+        if entry.id == standard_id:
+            if entry.dev is not None:
+                return entry.dev.version
             raise SystemExit(
                 f"{standard_id}_dev_head_absent: the manifest declares no dev head "
                 f"for {standard_id} — nothing for --corpus to prove"
