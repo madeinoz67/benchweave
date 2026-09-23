@@ -24,25 +24,34 @@ from typing import Any
 
 from fastapi import FastAPI
 
+from benchweave.content.capture_services import build_capture_services
 from benchweave.content.capture_store import CaptureStagingStore
 from benchweave.content.store import ContentStore, RetainingServices
+from benchweave.content.stream_services import build_stream_services
 from benchweave.control.clocking import MonotonicClock, SystemClock, WallClock
 from benchweave.control.coordinator import RunCoordinator, _PreparedRun, _RunMonitor
 from benchweave.control.documents import (
     AdmittedDocuments,
     admit_documents,
 )
-from benchweave.host.plugin import DevicePlugin
+from benchweave.control.stream_host import RunStreamHost
+from benchweave.host.plugin import DevicePlugin, SimulationInfo
+from benchweave.host.services import QuotaLimits, ReadingSinks
 from benchweave.interfaces.bootstrap import (
     RegistrySession,
     admit_fixture_lattice,
     admit_startup_bench,
+)
+from benchweave.interfaces.device_closures import (
+    DeviceClosure,
+    commissioned_device_closure,
 )
 from benchweave.interfaces.mcp import build_mcp
 from benchweave.interfaces.operations import Operations, append_bench_event
 from benchweave.interfaces.rest import build_router
 from benchweave.interfaces.validation import VENDORED_CORPUS_ROOT, SeamValidator
 from benchweave.interfaces.worker import RunWorker
+from benchweave.registry.otdp_loading import load_otdp_plugin
 from benchweave.state.hold import StoreHold
 from benchweave.state.store import Store
 from benchweave.vendoring import sim_plugins_root
@@ -301,11 +310,18 @@ class _RetainingCoordinator(RunCoordinator):
         *,
         retain: Callable[[dict[str, Any]], str],
         spool: tempfile.TemporaryDirectory[str],
+        stream_host: RunStreamHost | None = None,
+        services: RetainingServices | None = None,
     ) -> None:
         super().__init__(store, plugins, clock, wall, docs)
         self._retain = retain
         self._spool_dir = spool  # cleaned up when the coordinator is collected
         self._last_monitor: _RunMonitor | None = None
+        # The activation wiring's composition surfaces (issue #167): the
+        # run's stream host (bridges + controllers it constructed) and the
+        # run services (the register_reading_sink surface R11 drives).
+        self.stream_host = stream_host
+        self.services = services
 
     def _prepare_run(self, run_id: str, principal_id: str) -> _PreparedRun:
         prepared = super()._prepare_run(run_id, principal_id)
@@ -320,9 +336,161 @@ class _RetainingCoordinator(RunCoordinator):
             self._last_monitor = live
         return self._last_monitor
 
+    @property
+    def plugins(self) -> dict[str, DevicePlugin]:
+        """The run's constructed plugins keyed by bench device id.
+
+        Read-only composition surface (the activation controls assert the
+        bridge/sim split through it); the coordinator's own dispatch paths
+        read the wrapped copies built per run, never this mapping.
+        """
+        return dict(self._plugins)
+
+
+#: The quota keys an adapter-constructing run REQUIRES from gateway-local
+#: operator configuration (design Decision 1: no silent defaults for
+#: required ceilings — a missing key refuses the run before any device is
+#: opened; the worker's poison guard contains the refusal honestly).
+_QUOTA_REQUIRED_KEYS = ("max_dataset_bytes", "max_event_batch")
+
+
+def _run_quota_limits(limits: dict[str, int]) -> QuotaLimits:
+    """The run's ``QuotaLimits`` — the first production construction site.
+
+    ``max_evidence_entries`` keeps its in-tree derivation (page size × 10,
+    the same integer ``create_app`` derives for bench-event windows).
+    ``max_capture_bytes``/``max_subscriptions`` take the fork-3 HINT
+    defaults unless configured (the ``QuotaLimits`` docstring's posture:
+    commissioned values come from bench qualification, A02).
+    """
+    missing = [key for key in _QUOTA_REQUIRED_KEYS if key not in limits]
+    if missing:
+        raise ValueError(
+            "run_quota_config_absent: the run constructs adapter bridges, "
+            "which require the gateway-local quota ceilings "
+            + ", ".join(sorted(missing))
+            + " in the app's limits mapping (env: BENCHWEAVE_MAX_DATASET_BYTES"
+            " / BENCHWEAVE_MAX_EVENT_BATCH) — refusing before any device is opened"
+        )
+    return QuotaLimits(
+        max_dataset_bytes=int(limits["max_dataset_bytes"]),
+        max_evidence_entries=int(limits["max_page_size"]) * 10,
+        max_event_batch=int(limits["max_event_batch"]),
+        max_capture_bytes=int(limits.get("max_capture_bytes", 16 * 1024 * 1024)),
+        max_subscriptions=int(limits.get("max_subscriptions", 16)),
+    )
+
+
+#: The commissioning evidence limitation that declares a simulated bench —
+#: the same mark ``cli.report.SIMULATION_MARK`` derives the report's
+#: simulation label from (the derivation lives here as a literal to keep
+#: the interface layer off the CLI's import graph; report.py owns the
+#: cross-surface pin).
+_SIMULATION_MARK = "simulator-only"
+
+
+def _bench_declares_simulation(commissioning: dict[str, Any]) -> bool:
+    """True iff the commissioning evidence declares the bench simulated."""
+    for entry in commissioning.get("evidence", []):
+        if isinstance(entry, dict) and _SIMULATION_MARK in entry.get("limitations", []):
+            return True
+    return False
+
+
+class _BridgePlan:
+    """One adapter-mode device's commissioned construction plan."""
+
+    def __init__(self, closure: DeviceClosure, descriptor: dict[str, Any], digest: str) -> None:
+        self.closure = closure
+        self.descriptor = descriptor
+        self.digest = digest
+
+
+class _SimPlan:
+    """One device on the declarative fixture-sim leg."""
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+
+def _require_registry_session(session: RegistrySession | None) -> RegistrySession:
+    """Narrow the optional session for the bridge-construction branch.
+
+    A bridge plan only exists when the closure resolution had a session, so
+    this never fires in practice — it keeps the narrowing explicit (and
+    python -O honest) instead of an assert.
+    """
+    if session is None:
+        raise RuntimeError(
+            "run activation invariant violated: bridge plan without a "
+            "registry session"
+        )
+    return session
+
+
+def _device_plans(
+    content: ContentStore,
+    docs: AdmittedDocuments,
+    bench_id: str,
+    run_id: str,
+    registry_session: RegistrySession | None,
+) -> dict[str, _BridgePlan | _SimPlan]:
+    """Survey the bench's devices WITHOUT running any plugin code.
+
+    Per device (from the admitted bench document, each pinning a descriptor
+    by digest): resolve the RAW descriptor from the content store; an
+    ``integration.mode == "adapter"`` device whose declared generation
+    carries an activation record plans a real bridge (Decision 1); anything
+    else keeps the committed fixture-sim leg. The sim fallback for an
+    adapter-mode device is the demo lattice's own posture — its devices
+    declare the startup-admitted generation, which no admin act has
+    commissioned — and is disclosed loudly, never silently taken.
+    """
+    plans: dict[str, _BridgePlan | _SimPlan] = {}
+    sim_names = dict(_SIM_PLUGINS)
+    for device in docs.bench["devices"]:
+        device_id = str(device["id"])
+        digest = str(device["descriptor"]["sha256"])
+        document = content.get_document(digest)
+        if document is None:
+            raise ValueError(
+                f"run_device_descriptor_absent: pinned descriptor {digest[:12]}… "
+                f"for device {device_id!r} is not stored"
+            )
+        descriptor = document["content"]
+        integration = descriptor.get("integration") or {}
+        if integration.get("mode") == "adapter":
+            closure = commissioned_device_closure(
+                registry_session, bench_id, device, descriptor
+            )
+            if closure is not None:
+                plans[device_id] = _BridgePlan(closure, descriptor, digest)
+                continue
+            if device_id not in sim_names:
+                raise ValueError(
+                    f"run_device_closure_absent: adapter-mode device {device_id!r} "
+                    f"on bench {bench_id!r} declares generation "
+                    f"{device.get('generation')!r} with no commissioned registry "
+                    "closure, and no declarative sim plugin exists for it — "
+                    "refusing to run the device on an uncommissioned implementation"
+                )
+            _LOG.warning(
+                "run_device_declarative_fallback: device=%s run=%s bench=%s "
+                "adapter-mode descriptor has no commissioned closure for its "
+                "declared generation; running the committed sim plugin",
+                device_id, run_id, bench_id,
+            )
+        if device_id in sim_names:
+            plans[device_id] = _SimPlan(sim_names[device_id])
+    return plans
+
 
 def _build_run_factory(
-    fixtures_dir: Path, now_iso: Callable[[], str], *, quota: int
+    fixtures_dir: Path,
+    now_iso: Callable[[], str],
+    *,
+    limits: dict[str, int],
+    registry_session: RegistrySession | None = None,
 ) -> Callable[[str, str, dict[str, Any], Store], RunCoordinator]:
     def build_run(
         run_id: str, principal_id: str, binding_ref: dict[str, Any], worker_store: Store
@@ -334,6 +502,15 @@ def _build_run_factory(
         thread-affine, so the ContentStore, the admission, the sim plugins
         and the coordinator are all constructed here, never handed over
         from the main thread.
+
+        Issue #167 activation wiring (design Decision 1): adapter-mode
+        bench devices with a commissioned registry closure construct real
+        ``OTDPBridge`` instances here — capture/stream services over the
+        worker-thread store, one shared ``ReadingSinks``, one run context
+        key — and the committed fixture-sim tuple remains the declarative
+        fallback leg. The quota seam refuses loudly BEFORE any device is
+        opened when an adapter bridge would construct without the required
+        operator ceilings.
         """
         content = ContentStore(worker_store)
         spool = tempfile.TemporaryDirectory(prefix=f"stg-run-{run_id}-")
@@ -341,19 +518,84 @@ def _build_run_factory(
             **_spool_documents(content, binding_ref, fixtures_dir, Path(spool.name))
         )
         clock = SystemClock()
+        bench_id = str(docs.bench["id"])
+        plans = _device_plans(content, docs, bench_id, run_id, registry_session)
+        bridges = [plan for plan in plans.values() if isinstance(plan, _BridgePlan)]
+        quota_limits = _run_quota_limits(limits) if bridges else None
+        # One shared ReadingSinks for the WHOLE run (Decision 2): the run
+        # services and every stream controller constructed below see the
+        # same instance, so a sink registered through
+        # ``register_reading_sink`` receives readings any stream lands.
+        sinks = ReadingSinks()
         # The streaming-slice members (emit_event, register_reading_sink)
         # get the run's context key and a fresh-stamp clock: an emitted host
         # event lands on the run's event dimension with a live timestamp.
         services = RetainingServices(
             content,
-            quota=quota,
+            quota=int(limits["max_page_size"]) * 10,
             now=now_iso(),
             wall=now_iso,
             context_key=f"run:{run_id}",
+            reading_sinks=sinks,
         )
+        simulated = _bench_declares_simulation(docs.commissioning)
+        context_key = f"run:{run_id}"
+        stream_host = RunStreamHost(run_id=run_id, clock=clock)
         plugins: dict[str, DevicePlugin] = {}
-        for device_id, name in _SIM_PLUGINS:
-            plugin = _load_sim_plugin(name).create_plugin(
+        for device_id, plan in plans.items():
+            if isinstance(plan, _BridgePlan):
+                if quota_limits is None:
+                    # Survives python -O: the survey above guarantees the
+                    # seam refused already when the keys were missing.
+                    raise RuntimeError(
+                        "run activation invariant violated: bridge plan "
+                        "without constructed quota limits"
+                    )
+                writer = CaptureStagingStore(
+                    worker_store,
+                    max_capture_bytes=quota_limits.max_capture_bytes,
+                    max_dataset_bytes=quota_limits.max_dataset_bytes,
+                )
+                bundle, capture_controller = build_capture_services(
+                    descriptor_digest=plan.digest,
+                    content=content,
+                    writer=writer,
+                    # M2 timebase identity: seconds = nanoseconds / 1e9 of
+                    # the SAME clock the coordinator and poll engine slice
+                    # on (the design's Decision-3/5 pin).
+                    clock=lambda: clock.now_ns() / 1e9,
+                    wall=now_iso,
+                    quota=quota_limits,
+                    context_key=context_key,
+                )
+                stream_controller = build_stream_services(
+                    descriptor_digest=plan.digest,
+                    store=worker_store,
+                    wall=now_iso,
+                    quota=quota_limits,
+                    context_key=context_key,
+                    reading_sinks=sinks,
+                )
+                bridge = load_otdp_plugin(
+                    _require_registry_session(registry_session).cache_root,
+                    plan.closure.manifest,
+                    plan.closure.manifest_sha256,
+                    entry_relpath=plan.closure.entry_relpath,
+                    descriptor=plan.descriptor,
+                    services=bundle,
+                    simulation=SimulationInfo(
+                        simulated=simulated,
+                        label=str(plan.descriptor.get("id") or device_id),
+                    ),
+                    capture=capture_controller,
+                    stream=stream_controller,
+                )
+                bridge.plugin_open(bundle)
+                plugins[device_id] = bridge
+                if stream_controller is not None:
+                    stream_host.register(device_id, bridge, stream_controller)
+                continue
+            plugin = _load_sim_plugin(plan.name).create_plugin(
                 now_fn=clock.now_iso, monotonic_ns_fn=clock.now_ns
             )
             plugin.plugin_open(services)
@@ -369,6 +611,8 @@ def _build_run_factory(
             # run, so the run's quota bounds its snapshot retentions.
             retain=lambda snapshot: services.retain_evidence(f"run:{run_id}", snapshot),
             spool=spool,
+            stream_host=stream_host,
+            services=services,
         )
 
     return build_run
@@ -401,7 +645,9 @@ def create_app(
     worker = RunWorker(
         store,
         content,
-        build_run=_build_run_factory(fixtures_dir, now_iso, quota=quota),
+        build_run=_build_run_factory(
+            fixtures_dir, now_iso, limits=limits, registry_session=registry_session
+        ),
         now_iso=now_iso,
         limits=limits,
     )

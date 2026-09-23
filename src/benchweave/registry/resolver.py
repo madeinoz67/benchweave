@@ -193,6 +193,21 @@ class Resolver:
             raise RegistryRejected("cross_origin_fallback")
         return origin
 
+    def origin_source(self, registry_id: str) -> PackageSource | None:
+        """The origin's byte source, or ``None`` for an unknown origin.
+
+        A read accessor for callers that hold ADMITTED coordinates (the
+        package lock's rows) and need the manifest bytes again without a
+        second resolve — the resolver's own high-water fence refuses
+        re-resolution of the same release sequences by design, so the
+        run-time closure resolution reads through the origin sources and
+        verifies digests against the admitted lock instead. Signature and
+        status verification are the resolve/admission path's job; this
+        accessor serves bytes only.
+        """
+        origin = self._origins.get(registry_id)
+        return origin.source if origin is not None else None
+
     def resolve(
         self,
         registry_id: str,

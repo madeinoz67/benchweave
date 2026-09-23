@@ -104,6 +104,36 @@ _LIMITS: dict[str, int] = {
     "max_admission_ms": 5000,
 }
 
+#: The run-activation quota ceilings an operator may configure (issue #167,
+#: design Decision 1). REQUIRED for benches whose adapter devices construct
+#: bridges: an unset knob leaves the key ABSENT from the limits mapping, so
+#: ``build_run`` refuses those runs loudly instead of silently defaulting
+#: (R16). Benches without commissioned adapter closures are unaffected.
+_QUOTA_ENV_KEYS: tuple[tuple[str, str], ...] = (
+    ("max_dataset_bytes", "BENCHWEAVE_MAX_DATASET_BYTES"),
+    ("max_event_batch", "BENCHWEAVE_MAX_EVENT_BATCH"),
+)
+
+
+def _limits_from_env() -> dict[str, int]:
+    """``_LIMITS`` plus the quota ceilings the environment configures.
+
+    A present-but-invalid value refuses boot loudly (``int`` raises) — a
+    typo'd ceiling must never boot a gateway that then refuses every
+    adapter run with a confusing message, nor default silently.
+    """
+    limits = dict(_LIMITS)
+    for key, env in _QUOTA_ENV_KEYS:
+        raw = os.environ.get(env)
+        if raw is not None:
+            value = int(raw)
+            if value < 1:
+                raise RuntimeError(
+                    f"refusing to boot: {env}={raw!r} must be an integer >= 1"
+                )
+            limits[key] = value
+    return limits
+
 
 def _now_iso() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
@@ -195,7 +225,7 @@ def build() -> FastAPI:
         store=store,
         content=content,
         secret=secret,
-        limits=_LIMITS,
+        limits=_limits_from_env(),
         gateway_id="gw-app-entry",
         fixtures_dir=fixtures,
         now_iso=_now_iso,

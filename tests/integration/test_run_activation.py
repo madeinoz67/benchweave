@@ -1,0 +1,776 @@
+"""Run-engine activation controls (issue #167, design row 9 of the #43 record).
+
+The controls R10/R11/R16 of the pre-committed acceptance rule
+(`.claude/deep-review/2026-09-23-issue167-run-engine-activation-design.md`),
+over the real ``build_run`` composition: adapter-mode bench devices whose
+declared generation carries an activation record construct real
+``OTDPBridge`` instances over the worker-thread store (R10), the run's
+``ReadingSinks`` is ONE instance shared by the run services and every
+stream controller (R11), and the quota seam refuses loudly before any
+``plugin_open`` when the required operator ceilings are absent (R16).
+
+The harness composes only through proven in-tree machinery: the unsigned
+dev publisher (``scripts/registry/publish_dev.py``), the resolver/admission
+stack over a dev origin plus the signed origin-main profile dependency,
+``registry.activation.activate`` (the idle-boundary commissioning act), and
+the ``readmit_mutated`` lattice-authoring idiom. Every name in the lattice
+and the plugin is synthetic (harness-owned, not a real bench).
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import subprocess
+import sys
+from collections.abc import Callable
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+from benchweave.content.capture_services import CaptureServicesBundle
+from benchweave.content.store import ContentStore
+from benchweave.host.otdp_bridge import OTDPBridge
+from benchweave.interfaces.app import _build_run_factory
+from benchweave.interfaces.bootstrap import admit_startup_bench
+from benchweave.interfaces.worker import RunWorker
+from benchweave.registry.activation import activate
+from benchweave.registry.admission import AdmissionLimits, Approval, admit
+from benchweave.registry.authenticity import load_trust_root
+from benchweave.registry.resolver import (
+    LocalDirectorySource,
+    OriginConfig,
+    Resolver,
+)
+from benchweave.state.store import Store
+
+REPO = Path(__file__).resolve().parents[2]
+REGISTRY_FIXTURES = REPO / "fixtures" / "registry"
+EXECUTION_FIXTURES = REPO / "fixtures" / "execution"
+PUBLISH_DEV = REPO / "scripts" / "registry" / "publish_dev.py"
+
+# The registry clock, frozen inside every fixture status's validity window
+# (the test_registry_reuse posture — never a hand-typed nanosecond literal).
+NOW_NS = int(datetime(2026, 9, 14, tzinfo=UTC).timestamp() * 1_000_000_000)
+NOW_ISO = "2026-09-14T00:00:00Z"
+
+DEV_ID = "dev-local"
+ORIGIN_MAIN = "origin-main"
+BENCH_ID = "activation-bench"
+DEVICE_ID = "psu"
+# The dev publisher's role table keys descriptor members on the plugin
+# dirname (scripts/registry/registry_common.py ROLE_BY_SUFFIX); the harness
+# plugin therefore publishes under the fixture-family name "sim_psu" — a
+# dev-namespace package, not the signed benchweave/sim-psu fixture.
+PLUGIN_DIRNAME = "sim_psu"
+IMPL_PACKAGE = f"dev/{PLUGIN_DIRNAME}"
+PACKAGE_VERSION = "1.0.0"
+
+#: The quota seam's required operator ceilings (design Decision 1).
+QUOTA_LIMITS: dict[str, int] = {
+    "max_json_bytes": 1048576,
+    "max_page_size": 1000,
+    "max_chunk_bytes": 65536,
+    "max_lease_ms": 600000,
+    "min_poll_ms": 100,
+    "max_admission_ms": 5000,
+    "max_dataset_bytes": 8 * 1024 * 1024,
+    "max_event_batch": 64,
+}
+
+#: The activated generation the bench's device declares (the linkage the
+#: design names: ``bench.devices[].generation`` ↔ the activation record).
+ACTIVATED_GENERATION = 2
+
+# The synthetic OTDP adapter the harness publishes: a recording supply that
+# answers scalar reads, applies writes with readback receipts, and serves
+# ``next_event`` telemetry off its own state. Zero-argument factory (the
+# OTDP ABI); construction and open stay free of device I/O.
+ADAPTER_SOURCE = '''\
+"""Synthetic recording supply adapter (activation harness)."""
+from __future__ import annotations
+
+import asyncio
+
+
+class DemoSupplyAdapter:
+    def __init__(self) -> None:
+        self.services = None
+        self.descriptor = None
+        self.state = {
+            "voltage_setpoint_v": 0.0,
+            "output_enabled": False,
+        }
+        self.sequences: dict[str, int] = {}
+        self.dispatches: list[str] = []
+
+    async def open(self, descriptor, services, context) -> None:
+        self.descriptor = descriptor
+        self.services = services
+
+    async def close(self, context) -> None:
+        pass
+
+    def _reading(self, parameter, value, unit):
+        return {
+            "parameter": parameter,
+            "value": value,
+            "unit": unit,
+            "observed_at": self.services.utc_now(),
+            "age_ms": 0,
+            "quality": "valid",
+            "source": "device",
+        }
+
+    def _output_voltage(self):
+        if not self.state["output_enabled"]:
+            return 0.0
+        return float(self.state["voltage_setpoint_v"])
+
+    async def execute(self, envelope, context):
+        await context.mark_dispatch_started()
+        verb = envelope["verb"]
+        arguments = envelope["arguments"]
+        self.dispatches.append(verb)
+        operation_id = envelope["operation_id"]
+        if verb == "read":
+            parameter = arguments["parameter"]
+            if parameter == "output_voltage_v":
+                data = self._reading(parameter, self._output_voltage(), "V")
+            elif parameter == "output_current_a":
+                current = 0.1 if self.state["output_enabled"] else 0.0
+                data = self._reading(parameter, current, "A")
+            else:
+                data = self._reading(parameter, 0.0, None)
+            return {"operation_id": operation_id, "verb": verb, "status": "ok", "data": data}
+        if verb == "write":
+            parameter = arguments["parameter"]
+            value = arguments["value"]
+            self.state[parameter] = value
+            unit = "V" if parameter == "voltage_setpoint_v" else None
+            verification = self._reading(parameter, value, unit)
+            return {
+                "operation_id": operation_id,
+                "verb": verb,
+                "status": "ok",
+                "data": {
+                    "parameter": parameter,
+                    "requested_value": value,
+                    "effective_value": value,
+                    "assurance": "readback",
+                    "verification": verification,
+                },
+            }
+        if verb in ("stream_subscribe", "stream_unsubscribe"):
+            return {
+                "operation_id": operation_id,
+                "verb": verb,
+                "status": "ok",
+                "data": {"subscription_id": arguments["subscription_id"]},
+            }
+        return {
+            "operation_id": operation_id,
+            "verb": verb,
+            "status": "error",
+            "error": {
+                "code": "UNSUPPORTED",
+                "message": f"demo adapter does not implement {verb}",
+                "dispatch_state": "not_dispatched",
+            },
+        }
+
+    async def next_event(self, subscription_id, context):
+        sequence = self.sequences.get(subscription_id, -1) + 1
+        self.sequences[subscription_id] = sequence
+        parameter = "output_voltage_v"
+        return {
+            "subscription_id": subscription_id,
+            "sequence": sequence,
+            "kind": "telemetry",
+            "reading": self._reading(parameter, self._output_voltage(), "V"),
+        }
+
+
+DEMO_ADAPTER = True
+
+
+def create_plugin():
+    return DemoSupplyAdapter()
+'''
+
+
+def _sha(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def _main_root() -> Any:
+    return load_trust_root(ORIGIN_MAIN, REGISTRY_FIXTURES / "keys" / "main.pub.pem")
+
+
+def _write(path: Path, payload: dict[str, Any]) -> Path:
+    path.write_text(json.dumps(payload, indent=2))
+    return path
+
+
+def _pin(document: dict[str, Any], path: Path) -> dict[str, str]:
+    return {
+        "id": str(document["id"]),
+        "version": str(document["version"]),
+        "sha256": _sha(path.read_bytes()),
+    }
+
+
+def _mutated_descriptor(tmp_path: Path) -> Path:
+    """The committed sim-psu descriptor with the capture/stream permissions.
+
+    Additive-only mutations (the fixture byte-mover is deferred as row D):
+    the adapter permissions gain ``artifact_writer`` + ``event_sink``, the
+    root gains the schema-legal ``stream_limits``, and the entry point names
+    the harness plugin. Everything else — parameters, actions, profiles —
+    stays the committed, schema-valid content.
+    """
+    descriptor = json.loads((EXECUTION_FIXTURES / "descriptor-sim-psu.json").read_text())
+    adapter = descriptor["integration"]["adapter"]
+    adapter["entry_point"] = "benchweave_sim_psu.plugin:create_plugin"
+    adapter["permissions"] = ["scoped_transport", "artifact_writer", "event_sink"]
+    descriptor["stream_limits"] = {"min_interval_ms": 10, "max_subscriptions": 4}
+    return _write(tmp_path / "descriptor-demo-supply.json", descriptor)
+
+
+def _write_plugin_source(tmp_path: Path) -> Path:
+    root = tmp_path / "plugin" / PLUGIN_DIRNAME / "src" / f"benchweave_{PLUGIN_DIRNAME}"
+    root.mkdir(parents=True)
+    (root / "__init__.py").write_text("")
+    (root / "plugin.py").write_text(ADAPTER_SOURCE)
+    return tmp_path / "plugin" / PLUGIN_DIRNAME
+
+
+def _publish(plugin_dir: Path, descriptor: Path, out: Path) -> None:
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(PUBLISH_DEV),
+            str(plugin_dir),
+            "--descriptor",
+            str(descriptor),
+            "--out",
+            str(out),
+            "--version",
+            PACKAGE_VERSION,
+        ],
+        capture_output=True,
+    )
+    assert completed.returncode == 0, completed.stderr.decode()
+
+
+def _lattice(tmp_path: Path, request_id: str) -> Path:
+    """Author the activation lattice: one commissioned supply device.
+
+    Mirrors the ``readmit_mutated`` pin discipline (tests/control/_harness.py)
+    over a synthetic single-device bench whose device declares the ACTIVATED
+    generation — the design's linkage from a bench device to the admin act
+    that commissioned its closure.
+    """
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    descriptor_path = _mutated_descriptor(tmp_path)
+    descriptor = json.loads(descriptor_path.read_text())
+
+    procedure: dict[str, Any] = {
+        "contract_version": "0.1.0",
+        "id": "activation-procedure",
+        "version": "0.1.0",
+        "description": "Synthetic activation harness procedure.",
+        "mode": "gateway_owned",
+        "safety_policy": {"id": "activation-policy", "version": "0.1.0"},
+        "roles": [
+            {"id": "supply", "required_profiles": ["otdp.dc_psu/1.0.0"], "channels": ["output"]}
+        ],
+        "max_body_ms": 8000,
+        "max_protection_ms": 2000,
+        "steps": [
+            {
+                "id": "set-voltage",
+                "kind": "write",
+                "role": "supply",
+                "parameter": "voltage_setpoint_v",
+                "value": 5.0,
+                "timeout_ms": 500,
+            },
+            {"id": "settle", "kind": "delay", "duration_ms": 200},
+            {
+                "id": "observe",
+                "kind": "read",
+                "role": "supply",
+                "parameter": "output_voltage_v",
+                "timeout_ms": 500,
+            },
+        ],
+    }
+    procedure_path = _write(tmp_path / "procedure-activation.json", procedure)
+
+    policy: dict[str, Any] = {
+        "contract_version": "0.1.0",
+        "id": "activation-policy",
+        "version": "0.1.0",
+        "description": "Synthetic activation harness policy.",
+        "domains": [
+            {
+                "id": "dut",
+                "max_abs_voltage_v": 6,
+                "max_abs_current_a": 1,
+                "max_power_w": 3,
+                "max_stored_energy_j": 0.01,
+                "max_energised_ms": 10000,
+            }
+        ],
+        "allow_rules": [
+            {
+                "device_id": DEVICE_ID,
+                "kind": "write",
+                "parameter": "voltage_setpoint_v",
+                "value_constraints": {"type": "number", "minimum": 0, "maximum": 5.5},
+            }
+        ],
+        "continuous_conditions": [
+            {
+                "id": "dut-voltage-bounds",
+                "kind": "numeric",
+                "signal": "dut-voltage",
+                "unit": "V",
+                "minimum": -0.1,
+                "maximum": 5.5,
+            }
+        ],
+        "independent_protection": {
+            "required": False,
+            "assessment": {
+                "id": "activation-protection-assessment",
+                "version": "0.1.0",
+                "sha256": "0" * 64,
+            },
+            "mechanism_ids": [],
+        },
+        "safe_transition": {
+            "max_duration_ms": 2000,
+            "actions": [
+                {
+                    "id": "disable",
+                    "device_id": DEVICE_ID,
+                    "kind": "write",
+                    "parameter": "output_enabled",
+                    "value": False,
+                    "timeout_ms": 500,
+                }
+            ],
+            "verify": [
+                {
+                    "id": "voltage-safe",
+                    "kind": "numeric",
+                    "signal": "dut-voltage",
+                    "unit": "V",
+                    "minimum": -0.1,
+                    "maximum": 0.1,
+                }
+            ],
+            "stable_for_ms": 100,
+        },
+    }
+    policy_path = _write(tmp_path / "safety-policy.json", policy)
+
+    lock_path = tmp_path / "package-lock.json"
+    lock_path.write_bytes((EXECUTION_FIXTURES / "package-lock.json").read_bytes())
+
+    bench: dict[str, Any] = {
+        "contract_version": "0.1.0",
+        "id": BENCH_ID,
+        "version": "0.1.0",
+        "description": "Synthetic activation harness bench. Not hardware-qualified.",
+        "gateway_id": "activation-gateway",
+        "fixture": {
+            "id": "activation-fixture",
+            "revision": "1",
+            "identity_record_id": "ident-activation",
+        },
+        "dut_class": "low_voltage_embedded",
+        "policy": {"id": "activation-policy", "version": "0.1.0"},
+        "package_lock": {"id": "sim-lock", "version": "0.1.0"},
+        "commissioning_id": "activation-commissioning",
+        "dut_ids": [DEVICE_ID],
+        "protection_mechanisms": [],
+        "devices": [
+            {
+                "id": DEVICE_ID,
+                "generation": ACTIVATED_GENERATION,
+                "descriptor": {
+                    "id": descriptor["id"],
+                    "version": descriptor["descriptor_version"],
+                },
+                "identity_record_id": "ident-psu",
+                "connection_key": "sim_psu_local",
+                "channels": ["ch1"],
+            }
+        ],
+        "resources": [{"id": "dut-net", "device_ids": [DEVICE_ID], "depends_on": []}],
+        "terminals": [
+            {
+                "id": "psu-out",
+                "owner_kind": "device",
+                "owner_id": DEVICE_ID,
+                "channel_id": "ch1",
+                "name": "out",
+                "domain_id": "dut",
+            },
+            {
+                "id": "psu-in",
+                "owner_kind": "device",
+                "owner_id": DEVICE_ID,
+                "channel_id": "ch1",
+                "name": "in",
+                "domain_id": "dut",
+            },
+        ],
+        "nets": [{"id": "n1", "terminal_ids": ["psu-out", "psu-in"]}],
+        "signals": [
+            {
+                "id": "dut-voltage",
+                "quantity": "voltage",
+                "unit": "V",
+                "poll_ms": 50,
+                "max_age_ms": 500,
+                "absolute_error": 0.05,
+                "resource_id": "dut-net",
+                "source": {
+                    "kind": "parameter",
+                    "device_id": DEVICE_ID,
+                    "parameter": "output_voltage_v",
+                },
+            }
+        ],
+    }
+    bench_path = tmp_path / "bench.json"
+    bench["policy"]["sha256"] = _sha(policy_path.read_bytes())
+    bench["package_lock"]["sha256"] = _sha(lock_path.read_bytes())
+    bench["devices"][0]["descriptor"]["sha256"] = _sha(descriptor_path.read_bytes())
+    _write(bench_path, bench)
+
+    commissioning: dict[str, Any] = {
+        "contract_version": "0.1.0",
+        "id": "activation-commissioning",
+        "version": "0.1.0",
+        "description": "Synthetic activation harness commissioning. Not hardware-qualified.",
+        "bench": {"id": BENCH_ID, "version": "0.1.0"},
+        "policy": {"id": "activation-policy", "version": "0.1.0"},
+        "package_lock": {"id": "sim-lock", "version": "0.1.0"},
+        "procedure_refs": [{"id": "activation-procedure", "version": "0.1.0"}],
+        "dut_class": "low_voltage_embedded",
+        "modes": ["supervised"],
+        "owners": {
+            "bench": "activation-harness-owner",
+            "test_safety": "activation-harness-owner",
+            "system": "activation-harness-owner",
+        },
+        "approved_by": "activation-harness-owner",
+        "approved_at": "2026-09-11T00:00:00Z",
+        "expires_at": "2030-01-01T00:00:00Z",
+        "offline_status_max_age_ms": 86400000,
+        "scheduling_overhead_ms": 100,
+        "evidence": [
+            {
+                "category": "envelope",
+                "report": {
+                    "id": "activation-envelope-report",
+                    "version": "0.1.0",
+                    "sha256": "0" * 64,
+                },
+                "tested_at": "2026-09-11T00:00:00Z",
+                "scope": "Simulator envelope over the synthetic activation supply.",
+                "result": "passed",
+                "limitations": ["simulator-only"],
+            }
+        ],
+    }
+    for name, path in (
+        ("bench", bench_path),
+        ("policy", policy_path),
+        ("package_lock", lock_path),
+    ):
+        commissioning[name]["sha256"] = _sha(path.read_bytes())
+    for reference in commissioning["procedure_refs"]:
+        reference["sha256"] = _sha(procedure_path.read_bytes())
+    commissioning_path = _write(tmp_path / "commissioning.json", commissioning)
+
+    binding: dict[str, Any] = {
+        "contract_version": "0.1.0",
+        "request_id": request_id,
+        "procedure": {"id": "activation-procedure", "version": "0.1.0"},
+        "bench": {"id": BENCH_ID, "version": "0.1.0"},
+        "policy": {"id": "activation-policy", "version": "0.1.0"},
+        "package_lock": {"id": "sim-lock", "version": "0.1.0"},
+        "commissioning": {"id": "activation-commissioning", "version": "0.1.0"},
+        "bindings": [
+            {"role": "supply", "device_id": DEVICE_ID, "channels": {"output": "ch1"}}
+        ],
+    }
+    for name, path in (
+        ("procedure", procedure_path),
+        ("bench", bench_path),
+        ("policy", policy_path),
+        ("package_lock", lock_path),
+        ("commissioning", commissioning_path),
+    ):
+        binding[name]["sha256"] = _sha(path.read_bytes())
+    _write(tmp_path / "run-binding.json", binding)
+    return tmp_path
+
+
+class _CommissionedHarness:
+    """One admitted-and-activated dev closure plus its execution lattice."""
+
+    def __init__(self, tmp_path: Path, request_id: str) -> None:
+        self.root = tmp_path
+        self.lattice_dir = _lattice(tmp_path / "lattice", request_id)
+        descriptor_path = self.lattice_dir / "descriptor-demo-supply.json"
+        plugin_dir = _write_plugin_source(tmp_path / "pluginroot")
+        registry_root = tmp_path / "dev-registry"
+        _publish(plugin_dir, descriptor_path, registry_root)
+
+        origins: dict[str, OriginConfig] = {
+            DEV_ID: OriginConfig(
+                registry_id=DEV_ID,
+                root=None,
+                source=LocalDirectorySource(registry_root / DEV_ID),
+                namespaces=("dev",),
+                signature_policy="dev-unsigned",
+            ),
+            ORIGIN_MAIN: OriginConfig(
+                registry_id=ORIGIN_MAIN,
+                root=_main_root(),
+                source=LocalDirectorySource(REGISTRY_FIXTURES / ORIGIN_MAIN),
+                namespaces=("benchweave",),
+            ),
+        }
+        self.work = tmp_path / "registry-work"
+        from benchweave.interfaces.bootstrap import RegistrySession
+
+        self.session = RegistrySession(
+            resolver=Resolver(origins),
+            roots={ORIGIN_MAIN: _main_root()},
+            high_water={},
+            cache_root=self.work / "cache",
+            lock_path=self.work / "packages.lock.json",
+            records_dir=self.work / "activations",
+            limits=AdmissionLimits(
+                max_archive_bytes=1_000_000, max_files=100, max_unpacked_bytes=1_000_000
+            ),
+            now_ns=lambda: NOW_NS,
+            registry_id=DEV_ID,
+        )
+        closure = self.session.resolver.resolve(
+            DEV_ID,
+            IMPL_PACKAGE,
+            PACKAGE_VERSION,
+            now_ns=NOW_NS,
+            high_water=self.session.high_water,
+        )
+        self.admitted = admit(
+            closure,
+            cache_root=self.session.cache_root,
+            lock_path=self.session.lock_path,
+            limits=self.session.limits,
+            approval=Approval(
+                principal_id="activation-harness",
+                approved_at=NOW_ISO,
+                policy_id="local-policy",
+                policy_version="1.0.0",
+            ),
+            now_ns=NOW_NS,
+            # Admission's roots cover EVERY origin in the closure, the
+            # dev origin included (None root = dev-unsigned); the session's
+            # own roots field stays typed to real trust roots.
+            roots={DEV_ID: None, ORIGIN_MAIN: _main_root()},
+            high_water=self.session.high_water,
+        )
+        # The commissioning admin act: the activation record for generation
+        # 2 is what the bench device's declared generation links to.
+        activate(
+            self.admitted,
+            bench_generation=1,
+            bench_has_live_lease=False,
+            records_dir=self.session.records_dir / BENCH_ID,
+            activated_at=NOW_ISO,
+        )
+
+    def open_store(self) -> tuple[Store, ContentStore]:
+        store = Store.open(self.root / "state.db")
+        content = ContentStore(store)
+        admit_startup_bench(store, content, self.lattice_dir, now=NOW_ISO)
+        return store, content
+
+    def build_run(self, limits: dict[str, int]) -> Callable[[str, str, dict[str, Any], Store], Any]:
+        from benchweave.control.clocking import SystemClock
+
+        factory = _build_run_factory(
+            self.lattice_dir, SystemClock().now_iso, limits=limits, registry_session=self.session
+        )
+        return factory
+
+    def binding_ref(self) -> dict[str, str]:
+        raw = (self.lattice_dir / "run-binding.json").read_bytes()
+        return {
+            "id": json.loads(raw)["request_id"],
+            "version": "0.1.0",
+            "sha256": _sha(raw),
+        }
+
+
+@pytest.fixture()
+def commissioned(tmp_path: Path) -> _CommissionedHarness:
+    return _CommissionedHarness(tmp_path, "req-activation-1")
+
+
+def _coordinator(
+    harness: _CommissionedHarness, run_id: str, limits: dict[str, int]
+) -> tuple[Any, Store, ContentStore]:
+    store, content = harness.open_store()
+    try:
+        factory = harness.build_run(limits)
+        return factory(run_id, "principal-activation", harness.binding_ref(), store), store, content
+    except BaseException:
+        store.close()
+        raise
+
+
+def test_r10_real_bridges_over_the_worker_store(commissioned: _CommissionedHarness) -> None:
+    """R10: adapter-mode devices with a commissioned closure construct real
+    bridges — the adapter's received services object is the eight-member
+    capture bundle, and the run's terminal record is produced through the
+    bridge (the sim path is NOT taken for the device)."""
+    run_id = "run-r10"
+    coordinator, store, content = _coordinator(commissioned, run_id, QUOTA_LIMITS)
+    from benchweave.interfaces.app import _RetainingCoordinator
+
+    assert isinstance(coordinator, _RetainingCoordinator)
+    try:
+        bridge = coordinator.plugins[DEVICE_ID]
+        assert isinstance(bridge, OTDPBridge)
+        received = bridge._adapter.services
+        assert isinstance(received, CaptureServicesBundle)
+        for member in (
+            "monotonic",
+            "utc_now",
+            "transfer",
+            "close_transport",
+            "record_evidence",
+            "artifact_append",
+            "artifact_finalise",
+            "artifact_abort",
+        ):
+            assert hasattr(received, member), member
+
+        record = coordinator.start_run(run_id, "principal-activation")
+        assert record["outcome"] == "passed"
+        assert record["body_outcome"] == "completed"
+        assert record["safe_state"] == "verified"
+        kinds = [event["kind"] for event in store.read_events(f"run:{run_id}")]
+        assert "write" in kinds and "read" in kinds
+        # The bridge's adapter saw the procedure's write and the monitor's
+        # read traffic — the run executed through the bridge, not a sim.
+        assert "write" in bridge._adapter.dispatches
+        assert "read" in bridge._adapter.dispatches
+    finally:
+        store.close()
+
+
+def test_r16_quota_seam_refuses_before_plugin_open(
+    commissioned: _CommissionedHarness,
+) -> None:
+    """R16: a commissioned adapter device + missing required quota keys →
+    ``build_run`` refuses loudly before any device opens, and the worker
+    contains the job (terminal projection, no fabricated outcome)."""
+    limits = {key: value for key, value in QUOTA_LIMITS.items()
+              if key not in ("max_dataset_bytes", "max_event_batch")}
+    store, content = commissioned.open_store()
+    try:
+        factory = commissioned.build_run(limits)
+        with pytest.raises(ValueError) as refused:
+            factory("run-r16", "principal-activation", commissioned.binding_ref(), store)
+        message = str(refused.value)
+        assert "max_dataset_bytes" in message
+        assert "max_event_batch" in message
+        # Nothing opened: no bridge exists, and no run row was created.
+        assert store.get_run("run-r16") is None
+    finally:
+        store.close()
+
+    # The worker's poison guard contains the same refusal honestly: the
+    # queue state closes terminal WITHOUT a terminal record (no fabricated
+    # outcome), and the drain continues.
+    store2, content2 = commissioned.open_store()
+    try:
+        worker = RunWorker(
+            store2,
+            content2,
+            build_run=commissioned.build_run(limits),
+            now_iso=lambda: NOW_ISO,
+            limits=limits,
+        )
+        worker.start()
+        try:
+            worker.submit("run-r16b", "principal-activation", commissioned.binding_ref(), BENCH_ID)
+            assert worker.join(timeout=10.0)
+        finally:
+            worker.stop()
+            assert worker.join(timeout=5.0)
+        states = {
+            str(row["run_id"]): str(row["state"])
+            for row in store2.list_run_states(BENCH_ID)
+        }
+        assert states.get("run-r16b") == "terminal"
+        run = store2.get_run("run-r16b")
+        assert run is None or run["terminal"] is None
+    finally:
+        store2.close()
+
+
+def test_demo_lattice_without_commissioned_closure_keeps_declarative_fallback(
+    tmp_path: Path,
+) -> None:
+    """The demo lattice's adapter-mode devices declare generation 1 — the
+    startup-admitted generation with NO activation record — so the run
+    keeps the declarative sim fallback (loudly disclosed) instead of
+    constructing a bridge it cannot commission. The committed demo flow is
+    unaffected by the activation wiring."""
+    from benchweave.interfaces.app import _SIM_PLUGINS
+
+    factory = _build_run_factory(
+        EXECUTION_FIXTURES,
+        lambda: NOW_ISO,
+        limits=QUOTA_LIMITS,
+        registry_session=None,
+    )
+    store = Store.open(tmp_path / "demo-state.db")
+    try:
+        content = ContentStore(store)
+        admit_startup_bench(store, content, EXECUTION_FIXTURES, now=NOW_ISO)
+        binding_raw = (EXECUTION_FIXTURES / "run-binding.json").read_bytes()
+        binding_ref = {
+            "id": json.loads(binding_raw)["request_id"],
+            "version": "0.1.0",
+            "sha256": _sha(binding_raw),
+        }
+        coordinator = factory(
+            "run-demo-fallback", "principal-demo", binding_ref, store
+        )
+        from benchweave.interfaces.app import _RetainingCoordinator
+
+        assert isinstance(coordinator, _RetainingCoordinator)
+        for device_id, _name in _SIM_PLUGINS:
+            plugin = coordinator.plugins[device_id]
+            assert not isinstance(plugin, OTDPBridge), (
+                f"demo device {device_id} constructed a bridge without a "
+                "commissioned closure"
+            )
+    finally:
+        store.close()
