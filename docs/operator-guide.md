@@ -120,6 +120,8 @@ manager — §7). It reads:
 | `BENCHWEAVE_HOST` / `BENCHWEAVE_PORT` | Bind address/port (also `--host`/`--port`; loopback + 8125 by default). |
 | `BENCHWEAVE_FIXTURES` | Fixture lattice directory (see §4). |
 | `BENCHWEAVE_REGISTRY_DIR` | Fixture registry root (default: the repository registry). |
+| `BENCHWEAVE_MAX_DATASET_BYTES` | Per-run capture-byte ceiling; **required for adapter-bridge runs** (see below). |
+| `BENCHWEAVE_MAX_EVENT_BATCH` | Per-run event-landing batch ceiling; **required for adapter-bridge runs** (see below). |
 
 ```sh
 export BENCHWEAVE_DB=/var/lib/benchweave/state.sqlite
@@ -146,6 +148,24 @@ raises a `FileNotFoundError` naming the device and digest prefix).
 Nothing is written to the store by a refused startup, so a repair (fix
 the lattice, restart) starts from a clean inventory. Under systemd the
 unit then restart-loops (§7) and that log line is the diagnosis surface.
+
+**Adapter-bridge runs and the quota seam.** A run constructs a real OTDP
+bridge for a bench device only when the device's descriptor declares
+`integration.mode: "adapter"` AND the device's declared `generation`
+carries a registry activation record — the admin act that commissioned the
+package closure (admission wrote the content-addressed cache and the
+package lock; the run resolves through them, digest-pinned). Devices
+without a commissioned closure — including the demo lattice's, which
+declare the startup-admitted generation — run the committed simulator
+plugins instead, disclosed with one `run_device_declarative_fallback:`
+log line per device per run. Bridge-constructing runs additionally
+**require** the two operator ceilings `BENCHWEAVE_MAX_DATASET_BYTES` and
+`BENCHWEAVE_MAX_EVENT_BATCH` (unset is a valid, loud posture: the run
+refuses with `run_quota_config_absent:` before any device opens, the
+worker contains the job, and the run's projection closes terminal with
+`outcome_unknown` — no fabricated outcome). `max_capture_bytes` and
+`max_subscriptions` keep built-in defaults until your bench qualification
+commissions values (they are not env-configured today).
 
 ### Shutdown drain
 
@@ -363,6 +383,20 @@ unavailable: no `fixtures/registry/keys/main.pub.pem` trust root was found
 (default resolved from the repository; wheel deployments point
 `BENCHWEAVE_REGISTRY_DIR` at a copied registry root). This is the
 documented fail-closed posture, not a crash.
+
+**`run_quota_config_absent: ...`** — a run on an adapter bench (a device
+whose declared generation carries an activation record) tried to construct
+bridges without the required operator ceilings. Set
+`BENCHWEAVE_MAX_DATASET_BYTES` and `BENCHWEAVE_MAX_EVENT_BATCH` in the
+gateway's environment and restart. Benches without commissioned adapter
+closures never hit this refusal.
+
+**`run_device_declarative_fallback: ...`** — an adapter-mode descriptor
+with no commissioned closure for its declared generation ran the committed
+simulator plugin instead of a bridge. If this is unexpected, the bench's
+device `generation` and the gateway's activation records
+(`<data-dir>/registry/activations/<bench>/activation-<n>.json`) have
+drifted apart — check which generation the admin act actually activated.
 
 **`archive ... has no manifest.json` / digest mismatches on restore** —
 the target is not a `backup-<iso>/` directory, or its contents changed
