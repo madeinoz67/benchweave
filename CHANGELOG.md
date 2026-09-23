@@ -165,6 +165,7 @@ All notable changes to this project will be documented in this file.
 - The documents gate never sees a dev head — $id shadowing closed (review row 2)
 - Calendar-valid opened + real head containment (review rows 4 and 5)
 - The --corpus lane resolves the head through the canonical loader (review row 6)
+- The three red lanes after the coordinated landing — direct-to-main broken-CI fix
 
 ### Documentation
 
