@@ -167,6 +167,7 @@ All notable changes to this project will be documented in this file.
 - The --corpus lane resolves the head through the canonical loader (review row 6)
 - The three red lanes after the coordinated landing — direct-to-main broken-CI fix
 - Sweep the dps150 corpus lock + descriptors to OTDP 0.2.2 (main ci red after #171)
+- Finish the dps150 0.2.2 sweep — the plugin suite's corpus path follows the lock
 
 ### Documentation
 
