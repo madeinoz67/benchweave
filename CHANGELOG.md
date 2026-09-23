@@ -168,6 +168,9 @@ All notable changes to this project will be documented in this file.
 - The three red lanes after the coordinated landing — direct-to-main broken-CI fix
 - Sweep the dps150 corpus lock + descriptors to OTDP 0.2.2 (main ci red after #171)
 - Finish the dps150 0.2.2 sweep — the plugin suite's corpus path follows the lock
+- Close the provider-pin size window + name the duplicate-key cell
+- Refuse $ref-bearing grammar subschemas; guard holds the ValueError discipline
+- Spool the pinned provider contract + thread settings/now_wall
 
 ### Documentation
 
@@ -322,6 +325,9 @@ All notable changes to this project will be documented in this file.
 - Record amendment — the resolution landed on main in two steps; this branch lands the guard
 - Issue #159 Option-B row-1 activation review record
 - Refresh #159 sequencing state after the coordinated landing
+- Issue #147 increment 3 — gateway admission and grant slice design
+- CON-1/CON-10 provider amendments + drift rows 16/17 + operator guide
+- Fold waves D+E — admission proof is the triple row; #167 gate-expiry scope note
 
 ### Features
 
@@ -457,6 +463,9 @@ All notable changes to this project will be documented in this file.
 - The dev-proof lane — --corpus points a family census at the declared dev head (F3)
 - The RC candidate marker — optional boolean candidate on the dev block (owner ruling)
 - The lineage amendment — promotion keeps the predecessor edge (governor re-check ruling)
+- Transport-settings.json — the identity-only commissioned surface
+- The provider admission seam — census mirror, pin mirror, gateway-only row
+- ProviderTransport grammar guard + the build_capture_services gate
 
 ### Hardware Evidence
 
@@ -541,6 +550,7 @@ All notable changes to this project will be documented in this file.
 - Drop the dead EvidenceQuotaExceeded re-export; operator guide names refuse_newer_schema
 - Pointer advances to the 0.2.2 vendor (SDK PR #47, merge 6121c96)
 - Remove the two committed sync-interference strays (governor amendment)
+- Lint and type residue — Unresolvable catch, import order
 
 ### Performance
 
