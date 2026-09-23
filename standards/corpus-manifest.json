@@ -1018,7 +1018,7 @@
     {
       "path": "otdp/0.2.2/otdp-transport-provider.schema.json",
       "source": "standards/otdp/0.2.1/otdp-transport-provider.schema.json",
-      "sha256": "c31b0fd43f79cf6baf9a66e97c63cd791047fc79c3d82ea4fc66ef220473732f"
+      "sha256": "1e4a50e34e5b996dd6e63d617263e3fae846346155e11c0bd75051fb8d60ef43"
     }
   ]
 }

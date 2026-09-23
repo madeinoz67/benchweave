@@ -122,6 +122,24 @@ def test_schema_description_scopes_the_boundary_to_security_scope() -> None:
     assert "commissioned_connection" in description
 
 
+def test_two_component_feature_version_is_refused_at_the_schema_surface() -> None:
+    """The RedTeam errata candidate, folded into 0.2.2: the pattern once made
+    the feature_id's patch component optional while the contract's ``version``
+    demands strict three-component semver — so a two-component id could never
+    satisfy the identity equality (the equality layer refused it; so did the
+    version pattern when both halves went two-component), yet the SCHEMA
+    surface alone admitted the shape. The tighten makes the pattern match the
+    equality it feeds: three components, refused at the schema itself. No
+    admissible document is refused — none could exist (string equality against
+    a three-component-only field).
+    """
+    contract = json.loads(json.dumps(HOSTILE_CONTRACT))
+    contract["feature_id"] = "otdp.transport.mock-relay/1.0"
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    errors = list(Draft202012Validator(schema).iter_errors(contract))
+    assert errors, "a two-component feature version must be refused by the schema"
+
+
 def test_provider_companion_qualifies_the_transaction_properties() -> None:
     """transport-providers.md §3 states the authored-grammar condition.
 
