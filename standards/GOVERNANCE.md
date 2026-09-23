@@ -66,13 +66,25 @@ self-anchors at that module's own arrival commit, so history before the rule is
 grandfathered by mechanism. The floor was ratified at 48 hours as a starting figure and
 revisited once, not silently: 2026-09-23, explicit owner ruling after one window ran —
 the observed cost was latency (a queued fold-after-release waited 34 hours for its
-train), not churn. The floor is 24 hours.
+train), not churn. The floor is 24 hours. The window prices the release ledger only:
+pre-release authoring accumulated on a dev head is not a bump and waits for nothing
+(see **The dev stage** below) — the floor still bounds everything consumers see, and
+no longer bounds the edit.
 
 **Bump mechanics — copy, never move.** A version bump copies the old version
 dir to the new version and edits bytes only in the copy; the old dir and its
 corpus-manifest rows stay in place, digest-frozen. Moving or in-place-editing a
 retained version is a governance violation, not a shortcut. The new version's
-rows record the old corpus path as their `source`. Digest pins move only
+rows record the old corpus path as their `source`. A dev-stage promotion adds
+one more edge: its rows also record the pre-dev active version's
+corresponding paths as `lineage` — the dev path named by `source` is a
+deleted staging directory and cannot carry the retention chain alone. Both
+edges are walked by the derived corpus-dir guard
+(`tests/contract/test_baseline.py`), with the same historical-terminal rule
+for `-dev` segments; `repin` accepts the optional `lineage` field on rows
+and refuses one naming a `-dev` path (that edge is what `source` carries) —
+ordinary supersession keeps both trees justified side by side, dev
+promotions included. Digest pins move only
 through `uv run python -m benchweave.standards repin` — the loop is
 edit → repin → export, never a hand-spliced digest. A bump carrying corpus
 bytes for any standard with a machine-written validation report (otdp,
@@ -95,6 +107,121 @@ conventional moves; a FORGOTTEN row is caught mechanically by the pin's
 exactly-once link assert (a stale row left beside the new one is not —
 copy-never-move keeps the old target resolving). With the version moved,
 the pin fails on the copied stale report until the regen runs.
+
+## The dev stage (`-dev`)
+
+A standard may carry at most one dev head: an optional `dev` block on its
+standards-manifest entry naming a version (`<target>-dev`, the target strictly
+greater than the active version), the date the head was opened (the
+machine-readable stale-head age), and a normative path set under
+`standards/<id>/<target>-dev/`. The dev directory is staging, not a version:
+it is created by a copy of the active version (its corpus rows cite the active
+path as `source`), edited in place across any number of changes — each edit
+follows the edit → repin loop, and validate treats dev pins exactly like
+active pins — and it never appears in the exported bundle, the SDK lock, the
+vendored tree, the compatibility matrix, the identity block, or the public
+docs site (the site assembly skips `-dev` directories on the packaging-side
+lexical rule — both the page staging and the corpus copy beside it). The
+SDK never consumes `-dev` bytes: immutability starts at release, and a lock
+pinned at a
+`-dev` version would have to churn its version per edit or carve an exemption
+into the same-version refusal — neither is sanctioned.
+
+The head is train-shared state: one head per standard, carried on the train's
+working branch, owned by no author, named for the target version — no author
+suffix, because authorship already lives in git history and PR review.
+Contributors edit it through the ordinary PR flow; two authors' overlapping
+edits are ordinary MODIFY-vs-MODIFY merges resolved in review. A second
+concurrent head is refused by the one-optional-field shape, not by
+convention. Before opening or editing a head, a contributor re-reads the
+manifest's `dev` block — the machine-readable shared-state token;
+`python -m benchweave.standards versions` lists open heads — and rebases on
+the head-carrying branch.
+
+Head lifecycle. OPEN is a PR adding the block, the directory and its rows;
+the standards-governor lane (mandatory for any `standards/` touch) is the
+gate — there is no separate pre-approval. EDIT is a PR to the head-carrying
+branch. CLOSE is either promotion (below) or abandonment: the standards
+coordinator deletes the directory, its rows and the block through the same
+PR flow; an orphaned head (author unavailable) closes as an abandonment. A
+stale head (open, idle, target still open) is a coordinator ruling, not a
+gate — the block's `opened` date keeps its age machine-readable so the
+governor review sees it on every `standards/` touch, and a clock on
+authoring is exactly the conflation this stage removes. The standards
+coordinator may declare a head a release candidate (the optional boolean
+`candidate` field on the dev block, owner ruling 2026-09-23): the
+declaration is advisory and machine-readable — it changes no enforcement,
+testing runs through the `--corpus` lane regardless, and a release
+candidate as a separate released directory stays rejected.
+
+The dev-proof lane: each standards-tree family script (devices, registry,
+execution, interface) accepts `--corpus <dir>`, which points its census at
+the manifest-declared dev head for that script's standard — dev bytes are
+proven in place, before promotion, through the same checker lane that
+validates releases. The override accepts exactly the declared head
+(anything else refuses), never combines with `--write-report` (the
+machine-written reports are a property of released versions; a dev run is a
+check, not a report), and is read-only for the SDK's lock, vendored tree
+and pointer. Without the flag, every script resolves the manifest-active
+tree exactly as before. Cross-standard reads stay manifest-active
+regardless of the override.
+
+The bump window does not see the head — the collector counts pure-semver
+version directories only, and the active entry's version must be pure semver
+(`standards_entry_version_invalid` on anything else), so the window cannot be
+dodged by suffixing a release directory. Promotion is the bump event, and it
+is a bump in every existing respect: copy the dev directory to the released
+version (its corpus rows cite the dev path as `source` and the pre-dev active
+version's corresponding paths as `lineage` — a dev promotion severs the
+copy-never-move chain the bump flow would otherwise carry: the promoted
+bytes' direct producer is the dev directory, which teardown deletes by
+design, so the predecessor edge is named separately rather than left to git
+history), apply the version sweep,
+delete the dev directory and its rows, remove the `dev` block, repin,
+regenerate the validation report, export and sync — under the change-class
+rules with the batch being everything the head accumulated; the head's
+version names the intended target, the class rule governs the promoted
+version. Immutability starts at release: a version directory with no `-dev`
+suffix is frozen exactly as before.
+
+An emergency patch on a standard with an open head never opens a second
+head. Two sanctioned paths, named by the standards coordinator: strip and
+promote — revert the head's unfinished items out (cheap MODIFY reverts) and
+promote the remainder early under a recorded window exception — or a
+priority claim, where the emergency claims the head and the paused work
+re-lands after promotion.
+
+## Roles and authority
+
+Rulings are recorded artifacts, never comments or habits:
+
+- **Contributor** — any developer; opens and edits heads through PRs, bound
+  by the governor lane and single-reviewer review.
+- **Reviewer** — a single human reviewer other than the author, required for
+  any merge touching corpus bytes or corpus-manifest rows (owner ruling
+  2026-09-23: single reviewer, not an additional second human — until
+  further notice; re-review by 2027-03-23, the rule carrying its own review
+  trigger the same way the bump floor does — and restorable to a
+  second-human requirement by a future owner ruling, the same recorded
+  mechanism that set it). One carve-out: the standards
+  coordinator may be the author and the reviewer of their own corpus-byte
+  merges; non-coordinator contributors always need a human reviewer who is
+  not the author. Self-merge by anyone else remains indefensible for
+  normative bytes; the rule exists before the first multi-author head, not
+  after the first bad merge.
+- **Standards coordinator** — promotes batches (the timing and batching
+  call), rules window exceptions and emergency early-promotions, closes
+  stale and orphaned heads. The owner holds the role as ratified;
+  delegating it is itself a GOVERNANCE amendment, never a comment or a
+  habit.
+
+A window exception or early promotion is written into the promotion PR body
+and carries the standing #97 reopen obligation for contested firings (three
+windows; any contested firing). Floor changes: the coordinator proposes, the
+owner ratifies, in GOVERNANCE. Mechanical gates judge everything judgeable;
+humans decide exactly the timing, batching and exception calls, and those
+decisions live in reviewable records. Nothing here vests authority in an
+agent: the governor lane reviews, it does not rule.
 
 ## Retention
 

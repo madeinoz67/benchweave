@@ -171,12 +171,20 @@ def test_v3_bench_pin_digest_drift_refuses_startup(tmp_path: Path) -> None:
 
 def test_v4_pinned_descriptor_absent_refuses_startup(tmp_path: Path) -> None:
     lattice = _lattice_copy(tmp_path, "v4-no-descriptor")
+    # The refusal names the pinned digest; deriving it from the lattice bytes
+    # (not a hex literal) keeps the match honest across corpus bumps.
+    controller_sha = hashlib.sha256(
+        (lattice / "descriptor-sim-controller.json").read_bytes()
+    ).hexdigest()
     (lattice / "descriptor-sim-controller.json").unlink()
     store = Store.open(tmp_path / "v4.db")
     content = ContentStore(store)
     try:
         with pytest.raises(
-            FileNotFoundError, match=r"bench device controller pins descriptor sha256 c0e503bd"
+            FileNotFoundError,
+            # The refusal text names the digest's first 12 hex chars
+            # (bootstrap.py formats sha[:12]).
+            match=r"bench device controller pins descriptor sha256 " + controller_sha[:12],
         ):
             admit_startup_bench(store, content, lattice, now=NOW)
         _assert_store_untouched(store, content, lattice)

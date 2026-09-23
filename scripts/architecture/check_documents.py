@@ -72,6 +72,13 @@ def walk(value, base):
 documents = {}
 registry = Registry()
 for path in sorted(STANDARDS.rglob("*.json")):
+    if any(part.endswith("-dev") for part in path.relative_to(STANDARDS).parts):
+        # Review row 2: a dev copy shares the active documents' $ids and,
+        # registered after them (sort order), SHADOWS them — an edit on the
+        # head then breaks ACTIVE documents' resolution and the failure list
+        # names released files. The gate validates the released corpus; dev
+        # bytes are proven through the --corpus lane, not here.
+        continue
     try:
         data = json.loads(
             path.read_text(encoding="utf-8"),

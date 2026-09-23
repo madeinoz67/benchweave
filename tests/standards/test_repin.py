@@ -383,3 +383,127 @@ def test_repin_refuses_a_missing_standards_manifest(tmp_path: Path) -> None:
     with pytest.raises(StandardsError, match="standards_manifest_absent"):
         _repin()(root)
     assert _manifest_bytes(root) == raw
+
+
+# --- the -dev stage (the 2026-09-23 devstage design record §4.1) ------------------
+#
+# Dev rows are repin-mutable like active rows (the edit -> repin loop is
+# the accumulation flow); the head's directory is opened by copying the
+# active version and authoring rows that cite the active path as source.
+
+
+def _dev_head_repo(tmp_path: Path, *, with_block: bool = True) -> Path:
+    """A faithful tmp repo with a registry dev head open at 0.2.0-dev.
+
+    The dev-open flow exactly: copy ``registry/0.1.1`` to
+    ``registry/0.2.0-dev``, author one corpus row per machine file citing
+    the active path as ``source`` with current digests, and add the ``dev``
+    block. ``with_block=False`` plants the rows and directory WITHOUT the
+    block — the §4.4 orphan state a botched teardown leaves."""
+    root = _repo(tmp_path)
+    active = "registry/0.1.1"
+    head = "registry/0.2.0-dev"
+    for source in sorted((root / "standards" / active).glob("*.json")) + sorted(
+        (root / "standards" / active / "examples").glob("*.json")
+    ):
+        target = root / "standards" / head / source.relative_to(root / "standards" / active)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, target)
+    document = json.loads(_manifest_bytes(root))
+    for path in sorted(
+        p.relative_to(root / "standards").as_posix()
+        for p in (root / "standards" / head).rglob("*.json")
+    ):
+        document["files"].append(
+            {
+                "path": path,
+                "source": f"{active}/{path.removeprefix(f'{head}/')}",
+                "sha256": hashlib.sha256((root / "standards" / path).read_bytes()).hexdigest(),
+            }
+        )
+    if with_block:
+        governance = json.loads((root / "standards/standards-manifest.json").read_bytes())
+        entry = next(e for e in governance["standards"] if e["id"] == "registry")
+        entry["dev"] = {
+            "version": "0.2.0-dev",
+            "opened": "2026-09-23",
+            "normative": [
+                f"standards/{path}"
+                for path in sorted(
+                    p.relative_to(root / "standards").as_posix()
+                    for p in (root / "standards" / head).rglob("*.json")
+                )
+            ],
+        }
+        (root / "standards/standards-manifest.json").write_text(
+            json.dumps(governance, indent=2) + "\n", encoding="utf-8"
+        )
+    (root / CORPUS_MANIFEST).write_text(
+        json.dumps(document, indent=2) + "\n", encoding="utf-8"
+    )
+    return root
+
+
+def test_repin_mutates_dev_rows(tmp_path: Path) -> None:
+    # The accumulation loop's mechanical half: a dev byte edited on the
+    # head repins exactly its row. Pre-machinery this classifies frozen
+    # (the dev path is in no active normative list) and refuses — which is
+    # the RED the dev-stage extension exists to turn green.
+    root = _dev_head_repo(tmp_path)
+    dev_row = "registry/0.2.0-dev/package-lock.schema.json"
+    _flip(root, dev_row)
+
+    changed = _repin()(root)
+
+    assert changed == [dev_row]
+
+
+def test_dev_rows_without_the_block_stay_frozen(tmp_path: Path) -> None:
+    # §4.4's orphan catch, pinned as a control (it holds by classification,
+    # not by new code): a botched teardown that leaves rows and directory
+    # but drops the block makes the next edit refuse frozen_row_changed
+    # rather than silently repinning unowned bytes.
+    root = _dev_head_repo(tmp_path, with_block=False)
+    raw = _manifest_bytes(root)
+    _flip(root, "registry/0.2.0-dev/package-lock.schema.json")
+    _refused_without_write(root, raw, "frozen_row_changed")
+
+
+# --- the lineage amendment (governor re-check ruling, 2026-09-23) ------------------
+
+
+def test_repin_accepts_a_row_with_lineage(tmp_path: Path) -> None:
+    """The optional string lineage rides the row through repin untouched —
+    digest rewrite only, byte-preserved like source and path."""
+    root = _repo(tmp_path)
+    document = json.loads(_manifest_bytes(root))
+    target = next(r for r in document["files"] if r["path"] == REGENERABLE)
+    target["lineage"] = "standards/registry/0.1.0/examples/package-lock.json"
+    (root / CORPUS_MANIFEST).write_text(
+        json.dumps(document, indent=2) + "\n", encoding="utf-8"
+    )
+    _flip(root, REGENERABLE)
+
+    changed = _repin()(root)
+
+    assert changed == [REGENERABLE]
+    after = json.loads(_manifest_bytes(root))
+    assert (
+        next(r for r in after["files"] if r["path"] == REGENERABLE)["lineage"]
+        == "standards/registry/0.1.0/examples/package-lock.json"
+    )
+
+
+def test_repin_refuses_a_lineage_naming_a_dev_path(tmp_path: Path) -> None:
+    """Lineage names the pre-dev RELEASED edge; the dev edge is what source
+    carries. A -dev lineage is a field confusion, refused with its own
+    prefix."""
+    root = _repo(tmp_path)
+    raw = _manifest_bytes(root)
+    document = json.loads(raw)
+    target = next(r for r in document["files"] if r["path"] == REGENERABLE)
+    target["lineage"] = "standards/registry/0.2.0-dev/examples/package-lock.json"
+    (root / CORPUS_MANIFEST).write_text(
+        json.dumps(document, indent=2) + "\n", encoding="utf-8"
+    )
+    _refused_without_write(root, _manifest_bytes(root), "pin_row_lineage_invalid")

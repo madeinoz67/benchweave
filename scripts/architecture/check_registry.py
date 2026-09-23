@@ -18,9 +18,9 @@ if _HERE not in sys.path:
 import _validation_report  # noqa: E402
 
 # Manifest-derived, resolved once (#102 D2 generalized; the #119 lesson).
-CONTRACT_DIR = (
-    STANDARDS / "registry" / _validation_report.active_standard_version(STANDARDS, "registry")
-).resolve()
+# corpus_directory: the manifest-active tree, or the declared dev head when
+# --corpus names it (the dev-proof lane) — read-only either way.
+CONTRACT_DIR = _validation_report.corpus_directory(STANDARDS, "registry")
 results = []
 
 

@@ -244,3 +244,26 @@ def test_real_tree_post_anchor_sequence_is_clean() -> None:
     entries = collect_bump_entries(ROOT)
     assert window_violations(entries, FLOOR_SECONDS) == ()
     assert check_train_windows(ROOT, FLOOR_SECONDS) == ()
+
+
+def test_dev_directory_addition_is_invisible_to_the_window(tmp_path: Path) -> None:
+    # The -dev stage's arm-D differential (devstage design record §9),
+    # pinned in-suite: the identical history with the change in a dev head
+    # is clean, while the pure-semver version-directory bump inside the
+    # same closed window fires. This pins the zero-collector-changes claim
+    # (§4.5) mechanically — a future _VERSION_PATH edit that starts
+    # counting dev directories would reprice authoring as releasing.
+    repo = _scratch_repo(tmp_path)
+    _commit(repo, T0, ("standards/otdp/0.1.0/x.schema.json", "{}\n"))
+    _commit(repo, "2026-09-23T12:00:00+08:00", ("standards/otdp/0.2.0/x.json", "{}\n"))
+    # The dev head opens 1h after 0.2.0 — inside the closed window:
+    _commit(repo, "2026-09-23T13:00:00+08:00", ("standards/otdp/0.2.1-dev/x.json", "{}\n"))
+    entries = collect_bump_entries(repo)
+    assert [entry.version for entry in entries] == ["0.2.0"], (
+        "a dev-directory addition must not collect as a bump"
+    )
+    check_train_windows(repo, FLOOR_SECONDS)  # clean: the head is invisible
+    # The control half: the same landing as a real version directory fires.
+    _commit(repo, "2026-09-23T13:30:00+08:00", ("standards/otdp/0.2.1/x.json", "{}\n"))
+    with pytest.raises(TrainWindowError, match="train_window_violation: otdp 0.2.0 -> 0.2.1"):
+        check_train_windows(repo, FLOOR_SECONDS)

@@ -21,7 +21,9 @@ import _validation_report  # noqa: E402
 
 INTERFACE_VERSION = _validation_report.active_standard_version(STANDARDS, "interface")
 # Manifest-derived, resolved once (#102 D2 generalized; the #119 lesson).
-CONTRACT_DIR = (STANDARDS / "interface" / INTERFACE_VERSION).resolve()
+# corpus_directory: the manifest-active tree, or the declared dev head when
+# --corpus names it (the dev-proof lane) — read-only either way.
+CONTRACT_DIR = _validation_report.corpus_directory(STANDARDS, "interface")
 schema = json.loads((CONTRACT_DIR / "interface.schema.json").read_text(encoding="utf-8"))
 catalog = json.loads((CONTRACT_DIR / "operation-catalog.json").read_text(encoding="utf-8"))
 api = json.loads((CONTRACT_DIR / "openapi.json").read_text(encoding="utf-8"))

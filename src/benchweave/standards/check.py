@@ -54,11 +54,24 @@ def run_check(root: Path, sdk_root: Path | None = None) -> list[str]:
 
 
 def version_lines(root: Path, sdk_root: Path | None = None) -> list[str]:
-    """Version table: main project, per standard, adapter api, SDK lock, submodule SHA."""
+    """Version table: main project, per standard, adapter api, SDK lock, submodule SHA.
+
+    An open dev head adds one line naming its target and open date — the
+    shared-state glance (devstage record §13.5): the machine-readable token
+    a contributor re-reads before opening or editing a head. A head the
+    coordinator declared a release candidate carries the marker (§13.9).
+    Headless trees render byte-identically to the pre-dev-stage output.
+    """
     sdk = sdk_root if sdk_root is not None else root / "packages" / "sdk"
     lines = [f"benchweave {main_version(root)}"]
     for entry in load_manifest(root).standards:
         lines.append(f"standard {entry.id}@{entry.version} ({entry.status})")
+        if entry.dev is not None:
+            marker = ", release candidate" if entry.dev.candidate else ""
+            lines.append(
+                f"standard {entry.id} dev-head {entry.dev.version} "
+                f"(opened {entry.dev.opened}{marker})"
+            )
     # Reported, not trusted: the declared value is derive-checked at every
     # export/check (manifest.validate_identity); undeclared says so.
     lines.append(f"adapter api {load_identity(root).get('adapter_api', 'undeclared')}")
