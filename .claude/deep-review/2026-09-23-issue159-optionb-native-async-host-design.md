@@ -72,9 +72,10 @@ duration regardless of verb (the fixture's own docstring: with `bounded()` disab
 the adapter's natural duration"). `read`/`write` steps are corpus-expressible **today**
 (`standards/execution/0.1.0/procedure.schema.json` `$defs/step` closes at exactly eight kinds —
 `invoke, read, write, delay, sample, assert, if, repeat`, each `additionalProperties: false`; the
-executor dispatches read/write already) and bridge-supported. Spec-normative slow reads exist: OTDP
-0.2.0 §4's passive receiver "must wait for a new matching frame within the operation deadline", and
-integration-time scalar measurements are ordinary physics. Consequences, stated honestly:
+executor dispatches read/write already) and bridge-supported. Spec-normative slow reads exist: OTDP §4's
+passive receiver "must wait for a new matching frame within the operation deadline" (0.2.2 at line
+68, wording unchanged since 0.2.0), and integration-time scalar measurements are ordinary physics.
+Consequences, stated honestly:
 
 - The X1/X3/X4 exposure activates at **#167's Decision-1 merge** (run-path bridge construction for
   read/write), not at the execution train. The corpus gate holds only the capture *verbs*.
@@ -129,10 +130,12 @@ ground 4's "headroom" clause was the un-fired FIRE arm restated — critique C8)
 3. **Activation and sequencing deny a build today.** No run-path caller exists (enumeration below);
    capture verbs are inexpressible (`$defs/step` closure, verified in full against the schema); and
    the surfaces this would touch are held — #167 (run-engine capture & streaming activation) is
-   paused mid-fix-wave on `host`/`bridge`/`run-engine`, and #147's transport-provider train holds
-   the corpus bump + SDK pointer window. Per F1 the read/write long-dispatch exposure activates at
-   #167's Decision-1 merge regardless — so this ground is a *now* ground (park behind the trains),
-   not a claim that nothing is live.
+   paused mid-fix-wave on `host`/`bridge`/`run-engine`, and #147's transport-provider train landed
+   mid-review (PR #171, OTDP 0.2.2, with the devstage stack as PR #169) — the corpus-bump window is
+   no longer a constraint, the execution procedure schema is unchanged, and no PR stands open
+   against main; the held surface is #167 alone. Per F1 the read/write long-dispatch exposure
+   activates at #167's Decision-1 merge regardless — so this ground is a *now* ground (park behind
+   #167), not a claim that nothing is live.
 
 **Caller enumeration (mechanism-derived — refute F4; the prior "zero production callers" phrasing
 was not regenerable).** `load_otdp_plugin`'s call set is `src/benchweave/registry/otdp_loading.py`
@@ -366,8 +369,9 @@ arrives.
 
 **This increment: proceed, no park.** The deliverable is one file under `.claude/deep-review/` —
 zero files in common with #167's surface (`src/benchweave/interfaces/app.py`,
-`control/coordinator.py`, its tests, two guides) or #147's (standards corpus + `packages/sdk`
-pointer). No standards byte, no SDK touch, no source touch.
+`control/coordinator.py`, its tests, two guides). #147's corpus + SDK-pointer train landed
+mid-review (PR #171; devstage as PR #169) and shares nothing either — no PR stands open against
+main at this record's landing. No standards byte, no SDK touch, no source touch.
 
 **Follow-on instrument: parks behind #167.** It extends the sequential-model measurement rig
 (`tests/integration/test_capture_sequential_model.py` or a sibling) — the same measurement surface
