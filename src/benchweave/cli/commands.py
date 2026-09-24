@@ -1,13 +1,17 @@
 """The ``benchweave`` Click command tree (Task 9: CLI foundation).
 
-Ten commands — ``setup status demo report retention backup restore verify serve
-evidence`` — so ``--help`` is already the full operator surface. ``status``
+Eleven commands — ``setup status demo report retention dispose backup restore
+verify serve evidence`` — so ``--help`` is already the full operator surface.
+``status``
 (Task 9), the four at-rest commands (Task 10), ``demo`` (Task 11: live-gateway
 mode or the labelled ephemeral fresh-install simulation), ``report`` (Task 13:
 the store-derived report model with markdown/JSON emitters, at-rest only),
 ``retention`` (issue #43 slice 3: the read-only disposal/growth projection
 over the store at rest — writes nothing back and never migrates the store;
-schema mismatches refuse typed) and
+schema mismatches refuse typed),
+``dispose`` (issue #194: the audited delete-tier disposition — dry run by
+default, ``--execute`` commits the whole invocation as one transaction
+carrying its complete audit record) and
 ``serve`` (Task 14: env → ``app_entry.build`` → foreground uvicorn, with the
 production secret posture enforced inside ``build``) are live. The
 ``evidence`` group (WP09 Tasks 7–11) generates the retained evidence tree —
@@ -551,6 +555,105 @@ def retention(
         _write_out(out, retention_lib.render_markdown(model))
         return
     click.echo(retention_lib.render_markdown(model))
+
+
+@cli.command()
+@click.option(
+    "--data-dir",
+    "data_dir",
+    type=click.Path(path_type=Path),
+    required=True,
+    envvar="BENCHWEAVE_DATA_DIR",
+    help=_DATA_DIR_HELP,
+)
+@click.option(
+    "--bench",
+    "bench_id",
+    default=None,
+    help="Restrict the disposition to one bench id (default: every bench).",
+)
+@click.option(
+    "--policy",
+    "policy",
+    type=click.Path(path_type=Path),
+    default=None,
+    help=(
+        "Retention policy file (required: disposition never runs ungoverned). "
+        "Default: <data-dir>/retention-policy.json."
+    ),
+)
+@click.option(
+    "--execute",
+    "execute",
+    is_flag=True,
+    help=(
+        "Actually dispose. Default: dry run — the plan is projected and "
+        "NOTHING is written; --execute commits the whole invocation (audit "
+        "rows, guarded deletions, artifact GC) as one transaction."
+    ),
+)
+@click.option(
+    "--out",
+    "out",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Write the disposition report to FILE (markdown; JSON with --json)"
+    " instead of stdout.",
+)
+@click.option(
+    "--json",
+    "json_output",
+    is_flag=True,
+    help="Emit the stable machine JSON contract instead of text.",
+)
+def dispose(
+    data_dir: Path,
+    bench_id: str | None,
+    policy: Path | None,
+    execute: bool,
+    out: Path | None,
+    json_output: bool,
+) -> None:
+    """Dispose overdue delete-tier rows through the audit trail (at-rest).
+
+    Dry run by default (--execute to act). Review- and archive-tier rows
+    are blocked, never deleted; a schema mismatch refuses typed (the
+    store is never migrated)."""
+    _set_json(json_output)
+    from benchweave.cli import dispose as dispose_lib
+    from benchweave.cli.atrest import AtRestError
+    from benchweave.state.dispositions import StoreChangedUnderPlan
+
+    try:
+        model = dispose_lib.dispose_from_data_dir(
+            data_dir,
+            bench_id=bench_id,
+            policy_path=policy,
+            now=dispose_lib.now_iso(),
+            execute=execute,
+        )
+    except (
+        AtRestError,
+        StoreHeldError,
+        StoreChangedUnderPlan,
+        ValueError,
+        TypeError,
+        OSError,
+        OverflowError,
+    ) as error:
+        # The retention command's catch family, plus the guarded-delete
+        # refusal: every failure is a handled message, never a traceback.
+        raise click.ClickException(str(error)) from error
+    if json_output:
+        if out is not None:
+            _write_out(out, dispose_lib.render_json(model))
+            return
+        emit(model)
+        return
+    if out is not None:
+        _write_out(out, dispose_lib.render_markdown(model))
+        return
+    click.echo(dispose_lib.render_markdown(model))
 
 
 def _write_out(out: Path, text: str) -> None:
