@@ -26,10 +26,17 @@ detection bound for yielding adapters; blocking SQLite cannot be
 interrupted by it, so the whole capture dispatch runs inside a
 deadline-aware busy-timeout clamp (issue #176 row B): the store's
 ``busy_timeout`` is set, for the dispatch only, to
-``min(open busy_timeout, remaining dispatch deadline)`` and restored on
-every exit path — a busy-wait can never run past the step budget the
-executor handed down. The abort epilogue runs under its OWN bounded
-floor (``min(CAPTURE_EPILOGUE_FLOOR_MS, the open busy_timeout)``) so a
+``min(open busy_timeout, REMAINING DEADLINE AT BRACKET ENTRY)`` and
+restored on every exit path. ENTRY-TIME-REMAINING semantics, stated
+exactly: the clamp bounds the wait to the remaining budget computed at
+bracket entry; pre-BEGIN time inside the bracket (the gate reserve, the
+envelope deepcopy, the adapter execute — the common mid-capture shape
+consumes budget the clamp never sees) widens the possible busy-wait
+overshoot past the step deadline by that amount. Not a regression: the
+static open-time default it replaced was strictly worse. Per-BEGIN
+re-derivation is deferred (the design record's final-fold deferral
+row). The abort epilogue runs under its OWN bounded floor
+(``min(CAPTURE_EPILOGUE_FLOOR_MS, the open busy_timeout)``) so a
 clamped-out capture still reclaims its staging rows; ``sweep_open``,
 ``plugin_close`` and the startup reclaim stay unclamped. A clamped-out
 BEGIN fails as the same classified RESOURCE_LIMIT (the writer-stamp

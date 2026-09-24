@@ -57,6 +57,23 @@ def test_store_open_refuses_a_negative_commissioning(tmp_path: Path) -> None:
         Store.open(tmp_path / "negative.db", busy_timeout_ms=-1)
 
 
+def test_store_open_refuses_above_the_sqlite_c_int_bound(tmp_path: Path) -> None:
+    """Above 2^31−1 SQLite silently converts the pragma to 0 — the busy
+    handler DISABLED while ``open_busy_timeout_ms`` would keep reporting
+    the commissioned number. The open-time guard refuses that lie
+    (lane-1 F2, final fold): the property and the pragma can never
+    disagree at open."""
+    with pytest.raises(ValueError, match="2 147 483 647|2147483647|C-int"):
+        Store.open(tmp_path / "too-big.db", busy_timeout_ms=2**31)
+    # The bound itself commissions cleanly, and the readback agrees.
+    store = Store.open(tmp_path / "max.db", busy_timeout_ms=2**31 - 1)
+    try:
+        live = int(store.connection.execute("PRAGMA busy_timeout").fetchone()[0])
+        assert live == store.open_busy_timeout_ms == 2**31 - 1
+    finally:
+        store.close()
+
+
 def test_window_sets_and_restores_the_open_default(tmp_path: Path) -> None:
     """Entry sets the window value; exit restores the open default."""
     store = Store.open(tmp_path / "window.db", busy_timeout_ms=300)

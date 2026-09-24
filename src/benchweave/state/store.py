@@ -27,6 +27,12 @@ from benchweave.state.migrations import MIGRATIONS
 #: this same value, so one commissioning moves both row-B faces.
 DEFAULT_BUSY_TIMEOUT_MS = 5000
 
+#: The commissioning knob's upper bound: SQLite stores the pragma as a
+#: C int, and a value above 2^31−1 silently converts to 0 — the busy
+#: handler disabled exactly when the operator asked for the most
+#: patience. Refused at open (lane-1 F2, final fold).
+_BUSY_TIMEOUT_MS_MAX = 2**31 - 1
+
 
 class Duplicate(Exception):
     """Idempotent replay: same key, same body, already accepted."""
@@ -111,9 +117,19 @@ class Store:
 
         ``busy_timeout_ms`` is the commissioning knob (row B / A02): the
         stock sqlite3 default by default, a per-bench value from
-        qualification evidence when the bench demands one."""
+        qualification evidence when the bench demands one. The upper
+        bound is the sqlite C-int range: above 2^31−1 SQLite silently
+        converts the pragma to 0 — the busy handler DISABLED while this
+        class's property would keep reporting the commissioned number —
+        the readback-vs-pragma lie the guard exists to prevent."""
         if busy_timeout_ms < 0:
             raise ValueError(f"busy_timeout_ms must be >= 0, got {busy_timeout_ms}")
+        if busy_timeout_ms > _BUSY_TIMEOUT_MS_MAX:
+            raise ValueError(
+                f"busy_timeout_ms must be <= {_BUSY_TIMEOUT_MS_MAX} (the sqlite "
+                "C-int bound; above it SQLite disables the busy handler while the "
+                f"property reports the commissioned value), got {busy_timeout_ms}"
+            )
         # ``check_same_thread=False`` is the ASGI-app posture (WP07 Task 8):
         # the gateway serves from the event-loop thread while the store was
         # opened on the caller's thread; usage stays serialised by design

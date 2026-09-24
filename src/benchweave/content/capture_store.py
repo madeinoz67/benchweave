@@ -109,12 +109,18 @@ class CaptureStagingStore:
         injected monotonic (STO-1 unamended — the store reads no clock
         and only sets what it is handed). F3's pre-committed reading: the
         dispatch deadline is authoritative for ``remaining_deadline_ms`` —
-        it already carries ``min(now + timeout_ms, body_deadline)`` — so
-        every clamped busy-wait stays inside the step budget the executor
-        handed down, shortened only, never extended. When the deadline is
-        exhausted the clamp is 0: the busy handler waits not at all, and a
-        contended BEGIN fails immediately as the same classified
-        RESOURCE_LIMIT.
+        it already carries ``min(now + timeout_ms, body_deadline)``.
+        ENTRY-TIME-REMAINING semantics, stated exactly: the clamp bounds
+        the busy-wait to the remaining budget AS OF BRACKET ENTRY;
+        pre-BEGIN time inside the bracket (gate reserve, envelope
+        deepcopy, the adapter execute) consumes budget the clamp never
+        sees, so a busy-wait can END past the step deadline by that
+        consumed amount — shortened only relative to the open-time
+        default, never re-derived mid-bracket. Per-BEGIN re-derivation is
+        deferred (the design record's final-fold deferral row). When the
+        deadline is already exhausted at entry the clamp is 0: the busy
+        handler waits not at all, and a contended BEGIN fails immediately
+        as the same classified RESOURCE_LIMIT.
         """
         remaining_ms = max(0, (deadline_ns - now_ns) // 1_000_000)
         clamp_ms = min(self._store.open_busy_timeout_ms, remaining_ms)

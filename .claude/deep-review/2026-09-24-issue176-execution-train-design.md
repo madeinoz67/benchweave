@@ -599,9 +599,15 @@ touch head bytes)**
 - **F3-reading — the two clamps, pre-committed.** When both live, the **dispatch-deadline
   clamp is authoritative for `remaining_deadline_ms`**: the value is `deadline_ns − now`
   for the deadline the dispatch was INVOKED with — `min(now + timeout_ms, body_deadline)` —
-  which already carries the body deadline's min, so every clamped busy-wait stays inside
-  the step budget the executor handed down (the six-point rule "shortened only, never
-  extended" extended to the SQLite wait). The body deadline remains the outer bound the
+  which already carries the body deadline's min, so a clamped busy-wait is bounded by the
+  remaining budget AS OF BRACKET ENTRY (the six-point rule "shortened only, never
+  extended" extended to the SQLite wait — **amended 2026-09-25, final fold, lane-1 F1**:
+  entry-time-remaining semantics; pre-BEGIN time inside the bracket — gate reserve,
+  deepcopy, the adapter execute — consumes budget the clamp never sees, so a busy-wait
+  can END past the step deadline by that consumed amount; lane 1 measured a busy-wait
+  ending 1115 ms past a 1500 ms budget with a 1000 ms pre-BEGIN adapter idle. Not a
+  regression: the static open-time default was strictly worse. Per-BEGIN re-derivation
+  is deferred — row 26). The body deadline remains the outer bound the
   executor computed; the clamp never re-derives it. **M-B′ must report the class split per
   trial** — how much of each trial's dispatch wall-stretch is busy-wait bound vs
   deadline-clamp — so a class regression is attributable to a clamp, not to "capture".
@@ -654,6 +660,16 @@ numbers:**
   5.5 s hold — the acceptance `BEGIN` waits the same 5 s default and refuses first);
   the clamp's effect is proven by the per-trial DECOMPOSITION (append bound =
   deadline-clamp; epilogue = floor) instead.
+
+**Final-fold disclosures (2026-09-25, lane 2):** (a) RFC-3339 stamps with a lowercase
+`z` suffix read `stale`, not fresh — Python 3.13's `datetime.fromisoformat` refuses the
+lowercase designator, so the stamp classifies as unparseable (unknown timing cannot
+satisfy a finite bound); the direction is conservative only — a lowercase-z stamp can
+never launder stale evidence fresh. (b) `scripts/measure_mb_prime.py`'s
+`BUSY_TIMEOUT_MS = 5000` is a THIRD spelling of the busy-timeout knob (beside
+`state/store.py`'s `DEFAULT_BUSY_TIMEOUT_MS` and the harness's own commissioned store) —
+self-consistent today; the coupling is the residual, and a re-commissioned knob moves
+the script constant in the same change.
 
 **Row D**
 
@@ -714,7 +730,7 @@ numbers:**
 | **The designed-but-unbuilt gateway code drifts before roll-up** (§1b landed ahead of it via the runtime increments) | The roll-up increment walks §1b verbatim; any divergence between the record and the landing code is review-flagged (the record is the design of record for those surfaces); the #46/#6-lineage pattern of record-first development is the precedent. |
 | **MINOR vs PATCH contested at the event (the roll-up)** | Bytes identical either way; the governor rules with the recorded class argument (new capability + new consumer obligation; §1's "reviewed language extension" is not errata); a PATCH ruling forces a re-copy from the same dev source — mechanical. |
 | **The projection extension reads as dialect creep** (CON-10 was hard-won — roll-up risk) | The extension carries only what semantics must read at admission (formats, limits, permission flag) — the same shape as actions+issued; the raw document remains the authority and the grant seam still re-derives it by digest. |
-| **The clamp masks legitimate long waits** | The clamp only shortens waits already doomed to exceed the step deadline (six-point point 4); commissioned `timeout_ms` (A02) remains the operator's lever and the clamp honors it via `min(…, remaining)`. |
+| **The clamp masks legitimate long waits** | The clamp bounds each busy-wait by the remaining budget at bracket entry — shortened relative to the static open-time default, never re-derived mid-bracket (**amended 2026-09-25 final fold, entry-time semantics**: pre-BEGIN time inside the bracket widens the possible overshoot past the step deadline by that amount; per-BEGIN re-derivation deferred, row 26); commissioned `timeout_ms` (A02) remains the operator's lever and the clamp honors it via `min(…, remaining at entry)`. |
 | **Row D rebuild churn** (many digest moves obscure the real diff) | The builder is the only writer (obligation 5); the reviewer reads the plugin + descriptor diffs and treats the regenerated pins as mechanical; D-R3 pins lockstep. |
 | **D-R1 is wall-clock sensitive under CPU load** | 1 of 27 load runs landed `outcome_unknown` honestly (no `signal_invalid`, no subscribe refusal; the §5 mapping minted at coordinator.py:107–108 / documented at executor.py:49) — disposition: accepted flake, disclosed in the test docstring; the N×-under-load CI lane is deferred (deferral table, trigger: a second under-load D-R1 flake). |
 | **Row G refuses a real pretty-printed registry** | Disclosed ecosystem constraint with a one-line publisher fix, named in the guide; the alternative (dual digest disciplines) is the F4 bug itself. Corpus promotion is a deferral row. |
@@ -751,6 +767,7 @@ numbers:**
 | 23 |critic-D3: durable record for subscribe-refusal | This record (critic wave D) | The next `stream_services` touch |
 | 24 |critic-D4: adapter refuses duplicate `subscription_id` | This record (critic wave D) | The next adapter touch |
 | 25 |Gap-capable streaming fixture (the committed fixture is pull-paced and structurally lossless; `gap` unproducible — disclosure folded into §Decision 3) | This record §Decision 3 (critic wave D) | The first real instrument requiring gap semantics |
+| 26 |**Per-write clamp re-derivation** — the bridge re-derives `remaining_deadline_ms` immediately before each contended BEGIN (bridge-side per-BEGIN fresh `now_ns`; the store stays clockless by STO-1), instead of the entry-time computation the bracket carries today | This record (final fold, lane-1 F1) | A commissioned envelope where pre-BEGIN time is material (a busy-wait measured ending materially past its step budget in operation), or the promotion re-measure arm — whichever fires first |
 
 (#167's rows C, E, F stay closed in that record's table — none is this train's scope.)
 

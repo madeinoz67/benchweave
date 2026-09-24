@@ -2448,12 +2448,15 @@ class _MidCaptureHolder:
 
 class _GateWaitAdapter(Adapter):
     """Append #1 lands; the adapter then waits for the armed holder before
-    append #2 contends — deterministic mid-capture ordering."""
+    append #2 contends — deterministic mid-capture ordering. ``idle_s``
+    is pre-BEGIN work inside the bracket (the entry-time clamp never sees
+    it) — the lane-1 F1 repro lever."""
 
-    def __init__(self, first_landed: Any, proceed: Any) -> None:
+    def __init__(self, first_landed: Any, proceed: Any, idle_s: float = 0.0) -> None:
         super().__init__()
         self.first_landed = first_landed
         self.proceed = proceed
+        self.idle_s = idle_s
         self.append_started_at: float | None = None
         self.append_failed_at: float | None = None
 
@@ -2467,11 +2470,12 @@ class _GateWaitAdapter(Adapter):
         assert self.proceed.wait(10), "holder never armed"
         import time
 
+        if self.idle_s:
+            await asyncio.sleep(self.idle_s)
         self.append_started_at = time.monotonic()
         try:
             await self.services.artifact_append(capture_id, b"\x01" * 8, context)
         except sqlite3.OperationalError:
-            self.append_failed_at = time.monotonic()
             self.append_failed_at = time.monotonic()
             raise
         raise AssertionError("append #2 should have contended and failed")
@@ -2626,6 +2630,58 @@ def test_row_b_both_clamp_orderings_classify_one_pair(
             # inside the 3000 ms deadline — the cap that made it win.
             assert 200 <= append_wait_ms <= 500, append_wait_ms
             assert append_wait_ms < deadline_ms
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+def test_row_b_clamp_is_entry_time_remaining_disclosed_overshoot(
+    tmp_path: Path,
+) -> None:
+    """Lane-1 F1's disclosed bound, pinned (final fold): the clamp is
+    computed at bracket ENTRY, so pre-BEGIN time inside the bracket —
+    here the adapter's 1 s idle before the contended append — consumes
+    budget the clamp never sees, and the contended busy-wait can END
+    past the step budget by that consumed amount. The busy-wait ITSELF
+    stays at the entry-time remaining (shortened only relative to the
+    open default); the overshoot is the disclosed residual, per-BEGIN
+    re-derivation deferred (the record's row 26). The old
+    'a busy-wait can never run past the step budget' claim is dead."""
+    harness = CaptureHarness(tmp_path, clock=time.monotonic)
+    try:
+        holder = _MidCaptureHolder(harness.db_path, hold_s=4.0)
+        first_landed = threading.Event()
+        proceed = threading.Event()
+        adapter = _GateWaitAdapter(first_landed, proceed, idle_s=1.0)
+        plugin, worker, outcome = _row_b_dispatch(
+            harness, adapter, deadline_ms=1500
+        )
+        holder.arm()
+        proceed.set()
+        worker.join(30)
+        assert not worker.is_alive(), "dispatch never returned"
+        result = outcome["result"]
+        assert result.error is not None
+        assert result.error.code is ErrorCode.RESOURCE_LIMIT
+        assert result.error.dispatch_state is DispatchState.DISPATCHED
+
+        dispatch_start = outcome["start"]
+        assert adapter.append_started_at is not None
+        assert adapter.append_failed_at is not None
+        pre_begin_ms = (adapter.append_started_at - dispatch_start) * 1000
+        fail_delta_ms = (adapter.append_failed_at - dispatch_start) * 1000
+        busy_wait_ms = (
+            adapter.append_failed_at - adapter.append_started_at
+        ) * 1000
+        # The pre-BEGIN idle really consumed bracket budget.
+        assert 900 <= pre_begin_ms <= 1400, pre_begin_ms
+        # The disclosed overshoot EXISTS: the busy-wait ends past the
+        # step budget — the corrected claim, not the dead one.
+        assert fail_delta_ms > 1500, fail_delta_ms
+        # ... by (approximately) the consumed amount, not unboundedly.
+        assert fail_delta_ms <= 1500 + pre_begin_ms + 300, fail_delta_ms
+        # The busy-wait itself stayed at the entry-time remaining.
+        assert 1300 <= busy_wait_ms <= 1700, busy_wait_ms
         plugin.plugin_close()
     finally:
         harness.close()

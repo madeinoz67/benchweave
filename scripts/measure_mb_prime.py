@@ -53,6 +53,9 @@ from benchweave.state.store import Store  # noqa: E402
 
 TRIALS = 5
 STEP_TIMEOUT_MS = 2000
+# A third spelling of the busy-timeout knob (the record's final-fold
+# disclosure (b)): must move in lockstep with any re-commissioned
+# Store.open(busy_timeout_ms=...) value.
 BUSY_TIMEOUT_MS = 5000
 HOLD_S = 3.5
 POLL_S = 0.002
