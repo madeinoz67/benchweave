@@ -271,14 +271,23 @@ def _covered(store: Store, bench_id: str | None) -> set[str] | None:
     }
 
 
-def _in_scope(context: str | None, covered: set[str] | None) -> bool:
-    """The report scope rule: a run-prefixed context is in scope iff its
-    run is covered; unattributed contexts never silently vanish."""
+def _in_scope(
+    context: str | None,
+    covered: set[str] | None,
+    run_states: dict[str, dict[str, Any]],
+) -> bool:
+    """The report scope rule (issue #184 finding 17): a run-prefixed
+    context is in scope iff its run is covered by the bench filter OR the
+    key is unattributed (its run has NO ``run_states`` row at all — it was
+    never mapped to a bench, exactly like a non-run key). Unattributed
+    contexts never silently vanish; only runs that EXIST on another bench
+    filter out."""
     if covered is None:
         return True
     if not isinstance(context, str) or not context.startswith(_RUN_CONTEXT_PREFIX):
         return True
-    return context.removeprefix(_RUN_CONTEXT_PREFIX) in covered
+    run = context.removeprefix(_RUN_CONTEXT_PREFIX)
+    return run in covered or run not in run_states
 
 
 def _disposal_row(
@@ -408,7 +417,7 @@ def build_retention_report(
         " FROM capture_staging WHERE state = ? ORDER BY updated_at, capture_id",
         (_FINALISED,),
     ):
-        if not _in_scope(context, covered):
+        if not _in_scope(context, covered, run_states):
             continue
         data_class = (
             f"capture:{fmt}"
@@ -443,7 +452,7 @@ def build_retention_report(
         "SELECT evidence_id, kind, content_ref_json, artifact_id, context_key, stored_at"
         " FROM evidence ORDER BY stored_at, evidence_id"
     ):
-        if not _in_scope(context, covered):
+        if not _in_scope(context, covered, run_states):
             continue
         data_class = f"evidence:{kind}" if isinstance(kind, str) else "evidence:unknown"
         rule_after = (
@@ -486,6 +495,27 @@ def build_retention_report(
             f"{non_finalised} non-finalised capture staging row(s) present — not "
             "governed; reclaimed by the next startup sweep"
         )
+    if bench_id is not None:
+        # issue #184 finding 17: disclose the unattributed rowless keys the
+        # bench filter keeps (they survive by the never-vanish rule)
+        rowless = {
+            key
+            for (key,) in store.connection.execute(
+                "SELECT DISTINCT context_key FROM capture_staging"
+                " WHERE context_key IS NOT NULL"
+                " UNION SELECT DISTINCT context_key FROM evidence"
+                " WHERE context_key IS NOT NULL"
+            )
+            if isinstance(key, str)
+            and key.startswith(_RUN_CONTEXT_PREFIX)
+            and key.removeprefix(_RUN_CONTEXT_PREFIX) not in run_states
+        }
+        if rowless:
+            disclosures.append(
+                f"{len(rowless)} run-prefixed context key(s) map to no run row — "
+                "reported as unattributed under the bench filter (never "
+                "silently dropped)"
+            )
 
     stored_total = int(
         store.connection.execute(
@@ -512,7 +542,7 @@ def build_retention_report(
         "SELECT content_ref_json, artifact_id, context_key, stored_at FROM evidence"
         " WHERE kind = 'event_log' ORDER BY stored_at, evidence_id"
     ):
-        if not _in_scope(context, covered):
+        if not _in_scope(context, covered, run_states):
             continue
         # finding 10: corrupt refs are COUNTED, never silently dropped
         ref: Any
@@ -575,7 +605,7 @@ def build_retention_report(
         " FROM capture_staging WHERE state = ? ORDER BY updated_at, capture_id",
         (_FINALISED,),
     ):
-        if not _in_scope(context, covered):
+        if not _in_scope(context, covered, run_states):
             continue
         lane = captures_lane.setdefault(
             str(context),
@@ -719,7 +749,7 @@ def build_retention_report(
     from benchweave.interfaces.operations import LIVE_RUN_STATES
 
     for key in wedge_keys:
-        if not _in_scope(key, covered):
+        if not _in_scope(key, covered, run_states):
             continue
         used = writer.used_bytes(key)
         measured = lane_rates.get(key)  # a measured rate row, or None

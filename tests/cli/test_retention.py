@@ -1464,3 +1464,34 @@ def test_fw3_governed_row_refuses_typed_on_domain_overflow(tmp_path: Path) -> No
     }), encoding="utf-8")
     with pytest.raises(ValueError, match=r"retention_policy:"):
         _model(data_dir, policy_path=pol, now=NOW)
+
+
+def test_fw17_rowless_run_prefixed_keys_survive_bench_filtering(tmp_path: Path) -> None:
+    """Finding 17 (lane conflict, settled): a run-prefixed context key whose
+    run has NO run_states row is UNATTRIBUTED — it must survive --bench
+    filtering exactly like any unattributed key (lane 1's never-silently-
+    vanish claim wins), disclosed by count. The old scope rule dropped it."""
+    data_dir = _seed(tmp_path)
+    store, content = _open(data_dir)
+    try:
+        art = content.put_artifact(b'{"orphan": 1}', T0)
+        content.put_evidence(
+            "dataset",
+            {"id": "orphan", "version": "1",
+             "sha256": hashlib.sha256(b'{"orphan": 1}').hexdigest()},
+            art, "run:run-zz", T0)  # no run_states row for run-zz
+    finally:
+        store.close()
+    unscoped = _model(data_dir, now=NOW)
+    scoped = _model(data_dir, now=NOW, bench_id=BENCH)
+    orphan_unscoped = [r for r in unscoped["rows"] if r["context_key"] == "run:run-zz"]
+    orphan_scoped = [r for r in scoped["rows"] if r["context_key"] == "run:run-zz"]
+    assert orphan_unscoped, "rowless key present unscoped"
+    assert orphan_scoped, "unattributed keys never silently vanish under --bench"
+    assert all(r["bench"] is None for r in orphan_scoped)  # never a fabricated bench
+    assert any(
+        "run-prefixed" in d and "no run" in d for d in scoped["disclosures"]
+    ), scoped["disclosures"]
+    # a run that EXISTS on another bench still filters out (true scope)
+    gone = [r for r in scoped["rows"] if r["context_key"] == "run:run-b"]
+    assert not gone
