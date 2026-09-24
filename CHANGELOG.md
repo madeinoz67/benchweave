@@ -177,6 +177,7 @@ All notable changes to this project will be documented in this file.
 - Spool the pinned provider contract + thread settings/now_wall
 - The write-gate exempts branch-new files its message promises
 - Advance SDK pointer — notes preservation (#170) + paired prose corrections
+- Sdk_compatibility mirror = 0.2.0 with the certified pointer (#187)
 
 ### Documentation
 
@@ -688,6 +689,7 @@ All notable changes to this project will be documented in this file.
 - The documents-gate dev-head arm plants both roots (row 2 fixup)
 - A -dev source segment is a historical terminal in the dir guard (review row 3)
 - The descriptor dialect triangle — red on the reverted stamp
+- Scope the SDK-stillness arm to head commits (#187 rider)
 
 ### Build
 
