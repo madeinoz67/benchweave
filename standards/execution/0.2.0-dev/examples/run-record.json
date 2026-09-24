@@ -4,7 +4,7 @@
   "binding": {
     "id": "synthetic-request",
     "version": "0.1.0",
-    "sha256": "ceb39700677cc611129bbaaf7478881eac399f7102c8bb277089efd8c157570a"
+    "sha256": "61625667fc6cb5e8e455a8c251bf4c9b0ac7f955611b340f4f46fccd07bac0d8"
   },
   "principal_id": "synthetic-user",
   "started_at": "2026-09-09T00:00:00Z",

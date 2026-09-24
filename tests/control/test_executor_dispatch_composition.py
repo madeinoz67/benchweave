@@ -41,6 +41,12 @@ from _harness import ROOT, readmit_mutated
 from benchweave.control.clocking import TestClock
 from benchweave.control.coordinator import RunCoordinator
 from benchweave.host.plugin import DevicePlugin
+from benchweave.host.types import (
+    DispatchState,
+    ErrorCode,
+    OperationResult,
+    OperationVerb,
+)
 from benchweave.state.store import Store
 
 PLUGINS_ROOT = ROOT / "plugins"
@@ -218,3 +224,144 @@ def test_post_dispatch_device_refusal_is_outcome_unknown(tmp_path: Path) -> None
     event = _event_for(events, "probe-refused")
     assert event["status"] == "error"
     assert event["error_code"] == "DEVICE_REJECTED"
+
+
+# --- F2: the body deadline's own TIMEOUT at dispatch -----------------------------
+
+
+class _DeadlineCrossing:
+    """PSU wrapper crossing the BODY deadline inside dispatch.
+
+    Emulates the bridge's entry reject faithfully: the executor's pre-step
+    check saw ``now < body_deadline``; between that check and this call's
+    own deadline evaluation the clock crosses both, so the dispatch refuses
+    TIMEOUT/not_dispatched — the exact shape the bridge produces for a
+    deadline that expired before anything left the host.
+    """
+
+    def __init__(self, inner: DevicePlugin, clock: TestClock) -> None:
+        self._inner = inner
+        self._clock = clock
+
+    @property
+    def simulation(self) -> Any:
+        return self._inner.simulation
+
+    def plugin_open(self, services: Any) -> None:
+        self._inner.plugin_open(services)
+
+    def plugin_close(self) -> None:
+        self._inner.plugin_close()
+
+    def dispatch(self, request: Any, *, deadline_ns: int) -> Any:
+        if request.verb is OperationVerb.INVOKE and str(
+            request.arguments.get("action_id", "")
+        ).startswith("otdp.dc_psu.configure"):
+            self._clock.advance(9_000_000_000)  # body budget is 8000 ms
+            if self._clock.now_ns() >= deadline_ns:
+                return OperationResult.failure(
+                    request.operation_id,
+                    request.verb,
+                    code=ErrorCode.TIMEOUT,
+                    message="Operation deadline expired",
+                    dispatch_state=DispatchState.NOT_DISPATCHED,
+                )
+        return self._inner.dispatch(request, deadline_ns=deadline_ns)
+
+
+def test_body_deadline_crossed_before_dispatch_ends_timed_out(tmp_path: Path) -> None:
+    """F2: TIMEOUT/not_dispatched AT THE BODY DEADLINE is the body's own
+    expiry — the body ends ``timed_out`` with a ``body_deadline_exceeded:``
+    reason, never ``execution_error`` (which would misreport the bench's
+    spent budget as a step failure)."""
+    clock = TestClock()
+    plugins = _plugins(clock)
+    plugins["psu"] = _DeadlineCrossing(plugins["psu"], clock)
+
+    def mutate(graph: dict[str, Any]) -> None:
+        graph["procedure"]["steps"] = [dict(_CONFIGURE)]
+
+    docs = readmit_mutated(tmp_path, mutate)
+    store = Store.open(tmp_path / "state-f2.db")
+    try:
+        coordinator = RunCoordinator(store, plugins, clock, clock, docs)
+        record = coordinator.start_run("run-f2-body-deadline", PRINCIPAL)
+        events = store.read_events("run:run-f2-body-deadline")
+    finally:
+        store.close()
+    assert record["body_outcome"] == "timed_out", record["reasons"]
+    assert record["outcome"] == "timed_out"
+    assert record["safe_state"] == "verified"
+    assert any(
+        reason.startswith("body_deadline_exceeded:") for reason in record["reasons"]
+    ), record["reasons"]
+    event = _event_for(events, "configure")
+    assert event["error_code"] == "TIMEOUT"
+    assert event["dispatch_state"] == "not_dispatched"
+
+
+# --- F4/F9: issued-id invalidation records are shaped -----------------------------
+
+
+def test_invalidation_outcome_classifies_the_closed_reason_vocabulary() -> None:
+    """F4/F9 record shape (unit): an invalidated issued id carries a
+    reason CLOSED to the five-value vocabulary and the operation's
+    dispatch state. The classification table is pinned value by value;
+    ``UNRESOLVED_REFERENCE`` — reachable when a later ``$stg_ref`` fails
+    after an earlier ``$stg_issue`` mint — classifies as
+    ``gate_refused``: a pre-dispatch gate refused the occurrence, nothing
+    left the host."""
+    from benchweave.control.executor import _invalidation_outcome
+
+    def _failure(code: Any, state: Any) -> Any:
+        return OperationResult.failure(
+            "op-1", OperationVerb.INVOKE, code=code, message="m", dispatch_state=state
+        )
+
+    cases = [
+        ({"error_code": "POLICY_DENIED"}, None, "policy_denied", "not_dispatched"),
+        (
+            {"error_code": "UNRESOLVED_REFERENCE"},
+            None,
+            "gate_refused",
+            "not_dispatched",
+        ),
+        (
+            {"error_code": "TIMEOUT"},
+            _failure(ErrorCode.TIMEOUT, DispatchState.NOT_DISPATCHED),
+            "timed_out",
+            "not_dispatched",
+        ),
+        (
+            {"error_code": "TIMEOUT"},
+            _failure(ErrorCode.TIMEOUT, DispatchState.UNKNOWN),
+            "timed_out",
+            "unknown",
+        ),
+        (
+            {"error_code": "CANCELLED"},
+            _failure(ErrorCode.CANCELLED, DispatchState.NOT_DISPATCHED),
+            "cancelled",
+            "not_dispatched",
+        ),
+        (
+            {"error_code": "DEVICE_REJECTED"},
+            _failure(ErrorCode.DEVICE_REJECTED, DispatchState.DISPATCHED),
+            "dispatch_failed",
+            "dispatched",
+        ),
+        (
+            {"error_code": "DEVICE_REJECTED"},
+            _failure(ErrorCode.DEVICE_REJECTED, DispatchState.UNKNOWN),
+            "dispatch_failed",
+            "unknown",
+        ),
+        (
+            {"error_code": "INVALID_ARGUMENT"},
+            _failure(ErrorCode.INVALID_ARGUMENT, DispatchState.NOT_DISPATCHED),
+            "gate_refused",
+            "not_dispatched",
+        ),
+    ]
+    for event, result, reason, state in cases:
+        assert _invalidation_outcome(event, result) == (reason, state), (event, result)

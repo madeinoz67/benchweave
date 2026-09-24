@@ -4,15 +4,17 @@ Two pure checks with no store, plugin, clock or I/O of their own.
 
 ``check_allowed`` is the deny-by-default gate the executor consults before
 every state-changing dispatch: an action is allowed only when at least one
-allow rule matches the actual device and the exact action id (invoke) or
-parameter (write), and every matching rule's constraints then hold
+allow rule matches the actual device and the exact action id (invoke),
+parameter (write) or format (capture — the third allow-rule kind, issue
+#176 increment 2), and every matching rule's constraints then hold
 conjunctively — there are no order-dependent overrides. Invoke inputs are
 JSON-Schema-validated against each matching rule's ``input_constraints``
 (an empty schema ``{}`` imposes no extra constraint but warns
 ``vacuous_constraint:``); write values against
-``value_constraints``. Rejections carry a machine-matchable prefix:
-``no_matching_rule:`` (deny by default), ``input_constraint:`` or
-``value_constraint:``.
+``value_constraints``; capture requests against ``capture_constraints``.
+Rejections carry a machine-matchable prefix: ``no_matching_rule:`` (deny
+by default), ``input_constraint:``, ``value_constraint:`` or the capture
+family's ``capture_constraint:``.
 
 ``evaluate_conditions`` checks the continuous conditions against a signal
 snapshot and returns one description per failed condition aspect, each
@@ -41,7 +43,8 @@ class PolicyDenied(Exception):
     """A state-changing action matched no allow rule or violated one.
 
     ``reason`` is a machine-matchable description (prefix
-    ``no_matching_rule:``, ``input_constraint:`` or ``value_constraint:``);
+    ``no_matching_rule:``, ``input_constraint:``, ``value_constraint:``
+    or — the capture kind's family prefix — ``capture_constraint:``);
     ``rule_ids`` names the matching allow rules by ``allow_rules`` index —
     empty for a deny-by-default no-match, the failing rules otherwise.
     """
@@ -79,19 +82,24 @@ def check_allowed(
 ) -> None:
     """Return when the action is allowed; raise :class:`PolicyDenied` otherwise.
 
-    ``target`` is the action id for ``invoke`` rules and the parameter name
-    for ``write`` rules; ``payload`` is the invoke input object or the write
-    scalar value. A rule matches only on identical ``device_id``, ``kind``
-    and target — an empty match denies (the state-changing default), and all
-    matching rules must then pass conjunctively.
+    ``target`` is the action id for ``invoke`` rules, the parameter name
+    for ``write`` rules and the format for ``capture`` rules; ``payload``
+    is the invoke input object, the write scalar value, or the capture
+    request object ``{format, sample_count, max_bytes}``. A rule matches
+    only on identical ``device_id``, ``kind`` and target — an empty match
+    denies (the state-changing default), and all matching rules must then
+    pass conjunctively. Capture constraints evaluate
+    ``capture_constraints`` conjunctively like the other kinds, with the
+    same payload-must-be-an-object guard and ``vacuous_constraint:``
+    warning parity (CTL-4's third allow-rule kind).
     """
 
+    target_key = {"invoke": "action_id", "capture": "format"}.get(kind, "parameter")
     matching: list[tuple[str, dict[str, Any]]] = []
     for index, rule in enumerate(policy["allow_rules"]):
         if rule.get("device_id") != device_id or rule.get("kind") != kind:
             continue
-        rule_target = rule.get("action_id") if kind == "invoke" else rule.get("parameter")
-        if rule_target == target:
+        if rule.get(target_key) == target:
             matching.append((f"allow_rules[{index}]", rule))
     if not matching:
         raise PolicyDenied(f"no_matching_rule: {kind} {target} on device {device_id}", ())
@@ -106,13 +114,31 @@ def check_allowed(
                 tuple(rule_id for rule_id, _ in matching),
             )
         prefix, constraints_key = "input_constraint", "input_constraints"
+    elif kind == "capture":
+        # The capture payload is the request object; the same object-only
+        # guard applies so a scalar can never satisfy an object schema.
+        if not isinstance(payload, dict):
+            raise PolicyDenied(
+                f"capture_constraint: capture payload for {target} on device "
+                f"{device_id} is not an object",
+                tuple(rule_id for rule_id, _ in matching),
+            )
+        prefix, constraints_key = "capture_constraint", "capture_constraints"
     else:
         prefix, constraints_key = "value_constraint", "value_constraints"
 
     failures: list[str] = []
     failing: list[str] = []
     for rule_id, rule in matching:
-        if not rule[constraints_key]:
+        try:
+            constraints = rule[constraints_key]
+        except (KeyError, TypeError) as exc:
+            raise PolicyDenied(
+                f"{prefix}: {rule_id} ({kind} {target} on device {device_id}) "
+                f"carries no evaluable {constraints_key} schema ({type(exc).__name__}: {exc})",
+                (rule_id,),
+            ) from exc
+        if not constraints:
             # An empty schema validates every payload, so a matching rule
             # carrying one constrains nothing — flag it rather than stay
             # silent about what is almost certainly an admission mistake.
@@ -122,9 +148,26 @@ def check_allowed(
                 "so the rule constrains nothing",
                 stacklevel=2,
             )
-        error = next(
-            iter(Draft202012Validator(rule[constraints_key]).iter_errors(payload)), None
-        )
+        try:
+            error = next(
+                iter(Draft202012Validator(constraints).iter_errors(payload)), None
+            )
+        except Exception as exc:
+            # L2-F1(b): the policy boundary is terminal for validator
+            # failures — a schema the evaluator cannot run (an unknown
+            # type, a malformed subschema, an unresolvable reference) is a
+            # DENY with the kind's prefix, never an exception past
+            # check_allowed. Before this fold such an escape ran past the
+            # boundary into run_body and skipped the terminal record and
+            # the protective ending (the A04 family); admission's
+            # check_schema row refuses the document first — this is the
+            # belt. Nothing is silent: the reason carries the class.
+            raise PolicyDenied(
+                f"{prefix}: {rule_id} ({kind} {target} on device {device_id}) "
+                f"carries a constraint schema the validator cannot evaluate "
+                f"({type(exc).__name__}: {exc})",
+                (rule_id,),
+            ) from exc
         if error is not None:
             failures.append(f"{rule_id} {error.json_path}: {error.message}")
             failing.append(rule_id)

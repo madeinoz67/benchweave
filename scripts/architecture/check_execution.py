@@ -19,6 +19,8 @@ if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 import _validation_report  # noqa: E402
 
+from benchweave.control.semantics import CAPTURE_EPILOGUE_FLOOR_MS  # noqa: E402
+
 # Manifest-derived, resolved once (#102 D2 generalized; the #119 lesson).
 # corpus_directory: the manifest-active tree, or the declared dev head when
 # --corpus names it (the dev-proof lane) — read-only either way. The otdp
@@ -127,6 +129,8 @@ def proc_errors(p):
                 bound += max(block(s["then"], visible), block(s["else"], visible))
             else:
                 bound += s.get("timeout_ms", s.get("duration_ms", 0))
+                if s["kind"] == "capture":
+                    bound += CAPTURE_EPILOGUE_FLOOR_MS
             visible[s["id"]] = kind
         return bound
 
@@ -137,15 +141,19 @@ def proc_errors(p):
 
 
 p = ex["procedure"]
-# Capture steps contribute timeout_ms like invoke timeouts (the dev head's
-# capture family); on the active corpus cap_total is 0 and every bound
-# below is byte-identical to its 0.1.0 constant, so the released lane's
-# check set (and its pinned report) is unchanged.
+# Capture steps contribute timeout_ms PLUS the epilogue floor — the same
+# CAPTURE_EPILOGUE_FLOOR_MS semantics.worst_case_body_ms counts, so the
+# two static-bound computations cannot drift (F1). On the active corpus
+# cap_total and floor_total are 0 and every bound below is byte-identical
+# to its 0.1.0 constant, so the released lane's check set (and its pinned
+# report) is unchanged.
 cap_total = sum(s["timeout_ms"] for s in p["steps"] if s.get("kind") == "capture")
+cap_count = sum(1 for s in p["steps"] if s.get("kind") == "capture")
+floor_total = CAPTURE_EPILOGUE_FLOOR_MS * cap_count
 check("procedure lexical scope and bound", not proc_errors(p)[0])
 check(
-    f"synthetic static wait/IO bound {1600 + cap_total} ms",
-    proc_errors(p)[1] == 1600 + cap_total,
+    f"synthetic static wait/IO bound {1600 + cap_total + floor_total} ms",
+    proc_errors(p)[1] == 1600 + cap_total + floor_total,
 )
 x = copy.deepcopy(p)
 x["steps"][1]["input"]["configuration_id"]["$stg_ref"]["step"] = "later"
@@ -168,7 +176,7 @@ check(
     "bounded repeated fixture",
     validators["procedure"].is_valid(x)
     and (not proc_errors(x)[0])
-    and (proc_errors(x)[1] == 2 * (1600 + cap_total)),
+    and (proc_errors(x)[1] == 2 * (1600 + cap_total + floor_total)),
 )
 x["steps"].append(
     {
@@ -196,7 +204,7 @@ check(
     "both branches admitted with max bound",
     validators["procedure"].is_valid(x)
     and (not proc_errors(x)[0])
-    and (proc_errors(x)[1] == 1620 + cap_total),
+    and (proc_errors(x)[1] == 1620 + cap_total + floor_total),
 )
 for _key, bad in [("count", 0), ("count", -1)]:
     x = copy.deepcopy(p)
@@ -487,7 +495,7 @@ for label, edit, reason in [
     ),
     (
         "excess scheduling overhead",
-        lambda x: x.update(scheduling_overhead_ms=5000),
+        lambda x: x.update(scheduling_overhead_ms=20000),
         "overhead budget",
     ),
 ]:

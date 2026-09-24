@@ -1,4 +1,4 @@
-"""The eight-kind procedure body interpreter (execution contract §3–§5).
+"""The nine-kind procedure body interpreter (execution contract §3–§5).
 
 Executes an admitted procedure body against bound device plugins under a
 fixed monotonic body deadline, appending one step event per occurrence and
@@ -85,6 +85,7 @@ from benchweave.control.policy import PolicyDenied, check_allowed
 from benchweave.host.plugin import DevicePlugin
 from benchweave.host.types import (
     DispatchState,
+    ErrorCode,
     OperationRequest,
     OperationResult,
     OperationStatus,
@@ -100,6 +101,12 @@ from benchweave.measurement.derivation import (
 #: path carries one entry per enclosing ``repeat`` iteration; ``if`` branches
 #: add nothing because step IDs are globally unique.
 Occurrence = tuple[str, str, tuple[int, ...]]
+
+#: Closed reason vocabulary for an invalidated issued-id record (F4): WHY
+#: the step's operation did not succeed, machine-matchable in the ledger.
+ISSUED_INVALIDATION_REASONS = frozenset(
+    {"policy_denied", "gate_refused", "dispatch_failed", "timed_out", "cancelled"}
+)
 
 BODY_COMPLETED = "completed"
 BODY_ASSERTION_FAILED = "assertion_failed"
@@ -155,6 +162,19 @@ SAMPLE_WRONG_UNIT = "wrong_unit"
 SAMPLE_NOT_SCALAR = "not_scalar"
 SAMPLE_STALE = "stale"
 SAMPLE_UNKNOWN_UNCERTAINTY = "unknown_uncertainty"
+
+#: The captureManifest members the OTDP schema REQUIRES — the presence
+#: gate ``_capture_projection`` enforces (F10): a thinner dict is not a
+#: manifest, refused at the projection rather than misreported as a
+#: pointer miss at the walk.
+_CAPTURE_REQUIRED_MEMBERS = (
+    "capture_id",
+    "format",
+    "artifact_id",
+    "byte_length",
+    "sha256",
+    "started_at",
+)
 
 _RESERVED_KEYS = ("$stg_ref", "$stg_channel", "$stg_issue")
 
@@ -337,6 +357,34 @@ def _write_receipt_projection(step_id: str, data: Any) -> dict[str, Any]:
     }
 
 
+def _capture_projection(step_id: str, data: Any) -> dict[str, Any]:
+    """Project one capture step's landed manifest (execution contract §3).
+
+    The capture result IS the host-built captureManifest (the bridge's
+    ``_capture_manifest`` output). Every member the OTDP schema requires
+    — the six of ``_CAPTURE_REQUIRED_MEMBERS`` — must be present: their
+    pointers are the contract's promise, and a thinner dict refuses HERE,
+    at the projection, with the honest ``not a captureManifest`` refusal
+    instead of a downstream key miss at the walk (F10). Every JSON-typed
+    member present is projected — an OPEN SET, ``x-`` extension members
+    included (F8; the bridge's per-key manifest doctrine, not a closed
+    whitelist — which makes the docstring's "every member" claim true).
+    ``_walk_pointer``'s non-JSON refusal is unchanged: a projected member
+    carrying a non-JSON leaf still refuses at selection. A capture result
+    that is not a manifest fails honestly as a :class:`ScopeError`, the
+    read/write projection mold.
+    """
+    if not isinstance(data, dict) or not set(_CAPTURE_REQUIRED_MEMBERS) <= set(
+        data
+    ):
+        raise ScopeError(f"pointer: result of {step_id!r} is not a captureManifest")
+    return {
+        key: value
+        for key, value in data.items()
+        if isinstance(value, (dict, list, str, int, float, bool)) or value is None
+    }
+
+
 def _resolve_ref(directive: Any, scope: ChainMap[str, Any]) -> Any:
     if (
         not isinstance(directive, dict)
@@ -367,6 +415,9 @@ def _resolve_ref(directive: Any, scope: ChainMap[str, Any]) -> Any:
         return _walk_pointer(projection, directive["pointer"], step_id)
     if source.verb is OperationVerb.WRITE:
         projection = _write_receipt_projection(step_id, source.data)
+        return _walk_pointer(projection, directive["pointer"], step_id)
+    if source.verb is OperationVerb.CAPTURE:
+        projection = _capture_projection(step_id, source.data)
         return _walk_pointer(projection, directive["pointer"], step_id)
     raise ScopeError(
         f"pointer: results of verb {source.verb.value!r} are not referable"
@@ -592,15 +643,84 @@ def _operation_id(run_id: str, step_id: str, index_path: tuple[int, ...]) -> str
     return f"op:{run_id}:{step_id}{suffix}"
 
 
+def _invalidation_outcome(
+    event: dict[str, Any], result: OperationResult | None
+) -> tuple[str, str]:
+    """``(reason, dispatch_state)`` for issued ids invalidated with a step.
+
+    ``reason`` is CLOSED to :data:`ISSUED_INVALIDATION_REASONS`:
+    ``policy_denied`` (the executor's own consult refused), ``timed_out``
+    (a TIMEOUT verdict), ``cancelled`` (a CANCELLED status),
+    ``gate_refused`` (refused before anything left the host — the bridge's
+    argument/permission/quota gates, a protective block, or an
+    unresolvable reference: all pre-dispatch), ``dispatch_failed`` (the
+    device saw the attempt and it failed, dispatch state DISPATCHED or
+    UNKNOWN). ``dispatch_state`` is the operation's own DispatchState —
+    ``not_dispatched`` when no result exists, so the record never claims
+    more than the step's evidence does.
+    """
+    if event.get("error_code") == "POLICY_DENIED":
+        return "policy_denied", DispatchState.NOT_DISPATCHED.value
+    if isinstance(result, OperationResult):
+        error = result.error
+        if error is not None:
+            if (
+                result.status is OperationStatus.CANCELLED
+                or error.code is ErrorCode.CANCELLED
+            ):
+                return "cancelled", error.dispatch_state.value
+            if error.code is ErrorCode.TIMEOUT:
+                return "timed_out", error.dispatch_state.value
+            if error.dispatch_state is DispatchState.NOT_DISPATCHED:
+                return "gate_refused", DispatchState.NOT_DISPATCHED.value
+            return "dispatch_failed", error.dispatch_state.value
+    # No result: a pre-dispatch refusal other than a policy denial (the
+    # unresolved-reference path — a later $stg_ref failed after an
+    # earlier $stg_issue minted). A pre-dispatch gate refused; nothing
+    # left the host.
+    return "gate_refused", DispatchState.NOT_DISPATCHED.value
+
+
+def _capture_id(run_id: str, step_id: str, index_path: tuple[int, ...]) -> str:
+    """The host-minted capture id for one occurrence, e.g. ``cap:run-1:grab.2``.
+
+    Mirrors :func:`_operation_id` exactly (same ``run_id``/``step_id``/
+    index-suffix composition, ``cap:`` instead of ``op:``): the capture id
+    is the step's identity — the ledger's ``issued_ids`` retains it, a
+    failed operation invalidates it, and a later ``$stg_ref`` into the
+    landed manifest echoes it. The capture id is never authored
+    (execution contract §7: the host mints it per occurrence and returns
+    it in the capture manifest).
+
+    The mint is deterministic, and its uniqueness is exactly as broad as
+    the ledger makes it: **restart-safe under the coordinator's rebuild**
+    (``RunCoordinator._rebuild_ledger_from_events`` restores every
+    recorded occurrence from the durable event stream, so a recovered
+    re-walk replays and never re-mints), with **one ``run_body`` per
+    ``run_id`` a caller precondition** — a fresh UNREBUILT ledger on a
+    second ``run_body`` would re-mint the same id for a second physical
+    dispatch, a collision the precondition forbids (F5; the design
+    record's fold-wave answer records the rebuild as the mechanism).
+    """
+    suffix = "".join(f".{index}" for index in index_path)
+    return f"cap:{run_id}:{step_id}{suffix}"
+
+
 @dataclass
 class _Body:
-    """Mutable state of one ``run_body`` call."""
+    """Mutable state of one ``run_body`` call.
+
+    ``in_flight_event`` is the event of the step currently executing —
+    set at append, cleared after the step returns — so the run_body guard
+    can mark exactly the crashed step's event instead of guessing.
+    """
 
     run_id: str
     deadline_ns: int
     events: list[dict[str, Any]]
     reasons: list[str]
     outcome: str | None = None
+    in_flight_event: dict[str, Any] | None = None
 
     def terminate(self, outcome: str, reason: str) -> None:
         if self.outcome is None:
@@ -609,7 +729,13 @@ class _Body:
 
 
 class Executor:
-    """Interpreter for the eight step kinds over bound device plugins."""
+    """Interpreter for the procedure's step kinds over bound device plugins.
+
+    Nine leaf/container kinds when the execution corpus carries the capture
+    branch (issue #176 increment 2); the dev-corpus head is what admits a
+    capture step — the frozen-literal 0.1.0 corpus cannot express one, so
+    the capture branch is dormant code on main until the promotion event.
+    """
 
     def __init__(
         self,
@@ -652,7 +778,26 @@ class Executor:
         """
         body = _Body(run_id=run_id, deadline_ns=body_deadline_ns, events=[], reasons=[])
         scope: ChainMap[str, Any] = ChainMap()
-        self._execute_block(procedure["steps"], scope, (), body)
+        try:
+            self._execute_block(procedure["steps"], scope, (), body)
+        except Exception as exc:
+            # L2-F1(c), the A04 family: an exception escaping a step — a
+            # validator the policy could not evaluate, a plugin dispatch
+            # that raised — must NOT skip the terminal record and the
+            # protective ending downstream. It becomes the body's
+            # ``execution_error`` with the class and message in the
+            # reasons, and the in-flight step's event is marked so the
+            # durable stream never records a crashed step as ``ok``
+            # (UNKNOWN dispatch state: nothing here may claim the device
+            # did or did not see the attempt). Nothing is silent.
+            if body.in_flight_event is not None:
+                body.in_flight_event["status"] = "error"
+                body.in_flight_event["error_code"] = "INTERNAL_ERROR"
+                body.in_flight_event["dispatch_state"] = DispatchState.UNKNOWN.value
+            body.terminate(
+                BODY_EXECUTION_ERROR,
+                f"uncaught_body_exception: {type(exc).__name__}: {exc}",
+            )
         outcome = body.outcome if body.outcome is not None else BODY_COMPLETED
         return BodyResult(body_outcome=outcome, reasons=body.reasons, step_events=body.events)
 
@@ -676,6 +821,8 @@ class Executor:
                 )
                 return
             scope[str(step["id"])] = self._execute_step(step, scope, index_path, body)
+            body.in_flight_event = None  # the step completed; the guard
+            # must never mark a COMPLETED step's event
 
     def _new_event(
         self, body: _Body, step_id: str, kind: str, index_path: tuple[int, ...]
@@ -686,6 +833,9 @@ class Executor:
             "resolved_input_sha256": "",
             "operation_id": None,
             "status": "ok",
+            # F9: every step event carries its dispatch state — the
+            # pre-dispatch default, flipped by the dispatch paths below.
+            "dispatch_state": DispatchState.NOT_DISPATCHED.value,
         }
 
     @staticmethod
@@ -722,6 +872,7 @@ class Executor:
 
         event = self._new_event(body, step_id, kind, index_path)
         body.events.append(event)
+        body.in_flight_event = event
         result: Any
         if kind == "invoke":
             result = self._step_invoke(step, scope, index_path, body, event)
@@ -729,6 +880,8 @@ class Executor:
             result = self._step_read(step, scope, index_path, body, event)
         elif kind == "write":
             result = self._step_write(step, scope, index_path, body, event)
+        elif kind == "capture":
+            result = self._step_capture(step, scope, index_path, body, event)
         elif kind == "delay":
             self._step_delay(step, body, event)
             result = None
@@ -744,12 +897,19 @@ class Executor:
         issued_here = self._issued.get(occurrence)
         entry: dict[str, Any] = {"event": event, "result": result}
         if issued_here:
-            if kind in ("invoke", "read", "write") and not (
+            if kind in ("invoke", "read", "write", "capture") and not (
                 isinstance(result, OperationResult)
                 and result.status is OperationStatus.OK
             ):
+                # F4: the invalidated records carry WHY (closed enum) and
+                # the operation's dispatch state, so the ledger's answer
+                # to "did this happen" names the failure, not just the
+                # fact.
+                reason, dispatch_state = _invalidation_outcome(event, result)
                 for record in issued_here.values():
                     record["status"] = "invalidated"
+                    record["reason"] = reason
+                    record["dispatch_state"] = dispatch_state
             entry["issued_ids"] = {
                 field: dict(record) for field, record in issued_here.items()
             }
@@ -965,6 +1125,55 @@ class Executor:
         request = OperationRequest.write(operation_id, parameter=parameter, value=resolved_value)
         return self._dispatch(self._plugins[device_id], request, step, body, event)
 
+    def _step_capture(
+        self,
+        step: dict[str, Any],
+        scope: ChainMap[str, Any],
+        index_path: tuple[int, ...],
+        body: _Body,
+        event: dict[str, Any],
+    ) -> OperationResult | None:
+        """One capture occurrence: mint, policy-check, dispatch (CTL-4/5).
+
+        The capture step carries literals only (the corpus's closed
+        branch), so nothing resolves against the scope. The host-minted
+        capture id mirrors :func:`_operation_id`'s composition, is
+        retained in the ledger entry's ``issued_ids`` (minted BEFORE the
+        policy consult so a denial records an invalidated id, not a
+        missing one), and is consulted by ``check_allowed`` BEFORE any
+        dispatch — deny-by-default, zero device calls on refusal. The
+        dispatch goes through the shared deadline clamp: ``min(now +
+        timeout_ms, body_deadline)``, shortened only, and the step's
+        result is the returned captureManifest.
+        """
+        step_id = str(step["id"])
+        role = str(step["role"])
+        device_id = self._binding.device_by_role[role]
+        capture_id = _capture_id(body.run_id, step_id, index_path)
+        event["operation_id"] = capture_id
+        payload = {
+            "format": str(step["format"]),
+            "sample_count": step["sample_count"],
+            "max_bytes": step["max_bytes"],
+        }
+        event["resolved_input_sha256"] = _sha256_hex(payload)
+        occurrence: Occurrence = (body.run_id, step_id, index_path)
+        bucket = self._issued.setdefault(occurrence, {})
+        bucket["capture_id"] = {"id": capture_id, "status": "issued"}
+        try:
+            check_allowed(self._policy, device_id, "capture", payload["format"], payload)
+        except PolicyDenied as denied:
+            event["status"] = "error"
+            event["error_code"] = "POLICY_DENIED"
+            body.terminate(BODY_EXECUTION_ERROR, f"policy_denied: {step_id}: {denied.reason}")
+            return None
+        request = OperationRequest(
+            operation_id=capture_id,
+            verb=OperationVerb.CAPTURE,
+            arguments={"capture_id": capture_id, **payload},
+        )
+        return self._dispatch(self._plugins[device_id], request, step, body, event)
+
     def _dispatch(
         self,
         plugin: DevicePlugin,
@@ -981,6 +1190,7 @@ class Executor:
         error = result.error
         if result.status is OperationStatus.OK:
             event["status"] = "ok"
+            event["dispatch_state"] = DispatchState.DISPATCHED.value
             return result
         if error is None:  # defensive: the result type guarantees an error
             body.terminate(BODY_EXECUTION_ERROR, f"step {step_id}: result carries no error")
@@ -992,11 +1202,24 @@ class Executor:
         else:
             event["status"] = "unknown"
         event["error_code"] = error.code.value
+        event["dispatch_state"] = error.dispatch_state.value
         if error.dispatch_state is DispatchState.NOT_DISPATCHED:
-            body.terminate(
-                BODY_EXECUTION_ERROR,
-                f"step {step_id}: {error.code.value}: {error.message}",
-            )
+            if error.code is ErrorCode.TIMEOUT and (
+                self._clock.now_ns() >= body.deadline_ns
+            ):
+                # F2: the entry reject fired because the BODY deadline was
+                # spent between the pre-step check and this dispatch's own
+                # evaluation — the bench's budget ran out, not this step's.
+                body.terminate(
+                    BODY_TIMED_OUT,
+                    f"body_deadline_exceeded: {body.deadline_ns} ns reached at "
+                    f"step {step_id} before the dispatch left the host",
+                )
+            else:
+                body.terminate(
+                    BODY_EXECUTION_ERROR,
+                    f"step {step_id}: {error.code.value}: {error.message}",
+                )
         else:
             body.terminate(
                 BODY_OUTCOME_UNKNOWN,
@@ -1144,6 +1367,7 @@ class Executor:
             event = self._new_event(body, step_id, "if", index_path)
             event["resolved_input_sha256"] = _sha256_hex(step["predicate"])
             body.events.append(event)
+            body.in_flight_event = event
             predicate = step["predicate"]
             held, invalid_detail = self._evaluate_predicate(predicate, scope)
             if held is None:
@@ -1187,6 +1411,7 @@ class Executor:
             event = self._new_event(body, step_id, "repeat", index_path)
             event["resolved_input_sha256"] = _sha256_hex({"count": step["count"]})
             body.events.append(event)
+            body.in_flight_event = event
             self._ledger[occurrence] = {"event": event, "result": None}
         for iteration in range(int(step["count"])):
             if body.outcome is not None:

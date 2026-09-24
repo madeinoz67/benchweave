@@ -25,6 +25,7 @@ from typing import Any
 
 from benchweave.content.store import ContentStore
 from benchweave.control.documents import (
+    _CONTRACTS,
     AdmittedDocuments,
     admit_documents,
     decode_resolution_document,
@@ -56,7 +57,10 @@ def _descriptor_paths_by_sha(fixtures_dir: Path) -> dict[str, Path]:
 
 
 def admit_fixture_lattice(
-    fixtures_dir: Path, *, now_wall: str | None = None
+    fixtures_dir: Path,
+    *,
+    now_wall: str | None = None,
+    contracts: Path = _CONTRACTS,
 ) -> AdmittedDocuments:
     """Resolve and admit the startup lattice (issue #85: CON-1's third caller).
 
@@ -81,7 +85,9 @@ def admit_fixture_lattice(
     ``transport-settings.json`` beside the lattice documents is passed to
     admission when it exists (``None`` otherwise — the closed default
     refuses provider-declaring descriptors), with ``now_wall`` for the
-    approval-expiry arithmetic.
+    approval-expiry arithmetic. ``contracts`` threads the
+    composition-resolved corpus directory (issue #176 increment 2 seam);
+    the default is the frozen ACTIVE literal.
     """
     binding = decode_resolution_document(fixtures_dir / "run-binding.json", "binding")
     procedure_sha = str(binding["procedure"]["sha256"])
@@ -118,11 +124,17 @@ def admit_fixture_lattice(
         descriptor_paths=descriptor_paths,
         provider_settings=settings_path if settings_path.is_file() else None,
         now_wall=now_wall,
+        contracts=contracts,
     )
 
 
 def admit_startup_bench(
-    store: Store, content: ContentStore, fixtures_dir: Path, *, now: str
+    store: Store,
+    content: ContentStore,
+    fixtures_dir: Path,
+    *,
+    now: str,
+    contracts: Path = _CONTRACTS,
 ) -> dict[str, Any]:
     # Admission first, writes second (issue #85): the lattice passes the
     # same gate execution and recovery pass before the store holds a bench
@@ -132,7 +144,7 @@ def admit_startup_bench(
     # family member crashing the cache loop's parse mid-write — is a
     # pre-existing residual, not closed here (design record D6).
     try:
-        docs = admit_fixture_lattice(fixtures_dir, now_wall=now)
+        docs = admit_fixture_lattice(fixtures_dir, now_wall=now, contracts=contracts)
     except Exception as error:
         # Mirrors recovery_admission_rejected's shape (class + message, the
         # typed prefixes ride inside); uvicorn turns the re-raised lifespan

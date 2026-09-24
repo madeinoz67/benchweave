@@ -467,6 +467,45 @@ def test_capture_g1_arithmetic_refused_before_the_device(tmp_path: Path) -> None
         harness.close()
 
 
+def test_capture_g1_gate_names_the_shortfall_and_never_opens_capture(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """L2-F2's test-half (fold wave): the G1 request self-consistency gate
+    (waveform ``sample_count×8 ≤ max_bytes``, spec §7) refuses with the
+    exact shortfall in the message, calls ``open_capture`` ZERO times (the
+    arithmetic gate runs before the G3 check-and-reserve), and never
+    reaches the adapter. The refusal path itself predates this pin — the
+    message string and the zero-open contract were asserted by no test."""
+    harness = CaptureHarness(tmp_path)
+    controller = harness.controller
+    assert controller is not None  # the harness asserts it at construction
+    open_calls: list[dict[str, Any]] = []
+    original_open = controller.open_capture
+
+    def _spy_open(**kwargs: Any) -> Any:
+        open_calls.append(kwargs)
+        return original_open(**kwargs)
+
+    monkeypatch.setattr(controller, "open_capture", _spy_open)
+    try:
+        plugin, result = a_capture_dispatch(
+            harness, Adapter(), a_capture_request(sample_count=256, max_bytes=1024)
+        )
+        assert result.error is not None
+        assert result.error.code is ErrorCode.INVALID_ARGUMENT
+        assert result.error.dispatch_state is DispatchState.NOT_DISPATCHED
+        assert (
+            "waveform_f64le sample_count 256 needs 2048 bytes, above the declared "
+            "max_bytes 1024"
+        ) in result.error.message
+        assert open_calls == [], "the G1 arithmetic refusal precedes open_capture"
+        assert harness.staged_count() == 0  # no reservation row was ever written
+        assert harness.adapter.calls == 0
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
 @pytest.mark.parametrize(
     ("overrides", "label"),
     [
@@ -590,10 +629,57 @@ def test_capture_typing_is_exact_and_bounded(
         harness.close()
 
 
+# --- F7: the deadline conversion at the bridge -------------------------------------
+
+
+def test_capture_huge_deadline_converts_to_a_typed_reject(tmp_path: Path) -> None:
+    """F7 (bridge half): a ``deadline_ns`` no float can represent converts
+    to a typed INTERNAL_ERROR reject — a raw OverflowError can never
+    escape ``dispatch()``. (The contract ceiling keeps schema-valid
+    ``timeout_ms`` far from this; the bridge's own guard is the belt.)"""
+    harness = CaptureHarness(tmp_path)
+    try:
+        plugin = harness.bridge(Adapter())
+        plugin.plugin_open(object())
+        result = plugin.dispatch(a_capture_request(), deadline_ns=10**400)
+        assert result.error is not None
+        assert result.error.code is ErrorCode.INTERNAL_ERROR
+        assert result.error.dispatch_state is DispatchState.NOT_DISPATCHED
+        assert "deadline" in result.error.message
+        assert harness.adapter.calls == 0
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+def test_capture_ceiling_scale_deadline_never_overflows(tmp_path: Path) -> None:
+    """F7 (bridge half): the largest schema-valid ``timeout_ms`` builds a
+    deadline the bridge converts without OverflowError — the dispatch
+    proceeds against the far-future deadline and returns a result,
+    whatever its verdict."""
+    ceiling = 86_400_000  # the contract ceiling (one day, in ms)
+    harness = CaptureHarness(tmp_path)
+    try:
+        plugin = harness.bridge(Adapter())
+        plugin.plugin_open(object())
+        result = plugin.dispatch(
+            a_capture_request(), deadline_ns=1_000_000_000 + ceiling * 1_000_000
+        )
+        assert result is not None  # no OverflowError escaped the conversion
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
 @pytest.mark.parametrize("bad_id", ["Bad-ID", "1abc", "../escape", "cap/1", ""])
 def test_capture_id_shape_is_validated(tmp_path: Path, bad_id: Any) -> None:
-    """The contract id pattern ^[a-z][a-z0-9_.-]*$ (interface.schema.json);
-    the writer's PRIMARY KEY enforces session-uniqueness."""
+    """The capture id shape is the bridge's ``_CAPTURE_ID_PATTERN``:
+    ``[a-z][a-z0-9_.:-]*`` — interface.schema.json's ``^[a-z][a-z0-9_.-]*$``
+    widened with ``:`` so the host-minted ``cap:{run_id}:{step_id}`` ids
+    pass (the issue #176 increment-2 minting precedent; the colon is the
+    only separator that mint uses). Every refusal case below — uppercase,
+    digit-start, traversal, slash, empty — still refuses under the widened
+    pattern. The writer's PRIMARY KEY enforces session-uniqueness."""
     harness = CaptureHarness(tmp_path)
     try:
         plugin, result = a_capture_dispatch(

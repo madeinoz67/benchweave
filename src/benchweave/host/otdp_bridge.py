@@ -294,7 +294,19 @@ class OTDPBridge:
                 )
             if set(request.arguments) != expected:
                 return reject(ErrorCode.UNSUPPORTED, "Unsupported arguments for bridge operation")
-            deadline = deadline_ns / 1_000_000_000
+            try:
+                deadline = deadline_ns / 1_000_000_000
+            except OverflowError:
+                # F7's belt at the bridge: a deadline_ns no float can
+                # represent converts to a typed reject — a raw
+                # OverflowError can never escape dispatch(). The contract
+                # ceiling keeps schema-valid timeout_ms far from this; the
+                # guard keeps it structurally unreachable as an escape.
+                return reject(
+                    ErrorCode.INTERNAL_ERROR,
+                    f"operation deadline {deadline_ns} ns is not representable "
+                    "as seconds",
+                )
             if not math.isfinite(deadline) or self._services.monotonic() >= deadline:
                 return reject(ErrorCode.TIMEOUT, "Operation deadline expired")
             capture_id: str | None = None
@@ -405,7 +417,13 @@ class OTDPBridge:
     # through 2^53−1 are unsupported by the numeric interface — also the
     # structural sqlite-bind safety bound.
     _INT_MAX = 2**53 - 1
-    _CAPTURE_ID_PATTERN = re.compile(r"[a-z][a-z0-9_.-]*")
+    # The contract id class (interface.schema.json's ^[a-z][a-z0-9_.-]*$)
+    # with ':' admitted: the procedure executor's host-minted capture ids
+    # are `cap:{run_id}:{step_id}{.index-suffix}` (mirroring op: ids —
+    # #176 increment 2), and colons are the only separator the minting
+    # precedent uses. Every other refusal the shape test parametrizes
+    # (uppercase, digit-start, slash, traversal, empty) still refuses.
+    _CAPTURE_ID_PATTERN = re.compile(r"[a-z][a-z0-9_.:-]*")
     _STREAM_PARAMETER_PATTERN = re.compile(r"[a-z][a-z0-9_]*")
     _CAPTURE_FORMATS = ("waveform_f64le", "raw_binary")
 

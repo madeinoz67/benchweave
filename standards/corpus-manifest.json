@@ -163,37 +163,37 @@
     {
       "path": "execution/0.2.0-dev/examples/bench.json",
       "source": "standards/execution/0.1.0/examples/bench.json",
-      "sha256": "e8a3523704ed132bb57ccf254794a1674f68deef2ddb7aab5c38dafbd69e6a4a"
+      "sha256": "7a54d807600f8da4002e9973e6cedb8039dee6804b3740b6d8c2d9afa3a93460"
     },
     {
       "path": "execution/0.2.0-dev/examples/commissioning.json",
       "source": "standards/execution/0.1.0/examples/commissioning.json",
-      "sha256": "230b53b5c0416beb03821c4b3d3f5fe6ab1d216a9df43a36d10dec5329f2a541"
+      "sha256": "769b2d99d8c3b65ae62bf632a73db48503fefa30bbf01516deeffda4f262a123"
     },
     {
       "path": "execution/0.2.0-dev/examples/procedure.json",
       "source": "standards/execution/0.1.0/examples/procedure.json",
-      "sha256": "8c3dd812b02fb31ebd4931824ecd4821b54942beaba84bcccc14df0614d08502"
+      "sha256": "3c6a80d11e010ae60005cbd474c3d8d6ab61cee1c5698ad806b4ace44b39dcd8"
     },
     {
       "path": "execution/0.2.0-dev/examples/run-binding.json",
       "source": "standards/execution/0.1.0/examples/run-binding.json",
-      "sha256": "ceb39700677cc611129bbaaf7478881eac399f7102c8bb277089efd8c157570a"
+      "sha256": "61625667fc6cb5e8e455a8c251bf4c9b0ac7f955611b340f4f46fccd07bac0d8"
     },
     {
       "path": "execution/0.2.0-dev/examples/run-record.json",
       "source": "standards/execution/0.1.0/examples/run-record.json",
-      "sha256": "81684395531b84d82873e1c7b28a6d33f7eddd21d8f05276f99a6039a3338e48"
+      "sha256": "9e861983b82ca3f7c23a8514e5cb71fe671401d18b3d798c75448de924cadf00"
     },
     {
       "path": "execution/0.2.0-dev/examples/safety-policy.json",
       "source": "standards/execution/0.1.0/examples/safety-policy.json",
-      "sha256": "7a597f0abdf13dcd45fb17ead155cb778a67fe2c4c02872550b51e084adcfa27"
+      "sha256": "faa8590cedd5ca423e342e31ddad2ff00aead76693b2c7cdb44276824f1b1a63"
     },
     {
       "path": "execution/0.2.0-dev/procedure.schema.json",
       "source": "standards/execution/0.1.0/procedure.schema.json",
-      "sha256": "f93aca63bcc13e6027b73de493af2c035ca3cc0c0a094fbc8d09aef9aa810f92"
+      "sha256": "a1311d74a265bd47ef3e5ba60341c64cc93922c9d23813f83224e0abc3e6aa41"
     },
     {
       "path": "execution/0.2.0-dev/run-binding.schema.json",

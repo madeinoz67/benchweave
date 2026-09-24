@@ -16,7 +16,8 @@ Pure functions over the admitted documents: no I/O, and the wall clock is a
 parameter. Rejections raise the document-admission
 :class:`~benchweave.control.documents.AdmissionRejected` with
 machine-matchable prefixes: ``duplicate_step_id:``, ``scope:``,
-``issue_placement:``, ``body_budget:``, ``energised_budget:`` and ``expired:``.
+``issue_placement:``, ``capture_undeclared:``, ``body_budget:``,
+``energised_budget:`` and ``expired:``.
 """
 
 from __future__ import annotations
@@ -27,20 +28,35 @@ from typing import Any, NoReturn
 
 from benchweave.control.documents import AdmissionRejected, AdmittedDocuments
 
+#: The epilogue floor the static capture bound counts (F1): a capture's
+#: worst case is its ``timeout_ms`` PLUS the bounded wait the abort
+#: epilogue's ``BEGIN`` can incur under store contention. The value tracks
+#: the store's open-time ``busy_timeout`` — the measured bound it stands
+#: for (the stock ``sqlite3.connect`` default at ``state/store.py``, its
+#: origin unstated — fold F12); row B commissions the lifecycle-class
+#: floor per bench (A02) and owns this constant's replacement.
+CAPTURE_EPILOGUE_FLOOR_MS = 5000
+
 
 def worst_case_body_ms(steps: list[dict[str, Any]]) -> int:
     """Return the worst-case procedure body duration in milliseconds.
 
-    Sums invoke/read/write ``timeout_ms`` and delay ``duration_ms``; an ``if``
-    contributes the larger branch and a ``repeat`` multiplies its body by the
-    iteration count. Samples and asserts execute in the gateway and cost
-    nothing.
+    Sums invoke/read/write/capture ``timeout_ms`` and delay
+    ``duration_ms``; an ``if`` contributes the larger branch and a
+    ``repeat`` multiplies its body by the iteration count. Samples and
+    asserts execute in the gateway and cost nothing. A capture's
+    ``timeout_ms`` IS its budget (the #43 record's Amendment 3 — no new
+    procedure-budget mechanism), counted exactly like an invoke timeout
+    plus :data:`CAPTURE_EPILOGUE_FLOOR_MS` — a failed capture's abort
+    epilogue is real body time the static bound must cover (F1).
     """
     total = 0
     for step in steps:
         kind = step["kind"]
-        if kind in ("invoke", "read", "write"):
+        if kind in ("invoke", "read", "write", "capture"):
             total += step["timeout_ms"]
+            if kind == "capture":
+                total += CAPTURE_EPILOGUE_FLOOR_MS
         elif kind == "delay":
             total += step["duration_ms"]
         elif kind == "if":
@@ -171,6 +187,8 @@ def _check_step(
     kind = step["kind"]
     where = f"{block_id}/{sid}"
 
+    if kind == "capture":
+        _check_capture_declared(step, sid, where, descriptors, device_by_role)
     if kind in ("invoke", "write"):
         field = "input" if kind == "invoke" else "value"
         for path, directive in _ref_sites(step[field], field):
@@ -210,6 +228,85 @@ def _check_step(
                 f"issue_placement: step {sid!r} at {where} places $stg_issue at "
                 f"{nested}, outside an invoke input"
             )
+
+
+def _check_capture_declared(
+    step: dict[str, Any],
+    sid: str,
+    where: str,
+    descriptors: dict[str, dict[str, Any]],
+    device_by_role: dict[str, str],
+) -> None:
+    """The admission-time descriptor mirror for the capture kind (CTL-7).
+
+    The role's device must declare the capture surface the procedure step
+    demands: the ``artifact_writer`` permission (without it no capture
+    services compose — the bridge refuses ``UNSUPPORTED`` before the
+    device), the declared ``capture_formats`` and ``capture_limits`` the
+    bridge's gate reads, a ``format`` the device declares, a
+    ``sample_count`` within ``max_samples`` and ``max_bytes`` within
+    ``max_bytes``. Every refusal carries ``capture_undeclared:`` naming
+    the step and the exact undeclared demand — the same family prefix on
+    all six raise sites, so a capture an active-corpus procedure cannot
+    even express stays greppable when the seam runs dev-composed. Five of
+    the six are reachable through admission: the malformed-``capture_limits``
+    site is dead on that path (the OTDP descriptor schema refuses
+    non-integer limits before this mirror ever sees them — reachable only
+    by calling this mirror on an unvalidated projection), and the
+    ``no projected descriptor`` arm IS reachable — a binding naming a
+    device the bench's pins do not carry — but is not yet in the A-R3
+    parametrize (reachable-but-untested, named here rather than claimed
+    covered).
+
+    A role that resolves to no bound device is left to binding's
+    ``unbound_role:`` — this mirror only judges declared-ness, and
+    misattributing an unbound role would hide the real defect.
+    """
+    device_id = device_by_role.get(str(step["role"]))
+    if device_id is None:
+        return
+    descriptor = descriptors.get(device_id)
+    if descriptor is None:
+        raise AdmissionRejected(
+            f"capture_undeclared: step {sid!r} at {where} binds device "
+            f"{device_id!r}, which has no projected descriptor"
+        )
+    formats = descriptor.get("capture_formats")
+    limits = descriptor.get("capture_limits")
+    if not descriptor.get("artifact_writer") or not isinstance(
+        formats, list
+    ) or not isinstance(limits, dict):
+        raise AdmissionRejected(
+            f"capture_undeclared: step {sid!r} at {where} captures on device "
+            f"{device_id!r}, which declares no capture surface (artifact_writer "
+            "with capture_formats and capture_limits)"
+        )
+    fmt = str(step["format"])
+    if fmt not in formats:
+        raise AdmissionRejected(
+            f"capture_undeclared: step {sid!r} at {where} formats {fmt!r}, "
+            f"which device {device_id!r} does not declare in capture_formats"
+        )
+    max_samples = limits.get("max_samples")
+    max_bytes = limits.get("max_bytes")
+    if type(max_samples) is not int or type(max_bytes) is not int:
+        raise AdmissionRejected(
+            f"capture_undeclared: step {sid!r} at {where} cannot be bounded: "
+            f"device {device_id!r} declares malformed capture_limits "
+            "(max_samples and max_bytes must be integers)"
+        )
+    if step["sample_count"] > max_samples:
+        raise AdmissionRejected(
+            f"capture_undeclared: step {sid!r} at {where} sample_count "
+            f"{step['sample_count']} exceeds device {device_id!r} "
+            f"capture_limits.max_samples {max_samples}"
+        )
+    if step["max_bytes"] > max_bytes:
+        raise AdmissionRejected(
+            f"capture_undeclared: step {sid!r} at {where} asks "
+            f"{step['max_bytes']} bytes, above device {device_id!r} "
+            f"capture_limits.max_bytes {max_bytes}"
+        )
 
 
 def _check_body_budget(docs: AdmittedDocuments) -> None:
