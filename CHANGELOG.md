@@ -176,6 +176,7 @@ All notable changes to this project will be documented in this file.
 - Refuse $ref-bearing grammar subschemas; guard holds the ValueError discipline
 - Spool the pinned provider contract + thread settings/now_wall
 - The write-gate exempts branch-new files its message promises
+- Advance SDK pointer — notes preservation (#170) + paired prose corrections
 
 ### Documentation
 
