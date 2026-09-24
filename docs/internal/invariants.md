@@ -369,6 +369,14 @@ rather than rewriting the history — that is how this file earns trust.
   regeneration poisoned the Sources cells, and a moved submodule working
   tree reds the maintainer's own clone).*
 
+  *Amendment (2026-09-24, issue #187 class closure): the lock's
+  `compatibility.sdk` is itself anchored — it must equal the pinned SDK's own
+  `pyproject.toml` version, read through the working tree the state gate
+  proved is the pin, refused by name when the pyproject is unreadable or the
+  field undeclared (`sdk_version_unanchored`); the render's purity clause is
+  unchanged — `render_matrix` still never reads the SDK's pyproject. The
+  authority chain is pyproject@pin → lock → mirror.*
+
 ## Registry & plugin invariants
 
 - **[REG-1]** A plugin is imported with no side effects, then explicitly opened with a

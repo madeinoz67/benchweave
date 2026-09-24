@@ -27,6 +27,8 @@ the SDK lock at the pinned gitlink commit — equality-enforced by
 that pin; a moved working tree is refused by name, never mirrored from (the
 lock stays the authority); none of these are digest-pinned, so they move no
 corpus rows and need no repin (issue #158).
+The lock's `sdk` field names the pinned SDK's own version (issue #187 fork
+(a)), and `benchweave.standards check` anchors it to the pinned pyproject.
 
 ## Change classes and their bumps
 

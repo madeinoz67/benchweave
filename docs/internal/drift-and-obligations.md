@@ -50,14 +50,23 @@ and remain the reviewer's job.
    directory teardown as part of the bump (GOVERNANCE "The dev stage").
    The manifest's `sdk_compatibility` mirror moves with the SDK lock's
    `compatibility` block — `standards check` refuses drift
-   (`sdk_compatibility_drift`, invariants CON-12) — and `matrix --check` is
+   (`sdk_compatibility_drift`, mirror ↔ lock, and `sdk_version_unanchored`,
+   lock ↔ the pinned SDK's pyproject; invariants CON-12) — and `matrix --check` is
    checkout-invariant: it renders committed state only (manifest + mirror +
    `pyproject.toml` `[project.urls]` + `.gitmodules`), so fork and
    uninitialised-submodule checkouts render byte-identical upstream bytes.
 
 7. **The `packages/sdk` pointer** → the submodule commit must **exist and be pushed** to
    the SDK remote before the pointer lands here — CI checks out submodules by SHA, so an
-   unpushed commit is invisible there and breaks `gates`. **Renderer freshness**: the `ui`
+   unpushed commit is invisible there and breaks `gates`. **Version-pairing**: a pointer
+   advance that moves the SDK's own version pairs the regenerated SDK lock, the moved
+   `sdk_compatibility` mirror, and the re-rendered `docs/compatibility-matrix.md` in the
+   same landing — the PR #189 shape (`4d7f6bc`: matrix + pointer + manifest + test in one
+   merge, closing #187) and the PR #154 shape (`18009ce`, closing #153: pointer + in-tree
+   dependents together) — with `make check-sdk-standards` as the mechanical half: it
+   anchors the lock's `compatibility.sdk` to the pinned SDK's own pyproject
+   (`sdk_version_unanchored`), so a stale lock reds at pointer-advance time.
+   **Renderer freshness**: the `ui`
    job rebuilds the preview renderer (`npm --prefix ui run build:preview`) and fails on any
    diff in the SDK's committed `preview_assets` — a UI change that leaves the committed
    renderer stale ships silently in the wheel.
