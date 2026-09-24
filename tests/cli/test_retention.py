@@ -324,10 +324,12 @@ def test_s3_5_quota_scope_and_arithmetic(tmp_path: Path) -> None:
         assert contexts["run:run-a"]["used_bytes"] == writer.used_bytes("run:run-a") == 228
         # run-b: its single 300 B capture is a single-event key under the
         # fork-B wire (one capture cannot define an ingest rate) — used
-        # still reads the writer's ledger; rate is honestly absent (0)
+        # still reads the writer's ledger; the rate is honestly ABSENT
+        # (None + unestimable_rate state), never a clean 0
         used_b = writer.used_bytes("run:run-b")
         assert contexts["run:run-b"]["used_bytes"] == used_b == 300
-        assert contexts["run:run-b"]["rate_bytes_per_s"] == 0
+        assert contexts["run:run-b"]["rate_bytes_per_s"] is None
+        assert contexts["run:run-b"]["state"] == "unestimable_rate"
         assert contexts["run:run-b"]["time_to_exhaustion_s"] is None
         # the wedge arithmetic arm rides the LIVE run-c key (a closed run's
         # row carries no exhaustion forecast — finding 11): two 100 B
@@ -1253,4 +1255,132 @@ def test_fw7_shadowed_class_rule_never_claimed(tmp_path: Path) -> None:
     # (7200 s, delete) must not be named
     assert row["duration_s"] == 60 and row["on_disposition"] == "review"
     assert _matched_fields(row) == (None, "bench", "default")
+
+
+def _add_zero_charged_capture(data_dir: Path, cid: str, opened_at: str,
+                              closed_at: str, ctx: str = "run:run-a") -> None:
+    """A finalised staging row with charged_bytes = 0 (the writer refuses
+    zero-byte finalises; this fixture-level row reaches the wire's honest
+    measured-zero-growth branch)."""
+    store = Store.open(db_path(data_dir))
+    try:
+        store.connection.execute(
+            "INSERT INTO capture_staging (capture_id, context_key, state,"
+            " reserved_bytes, charged_bytes, format, created_at, updated_at)"
+            " VALUES (?, ?, 'finalised', 0, 0, 'raw_binary', ?, ?)",
+            (cid, ctx, opened_at, closed_at),
+        )
+        store.connection.commit()
+    finally:
+        store.close()
+
+
+def test_fw8_ceiling_knobs_validate_identically(tmp_path: Path,
+                                                monkeypatch: pytest.MonkeyPatch) -> None:
+    """Finding 8 (MED): env BENCHWEAVE_MAX_DATASET_BYTES used to admit
+    0 / -5 / abc while the flag refused < 1. Both knobs validate the same
+    way now — a typed refusal naming the knob."""
+    data_dir = _seed(tmp_path)
+    for raw in ("0", "-5", "abc"):
+        monkeypatch.setenv("BENCHWEAVE_MAX_DATASET_BYTES", raw)
+        with pytest.raises(ValueError) as exc:
+            _model(data_dir, now=NOW)
+        assert "BENCHWEAVE_MAX_DATASET_BYTES" in str(exc.value)
+        assert "integer >= 1" in str(exc.value)
+    monkeypatch.delenv("BENCHWEAVE_MAX_DATASET_BYTES", raising=False)
+    for flag in ("0", "-5"):
+        with pytest.raises(ValueError) as exc:
+            _model(data_dir, now=NOW, max_dataset_bytes=int(flag))
+        assert "--max-dataset-bytes" in str(exc.value)
+    # the CLI maps both refusals to exit 1, no traceback
+    monkeypatch.setenv("BENCHWEAVE_MAX_DATASET_BYTES", "abc")
+    result = CliRunner().invoke(cli, ["retention", "--data-dir", str(data_dir)])
+    assert result.exit_code == 1
+    assert "BENCHWEAVE_MAX_DATASET_BYTES" in _combined(result)
+    assert "Traceback" not in _combined(result)
+
+
+def test_fw8_wedge_states_boundary_table(tmp_path: Path,
+                                         monkeypatch: pytest.MonkeyPatch) -> None:
+    """Finding 8 (MED): the boundary table — (ceiling-used) in {>, =, < 0}
+    x rate in {measured > 0, measured = 0, unestimable} x ceiling in
+    {absent} — each cell renders decidable, distinct output. An over-
+    ceiling key renders 'over ceiling by N bytes', NEVER a negative
+    forecast; measured zero growth is labeled with n/span and split from
+    the unknown-ceiling label."""
+    from benchweave.cli.retention import render_markdown
+
+    monkeypatch.delenv("BENCHWEAVE_MAX_DATASET_BYTES", raising=False)
+    data_dir = _seed(tmp_path)
+    # measured rate > 0: run-c's two 100 B captures (S3-5's shape) — add them
+    store = Store.open(db_path(data_dir))
+    try:
+        store.create_run("run-z", {"procedure_id": "demo"}, "op", T0)
+        store.put_run_state("run-z", BENCH, "running", T2)
+        writer = CaptureStagingStore(
+            store, max_capture_bytes=10_000_000, max_dataset_bytes=10_000_000
+        )
+        for cid, opened, closed in (("cap-c1", T0, T1), ("cap-c2", T1, T2)):
+            writer.open_capture(
+                capture_id=cid, context_key="run:run-c", fmt="raw_binary",
+                sample_count=None, max_bytes=1000, now=opened)
+            writer.append(cid, b"\x02" * 100, "run:run-c")
+            writer.finalise(cid, closed, "run:run-c")
+    finally:
+        store.close()
+    # measured rate = 0: live run:run-z gains two zero-charged rows over a
+    # span (run-a is terminal: a closed row renders the closed line first)
+    _add_zero_charged_capture(data_dir, "cap-z1", T0, T1, ctx="run:run-z")
+    _add_zero_charged_capture(data_dir, "cap-z2", T1, T2, ctx="run:run-z")
+    # unestimable: run:run-b keeps its single capture (single_event key)
+
+    def wedge_by(ceiling: int | None) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
+        model = _model(data_dir, now=NOW, max_dataset_bytes=ceiling)
+        return {c["context_key"]: c for c in model["quota_wedge"]["contexts"]}, model
+
+    # ceiling absent: every row labels itself ceiling_unknown (split from
+    # zero-rate: the old wire conflated both into one sentence)
+    unknown, model = wedge_by(None)
+    assert all(c["state"] == "ceiling_unknown" for c in unknown.values())
+    assert any("ceiling unknown" in d for d in model["disclosures"])
+    joined = "\n".join(render_markdown(model).splitlines())
+    assert "ceiling unknown; projection omitted" in joined
+
+    # measured rate > 0: run-c's used is 512 (reserved cap-open) + 200 = 712
+    w, model = wedge_by(10_000)  # ceiling - used > 0 for every key
+    c = w["run:run-c"]
+    assert c["state"] == "forecast"
+    assert c["rate_bytes_per_s"] == pytest.approx(200 / 120)
+    assert c["n"] == 2 and c["observed_span_s"] == pytest.approx(120.0)
+    assert c["time_to_exhaustion_s"] == pytest.approx((10_000 - 712) / (200 / 120))
+
+    w, _ = wedge_by(712)  # ceiling - used == 0
+    assert w["run:run-c"]["state"] == "at_ceiling"
+    assert w["run:run-c"]["time_to_exhaustion_s"] is None
+
+    w, model = wedge_by(612)  # ceiling - used < 0
+    over = w["run:run-c"]
+    assert over["state"] == "over_ceiling"
+    assert over["over_ceiling_bytes"] == 100
+    assert over["time_to_exhaustion_s"] is None
+    assert over["exhaustion_at"] is None, "no negative forecast, ever"
+    line = next(ln for ln in render_markdown(model).splitlines()
+                if ln.startswith("- run:run-c "))
+    assert "over ceiling by 100 bytes" in line and "-9" not in line
+
+    # measured rate = 0: run-z's zero-charged pair (n=2, span 120 s)
+    w, model = wedge_by(10_000)
+    zero = w["run:run-z"]
+    assert zero["state"] == "zero_growth"
+    assert zero["rate_bytes_per_s"] == 0.0
+    assert zero["n"] == 2 and zero["observed_span_s"] == pytest.approx(120.0)
+    zero_line = next(ln for ln in render_markdown(model).splitlines()
+                     if ln.startswith("- run:run-z "))
+    assert "measured zero growth" in zero_line
+
+    # unestimable rate: run-b (single capture) — never a clean 0 rate
+    unest = w["run:run-b"]
+    assert unest["state"] == "unestimable_rate"
+    assert unest["rate_bytes_per_s"] is None
+    assert unest["time_to_exhaustion_s"] is None
 

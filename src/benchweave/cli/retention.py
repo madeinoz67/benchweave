@@ -597,7 +597,7 @@ def build_retention_report(
             ).hold:
                 lane["holds"] += 1
     capture_growth: list[dict[str, Any]] = []
-    lane_rates: dict[str, float] = {}
+    lane_rates: dict[str, dict[str, Any]] = {}
     for context, lane in sorted(captures_lane.items()):
         first = min(lane["opens"]) if lane["opens"] else None
         last = max(lane["closes"]) if lane["closes"] else None
@@ -612,7 +612,7 @@ def build_retention_report(
             excluded["zero_span"] += 1
             continue
         rate = lane["bytes"] / span
-        lane_rates[context] = rate
+        lane_rates[context] = {"rate": rate, "n": lane["rows"], "span": span}
         # held: EVERY governing rule of the key's rows is a hold rule — the
         # stream never empties at disposal time, and its projection must not
         # pretend otherwise (finding 9: held classes used to project aging
@@ -661,6 +661,13 @@ def build_retention_report(
         )
 
     # --- the quota wedge -------------------------------------------------------
+    # issue #184 finding 8: both ceiling knobs validate identically (the
+    # env used to admit 0/-5/abc while the flag refused < 1), and the
+    # states never render a negative forecast: over_ceiling says "over
+    # ceiling by N bytes", at_ceiling says G3 refuses now, zero_growth
+    # ("measured zero growth", n/span shown) is split from
+    # ceiling_unknown ("ceiling unknown; projection omitted"), and an
+    # unestimable key is unestimable — never a clean 0 rate.
     ceiling: int | None
     ceiling_source: str | None
     if max_dataset_bytes is not None:
@@ -670,7 +677,15 @@ def build_retention_report(
     else:
         env_raw = os.environ.get("BENCHWEAVE_MAX_DATASET_BYTES")
         if env_raw is not None:
-            ceiling, ceiling_source = int(env_raw), "env"
+            try:
+                value = int(env_raw)
+            except ValueError:
+                value = -1
+            if value < 1:
+                raise ValueError(
+                    "BENCHWEAVE_MAX_DATASET_BYTES must be an integer >= 1"
+                )
+            ceiling, ceiling_source = value, "env"
         else:
             ceiling, ceiling_source = None, None
     if ceiling is None:
@@ -692,7 +707,7 @@ def build_retention_report(
         if not _in_scope(key, covered):
             continue
         used = writer.used_bytes(key)
-        rate = lane_rates.get(key, 0.0)
+        measured = lane_rates.get(key)  # a measured rate row, or None
         # issue #184 finding 11: the wedge consults run liveness — a closed
         # run's ledger is historical; a live-looking exhaustion date on it
         # would forecast growth that cannot come.
@@ -703,18 +718,37 @@ def build_retention_report(
                 run_state = (
                     "live" if state_row["state"] in LIVE_RUN_STATES else "closed"
                 )
-        tte = (
-            (ceiling - used) / rate
-            if ceiling is not None and rate > 0 and run_state != "closed"
-            else None
-        )
+        if ceiling is None:
+            state, over_by = "ceiling_unknown", None
+        elif used > ceiling:
+            state, over_by = "over_ceiling", used - ceiling
+        elif used == ceiling:
+            state, over_by = "at_ceiling", None
+        elif measured is None:
+            state, over_by = "unestimable_rate", None
+        elif measured["rate"] == 0:
+            state, over_by = "zero_growth", None
+        else:
+            state, over_by = "forecast", None
+        tte: float | None = None
+        if (
+            state == "forecast"
+            and run_state != "closed"
+            and ceiling is not None
+            and measured is not None
+        ):
+            tte = (ceiling - used) / measured["rate"]
         wedge_contexts.append(
             {
                 "context_key": key,
                 "bench": _bench_of(key, run_states),
                 "run_state": run_state,
+                "state": state,
+                "over_ceiling_bytes": over_by,
                 "used_bytes": used,
-                "rate_bytes_per_s": rate,
+                "rate_bytes_per_s": measured["rate"] if measured is not None else None,
+                "n": measured["n"] if measured is not None else None,
+                "observed_span_s": measured["span"] if measured is not None else None,
                 "time_to_exhaustion_s": tte,
                 "exhaustion_at": (
                     _iso(datetime.fromtimestamp(now_dt.timestamp() + tte, tz=now_dt.tzinfo))
@@ -825,22 +859,45 @@ def render_markdown(report: dict[str, Any]) -> str:
     else:
         lines.append(f"- ceiling: {wedge['ceiling']} (source: {wedge['ceiling_source']})")
     for ctx in wedge["contexts"]:
+        rate_text = (
+            f"rate={ctx['rate_bytes_per_s']:.3f} B/s"
+            if ctx["rate_bytes_per_s"] is not None
+            else "rate=unestimable"
+        )
         if ctx.get("run_state") == "closed":
             lines.append(
                 f"- {ctx['context_key']} bench={ctx['bench'] or '-'}: "
-                f"used={ctx['used_bytes']} B rate={ctx['rate_bytes_per_s']:.3f} B/s "
+                f"used={ctx['used_bytes']} B {rate_text} "
                 "run closed — ledger static, no forecast"
             )
             continue
-        tte = (
-            f"{ctx['time_to_exhaustion_s']:.1f}s (at {ctx['exhaustion_at']})"
-            if ctx["time_to_exhaustion_s"] is not None
-            else "no estimate (zero rate or unknown ceiling)"
-        )
+        state = ctx.get("state")
+        if state == "ceiling_unknown":
+            tail = "ceiling unknown; projection omitted"
+        elif state == "over_ceiling":
+            tail = (
+                f"over ceiling by {ctx['over_ceiling_bytes']} bytes — G3 "
+                "refuses new captures (no negative forecast)"
+            )
+        elif state == "at_ceiling":
+            tail = "at ceiling — G3 refuses new captures"
+        elif state == "unestimable_rate":
+            tail = (
+                "rate unestimable — key excluded from the growth projection "
+                "(see growth exclusions)"
+            )
+        elif state == "zero_growth":
+            tail = (
+                f"measured zero growth (n={ctx['n']}, span={ctx['observed_span_s']}s)"
+            )
+        else:
+            tail = (
+                f"exhaustion in {ctx['time_to_exhaustion_s']:.1f}s "
+                f"(at {ctx['exhaustion_at']})"
+            )
         lines.append(
             f"- {ctx['context_key']} bench={ctx['bench'] or '-'}: "
-            f"used={ctx['used_bytes']} B rate={ctx['rate_bytes_per_s']:.3f} B/s "
-            f"exhaustion in {tte}"
+            f"used={ctx['used_bytes']} B {rate_text} {tail}"
         )
     lines.append(f"- {wedge['disclosure']}")
     lines.append(f"- {wedge['method']}")
