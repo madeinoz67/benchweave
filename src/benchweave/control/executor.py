@@ -76,7 +76,7 @@ import json
 import math
 from collections import ChainMap
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 
 from benchweave.control.binding import ResolvedBinding
@@ -161,6 +161,11 @@ SAMPLE_MISSING = "missing"
 SAMPLE_WRONG_UNIT = "wrong_unit"
 SAMPLE_NOT_SCALAR = "not_scalar"
 SAMPLE_STALE = "stale"
+#: F11 (issue #176 row B): a parseable but offset-less ``started_at``
+#: misstates its instant by the sender's whole offset — a document
+#: defect, refused with its own reason (never laundered into ``stale``,
+#: which is the freshness verdict for timing that is known but spent).
+SAMPLE_NAIVE_TIMESTAMP = "naive_timestamp"
 SAMPLE_UNKNOWN_UNCERTAINTY = "unknown_uncertainty"
 
 #: The captureManifest members the OTDP schema REQUIRES — the presence
@@ -222,7 +227,9 @@ def _recheck_stale(outcome: SampleOutcome, evaluated_at_wall: str) -> bool:
     §4: freshness is rechecked at predicate evaluation. A sample that was
     fresh at selection but has aged past ``max_age_ms`` by the time its
     predicate runs is INVALID evidence. Unknown timing cannot satisfy a
-    finite bound, so an unparseable timestamp also reads as stale.
+    finite bound, so an unparseable timestamp also reads as stale (and a
+    naive one would too — though F11's selection-time refusal means a
+    naive stamp never reaches this point on a valid outcome).
     """
     if outcome.max_age_ms is None:
         return False
@@ -239,8 +246,23 @@ def _invalid_sample(reason: str) -> SampleOutcome:
     )
 
 
+def _naive_wall(text: Any) -> bool:
+    """True when ``text`` parses as ISO-8601 but carries no UTC offset
+    (F11): the stamp states a local wall time and misstates its instant
+    by the sender's offset."""
+    if not isinstance(text, str):
+        return False
+    try:
+        moment = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return moment.tzinfo is None
+
+
 def _parse_wall(text: Any) -> datetime | None:
-    """Parse an ISO-8601 wall timestamp, treating a naive value as UTC."""
+    """Parse an ISO-8601 wall timestamp; a naive value refuses (F11,
+    issue #176 row B — the seam wave's disclosed promotion is retired),
+    as does anything the parser cannot read."""
     if not isinstance(text, str):
         return None
     try:
@@ -248,7 +270,7 @@ def _parse_wall(text: Any) -> datetime | None:
     except ValueError:
         return None
     if moment.tzinfo is None:
-        moment = moment.replace(tzinfo=UTC)
+        return None
     return moment
 
 
@@ -554,6 +576,12 @@ def select_sample(
     )
     started_at = dataset.get("started_at")
     if freshness_bound is not None:
+        if _naive_wall(started_at):
+            # F11: the stamp misstates its instant by the sender's offset
+            # — a document defect with its own refusal, decided before
+            # the freshness arithmetic (which could otherwise read the
+            # naive bytes as UTC and call stale evidence fresh).
+            return _invalid_sample(SAMPLE_NAIVE_TIMESTAMP)
         started = _parse_wall(started_at)
         evaluated = _parse_wall(evaluated_at_wall)
         if started is None or evaluated is None:
