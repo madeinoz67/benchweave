@@ -371,11 +371,14 @@ rather than rewriting the history — that is how this file earns trust.
 
   *Amendment (2026-09-24, issue #187 class closure): the lock's
   `compatibility.sdk` is itself anchored — it must equal the pinned SDK's own
-  `pyproject.toml` version, read through the working tree the state gate
-  proved is the pin, refused by name when the pyproject is unreadable or the
-  field undeclared (`sdk_version_unanchored`); the render's purity clause is
-  unchanged — `render_matrix` still never reads the SDK's pyproject. The
-  authority chain is pyproject@pin → lock → mirror.*
+  `pyproject.toml` version, read through the working tree of the commit the
+  state gate proved is HEAD's pin (the tree's content is not itself
+  verified — a dirty checkout at the pin is the disclosed residual, #187 D5;
+  CI's recursive-clean checkout is the authority), refused by name when the
+  pyproject is unreadable or the field undeclared (`sdk_version_unanchored`);
+  the render's purity clause is unchanged — `render_matrix` still never
+  reads the SDK's pyproject. The authority chain is pyproject@pin → lock →
+  mirror.*
 
 ## Registry & plugin invariants
 

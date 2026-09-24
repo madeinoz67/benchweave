@@ -238,7 +238,9 @@ def _compare_mirror(
         if expected != actual:
             failures.append(
                 f"sdk_compatibility_drift: manifest {field}={expected!r} vs SDK lock "
-                f"{field}={actual!r}; update standards-manifest.json sdk_compatibility"
+                f"{field}={actual!r}; update whichever side the pinned SDK's "
+                "pyproject.toml disagrees with — the mirror (standards-manifest.json "
+                "sdk_compatibility) or the lock (make sync-sdk-standards)"
             )
     return failures
 
@@ -248,17 +250,21 @@ def _compare_anchor(sdk: Path, lock: dict[str, Any], state: list[str]) -> list[s
 
     The lock's ``sdk`` field is a writer contract (the SDK sync stamps its own
     version into it; issue #187 fork (a): the version this lock state is
-    certified for). The state gate proved the working tree IS the gitlink pin,
-    so the pyproject read here is the pinned commit's. Both sides staling
-    together — mirror equal, lock stale — is exactly the state this refuses
-    (the #187 defect shape). Degrades loudly: an unreadable pyproject or an
-    undeclared lock field is a failure, never a skip and never a degraded
-    ``"unknown"`` comparison.
+    certified for). The state gate proved HEAD is the gitlink pin; the
+    pyproject read here is the pin's working-tree content — the tree's bytes
+    are not independently verified (the dirty-tree-at-pin residual, #187 D5:
+    a dirty pyproject can false-red, a dirty-consistent trio can false-green
+    over diverged committed state; CI's recursive-clean checkout is the
+    authority). Both sides staling together — mirror equal, lock stale — is
+    exactly the state this refuses (the #187 defect shape). Degrades loudly:
+    an unreadable pyproject or an undeclared lock field is a failure, never a
+    skip and never a degraded ``"unknown"`` comparison.
 
     The failure prefix is a family of its own, deliberately not
-    ``sdk_compatibility_drift:`` — the two failures have different meanings and
-    different fixes (drift = "update the manifest mirror"; unanchored =
-    "regenerate the SDK lock").
+    ``sdk_compatibility_drift:`` — the two failures have different meanings
+    and different fixes (unanchored = "regenerate the SDK lock"; drift's
+    remediation names the pinned pyproject as the decider, so it stays
+    correct whether the lock or the mirror is the stale side).
     """
     if state:
         return []
@@ -361,7 +367,9 @@ def _sdk_head_sha(sdk: Path) -> str | None:
 
 
 def _pinned_sdk_package_version(sdk: Path) -> str | None:
-    """The SDK's own version in the working tree (= the pin, per the state gate).
+    """The SDK's own version in the working tree (the state gate proved HEAD
+    is the pin; the tree's content itself is unverified — see
+    ``_compare_anchor``).
 
     None when pyproject is absent, malformed, or unreadable — the caller
     refuses. The check-side dual of the SDK's ``standards_sync._sdk_version``:

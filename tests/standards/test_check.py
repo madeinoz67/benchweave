@@ -433,6 +433,37 @@ def test_sdk_version_anchor_refuses_permission_broken_pyproject(
     assert "cannot read" in unanchored[0] and "pyproject.toml" in unanchored[0], failures
 
 
+def test_drift_remediation_is_posture_safe_when_the_anchor_co_fires(
+    tmp_path: Path,
+) -> None:
+    """Lock-stale posture (mirror correct): the drift line must not direct a
+    manifest edit (lane-1 fold F2, #187).
+
+    SDK bumped past the lock: the mirror moved with the pointer (0.2.0, equal
+    to the pinned pyproject), the lock regeneration was missed (0.1.1). Drift
+    and the anchor co-fire; the correct side is the mirror, so the drift
+    line's remediation must name the pinned pyproject as the decider, not
+    send the contributor to corrupt standards-manifest.json.
+    """
+    from benchweave.standards.check import run_check
+
+    sdk = _sdk_copy(tmp_path)
+    lock = _lock(sdk)
+    lock["compatibility"]["sdk"] = "0.1.1"
+    _write_lock(sdk, lock)
+    # The mirror stays CORRECT — untouched from the live manifest (0.2.0).
+    failures = run_check(_standards_root(tmp_path), sdk)
+    drift = [f for f in failures if f.startswith("sdk_compatibility_drift:")]
+    unanchored = [f for f in failures if f.startswith("sdk_version_unanchored:")]
+    assert len(drift) == 1, failures
+    assert len(unanchored) == 1, failures
+    # The co-fired drift line must not point at the correct file, and the
+    # combined output must carry the right direction (re-sync the lock).
+    assert "update standards-manifest.json sdk_compatibility" not in drift[0]
+    assert "pyproject.toml" in drift[0]
+    assert "make sync-sdk-standards" in "\n".join(failures)
+
+
 def test_sdk_version_anchor_refuses_undeclared_lock_sdk(tmp_path: Path) -> None:
     """An undeclared lock field is the original defect shape.
 
