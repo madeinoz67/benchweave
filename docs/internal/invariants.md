@@ -370,15 +370,20 @@ rather than rewriting the history — that is how this file earns trust.
   tree reds the maintainer's own clone).*
 
   *Amendment (2026-09-24, issue #187 class closure): the lock's
-  `compatibility.sdk` is itself anchored — it must equal the pinned SDK's own
-  `pyproject.toml` version, read through the working tree of the commit the
-  state gate proved is HEAD's pin (the tree's content is not itself
-  verified — a dirty checkout at the pin is the disclosed residual, #187 D5;
-  CI's recursive-clean checkout is the authority), refused by name when the
-  pyproject is unreadable or the field undeclared (`sdk_version_unanchored`);
-  the render's purity clause is unchanged — `render_matrix` still never
-  reads the SDK's pyproject. The authority chain is pyproject@pin → lock →
-  mirror.*
+  `compatibility.sdk` is itself anchored — it must equal the pinned SDK's
+  own `pyproject.toml` version. Amendment (2026-09-25, in-fold mechanism
+  upgrade): the version is read from the PINNED COMMIT's bytes via git
+  (`git show <gitlink>:pyproject.toml` through the submodule's object
+  store), never the working tree — the original wording trusted the pin's
+  working-tree content and carried a disclosed dirt-at-pin residual (D5);
+  both review lanes observed a dirt-at-pin false verdict, firing D5's own
+  revisit trigger, and the mechanism closed it: a dirty checkout can
+  neither false-red a healthy pairing nor false-green the both-sides-stale
+  defect. Roots recording no gitlink read the working tree (no pin exists
+  to diverge from). Refused by name when the pinned bytes are unreadable
+  or the field undeclared (`sdk_version_unanchored`); the render's purity
+  clause is unchanged — `render_matrix` still never reads the SDK's
+  pyproject. The authority chain is pyproject@pin → lock → mirror.*
 
 ## Registry & plugin invariants
 

@@ -310,6 +310,12 @@ def test_mirror_refusal_names_uninitialized_submodule(tmp_path: Path) -> None:
     )
     # The anchor inherits the state gate: one refusal, no second family line.
     assert "sdk_version_unanchored" not in _prefixes(failures)
+    # Fresh-clone UX (fold): the state refusal is the FIRST line — the
+    # actionable remediation must not drown under the empty-lock unpinned
+    # noise the same posture generates.
+    assert failures[0].startswith(
+        "sdk_compatibility_drift: submodule packages/sdk is not initialized"
+    )
 
 
 def test_mirror_refuses_moved_submodule_with_honest_message(tmp_path: Path) -> None:
@@ -340,6 +346,91 @@ def test_mirror_refuses_moved_submodule_with_honest_message(tmp_path: Path) -> N
     # Restoring the pin greens the check: the pinned lock matches the mirror.
     _git("submodule", "update", "--init", "packages/sdk", cwd=repo)
     assert run_check(repo) == []
+
+
+def _repo_with_committed_187_pairing(tmp_path: Path, lock_version: str) -> Path:
+    """A real parent+submodule whose COMMITTED state pairs the lock at
+    ``lock_version`` with a mirror staled to match, at a pin whose pyproject
+    says 0.2.0.
+
+    The submodule gains one commit (lock compatibility.sdk = lock_version,
+    pyproject untouched), the parent's gitlink moves to that commit, and the
+    parent's mirror is committed equal to the lock — the recorded state
+    run_check must judge, independent of any working-tree dirt.
+    """
+    repo = _repo_with_submodule(tmp_path)
+    sdk = repo / "packages/sdk"
+    lock = _lock(sdk)
+    lock["compatibility"]["sdk"] = lock_version
+    _write_lock(sdk, lock)
+    _git("add", "-A", cwd=sdk)
+    _git("commit", "-m", "scratch: the committed pairing under test", cwd=sdk)
+    manifest = repo / "standards" / "standards-manifest.json"
+    document = json.loads(manifest.read_bytes())
+    document["sdk_compatibility"]["sdk"] = lock_version
+    manifest.write_text(json.dumps(document, indent=2))
+    _git("add", "-A", cwd=repo)
+    _git(
+        "commit",
+        "-m",
+        "scratch: gitlink and mirror committed with the pairing",
+        cwd=repo,
+    )
+    return repo
+
+
+def test_anchor_reads_the_pinned_commit_not_a_dirty_tree(tmp_path: Path) -> None:
+    """The dirt-at-pin FALSE-GREEN (fold mechanism; #187 D5's trigger fired).
+
+    The committed pairing is the #187 defect — lock 0.1.1 and mirror 0.1.1 at
+    a pin whose pyproject says 0.2.0, red on any clean checkout. A
+    contributor's uncommitted pyproject edit down to 0.1.1 must not green it:
+    the anchor reads the pinned commit's bytes via git, never the tree.
+    """
+    from benchweave.standards.check import run_check
+
+    repo = _repo_with_committed_187_pairing(tmp_path, "0.1.1")
+    sdk = repo / "packages/sdk"
+    (sdk / "pyproject.toml").write_text(
+        '[project]\nname = "benchweave-sdk"\nversion = "0.1.1"\n', encoding="utf-8"
+    )
+    failures = run_check(repo)
+    assert "sdk_version_unanchored" in _prefixes(failures), failures
+
+
+def test_anchor_ignores_a_dirty_tree_over_a_healthy_pairing(tmp_path: Path) -> None:
+    """The FALSE-RED kill: a healthy committed pairing stays green regardless
+    of working-tree dirt — the dirt is not a compatibility fact."""
+    from benchweave.standards.check import run_check
+
+    repo = _repo_with_committed_187_pairing(tmp_path, "0.2.0")
+    sdk = repo / "packages/sdk"
+    (sdk / "pyproject.toml").write_text(
+        '[project]\nname = "benchweave-sdk"\nversion = "9.9.9"\n', encoding="utf-8"
+    )
+    assert run_check(repo) == []
+
+
+def test_unreadable_lock_is_refused_by_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A lock that raises on open refuses by name — never a raw traceback out
+    of run_check, and never laundered into the empty-lock 'unpinned' noise
+    (lane-2 finding 3: same crash class as the pyproject, same standard)."""
+    from benchweave.standards.check import run_check
+
+    sdk = _sdk_copy(tmp_path)
+    target = sdk / "standards-lock.json"
+    real_open = Path.open
+
+    def deny(path: Path, *args: Any, **kwargs: Any) -> Any:
+        if path == target:
+            raise PermissionError(13, "Permission denied")
+        return real_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", deny)
+    failures = run_check(_standards_root(tmp_path), sdk)
+    assert "sdk_lock_unreadable" in _prefixes(failures), failures
 
 
 def test_mirror_refuses_non_string_lock_values_without_laundering(tmp_path: Path) -> None:
