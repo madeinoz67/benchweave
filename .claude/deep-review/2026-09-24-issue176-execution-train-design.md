@@ -666,6 +666,17 @@ measurement is not)**
 | 5 | Corpus promotion of the manifest-canonicality requirement (registry prose/schema-adjacent surface) | This record §Decision 4 | A second publisher surface needing the requirement stated normatively |
 | 6 | Aggregate teardown-window deadline (#167 F2 disclosure — unchanged, restated for the train) | #167 record | A commissioned envelope demanding it |
 | 7 | Capture format-enum widening beyond the core lane | This record §1a | An OTDP capture-formats revision train |
+| 8 | Run-time canonicality gate in `commissioned_device_closure` — close the upgrade-only residual (a pre-row-G lock over non-canonical bytes still resolves and surfaces the misleading `manifest_hash_mismatch` at `load_otdp_plugin`) | This record §Decision 4 | The first pre-row-G lock hit in upgrade or support |
+| 9 | Shared canonical-formula helper extraction behind the resolver's inline check and the loader's re-hash (the gF2 agreement pin guards divergence meanwhile) | This record §Decision 4 + `tests/contract/test_registry_resolver.py::test_canonical_form_agreement_pin` | The next intentional edit at resolver.py:276 or otdp_loading.py:192 |
+| 10 | G-R2 collateral-guard set derived from `catalogue.json` (today: a hardcoded glob and count of 6) | `tests/contract/test_registry_resolver.py::test_every_in_tree_fixture_manifest_is_canonical` | The first non-benchweave fixture path |
+| 11 | Admission-wrap detail propagation (`registry refused: {reason}` drops the `manifest_not_canonical (detail)` package name) | This record §Decision 4 + `docs/device-developer-guide.md` §10 | The next admission-error-surface change |
+| 12 | CI N×-under-load D-R1 lane (repeat the demo-lattice control under CPU load) | This record §Top risks + `tests/integration/test_demo_lattice_streaming.py` (D-R1 docstring) | The second under-load D-R1 flake |
+| 13 | Bundle-loader `importlib.import_module` bypass (already ledgered as a gotcha) | Memory vault gotcha ledger (restated here per amended rule 3) | The first untrusted bundle admission |
+| 14 | critic-D1: `stream_completed` → `stream_budget_exhausted` rename + pin + census | This record (critic wave D) | The next adapter/fixture-authoring touch, or row B's fixture work |
+| 15 | critic-D2: durable terminal marker on clean `mark_closed` | This record (critic wave D) | The next `stream_services` touch (the mid-budget run-end test rides it) |
+| 16 | critic-D3: durable record for subscribe-refusal | This record (critic wave D) | The next `stream_services` touch |
+| 17 | critic-D4: adapter refuses duplicate `subscription_id` | This record (critic wave D) | The next adapter touch |
+| 18 | Gap-capable streaming fixture (the committed fixture is pull-paced and structurally lossless; `gap` unproducible — disclosure folded into §Decision 3) | This record §Decision 3 (critic wave D) | The first real instrument requiring gap semantics |
 
 (#167's rows C, E, F stay closed in that record's table — none is this train's scope.)
 

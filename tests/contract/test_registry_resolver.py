@@ -8,14 +8,18 @@ import shutil
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+from benchweave.host.plugin import SimulationInfo
+from benchweave.registry.activation import ActivationRejected
 from benchweave.registry.authenticity import AuthenticityRejected, load_trust_root
 from benchweave.registry.manifests import Key
+from benchweave.registry.otdp_loading import load_otdp_plugin
 from benchweave.registry.resolver import (
     LocalDirectorySource,
     OriginConfig,
@@ -549,3 +553,105 @@ def test_payload_size_limit_rejects_before_read(
             "origin-main", "benchweave/sim-psu", "1.0.0", now_ns=NOW, high_water={}
         )
     assert exc.value.reason == "archive_too_large"
+
+
+def _g2_oracle_canonical(obj: dict[str, Any]) -> bytes:
+    """gF2's ONE canonical-bytes oracle (issue #176 council fold wave).
+
+    The resolver's inline formula (``Resolver._resolve_release``) and the
+    loader's re-hash (``load_otdp_plugin``) are two independent copies of
+    this serialization. The agreement pin below asserts BOTH enforcement
+    sites against THIS helper only — never against each other — so a silent
+    divergence between the production copies fails the pin from one side or
+    the other. Used only by ``test_canonical_form_agreement_pin``; the
+    production formula sites are deliberately not touched (helper
+    extraction is a deferral row).
+    """
+    return (json.dumps(obj, sort_keys=True, separators=(",", ":")) + "\n").encode()
+
+
+def test_canonical_form_agreement_pin(tmp_path: Path) -> None:
+    """gF2 (issue #176 council fold wave): both canonical-form enforcement
+    sites accept exactly the oracle's bytes and refuse a re-serialization
+    divergence.
+
+    The resolver refuses each divergence at RESOLUTION with
+    ``manifest_not_canonical`` (the canonicality check runs before
+    signature verification, so these arms need no signing keys); the loader
+    accepts the oracle digest — moving past ``manifest_hash_mismatch`` to
+    the missing cache contents — and refuses a divergence digest with
+    ``manifest_hash_mismatch``. The release-manifest schema carries no
+    float field (``payload.bytes`` is an integer), so the non-ASCII probe
+    rides the ``summary`` string field: a literal em-dash that canonical
+    form must ASCII-escape.
+    """
+    fixture_raw = (REG / "origin-main/benchweave/sim-psu/1.0.0/manifest.json").read_bytes()
+    probe = json.loads(fixture_raw)
+    probe["summary"] = "Probe manifest — non-canonical serialization pin"
+    oracle = _g2_oracle_canonical(probe)
+    assert oracle != fixture_raw  # the probe is not the fixture's bytes
+    assert b"\xe2\x80\x94" not in oracle  # ASCII-escaped: no literal em-dash byte
+
+    # Three content-identical divergences, each refused at resolve.
+    divergences: dict[str, bytes] = {
+        "pretty": json.dumps(probe, indent=2).encode(),
+        "literal-non-ascii": (
+            json.dumps(probe, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+            + "\n"
+        ).encode(),
+        "missing-trailing-newline": oracle[:-1],
+    }
+    assert json.loads(divergences["literal-non-ascii"]) == probe
+    for label, raw in divergences.items():
+        assert raw != oracle, label
+        source = _OverlaySource(
+            base=LocalDirectorySource(REG / "origin-main"),
+            manifests={("benchweave/sim-psu", "1.0.0"): (raw, b"unused")},
+        )
+        with pytest.raises(RegistryRejected) as resolve_exc:
+            Resolver(_origins(source)).resolve(
+                "origin-main", "benchweave/sim-psu", "1.0.0", now_ns=NOW, high_water={}
+            )
+        assert resolve_exc.value.reason == "manifest_not_canonical", label
+        assert "benchweave/sim-psu" in str(resolve_exc.value), label
+
+    # Resolver accept: the oracle bytes pass canonicality — the serve stops
+    # later, at signature verification over the fixture's original .sig
+    # (never re-signed to the probe), never at manifest_not_canonical.
+    fixture_sig = (REG / "origin-main/benchweave/sim-psu/1.0.0/manifest.sig").read_bytes()
+    accepted = _OverlaySource(
+        base=LocalDirectorySource(REG / "origin-main"),
+        manifests={("benchweave/sim-psu", "1.0.0"): (oracle, fixture_sig)},
+    )
+    with pytest.raises(AuthenticityRejected) as signature_exc:
+        Resolver(_origins(accepted)).resolve(
+            "origin-main", "benchweave/sim-psu", "1.0.0", now_ns=NOW, high_water={}
+        )
+    assert signature_exc.value.reason == "bad_signature"  # canonicality already passed
+
+    # Loader accept: the re-hash agrees with the oracle — the load moves
+    # past the digest gate to the missing cache contents.
+    with pytest.raises(ActivationRejected) as cache_exc:
+        load_otdp_plugin(
+            tmp_path,
+            probe,
+            hashlib.sha256(oracle).hexdigest(),
+            entry_relpath="src/example/plugin.py",
+            descriptor={},
+            services=SimpleNamespace(monotonic=lambda: 0.0),
+            simulation=SimulationInfo(True, "g2"),
+        )
+    assert cache_exc.value.reason == "file_hash_mismatch"
+
+    # Loader refuse: a divergence digest convention fails the re-hash gate.
+    with pytest.raises(ActivationRejected) as gate_exc:
+        load_otdp_plugin(
+            tmp_path,
+            probe,
+            hashlib.sha256(divergences["pretty"]).hexdigest(),
+            entry_relpath="src/example/plugin.py",
+            descriptor={},
+            services=SimpleNamespace(monotonic=lambda: 0.0),
+            simulation=SimulationInfo(True, "g2"),
+        )
+    assert gate_exc.value.reason == "manifest_hash_mismatch"
