@@ -13,7 +13,6 @@ import hashlib
 import importlib.abc
 import importlib.util
 import io
-import json
 import re
 import sys
 import sysconfig
@@ -29,6 +28,7 @@ from uuid import uuid4
 from benchweave.host.otdp_bridge import OTDPBridge
 from benchweave.host.plugin import SimulationInfo
 from benchweave.registry.activation import ActivationRejected
+from benchweave.registry.manifests import canonical_manifest_bytes
 
 
 def _safe_path(value: Any) -> PurePosixPath:
@@ -189,7 +189,7 @@ def load_otdp_plugin(
     """
     if not re.fullmatch(r"[0-9a-f]{64}", manifest_sha256):
         raise ActivationRejected("manifest_hash_mismatch")
-    encoded = (json.dumps(manifest, sort_keys=True, separators=(",", ":")) + "\n").encode()
+    encoded = canonical_manifest_bytes(manifest)
     if hashlib.sha256(encoded).hexdigest() != manifest_sha256:
         raise ActivationRejected("manifest_hash_mismatch")
     entry = _safe_path(entry_relpath)

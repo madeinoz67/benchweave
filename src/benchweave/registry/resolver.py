@@ -40,7 +40,7 @@ from benchweave.registry.authenticity import (
     check_status,
     verify_document,
 )
-from benchweave.registry.manifests import Key, check_closure
+from benchweave.registry.manifests import Key, canonical_manifest_bytes, check_closure
 from benchweave.registry.schemas import (
     RegistryRejected,
     load_manifest_document,
@@ -261,6 +261,27 @@ class Resolver:
             manifest_doc = load_manifest_document(
                 raw, pinned if pinned is not None else digest, max_bytes=_MANIFEST_MAX_BYTES
             )
+            # Row G (issue #176, design Decision 4): the pin lattice — status
+            # rows, lock dependencies, the catalogue, the cache directory and
+            # the loader's canonical re-hash — is keyed by ONE digest, and
+            # that discipline is only coherent when admissible manifest bytes
+            # ARE the canonical serialization. Without this check a
+            # content-identical pretty-printed manifest resolves, admits and
+            # pins cleanly, then dies at ``load_otdp_plugin`` as a misleading
+            # ``manifest_hash_mismatch``. The loader's own check is kept
+            # verbatim (defense in depth); the status document is NOT held to
+            # canonicality here — its schema, signature and release binding
+            # are verified over the served bytes, and no second digest
+            # authority re-hashes it.
+            canonical = canonical_manifest_bytes(manifest_doc.content)
+            if raw != canonical:
+                raise RegistryRejected(
+                    "manifest_not_canonical",
+                    detail=(
+                        f"package {package_id!r} serves manifest bytes that are "
+                        "not the canonical serialization"
+                    ),
+                )
             if origin.signature_policy == "dev-unsigned":
                 # Honest dev posture: no signature fetch, no verify call —
                 # the release records the absence as None, never fake bytes.

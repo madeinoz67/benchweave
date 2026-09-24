@@ -189,10 +189,15 @@ def commissioned_device_closure(
             )
         # The registry chain pins RAW served-byte digests (load_document
         # verifies expected_sha256 over the exact bytes — CON-1's exact-byte
-        # decoder); a content-identical manifest formatted differently from
-        # the canonical form admits, so the resolution compares the SERVED
-        # raw digest (F4), never a canonical re-encode that only coincides
-        # with the pin when registries format canonically.
+        # decoder). Since row G (issue #176) the resolver refuses
+        # non-canonical manifest bytes at resolution, so locks written
+        # since then pin canonical bytes; only a PRE-row-G lock over
+        # content-identical non-canonical bytes still resolves on this
+        # raw-digest comparison (its pin matches the served bytes) and
+        # then fails misleadingly at ``load_otdp_plugin`` as
+        # ``manifest_hash_mismatch`` — the upgrade-only residual, deferred.
+        # The comparison stays the SERVED raw digest (F4), never a
+        # canonical re-encode that only coincides with the pin.
         raw, served_digest = source.manifest_bytes(package_id, version)
         manifest = json.loads(raw)
         if served_digest != str(row.get("manifest_sha256")):

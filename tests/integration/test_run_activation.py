@@ -1204,31 +1204,21 @@ def _prettify_impl_manifest(registry_root: Path) -> None:
     (release / "status.json").write_bytes(canonical_status)
 
 
-def test_f4_pretty_printed_manifest_closure_resolves(tmp_path: Path) -> None:
-    """F4 RED control: the registry chain pins RAW served-byte digests
-    (load_document verifies expected_sha256 over the exact bytes) — a
-    content-identical pretty-printed manifest admits, so the run-time
-    closure resolution must compare the SERVED raw digest, not a canonical
-    re-encode that only coincides when registries format canonically."""
-    from benchweave.interfaces.device_closures import commissioned_device_closure
+def test_f4_pretty_printed_manifest_refused_at_resolution(tmp_path: Path) -> None:
+    """F4 GREEN (issue #176 row G): the pre-composed residual — a
+    content-identical pretty-printed manifest resolves, admits and pins
+    cleanly, then dies at ``load_otdp_plugin`` as a misleading
+    ``manifest_hash_mismatch`` — is now unrepresentable: the resolver
+    refuses the non-canonical serialization AT RESOLUTION, so commissioning
+    never sees it. Reverting the resolver's canonicality check re-opens the
+    residual and this control fails (the closure resolves again)."""
+    from benchweave.registry.schemas import RegistryRejected
 
-    harness = _CommissionedHarness(
-        tmp_path, "req-f4a", release_mutator=_prettify_impl_manifest
-    )
-    store, content = harness.open_store()
-    try:
-        bench = json.loads((harness.lattice_dir / "bench.json").read_bytes())
-        device = bench["devices"][0]
-        descriptor = json.loads(
-            (harness.lattice_dir / "descriptor-demo-supply.json").read_bytes()
+    with pytest.raises(RegistryRejected) as refused:
+        _CommissionedHarness(
+            tmp_path, "req-f4a", release_mutator=_prettify_impl_manifest
         )
-        closure = commissioned_device_closure(
-            harness.session, BENCH_ID, device, descriptor
-        )
-        assert closure is not None
-        assert closure.entry_relpath == "plugin/plugin.py"
-    finally:
-        store.close()
+    assert refused.value.reason == "manifest_not_canonical"
 
 
 # --- fix wave F3: the sim fallback is gated on the simulation mark --------------------
