@@ -377,3 +377,44 @@ The owner's reserved prose-carve-out ruling (§7) applies here identically.
    the stale row. Mitigated by the anchor (the belief no longer passes a gate)
    and by D1's trigger being the next SDK train of any kind; accepted residual
    until then, on record here.
+
+---
+
+## 12. Fold amendments (pre-merge, recorded before the PR)
+
+This section records what the two review lanes and the fold waves changed
+relative to the record as designed. The record above is history; this is
+what actually ships.
+
+- **F1/F2 (governor fold, 2026-09-24):** the tier classification corrected
+  to Tier 3 by the review rubric's letter (§7/§10 amendments in place);
+  the record committed on the branch it governs.
+- **D5 CLOSED BY MECHANISM (lane-1 + lane-2 convergence, fold amendment
+  2026-09-25).** §7's deferral table said "revisit only if a dirt-at-pin
+  false verdict is ever observed" — both lanes observed one, so the
+  trigger fired and the anchor's truth source became the pinned commit's
+  committed bytes (`git show <gitlink>:pyproject.toml` through the
+  submodule's object store), not the working tree. The §2 premise table's
+  working-tree reachability row is superseded: the read is no longer the
+  tree's where a gitlink exists. Both failure directions are test-pinned
+  (dirty-consistent false-green; dirty-pyproject false-red). The
+  no-gitlink synthetic-root harness keeps the working-tree read (no pin
+  exists to diverge from — the state gate's own distinction).
+- **Lane-2 finding 3 (folded):** `_read_lock`'s OSError gets the same
+  by-name refusal as the pyproject (`sdk_lock_unreadable:`) — an
+  unreadable chain input refuses by name, never a raw traceback and never
+  the empty-lock "unpinned" laundering.
+- **Lane-2 finding 5 (folded):** submodule-state failures report FIRST in
+  `run_check` — the fresh-clone remediation is the first line, ahead of
+  the empty-lock noise the same posture generates. The moved-submodule
+  `len(failures) == 1` pin stays green.
+- **Lane-2 findings 4 and 6 (accepted as NITs, no code):** the
+  compatibility block tolerates an extra undeclared field; and the
+  writer/checker asymmetry where the SDK writer `str()`-coerces a version
+  while the checker compares strings only. Both noted here as accepted
+  residuals; neither weakens the anchor's verdict on declared values.
+- **Lane-1 F2 (landed `ae7690a`, 2026-09-25):** the
+  `sdk_compatibility_drift` remediation is posture-safe ("update whichever
+  side the pinned SDK's pyproject.toml disagrees with"), replacing the
+  manifest-edit instruction that was wrong in the lock-stale posture where
+  the anchor co-fires; direction pinned by its own RED'd test arm.
