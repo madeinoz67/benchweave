@@ -570,7 +570,14 @@ def build_retention_report(
         sub_groups.setdefault((sub, context), []).append(
             (_parse_utc(received), _artifact_bytes(store, artifact))
         )
-    for (sub, context), events in sorted(sub_groups.items()):
+    # R2 fold item 4: a NULL-context event_log row sharing a subscription
+    # id with a keyed row makes (sub, None) and (sub, str) tuple keys — a
+    # plain sorted() dies comparing them. The None-safe key orders keyed
+    # groups first, the NULL-context group after, both reporting.
+    for (sub, context), events in sorted(
+        sub_groups.items(),
+        key=lambda item: (item[0][0], item[0][1] is None, item[0][1] or ""),
+    ):
         placed = [(stamp, bytes_) for stamp, bytes_ in events if stamp is not None]
         dropped_events["unparseable_stamp"] += len(events) - len(placed)
         if len(events) == 1:

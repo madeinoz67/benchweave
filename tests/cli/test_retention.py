@@ -1705,3 +1705,41 @@ def test_fold3_markdown_escapes_store_sourced_identifiers(tmp_path: Path) -> Non
     assert "evidence:x status=held disposal=2099\n- FORGED-ROW" in kinds
     subs = {s["subscription_id"] for s in payload["growth"]["subscriptions"]}
     assert "sub-a\n- FORGED-SUB-LINE" in subs
+
+
+def test_fold4_null_context_subscription_group_sorts_and_reports(
+    tmp_path: Path,
+) -> None:
+    """R2 fold item 4: ``sorted(sub_groups.items())`` compared tuple keys
+    ``(sub, None)`` vs ``(sub, str)`` — one NULL-context event_log row
+    sharing a subscription id with a keyed row killed the whole report
+    with an uncaught TypeError. The sort key is None-safe now; both
+    groups report (the NULL-context group under its own key)."""
+    data_dir = _seed(tmp_path)  # sub-alpha: 3 events at run:run-a
+    store = Store.open(db_path(data_dir))
+    try:
+        for i, received in enumerate((T0, T1)):
+            store.connection.execute(
+                "INSERT INTO evidence (evidence_id, kind, content_ref_json,"
+                " artifact_id, context_key, stored_at)"
+                " VALUES (?, 'event_log', ?, NULL, NULL, ?)",
+                (
+                    f"ev-nullctx-{i}",
+                    json.dumps(
+                        {"subscription_id": "sub-alpha", "host_received_at": received}
+                    ),
+                    received,
+                ),
+            )
+        store.connection.commit()
+    finally:
+        store.close()
+    model = _model(data_dir, now=NOW, max_dataset_bytes=10_000)
+    by_ctx = {
+        s["context_key"]: s
+        for s in model["growth"]["subscriptions"]
+        if s["subscription_id"] == "sub-alpha"
+    }
+    assert set(by_ctx) == {"run:run-a", None}, by_ctx
+    assert by_ctx["run:run-a"]["n"] == 3
+    assert by_ctx[None]["n"] == 2
