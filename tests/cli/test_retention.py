@@ -1765,3 +1765,140 @@ def test_fold5_horizon_domain_refusal_names_the_knob(tmp_path: Path) -> None:
     assert "--horizon-s" in combined, combined
     assert "253402300799" in combined, combined
     assert "Traceback" not in combined
+
+
+# --- the G6 fold refute: claim-accuracy fixes (findings 1-4, 6, 7) -----------------
+
+
+def test_g6_1_unicode_separators_cannot_forge_markdown_lines(tmp_path: Path) -> None:
+    """G6 finding 1 (+6): ``_md_text`` escaped C0+DEL only, so U+2028/U+2029/
+    NEL (line separators outside C0) still forged report lines, and a literal
+    ``\\x0a`` in an identifier rendered indistinguishably from an escaped
+    newline. The escape class now covers every remaining ``str.splitlines``
+    separator plus the RTL override, and the backslash is escaped first so
+    literal escape text cannot collide with a real escape."""
+    from benchweave.cli.retention import render_json, render_markdown
+
+    data_dir = _seed(tmp_path)
+    store, content = _open(data_dir)
+    try:
+        carriers = {
+            "sub-ls": "sub-ls - FORGED-U2028: n=2",
+            "sub-ps": "sub-ps - FORGED-U2029: n=2",
+            "sub-nel": "sub-nel- FORGED-NEL: n=2",
+            "sub-rtl": "sub-rtl‮FORGED-RTL",
+            "sub-lit": "sub-lit\\x0a- COLLIDE-LINE",
+        }
+        for name, sub in carriers.items():
+            for i, received in enumerate((T0, T1)):
+                payload = f"{name}-{i}".encode()
+                art = content.put_artifact(payload, T0)
+                content.put_evidence(
+                    "event_log",
+                    {"id": f"ref-{name}-{i}", "version": "1",
+                     "sha256": hashlib.sha256(payload).hexdigest(),
+                     "subscription_id": sub,
+                     "host_received_at": received},
+                    art, "run:run-a", T0)
+    finally:
+        store.close()
+
+    model = _model(data_dir, now=NOW, max_dataset_bytes=10_000)
+    md = render_markdown(model)
+    for raw in (" ", " ", "", "‮"):
+        assert raw not in md, f"raw separator survived: {raw!r}"
+    lines = md.splitlines()
+    assert not any(
+        ln.startswith(("- FORGED-", "- COLLIDE-LINE")) for ln in lines
+    ), "a forged line survived escaping"
+    ids = {
+        s["subscription_id"]
+        for s in json.loads(render_json(model))["growth"]["subscriptions"]
+    }
+    assert "sub-ls - FORGED-U2028: n=2" in ids  # JSON round-trips raw
+
+
+def test_g6_2_ceiling_knob_upper_bound_is_named(tmp_path: Path) -> None:
+    """G6 finding 2: ``--max-dataset-bytes`` had no upper bound, so a huge
+    ceiling turned the wedge's int-to-float division into an unmapped
+    OverflowError that killed the whole report — the exact class fold 5
+    closed on ``--horizon-s``. Both ceiling knobs now refuse above the
+    float-exact domain, naming the knob."""
+    data_dir = _seed(tmp_path)
+    with pytest.raises(ValueError) as exc:
+        _model(data_dir, now=NOW, max_dataset_bytes=10**400)
+    assert "--max-dataset-bytes" in str(exc.value), exc.value
+    model = _model(data_dir, now=NOW, max_dataset_bytes=2**53)
+    assert model["rows"], "the bound itself must be admissible"
+    result = CliRunner().invoke(
+        cli, ["retention", "--data-dir", str(data_dir),
+              "--max-dataset-bytes", "1" + "0" * 400])
+    assert result.exit_code == 1, _combined(result)
+    combined = _combined(result)
+    assert "--max-dataset-bytes" in combined, combined
+    assert "Traceback" not in combined
+
+
+def test_g6_3_unknown_low_version_asserts_no_false_direction(
+    tmp_path: Path,
+) -> None:
+    """G6 findings 3 (+7): the refuse-newer message claimed ``is newer than``
+    from ``max(unknown)`` without comparing — false for an unknown-LOW row
+    (``version 0 is newer than the gateway's 5``) — and the missing branch
+    named a ``1..N`` range instead of the migrations list. The message states
+    direction only when it compared, names the known set, and a mixed store
+    names its hole alongside the unknown row."""
+    data_dir = _seed(tmp_path)
+    db = db_path(data_dir)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "INSERT INTO schema_migrations (version, applied_at)"
+        " VALUES (0, 'applied-by-migration')"
+    )
+    conn.commit()
+    conn.close()
+    result = CliRunner().invoke(cli, ["retention", "--data-dir", str(data_dir)])
+    assert result.exit_code == 1, _combined(result)
+    combined = _combined(result)
+    assert "retention_store:" in combined, combined
+    assert "is newer" not in combined, combined
+    assert "unknown" in combined, combined
+
+    data_dir = _seed(tmp_path / "mixed")
+    db = db_path(data_dir)
+    conn = sqlite3.connect(db)
+    conn.execute("DELETE FROM schema_migrations WHERE version = 4")
+    conn.execute(
+        "INSERT INTO schema_migrations (version, applied_at)"
+        " VALUES (0, 'applied-by-migration')"
+    )
+    conn.commit()
+    conn.close()
+    result = CliRunner().invoke(cli, ["retention", "--data-dir", str(data_dir)])
+    combined = _combined(result)
+    assert result.exit_code == 1, combined
+    assert "missing" in combined and "4" in combined, (
+        "the mixed store must name its hole alongside the unknown row"
+    )
+
+
+def test_g6_4_corrupt_version_rows_stay_in_the_typed_family(
+    tmp_path: Path,
+) -> None:
+    """G6 finding 4: a non-integer ``schema_migrations.version`` row (a
+    rebuilt or corrupt table) escaped as a bare ``invalid literal for
+    int()`` — outside the ``retention_store:`` family the module contract
+    promises. The corrupt row is a typed refusal now."""
+    data_dir = _seed(tmp_path)
+    db = db_path(data_dir)
+    conn = sqlite3.connect(db)
+    conn.execute("DROP TABLE schema_migrations")
+    conn.execute("CREATE TABLE schema_migrations (version TEXT)")
+    conn.execute("INSERT INTO schema_migrations (version) VALUES ('abc')")
+    conn.commit()
+    conn.close()
+    result = CliRunner().invoke(cli, ["retention", "--data-dir", str(data_dir)])
+    assert result.exit_code == 1, _combined(result)
+    combined = _combined(result)
+    assert "retention_store:" in combined, combined
+    assert "Traceback" not in combined

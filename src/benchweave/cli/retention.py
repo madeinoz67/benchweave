@@ -741,8 +741,11 @@ def build_retention_report(
     ceiling: int | None
     ceiling_source: str | None
     if max_dataset_bytes is not None:
-        if max_dataset_bytes < 1:
-            raise ValueError("--max-dataset-bytes must be an integer >= 1")
+        if max_dataset_bytes < 1 or max_dataset_bytes > MAX_CEILING_BYTES:
+            raise ValueError(
+                f"--max-dataset-bytes must be an integer >= 1 and "
+                f"<= {MAX_CEILING_BYTES} (the float-exact domain)"
+            )
         ceiling, ceiling_source = max_dataset_bytes, "flag"
     else:
         env_raw = os.environ.get("BENCHWEAVE_MAX_DATASET_BYTES")
@@ -751,9 +754,10 @@ def build_retention_report(
                 value = int(env_raw)
             except ValueError:
                 value = -1
-            if value < 1:
+            if value < 1 or value > MAX_CEILING_BYTES:
                 raise ValueError(
-                    "BENCHWEAVE_MAX_DATASET_BYTES must be an integer >= 1"
+                    f"BENCHWEAVE_MAX_DATASET_BYTES must be an integer >= 1 "
+                    f"and <= {MAX_CEILING_BYTES} (the float-exact domain)"
                 )
             ceiling, ceiling_source = value, "env"
         else:
@@ -808,7 +812,13 @@ def build_retention_report(
             and ceiling is not None
             and measured is not None
         ):
-            tte = (ceiling - used) / measured["rate"]
+            try:
+                tte = (ceiling - used) / measured["rate"]
+            except (OverflowError, ValueError, TypeError, ZeroDivisionError):
+                # Belt, unreachable with the bounded knobs (the rate branch
+                # order above already excludes zero): the per-row absence
+                # posture never rests on the bound alone.
+                tte = None
         # R2 fold item 2b: a trickle rate x a huge ceiling pushes the
         # exhaustion instant past the datetime domain — the fw3 posture,
         # per-row: the honest number (time_to_exhaustion_s) is kept, the
@@ -882,21 +892,37 @@ def build_retention_report(
 
 # --- emitters -----------------------------------------------------------------------
 
-#: C0 control characters and DEL — a newline inside a store-sourced
-#: identifier would otherwise forge report lines (the R2 fold's injection
-#: item: evidence kinds are an open vocabulary, subscription ids ride
-#: opaque ``content_ref`` JSON, and neither is constrained by the store).
-_MD_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
+#: C0 control characters, DEL, and every line- or direction-forging
+#: character Python strings carry beyond them — a line separator inside a
+#: store-sourced identifier would otherwise forge report lines (the R2
+#: fold's injection item plus the G6 finding-1 widening: evidence kinds are
+#: an open vocabulary, subscription ids ride opaque ``content_ref`` JSON,
+#: and neither is constrained by the store). The class is exactly C0+DEL
+#: plus the remaining ``str.splitlines`` separators (NEL U+0085, LS U+2028,
+#: PS U+2029) plus the RTL override U+202E; the backslash is escaped first
+#: so a literal ``\xNN`` in an identifier cannot collide with an escape.
+_MD_CONTROL = re.compile(r"[\x00-\x1f\x7f  ‮]")
 
 
 def _md_text(value: Any) -> Any:
-    """Escape control characters in a store-sourced string on its way into
-    markdown (``\\x0a`` for a newline) so an identifier can never forge
-    report lines. Non-strings pass through; the JSON emitter is untouched
-    (``json.dumps`` already encodes control characters)."""
+    """Escape line- and direction-forging characters in a store-sourced
+    string on its way into markdown (``\\x0a`` for a newline, ``\\x2028``
+    for a line separator) so an identifier cannot forge report lines —
+    the escape class above is the structural reason it cannot. Non-strings
+    pass through; the JSON emitter is untouched (``json.dumps`` already
+    encodes control characters)."""
     if not isinstance(value, str):
         return value
-    return _MD_CONTROL.sub(lambda match: f"\\x{ord(match.group()):02x}", value)
+    escaped = value.replace("\\", "\\\\")
+    return _MD_CONTROL.sub(lambda match: f"\\x{ord(match.group()):02x}", escaped)
+
+
+#: The ceiling knob's upper bound (G6 finding 2): the float-exact integer
+#: domain. Beyond 2**53 the int-to-float conversion in the wedge arithmetic
+#: loses exactness and the forecast is meaningless — both ceiling knobs
+#: refuse above it, naming the knob (the same posture ``--horizon-s``
+#: carries for its domain).
+MAX_CEILING_BYTES = 2**53
 
 
 def render_markdown(report: dict[str, Any]) -> str:
@@ -1045,13 +1071,19 @@ def _refuse_schema_mismatch(db: Path) -> None:
     ``schema_migrations`` row inside the "never migrates" command. Any
     unknown version present → refuse (``refuse_newer_schema`` — it
     dominates: a newer gateway's store can also read as missing the
-    current top version); any known version missing → refuse, naming the
-    missing versions; typed, never a traceback (the
-    ``report`` command still shares the
+    current top version, and a mixed store names its hole too); any known
+    version missing → refuse, naming the missing versions and the gateway's
+    known set (regenerable from the migrations list, never a range);
+    typed, never a traceback (a corrupt non-integer version row is a typed
+    refusal too; the ``report`` command still shares the
     migration-on-open shape — that behavior change is out of this slice's
-    scope). The check runs under the exclusive hold, so the subsequent
-    ``Store.open`` applies nothing: the applied-version set equaling the
-    gateway's known set is what makes "no pending migration exists" true."""
+    scope). The hold excludes only cooperating benchweave processes: a
+    concurrent non-flock writer mutating ``schema_migrations`` between this
+    check and ``Store.open`` can still cause the migration engine to apply
+    pending rows — and a delete-then-re-apply round-trips the set, so it
+    is not detectable after the fact. That residual is disclosed here and
+    carried as design-record deferral row 16; the structural fix is a
+    read-only open for at-rest commands."""
     from benchweave.state.migrations import MIGRATIONS
 
     known = [migration.version for migration in MIGRATIONS]
@@ -1074,6 +1106,12 @@ def _refuse_schema_mismatch(db: Path) -> None:
                 "benchweave store (or one written before the schema "
                 "registry); a retention run never migrates the store"
             ) from error
+        except (ValueError, TypeError) as error:
+            raise RetentionStoreRefused(
+                f"retention_store: schema_migrations carries a non-integer "
+                f"version row ({error}); the store is corrupt or foreign — "
+                "a retention run never migrates the store"
+            ) from error
     finally:
         conn.close()
     missing = [version for version in known if version not in applied]
@@ -1083,21 +1121,37 @@ def _refuse_schema_mismatch(db: Path) -> None:
     # its store can read as "missing" the current top version while the
     # honest verdict is refuse-newer, never a down-level upgrade hint.
     if unknown:
+        newest = unknown[-1]
+        direction = (
+            f"on-disk schema version {newest} is newer than the gateway's "
+            f"{expected}"
+            if newest > expected
+            else (
+                "on-disk schema_migrations carries version(s) this gateway "
+                f"does not know (highest {newest}; the gateway knows "
+                f"{', '.join(str(version) for version in known)})"
+            )
+        )
+        hole = (
+            f"; also missing versions: "
+            f"{', '.join(str(version) for version in missing)}"
+            if missing
+            else ""
+        )
         raise RetentionStoreRefused(
-            f"retention_store: on-disk schema version {unknown[-1]} is newer "
-            f"than the gateway's {expected} (unknown versions: "
-            f"{', '.join(str(version) for version in unknown)}); downgrade "
-            "is refused (refuse_newer_schema) — run a gateway version that "
-            "knows this schema before opening this database"
+            f"retention_store: {direction}{hole} (unknown versions: "
+            f"{', '.join(str(version) for version in unknown)}); opening it "
+            "here is refused (refuse_newer_schema) — run a gateway version "
+            "that knows this schema before opening this database"
         )
     if missing:
         raise RetentionStoreRefused(
             f"retention_store: on-disk schema is behind the gateway's — "
             f"schema_migrations is missing versions: "
-            f"{', '.join(str(version) for version in missing)} (of the "
-            f"gateway's known 1..{expected}) — a retention run never "
-            "migrates the store; open it once with a current gateway "
-            "(setup/serve/report) to upgrade, then retry"
+            f"{', '.join(str(version) for version in missing)} (the gateway "
+            f"knows {', '.join(str(version) for version in known)}) — a "
+            "retention run never migrates the store; open it once with a "
+            "current gateway (setup/serve/report) to upgrade, then retry"
         )
 
 

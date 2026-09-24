@@ -661,6 +661,7 @@ findings or build-time discovery) meets the same absence-presence standard befor
 | 13 | Per-run ceiling durability (the retention report reads the ceiling from `--max-dataset-bytes` / `BENCHWEAVE_MAX_DATASET_BYTES` at report time; no ceiling is durable on the run record) | Documentation here | A run-record corpus revision, which must ride corpus governance, never this slice |
 | 14 | Evidence-count quota projection (`max_evidence_entries` wedge — slice 3 projects the byte ceiling only) | Documentation here | Absorbed by row 3's issue or an operator hitting the evidence ceiling blind |
 | 15 | `report` shares the migration-on-open shape (issue #184 fork A made `retention` never-migrate; `report` still applies pending migrations on open) | Documentation here (issue #184 fix wave) | The first operator hit by a silent report-run upgrade, or the next slice touching the at-rest open path |
+| 16 | Structural read-only open for at-rest commands (the `retention` precheck holds the flock, but a concurrent **non-flock** writer mutating `schema_migrations` in the precheck→open window can still cause `Store.open`'s migration engine to apply pending rows; a delete-then-re-apply round-trips the applied set, so post-hoc detection cannot catch it — G6 finding 5, disclosed in `_refuse_schema_mismatch`'s docstring) | Documentation here (issue #184 G6 fold) | A real hostile or broken concurrent writer on an at-rest command, or the at-rest family (`report`/`retention`) adopting read-only opens |
 
 ## Owner calls on the forks (resolved 2026-09-21)
 
