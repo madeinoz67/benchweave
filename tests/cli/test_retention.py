@@ -252,11 +252,20 @@ def test_s3_2_disposal_dates_recompute_per_policy_file(tmp_path: Path) -> None:
         dt_f = datetime.fromisoformat(f[rid]["disposal_date"].replace("Z", "+00:00"))
         dt_s = datetime.fromisoformat(s[rid]["disposal_date"].replace("Z", "+00:00"))
         delta = (dt_s - dt_f).total_seconds()
-        if f[rid]["matched_selector"] is None:
+        # S3-2 under the finding-7 matched fields (honest contract): the two
+        # policy files differ ONLY in the global default duration, so every
+        # row the GLOBAL DEFAULT governs recomputes fully, while class rules
+        # and bench-scoped rows (whose rules are identical in both files)
+        # stay put.
+        governs_global_default = (
+            f[rid]["matched_rule"] == "default"
+            and f[rid]["matched_scope"] == "global"
+        )
+        if governs_global_default:
             assert delta == 86400 - 3600  # default-level rows recompute fully
             checked_default += 1
         else:
-            assert delta == 0  # class rules are identical in both files
+            assert delta == 0  # class + bench rules are identical in both files
             checked_class += 1
     assert checked_default and checked_class, "need both default- and class-governed rows"
 
@@ -1148,4 +1157,100 @@ def test_fw11_terminal_run_wedge_rows_render_closed(tmp_path: Path) -> None:
     assert live["run_state"] == "live"
     assert live["rate_bytes_per_s"] == pytest.approx(200 / 120)
     assert live["time_to_exhaustion_s"] == pytest.approx((10_000 - 200) / (200 / 120))
+
+
+def _matched_fields(row: dict[str, Any]) -> tuple[str | None, str | None, str | None]:
+    return (
+        row.get("matched_selector"),
+        row.get("matched_scope"),
+        row.get("matched_rule"),
+    )
+
+
+def test_fw7_matched_rule_names_the_winning_entry_all_four_branches(
+    tmp_path: Path,
+) -> None:
+    """Finding 7 (MED): every disposal row reports the WINNING entry's
+    identity — matched_selector = the selector string when a class rule
+    won (else null), matched_scope = bench|global, matched_rule =
+    class|default — for all four resolve branches (bench class → bench
+    default → global class → global default)."""
+    data_dir = _seed(tmp_path)
+    pol = tmp_path / "four.json"
+    pol.write_text(json.dumps({
+        "config_version": "1",
+        "default": {"duration_s": 86400, "retain_after": "landing",
+                    "on_disposition": "review"},
+        "classes": [
+            {"selector": "capture:waveform_f64le", "duration_s": 3600,
+             "retain_after": "landing", "on_disposition": "delete"},
+            {"selector": "evidence:event_log", "duration_s": 86400,
+             "retain_after": "landing", "on_disposition": "archive"},
+        ],
+        "benches": {
+            BENCH_TWO: {
+                "default": {"duration_s": 60, "retain_after": "landing",
+                            "on_disposition": "review"},
+                "classes": [
+                    {"selector": "capture:raw_binary", "duration_s": 7200,
+                     "retain_after": "landing", "on_disposition": "review"},
+                ],
+            }
+        },
+    }), encoding="utf-8")
+    # one more beta-bench capture whose class has NO bench rule: bench default
+    store = Store.open(db_path(data_dir))
+    try:
+        writer = CaptureStagingStore(
+            store, max_capture_bytes=10_000_000, max_dataset_bytes=10_000_000
+        )
+        writer.open_capture(
+            capture_id="cap-beta-default", context_key="run:run-b",
+            fmt="waveform_f64le", sample_count=None, max_bytes=512, now=T0)
+        writer.append("cap-beta-default", b"\x0a" * 32, "run:run-b")
+        writer.finalise("cap-beta-default", T1, "run:run-b")
+    finally:
+        store.close()
+    model = _model(data_dir, policy_path=pol, now=NOW)
+    rows = {r["id"]: r for r in model["rows"]}
+    # global class wins (alpha-bench has no scope)
+    assert _matched_fields(rows["cap-wave"]) == (
+        "capture:waveform_f64le", "global", "class")
+    # bench class wins (beta-bench scoped raw_binary)
+    assert _matched_fields(rows["cap-raw"]) == ("capture:raw_binary", "bench", "class")
+    # bench default wins (beta-bench, no class rule for waveform)
+    assert _matched_fields(rows["cap-beta-default"]) == (None, "bench", "default")
+    # global default wins (unattributed key, novel kind)
+    novel = next(r for r in model["rows"] if r["data_class"] == "evidence:spectrummap")
+    assert _matched_fields(novel) == (None, "global", "default")
+
+
+def test_fw7_shadowed_class_rule_never_claimed(tmp_path: Path) -> None:
+    """Finding 7 repro (the maintainer's P2): ``matched_selector`` used to
+    be set when the class existed in ANY scope while the bench default
+    governed — the row named a rule that did not govern it."""
+    data_dir = _seed(tmp_path)
+    pol = tmp_path / "shadow.json"
+    pol.write_text(json.dumps({
+        "config_version": "1",
+        "default": {"duration_s": 3600, "retain_after": "landing",
+                    "on_disposition": "review"},
+        "classes": [
+            {"selector": "capture:raw_binary", "duration_s": 7200,
+             "retain_after": "landing", "on_disposition": "delete"},
+        ],
+        "benches": {
+            BENCH_TWO: {
+                "default": {"duration_s": 60, "retain_after": "landing",
+                            "on_disposition": "review"},
+                "classes": [],
+            }
+        },
+    }), encoding="utf-8")
+    model = _model(data_dir, policy_path=pol, now=NOW)
+    row = next(r for r in model["rows"] if r["id"] == "cap-raw")
+    # the bench default (60 s, review) governs — the shadowed global class
+    # (7200 s, delete) must not be named
+    assert row["duration_s"] == 60 and row["on_disposition"] == "review"
+    assert _matched_fields(row) == (None, "bench", "default")
 

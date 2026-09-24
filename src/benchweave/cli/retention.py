@@ -296,6 +296,8 @@ def _disposal_row(
         "bench": bench,
         "data_class": data_class,
         "matched_selector": None,
+        "matched_scope": None,
+        "matched_rule": None,
         "anchor_kind": anchor_kind,
         "anchor_at": anchor_at,
         "disposal_date": None,
@@ -307,10 +309,15 @@ def _disposal_row(
     }
     if policy is None:
         return row
-    rule = policy.resolve(bench=bench, data_class=data_class)
-    scoped = policy.benches.get(bench) if bench is not None else None
-    if (scoped is not None and data_class in scoped.classes) or data_class in policy.classes:
-        row["matched_selector"] = data_class
+    # issue #184 finding 7: report the WINNING entry's identity — a class
+    # rule merely present somewhere while a shadowing default governs is
+    # never named.
+    rule, matched_scope, matched_selector = policy.resolve_origin(
+        bench=bench, data_class=data_class
+    )
+    row["matched_selector"] = matched_selector
+    row["matched_scope"] = matched_scope
+    row["matched_rule"] = "class" if matched_selector is not None else "default"
     row["on_disposition"] = rule.on_disposition
     row["duration_s"] = rule.duration_s
     row["anchor_kind"] = rule.retain_after

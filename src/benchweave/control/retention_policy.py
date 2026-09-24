@@ -159,21 +159,32 @@ class RetentionPolicy:
     classes: dict[str, RetentionRule]
     benches: dict[str, RetentionPolicyScope]
 
-    def resolve(self, *, bench: str | None, data_class: str) -> RetentionRule:
-        """The resolution order: bench class → bench default → global
-        class → global default (the global default always terminates the
-        chain — the schema requires it)."""
+    def resolve_origin(
+        self, *, bench: str | None, data_class: str
+    ) -> tuple[RetentionRule, str, str | None]:
+        """Resolve and NAME the winning entry (issue #184 finding 7):
+        the resolution order is bench class → bench default → global class
+        → global default (the global default always terminates the chain).
+        Returns ``(rule, scope, selector)`` where ``scope`` is
+        ``"bench"``/``"global"`` and ``selector`` is the selector string
+        iff a class rule won — a class rule merely PRESENT somewhere while
+        a shadowing default governs is never named."""
         if bench is not None:
             scope = self.benches.get(bench)
             if scope is not None:
                 rule = scope.classes.get(data_class)
                 if rule is not None:
-                    return rule
-                return scope.default
+                    return rule, "bench", data_class
+                return scope.default, "bench", None
         rule = self.classes.get(data_class)
         if rule is not None:
-            return rule
-        return self.default
+            return rule, "global", data_class
+        return self.default, "global", None
+
+    def resolve(self, *, bench: str | None, data_class: str) -> RetentionRule:
+        """The governing rule only — :meth:`resolve_origin` also names
+        which entry won."""
+        return self.resolve_origin(bench=bench, data_class=data_class)[0]
 
 
 def _rule(entry: dict[str, Any]) -> RetentionRule:
