@@ -177,6 +177,53 @@ and remain the reviewer's job.
     (one corpus document feeding both checkers) stays the deferred fix shape when the
     §8.1 generic table grows.
 
+18. **The version-bearing-surface inventory** (issue #188's requested row;
+    invariants CON-13) → every surface that declares a corpus or SDK version,
+    and its motion mechanism under a bump:
+    (a) `standards/standards-manifest.json` — the authority; it moves with the
+    bump itself;
+    (b) `docs/compatibility-matrix.md` — derived; `matrix --check` (CON-12);
+    (c) `docs/README.md` validation-report rows — derived paths; the family
+    pin tests catch a forgotten row (obligation 13);
+    (d) the website version stamps — derived at assembly with ZERO bump
+    motion: `website/index.html` carries `{{stg-*}}` tokens at its claim
+    sites, the hygiene pin (`tests/contract/test_website_stamps.py`) refuses
+    a three-component literal anywhere in the class-11 source set (the
+    `website/` tree plus `index.qmd`), and a NEW claim-site gets a token plus
+    map coverage, never a literal (CON-13; two-component prose claims remain
+    outside the pattern — issue #188 design deferral 5);
+    (e) the adapter-identity touch-set — hand-carried, in-arc (obligation 8);
+    (f) `verify_tree`'s frozen-version corpus probe
+    (`standards/otdp/0.2.0/otdp-runtime.schema.json`) — copy-never-move keeps
+    it permanently resolvable and it claims nothing about "active" (issue
+    #188 design deferral 2);
+    (g) plugin contract locks — `plugins/fnirsi/dps150/contracts/lock.json`
+    declares `otdp_version` (and its corpus `directory`); motion: relock in
+    the bump arc, against the corpus the bump admits;
+    (h) live authority pointers that name one versioned path as THE
+    authority — obligations 1-2 above (`standards/interface/0.1.0/…`) and
+    the `drift-guard.mjs` hook advice text that repeats them; motion: those
+    obligations' in-arc sweeps (an interface bump re-points them);
+    (i) the additional frozen corpus probes — invariants CON-5's
+    `interface/0.1.0/interface-contract.md` pin, the parity-tests bullet in
+    this file's testing-conventions section, and CLAUDE.md's core-principle
+    reference to the same contract; motion: copy-never-move keeps them
+    resolving, and they claim nothing about "active" — the same class as
+    (f), not swept;
+    (j) `index.qmd` prose — three-component literals are refused by the
+    hygiene pin (see (d)); the residual two-component claim (`Architecture
+    v1.5` link text) moves by in-arc sweep (design deferral 5);
+    (k) guide and test-docstring corpus pointers — the remaining
+    `../standards/otdp/<version>/` links in `docs/device-developer-guide.md`
+    (the descriptor-checklist pair was re-pointed at the active 0.2.2 in the
+    #188 fold) and `tests/contract/test_dps150_lock.py`'s docstring naming
+    the locked directory; motion: in-arc sweep;
+    (l) corpus-manifest row paths — every `standards/corpus-manifest.json`
+    row's `path`/`source` names a versioned directory; motion: obligation 6 /
+    CON-7 (rows move with the bump's corpus edit, digests via `repin`).
+    Closing clause: a new version-bearing literal anywhere is a defect —
+    make it a derived surface or register it here with its motion mechanism.
+
 ## CI map
 
 | Job | What it catches |

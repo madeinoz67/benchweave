@@ -303,8 +303,10 @@ rather than rewriting the history — that is how this file earns trust.
   unprojected; the grant seam (`build_capture_services`) re-derives the raw form by
   digest exactly as the permissions precedent does.
 
-- **[CON-11]** The active OTDP validation report
-  (`standards/otdp/0.2.0/validation-report.md`) is machine-written by its own
+- **[CON-11]** The OTDP validation report of the active version — its path is
+  derived, never hardcoded: the live pin resolves
+  `standards/otdp/<active>/validation-report.md` from the standards manifest
+  (`_active_standard_dir`) — is machine-written by its own
   validator (`render_report` in `scripts/architecture/check_devices.py`; the
   author-side path `--write-report` refuses to write when any check fails and
   the pytest harness cannot reach it — `runpy.run_path` executes the module
@@ -384,6 +386,24 @@ rather than rewriting the history — that is how this file earns trust.
   or the field undeclared (`sdk_version_unanchored`); the render's purity
   clause is unchanged — `render_matrix` still never reads the SDK's
   pyproject. The authority chain is pyproject@pin → lock → mirror.*
+
+- **[CON-13]** Website version stamps are a pure function of committed state —
+  claim sites in `website/index.html` carry `{{stg-*}}` tokens and never
+  three-component version literals (T2 refuses `\d+\.\d+\.\d+` over the
+  class-11 source set, the `website/` tree plus `index.qmd`; residual:
+  two-component prose claims, issue #188 design deferral 5);
+  `website_stamp_map` derives from the standards manifest's active versions
+  and the `sdk_compatibility` mirror (CON-12's authority chain); substitution
+  happens only in the assembly copy and `verify_tree` refuses any `{{`
+  residue in any copied static-site file —
+  `scripts/assemble_docs_site.py` `website_stamp_map`/`stamp_website`, pinned
+  by `tests/contract/test_website_stamps.py`. The badge/href pair of a card
+  carries one token twice, so a claim/link version disagreement is
+  unrepresentable at the value level. *CON-12's #158 lesson applied to the
+  public site (issue #188: hand-stamped versions sat on the site with every
+  gate green — the CON-8 defect class on the one un-mechanised version-bearing
+  surface; a stamp that read checkout or remote state would red on correct
+  committed bytes).*
 
 ## Registry & plugin invariants
 

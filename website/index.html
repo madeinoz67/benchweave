@@ -327,34 +327,34 @@
     </div>
     <div class="spec-grid">
       <div class="spec-card">
-        <div class="spec-head"><h4>OTDP</h4><span class="badge badge-version">v0.1.0</span></div>
+        <div class="spec-head"><h4>OTDP</h4><span class="badge badge-version">v{{stg-otdp}}</span></div>
         <p>Open test-device protocol — how the gateway talks to instrument and DUT plugins: device descriptors, measurement model, device classes, extension contract.</p>
-        <a class="spec-link" href="docs/standards/otdp/0.1.1/otdp-specification.html">Read the specification →</a>
+        <a class="spec-link" href="docs/standards/otdp/{{stg-otdp}}/otdp-specification.html">Read the specification →</a>
       </div>
       <div class="spec-card">
-        <div class="spec-head"><h4>Registry</h4><span class="badge badge-version">v0.1.0</span></div>
+        <div class="spec-head"><h4>Registry</h4><span class="badge badge-version">v{{stg-registry}}</span></div>
         <p>Plugin and device-profile registry — admission, sharing, release manifests and offline execution.</p>
-        <a class="spec-link" href="docs/standards/registry/0.1.0/registry-specification.html">Read the specification →</a>
+        <a class="spec-link" href="docs/standards/registry/{{stg-registry}}/registry-specification.html">Read the specification →</a>
       </div>
       <div class="spec-card">
-        <div class="spec-head"><h4>Execution</h4><span class="badge badge-version">v0.1.0</span></div>
+        <div class="spec-head"><h4>Execution</h4><span class="badge badge-version">v{{stg-execution}}</span></div>
         <p>Bounded test-procedure execution — bench, commissioning, procedure and run-record schemas; ownership, evidence and safe endings.</p>
-        <a class="spec-link" href="docs/standards/execution/0.1.0/execution-contract.html">Read the contract →</a>
+        <a class="spec-link" href="docs/standards/execution/{{stg-execution}}/execution-contract.html">Read the contract →</a>
       </div>
       <div class="spec-card">
-        <div class="spec-head"><h4>Interface</h4><span class="badge badge-version">v0.1.0</span></div>
+        <div class="spec-head"><h4>Interface</h4><span class="badge badge-version">v{{stg-interface}}</span></div>
         <p>The REST and MCP surface exposed to applications and coding agents — OpenAPI document, MCP tool catalogue, operation catalog and review scenarios.</p>
-        <a class="spec-link" href="docs/standards/interface/0.1.0/interface-contract.html">Read the contract →</a>
+        <a class="spec-link" href="docs/standards/interface/{{stg-interface}}/interface-contract.html">Read the contract →</a>
       </div>
       <div class="spec-card">
-        <div class="spec-head"><h4>Plugin UI</h4><span class="badge badge-version">v0.1.0</span></div>
+        <div class="spec-head"><h4>Plugin UI</h4><span class="badge badge-version">v{{stg-plugin-ui}}</span></div>
         <p>Plugin presentation contract — bindings, presets and envelopes for the workbench UI.</p>
-        <a class="spec-link" href="docs/standards/plugin-ui/0.1.0/validation-report.html">Validation report →</a>
+        <a class="spec-link" href="docs/standards/plugin-ui/{{stg-plugin-ui}}/validation-report.html">Validation report →</a>
       </div>
       <div class="spec-card">
-        <div class="spec-head"><h4>Plugin UI preview</h4><span class="badge badge-version">v0.1.1</span></div>
+        <div class="spec-head"><h4>Plugin UI preview</h4><span class="badge badge-version">v{{stg-plugin-ui-preview}}</span></div>
         <p>Preview wire documents and fixtures for simulation-only plugin UI rendering.</p>
-        <a class="spec-link" href="https://github.com/madeinoz67/benchweave/tree/main/standards/plugin-ui-preview/0.1.1" target="_blank" rel="noopener">Schemas on GitHub →</a>
+        <a class="spec-link" href="https://github.com/madeinoz67/benchweave/tree/main/standards/plugin-ui-preview/{{stg-plugin-ui-preview}}" target="_blank" rel="noopener">Schemas on GitHub →</a>
       </div>
     </div>
     <p class="note">Governance, the standards manifest and the digest-locked corpus manifest live at <a href="docs/standards/GOVERNANCE.html">standards/GOVERNANCE</a>; the rendered <a href="docs/standards/">standards index</a> lists every prose companion and validation report.</p>
@@ -411,7 +411,7 @@
       </div>
       <div class="sdk-card">
         <h2>benchweave-sdk</h2>
-        <p class="tagline">Build an external device plugin without importing gateway internals. Python 3.13+ · SDK 0.0.2 · OTDP 0.1.0 baseline. Offline authoring and conformance tools: scaffold, validate, mock, preview.</p>
+        <p class="tagline">Build an external device plugin without importing gateway internals. Python 3.13+ · SDK {{stg-sdk}} · OTDP {{stg-otdp}} baseline. Offline authoring and conformance tools: scaffold, validate, mock, preview.</p>
         <div class="code-block"><span class="muted"># install</span><br>pip install benchweave-sdk<br><span class="muted"># scaffold an independent plugin project</span><br>benchweave-sdk new plugins/acme/model100 --package benchweave_acme_model100</div>
         <div class="sdk-links">
           <a class="btn btn-primary" href="https://madeinoz67.github.io/benchweave-sdk/" target="_blank" rel="noopener">SDK site and docs</a>

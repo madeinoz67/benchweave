@@ -17,7 +17,7 @@
 | 8 | Guides (plugin author / operator) | device-developer-guide, develop-your-device, dps150-protocol | living | link checker | `docs/` |
 | 9 | Plugin-local pinned copies | `plugins/<vendor>/<device>/contracts/` | pinned to a corpus revision | plugin tests | inside the plugin |
 | 10 | Working material | `superpowers/`, `internal/`, ISA | ephemeral, local | none | untracked by convention |
-| 11 | Public site source | `website/` (static front door), `great-docs.yml`, `index.qmd`, `scripts/assemble_docs_site.py` | living | docs workflow (assembly `verify_tree`) | `website/` + root config; build output (`user_guide/`, `standards_pages/`, `great-docs/`, `site/`) gitignored |
+| 11 | Public site source | `website/` (static front door), `great-docs.yml`, `index.qmd`, `scripts/assemble_docs_site.py` | living | docs workflow (assembly `verify_tree`: link resolution + the `stamp_residue:` sweep over every copied file); the stamp contract (`tests/contract/test_website_stamps.py`: map derivation, token coverage both directions, per-card agreement, stamped end state, the class-11 literal ban, the `{{` braces pin) | `website/` + root config; build output (`user_guide/`, `standards_pages/`, `great-docs/`, `site/`) gitignored |
 
 A `standards/<id>/<target>-dev/` directory is the dev stage's staging state of
 classes 1–2 (GOVERNANCE "The dev stage"): same homes, same validation regime
@@ -46,4 +46,10 @@ promotion copies it to the released version and removes it.
    *presents* other classes: the docs site stages classes 2 and 8 (and the changelog)
    at build time into gitignored trees and renders them; nothing under `website/` or
    the build output is a second home for any document. Amendment 2026-09-16 admitting
-   `website/` as a top-level tree under rule 2.
+   `website/` as a top-level tree under rule 2. Amendment 2026-09-25 (issue #188,
+   invariants CON-13): version stamps render at assembly from the standards
+   manifest's active versions — claim sites in `website/index.html` carry
+   `{{stg-*}}` tokens, and no three-component version literal is allowed anywhere
+   in the class-11 source set (`website/` plus `index.qmd`,
+   `tests/contract/test_website_stamps.py`); two-component prose claims remain the
+   named residual.

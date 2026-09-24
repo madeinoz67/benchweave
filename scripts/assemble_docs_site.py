@@ -8,9 +8,16 @@ Two-tier layout, the same shape the SDK repository deploys
 
 - ``website/`` — the hand-written static site (one page, four panels — Home,
   Standards, User guides, SDK — styled per ``docs/internal/public-site-
-  styleguide.html``; no build chain) is copied verbatim to the artifact root.
-  Its links into the docs are relative ``docs/…`` paths, so the pair previews
-  from any server root, GitHub Pages included.
+  styleguide.html``; no build chain) is copied to the artifact root and its
+  ``{{stg-*}}`` version tokens are stamped there from committed state
+  (``website_stamp_map`` / ``stamp_website`` — the source carries tokens at
+  its claim sites and no three-component version literal anywhere under
+  ``website/`` or in ``index.qmd``, pinned by
+  ``tests/contract/test_website_stamps.py``, so a raw ``website/`` preview
+  shows tokens; preview through this assembler, e.g.
+  ``--dest /tmp/site-preview``). Its links into
+  the docs are relative ``docs/…`` paths, so the pair previews from any
+  server root, GitHub Pages included.
 - ``docs/`` — one Great Docs build of the current tree. The gateway has no
   release tags yet, so the tree is UNVERSIONED by design: no ``versions:``
   list, no ``v/<tag>/`` buckets, no selector. The day the first ``vX.Y.Z``
@@ -58,6 +65,8 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+from benchweave.standards.manifest import load_manifest, load_sdk_compatibility
 
 REPO = Path(__file__).resolve().parent.parent
 GITHUB_BLOB = "https://github.com/madeinoz67/benchweave/blob/main/"
@@ -289,7 +298,71 @@ def copy_website(dest: Path) -> None:
     if not (src / "index.html").is_file():
         raise SystemExit(f"static website missing or incomplete: {src / 'index.html'} not found")
     shutil.copytree(src, dest, dirs_exist_ok=True)
-    log(f"static site <- {src.relative_to(REPO)}/ (artifact root)")
+    stamp_website(dest / "index.html", website_stamp_map(REPO))
+    log(f"static site <- {src.relative_to(REPO)}/ (artifact root, version stamps applied)")
+
+
+# ── website version stamps ───────────────────────────────────────────────────
+
+STAMP_TOKEN_RE = re.compile(r"\{\{stg-([a-z0-9-]+)\}\}")
+# `stg-sdk` derives from the sdk_compatibility mirror, never from a standards
+# entry: an entry id `sdk` would silently shadow the mirror's key (the mirror
+# write wins) and be invisible to every coverage arm (review fold F4).
+RESERVED_STAMP_IDS = frozenset({"sdk"})
+
+
+def website_stamp_map(root: Path) -> dict[str, str]:
+    """Committed state -> the website's version claims (invariants CON-13).
+
+    ``stg-<id>`` -> the standard's active version from the standards manifest;
+    ``stg-sdk`` -> the ``sdk_compatibility`` mirror's SDK version (CON-12's
+    authority chain). One authoritative parse: the loaders' closed-world
+    refusals (``standards_entry_duplicate``, ``standards_entry_version_invalid``,
+    ``sdk_compatibility_invalid``) apply here for free, and dev heads never
+    stamp — only each entry's active version is read. An entry id colliding
+    with the reserved ``sdk`` key refuses (``stamp_reserved_key:``) rather
+    than silently shadowing the mirror.
+    """
+    stamps: dict[str, str] = {}
+    for entry in load_manifest(root).standards:
+        if entry.id in RESERVED_STAMP_IDS:
+            raise SystemExit(
+                f"stamp_reserved_key: standards entry id '{entry.id}' collides with the "
+                "reserved stamp namespace — stg-sdk derives from sdk_compatibility (CON-12)"
+            )
+        stamps[f"stg-{entry.id}"] = entry.version
+    stamps["stg-sdk"] = load_sdk_compatibility(root).sdk
+    return stamps
+
+
+def stamp_website(dest_index: Path, stamps: dict[str, str]) -> None:
+    """Substitute ``{{stg-*}}`` tokens in the ASSEMBLY COPY only (CON-13).
+
+    The source under ``website/`` is never written. Coverage is bidirectional
+    and fail-closed: a token with no map entry refuses
+    (``stamp_unmapped_token:``) and a map key used by no token refuses
+    (``stamp_unused_key:``) — the standards panel cannot silently omit a
+    standard, and an unmapped token can never reach the published site.
+    """
+    html = dest_index.read_text(encoding="utf-8")
+    used: set[str] = set()
+
+    def substitute(match: re.Match[str]) -> str:
+        key = f"stg-{match.group(1)}"
+        if key not in stamps:
+            raise SystemExit(f"stamp_unmapped_token: {match.group(0)} has no map entry")
+        used.add(key)
+        return stamps[key]
+
+    stamped = STAMP_TOKEN_RE.sub(substitute, html)
+    unused = sorted(set(stamps) - used)
+    if unused:
+        raise SystemExit(
+            "stamp_unused_key: " + ", ".join(unused) + " (no token in the website "
+            "carries it — a new standard needs a spec card, a removed one a token sweep)"
+        )
+    dest_index.write_text(stamped, encoding="utf-8")
+    log(f"website stamps: {len(used)} token(s) resolved against committed state")
 
 
 def copy_standards_resources(docs_root: Path) -> None:
@@ -463,6 +536,17 @@ def verify_tree(dest: Path, paths: dict[str, str]) -> None:
             failures.append(f"{src} did not render to docs/{html}")
     # Every relative docs/ link on the static site must resolve in the assembled tree.
     index = (dest / "index.html").read_text(encoding="utf-8")
+    # Stamp residue (R1): sweep the DELIMITER, not the grammar — a case-variant,
+    # nested or unterminated `{{` matches no token pattern and would ship raw
+    # (review fold F1) — and sweep every copied website/ file, not just the
+    # index: the stamper only reads index.html, so a token anywhere else in the
+    # static source stamps nothing at all.
+    for f in sorted(p for p in dest.rglob("*") if p.is_file() and docs not in p.parents):
+        if b"{{" in f.read_bytes():
+            failures.append(
+                f"stamp_residue: {f.relative_to(dest).as_posix()} carries an unstamped "
+                "{{ delimiter (website/ carries well-formed tokens in index.html only)"
+            )
     for link in sorted(set(re.findall(r'href="(docs/[^"#]*)"', index))):
         target = dest / link
         ok = (target / "index.html").is_file() if link.endswith("/") else target.is_file()
