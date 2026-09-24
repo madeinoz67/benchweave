@@ -303,8 +303,10 @@ rather than rewriting the history — that is how this file earns trust.
   unprojected; the grant seam (`build_capture_services`) re-derives the raw form by
   digest exactly as the permissions precedent does.
 
-- **[CON-11]** The active OTDP validation report
-  (`standards/otdp/0.2.0/validation-report.md`) is machine-written by its own
+- **[CON-11]** The OTDP validation report of the active version — its path is
+  derived, never hardcoded: the live pin resolves
+  `standards/otdp/<active>/validation-report.md` from the standards manifest
+  (`_active_standard_dir`) — is machine-written by its own
   validator (`render_report` in `scripts/architecture/check_devices.py`; the
   author-side path `--write-report` refuses to write when any check fails and
   the pytest harness cannot reach it — `runpy.run_path` executes the module

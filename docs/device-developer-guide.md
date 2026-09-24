@@ -114,7 +114,7 @@ Use uv for Python dependencies. Retain its lockfile and the exact tested runtime
 
 ### Descriptor authoring checklist
 
-Use the [descriptor schema](../standards/otdp/0.2.0/otdp-device-descriptor.schema.json) and a suitable [class descriptor example](../standards/otdp/0.2.0/examples/class-dc_psu.json) as references. Copying a fixture does not transfer its evidence to your hardware.
+Use the [descriptor schema](../standards/otdp/0.2.2/otdp-device-descriptor.schema.json) and a suitable [class descriptor example](../standards/otdp/0.2.2/examples/class-dc_psu.json) as references. Copying a fixture does not transfer its evidence to your hardware.
 
 | Field group | Authoring rule |
 |---|---|
