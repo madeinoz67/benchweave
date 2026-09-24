@@ -341,6 +341,10 @@ All notable changes to this project will be documented in this file.
 - Fold waves D+E — admission proof is the triple row; #167 gate-expiry scope note
 - Record the execution-train design (issue #176)
 - Fold the refute slate's record amendments (#176)
+- Amendment 3 — promote-at-end model, dev-corpus resolution seam (#176, #186)
+- Capture-in-a-procedure authoring section (issue #176 inc 2 obligation)
+- Refute-fold prose and claim corrections (issue #176 inc 2, commit 1/3)
+- Deferral row 15 — the error_code vocabulary split (issue #176 inc 2 fold wave)
 - Demo-lattice streaming surface + canonical manifest emission (issue #176 rows D+G, obligation 3)
 - Council fold wave — row D+G prose disclosures (dF1-dF3, gF1/gF1b/gF4/gF5, critic-D5/D6)
 
@@ -483,6 +487,10 @@ All notable changes to this project will be documented in this file.
 - Transport-settings.json — the identity-only commissioned surface
 - The provider admission seam — census mirror, pin mirror, gateway-only row
 - ProviderTransport grammar guard + the build_capture_services gate
+- Dev-corpus resolution seam — declared_dev_family + CorpusResolution threading (#176 inc 2)
+- Capture runtime surfaces at admission — projection, semantics mirror, policy kind (#176 inc 2)
+- Capture executor branch, resolver arm, host-minted ids (#176 inc 2)
+- Refute-fold production wave — policy guard, event/record shape, floor, ceiling (issue #176 inc 2, commit 3/3)
 - Demo lattice streams — sim_psu bridge adapter + event_sink descriptor (issue #176 row D, design Decision 3)
 
 ### Hardware Evidence
@@ -694,6 +702,7 @@ All notable changes to this project will be documented in this file.
 - The documents-gate dev-head arm plants both roots (row 2 fixup)
 - A -dev source segment is a historical terminal in the dir guard (review row 3)
 - The descriptor dialect triangle — red on the reverted stamp
+- Fold-wave boundary pins and the sF1 discriminator (issue #176 inc 2, commit 2/3)
 - Scope the SDK-stillness arm to head commits (#187 rider)
 - The demo lattice streams end to end (issue #176 row D, design Decision 3)
 - Strip PYTHONPATH/PYTHONHOME from the wheel child env (issue #176 T11 vet finding)
