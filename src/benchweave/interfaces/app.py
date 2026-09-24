@@ -32,6 +32,7 @@ from benchweave.content.stream_services import build_stream_services
 from benchweave.control.clocking import MonotonicClock, SystemClock, WallClock
 from benchweave.control.coordinator import RunCoordinator, _PreparedRun, _RunMonitor
 from benchweave.control.documents import (
+    _CONTRACTS,
     AdmittedDocuments,
     admit_documents,
 )
@@ -56,7 +57,11 @@ from benchweave.interfaces.worker import RunWorker
 from benchweave.registry.otdp_loading import load_otdp_plugin
 from benchweave.state.hold import StoreHold
 from benchweave.state.store import Store
-from benchweave.vendoring import sim_plugins_root
+from benchweave.vendoring import (
+    CorpusResolution,
+    declared_dev_family,
+    sim_plugins_root,
+)
 
 # Sim plugins are repo fixtures loaded exactly as tests/integration/
 # test_procedures.py loads them (they are not package code) — packaged
@@ -222,7 +227,7 @@ def _spool_documents(
 
 
 def _recovery_documents(
-    fixtures_dir: Path, *, now_wall: str | None = None
+    fixtures_dir: Path, *, now_wall: str | None = None, contracts: Path = _CONTRACTS
 ) -> AdmittedDocuments | None:
     """Admit the startup lattice for recovery (Task 11 wiring).
 
@@ -245,7 +250,7 @@ def _recovery_documents(
     the less safe direction.
     """
     try:
-        return admit_fixture_lattice(fixtures_dir, now_wall=now_wall)
+        return admit_fixture_lattice(fixtures_dir, now_wall=now_wall, contracts=contracts)
     except Exception as error:
         # Containment mirrors the executor seam's ruling: recovery runs at
         # app construction, so ANY failure here — a typed admission
@@ -261,6 +266,7 @@ def _recover_interrupted_runs(
     *,
     emit_keep: int,
     now_iso: Callable[[], str],
+    contracts: Path = _CONTRACTS,
 ) -> list[str]:
     """Startup recovery (Task 11 wiring): close what a dead process left open.
 
@@ -285,7 +291,7 @@ def _recover_interrupted_runs(
     projection below, so neither wedge can hold the §5 busy oracle past
     a restart.
     """
-    docs = _recovery_documents(fixtures_dir, now_wall=now_iso())
+    docs = _recovery_documents(fixtures_dir, now_wall=now_iso(), contracts=contracts)
     if docs is None:
         # Startup survives a poisoned lattice; run recovery does not. The
         # dangling-request reconciliation below needs no admitted documents
@@ -301,7 +307,9 @@ def _recover_interrupted_runs(
         # its own writer; no quota envelope is needed to only reclaim).
         CaptureStagingStore(store).reclaim_orphans(now_iso())
         return []
-    coordinator = RunCoordinator(store, {}, SystemClock(), SystemClock(), docs)
+    coordinator = RunCoordinator(
+        store, {}, SystemClock(), SystemClock(), docs, contracts=contracts
+    )
     recovered = coordinator.recover_interrupted()
     # D13 crash-window reconciliation rides the same startup path: a §9
     # RUN-request key filed by a process that died between
@@ -373,11 +381,14 @@ class _RetainingCoordinator(RunCoordinator):
         stream_host: RunStreamHost | None = None,
         services: RetainingServices | None = None,
         implementation_disclosures: list[str] | None = None,
+        contracts: Path = _CONTRACTS,
     ) -> None:
         # The stream host rides BOTH layers: the base coordinator hands it
         # to the monitoring clock (the wait-slice driver), this subclass
         # arms and tears it down around the body.
-        super().__init__(store, plugins, clock, wall, docs, stream_host=stream_host)
+        super().__init__(
+            store, plugins, clock, wall, docs, stream_host=stream_host, contracts=contracts
+        )
         self.implementation_disclosures = list(implementation_disclosures or [])
         self._retain = retain
         self._spool_dir = spool  # cleaned up when the coordinator is collected
@@ -649,6 +660,7 @@ def _build_run_factory(
     *,
     limits: dict[str, int],
     registry_session: RegistrySession | None = None,
+    contracts: Path = _CONTRACTS,
 ) -> Callable[[str, str, dict[str, Any], Store], RunCoordinator]:
     def build_run(
         run_id: str, principal_id: str, binding_ref: dict[str, Any], worker_store: Store
@@ -677,6 +689,7 @@ def _build_run_factory(
         docs = admit_documents(
             **_spool_documents(content, binding_ref, fixtures_dir, Path(spool.name)),
             now_wall=now_iso(),
+            contracts=contracts,
         )
         clock = SystemClock()
         bench_id = str(docs.bench["id"])
@@ -796,6 +809,7 @@ def _build_run_factory(
                 stream_host=stream_host,
                 services=services,
                 implementation_disclosures=disclosures,
+                contracts=contracts,
             )
         except BaseException:
             stream_host.close()
@@ -823,16 +837,41 @@ def create_app(
     now_iso: Callable[[], str],
     now_epoch: Callable[[], int],
     registry_session: RegistrySession | None = None,
+    execution_corpus: CorpusResolution = CorpusResolution.ACTIVE,
 ) -> FastAPI:
-    """Compose the gateway: gate, worker (limits mandated), seam, MCP mount."""
+    """Compose the gateway: gate, worker (limits mandated), seam, MCP mount.
+
+    ``execution_corpus`` (issue #176 increment 2, design §1b) is the
+    dev-corpus resolution seam: a keyword-only composition parameter with
+    no env, config, or wire surface — the only code-level opt-in is the
+    enum, and no production caller passes it. ``DEV_HEAD`` resolves the
+    manifest-declared execution head ONCE, here at composition, and the
+    resulting directory threads the existing injection path (worker build
+    factory, startup admission, run recovery); ``ACTIVE`` — the default —
+    resolves the frozen ``execution/0.1.0`` literal, byte-identical to
+    today's posture. A wheel-installed gateway cannot resolve ``DEV_HEAD``
+    (the head never exports) and refuses loudly rather than degrading; a
+    stray ``DEV_HEAD`` after the promotion's teardown refuses
+    ``execution_dev_head_absent:`` — the seam self-retires.
+    """
     gate = WriteGate()
+    # The seam resolves once, here: the directory threads the injection
+    # path, nothing downstream re-resolves.
+    if execution_corpus is CorpusResolution.DEV_HEAD:
+        contracts = declared_dev_family("execution")
+    else:
+        contracts = _CONTRACTS
     # Same retention arithmetic as the seam's bench-event windows.
     quota = int(limits["max_page_size"]) * 10
     worker = RunWorker(
         store,
         content,
         build_run=_build_run_factory(
-            fixtures_dir, now_iso, limits=limits, registry_session=registry_session
+            fixtures_dir,
+            now_iso,
+            limits=limits,
+            registry_session=registry_session,
+            contracts=contracts,
         ),
         now_iso=now_iso,
         limits=limits,
@@ -874,11 +913,17 @@ def create_app(
             hold.acquire()
         try:
             with gate:
-                admit_startup_bench(store, content, fixtures_dir, now=now_iso())
+                admit_startup_bench(
+                    store, content, fixtures_dir, now=now_iso(), contracts=contracts
+                )
                 # Task 11 wiring: a restarted gateway closes what a dead process
                 # left open before it serves or executes anything new.
                 _recover_interrupted_runs(
-                    store, fixtures_dir, emit_keep=quota, now_iso=now_iso
+                    store,
+                    fixtures_dir,
+                    emit_keep=quota,
+                    now_iso=now_iso,
+                    contracts=contracts,
                 )
             worker.start()
             try:

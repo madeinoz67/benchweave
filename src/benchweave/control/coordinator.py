@@ -47,6 +47,7 @@ import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 from jsonschema import Draft202012Validator
@@ -79,7 +80,7 @@ from benchweave.vendoring import contract_family
 #: The vendored execution contracts (packaged in the wheel, repo-relative
 #: in a dev checkout — :mod:`benchweave.vendoring`).
 _CONTRACTS = contract_family("execution/0.1.0")
-_RUN_RECORD_VALIDATOR: Any = None
+_RUN_RECORD_VALIDATORS: dict[Path, Any] = {}
 
 #: Body outcomes that pass through unchanged when the safe state is verified.
 _OUTCOME_BY_BODY = {
@@ -109,14 +110,16 @@ def terminal_outcome(body_outcome: str, safe_state: str) -> str:
     return _OUTCOME_BY_BODY.get(body_outcome, body_outcome)
 
 
-def _record_validator() -> Any:
-    global _RUN_RECORD_VALIDATOR
-    if _RUN_RECORD_VALIDATOR is None:
+def _record_validator(contracts: Path = _CONTRACTS) -> Any:
+    key = contracts.resolve()
+    validator = _RUN_RECORD_VALIDATORS.get(key)
+    if validator is None:
         schema = json.loads(
-            (_CONTRACTS / "run-record.schema.json").read_text(encoding="utf-8")
+            (contracts / "run-record.schema.json").read_text(encoding="utf-8")
         )
-        _RUN_RECORD_VALIDATOR = Draft202012Validator(schema)
-    return _RUN_RECORD_VALIDATOR
+        validator = Draft202012Validator(schema)
+    _RUN_RECORD_VALIDATORS[key] = validator
+    return validator
 
 
 def build_terminal_record(
@@ -130,12 +133,15 @@ def build_terminal_record(
     safe_state: str,
     reasons: list[str],
     evidence_refs: list[dict[str, Any]],
+    contracts: Path = _CONTRACTS,
 ) -> dict[str, Any]:
     """Build one terminal run record and validate it against the schema.
 
-    A record claimed to exist must validate: the vendored execution/0.1.0
-    run-record schema is checked here, on every record, before it is
-    returned or persisted. The ``outcome`` field is NOT an input — it is
+    A record claimed to exist must validate: the vendored run-record
+    schema is checked here, on every record, before it is returned or
+    persisted (validated against ``contracts`` — the composition-resolved
+    corpus directory; the module default is the frozen ``execution/0.1.0``
+    literal). The ``outcome`` field is NOT an input — it is
     derived by :func:`terminal_outcome` so the §5 truth table lives in
     exactly one place.
     """
@@ -163,7 +169,9 @@ def build_terminal_record(
             for ref in evidence_refs
         ],
     }
-    errors = sorted(_record_validator().iter_errors(record), key=lambda error: error.json_path)
+    errors = sorted(
+        _record_validator(contracts).iter_errors(record), key=lambda error: error.json_path
+    )
     if errors:
         raise ValueError(
             f"terminal record failed run-record schema: {[e.message for e in errors]}"
@@ -438,12 +446,17 @@ class RunCoordinator:
         docs: AdmittedDocuments,
         *,
         stream_host: RunStreamHost | None = None,
+        contracts: Path = _CONTRACTS,
     ) -> None:
         self._store = store
         self._plugins = plugins
         self._clock = clock
         self._wall = wall
         self._docs = docs
+        #: The composition-resolved corpus directory the terminal record
+        #: validates against (the seam's injection path; the module default
+        #: is the frozen ACTIVE literal).
+        self._contracts = contracts
         #: The run's stream host (issue #167): the bridges/controllers the
         #: run constructed; armed and driven per run by the composition
         #: that owns it. ``None`` keeps the pre-activation behavior whole.
@@ -523,6 +536,7 @@ class RunCoordinator:
                         "never resumes automatically"
                     ],
                     evidence_refs=self._recovery_evidence_refs(run_id, run["binding"]),
+                    contracts=self._contracts,
                 )
                 self._store.finalize_run(run_id, record)
                 self._rebuild_ledger_from_events(run_id)
@@ -572,6 +586,7 @@ class RunCoordinator:
                         "never resumes automatically"
                     ],
                     evidence_refs=self._recovery_evidence_refs(run_id, run["binding"]),
+                    contracts=self._contracts,
                 )
                 self._store.finalize_run(run_id, record)
                 self._rebuild_ledger_from_events(run_id)
@@ -740,6 +755,7 @@ class RunCoordinator:
             safe_state=result.safe_state,
             reasons=reasons,
             evidence_refs=self._evidence_refs(prepared.run_id),
+            contracts=self._contracts,
         )
         self._store.finalize_run(prepared.run_id, record)
         release(self._store, prepared.reservation, self._wall.now_iso())

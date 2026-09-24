@@ -103,7 +103,7 @@ _SCHEMA_FILES = {
     "commissioning": "commissioning.schema.json",
 }
 
-_VALIDATORS: dict[str, Any] = {}
+_VALIDATORS: dict[tuple[Path, str], Any] = {}
 
 
 class AdmissionRejected(ValueError):
@@ -121,12 +121,44 @@ class AdmittedDocuments:
     digests: dict[str, str]  # logical name -> sha256 hex
 
 
-def _validator(schema_filename: str) -> Any:
-    validator = _VALIDATORS.get(schema_filename)
+def _validator(schema_filename: str, contracts: Path = _CONTRACTS) -> Any:
+    """The execution-schema validator for one corpus directory (cached).
+
+    Keyed per directory so an ACTIVE and a DEV_HEAD composition in one
+    process never share a validator — the DEV_HEAD corpus validates the
+    capture shapes the frozen-literal corpus refuses.
+    """
+    key = (contracts, schema_filename)
+    validator = _VALIDATORS.get(key)
     if validator is None:
-        schema = json.loads((_CONTRACTS / schema_filename).read_text(encoding="utf-8"))
+        schema = json.loads((contracts / schema_filename).read_text(encoding="utf-8"))
         validator = Draft202012Validator(schema, format_checker=FormatChecker())
-        _VALIDATORS[schema_filename] = validator
+        _VALIDATORS[key] = validator
+    return validator
+
+
+_DESCRIPTOR_CACHE: dict[str, Any] = {}
+
+
+def _descriptor_validator() -> Any:
+    """The ACTIVE vendored OTDP descriptor schema's validator, cached.
+
+    The active version derives from the vendored standards manifest — the
+    same authority :func:`benchweave.standards.manifest.validate_identity`
+    resolves the descriptor schema by for identity derivation — never a
+    hardcoded gateway constant; the schema's ``otdp_version`` const then
+    enforces corpus alignment itself. OTDP stays manifest-ACTIVE in every
+    composition (the seam is execution-only), so this cache is filename-
+    keyed and deliberately separate from the per-corpus execution-schema
+    cache.
+    """
+    validator = _DESCRIPTOR_CACHE.get(DESCRIPTOR_SCHEMA_NAME)
+    if validator is None:
+        schema = json.loads(
+            _otdp_normative_path(DESCRIPTOR_SCHEMA_NAME).read_text(encoding="utf-8")
+        )
+        validator = Draft202012Validator(schema, format_checker=FormatChecker())
+        _DESCRIPTOR_CACHE[DESCRIPTOR_SCHEMA_NAME] = validator
     return validator
 
 
@@ -159,33 +191,19 @@ def _otdp_normative_path(document_name: str) -> Path:
     return corpus / str(matches[0]).removeprefix("standards/")
 
 
-def _descriptor_validator() -> Any:
-    """The ACTIVE vendored OTDP descriptor schema's validator, cached.
-
-    The active version derives from the vendored standards manifest — the
-    same authority :func:`benchweave.standards.manifest.validate_identity`
-    resolves the descriptor schema by for identity derivation — never a
-    hardcoded gateway constant; the schema's ``otdp_version`` const then
-    enforces corpus alignment itself.
-    """
-    validator = _VALIDATORS.get(DESCRIPTOR_SCHEMA_NAME)
-    if validator is None:
-        schema = json.loads(
-            _otdp_normative_path(DESCRIPTOR_SCHEMA_NAME).read_text(encoding="utf-8")
-        )
-        validator = Draft202012Validator(schema, format_checker=FormatChecker())
-        _VALIDATORS[DESCRIPTOR_SCHEMA_NAME] = validator
-    return validator
-
-
 def _decode(
-    path: Path, logical: str, schema_filename: str | None = None
+    path: Path,
+    logical: str,
+    schema_filename: str | None = None,
+    contracts: Path = _CONTRACTS,
 ) -> tuple[dict[str, Any], str]:
     """Decode ``path`` exactly; return its content and byte digest.
 
     The digest is computed from the original bytes and the decoder's
     duplicate-key, nonfinite-number and size gates apply. When a schema
-    filename is given the document must also validate against it.
+    filename is given the document must also validate against it (against
+    ``contracts`` — the composition-resolved corpus directory, the module
+    default when none is threaded).
     """
 
     raw = path.read_bytes()
@@ -195,9 +213,18 @@ def _decode(
     except DocumentRejected as exc:
         raise AdmissionRejected(f"schema: {logical} ({exc})") from exc
     if schema_filename is not None:
-        error = next(iter(_validator(schema_filename).iter_errors(document.content)), None)
+        error = next(
+            iter(
+                _validator(schema_filename, contracts).iter_errors(
+                    document.content
+                )
+            ),
+            None,
+        )
         if error is not None:
-            raise AdmissionRejected(f"schema: {logical} {error.json_path}: {error.message}")
+            raise AdmissionRejected(
+                f"schema: {logical} {error.json_path}: {error.message}"
+            )
     return document.content, digest
 
 
@@ -893,11 +920,14 @@ def admit_documents(
     *,
     provider_settings: Path | None = None,
     now_wall: str | None = None,
+    contracts: Path = _CONTRACTS,
 ) -> AdmittedDocuments:
     """Admit an execution document set or raise :class:`AdmissionRejected`.
 
     All five contract documents are decoded with the exact-byte decoder and
-    validated against their vendored execution/0.1.0 schemas, then the full
+    validated against their vendored execution schemas (``contracts`` — the
+    composition-resolved corpus directory; the module default is the frozen
+    ``execution/0.1.0`` literal, the ACTIVE posture), then the full
     pin lattice is verified: the binding pins procedure, bench, policy,
     package lock and commissioning; the bench pins policy, package lock and
     every device descriptor, and names the commissioning; the commissioning
@@ -922,13 +952,17 @@ def admit_documents(
         provider_state = load_transport_settings(provider_settings)
 
     procedure, procedure_digest = _decode(
-        procedure_path, "procedure", _SCHEMA_FILES["procedure"]
+        procedure_path, "procedure", _SCHEMA_FILES["procedure"], contracts
     )
-    policy, policy_digest = _decode(policy_path, "policy", _SCHEMA_FILES["policy"])
-    bench, bench_digest = _decode(bench_path, "bench", _SCHEMA_FILES["bench"])
-    binding, binding_digest = _decode(binding_path, "binding", _SCHEMA_FILES["binding"])
+    policy, policy_digest = _decode(
+        policy_path, "policy", _SCHEMA_FILES["policy"], contracts
+    )
+    bench, bench_digest = _decode(bench_path, "bench", _SCHEMA_FILES["bench"], contracts)
+    binding, binding_digest = _decode(
+        binding_path, "binding", _SCHEMA_FILES["binding"], contracts
+    )
     commissioning, commissioning_digest = _decode(
-        commissioning_path, "commissioning", _SCHEMA_FILES["commissioning"]
+        commissioning_path, "commissioning", _SCHEMA_FILES["commissioning"], contracts
     )
     lock, lock_digest = _decode(bench_path.parent / _PACKAGE_LOCK_FILENAME, "package_lock")
     _check_package_lock(lock)
