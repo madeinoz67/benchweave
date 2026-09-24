@@ -15,6 +15,7 @@ below operate on copies; the committed source is never written.
 from __future__ import annotations
 
 import importlib.util
+import json
 import re
 import shutil
 from pathlib import Path
@@ -371,3 +372,63 @@ def test_tamper_asset_file_token_is_detected(tmp_path: Path) -> None:
     (dest / "assets" / "site.js").write_text("/* {{stg-otdp}} */\n", encoding="utf-8")
     with pytest.raises(SystemExit, match="stamp_residue:"):
         _assembler().verify_tree(dest, paths={})
+
+
+# ── the reserved stamp namespace (adversary F4) ──────────────────────────────
+
+
+def _fake_root(tmp_path: Path, entry_id: str) -> Path:
+    """A minimal tree whose standards manifest carries one `<entry_id>` entry.
+
+    Only the loaders' closed-world shape is exercised (no file existence
+    checks fire from `website_stamp_map`), so the fake names no real files.
+    """
+    root = tmp_path / f"root-{entry_id}"
+    (root / "standards").mkdir(parents=True)
+    (root / "standards" / "standards-manifest.json").write_text(
+        json.dumps(
+            {
+                "manifest_version": 1,
+                "standards": [
+                    {
+                        "id": entry_id,
+                        "version": "9.9.9",
+                        "status": "stable",
+                        "released": "2026-01-01",
+                        "normative": [f"standards/{entry_id}/9.9.9/x.md"],
+                    }
+                ],
+                "sdk_compatibility": {"sdk": "0.2.0", "main_project": ">=0.1.0", "notes": None},
+            }
+        ),
+        encoding="utf-8",
+    )
+    return root
+
+
+def test_stamp_map_refuses_a_manifest_id_colliding_with_the_reserved_key(
+    tmp_path: Path,
+) -> None:
+    """F4: a manifest entry id `sdk` would silently shadow the
+    sdk_compatibility-derived `stg-sdk` key (the mirror overwrites the entry's
+    value) and be invisible to every coverage arm — the map refuses the
+    collision with its own machine prefix instead."""
+    with pytest.raises(SystemExit, match="stamp_reserved_key:"):
+        _assembler().website_stamp_map(_fake_root(tmp_path, "sdk"))
+
+
+def test_stamp_map_control_unknown_id_reaches_the_unused_key_arm(tmp_path: Path) -> None:
+    """F4 control: a merely-unknown manifest id (`frob`) maps without refusal,
+    and an unused key reddens at the stamp site exactly as before — the
+    reserved-key refusal fires only on the colliding key, not on every new
+    standard."""
+    assembler = _assembler()
+    assert assembler.website_stamp_map(_fake_root(tmp_path, "frob")) == {
+        "stg-frob": "9.9.9",
+        "stg-sdk": "0.2.0",
+    }
+    stamps = assembler.website_stamp_map(ROOT) | {"stg-frob": "9.9.9"}
+    copy = tmp_path / "index.html"
+    copy.write_text(SOURCE.read_text(encoding="utf-8"), encoding="utf-8")
+    with pytest.raises(SystemExit, match="stamp_unused_key:"):
+        assembler.stamp_website(copy, stamps)

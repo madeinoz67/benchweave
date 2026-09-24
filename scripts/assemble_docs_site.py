@@ -302,6 +302,10 @@ def copy_website(dest: Path) -> None:
 # ── website version stamps ───────────────────────────────────────────────────
 
 STAMP_TOKEN_RE = re.compile(r"\{\{stg-([a-z0-9-]+)\}\}")
+# `stg-sdk` derives from the sdk_compatibility mirror, never from a standards
+# entry: an entry id `sdk` would silently shadow the mirror's key (the mirror
+# write wins) and be invisible to every coverage arm (review fold F4).
+RESERVED_STAMP_IDS = frozenset({"sdk"})
 
 
 def website_stamp_map(root: Path) -> dict[str, str]:
@@ -312,9 +316,18 @@ def website_stamp_map(root: Path) -> dict[str, str]:
     authority chain). One authoritative parse: the loaders' closed-world
     refusals (``standards_entry_duplicate``, ``standards_entry_version_invalid``,
     ``sdk_compatibility_invalid``) apply here for free, and dev heads never
-    stamp — only each entry's active version is read.
+    stamp — only each entry's active version is read. An entry id colliding
+    with the reserved ``sdk`` key refuses (``stamp_reserved_key:``) rather
+    than silently shadowing the mirror.
     """
-    stamps = {f"stg-{entry.id}": entry.version for entry in load_manifest(root).standards}
+    stamps: dict[str, str] = {}
+    for entry in load_manifest(root).standards:
+        if entry.id in RESERVED_STAMP_IDS:
+            raise SystemExit(
+                f"stamp_reserved_key: standards entry id '{entry.id}' collides with the "
+                "reserved stamp namespace — stg-sdk derives from sdk_compatibility (CON-12)"
+            )
+        stamps[f"stg-{entry.id}"] = entry.version
     stamps["stg-sdk"] = load_sdk_compatibility(root).sdk
     return stamps
 
