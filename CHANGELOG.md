@@ -337,6 +337,8 @@ All notable changes to this project will be documented in this file.
 - Issue #147 increment 3 — gateway admission and grant slice design
 - CON-1/CON-10 provider amendments + drift rows 16/17 + operator guide
 - Fold waves D+E — admission proof is the triple row; #167 gate-expiry scope note
+- Record the execution-train design (issue #176)
+- Fold the refute slate's record amendments (#176)
 
 ### Features
 
@@ -563,6 +565,7 @@ All notable changes to this project will be documented in this file.
 - Remove the two committed sync-interference strays (governor amendment)
 - Lint and type residue — Unresolvable catch, import order
 - Encode the 2026-09-24 discipline rows R1-R4 (#181)
+- Fold the refute slate's hygiene items (#176)
 
 ### Performance
 
@@ -710,6 +713,11 @@ All notable changes to this project will be documented in this file.
 ### Review
 
 - WP11 whole-branch fix wave — both verdicts clean, findings landed
+
+### Standards
+
+- OPEN the 0.2.0-dev head (issue #176 increment 1)
+- Author the capture family into the 0.2.0-dev head (#176)
 
 ### Wip
 
