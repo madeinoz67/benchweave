@@ -119,6 +119,7 @@ from benchweave.state.store import Store
 __all__ = [
     "build_retention_report",
     "now_iso",
+    "refuse_schema_mismatch",
     "render_json",
     "render_markdown",
     "retention_from_data_dir",
@@ -1061,9 +1062,11 @@ class RetentionStoreRefused(AtRestError):
     same refusal family as ``retention_policy:``."""
 
 
-def _refuse_schema_mismatch(db: Path) -> None:
+def refuse_schema_mismatch(db: Path) -> None:
     """Fork A's read posture: inspect ``schema_migrations`` read-only and
-    refuse on any drift. The comparison is SET-based (the R2 fold's
+    refuse on any drift — PUBLIC since issue #194: the never-migrate
+    at-rest family imports this one precheck (``cli/dispose.py``), never
+    a duplicate. The comparison is SET-based (the R2 fold's
     blocking item): ``Store._apply_migrations`` re-applies ANY migration
     whose version row is absent — not only those below ``MAX(version)`` —
     so a MAX-only precheck admits a holey store (the middle v4 row
@@ -1195,7 +1198,7 @@ def retention_from_data_dir(
 
     with StoreHold(db, label=f"retention pid {os.getpid()}"):
         # fork A: never migrate — refuse on any schema mismatch first
-        _refuse_schema_mismatch(db)
+        refuse_schema_mismatch(db)
         try:
             store = Store.open(db)
         except RuntimeError as error:

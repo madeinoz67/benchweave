@@ -146,7 +146,7 @@ def test_d13_events_cursor_read_is_served_by_the_migration_index(
     an index that exists but is not used fails this pin."""
     store = Store.open(tmp_path / "hygiene.db")
     try:
-        assert store.schema_version() == MIGRATIONS[-1].version == 5
+        assert store.schema_version() == MIGRATIONS[-1].version == 6
         plans = store.connection.execute(
             "EXPLAIN QUERY PLAN " + _CURSOR_READ_SQL, ("bench.sim-bench", 0, 100)
         ).fetchall()
@@ -367,7 +367,8 @@ def _apply_subset(tmp_path: Path, versions: int) -> None:
 def test_v5_capture_staging_tables_and_the_sweep_serving_index(
     tmp_path: Path,
 ) -> None:
-    """Fresh database: v5 lands (the D13 pin above now names 5), both
+    """Fresh database: v5 lands (a fresh store now tops out at v6, the
+    issue #194 disposition tables), both
     staging tables exist with the designed columns — nullable
     ``artifact_id``/``started_at`` so the capture→artifact linkage survives
     chunk deletion — and the sweep's state read is served by the named,
@@ -375,7 +376,7 @@ def test_v5_capture_staging_tables_and_the_sweep_serving_index(
     this pin, exactly like the v4 events pin)."""
     store = Store.open(tmp_path / "v5.db")
     try:
-        assert store.schema_version() == 5
+        assert store.schema_version() == 6
         assert _table_columns(store, "capture_staging") == [
             "capture_id",
             "context_key",
@@ -407,11 +408,12 @@ def test_v5_capture_staging_tables_and_the_sweep_serving_index(
 
 def test_v5_upgrade_from_a_v4_database(tmp_path: Path) -> None:
     """A database left at v4 by an older gateway upgrades in place: opening
-    applies only v5 (one empty-table transaction) and lands at 5."""
+    applies the pending v5 and v6 (one empty-table transaction each) and
+    lands at 6."""
     _apply_subset(tmp_path, 4)
     store = Store.open(tmp_path / "upgrade.db")
     try:
-        assert store.schema_version() == 5
+        assert store.schema_version() == 6
         assert _table_columns(store, "capture_staging"), "v5 tables must exist"
     finally:
         store.close()
@@ -421,7 +423,8 @@ def test_refuse_newer_schema_is_loud(tmp_path: Path) -> None:
     """B6: a database written by a NEWER gateway (on-disk MAX(version)
     above the newest known migration) is refused loudly at open — the
     family has paid for silent downgrade twice; v5 makes downgrade
-    reachable for the first time."""
+    reachable for the first time (the fixture's future version rides one
+    above the chain's current top)."""
     import sqlite3
 
     path = tmp_path / "newer.db"
@@ -431,7 +434,9 @@ def test_refuse_newer_schema_is_loud(tmp_path: Path) -> None:
         " applied_at TEXT NOT NULL)"
     )
     connection.execute(
-        "INSERT INTO schema_migrations (version, applied_at) VALUES (6, 'future')"
+        "INSERT INTO schema_migrations (version, applied_at)"
+        " VALUES (?, 'future')",
+        (MIGRATIONS[-1].version + 1,),
     )
     connection.close()
     with pytest.raises(RuntimeError, match="refuse_newer_schema"):

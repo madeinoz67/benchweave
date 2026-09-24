@@ -265,12 +265,22 @@ def load_retention_policy(path: Path) -> RetentionPolicy:
     the exact-byte decoder (``duplicate_key``) — the decoder IS that
     check. ``duration_s < 1`` is the schema's ``minimum: 1``.
     """
+    return load_retention_policy_with_digest(path)[0]
+
+
+def load_retention_policy_with_digest(path: Path) -> tuple[RetentionPolicy, str]:
+    """:func:`load_retention_policy` plus the sha256 of the exact governing
+    bytes (issue #194): the disposition invocation row pins ``policy_sha256``
+    so an audit trail names the policy that governed it. The digest comes
+    from the SAME single ``read_bytes`` that feeds the decoder — one
+    filesystem read, zero TOCTOU drift by construction (the plain loader
+    delegates here, so the two names can never disagree).
+    """
     path = Path(path)
     raw = path.read_bytes()
+    digest = hashlib.sha256(raw).hexdigest()
     try:
-        document = load_document(
-            raw, hashlib.sha256(raw).hexdigest(), max_bytes=_MAX_POLICY_BYTES
-        )
+        document = load_document(raw, digest, max_bytes=_MAX_POLICY_BYTES)
     except DocumentRejected as exc:
         raise RetentionPolicyRejected(f"retention_policy: {path.name} ({exc})") from exc
     error = next(iter(_VALIDATOR.iter_errors(document.content)), None)
@@ -290,7 +300,7 @@ def load_retention_policy(path: Path) -> RetentionPolicy:
             _check_last_access(entry)
             _check_capture_vocabulary(str(entry["selector"]), f"bench {bench_id!r} classes")
 
-    return RetentionPolicy(
+    policy = RetentionPolicy(
         default=_rule(content["default"]),
         classes=_classes(content["classes"], "the global classes"),
         benches={
@@ -301,3 +311,4 @@ def load_retention_policy(path: Path) -> RetentionPolicy:
             for bench_id, scope in content["benches"].items()
         },
     )
+    return policy, digest

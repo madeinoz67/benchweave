@@ -2,7 +2,8 @@
 
 The S3 controls. Every control is exact fixture arithmetic, and each must fail
 when the mechanism is reverted (absence arm). The standing rule under test:
-**slice 3 writes nothing back** — S3-1 pins it over all fifteen tables.
+**slice 3 writes nothing back** — S3-1 pins it over every table in the store
+(seventeen since the issue #194 disposition-audit tables landed).
 
 Fixture vocabulary is invented; no bench, client or DUT identifiers from any
 real corpus are named.
@@ -177,6 +178,7 @@ _TABLES = {
     "schema_migrations", "requests", "runs", "leases", "events", "benches",
     "devices", "generations", "run_states", "changes", "documents", "artifacts",
     "evidence", "capture_staging", "capture_chunks",
+    "disposition_invocations", "dispositions",
 }
 
 
@@ -288,7 +290,8 @@ def test_fw4a_interior_migration_hole_refuses_typed_and_writes_nothing(
     conn.commit()
     conn.close()
     before = _snapshot(data_dir)
-    assert before["schema_migrations"][0] == 4, "fixture: the v4 row is gone"
+    # v6 made six migration rows; deleting the middle v4 leaves five.
+    assert before["schema_migrations"][0] == 5, "fixture: the v4 row is gone"
     result = CliRunner().invoke(
         cli, ["retention", "--data-dir", str(data_dir), "--max-dataset-bytes", "10000"]
     )
