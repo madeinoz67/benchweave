@@ -6,7 +6,7 @@
   "bench": {
     "id": "sim-bench",
     "version": "0.1.0",
-    "sha256": "2ab55c04f3c3d447d22007b1b0d99ac97c5fc79f6c34a9196c0bd20dee12f4b5"
+    "sha256": "1b54a1ac1955854e78b00be5d4850ff29ab9022d04e1698c2c6e3dab55fc6813"
   },
   "policy": {
     "id": "sim-policy",

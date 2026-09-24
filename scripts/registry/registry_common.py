@@ -37,6 +37,7 @@ ROLE_BY_SUFFIX: dict[str, str] = {
     "sim-psu.json": "descriptor",
     "sim-controller.json": "descriptor",
     "plugin.py": "implementation",
+    "adapter.py": "implementation",
     "__init__.py": "implementation",
     "sbom.json": "sbom",
     "build-provenance.json": "build_provenance",

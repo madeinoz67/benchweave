@@ -39,10 +39,17 @@ from registry_common import (
 
 def _plugin_members(plugin_dir: str) -> list[tuple[str, bytes]]:
     source = REPO / "plugins" / "benchweave" / plugin_dir / "src" / f"benchweave_{plugin_dir}"
-    return [
+    members = [
         ("plugin/__init__.py", (source / "__init__.py").read_bytes()),
         ("plugin/plugin.py", (source / "plugin.py").read_bytes()),
     ]
+    adapter = source / "adapter.py"
+    if adapter.is_file():
+        # The bridge-leg OTDP adapter (issue #176 row D): shipped beside the
+        # sync core when the plugin carries one. Role comes from the shared
+        # basename table ("adapter.py" -> implementation).
+        members.append(("plugin/adapter.py", adapter.read_bytes()))
+    return members
 
 
 def _load_key(name: str) -> Ed25519PrivateKey:

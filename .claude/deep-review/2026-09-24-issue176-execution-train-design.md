@@ -383,6 +383,11 @@ lattice itself. **Independence, stated:** row D rides active-corpus machinery on
 (`event_sink`/`stream_limits` in ACTIVE OTDP 0.2.2; #167 streaming activation merged) —
 no dependency on the head, the seam, or the promotion; lands in its own slot.
 
+**Honest negative (critic wave D6):** the fixture is pull-paced and structurally lossless;
+`gap` is unproducible and the host's sequence-jump machinery is undriven — a gap-capable
+fixture is deferred (deferral table; trigger: the first real instrument requiring gap
+semantics).
+
 ## Decision 4 (row G) — manifest canonicality refusal at resolution (F4)
 
 The pin lattice is single-digest end to end (status rows, lock dependencies, catalogue,
@@ -390,11 +395,23 @@ cache directory, loader check); the loader's canonical re-hash makes that digest
 **canonical-bytes** implicitly. The fix makes it explicit at the boundary where manifest
 bytes are first decoded and pinned:
 
-- `Resolver._resolve_release` gains a canonicality check: the served bytes must equal
-  `json.dumps(parsed, sort_keys=True, separators=(",", ":")) + "\n"` — byte equality, the
-  same formula the loader verifies — else refuse with the machine prefix
-  `manifest_not_canonical:` naming the package. Raised through the resolver's existing
-  typed-refusal shape so admission, bootstrap and the run-time closure all inherit it.
+- `Resolver._resolve_release` (where `manifest_doc` and its `sha256` become the pin) gains a
+  canonicality check: the served bytes must equal the shared helper's output —
+  `canonical_manifest_bytes` (`registry/manifests.py`), the single copy of
+  `json.dumps(parsed, sort_keys=True, separators=(",", ":")) + "\n"` that both this check
+  and the loader's re-hash call, so the two enforcement sites cannot drift — else refuse
+  with the machine reason
+  `manifest_not_canonical` naming the package (rendered
+  `manifest_not_canonical (detail)` at the resolver exception; the admission surface wraps
+  reason-only — `registry refused: manifest_not_canonical` — so the package detail stops at
+  the wrap, whose detail propagation is a deferral row). Inheritance, stated exactly:
+  admission's resolve path refuses (it calls the resolver); bootstrap only *constructs* the
+  `Resolver`, resolving nothing; and the run-time closure path
+  (`commissioned_device_closure`) reads served bytes WITHOUT the resolver check — so a
+  pre-row-G lock over non-canonical bytes still resolves there (its pin matches the served
+  bytes) and surfaces the misleading `manifest_hash_mismatch` at `load_otdp_plugin`. That
+  upgrade-only residual is named, not laundered: the run-time canonicality gate is a
+  deferral row (trigger: the first pre-row-G lock hit in upgrade or support).
 - The loader's check is kept verbatim (defense in depth — it still refuses a tampered dict).
 - Publisher-side: one sentence in the device-developer/publishing guide (emit canonical
   JSON — `json.dumps(sort_keys=True, separators=(",", ":")) + "\n"`).
@@ -454,8 +471,11 @@ orthogonal to procedure corpora, the head, the seam, and the promotion.
 - **Fixture rebuild lockstep:** #66's PR #72 — row D is that shape again, streaming
   edition.
 - **Loud typed refusals with machine prefixes:** every admission fence in
-  `control/documents.py` and `registry/*` — `manifest_not_canonical:`,
-  `execution_dev_head_absent:`, `dev_head_unresolvable:` join the family.
+  `control/documents.py` and `registry/*` — `execution_dev_head_absent:` and
+  `dev_head_unresolvable:` join the family (the seam's refusal words, the same on both
+  surfaces), as does the `manifest_not_canonical` reason (rendered
+  `manifest_not_canonical (detail)` at the exception, reason-only behind the admission
+  wrap).
 
 ## Invariant and cross-surface impacts
 
@@ -620,8 +640,11 @@ touch head bytes)**
 **Row G**
 
 - **G-R1 (the residual, made unrepresentable):** a fixture-adjacent manifest re-serialized
-  non-canonically refuses at resolution with `manifest_not_canonical:` naming the package.
-  RED: revert the check → the closure resolves AND `load_otdp_plugin` refuses
+  non-canonically (same content, different bytes) refuses at resolution with the reason
+  `manifest_not_canonical` — the exception names the package
+  (`manifest_not_canonical (…)`); the admission surface shows reason-only
+  (`registry refused: manifest_not_canonical`). RED (the control exercising the real
+  residual): revert the check → the closure resolves AND `load_otdp_plugin` refuses
   `manifest_hash_mismatch` — assert that today-shape fails red under the mechanism.
 - **G-R2 (no collateral):** every in-tree fixture manifest passes the check.
 - **G-R3 (defense in depth kept):** the loader still refuses a tampered manifest dict.
@@ -655,12 +678,17 @@ touch head bytes)**
 | **Corpus-gated dormant code on main** (capture machinery no production admission can exercise, increment 2 → promotion) | The named, accepted trade of the promote-at-end ruling; bounded by the event's certainty (train end or owner call); the seam's non-leakage is the governor's target (S-R1/S-R3); falsified by ANY new channel reaching the parameter — kill direction: remove the channel, do not gate it. |
 | **The seam leaks into production posture** (an accidental `DEV_HEAD` composition, a new config path) | Structurally: keyword-only injection, no env/config/wire surface, packaged impossibility (the head is never in a wheel), self-retirement at teardown. The review checks no creep; S-R1/S-R3 pin it. |
 | **The promotion re-measure diverges** (dev-resolved vs active-resolved numbers differ) | Names a seam defect — the compositions resolve different schemas — fix the seam before the event closes; never tune the measurement to match. |
-| **The head rots open past train end** | The trigger is now simple (train complete or owner call) and the event is a pure release; the coordinator's stale-head ruling path exists; the `opened` date stays machine-readable. |
 | **Threading the seam needs a second composition path** (a `_CONTRACTS` consumer that cannot take injection) | The increment splits rather than widens the seam (named in §1b); inventing a parallel admission path remains the DON'T-BUILD line. |
-| **MINOR vs PATCH contested at the event** | Bytes identical either way; governor rules with the recorded argument (new capability + new consumer obligation; §1's "reviewed language extension" is not errata). |
-| **The clamp masks legitimate long waits** | The clamp only shortens waits already doomed to exceed the step deadline (six-point point 4); commissioned `timeout_ms` (A02) remains the lever. |
-| **Row D rebuild churn** (many digest moves obscure the real diff) | The builder is the only writer (obligation 5); the reviewer reads the plugin + descriptor diffs; D-R3 pins lockstep. |
-| **Row G refuses a real pretty-printed registry** | Disclosed ecosystem constraint with a one-line publisher fix; the alternative (dual digest disciplines) is the F4 bug itself. |
+| **The head rots open past train end** (the stage's own risk 3 — and this is the first real head) | The `opened` date is machine-readable and the governor reads it on every `standards/` touch; the trigger set is operational (a refused capture-procedure admission is the firing signal); the event is a pure release at train end or owner call; the coordinator's stale-head ruling path exists if needed. |
+| **First production use of the stage hits an unforeseen gate** | The stage's own acceptance (#147 scratch replay) proved the invisibility arms; this train reruns them as A-R3′ on a real head — any gate that turns on the head is exactly the devstage record's kill condition (kill the separate-head shape, do not patch symptoms). |
+| **The designed-but-unbuilt gateway code drifts before roll-up** (§1b landed ahead of it via the runtime increments) | The roll-up increment walks §1b verbatim; any divergence between the record and the landing code is review-flagged (the record is the design of record for those surfaces); the #46/#6-lineage pattern of record-first development is the precedent. |
+| **MINOR vs PATCH contested at the event (the roll-up)** | Bytes identical either way; the governor rules with the recorded class argument (new capability + new consumer obligation; §1's "reviewed language extension" is not errata); a PATCH ruling forces a re-copy from the same dev source — mechanical. |
+| **The projection extension reads as dialect creep** (CON-10 was hard-won — roll-up risk) | The extension carries only what semantics must read at admission (formats, limits, permission flag) — the same shape as actions+issued; the raw document remains the authority and the grant seam still re-derives it by digest. |
+| **The clamp masks legitimate long waits** | The clamp only shortens waits already doomed to exceed the step deadline (six-point point 4); commissioned `timeout_ms` (A02) remains the operator's lever and the clamp honors it via `min(…, remaining)`. |
+| **Row D rebuild churn** (many digest moves obscure the real diff) | The builder is the only writer (obligation 5); the reviewer reads the plugin + descriptor diffs and treats the regenerated pins as mechanical; D-R3 pins lockstep. |
+| **D-R1 is wall-clock sensitive under CPU load** | 1 of 27 load runs landed `outcome_unknown` honestly (no `signal_invalid`, no subscribe refusal; the §5 mapping minted at coordinator.py:107–108 / documented at executor.py:49) — disposition: accepted flake, disclosed in the test docstring; the N×-under-load CI lane is deferred (deferral table, trigger: a second under-load D-R1 flake). |
+| **Row G refuses a real pretty-printed registry** | Disclosed ecosystem constraint with a one-line publisher fix, named in the guide; the alternative (dual digest disciplines) is the F4 bug itself. Corpus promotion is a deferral row. |
+| **Row B's landing is coupled to the promotion's timing** (coordinator-gated, no committed date) | Deliberate per the reshaping — fork 1 makes the timing an explicit owner call; the clamp's design and controls are complete in this record and land with the increment whenever promotion fires; if promotion is deferred indefinitely, row B and the deferral row 1 share the trigger (they fire together). |
 | **M-B′ does not reproduce stably** | Pre-committed underpowered reading; arm unfired; no decision from the run. |
 | **Train sprawl** (four rows + a seam + a promotion event) | The brief's rows are the scope; every newly-spawned want lands in the deferral table, not the PRs. |
 
@@ -683,6 +711,16 @@ touch head bytes)**
 | 13 | **F5-widen** — a durable issued-ids registry (issued status persisted with the occurrence ledger) | Task 8 (persists the occurrence ledger) — **answered 2026-09-24**: the rebuild exists (F5's answer above), so this row opens ONLY if the rebuild-fidelity boundary test finds a gap | A rebuild-fidelity gap in that boundary test |
 | 14 | **F14** — a class bound on descriptor `capture_limits` values (governance question: does OTDP-bound `capture_limits` need a corpus-level ceiling?) | Governance — **the wave's single named follow-up issue, filed at PR time** (at most one follow-on issue per merged PR) | The governance issue's disposition |
 | 15 | **error_code vocabulary split** — the step-event layer carries a union of the corpus `ErrorCode` enum and gateway free strings (`POLICY_DENIED`/`UNRESOLVED_REFERENCE`/`DERIVATION_INVALID`, plus `INVALID_SAMPLE`); closing the union either way is a corpus-coupled change (`test_adapter_agreement` pins `ErrorCode` == the OTDP `$defs/error` enum, so widening is impossible without released bytes, and mapping the free strings into existing values launders cause). Until then, invalidated `issued_ids` map the free-string `UNRESOLVED_REFERENCE` path onto `gate_refused` — pre-dispatch, nothing left the host — pending the split (fold 16's stopped half + deviation iv) | This record (the fold-wave table) | The OTDP error-enum revision train, or a dedicated gateway event-vocabulary design pass — whichever first |
+| 16 |Run-time canonicality gate in `commissioned_device_closure` — close the upgrade-only residual (a pre-row-G lock over non-canonical bytes still resolves and surfaces the misleading `manifest_hash_mismatch` at `load_otdp_plugin`) | This record §Decision 4 | The first pre-row-G lock hit in upgrade or support |
+| 17 |G-R2 collateral-guard set derived from `catalogue.json` (today: a hardcoded glob and count of 6) | `tests/contract/test_registry_resolver.py::test_every_in_tree_fixture_manifest_is_canonical` | The first non-benchweave fixture path |
+| 18 |Admission-wrap detail propagation (`registry refused: {reason}` drops the `manifest_not_canonical (detail)` package name) | This record §Decision 4 + `docs/device-developer-guide.md` §10 | The next admission-error-surface change |
+| 19 |CI N×-under-load D-R1 lane (repeat the demo-lattice control under CPU load) | This record §Top risks + `tests/integration/test_demo_lattice_streaming.py` (D-R1 docstring) | The second under-load D-R1 flake |
+| 20 |Bundle-loader `importlib.import_module` bypass (already ledgered as a gotcha) | Memory vault gotcha ledger (restated here per amended rule 3) | The first untrusted bundle admission |
+| 21 |critic-D1: `stream_completed` → `stream_budget_exhausted` rename + pin + census | This record (critic wave D) | The next adapter/fixture-authoring touch, or row B's fixture work |
+| 22 |critic-D2: durable terminal marker on clean `mark_closed` | This record (critic wave D) | The next `stream_services` touch (the mid-budget run-end test rides it) |
+| 23 |critic-D3: durable record for subscribe-refusal | This record (critic wave D) | The next `stream_services` touch |
+| 24 |critic-D4: adapter refuses duplicate `subscription_id` | This record (critic wave D) | The next adapter touch |
+| 25 |Gap-capable streaming fixture (the committed fixture is pull-paced and structurally lossless; `gap` unproducible — disclosure folded into §Decision 3) | This record §Decision 3 (critic wave D) | The first real instrument requiring gap semantics |
 
 (#167's rows C, E, F stay closed in that record's table — none is this train's scope.)
 

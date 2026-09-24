@@ -21,6 +21,7 @@ closure-level semantics the schema cannot express. Reason codes raised via
 """
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Mapping
 from itertools import combinations
@@ -39,6 +40,21 @@ _MUTABLE_REVISIONS = frozenset({"main", "master", "HEAD", "latest"})
 #: dot/dash/plus words joined by the SPDX binary operators.
 _SPDX_TOKEN = re.compile(r"[A-Za-z0-9.+-]+")
 _SPDX_OPERATORS = frozenset({"AND", "OR", "WITH"})
+
+
+def canonical_manifest_bytes(parsed: dict[str, Any]) -> bytes:
+    """The ONE canonical serialization the manifest pin lattice is keyed by.
+
+    Bytes are ``json.dumps(parsed, sort_keys=True, separators=(",", ":"))
+    + "\\n"`` — sorted keys, compact separators, ASCII-escaped, LF line
+    endings with the trailing newline. Both enforcement sites call this
+    single function — the resolver's canonicality refusal
+    (``Resolver._resolve_release``) and the loader's re-hash gate
+    (``load_otdp_plugin``) — so the two can never drift apart (the
+    ``check_payload_path`` single-sourcing shape). The gF2 agreement pin
+    additionally pins these bytes to the test's own independent oracle.
+    """
+    return (json.dumps(parsed, sort_keys=True, separators=(",", ":")) + "\n").encode()
 
 
 def check_payload_path(path: str) -> None:

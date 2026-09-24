@@ -461,15 +461,38 @@ def test_sdk_tree_is_still_across_the_head() -> None:
     """SDK stillness: no head commit moves packages/sdk bytes, and the
     operator round-trip (bundle, lock, vendored tree, compatibility
     mirror) is clean - the invisibility tripwire."""
-    moved = subprocess.run(
-        ["git", "diff", "origin/main...HEAD", "--", "packages/sdk"],
+    # Scope is head commits, not the branch diff: a legitimate pointer
+    # advance (fork (a)'s #187 mirror+pointer pairing) moves packages/sdk
+    # without touching the head and must not trip this. The branch-wide
+    # diff was the wrong scope - it only ever discriminated on branches
+    # that never moved the pointer.
+    head_commits = subprocess.run(
+        [
+            "git",
+            "log",
+            "--format=%H",
+            "origin/main..HEAD",
+            "--",
+            "standards/execution/0.2.0-dev",
+        ],
         cwd=ROOT,
         capture_output=True,
         text=True,
         check=False,
     )
-    assert moved.returncode == 0, moved.stderr
-    assert moved.stdout == "", f"head commits moved SDK bytes:\n{moved.stdout}"
+    assert head_commits.returncode == 0, head_commits.stderr
+    for commit in head_commits.stdout.split():
+        files = subprocess.run(
+            ["git", "diff-tree", "--no-commit-id", "--name-only", "-r", commit],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert files.returncode == 0, files.stderr
+        assert "packages/sdk" not in files.stdout.splitlines(), (
+            f"head commit {commit[:10]} moves SDK bytes:\n{files.stdout}"
+        )
     round_trip = subprocess.run(
         [sys.executable, "-m", "benchweave.standards", "check"],
         cwd=ROOT,

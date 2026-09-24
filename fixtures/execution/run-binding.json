@@ -9,7 +9,7 @@
   "bench": {
     "id": "sim-bench",
     "version": "0.1.0",
-    "sha256": "2ab55c04f3c3d447d22007b1b0d99ac97c5fc79f6c34a9196c0bd20dee12f4b5"
+    "sha256": "1b54a1ac1955854e78b00be5d4850ff29ab9022d04e1698c2c6e3dab55fc6813"
   },
   "policy": {
     "id": "sim-policy",
@@ -24,7 +24,7 @@
   "commissioning": {
     "id": "sim-commissioning",
     "version": "0.1.0",
-    "sha256": "64e97001a84e23354f584a4d54b038cb67fc301a272ceefd45147a0f449d659a"
+    "sha256": "00d6b525226886b960370275ce8e90ffefd9ddf90810a74ae86558036f004bbd"
   },
   "bindings": [
     {

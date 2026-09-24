@@ -177,6 +177,8 @@ All notable changes to this project will be documented in this file.
 - Spool the pinned provider contract + thread settings/now_wall
 - The write-gate exempts branch-new files its message promises
 - Advance SDK pointer — notes preservation (#170) + paired prose corrections
+- Sdk_compatibility mirror = 0.2.0 with the certified pointer (#187)
+- Refuse non-canonical manifest bytes at resolution (issue #176 row G, design F4)
 
 ### Documentation
 
@@ -339,6 +341,8 @@ All notable changes to this project will be documented in this file.
 - Fold waves D+E — admission proof is the triple row; #167 gate-expiry scope note
 - Record the execution-train design (issue #176)
 - Fold the refute slate's record amendments (#176)
+- Demo-lattice streaming surface + canonical manifest emission (issue #176 rows D+G, obligation 3)
+- Council fold wave — row D+G prose disclosures (dF1-dF3, gF1/gF1b/gF4/gF5, critic-D5/D6)
 
 ### Features
 
@@ -479,6 +483,7 @@ All notable changes to this project will be documented in this file.
 - Transport-settings.json — the identity-only commissioned surface
 - The provider admission seam — census mirror, pin mirror, gateway-only row
 - ProviderTransport grammar guard + the build_capture_services gate
+- Demo lattice streams — sim_psu bridge adapter + event_sink descriptor (issue #176 row D, design Decision 3)
 
 ### Hardware Evidence
 
@@ -583,6 +588,7 @@ All notable changes to this project will be documented in this file.
 - Reset every standard to 0.1.0 — the governance starting point
 - Id/version tree, full 0.1.0 reset, and governance layer (#21)
 - Single-source the family marker; refusal-family honesty (#102 D1, review R-F5 + A-F3)
+- One canonical-bytes helper behind the agreement pin (#176)
 
 ### Style
 
@@ -688,6 +694,10 @@ All notable changes to this project will be documented in this file.
 - The documents-gate dev-head arm plants both roots (row 2 fixup)
 - A -dev source segment is a historical terminal in the dir guard (review row 3)
 - The descriptor dialect triangle — red on the reverted stamp
+- Scope the SDK-stillness arm to head commits (#187 rider)
+- The demo lattice streams end to end (issue #176 row D, design Decision 3)
+- Strip PYTHONPATH/PYTHONHOME from the wheel child env (issue #176 T11 vet finding)
+- GF2 canonical-form agreement pin + deferral-table rows (#176)
 
 ### Build
 

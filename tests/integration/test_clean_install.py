@@ -58,12 +58,21 @@ class WheelInstall:
     def run(
         self, *args: str, timeout: float = 360.0
     ) -> subprocess.CompletedProcess[str]:
-        """Run the real binary; BENCHWEAVE_* env is stripped so the outer
-        test environment cannot leak into the fresh install's defaults."""
+        """Run the real binary; the outer test environment cannot leak into
+        the fresh install's defaults: ``BENCHWEAVE_*`` config (the fixture
+        scrubs) is stripped, and so is ``PYTHONPATH``/``PYTHONHOME`` — the
+        source-import leak class. A PYTHONPATH pointing at a checkout would
+        make the wheel's console script import ``benchweave.cli.demo`` from
+        that source tree, where the repo-relative ``DEFAULT_FIXTURES``
+        (``Path(__file__).parents[3]/fixtures/execution``) DOES exist, so the
+        demo would run and exit 0 instead of refusing — laundering absence
+        through an import-path shortcut. The wheel under test must be what
+        the child imports, always."""
         env = {
             key: value
             for key, value in os.environ.items()
             if not key.startswith("BENCHWEAVE_")
+            and key not in ("PYTHONPATH", "PYTHONHOME")
         }
         return subprocess.run(
             [str(self.binary), *args],
