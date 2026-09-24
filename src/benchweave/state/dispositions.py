@@ -197,7 +197,13 @@ class DispositionLog:
         predicate); returns the number actually deleted — a shared
         artifact survives, decision artifacts are live references by
         construction, and a dropped id referenced by two deleted rows is
-        visited exactly once (the set)."""
+        visited exactly once (the set).
+
+        Deletion verifies first (the ``finalise`` mirror): the bytes are
+        re-read and re-hashed against the content address embedded in the
+        id, and a mismatch refuses typed — stored bytes are verified,
+        never trusted. The check rides the invocation transaction, so the
+        refusal rolls the whole disposition back."""
         collected = 0
         for artifact_id in sorted(dropped):
             live = int(
@@ -206,6 +212,18 @@ class DispositionLog:
                 ).fetchone()[0]
             )
             if live == 0:
+                row = self._conn.execute(
+                    "SELECT data FROM artifacts WHERE artifact_id = ?", (artifact_id,)
+                ).fetchone()
+                if row is not None and hashlib.sha256(bytes(row[0])).hexdigest() != (
+                    artifact_id.removeprefix("art-")
+                ):
+                    raise StoreChangedUnderPlan(
+                        f"dispose: store changed under the plan — artifact "
+                        f"{artifact_id!r} bytes do not hash to their content "
+                        f"address (corrupt or tampered store); refusing to "
+                        f"collect it"
+                    )
                 collected += int(
                     self._conn.execute(
                         "DELETE FROM artifacts WHERE artifact_id = ?", (artifact_id,)

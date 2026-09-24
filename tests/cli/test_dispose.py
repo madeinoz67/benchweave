@@ -372,6 +372,53 @@ def test_a5_shared_artifact_survives_unreferenced_collected_once_decisions_kept(
     assert orphans == [], "decision artifacts are live references — never collected"
 
 
+# --- fold fix 2: digest recompute at deletion ---------------------------------------------
+
+
+def test_fold2_corrupted_dropped_artifact_refuses_typed_and_rolls_back(
+    tmp_path: Path,
+) -> None:
+    """The finalise-mirroring guard: before GC deletes a dropped
+    artifact, its bytes are re-read and re-hashed against the
+    content-address embedded in its id — stored bytes are verified, never
+    trusted. A corrupted-in-place artifact (data flipped, id kept) makes
+    ``--execute`` refuse typed (StoreChangedUnderPlan family) and the
+    whole invocation rolls back: nothing deleted, no audit rows, no
+    invocation row, ledger untouched."""
+    from benchweave.state.dispositions import StoreChangedUnderPlan
+
+    data_dir = _seed(tmp_path)
+    _write_policy(data_dir / "retention-policy.json")
+    dup_artifact = _rows(
+        data_dir, "SELECT artifact_id FROM capture_staging"
+                  " WHERE capture_id = 'cap-dup-a'")[0][0]
+    conn = sqlite3.connect(str(db_path(data_dir)))
+    conn.execute("UPDATE artifacts SET data = ? WHERE artifact_id = ?",
+                 (b"corrupted-in-place", dup_artifact))
+    conn.commit()
+    conn.close()
+
+    with pytest.raises(StoreChangedUnderPlan, match="store changed under the plan"):
+        _dispose(data_dir, now=NOW, execute=True)
+
+    audit, invocations = _rows(
+        data_dir, "SELECT (SELECT COUNT(*) FROM dispositions),"
+                  " (SELECT COUNT(*) FROM disposition_invocations)")[0]
+    assert (int(audit), int(invocations)) == (0, 0), "the refusal must roll back whole"
+    captures = {str(r[0]) for r in _rows(
+        data_dir, "SELECT capture_id FROM capture_staging")}
+    assert captures == {"cap-wave", "cap-raw", "cap-dup-a", "cap-dup-b", "cap-open"}, (
+        "no governed row may be deleted by a refused invocation"
+    )
+    store = Store.open(db_path(data_dir))
+    try:
+        writer = CaptureStagingStore(store, max_capture_bytes=10_000_000,
+                                     max_dataset_bytes=10_000_000)
+        assert writer.used_bytes("run:run-a") == 228, "the ledger must be untouched"
+    finally:
+        store.close()
+
+
 # --- A6: refusals ------------------------------------------------------------------------
 
 
