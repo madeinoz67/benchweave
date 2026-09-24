@@ -1021,9 +1021,8 @@ def test_fw2_unestimable_windows_render_absence(tmp_path: Path) -> None:
     # span > horizon renders present, with the span disclosed on the row
     assert subs["sub-spanny"]["observed_span_s"] > horizon
     assert subs["sub-spanny"]["projected_horizon_bytes"] > 0
-    # n = 2 distinct renders present with n == 2 (sub-alpha from the seed)
-    assert subs["sub-alpha"]["n"] == 2 or g["excluded"]["single_event"] >= 0
-    assert "sub-alpha" in subs and subs["sub-alpha"]["n"] >= 2
+    # the seed's sub-alpha lands with n == 3 (two events at T0, one at T1)
+    assert "sub-alpha" in subs and subs["sub-alpha"]["n"] == 3
     # span = 0 / unparseable / n = 1 render ABSENCE + their own counters
     for absent in ("sub-twin", "sub-naive", "sub-solo"):
         assert absent not in subs, (absent, subs.get(absent))
@@ -1546,7 +1545,7 @@ def test_fw16_build_retention_report_takes_no_unused_content_store() -> None:
     params = inspect.signature(build_retention_report).parameters
     assert "content" not in params, params
     assert set(params) == {"store", "policy", "bench_id", "now",
-                           "max_dataset_bytes", "horizon_s"} | {"store"}
+                           "max_dataset_bytes", "horizon_s"}
 
 
 def test_fw1_anchor_unresolved_rows_are_counted(tmp_path: Path) -> None:
