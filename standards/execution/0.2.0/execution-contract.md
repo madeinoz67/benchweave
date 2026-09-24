@@ -1,4 +1,4 @@
-# STG procedure and bench contracts 1.0.0
+# STG procedure and bench contracts 0.2.0
 
 **Architecture companion:** STG 1.5; OTDP 0.2.2; adapter API 0.1.0; registry contract 0.1.0.  
 **Status:** Architecture/schema baseline for bounded sequential tests. No procedure engine, policy evaluator or hardware driver is implemented.

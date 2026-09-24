@@ -85,7 +85,7 @@ from benchweave.vendoring import contract_family
 
 #: The vendored execution contracts (packaged in the wheel, repo-relative
 #: in a dev checkout — :mod:`benchweave.vendoring`).
-_CONTRACTS = contract_family("execution/0.1.0")
+_CONTRACTS = contract_family("execution/0.2.0")
 _RUN_RECORD_VALIDATORS: dict[Path, Any] = {}
 
 #: Body outcomes that pass through unchanged when the safe state is verified.
@@ -146,13 +146,13 @@ def build_terminal_record(
     A record claimed to exist must validate: the vendored run-record
     schema is checked here, on every record, before it is returned or
     persisted (validated against ``contracts`` — the composition-resolved
-    corpus directory; the module default is the frozen ``execution/0.1.0``
+    corpus directory; the module default is the frozen ``execution/0.2.0``
     literal). The ``outcome`` field is NOT an input — it is
     derived by :func:`terminal_outcome` so the §5 truth table lives in
     exactly one place.
     """
     record = {
-        "contract_version": "0.1.0",
+        "contract_version": "0.2.0",
         "run_id": run_id,
         "binding": {
             "id": str(binding_pin["id"]),

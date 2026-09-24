@@ -1,17 +1,17 @@
 {
-  "contract_version": "0.1.0",
+  "contract_version": "0.2.0",
   "id": "sim-commissioning",
   "version": "0.1.0",
   "description": "Executable simulator commissioning. Not hardware-qualified.",
   "bench": {
     "id": "sim-bench",
     "version": "0.1.0",
-    "sha256": "1b54a1ac1955854e78b00be5d4850ff29ab9022d04e1698c2c6e3dab55fc6813"
+    "sha256": "2c32914488a17cb4c99e4505047c1fbde3dff3fef72d0e213a30c2e35e259ad7"
   },
   "policy": {
     "id": "sim-policy",
     "version": "0.1.0",
-    "sha256": "0a107432fe5c0ffcb20c61e577d3bf382374352ccee851265d73700dc261fc4a"
+    "sha256": "1b7cf86ce04223e514d4abefd860d97b4d9024ec65160e19f8ace52b26eaebfc"
   },
   "package_lock": {
     "id": "sim-lock",
@@ -22,7 +22,7 @@
     {
       "id": "voltage-check",
       "version": "0.1.0",
-      "sha256": "f5e970d476d0a5000266aa07f360b152f9238be96a36c1694a2d29cfe850cbf6"
+      "sha256": "b4bfdec98e7b6f381e64c63f4ca5466fddf4ccdc9d5bd579623e2fd73ff3ad13"
     }
   ],
   "dut_class": "low_voltage_embedded",
