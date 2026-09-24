@@ -625,6 +625,36 @@ touch head bytes)**
   injected capture clock IS the executor's base. The clock-domain test and single-clock
   threading ride the row-B time seam, with F3-clamp consolidation and F11's parse fix.
 
+**M-B′ landing disclosures (2026-09-24 critic + vet fold, on the row-B branch). The
+SHIPS verdict is conditioned on these five; recorded before any citation of the
+numbers:**
+
+- **(a) The measured quantity is the CONTENDED WINDOW** — the contender's lock
+  acquisition → the abort epilogue's forensic row first visible to a read-only
+  connection (2 ms poll). The window is pinned to the experimenter's own hold (the
+  holder releases on a fixed wall timer), not to the dispatch's internal clocks; the
+  per-trial `run_ms` (the whole run incl. the protective transition) is recorded but
+  does not enter the bound.
+- **(b) The bound's first term is the WORST-CASE clamp (stock 5000)** while the
+  effective clamp in the trials was the commissioned step deadline (2000 ms — the
+  deadline-bound ordering). The tight reading (commissioned 2000 + measured epilogue)
+  is OVERSHOOT-SENSITIVE: the raw median exceeded it by ~160 ms in the recorded run —
+  the same measurer-arming latency + SQLite busy-handler overshoot that inflates the
+  raw `append_wait` — so the raw number must neither be read as the clamp value nor
+  cited as passing the tight bound; the worst-case term is the governing one.
+- **(c) The verdict is HOLD-REGIME-SCOPED.** Any hold ≤ clamp + floor (~7 s at stock)
+  completes at hold+ε and cannot fail this bound; beyond it lies the UNMEASURED
+  floor-expiry regime — the epilogue's abort BEGIN suppressed, staging reclaimed only
+  by the unclamped close sweep (B15-iii). The clamp verdict speaks for the hold regime
+  measured, not for holds that outlast clamp+floor.
+- **(d) M-C′ is N=1 in its first run** — one number cannot prove "no unbounded path";
+  it is labeled as such until re-run with ≥3 trials.
+- **(e) The control is a calibration anchor, not the proof.** It is bridge-level by
+  structural necessity (a full-run held-from-start fails run ACCEPTANCE against the
+  5.5 s hold — the acceptance `BEGIN` waits the same 5 s default and refuses first);
+  the clamp's effect is proven by the per-trial DECOMPOSITION (append bound =
+  deadline-clamp; epilogue = floor) instead.
+
 **Row D**
 
 - **D-R1 (the lattice streams):** post-rebuild, the demo bench admits at bootstrap and a

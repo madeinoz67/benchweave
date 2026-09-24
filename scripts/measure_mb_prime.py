@@ -268,6 +268,22 @@ def _trial(root: Path, index: int) -> dict[str, Any]:
     append_wait_ms = (t_raise - acquired_at) * 1000
     epilogue_wait_ms = (t_epilogue - t_raise) * 1000
     stretch_ms = (t_epilogue - acquired_at) * 1000
+    hold_ms = HOLD_S * 1000
+    # The triangulated contended-window requirement (critic fold): the
+    # append demonstrably RAISED against the held lock, and the whole
+    # window stayed inside the experimenter's own hold - the window is
+    # pinned to the hold, not to an uncontrolled clock.
+    _require(
+        (signal_dir / "append_raise").exists(),
+        "append_raise stamp missing - the window is not a contended one",
+    )
+    _require(
+        append_wait_ms < hold_ms,
+        f"append wait {append_wait_ms:.1f} ms exceeded the hold {hold_ms:.1f} ms",
+    )
+    # The F3 class split, with the bound each segment answered to. The
+    # deadline-clamp label carries a 300 ms overshoot allowance
+    # (measurer arming + SQLite busy-handler retry granularity).
     return {
         "trial": index,
         "outcome": record["outcome"],
@@ -277,9 +293,10 @@ def _trial(root: Path, index: int) -> dict[str, Any]:
         "epilogue_wait_ms": epilogue_wait_ms,
         "stretch_ms": stretch_ms,
         "run_ms": (time.monotonic() - run_start) * 1000,
-        # The F3 class split: which bound each segment answered to.
         "append_bound": (
-            "deadline-clamp" if append_wait_ms < BUSY_TIMEOUT_MS else "default-cap"
+            "deadline-clamp"
+            if append_wait_ms < STEP_TIMEOUT_MS + 300
+            else "default-cap"
         ),
         "epilogue_bound": "holder-release-inside-floor",
     }
@@ -329,9 +346,9 @@ def _control(root: Path) -> dict[str, Any]:
         harness.close()
 
 
-def _queued_run(root: Path) -> float:
-    """M-C': queued-run delay behind the clamped contended capture,
-    through the REAL RunWorker (the one-worker FIFO shape)."""
+def _queued_run_once(root: Path) -> float:
+    """One M-C' repetition: queued-run delay behind the clamped contended
+    capture, through the REAL RunWorker (the one-worker FIFO shape)."""
     harness = _harness(root, "req-mb-queued")
     db_path = str(root / "worker.db")
     store = Store.open(root / "worker.db")
@@ -407,6 +424,23 @@ def _queued_run(root: Path) -> float:
     return delay_ms
 
 
+_M_C_TRIALS = 3
+
+
+def _queued_run(root: Path) -> dict[str, float]:
+    """M-C' at N=3 (critic fold: one number cannot prove "no unbounded
+    path"): the repetition delay in ms, with min/median/max."""
+    delays = [
+        _queued_run_once(root / ("rep" + str(i))) for i in range(_M_C_TRIALS)
+    ]
+    return {
+        "min": min(delays),
+        "median": statistics.median(delays),
+        "max": max(delays),
+        "n": float(len(delays)),
+    }
+
+
 def main() -> None:
     import tempfile
 
@@ -421,14 +455,14 @@ def main() -> None:
     print("M-B' trials (per-trial F3 class split):")
     print(
         f"{'trial':<6} {'error/state':<24} {'append_ms':>10} "
-        f"{'append_bound':<14} {'epilogue_ms':>12} {'stretch_ms':>12}"
+        f"{'append_bound':<14} {'epilogue_ms':>12} {'stretch_ms':>12} {'run_ms':>10}"
     )
     for trial in trials:
         pair = trial["error_code"] + "/" + trial["dispatch_state"]
         print(
             f"{trial['trial']:<6} {pair:<24} {trial['append_wait_ms']:>10.1f} "
             f"{trial['append_bound']:<14} {trial['epilogue_wait_ms']:>12.1f} "
-            f"{trial['stretch_ms']:>12.1f}"
+            f"{trial['stretch_ms']:>12.1f} {trial['run_ms']:>10.1f}"
         )
     stretches = [t["stretch_ms"] for t in trials]
     epilogues = [t["epilogue_wait_ms"] for t in trials]
@@ -436,7 +470,9 @@ def main() -> None:
     median_epilogue = statistics.median(epilogues)
     spread_pct = (max(stretches) - min(stretches)) / median_stretch * 100
     bound = BUSY_TIMEOUT_MS + median_epilogue
+    tight_bound = STEP_TIMEOUT_MS + median_epilogue
     ships = median_stretch <= bound and spread_pct <= 25.0
+    tight_also_passes = median_stretch <= tight_bound
     underpowered = spread_pct > 25.0
     anchor_bound = 2 * BUSY_TIMEOUT_MS + 730  # the slice-1 anchor: 10.73 s at 5 s
     print()
@@ -444,6 +480,11 @@ def main() -> None:
     print(f"spread: {spread_pct:.1f}%")
     print(f"measured epilogue class (median): {median_epilogue:.1f} ms")
     print(f"ships-if bound (1x busy + measured epilogue): {bound:.1f} ms")
+    print(
+        f"tight bound (commissioned deadline + measured epilogue): "
+        f"{tight_bound:.1f} ms"
+        f" (also passes: {tight_also_passes})"
+    )
     print(f"2x-busy anchor bound: {anchor_bound:.1f} ms")
     if underpowered:
         verdict = "UNDERPOWERED (spread > 25%) - record, decide nothing"
@@ -462,12 +503,13 @@ def main() -> None:
         f"matched control (held-from-start, #167 M-B condition): gate wait "
         f"{gate_ms:.1f} ms (anchor median was 5199 ms)"
     )
-    queued_delay_ms = _queued_run(work / "queued")
+    queued = _queued_run(work / "queued")
     print()
     print(
-        f"M-C' queued-run delay behind the clamped contended capture: "
-        f"{queued_delay_ms:.1f} ms (the contended capture window itself "
-        f"was ~{HOLD_S * 1000:.0f} ms)"
+        f"M-C' queued-run delay behind the clamped contended capture "
+        f"(N={int(queued['n'])}): min {queued['min']:.1f} / median "
+        f"{queued['median']:.1f} / max {queued['max']:.1f} ms (the "
+        f"contended capture window itself was ~{HOLD_S * 1000:.0f} ms)"
     )
 
 
