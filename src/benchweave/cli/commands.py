@@ -1,10 +1,12 @@
 """The ``benchweave`` Click command tree (Task 9: CLI foundation).
 
-Nine commands — ``setup status demo report backup restore verify serve evidence`` —
-so ``--help`` is already the full operator surface. ``status`` (Task 9), the
-four at-rest commands (Task 10), ``demo`` (Task 11: live-gateway mode or the
-labelled ephemeral fresh-install simulation), ``report`` (Task 13: the
-store-derived report model with markdown/JSON emitters, at-rest only) and
+Ten commands — ``setup status demo report retention backup restore verify serve
+evidence`` — so ``--help`` is already the full operator surface. ``status``
+(Task 9), the four at-rest commands (Task 10), ``demo`` (Task 11: live-gateway
+mode or the labelled ephemeral fresh-install simulation), ``report`` (Task 13:
+the store-derived report model with markdown/JSON emitters, at-rest only),
+``retention`` (issue #43 slice 3: the read-only disposal/growth projection
+over the store at rest — writes nothing back) and
 ``serve`` (Task 14: env → ``app_entry.build`` → foreground uvicorn, with the
 production secret posture enforced inside ``build``) are live. The
 ``evidence`` group (WP09 Tasks 7–11) generates the retained evidence tree —
@@ -432,6 +434,91 @@ def report(
         TextualRenderer().report_view(model)
         return
     click.echo(report_lib.render_markdown(model))
+
+
+@cli.command()
+@click.option(
+    "--data-dir",
+    "data_dir",
+    type=click.Path(path_type=Path),
+    required=True,
+    envvar="BENCHWEAVE_DATA_DIR",
+    help=_DATA_DIR_HELP,
+)
+@click.option(
+    "--bench",
+    "bench_id",
+    default=None,
+    help="Restrict the projection to one bench id (default: every bench).",
+)
+@click.option(
+    "--policy",
+    "policy",
+    type=click.Path(path_type=Path),
+    default=None,
+    help=(
+        "Retention policy file. Default: <data-dir>/retention-policy.json — "
+        "absent there means every row is ungoverned; a file that is present "
+        "but invalid refuses. An explicitly passed path must load."
+    ),
+)
+@click.option(
+    "--max-dataset-bytes",
+    "max_dataset_bytes",
+    type=int,
+    default=None,
+    help=(
+        "Capture-byte ceiling for the quota-wedge projection (default: env "
+        "BENCHWEAVE_MAX_DATASET_BYTES; unset means ceiling unknown and the "
+        "exhaustion projection is omitted)."
+    ),
+)
+@click.option(
+    "--out",
+    "out",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Write the report to FILE (markdown; JSON with --json) instead of stdout.",
+)
+@click.option(
+    "--json",
+    "json_output",
+    is_flag=True,
+    help="Emit the stable machine JSON contract instead of text.",
+)
+def retention(
+    data_dir: Path,
+    bench_id: str | None,
+    policy: Path | None,
+    max_dataset_bytes: int | None,
+    out: Path | None,
+    json_output: bool,
+) -> None:
+    """Project retention/disposal from the store at rest (read-only)."""
+    _set_json(json_output)
+    from benchweave.cli import retention as retention_lib
+    from benchweave.cli.atrest import AtRestError
+
+    try:
+        model = retention_lib.retention_from_data_dir(
+            data_dir,
+            bench_id=bench_id,
+            policy_path=policy,
+            now=retention_lib.now_iso(),
+            max_dataset_bytes=max_dataset_bytes,
+        )
+    except (AtRestError, StoreHeldError, ValueError, OSError) as error:
+        raise click.ClickException(str(error)) from error
+    if json_output:
+        if out is not None:
+            _write_out(out, retention_lib.render_json(model))
+            return
+        emit(model)
+        return
+    if out is not None:
+        _write_out(out, retention_lib.render_markdown(model))
+        return
+    click.echo(retention_lib.render_markdown(model))
 
 
 def _write_out(out: Path, text: str) -> None:
