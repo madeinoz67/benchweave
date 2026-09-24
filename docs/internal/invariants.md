@@ -388,10 +388,14 @@ rather than rewriting the history — that is how this file earns trust.
   pyproject. The authority chain is pyproject@pin → lock → mirror.*
 
 - **[CON-13]** Website version stamps are a pure function of committed state —
-  `website/index.html` carries `{{stg-*}}` tokens, never version literals;
-  `website_stamp_map` derives from the standards manifest and the
-  `sdk_compatibility` mirror (CON-12's authority chain); substitution happens
-  only in the assembly copy and `verify_tree` refuses residue —
+  claim sites in `website/index.html` carry `{{stg-*}}` tokens and never
+  three-component version literals (T2 refuses `\d+\.\d+\.\d+` over the
+  class-11 source set, the `website/` tree plus `index.qmd`; residual:
+  two-component prose claims, issue #188 design deferral 5);
+  `website_stamp_map` derives from the standards manifest's active versions
+  and the `sdk_compatibility` mirror (CON-12's authority chain); substitution
+  happens only in the assembly copy and `verify_tree` refuses any `{{`
+  residue in any copied static-site file —
   `scripts/assemble_docs_site.py` `website_stamp_map`/`stamp_website`, pinned
   by `tests/contract/test_website_stamps.py`. The badge/href pair of a card
   carries one token twice, so a claim/link version disagreement is

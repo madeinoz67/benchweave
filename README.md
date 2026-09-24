@@ -17,7 +17,7 @@ The first PoC is simulator-first. The planned hardware MVP targets the **FNIRSI 
 
 ## Website and documentation
 
-The public site is at <https://madeinoz67.github.io/benchweave/> — the standards, the guides and architecture record, and the `benchweave` CLI reference, rendered from this repository by the docs workflow (`.github/workflows/docs.yml`, `scripts/assemble_docs_site.py`). The site's version claims are stamped at assembly from the standards manifest, so `website/` carries `{{stg-*}}` tokens rather than versions — preview it through `uv run python scripts/assemble_docs_site.py --dest /tmp/site-preview` (needs `great-docs` on PATH), not by serving the raw source. The SDK has its own site at <https://madeinoz67.github.io/benchweave-sdk/>.
+The public site is at <https://madeinoz67.github.io/benchweave/> — the standards, the guides and architecture record, and the `benchweave` CLI reference, rendered from this repository by the docs workflow (`.github/workflows/docs.yml`, `scripts/assemble_docs_site.py`). The site's version claims are stamped at assembly from the standards manifest's active versions: claim sites in `website/index.html` carry `{{stg-*}}` tokens, and the hygiene pin refuses a three-component version literal anywhere under `website/` or in `index.qmd` (two-component prose claims remain outside the pattern by design). Preview it through `uv run python scripts/assemble_docs_site.py --dest /tmp/site-preview` — with `uv pip install "great-docs[svg]"` in the project environment first (an isolated pipx-style install silently drops the CLI reference from the build) — not by serving the raw source. The SDK has its own site at <https://madeinoz67.github.io/benchweave-sdk/>.
 
 ## Sister repository
 

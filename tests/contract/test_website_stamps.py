@@ -1,10 +1,15 @@
 """Website version-stamp contract (issue #188, design 2026-09-24, CON-13).
 
 `website/index.html` is the one public surface that states corpus and SDK
-versions in prose. The stamp contract (design §2, invariants CON-13): the
-source carries `{{stg-<key>}}` tokens and never a version literal — every
-version claim renders from the standards manifest at assembly time, so a
-bump moves no website byte and a stale claim is structurally impossible.
+versions in prose. The stamp contract (design §2, invariants CON-13): claim
+sites carry `{{stg-<key>}}` tokens and no three-component version literal
+is allowed anywhere in the class-11 source set (`website/` plus
+`index.qmd`) — every three-component version claim renders from the
+standards manifest's active versions at assembly time, so a bump moves no
+website byte and a stale three-component claim is refused rather than
+shipped. Two-component prose claims (`Python 3.13+`) sit outside the
+pattern and stay hand-swept (design deferral 5) — a stale one is
+review-caught, not machine-caught.
 
 The stamp map reads the same authorities the compatibility matrix renders
 from (CON-12's chain: the standards manifest and its `sdk_compatibility`
@@ -117,7 +122,11 @@ def test_source_carries_no_version_literals() -> None:
 
 
 def test_stamp_map_derives_from_committed_state() -> None:
-    """T1: the map is the manifest's actives plus the mirror — nothing hardcoded."""
+    """T1: catches a map that stops deriving — the pin compares the map to
+    the loaders' own expression, so a map that diverges from it (a stale
+    copy, a partial edit) reddens; an equal hardcode of the same values is
+    invisible by construction, since the comparison cannot tell derivation
+    from coincidence (adversary NIT)."""
     from benchweave.standards.manifest import load_manifest, load_sdk_compatibility
 
     expected = {f"stg-{entry.id}": entry.version for entry in load_manifest(ROOT).standards}

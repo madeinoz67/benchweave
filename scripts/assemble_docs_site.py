@@ -10,9 +10,12 @@ Two-tier layout, the same shape the SDK repository deploys
   Standards, User guides, SDK — styled per ``docs/internal/public-site-
   styleguide.html``; no build chain) is copied to the artifact root and its
   ``{{stg-*}}`` version tokens are stamped there from committed state
-  (``website_stamp_map`` / ``stamp_website`` — the source carries tokens,
-  never version literals, so a raw ``website/`` preview shows tokens; preview
-  through this assembler, e.g. ``--dest /tmp/site-preview``). Its links into
+  (``website_stamp_map`` / ``stamp_website`` — the source carries tokens at
+  its claim sites and no three-component version literal anywhere under
+  ``website/`` or in ``index.qmd``, pinned by
+  ``tests/contract/test_website_stamps.py``, so a raw ``website/`` preview
+  shows tokens; preview through this assembler, e.g.
+  ``--dest /tmp/site-preview``). Its links into
   the docs are relative ``docs/…`` paths, so the pair previews from any
   server root, GitHub Pages included.
 - ``docs/`` — one Great Docs build of the current tree. The gateway has no
