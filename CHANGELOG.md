@@ -562,6 +562,7 @@ All notable changes to this project will be documented in this file.
 - Pointer advances to the 0.2.2 vendor (SDK PR #47, merge 6121c96)
 - Remove the two committed sync-interference strays (governor amendment)
 - Lint and type residue — Unresolvable catch, import order
+- Encode the 2026-09-24 discipline rows R1-R4 (#181)
 
 ### Performance
 
