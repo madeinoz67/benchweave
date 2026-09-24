@@ -137,8 +137,16 @@ def proc_errors(p):
 
 
 p = ex["procedure"]
+# Capture steps contribute timeout_ms like invoke timeouts (the dev head's
+# capture family); on the active corpus cap_total is 0 and every bound
+# below is byte-identical to its 0.1.0 constant, so the released lane's
+# check set (and its pinned report) is unchanged.
+cap_total = sum(s["timeout_ms"] for s in p["steps"] if s.get("kind") == "capture")
 check("procedure lexical scope and bound", not proc_errors(p)[0])
-check("synthetic static wait/IO bound 1600 ms", proc_errors(p)[1] == 1600)
+check(
+    f"synthetic static wait/IO bound {1600 + cap_total} ms",
+    proc_errors(p)[1] == 1600 + cap_total,
+)
 x = copy.deepcopy(p)
 x["steps"][1]["input"]["configuration_id"]["$stg_ref"]["step"] = "later"
 check("future reference rejected", "reference scope" in proc_errors(x)[0])
@@ -158,7 +166,9 @@ x = copy.deepcopy(p)
 x["steps"] = [{"id": "outer", "kind": "repeat", "count": 2, "steps": copy.deepcopy(p["steps"])}]
 check(
     "bounded repeated fixture",
-    validators["procedure"].is_valid(x) and (not proc_errors(x)[0]) and (proc_errors(x)[1] == 3200),
+    validators["procedure"].is_valid(x)
+    and (not proc_errors(x)[0])
+    and (proc_errors(x)[1] == 2 * (1600 + cap_total)),
 )
 x["steps"].append(
     {
@@ -184,7 +194,9 @@ x["steps"].append(
 )
 check(
     "both branches admitted with max bound",
-    validators["procedure"].is_valid(x) and (not proc_errors(x)[0]) and (proc_errors(x)[1] == 1620),
+    validators["procedure"].is_valid(x)
+    and (not proc_errors(x)[0])
+    and (proc_errors(x)[1] == 1620 + cap_total),
 )
 for _key, bad in [("count", 0), ("count", -1)]:
     x = copy.deepcopy(p)
@@ -362,8 +374,12 @@ for a in policy["safe_transition"]["actions"]:
         ),
     )
 for a in policy["allow_rules"]:
-    Draft202012Validator.check_schema(a["input_constraints"])
-    check("allow rule " + a["action_id"] + " meta-schema", True)
+    if a["kind"] == "capture":
+        Draft202012Validator.check_schema(a["capture_constraints"])
+        check("allow rule " + a["format"] + " capture meta-schema", True)
+    else:
+        Draft202012Validator.check_schema(a["input_constraints"])
+        check("allow rule " + a["action_id"] + " meta-schema", True)
 check(
     "body plus protection fits domain duration",
     all(

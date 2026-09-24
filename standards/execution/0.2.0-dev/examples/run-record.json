@@ -1,0 +1,25 @@
+{
+  "contract_version": "0.1.0",
+  "run_id": "synthetic-run",
+  "binding": {
+    "id": "synthetic-request",
+    "version": "0.1.0",
+    "sha256": "ceb39700677cc611129bbaaf7478881eac399f7102c8bb277089efd8c157570a"
+  },
+  "principal_id": "synthetic-user",
+  "started_at": "2026-09-09T00:00:00Z",
+  "ended_at": "2026-09-09T00:00:03Z",
+  "body_outcome": "completed",
+  "outcome": "passed",
+  "safe_state": "verified",
+  "reasons": [
+    "Synthetic outcome fixture, not an executed test"
+  ],
+  "evidence_refs": [
+    {
+      "id": "synthetic-event-log",
+      "version": "0.1.0",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ]
+}
