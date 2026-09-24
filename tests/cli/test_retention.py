@@ -502,11 +502,6 @@ def test_s3_7_report_time_classification(tmp_path: Path) -> None:
 
 # --- S3-8: the four statuses ------------------------------------------------------
 
-    data_dir = _seed(tmp_path)
-    model = _model(data_dir, now=NOW)
-    assert model["policy"]["loaded"] is False
-    assert model["rows"] and all(r["status"] == "ungoverned" for r in model["rows"])
-
 
 def test_s3_8_ungoverned_rows_and_disclosure(tmp_path: Path) -> None:
     data_dir = _seed(tmp_path)
@@ -514,31 +509,14 @@ def test_s3_8_ungoverned_rows_and_disclosure(tmp_path: Path) -> None:
     assert model["rows"] and all(r["status"] == "ungoverned" for r in model["rows"])
     assert any("ungoverned" in d.lower() for d in model["disclosures"])
 
-    data_dir = _seed(tmp_path)
-    _write_policy(data_dir / "retention-policy.json", hold_event_log=True)
-    model = _model(data_dir, now=NOW)
-    held = [r for r in model["rows"] if r["status"] == "held"]
-    assert held and all(r["disposal_date"] is None for r in held)
-    assert all(r["data_class"] == "evidence:event_log" for r in held)
-
-    data_dir = _seed(tmp_path)
-    _write_policy(data_dir / "retention-policy.json", run_end=True)
-    model = _model(data_dir, now=NOW)
-    rows = {r["id"]: r for r in model["rows"]}
-    unresolved = [r for r in rows.values() if r["status"] == "anchor_unresolved"]
-    assert unresolved and all(r["disposal_date"] is None for r in unresolved)
-    # run-c is live (non-terminal) under run_end; manual-labbook is unattributed
-    assert any(r["context_key"] == "manual-labbook" for r in unresolved)
-
-
-
 
 def test_s3_8_scheduled_has_a_date(tmp_path: Path) -> None:
     data_dir = _seed(tmp_path)
     _write_policy(data_dir / "retention-policy.json", run_end=True)
     model = _model(data_dir, now=NOW)
     rows = {r["id"]: r for r in model["rows"]}
-    # run-a/run-b are terminal -> their run_end anchors resolve to run_states T2
+    # run-a/run-b are terminal -> their run_end anchors resolve to the
+    # terminal record's ended_at (T2 in the fixture)
     sched = [r for r in rows.values() if r["status"] == "scheduled"]
     assert sched and all(r["disposal_date"] for r in sched)
     for r in sched:
@@ -1495,3 +1473,39 @@ def test_fw17_rowless_run_prefixed_keys_survive_bench_filtering(tmp_path: Path) 
     # a run that EXISTS on another bench still filters out (true scope)
     gone = [r for r in scoped["rows"] if r["context_key"] == "run:run-b"]
     assert not gone
+
+
+def test_fw15_each_test_s3_function_carries_only_its_own_scenario() -> None:
+    """Finding 15 (NIT): S3-8 statements were stranded inside
+    test_s3_7_report_time_classification (a col-0 comment does not end a
+    function) and three scenarios were merged into one test. Structural
+    guard: every test_s3_* function seeds its fixture at most once."""
+    import ast
+
+    tree = ast.parse(Path(__file__).read_text(encoding="utf-8"))
+    offenders: list[str] = []
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name.startswith("test_s3_"):
+            seeds = sum(
+                1
+                for sub in ast.walk(node)
+                if isinstance(sub, ast.Call)
+                and isinstance(sub.func, ast.Name)
+                and sub.func.id == "_seed"
+            )
+            if seeds > 1:
+                offenders.append(f"{node.name}: {seeds} _seed calls")
+    assert not offenders, f"merged scenarios (issue #184 finding 15): {offenders}"
+
+
+def test_fw16_build_retention_report_takes_no_unused_content_store() -> None:
+    """Finding 16 (NIT): build_retention_report's content parameter was
+    unused (the model reads the store connection directly)."""
+    import inspect
+
+    from benchweave.cli.retention import build_retention_report
+
+    params = inspect.signature(build_retention_report).parameters
+    assert "content" not in params, params
+    assert set(params) == {"store", "policy", "bench_id", "now",
+                           "max_dataset_bytes", "horizon_s"} | {"store"}

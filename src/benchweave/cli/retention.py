@@ -100,7 +100,6 @@ from typing import Any
 from benchweave.cli.atrest import AtRestError, db_path
 from benchweave.cli.report import now_iso
 from benchweave.content.capture_store import CaptureStagingStore
-from benchweave.content.store import ContentStore
 from benchweave.control.retention_policy import (
     RETENTION_POLICY_FILENAME,
     RetentionPolicy,
@@ -365,7 +364,6 @@ def _disposal_row(
 
 def build_retention_report(
     store: Store,
-    content: ContentStore,
     *,
     policy: RetentionPolicy | None,
     bench_id: str | None = None,
@@ -1074,7 +1072,6 @@ def retention_from_data_dir(
         try:
             model = build_retention_report(
                 store,
-                ContentStore(store),
                 policy=policy,
                 bench_id=bench_id,
                 now=now,
