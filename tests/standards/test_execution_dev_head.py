@@ -137,6 +137,22 @@ def test_active_corpus_refuses_the_same_capture_documents() -> None:
     assert not active_procedure.is_valid(dev_procedure_example)
     assert not active_policy.is_valid(dev_policy_example)
 
+    # The refusals must name the capture family specifically (the refute
+    # lane's verified probe): error paths at steps/3 (the capture step) and
+    # allow_rules/2 (the capture rule), not merely a boolean invalid.
+    proc_paths: set[tuple[Any, ...]] = set()
+    pol_paths: set[tuple[Any, ...]] = set()
+
+    def _collect(errs: list[Any], sink: set[tuple[Any, ...]]) -> None:
+        for err in errs:
+            sink.add(tuple(err.absolute_path))
+            _collect(list(err.context), sink)
+
+    _collect(list(active_procedure.iter_errors(dev_procedure_example)), proc_paths)
+    _collect(list(active_policy.iter_errors(dev_policy_example)), pol_paths)
+    assert any(p[:2] == ("steps", 3) for p in proc_paths), sorted(map(str, proc_paths))
+    assert any(p[:2] == ("allow_rules", 2) for p in pol_paths), sorted(map(str, pol_paths))
+
 
 def test_capture_branch_shapes_are_closed() -> None:
     """Negative shapes refuse in the dev lane (the record's A-R1 list)."""
@@ -345,8 +361,11 @@ def test_dev_head_diff_is_exactly_the_capture_family() -> None:
 def test_dev_proof_lane_runs_the_head_green(monkeypatch: pytest.MonkeyPatch) -> None:
     """check_execution.py --corpus <declared head>: every check passes
     and the run writes nothing (a dev run is a check, not a report)."""
-    report = HEAD / "validation-report.md"  # the wholesale copy carries it
-    before = report.stat().st_mtime_ns
+    report = HEAD / "validation-report.md"
+    # The stale founding copy was folded away: a dev head carries no
+    # validation report (reports are a released-version property), and the
+    # lane must not write one either.
+    assert not report.exists(), "the dev head carries no validation report"
     monkeypatch.setattr(
         sys, "argv", ["check_execution.py", "--corpus", str(HEAD.resolve())]
     )
@@ -359,7 +378,7 @@ def test_dev_proof_lane_runs_the_head_green(monkeypatch: pytest.MonkeyPatch) -> 
     assert checks, "no checks executed"
     failures = [name for name, ok in checks if not ok]
     assert not failures, f"{len(failures)}/{len(checks)} failed:\n" + "\n".join(failures)
-    assert report.stat().st_mtime_ns == before, "a dev run must not write a report"
+    assert not report.exists(), "a dev run must not write a report"
 
 
 # --- A-R3-prime: the dev-stage honesty arms on a real head -------------------------

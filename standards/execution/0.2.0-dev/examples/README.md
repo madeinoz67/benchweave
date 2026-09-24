@@ -11,4 +11,4 @@ These six documents demonstrate linked metadata. They do **not** describe a comm
 | [Run binding](run-binding.json) | A logical supply/output role mapped to a physical device/channel |
 | [Run record](run-record.json) | Separate body result, terminal outcome and final safety assurance |
 
-Hashes between these fixture files are real and checked. External identity, package-lock, input-contract and report references are synthetic. “Passed” values illustrate the record shape; they are not actual qualification or execution results. Both positive and rejected metadata cases are described in the [validation report](../validation-report.md).
+Hashes between these fixture files are real and checked. External identity, package-lock, input-contract and report references are synthetic. “Passed” values illustrate the record shape; they are not actual qualification or execution results.
