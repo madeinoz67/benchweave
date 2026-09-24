@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+
 from benchweave.control.retention_policy import (
     RetentionPolicy,
     RetentionPolicyRejected,
@@ -234,5 +235,94 @@ def test_unknown_rule_field_refuses(tmp_path: Path) -> None:
 def test_missing_top_level_keys_refuse(tmp_path: Path) -> None:
     document = _document()
     del document["benches"]
+    with pytest.raises(RetentionPolicyRejected, match=r"retention_policy:"):
+        _load(tmp_path, document)
+
+
+# --- fix wave (issue #184): schema hardening ------------------------------------
+
+#: The duration ceiling (issue #184 finding 3): the datetime domain's
+#: epoch-second ceiling — ``datetime.max`` (year 9999-12-31) is
+#: 253402300799.999999 s after the epoch, so a whole-second duration
+#: above 253402300799 can push ``anchor + duration_s`` out of the
+#: datetime domain for every anchor. The bound is that ceiling, not an
+#: invented threshold.
+MAX_DURATION_S = 253_402_300_799
+
+
+def test_fw3_duration_s_boundary_table(tmp_path: Path) -> None:
+    """Finding 3 (HIGH): ``duration_s`` admitted any int >= 1, so 1e20
+    raised OverflowError at report time (an unmapped traceback) and 1e12
+    an untyped ValueError. The schema carries a documented maximum now
+    and the load refuses typed — boundary over {1, max, max+1, 1e12,
+    1e20}."""
+    for good in (1, MAX_DURATION_S):
+        document = _document()
+        document["default"]["duration_s"] = good
+        policy = _load(tmp_path, document)
+        assert policy.default.duration_s == good
+    for bad in (MAX_DURATION_S + 1, 10**12, 10**20):
+        document = _document()
+        document["default"]["duration_s"] = bad
+        with pytest.raises(
+            RetentionPolicyRejected, match=r"retention_policy:.*duration_s"
+        ):
+            _load(tmp_path, document)
+        # the class and bench rule shapes carry the same bound
+        document = _document()
+        document["classes"][0]["duration_s"] = bad
+        with pytest.raises(RetentionPolicyRejected, match=r"retention_policy:"):
+            _load(tmp_path, document)
+
+
+def test_fw12_dotted_and_uppercase_kinds_are_selectable(tmp_path: Path) -> None:
+    """Finding 12 (LOW): the report emits ``evidence:<kind>`` verbatim but
+    selectors were pattern-locked to lowercase [a-z0-9_-] — dots and
+    uppercase kinds were ungovernable at class level. The selector grammar
+    now admits what the report can name (dots, uppercase, the in-tree
+    kind shapes); the capture lane stays closed via the vocabulary."""
+    document = _document()
+    document["classes"].append(
+        {
+            "selector": "evidence:Event.Log",
+            "duration_s": 60,
+            "retain_after": "landing",
+            "on_disposition": "delete",
+        }
+    )
+    policy = _load(tmp_path, document)
+    assert (
+        policy.resolve(bench=None, data_class="evidence:Event.Log").duration_s == 60
+    )
+    document = _document()
+    document["classes"].append(
+        {
+            "selector": "evidence:acme.telemetry",
+            "duration_s": 90,
+            "retain_after": "landing",
+            "on_disposition": "review",
+        }
+    )
+    policy = _load(tmp_path, document)
+    assert (
+        policy.resolve(bench=None, data_class="evidence:acme.telemetry").duration_s
+        == 90
+    )
+
+
+def test_fw14_trailing_newline_selector_refused(tmp_path: Path) -> None:
+    """Finding 14 (NIT): the pattern's ``$`` matches before a trailing
+    newline, so ``"evidence:dataset\\n"`` passed admission and became a
+    silently dead rule. ``\\Z`` closes the escape — the selector must
+    match the whole string."""
+    document = _document()
+    document["classes"].append(
+        {
+            "selector": "evidence:dataset\n",
+            "duration_s": 60,
+            "retain_after": "landing",
+            "on_disposition": "delete",
+        }
+    )
     with pytest.raises(RetentionPolicyRejected, match=r"retention_policy:"):
         _load(tmp_path, document)

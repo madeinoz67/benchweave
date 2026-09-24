@@ -31,7 +31,12 @@ The capture lane is CLOSED (the in-tree format vocabulary
 ``host/otdp_bridge.py::OTDPBridge._CAPTURE_FORMATS`` plus
 ``capture:unknown``, the report's class for NULL/unknown formats); the
 evidence lane is OPEN — a novel kind gets its literal class at report
-time and falls to the default, never a refusal here.
+time and falls to the default, never a refusal here. The selector
+pattern admits the in-tree kind shapes (letters, digits, dot, underscore,
+hyphen — issue #184 finding 12) and anchors with ``\Z`` (finding 14:
+``$`` matched before a trailing newline, admitting dead rules).
+``duration_s`` is bounded by the datetime domain ceiling
+(:data:`MAX_DURATION_S`, finding 3).
 """
 
 from __future__ import annotations
@@ -51,8 +56,27 @@ RETENTION_POLICY_FILENAME = "retention-policy.json"
 #: The admission byte cap shared with every other admission document.
 _MAX_POLICY_BYTES = 1_048_576
 
-_SELECTOR_PATTERN = r"^(capture|evidence):[a-z][a-z0-9_-]{0,63}$"
-_BENCH_ID_PATTERN = r"^[a-z][a-z0-9_.-]{0,63}$"
+#: The class grammar (issue #184 finding 12): selectors must be able to
+#: name every class the report emits — ``evidence:<kind>`` is an OPEN
+#: vocabulary (kinds land with dots and uppercase, e.g. ``Event.Log``,
+#: ``acme.telemetry``), so the pattern admits the in-tree kind shapes
+#: (letters, digits, dot, underscore, hyphen). Residual, disclosed: a
+#: kind carrying characters outside this grammar still reports its
+#: literal class and falls to the default, but no selector can name it —
+#: constraining ``put_evidence``'s kind at landing is out of this slice's
+#: scope. ``\Z`` (not ``$``) so a trailing-newline selector can never
+#: pass admission into a silently dead rule (finding 14).
+_SELECTOR_PATTERN = r"^(capture|evidence):[A-Za-z0-9][A-Za-z0-9._-]{0,63}\Z"
+_BENCH_ID_PATTERN = r"^[a-z][a-z0-9_.-]{0,63}\Z"
+
+#: The duration ceiling (issue #184 finding 3): the datetime domain's
+#: epoch-second ceiling — ``datetime.max`` (year 9999-12-31) is
+#: 253402300799.999999 s after the epoch. A whole-second duration above
+#: 253402300799 can push ``anchor + duration_s`` out of the datetime
+#: domain for every anchor and crashed the report-time math
+#: (OverflowError unmapped / ValueError untyped). The bound is that
+#: domain ceiling — not an invented threshold.
+MAX_DURATION_S = 253_402_300_799
 
 #: The closed capture-class vocabulary (the in-tree format vocabulary
 #: plus the report's NULL/unknown class). The evidence lane stays open.
@@ -63,7 +87,11 @@ _CAPTURE_CLASSES = frozenset(
 
 def _rule_properties() -> dict[str, Any]:
     return {
-        "duration_s": {"type": "integer", "minimum": 1},
+        "duration_s": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": MAX_DURATION_S,
+        },
         "retain_after": {
             "type": "string",
             "enum": ["landing", "run_end", "last_access"],

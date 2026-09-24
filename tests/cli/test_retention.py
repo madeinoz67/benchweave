@@ -1444,3 +1444,23 @@ def test_fw8_wedge_states_boundary_table(tmp_path: Path,
     assert unest["rate_bytes_per_s"] is None
     assert unest["time_to_exhaustion_s"] is None
 
+
+
+def test_fw3_governed_row_refuses_typed_on_domain_overflow(tmp_path: Path) -> None:
+    """Finding 3, governed-row arm: ``duration_s`` at the datetime domain
+    ceiling plus a real (2026) anchor pushes the disposal date out of the
+    datetime domain — the report-time refusal is typed
+    (``retention_policy:``), never an unmapped OverflowError/ValueError
+    from the timestamp math."""
+    from benchweave.cli.retention import RetentionStoreRefused  # noqa: F401 (family)
+
+    data_dir = _seed(tmp_path)
+    pol = tmp_path / "forever.json"
+    pol.write_text(json.dumps({
+        "config_version": "1",
+        "default": {"duration_s": 253_402_300_799, "retain_after": "landing",
+                    "on_disposition": "review"},
+        "classes": [], "benches": {},
+    }), encoding="utf-8")
+    with pytest.raises(ValueError, match=r"retention_policy:"):
+        _model(data_dir, policy_path=pol, now=NOW)

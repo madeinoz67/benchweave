@@ -93,7 +93,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -337,10 +337,20 @@ def _disposal_row(
         row["status"] = "anchor_unresolved"
         return row
     row["anchor_at"] = anchor_at
-    disposal = anchor_dt.timestamp() + rule.duration_s
-    row["disposal_date"] = _iso(datetime.fromtimestamp(disposal, tz=anchor_dt.tzinfo))
+    try:
+        disposal_dt = anchor_dt + timedelta(seconds=rule.duration_s)
+    except (OverflowError, OSError, ValueError) as error:
+        # issue #184 finding 3: a duration that pushes the disposal date
+        # past the datetime domain is a typed refusal, never an unmapped
+        # OverflowError/ValueError from timestamp math.
+        raise ValueError(
+            f"retention_policy: duration_s {rule.duration_s} plus anchor "
+            f"{anchor_at} exceeds the datetime domain (year 9999) — the "
+            "disposal date cannot be rendered"
+        ) from error
+    row["disposal_date"] = _iso(disposal_dt)
     row["status"] = "scheduled"
-    row["overdue"] = disposal <= now_dt.timestamp()
+    row["overdue"] = disposal_dt <= now_dt
     return row
 
 
