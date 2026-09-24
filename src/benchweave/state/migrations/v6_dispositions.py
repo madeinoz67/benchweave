@@ -27,6 +27,16 @@ Design notes pinned by the issue #194 record:
   ``ContentStore.put_artifact`` INSIDE the disposition transaction — the
   ``finalise`` precedent); STO-1: no clock reads, all timestamps
   caller-supplied, uuid ids (the evidence precedent, STO-2 unamended).
+- The three artifact-GC live-reference columns are INDEXED here
+  (``evidence.artifact_id``, ``capture_staging.artifact_id``,
+  ``dispositions.decision_artifact_id``): the GC probes each dropped
+  artifact once under flock + BEGIN IMMEDIATE, and unindexed probes scan
+  their whole table per artifact — quadratic in governed rows (measured
+  4.24x wall time per row-doubling on the no-index code, fold fix 4).
+  Indexing PRE-EXISTING tables from a new migration is additive (an
+  index is not a table alteration) and one-time at upgrade: the build
+  cost is O(rows log rows) paid once, disclosed in the fold
+  measurements.
 """
 
 from __future__ import annotations
@@ -64,4 +74,10 @@ STATEMENTS: tuple[str, ...] = (
     " outcome TEXT NOT NULL)",
     "CREATE INDEX IF NOT EXISTS idx_dispositions_target"
     " ON dispositions (row_kind, target_id)",
+    "CREATE INDEX IF NOT EXISTS idx_evidence_artifact"
+    " ON evidence (artifact_id)",
+    "CREATE INDEX IF NOT EXISTS idx_capture_staging_artifact"
+    " ON capture_staging (artifact_id)",
+    "CREATE INDEX IF NOT EXISTS idx_dispositions_decision"
+    " ON dispositions (decision_artifact_id)",
 )

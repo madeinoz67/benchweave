@@ -884,6 +884,11 @@ def test_scale_smoke_5000_rows_audit_equals_deleted(tmp_path: Path) -> None:
     # the same invocation: the smoke's exact figures include them.
     assert model["counts"]["deleted"] == 5000 + 3
     assert model["bytes_reclaimed"] == total + _EXPECTED_BYTES
+    assert model["artifacts_collected"] == 5000 + 1, (
+        "every synthetic artifact (5000, each referenced by exactly one "
+        "deleted row) plus the fixture's byte-identical-pair artifact — "
+        "collected exactly once each; cap-wave's survives (keepkind)"
+    )
     audit = _rows(data_dir, "SELECT COUNT(*), COALESCE(SUM(bytes), 0)"
                             " FROM dispositions")
     assert int(audit[0][0]) == 5000 + 3
@@ -896,3 +901,37 @@ def test_scale_smoke_5000_rows_audit_equals_deleted(tmp_path: Path) -> None:
     assert int(remaining) == 0
     # wall time is disclosed, never gated (CI hardware variance)
     print(f"\ndispose --execute over 5000 rows: {elapsed:.2f}s")
+
+
+def test_gc_live_reference_lookups_are_served_by_indexes(tmp_path: Path) -> None:
+    """Fold fix 4 (lane A F2, measured 4.24x per doubling on the
+    no-index code): the GC's live-reference predicate probes
+    ``evidence.artifact_id``, ``capture_staging.artifact_id`` and
+    ``dispositions.decision_artifact_id`` once per dropped artifact under
+    flock + BEGIN IMMEDIATE — unindexed, each probe scans its whole table
+    (quadratic in governed rows). The indexes ship INSIDE migration v6
+    (v6 is unmerged; amending it, never a v7), and this pin — the D13
+    EXPLAIN QUERY PLAN precedent — fails if any lookup regresses to a
+    SCAN."""
+    from benchweave.state.dispositions import _LIVE_REFERENCE_SQL
+
+    data_dir = _seed(tmp_path)
+    uri = f"{db_path(data_dir).resolve().as_uri()}?mode=ro"
+    conn = sqlite3.connect(uri, uri=True)
+    try:
+        plans = conn.execute(
+            "EXPLAIN QUERY PLAN " + _LIVE_REFERENCE_SQL, ("a", "a", "a")
+        ).fetchall()
+        detail = " | ".join(str(row[3]) for row in plans)
+        # SQLite spells a probe over an index-only column "COVERING INDEX";
+        # either index spelling serves the lookup, a SCAN does not.
+        for index in ("idx_evidence_artifact", "idx_capture_staging_artifact",
+                      "idx_dispositions_decision"):
+            assert f"USING INDEX {index}" in detail or (
+                f"USING COVERING INDEX {index}" in detail
+            ), detail
+        assert "SCAN evidence" not in detail, detail
+        assert "SCAN capture_staging" not in detail, detail
+        assert "SCAN dispositions" not in detail, detail
+    finally:
+        conn.close()
