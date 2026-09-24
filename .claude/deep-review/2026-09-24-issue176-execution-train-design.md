@@ -359,6 +359,11 @@ construct a `StreamController` through the unmutated fixture lattice, telemetry 
 `event_log` evidence under `run:{run_id}` during delay windows — the #167 R14 shape on the
 lattice itself instead of a test-mutated descriptor.
 
+**Honest negative (critic wave D6):** the fixture is pull-paced and structurally lossless;
+`gap` is unproducible and the host's sequence-jump machinery is undriven — a gap-capable
+fixture is deferred (deferral table; trigger: the first real instrument requiring gap
+semantics).
+
 ## Decision 4 (row G) — manifest canonicality refusal at resolution (F4)
 
 The pin lattice is single-digest end to end (status rows, lock dependencies, catalogue,
@@ -369,9 +374,18 @@ bytes are first decoded and pinned:
 - `Resolver._resolve_release` (where `manifest_doc` and its `sha256` become the pin) gains a
   canonicality check: the served bytes must equal
   `json.dumps(parsed, sort_keys=True, separators=(",", ":")) + "\n"` — byte equality, the
-  same formula the loader verifies — else refuse with the machine prefix
-  `manifest_not_canonical:` naming the package. Raised through the resolver's existing
-  typed-refusal shape so admission, bootstrap and the run-time closure all inherit it.
+  same formula the loader verifies — else refuse with the machine reason
+  `manifest_not_canonical` naming the package (rendered
+  `manifest_not_canonical (detail)` at the resolver exception; the admission surface wraps
+  reason-only — `registry refused: manifest_not_canonical` — so the package detail stops at
+  the wrap, whose detail propagation is a deferral row). Inheritance, stated exactly:
+  admission's resolve path refuses (it calls the resolver); bootstrap only *constructs* the
+  `Resolver`, resolving nothing; and the run-time closure path
+  (`commissioned_device_closure`) reads served bytes WITHOUT the resolver check — so a
+  pre-row-G lock over non-canonical bytes still resolves there (its pin matches the served
+  bytes) and surfaces the misleading `manifest_hash_mismatch` at `load_otdp_plugin`. That
+  upgrade-only residual is named, not laundered: the run-time canonicality gate is a
+  deferral row (trigger: the first pre-row-G lock hit in upgrade or support).
 - The loader's check is kept verbatim (defense in depth — it still refuses a tampered dict).
 - Publisher-side: the in-tree builders already emit canonical bytes; the publishing path
   gains one sentence in the device-developer/publishing guide (emit canonical JSON — the
@@ -443,7 +457,9 @@ promotion increment touches the SDK pointer):
 - **Fixture rebuild lockstep:** #66's PR #72 (plugin doctrine flip + lattice rebuild in one
   motion) — row D is that shape again, streaming edition.
 - **Loud typed refusals with machine prefixes:** every admission fence in
-  `control/documents.py` and `registry/*` — `manifest_not_canonical:` joins the family.
+  `control/documents.py` and `registry/*` — the `manifest_not_canonical` reason joins the
+  family (rendered `manifest_not_canonical (detail)` at the exception, reason-only behind
+  the admission wrap).
 
 ## Invariant and cross-surface impacts
 
@@ -572,8 +588,10 @@ measurement is not)**
 **Row G (unchanged)**
 
 - **G-R1 (the residual, made unrepresentable):** a fixture-adjacent manifest re-serialized
-  non-canonically (same content, different bytes) refuses at resolution with
-  `manifest_not_canonical:` naming the package. RED (the control exercising the real
+  non-canonically (same content, different bytes) refuses at resolution with the reason
+  `manifest_not_canonical` — the exception names the package
+  (`manifest_not_canonical (…)`); the admission surface shows reason-only
+  (`registry refused: manifest_not_canonical`). RED (the control exercising the real
   residual): revert the check → the closure resolves AND `load_otdp_plugin` refuses
   `manifest_hash_mismatch` — assert that today-shape fails red under the mechanism.
 - **G-R2 (no collateral):** every in-tree fixture manifest passes the check — no fixture
@@ -631,6 +649,7 @@ measurement is not)**
 | **The projection extension reads as dialect creep** (CON-10 was hard-won — roll-up risk) | The extension carries only what semantics must read at admission (formats, limits, permission flag) — the same shape as actions+issued; the raw document remains the authority and the grant seam still re-derives it by digest. |
 | **The clamp masks legitimate long waits** | The clamp only shortens waits already doomed to exceed the step deadline (six-point point 4); commissioned `timeout_ms` (A02) remains the operator's lever and the clamp honors it via `min(…, remaining)`. |
 | **Row D rebuild churn** (many digest moves obscure the real diff) | The builder is the only writer (obligation 5); the reviewer reads the plugin + descriptor diffs and treats the regenerated pins as mechanical; D-R3 pins lockstep. |
+| **D-R1 is wall-clock sensitive under CPU load** | 1 of 27 load runs landed `outcome_unknown` honestly (no `signal_invalid`, no subscribe refusal; the §5 mapping minted at coordinator.py:107–108 / documented at executor.py:49) — disposition: accepted flake, disclosed in the test docstring; the N×-under-load CI lane is deferred (deferral table, trigger: a second under-load D-R1 flake). |
 | **Row G refuses a real pretty-printed registry** | Disclosed ecosystem constraint with a one-line publisher fix, named in the guide; the alternative (dual digest disciplines) is the F4 bug itself. Corpus promotion is a deferral row. |
 | **M-B′ does not reproduce stably** | Pre-committed underpowered reading; arm unfired; no decision from the run. |
 | **Row B's landing is coupled to the promotion's timing** (coordinator-gated, no committed date) | Deliberate per the reshaping — fork 1 makes the timing an explicit owner call; the clamp's design and controls are complete in this record and land with the increment whenever promotion fires; if promotion is deferred indefinitely, row B and the deferral row 1 share the trigger (they fire together). |

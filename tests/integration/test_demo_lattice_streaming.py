@@ -27,8 +27,13 @@ Composition notes (disclosed, not hidden):
   through ``load_otdp_plugin``.
 
 RED arm (absence-presence): revert the descriptor's ``event_sink``
-permission (and its ``stream_limits``) and this control fails -- the run
-constructs no stream services and lands zero ``event_log`` evidence.
+permission (and its ``stream_limits``), REBUILD the registry lattice
+(``scripts/registry/build_fixtures.py``), and this control fails -- the
+run constructs no stream services and lands zero ``event_log`` evidence.
+The rebuild step is load-bearing: a descriptor revert without it fails
+earlier and elsewhere -- ``closure_descriptor_absent``, the reverted
+descriptor digest no longer served by the pinned closure -- so the run
+never reaches the arm that discriminates ``event_sink``.
 """
 
 from __future__ import annotations
@@ -368,6 +373,14 @@ def test_demo_lattice_admits_and_streams(tmp_path: Path) -> None:
     """D-R1: the committed lattice admits at bootstrap; a run constructs the
     psu's bridge with its stream controller, and during the settle delay the
     sim's telemetry lands as ``event_log`` evidence under ``run:{run_id}``.
+
+    Wall-clock sensitivity (disclosed): this control is timing-sensitive
+    under CPU load -- 1 of 27 load runs landed ``outcome_unknown``
+    honestly (no ``signal_invalid``, no subscribe refusal; the §5
+    mapping minted in ``terminal_outcome`` at coordinator.py:107-108 and
+    documented at executor.py:49). Disposition: accepted flake,
+    disclosed; the N×-under-load CI lane is deferred (design record
+    deferral table, trigger: a second under-load D-R1 flake).
     """
     session = _demo_session(tmp_path / "registry-work")
     lattice = _build_run_lattice(tmp_path)
