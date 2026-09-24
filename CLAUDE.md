@@ -189,6 +189,22 @@ Each traces to a decision record (`docs/smart-test-gateway-decisions.md`) or a
 4. **Walk the obligations.** `docs/internal/drift-and-obligations.md` is the list; the
    path-shaped ones additionally warn via `.claude/hooks/drift-guard.mjs` (marked 🪝 in
    that doc) — a reminder, not a gate, and no substitute for walking the list.
+5. **Merge on the full rollup, never a filtered view (#181 R1).** `gh pr checks
+   --watch | tail` hides failing lanes and masks the exit code (2026-09-23: two
+   merges landed with three red lanes). Read the COMPLETE `gh pr checks <n>` output
+   and assert zero `fail` and zero `pending` before merging; a background
+   CI-watcher's exit is not the verdict. `scripts/merge-verified.sh [owner/repo] <pr>`
+   is this gate as a tool — it watches, prints the full rollup, refuses on any
+   red, pending, or empty rollup, and only then merges.
+6. **Pre-flight before design on a tracked issue (#181 R2).** Before starting design
+   or build work: `git fetch origin`, list the remote branches touching the planned
+   paths, and check the sibling repo's open/recent PRs — only then design. A brief
+   can postdate pushed or merged rival work (2026-09-23: the #147 rival-design
+   collision).
+7. **Parallel scratch paths carry a nonce (#181 R4).** Scratch worktree names carry
+   the agent name plus a nonce; run `git worktree list` before any `worktree
+   remove` while parallel agents are active (2026-09-23: one agent's cleanup
+   deleted another's live worktree).
 
 **Keep CI fast.** The job map is in `drift-and-obligations.md`; prefer unit and fault
 tests, reach for end-to-end proof only when a change genuinely needs it, and never

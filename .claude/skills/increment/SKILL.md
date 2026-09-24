@@ -70,7 +70,10 @@ or a public surface, run the loop.
    refute pass is mandatory.** Any diff touching `standards/`, contract locks, the SDK
    vendored tree, or version strings ALSO dispatches the `standards-governor` agent
    (tier-independent; #69) — a governance review that never ran is a skipped gate. For anything moving a deadline, threshold, digest rule or
-   lease computation, also run the `mechanism-critic`. **The slate scales with the diff**
+   lease computation, also run the `mechanism-critic`. **On Tier-3 / trust-boundary
+   increments the refute deliberately runs two independent adversary lanes (#181
+   R3) — the second lane's independent yield is the point (2026-09-23 inc3: lane 2
+   found the two MEDIUMs lane 1 missed).** **The slate scales with the diff**
    (no new rule, codified): full four-lane slate for Tier-3 / standards-touching work;
    lighter diffs scale down (adversary always; governor only when its trigger fires —
    already the rule; critic only on mechanism moves), and only ONE lane re-runs the full
