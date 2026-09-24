@@ -66,6 +66,15 @@
       "duration_ms": 100
     },
     {
+      "id": "capture-trace",
+      "kind": "capture",
+      "role": "supply",
+      "format": "waveform_f64le",
+      "sample_count": 1000,
+      "max_bytes": 65536,
+      "timeout_ms": 400
+    },
+    {
       "id": "measure",
       "kind": "invoke",
       "role": "supply",

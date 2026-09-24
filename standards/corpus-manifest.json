@@ -163,37 +163,37 @@
     {
       "path": "execution/0.2.0-dev/examples/bench.json",
       "source": "standards/execution/0.1.0/examples/bench.json",
-      "sha256": "d67d9b254c30ed006f90f4d5fa7c5f7ac1f638bbf21481e2487f878b8030d952"
+      "sha256": "e8a3523704ed132bb57ccf254794a1674f68deef2ddb7aab5c38dafbd69e6a4a"
     },
     {
       "path": "execution/0.2.0-dev/examples/commissioning.json",
       "source": "standards/execution/0.1.0/examples/commissioning.json",
-      "sha256": "f13a2195929e4b5f34347bbe45a7677f9c6ac7883d16242bd75e2bfc0e4176df"
+      "sha256": "230b53b5c0416beb03821c4b3d3f5fe6ab1d216a9df43a36d10dec5329f2a541"
     },
     {
       "path": "execution/0.2.0-dev/examples/procedure.json",
       "source": "standards/execution/0.1.0/examples/procedure.json",
-      "sha256": "64ac82e02f0e13412337fc1bd3503cea1c952ee9a31e5e50214bc4677da3381a"
+      "sha256": "8c3dd812b02fb31ebd4931824ecd4821b54942beaba84bcccc14df0614d08502"
     },
     {
       "path": "execution/0.2.0-dev/examples/run-binding.json",
       "source": "standards/execution/0.1.0/examples/run-binding.json",
-      "sha256": "0e875072137b6846ee64ab9f01bad00c5c6b384d366def36741087c1ab6a6330"
+      "sha256": "ceb39700677cc611129bbaaf7478881eac399f7102c8bb277089efd8c157570a"
     },
     {
       "path": "execution/0.2.0-dev/examples/run-record.json",
       "source": "standards/execution/0.1.0/examples/run-record.json",
-      "sha256": "28bf392e9c20ee467709407db787d546e9851498c03e9c0109a4ad9a723e9707"
+      "sha256": "81684395531b84d82873e1c7b28a6d33f7eddd21d8f05276f99a6039a3338e48"
     },
     {
       "path": "execution/0.2.0-dev/examples/safety-policy.json",
       "source": "standards/execution/0.1.0/examples/safety-policy.json",
-      "sha256": "73454794f991f14b80e0caa396a9e8a5b388b17e806145402e6531c7dcc7655a"
+      "sha256": "7a597f0abdf13dcd45fb17ead155cb778a67fe2c4c02872550b51e084adcfa27"
     },
     {
       "path": "execution/0.2.0-dev/procedure.schema.json",
       "source": "standards/execution/0.1.0/procedure.schema.json",
-      "sha256": "194b0aab8fb348059897cfd4612a4d41e1e07d4c9e746b1c4bfdbd92ab733c6d"
+      "sha256": "f93aca63bcc13e6027b73de493af2c035ca3cc0c0a094fbc8d09aef9aa810f92"
     },
     {
       "path": "execution/0.2.0-dev/run-binding.schema.json",
@@ -208,7 +208,7 @@
     {
       "path": "execution/0.2.0-dev/safety-policy.schema.json",
       "source": "standards/execution/0.1.0/safety-policy.schema.json",
-      "sha256": "06107ddd4bf375e7f2c1dbe764a842557f37c0bfbe24b358e258398ff56d4bad"
+      "sha256": "a89eb7e39609d9fd5e3c71670efe9c008053aeb9a604a31e1ded2fe7aa6e0f6d"
     },
     {
       "path": "interface/0.1.0/examples/mcp-start-exchange.json",

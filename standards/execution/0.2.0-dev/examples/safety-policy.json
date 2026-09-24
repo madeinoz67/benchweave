@@ -51,6 +51,22 @@
           }
         }
       }
+    },
+    {
+      "device_id": "psu",
+      "kind": "capture",
+      "format": "waveform_f64le",
+      "capture_constraints": {
+        "type": "object",
+        "properties": {
+          "sample_count": {
+            "maximum": 1000
+          },
+          "max_bytes": {
+            "maximum": 65536
+          }
+        }
+      }
     }
   ],
   "continuous_conditions": [

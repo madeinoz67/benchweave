@@ -6,12 +6,12 @@
   "bench": {
     "id": "synthetic-bench",
     "version": "0.1.0",
-    "sha256": "d67d9b254c30ed006f90f4d5fa7c5f7ac1f638bbf21481e2487f878b8030d952"
+    "sha256": "e8a3523704ed132bb57ccf254794a1674f68deef2ddb7aab5c38dafbd69e6a4a"
   },
   "policy": {
     "id": "synthetic-policy",
     "version": "0.1.0",
-    "sha256": "73454794f991f14b80e0caa396a9e8a5b388b17e806145402e6531c7dcc7655a"
+    "sha256": "7a597f0abdf13dcd45fb17ead155cb778a67fe2c4c02872550b51e084adcfa27"
   },
   "package_lock": {
     "id": "synthetic-package-lock",
@@ -22,7 +22,7 @@
     {
       "id": "synthetic-voltage-check",
       "version": "0.1.0",
-      "sha256": "64ac82e02f0e13412337fc1bd3503cea1c952ee9a31e5e50214bc4677da3381a"
+      "sha256": "8c3dd812b02fb31ebd4931824ecd4821b54942beaba84bcccc14df0614d08502"
     }
   ],
   "dut_class": "low_voltage_embedded",

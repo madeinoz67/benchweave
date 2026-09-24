@@ -113,6 +113,34 @@
               "value_constraints"
             ],
             "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "device_id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_.-]*$"
+              },
+              "kind": {
+                "const": "capture"
+              },
+              "format": {
+                "enum": [
+                  "waveform_f64le",
+                  "raw_binary"
+                ]
+              },
+              "capture_constraints": {
+                "type": "object"
+              }
+            },
+            "required": [
+              "device_id",
+              "kind",
+              "format",
+              "capture_constraints"
+            ],
+            "additionalProperties": false
           }
         ]
       },

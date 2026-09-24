@@ -309,6 +309,50 @@
               "pattern": "^[a-z][a-z0-9_.-]*$"
             },
             "kind": {
+              "const": "capture"
+            },
+            "role": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_.-]*$"
+            },
+            "format": {
+              "enum": [
+                "waveform_f64le",
+                "raw_binary"
+              ]
+            },
+            "sample_count": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "max_bytes": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "timeout_ms": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "role",
+            "format",
+            "sample_count",
+            "max_bytes",
+            "timeout_ms"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_.-]*$"
+            },
+            "kind": {
               "const": "delay"
             },
             "duration_ms": {

@@ -13,7 +13,7 @@
   "policy": {
     "id": "synthetic-policy",
     "version": "0.1.0",
-    "sha256": "73454794f991f14b80e0caa396a9e8a5b388b17e806145402e6531c7dcc7655a"
+    "sha256": "7a597f0abdf13dcd45fb17ead155cb778a67fe2c4c02872550b51e084adcfa27"
   },
   "package_lock": {
     "id": "synthetic-package-lock",
