@@ -405,7 +405,13 @@ class OTDPBridge:
     # through 2^53−1 are unsupported by the numeric interface — also the
     # structural sqlite-bind safety bound.
     _INT_MAX = 2**53 - 1
-    _CAPTURE_ID_PATTERN = re.compile(r"[a-z][a-z0-9_.-]*")
+    # The contract id class (interface.schema.json's ^[a-z][a-z0-9_.-]*$)
+    # with ':' admitted: the procedure executor's host-minted capture ids
+    # are `cap:{run_id}:{step_id}{.index-suffix}` (mirroring op: ids —
+    # #176 increment 2), and colons are the only separator the minting
+    # precedent uses. Every other refusal the shape test parametrizes
+    # (uppercase, digit-start, slash, traversal, empty) still refuses.
+    _CAPTURE_ID_PATTERN = re.compile(r"[a-z][a-z0-9_.:-]*")
     _STREAM_PARAMETER_PATTERN = re.compile(r"[a-z][a-z0-9_]*")
     _CAPTURE_FORMATS = ("waveform_f64le", "raw_binary")
 

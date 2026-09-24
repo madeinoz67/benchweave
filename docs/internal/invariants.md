@@ -42,7 +42,11 @@ rather than rewriting the history — that is how this file earns trust.
   rule ordering, and a refused action must be greppable in evidence.*
 - **[CTL-5]** The executor answers every re-entry from the occurrence ledger without
   re-dispatching, appends one step event per occurrence, and runs under a fixed monotonic
-  body deadline — `src/benchweave/control/executor.py`. *A06: physical work is never
+  body deadline — `src/benchweave/control/executor.py`. Capture occurrences join the
+  mint-retained-invalidated id mold (issue #176 increment 2): the host-minted
+  `cap:{run_id}:{step_id}{.index-suffix}` id is retained in the ledger entry's
+  `issued_ids` and invalidated when the capture's operation does not succeed — a failed
+  or policy-denied capture can never leave a live id behind. *A06: physical work is never
   repeated because its acknowledgement was lost; the ledger is the only "did this happen"
   authority.*
 - **[CTL-6]** Every invoke input, every write value and every read parameter flows through

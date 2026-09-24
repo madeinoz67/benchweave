@@ -337,6 +337,38 @@ def _write_receipt_projection(step_id: str, data: Any) -> dict[str, Any]:
     }
 
 
+def _capture_projection(step_id: str, data: Any) -> dict[str, Any]:
+    """Project one capture step's landed manifest (execution contract §3).
+
+    The capture result IS the host-built captureManifest (the bridge's
+    ``_capture_manifest`` output). The three §3-named members —
+    ``capture_id``, ``artifact_id`` and ``sha256`` — must be present
+    (their pointers are the contract's promise), and every other manifest
+    member present is projected too so a contract-conformant pointer can
+    name it. A capture result that is not a manifest fails honestly as a
+    :class:`ScopeError`, the read/write projection mold.
+    """
+    if not isinstance(data, dict) or not {"capture_id", "artifact_id", "sha256"} <= set(
+        data
+    ):
+        raise ScopeError(f"pointer: result of {step_id!r} is not a captureManifest")
+    return {
+        key: data[key]
+        for key in (
+            "capture_id",
+            "format",
+            "artifact_id",
+            "byte_length",
+            "sha256",
+            "started_at",
+            "sample_count",
+            "sample_interval_s",
+            "unit",
+        )
+        if key in data
+    }
+
+
 def _resolve_ref(directive: Any, scope: ChainMap[str, Any]) -> Any:
     if (
         not isinstance(directive, dict)
@@ -367,6 +399,9 @@ def _resolve_ref(directive: Any, scope: ChainMap[str, Any]) -> Any:
         return _walk_pointer(projection, directive["pointer"], step_id)
     if source.verb is OperationVerb.WRITE:
         projection = _write_receipt_projection(step_id, source.data)
+        return _walk_pointer(projection, directive["pointer"], step_id)
+    if source.verb is OperationVerb.CAPTURE:
+        projection = _capture_projection(step_id, source.data)
         return _walk_pointer(projection, directive["pointer"], step_id)
     raise ScopeError(
         f"pointer: results of verb {source.verb.value!r} are not referable"
@@ -592,6 +627,21 @@ def _operation_id(run_id: str, step_id: str, index_path: tuple[int, ...]) -> str
     return f"op:{run_id}:{step_id}{suffix}"
 
 
+def _capture_id(run_id: str, step_id: str, index_path: tuple[int, ...]) -> str:
+    """The host-minted capture id for one occurrence, e.g. ``cap:run-1:grab.2``.
+
+    Mirrors :func:`_operation_id` exactly (same ``run_id``/``step_id``/
+    index-suffix composition, ``cap:`` instead of ``op:``): the capture id
+    is the step's identity — the ledger's ``issued_ids`` retains it, a
+    failed operation invalidates it, and a later ``$stg_ref`` into the
+    landed manifest echoes it. The capture id is never authored
+    (execution contract §7: the host mints it per occurrence and returns
+    it in the capture manifest).
+    """
+    suffix = "".join(f".{index}" for index in index_path)
+    return f"cap:{run_id}:{step_id}{suffix}"
+
+
 @dataclass
 class _Body:
     """Mutable state of one ``run_body`` call."""
@@ -609,7 +659,13 @@ class _Body:
 
 
 class Executor:
-    """Interpreter for the eight step kinds over bound device plugins."""
+    """Interpreter for the procedure's step kinds over bound device plugins.
+
+    Nine leaf/container kinds when the execution corpus carries the capture
+    branch (issue #176 increment 2); the dev-corpus head is what admits a
+    capture step — the frozen-literal 0.1.0 corpus cannot express one, so
+    the capture branch is dormant code on main until the promotion event.
+    """
 
     def __init__(
         self,
@@ -729,6 +785,8 @@ class Executor:
             result = self._step_read(step, scope, index_path, body, event)
         elif kind == "write":
             result = self._step_write(step, scope, index_path, body, event)
+        elif kind == "capture":
+            result = self._step_capture(step, scope, index_path, body, event)
         elif kind == "delay":
             self._step_delay(step, body, event)
             result = None
@@ -744,7 +802,7 @@ class Executor:
         issued_here = self._issued.get(occurrence)
         entry: dict[str, Any] = {"event": event, "result": result}
         if issued_here:
-            if kind in ("invoke", "read", "write") and not (
+            if kind in ("invoke", "read", "write", "capture") and not (
                 isinstance(result, OperationResult)
                 and result.status is OperationStatus.OK
             ):
@@ -963,6 +1021,55 @@ class Executor:
             body.terminate(BODY_EXECUTION_ERROR, f"policy_denied: {step_id}: {denied.reason}")
             return None
         request = OperationRequest.write(operation_id, parameter=parameter, value=resolved_value)
+        return self._dispatch(self._plugins[device_id], request, step, body, event)
+
+    def _step_capture(
+        self,
+        step: dict[str, Any],
+        scope: ChainMap[str, Any],
+        index_path: tuple[int, ...],
+        body: _Body,
+        event: dict[str, Any],
+    ) -> OperationResult | None:
+        """One capture occurrence: mint, policy-check, dispatch (CTL-4/5).
+
+        The capture step carries literals only (the corpus's closed
+        branch), so nothing resolves against the scope. The host-minted
+        capture id mirrors :func:`_operation_id`'s composition, is
+        retained in the ledger entry's ``issued_ids`` (minted BEFORE the
+        policy consult so a denial records an invalidated id, not a
+        missing one), and is consulted by ``check_allowed`` BEFORE any
+        dispatch — deny-by-default, zero device calls on refusal. The
+        dispatch goes through the shared deadline clamp: ``min(now +
+        timeout_ms, body_deadline)``, shortened only, and the step's
+        result is the returned captureManifest.
+        """
+        step_id = str(step["id"])
+        role = str(step["role"])
+        device_id = self._binding.device_by_role[role]
+        capture_id = _capture_id(body.run_id, step_id, index_path)
+        event["operation_id"] = capture_id
+        payload = {
+            "format": str(step["format"]),
+            "sample_count": step["sample_count"],
+            "max_bytes": step["max_bytes"],
+        }
+        event["resolved_input_sha256"] = _sha256_hex(payload)
+        occurrence: Occurrence = (body.run_id, step_id, index_path)
+        bucket = self._issued.setdefault(occurrence, {})
+        bucket["capture_id"] = {"id": capture_id, "status": "issued"}
+        try:
+            check_allowed(self._policy, device_id, "capture", payload["format"], payload)
+        except PolicyDenied as denied:
+            event["status"] = "error"
+            event["error_code"] = "POLICY_DENIED"
+            body.terminate(BODY_EXECUTION_ERROR, f"policy_denied: {step_id}: {denied.reason}")
+            return None
+        request = OperationRequest(
+            operation_id=capture_id,
+            verb=OperationVerb.CAPTURE,
+            arguments={"capture_id": capture_id, **payload},
+        )
         return self._dispatch(self._plugins[device_id], request, step, body, event)
 
     def _dispatch(
