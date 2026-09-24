@@ -737,6 +737,7 @@ All notable changes to this project will be documented in this file.
 
 - OPEN the 0.2.0-dev head (issue #176 increment 1)
 - Author the capture family into the 0.2.0-dev head (#176)
+- The compatibility.sdk ground-truth anchor — #187 class closure (#195)
 
 ### Wip
 
