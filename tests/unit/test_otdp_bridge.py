@@ -467,6 +467,45 @@ def test_capture_g1_arithmetic_refused_before_the_device(tmp_path: Path) -> None
         harness.close()
 
 
+def test_capture_g1_gate_names_the_shortfall_and_never_opens_capture(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """L2-F2's test-half (fold wave): the G1 request self-consistency gate
+    (waveform ``sample_count×8 ≤ max_bytes``, spec §7) refuses with the
+    exact shortfall in the message, calls ``open_capture`` ZERO times (the
+    arithmetic gate runs before the G3 check-and-reserve), and never
+    reaches the adapter. The refusal path itself predates this pin — the
+    message string and the zero-open contract were asserted by no test."""
+    harness = CaptureHarness(tmp_path)
+    controller = harness.controller
+    assert controller is not None  # the harness asserts it at construction
+    open_calls: list[dict[str, Any]] = []
+    original_open = controller.open_capture
+
+    def _spy_open(**kwargs: Any) -> Any:
+        open_calls.append(kwargs)
+        return original_open(**kwargs)
+
+    monkeypatch.setattr(controller, "open_capture", _spy_open)
+    try:
+        plugin, result = a_capture_dispatch(
+            harness, Adapter(), a_capture_request(sample_count=256, max_bytes=1024)
+        )
+        assert result.error is not None
+        assert result.error.code is ErrorCode.INVALID_ARGUMENT
+        assert result.error.dispatch_state is DispatchState.NOT_DISPATCHED
+        assert (
+            "waveform_f64le sample_count 256 needs 2048 bytes, above the declared "
+            "max_bytes 1024"
+        ) in result.error.message
+        assert open_calls == [], "the G1 arithmetic refusal precedes open_capture"
+        assert harness.staged_count() == 0  # no reservation row was ever written
+        assert harness.adapter.calls == 0
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
 @pytest.mark.parametrize(
     ("overrides", "label"),
     [

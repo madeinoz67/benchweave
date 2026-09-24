@@ -232,6 +232,66 @@ def test_manifest_absent_refuses_with_the_lane_word(
         declared_dev_family("execution")
 
 
+def test_s_r1_dev_head_is_called_and_threaded_by_create_app(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """sF1 (fold wave): the DEV_HEAD branch of ``create_app`` is
+    discriminating — the resolver is CALLED at composition and its
+    directory is THREADED into the run factory. Deleting the branch body
+    (binding ``contracts`` straight to ``_CONTRACTS``) makes this fail:
+    the sentinel is never invoked and the factory receives the frozen
+    literal instead."""
+    import benchweave.interfaces.app as app_module
+
+    sentinel = tmp_path / "sentinel-dev-head"
+    sentinel.mkdir()
+    resolved: list[str] = []
+
+    def _sentinel_resolver(standard_id: str) -> Path:
+        resolved.append(standard_id)
+        return sentinel
+
+    threaded: list[Any] = []
+    original_factory = app_module._build_run_factory
+
+    def _spy_factory(*args: Any, **kwargs: Any) -> Any:
+        threaded.append(kwargs.get("contracts"))
+        return original_factory(*args, **kwargs)
+
+    monkeypatch.setattr(app_module, "declared_dev_family", _sentinel_resolver)
+    monkeypatch.setattr(app_module, "_build_run_factory", _spy_factory)
+    limits: dict[str, int] = {
+        "max_json_bytes": 1048576,
+        "max_page_size": 1000,
+        "max_chunk_bytes": 65536,
+        "max_lease_ms": 600000,
+        "min_poll_ms": 100,
+        "max_admission_ms": 5000,
+    }
+    store = Store.open(tmp_path / "seam-dev.db")
+    try:
+        app = create_app(
+            store=store,
+            content=ContentStore(store),
+            secret=b"seam-secret",
+            limits=limits,
+            gateway_id="gw-seam-dev",
+            fixtures_dir=tmp_path,
+            now_iso=lambda: "2026-09-24T00:00:00Z",
+            now_epoch=lambda: 1_800_000_000,
+            execution_corpus=CorpusResolution.DEV_HEAD,
+        )
+        assert app.title == "BenchWeave gateway"
+    finally:
+        store.close()
+    assert resolved == ["execution"], (
+        "the DEV_HEAD branch must resolve the declared head exactly once at composition"
+    )
+    assert threaded == [sentinel], (
+        "the resolved directory must thread into the run build factory unchanged"
+    )
+
+
 def test_s_r4_no_path_valued_surface() -> None:
     """S-R4: the seam's public surface exposes no path-valued corpus
     parameter — the enum is the only opt-in (a shape assertion over the

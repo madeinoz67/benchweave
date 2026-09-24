@@ -33,6 +33,7 @@ import uvicorn
 from benchweave.content.store import ContentStore
 from benchweave.control.binding import resolve_binding
 from benchweave.control.clocking import SystemClock
+from benchweave.control.coordinator import RunCoordinator
 from benchweave.control.executor import Executor
 from benchweave.interfaces.app import _build_run_factory, create_app
 from benchweave.interfaces.bootstrap import admit_startup_bench
@@ -843,6 +844,115 @@ def test_a_r4_replay_answers_from_the_ledger_without_redispaching(
             "write",
             "write",
         ]
+    finally:
+        store.close()
+
+
+def test_rebuild_boundary_keeps_invalidated_status_and_never_remints(
+    tmp_path: Path,
+) -> None:
+    """F5's rebuild-fidelity boundary (fold wave): attempt-2 cannot
+    resurrect a recorded capture id.
+
+    Two shapes, both against today's machinery:
+
+    1. The coordinator's own rebuild is a setdefault over its LIVE ledger —
+       it must PRESERVE the invalidated ``issued_ids`` record from attempt
+       1, and a second ``run_body`` over that ledger replays without
+       dispatching or re-minting.
+    2. The crash shape — a FRESH ledger rebuilt only from the durable event
+       stream — suppresses re-mint entirely: the rebuilt entry carries no
+       live issued record, the replay dispatches nothing, and the fresh
+       executor's issued registry never gains the occurrence's bucket.
+
+    If either arm finds a gap, the design record's deferral row 13 (the
+    durable issued-ids registry, Task 8) opens.
+    """
+    harness = _CaptureHarness(tmp_path, "req-capture-rebuild", capture_rule="none")
+    run_id = "run-rebuild-boundary"
+    coordinator, store = harness._coordinator(run_id)
+    try:
+        record = coordinator.start_run(run_id, "principal-capture")
+        assert record["outcome"] == "execution_error"
+        entry = coordinator.occurrence_ledger[(run_id, "grab", ())]
+        issued = entry["issued_ids"]["capture_id"]
+        assert issued["status"] == "invalidated"
+        assert issued["id"] == f"cap:{run_id}:grab"
+        adapter = _adapter_instance(coordinator)
+        before = list(adapter.dispatches)
+        assert before.count("capture") == 0  # denied at the policy boundary
+
+        # Shape 1: the coordinator's rebuild over the LIVE ledger preserves
+        # the invalidated record (setdefault never clobbers it) ...
+        coordinator._rebuild_ledger_from_events(run_id)
+        preserved = coordinator.occurrence_ledger[(run_id, "grab", ())]
+        assert preserved["issued_ids"]["capture_id"]["status"] == "invalidated"
+
+        # ... and attempt-2 over that ledger replays: zero dispatches, no
+        # re-mint (the replay path returns before the mint ever runs).
+        replay = Executor(
+            plugins=coordinator.plugins,
+            binding=resolve_binding(coordinator._docs),
+            policy=coordinator._docs.policy,
+            clock=SystemClock(),
+            wall=SystemClock(),
+            occurrence_ledger=coordinator.occurrence_ledger,
+        )
+        body = replay.run_body(
+            coordinator._docs.procedure,
+            run_id,
+            SystemClock().now_ns() + 10_000_000_000,
+        )
+        assert list(adapter.dispatches) == before, "replay must not re-dispatch"
+        assert (run_id, "grab", ()) not in replay._issued, "replay must not re-mint"
+        assert (
+            coordinator.occurrence_ledger[(run_id, "grab", ())]["issued_ids"][
+                "capture_id"
+            ]["status"]
+            == "invalidated"
+        )
+        assert body.step_events, "the replay re-walks the recorded occurrence"
+
+        # Shape 2: the crash — a FRESH coordinator whose ledger exists only
+        # as the durable events rebuild it.
+        fresh = RunCoordinator(
+            store,
+            dict(coordinator.plugins),
+            SystemClock(),
+            SystemClock(),
+            coordinator._docs,
+            contracts=HEAD,
+        )
+        assert fresh.occurrence_ledger == {}
+        fresh._rebuild_ledger_from_events(run_id)
+        rebuilt = fresh.occurrence_ledger[(run_id, "grab", ())]
+        assert rebuilt.get("interrupted") is True
+        live = rebuilt.get("issued_ids", {}).get("capture_id")
+        assert live is None or live.get("status") != "issued", (
+            "a crash-shaped rebuild must not resurrect the recorded id as live"
+        )
+        fresh_adapter = _adapter_instance(coordinator)
+        fresh_before = list(fresh_adapter.dispatches)
+        crash_replay = Executor(
+            plugins=fresh._plugins,
+            binding=resolve_binding(fresh._docs),
+            policy=fresh._docs.policy,
+            clock=SystemClock(),
+            wall=SystemClock(),
+            occurrence_ledger=fresh.occurrence_ledger,
+        )
+        crash_body = crash_replay.run_body(
+            fresh._docs.procedure,
+            run_id,
+            SystemClock().now_ns() + 10_000_000_000,
+        )
+        assert list(fresh_adapter.dispatches) == fresh_before, (
+            "a rebuilt occurrence must never re-dispatch"
+        )
+        assert (run_id, "grab", ()) not in crash_replay._issued, (
+            "a rebuilt occurrence must never re-mint its capture id"
+        )
+        assert crash_body.step_events, "the crash-shaped replay re-walks too"
     finally:
         store.close()
 
