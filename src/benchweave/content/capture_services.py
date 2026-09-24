@@ -267,6 +267,21 @@ class CaptureController:
         self._open: dict[str, int] = {}  # capture_id -> reserved_bytes
         self._recorded: set[str] = set()
 
+    def dispatch_clamp(self, deadline_ns: int, *, now_ns: int) -> Any:
+        """Forward the dispatch clamp to the session's writer (issue #176
+        row B's seam): the bridge brackets every capture dispatch — gate
+        region, adapter execute, appends/finalise and the classified-
+        failure epilogue — with this window, handing down the injected
+        monotonic reading taken at bracket entry."""
+        return self._writer.dispatch_clamp(deadline_ns, now_ns=now_ns)
+
+    def epilogue_floor(self) -> Any:
+        """Forward the abort epilogue's bounded floor to the session's
+        writer: the bridge runs the epilogue reclaim under
+        ``min(CAPTURE_EPILOGUE_FLOOR_MS, store open default)`` so a
+        clamped-out capture still reclaims its staging rows."""
+        return self._writer.epilogue_floor_window()
+
     def open_capture(
         self, *, capture_id: str, fmt: str, sample_count: int | None, max_bytes: int
     ) -> None:

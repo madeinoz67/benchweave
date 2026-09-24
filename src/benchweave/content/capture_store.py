@@ -30,9 +30,12 @@ from __future__ import annotations
 
 import hashlib
 import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
 
 from benchweave.content.store import ContentStore
+from benchweave.control.semantics import CAPTURE_EPILOGUE_FLOOR_MS
 from benchweave.host.types import (
     CaptureFinaliseRejected,
     CaptureQuotaExceeded,
@@ -86,11 +89,51 @@ class CaptureStagingStore:
         max_capture_bytes: int | None = None,
         max_dataset_bytes: int | None = None,
     ) -> None:
+        self._store = store
         self._conn = store.connection
         self._content = ContentStore(store)
         self._max_capture_bytes = max_capture_bytes
         self._max_dataset_bytes = max_dataset_bytes
         self._hashers: dict[str, Any] = {}
+
+    # --- the row-B time windows ---------------------------------------------
+
+    @contextmanager
+    def dispatch_clamp(self, deadline_ns: int, *, now_ns: int) -> Iterator[None]:
+        """The deadline-aware busy-timeout clamp (issue #176 row B,
+        Decision 2): computes, at entry,
+        ``clamp_ms = min(store open default, remaining_deadline_ms)`` and
+        holds the store's busy-timeout window for the bracketed region.
+
+        The remaining-deadline arithmetic happened CALLER-side on the
+        injected monotonic (STO-1 unamended — the store reads no clock
+        and only sets what it is handed). F3's pre-committed reading: the
+        dispatch deadline is authoritative for ``remaining_deadline_ms`` —
+        it already carries ``min(now + timeout_ms, body_deadline)`` — so
+        every clamped busy-wait stays inside the step budget the executor
+        handed down, shortened only, never extended. When the deadline is
+        exhausted the clamp is 0: the busy handler waits not at all, and a
+        contended BEGIN fails immediately as the same classified
+        RESOURCE_LIMIT.
+        """
+        remaining_ms = max(0, (deadline_ns - now_ns) // 1_000_000)
+        clamp_ms = min(self._store.open_busy_timeout_ms, remaining_ms)
+        with self._store.busy_timeout_window(clamp_ms):
+            yield
+
+    @contextmanager
+    def epilogue_floor_window(self) -> Iterator[None]:
+        """The abort epilogue's bounded floor (issue #176 row B):
+        ``min(CAPTURE_EPILOGUE_FLOOR_MS, store open default)`` — a dispatch
+        whose deadline is already spent can still wait for the lock here,
+        so a clamped-out capture reclaims its staging rows instead of
+        leaking them. Not applied on the sweep paths (``sweep_open`` /
+        ``plugin_close`` / startup ``reclaim_orphans`` stay at the open
+        default, B-R3), and the floor never exceeds the static bound's
+        counted constant."""
+        floor_ms = min(CAPTURE_EPILOGUE_FLOOR_MS, self._store.open_busy_timeout_ms)
+        with self._store.busy_timeout_window(floor_ms):
+            yield
 
     # --- internal helpers ---------------------------------------------------
 

@@ -165,10 +165,19 @@ class MonitoredHarness:
     active lease, one bench signal, a non-tripping policy), with every
     tick's start time recorded on the real monotonic clock."""
 
-    def __init__(self, db_path: Path, *, chunks: int = 400) -> None:
+    def __init__(
+        self, db_path: Path, *, chunks: int = 400, busy_timeout_ms: int | None = None
+    ) -> None:
         self.clock = SystemClock()
         self.wall = SystemClock()
-        self.store = Store.open(db_path, check_same_thread=False)
+        open_kwargs: dict[str, Any] = {"check_same_thread": False}
+        if busy_timeout_ms is not None:
+            # Row B commissioning: the capture dispatch clamp derives from
+            # the open default, so the contention tests commission here
+            # (the old runtime-pragma override is overridden by the clamp
+            # window during a dispatch).
+            open_kwargs["busy_timeout_ms"] = busy_timeout_ms
+        self.store = Store.open(db_path, **open_kwargs)
         content = ContentStore(self.store)
         raw = {
             "id": "dev.local.seq-model",
@@ -405,16 +414,21 @@ def test_store_contention_mid_capture_stretches_then_classifies(tmp_path: Path) 
     """C5: the holder acquires the write lock MID-capture (between
     appends). Release-before-timeout: the dispatch stretches by the hold
     and still succeeds (the stretch is REPORTED — row-9 input; the
-    busy-timeout clamp itself is row-9 scope). Hold past the store's busy
-    timeout: the writer-originated OperationalError classifies
-    RESOURCE_LIMIT, the session survives and staging is reclaimed — the
-    asserted signals, not the magnitudes."""
-    harness = MonitoredHarness(tmp_path / "contention.db", chunks=100)
+    busy-timeout clamp itself is row-9 scope and landed with issue #176
+    row B). Hold past the store's busy timeout: the writer-originated
+    OperationalError classifies RESOURCE_LIMIT, the session survives and
+    staging is reclaimed — the asserted signals, not the magnitudes.
+    Row B: the busy timeout is commissioned at open (300 ms) and the
+    dispatch clamp derives from it — remaining here (2000 ms deadline)
+    exceeds the commissioned default, so the clamp IS the open default
+    and this shape is unchanged."""
+    harness = MonitoredHarness(
+        tmp_path / "contention.db", chunks=100, busy_timeout_ms=300
+    )
     try:
         db_path = str(
             harness.store.connection.execute("PRAGMA database_list").fetchone()[2]
         )
-        harness.store.connection.execute("PRAGMA busy_timeout=300")
 
         def hold_lock(seconds: float) -> None:
             contender = sqlite3.connect(db_path, timeout=5.0)
