@@ -97,8 +97,9 @@ rather than rewriting the history — that is how this file earns trust.
   reused"; a gap-free sequence is what makes a missing event detectable as a fault rather
   than an artifact.*
 - **[STO-3]** One coordinator per store file, enforced by an exclusive `flock` on
-  `<db>.hold`: live gateways hold it for their app lifespan; at-rest commands (backup,
-  restore) acquire the same lock and REFUSE, naming the holder, while a live coordinator
+  `<db>.hold`: live gateways hold it for their app lifespan; the at-rest command
+  family — backup, restore, retention (report, read-only), dispose (write) — acquires
+  the same lock and REFUSE, naming the holder, while a live coordinator
   owns it. The lock itself — never the lockfile body — is the truth —
   `src/benchweave/state/hold.py`. *A03's one-active-procedure rule needs exactly one
   writer; `flock` dies with the process, so a crashed gateway can never leave a false
@@ -108,6 +109,20 @@ rather than rewriting the history — that is how this file earns trust.
   caller-supplied values and never reads a clock — `src/benchweave/control/binding.py`,
   `coordinator.py`. *A04: bounded continuity is arithmetic on declared values, not on
   ambient time; the run's authority expires exactly when its declared budget does.*
+- **[STO-5]** Every disposition execution is ONE `BEGIN IMMEDIATE` transaction
+  carrying its complete audit record — the invocation row, one audit row per disposed
+  governed row (its decision envelope canonical-JSON content-addressed through
+  `put_artifact` inside the same transaction, digest pinned in the row), the guarded
+  exact-row deletions (rowcount-checked), and reference-checked artifact GC (live
+  references: `evidence.artifact_id`, `capture_staging.artifact_id`,
+  `dispositions.decision_artifact_id` — the historical `deleted_artifact_id` is a
+  record, never a reference). A committed deletion without its audit row is
+  unrepresentable; `review`- and `archive`-tier rows are never deleted; the
+  dispositions tables have no delete path — `src/benchweave/state/dispositions.py`,
+  `src/benchweave/cli/dispose.py`, pinned by `tests/cli/test_dispose.py` +
+  `tests/faults/test_disposition_faults.py`. *Decision 8's sequencing invariant and
+  A07 made structural: audit capacity is not a dependent of the action, it is the
+  action's transaction.*
 
 ## Contracts & standards invariants
 

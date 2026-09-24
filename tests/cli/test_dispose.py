@@ -572,6 +572,23 @@ def test_cli_json_round_trips_the_model(tmp_path: Path) -> None:
     assert model["executed"] is False
 
 
+def test_wedge_disclosure_names_the_audited_dispose_path(tmp_path: Path) -> None:
+    """Issue #194 done-means item 4: the retention report's wedge
+    disclosure now names ``benchweave dispose`` (with its --execute
+    opt-in) as the remediation, scoped to what ships — delete-tier rows
+    reclaim, review/archive stay blocked, or raise the ceiling. Pinned
+    through the public surface (the report model's disclosure string)."""
+    data_dir = _seed(tmp_path)
+    _write_policy(data_dir / "retention-policy.json")
+    result = CliRunner().invoke(
+        cli, ["retention", "--data-dir", str(data_dir), "--json"])
+    assert result.exit_code == 0, _combined(result)
+    disclosure = json.loads(result.output)["quota_wedge"]["disclosure"]
+    assert "benchweave dispose" in disclosure
+    assert "--execute" in disclosure
+    assert "archive" in disclosure  # the blocked tier is named, not implied
+
+
 # --- the scale smoke (bounded; wall time disclosed, not gated) ---------------------------------
 
 
