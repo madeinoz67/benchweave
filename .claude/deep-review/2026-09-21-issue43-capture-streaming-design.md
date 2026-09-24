@@ -660,6 +660,7 @@ findings or build-time discovery) meets the same absence-presence standard befor
 | 12 | Durable access-time tracking (slice 3 landed with the `last_access` refusal: the store carries no access-time column, so `retain_after: last_access` policies refuse at load) | Documentation here (slice 3's `retention_policy:` refusal) | The first policy author needing `last_access` (Decision 8's "bounded column backfill") |
 | 13 | Per-run ceiling durability (the retention report reads the ceiling from `--max-dataset-bytes` / `BENCHWEAVE_MAX_DATASET_BYTES` at report time; no ceiling is durable on the run record) | Documentation here | A run-record corpus revision, which must ride corpus governance, never this slice |
 | 14 | Evidence-count quota projection (`max_evidence_entries` wedge — slice 3 projects the byte ceiling only) | Documentation here | Absorbed by row 3's issue or an operator hitting the evidence ceiling blind |
+| 15 | `report` shares the migration-on-open shape (issue #184 fork A made `retention` never-migrate; `report` still applies pending migrations on open) | Documentation here (issue #184 fix wave) | The first operator hit by a silent report-run upgrade, or the next slice touching the at-rest open path |
 
 ## Owner calls on the forks (resolved 2026-09-21)
 

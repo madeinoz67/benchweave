@@ -493,6 +493,13 @@ def build_retention_report(
             f"{non_finalised} non-finalised capture staging row(s) present — not "
             "governed; reclaimed by the next startup sweep"
         )
+    unresolved_rows = sum(1 for r in rows if r["status"] == "anchor_unresolved")
+    if unresolved_rows:
+        disclosures.append(
+            f"{unresolved_rows} row(s) anchor_unresolved — no resolvable "
+            "offset-bearing anchor (missing terminal record, naive or "
+            "unparseable stamp); disposal is not projected for those rows"
+        )
     if bench_id is not None:
         # issue #184 finding 17: disclose the unattributed rowless keys the
         # bench filter keeps (they survive by the never-vanish rule)

@@ -1509,3 +1509,17 @@ def test_fw16_build_retention_report_takes_no_unused_content_store() -> None:
     assert "content" not in params, params
     assert set(params) == {"store", "policy", "bench_id", "now",
                            "max_dataset_bytes", "horizon_s"} | {"store"}
+
+
+def test_fw1_anchor_unresolved_rows_are_counted(tmp_path: Path) -> None:
+    """Finding 1's honesty surface: rows whose anchor could not resolve are
+    per-row anchor_unresolved AND counted in the disclosures."""
+    data_dir = _seed(tmp_path)
+    pol = _write_policy(data_dir / "retention-policy.json", retain_after_all="run_end")
+    model = _model(data_dir, policy_path=pol, now=NOW)
+    unresolved = [r for r in model["rows"] if r["status"] == "anchor_unresolved"]
+    assert unresolved  # run-c (live) + manual-labbook (unattributed) rows
+    assert any(
+        str(len(unresolved)) in d and "anchor_unresolved" in d
+        for d in model["disclosures"]
+    ), model["disclosures"]

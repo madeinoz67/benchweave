@@ -306,40 +306,85 @@ holder) while a live gateway owns the store.
 policy file plus the store's own rows, when each capture and evidence row
 would be disposable and how fast storage is growing. It is a pure
 projection: **it writes nothing back** — no classification stamps, no
-cached disposal dates — and nothing deletes or archives anything
-(`on_disposition` is a report label until the disposition-audit-trail
-slice exists).
+cached disposal dates — **it never migrates the store**, and nothing
+deletes or archives anything (`on_disposition` is a report label until
+the disposition-audit-trail slice exists).
 
 ```sh
 benchweave retention --data-dir /var/lib/benchweave --json
 benchweave retention --data-dir /var/lib/benchweave --out retention.md
 benchweave retention --data-dir /var/lib/benchweave --policy /etc/benchweave/retention-policy.json
+benchweave retention --data-dir /var/lib/benchweave --horizon-s 604800
 ```
+
+**Schema mismatches refuse (they never upgrade).** A store behind the
+gateway's schema version, or written by a newer one, refuses with a
+`retention_store:` message naming the mismatch — exit code 1 like every
+handled refusal. To project a down-level store, open it once with a
+current gateway (`setup`/`serve`/`report` upgrades it) and re-run.
+(`report` still shares the old migration-on-open shape; aligning it is a
+follow-up, deferred in the design record.)
 
 The policy file defaults to `<data-dir>/retention-policy.json`; absent
 there, every row reports `ungoverned`. A policy file that is present but
 invalid refuses, as does an explicitly passed `--policy` that is missing.
 The document is validated gateway-side: `duration_s` (integer seconds ≥
-1), `retain_after` (`landing` or `run_end`; `last_access` refuses until
-the store durably tracks access times), `on_disposition`
-(`delete`/`archive`/`review`), `hold: true` (no disposal date), and
-data-class selectors `capture:<format>` / `evidence:<kind>`. Resolution:
-bench class → bench default → global class → global default.
+1, bounded by the datetime domain ceiling 253402300799), `retain_after`
+(`landing` or `run_end`; `last_access` refuses until the store durably
+tracks access times), `on_disposition` (`delete`/`archive`/`review`),
+`hold: true` (no disposal date), and data-class selectors
+`capture:<format>` / `evidence:<kind>` (dots and uppercase admitted —
+any class the report can name is governable; the capture lane stays a
+closed vocabulary). Resolution: bench class → bench default → global
+class → global default — and every row names the **winning** entry
+(`matched_selector`, `matched_scope`, `matched_rule`), never a shadowed
+rule.
 
-The report discloses its own arithmetic: stored bytes are
-`SUM(LENGTH(data))` over the artifact table (content-addressed dedup
-under-counts), ingest rates derive from immutable per-row stamps, growth
-rows carry `n` and span, and the quota-wedge section shows, per capture
-context (per run), the used bytes from the capture writer's own ledger
-and the time to exhaust `--max-dataset-bytes` (or
-`BENCHWEAVE_MAX_DATASET_BYTES`). Hold-heavy exhaustion hard-blocks new
-captures with no deletion path until the audit-trail slice — that wedge
-is disclosed in the report, and remediation is manual by design (raise
-the ceiling or wait for that slice).
+Each disposal row carries its status: `scheduled` (with the computed
+`disposal_date`), `held` (no date — the rule keeps the row), `ungoverned`
+(no policy matched), or `anchor_unresolved` (no resolvable offset-bearing
+anchor: missing terminal record, naive or unparseable stamp) — the count
+of `anchor_unresolved` rows is disclosed. `run_end` anchors on the run's
+terminal record `ended_at` (immutable), never the run-state projection
+stamp.
 
-Like the other at-rest commands, `retention` takes the store's exclusive
-lock for its whole read and refuses (naming the holder) while a live
-gateway owns the store.
+The report discloses its own arithmetic, per lane with its basis and
+denominator: stored bytes are `SUM(LENGTH(data))` over the artifact table
+(content-addressed dedup under-counts); the growth lanes sum **per-row**
+artifact lengths / charged bytes (shared artifacts over-count per row);
+and the quota wedge forecasts the capture writer's **reservation ledger**
+(staged reserved + finalised charged — the figure G3 enforces; the ledger
+is not monotone: finalise re-prices and the abort sweep refunds).
+
+**Growth projection.** Per stream/key the wire carries `observed_bytes`,
+`observed_span_s`, `n`, `rate_Bps` and `projected_horizon_bytes` — the
+rate extrapolated over one operator-chosen horizon (`--horizon-s`,
+default 2592000 s / 30 days; the same value for every row, so
+projections are comparable). Unestimable streams (single event, zero
+span, naive/unparseable stamps) render absence — excluded, counted and
+disclosed — never a zero projection; held classes (every governing rule
+is `hold: true`) project the same horizon growth, labeled `held` (they
+never empty at disposal time).
+
+**Quota wedge.** Per capture context (per run), used bytes from the
+writer's ledger and the time to exhaust `--max-dataset-bytes` (or
+`BENCHWEAVE_MAX_DATASET_BYTES` — both knobs validate identically: an
+integer ≥ 1, or a typed refusal). States: `forecast` (exhaustion at a
+date), `at_ceiling` (G3 refuses new captures now), `over_ceiling`
+("over ceiling by N bytes" — never a negative forecast), `zero_growth`
+("measured zero growth", n/span shown), `unestimable_rate` (no rate —
+never a clean 0), `ceiling_unknown` ("ceiling unknown; projection
+omitted"). A closed run's row is labeled `run closed` and carries no
+exhaustion forecast. Hold-heavy exhaustion hard-blocks new captures with
+no deletion path until the audit-trail slice — that wedge is disclosed in
+the report, and remediation is manual by design (raise the ceiling or
+wait for that slice).
+
+Under `--bench`, rows whose run exists on another bench filter out;
+unattributed keys (including `run:` keys whose run has no run row)
+always stay and are disclosed by count. Like the other at-rest commands,
+`retention` takes the store's exclusive lock for its whole read and
+refuses (naming the holder) while a live gateway owns the store.
 
 ## 7. Backup and restore
 
@@ -415,7 +460,7 @@ Nine commands — `benchweave --help` is the full surface:
 | `status` | Gateway identity + bench inventory (live) | `--gateway` (req), `--token` (req), `--json` |
 | `demo` | Built-in simulator demonstration | `--gateway`/`--token`, `--scratch`, `--keep`, `--timeout`, `--fixtures`, `--json` |
 | `report` | Run evidence from the store at rest | `--data-dir` (req), `--bench`, `--out`, `--json` |
-| `retention` | Disposal/growth projection (read-only) | `--data-dir` (req), `--bench`, `--policy`, `--max-dataset-bytes`, `--out`, `--json` |
+| `retention` | Disposal/growth projection (read-only; never migrates the store) | `--data-dir` (req), `--bench`, `--policy`, `--max-dataset-bytes`, `--horizon-s`, `--out`, `--json` |
 | `backup` | Verified snapshot of store + content | `--data-dir` (req), `--out`, `--json` |
 | `restore` | Verify an archive and swap it in | `--archive` (req), `--data-dir` (req), `--json` |
 | `verify` | Manifest digests + store integrity | `--data-dir` (req), `--json` |
