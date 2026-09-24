@@ -524,10 +524,20 @@ def retention(
             max_dataset_bytes=max_dataset_bytes,
             horizon_s=horizon_s,
         )
-    except (AtRestError, StoreHeldError, ValueError, OSError, OverflowError) as error:
+    except (
+        AtRestError,
+        StoreHeldError,
+        ValueError,
+        TypeError,
+        OSError,
+        OverflowError,
+    ) as error:
         # OverflowError is belt-and-braces (issue #184 finding 3): the
         # policy schema bounds duration_s and the model refuses typed,
         # but any residual arithmetic overflow is still a handled
+        # refusal, never a traceback. TypeError joins it (the R2 fold):
+        # the model's clock/stamp parsing is UTC-strict and typed, but a
+        # residual naive/aware comparison would still be a handled
         # refusal, never a traceback.
         raise click.ClickException(str(error)) from error
     if json_output:

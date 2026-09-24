@@ -1561,3 +1561,90 @@ def test_fw1_anchor_unresolved_rows_are_counted(tmp_path: Path) -> None:
         str(len(unresolved)) in d and "anchor_unresolved" in d
         for d in model["disclosures"]
     ), model["disclosures"]
+
+
+# --- the consolidated review fold (issue #184 R2) -------------------------------------
+
+
+def test_fold2_naive_now_refuses_typed_naming_the_parameter(tmp_path: Path) -> None:
+    """R2 fold item 2a: ``_parse`` accepted a naive caller ``now`` while
+    ``_parse_utc`` rejects naive STORED stamps — a naive ``now`` escaped
+    mid-build as an uncaught TypeError (aware disposal_dt vs naive now_dt
+    comparison). The caller's clock meets the same UTC-strict parse: a
+    typed ValueError naming the parameter, never a traceback."""
+    data_dir = _seed(tmp_path)
+    _write_policy(data_dir / "retention-policy.json")  # scheduled rows exist
+    with pytest.raises(ValueError) as exc:
+        _model(data_dir, now=NAIVE)
+    assert "now" in str(exc.value), exc.value
+    assert "offset" in str(exc.value), exc.value
+
+
+def test_fold2_wedge_exhaustion_beyond_domain_renders_decidable_output(
+    tmp_path: Path,
+) -> None:
+    """R2 fold item 2b: the wedge's ``exhaustion_at`` did raw
+    ``datetime.fromtimestamp(now + (ceiling-used)/rate)`` — a trickle rate
+    × a 10**13 ceiling overflowed the datetime domain (year ~178000) as an
+    untyped whole-report error, killing every other row's output. The
+    exhaustion arithmetic now wraps with the fw3 posture: the overflowing
+    key keeps ``time_to_exhaustion_s`` (the honest number) and renders an
+    absent instant + a disclosure; other keys' forecasts survive."""
+    from benchweave.cli.retention import render_markdown
+
+    data_dir = _seed(tmp_path)
+    store = Store.open(db_path(data_dir))
+    try:
+        # a live trickle key: 4 B over a 2 s span -> rate 2 B/s; with a
+        # 10**13 ceiling the exhaustion instant is ~158,000 years out
+        store.create_run("run-trickle", {"procedure_id": "demo"}, "op", T0)
+        store.put_run_state("run-trickle", BENCH, "running", T1)
+        writer = CaptureStagingStore(
+            store, max_capture_bytes=10_000_000, max_dataset_bytes=10**13
+        )
+        for cid, opened, closed in (
+            ("cap-tr1", T0, "2026-09-20T00:00:01Z"),
+            ("cap-tr2", "2026-09-20T00:00:01Z", "2026-09-20T00:00:02Z"),
+        ):
+            writer.open_capture(
+                capture_id=cid, context_key="run:run-trickle", fmt="raw_binary",
+                sample_count=None, max_bytes=1000, now=opened)
+            writer.append(cid, b"\x0b" * 2, "run:run-trickle")
+            writer.finalise(cid, closed, "run:run-trickle")
+        # a healthy live key: 200 B over a 2 s span -> rate 100 B/s; the
+        # same ceiling exhausts ~year 5200, INSIDE the datetime domain
+        store.create_run("run-fatpipe", {"procedure_id": "demo"}, "op", T0)
+        store.put_run_state("run-fatpipe", BENCH, "running", T1)
+        for cid, opened, closed in (
+            ("cap-fat1", T0, "2026-09-20T00:00:01Z"),
+            ("cap-fat2", "2026-09-20T00:00:01Z", "2026-09-20T00:00:02Z"),
+        ):
+            writer.open_capture(
+                capture_id=cid, context_key="run:run-fatpipe", fmt="raw_binary",
+                sample_count=None, max_bytes=1000, now=opened)
+            writer.append(cid, b"\x0c" * 100, "run:run-fatpipe")
+            writer.finalise(cid, closed, "run:run-fatpipe")
+    finally:
+        store.close()
+
+    model = _model(data_dir, now=NOW, max_dataset_bytes=10**13)
+    wedge = {c["context_key"]: c for c in model["quota_wedge"]["contexts"]}
+    trickle = wedge["run:run-trickle"]
+    assert trickle["state"] == "forecast"
+    assert trickle["rate_bytes_per_s"] == pytest.approx(2.0)
+    assert trickle["time_to_exhaustion_s"] == pytest.approx(
+        (10**13 - trickle["used_bytes"]) / 2.0
+    ), "the honest number is kept"
+    assert trickle["exhaustion_at"] is None, "the instant cannot be rendered"
+    assert any(
+        "beyond the datetime domain" in d for d in model["disclosures"]
+    ), model["disclosures"]
+    # the healthy key's forecast survives the trickle key's overflow
+    fatpipe = wedge["run:run-fatpipe"]
+    assert fatpipe["state"] == "forecast"
+    assert fatpipe["exhaustion_at"] is not None
+    assert fatpipe["exhaustion_at"].startswith("5")  # a rendered year ~52xx
+    md = render_markdown(model)
+    trickle_line = next(ln for ln in md.splitlines() if ln.startswith("- run:run-trickle"))
+    assert "beyond the datetime domain" in trickle_line
+    assert fatpipe["exhaustion_at"][:4] in md

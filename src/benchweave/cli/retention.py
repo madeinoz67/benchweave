@@ -169,15 +169,6 @@ _DISPOSAL_ROWS_METHOD = (
 )
 
 
-def _parse(value: str | None) -> datetime | None:
-    if not isinstance(value, str):
-        return None
-    try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-
-
 def _iso(moment: datetime) -> str:
     return moment.isoformat().replace("+00:00", "Z")
 
@@ -385,9 +376,16 @@ def build_retention_report(
         horizon_s = _DEFAULT_HORIZON_S
     if horizon_s < 1:
         raise ValueError("--horizon-s must be an integer >= 1")
-    now_dt = _parse(now)
+    # R2 fold item 2a: the caller's clock meets the same UTC-strict parse as
+    # stored stamps — a naive ``now`` used to escape mid-build as an
+    # uncaught TypeError (aware disposal_dt vs naive now_dt comparison).
+    now_dt = _parse_utc(now)
     if now_dt is None:
-        raise ValueError(f"now {now!r} is not an ISO-8601 timestamp")
+        raise ValueError(
+            f"now {now!r} is not an offset-bearing ISO-8601 timestamp — a "
+            "naive now would be host-timezone-localized exactly like a "
+            "naive stored stamp (issue #184 fork C)"
+        )
     if bench_id is not None and store.get_bench(bench_id) is None:
         raise ValueError(f"no bench {bench_id!r} in the store")
     covered = _covered(store, bench_id)
@@ -745,6 +743,7 @@ def build_retention_report(
         )
     writer = CaptureStagingStore(store)
     wedge_contexts: list[dict[str, Any]] = []
+    exhaustion_beyond_domain = 0
     wedge_keys = [
         str(row[0])
         for row in store.connection.execute(
@@ -788,6 +787,21 @@ def build_retention_report(
             and measured is not None
         ):
             tte = (ceiling - used) / measured["rate"]
+        # R2 fold item 2b: a trickle rate x a huge ceiling pushes the
+        # exhaustion instant past the datetime domain — the fw3 posture,
+        # per-row: the honest number (time_to_exhaustion_s) is kept, the
+        # instant renders absent + a disclosure, and no other row's output
+        # dies with it (the old raw fromtimestamp killed the whole report).
+        exhaustion_at: str | None = None
+        if tte is not None:
+            try:
+                exhaustion_at = _iso(
+                    datetime.fromtimestamp(
+                        now_dt.timestamp() + tte, tz=now_dt.tzinfo
+                    )
+                )
+            except (OverflowError, OSError, ValueError):
+                exhaustion_beyond_domain += 1
         wedge_contexts.append(
             {
                 "context_key": key,
@@ -800,14 +814,16 @@ def build_retention_report(
                 "n": measured["n"] if measured is not None else None,
                 "observed_span_s": measured["span"] if measured is not None else None,
                 "time_to_exhaustion_s": tte,
-                "exhaustion_at": (
-                    _iso(datetime.fromtimestamp(now_dt.timestamp() + tte, tz=now_dt.tzinfo))
-                    if tte is not None
-                    else None
-                ),
+                "exhaustion_at": exhaustion_at,
                 "ceiling": ceiling,
                 "ceiling_source": ceiling_source,
             }
+        )
+    if exhaustion_beyond_domain:
+        disclosures.append(
+            f"{exhaustion_beyond_domain} context key(s) forecast exhaustion "
+            "beyond the datetime domain (year 9999) — time_to_exhaustion_s "
+            "carries the figure; the instant cannot be rendered"
         )
 
     return {
@@ -941,10 +957,13 @@ def render_markdown(report: dict[str, Any]) -> str:
                 f"measured zero growth (n={ctx['n']}, span={ctx['observed_span_s']}s)"
             )
         else:
-            tail = (
-                f"exhaustion in {ctx['time_to_exhaustion_s']:.1f}s "
-                f"(at {ctx['exhaustion_at']})"
+            at = ctx["exhaustion_at"]
+            when = (
+                f"(at {at})"
+                if at is not None
+                else "(instant beyond the datetime domain — see the disclosure)"
             )
+            tail = f"exhaustion in {ctx['time_to_exhaustion_s']:.1f}s {when}"
         lines.append(
             f"- {ctx['context_key']} bench={ctx['bench'] or '-'}: "
             f"used={ctx['used_bytes']} B {rate_text} {tail}"
