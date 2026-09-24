@@ -9,6 +9,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -396,6 +398,35 @@ def test_sdk_version_anchor_refuses_unreadable_pinned_pyproject(tmp_path: Path) 
 
     sdk = _sdk_copy(tmp_path)
     (sdk / "pyproject.toml").unlink()
+    failures = run_check(_standards_root(tmp_path), sdk)
+    unanchored = [f for f in failures if f.startswith("sdk_version_unanchored:")]
+    assert len(unanchored) == 1, failures
+    assert "cannot read" in unanchored[0] and "pyproject.toml" in unanchored[0], failures
+
+
+def test_sdk_version_anchor_refuses_permission_broken_pyproject(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A pyproject that raises on open (permission bits) refuses by name —
+    never a raw traceback out of run_check (governor fold F4, #187).
+
+    The posture is simulated at the exact failure point (Path.open raising
+    PermissionError for the pyproject alone): deterministic on every lane,
+    including root, where real permission bits are bypassed. run_check's
+    other Path.open reads (export, lock) are delegated untouched.
+    """
+    from benchweave.standards.check import run_check
+
+    sdk = _sdk_copy(tmp_path)
+    target = sdk / "pyproject.toml"
+    real_open = Path.open
+
+    def deny(path: Path, *args: Any, **kwargs: Any) -> Any:
+        if path == target:
+            raise PermissionError(13, "Permission denied")
+        return real_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", deny)
     failures = run_check(_standards_root(tmp_path), sdk)
     unanchored = [f for f in failures if f.startswith("sdk_version_unanchored:")]
     assert len(unanchored) == 1, failures

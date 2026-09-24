@@ -281,7 +281,8 @@ def _compare_anchor(sdk: Path, lock: dict[str, Any], state: list[str]) -> list[s
     if pinned is None:
         failures.append(
             "sdk_version_unanchored: cannot read the pinned SDK's pyproject.toml "
-            "(absent or malformed); the lock's compatibility.sdk is unanchored"
+            "(absent, unreadable, or malformed); the lock's compatibility.sdk "
+            "is unanchored"
         )
     elif isinstance(declared, str) and declared != pinned:
         failures.append(
@@ -362,11 +363,12 @@ def _sdk_head_sha(sdk: Path) -> str | None:
 def _pinned_sdk_package_version(sdk: Path) -> str | None:
     """The SDK's own version in the working tree (= the pin, per the state gate).
 
-    None when pyproject is absent or malformed — the caller refuses. The
-    check-side dual of the SDK's ``standards_sync._sdk_version``: the writer
-    degrades to ``"unknown"`` because it must write something; the checker
-    degrades loudly because green must mean verified. A format change there
-    must be mirrored here.
+    None when pyproject is absent, malformed, or unreadable — the caller
+    refuses. The check-side dual of the SDK's ``standards_sync._sdk_version``:
+    the writer degrades to ``"unknown"`` because it must write something; the
+    checker degrades loudly because green must mean verified. A format change
+    there must be mirrored here. OSError (a permission-broken or otherwise
+    unreadable file) degrades loudly too — the refusal, not a traceback.
     """
     pyproject = sdk / "pyproject.toml"
     if not pyproject.is_file():
@@ -374,7 +376,7 @@ def _pinned_sdk_package_version(sdk: Path) -> str | None:
     try:
         with pyproject.open("rb") as handle:
             return str(tomllib.load(handle)["project"]["version"])
-    except (tomllib.TOMLDecodeError, KeyError):
+    except (tomllib.TOMLDecodeError, KeyError, OSError):
         return None
 
 
