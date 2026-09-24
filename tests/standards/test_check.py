@@ -9,11 +9,14 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 
 
 def _sdk_copy(tmp_path: Path) -> Path:
-    """Minimal faithful copy of what run_check inspects: lock + vendored tree."""
+    """Minimal faithful copy of what run_check inspects: lock + vendored tree +
+    pyproject (the anchor input, issue #187)."""
     source = ROOT / "packages/sdk"
     sdk = tmp_path / "sdk"
     (sdk / "src/benchweave_sdk").mkdir(parents=True)
@@ -21,6 +24,7 @@ def _sdk_copy(tmp_path: Path) -> Path:
     shutil.copytree(
         source / "src/benchweave_sdk/standards", sdk / "src/benchweave_sdk/standards"
     )
+    shutil.copy2(source / "pyproject.toml", sdk / "pyproject.toml")
     return sdk
 
 
@@ -304,6 +308,14 @@ def test_mirror_refusal_names_uninitialized_submodule(tmp_path: Path) -> None:
         "the uninitialized refusal carries no SHAs — a superproject HEAD must "
         "never be misattributed as submodule state"
     )
+    # The anchor inherits the state gate: one refusal, no second family line.
+    assert "sdk_version_unanchored" not in _prefixes(failures)
+    # Fresh-clone UX (fold): the state refusal is the FIRST line — the
+    # actionable remediation must not drown under the empty-lock unpinned
+    # noise the same posture generates.
+    assert failures[0].startswith(
+        "sdk_compatibility_drift: submodule packages/sdk is not initialized"
+    )
 
 
 def test_mirror_refuses_moved_submodule_with_honest_message(tmp_path: Path) -> None:
@@ -329,9 +341,96 @@ def test_mirror_refuses_moved_submodule_with_honest_message(tmp_path: Path) -> N
     )
     assert "run git submodule update --init packages/sdk" in failures[0]
     assert "update standards-manifest.json" not in failures[0]
+    # The anchor inherits the same gate: the moved posture adds no second line.
+    assert "sdk_version_unanchored" not in _prefixes(failures)
     # Restoring the pin greens the check: the pinned lock matches the mirror.
     _git("submodule", "update", "--init", "packages/sdk", cwd=repo)
     assert run_check(repo) == []
+
+
+def _repo_with_committed_187_pairing(tmp_path: Path, lock_version: str) -> Path:
+    """A real parent+submodule whose COMMITTED state pairs the lock at
+    ``lock_version`` with a mirror staled to match, at a pin whose pyproject
+    says 0.2.0.
+
+    The submodule gains one commit (lock compatibility.sdk = lock_version,
+    pyproject untouched), the parent's gitlink moves to that commit, and the
+    parent's mirror is committed equal to the lock — the recorded state
+    run_check must judge, independent of any working-tree dirt.
+    """
+    repo = _repo_with_submodule(tmp_path)
+    sdk = repo / "packages/sdk"
+    lock = _lock(sdk)
+    lock["compatibility"]["sdk"] = lock_version
+    _write_lock(sdk, lock)
+    _git("add", "-A", cwd=sdk)
+    _git("commit", "-m", "scratch: the committed pairing under test", cwd=sdk)
+    manifest = repo / "standards" / "standards-manifest.json"
+    document = json.loads(manifest.read_bytes())
+    document["sdk_compatibility"]["sdk"] = lock_version
+    manifest.write_text(json.dumps(document, indent=2))
+    _git("add", "-A", cwd=repo)
+    _git(
+        "commit",
+        "-m",
+        "scratch: gitlink and mirror committed with the pairing",
+        cwd=repo,
+    )
+    return repo
+
+
+def test_anchor_reads_the_pinned_commit_not_a_dirty_tree(tmp_path: Path) -> None:
+    """The dirt-at-pin FALSE-GREEN (fold mechanism; #187 D5's trigger fired).
+
+    The committed pairing is the #187 defect — lock 0.1.1 and mirror 0.1.1 at
+    a pin whose pyproject says 0.2.0, red on any clean checkout. A
+    contributor's uncommitted pyproject edit down to 0.1.1 must not green it:
+    the anchor reads the pinned commit's bytes via git, never the tree.
+    """
+    from benchweave.standards.check import run_check
+
+    repo = _repo_with_committed_187_pairing(tmp_path, "0.1.1")
+    sdk = repo / "packages/sdk"
+    (sdk / "pyproject.toml").write_text(
+        '[project]\nname = "benchweave-sdk"\nversion = "0.1.1"\n', encoding="utf-8"
+    )
+    failures = run_check(repo)
+    assert "sdk_version_unanchored" in _prefixes(failures), failures
+
+
+def test_anchor_ignores_a_dirty_tree_over_a_healthy_pairing(tmp_path: Path) -> None:
+    """The FALSE-RED kill: a healthy committed pairing stays green regardless
+    of working-tree dirt — the dirt is not a compatibility fact."""
+    from benchweave.standards.check import run_check
+
+    repo = _repo_with_committed_187_pairing(tmp_path, "0.2.0")
+    sdk = repo / "packages/sdk"
+    (sdk / "pyproject.toml").write_text(
+        '[project]\nname = "benchweave-sdk"\nversion = "9.9.9"\n', encoding="utf-8"
+    )
+    assert run_check(repo) == []
+
+
+def test_unreadable_lock_is_refused_by_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A lock that raises on open refuses by name — never a raw traceback out
+    of run_check, and never laundered into the empty-lock 'unpinned' noise
+    (lane-2 finding 3: same crash class as the pyproject, same standard)."""
+    from benchweave.standards.check import run_check
+
+    sdk = _sdk_copy(tmp_path)
+    target = sdk / "standards-lock.json"
+    real_open = Path.open
+
+    def deny(path: Path, *args: Any, **kwargs: Any) -> Any:
+        if path == target:
+            raise PermissionError(13, "Permission denied")
+        return real_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", deny)
+    failures = run_check(_standards_root(tmp_path), sdk)
+    assert "sdk_lock_unreadable" in _prefixes(failures), failures
 
 
 def test_mirror_refuses_non_string_lock_values_without_laundering(tmp_path: Path) -> None:
@@ -350,6 +449,150 @@ def test_mirror_refuses_non_string_lock_values_without_laundering(tmp_path: Path
     assert any("SDK lock sdk is not a string or null (int)" in line for line in drift)
     assert any("SDK lock notes is not a string or null (int)" in line for line in drift)
     assert "'0'" not in "\n".join(drift)
+
+
+# --- the compatibility.sdk anchor (issue #187 class closure) ------------------------
+
+
+def test_sdk_version_anchor_catches_the_issue_187_replay(tmp_path: Path) -> None:
+    """The #187 replay: lock and mirror staled TOGETHER — every existing lane green.
+
+    Both committed sides carry the same stale version (the historical state that
+    shipped broken in #187): ``sdk_compatibility_drift`` compares mirror to lock
+    and both moved, so nothing reds. The anchor reads the pinned SDK's own
+    pyproject and refuses by name — and only by name: no
+    ``sdk_compatibility_drift`` line may appear (the two failures have different
+    meanings and different fixes).
+    """
+    from benchweave.standards.check import run_check
+
+    sdk = _sdk_copy(tmp_path)
+    lock = _lock(sdk)
+    pinned_version = lock["compatibility"]["sdk"]  # the true-pairing value
+    lock["compatibility"]["sdk"] = "0.1.1"
+    _write_lock(sdk, lock)
+    root = _standards_root(tmp_path)
+    manifest = root / "standards" / "standards-manifest.json"
+    mirror = json.loads(manifest.read_bytes())
+    mirror["sdk_compatibility"]["sdk"] = "0.1.1"
+    manifest.write_text(json.dumps(mirror, indent=2))
+    failures = run_check(root, sdk)
+    unanchored = [f for f in failures if f.startswith("sdk_version_unanchored:")]
+    assert len(unanchored) == 1, failures
+    assert pinned_version in unanchored[0] and "0.1.1" in unanchored[0], failures
+
+
+def test_sdk_version_anchor_refuses_unreadable_pinned_pyproject(tmp_path: Path) -> None:
+    """A pinned pyproject that cannot be read is refused by name — never a pass,
+    and never a degraded ``"unknown"`` comparison laundering the refusal."""
+    from benchweave.standards.check import run_check
+
+    sdk = _sdk_copy(tmp_path)
+    (sdk / "pyproject.toml").unlink()
+    failures = run_check(_standards_root(tmp_path), sdk)
+    unanchored = [f for f in failures if f.startswith("sdk_version_unanchored:")]
+    assert len(unanchored) == 1, failures
+    assert "cannot read" in unanchored[0] and "pyproject.toml" in unanchored[0], failures
+
+
+def test_sdk_version_anchor_refuses_permission_broken_pyproject(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A pyproject that raises on open (permission bits) refuses by name —
+    never a raw traceback out of run_check (governor fold F4, #187).
+
+    The posture is simulated at the exact failure point (Path.open raising
+    PermissionError for the pyproject alone): deterministic on every lane,
+    including root, where real permission bits are bypassed. run_check's
+    other Path.open reads (export, lock) are delegated untouched.
+    """
+    from benchweave.standards.check import run_check
+
+    sdk = _sdk_copy(tmp_path)
+    target = sdk / "pyproject.toml"
+    real_open = Path.open
+
+    def deny(path: Path, *args: Any, **kwargs: Any) -> Any:
+        if path == target:
+            raise PermissionError(13, "Permission denied")
+        return real_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", deny)
+    failures = run_check(_standards_root(tmp_path), sdk)
+    unanchored = [f for f in failures if f.startswith("sdk_version_unanchored:")]
+    assert len(unanchored) == 1, failures
+    assert "cannot read" in unanchored[0] and "pyproject.toml" in unanchored[0], failures
+
+
+def test_drift_remediation_is_posture_safe_when_the_anchor_co_fires(
+    tmp_path: Path,
+) -> None:
+    """Lock-stale posture (mirror correct): the drift line must not direct a
+    manifest edit (lane-1 fold F2, #187).
+
+    SDK bumped past the lock: the mirror moved with the pointer (0.2.0, equal
+    to the pinned pyproject), the lock regeneration was missed (0.1.1). Drift
+    and the anchor co-fire; the correct side is the mirror, so the drift
+    line's remediation must name the pinned pyproject as the decider, not
+    send the contributor to corrupt standards-manifest.json.
+    """
+    from benchweave.standards.check import run_check
+
+    sdk = _sdk_copy(tmp_path)
+    lock = _lock(sdk)
+    lock["compatibility"]["sdk"] = "0.1.1"
+    _write_lock(sdk, lock)
+    # The mirror stays CORRECT — untouched from the live manifest (0.2.0).
+    failures = run_check(_standards_root(tmp_path), sdk)
+    drift = [f for f in failures if f.startswith("sdk_compatibility_drift:")]
+    unanchored = [f for f in failures if f.startswith("sdk_version_unanchored:")]
+    assert len(drift) == 1, failures
+    assert len(unanchored) == 1, failures
+    # The co-fired drift line must not point at the correct file, and the
+    # combined output must carry the right direction (re-sync the lock).
+    assert "update standards-manifest.json sdk_compatibility" not in drift[0]
+    assert "pyproject.toml" in drift[0]
+    assert "make sync-sdk-standards" in "\n".join(failures)
+
+
+def test_sdk_version_anchor_refuses_undeclared_lock_sdk(tmp_path: Path) -> None:
+    """An undeclared lock field is the original defect shape.
+
+    The mirror lane also reds on this mutation (mirror still declares a version
+    the lock no longer carries) — both red is honest, each names its own fix.
+    """
+    from benchweave.standards.check import run_check
+
+    sdk = _sdk_copy(tmp_path)
+    lock = _lock(sdk)
+    lock["compatibility"]["sdk"] = None
+    _write_lock(sdk, lock)
+    failures = run_check(_standards_root(tmp_path), sdk)
+    assert "sdk_version_unanchored" in _prefixes(failures)
+    assert "sdk_compatibility_drift" in _prefixes(failures)
+
+
+def test_sdk_version_anchor_greens_a_regenerated_pairing(tmp_path: Path) -> None:
+    """The green control: a correctly regenerated pairing (#189 shape) never refuses.
+
+    lock ``sdk`` == mirror ``sdk`` == pinned pyproject — the anchor adds no
+    line. ``test_real_tree_is_clean`` carries the same proof against the live
+    tree in CI; this pins the synthetic-fixture shape.
+    """
+    import tomllib
+
+    from benchweave.standards.check import run_check
+
+    sdk = _sdk_copy(tmp_path)
+    root = _standards_root(tmp_path)
+    with (sdk / "pyproject.toml").open("rb") as handle:
+        pinned = str(tomllib.load(handle)["project"]["version"])
+    mirror = json.loads((root / "standards" / "standards-manifest.json").read_bytes())
+    lock = _lock(sdk)
+    # Precondition: the untouched fixture copy IS the three-way-equal pairing —
+    # this test guards the anchor's false-positive edge, so pin it explicitly.
+    assert lock["compatibility"]["sdk"] == mirror["sdk_compatibility"]["sdk"] == pinned
+    assert run_check(root, sdk) == []
 
 
 # --- the RC candidate marker in the versions glance (devstage record §13.9) --------

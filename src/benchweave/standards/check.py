@@ -32,7 +32,9 @@ def run_check(root: Path, sdk_root: Path | None = None) -> list[str]:
 
     Re-exports the bundle into a temporary directory (never the working tree),
     then compares versions, digests, the vendored file set, the compatibility
-    block, and the manifest's ``sdk_compatibility`` mirror against the lock.
+    block, and the manifest's ``sdk_compatibility`` mirror against the lock,
+    and anchors the lock's ``compatibility.sdk`` to the pinned SDK's own
+    pyproject version.
     """
     sdk = sdk_root if sdk_root is not None else root / "packages" / "sdk"
     workspace = Path(tempfile.mkdtemp(prefix="benchweave-standards-check-"))
@@ -44,12 +46,30 @@ def run_check(root: Path, sdk_root: Path | None = None) -> list[str]:
         )
     finally:
         shutil.rmtree(workspace, ignore_errors=True)
-    lock = _read_lock(sdk)
     failures: list[str] = []
+    # An unreadable lock is refused by name — never a raw traceback and never
+    # laundered into the empty-lock "unpinned" noise (lane-2 finding 3, #187).
+    try:
+        lock = _read_lock(sdk)
+    except OSError:
+        failures.append(
+            "sdk_lock_unreadable: cannot read the SDK lock (unreadable); "
+            "fix the file's readability and re-run"
+        )
+        lock = {"standards": []}
+    # The submodule state gate is computed once, shared, and reported FIRST:
+    # on a fresh clone the actionable remediation must not drown under the
+    # empty-lock unpinned noise (#158 posture; fold ordering rider, #187).
+    state = _submodule_state_failures(root, sdk)
+    failures.extend(state)
     failures.extend(_compare_lock(document, lock))
     failures.extend(_compare_tree(document, sdk))
     failures.extend(_compare_compatibility(document, lock))
-    failures.extend(_compare_mirror(root, sdk, lock))
+    # The mirror lane and the compatibility.sdk anchor both refuse when the
+    # working tree is not the pin (#158 posture), and the anchor adds nothing
+    # on top of that refusal (#187).
+    failures.extend(_compare_mirror(root, sdk, lock, state))
+    failures.extend(_compare_anchor(root, sdk, lock, state))
     return failures
 
 
@@ -194,7 +214,9 @@ def _compare_tree(document: dict[str, Any], sdk: Path) -> list[str]:
     return failures
 
 
-def _compare_mirror(root: Path, sdk: Path, lock: dict[str, Any]) -> list[str]:
+def _compare_mirror(
+    root: Path, sdk: Path, lock: dict[str, Any], state: list[str]
+) -> list[str]:
     """The manifest's ``sdk_compatibility`` mirror must equal the SDK lock's block.
 
     The lock stays the authority; the mirror exists so the matrix render can
@@ -204,11 +226,12 @@ def _compare_mirror(root: Path, sdk: Path, lock: dict[str, Any]) -> list[str]:
     comparison — mirroring from it would commit bytes for a version the
     gitlink does not pin, the issue-#158 defect class with a manifest-edit
     instruction attached. Empty-string and null notes normalise equal — the
-    lock's nullable semantics.
+    lock's nullable semantics. The state refusal is computed once in
+    ``run_check`` and shared with the ``compatibility.sdk`` anchor (#187);
+    this lane simply stays silent when the gate already refused.
     """
-    state = _submodule_state_failures(root, sdk)
     if state:
-        return state
+        return []
     mirror = load_sdk_compatibility(root)
     sdk_block = lock.get("compatibility")
     sdk_block = sdk_block if isinstance(sdk_block, dict) else {}
@@ -226,8 +249,70 @@ def _compare_mirror(root: Path, sdk: Path, lock: dict[str, Any]) -> list[str]:
         if expected != actual:
             failures.append(
                 f"sdk_compatibility_drift: manifest {field}={expected!r} vs SDK lock "
-                f"{field}={actual!r}; update standards-manifest.json sdk_compatibility"
+                f"{field}={actual!r}; update whichever side the pinned SDK's "
+                "pyproject.toml disagrees with — the mirror (standards-manifest.json "
+                "sdk_compatibility) or the lock (make sync-sdk-standards)"
             )
+    return failures
+
+
+def _compare_anchor(
+    root: Path, sdk: Path, lock: dict[str, Any], state: list[str]
+) -> list[str]:
+    """compatibility.sdk must equal the pinned SDK's own pyproject version.
+
+    The lock's ``sdk`` field is a writer contract (the SDK sync stamps its own
+    version into it; issue #187 fork (a): the version this lock state is
+    certified for). The state gate proved HEAD is the gitlink pin, and the
+    pyproject read here is the pinned commit's OWN bytes — read through git
+    from the submodule's object store, never the working tree, so a dirty
+    checkout at the pin can neither false-red a healthy pairing nor
+    false-green the defect (the dirt-at-pin residual #187 D5 is closed; its
+    revisit trigger fired). Where the parent records no gitlink — the
+    synthetic-root harness posture, the same no-state-to-be-wrong-about
+    distinction the state gate itself draws — there is no commit to read and
+    the working tree is the only input. Both sides staling together — mirror
+    equal, lock stale — is exactly the state this refuses (the #187 defect
+    shape). Degrades loudly: an unreadable pyproject or an undeclared lock
+    field is a failure, never a skip and never a degraded ``"unknown"``
+    comparison.
+
+    The failure prefix is a family of its own, deliberately not
+    ``sdk_compatibility_drift:`` — the two failures have different meanings
+    and different fixes (unanchored = "regenerate the SDK lock"; drift's
+    remediation names the pinned pyproject as the decider, so it stays
+    correct whether the lock or the mirror is the stale side).
+    """
+    if state:
+        return []
+    failures: list[str] = []
+    block = lock.get("compatibility")
+    block = block if isinstance(block, dict) else {}
+    declared = block.get("sdk")
+    if declared is not None and not isinstance(declared, str):
+        failures.append(
+            "sdk_version_unanchored: SDK lock compatibility.sdk is not a string or "
+            f"null ({type(declared).__name__}); fix the SDK lock compatibility block"
+        )
+        declared = None  # a non-string declares nothing comparable
+    elif not declared:
+        failures.append(
+            "sdk_version_unanchored: SDK lock compatibility.sdk is undeclared; "
+            "run make sync-sdk-standards and land lock + mirror + pointer together"
+        )
+    pinned = _pinned_sdk_package_version(root, sdk)
+    if pinned is None:
+        failures.append(
+            "sdk_version_unanchored: cannot read the pinned SDK's pyproject.toml "
+            "(absent, unreadable, or malformed); the lock's compatibility.sdk "
+            "is unanchored"
+        )
+    elif isinstance(declared, str) and declared != pinned:
+        failures.append(
+            f"sdk_version_unanchored: SDK lock compatibility.sdk {declared!r} vs the "
+            f"pinned SDK's pyproject.toml {pinned!r}; run make sync-sdk-standards and "
+            "land lock + mirror + pointer together"
+        )
     return failures
 
 
@@ -296,6 +381,59 @@ def _sdk_head_sha(sdk: Path) -> str | None:
     if result.returncode != 0:
         return None
     return result.stdout.strip() or None
+
+
+def _pinned_sdk_package_version(root: Path, sdk: Path) -> str | None:
+    """The pinned SDK commit's own pyproject version, from its committed bytes.
+
+    Where the parent records a gitlink, the version is read with
+    ``git show <gitlink>:pyproject.toml`` through the submodule's object
+    store — the working tree's content is never consulted, so a dirty
+    checkout at HEAD==pin cannot sway the verdict in either direction
+    (#187 D5's revisit trigger fired; the state gate has already proved
+    HEAD is the pin, so the object is present). A git failure, absent or
+    malformed bytes degrade to None — the caller refuses by name.
+
+    Where the parent records NO gitlink (a non-git root, the synthetic-root
+    harness — the same no-state-to-be-wrong-about distinction
+    ``_submodule_state_failures`` draws) there is no commit to read; the
+    working-tree pyproject is the only input and OSError degrades loudly —
+    the refusal, not a traceback.
+
+    The check-side dual of the SDK's ``standards_sync._sdk_version``: the
+    writer degrades to ``"unknown"`` because it must write something; the
+    checker degrades loudly because green must mean verified. A format
+    change there must be mirrored here.
+    """
+    pinned = _pinned_sdk_sha(root)
+    if pinned is None:
+        pyproject = sdk / "pyproject.toml"
+        if not pyproject.is_file():
+            return None
+        try:
+            with pyproject.open("rb") as handle:
+                return str(tomllib.load(handle)["project"]["version"])
+        except (tomllib.TOMLDecodeError, KeyError, OSError):
+            return None
+    result = subprocess.run(  # noqa: S603 — fixed argv
+        [  # noqa: S607 — PATH git is the supported invocation
+            "git",
+            "-C",
+            str(sdk),
+            "show",
+            f"{pinned}:pyproject.toml",
+        ],
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return None
+    try:
+        return str(
+            tomllib.loads(result.stdout.decode("utf-8"))["project"]["version"]
+        )
+    except (tomllib.TOMLDecodeError, KeyError, UnicodeDecodeError):
+        return None
 
 
 def _nullable_text(value: str | None) -> str | None:
