@@ -47,17 +47,25 @@ Disclosed derivations:
   never on ``artifacts.stored_at`` — that column refreshes on re-put, so
   a re-put of identical bytes changes no report figure (S3-6's companion
   arm).
-- **Growth projection.** Per subscription from landed ``event_log``
-  ``content_ref`` (``subscription_id``/``host_received_at`` — the fields
-  ``stream_services.land_events`` lands): ``rate = observed referenced
-  bytes / observed span``, ``duty = observed span / report window``,
-  ``projected = rate × duty × retention window``; the capture lane runs
-  analogously per context key (window = the longest governing duration
-  among the key's rows — a disclosed worst-case bound, since one key's
-  rows may govern under different classes). Zero-span streams (a single
-  event) are structurally excluded and disclosed by count; every
-  projected row carries ``n`` and ``span``. No numeric threshold is
-  invented anywhere.
+- **Growth projection (issue #184 fork B).** Per subscription from landed
+  ``event_log`` ``content_ref`` (``subscription_id``/``host_received_at``
+  — the fields ``stream_services.land_events`` lands) and per capture
+  context key: the wire carries ``observed_bytes``, ``observed_span_s``,
+  ``n``, ``rate_Bps = observed_bytes / observed_span_s`` and
+  ``projected_horizon_bytes = rate_Bps × horizon_s`` — ONE operator-
+  chosen horizon (``--horizon-s``, default 30 days) for every row, so
+  projections are comparable and no report-global window couples one
+  stream's rows to another's (the old rate × duty × window algebra
+  cancelled the span into a global-window rescale: an old row in one key
+  shrank another key's projection). Stamps parse, then compare as
+  instants (string ordering inverted offset-mixed pairs). Unestimable
+  streams render absence — excluded, counted (``single_event`` /
+  ``zero_span`` / ``unstamped``) and disclosed — never a clean zero
+  projection; the "single event" sentence can only ever describe an
+  ``n == 1`` stream. A stream every governing rule of which is a hold
+  rule is labeled ``held`` and projects the same rate × horizon growth:
+  it never empties at disposal time, and the projection must not pretend
+  otherwise.
 - **Quota wedge.** The ceiling comes from ``--max-dataset-bytes`` or env
   ``BENCHWEAVE_MAX_DATASET_BYTES`` (the same knob
   ``interfaces/app_entry._limits_from_env`` reads), labelled
@@ -108,6 +116,10 @@ __all__ = [
 #: The report's closed capture-class vocabulary (the in-tree format
 #: vocabulary plus the unknown-format class). The evidence lane stays open.
 _CAPTURE_CLASSES = ("waveform_f64le", "raw_binary")
+#: Default growth horizon — 30 days (issue #184 fork B): the operator-
+#: chosen window every rate is extrapolated over, the same value for every
+#: row so projections are comparable. Override per run with --horizon-s.
+_DEFAULT_HORIZON_S = 2_592_000
 _RUN_CONTEXT_PREFIX = "run:"
 _STAGED = "staged"
 _FINALISED = "finalised"
@@ -298,6 +310,7 @@ def build_retention_report(
     bench_id: str | None = None,
     now: str,
     max_dataset_bytes: int | None = None,
+    horizon_s: int | None = None,
 ) -> dict[str, Any]:
     """Build the retention model from the store at rest (pure: caller-
     injected clock, no store writes, everything derived from store state).
@@ -305,8 +318,14 @@ def build_retention_report(
     ``policy`` None ⇒ every row ``ungoverned`` (the no-policy-file case).
     ``bench_id`` scopes rows exactly like ``report``'s bench filter;
     ``max_dataset_bytes`` fixes the wedge ceiling (env
-    ``BENCHWEAVE_MAX_DATASET_BYTES`` is the fallback).
+    ``BENCHWEAVE_MAX_DATASET_BYTES`` is the fallback); ``horizon_s`` is the
+    growth horizon every rate is extrapolated over (one value for every
+    row; default 30 days).
     """
+    if horizon_s is None:
+        horizon_s = _DEFAULT_HORIZON_S
+    if horizon_s < 1:
+        raise ValueError("--horizon-s must be an integer >= 1")
     now_dt = _parse(now)
     if now_dt is None:
         raise ValueError(f"now {now!r} is not an ISO-8601 timestamp")
@@ -317,7 +336,6 @@ def build_retention_report(
     terminal_ended = _terminal_ended_at(store)
 
     rows: list[dict[str, Any]] = []
-    earliest: datetime | None = None
 
     def _anchor(rule_after: str | None, landing_at: Any, context: str | None) -> str | None:
         """Resolve the row's anchor stamp under the governing retain_after.
@@ -353,9 +371,6 @@ def build_retention_report(
             else None
         )
         anchor_at = _anchor(rule_after, updated_at, context)
-        stamp = _parse_utc(anchor_at)
-        if stamp is not None and (earliest is None or stamp < earliest):
-            earliest = stamp
         rows.append(
             _disposal_row(
                 row_kind="capture",
@@ -387,9 +402,6 @@ def build_retention_report(
             else None
         )
         anchor_at = _anchor(rule_after, stored_at, context)
-        stamp = _parse_utc(anchor_at)
-        if stamp is not None and (earliest is None or stamp < earliest):
-            earliest = stamp
         rows.append(
             _disposal_row(
                 row_kind="evidence",
@@ -429,13 +441,21 @@ def build_retention_report(
         ).fetchone()[0]
     )
 
-    # --- growth projection ---------------------------------------------------
-    window_s = max((now_dt - earliest).total_seconds(), 0.0) if earliest else 0.0
+    # --- growth projection (issue #184 fork B: per-stream rate × horizon) ----
+    # Wire per stream/key: observed_bytes, observed_span_s, n, rate_Bps
+    # (exactly observed_bytes / observed_span_s) and
+    # projected_horizon_bytes (exactly rate_Bps * horizon_s, ONE horizon for
+    # every row). The old rate × duty × window algebra cancelled the span
+    # into observed_bytes × window / report_window and coupled every stream
+    # through the report-global window, so an old row in one key shrank
+    # another key's projection. Unestimable streams render absence:
+    # excluded + counted + disclosed (single_event / zero_span / unstamped).
     subscriptions: list[dict[str, Any]] = []
     captures_lane: dict[str, dict[str, Any]] = {}
-    zero_span = 0
+    excluded = {"single_event": 0, "zero_span": 0, "unstamped": 0}
+    unstamped_events = 0
 
-    sub_groups: dict[tuple[str, str | None], list[tuple[str, int]]] = {}
+    sub_groups: dict[tuple[str, str | None], list[tuple[datetime | None, int]]] = {}
     for ref_json, artifact, context, _stored_at in store.connection.execute(
         "SELECT content_ref_json, artifact_id, context_key, stored_at FROM evidence"
         " WHERE kind = 'event_log' ORDER BY stored_at, evidence_id"
@@ -448,37 +468,42 @@ def build_retention_report(
         received = ref.get("host_received_at") if isinstance(ref, dict) else None
         if not isinstance(sub, str) or not _in_scope(context, covered):
             continue
+        # parse FIRST, compare later: raw string ordering inverted
+        # offset-mixed and bare-Z-vs-microsecond stamp pairs (finding 6)
         sub_groups.setdefault((sub, context), []).append(
-            (str(received), _artifact_bytes(store, artifact))
+            (_parse_utc(received), _artifact_bytes(store, artifact))
         )
     for (sub, context), events in sorted(sub_groups.items()):
-        stamps = [e[0] for e in events]
-        span = 0.0
-        first, last = _parse_utc(min(stamps)), _parse_utc(max(stamps))
-        if first is not None and last is not None:
-            span = max((last - first).total_seconds(), 0.0)
-        n = len(events)
-        referenced = sum(b for _, b in events)
-        if span <= 0 or n < 2:
-            zero_span += 1
+        placed = [(stamp, bytes_) for stamp, bytes_ in events if stamp is not None]
+        unstamped_events += len(events) - len(placed)
+        if len(events) == 1:
+            excluded["single_event"] += 1
             continue
+        if len(placed) < 2:
+            excluded["unstamped"] += 1
+            continue
+        span = (max(s for s, _ in placed) - min(s for s, _ in placed)).total_seconds()
+        if span <= 0:
+            excluded["zero_span"] += 1
+            continue
+        observed = sum(b for _, b in placed)
         bench = _bench_of(context, run_states)
-        window = (
-            policy.resolve(bench=bench, data_class="evidence:event_log").duration_s
+        held = (
+            policy.resolve(bench=bench, data_class="evidence:event_log").hold
             if policy is not None
-            else 0
+            else False
         )
-        duty = span / window_s if window_s > 0 else 0.0
+        rate = observed / span
         subscriptions.append(
             {
                 "subscription_id": sub,
                 "context_key": context,
-                "n": n,
-                "span_s": span,
-                "rate_bytes_per_s": referenced / span,
-                "duty": duty,
-                "window_s": window,
-                "projected_bytes": referenced / span * duty * window,
+                "n": len(placed),
+                "observed_bytes": observed,
+                "observed_span_s": span,
+                "rate_Bps": rate,
+                "projected_horizon_bytes": rate * horizon_s,
+                "held": held,
             }
         )
 
@@ -491,50 +516,87 @@ def build_retention_report(
             continue
         lane = captures_lane.setdefault(
             str(context),
-            {"context_key": str(context), "opened": [], "closed": [], "bytes": 0, "windows": []},
+            {
+                "context_key": str(context), "opens": [], "closes": [],
+                "bytes": 0, "rows": 0, "total": 0,
+                "governs": 0, "holds": 0,
+            },
         )
-        # The capture lane's observed span runs open→finalise: a key's first
-        # open to its last finalise (a single capture still contributes its
-        # own acquisition window; anchors stay the finalise stamps).
-        lane["opened"].append(str(created_at))
-        lane["closed"].append(str(updated_at))
+        # The capture lane's observed span runs open→finalise: the key's
+        # first parsed open to its last parsed finalise. A row whose BOTH
+        # stamps are naive/unparseable cannot be placed in time — its bytes
+        # stay out of the observation (counted, never silently dropped).
+        opened, closed = _parse_utc(created_at), _parse_utc(updated_at)
+        lane["total"] += 1
+        if opened is None and closed is None:
+            continue
+        if opened is not None:
+            lane["opens"].append(opened)
+        if closed is not None:
+            lane["closes"].append(closed)
         lane["bytes"] += int(charged)
+        lane["rows"] += 1
         if policy is not None:
             fmt_class = (
                 f"capture:{fmt}"
                 if isinstance(fmt, str) and fmt in _CAPTURE_CLASSES
                 else "capture:unknown"
             )
-            lane["windows"].append(
-                policy.resolve(
-                    bench=_bench_of(context, run_states), data_class=fmt_class
-                ).duration_s
-            )
+            lane["governs"] += 1
+            if policy.resolve(
+                bench=_bench_of(context, run_states), data_class=fmt_class
+            ).hold:
+                lane["holds"] += 1
     capture_growth: list[dict[str, Any]] = []
     lane_rates: dict[str, float] = {}
     for context, lane in sorted(captures_lane.items()):
-        first = _parse_utc(min(lane["opened"])) if lane["opened"] else None
-        last = _parse_utc(max(lane["closed"])) if lane["closed"] else None
-        span = max((last - first).total_seconds(), 0.0) if first and last else 0.0
-        rate = lane["bytes"] / span if span > 0 else 0.0
+        first = min(lane["opens"]) if lane["opens"] else None
+        last = max(lane["closes"]) if lane["closes"] else None
+        if lane["total"] == 1:
+            excluded["single_event"] += 1
+            continue
+        if first is None or last is None:
+            excluded["unstamped"] += 1
+            continue
+        span = (last - first).total_seconds()
+        if span <= 0:
+            excluded["zero_span"] += 1
+            continue
+        rate = lane["bytes"] / span
         lane_rates[context] = rate
-        window = max(lane["windows"]) if lane["windows"] else 0
-        duty = span / window_s if window_s > 0 else 0.0
+        # held: EVERY governing rule of the key's rows is a hold rule — the
+        # stream never empties at disposal time, and its projection must not
+        # pretend otherwise (finding 9: held classes used to project aging
+        # out at the hold rule's schema-required duration_s).
+        held = lane["governs"] > 0 and lane["holds"] == lane["governs"]
         capture_growth.append(
             {
                 "context_key": context,
-                "n": len(lane["closed"]),
-                "span_s": span,
-                "rate_bytes_per_s": rate,
-                "duty": duty,
-                "window_s": window,
-                "projected_bytes": rate * duty * window,
+                "n": lane["rows"],
+                "observed_bytes": lane["bytes"],
+                "observed_span_s": span,
+                "rate_Bps": rate,
+                "projected_horizon_bytes": rate * horizon_s,
+                "held": held,
             }
         )
-    if zero_span:
+    if excluded["single_event"]:
         disclosures.append(
-            f"{zero_span} zero-span stream(s) (a single event over the observed "
-            "window) are structurally excluded from the rate projection"
+            f"{excluded['single_event']} stream(s) excluded from the growth "
+            "projection: n == 1 (a single event cannot define a rate)"
+        )
+    if excluded["zero_span"]:
+        disclosures.append(
+            f"{excluded['zero_span']} zero-span stream(s) excluded from the "
+            "growth projection: every parsed stamp is the same instant"
+        )
+    if excluded["unstamped"] or unstamped_events:
+        disclosures.append(
+            f"{excluded['unstamped']} unstamped stream(s) excluded from the "
+            "growth projection (fewer than two offset-bearing parseable "
+            "stamps) and "
+            f"{unstamped_events} event(s) dropped from span math "
+            "(naive or unparseable stamps)"
         )
 
     # --- the quota wedge -------------------------------------------------------
@@ -597,10 +659,10 @@ def build_retention_report(
         "disclosures": disclosures,
         "stored_bytes": {"total": stored_total, "method": _STORED_BYTES_METHOD},
         "growth": {
-            "report_window_s": window_s,
+            "horizon_s": horizon_s,
             "subscriptions": subscriptions,
             "captures": capture_growth,
-            "zero_span_excluded": zero_span,
+            "excluded": dict(excluded),
         },
         "quota_wedge": {
             "ceiling": ceiling,
@@ -641,21 +703,32 @@ def render_markdown(report: dict[str, Any]) -> str:
     growth = report["growth"]
     lines.append("")
     lines.append("## Growth projection")
-    lines.append(f"- report window: {growth['report_window_s']}s")
+    lines.append(
+        f"- horizon: {growth['horizon_s']}s — every stream's rate is "
+        "extrapolated over this one window (projections are comparable)"
+    )
     for sub in growth["subscriptions"]:
+        held = " [held — never empties at disposal time]" if sub["held"] else ""
         lines.append(
             f"- subscription {sub['subscription_id']}: n={sub['n']} "
-            f"span={sub['span_s']}s rate={sub['rate_bytes_per_s']:.3f} B/s "
-            f"duty={sub['duty']:.3f} projected={sub['projected_bytes']:.0f} B "
-            f"over {sub['window_s']}s"
+            f"observed={sub['observed_bytes']} B over {sub['observed_span_s']}s "
+            f"rate={sub['rate_Bps']:.3f} B/s "
+            f"projected={sub['projected_horizon_bytes']:.0f} B{held}"
         )
     for cap in growth["captures"]:
+        held = " [held — never empties at disposal time]" if cap["held"] else ""
         lines.append(
-            f"- captures {cap['context_key']}: n={cap['n']} span={cap['span_s']}s "
-            f"rate={cap['rate_bytes_per_s']:.3f} B/s duty={cap['duty']:.3f} "
-            f"projected={cap['projected_bytes']:.0f} B over {cap['window_s']}s"
+            f"- captures {cap['context_key']}: n={cap['n']} "
+            f"observed={cap['observed_bytes']} B over {cap['observed_span_s']}s "
+            f"rate={cap['rate_Bps']:.3f} B/s "
+            f"projected={cap['projected_horizon_bytes']:.0f} B{held}"
         )
-    lines.append(f"- zero-span streams excluded: {growth['zero_span_excluded']}")
+    excluded = growth["excluded"]
+    lines.append(
+        f"- excluded streams: {excluded['single_event']} single-event, "
+        f"{excluded['zero_span']} zero-span, {excluded['unstamped']} unestimable"
+        f" (unparsed stamps) — counted, never rendered as zero projections"
+    )
     wedge = report["quota_wedge"]
     lines.append("")
     lines.append("## Quota wedge")
@@ -700,6 +773,7 @@ def retention_from_data_dir(
     policy_path: Path | None = None,
     now: str,
     max_dataset_bytes: int | None = None,
+    horizon_s: int | None = None,
 ) -> dict[str, Any]:
     """Open the data directory's store AT REST and build the retention
     report under the one-coordinator rule (the whole open→read→close
@@ -742,6 +816,7 @@ def retention_from_data_dir(
                 bench_id=bench_id,
                 now=now,
                 max_dataset_bytes=max_dataset_bytes,
+                horizon_s=horizon_s,
             )
             if policy is not None:
                 model["policy"] = {

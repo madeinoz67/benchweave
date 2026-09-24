@@ -474,6 +474,17 @@ def report(
     ),
 )
 @click.option(
+    "--horizon-s",
+    "horizon_s",
+    type=int,
+    default=None,
+    help=(
+        "Growth horizon in seconds: every stream's ingest rate is "
+        "extrapolated over this one window so projections are comparable "
+        "(default: 2592000, 30 days)."
+    ),
+)
+@click.option(
     "--out",
     "out",
     type=click.Path(path_type=Path),
@@ -491,6 +502,7 @@ def retention(
     bench_id: str | None,
     policy: Path | None,
     max_dataset_bytes: int | None,
+    horizon_s: int | None,
     out: Path | None,
     json_output: bool,
 ) -> None:
@@ -506,6 +518,7 @@ def retention(
             policy_path=policy,
             now=retention_lib.now_iso(),
             max_dataset_bytes=max_dataset_bytes,
+            horizon_s=horizon_s,
         )
     except (AtRestError, StoreHeldError, ValueError, OSError) as error:
         raise click.ClickException(str(error)) from error

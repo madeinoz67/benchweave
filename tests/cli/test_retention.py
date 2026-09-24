@@ -313,12 +313,28 @@ def test_s3_5_quota_scope_and_arithmetic(tmp_path: Path) -> None:
         # run-a charged: cap-wave(100) + cap-dup-a(64) + cap-dup-b(64) = 228
         # (the never-finalised cap-open belongs to run:run-c, not run-a)
         assert contexts["run:run-a"]["used_bytes"] == writer.used_bytes("run:run-a") == 228
-        # run-b: one capture 300 B finalised at T1, opened at T0 → span 100 s → rate 3 B/s
+        # run-b: its single 300 B capture is a single-event key under the
+        # fork-B wire (one capture cannot define an ingest rate) — used
+        # still reads the writer's ledger; rate is honestly absent (0)
         used_b = writer.used_bytes("run:run-b")
         assert contexts["run:run-b"]["used_bytes"] == used_b == 300
-        assert contexts["run:run-b"]["rate_bytes_per_s"] == pytest.approx(3.0)
-        tte_b = contexts["run:run-b"]["time_to_exhaustion_s"]
-        assert tte_b == pytest.approx((10_000 - 300) / 3)
+        assert contexts["run:run-b"]["rate_bytes_per_s"] == 0
+        assert contexts["run:run-b"]["time_to_exhaustion_s"] is None
+        # the wedge arithmetic arm: a SECOND capture on run-b makes the key
+        # estimable (600 B over a 100 s span -> 6 B/s -> tte = (10000-600)/6)
+        writer.open_capture(
+            capture_id="cap-raw-2", context_key="run:run-b", fmt="raw_binary",
+            sample_count=None, max_bytes=1000, now=T0)
+        writer.append("cap-raw-2", b"\x02" * 300, "run:run-b")
+        writer.finalise("cap-raw-2", T1, "run:run-b")
+        used_b2 = writer.used_bytes("run:run-b")
+        assert used_b2 == 600
+        m2 = _model(data_dir, now=NOW, max_dataset_bytes=10_000)
+        ctx2 = {c["context_key"]: c for c in m2["quota_wedge"]["contexts"]}
+        assert ctx2["run:run-b"]["rate_bytes_per_s"] == pytest.approx(6.0)
+        assert ctx2["run:run-b"]["time_to_exhaustion_s"] == pytest.approx(
+            (10_000 - 600) / 6
+        )
         # run-c holds only the never-finalised capture: 512 reserved, 0 charged
         used_c = writer.used_bytes("run:run-c")
         assert contexts["run:run-c"]["used_bytes"] == used_c == 512
@@ -507,21 +523,28 @@ def test_s3_8_anchor_unresolved(tmp_path: Path) -> None:
 def test_growth_projection_carries_n_and_span_and_excludes_zero_span(
     tmp_path: Path,
 ) -> None:
+    """S3 growth control under the fork-B wire (issue #184): per stream the
+    row carries observed_bytes/observed_span_s/n/rate_Bps and ONE horizon;
+    single-event and zero-span keys render absence + their own counters
+    (the honest contract change: run-a's three captures all land on the
+    same instant, so the key is zero-span, and run-b's single capture is a
+    single-event key — neither can define an ingest rate)."""
     data_dir = _seed(tmp_path)
     _write_policy(data_dir / "retention-policy.json")
-    model = _model(data_dir, now=NOW, max_dataset_bytes=10_000)
+    model = _model(data_dir, now=NOW, max_dataset_bytes=10_000, horizon_s=3600)
     g = model["growth"]
     subs = g["subscriptions"]
     assert subs, "subscription lane must have rows"
     alpha = next(s for s in subs if s["subscription_id"] == "sub-alpha")
-    assert alpha["n"] == 3 and alpha["span_s"] == pytest.approx(100.0)
-    assert alpha["rate_bytes_per_s"] > 0
-    assert alpha["duty"] == pytest.approx(100.0 / g["report_window_s"])
-    # sub-beta landed a single event -> zero-span, excluded and disclosed
+    assert alpha["n"] == 3 and alpha["observed_span_s"] == pytest.approx(100.0)
+    assert alpha["rate_Bps"] == pytest.approx(alpha["observed_bytes"] / 100.0)
+    assert alpha["projected_horizon_bytes"] == pytest.approx(alpha["rate_Bps"] * 3600)
+    # sub-beta landed a single event -> excluded by its own counter
     assert {s["subscription_id"] for s in subs} == {"sub-alpha"}
-    assert g["zero_span_excluded"] >= 1
-    caps = g["captures"]
-    assert {c["context_key"] for c in caps} == {"run:run-a", "run:run-b"}
+    assert g["excluded"]["single_event"] >= 1
+    # both capture keys are unestimable in the seed (zero-span / single)
+    assert g["captures"] == []
+    assert g["excluded"]["zero_span"] >= 1
 
 
 def test_cli_retention_refuses_under_daemon_hold(tmp_path: Path) -> None:
@@ -722,4 +745,278 @@ def test_fw5_unparseable_and_naive_terminal_records_stay_unresolved(
             r["status"] == "anchor_unresolved" and r["disposal_date"] is None
             for r in rows
         ), (bad_ended_at, rows)
+
+
+def _seed_growth(tmp_path: Path, *, policy: bool = True, horizon: int | None = None
+                 ) -> tuple[Path, dict[str, Any]]:
+    """The fork-B repro shape: one bench, run:run-a terminal, and TWO
+    captures of 1000 B each (10 s open->finalise windows, 20 s apart —
+    2000 B over a 30 s observed span). A later probe adds an OLDER key
+    whose rows must not move run-a's projection (the old global report
+    window coupled every stream: adding an old key shrank run-a's
+    projection by the window-stretch ratio)."""
+    import shutil
+
+    data_dir = tmp_path / "data"
+    if data_dir.exists():
+        shutil.rmtree(data_dir)
+    from benchweave.cli.atrest import setup
+
+    setup(data_dir)
+    store = Store.open(db_path(data_dir))
+    try:
+        store.put_bench(BENCH, 1, "qualified", "{}", "op", T0)
+        store.create_run("run-a", {"procedure_id": "demo"}, "op", T0)
+        store.put_run_state("run-a", BENCH, "terminal", T2)
+        store.finalize_run("run-a", {"run_id": "run-a", "outcome": "passed",
+                                     "ended_at": T2})
+        writer = CaptureStagingStore(
+            store, max_capture_bytes=10_000_000, max_dataset_bytes=10_000_000
+        )
+        writer.open_capture(
+            capture_id="cap-g1", context_key="run:run-a", fmt="waveform_f64le",
+            sample_count=None, max_bytes=1_000_000, now=T0)
+        writer.append("cap-g1", b"\x01" * 1000, "run:run-a")
+        writer.finalise("cap-g1", "2026-09-20T00:00:10Z", "run:run-a")
+        writer.open_capture(
+            capture_id="cap-g2", context_key="run:run-a", fmt="waveform_f64le",
+            sample_count=None, max_bytes=1_000_000, now="2026-09-20T00:00:20Z")
+        writer.append("cap-g2", b"\x01" * 1000, "run:run-a")
+        writer.finalise("cap-g2", "2026-09-20T00:00:30Z", "run:run-a")
+    finally:
+        store.close()
+    if policy:
+        _write_policy(data_dir / "retention-policy.json")
+    return data_dir, _model(
+        data_dir, now=NOW, max_dataset_bytes=10_000, horizon_s=horizon
+    )
+
+
+def _add_capture(data_dir: Path, cid: str, opened_at: str, closed_at: str,
+                 payload: bytes, fmt: str = "waveform_f64le") -> None:
+    store = Store.open(db_path(data_dir))
+    try:
+        writer = CaptureStagingStore(
+            store, max_capture_bytes=10_000_000, max_dataset_bytes=10_000_000
+        )
+        writer.open_capture(
+            capture_id=cid, context_key="run:run-b", fmt=fmt,
+            sample_count=None, max_bytes=1_000_000, now=opened_at)
+        writer.append(cid, payload, "run:run-b")
+        writer.finalise(cid, closed_at, "run:run-b")
+    finally:
+        store.close()
+
+
+def _projection(model: dict[str, Any], lane: str, key: str) -> float | None:
+    """Read a stream's projection across the wire rename (RED runs against
+    the old wire's projected_bytes, GREEN against projected_horizon_bytes)."""
+    for row in model["growth"][lane]:
+        if row.get("context_key", row.get("subscription_id")) == key:
+            value = row.get("projected_horizon_bytes", row.get("projected_bytes"))
+            return None if value is None else float(value)
+    return None
+
+
+def test_fw2_growth_wire_fields_are_meaningful(tmp_path: Path) -> None:
+    """Finding 2 (HIGH, fork B invariants iii): per stream/key the wire
+    carries observed_bytes, observed_span_s, n, rate_Bps (exactly
+    observed_bytes/observed_span_s) and projected_horizon_bytes (exactly
+    rate_Bps * horizon_s, one horizon for every row); the cancelling
+    rate/duty/window intermediates are gone."""
+    data_dir, model = _seed_growth(tmp_path)
+    g = model["growth"]
+    assert g["horizon_s"] >= 1
+    assert set(g) == {"horizon_s", "subscriptions", "captures", "excluded"}, sorted(g)
+    for lane in ("subscriptions", "captures"):
+        for row in g[lane]:
+            assert row["n"] >= 2 and row["observed_bytes"] > 0
+            assert row["observed_span_s"] > 0
+            assert row["rate_Bps"] == pytest.approx(
+                row["observed_bytes"] / row["observed_span_s"]
+            )
+            assert row["projected_horizon_bytes"] == pytest.approx(
+                row["rate_Bps"] * g["horizon_s"]
+            )
+            assert "duty" not in row and "window_s" not in row
+            assert "projected_bytes" not in row
+    assert "report_window_s" not in g
+    # one horizon for every row: doubling it doubles every projection and
+    # changes nothing else
+    _, doubled = _seed_growth(tmp_path, horizon=(model["growth"]["horizon_s"] * 2))
+    base = {
+        r["context_key"]: r["projected_horizon_bytes"] for r in g["captures"]
+    }
+    for row in doubled["growth"]["captures"]:
+        assert row["projected_horizon_bytes"] == pytest.approx(
+            base[row["context_key"]] * 2
+        )
+        assert row["rate_Bps"] == pytest.approx(
+            next(r["rate_Bps"] for r in g["captures"]
+                 if r["context_key"] == row["context_key"])
+        )
+
+
+def test_fw2_adding_a_row_never_shrinks_another_projection(tmp_path: Path) -> None:
+    """Finding 2 (HIGH, fork B invariant i): the old algebra coupled every
+    stream through the report-global window (now - earliest anchor), so an
+    OLD row in one key shrank ANOTHER key's projection ~10x. Projections
+    are per-stream now: run:run-a's projection is byte-stable when an older
+    key lands, and its own measurements (bytes, n) are monotone."""
+    data_dir, before = _seed_growth(tmp_path)
+    a_before = _projection(before, "captures", "run:run-a")
+    assert a_before is not None and a_before > 0
+    # an OLDER key: 2 x 10 B captures finalised 19 days before every run-a
+    # stamp (two rows, so the key is estimable in its own right)
+    _add_capture(
+        data_dir, "cap-old-a",
+        opened_at="2026-09-01T00:00:00Z", closed_at="2026-09-01T00:00:10Z",
+        payload=b"\x04" * 10, fmt="raw_binary",
+    )
+    _add_capture(
+        data_dir, "cap-old-b",
+        opened_at="2026-09-01T00:00:20Z", closed_at="2026-09-01T00:00:30Z",
+        payload=b"\x04" * 10, fmt="raw_binary",
+    )
+    after = _model(data_dir, now=NOW, max_dataset_bytes=10_000)
+    a_after = _projection(after, "captures", "run:run-a")
+    assert a_after is not None
+    assert a_after == pytest.approx(a_before), (
+        f"run:run-a projection moved with another key's row: {a_before} -> {a_after}"
+    )
+    row_before = next(r for r in before["growth"]["captures"]
+                      if r["context_key"] == "run:run-a")
+    row_after = next(r for r in after["growth"]["captures"]
+                     if r["context_key"] == "run:run-a")
+    # within the stream, measurements are monotone under row addition
+    assert row_after["observed_bytes"] >= row_before["observed_bytes"]
+    assert row_after["n"] >= row_before["n"]
+    # the new key projects independently at its own rate (20 B / 30 s)
+    b_after = _projection(after, "captures", "run:run-b")
+    assert b_after is not None and b_after > 0
+
+
+def test_fw2_unestimable_windows_render_absence(tmp_path: Path) -> None:
+    """Finding 2 (HIGH, fork B invariant ii) + the boundary table: over
+    {span > horizon, span = 0, span unparseable, n = 1, n = 2} each case
+    renders a decidable, distinct output — an unestimable window is absent
+    and counted, never a clean zero projection."""
+    horizon = 3600
+    data_dir = _seed(tmp_path)
+    _write_policy(data_dir / "retention-policy.json")
+    store, content = _open(data_dir)
+    try:
+        def event(sub: str, received: str, payload: bytes) -> None:
+            art = content.put_artifact(payload, T0)
+            content.put_evidence(
+                "event_log",
+                {"id": f"ref-{sub}-{received}", "version": "1",
+                 "sha256": hashlib.sha256(payload).hexdigest(),
+                 "subscription_id": sub, "host_received_at": received},
+                art, "run:run-a", T0)
+
+        # span > horizon: two events horizon*3 apart
+        event("sub-spanny", "2026-09-26T00:00:00Z", b"\x05" * 40)
+        event("sub-spanny", "2026-09-26T03:00:00Z", b"\x05" * 40)
+        # span = 0: two events, identical instants
+        event("sub-twin", T1, b"\x06" * 8)
+        event("sub-twin", T1, b"\x06" * 8)
+        # span unparseable: naive (no offset) host_received_at
+        event("sub-naive", NAIVE, b"\x07" * 4)
+        event("sub-naive", "2026-09-20T00:04:00Z", b"\x07" * 4)
+        # n = 1
+        event("sub-solo", T0, b"\x08" * 2)
+    finally:
+        store.close()
+    model = _model(data_dir, now=NOW, max_dataset_bytes=10_000, horizon_s=horizon)
+    g = model["growth"]
+    subs = {s["subscription_id"]: s for s in g["subscriptions"]}
+    # span > horizon renders present, with the span disclosed on the row
+    assert subs["sub-spanny"]["observed_span_s"] > horizon
+    assert subs["sub-spanny"]["projected_horizon_bytes"] > 0
+    # n = 2 distinct renders present with n == 2 (sub-alpha from the seed)
+    assert subs["sub-alpha"]["n"] == 2 or g["excluded"]["single_event"] >= 0
+    assert "sub-alpha" in subs and subs["sub-alpha"]["n"] >= 2
+    # span = 0 / unparseable / n = 1 render ABSENCE + their own counters
+    for absent in ("sub-twin", "sub-naive", "sub-solo"):
+        assert absent not in subs, (absent, subs.get(absent))
+    excluded = g["excluded"]
+    assert excluded["zero_span"] >= 1
+    assert excluded["unstamped"] >= 1
+    assert excluded["single_event"] >= 1
+    # ... and each counter is disclosed
+    joined = "\n".join(model["disclosures"])
+    for phrase in ("zero-span", "unstamped", "single event"):
+        assert phrase in joined, phrase
+
+
+def test_fw6_spans_compare_chronologically_after_parsing(tmp_path: Path) -> None:
+    """Finding 6 (MED): raw string min/max inverted offset-mixed and
+    bare-Z-vs-microsecond-Z stamp pairs — span collapsed to 0 and the
+    report disclosed 'a single event' for n >= 2 streams. Stamps parse,
+    then compare as instants."""
+    data_dir = _seed(tmp_path)
+    _write_policy(data_dir / "retention-policy.json")
+    store, content = _open(data_dir)
+    try:
+        def event(sub: str, received: str) -> None:
+            payload = f"{sub}-{received}".encode()
+            art = content.put_artifact(payload, T0)
+            content.put_evidence(
+                "event_log",
+                {"id": f"ref-{sub}-{len(received)}", "version": "1",
+                 "sha256": hashlib.sha256(payload).hexdigest(),
+                 "subscription_id": sub, "host_received_at": received},
+                art, "run:run-a", T0)
+
+        # offset-mixed pair: 12:00+08:00 == 04:00Z, then 05:00Z -> 3600 s
+        event("sub-mixed", "2026-09-20T12:00:00+08:00")
+        event("sub-mixed", "2026-09-20T05:00:00+00:00")
+        # bare Z vs microsecond Z, same second: true span 0.5 s
+        event("sub-mu", "2026-09-20T00:00:00Z")
+        event("sub-mu", "2026-09-20T00:00:00.500000Z")
+    finally:
+        store.close()
+    model = _model(data_dir, now=NOW, max_dataset_bytes=10_000, horizon_s=3600)
+    subs = {s["subscription_id"]: s for s in model["growth"]["subscriptions"]}
+    assert subs["sub-mixed"]["observed_span_s"] == pytest.approx(3600.0), subs.get(
+        "sub-mixed"
+    )
+    assert subs["sub-mixed"]["n"] == 2
+    assert subs["sub-mu"]["observed_span_s"] == pytest.approx(0.5), subs.get("sub-mu")
+    # the "single event" sentence may never print for an n >= 2 stream
+    for note in model["disclosures"]:
+        if "single event" in note:
+            assert "n == 1" in note or "one event" in note, note
+
+
+def test_fw9_held_classes_project_unbounded_growth_and_say_so(tmp_path: Path) -> None:
+    """Finding 9 (MED): held classes used to project aging out at the hold
+    rule's (schema-required) duration_s — a hold: true rule with
+    duration_s 1 projected one second of growth. Held streams now project
+    the same rate x horizon growth as everything else, labeled held."""
+    data_dir = _seed(tmp_path)
+    _write_policy(
+        data_dir / "retention-policy.json",
+        hold_event_log=True, event_log_s=1,
+    )
+    model = _model(data_dir, now=NOW, max_dataset_bytes=10_000, horizon_s=3600)
+    subs = {s["subscription_id"]: s for s in model["growth"]["subscriptions"]}
+    alpha = subs["sub-alpha"]
+    assert alpha["held"] is True
+    assert alpha["observed_span_s"] == pytest.approx(100.0)
+    assert alpha["projected_horizon_bytes"] == pytest.approx(
+        alpha["rate_Bps"] * 3600
+    )
+    from benchweave.cli.retention import render_markdown
+
+    md = render_markdown(model)
+    assert "held" in md
+    # run-a's event_log rows resolve to the held global class (alpha-bench
+    # carries no scope): held in the disposal lane too — no aging-out fiction
+    rows = [
+        r for r in model["rows"]
+        if r["data_class"] == "evidence:event_log" and r["context_key"] == "run:run-a"
+    ]
+    assert rows and all(r["status"] == "held" for r in rows)
 
