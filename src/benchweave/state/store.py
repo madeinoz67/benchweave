@@ -11,11 +11,27 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from benchweave.state.migrations import MIGRATIONS
+
+#: The store's busy timeout (F12, issue #176 row B): the stock
+#: ``sqlite3.connect`` default timeout restated as a pragma — a named
+#: default, not a commissioned number. Commission a per-bench value from
+#: qualification evidence through ``Store.open(busy_timeout_ms=...)``
+#: (A02); the capture dispatch clamp and the abort-epilogue floor read
+#: this same value, so one commissioning moves both row-B faces.
+DEFAULT_BUSY_TIMEOUT_MS = 5000
+
+#: The commissioning knob's upper bound: SQLite stores the pragma as a
+#: C int, and a value above 2^31−1 silently converts to 0 — the busy
+#: handler disabled exactly when the operator asked for the most
+#: patience. Refused at open (lane-1 F2, final fold).
+_BUSY_TIMEOUT_MS_MAX = 2**31 - 1
 
 
 class Duplicate(Exception):
@@ -64,22 +80,56 @@ class Store:
     """Single-writer: SQLite permits one writer; every write serialises through
     this store's connection. Callers must never open a second write path."""
 
-    def __init__(self, connection: sqlite3.Connection) -> None:
+    def __init__(
+        self, connection: sqlite3.Connection, *, busy_timeout_ms: int = DEFAULT_BUSY_TIMEOUT_MS
+    ) -> None:
         self._conn = connection
+        self._busy_timeout_ms = busy_timeout_ms
 
     @property
     def connection(self) -> sqlite3.Connection:
         """The single writer connection (shared with ContentStore, WP07)."""
         return self._conn
 
+    @property
+    def open_busy_timeout_ms(self) -> int:
+        """The busy timeout ``Store.open`` commissioned on this
+        connection — the default the busy-timeout window restores to and
+        the value the capture clamp and the abort-epilogue floor read
+        (row B). The pragma's LIVE value differs from this only inside an
+        open ``busy_timeout_window``."""
+        return self._busy_timeout_ms
+
     # --- lifecycle ---------------------------------------------------------
 
     @classmethod
-    def open(cls, path: str | Path, *, check_same_thread: bool = True) -> Store:
+    def open(
+        cls,
+        path: str | Path,
+        *,
+        check_same_thread: bool = True,
+        busy_timeout_ms: int = DEFAULT_BUSY_TIMEOUT_MS,
+    ) -> Store:
         """Open (or create) the database at ``path`` and bring it to the
-        current schema: WAL, synchronous=FULL and a 5s busy timeout are set
+        current schema: WAL, synchronous=FULL and the busy timeout are set
         first, then every pending migration is applied, each under its own
-        BEGIN IMMEDIATE (a failed migration rolls back whole)."""
+        BEGIN IMMEDIATE (a failed migration rolls back whole).
+
+        ``busy_timeout_ms`` is the commissioning knob (row B / A02): the
+        stock sqlite3 default by default, a per-bench value from
+        qualification evidence when the bench demands one. The upper
+        bound is the sqlite C-int range: above 2^31−1 SQLite silently
+        converts the pragma to 0 — the busy handler DISABLED while this
+        class's property would keep reporting the commissioned number —
+        the readback-vs-pragma lie the guard exists to prevent."""
+        if busy_timeout_ms < 0:
+            raise ValueError(f"busy_timeout_ms must be >= 0, got {busy_timeout_ms}")
+        if busy_timeout_ms > _BUSY_TIMEOUT_MS_MAX:
+            raise ValueError(
+                f"busy_timeout_ms must be <= {_BUSY_TIMEOUT_MS_MAX} (the sqlite "
+                "C-int bound; above it SQLite disables the busy handler while the "
+                f"property reports the commissioned value), got {busy_timeout_ms}"
+            )
         # ``check_same_thread=False`` is the ASGI-app posture (WP07 Task 8):
         # the gateway serves from the event-loop thread while the store was
         # opened on the caller's thread; usage stays serialised by design
@@ -90,10 +140,35 @@ class Store:
         )
         connection.execute("PRAGMA journal_mode=WAL")
         connection.execute("PRAGMA synchronous=FULL")
-        connection.execute("PRAGMA busy_timeout=5000")
-        store = cls(connection)
+        connection.execute(f"PRAGMA busy_timeout={int(busy_timeout_ms)}")
+        store = cls(connection, busy_timeout_ms=busy_timeout_ms)
         store._apply_migrations()
         return store
+
+    @contextmanager
+    def busy_timeout_window(self, ms: int) -> Iterator[None]:
+        """A guarded temporary busy-timeout window (issue #176 row B).
+
+        Sets ``PRAGMA busy_timeout`` to ``ms`` on entry and restores, on
+        every exit path, the value in force at entry — the ``Store.open``
+        default when no window is already open (the clamp and the
+        epilogue floor nest inside one dispatch). The store reads NO
+        clock (STO-1 unamended): the caller computes the ms it hands down
+        from the injected monotonic. Runs on the store's single writer
+        thread only — the pragma is per-connection, and the one-writer
+        discipline is what makes the restore trustworthy.
+
+        Leak discipline note: the restore covers returns, exceptions and
+        generator closes driven through the with-protocol; it cannot
+        cover a thread killed mid-window (the connection dies with it).
+        """
+        row = self._conn.execute("PRAGMA busy_timeout").fetchone()
+        previous = int(row[0])
+        self._conn.execute(f"PRAGMA busy_timeout={int(ms)}")
+        try:
+            yield
+        finally:
+            self._conn.execute(f"PRAGMA busy_timeout={previous}")
 
     def close(self) -> None:
         """Close the underlying connection; the store is unusable after."""

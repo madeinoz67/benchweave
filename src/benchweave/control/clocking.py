@@ -12,8 +12,17 @@ elapsed-time enforcement) and keeps tests deterministic.
 records every wait, and the wall reading derives from the same elapsed
 nanoseconds so audit stamps track monotonic progress. ``SystemClock`` is the
 production implementation over ``time.monotonic_ns`` and ``time.time``.
-Plugins constructed from the same clock object share the executor's time
-base; there is no hidden second clock.
+
+The shared-base sentence, honestly scoped (F6, issue #176 row B): the
+executor and the coordinator run on the clock object the composition
+hands them, and the composition derives the capture/stream services'
+clocks from that SAME object (``build_run`` passes
+``lambda: clock.now_ns() / 1e9``) — but the capture factory's signature
+accepts any seconds-float callable, so the shared base is a composition
+fact, not a type guarantee. The row-B clock-domain tests pin the one
+property that matters at the clamp: the busy-timeout clamp reads the
+INJECTED capture clock and no hidden second clock
+(tests/unit/test_otdp_bridge.py).
 """
 
 from __future__ import annotations

@@ -1,9 +1,12 @@
 """The explicit async-to-sync seam preserves host safety semantics."""
 
 import asyncio
+import contextlib
 import hashlib
 import json as _json
 import sqlite3
+import threading
+import time
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -305,12 +308,34 @@ _WAVEFORM_METADATA = {
 
 
 class CaptureHarness:
-    """A real store + writer + bundle + controller + bridge over tmp_path."""
+    """A real store + writer + bundle + controller + bridge over tmp_path.
 
-    def __init__(self, tmp_path: Path, *, evidence_quota: int = 50) -> None:
+    ``busy_timeout_ms`` commissions the store's busy timeout at OPEN (the
+    row-B commissioning knob): a capture dispatch brackets itself in a
+    clamp window derived from the open default, so a runtime
+    ``PRAGMA busy_timeout`` override is no longer the lever it was — the
+    contention tests commission here instead. ``clock`` is the capture
+    services' injected monotonic (seconds); the default frozen ``0.0``
+    keeps the pre-row-B tests' absolute ``deadline_ns`` values valid."""
+
+    def __init__(
+        self,
+        tmp_path: Path,
+        *,
+        evidence_quota: int = 50,
+        busy_timeout_ms: int | None = None,
+        clock: Any = None,
+        check_same_thread: bool = False,
+    ) -> None:
         import pathlib
 
-        self.store = Store.open(pathlib.Path(tmp_path) / "bridge-capture.db")
+        # ``check_same_thread=False`` (the harness default): the bridge
+        # legitimately dispatches from a non-opening thread (the
+        # ASGI-app posture — usage stays serialised by the bridge lock).
+        open_kwargs: dict[str, Any] = {"check_same_thread": check_same_thread}
+        if busy_timeout_ms is not None:
+            open_kwargs["busy_timeout_ms"] = busy_timeout_ms
+        self.store = Store.open(pathlib.Path(tmp_path) / "bridge-capture.db", **open_kwargs)
         self.db_path = str(
             self.store.connection.execute("PRAGMA database_list").fetchone()[2]
         )
@@ -345,7 +370,7 @@ class CaptureHarness:
             descriptor_digest=self.descriptor_digest,
             content=self.content,
             writer=self.writer,
-            clock=lambda: 0.0,
+            clock=clock if clock is not None else (lambda: 0.0),
             wall=lambda: "2026-09-22T00:00:00Z",
             quota=QuotaLimits(
                 max_dataset_bytes=8192,
@@ -992,10 +1017,11 @@ def test_writer_originated_lock_contention_is_resource_limit(tmp_path: Path) -> 
     """C5: the holder acquires the write lock MID-capture (between the
     bridge's open and the adapter's append); the writer-originated
     OperationalError classifies RESOURCE_LIMIT, the session survives and
-    the epilogue reclaims once the holder releases."""
-    harness = CaptureHarness(tmp_path)
+    the epilogue reclaims once the holder releases. (Row B: the busy
+    timeout is commissioned at open — the dispatch clamp derives from
+    the open default, so the old runtime-pragma override moved here.)"""
+    harness = CaptureHarness(tmp_path, busy_timeout_ms=80)
     try:
-        harness.store.connection.execute("PRAGMA busy_timeout=80")
 
         class Contended(CaptureAdapter):
             async def execute(self, request: Any, context: Any) -> dict[str, Any]:
@@ -1188,12 +1214,11 @@ def test_gate_region_lock_contention_is_resource_limit_not_dispatched(tmp_path: 
     adapter is never called."""
     import threading
 
-    harness = CaptureHarness(tmp_path)
+    harness = CaptureHarness(tmp_path, busy_timeout_ms=80)
     try:
         db_path = str(
             harness.store.connection.execute("PRAGMA database_list").fetchone()[2]
         )
-        harness.store.connection.execute("PRAGMA busy_timeout=80")
         holder_lock = threading.Event()
         release = threading.Event()
 
@@ -2369,3 +2394,472 @@ def test_an_unserializable_x_extension_value_refuses_as_an_invalid_event(
     finally:
         harness.close()
 
+
+
+# --- issue #176 row B: the busy-timeout clamp, the epilogue floor ---------------------
+
+
+class _MidCaptureHolder:
+    """A separate-connection write-lock holder: acquires BEGIN IMMEDIATE
+    once armed, holds a fixed wall duration, then rolls back — independent
+    of the dispatch thread, so the lock is still held ACROSS the bridge's
+    abort epilogue (the discrimination the in-adapter holder shape cannot
+    make)."""
+
+    def __init__(self, db_path: str, hold_s: float) -> None:
+        import time as _time
+
+        self._time = _time
+        self._db_path = db_path
+        self._hold_s = hold_s
+        self._acquired: Any = None
+        self._release: Any = None
+        self.acquired_at: float = 0.0
+        self.released_at: float = 0.0
+        self._thread: Any = None
+
+    def arm(self) -> float:
+        import threading
+
+        self._acquired = threading.Event()
+        self._release = threading.Event()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+        assert self._acquired.wait(10), "holder never took the write lock"
+        return self.acquired_at
+
+    def _run(self) -> None:
+        contender = sqlite3.connect(self._db_path, timeout=5.0)
+        try:
+            contender.execute("BEGIN IMMEDIATE")
+            self.acquired_at = self._time.monotonic()
+            self._acquired.set()
+            self._release.wait(self._hold_s)
+            contender.rollback()
+        finally:
+            self.released_at = self._time.monotonic()
+            contender.close()
+
+    def release(self) -> float:
+        self._release.set()
+        self._thread.join(10)
+        return self.released_at
+
+
+class _GateWaitAdapter(Adapter):
+    """Append #1 lands; the adapter then waits for the armed holder before
+    append #2 contends — deterministic mid-capture ordering. ``idle_s``
+    is pre-BEGIN work inside the bracket (the entry-time clamp never sees
+    it) — the lane-1 F1 repro lever."""
+
+    def __init__(self, first_landed: Any, proceed: Any, idle_s: float = 0.0) -> None:
+        super().__init__()
+        self.first_landed = first_landed
+        self.proceed = proceed
+        self.idle_s = idle_s
+        self.append_started_at: float | None = None
+        self.append_failed_at: float | None = None
+
+    async def execute(self, request: dict[str, Any], context: Any) -> dict[str, Any]:
+        self.calls += 1
+        if request["verb"] != "capture":
+            return await Adapter.execute(self, request, context)
+        capture_id = request["arguments"]["capture_id"]
+        await self.services.artifact_append(capture_id, b"\x01" * 8, context)
+        self.first_landed.set()
+        assert self.proceed.wait(10), "holder never armed"
+        import time
+
+        if self.idle_s:
+            await asyncio.sleep(self.idle_s)
+        self.append_started_at = time.monotonic()
+        try:
+            await self.services.artifact_append(capture_id, b"\x01" * 8, context)
+        except sqlite3.OperationalError:
+            self.append_failed_at = time.monotonic()
+            raise
+        raise AssertionError("append #2 should have contended and failed")
+
+
+def _row_b_dispatch(
+    harness: CaptureHarness,
+    adapter: _GateWaitAdapter,
+    *,
+    deadline_ms: int,
+) -> tuple[Any, Any, dict[str, Any]]:
+    """Dispatch one capture on a worker thread: append #1 lands, the test
+    arms the holder, the adapter proceeds into the contended append #2."""
+    import threading
+    import time
+
+    plugin = harness.bridge(adapter)
+    plugin.plugin_open(object())
+    outcome: dict[str, Any] = {}
+
+    def run() -> None:
+        outcome["start"] = time.monotonic()
+        outcome["result"] = plugin.dispatch(
+            a_capture_request(),
+            deadline_ns=time.monotonic_ns() + deadline_ms * 1_000_000,
+        )
+        outcome["end"] = time.monotonic()
+
+    worker = threading.Thread(target=run, daemon=True)
+    worker.start()
+    assert adapter.first_landed.wait(10), "append #1 never landed"
+    return plugin, worker, outcome
+
+
+def test_row_b_clamp_bounds_the_mid_capture_wait_by_the_step_deadline(
+    tmp_path: Path,
+) -> None:
+    """B-R1 (ordering 1, remaining < default): the contended append's
+    busy-wait is bounded by the step deadline (the clamp), not the store
+    default — reverting the clamp, the same dispatch waits the whole hold
+    out under the open default and SUCCEEDS past its deadline. The abort
+    epilogue runs under its own floor and reclaims the staging row once
+    the holder releases; reverting the floor, the epilogue inherits the
+    clamp window, fails inside it, and the row leaks past the return."""
+    harness = CaptureHarness(tmp_path, clock=time.monotonic)
+    try:
+        # The hold (1.0 s) must outlast the clamp (200 ms) PLUS the clamp
+        # window the epilogue would inherit WITHOUT its own floor (another
+        # 200 ms), with margin — that is the shape whose reclamation the
+        # floor owns; a shorter hold leaves the no-floor epilogue's fate
+        # to scheduler luck.
+        holder = _MidCaptureHolder(harness.db_path, hold_s=1.0)
+        first_landed = threading.Event()
+        proceed = threading.Event()
+        adapter = _GateWaitAdapter(first_landed, proceed)
+        plugin, worker, outcome = _row_b_dispatch(
+            harness, adapter, deadline_ms=200
+        )
+        holder.arm()
+        proceed.set()
+        worker.join(30)
+        assert not worker.is_alive(), "dispatch never returned"
+        result = outcome["result"]
+
+        # Classification unchanged: the clamped-out BEGIN is the same
+        # writer-originated resource condition (RESOURCE_LIMIT, and the
+        # dispatch state stays DISPATCHED — the session survives).
+        assert result.error is not None
+        assert result.error.code is ErrorCode.RESOURCE_LIMIT
+        assert result.error.dispatch_state is DispatchState.DISPATCHED
+
+        # The clamp bounded the contended wait by the deadline: the busy-wait
+        # (measured from the append's own entry, excluding the adapter's
+        # event-wait wake-up) lasted ~the 200 ms clamp, well inside the 1 s
+        # hold. Under the unclamped open default (5000 ms) the append waits
+        # the hold out and the capture SUCCEEDS past its deadline.
+        assert adapter.append_failed_at is not None
+        assert adapter.append_started_at is not None
+        append_wait_ms = (adapter.append_failed_at - adapter.append_started_at) * 1000
+        assert 120 <= append_wait_ms <= 450, append_wait_ms
+
+        # The epilogue floor let the reclaim wait out the remaining hold:
+        # the row is gone and the forensic marker is durable at return.
+        assert harness.staged_count() == 0
+        assert harness.forensic_count("cap-1") == 1
+
+        # The wall-stretch class: clamp + floor + jitter, not the 2x anchor.
+        total_ms = (outcome["end"] - outcome["start"]) * 1000
+        assert total_ms <= 200 + 5000 + 300, total_ms
+
+        # B-R2: the pragma reads the open default again after the clamped,
+        # failed dispatch.
+        live = int(
+            harness.store.connection.execute("PRAGMA busy_timeout").fetchone()[0]
+        )
+        assert live == harness.store.open_busy_timeout_ms == 5000
+
+        follow = plugin.dispatch(
+            OperationRequest.identify("op-follow"),
+            deadline_ns=time.monotonic_ns() + 2_000_000_000,
+        )
+        assert follow.status is OperationStatus.OK  # session survives
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+@pytest.mark.parametrize(
+    ("default_ms", "deadline_ms", "hold_s", "clamp_wins"),
+    [
+        pytest.param(5000, 200, 0.45, True, id="deadline-bound-clamp-wins"),
+        pytest.param(300, 3000, 0.9, False, id="default-bound-clamp-capped"),
+    ],
+)
+def test_row_b_both_clamp_orderings_classify_one_pair(
+    tmp_path: Path, default_ms: int, deadline_ms: int, hold_s: float, clamp_wins: bool
+) -> None:
+    """F3's pre-committed two-clamp table: when the dispatch-deadline
+    clamp and the asyncio timeout are both live, the dispatch deadline is
+    authoritative for ``remaining_deadline_ms`` (it already carries
+    ``min(now + timeout_ms, body_deadline)``), and the failure class does
+    not depend on WHICH bound capped the busy-wait: ONE
+    (error_code, dispatch_state) pair under both orderings. The
+    ``default-bound`` arm additionally proves the cap: the append fails at
+    the commissioned default (~300 ms), far inside the 3 s deadline."""
+    harness = CaptureHarness(tmp_path, busy_timeout_ms=default_ms, clock=time.monotonic)
+    try:
+        holder = _MidCaptureHolder(harness.db_path, hold_s=hold_s)
+        first_landed = threading.Event()
+        proceed = threading.Event()
+        adapter = _GateWaitAdapter(first_landed, proceed)
+        plugin, worker, outcome = _row_b_dispatch(
+            harness, adapter, deadline_ms=deadline_ms
+        )
+        holder.arm()
+        proceed.set()
+        worker.join(30)
+        result = outcome["result"]
+
+        assert result.error is not None
+        assert result.error.code is ErrorCode.RESOURCE_LIMIT
+        assert result.error.dispatch_state is DispatchState.DISPATCHED
+
+        assert adapter.append_failed_at is not None
+        assert adapter.append_started_at is not None
+        append_wait_ms = (adapter.append_failed_at - adapter.append_started_at) * 1000
+        if clamp_wins:
+            # The deadline bound: the append failed ~at the deadline.
+            assert 120 <= append_wait_ms <= 450, append_wait_ms
+        else:
+            # The default bound: the append failed ~at the default, far
+            # inside the 3000 ms deadline — the cap that made it win.
+            assert 200 <= append_wait_ms <= 500, append_wait_ms
+            assert append_wait_ms < deadline_ms
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+def test_row_b_clamp_is_entry_time_remaining_disclosed_overshoot(
+    tmp_path: Path,
+) -> None:
+    """Lane-1 F1's disclosed bound, pinned (final fold): the clamp is
+    computed at bracket ENTRY, so pre-BEGIN time inside the bracket —
+    here the adapter's 1 s idle before the contended append — consumes
+    budget the clamp never sees, and the contended busy-wait can END
+    past the step budget by that consumed amount. The busy-wait ITSELF
+    stays at the entry-time remaining (shortened only relative to the
+    open default); the overshoot is the disclosed residual, per-BEGIN
+    re-derivation deferred (the record's row 26). The old
+    'a busy-wait can never run past the step budget' claim is dead."""
+    harness = CaptureHarness(tmp_path, clock=time.monotonic)
+    try:
+        holder = _MidCaptureHolder(harness.db_path, hold_s=4.0)
+        first_landed = threading.Event()
+        proceed = threading.Event()
+        adapter = _GateWaitAdapter(first_landed, proceed, idle_s=1.0)
+        plugin, worker, outcome = _row_b_dispatch(
+            harness, adapter, deadline_ms=1500
+        )
+        holder.arm()
+        proceed.set()
+        worker.join(30)
+        assert not worker.is_alive(), "dispatch never returned"
+        result = outcome["result"]
+        assert result.error is not None
+        assert result.error.code is ErrorCode.RESOURCE_LIMIT
+        assert result.error.dispatch_state is DispatchState.DISPATCHED
+
+        dispatch_start = outcome["start"]
+        assert adapter.append_started_at is not None
+        assert adapter.append_failed_at is not None
+        pre_begin_ms = (adapter.append_started_at - dispatch_start) * 1000
+        fail_delta_ms = (adapter.append_failed_at - dispatch_start) * 1000
+        busy_wait_ms = (
+            adapter.append_failed_at - adapter.append_started_at
+        ) * 1000
+        # The pre-BEGIN idle really consumed bracket budget.
+        assert 900 <= pre_begin_ms <= 1400, pre_begin_ms
+        # The disclosed overshoot EXISTS: the busy-wait ends past the
+        # step budget — the corrected claim, not the dead one.
+        assert fail_delta_ms > 1500, fail_delta_ms
+        # ... by (approximately) the consumed amount, not unboundedly.
+        assert fail_delta_ms <= 1500 + pre_begin_ms + 300, fail_delta_ms
+        # The busy-wait itself stayed at the entry-time remaining.
+        assert 1300 <= busy_wait_ms <= 1700, busy_wait_ms
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+def test_row_b_sweep_and_startup_reclaim_never_enter_a_window(tmp_path: Path) -> None:
+    """B-R3: only the capture DISPATCH brackets a busy-timeout window.
+    plugin_close's sweep_open and the startup reclaim_orphans run at the
+    open default, unclamped — the recording store sees exactly the
+    dispatch windows and nothing from the sweep/reclaim paths."""
+    harness = CaptureHarness(tmp_path)
+    assert harness.controller is not None
+    windows: list[int] = []
+    original_window = harness.store.busy_timeout_window
+
+    @contextlib.contextmanager
+    def recording_window(ms: int) -> Any:
+        windows.append(ms)
+        with original_window(ms):
+            yield
+
+    harness.store.busy_timeout_window = recording_window  # type: ignore[method-assign]
+    try:
+        # A successful clamped capture: exactly ONE window (the clamp).
+        plugin, result = a_capture_dispatch(
+            harness, CaptureAdapter(), a_capture_request()
+        )
+        assert result.status is OperationStatus.OK
+        assert windows == [5000]  # the frozen harness clock -> remaining huge -> the default cap
+        assert (
+            int(harness.store.connection.execute("PRAGMA busy_timeout").fetchone()[0])
+            == 5000
+        )
+        plugin.plugin_close()
+        assert windows == [5000]  # the close sweep added nothing
+        # The startup reclaim path is equally window-free.
+        harness.controller.open_capture(
+            capture_id="cap-orphan",
+            fmt="raw_binary",
+            sample_count=None,
+            max_bytes=16,
+        )
+        harness.writer.reclaim_orphans("2026-09-22T00:00:00Z")
+        assert windows == [5000]  # still — reclaim_orphans is unclamped
+        assert harness.staged_count() == 0
+    finally:
+        harness.close()
+
+
+def test_row_b_gate_refusal_clamps_once_and_restores(tmp_path: Path) -> None:
+    """B-R2's gate arm: the G3 open_capture BEGIN runs INSIDE the clamp
+    window (bracketed with everything else), and a writer-originated
+    refusal there still restores the open default — one window entered,
+    none leaked."""
+    import threading
+
+    harness = CaptureHarness(tmp_path, busy_timeout_ms=80)
+    try:
+        db_path = str(
+            harness.store.connection.execute("PRAGMA database_list").fetchone()[2]
+        )
+        windows: list[int] = []
+        original_window = harness.store.busy_timeout_window
+
+        @contextlib.contextmanager
+        def recording_window(ms: int) -> Any:
+            windows.append(ms)
+            with original_window(ms):
+                yield
+
+        harness.store.busy_timeout_window = recording_window  # type: ignore[method-assign]
+        holder_lock = threading.Event()
+        release = threading.Event()
+
+        def holder() -> None:
+            contender = sqlite3.connect(db_path, timeout=5.0)
+            contender.execute("BEGIN IMMEDIATE")
+            holder_lock.set()
+            release.wait(10)
+            contender.rollback()
+            contender.close()
+
+        holder_thread = threading.Thread(target=holder)
+        holder_thread.start()
+        assert holder_lock.wait(10), "holder never took the write lock"
+        try:
+            plugin, result = a_capture_dispatch(harness, Adapter(), a_capture_request())
+            assert result.error is not None
+            assert result.error.code is ErrorCode.RESOURCE_LIMIT
+            assert result.error.dispatch_state is DispatchState.NOT_DISPATCHED
+            # The gate ran inside the clamp window (once), and the
+            # pragma is back at the commissioned default: no leak.
+            assert windows == [80]
+            assert (
+                int(
+                    harness.store.connection.execute(
+                        "PRAGMA busy_timeout"
+                    ).fetchone()[0]
+                )
+                == 80
+            )
+        finally:
+            release.set()
+            holder_thread.join(10)
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+def test_row_b_clamp_reads_the_injected_clock_no_hidden_second_clock(
+    tmp_path: Path,
+) -> None:
+    """F6's clock-domain pin: the clamp's remaining-deadline arithmetic
+    reads the capture services' INJECTED monotonic — there is no hidden
+    second clock. With the services clock diverging −60 s from the
+    deadline's timebase, the injected-clock remaining is huge and the
+    open default caps the clamp; a hidden real clock would compute
+    remaining ≈ 150 ms and clamp to that. The +60 s arm mirrors it: the
+    injected clock leaves 150 ms, and a hidden real clock would have
+    capped at the default instead."""
+    harness = CaptureHarness(
+        tmp_path, clock=lambda: time.monotonic() - 60.0
+    )
+    try:
+        windows: list[int] = []
+        original_window = harness.store.busy_timeout_window
+
+        @contextlib.contextmanager
+        def recording_window(ms: int) -> Any:
+            windows.append(ms)
+            with original_window(ms):
+                yield
+
+        harness.store.busy_timeout_window = recording_window  # type: ignore[method-assign]
+        plugin = harness.bridge(CaptureAdapter())
+        plugin.plugin_open(object())
+        plugin.dispatch(
+            a_capture_request(),
+            deadline_ns=time.monotonic_ns() + 150_000_000,
+        )
+        # injected remaining = 60.15 s -> the default cap, not 150 ms.
+        assert windows == [5000]
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+def test_row_b_clamp_negative_injected_remaining_clamps_to_zero(
+    tmp_path: Path,
+) -> None:
+    """F6's second arm: a services clock +60 s ahead leaves only 150 ms
+    of injected-clock remaining for a deadline 60.15 s out — the clamp is
+    150 ms, not the default cap a hidden real clock would produce."""
+    harness = CaptureHarness(
+        tmp_path, clock=lambda: time.monotonic() + 60.0
+    )
+    try:
+        windows: list[int] = []
+        original_window = harness.store.busy_timeout_window
+
+        @contextlib.contextmanager
+        def recording_window(ms: int) -> Any:
+            windows.append(ms)
+            with original_window(ms):
+                yield
+
+        harness.store.busy_timeout_window = recording_window  # type: ignore[method-assign]
+        plugin = harness.bridge(CaptureAdapter())
+        plugin.plugin_open(object())
+        result = plugin.dispatch(
+            a_capture_request(),
+            deadline_ns=int((time.monotonic() + 60.15) * 1_000_000_000),
+        )
+        assert result.status is OperationStatus.OK
+        # ~150 ms of injected-clock remaining (± scheduler jitter between
+        # the deadline stamp and the clamp entry) — decisively not the
+        # default cap a hidden real clock would produce.
+        assert len(windows) == 1 and 100 <= windows[0] <= 150, windows
+        plugin.plugin_close()
+    finally:
+        harness.close()

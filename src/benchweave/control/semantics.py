@@ -28,13 +28,17 @@ from typing import Any, NoReturn
 
 from benchweave.control.documents import AdmissionRejected, AdmittedDocuments
 
-#: The epilogue floor the static capture bound counts (F1): a capture's
-#: worst case is its ``timeout_ms`` PLUS the bounded wait the abort
-#: epilogue's ``BEGIN`` can incur under store contention. The value tracks
-#: the store's open-time ``busy_timeout`` — the measured bound it stands
-#: for (the stock ``sqlite3.connect`` default at ``state/store.py``, its
-#: origin unstated — fold F12); row B commissions the lifecycle-class
-#: floor per bench (A02) and owns this constant's replacement.
+#: The epilogue floor the static capture bound counts (F1, provenance per
+#: F12/A02 — issue #176 row B): a capture's worst case is its
+#: ``timeout_ms`` PLUS the bounded wait the abort epilogue's ``BEGIN``
+#: can incur under store contention. The epilogue's MECHANISM floor is
+#: ``min(this constant, the store's commissioned open busy timeout)``
+#: (``content/capture_store.py``); this constant caps the static bound,
+#: the store knob bounds the wait — one commissioning
+#: (``Store.open(busy_timeout_ms=...)``) moves both faces. Both numbers
+#: are the stock ``sqlite3.connect`` default named as such (a stock
+#: default, not a tuned constant); commission a per-bench value from
+#: qualification evidence through that knob.
 CAPTURE_EPILOGUE_FLOOR_MS = 5000
 
 

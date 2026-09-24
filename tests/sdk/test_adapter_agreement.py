@@ -713,8 +713,10 @@ def test_adapter_pin_rejects_an_aliased_adapter_call() -> None:
             (
                 EXECUTE_CALL,
                 "alias = self._adapter\n"
-                '                self._run(alias.next_event("subscriptions", context), context)\n'
-                f"                {EXECUTE_CALL}",
+                "                    self._run(\n"
+                '                        alias.next_event("subscriptions", context), context\n'
+                "                    )\n"
+                f"                    {EXECUTE_CALL}",
             ),
         )
     )
@@ -742,7 +744,8 @@ def test_adapter_pin_rejects_a_helper_argument_pass_through() -> None:
         (
             (
                 EXECUTE_CALL,
-                "self._dispatch_via(self._adapter, context)\n" f"                {EXECUTE_CALL}",
+                "self._dispatch_via(self._adapter, context)\n"
+                f"                    {EXECUTE_CALL}",
             ),
         )
     )
@@ -757,7 +760,7 @@ def test_adapter_pin_rejects_a_getattr_string_mediated_access() -> None:
             (
                 EXECUTE_CALL,
                 'self._run(getattr(self, "_adapter").next_event("subs", context), context)\n'
-                f"                {EXECUTE_CALL}",
+                f"                    {EXECUTE_CALL}",
             ),
         )
     )
@@ -772,7 +775,7 @@ def test_adapter_pin_rejects_a_dict_subscript_string_mediated_access() -> None:
             (
                 EXECUTE_CALL,
                 'self._run(self.__dict__["_adapter"].next_event("subs", context), context)\n'
-                f"                {EXECUTE_CALL}",
+                f"                    {EXECUTE_CALL}",
             ),
         )
     )
@@ -787,7 +790,7 @@ def test_adapter_pin_rejects_a_vars_subscript_string_mediated_access() -> None:
             (
                 EXECUTE_CALL,
                 'self._run(vars(self)["_adapter"].next_event("subs", context), context)\n'
-                f"                {EXECUTE_CALL}",
+                f"                    {EXECUTE_CALL}",
             ),
         )
     )

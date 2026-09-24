@@ -22,13 +22,25 @@ and dispatch. An uncertain failure poisons the session.
 Capture budget: a capture dispatch's deadline is the step's ``timeout_ms``
 clamped to the body deadline (``min(now + timeout_ms, body_deadline)``,
 shortened only — no new budget mechanism). The asyncio timeout is the
-detection bound for yielding adapters; blocking SQLite under store
-contention may hold a FAILED dispatch up to twice the store's
-``busy_timeout`` (the append's BEGIN and the abort epilogue's BEGIN each
-busy-wait, and the gate region may add a third stretch) before failing
-as a classified RESOURCE_LIMIT. A deadline-aware busy-timeout clamp is
-deferred to the activation slice (row 9) where real contention exists
-to design it against.
+detection bound for yielding adapters; blocking SQLite cannot be
+interrupted by it, so the whole capture dispatch runs inside a
+deadline-aware busy-timeout clamp (issue #176 row B): the store's
+``busy_timeout`` is set, for the dispatch only, to
+``min(open busy_timeout, REMAINING DEADLINE AT BRACKET ENTRY)`` and
+restored on every exit path. ENTRY-TIME-REMAINING semantics, stated
+exactly: the clamp bounds the wait to the remaining budget computed at
+bracket entry; pre-BEGIN time inside the bracket (the gate reserve, the
+envelope deepcopy, the adapter execute — the common mid-capture shape
+consumes budget the clamp never sees) widens the possible busy-wait
+overshoot past the step deadline by that amount. Not a regression: the
+static open-time default it replaced was strictly worse. Per-BEGIN
+re-derivation is deferred (the design record's final-fold deferral
+row). The abort epilogue runs under its OWN bounded floor
+(``min(CAPTURE_EPILOGUE_FLOOR_MS, the open busy_timeout)``) so a
+clamped-out capture still reclaims its staging rows; ``sweep_open``,
+``plugin_close`` and the startup reclaim stay unclamped. A clamped-out
+BEGIN fails as the same classified RESOURCE_LIMIT (the writer-stamp
+discipline); the session survives.
 """
 
 from __future__ import annotations
@@ -41,7 +53,7 @@ import re
 import sqlite3
 import threading
 from collections.abc import Awaitable, Callable
-from contextlib import suppress
+from contextlib import ExitStack, suppress
 from dataclasses import dataclass
 from typing import Any
 from uuid import uuid4
@@ -309,109 +321,123 @@ class OTDPBridge:
                 )
             if not math.isfinite(deadline) or self._services.monotonic() >= deadline:
                 return reject(ErrorCode.TIMEOUT, "Operation deadline expired")
-            capture_id: str | None = None
-            if request.verb.value == "capture":
-                gate = self._capture_gate(request)
-                if isinstance(gate, OperationResult):
-                    return gate
-                capture_id = gate
-            subscription_id: str | None = None
-            if request.verb.value == "stream_subscribe":
-                gate = self._subscribe_gate(request)
-                if isinstance(gate, OperationResult):
-                    return gate
-                subscription_id = gate
-            elif request.verb.value == "stream_unsubscribe":
-                preflight = self._unsubscribe_preflight(request)
-                if preflight is not None:
-                    return preflight
-                subscription_id = str(request.arguments["subscription_id"])
-            context = _Context(request.operation_id, deadline, self._services)
-            envelope = {
-                "operation_id": request.operation_id,
-                "verb": request.verb.value,
-                "arguments": copy.deepcopy(request.arguments),
-            }
+            with ExitStack() as clamp_stack:
+                if request.verb.value == "capture" and self._capture is not None:
+                    # Issue #176 row B: the deadline-aware busy-timeout
+                    # clamp brackets the WHOLE capture dispatch — gate
+                    # region, adapter execute, appends/finalise and the
+                    # classified-failure epilogue. The remaining-deadline
+                    # arithmetic runs here, on the injected monotonic
+                    # (STO-1: the store only sets what it is handed).
+                    clamp_stack.enter_context(
+                        self._capture.dispatch_clamp(
+                            deadline_ns,
+                            now_ns=int(self._services.monotonic() * 1_000_000_000),
+                        )
+                    )
+                capture_id: str | None = None
+                if request.verb.value == "capture":
+                    gate = self._capture_gate(request)
+                    if isinstance(gate, OperationResult):
+                        return gate
+                    capture_id = gate
+                subscription_id: str | None = None
+                if request.verb.value == "stream_subscribe":
+                    gate = self._subscribe_gate(request)
+                    if isinstance(gate, OperationResult):
+                        return gate
+                    subscription_id = gate
+                elif request.verb.value == "stream_unsubscribe":
+                    preflight = self._unsubscribe_preflight(request)
+                    if preflight is not None:
+                        return preflight
+                    subscription_id = str(request.arguments["subscription_id"])
+                context = _Context(request.operation_id, deadline, self._services)
+                envelope = {
+                    "operation_id": request.operation_id,
+                    "verb": request.verb.value,
+                    "arguments": copy.deepcopy(request.arguments),
+                }
 
-            def poison(exc: BaseException) -> OperationResult:
-                self._failed = True
-                return OperationResult.indeterminate(
-                    request.operation_id,
-                    request.verb,
-                    code=ErrorCode.TIMEOUT
-                    if isinstance(exc, TimeoutError)
-                    else ErrorCode.PROTOCOL_ERROR,
-                    message="Invalid, failed or late adapter result; no replay",
-                )
+                def poison(exc: BaseException) -> OperationResult:
+                    self._failed = True
+                    return OperationResult.indeterminate(
+                        request.operation_id,
+                        request.verb,
+                        code=ErrorCode.TIMEOUT
+                        if isinstance(exc, TimeoutError)
+                        else ErrorCode.PROTOCOL_ERROR,
+                        message="Invalid, failed or late adapter result; no replay",
+                    )
 
-            try:
-                result = self._run(self._adapter.execute(envelope, context), context)
-                converted = self._convert(request, result, context)
-                if capture_id is not None and self._capture is not None:
-                    # Success: retire the capture — no epilogue, no forensic
-                    # record; a published, acknowledged capture stands.
-                    self._capture.retire(capture_id)
-                if subscription_id is not None and self._stream is not None:
-                    if converted.status is OperationStatus.OK:
-                        # A successful unsubscribe closes the subscription
-                        # (no marker — the unsubscribe result is the record);
-                        # a successful subscribe keeps the reservation live.
-                        if request.verb.value == "stream_unsubscribe":
-                            self._stream.mark_closed(subscription_id)
-                    elif request.verb.value == "stream_subscribe":
-                        # The subscription did not establish: release the
-                        # reservation (nothing streamed, no marker).
+                try:
+                    result = self._run(self._adapter.execute(envelope, context), context)
+                    converted = self._convert(request, result, context)
+                    if capture_id is not None and self._capture is not None:
+                        # Success: retire the capture — no epilogue, no forensic
+                        # record; a published, acknowledged capture stands.
+                        self._capture.retire(capture_id)
+                    if subscription_id is not None and self._stream is not None:
+                        if converted.status is OperationStatus.OK:
+                            # A successful unsubscribe closes the subscription
+                            # (no marker — the unsubscribe result is the record);
+                            # a successful subscribe keeps the reservation live.
+                            if request.verb.value == "stream_unsubscribe":
+                                self._stream.mark_closed(subscription_id)
+                        elif request.verb.value == "stream_subscribe":
+                            # The subscription did not establish: release the
+                            # reservation (nothing streamed, no marker).
+                            self._stream.release(subscription_id)
+                    if self._failed:
+                        # Poison by result (an error envelope claiming dispatch
+                        # or unknown): clear the registry — a poisoned session
+                        # cannot leak live subscriptions until close.
+                        self._stream_clear()
+                    return converted
+                except (
+                    CaptureQuotaExceeded,
+                    EvidenceQuotaExceeded,
+                    sqlite3.OperationalError,
+                ) as exc:
+                    # Writer/bundle-originated resource conditions only: the
+                    # discriminator requires module-token identity AND binding to
+                    # THIS dispatch (C3 as amended) — a bare raise, a forged
+                    # attribute, or a genuine saved instance replayed on another
+                    # dispatch keeps the poison posture. In-process forgery of the
+                    # private tokens remains possible: adapters are trusted
+                    # Python (the module docstring's boundary); the stamp
+                    # separates accidental collision from origin, it does not
+                    # prove origin against deliberate hostility.
+                    if not self._capture_originated(exc, capture_id, request):
+                        if capture_id is not None:
+                            self._abort_contained(capture_id, request.operation_id)
+                        self._stream_clear()
+                        return poison(exc)
+                    self._abort_contained(capture_id, request.operation_id)
+                    if (
+                        subscription_id is not None
+                        and self._stream is not None
+                        and request.verb.value == "stream_subscribe"
+                    ):
+                        # The dispatch failed without poisoning the session: the
+                        # reservation it held is released (nothing streamed). An
+                        # unsubscribe failure keeps its subscription live.
                         self._stream.release(subscription_id)
-                if self._failed:
-                    # Poison by result (an error envelope claiming dispatch
-                    # or unknown): clear the registry — a poisoned session
-                    # cannot leak live subscriptions until close.
-                    self._stream_clear()
-                return converted
-            except (
-                CaptureQuotaExceeded,
-                EvidenceQuotaExceeded,
-                sqlite3.OperationalError,
-            ) as exc:
-                # Writer/bundle-originated resource conditions only: the
-                # discriminator requires module-token identity AND binding to
-                # THIS dispatch (C3 as amended) — a bare raise, a forged
-                # attribute, or a genuine saved instance replayed on another
-                # dispatch keeps the poison posture. In-process forgery of the
-                # private tokens remains possible: adapters are trusted
-                # Python (the module docstring's boundary); the stamp
-                # separates accidental collision from origin, it does not
-                # prove origin against deliberate hostility.
-                if not self._capture_originated(exc, capture_id, request):
+                    return OperationResult.failure(
+                        request.operation_id,
+                        request.verb,
+                        code=ErrorCode.RESOURCE_LIMIT,
+                        message=f"Capture resource condition: {exc}",
+                        # A7: every refusal raised after execute entry is
+                        # dispatched — never not_dispatched, and the session
+                        # survives (no poison).
+                        dispatch_state=DispatchState.DISPATCHED,
+                    )
+                except (Exception, asyncio.CancelledError) as exc:
                     if capture_id is not None:
                         self._abort_contained(capture_id, request.operation_id)
                     self._stream_clear()
                     return poison(exc)
-                self._abort_contained(capture_id, request.operation_id)
-                if (
-                    subscription_id is not None
-                    and self._stream is not None
-                    and request.verb.value == "stream_subscribe"
-                ):
-                    # The dispatch failed without poisoning the session: the
-                    # reservation it held is released (nothing streamed). An
-                    # unsubscribe failure keeps its subscription live.
-                    self._stream.release(subscription_id)
-                return OperationResult.failure(
-                    request.operation_id,
-                    request.verb,
-                    code=ErrorCode.RESOURCE_LIMIT,
-                    message=f"Capture resource condition: {exc}",
-                    # A7: every refusal raised after execute entry is
-                    # dispatched — never not_dispatched, and the session
-                    # survives (no poison).
-                    dispatch_state=DispatchState.DISPATCHED,
-                )
-            except (Exception, asyncio.CancelledError) as exc:
-                if capture_id is not None:
-                    self._abort_contained(capture_id, request.operation_id)
-                self._stream_clear()
-                return poison(exc)
 
     # The interoperable integer range (spec §4): values outside −(2^53−1)
     # through 2^53−1 are unsupported by the numeric interface — also the
@@ -1034,11 +1060,18 @@ class OTDPBridge:
         plus the forensic record, without depending on adapter cooperation.
         Fully contained — every failure is suppressed and logged, never
         replacing the OperationResult being returned. Runs ONLY for a
-        capture that was actually opened."""
+        capture that was actually opened, and (issue #176 row B) under the
+        epilogue's own bounded floor: the dispatch deadline may already be
+        spent, but the reclaim still waits for the lock up to
+        ``min(CAPTURE_EPILOGUE_FLOOR_MS, the store's open busy timeout)`` —
+        a clamped-out capture reclaims its staging rows instead of leaking
+        them."""
         if capture_id is None or self._capture is None:
             return
-        with suppress(Exception):
-            self._capture.abort(capture_id, reason="dispatch failed", operation_id=operation_id)
+        with suppress(Exception), self._capture.epilogue_floor():
+            self._capture.abort(
+                capture_id, reason="dispatch failed", operation_id=operation_id
+            )
 
     def _capture_manifest(
         self, request: OperationRequest, data: dict[str, Any]
