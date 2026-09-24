@@ -43,11 +43,18 @@ design and are untouched).
   The stage's own acceptance vehicle was the #147 fold replayed on a scratch branch; this
   train is the first head ever carried by a real PR.
 - **The gateway runtime cannot see dev bytes — by construction, and that shapes the
-  slicing.** `vendoring.contract_family` resolves only manifest-derived
-  `<id>/<active-version>` paths; nothing at runtime derives a `-dev` path (devstage §4.2
-  invisibility table, row "Gateway runtime"; that record's F1 verification states it
-  plainly — "nothing at runtime can address it" — and that is exactly why the runtime
-  surfaces gate on promotion). The exported bundle, SDK lock, vendored tree,
+  slicing.** The gateway's corpus sites are frozen literals, not manifest-derived
+  resolutions: `control/documents.py:48` and `control/coordinator.py:81` hardcode
+  `contract_family("execution/0.1.0")` (interface and registry follow the same pattern —
+  `interfaces/mcp.py:52`, `interfaces/validation.py:37`, `registry/schemas.py:22`), and
+  nothing at runtime derives a `-dev` path (devstage §4.2 invisibility table, row
+  "Gateway runtime"; that record's F1 verification states it plainly — "nothing at
+  runtime can address it" — and that is exactly why the runtime surfaces gate on
+  promotion). An earlier draft of this record claimed `vendoring.contract_family`
+  resolves only manifest-derived `<id>/<active-version>` paths — false per the refute's
+  lane-2 evidence: the resolver takes any caller-supplied name; it is the call sites
+  that pin the active version. The conclusion stands on the corrected premise — the
+  frozen literals cannot address `-dev`. The exported bundle, SDK lock, vendored tree,
   identity block, compatibility matrix, train window and report pins are all equally blind
   to the head. Therefore: while the head is open, the running gateway validates procedures
   against execution **0.1.0** and cannot admit a capture-bearing procedure — the four
@@ -141,7 +148,8 @@ is no separate pre-approval):
        "timeout_ms": {"type": "integer", "minimum": 1} }
      ```
 
-     required all six keys, `additionalProperties: false` — the closed §7 argument set minus
+     required all seven keys (id, kind, role, format, sample_count, max_bytes,
+     timeout_ms), `additionalProperties: false` — the closed §7 argument set minus
      `capture_id` (host-minted), plus `role` (the procedure-side binding every device step
      carries) and `timeout_ms` (**is** the capture budget — Amendment 3 of the #43 record;
      no new procedure-budget mechanism). `format` closes at the OTDP core-lane enum;
@@ -240,7 +248,13 @@ increment walks this section verbatim:
   `min(now + timeout_ms, body_deadline)`; the step's result is the returned captureManifest;
   the minted id is retained in the ledger entry's `issued_ids` and **invalidated when the
   step's operation does not succeed** (joining the `("invoke", "read", "write")` gate).
-  Replay/occurrence semantics are the ledger's, unchanged.
+  Replay/occurrence semantics are the ledger's, unchanged. **`_resolve_ref` gains the
+  capture arm (refute lane-2, verified):** the resolver (`executor.py:340–373`) is
+  verb-keyed and terminal-raises `pointer: results of verb 'capture' are not referable`
+  (`executor.py:372`) — while contract §3 (this head) promises `$stg_ref` into a capture
+  step's result resolving `/capture_id`, `/artifact_id` and `/sha256` (all required
+  captureManifest members in OTDP 0.2.2). The roll-up adds the resolver arm; A-R4's
+  $stg_ref-resolution arm is the pre-committed control that pins it.
 
 **The promotion increment (gated — its own PR, timed by the standards coordinator's
 call, fork 1 below), in full:** copy
@@ -251,7 +265,11 @@ promoted rows citing the **dev path** as `source` AND the pre-dev active 0.1.0 p
 **`lineage`** (the §13.10 required field; repin refuses a `lineage` naming a `-dev` path —
 the dev edge is what `source` carries); delete the dev directory and rows; remove the
 `dev` block (a leftover block fails `dev_target_not_greater` at load — the structural
-forgetfulness catch); flip the active entry; `repin`; regenerate the 0.2.0 validation
+forgetfulness catch); flip the active entry; bump the execution-corpus literals
+(`control/documents.py:48`, `control/coordinator.py:81`) in the same arc — the sweep
+sites the refute's lane-2 census named (interface's `interfaces/mcp.py:52` +
+`interfaces/validation.py:37` and registry's `registry/schemas.py:22` follow the same
+pattern at their own promotions); `repin`; regenerate the 0.2.0 validation
 report via `check_execution.py --write-report`; `docs/README.md` row; identity block's
 execution row (CON-8; no repin); export; SDK sync (SDK commit/push FIRST, main-repo pointer
 second); matrix regen; **and the four code surfaces above land in the same arc with
