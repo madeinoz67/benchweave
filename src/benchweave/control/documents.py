@@ -861,7 +861,26 @@ def _project_full_form(
         "profiles": list(descriptor.get("profiles", [])),
         "parameters": [parameter["name"] for parameter in descriptor["parameters"]],
         "actions": actions,
+        # The capture surface (CON-10, issue #176 increment 2): the
+        # artifact_writer permission flag and, when the descriptor
+        # advertises capture (the schema requires both capture keys
+        # together), the declared formats and limits the admission-time
+        # CTL-7 mirror reads. A transport-only adapter reads False with no
+        # capture keys — no permission is granted by a malformed shape
+        # (the adapter_permissions posture, projected).
+        "artifact_writer": "artifact_writer" in adapter_permissions(descriptor),
     }
+    capture_formats = descriptor.get("capture_formats")
+    capture_limits = descriptor.get("capture_limits")
+    if isinstance(capture_formats, list) and isinstance(capture_limits, dict):
+        view["capture_formats"] = [
+            fmt for fmt in capture_formats if isinstance(fmt, str)
+        ]
+        view["capture_limits"] = {
+            str(key): capture_limits[key]
+            for key in ("max_samples", "max_bytes")
+            if key in capture_limits
+        }
     if derived is not None:
         view["derived_variables"] = derived
     return view

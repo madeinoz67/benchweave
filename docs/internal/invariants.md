@@ -33,9 +33,11 @@ rather than rewriting the history — that is how this file earns trust.
   the safe transition is a fuse that blows by design.*
 - **[CTL-4]** `check_allowed` is deny-by-default and the executor consults it before EVERY
   state-changing dispatch: allowed only when at least one allow rule matches the actual
-  device and the exact action id (invoke) or parameter (write), and every matching rule's
-  constraints hold conjunctively — no order-dependent overrides. Rejections carry
-  machine-matchable prefixes (`no_matching_rule:`, `input_constraint:`, `value_constraint:`)
+  device and the exact action id (invoke), parameter (write) or format (capture — the
+  third allow-rule kind, issue #176 increment 2), and every matching rule's constraints
+  hold conjunctively — no order-dependent overrides. Rejections carry
+  machine-matchable prefixes (`no_matching_rule:`, `input_constraint:`, `value_constraint:`
+  and the capture family's `capture_constraint:`)
   — `src/benchweave/control/policy.py` `check_allowed`. *An allow-list cannot be widened by
   rule ordering, and a refused action must be greppable in evidence.*
 - **[CTL-5]** The executor answers every re-entry from the occurrence ledger without
@@ -54,9 +56,15 @@ rather than rewriting the history — that is how this file earns trust.
   blocks — never a later sibling, never itself, never a step inside a branch body from
   outside it, never a repeat iteration's results from outside the loop or from another
   iteration. `$stg_issue` appears only at invoke input keys the role's device descriptor
-  marks issued for that exact action — `src/benchweave/control/semantics.py`. *Scoping is
-  what makes a bounded, reviewable procedure language out of JSON (A12); a reference that
-  can see sideways or forwards is an unreviewable one.*
+  marks issued for that exact action. Capture steps carry literals only (the corpus's
+  closed branch admits no reference positions), and their admission-time descriptor
+  mirror refuses `capture_undeclared:` when the bound device does not declare
+  `artifact_writer` with `capture_formats`/`capture_limits`, a declared format, or limits
+  covering the requested `sample_count`/`max_bytes` —
+  `src/benchweave/control/semantics.py`. *Scoping is what makes a bounded, reviewable
+  procedure language out of JSON (A12); a reference that can see sideways or forwards is
+  an unreviewable one, and a capture an unqualified device cannot serve is refused at
+  admission rather than at dispatch.*
 - **[CTL-8]** Monitoring wraps every plugin dispatch with a tick before and after, slices
   every monotonic wait at the bench poll cadence, and stays single-threaded and
   deterministic on the injected clocks. A condition violation during the body blocks the
@@ -247,7 +255,9 @@ rather than rewriting the history — that is how this file earns trust.
   properties names no issuable fields; refusal prefix `issued_map:`), and
   projects a total execution view (`{id, version = descriptor_version, profiles
   (absent → []), parameter names, actions + issued, derived_variables
-  passthrough}`) that binding, semantics and the coordinator read; the bench pin
+  passthrough, artifact_writer permission flag, capture_formats/capture_limits
+  when the descriptor advertises capture}`) that binding, semantics and the
+  coordinator read; the bench pin
   verifies against the RAW document's `id`/`descriptor_version` and the raw bytes'
   digest — `src/benchweave/control/documents.py` `_project_descriptor`. The slim
   list dialect (`id`/`version`/string-lists) is refused: `check`-clean is a

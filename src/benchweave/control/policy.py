@@ -79,19 +79,24 @@ def check_allowed(
 ) -> None:
     """Return when the action is allowed; raise :class:`PolicyDenied` otherwise.
 
-    ``target`` is the action id for ``invoke`` rules and the parameter name
-    for ``write`` rules; ``payload`` is the invoke input object or the write
-    scalar value. A rule matches only on identical ``device_id``, ``kind``
-    and target — an empty match denies (the state-changing default), and all
-    matching rules must then pass conjunctively.
+    ``target`` is the action id for ``invoke`` rules, the parameter name
+    for ``write`` rules and the format for ``capture`` rules; ``payload``
+    is the invoke input object, the write scalar value, or the capture
+    request object ``{format, sample_count, max_bytes}``. A rule matches
+    only on identical ``device_id``, ``kind`` and target — an empty match
+    denies (the state-changing default), and all matching rules must then
+    pass conjunctively. Capture constraints evaluate
+    ``capture_constraints`` conjunctively like the other kinds, with the
+    same payload-must-be-an-object guard and ``vacuous_constraint:``
+    warning parity (CTL-4's third allow-rule kind).
     """
 
+    target_key = {"invoke": "action_id", "capture": "format"}.get(kind, "parameter")
     matching: list[tuple[str, dict[str, Any]]] = []
     for index, rule in enumerate(policy["allow_rules"]):
         if rule.get("device_id") != device_id or rule.get("kind") != kind:
             continue
-        rule_target = rule.get("action_id") if kind == "invoke" else rule.get("parameter")
-        if rule_target == target:
+        if rule.get(target_key) == target:
             matching.append((f"allow_rules[{index}]", rule))
     if not matching:
         raise PolicyDenied(f"no_matching_rule: {kind} {target} on device {device_id}", ())
@@ -106,6 +111,16 @@ def check_allowed(
                 tuple(rule_id for rule_id, _ in matching),
             )
         prefix, constraints_key = "input_constraint", "input_constraints"
+    elif kind == "capture":
+        # The capture payload is the request object; the same object-only
+        # guard applies so a scalar can never satisfy an object schema.
+        if not isinstance(payload, dict):
+            raise PolicyDenied(
+                f"capture_constraint: capture payload for {target} on device "
+                f"{device_id} is not an object",
+                tuple(rule_id for rule_id, _ in matching),
+            )
+        prefix, constraints_key = "capture_constraint", "capture_constraints"
     else:
         prefix, constraints_key = "value_constraint", "value_constraints"
 
