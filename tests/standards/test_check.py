@@ -306,6 +306,8 @@ def test_mirror_refusal_names_uninitialized_submodule(tmp_path: Path) -> None:
         "the uninitialized refusal carries no SHAs — a superproject HEAD must "
         "never be misattributed as submodule state"
     )
+    # The anchor inherits the state gate: one refusal, no second family line.
+    assert "sdk_version_unanchored" not in _prefixes(failures)
 
 
 def test_mirror_refuses_moved_submodule_with_honest_message(tmp_path: Path) -> None:
@@ -331,6 +333,8 @@ def test_mirror_refuses_moved_submodule_with_honest_message(tmp_path: Path) -> N
     )
     assert "run git submodule update --init packages/sdk" in failures[0]
     assert "update standards-manifest.json" not in failures[0]
+    # The anchor inherits the same gate: the moved posture adds no second line.
+    assert "sdk_version_unanchored" not in _prefixes(failures)
     # Restoring the pin greens the check: the pinned lock matches the mirror.
     _git("submodule", "update", "--init", "packages/sdk", cwd=repo)
     assert run_check(repo) == []
@@ -413,6 +417,29 @@ def test_sdk_version_anchor_refuses_undeclared_lock_sdk(tmp_path: Path) -> None:
     failures = run_check(_standards_root(tmp_path), sdk)
     assert "sdk_version_unanchored" in _prefixes(failures)
     assert "sdk_compatibility_drift" in _prefixes(failures)
+
+
+def test_sdk_version_anchor_greens_a_regenerated_pairing(tmp_path: Path) -> None:
+    """The green control: a correctly regenerated pairing (#189 shape) never refuses.
+
+    lock ``sdk`` == mirror ``sdk`` == pinned pyproject — the anchor adds no
+    line. ``test_real_tree_is_clean`` carries the same proof against the live
+    tree in CI; this pins the synthetic-fixture shape.
+    """
+    import tomllib
+
+    from benchweave.standards.check import run_check
+
+    sdk = _sdk_copy(tmp_path)
+    root = _standards_root(tmp_path)
+    with (sdk / "pyproject.toml").open("rb") as handle:
+        pinned = str(tomllib.load(handle)["project"]["version"])
+    mirror = json.loads((root / "standards" / "standards-manifest.json").read_bytes())
+    lock = _lock(sdk)
+    # Precondition: the untouched fixture copy IS the three-way-equal pairing —
+    # this test guards the anchor's false-positive edge, so pin it explicitly.
+    assert lock["compatibility"]["sdk"] == mirror["sdk_compatibility"]["sdk"] == pinned
+    assert run_check(root, sdk) == []
 
 
 # --- the RC candidate marker in the versions glance (devstage record §13.9) --------
