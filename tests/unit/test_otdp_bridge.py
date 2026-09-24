@@ -2530,7 +2530,7 @@ def test_row_b_clamp_bounds_the_mid_capture_wait_by_the_step_deadline(
         plugin, worker, outcome = _row_b_dispatch(
             harness, adapter, deadline_ms=200
         )
-        acquired_at = holder.arm()
+        holder.arm()
         proceed.set()
         worker.join(30)
         assert not worker.is_alive(), "dispatch never returned"
@@ -2549,6 +2549,7 @@ def test_row_b_clamp_bounds_the_mid_capture_wait_by_the_step_deadline(
         # hold. Under the unclamped open default (5000 ms) the append waits
         # the hold out and the capture SUCCEEDS past its deadline.
         assert adapter.append_failed_at is not None
+        assert adapter.append_started_at is not None
         append_wait_ms = (adapter.append_failed_at - adapter.append_started_at) * 1000
         assert 120 <= append_wait_ms <= 450, append_wait_ms
 
@@ -2605,7 +2606,7 @@ def test_row_b_both_clamp_orderings_classify_one_pair(
         plugin, worker, outcome = _row_b_dispatch(
             harness, adapter, deadline_ms=deadline_ms
         )
-        acquired_at = holder.arm()
+        holder.arm()
         proceed.set()
         worker.join(30)
         result = outcome["result"]
@@ -2615,6 +2616,7 @@ def test_row_b_both_clamp_orderings_classify_one_pair(
         assert result.error.dispatch_state is DispatchState.DISPATCHED
 
         assert adapter.append_failed_at is not None
+        assert adapter.append_started_at is not None
         append_wait_ms = (adapter.append_failed_at - adapter.append_started_at) * 1000
         if clamp_wins:
             # The deadline bound: the append failed ~at the deadline.
