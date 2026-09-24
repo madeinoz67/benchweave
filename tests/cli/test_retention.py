@@ -48,30 +48,35 @@ def _combined(result: Result) -> str:
 
 
 def _write_policy(path: Path, **kw: Any) -> Path:
+    # kw["retain_after_all"] overrides every rule's anchor (fix-wave tests
+    # exercise run_end on class-governed rows too, not only default-governed).
+    def _anchor(default: str) -> str:
+        return str(kw.get("retain_after_all", default))
+
     doc: dict[str, Any] = {
         "config_version": "1",
         "default": {
             "duration_s": kw.get("default_s", 3600),
-            "retain_after": "run_end" if kw.get("run_end") else "landing",
+            "retain_after": _anchor("run_end" if kw.get("run_end") else "landing"),
             "on_disposition": "review",
         },
         "classes": [
             {
                 "selector": "capture:waveform_f64le",
                 "duration_s": kw.get("waveform_s", 3600),
-                "retain_after": "landing",
+                "retain_after": _anchor("landing"),
                 "on_disposition": "delete",
             },
             {
                 "selector": "capture:raw_binary",
                 "duration_s": 7200,
-                "retain_after": "landing",
+                "retain_after": _anchor("landing"),
                 "on_disposition": "review",
             },
             {
                 "selector": "evidence:event_log",
                 "duration_s": kw.get("event_log_s", 86400),
-                "retain_after": "landing",
+                "retain_after": _anchor("landing"),
                 "on_disposition": "archive",
                 **({"hold": True} if kw.get("hold_event_log") else {}),
             },
@@ -116,7 +121,11 @@ def _seed(tmp_path: Path) -> Path:
             store.create_run(run, {"procedure_id": "demo"}, "op", T0)
             store.put_run_state(run, bench, "running" if run == "run-c" else "terminal", T2)
             if run != "run-c":
-                store.finalize_run(run, {"run_id": run, "outcome": "passed"})
+                # A real terminal record carries ended_at (build_terminal_record);
+                # the retention report anchors run_end on exactly that field.
+                store.finalize_run(
+                    run, {"run_id": run, "outcome": "passed", "ended_at": T2}
+                )
 
         writer = CaptureStagingStore(
             store, max_capture_bytes=10_000_000, max_dataset_bytes=10_000_000
@@ -590,3 +599,127 @@ def test_cli_retention_unknown_bench_refuses(tmp_path: Path) -> None:
         cli, ["retention", "--data-dir", str(data_dir), "--bench", "no-such-bench"]
     )
     assert result.exit_code != 0
+
+
+# --- fix wave (issue #184): adjudicated findings, RED-first -------------------------
+
+NAIVE = "2026-09-20T00:03:00"  # no offset — never a host-TZ-localized guess
+T3 = "2026-09-25T00:00:00Z"  # five days after T2
+
+
+def test_fw1_run_end_anchors_on_the_terminal_record_not_the_projection(
+    tmp_path: Path,
+) -> None:
+    """Finding 1 (HIGH): the run_end anchor is the terminal run record's
+    immutable ``ended_at`` (``runs.terminal_json``), never
+    ``run_states.updated_at`` — which every later ``put_run_state`` (the
+    worker's post-finalize terminal put, the recovery stale-projection
+    close) moves."""
+    data_dir = _seed(tmp_path)
+    pol = _write_policy(
+        data_dir / "retention-policy.json", retain_after_all="run_end"
+    )
+
+    def disposal_of(model: dict[str, Any]) -> str:
+        row = next(r for r in model["rows"] if r["id"] == "cap-wave")
+        assert row["status"] == "scheduled", row
+        return str(row["disposal_date"])
+
+    # The seed finalised run-a with ended_at=T2; run_states.updated_at is T2.
+    first = disposal_of(_model(data_dir, policy_path=pol, now=NOW))
+    assert first == "2026-09-20T01:02:00Z"  # T2 + 3600 s default duration
+
+    # The worker's completion close / recovery re-stamp moves ONLY the
+    # projection (run_states.updated_at); the terminal record is immutable.
+    store = Store.open(db_path(data_dir))
+    try:
+        store.put_run_state("run-a", BENCH, "terminal", T3)
+    finally:
+        store.close()
+    after = disposal_of(_model(data_dir, policy_path=pol, now=NOW))
+    assert after == first, "run_end disposal moved with a later put_run_state"
+
+
+def test_fw5_naive_stamps_anchor_unresolved_and_never_host_local(
+    tmp_path: Path,
+) -> None:
+    """Finding 5 (MED): naive (no offset) stamps yield ``anchor_unresolved``
+    with ``disposal_date: null`` — never a host-TZ-localized guess; the
+    rendered report is byte-identical under different host timezones."""
+    import time
+
+    data_dir = _seed(tmp_path)
+    _write_policy(data_dir / "retention-policy.json", run_end=True)
+    # one capture finalised with a NAIVE stamp (a foreign writer's shape)
+    store = Store.open(db_path(data_dir))
+    try:
+        writer = CaptureStagingStore(
+            store, max_capture_bytes=10_000_000, max_dataset_bytes=10_000_000
+        )
+        writer.open_capture(
+            capture_id="cap-naive", context_key="run:run-a", fmt="raw_binary",
+            sample_count=None, max_bytes=512, now=T0)
+        writer.append("cap-naive", b"\x03" * 32, "run:run-a")
+        writer.finalise("cap-naive", NAIVE, "run:run-a")
+    finally:
+        store.close()
+
+    from benchweave.cli.retention import render_json
+
+    def report_bytes() -> tuple[str, dict[str, dict[str, Any]]]:
+        model = _model(data_dir, now=NOW)
+        payload = render_json(model)
+        rows = {r["id"]: r for r in model["rows"]}
+        return payload, rows
+
+    monkey = pytest.MonkeyPatch()
+    try:
+        monkey.setenv("TZ", "Australia/Perth")
+        time.tzset()
+        perth, perth_rows = report_bytes()
+        monkey.setenv("TZ", "UTC")
+        time.tzset()
+        utc, utc_rows = report_bytes()
+    finally:
+        monkey.undo()
+        time.tzset()
+
+    assert perth == utc, "report is host-timezone dependent"
+    for rows in (perth_rows, utc_rows):
+        naive_row = rows["cap-naive"]
+        assert naive_row["status"] == "anchor_unresolved"
+        assert naive_row["disposal_date"] is None
+
+
+def test_fw5_unparseable_and_naive_terminal_records_stay_unresolved(
+    tmp_path: Path,
+) -> None:
+    """Finding 5 arm: a run_end anchor whose terminal record is missing,
+    unparseable, or naive resolves to ``anchor_unresolved`` — no crash, no
+    guess."""
+    data_dir = _seed(tmp_path)
+    pol = _write_policy(
+        data_dir / "retention-policy.json", retain_after_all="run_end"
+    )
+
+    def run_a_rows() -> list[dict[str, Any]]:
+        # alpha-bench carries no bench scope, so its rows resolve to the
+        # global run_end rules and read the terminal record's ended_at
+        model = _model(data_dir, policy_path=pol, now=NOW)
+        return [r for r in model["rows"] if r["context_key"] == "run:run-a"]
+
+    for bad_ended_at in ("not-a-timestamp", NAIVE):
+        store = Store.open(db_path(data_dir))
+        try:
+            store.finalize_run(
+                "run-a", {"run_id": "run-a", "outcome": "passed",
+                          "ended_at": bad_ended_at})
+        finally:
+            store.close()
+        rows = run_a_rows()
+        assert rows, "run-a must own report rows"
+        assert all(
+            r["status"] == "anchor_unresolved" and r["disposal_date"] is None
+            for r in rows
+        ), (bad_ended_at, rows)
+

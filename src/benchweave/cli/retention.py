@@ -28,12 +28,17 @@ Disclosed derivations:
 - **Anchors.** ``landing`` resolves from ``evidence.stored_at`` or, for
   captures, the finalise-time ``capture_staging.updated_at`` (the staging
   table's stored-at analogue — disclosed; no migration is permitted this
-  slice). ``run_end`` resolves to the owning run's terminal transition
-  stamp (``run_states.updated_at`` where the state is terminal; terminal
-  = not in ``interfaces.operations.LIVE_RUN_STATES``). A ``run_end`` row
-  whose run is non-terminal or unattributed yields status
-  ``anchor_unresolved`` with ``disposal_date: null`` — never a
-  substituted anchor.
+  slice). ``run_end`` resolves to the owning run's TERMINAL RECORD
+  ``ended_at`` (``runs.terminal_json`` — written once at finalise by
+  ``build_terminal_record`` and never moved). A ``run_end`` row whose run
+  has no terminal record (live, interrupted, closed-without-record) or is
+  unattributed yields status ``anchor_unresolved`` with
+  ``disposal_date: null`` — never a substituted anchor. Every stamp parses
+  defensively (issue #184 fork C): naive (no offset) or unparseable stamps
+  resolve to nothing rather than a host-timezone-localized guess, so the
+  report is byte-identical under any host ``TZ`` and no single stamp can
+  crash the build (no escaping ``TypeError``/``OverflowError``/
+  ``ValueError``).
 - **Byte accounting.** Stored bytes are ``SELECT SUM(LENGTH(data)) FROM
   artifacts`` — the artifact table is the source of truth and
   content-addressed dedup UNDER-counts (the honest direction); both
@@ -132,8 +137,17 @@ def _iso(moment: datetime) -> str:
 
 
 def _parse_utc(value: Any) -> datetime | None:
-    """Parse a stored stamp; unparseable → None (treated as unresolved)."""
-    return _parse(value) if isinstance(value, str) else None
+    """Parse a stored stamp defensively; naive (no offset) or unparseable →
+    None (issue #184 fork C: a foreign stamp is never resolved into a
+    host-timezone-localized guess — the row reports ``anchor_unresolved``
+    / is excluded from span math and counted instead)."""
+    if not isinstance(value, str):
+        return None
+    try:
+        moment = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (ValueError, OverflowError):
+        return None
+    return moment if moment.tzinfo is not None else None
 
 
 # --- the model ----------------------------------------------------------------------
@@ -162,6 +176,30 @@ def _artifact_bytes(store: Store, artifact_id: str | None) -> int:
         "SELECT LENGTH(data) FROM artifacts WHERE artifact_id = ?", (artifact_id,)
     ).fetchone()
     return int(row[0]) if row is not None and row[0] is not None else 0
+
+
+def _terminal_ended_at(store: Store) -> dict[str, str | None]:
+    """``runs.terminal_json['ended_at']`` keyed by run id — the immutable
+    terminal-record stamp (``build_terminal_record`` writes it once at
+    finalise). The run_end anchor reads exactly this (issue #184 finding 1):
+    ``run_states.updated_at`` moves with every later ``put_run_state`` (the
+    worker's post-finalize terminal put, the recovery stale-projection
+    close), so it is the projection's freshness, never the run's end."""
+    ended: dict[str, str | None] = {}
+    for run_id, terminal_json in store.connection.execute(
+        "SELECT run_id, terminal_json FROM runs"
+    ):
+        ended_at: str | None = None
+        if isinstance(terminal_json, str):
+            try:
+                record: Any = json.loads(terminal_json)
+            except json.JSONDecodeError:
+                record = None
+            if isinstance(record, dict):
+                candidate = record.get("ended_at")
+                ended_at = candidate if isinstance(candidate, str) else None
+        ended[str(run_id)] = ended_at
+    return ended
 
 
 def _bench_of(context: str | None, run_states: dict[str, dict[str, Any]]) -> str | None:
@@ -269,8 +307,6 @@ def build_retention_report(
     ``max_dataset_bytes`` fixes the wedge ceiling (env
     ``BENCHWEAVE_MAX_DATASET_BYTES`` is the fallback).
     """
-    from benchweave.interfaces.operations import LIVE_RUN_STATES
-
     now_dt = _parse(now)
     if now_dt is None:
         raise ValueError(f"now {now!r} is not an ISO-8601 timestamp")
@@ -278,21 +314,23 @@ def build_retention_report(
         raise ValueError(f"no bench {bench_id!r} in the store")
     covered = _covered(store, bench_id)
     run_states = _run_state_rows(store)
+    terminal_ended = _terminal_ended_at(store)
 
     rows: list[dict[str, Any]] = []
     earliest: datetime | None = None
 
     def _anchor(rule_after: str | None, landing_at: Any, context: str | None) -> str | None:
-        """Resolve the row's anchor stamp under the governing retain_after."""
+        """Resolve the row's anchor stamp under the governing retain_after.
+
+        ``run_end`` resolves ONLY to the terminal record's immutable
+        ``ended_at``; a run with no terminal record (live, interrupted, or
+        closed-without-record by the poison guard) is honestly unresolved —
+        never the moving ``run_states.updated_at`` projection stamp."""
         if rule_after != "run_end":
             return landing_at if isinstance(landing_at, str) else None
         if not isinstance(context, str) or not context.startswith(_RUN_CONTEXT_PREFIX):
             return None
-        state_row = run_states.get(context.removeprefix(_RUN_CONTEXT_PREFIX))
-        if state_row is None or state_row["state"] in LIVE_RUN_STATES:
-            return None
-        stamp = state_row["updated_at"]
-        return stamp if isinstance(stamp, str) else None
+        return terminal_ended.get(context.removeprefix(_RUN_CONTEXT_PREFIX))
 
     # --- governed captures: finalised staging rows in stored order --------
     for cap_id, context, fmt, charged, _artifact, updated_at in store.connection.execute(
