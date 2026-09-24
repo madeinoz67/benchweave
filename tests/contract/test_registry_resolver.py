@@ -471,6 +471,52 @@ def test_unreadable_signature_is_bad_signature(
     assert exc.value.reason == "bad_signature"
 
 
+@requires_signing_keys
+def test_pretty_printed_manifest_refused_as_not_canonical() -> None:
+    """Row G (issue #176, design F4): a content-identical manifest
+    re-serialized non-canonically — pretty-printed, with its status
+    re-pinned and re-signed to the new raw bytes so every raw-digest pin
+    agrees — refuses at RESOLUTION with ``manifest_not_canonical`` naming
+    the package. The pin lattice (status rows, lock dependencies, catalogue,
+    cache directory, loader check) is keyed by ONE digest and is only
+    coherent when admissible manifest bytes ARE the canonical serialization;
+    without this check the release resolves and admits cleanly and the
+    mismatch surfaces only later, at ``load_otdp_plugin``, as a misleading
+    ``manifest_hash_mismatch``."""
+    pretty = json.dumps(
+        json.loads((REG / "origin-main/benchweave/sim-psu/1.0.0/manifest.json").read_bytes()),
+        indent=2,
+    )
+    raw = pretty.encode()
+    source = _OverlaySource(
+        base=LocalDirectorySource(REG / "origin-main"),
+        manifests={("benchweave/sim-psu", "1.0.0"): (raw, _sign_with_main(raw))},
+        statuses={
+            ("benchweave/sim-psu", "1.0.0"): _restatus(
+                "benchweave/sim-psu", "1.0.0", _sha(raw)
+            )
+        },
+    )
+    with pytest.raises(RegistryRejected) as exc:
+        Resolver(_origins(source)).resolve(
+            "origin-main", "benchweave/sim-psu", "1.0.0", now_ns=NOW, high_water={}
+        )
+    assert exc.value.reason == "manifest_not_canonical"
+    assert "benchweave/sim-psu" in str(exc.value)
+
+
+def test_every_in_tree_fixture_manifest_is_canonical() -> None:
+    """Row G collateral guard (G-R2): every in-tree fixture manifest serves
+    the canonical serialization — the builder's only emission form — so the
+    resolver's canonicality refusal moves no fixture bytes beyond the
+    row-D lattice rebuild."""
+    manifests = sorted(REG.glob("origin-*/benchweave/*/*/manifest.json"))
+    assert len(manifests) == 6
+    for path in manifests:
+        raw = path.read_bytes()
+        assert raw == _canonical(json.loads(raw)), str(path)
+
+
 def test_payload_size_limit_rejects_before_read(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
