@@ -33,17 +33,6 @@ from benchweave.vendoring import CorpusResolution, declared_dev_family
 REPO = Path(vendoring.__file__).resolve().parents[2]
 
 
-def _head_version() -> str:
-    """The execution head the manifest declares (the train's open head)."""
-    manifest: dict[str, Any] = json.loads(
-        (REPO / "standards/standards-manifest.json").read_text()
-    )
-    entry = next(e for e in manifest["standards"] if e["id"] == "execution")
-    dev = entry.get("dev")
-    assert dev is not None, "the execution train runs against an open dev head"
-    return str(dev["version"])
-
-
 def _standards_tree(tmp_path: Path, entry: dict[str, Any]) -> Path:
     """A minimal standards tree whose manifest declares exactly ``entry``."""
     root = tmp_path / "repo"
@@ -81,9 +70,10 @@ def _packaged_root(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
 def test_s_r1_default_composition_is_today() -> None:
     """S-R1: the default composition resolves the active family — the
     frozen literals stay the sites' defaults, byte-identical posture, and
-    the opt-in channel is keyword-only enum injection."""
-    assert vendoring.contract_family("execution/0.1.0") == documents_module._CONTRACTS
-    assert vendoring.contract_family("execution/0.1.0") == coordinator_module._CONTRACTS
+    the opt-in channel is keyword-only enum injection. The literal moved
+    to 0.2.0 with the promotion sweep."""
+    assert vendoring.contract_family("execution/0.2.0") == documents_module._CONTRACTS
+    assert vendoring.contract_family("execution/0.2.0") == coordinator_module._CONTRACTS
     parameter = inspect.signature(create_app).parameters["execution_corpus"]
     assert parameter.kind is inspect.Parameter.KEYWORD_ONLY
     assert parameter.default is CorpusResolution.ACTIVE
@@ -132,13 +122,12 @@ def test_s_r1_active_composition_never_invokes_the_dev_resolver(
         store.close()
 
 
-def test_s_r2_resolves_exactly_the_declared_head() -> None:
-    """S-R2: DEV_HEAD resolves the manifest-declared head through the
-    canonical resolver — the same directory the checker lane validates."""
-    version = _head_version()
-    family = declared_dev_family("execution")
-    assert family == vendoring.contract_family(f"execution/{version}")
-    assert family.is_dir()
+def test_s_r2_self_retirement_is_live_truth_on_the_real_tree() -> None:
+    """S-R2, post-promotion: the real manifest declares no dev head, so
+    a stray DEV_HEAD resolution refuses by name — the seam cannot
+    outlive the head, and it never falls back to the active corpus."""
+    with pytest.raises(ValueError, match="execution_dev_head_absent:"):
+        declared_dev_family("execution")
 
 
 def test_s_r2_self_retires_when_no_head_declared(

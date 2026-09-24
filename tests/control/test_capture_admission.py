@@ -1,12 +1,11 @@
-"""The capture runtime surfaces at admission (issue #176 increment 2, §1b).
+"""The capture runtime surfaces at admission (issue #176, §1b).
 
 The projection (CON-10 capture surface), the semantics mirror (CTL-7's
 ``capture_undeclared:`` family) and the policy kind (CTL-4's
-``capture_constraint:``), exercised against DEV_HEAD-composed admission:
-every admission here runs ``admit_documents`` with the manifest-declared
-dev head's contracts. Until the promotion event this machinery is
-corpus-gated dormant code on main — the default composition resolves
-0.1.0, which refuses capture steps at the schema.
+``capture_constraint:``), exercised through the DEFAULT composition's
+admission: every admission here runs ``admit_documents`` against the
+released execution 0.2.0 corpus — the promotion moved the capture family
+into the active corpus, ending the corpus-gated dormant posture.
 """
 
 from __future__ import annotations
@@ -23,10 +22,12 @@ from benchweave.control.documents import AdmissionRejected, admit_documents
 from benchweave.control.policy import PolicyDenied, check_allowed
 from benchweave.control.semantics import check_semantics, worst_case_body_ms
 from benchweave.state.store import Store
-from benchweave.vendoring import declared_dev_family
+from benchweave.vendoring import contract_family
 
-HEAD = declared_dev_family("execution")
-EXECUTION_FIXTURES = Path(HEAD).resolve().parents[2] / "fixtures" / "execution"
+#: The active execution corpus (the same frozen literal the control
+#: sites resolve — the DEFAULT composition's contracts directory).
+ACTIVE_CORPUS = contract_family("execution/0.2.0")
+EXECUTION_FIXTURES = Path(ACTIVE_CORPUS).resolve().parents[2] / "fixtures" / "execution"
 NOW = "2026-09-24T00:00:00Z"
 
 
@@ -107,7 +108,7 @@ def _lattice(
         steps = [_capture_step()]
     max_body_ms = 8000
     procedure: dict[str, Any] = {
-        "contract_version": "0.1.0",
+        "contract_version": "0.2.0",
         "id": "capture-procedure",
         "version": "0.1.0",
         "description": "Synthetic capture harness procedure.",
@@ -143,7 +144,7 @@ def _lattice(
             }
         ]
     policy: dict[str, Any] = {
-        "contract_version": "0.1.0",
+        "contract_version": "0.2.0",
         "id": "capture-policy",
         "version": "0.1.0",
         "description": "Synthetic capture harness policy.",
@@ -214,7 +215,7 @@ def _lattice(
         return hashlib.sha256(path.read_bytes()).hexdigest()
 
     bench: dict[str, Any] = {
-        "contract_version": "0.1.0",
+        "contract_version": "0.2.0",
         "id": "capture-bench",
         "version": "0.1.0",
         "description": "Synthetic capture harness bench. Not hardware-qualified.",
@@ -289,7 +290,7 @@ def _lattice(
     bench_path.write_text(json.dumps(bench, indent=2) + "\n")
 
     commissioning: dict[str, Any] = {
-        "contract_version": "0.1.0",
+        "contract_version": "0.2.0",
         "id": "capture-commissioning",
         "version": "0.1.0",
         "description": "Synthetic capture harness commissioning. Not hardware-qualified.",
@@ -342,7 +343,7 @@ def _lattice(
     commissioning_path.write_text(json.dumps(commissioning, indent=2) + "\n")
 
     binding: dict[str, Any] = {
-        "contract_version": "0.1.0",
+        "contract_version": "0.2.0",
         "request_id": request_id,
         "procedure": {"id": "capture-procedure", "version": "0.1.0"},
         "bench": {"id": "capture-bench", "version": "0.1.0"},
@@ -384,7 +385,7 @@ def _admit(paths: dict[str, Path]) -> Any:
         commissioning_path=paths["commissioning"],
         descriptor_paths={"demo-supply": paths["descriptor"]},
         now_wall=NOW,
-        contracts=HEAD,
+        contracts=ACTIVE_CORPUS,
     )
 
 

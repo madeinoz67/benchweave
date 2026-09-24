@@ -2493,7 +2493,7 @@ def test_start_run_full_pass_over_pristine_fixture(tmp_path: Path) -> None:
         "sha256": docs.digests["binding"],
     }
     schema = json.loads(
-        (Path(__file__).resolve().parents[2] / "standards" / "execution/0.1.0"
+        (Path(__file__).resolve().parents[2] / "standards" / "execution/0.2.0"
          / "run-record.schema.json").read_text(encoding="utf-8")
     )
     Draft202012Validator(schema).validate(record)

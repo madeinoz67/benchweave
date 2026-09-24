@@ -381,7 +381,7 @@ def _lattice(
         )
 
     procedure: dict[str, Any] = {
-        "contract_version": "0.1.0",
+        "contract_version": "0.2.0",
         "id": "activation-procedure",
         "version": "0.1.0",
         "description": "Synthetic activation harness procedure.",
@@ -428,7 +428,7 @@ def _lattice(
     procedure_path = _write(tmp_path / "procedure-activation.json", procedure)
 
     policy: dict[str, Any] = {
-        "contract_version": "0.1.0",
+        "contract_version": "0.2.0",
         "id": "activation-policy",
         "version": "0.1.0",
         "description": "Synthetic activation harness policy.",
@@ -506,7 +506,7 @@ def _lattice(
     lock_path.write_bytes((EXECUTION_FIXTURES / "package-lock.json").read_bytes())
 
     bench: dict[str, Any] = {
-        "contract_version": "0.1.0",
+        "contract_version": "0.2.0",
         "id": BENCH_ID,
         "version": "0.1.0",
         "description": "Synthetic activation harness bench. Not hardware-qualified.",
@@ -597,7 +597,7 @@ def _lattice(
     _write(bench_path, bench)
 
     commissioning: dict[str, Any] = {
-        "contract_version": "0.1.0",
+        "contract_version": "0.2.0",
         "id": "activation-commissioning",
         "version": "0.1.0",
         "description": "Synthetic activation harness commissioning. Not hardware-qualified.",
@@ -643,7 +643,7 @@ def _lattice(
     commissioning_path = _write(tmp_path / "commissioning.json", commissioning)
 
     binding: dict[str, Any] = {
-        "contract_version": "0.1.0",
+        "contract_version": "0.2.0",
         "request_id": request_id,
         "procedure": {"id": "activation-procedure", "version": "0.1.0"},
         "bench": {"id": BENCH_ID, "version": "0.1.0"},

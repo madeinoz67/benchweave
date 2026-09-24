@@ -156,7 +156,7 @@ def _build_run_lattice(root: Path) -> Path:
     # same domain envelope and the same signal conditions the committed
     # policy declares; the safe transition is a bridge-dispatchable write.
     policy: dict[str, Any] = {
-        "contract_version": "0.1.0",
+        "contract_version": "0.2.0",
         "id": "sim-policy",
         "version": "0.1.0",
         "description": "Demo-lattice streaming harness policy (synthetic).",
@@ -247,7 +247,7 @@ def _build_run_lattice(root: Path) -> Path:
     # Authored procedure: writes -> settle (the poll window) -> read, all
     # bridge verbs.
     procedure: dict[str, Any] = {
-        "contract_version": "0.1.0",
+        "contract_version": "0.2.0",
         "id": "voltage-check",
         "version": "0.1.0",
         "description": "Demo-lattice streaming harness procedure (synthetic).",
@@ -300,7 +300,7 @@ def _build_run_lattice(root: Path) -> Path:
     # Authored commissioning: the committed simulation mark so the
     # controller keeps its declarative sim leg.
     commissioning: dict[str, Any] = {
-        "contract_version": "0.1.0",
+        "contract_version": "0.2.0",
         "id": "sim-commissioning",
         "version": "0.1.0",
         "description": "Demo-lattice streaming harness commissioning (synthetic).",
@@ -346,7 +346,7 @@ def _build_run_lattice(root: Path) -> Path:
     commissioning_path = _write(lattice / "commissioning.json", commissioning)
 
     binding: dict[str, Any] = {
-        "contract_version": "0.1.0",
+        "contract_version": "0.2.0",
         "request_id": "req-demo-stream-1",
         "procedure": {"id": "voltage-check", "version": "0.1.0"},
         "bench": {"id": BENCH_ID, "version": "0.1.0"},

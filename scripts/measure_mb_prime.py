@@ -1,5 +1,8 @@
 """M-B' (issue #176 row B): mid-capture contention through a REAL capture
-step on the DEV_HEAD-composed activated composition.
+step on the activated composition — the promotion re-measure arm runs
+this through the DEFAULT composition against the released 0.2.0 corpus
+(the seam's compositions must resolve identical schemas; a divergence
+names a seam defect, never a capture defect).
 
 The design of record (.claude/deep-review/2026-09-24-issue176-execution-
 train-design.md, Decision 2 + the acceptance section) pre-commits the
@@ -21,8 +24,9 @@ UV_PROJECT_ENVIRONMENT=venv uv run python scripts/measure_mb_prime.py
 
 The harness is the seam's accepted run-level harness
 (tests/integration/test_capture_run.py) driven through
-_build_run_factory(contracts=declared_dev_family("execution")) - the
-same construction the A-R3/A-R4 controls exercise. The adapter module
+_build_run_factory(contracts=ACTIVE_CORPUS) - the released 0.2.0 literal
+the default composition resolves, the same construction the reconciled
+A-R3/A-R4 controls exercise. The adapter module
 is the harness's capture-lane adapter with a measurement-only,
 env-gated signal arm (stamps the gate passage, waits for the measurer's
 "held" marker, stamps the contended append's outcome). No production
@@ -360,7 +364,7 @@ def _queued_run_once(root: Path) -> float:
     # _coordinator's open_store; the worker path must store the lattice
     # documents - including the pinned binding - itself).
     admit_startup_bench(
-        store, content, harness.lattice_dir, now=tcr.NOW_ISO, contracts=tcr.HEAD
+        store, content, harness.lattice_dir, now=tcr.NOW_ISO, contracts=tcr.ACTIVE_CORPUS
     )
     # The completion emit anchors its bench event on the bench's
     # configuration row - seed one (the seq-model harness precedent).
@@ -389,7 +393,7 @@ def _queued_run_once(root: Path) -> float:
         ContentStore(store),
         queued_harness.lattice_dir,
         now=tcr.NOW_ISO,
-        contracts=tcr.HEAD,
+        contracts=tcr.ACTIVE_CORPUS,
     )
     submitted["run-cap"] = time.monotonic()
     worker.submit("run-cap", "principal-mb", harness.binding_ref(), tcr.BENCH_ID)
