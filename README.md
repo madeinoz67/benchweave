@@ -35,6 +35,7 @@ Questions, plugin builds, works in progress — join the [BenchWeave Discord](ht
 - [Documentation index](docs/project-index.md)
 - [Device developer guide — human and AI authors](docs/device-developer-guide.md)
 - [AI device reviewer role and checklist](docs/ai-device-reviewer.md)
+- [Operator guide — running a bench: serve, report, retention, backup](docs/operator-guide.md)
 - [Development and CI](docs/development.md)
 - [Architecture validation](docs/architecture-validation.md)
 

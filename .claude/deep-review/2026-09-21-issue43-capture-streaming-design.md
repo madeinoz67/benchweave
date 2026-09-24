@@ -657,6 +657,9 @@ findings or build-time discovery) meets the same absence-presence standard befor
 | 9 | Run-engine capture driving (activation wiring: constructing real bridges with capture-services over the worker-thread store, procedure-step shape for capture verbs) | Issue at slice-2 merge | First real capture-class plugin — without it #43 ships capability-without-activation; the tracker must own that gap |
 | 10 | External-tool capture adopt/ingest (adopting a pre-existing file into a capture event — sigrok-cli, ffmpeg workflows) | Documentation here | A real workflow needing adopted (not writer-produced) captures standalone or in-gateway |
 | 11 | Thread-level watchdog for non-yielding adapter cleanup | Documentation here; issue at slice-1 merge if the disclosed residual is unacceptable to a real integration | First real plugin whose cleanup blocks (sync I/O in a `finally`), or an operator mandate |
+| 12 | Durable access-time tracking (slice 3 landed with the `last_access` refusal: the store carries no access-time column, so `retain_after: last_access` policies refuse at load) | Documentation here (slice 3's `retention_policy:` refusal) | The first policy author needing `last_access` (Decision 8's "bounded column backfill") |
+| 13 | Per-run ceiling durability (the retention report reads the ceiling from `--max-dataset-bytes` / `BENCHWEAVE_MAX_DATASET_BYTES` at report time; no ceiling is durable on the run record) | Documentation here | A run-record corpus revision, which must ride corpus governance, never this slice |
+| 14 | Evidence-count quota projection (`max_evidence_entries` wedge — slice 3 projects the byte ceiling only) | Documentation here | Absorbed by row 3's issue or an operator hitting the evidence ceiling blind |
 
 ## Owner calls on the forks (resolved 2026-09-21)
 

@@ -36,7 +36,7 @@ The wheel is self-contained for the gateway runtime: the vendored contract
 corpora and the BenchWeave simulator plugins ship inside it (under
 `benchweave/_vendored/`). **The fixture lattice does not** — it is
 operator-supplied input (`--fixtures` / `BENCHWEAVE_FIXTURES`; see
-§4 Demo and §9 Troubleshooting).
+§4 Demo and §10 Troubleshooting).
 
 ### Second-install reuse
 
@@ -154,7 +154,7 @@ bootstrap and the run path apply one standard.
 
 `serve` composes the gateway from the environment and runs it under
 uvicorn in the **foreground** (daemonization belongs to the service
-manager — §7). It reads:
+manager — §8). It reads:
 
 | Variable | Meaning |
 |---|---|
@@ -191,7 +191,7 @@ process exits with `Application startup failed` and logs one
 raises a `FileNotFoundError` naming the device and digest prefix).
 Nothing is written to the store by a refused startup, so a repair (fix
 the lattice, restart) starts from a clean inventory. Under systemd the
-unit then restart-loops (§7) and that log line is the diagnosis surface.
+unit then restart-loops (§8) and that log line is the diagnosis surface.
 
 **Adapter-bridge runs and the quota seam.** A run constructs a real OTDP
 bridge for a bench device only when the device's descriptor declares
@@ -224,7 +224,7 @@ outcome. Recovery never touches the bench: verify the bench's physical
 state before starting new work. A run whose durable record already says
 it completed keeps that record; only its stale queue state is reconciled.
 The worker thread is a daemon and the bound is a fixed
-grace in the gateway's shutdown path, so an external service manager (§7)
+grace in the gateway's shutdown path, so an external service manager (§8)
 remains the real limit on total shutdown time; plan restarts accordingly
 when runs can exceed the grace.
 
@@ -279,7 +279,7 @@ it early is a clean exit. `--timeout` (default 120 s) bounds the wait for
 a terminal state.
 
 The demo refuses to compose if a live gateway already holds a store under
-its scratch dir (one-coordinator rule — §9).
+its scratch dir (one-coordinator rule — §10).
 
 ## 5. Report — run evidence
 
@@ -300,7 +300,48 @@ view **[interactive]**. Like the other at-rest commands, the report takes
 the store's exclusive lock for its whole read and refuses (naming the
 holder) while a live gateway owns the store.
 
-## 6. Backup and restore
+## 6. Retention — disposal projection (read-only)
+
+`retention` reads the data directory **at rest** and projects, from a
+policy file plus the store's own rows, when each capture and evidence row
+would be disposable and how fast storage is growing. It is a pure
+projection: **it writes nothing back** — no classification stamps, no
+cached disposal dates — and nothing deletes or archives anything
+(`on_disposition` is a report label until the disposition-audit-trail
+slice exists).
+
+```sh
+benchweave retention --data-dir /var/lib/benchweave --json
+benchweave retention --data-dir /var/lib/benchweave --out retention.md
+benchweave retention --data-dir /var/lib/benchweave --policy /etc/benchweave/retention-policy.json
+```
+
+The policy file defaults to `<data-dir>/retention-policy.json`; absent
+there, every row reports `ungoverned`. A policy file that is present but
+invalid refuses, as does an explicitly passed `--policy` that is missing.
+The document is validated gateway-side: `duration_s` (integer seconds ≥
+1), `retain_after` (`landing` or `run_end`; `last_access` refuses until
+the store durably tracks access times), `on_disposition`
+(`delete`/`archive`/`review`), `hold: true` (no disposal date), and
+data-class selectors `capture:<format>` / `evidence:<kind>`. Resolution:
+bench class → bench default → global class → global default.
+
+The report discloses its own arithmetic: stored bytes are
+`SUM(LENGTH(data))` over the artifact table (content-addressed dedup
+under-counts), ingest rates derive from immutable per-row stamps, growth
+rows carry `n` and span, and the quota-wedge section shows, per capture
+context (per run), the used bytes from the capture writer's own ledger
+and the time to exhaust `--max-dataset-bytes` (or
+`BENCHWEAVE_MAX_DATASET_BYTES`). Hold-heavy exhaustion hard-blocks new
+captures with no deletion path until the audit-trail slice — that wedge
+is disclosed in the report, and remediation is manual by design (raise
+the ceiling or wait for that slice).
+
+Like the other at-rest commands, `retention` takes the store's exclusive
+lock for its whole read and refuses (naming the holder) while a live
+gateway owns the store.
+
+## 7. Backup and restore
 
 ```sh
 benchweave backup --data-dir /var/lib/benchweave --out /var/backups/benchweave
@@ -319,7 +360,7 @@ anything in the data dir is touched, then swaps it in; your previous
 directory is kept beside it as `<name>.pre-restore-<iso>`.
 
 Both mutating commands refuse (naming the holder) while a live gateway
-holds the store — stop the gateway first (§9).
+holds the store — stop the gateway first (§10).
 
 > **Credentials are deliberately NOT backed up.** `benchweave.env` is
 > never copied into a backup and never written by a restore: a backup
@@ -329,7 +370,7 @@ holds the store — stop the gateway first (§9).
 > secret safe and separate from the backup location. A restored gateway
 > re-uses the operator's kept credential.
 
-## 7. systemd deployment
+## 8. systemd deployment
 
 The shipped unit template is `deploy/systemd/benchweave.service.template`:
 the **nine hardening directives** from `deploy/PERMISSIONS-REVIEW.md` §3
@@ -363,9 +404,9 @@ Every directive's threat rationale lives in
 > cover rendering only; behavioural verification of the unit happens on
 > Linux.
 
-## 8. Command reference
+## 9. Command reference
 
-Eight commands — `benchweave --help` is the full surface:
+Nine commands — `benchweave --help` is the full surface:
 
 | Command | One-liner | Key flags |
 |---|---|---|
@@ -374,6 +415,7 @@ Eight commands — `benchweave --help` is the full surface:
 | `status` | Gateway identity + bench inventory (live) | `--gateway` (req), `--token` (req), `--json` |
 | `demo` | Built-in simulator demonstration | `--gateway`/`--token`, `--scratch`, `--keep`, `--timeout`, `--fixtures`, `--json` |
 | `report` | Run evidence from the store at rest | `--data-dir` (req), `--bench`, `--out`, `--json` |
+| `retention` | Disposal/growth projection (read-only) | `--data-dir` (req), `--bench`, `--policy`, `--max-dataset-bytes`, `--out`, `--json` |
 | `backup` | Verified snapshot of store + content | `--data-dir` (req), `--out`, `--json` |
 | `restore` | Verify an archive and swap it in | `--archive` (req), `--data-dir` (req), `--json` |
 | `verify` | Manifest digests + store integrity | `--data-dir` (req), `--json` |
@@ -381,7 +423,7 @@ Eight commands — `benchweave --help` is the full surface:
 Exit codes: 0 on success; 1 on any handled refusal (bad usage, unreachable
 gateway, rejected token, failed verify); 130 on Ctrl-C.
 
-## 9. Troubleshooting
+## 10. Troubleshooting
 
 **A mutating command refuses, naming a holder** — e.g.
 `refusing: a live gateway holds /var/lib/benchweave/state.sqlite` or
