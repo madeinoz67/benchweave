@@ -47,6 +47,8 @@ from typing import Any
 
 from benchweave.cli.atrest import AtRestError, db_path
 from benchweave.cli.report import now_iso
+
+# build_retention_report is re-exported (in __all__): the plan authority.
 from benchweave.cli.retention import (
     RetentionStoreRefused,
     _md_text,
@@ -63,6 +65,7 @@ from benchweave.state.hold import StoreHold
 from benchweave.state.store import Store
 
 __all__ = [
+    "build_retention_report",
     "dispose_from_data_dir",
     "now_iso",
     "render_json",

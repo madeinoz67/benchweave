@@ -419,6 +419,216 @@ def test_fold2_corrupted_dropped_artifact_refuses_typed_and_rolls_back(
         store.close()
 
 
+# --- fold fix 1: the StoreChangedUnderPlan refusal lanes ------------------------------------
+
+
+def _patched_plan(
+    monkeypatch: pytest.MonkeyPatch, doctor: Any,
+) -> None:
+    """Replace the plan builder at dispose's import site with a wrapper
+    that calls the real builder then doctors one row — the deterministic
+    seam for plan-vs-store drift (the guard's whole job)."""
+    from benchweave.cli import dispose as dispose_module
+
+    real = dispose_module.build_retention_report
+
+    def wrapper(store: Any, **kw: Any) -> dict[str, Any]:
+        model = real(store, **kw)
+        doctor(store, model)
+        return model
+
+    monkeypatch.setattr(dispose_module, "build_retention_report", wrapper)
+
+
+def _assert_clean_rollback(
+    data_dir: Path, captures: set[str], ledger_run_a: int = 228,
+) -> None:
+    """The rollback shape: zero audit rows, zero invocation rows, exactly
+    the given capture rows, and run:run-a's ledger at the given baseline —
+    the pristine 228, or the post-doctor figure when the doctor itself
+    removed a row (the vanished lane deletes cap-dup-b = 64 bytes outside
+    the transaction; the refusal must change nothing FURTHER)."""
+    audit, invocations = _rows(
+        data_dir, "SELECT (SELECT COUNT(*) FROM dispositions),"
+                  " (SELECT COUNT(*) FROM disposition_invocations)")[0]
+    assert (int(audit), int(invocations)) == (0, 0), (
+        "a refused invocation must roll back whole — no audit rows, no invocation row"
+    )
+    assert {str(r[0]) for r in _rows(
+        data_dir, "SELECT capture_id FROM capture_staging")} == captures
+    store = Store.open(db_path(data_dir))
+    try:
+        writer = CaptureStagingStore(store, max_capture_bytes=10_000_000,
+                                     max_dataset_bytes=10_000_000)
+        assert writer.used_bytes("run:run-a") == ledger_run_a, (
+            "the refusal must not move the ledger"
+        )
+    finally:
+        store.close()
+
+
+def test_fold1_drifted_landing_stamp_refuses_typed_and_rolls_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Guard lane (three converged review lanes): a governed row whose
+    landing stamp moved between plan and execution (here: the plan lies —
+    same shape as the store moving) refuses typed and the WHOLE invocation
+    rolls back, including the rows already audited-and-deleted earlier in
+    the same transaction (cap-wave, cap-dup-a precede the drifted
+    cap-dup-b in plan order)."""
+    from benchweave.state.dispositions import StoreChangedUnderPlan
+
+    data_dir = _seed(tmp_path)
+    _write_policy(data_dir / "retention-policy.json")
+
+    def drift(_store: Any, model: dict[str, Any]) -> None:
+        for row in model["rows"]:
+            if row["id"] == "cap-dup-b":
+                row["anchor_at"] = "2026-09-20T00:00:01Z"  # store says T0
+
+    _patched_plan(monkeypatch, drift)
+    with pytest.raises(StoreChangedUnderPlan, match="landing stamp moved"):
+        _dispose(data_dir, now=NOW, execute=True)
+    _assert_clean_rollback(
+        data_dir, {"cap-wave", "cap-raw", "cap-dup-a", "cap-dup-b", "cap-open"})
+
+
+def test_fold1_vanished_row_refuses_typed_and_rolls_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Guard lane: a governed row deleted between plan and execution (a
+    non-flock concurrent writer; the disclosed row-16 residual) refuses
+    typed — never a silent skip and never a wrong-row deletion — with the
+    same whole-invocation rollback."""
+    from benchweave.state.dispositions import StoreChangedUnderPlan
+
+    data_dir = _seed(tmp_path)
+    _write_policy(data_dir / "retention-policy.json")
+
+    def vanish(store: Any, model: dict[str, Any]) -> None:
+        assert any(row["id"] == "cap-dup-b" for row in model["rows"])
+        store.connection.execute(
+            "DELETE FROM capture_staging WHERE capture_id = 'cap-dup-b'")
+
+    _patched_plan(monkeypatch, vanish)
+    with pytest.raises(StoreChangedUnderPlan, match="vanished"):
+        _dispose(data_dir, now=NOW, execute=True)
+    _assert_clean_rollback(
+        data_dir, {"cap-wave", "cap-raw", "cap-dup-a", "cap-open"},
+        ledger_run_a=164)  # the doctor's own delete (cap-dup-b, 64 B) stands
+
+
+# --- fold fix 3: the evidence-tier acceptance arm --------------------------------------------
+
+
+def _seed_evidence_tier(tmp_path: Path) -> Path:
+    """A minimal evidence-disposition fixture: two ``sharekind`` evidence
+    rows SHARING one artifact (both overdue delete-tier), plus one
+    retained ``otherkind`` row with its own artifact, under one
+    unattributed context key."""
+    import shutil
+
+    data_dir = tmp_path / "data-ev"
+    if data_dir.exists():
+        shutil.rmtree(data_dir)
+    setup(data_dir)
+    data_dir.joinpath("retention-policy.json").write_text(
+        json.dumps({
+            "config_version": "1",
+            "default": {"duration_s": 3600, "retain_after": "landing",
+                        "on_disposition": "review"},
+            "classes": [
+                {"selector": "evidence:sharekind", "duration_s": 3600,
+                 "retain_after": "landing", "on_disposition": "delete"},
+            ],
+            "benches": {},
+        }),
+        encoding="utf-8",
+    )
+    store, content = _open(data_dir)
+    try:
+        shared = content.put_artifact(b"shared-evidence-bytes", T0)
+        for i in range(2):
+            content.put_evidence(
+                "sharekind",
+                {"id": f"share-{i}", "version": "1",
+                 "sha256": hashlib.sha256(b"shared-evidence-bytes").hexdigest()},
+                shared, "run:ev-run", T0)
+        content.put_evidence(
+            "otherkind",
+            {"id": "other", "version": "1",
+             "sha256": hashlib.sha256(b"other-bytes").hexdigest()},
+            content.put_artifact(b"other-bytes", T0), "run:ev-run", T0)
+    finally:
+        store.close()
+    return data_dir
+
+
+def test_fold3_overdue_evidence_delete_tier_disposes_audits_and_gcs(
+    tmp_path: Path,
+) -> None:
+    data_dir = _seed_evidence_tier(tmp_path)
+    # the shared artifact is the one whose payload is b"shared-evidence-bytes"
+    shared_artifact = _rows(
+        data_dir, "SELECT artifact_id FROM artifacts"
+                  " WHERE LENGTH(data) = 21")[0][0]
+
+    model = _dispose(data_dir, now=NOW, execute=True)
+
+    assert model["counts"]["deleted"] == 2
+    audit = _audit_rows(data_dir)
+    assert len(audit) == 2 and all(r["row_kind"] == "evidence" for r in audit)
+    for row in audit:
+        assert _recomputed_digest(row) == row["decision_sha256"], (
+            "evidence-tier audit digests must recompute"
+        )
+    kinds = {str(r[0]) for r in _rows(data_dir, "SELECT kind FROM evidence")}
+    assert kinds == {"otherkind"}, "only the governed delete-tier rows go"
+    # evidence never enters the capture ledger: used_bytes is unchanged
+    store = Store.open(db_path(data_dir))
+    try:
+        writer = CaptureStagingStore(store, max_capture_bytes=10_000_000,
+                                     max_dataset_bytes=10_000_000)
+        assert writer.used_bytes("run:ev-run") == 0
+    finally:
+        store.close()
+    # the shared artifact is collected exactly once (both rows dropped it)
+    assert model["artifacts_collected"] == 1
+    assert not _rows(data_dir, "SELECT artifact_id FROM artifacts"
+                               " WHERE artifact_id = ?", (shared_artifact,))
+    assert _rows(data_dir, "SELECT COUNT(*) FROM artifacts")[0][0] == 3, (
+        "the retained row's artifact survives, plus the two decision artifacts"
+    )
+
+
+def test_fold3_kind_drift_between_plan_and_execute_refuses(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The evidence kind-guard lane: the plan says ``evidence:flipped``
+    while the store row still carries ``sharekind`` — the guarded delete's
+    kind cross-check refuses typed (never a wrong-row deletion), whole
+    invocation rolled back."""
+    from benchweave.state.dispositions import StoreChangedUnderPlan
+
+    data_dir = _seed_evidence_tier(tmp_path)
+
+    def flip(_store: Any, model: dict[str, Any]) -> None:
+        for row in model["rows"]:
+            if row["data_class"] == "evidence:sharekind":
+                row["data_class"] = "evidence:flipped"
+
+    _patched_plan(monkeypatch, flip)
+    with pytest.raises(StoreChangedUnderPlan, match="kind drifted"):
+        _dispose(data_dir, now=NOW, execute=True)
+    audit, invocations = _rows(
+        data_dir, "SELECT (SELECT COUNT(*) FROM dispositions),"
+                  " (SELECT COUNT(*) FROM disposition_invocations)")[0]
+    assert (int(audit), int(invocations)) == (0, 0)
+    assert int(_rows(data_dir, "SELECT COUNT(*) FROM evidence")[0][0]) == 3, (
+        "no evidence row may be deleted by a refused invocation"
+    )
+
+
 # --- A6: refusals ------------------------------------------------------------------------
 
 
