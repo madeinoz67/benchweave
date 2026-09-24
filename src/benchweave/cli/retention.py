@@ -7,9 +7,14 @@ caller-injected ``now`` — the model never reads a clock). The standing
 rule (the record's Decision 8): **slice 3 writes nothing back** — no
 data-class stamps into durable rows, no cached disposal dates, no
 write-back of any projection result; S3-1 pins this over every table in
-the store. Nothing here deletes or archives: ``on_disposition`` is a
-report label only, and no automated disposition ships until the
-disposition-audit-trail slice (the record's sequencing invariant).
+the store — and (issue #184 fork A) a retention run NEVER migrates the
+store: a schema mismatch (pending migrations, or a store newer than the
+gateway) refuses with the typed ``retention_store:`` family, naming the
+mismatch (S3-1's down-level arm pins the no-write-back claim over
+``schema_migrations``). Nothing here deletes or archives:
+``on_disposition`` is a report label only, and no automated disposition
+ships until the disposition-audit-trail slice (the record's sequencing
+invariant).
 
 Disclosed derivations:
 
@@ -919,6 +924,63 @@ def render_json(report: dict[str, Any]) -> str:
 # --- the at-rest command wrapper ------------------------------------------------------
 
 
+class RetentionStoreRefused(AtRestError):
+    """The store's schema does not match the gateway's (issue #184 fork A):
+    a retention run NEVER migrates the store — it refuses, naming the
+    mismatch. The machine-matchable ``retention_store:`` prefix rides the
+    same refusal family as ``retention_policy:``."""
+
+
+def _refuse_schema_mismatch(db: Path) -> None:
+    """Fork A's read posture: inspect ``schema_migrations`` read-only and
+    refuse on any drift. Down-level (pending migrations) → refuse: the
+    report is a pure projection and will not upgrade the store under the
+    operator (the ``report`` command shares the migration-on-open shape —
+    that behavior change is out of this slice's scope). Newer → refuse
+    (``refuse_newer_schema``), typed, never a traceback. The check runs
+    under the exclusive hold, so the subsequent ``Store.open`` applies
+    nothing: on_disk == expected means no pending migration exists."""
+    from benchweave.state.migrations import MIGRATIONS
+
+    expected = MIGRATIONS[-1].version
+    try:
+        conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    except sqlite3.Error as error:
+        raise RetentionStoreRefused(
+            f"retention_store: cannot inspect {db}: {error}"
+        ) from error
+    try:
+        try:
+            on_disk = int(
+                conn.execute(
+                    "SELECT COALESCE(MAX(version), 0) FROM schema_migrations"
+                ).fetchone()[0]
+                or 0
+            )
+        except sqlite3.Error as error:
+            raise RetentionStoreRefused(
+                "retention_store: no schema_migrations table — not a "
+                "benchweave store (or one written before the schema "
+                "registry); a retention run never migrates the store"
+            ) from error
+    finally:
+        conn.close()
+    if on_disk < expected:
+        raise RetentionStoreRefused(
+            f"retention_store: on-disk schema version {on_disk} is behind "
+            f"the gateway's {expected} — a retention run never migrates the "
+            "store; open it once with a current gateway (setup/serve/report) "
+            "to upgrade, then retry"
+        )
+    if on_disk > expected:
+        raise RetentionStoreRefused(
+            f"retention_store: on-disk schema version {on_disk} is newer "
+            f"than the gateway's {expected}; downgrade is refused "
+            "(refuse_newer_schema) — run a gateway version that knows this "
+            "schema before opening this database"
+        )
+
+
 def retention_from_data_dir(
     data_dir: Path,
     *,
@@ -932,7 +994,8 @@ def retention_from_data_dir(
     report under the one-coordinator rule (the whole open→read→close
     window holds the store's exclusive hold, exactly like the sibling
     at-rest commands; refuses naming the holder while a live gateway
-    owns the store).
+    owns the store). The store is never migrated (fork A): a schema
+    mismatch refuses typed (``retention_store:``), naming the mismatch.
 
     Policy resolution: an explicit ``policy_path`` must load (missing or
     invalid refuses — the operator asked for it by name); the default
@@ -957,8 +1020,15 @@ def retention_from_data_dir(
         policy = None
 
     with StoreHold(db, label=f"retention pid {os.getpid()}"):
+        # fork A: never migrate — refuse on any schema mismatch first
+        _refuse_schema_mismatch(db)
         try:
             store = Store.open(db)
+        except RuntimeError as error:
+            # Belt-and-braces (finding 13): Store.open's refuse-newer guard
+            # is unreachable behind the pre-check, but a RuntimeError from
+            # there is still a typed refusal here, never a traceback.
+            raise RetentionStoreRefused(f"retention_store: {error}") from error
         except sqlite3.Error as error:
             raise AtRestError(f"cannot open {db}: {error}") from error
         try:

@@ -180,13 +180,16 @@ _TABLES = {
 }
 
 
-def _snapshot(data_dir: Path) -> dict[str, tuple[int, str]]:
+def _snapshot(
+    data_dir: Path, tables: frozenset[str] | set[str] | None = None
+) -> dict[str, tuple[int, str]]:
     uri = f"{db_path(data_dir).resolve().as_uri()}?mode=ro"
     conn = sqlite3.connect(uri, uri=True)
     try:
         names = {r[0] for r in conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")}
-        assert names == _TABLES, f"table set drifted: {sorted(names ^ _TABLES)}"
+        expected = _TABLES if tables is None else tables
+        assert names == expected, f"table set drifted: {sorted(names ^ expected)}"
         snap: dict[str, tuple[int, str]] = {}
         for t in sorted(names):
             # t iterates the asserted frozenset of table names, not user input
@@ -230,6 +233,63 @@ def test_s3_1_sensitivity_the_snapshot_detects_a_write(tmp_path: Path) -> None:
     finally:
         store.close()
     assert _snapshot(data_dir) != before
+
+
+# --- fix wave (issue #184, fork A): the never-migrate read posture --------------
+
+_V4_TABLES = _TABLES - {"capture_staging", "capture_chunks"}
+
+
+def test_fw4_retention_never_migrates_a_down_level_store(tmp_path: Path) -> None:
+    """Finding 4 (MED, fork A): a retention run NEVER migrates the store.
+    The v4-store fixture (drop the v5 migration row + capture tables, the
+    maintainer's P1 template): the complete report path refuses with a
+    typed, operator-readable refusal naming the mismatch, and the S3-1
+    snapshot — extended over the down-level table set — proves
+    schema_migrations (and everything else) is unchanged."""
+    data_dir = _seed(tmp_path)
+    _write_policy(data_dir / "retention-policy.json")
+    conn = sqlite3.connect(str(db_path(data_dir)))
+    conn.execute("DELETE FROM schema_migrations WHERE version = 5")
+    conn.execute("DROP TABLE IF EXISTS capture_staging")
+    conn.execute("DROP TABLE IF EXISTS capture_chunks")
+    conn.commit()
+    conn.close()
+    before = _snapshot(data_dir, _V4_TABLES)
+    result = CliRunner().invoke(
+        cli, ["retention", "--data-dir", str(data_dir), "--max-dataset-bytes", "10000"]
+    )
+    assert result.exit_code == 1
+    combined = _combined(result)
+    assert "retention_store:" in combined
+    assert "never migrates" in combined or "behind" in combined
+    assert "Traceback" not in combined
+    after = _snapshot(data_dir, _V4_TABLES)
+    assert after == before, "the refusal path wrote back (or migrated) the store"
+    assert after["schema_migrations"] == before["schema_migrations"]
+
+
+def test_fw13_refuse_newer_is_a_typed_refusal_not_a_traceback(
+    tmp_path: Path,
+) -> None:
+    """Finding 13 (LOW): a store written by a newer gateway (version-99
+    fixture) raised RuntimeError outside the CLI catch tuple — a raw
+    traceback. It is a typed refusal now (exit 1, machine-matchable)."""
+    data_dir = _seed(tmp_path)
+    conn = sqlite3.connect(str(db_path(data_dir)))
+    conn.execute(
+        "UPDATE schema_migrations SET version = 99"
+        " WHERE version = (SELECT MAX(version) FROM schema_migrations)"
+    )
+    conn.commit()
+    conn.close()
+    result = CliRunner().invoke(cli, ["retention", "--data-dir", str(data_dir)])
+    assert result.exit_code == 1
+    combined = _combined(result)
+    assert "retention_store:" in combined
+    assert "newer" in combined
+    assert "Traceback" not in combined
+    assert "RuntimeError" not in combined
 
 
 # --- S3-2: the policy is live ----------------------------------------------------

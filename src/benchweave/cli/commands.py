@@ -6,7 +6,8 @@ evidence`` — so ``--help`` is already the full operator surface. ``status``
 mode or the labelled ephemeral fresh-install simulation), ``report`` (Task 13:
 the store-derived report model with markdown/JSON emitters, at-rest only),
 ``retention`` (issue #43 slice 3: the read-only disposal/growth projection
-over the store at rest — writes nothing back) and
+over the store at rest — writes nothing back and never migrates the store;
+schema mismatches refuse typed) and
 ``serve`` (Task 14: env → ``app_entry.build`` → foreground uvicorn, with the
 production secret posture enforced inside ``build``) are live. The
 ``evidence`` group (WP09 Tasks 7–11) generates the retained evidence tree —
@@ -506,7 +507,10 @@ def retention(
     out: Path | None,
     json_output: bool,
 ) -> None:
-    """Project retention/disposal from the store at rest (read-only)."""
+    """Project retention/disposal from the store at rest (read-only).
+
+    Writes nothing back and never migrates the store — a schema mismatch
+    (pending migrations or a newer store) refuses typed (retention_store:)."""
     _set_json(json_output)
     from benchweave.cli import retention as retention_lib
     from benchweave.cli.atrest import AtRestError
