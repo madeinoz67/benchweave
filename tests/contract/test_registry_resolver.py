@@ -18,7 +18,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from benchweave.host.plugin import SimulationInfo
 from benchweave.registry.activation import ActivationRejected
 from benchweave.registry.authenticity import AuthenticityRejected, load_trust_root
-from benchweave.registry.manifests import Key
+from benchweave.registry.manifests import Key, canonical_manifest_bytes
 from benchweave.registry.otdp_loading import load_otdp_plugin
 from benchweave.registry.resolver import (
     LocalDirectorySource,
@@ -558,14 +558,14 @@ def test_payload_size_limit_rejects_before_read(
 def _g2_oracle_canonical(obj: dict[str, Any]) -> bytes:
     """gF2's ONE canonical-bytes oracle (issue #176 council fold wave).
 
-    The resolver's inline formula (``Resolver._resolve_release``) and the
-    loader's re-hash (``load_otdp_plugin``) are two independent copies of
-    this serialization. The agreement pin below asserts BOTH enforcement
-    sites against THIS helper only — never against each other — so a silent
-    divergence between the production copies fails the pin from one side or
-    the other. Used only by ``test_canonical_form_agreement_pin``; the
-    production formula sites are deliberately not touched (helper
-    extraction is a deferral row).
+    The production sites share a single helper —
+    ``benchweave.registry.manifests.canonical_manifest_bytes`` — and this
+    oracle stays an INDEPENDENT test-side copy of the same formula. The
+    agreement pin asserts the helper equals this oracle and drives both
+    enforcement sites (the resolver's refusal/accept arms and the loader's
+    gate arms) against these bytes, so neither the helper nor either site's
+    wiring can drift silently. Used only by
+    ``test_canonical_form_agreement_pin``.
     """
     return (json.dumps(obj, sort_keys=True, separators=(",", ":")) + "\n").encode()
 
@@ -591,6 +591,10 @@ def test_canonical_form_agreement_pin(tmp_path: Path) -> None:
     oracle = _g2_oracle_canonical(probe)
     assert oracle != fixture_raw  # the probe is not the fixture's bytes
     assert b"\xe2\x80\x94" not in oracle  # ASCII-escaped: no literal em-dash byte
+    # Single-source truth: the shared helper every production site calls is
+    # pinned to this independent oracle — helper drift fails here even when
+    # both call sites move together.
+    assert canonical_manifest_bytes(probe) == oracle
 
     # Three content-identical divergences, each refused at resolve.
     divergences: dict[str, bytes] = {

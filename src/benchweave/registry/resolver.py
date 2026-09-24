@@ -28,7 +28,6 @@ documented, not hidden.
 from __future__ import annotations
 
 import hashlib
-import json
 from collections import deque
 from collections.abc import Mapping, MutableMapping
 from dataclasses import dataclass
@@ -41,7 +40,7 @@ from benchweave.registry.authenticity import (
     check_status,
     verify_document,
 )
-from benchweave.registry.manifests import Key, check_closure
+from benchweave.registry.manifests import Key, canonical_manifest_bytes, check_closure
 from benchweave.registry.schemas import (
     RegistryRejected,
     load_manifest_document,
@@ -274,9 +273,7 @@ class Resolver:
             # canonicality here — its schema, signature and release binding
             # are verified over the served bytes, and no second digest
             # authority re-hashes it.
-            canonical = (
-                json.dumps(manifest_doc.content, sort_keys=True, separators=(",", ":")) + "\n"
-            ).encode()
+            canonical = canonical_manifest_bytes(manifest_doc.content)
             if raw != canonical:
                 raise RegistryRejected(
                     "manifest_not_canonical",
