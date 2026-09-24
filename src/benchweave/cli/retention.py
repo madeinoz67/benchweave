@@ -102,6 +102,7 @@ from benchweave.cli.atrest import AtRestError, db_path
 from benchweave.cli.report import now_iso
 from benchweave.content.capture_store import CaptureStagingStore
 from benchweave.control.retention_policy import (
+    MAX_DURATION_S,
     RETENTION_POLICY_FILENAME,
     RetentionPolicy,
     RetentionPolicyRejected,
@@ -375,8 +376,16 @@ def build_retention_report(
     """
     if horizon_s is None:
         horizon_s = _DEFAULT_HORIZON_S
-    if horizon_s < 1:
-        raise ValueError("--horizon-s must be an integer >= 1")
+    # R2 fold item 5: a horizon beyond the datetime domain (a 310-digit
+    # integer parsed fine) died later inside rate * horizon_s as a
+    # knob-nameless "int too large to convert to float". The knob validates
+    # at parse, against the same datetime-domain ceiling duration_s carries.
+    if horizon_s < 1 or horizon_s > MAX_DURATION_S:
+        raise ValueError(
+            f"--horizon-s must be an integer in [1, {MAX_DURATION_S}] "
+            "(the datetime-domain ceiling in seconds, the same bound "
+            "duration_s carries)"
+        )
     # R2 fold item 2a: the caller's clock meets the same UTC-strict parse as
     # stored stamps — a naive ``now`` used to escape mid-build as an
     # uncaught TypeError (aware disposal_dt vs naive now_dt comparison).

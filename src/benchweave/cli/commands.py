@@ -482,7 +482,8 @@ def report(
     help=(
         "Growth horizon in seconds: every stream's ingest rate is "
         "extrapolated over this one window so projections are comparable "
-        "(default: 2592000, 30 days)."
+        "(default: 2592000, 30 days; accepted range 1..253402300799, the "
+        "datetime-domain ceiling)."
     ),
 )
 @click.option(

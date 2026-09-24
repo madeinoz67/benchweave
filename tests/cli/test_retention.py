@@ -1743,3 +1743,26 @@ def test_fold4_null_context_subscription_group_sorts_and_reports(
     assert set(by_ctx) == {"run:run-a", None}, by_ctx
     assert by_ctx["run:run-a"]["n"] == 3
     assert by_ctx[None]["n"] == 2
+
+
+def test_fold5_horizon_domain_refusal_names_the_knob(tmp_path: Path) -> None:
+    """R2 fold item 5: ``--horizon-s 1e309`` (a 310-digit integer) parsed
+    fine and died later inside ``rate * horizon_s`` as 'int too large to
+    convert to float' — exit 1 through the CLI belt, but the message named
+    no knob and no domain. The knob validates at parse now: a typed
+    refusal naming ``--horizon-s`` and its domain (the datetime-domain
+    ceiling ``duration_s`` already carries, ``MAX_DURATION_S``)."""
+    data_dir = _seed(tmp_path)
+    with pytest.raises(ValueError) as exc:
+        _model(data_dir, now=NOW, horizon_s=10**309)
+    assert "--horizon-s" in str(exc.value), exc.value
+    assert "253402300799" in str(exc.value), exc.value
+    result = CliRunner().invoke(
+        cli,
+        ["retention", "--data-dir", str(data_dir), "--horizon-s", "1" + "0" * 309],
+    )
+    assert result.exit_code == 1, _combined(result)
+    combined = _combined(result)
+    assert "--horizon-s" in combined, combined
+    assert "253402300799" in combined, combined
+    assert "Traceback" not in combined
