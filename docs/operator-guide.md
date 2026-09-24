@@ -318,12 +318,22 @@ benchweave retention --data-dir /var/lib/benchweave --horizon-s 604800
 ```
 
 **Schema mismatches refuse (they never upgrade).** A store behind the
-gateway's schema version, or written by a newer one, refuses with a
-`retention_store:` message naming the mismatch — exit code 1 like every
-handled refusal. To project a down-level store, open it once with a
-current gateway (`setup`/`serve`/`report` upgrades it) and re-run.
-(`report` still shares the old migration-on-open shape; aligning it is a
-follow-up, deferred in the design record.)
+gateway's schema version — including a *holey* `schema_migrations` (any
+applied-migration row missing, not only a lower newest version) — or
+written by a newer one, refuses with a `retention_store:` message naming
+the mismatch — exit code 1 like every handled refusal. To project a
+down-level store, open it once with a current gateway
+(`setup`/`serve`/`report` upgrades it) and re-run. (`report` still shares
+the old migration-on-open shape; aligning it is a follow-up, deferred in
+the design record.)
+
+> **WAL note.** Opening the store folds a crashed writer's hot
+> write-ahead log into `state.sqlite` (a SQLite checkpoint on close): the
+> report writes no table content — that is pinned — but the file's
+> *bytes* can change. The write-back rule is logical-table, not
+> byte-forensic; copy-before/after workflows that compare raw file bytes
+> should quiesce the store first (or copy the backup command's verified
+> snapshot instead).
 
 The policy file defaults to `<data-dir>/retention-policy.json`; absent
 there, every row reports `ungoverned`. A policy file that is present but
@@ -359,8 +369,10 @@ is not monotone: finalise re-prices and the abort sweep refunds).
 **Growth projection.** Per stream/key the wire carries `observed_bytes`,
 `observed_span_s`, `n`, `rate_Bps` and `projected_horizon_bytes` — the
 rate extrapolated over one operator-chosen horizon (`--horizon-s`,
-default 2592000 s / 30 days; the same value for every row, so
-projections are comparable). Unestimable streams (single event, zero
+default 2592000 s / 30 days, accepted range 1..253402300799 — the
+datetime-domain ceiling, the same bound `duration_s` carries; the same
+value for every row, so projections are comparable). Unestimable
+streams (single event, zero
 span, naive/unparseable stamps) render absence — excluded, counted and
 disclosed — never a zero projection; held classes (every governing rule
 is `hold: true`) project the same horizon growth, labeled `held` (they
@@ -374,7 +386,10 @@ date), `at_ceiling` (G3 refuses new captures now), `over_ceiling`
 ("over ceiling by N bytes" — never a negative forecast), `zero_growth`
 ("measured zero growth", n/span shown), `unestimable_rate` (no rate —
 never a clean 0), `ceiling_unknown` ("ceiling unknown; projection
-omitted"). A closed run's row is labeled `run closed` and carries no
+omitted"). A forecast whose exhaustion instant falls beyond the datetime
+domain keeps `time_to_exhaustion_s` (the honest figure) and renders the
+instant absent, disclosed — it never kills other rows' output. A closed
+run's row is labeled `run closed` and carries no
 exhaustion forecast. Hold-heavy exhaustion hard-blocks new captures with
 no deletion path until the audit-trail slice — that wedge is disclosed in
 the report, and remediation is manual by design (raise the ceiling or
@@ -451,7 +466,7 @@ Every directive's threat rationale lives in
 
 ## 9. Command reference
 
-Nine commands — `benchweave --help` is the full surface:
+Ten commands — `benchweave --help` is the full surface:
 
 | Command | One-liner | Key flags |
 |---|---|---|
@@ -464,6 +479,7 @@ Nine commands — `benchweave --help` is the full surface:
 | `backup` | Verified snapshot of store + content | `--data-dir` (req), `--out`, `--json` |
 | `restore` | Verify an archive and swap it in | `--archive` (req), `--data-dir` (req), `--json` |
 | `verify` | Manifest digests + store integrity | `--data-dir` (req), `--json` |
+| `evidence` | Generate/index the retained evidence tree (`runs`/`timing`/`faults`/`index`) | `--dest` (req), `--count`, `--seed`, `--timeout`, `--fixtures`, `--json` |
 
 Exit codes: 0 on success; 1 on any handled refusal (bad usage, unreachable
 gateway, rejected token, failed verify); 130 on Ctrl-C.

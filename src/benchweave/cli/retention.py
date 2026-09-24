@@ -11,7 +11,12 @@ the store — and (issue #184 fork A) a retention run NEVER migrates the
 store: a schema mismatch (pending migrations, or a store newer than the
 gateway) refuses with the typed ``retention_store:`` family, naming the
 mismatch (S3-1's down-level arm pins the no-write-back claim over
-``schema_migrations``). Nothing here deletes or archives:
+``schema_migrations``). One filesystem-level nuance (the R2 fold's docs
+item): opening the store connection CHECKPOINTs a crashed writer's hot
+WAL into ``state.sqlite`` — a file-bytes effect, not a table write
+(S3-1's pin is logical-table, not byte-forensic), so copy-before/after
+workflows that compare raw file bytes should quiesce the store first.
+Nothing here deletes or archives:
 ``on_disposition`` is a report label only, and no automated disposition
 ships until the disposition-audit-trail slice (the record's sequencing
 invariant).
