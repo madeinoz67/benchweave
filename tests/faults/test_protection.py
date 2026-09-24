@@ -864,3 +864,43 @@ def test_error_codes_surface_in_events_and_terminal(tmp_path: Path) -> None:
     run = store.get_run("run-smoke")
     assert run is not None
     assert run["terminal"] == record
+
+
+# --- L2-F1(c): no exception class skips the protective ending ----------------------
+
+
+def test_uncaught_body_exception_still_protects_and_terminalises(tmp_path: Path) -> None:
+    """L2-F1(c), the A04 family: the body energises the bench (5.0 V
+    setpoint, output enabled) and a LATER dispatch raises. Without the
+    guard the exception escapes ``run_body``/``_finish_run``: terminal
+    ``None``, the lease held, the energised setpoint persisted with no
+    protective transition. With the guard: the run returns an
+    ``execution_error`` record carrying the exception class in its
+    reasons, protection disables the output, and the lease releases —
+    an uncaught exception can never skip the approved safe transition."""
+    clock, fault, coordinator, store, _ = _harness(tmp_path)
+
+    def _boom(request: OperationRequest) -> None:
+        if (
+            request.verb is OperationVerb.INVOKE
+            and str(request.arguments.get("action_id")) == PSU_MEASURE
+        ):
+            raise RuntimeError("synthetic dispatch escape past the policy boundary")
+
+    fault.on_invoke = _boom  # raises inside dispatch, AFTER enable energised
+    run_id = "run-uncaught-body"
+
+    record = coordinator.start_run(run_id, "principal-a")
+
+    assert record["outcome"] == "execution_error", record["reasons"]
+    assert record["body_outcome"] == "execution_error"
+    assert any(
+        "uncaught_body_exception:" in reason and "RuntimeError" in reason
+        for reason in record["reasons"]
+    ), record["reasons"]
+    assert record["safe_state"] == "verified", "protection must still verify"
+    assert fault.disable_dispatches(), "the protective ending must have run"
+    _validate_record(record)
+    run = store.get_run(run_id)
+    assert run is not None and run["terminal"] is not None
+    assert store.get_active_lease(BENCH_ID) is None, "the lease releases"

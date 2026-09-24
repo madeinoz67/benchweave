@@ -319,7 +319,10 @@ def _lattice(
                 "channels": ["output"],
             }
         ],
-        "max_body_ms": 8000,
+        # F1: the static bound counts a capture as timeout + epilogue
+        # floor (5000, the store's measured busy_timeout) — 2000 + 5000 +
+        # 3x500 = 8500, plus 100 ms overhead.
+        "max_body_ms": 12000,
         "max_protection_ms": 2000,
         "steps": steps,
     }
@@ -338,7 +341,9 @@ def _lattice(
                 "max_abs_current_a": 1,
                 "max_power_w": 3,
                 "max_stored_energy_j": 0.01,
-                "max_energised_ms": 10000,
+                # F1: max_body moved to 12000 with the epilogue floor in
+                # the static bound; the domain budget moves with it.
+                "max_energised_ms": 20000,
             }
         ],
         "allow_rules": _policy_rules(capture=capture_rule),
@@ -700,6 +705,15 @@ def test_a_r3_no_capture_rule_denies_dispatch_with_zero_device_calls(
         issued = entry["issued_ids"]["capture_id"]
         assert issued["status"] == "invalidated"
         assert issued["id"] == f"cap:{run_id}:grab"
+        # F4 record shape: the invalidated record carries the closed-enum
+        # reason and the dispatch state (policy denied: nothing left).
+        assert issued["reason"] == "policy_denied"
+        assert issued["dispatch_state"] == "not_dispatched"
+        # F9: the step event carries its dispatch state too.
+        events = store.read_events(f"run:{run_id}")
+        capture_event = next(e for e in events if e["kind"] == "capture")
+        assert capture_event["error_code"] == "POLICY_DENIED"
+        assert capture_event["dispatch_state"] == "not_dispatched"
         adapter = _adapter_instance(coordinator)
         # Zero capture executes and no procedure note-write landed (the
         # flat verb list also carries the monitor's signal reads and the
@@ -802,6 +816,14 @@ def test_a_r4_failed_capture_dispatch_invalidates_the_minted_id(
         issued = entry["issued_ids"]["capture_id"]
         assert issued["status"] == "invalidated"
         assert issued["id"] == f"cap:{run_id}:grab"
+        # F4 record shape: the device saw the attempt and it failed.
+        assert issued["reason"] == "dispatch_failed"
+        assert issued["dispatch_state"] == "dispatched"
+        # F9: the step event mirrors the failure's dispatch state.
+        events = store.read_events(f"run:{run_id}")
+        capture_event = next(e for e in events if e["kind"] == "capture")
+        assert capture_event["error_code"] == "DEVICE_REJECTED"
+        assert capture_event["dispatch_state"] == "dispatched"
     finally:
         store.close()
 

@@ -934,6 +934,35 @@ def _verify_pin(
         )
 
 
+def _check_allow_rule_constraints(logical: str, policy: dict[str, Any]) -> None:
+    """Meta-validate every allow-rule constraints document (L2-F1(a)).
+
+    The safety-policy schema types each constraints member as a plain
+    object — any object validates, including one JSON Schema cannot
+    evaluate (an unknown ``type``, a non-object ``properties``). Without
+    this row the malformed document admits and crashes ``check_allowed``
+    mid-body, PAST PROTECTION. The checker lane already runs
+    ``check_schema`` over the examples' constraints
+    (``scripts/architecture/check_execution.py``); admission now does it
+    for every admitted policy, so the refusal is ``schema:`` before any
+    run exists. ``RecursionError`` mirrors the provider-contract row.
+    """
+    for index, rule in enumerate(policy.get("allow_rules") or []):
+        if not isinstance(rule, dict):
+            continue  # the document schema owns the rule's own shape
+        for key in ("input_constraints", "value_constraints", "capture_constraints"):
+            constraints = rule.get(key)
+            if constraints is None:
+                continue
+            try:
+                Draft202012Validator.check_schema(constraints)
+            except (SchemaError, RecursionError) as exc:
+                raise AdmissionRejected(
+                    f"schema: {logical} allow_rules[{index}].{key} is not a "
+                    f"valid Draft 2020-12 schema: {exc}"
+                ) from exc
+
+
 def admit_documents(
     procedure_path: Path,
     policy_path: Path,
@@ -990,6 +1019,7 @@ def admit_documents(
     )
     lock, lock_digest = _decode(bench_path.parent / _PACKAGE_LOCK_FILENAME, "package_lock")
     _check_package_lock(lock)
+    _check_allow_rule_constraints("policy", policy)
 
     _verify_pin(
         bench["policy"],

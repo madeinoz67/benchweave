@@ -18,9 +18,11 @@ from typing import Any
 
 import pytest
 
+from benchweave.control import semantics
 from benchweave.control.documents import AdmissionRejected, admit_documents
 from benchweave.control.policy import PolicyDenied, check_allowed
 from benchweave.control.semantics import check_semantics, worst_case_body_ms
+from benchweave.state.store import Store
 from benchweave.vendoring import declared_dev_family
 
 HEAD = declared_dev_family("execution")
@@ -103,7 +105,7 @@ def _lattice(
     )
     if steps is None:
         steps = [_capture_step()]
-    max_body_ms = 4000
+    max_body_ms = 8000
     procedure: dict[str, Any] = {
         "contract_version": "0.1.0",
         "id": "capture-procedure",
@@ -464,7 +466,8 @@ def test_a_r3_undeclared_capture_refuses_capture_undeclared(
 
 
 def test_worst_case_body_ms_counts_capture_timeout() -> None:
-    """The budget walk counts a capture's timeout_ms like an invoke's."""
+    """The budget walk counts a capture's timeout_ms like an invoke's,
+    PLUS the epilogue floor (F1): the abort epilogue's bounded wait."""
     steps: list[dict[str, Any]] = [
         _capture_step(timeout_ms=400),
         {"id": "settle", "kind": "delay", "duration_ms": 100},
@@ -477,7 +480,8 @@ def test_worst_case_body_ms_counts_capture_timeout() -> None:
             "timeout_ms": 500,
         },
     ]
-    assert worst_case_body_ms(steps) == 1000
+    floor = semantics.CAPTURE_EPILOGUE_FLOOR_MS
+    assert worst_case_body_ms(steps) == 400 + floor + 100 + 500
     nested: list[dict[str, Any]] = [
         {
             "id": "twice",
@@ -486,12 +490,36 @@ def test_worst_case_body_ms_counts_capture_timeout() -> None:
             "steps": [_capture_step(timeout_ms=10)],
         }
     ]
-    assert worst_case_body_ms(nested) == 30
+    assert worst_case_body_ms(nested) == 3 * (10 + floor)
+
+
+def test_static_capture_bound_tracks_the_measured_epilogue_wait(
+    tmp_path: Path,
+) -> None:
+    """F1, the static-vs-measured table: the static bound for a capture is
+    ``timeout_ms + CAPTURE_EPILOGUE_FLOOR_MS``, and the floor tracks the
+    MEASURED wait it stands for — the store's open-time ``busy_timeout``,
+    the bound the abort epilogue's BEGIN can actually wait under
+    contention today (state/store.py's PRAGMA; the stock sqlite3 default,
+    F12 — origin unstated until row B commissions the lifecycle-class
+    value per A02 and re-pins this constant)."""
+    store = Store.open(tmp_path / "floor.db")
+    try:
+        measured = int(
+            store.connection.execute("PRAGMA busy_timeout").fetchone()[0]
+        )
+    finally:
+        store.close()
+    assert measured == 5000  # today's measured value (F12: the stock default)
+    for timeout_ms in (1, 100, 400, 2000, 60000):
+        step = _capture_step(timeout_ms=timeout_ms)
+        assert worst_case_body_ms([step]) == timeout_ms + measured, timeout_ms
+    assert measured == semantics.CAPTURE_EPILOGUE_FLOOR_MS
 
 
 def test_a_r5_capture_budget_overrun_refuses_admission(tmp_path: Path) -> None:
     """A procedure whose static bound overruns max_body_ms on capture
-    timeouts alone refuses admission (body_budget:)."""
+    timeouts alone refuses admission (body_budget:) — the floor included."""
     steps = [_capture_step(step_id="grab", timeout_ms=6000)]
     docs = _admit_lattice(tmp_path / "overrun", steps=steps)
     with pytest.raises(AdmissionRejected, match="body_budget:"):
@@ -558,3 +586,89 @@ def test_policy_capture_non_object_payload_refuses() -> None:
     with pytest.raises(PolicyDenied) as denied:
         check_allowed(CAPTURE_POLICY, "dev-1", "capture", "waveform_f64le", 64)
     assert "capture_constraint:" in str(denied.value)
+
+
+# --- L2-F1(a): admission meta-validates every constraints document --------------
+
+
+@pytest.mark.parametrize(
+    ("label", "rule", "constraints_key"),
+    [
+        (
+            "capture",
+            {
+                "device_id": "demo-supply",
+                "kind": "capture",
+                "format": "waveform_f64le",
+                "capture_constraints": {"type": "bogus-type"},
+            },
+            "capture_constraints",
+        ),
+        (
+            "invoke",
+            {
+                "device_id": "demo-supply",
+                "kind": "invoke",
+                "action_id": "otdp.dc_psu.configure/1.0.0",
+                "input_constraints": {"properties": 5},
+            },
+            "input_constraints",
+        ),
+        (
+            "write",
+            {
+                "device_id": "demo-supply",
+                "kind": "write",
+                "parameter": "operator_note",
+                "value_constraints": {"type": "bogus-type"},
+            },
+            "value_constraints",
+        ),
+    ],
+)
+def test_malformed_allow_rule_constraints_refuse_at_admission(
+    tmp_path: Path, label: str, rule: dict[str, Any], constraints_key: str
+) -> None:
+    """L2-F1(a): every allow-rule's constraints document is meta-validated
+    at admission (the checker lane's check_schema row, applied to the
+    whole policy — the lane already ran it on the examples). The
+    safety-policy schema types each constraints member as a plain object,
+    so a schema the validator cannot evaluate passes the document schema
+    today and crashes ``check_allowed`` mid-body, PAST PROTECTION.
+    Refusal is ``schema:`` at admission, before any run exists."""
+    with pytest.raises(AdmissionRejected, match="not a valid Draft 2020-12") as refused:
+        _admit_lattice(tmp_path / f"malformed-{label}", policy_rules=[rule])
+    assert f"allow_rules[0].{constraints_key}" in str(refused.value)
+
+
+# --- L2-F1(b): the policy boundary denies, never raises --------------------------
+
+
+@pytest.mark.parametrize(
+    ("kind", "target", "malformed", "prefix"),
+    [
+        ("capture", "waveform_f64le", {"type": "bogus-type"}, "capture_constraint:"),
+        ("invoke", "a.b.c/1.0.0", {"properties": 5}, "input_constraint:"),
+    ],
+)
+def test_check_allowed_malformed_constraints_deny_never_raise(
+    kind: str, target: str, malformed: dict[str, Any], prefix: str
+) -> None:
+    """L2-F1(b): a constraint schema the validator cannot evaluate is a
+    :class:`PolicyDenied` with the kind's prefix — jsonschema's
+    ``UnknownType`` / ``AttributeError`` can never propagate past
+    ``check_allowed`` (before this fold they escaped into ``run_body``
+    and skipped the terminal record and the protective ending). The
+    admission row above refuses the document first; this is the belt at
+    the boundary."""
+    rule: dict[str, Any] = {"device_id": "dev-1", "kind": kind}
+    if kind == "capture":
+        rule.update(format="waveform_f64le", capture_constraints=malformed)
+        payload: Any = _capture_payload()
+    else:
+        rule.update(action_id="a.b.c/1.0.0", input_constraints=malformed)
+        payload = {"some": "object"}
+    policy: dict[str, Any] = {"allow_rules": [rule], "continuous_conditions": []}
+    with pytest.raises(PolicyDenied, match=prefix) as denied:
+        check_allowed(policy, "dev-1", kind, target, payload)
+    assert denied.value.rule_ids == ("allow_rules[0]",)

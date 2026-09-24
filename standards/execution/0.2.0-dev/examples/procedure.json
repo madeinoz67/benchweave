@@ -19,7 +19,7 @@
       ]
     }
   ],
-  "max_body_ms": 4000,
+  "max_body_ms": 14000,
   "max_protection_ms": 2000,
   "steps": [
     {

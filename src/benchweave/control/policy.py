@@ -130,7 +130,15 @@ def check_allowed(
     failures: list[str] = []
     failing: list[str] = []
     for rule_id, rule in matching:
-        if not rule[constraints_key]:
+        try:
+            constraints = rule[constraints_key]
+        except (KeyError, TypeError) as exc:
+            raise PolicyDenied(
+                f"{prefix}: {rule_id} ({kind} {target} on device {device_id}) "
+                f"carries no evaluable {constraints_key} schema ({type(exc).__name__}: {exc})",
+                (rule_id,),
+            ) from exc
+        if not constraints:
             # An empty schema validates every payload, so a matching rule
             # carrying one constrains nothing — flag it rather than stay
             # silent about what is almost certainly an admission mistake.
@@ -140,9 +148,26 @@ def check_allowed(
                 "so the rule constrains nothing",
                 stacklevel=2,
             )
-        error = next(
-            iter(Draft202012Validator(rule[constraints_key]).iter_errors(payload)), None
-        )
+        try:
+            error = next(
+                iter(Draft202012Validator(constraints).iter_errors(payload)), None
+            )
+        except Exception as exc:
+            # L2-F1(b): the policy boundary is terminal for validator
+            # failures — a schema the evaluator cannot run (an unknown
+            # type, a malformed subschema, an unresolvable reference) is a
+            # DENY with the kind's prefix, never an exception past
+            # check_allowed. Before this fold such an escape ran past the
+            # boundary into run_body and skipped the terminal record and
+            # the protective ending (the A04 family); admission's
+            # check_schema row refuses the document first — this is the
+            # belt. Nothing is silent: the reason carries the class.
+            raise PolicyDenied(
+                f"{prefix}: {rule_id} ({kind} {target} on device {device_id}) "
+                f"carries a constraint schema the validator cannot evaluate "
+                f"({type(exc).__name__}: {exc})",
+                (rule_id,),
+            ) from exc
         if error is not None:
             failures.append(f"{rule_id} {error.json_path}: {error.message}")
             failing.append(rule_id)

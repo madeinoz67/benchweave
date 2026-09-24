@@ -294,7 +294,19 @@ class OTDPBridge:
                 )
             if set(request.arguments) != expected:
                 return reject(ErrorCode.UNSUPPORTED, "Unsupported arguments for bridge operation")
-            deadline = deadline_ns / 1_000_000_000
+            try:
+                deadline = deadline_ns / 1_000_000_000
+            except OverflowError:
+                # F7's belt at the bridge: a deadline_ns no float can
+                # represent converts to a typed reject — a raw
+                # OverflowError can never escape dispatch(). The contract
+                # ceiling keeps schema-valid timeout_ms far from this; the
+                # guard keeps it structurally unreachable as an escape.
+                return reject(
+                    ErrorCode.INTERNAL_ERROR,
+                    f"operation deadline {deadline_ns} ns is not representable "
+                    "as seconds",
+                )
             if not math.isfinite(deadline) or self._services.monotonic() >= deadline:
                 return reject(ErrorCode.TIMEOUT, "Operation deadline expired")
             capture_id: str | None = None

@@ -1909,7 +1909,15 @@ def test_failed_configure_invalidates_issued_id_without_remint(tmp_path: Path) -
     assert attempts[0] == 1
     issued_id = psu_calls.calls[0][0].arguments["input"]["configuration_id"]
     assert ledger[(RUN_ID, "configure", ())]["issued_ids"] == {
-        "configuration_id": {"id": issued_id, "status": "invalidated"}
+        "configuration_id": {
+            "id": issued_id,
+            "status": "invalidated",
+            # F4 record shape: the closed-enum reason and the dispatch
+            # state (DEVICE_REJECTED/not_dispatched = refused before any
+            # device evaluation — the gate_refused family).
+            "reason": "gate_refused",
+            "dispatch_state": "not_dispatched",
+        }
     }
 
     second = executor.run_body(
@@ -1920,7 +1928,15 @@ def test_failed_configure_invalidates_issued_id_without_remint(tmp_path: Path) -
     assert attempts[0] == 1  # replayed occurrence: no re-dispatch, no re-mint
     assert len(psu_calls.calls) == 1
     assert ledger[(RUN_ID, "configure", ())]["issued_ids"] == {
-        "configuration_id": {"id": issued_id, "status": "invalidated"}
+        "configuration_id": {
+            "id": issued_id,
+            "status": "invalidated",
+            # F4 record shape: the closed-enum reason and the dispatch
+            # state (DEVICE_REJECTED/not_dispatched = refused before any
+            # device evaluation — the gate_refused family).
+            "reason": "gate_refused",
+            "dispatch_state": "not_dispatched",
+        }
     }
 
 

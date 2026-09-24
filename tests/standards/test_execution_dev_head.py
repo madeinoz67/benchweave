@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 import runpy
 import subprocess
 import sys
@@ -193,20 +194,92 @@ def test_capture_branch_shapes_are_closed() -> None:
 
 # --- A-R2: the diff is exactly the capture family ---------------------------------
 
+#: F7's contract ceiling: the ONE sanctioned non-capture schema diff the
+#: head carries over 0.1.0 — a finite authoring bound (one day) on every
+#: ``timeout_ms`` and the two top-level budgets, stated in contract §5.
+PROCEDURE_CEILING_MS = 86_400_000
+
+
+def test_contract_ceiling_bounds_timeouts_and_budgets() -> None:
+    """F7: the head's finite contract ceiling — every ``timeout_ms`` (the
+    four step kinds that carry one) and ``max_body_ms``/``max_protection_ms``
+    carry ``maximum``; the active corpus carries none. A schema-valid
+    ``timeout_ms`` at the ceiling converts through the bridge's
+    ``deadline_ns / 1_000_000_000`` without overflow; one step above the
+    ceiling is refused by the schema."""
+    head = json.loads((HEAD / "procedure.schema.json").read_bytes())
+    active = json.loads((ACTIVE / "procedure.schema.json").read_bytes())
+    head_timeouts = [
+        branch["properties"]["timeout_ms"]
+        for branch in head["$defs"]["step"]["oneOf"]
+        if "timeout_ms" in branch.get("properties", {})
+    ]
+    assert len(head_timeouts) == 4  # invoke, read, write, capture
+    for prop in head_timeouts:
+        assert prop["maximum"] == PROCEDURE_CEILING_MS
+    for key in ("max_body_ms", "max_protection_ms"):
+        assert head["properties"][key]["maximum"] == PROCEDURE_CEILING_MS
+        assert "maximum" not in active["properties"][key]  # head-only
+    for branch in active["$defs"]["step"]["oneOf"]:
+        if "timeout_ms" in branch.get("properties", {}):
+            assert "maximum" not in branch["properties"]["timeout_ms"]
+
+    # Schema-valid AT the ceiling; refused ABOVE it.
+    validator = Draft202012Validator(head)
+    at = _capture_procedure()
+    at["max_body_ms"] = PROCEDURE_CEILING_MS
+    at["max_protection_ms"] = PROCEDURE_CEILING_MS
+    for step in at["steps"]:
+        if "timeout_ms" in step:
+            step["timeout_ms"] = PROCEDURE_CEILING_MS
+    assert validator.is_valid(at)
+    over = copy.deepcopy(at)
+    over["steps"][3]["timeout_ms"] = PROCEDURE_CEILING_MS + 1
+    assert not validator.is_valid(over)
+
+    # The conversion the bridge performs (otdp_bridge.dispatch's
+    # ``deadline_ns / 1_000_000_000``) never raises for a schema-valid
+    # value: the ceiling keeps it orders of magnitude inside float64.
+    deadline_ns = 1_000_000_000 + PROCEDURE_CEILING_MS * 1_000_000
+    deadline = deadline_ns / 1_000_000_000
+    assert math.isfinite(deadline)
+
+
+def _clear_ceiling(doc: dict[str, Any]) -> None:
+    """Remove F7's sanctioned ceiling diff so the byte-identity claims
+    below compare everything EXCEPT it."""
+    for branch in doc["$defs"]["step"]["oneOf"]:
+        prop = branch.get("properties", {}).get("timeout_ms")
+        if isinstance(prop, dict):
+            prop.pop("maximum", None)
+    for key in ("max_body_ms", "max_protection_ms"):
+        prop = doc["properties"].get(key)
+        if isinstance(prop, dict):
+            prop.pop("maximum", None)
+
 
 def test_dev_head_diff_is_exactly_the_capture_family() -> None:
     """The shape argument, mechanical: one branch each, nothing else moves.
 
     Every pre-existing schema branch is byte-identical (canonical deep
-    equality preserves oneOf order), ``$stg_issue`` keeps its two-value
-    enum, the version consts and ``$id``s stay 0.1.0-shaped (no sweep),
-    the examples gain exactly one capture step and one capture rule, and
-    the prose moved only in the sections the record names.
+    equality preserves oneOf order) ONCE F7's contract ceiling is cleared
+    from both sides — the ceiling is the one sanctioned non-capture
+    schema diff, asserted present and head-only by
+    ``test_contract_ceiling_bounds_timeouts_and_budgets`` — the
+    ``$stg_issue`` enum is untouched, the version consts and ``$id``s stay
+    0.1.0-shaped (no sweep), the examples gain exactly one capture step
+    and one capture rule, and the prose moved only in the sections the
+    record names.
     """
     old_procedure = json.loads((ACTIVE / "procedure.schema.json").read_bytes())
     new_procedure = json.loads((HEAD / "procedure.schema.json").read_bytes())
     old_policy = json.loads((ACTIVE / "safety-policy.schema.json").read_bytes())
     new_policy = json.loads((HEAD / "safety-policy.schema.json").read_bytes())
+    # F7's ceiling is the one sanctioned non-capture schema diff: clear it
+    # on both sides, then every byte-identity claim below holds exactly as
+    # the design record's A-R2 states it (amended to name the ceiling).
+    _clear_ceiling(old_procedure)
+    _clear_ceiling(new_procedure)
 
     old_steps = old_procedure["$defs"]["step"]["oneOf"]
     new_steps = new_procedure["$defs"]["step"]["oneOf"]

@@ -504,7 +504,11 @@ touch head bytes)**
   0.1.0 source differs by exactly: +1 step branch, +1 allow-rule branch, the prose
   sections, the example additions — step kinds == eight + `{capture}`; allow-rule kinds ==
   `{invoke, write, capture}`; `$stg_issue` enum unchanged; every pre-existing schema
-  branch byte-identical. RED: any other widening fails the assertion.
+  branch byte-identical **except the contract ceiling (fold F7): `maximum: 86400000` on
+  every `timeout_ms` and on `max_body_ms`/`max_protection_ms` — the one sanctioned
+  non-capture schema diff (the byte-identity claims are evaluated with the ceiling
+  cleared on both sides, and the ceiling's presence and head-only-ness are asserted
+  separately)**. RED: any other widening fails the assertion.
 
 **Row A — runtime surfaces (against `DEV_HEAD`-composed admission)**
 

@@ -28,6 +28,15 @@ from typing import Any, NoReturn
 
 from benchweave.control.documents import AdmissionRejected, AdmittedDocuments
 
+#: The epilogue floor the static capture bound counts (F1): a capture's
+#: worst case is its ``timeout_ms`` PLUS the bounded wait the abort
+#: epilogue's ``BEGIN`` can incur under store contention. The value tracks
+#: the store's open-time ``busy_timeout`` — the measured bound it stands
+#: for (the stock ``sqlite3.connect`` default at ``state/store.py``, its
+#: origin unstated — fold F12); row B commissions the lifecycle-class
+#: floor per bench (A02) and owns this constant's replacement.
+CAPTURE_EPILOGUE_FLOOR_MS = 5000
+
 
 def worst_case_body_ms(steps: list[dict[str, Any]]) -> int:
     """Return the worst-case procedure body duration in milliseconds.
@@ -37,13 +46,17 @@ def worst_case_body_ms(steps: list[dict[str, Any]]) -> int:
     ``repeat`` multiplies its body by the iteration count. Samples and
     asserts execute in the gateway and cost nothing. A capture's
     ``timeout_ms`` IS its budget (the #43 record's Amendment 3 — no new
-    procedure-budget mechanism), counted exactly like an invoke timeout.
+    procedure-budget mechanism), counted exactly like an invoke timeout
+    plus :data:`CAPTURE_EPILOGUE_FLOOR_MS` — a failed capture's abort
+    epilogue is real body time the static bound must cover (F1).
     """
     total = 0
     for step in steps:
         kind = step["kind"]
         if kind in ("invoke", "read", "write", "capture"):
             total += step["timeout_ms"]
+            if kind == "capture":
+                total += CAPTURE_EPILOGUE_FLOOR_MS
         elif kind == "delay":
             total += step["duration_ms"]
         elif kind == "if":

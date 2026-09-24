@@ -55,7 +55,13 @@ from jsonschema import Draft202012Validator
 from benchweave.control.binding import Reservation, release, reserve, resolve_binding
 from benchweave.control.clocking import MonotonicClock, WallClock
 from benchweave.control.documents import AdmittedDocuments
-from benchweave.control.executor import Executor, Occurrence, canonical_json
+from benchweave.control.executor import (
+    BODY_EXECUTION_ERROR,
+    BodyResult,
+    Executor,
+    Occurrence,
+    canonical_json,
+)
 from benchweave.control.policy import evaluate_conditions
 from benchweave.control.protection import (
     ProtectionEngine,
@@ -725,7 +731,22 @@ class RunCoordinator:
 
     def _finish_run(self, prepared: _PreparedRun) -> dict[str, Any]:
         """Protect, build the terminal record, finalise and release."""
-        body = self._run_and_record(prepared)
+        pending: BaseException | None = None
+        try:
+            body = self._run_and_record(prepared)
+        except BaseException as exc:  # A04: no exception class skips the
+            # protective ending. run_body converts Exception escapes
+            # itself; this belt catches what it cannot (a durable-event
+            # append failure, a process-control BaseException). The run
+            # still protects and terminalises; a non-Exception re-raises
+            # AFTER the record lands, so the process-control signal is
+            # not swallowed — but the record exists either way.
+            pending = exc
+            body = BodyResult(
+                body_outcome=BODY_EXECUTION_ERROR,
+                reasons=[f"uncaught_body_exception: {type(exc).__name__}: {exc}"],
+                step_events=[],
+            )
         monitor = prepared.monitor
         body_outcome, body_reasons = self._body_truth(prepared, body)
 
@@ -759,6 +780,8 @@ class RunCoordinator:
         )
         self._store.finalize_run(prepared.run_id, record)
         release(self._store, prepared.reservation, self._wall.now_iso())
+        if pending is not None and not isinstance(pending, Exception):
+            raise pending
         return record
 
     def _body_truth(self, prepared: _PreparedRun, body: Any) -> tuple[str, list[str]]:
