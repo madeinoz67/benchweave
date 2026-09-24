@@ -151,6 +151,66 @@
       "sha256": "06107ddd4bf375e7f2c1dbe764a842557f37c0bfbe24b358e258398ff56d4bad"
     },
     {
+      "path": "execution/0.2.0-dev/bench.schema.json",
+      "source": "standards/execution/0.1.0/bench.schema.json",
+      "sha256": "503093996daba1deb27f0f0954f6e90db5c4f2e055bc7bdfd8d3d8197ce5b6b2"
+    },
+    {
+      "path": "execution/0.2.0-dev/commissioning.schema.json",
+      "source": "standards/execution/0.1.0/commissioning.schema.json",
+      "sha256": "a275a8afdd35c8dda4dd7c8391bba9873abf95424ad66cd8cbf1ac8f5a627dc9"
+    },
+    {
+      "path": "execution/0.2.0-dev/examples/bench.json",
+      "source": "standards/execution/0.1.0/examples/bench.json",
+      "sha256": "d67d9b254c30ed006f90f4d5fa7c5f7ac1f638bbf21481e2487f878b8030d952"
+    },
+    {
+      "path": "execution/0.2.0-dev/examples/commissioning.json",
+      "source": "standards/execution/0.1.0/examples/commissioning.json",
+      "sha256": "f13a2195929e4b5f34347bbe45a7677f9c6ac7883d16242bd75e2bfc0e4176df"
+    },
+    {
+      "path": "execution/0.2.0-dev/examples/procedure.json",
+      "source": "standards/execution/0.1.0/examples/procedure.json",
+      "sha256": "64ac82e02f0e13412337fc1bd3503cea1c952ee9a31e5e50214bc4677da3381a"
+    },
+    {
+      "path": "execution/0.2.0-dev/examples/run-binding.json",
+      "source": "standards/execution/0.1.0/examples/run-binding.json",
+      "sha256": "0e875072137b6846ee64ab9f01bad00c5c6b384d366def36741087c1ab6a6330"
+    },
+    {
+      "path": "execution/0.2.0-dev/examples/run-record.json",
+      "source": "standards/execution/0.1.0/examples/run-record.json",
+      "sha256": "28bf392e9c20ee467709407db787d546e9851498c03e9c0109a4ad9a723e9707"
+    },
+    {
+      "path": "execution/0.2.0-dev/examples/safety-policy.json",
+      "source": "standards/execution/0.1.0/examples/safety-policy.json",
+      "sha256": "73454794f991f14b80e0caa396a9e8a5b388b17e806145402e6531c7dcc7655a"
+    },
+    {
+      "path": "execution/0.2.0-dev/procedure.schema.json",
+      "source": "standards/execution/0.1.0/procedure.schema.json",
+      "sha256": "194b0aab8fb348059897cfd4612a4d41e1e07d4c9e746b1c4bfdbd92ab733c6d"
+    },
+    {
+      "path": "execution/0.2.0-dev/run-binding.schema.json",
+      "source": "standards/execution/0.1.0/run-binding.schema.json",
+      "sha256": "a86c160555c030173f8b045a5a15a045788b7c167b32dc53741621bf86444817"
+    },
+    {
+      "path": "execution/0.2.0-dev/run-record.schema.json",
+      "source": "standards/execution/0.1.0/run-record.schema.json",
+      "sha256": "59d5e93515215c6c15c3001bb91c28a2b6bbfc5eb3e1bd623293df9de8c99b82"
+    },
+    {
+      "path": "execution/0.2.0-dev/safety-policy.schema.json",
+      "source": "standards/execution/0.1.0/safety-policy.schema.json",
+      "sha256": "06107ddd4bf375e7f2c1dbe764a842557f37c0bfbe24b358e258398ff56d4bad"
+    },
+    {
       "path": "interface/0.1.0/examples/mcp-start-exchange.json",
       "source": "docs/interface-v1.1.1/examples/mcp-start-exchange.json",
       "sha256": "13a2d04b7969444ba0034c5ae38299bedfcd759213cf0cca37205ef2c0eac893"

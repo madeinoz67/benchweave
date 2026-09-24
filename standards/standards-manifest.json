@@ -78,7 +78,25 @@
         "standards/execution/0.1.0/run-binding.schema.json",
         "standards/execution/0.1.0/run-record.schema.json",
         "standards/execution/0.1.0/safety-policy.schema.json"
-      ]
+      ],
+      "dev": {
+        "version": "0.2.0-dev",
+        "opened": "2026-09-24",
+        "normative": [
+          "standards/execution/0.2.0-dev/bench.schema.json",
+          "standards/execution/0.2.0-dev/commissioning.schema.json",
+          "standards/execution/0.2.0-dev/examples/bench.json",
+          "standards/execution/0.2.0-dev/examples/commissioning.json",
+          "standards/execution/0.2.0-dev/examples/procedure.json",
+          "standards/execution/0.2.0-dev/examples/run-binding.json",
+          "standards/execution/0.2.0-dev/examples/run-record.json",
+          "standards/execution/0.2.0-dev/examples/safety-policy.json",
+          "standards/execution/0.2.0-dev/procedure.schema.json",
+          "standards/execution/0.2.0-dev/run-binding.schema.json",
+          "standards/execution/0.2.0-dev/run-record.schema.json",
+          "standards/execution/0.2.0-dev/safety-policy.schema.json"
+        ]
+      }
     },
     {
       "id": "interface",

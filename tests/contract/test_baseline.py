@@ -65,6 +65,23 @@ def _contract_files() -> list[Path]:
     )
 
 
+def _all_corpus_json_files() -> list[Path]:
+    """Every machine file the corpus manifest may pin, heads included.
+
+    The listing/hash pair owns file-level coverage for the WHOLE corpus: a
+    dev head's files are pinned exactly like active ones (repin's coverage
+    is dev-inclusive both directions), so the listing test compares the
+    full row set against the full disk walk. ``_contract_files`` keeps the
+    -dev exclusion for the content tests a dev copy's $id shadowing would
+    otherwise condemn released files in.
+    """
+    return sorted(
+        p
+        for p in CONTRACTS.rglob("*.json")
+        if p.name not in ("corpus-manifest.json", "standards-manifest.json")
+    )
+
+
 def _walk(value: Any, base: str) -> list[tuple[Any, str]]:
     nodes: list[tuple[Any, str]] = []
     if isinstance(value, dict):
@@ -82,7 +99,7 @@ def _walk(value: Any, base: str) -> list[tuple[Any, str]]:
 def test_manifest_lists_every_contract_file() -> None:
     listed = {entry["path"] for entry in _manifest()["files"]}
     # as_posix(): the manifest records forward-slash paths on every OS.
-    actual = {p.relative_to(CONTRACTS).as_posix() for p in _contract_files()}
+    actual = {p.relative_to(CONTRACTS).as_posix() for p in _all_corpus_json_files()}
     assert listed == actual, f"manifest drift: missing={actual - listed} extra={listed - actual}"
 
 
