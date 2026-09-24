@@ -108,7 +108,15 @@ its CROSS-standard contract reads are manifest-derived like the rest. The
 conventional moves; a FORGOTTEN row is caught mechanically by the pin's
 exactly-once link assert (a stale row left beside the new one is not —
 copy-never-move keeps the old target resolving). With the version moved,
-the pin fails on the copied stale report until the regen runs.
+the pin fails on the copied stale report until the regen runs. Derived
+version surfaces are not swept: the compatibility matrix renders from the
+standards manifest (`matrix --check`), the public site's version stamps
+render at assembly from the manifest and the `sdk_compatibility` mirror
+(`scripts/assemble_docs_site.py` — `website/` carries tokens, never
+versions), and the `docs/README.md` report rows are caught by the
+manifest-derived pin when forgotten; the inventory of version-bearing
+surfaces and their motion mechanisms lives in
+`docs/internal/drift-and-obligations.md`.
 
 ## The dev stage (`-dev`)
 

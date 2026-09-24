@@ -177,6 +177,26 @@ and remain the reviewer's job.
     (one corpus document feeding both checkers) stays the deferred fix shape when the
     §8.1 generic table grows.
 
+18. **The version-bearing-surface inventory** (issue #188's requested row;
+    invariants CON-13) → every surface that declares a corpus or SDK version,
+    and its motion mechanism under a bump:
+    (a) `standards/standards-manifest.json` — the authority; it moves with the
+    bump itself;
+    (b) `docs/compatibility-matrix.md` — derived; `matrix --check` (CON-12);
+    (c) `docs/README.md` validation-report rows — derived paths; the family
+    pin tests catch a forgotten row (obligation 13);
+    (d) `website/index.html` version stamps — derived at assembly with ZERO
+    bump motion: the source carries `{{stg-*}}` tokens only, the hygiene pin
+    (`tests/contract/test_website_stamps.py`) refuses a literal, and a NEW
+    claim-site gets a token plus map coverage, never a literal (CON-13);
+    (e) the adapter-identity touch-set — hand-carried, in-arc (obligation 8);
+    (f) `verify_tree`'s frozen-version corpus probe
+    (`standards/otdp/0.2.0/otdp-runtime.schema.json`) — copy-never-move keeps
+    it permanently resolvable and it claims nothing about "active" (issue
+    #188 design deferral 2).
+    Closing clause: a new version-bearing literal anywhere is a defect —
+    make it a derived surface or register it here with its motion mechanism.
+
 ## CI map
 
 | Job | What it catches |

@@ -385,6 +385,20 @@ rather than rewriting the history — that is how this file earns trust.
   clause is unchanged — `render_matrix` still never reads the SDK's
   pyproject. The authority chain is pyproject@pin → lock → mirror.*
 
+- **[CON-13]** Website version stamps are a pure function of committed state —
+  `website/index.html` carries `{{stg-*}}` tokens, never version literals;
+  `website_stamp_map` derives from the standards manifest and the
+  `sdk_compatibility` mirror (CON-12's authority chain); substitution happens
+  only in the assembly copy and `verify_tree` refuses residue —
+  `scripts/assemble_docs_site.py` `website_stamp_map`/`stamp_website`, pinned
+  by `tests/contract/test_website_stamps.py`. The badge/href pair of a card
+  carries one token twice, so a claim/link version disagreement is
+  unrepresentable at the value level. *CON-12's #158 lesson applied to the
+  public site (issue #188: hand-stamped versions sat on the site with every
+  gate green — the CON-8 defect class on the one un-mechanised version-bearing
+  surface; a stamp that read checkout or remote state would red on correct
+  committed bytes).*
+
 ## Registry & plugin invariants
 
 - **[REG-1]** A plugin is imported with no side effects, then explicitly opened with a
