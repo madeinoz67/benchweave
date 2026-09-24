@@ -1,6 +1,6 @@
 **BenchWeave** is a Python test-bench gateway for embedded systems: reusable instrument and DUT plugins, shared device profiles, and safety-aware automated testing, exposed to applications and coding agents over REST and MCP.
 
-**Status: architecture baseline and Python scaffold.** The repository carries versioned contracts, PoC/MVP plans and architecture validation in CI. The gateway side of interface 0.1.0 is live in the PoC — REST routes and MCP tools over FastAPI/FastMCP on one core-operations seam; hardware qualification and unattended bench operation remain separate, commissioned work.
+**Status: architecture baseline and Python scaffold.** The repository carries versioned contracts, PoC/MVP plans and architecture validation in CI. The gateway side of the interface standard is live in the PoC — REST routes and MCP tools over FastAPI/FastMCP on one core-operations seam; hardware qualification and unattended bench operation remain separate, commissioned work. The live interface version is carried by the derived surfaces (compatibility matrix, standards panel), not this page.
 
 # The plan
 

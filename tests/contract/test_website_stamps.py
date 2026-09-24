@@ -49,6 +49,25 @@ def _hand_stamped_versions(text: str) -> list[str]:
     ]
 
 
+def _class11_literal_hits(root: Path | None = None) -> list[str]:
+    """Three-component literals over the class-11 source set, `path:line:literal`.
+
+    The hygiene ban's scope (review fold F2): every file under `website/` plus
+    `index.qmd` — a literal in an asset file or the docs landing page is the
+    same unmoved, unseen hand-stamp as one in the index.
+    """
+    tree = root if root is not None else ROOT
+    files = sorted(p for p in (tree / "website").rglob("*") if p.is_file())
+    index_qmd = tree / "index.qmd"
+    if index_qmd.is_file():
+        files.append(index_qmd)
+    hits: list[str] = []
+    for path in files:
+        rel = path.relative_to(tree).as_posix()
+        hits += [f"{rel}:{hit}" for hit in _hand_stamped_versions(path.read_text(encoding="utf-8"))]
+    return hits
+
+
 def _tokens(text: str) -> list[str]:
     """Every stamp token occurrence in order, as its map key (`stg-<id>`)."""
     return [f"stg-{key}" for key in TOKEN_RE.findall(text)]
@@ -82,12 +101,18 @@ def test_source_carries_no_version_literals() -> None:
     bump train moves and no gate sees (the design's root cause: the site's
     link checker resolves against copy-never-move history, so a stale-version
     href passes). On the pre-fix tree this failed naming the filed 14
-    occurrences on their 13 lines.
+    occurrences on their 13 lines. The ban's scope is the class-11 source set
+    — every file under `website/` plus `index.qmd` (review fold F2: the
+    index-only ban let a literal anywhere else ship green); widening it
+    reddened `index.qmd`'s `interface 0.1.0` live claim, reworded in the same
+    slice. Two-component prose claims (`Python 3.13+`, `Architecture v1.5`)
+    sit outside the pattern — design deferral 5.
     """
-    hits = _hand_stamped_versions(SOURCE.read_text(encoding="utf-8"))
+    hits = _class11_literal_hits()
     assert not hits, (
-        "hand-stamped version literal(s) in website/index.html — version claims "
-        "are {{stg-*}} tokens derived at assembly (CON-13): " + ", ".join(hits)
+        "hand-stamped version literal(s) in the class-11 source set (website/ tree, "
+        "index.qmd) — version claims are {{stg-*}} tokens derived at assembly "
+        "(CON-13): " + ", ".join(hits)
     )
 
 
@@ -129,6 +154,24 @@ def test_tamper_literal_badge_is_detected() -> None:
     text = SOURCE.read_text(encoding="utf-8").replace("v{{stg-otdp}}", "v0.1.0", 1)
     hits = _hand_stamped_versions(text)
     assert len(hits) == 1 and hits[0].endswith(":0.1.0"), hits
+
+
+def test_tamper_asset_file_literal_is_detected(tmp_path: Path) -> None:
+    """F2's scope vehicle: a three-component literal in a website asset file is
+    the same hand-stamp as one in the index — the class-11 scan reddens it
+    (the index-only scan this replaces could not see it; like T5a, this pins
+    the scanner's detection power, while T2 itself is the green pin on the
+    real tree)."""
+    root = tmp_path / "tree"
+    shutil.copytree(ROOT / "website", root / "website")
+    site_js = root / "website" / "assets" / "site.js"
+    site_js.write_text(site_js.read_text(encoding="utf-8") + "\n/* v0.9.9 */\n", encoding="utf-8")
+    hits = _class11_literal_hits(root)
+    assert (
+        len(hits) == 1
+        and hits[0].startswith("website/assets/site.js:")
+        and hits[0].endswith(":0.9.9")
+    ), hits
 
 
 def test_tamper_cross_card_badge_is_detected() -> None:
