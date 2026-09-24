@@ -592,8 +592,13 @@ def test_capture_typing_is_exact_and_bounded(
 
 @pytest.mark.parametrize("bad_id", ["Bad-ID", "1abc", "../escape", "cap/1", ""])
 def test_capture_id_shape_is_validated(tmp_path: Path, bad_id: Any) -> None:
-    """The contract id pattern ^[a-z][a-z0-9_.-]*$ (interface.schema.json);
-    the writer's PRIMARY KEY enforces session-uniqueness."""
+    """The capture id shape is the bridge's ``_CAPTURE_ID_PATTERN``:
+    ``[a-z][a-z0-9_.:-]*`` — interface.schema.json's ``^[a-z][a-z0-9_.-]*$``
+    widened with ``:`` so the host-minted ``cap:{run_id}:{step_id}`` ids
+    pass (the issue #176 increment-2 minting precedent; the colon is the
+    only separator that mint uses). Every refusal case below — uppercase,
+    digit-start, traversal, slash, empty — still refuses under the widened
+    pattern. The writer's PRIMARY KEY enforces session-uniqueness."""
     harness = CaptureHarness(tmp_path)
     try:
         plugin, result = a_capture_dispatch(

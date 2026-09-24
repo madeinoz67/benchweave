@@ -862,12 +862,17 @@ def _project_full_form(
         "parameters": [parameter["name"] for parameter in descriptor["parameters"]],
         "actions": actions,
         # The capture surface (CON-10, issue #176 increment 2): the
-        # artifact_writer permission flag and, when the descriptor
-        # advertises capture (the schema requires both capture keys
-        # together), the declared formats and limits the admission-time
-        # CTL-7 mirror reads. A transport-only adapter reads False with no
-        # capture keys — no permission is granted by a malformed shape
-        # (the adapter_permissions posture, projected).
+        # artifact_writer permission flag and, when the descriptor carries
+        # BOTH capture keys, the declared formats and limits the
+        # admission-time CTL-7 mirror reads. OTDP 0.2.2 pairs the keys
+        # only under the `capture` capability conditional — a descriptor
+        # may legally declare formats without limits, limits without
+        # formats, or neither — so the both-or-neither conjunction here
+        # (and the mirror's requirement of both) is the gateway's
+        # intentional conservative posture: a half-declared capture
+        # surface grants no capture surface. A transport-only adapter
+        # reads False with no capture keys — no permission is granted by a
+        # malformed shape (the adapter_permissions posture, projected).
         "artifact_writer": "artifact_writer" in adapter_permissions(descriptor),
     }
     capture_formats = descriptor.get("capture_formats")

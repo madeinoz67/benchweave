@@ -1,4 +1,4 @@
-"""The eight-kind procedure body interpreter (execution contract §3–§5).
+"""The nine-kind procedure body interpreter (execution contract §3–§5).
 
 Executes an admitted procedure body against bound device plugins under a
 fixed monotonic body deadline, appending one step event per occurrence and
@@ -637,6 +637,16 @@ def _capture_id(run_id: str, step_id: str, index_path: tuple[int, ...]) -> str:
     landed manifest echoes it. The capture id is never authored
     (execution contract §7: the host mints it per occurrence and returns
     it in the capture manifest).
+
+    The mint is deterministic, and its uniqueness is exactly as broad as
+    the ledger makes it: **restart-safe under the coordinator's rebuild**
+    (``RunCoordinator._rebuild_ledger_from_events`` restores every
+    recorded occurrence from the durable event stream, so a recovered
+    re-walk replays and never re-mints), with **one ``run_body`` per
+    ``run_id`` a caller precondition** — a fresh UNREBUILT ledger on a
+    second ``run_body`` would re-mint the same id for a second physical
+    dispatch, a collision the precondition forbids (F5; the design
+    record's fold-wave answer records the rebuild as the mechanism).
     """
     suffix = "".join(f".{index}" for index in index_path)
     return f"cap:{run_id}:{step_id}{suffix}"

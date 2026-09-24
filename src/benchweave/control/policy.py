@@ -4,15 +4,17 @@ Two pure checks with no store, plugin, clock or I/O of their own.
 
 ``check_allowed`` is the deny-by-default gate the executor consults before
 every state-changing dispatch: an action is allowed only when at least one
-allow rule matches the actual device and the exact action id (invoke) or
-parameter (write), and every matching rule's constraints then hold
+allow rule matches the actual device and the exact action id (invoke),
+parameter (write) or format (capture — the third allow-rule kind, issue
+#176 increment 2), and every matching rule's constraints then hold
 conjunctively — there are no order-dependent overrides. Invoke inputs are
 JSON-Schema-validated against each matching rule's ``input_constraints``
 (an empty schema ``{}`` imposes no extra constraint but warns
 ``vacuous_constraint:``); write values against
-``value_constraints``. Rejections carry a machine-matchable prefix:
-``no_matching_rule:`` (deny by default), ``input_constraint:`` or
-``value_constraint:``.
+``value_constraints``; capture requests against ``capture_constraints``.
+Rejections carry a machine-matchable prefix: ``no_matching_rule:`` (deny
+by default), ``input_constraint:``, ``value_constraint:`` or the capture
+family's ``capture_constraint:``.
 
 ``evaluate_conditions`` checks the continuous conditions against a signal
 snapshot and returns one description per failed condition aspect, each
@@ -41,7 +43,8 @@ class PolicyDenied(Exception):
     """A state-changing action matched no allow rule or violated one.
 
     ``reason`` is a machine-matchable description (prefix
-    ``no_matching_rule:``, ``input_constraint:`` or ``value_constraint:``);
+    ``no_matching_rule:``, ``input_constraint:``, ``value_constraint:``
+    or — the capture kind's family prefix — ``capture_constraint:``);
     ``rule_ids`` names the matching allow rules by ``allow_rules`` index —
     empty for a deny-by-default no-match, the failing rules otherwise.
     """

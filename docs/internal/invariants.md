@@ -260,7 +260,11 @@ rather than rewriting the history — that is how this file earns trust.
   projects a total execution view (`{id, version = descriptor_version, profiles
   (absent → []), parameter names, actions + issued, derived_variables
   passthrough, artifact_writer permission flag, capture_formats/capture_limits
-  when the descriptor advertises capture}`) that binding, semantics and the
+  when the descriptor carries BOTH capture keys — the projection's
+  both-or-neither conjunction, not a schema-forced pairing: OTDP 0.2.2
+  requires the pair only under the `capture` capability, so a half-declared
+  surface is schema-legal and the gateway's conservative choice projects
+  nothing}`) that binding, semantics and the
   coordinator read; the bench pin
   verifies against the RAW document's `id`/`descriptor_version` and the raw bytes'
   digest — `src/benchweave/control/documents.py` `_project_descriptor`. The slim

@@ -72,17 +72,23 @@ def declared_dev_family(standard_id: str) -> Path:
     the loader enforces — a malformed block, a non-``<target>-dev``
     version, a target that is not strictly greater than active — is this
     resolver's refusal too, with the loader's own message (same words on
-    both surfaces). ``{standard_id}_dev_head_absent:`` when no head is
+    both surfaces). ``{standard_id}_manifest_absent:`` when the manifest
+    cannot be found or carries no entry for this standard (two sites —
+    the loader's ``FileNotFoundError`` and the missing-entry check; a
+    wheel install has NO repo-root manifest, so this refusal fires
+    first there); ``{standard_id}_dev_head_absent:`` when no head is
     declared (the post-promotion shape — the seam cannot outlive the
     head); ``dev_head_unresolvable:`` naming the missed path when the
-    resolved directory does not exist (a packaged install never carries a
-    dev head — never a silent fallback to the active family).
+    resolved directory does not exist — the manifest named a directory
+    that is not there (a partial teardown), never a wheel's packaged
+    context: a packaged install refuses ``{standard_id}_manifest_absent:``
+    at the loader, before any resolution is attempted, so
+    ``dev_head_unresolvable:`` is never the wheel's refusal word
+    (issue #176 fold sF3 — never a silent fallback to the active family).
 
     There is no path parameter anywhere: the manifest's declared head is
     the only thing this function can return (the
-    accept-exactly-the-declared-head rule, made typal). A manifest the
-    loader cannot find refuses ``{standard_id}_manifest_absent:`` — the
-    lane's own word for that state.
+    accept-exactly-the-declared-head rule, made typal).
     """
     try:
         manifest = load_manifest(_REPO_ROOT)

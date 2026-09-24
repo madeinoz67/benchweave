@@ -234,8 +234,16 @@ def _check_capture_declared(
     ``sample_count`` within ``max_samples`` and ``max_bytes`` within
     ``max_bytes``. Every refusal carries ``capture_undeclared:`` naming
     the step and the exact undeclared demand — the same family prefix on
-    all five shapes, so a capture an active-corpus procedure cannot even
-    express stays greppable when the seam runs dev-composed.
+    all six raise sites, so a capture an active-corpus procedure cannot
+    even express stays greppable when the seam runs dev-composed. Five of
+    the six are reachable through admission: the malformed-``capture_limits``
+    site is dead on that path (the OTDP descriptor schema refuses
+    non-integer limits before this mirror ever sees them — reachable only
+    by calling this mirror on an unvalidated projection), and the
+    ``no projected descriptor`` arm IS reachable — a binding naming a
+    device the bench's pins do not carry — but is not yet in the A-R3
+    parametrize (reachable-but-untested, named here rather than claimed
+    covered).
 
     A role that resolves to no bound device is left to binding's
     ``unbound_role:`` — this mirror only judges declared-ness, and

@@ -190,9 +190,14 @@ surface and three layers of non-leakage** — not a backdoor.
    no path logic, only the manifest derivation). Refusals, mirroring the lane's words on
    both surfaces: the loader's own dev-block shape refusals are inherited verbatim
    (malformed block, non-`<target>-dev` version, target not strictly greater — the
-   review-row-6 pattern); `execution_dev_head_absent:` when no head is declared;
+   review-row-6 pattern); `{standard_id}_manifest_absent:` when the manifest cannot be
+   found or carries no entry for the standard (two sites — the loader's
+   `FileNotFoundError` and the missing-entry check; in a wheel install there is NO
+   repo-root manifest, so this refusal fires **first** — fold sF4); `execution_dev_head_absent:` when no head is declared;
    `dev_head_unresolvable:` naming the missed path when the resolved directory does not
-   exist (the packaged-context case — **never a silent fallback to active**). There is no
+   exist (the manifest names a directory that is not there — a partial teardown; fold
+   sF3 corrects the earlier attribution: a wheel never reaches this branch, because the
+   manifest itself is already absent — **never a silent fallback to active**). There is no
    path parameter anywhere in the resolver: the manifest's declared head is the only thing
    it can return (the accept-exactly-the-declared-head rule, made typal).
 2. **The opt-in channel is a keyword-only composition parameter, not a flag, env var, or
@@ -554,6 +559,48 @@ touch head bytes)**
   the slice-1/#167-M-C class; a larger delay names an unbounded path, not Option-B
   evidence.
 
+**Fold-wave answers and provenance (2026-09-24 refute/critic folds):**
+
+- **F12 — `busy_timeout` provenance, named.** The `5000` at `state/store.py`
+  (`Store.open`'s `PRAGMA busy_timeout=5000`) is the stock `sqlite3.connect` default
+  timeout restated as a pragma: no stated origin, no bench commissioning (A02 not yet
+  applied). It sets BOTH faces of row B: the failure class (a clamped-out `BEGIN` is the
+  same `sqlite3.OperationalError` the writer's stamping discipline routes to
+  `RESOURCE_LIMIT`) and the epilogue floor's upper bound — `min(lifecycle-class constant,
+  default_busy_timeout)` — where the **lifecycle-class constant is unnamed and
+  uncommissioned: row B owns its value and origin (A02)**. The `RESOURCE_LIMIT`
+  classification's own authority is folklore-by-test: `otdp_bridge.py:359–397` and
+  `test_writer_originated_lock_contention_is_resource_limit` pin it between them; §7 of
+  the contract and A07 do not name it. The value change rides row B.
+- **F3-reading — the two clamps, pre-committed.** When both live, the **dispatch-deadline
+  clamp is authoritative for `remaining_deadline_ms`**: the value is `deadline_ns − now`
+  for the deadline the dispatch was INVOKED with — `min(now + timeout_ms, body_deadline)` —
+  which already carries the body deadline's min, so every clamped busy-wait stays inside
+  the step budget the executor handed down (the six-point rule "shortened only, never
+  extended" extended to the SQLite wait). The body deadline remains the outer bound the
+  executor computed; the clamp never re-derives it. **M-B′ must report the class split per
+  trial** — how much of each trial's dispatch wall-stretch is busy-wait bound vs
+  deadline-clamp — so a class regression is attributable to a clamp, not to "capture".
+  Clamp consolidation code rides row B.
+- **F5 — occurrence-ledger recoverability, answered.** The ledger IS restart-recoverable:
+  `RunCoordinator._rebuild_ledger_from_events` rebuilds every recorded occurrence from the
+  durable event stream, pinned by `tests/faults/test_protection.py`'s crash-recovery
+  replay-suppression control; a capture-id collision therefore requires a fresh UNREBUILT
+  ledger on one `run_id` — a caller-precondition violation (one `run_body` per `run_id`).
+  `_capture_id`'s uniqueness claim is narrowed to exactly that: restart-safe under the
+  coordinator's rebuild; one `run_body` per `run_id` is a caller precondition. Rebuild
+  fidelity for issued-id status is the boundary test's question (same-ledger attempt-2
+  keeps the invalidated record; a crash-shaped rebuild suppresses re-mint) — if it finds a
+  gap, the durable issued-ids registry row (Task 8) opens.
+- **F6 — the capture clock domain, answered.** `build_capture_services`'s
+  `clock: Callable[[], float]` is caller-injected (`content/capture_services.py:366–432`)
+  — the factory takes whatever timebase the composition hands it. The shared-base
+  invariant `control/clocking.py`'s docstring asserts ("plugins constructed from the same
+  clock object share the executor's time base; there is no hidden second clock") is
+  therefore **unpinned for the capture-services path**: nothing currently proves the
+  injected capture clock IS the executor's base. The clock-domain test and single-clock
+  threading ride the row-B time seam, with F3-clamp consolidation and F11's parse fix.
+
 **Row D**
 
 - **D-R1 (the lattice streams):** post-rebuild, the demo bench admits at bootstrap and a
@@ -625,8 +672,20 @@ touch head bytes)**
 | 6 | Aggregate teardown-window deadline (#167 F2 disclosure — unchanged) | #167 record | A commissioned envelope demanding it |
 | 7 | Capture format-enum widening beyond the core lane | This record §1a | An OTDP capture-formats revision train |
 | 8 | ACTIVE-manifest-derived corpus resolution (retiring the frozen literals at the runtime sites) | This record §1c | The first bump that would otherwise rely on the literal sweep alone, or a CON-10-style unification train |
+| 9 | **sF2** — a composition-level fallback control (proving no caller wraps `declared_dev_family` in a try-fallback to active) | This record §1b (seam non-leakage) | The first production fallback wrapping `declared_dev_family` |
+| 10 | **L2-F2** — mirror the bridge's G1 arithmetic (waveform `sample_count×8 ≤ max_bytes`) at admission | This record §1b (the semantics/policy surfaces) | The next admission-surface change, or the G1 train — whichever first |
+| 11 | **L2-F3** — unknown-keyword constraints fail-open (JSON Schema ignores unknown keywords: a typo'd keyword constrains nothing beyond the vacuous warning) | This record (the policy fold's table; §Decision 4's sibling) | The first multi-class capture corpus |
+| 12 | **The time-seam family: F3-clamp consolidation + F6 clock unification + F11 parse fix + F12 value change** | This record Decision 2 (row B) | Row B / the time seam |
+| 13 | **F5-widen** — a durable issued-ids registry (issued status persisted with the occurrence ledger) | Task 8 (persists the occurrence ledger) — **answered 2026-09-24**: the rebuild exists (F5's answer above), so this row opens ONLY if the rebuild-fidelity boundary test finds a gap | A rebuild-fidelity gap in that boundary test |
+| 14 | **F14** — a class bound on descriptor `capture_limits` values (governance question: does OTDP-bound `capture_limits` need a corpus-level ceiling?) | Governance — **the wave's single named follow-up issue, filed at PR time** (at most one follow-on issue per merged PR) | The governance issue's disposition |
 
 (#167's rows C, E, F stay closed in that record's table — none is this train's scope.)
+
+**Recorded dissents.** F11 (naive-`started_at` parse): *Rhea: fold the code fix now —
+bytes misstate UTC on evidence-exact records.* The council's 2:1 majority deferred the
+code fix (refuse the naive stamp or capture its offset) under the clock/time-seam trigger
+(row 12); the contract §5 disclosure and the boundary test pinning the current naive→UTC
+promotion land with this wave.
 
 ## Forks for the maintainer
 
