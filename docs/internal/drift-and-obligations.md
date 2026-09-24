@@ -138,8 +138,9 @@ and remain the reviewer's job.
     never a same-version byte swap; `tests/sdk/test_descriptor_equivalence.py`
     is the agreement surface that must stay green across the pair. The designed carrier
     of the constraint is the SDK lock's `compatibility.notes` field, filled on the
-    SDK's `fix/147-fold-sync` train (the fill must ride the same commit as every sync —
-    the sync writer regenerates the lock with notes null).
+    SDK's `fix/147-fold-sync` train (the sync writer now preserves the field
+    verbatim — SDK STD-6, gateway #170 — so a fill no longer needs to ride a
+    sync commit; hand-edit remains the only writer).
 
 16. **The `transport-settings.json` surface** (issue #147 increment 3:
     `src/benchweave/control/provider_settings.py`, consumed by
