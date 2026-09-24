@@ -65,11 +65,12 @@ the flow:
   compare lock + vendored tree, then regenerate the compatibility matrix and
   fail when the committed file differs.
 
-When a synchronisation changes or deprecates a standard, `sync` writes the
-lock's `compatibility.notes` as `null` — fill it in before committing: the
-check deliberately halts with `compatibility_incomplete` until the migration
-note is present. That halt is the operator prompt, not an error to work
-around.
+`sync` preserves the lock's `compatibility.notes` verbatim: the field is
+operator-authored state (SDK STD-6), and hand-editing the lock is the only way
+to set, update or clear it — `null` appears only when no note existed. The
+check still halts with `compatibility_incomplete` while a changed or
+deprecated standard has no migration note; that halt is the prompt to author
+one, not an error to work around.
 
 `docs/compatibility-matrix.md` is generated (never hand edited) from the
 manifest and the SDK lock; regenerate with
