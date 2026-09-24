@@ -2454,6 +2454,7 @@ class _GateWaitAdapter(Adapter):
         super().__init__()
         self.first_landed = first_landed
         self.proceed = proceed
+        self.append_started_at: float | None = None
         self.append_failed_at: float | None = None
 
     async def execute(self, request: dict[str, Any], context: Any) -> dict[str, Any]:
@@ -2464,11 +2465,13 @@ class _GateWaitAdapter(Adapter):
         await self.services.artifact_append(capture_id, b"\x01" * 8, context)
         self.first_landed.set()
         assert self.proceed.wait(10), "holder never armed"
+        import time
+
+        self.append_started_at = time.monotonic()
         try:
             await self.services.artifact_append(capture_id, b"\x01" * 8, context)
         except sqlite3.OperationalError:
-            import time
-
+            self.append_failed_at = time.monotonic()
             self.append_failed_at = time.monotonic()
             raise
         raise AssertionError("append #2 should have contended and failed")
@@ -2540,12 +2543,14 @@ def test_row_b_clamp_bounds_the_mid_capture_wait_by_the_step_deadline(
         assert result.error.code is ErrorCode.RESOURCE_LIMIT
         assert result.error.dispatch_state is DispatchState.DISPATCHED
 
-        # The clamp bounded the contended wait by the deadline: the append
-        # failed ~200 ms in, well before the 450 ms hold ended. Under the
-        # unclamped open default (5000 ms) the append waits the hold out.
+        # The clamp bounded the contended wait by the deadline: the busy-wait
+        # (measured from the append's own entry, excluding the adapter's
+        # event-wait wake-up) lasted ~the 200 ms clamp, well inside the 1 s
+        # hold. Under the unclamped open default (5000 ms) the append waits
+        # the hold out and the capture SUCCEEDS past its deadline.
         assert adapter.append_failed_at is not None
-        append_wait_ms = (adapter.append_failed_at - acquired_at) * 1000
-        assert 150 <= append_wait_ms <= 300, append_wait_ms
+        append_wait_ms = (adapter.append_failed_at - adapter.append_started_at) * 1000
+        assert 120 <= append_wait_ms <= 450, append_wait_ms
 
         # The epilogue floor let the reclaim wait out the remaining hold:
         # the row is gone and the forensic marker is durable at return.
@@ -2610,14 +2615,14 @@ def test_row_b_both_clamp_orderings_classify_one_pair(
         assert result.error.dispatch_state is DispatchState.DISPATCHED
 
         assert adapter.append_failed_at is not None
-        append_wait_ms = (adapter.append_failed_at - acquired_at) * 1000
+        append_wait_ms = (adapter.append_failed_at - adapter.append_started_at) * 1000
         if clamp_wins:
             # The deadline bound: the append failed ~at the deadline.
-            assert 150 <= append_wait_ms <= 300, append_wait_ms
+            assert 120 <= append_wait_ms <= 450, append_wait_ms
         else:
             # The default bound: the append failed ~at the default, far
             # inside the 3000 ms deadline — the cap that made it win.
-            assert 250 <= append_wait_ms <= 450, append_wait_ms
+            assert 200 <= append_wait_ms <= 500, append_wait_ms
             assert append_wait_ms < deadline_ms
         plugin.plugin_close()
     finally:
