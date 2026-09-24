@@ -133,6 +133,36 @@ _WEDGE_DISCLOSURE = (
     "no deletion path until the disposition audit-trail slice; remediation "
     "is manual by design — raise the ceiling or wait for that slice"
 )
+# Per-lane method labels (issue #184 finding 10): every emitted figure's
+# basis and denominator is named IN ITS OWN LANE — the old single
+# "under-counts" label is true only of stored bytes; the growth lanes'
+# per-row referenced bytes OVER-count shared artifacts (the writer's
+# content-addressed store gives byte-identical payloads one artifact row,
+# and each referencing row counts it).
+_SUBS_METHOD = (
+    "referenced bytes = sum of per-row artifact lengths over the n placed "
+    "events — a shared artifact counts once per row, so the lane "
+    "over-counts byte-identical shared payloads (denominator: the n placed "
+    "rows); rate = observed_bytes / observed_span_s"
+)
+_CAPS_METHOD = (
+    "observed bytes = sum of charged_bytes over the n finalised captures "
+    "(the writer's reservation-ledger basis, not artifact bytes); "
+    "rate = observed_bytes / observed_span_s"
+)
+_WEDGE_LEDGER_METHOD = (
+    "used = Σ reserved over staged + Σ charged over finalised per context "
+    "key — the capture writer's reservation ledger, the same figure G3 "
+    "enforces (denominator: the ledger rows of that key). The ledger is "
+    "not monotone: finalise re-prices reservations to charged bytes and "
+    "the abort sweep refunds aborted reservations — those drops are ledger "
+    "events, not storage reclamation"
+)
+_DISPOSAL_ROWS_METHOD = (
+    "evidence rows carry their artifact's LENGTH(data) (a shared artifact "
+    "counts once per row); capture rows carry charged_bytes (the writer's "
+    "reservation ledger, not artifact bytes)"
+)
 
 
 def _parse(value: str | None) -> datetime | None:
@@ -453,20 +483,31 @@ def build_retention_report(
     subscriptions: list[dict[str, Any]] = []
     captures_lane: dict[str, dict[str, Any]] = {}
     excluded = {"single_event": 0, "zero_span": 0, "unstamped": 0}
-    unstamped_events = 0
+    dropped_events = {"corrupt_ref": 0, "no_subscription": 0, "unparseable_stamp": 0}
 
     sub_groups: dict[tuple[str, str | None], list[tuple[datetime | None, int]]] = {}
     for ref_json, artifact, context, _stored_at in store.connection.execute(
         "SELECT content_ref_json, artifact_id, context_key, stored_at FROM evidence"
         " WHERE kind = 'event_log' ORDER BY stored_at, evidence_id"
     ):
-        try:
-            ref = json.loads(ref_json) if isinstance(ref_json, str) else {}
-        except json.JSONDecodeError:
-            ref = {}
-        sub = ref.get("subscription_id") if isinstance(ref, dict) else None
-        received = ref.get("host_received_at") if isinstance(ref, dict) else None
-        if not isinstance(sub, str) or not _in_scope(context, covered):
+        if not _in_scope(context, covered):
+            continue
+        # finding 10: corrupt refs are COUNTED, never silently dropped
+        ref: Any
+        if isinstance(ref_json, str):
+            try:
+                ref = json.loads(ref_json)
+            except json.JSONDecodeError:
+                ref = None
+        else:
+            ref = None
+        if not isinstance(ref, dict):
+            dropped_events["corrupt_ref"] += 1
+            continue
+        sub = ref.get("subscription_id")
+        received = ref.get("host_received_at")
+        if not isinstance(sub, str):
+            dropped_events["no_subscription"] += 1
             continue
         # parse FIRST, compare later: raw string ordering inverted
         # offset-mixed and bare-Z-vs-microsecond stamp pairs (finding 6)
@@ -475,7 +516,7 @@ def build_retention_report(
         )
     for (sub, context), events in sorted(sub_groups.items()):
         placed = [(stamp, bytes_) for stamp, bytes_ in events if stamp is not None]
-        unstamped_events += len(events) - len(placed)
+        dropped_events["unparseable_stamp"] += len(events) - len(placed)
         if len(events) == 1:
             excluded["single_event"] += 1
             continue
@@ -529,6 +570,7 @@ def build_retention_report(
         opened, closed = _parse_utc(created_at), _parse_utc(updated_at)
         lane["total"] += 1
         if opened is None and closed is None:
+            dropped_events["unparseable_stamp"] += 1
             continue
         if opened is not None:
             lane["opens"].append(opened)
@@ -590,13 +632,25 @@ def build_retention_report(
             f"{excluded['zero_span']} zero-span stream(s) excluded from the "
             "growth projection: every parsed stamp is the same instant"
         )
-    if excluded["unstamped"] or unstamped_events:
+    if excluded["unstamped"] or dropped_events["unparseable_stamp"]:
         disclosures.append(
             f"{excluded['unstamped']} unstamped stream(s) excluded from the "
             "growth projection (fewer than two offset-bearing parseable "
             "stamps) and "
-            f"{unstamped_events} event(s) dropped from span math "
-            "(naive or unparseable stamps)"
+            f"{dropped_events['unparseable_stamp']} event(s) dropped from "
+            "span math (naive or unparseable stamps)"
+        )
+    if dropped_events["corrupt_ref"]:
+        disclosures.append(
+            f"{dropped_events['corrupt_ref']} corrupt event_log content_ref "
+            "row(s) excluded from the growth projection (unparseable or "
+            "non-object reference)"
+        )
+    if dropped_events["no_subscription"]:
+        disclosures.append(
+            f"{dropped_events['no_subscription']} event_log row(s) without a "
+            "subscription id excluded from the growth projection (not stream "
+            "events)"
         )
 
     # --- the quota wedge -------------------------------------------------------
@@ -625,16 +679,33 @@ def build_retention_report(
             "SELECT DISTINCT context_key FROM capture_staging ORDER BY context_key"
         )
     ]
+    from benchweave.interfaces.operations import LIVE_RUN_STATES
+
     for key in wedge_keys:
         if not _in_scope(key, covered):
             continue
         used = writer.used_bytes(key)
         rate = lane_rates.get(key, 0.0)
-        tte = (ceiling - used) / rate if ceiling is not None and rate > 0 else None
+        # issue #184 finding 11: the wedge consults run liveness — a closed
+        # run's ledger is historical; a live-looking exhaustion date on it
+        # would forecast growth that cannot come.
+        run_state: str | None = None
+        if key.startswith(_RUN_CONTEXT_PREFIX):
+            state_row = run_states.get(key.removeprefix(_RUN_CONTEXT_PREFIX))
+            if state_row is not None:
+                run_state = (
+                    "live" if state_row["state"] in LIVE_RUN_STATES else "closed"
+                )
+        tte = (
+            (ceiling - used) / rate
+            if ceiling is not None and rate > 0 and run_state != "closed"
+            else None
+        )
         wedge_contexts.append(
             {
                 "context_key": key,
                 "bench": _bench_of(key, run_states),
+                "run_state": run_state,
                 "used_bytes": used,
                 "rate_bytes_per_s": rate,
                 "time_to_exhaustion_s": tte,
@@ -657,17 +728,24 @@ def build_retention_report(
         },
         "rows": rows,
         "disclosures": disclosures,
-        "stored_bytes": {"total": stored_total, "method": _STORED_BYTES_METHOD},
+        "stored_bytes": {
+            "total": stored_total,
+            "method": _STORED_BYTES_METHOD,
+            "disposal_rows": _DISPOSAL_ROWS_METHOD,
+        },
         "growth": {
             "horizon_s": horizon_s,
             "subscriptions": subscriptions,
             "captures": capture_growth,
             "excluded": dict(excluded),
+            "dropped_events": dict(dropped_events),
+            "methods": {"subscriptions": _SUBS_METHOD, "captures": _CAPS_METHOD},
         },
         "quota_wedge": {
             "ceiling": ceiling,
             "ceiling_source": ceiling_source,
             "contexts": wedge_contexts,
+            "method": _WEDGE_LEDGER_METHOD,
             "disclosure": _WEDGE_DISCLOSURE,
         },
     }
@@ -700,6 +778,7 @@ def render_markdown(report: dict[str, Any]) -> str:
         f"- total: {report['stored_bytes']['total']} bytes"
         f" (method: {report['stored_bytes']['method']})"
     )
+    lines.append(f"- {report['stored_bytes']['disposal_rows']}")
     growth = report["growth"]
     lines.append("")
     lines.append("## Growth projection")
@@ -723,6 +802,8 @@ def render_markdown(report: dict[str, Any]) -> str:
             f"rate={cap['rate_Bps']:.3f} B/s "
             f"projected={cap['projected_horizon_bytes']:.0f} B{held}"
         )
+    lines.append(f"- {growth['methods']['subscriptions']}")
+    lines.append(f"- {growth['methods']['captures']}")
     excluded = growth["excluded"]
     lines.append(
         f"- excluded streams: {excluded['single_event']} single-event, "
@@ -737,6 +818,13 @@ def render_markdown(report: dict[str, Any]) -> str:
     else:
         lines.append(f"- ceiling: {wedge['ceiling']} (source: {wedge['ceiling_source']})")
     for ctx in wedge["contexts"]:
+        if ctx.get("run_state") == "closed":
+            lines.append(
+                f"- {ctx['context_key']} bench={ctx['bench'] or '-'}: "
+                f"used={ctx['used_bytes']} B rate={ctx['rate_bytes_per_s']:.3f} B/s "
+                "run closed — ledger static, no forecast"
+            )
+            continue
         tte = (
             f"{ctx['time_to_exhaustion_s']:.1f}s (at {ctx['exhaustion_at']})"
             if ctx["time_to_exhaustion_s"] is not None
@@ -748,6 +836,7 @@ def render_markdown(report: dict[str, Any]) -> str:
             f"exhaustion in {tte}"
         )
     lines.append(f"- {wedge['disclosure']}")
+    lines.append(f"- {wedge['method']}")
     lines.append("")
     lines.append("## Disclosures")
     if not report["disclosures"]:

@@ -320,27 +320,24 @@ def test_s3_5_quota_scope_and_arithmetic(tmp_path: Path) -> None:
         assert contexts["run:run-b"]["used_bytes"] == used_b == 300
         assert contexts["run:run-b"]["rate_bytes_per_s"] == 0
         assert contexts["run:run-b"]["time_to_exhaustion_s"] is None
-        # the wedge arithmetic arm: a SECOND capture on run-b makes the key
-        # estimable (600 B over a 100 s span -> 6 B/s -> tte = (10000-600)/6)
-        writer.open_capture(
-            capture_id="cap-raw-2", context_key="run:run-b", fmt="raw_binary",
-            sample_count=None, max_bytes=1000, now=T0)
-        writer.append("cap-raw-2", b"\x02" * 300, "run:run-b")
-        writer.finalise("cap-raw-2", T1, "run:run-b")
-        used_b2 = writer.used_bytes("run:run-b")
-        assert used_b2 == 600
+        # the wedge arithmetic arm rides the LIVE run-c key (a closed run's
+        # row carries no exhaustion forecast — finding 11): two 100 B
+        # captures, opens T0/T1 and closes T1/T2 -> 200 B over 120 s
+        for cid, opened, closed in (("cap-c1", T0, T1), ("cap-c2", T1, T2)):
+            writer.open_capture(
+                capture_id=cid, context_key="run:run-c", fmt="raw_binary",
+                sample_count=None, max_bytes=1000, now=opened)
+            writer.append(cid, b"\x02" * 100, "run:run-c")
+            writer.finalise(cid, closed, "run:run-c")
+        used_c = writer.used_bytes("run:run-c")
         m2 = _model(data_dir, now=NOW, max_dataset_bytes=10_000)
         ctx2 = {c["context_key"]: c for c in m2["quota_wedge"]["contexts"]}
-        assert ctx2["run:run-b"]["rate_bytes_per_s"] == pytest.approx(6.0)
-        assert ctx2["run:run-b"]["time_to_exhaustion_s"] == pytest.approx(
-            (10_000 - 600) / 6
+        c2 = ctx2["run:run-c"]
+        assert c2["used_bytes"] == used_c == 712  # 512 reserved + 200 charged
+        assert c2["rate_bytes_per_s"] == pytest.approx(200 / 120)
+        assert c2["time_to_exhaustion_s"] == pytest.approx(
+            (10_000 - 712) / (200 / 120)
         )
-        # run-c holds only the never-finalised capture: 512 reserved, 0 charged
-        used_c = writer.used_bytes("run:run-c")
-        assert contexts["run:run-c"]["used_bytes"] == used_c == 512
-        assert contexts["run:run-c"]["rate_bytes_per_s"] == 0
-        # zero rate → no exhaustion estimate
-        assert contexts["run:run-c"]["time_to_exhaustion_s"] is None
     finally:
         store.close()
 
@@ -827,7 +824,10 @@ def test_fw2_growth_wire_fields_are_meaningful(tmp_path: Path) -> None:
     data_dir, model = _seed_growth(tmp_path)
     g = model["growth"]
     assert g["horizon_s"] >= 1
-    assert set(g) == {"horizon_s", "subscriptions", "captures", "excluded"}, sorted(g)
+    assert set(g) == {
+        "horizon_s", "subscriptions", "captures", "excluded",
+        "dropped_events", "methods",
+    }, sorted(g)
     for lane in ("subscriptions", "captures"):
         for row in g[lane]:
             assert row["n"] >= 2 and row["observed_bytes"] > 0
@@ -1019,4 +1019,133 @@ def test_fw9_held_classes_project_unbounded_growth_and_say_so(tmp_path: Path) ->
         if r["data_class"] == "evidence:event_log" and r["context_key"] == "run:run-a"
     ]
     assert rows and all(r["status"] == "held" for r in rows)
+
+
+def test_fw10_corrupt_and_unsubscribed_refs_are_counted_not_silent(
+    tmp_path: Path,
+) -> None:
+    """Finding 10 (MOD): corrupt ``content_ref`` rows vanished uncounted from
+    the growth lane. They are counted and disclosed now — silence is the
+    defect."""
+    data_dir = _seed(tmp_path)
+    store = Store.open(db_path(data_dir))
+    try:
+        store.connection.executemany(
+            "INSERT INTO evidence (evidence_id, kind, content_ref_json, artifact_id,"
+            " context_key, stored_at) VALUES (?, 'event_log', ?, NULL, 'run:run-a', ?)",
+            [
+                ("ev-corrupt-json", "{not json", T0),
+                ("ev-corrupt-nonstr", b"\x00\x01", T0),  # non-str ref column
+                ("ev-nosub", json.dumps({"host_received_at": T0}), T0),
+            ],
+        )
+        store.connection.commit()
+    finally:
+        store.close()
+    model = _model(data_dir, now=NOW, max_dataset_bytes=10_000, horizon_s=3600)
+    dropped = model["growth"]["dropped_events"]
+    assert dropped["corrupt_ref"] == 2, dropped
+    assert dropped["no_subscription"] == 1, dropped
+    joined = "\n".join(model["disclosures"])
+    assert "corrupt" in joined and "subscription" in joined
+
+
+def test_fw10_shared_artifacts_count_per_row_with_both_labels(tmp_path: Path) -> None:
+    """Finding 10 (MOD): the growth lane's per-row referenced bytes
+    over-count N x when payloads share one artifact (the writer's
+    content-addressed store gives byte-identical payloads one artifact row)
+    — the old single 'under-counts' label was wrong for this lane. Both
+    bases are labeled now, each naming its basis and denominator."""
+    data_dir = _seed(tmp_path)
+    payload = b"\xab" * 500
+    store, content = _open(data_dir)
+    try:
+        art = content.put_artifact(payload, T0)
+        for received in (T0, T1):  # one subscription, two byte-identical events
+            content.put_evidence(
+                "event_log",
+                {"id": f"shared-{received}", "version": "1",
+                 "sha256": hashlib.sha256(payload).hexdigest(),
+                 "subscription_id": "sub-shared", "host_received_at": received},
+                art, "run:run-a", T0)
+    finally:
+        store.close()
+
+    model = _model(data_dir, now=NOW, max_dataset_bytes=10_000, horizon_s=3600)
+    g = model["growth"]
+    shared = next(s for s in g["subscriptions"] if s["subscription_id"] == "sub-shared")
+    # referenced basis: per-row artifact lengths — 2 rows x 500 B
+    assert shared["observed_bytes"] == 1000
+    # stored basis: the artifact table — one 500 B row for the shared payload
+    assert model["stored_bytes"]["total"] >= 500
+    store = Store.open(db_path(data_dir))
+    try:
+        shared_rows = store.connection.execute(
+            "SELECT COUNT(*) FROM artifacts WHERE data = ?", (payload,)
+        ).fetchone()[0]
+        total = store.connection.execute(
+            "SELECT COALESCE(SUM(LENGTH(data)),0) FROM artifacts"
+        ).fetchone()[0]
+    finally:
+        store.close()
+    assert shared_rows == 1  # the writer dedups byte-identical payloads
+    assert model["stored_bytes"]["total"] == total
+    # every lane's method label names its basis and denominator
+    methods = g["methods"]
+    assert "per-row artifact lengths" in methods["subscriptions"]
+    assert "over-counts" in methods["subscriptions"] and "shared" in methods["subscriptions"]
+    assert "charged_bytes" in methods["captures"]
+    assert "SUM(LENGTH(data))" in model["stored_bytes"]["method"]
+    wedge_method = model["quota_wedge"]["method"]
+    assert "reservation ledger" in wedge_method and "G3" in wedge_method
+    from benchweave.cli.retention import render_json, render_markdown
+
+    md = render_markdown(model)
+    assert "per-row artifact lengths" in md and "reservation ledger" in md
+    assert "per-row artifact lengths" in render_json(model)
+
+
+def test_fw11_terminal_run_wedge_rows_render_closed(tmp_path: Path) -> None:
+    """Finding 11 (LOW): wedge rows never consulted run liveness — a CLOSED
+    run's key rendered a live-looking exhaustion date. A terminal run's
+    wedge row is labeled closed and carries no exhaustion forecast (the
+    used ledger is historical); a live run's row keeps its estimate."""
+    data_dir, model = _seed_growth(tmp_path)  # run-a terminal, rate 2000/30 B/s
+    wedge = model["quota_wedge"]
+    ctx = {c["context_key"]: c for c in wedge["contexts"]}
+    a = ctx["run:run-a"]
+    assert a["used_bytes"] == 2000
+    assert a["rate_bytes_per_s"] == pytest.approx(2000 / 30)
+    assert a["run_state"] == "closed"
+    assert a["time_to_exhaustion_s"] is None, "closed run must not forecast"
+    assert a["exhaustion_at"] is None
+    from benchweave.cli.retention import render_markdown
+
+    md = render_markdown(model)
+    line = next(ln for ln in md.splitlines() if ln.startswith("- run:run-a "))
+    assert "closed" in line and "exhaustion" not in line
+    # a live run keeps its live forecast
+    store = Store.open(db_path(data_dir))
+    try:
+        store.create_run("run-live", {"procedure_id": "demo"}, "op", T0)
+        store.put_run_state("run-live", BENCH, "running", T2)
+        writer = CaptureStagingStore(
+            store, max_capture_bytes=10_000_000, max_dataset_bytes=10_000_000
+        )
+        for cid, opened, closed in (
+            ("cap-l1", T0, T1), ("cap-l2", T1, T2),
+        ):
+            writer.open_capture(
+                capture_id=cid, context_key="run:run-live", fmt="raw_binary",
+                sample_count=None, max_bytes=1000, now=opened)
+            writer.append(cid, b"\x09" * 100, "run:run-live")
+            writer.finalise(cid, closed, "run:run-live")
+    finally:
+        store.close()
+    model2 = _model(data_dir, now=NOW, max_dataset_bytes=10_000)
+    ctx2 = {c["context_key"]: c for c in model2["quota_wedge"]["contexts"]}
+    live = ctx2["run:run-live"]
+    assert live["run_state"] == "live"
+    assert live["rate_bytes_per_s"] == pytest.approx(200 / 120)
+    assert live["time_to_exhaustion_s"] == pytest.approx((10_000 - 200) / (200 / 120))
 
