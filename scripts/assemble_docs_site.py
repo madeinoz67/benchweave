@@ -520,8 +520,17 @@ def verify_tree(dest: Path, paths: dict[str, str]) -> None:
             failures.append(f"{src} did not render to docs/{html}")
     # Every relative docs/ link on the static site must resolve in the assembled tree.
     index = (dest / "index.html").read_text(encoding="utf-8")
-    for key in sorted(set(STAMP_TOKEN_RE.findall(index))):
-        failures.append(f"stamp_residue: {{{{stg-{key}}}}} unresolved in the assembled index")
+    # Stamp residue (R1): sweep the DELIMITER, not the grammar — a case-variant,
+    # nested or unterminated `{{` matches no token pattern and would ship raw
+    # (review fold F1) — and sweep every copied website/ file, not just the
+    # index: the stamper only reads index.html, so a token anywhere else in the
+    # static source stamps nothing at all.
+    for f in sorted(p for p in dest.rglob("*") if p.is_file() and docs not in p.parents):
+        if b"{{" in f.read_bytes():
+            failures.append(
+                f"stamp_residue: {f.relative_to(dest).as_posix()} carries an unstamped "
+                "{{ delimiter (website/ carries well-formed tokens in index.html only)"
+            )
     for link in sorted(set(re.findall(r'href="(docs/[^"#]*)"', index))):
         target = dest / link
         ok = (target / "index.html").is_file() if link.endswith("/") else target.is_file()

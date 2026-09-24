@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import importlib.util
 import re
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +27,7 @@ ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "website" / "index.html"
 SEMVER_RE = re.compile(r"\d+\.\d+\.\d+")
 TOKEN_RE = re.compile(r"\{\{stg-([a-z0-9-]+)\}\}")
+BRACES = "{{"
 
 
 def _assembler() -> Any:
@@ -257,3 +259,115 @@ def test_verify_tree_refuses_stamp_residue(tmp_path: Path) -> None:
     dest = _minimal_dest(tmp_path, SOURCE.read_text(encoding="utf-8"))
     with pytest.raises(SystemExit, match="stamp_residue:"):
         assembler.verify_tree(dest, paths={})
+
+
+# ── the `{{` residue class (adversary F1) ────────────────────────────────────
+#
+# The token grammar is well-formed-only, so a case-variant (`{{stg-Adapter}}`),
+# nested (`{{stg-{{stg-otdp}}}}`) or unterminated (`{{stg-otdp} Y`) delimiter,
+# and any `{{` in a non-index file, match nothing and ship raw with every
+# grammar-keyed gate green. The delimiter itself — not the grammar — is the
+# residue signal: the source pin refuses any `{{` under `website/` except
+# well-formed tokens in `index.html`, and verify_tree refuses any `{{` in any
+# copied static-site file.
+
+
+def _stray_braces(text: str, *, tokens_allowed: bool) -> list[str]:
+    """Every `{{` occurrence that is not a well-formed stamp token start.
+
+    With ``tokens_allowed`` false, every `{{` is stray (non-index files carry
+    no tokens at all). Reported as 1-based `line:column` positions.
+    """
+    stray: list[str] = []
+    for number, line in enumerate(text.splitlines(), start=1):
+        column = line.find(BRACES)
+        while column != -1:
+            if not tokens_allowed or TOKEN_RE.match(line, column) is None:
+                stray.append(f"{number}:{column + 1}")
+            column = line.find(BRACES, column + 1)
+    return stray
+
+
+def _website_brace_violations(root: Path | None = None) -> list[str]:
+    """Stray `{{` anywhere under a `website/` tree, as `path:line:column`."""
+    tree = root if root is not None else ROOT / "website"
+    violations: list[str] = []
+    for path in sorted(p for p in tree.rglob("*") if p.is_file()):
+        rel = path.relative_to(tree).as_posix()
+        text = path.read_text(encoding="utf-8")
+        for site in _stray_braces(text, tokens_allowed=rel == "index.html"):
+            violations.append(f"{rel}:{site}")
+    return violations
+
+
+def _stamped_text(tmp_path: Path, text: str) -> str:
+    """Stamp a copy of the given source text and return the stamped bytes."""
+    assembler = _assembler()
+    copy = tmp_path / "to-stamp.html"
+    copy.write_text(text, encoding="utf-8")
+    assembler.stamp_website(copy, assembler.website_stamp_map(ROOT))
+    return copy.read_text(encoding="utf-8")
+
+
+def test_website_source_braces_are_tokens_in_index_only() -> None:
+    """The `{{` delimiter exists nowhere under `website/` except as
+    well-formed tokens in `index.html` — a malformed or misplaced token is a
+    residue at the source, not just in the assembled artifact."""
+    violations = _website_brace_violations()
+    assert not violations, (
+        "stray `{{` delimiter(s) in website/ (only index.html carries tokens, "
+        "well-formed): " + ", ".join(violations)
+    )
+
+
+def test_tamper_case_variant_token_is_detected(tmp_path: Path) -> None:
+    """F1 vehicle 1: `{{stg-Adapter}}` matches no grammar — the braces pin
+    flags it at source and verify_tree refuses its raw delimiter in the
+    assembled tree (the stamper is grammar-keyed and leaves it untouched)."""
+    text = SOURCE.read_text(encoding="utf-8").replace(
+        "OTDP {{stg-otdp}} baseline", "OTDP {{stg-otdp}} baseline · AD {{stg-Adapter}}", 1
+    )
+    assert _stray_braces(text, tokens_allowed=True), "case-variant token invisible at source"
+    with pytest.raises(SystemExit, match="stamp_residue:"):
+        _assembler().verify_tree(_minimal_dest(tmp_path, _stamped_text(tmp_path, text)), paths={})
+
+
+def test_tamper_nested_token_is_detected(tmp_path: Path) -> None:
+    """F1 vehicle 2: `{{stg-{{stg-otdp}}}}` — the stamper substitutes the inner
+    token and ships `{{stg-<version>}}`; the source pin flags the outer `{{`
+    and verify_tree refuses the delimiter the grammar cannot even see."""
+    text = SOURCE.read_text(encoding="utf-8").replace(
+        "v{{stg-otdp}}", "v{{stg-{{stg-otdp}}}}", 1
+    )
+    assert _stray_braces(text, tokens_allowed=True), "nested token invisible at source"
+    stamped = _stamped_text(tmp_path, text)
+    assert BRACES in stamped, "expected the inner-only substitution to leave the outer delimiter"
+    with pytest.raises(SystemExit, match="stamp_residue:"):
+        _assembler().verify_tree(_minimal_dest(tmp_path, stamped), paths={})
+
+
+def test_tamper_missing_brace_is_detected(tmp_path: Path) -> None:
+    """F1 vehicle 3: `{{stg-otdp} Y` matches nothing, stamps nothing — the
+    braces pin flags it and verify_tree refuses the shipped delimiter."""
+    text = SOURCE.read_text(encoding="utf-8").replace(
+        "OTDP {{stg-otdp}} baseline", "OTDP {{stg-otdp}} baseline · X {{stg-otdp} Y", 1
+    )
+    assert _stray_braces(text, tokens_allowed=True), "unterminated token invisible at source"
+    with pytest.raises(SystemExit, match="stamp_residue:"):
+        _assembler().verify_tree(_minimal_dest(tmp_path, _stamped_text(tmp_path, text)), paths={})
+
+
+def test_tamper_asset_file_token_is_detected(tmp_path: Path) -> None:
+    """F1 vehicle 4: a token in `assets/site.js` never reaches the stamper
+    (index-only) — the source pin refuses any `{{` outside index.html and
+    verify_tree sweeps every copied static-site file, not just the index."""
+    tree = tmp_path / "website"
+    shutil.copytree(ROOT / "website", tree)
+    (tree / "assets" / "site.js").write_text("/* {{stg-otdp}} */\n", encoding="utf-8")
+    assert _website_brace_violations(tree), "non-index token invisible at source"
+
+    stamped = _stamped_text(tmp_path, SOURCE.read_text(encoding="utf-8"))
+    dest = _minimal_dest(tmp_path / "site-root", stamped)
+    (dest / "assets" / "site.js").write_text("/* {{stg-otdp}} */\n", encoding="utf-8")
+    with pytest.raises(SystemExit, match="stamp_residue:"):
+        _assembler().verify_tree(dest, paths={})
