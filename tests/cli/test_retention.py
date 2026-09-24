@@ -269,6 +269,44 @@ def test_fw4_retention_never_migrates_a_down_level_store(tmp_path: Path) -> None
     assert after["schema_migrations"] == before["schema_migrations"]
 
 
+def test_fw4a_interior_migration_hole_refuses_typed_and_writes_nothing(
+    tmp_path: Path,
+) -> None:
+    """R2 fold item 1 (BLOCKING, fork A): the precheck compared only
+    MAX(schema_migrations.version) against the newest known migration, but
+    ``Store._apply_migrations`` re-applies ANY migration whose version row
+    is absent. Deleting the MIDDLE v4 row (v5/MAX intact) passed the
+    precheck, the idempotent v4 DDL (``CREATE INDEX IF NOT EXISTS``)
+    re-applied silently, and the re-inserted ``schema_migrations`` row was
+    a store write inside the "never migrates" command. The comparison is
+    set-based now: any missing version refuses naming it; the snapshot
+    pins the table (the DDL is idempotent, so only the row-set pin catches
+    the write)."""
+    data_dir = _seed(tmp_path)
+    conn = sqlite3.connect(str(db_path(data_dir)))
+    conn.execute("DELETE FROM schema_migrations WHERE version = 4")  # keep v5/MAX
+    conn.commit()
+    conn.close()
+    before = _snapshot(data_dir)
+    assert before["schema_migrations"][0] == 4, "fixture: the v4 row is gone"
+    result = CliRunner().invoke(
+        cli, ["retention", "--data-dir", str(data_dir), "--max-dataset-bytes", "10000"]
+    )
+    combined = _combined(result)
+    assert result.exit_code == 1, (
+        f"the holey store must refuse, got exit {result.exit_code}:\n{combined}"
+    )
+    assert "retention_store:" in combined
+    assert "missing versions: 4" in combined, combined
+    assert "Traceback" not in combined
+    after = _snapshot(data_dir)
+    assert after == before, (
+        "the refusal path wrote back — the re-inserted v4 row is a "
+        "migration applied inside the never-migrate command"
+    )
+    assert after["schema_migrations"] == before["schema_migrations"]
+
+
 def test_fw13_refuse_newer_is_a_typed_refusal_not_a_traceback(
     tmp_path: Path,
 ) -> None:

@@ -978,16 +978,25 @@ class RetentionStoreRefused(AtRestError):
 
 def _refuse_schema_mismatch(db: Path) -> None:
     """Fork A's read posture: inspect ``schema_migrations`` read-only and
-    refuse on any drift. Down-level (pending migrations) → refuse: the
-    report is a pure projection and will not upgrade the store under the
-    operator (the ``report`` command shares the migration-on-open shape —
-    that behavior change is out of this slice's scope). Newer → refuse
-    (``refuse_newer_schema``), typed, never a traceback. The check runs
-    under the exclusive hold, so the subsequent ``Store.open`` applies
-    nothing: on_disk == expected means no pending migration exists."""
+    refuse on any drift. The comparison is SET-based (the R2 fold's
+    blocking item): ``Store._apply_migrations`` re-applies ANY migration
+    whose version row is absent — not only those below ``MAX(version)`` —
+    so a MAX-only precheck admits a holey store (the middle v4 row
+    deleted, v5/MAX intact) and the idempotent re-apply writes a
+    ``schema_migrations`` row inside the "never migrates" command. Any
+    unknown version present → refuse (``refuse_newer_schema`` — it
+    dominates: a newer gateway's store can also read as missing the
+    current top version); any known version missing → refuse, naming the
+    missing versions; typed, never a traceback (the
+    ``report`` command still shares the
+    migration-on-open shape — that behavior change is out of this slice's
+    scope). The check runs under the exclusive hold, so the subsequent
+    ``Store.open`` applies nothing: the applied-version set equaling the
+    gateway's known set is what makes "no pending migration exists" true."""
     from benchweave.state.migrations import MIGRATIONS
 
-    expected = MIGRATIONS[-1].version
+    known = [migration.version for migration in MIGRATIONS]
+    expected = known[-1]
     try:
         conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     except sqlite3.Error as error:
@@ -996,12 +1005,10 @@ def _refuse_schema_mismatch(db: Path) -> None:
         ) from error
     try:
         try:
-            on_disk = int(
-                conn.execute(
-                    "SELECT COALESCE(MAX(version), 0) FROM schema_migrations"
-                ).fetchone()[0]
-                or 0
-            )
+            applied = {
+                int(row[0])
+                for row in conn.execute("SELECT version FROM schema_migrations")
+            }
         except sqlite3.Error as error:
             raise RetentionStoreRefused(
                 "retention_store: no schema_migrations table — not a "
@@ -1010,19 +1017,28 @@ def _refuse_schema_mismatch(db: Path) -> None:
             ) from error
     finally:
         conn.close()
-    if on_disk < expected:
+    missing = [version for version in known if version not in applied]
+    unknown = sorted(applied - set(known))
+    # Precedence: an unknown version (a newer gateway's schema) dominates a
+    # missing one — a newer gateway renumbers/replaces the top migrations, so
+    # its store can read as "missing" the current top version while the
+    # honest verdict is refuse-newer, never a down-level upgrade hint.
+    if unknown:
         raise RetentionStoreRefused(
-            f"retention_store: on-disk schema version {on_disk} is behind "
-            f"the gateway's {expected} — a retention run never migrates the "
-            "store; open it once with a current gateway (setup/serve/report) "
-            "to upgrade, then retry"
+            f"retention_store: on-disk schema version {unknown[-1]} is newer "
+            f"than the gateway's {expected} (unknown versions: "
+            f"{', '.join(str(version) for version in unknown)}); downgrade "
+            "is refused (refuse_newer_schema) — run a gateway version that "
+            "knows this schema before opening this database"
         )
-    if on_disk > expected:
+    if missing:
         raise RetentionStoreRefused(
-            f"retention_store: on-disk schema version {on_disk} is newer "
-            f"than the gateway's {expected}; downgrade is refused "
-            "(refuse_newer_schema) — run a gateway version that knows this "
-            "schema before opening this database"
+            f"retention_store: on-disk schema is behind the gateway's — "
+            f"schema_migrations is missing versions: "
+            f"{', '.join(str(version) for version in missing)} (of the "
+            f"gateway's known 1..{expected}) — a retention run never "
+            "migrates the store; open it once with a current gateway "
+            "(setup/serve/report) to upgrade, then retry"
         )
 
 
