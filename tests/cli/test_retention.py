@@ -1648,3 +1648,60 @@ def test_fold2_wedge_exhaustion_beyond_domain_renders_decidable_output(
     trickle_line = next(ln for ln in md.splitlines() if ln.startswith("- run:run-trickle"))
     assert "beyond the datetime domain" in trickle_line
     assert fatpipe["exhaustion_at"][:4] in md
+
+
+def test_fold3_markdown_escapes_store_sourced_identifiers(tmp_path: Path) -> None:
+    """R2 fold item 3: evidence kinds (an open vocabulary) and subscription
+    ids (read back from ``content_ref`` JSON) were interpolated into
+    markdown unescaped — a newline in either forged arbitrary lines in the
+    operator's deletion-decision report. The emitter escapes control
+    characters in every store-sourced string now; the JSON form is
+    untouched (``json.dumps`` already encodes controls)."""
+    from benchweave.cli.retention import render_json, render_markdown
+
+    data_dir = _seed(tmp_path)
+    store, content = _open(data_dir)
+    try:
+        # a forged subscription id over two events (n = 2 -> the stream
+        # lands in the subscriptions lane, where the id is interpolated)
+        for received in (T0, T1):
+            payload = f"inject-{received}".encode()
+            art = content.put_artifact(payload, T0)
+            content.put_evidence(
+                "event_log",
+                {"id": f"ref-inject-{received}", "version": "1",
+                 "sha256": hashlib.sha256(payload).hexdigest(),
+                 "subscription_id": "sub-a\n- FORGED-SUB-LINE",
+                 "host_received_at": received},
+                art, "run:run-a", T0)
+        # a forged evidence kind (fixture-level row, the fw10 precedent):
+        # the kind is an open vocabulary the store does not constrain
+        store.connection.execute(
+            "INSERT INTO evidence (evidence_id, kind, content_ref_json, artifact_id,"
+            " context_key, stored_at) VALUES (?, ?, '{}', NULL, 'run:run-a', ?)",
+            ("ev-forged-kind", "x status=held disposal=2099\n- FORGED-ROW", T0),
+        )
+        store.connection.commit()
+    finally:
+        store.close()
+
+    model = _model(data_dir, now=NOW, max_dataset_bytes=10_000)
+    md = render_markdown(model)
+    lines = md.splitlines()
+    assert not any(
+        ln.startswith("- FORGED-ROW") for ln in lines
+    ), "a forged disposal row was injected as its own report line"
+    assert not any(
+        ln.startswith("- FORGED-SUB-LINE") for ln in lines
+    ), "a forged subscription line was injected as its own report line"
+    assert "\\x0a" in md, "the newline renders as its visible escape"
+    carrier = next(ln for ln in lines if "FORGED-ROW" in ln)
+    assert carrier.startswith("- "), carrier  # stays inside its own row line
+    sub_carrier = next(ln for ln in lines if "FORGED-SUB-LINE" in ln)
+    assert sub_carrier.startswith("- subscription "), sub_carrier
+    # the JSON machine form keeps the raw bytes of the store's identifiers
+    payload = json.loads(render_json(model))
+    kinds = {r["data_class"] for r in payload["rows"]}
+    assert "evidence:x status=held disposal=2099\n- FORGED-ROW" in kinds
+    subs = {s["subscription_id"] for s in payload["growth"]["subscriptions"]}
+    assert "sub-a\n- FORGED-SUB-LINE" in subs

@@ -92,6 +92,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -860,6 +861,22 @@ def build_retention_report(
 
 # --- emitters -----------------------------------------------------------------------
 
+#: C0 control characters and DEL — a newline inside a store-sourced
+#: identifier would otherwise forge report lines (the R2 fold's injection
+#: item: evidence kinds are an open vocabulary, subscription ids ride
+#: opaque ``content_ref`` JSON, and neither is constrained by the store).
+_MD_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
+
+
+def _md_text(value: Any) -> Any:
+    """Escape control characters in a store-sourced string on its way into
+    markdown (``\\x0a`` for a newline) so an identifier can never forge
+    report lines. Non-strings pass through; the JSON emitter is untouched
+    (``json.dumps`` already encodes control characters)."""
+    if not isinstance(value, str):
+        return value
+    return _MD_CONTROL.sub(lambda match: f"\\x{ord(match.group()):02x}", value)
+
 
 def render_markdown(report: dict[str, Any]) -> str:
     """The operator markdown: every row with its status and date, the
@@ -874,9 +891,11 @@ def render_markdown(report: dict[str, Any]) -> str:
     for row in report["rows"]:
         overdue = " OVERDUE" if row["overdue"] else ""
         lines.append(
-            f"- {row['id']}  class={row['data_class']} bench={row['bench'] or '-'}"
+            f"- {_md_text(row['id'])}  class={_md_text(row['data_class'])}"
+            f" bench={_md_text(row['bench']) or '-'}"
             f" status={row['status']} anchor={row['anchor_kind'] or '-'}"
-            f"@{row['anchor_at'] or '-'} disposal={row['disposal_date'] or '-'}"
+            f"@{_md_text(row['anchor_at']) or '-'}"
+            f" disposal={row['disposal_date'] or '-'}"
             f" on_disposition={row['on_disposition'] or '-'} bytes={row['bytes']}{overdue}"
         )
     lines.append("")
@@ -896,7 +915,7 @@ def render_markdown(report: dict[str, Any]) -> str:
     for sub in growth["subscriptions"]:
         held = " [held — never empties at disposal time]" if sub["held"] else ""
         lines.append(
-            f"- subscription {sub['subscription_id']}: n={sub['n']} "
+            f"- subscription {_md_text(sub['subscription_id'])}: n={sub['n']} "
             f"observed={sub['observed_bytes']} B over {sub['observed_span_s']}s "
             f"rate={sub['rate_Bps']:.3f} B/s "
             f"projected={sub['projected_horizon_bytes']:.0f} B{held}"
@@ -904,7 +923,7 @@ def render_markdown(report: dict[str, Any]) -> str:
     for cap in growth["captures"]:
         held = " [held — never empties at disposal time]" if cap["held"] else ""
         lines.append(
-            f"- captures {cap['context_key']}: n={cap['n']} "
+            f"- captures {_md_text(cap['context_key'])}: n={cap['n']} "
             f"observed={cap['observed_bytes']} B over {cap['observed_span_s']}s "
             f"rate={cap['rate_Bps']:.3f} B/s "
             f"projected={cap['projected_horizon_bytes']:.0f} B{held}"
@@ -932,7 +951,7 @@ def render_markdown(report: dict[str, Any]) -> str:
         )
         if ctx.get("run_state") == "closed":
             lines.append(
-                f"- {ctx['context_key']} bench={ctx['bench'] or '-'}: "
+                f"- {_md_text(ctx['context_key'])} bench={_md_text(ctx['bench']) or '-'}: "
                 f"used={ctx['used_bytes']} B {rate_text} "
                 "run closed — ledger static, no forecast"
             )
@@ -965,7 +984,7 @@ def render_markdown(report: dict[str, Any]) -> str:
             )
             tail = f"exhaustion in {ctx['time_to_exhaustion_s']:.1f}s {when}"
         lines.append(
-            f"- {ctx['context_key']} bench={ctx['bench'] or '-'}: "
+            f"- {_md_text(ctx['context_key'])} bench={_md_text(ctx['bench']) or '-'}: "
             f"used={ctx['used_bytes']} B {rate_text} {tail}"
         )
     lines.append(f"- {wedge['disclosure']}")
