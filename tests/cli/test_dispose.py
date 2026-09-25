@@ -1179,12 +1179,15 @@ def test_ar7_verify_archive_clean_drift_and_orphans(tmp_path: Path) -> None:
     problems = sorted(d["problem"] for d in model["drift"])
     assert problems == ["absent", "digest_mismatch", "length_mismatch"], problems
 
-    # an orphan is reported, never deleted, and is not drift
+    # an orphan is reported (with its destination), never deleted, and is
+    # not drift
     orphan = target / "objects" / ("art-" + "0" * 64)
     orphan.write_bytes(b"orphan-object-bytes")
     model = _dispose(data_dir, now=NOW, archive_target=target,
                      verify_archive=True)
-    assert model["orphans"] == [orphan.name]
+    assert model["orphans"] == [
+        {"artifact_id": orphan.name, "destination": str(target.resolve())}
+    ]
     assert orphan.is_file(), "orphans are reported, never deleted"
     assert len(model["drift"]) == 3, "an orphan is over-preservation, not drift"
 
@@ -1222,10 +1225,13 @@ def test_ar7_cli_exit_codes_and_mode_refusals(tmp_path: Path) -> None:
     assert "never executes" in combined
     assert "Traceback" not in combined
 
+    # --verify-archive WITHOUT a target works (finding 3): each row
+    # verifies against its own recorded destination.
     result = CliRunner().invoke(cli, [
         "dispose", "--data-dir", str(data_dir), "--verify-archive"])
-    assert result.exit_code == 1
-    assert "--archive-target" in _combined(result)
+    assert result.exit_code == 1  # drift is still drift without a flag
+    combined = _combined(result)
+    assert "digest_mismatch" in combined
     assert "Traceback" not in combined
 
 
@@ -1325,6 +1331,83 @@ def test_fold2_durability_errors_refuse_typed_never_laundered(
     )
     assert int(_rows(data_dir, "SELECT COUNT(*) FROM"
                         " disposition_invocations")[0][0]) == 0
+
+
+def test_fold3_verify_reads_each_rows_recorded_destination(tmp_path: Path) -> None:
+    """Review wave finding 3 (critic#3): verify scanned every archived
+    row against the one passed flag while ``archive_destination`` was
+    write-only — a second target made every earlier row read as drift.
+    The fix resolves each row's RECORDED destination (the column exists
+    for this); the flag is only a fallback for rows that lack one. Two
+    batches to two targets verify clean with no flag; a flipped T1
+    object names T1; relocating T2 reads as drift at the recorded
+    destination, never at a flag-supplied guess."""
+    import shutil
+
+    data_dir = _seed(tmp_path)
+    _write_policy(data_dir / "retention-policy.json")
+    t1 = tmp_path / "offline-one"
+    t2 = tmp_path / "offline-two"
+    first = _dispose(data_dir, now=NOW, execute=True, archive_target=t1)
+    assert first["counts"]["archived"] == 4  # batch 1 -> T1
+
+    store, content = _open(data_dir)  # batch 2: two fresh overdue rows
+    try:
+        for i in range(2):
+            payload = json.dumps({"batch-two": i}).encode()
+            content.put_evidence(
+                "event_log",
+                {"id": f"ref-batch-two-{i}", "version": "1",
+                 "sha256": hashlib.sha256(payload).hexdigest()},
+                content.put_artifact(payload, T0),
+                "run:run-a", T0,
+            )
+    finally:
+        store.close()
+    second = _dispose(data_dir, now=NOW, execute=True, archive_target=t2)
+    assert second["counts"]["archived"] == 2  # batch 2 -> T2
+
+    # No flag, no reliance on one consolidated target: every row verifies
+    # against its own recorded destination.
+    model = _dispose(data_dir, now=NOW, verify_archive=True)
+    assert model["clean"] is True
+    assert model["verified"] == 6
+    assert model["drift"] == [] and model["skipped"] == []
+    assert sorted(model["destinations"]) == sorted(
+        {str(t1.resolve()), str(t2.resolve())})
+
+    # A flipped T1 object names T1 — the drift names where it looked.
+    t1_objects = {p.name: p for p in (t1 / "objects").iterdir()}
+    victim = sorted(t1_objects.values())[0]
+    payload_bytes = bytearray(victim.read_bytes())
+    payload_bytes[0] ^= 0xFF
+    victim.write_bytes(bytes(payload_bytes))
+    model = _dispose(data_dir, now=NOW, verify_archive=True)
+    assert model["clean"] is False
+    assert len(model["drift"]) == 1
+    assert model["drift"][0]["destination"] == str(t1.resolve())
+
+    # Relocation: moving T2 away reads as drift at the RECORDED
+    # destination (the trail names where the copy was verified), never
+    # at a flag-supplied guess. The flipped T1 object from the arm above
+    # still reads as digest_mismatch at T1 — three drifted rows total.
+    shutil.move(str(t2), str(tmp_path / "offline-moved"))
+    model = _dispose(data_dir, now=NOW, verify_archive=True)
+    problems = sorted(
+        (d["problem"], d["destination"]) for d in model["drift"])
+    assert problems == [
+        ("absent", str(t2.resolve())),
+        ("absent", str(t2.resolve())),
+        ("digest_mismatch", str(t1.resolve())),
+    ], "relocation reads as absent at the recorded destination"
+    # the two absent rows ARE the moved tree's rows
+    t2_rows = {
+        str(r["disposition_id"]) for r in _audit_rows(data_dir)
+        if r["outcome"] == "archived"
+        and r["archive_destination"] == str(t2.resolve())
+    }
+    assert {d["disposition_id"] for d in model["drift"]
+            if d["problem"] == "absent"} == t2_rows
 
 
 # --- fold fix 5: output units + skip split + disclosure carry ------------------------------

@@ -411,46 +411,66 @@ def _write_archive_manifest(
 def _verify_archive_model(
     store: Store, target: Path | None, *, now: str
 ) -> dict[str, Any]:
-    """The read-only verify arm (issue #199 §2.5): for every committed
-    ``outcome='archived'`` row, re-prove the object at the destination —
-    present, re-hashing to its content address, matching the trail's
-    recorded length. Destination objects no trail row references are
-    ORPHANS (the disclosed over-preservation window: crashed attempts,
-    superseded runs) — reported, never deleted (deleting destination
-    files is a new authority; record deferral D2). Drift is named per
-    object, machine-matchable (``absent`` / ``digest_mismatch`` /
-    ``length_mismatch``); ``digest_mismatch`` takes precedence — the
-    bytes are re-hashed first, never trusted from ``archived_byte_length``
-    (``length_mismatch`` alone fires only when intact bytes disagree with
-    a tampered trail length)."""
-    if target is None:
-        raise AtRestError(
-            "dispose: --verify-archive requires --archive-target — the "
-            "verify arm re-proves objects at the destination it names"
-        )
-    resolved = Path(target).expanduser().resolve()
-    if not resolved.is_dir():
-        raise ArchiveTargetRefused(
-            f"archive_target: {resolved} does not exist — the verify arm "
-            "re-proves objects at a destination that must be present"
-        )
-    objects_dir = resolved / "objects"
+    """The read-only verify arm (issue #199 §2.5, review-wave finding 3):
+    for every committed ``outcome='archived'`` row, re-prove the object
+    at the row's RECORDED ``archive_destination`` — the column exists for
+    exactly this, so a second target (or any later disposition to
+    another destination) never makes earlier rows read as drift. The
+    ``--archive-target`` flag is only a FALLBACK for rows that lack a
+    recorded destination; it stays the store/dispose-time argument.
+    Relocating a destination reads as ``absent`` at the recorded path —
+    the trail names where the copy was verified, never a flag-supplied
+    guess.
+
+    Each row's object must be present, re-hash to its content address,
+    and match the trail's recorded length. Rows with no artifact
+    binding, or no destination to check at all, are COUNTED as skipped —
+    never silently passed (review-wave finding 5's verify half).
+    Destination objects no trail row references are ORPHANS (the
+    disclosed over-preservation window) — reported, never deleted
+    (record deferral D2). Drift is named per object, machine-matchable
+    (``absent`` / ``digest_mismatch`` / ``length_mismatch``);
+    ``digest_mismatch`` takes precedence — the bytes are re-hashed
+    first, never trusted from ``archived_byte_length``
+    (``length_mismatch`` alone fires only when intact bytes disagree
+    with a tampered trail length)."""
+    fallback = (
+        str(Path(target).expanduser().resolve()) if target is not None else None
+    )
     drift: list[dict[str, str]] = []
-    referenced: set[str] = set()
+    skipped: list[dict[str, str]] = []
     verified = 0
-    for disposition_id, artifact_id, byte_length in store.connection.execute(
-        "SELECT disposition_id, archived_artifact_id, archived_byte_length"
-        " FROM dispositions WHERE outcome = 'archived' ORDER BY rowid"
+    referenced: dict[str, set[str]] = {}
+    for disposition_id, artifact_id, byte_length, recorded in (
+        store.connection.execute(
+            "SELECT disposition_id, archived_artifact_id,"
+            " archived_byte_length, archive_destination"
+            " FROM dispositions WHERE outcome = 'archived' ORDER BY rowid"
+        )
     ):
+        disposition_id = str(disposition_id)
         if artifact_id is None:
-            continue  # an artifact-less archived row binds no object
+            skipped.append({
+                "disposition_id": disposition_id,
+                "reason": "no artifact binding",
+            })
+            continue
         artifact_id = str(artifact_id)
-        referenced.add(artifact_id)
-        path = objects_dir / artifact_id
+        destination = str(recorded) if recorded else fallback
+        if destination is None:
+            skipped.append({
+                "disposition_id": disposition_id,
+                "archived_artifact_id": artifact_id,
+                "reason": "no recorded destination",
+            })
+            continue
+        referenced.setdefault(destination, set()).add(artifact_id)
+        path = Path(destination) / "objects" / artifact_id
         if not path.is_file():
             drift.append({
-                "disposition_id": str(disposition_id),
+                "disposition_id": disposition_id,
                 "archived_artifact_id": artifact_id,
+                "destination": destination,
                 "problem": "absent",
             })
             continue
@@ -459,37 +479,46 @@ def _verify_archive_model(
             "art-"
         ):
             drift.append({
-                "disposition_id": str(disposition_id),
+                "disposition_id": disposition_id,
                 "archived_artifact_id": artifact_id,
+                "destination": destination,
                 "problem": "digest_mismatch",
             })
             continue
         if byte_length is not None and len(payload) != int(byte_length):
             drift.append({
-                "disposition_id": str(disposition_id),
+                "disposition_id": disposition_id,
                 "archived_artifact_id": artifact_id,
+                "destination": destination,
                 "problem": "length_mismatch",
             })
             continue
         verified += 1
-    orphans: list[str] = []
-    if objects_dir.is_dir():
-        orphans = sorted(
-            entry.name
-            for entry in objects_dir.iterdir()
-            if entry.is_file()
-            and not entry.name.startswith(".")
-            and entry.name not in referenced
-        )
+    orphans: list[dict[str, str]] = []
+    for destination in sorted(referenced):
+        objects_dir = Path(destination) / "objects"
+        if not objects_dir.is_dir():
+            continue
+        for entry in sorted(objects_dir.iterdir()):
+            if (
+                entry.is_file()
+                and not entry.name.startswith(".")
+                and entry.name not in referenced[destination]
+            ):
+                orphans.append({
+                    "artifact_id": entry.name,
+                    "destination": destination,
+                })
     return {
         "generated_at": now,
         "executed": False,
         "mode": "verify-archive",
-        "destination": str(resolved),
+        "destinations": sorted(referenced),
         "verified": verified,
         "drift": drift,
+        "skipped": skipped,
         "orphans": orphans,
-        "clean": not drift,
+        "clean": not drift and not skipped,
     }
 
 
@@ -565,10 +594,6 @@ def dispose_from_data_dir(
         raise AtRestError(
             "dispose: --verify-archive verifies and exits — never "
             "executes; drop --execute"
-        )
-    if verify_archive and archive_target is None:
-        raise AtRestError(
-            "dispose: --verify-archive requires --archive-target"
         )
 
     path = Path(policy_path) if policy_path is not None else (
@@ -864,30 +889,47 @@ def render_json(model: dict[str, Any]) -> str:
 
 
 def render_verify_markdown(model: dict[str, Any]) -> str:
-    """The verify arm's operator markdown: destination, verified count,
-    per-object drift (machine-matchable problem names), orphans."""
+    """The verify arm's operator markdown: the destinations checked (each
+    row's recorded one), verified count, per-object drift with its
+    destination, skipped rows, orphans."""
     lines = [
         "# BenchWeave archive verification",
         f"generated_at: {model['generated_at']}",
-        f"destination: {model['destination']}",
+        "destinations (each row's recorded archive_destination):",
+    ]
+    lines.extend(f"- {d}" for d in model["destinations"])
+    lines.extend([
         "",
         f"- verified: {model['verified']}",
         f"- clean: {model['clean']}",
-    ]
+    ])
     if model["drift"]:
         lines.append("- drift:")
         for item in model["drift"]:
             lines.append(
                 f"  - {item['problem']}: {item['disposition_id']}"
-                f" ({item['archived_artifact_id']})"
+                f" ({item['archived_artifact_id']}) at {item['destination']}"
+            )
+    if model["skipped"]:
+        lines.append(
+            "- skipped (cannot be verified — counted, never silently"
+            " passed):"
+        )
+        for item in model["skipped"]:
+            artifact = item.get("archived_artifact_id", "-")
+            lines.append(
+                f"  - {item['disposition_id']} ({artifact}):"
+                f" {item['reason']}"
             )
     if model["orphans"]:
         lines.append(
             "- orphans (objects no trail row references — reported, never"
             " deleted):"
         )
-        for name in model["orphans"]:
-            lines.append(f"  - {name}")
-    if not model["drift"] and not model["orphans"]:
-        lines.append("- no drift, no orphans")
+        for item in model["orphans"]:
+            lines.append(
+                f"  - {item['artifact_id']} at {item['destination']}"
+            )
+    if not model["drift"] and not model["orphans"] and not model["skipped"]:
+        lines.append("- no drift, no skips, no orphans")
     return "\n".join(lines)

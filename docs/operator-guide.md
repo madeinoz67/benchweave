@@ -515,9 +515,16 @@ proves the copy was byte-identical at `archive_verified_at`; the medium
 can rot or be deleted afterwards. `--verify-archive` re-proves every
 archived row's object (present, re-hashed, length matched) and names
 drift per object (`absent` / `digest_mismatch` / `length_mismatch`,
-exit 1 on any drift); orphans are reported, never deleted. Restoring
-archived bytes back into a store is deferred (design record D1 — first
-operator request); the verify arm is its trust basis.
+exit 1 on any drift); orphans are reported, never deleted. **Verify
+reads each row's recorded `archive_destination`** — that column is what
+it exists for — so archiving later batches to a second target never
+makes earlier rows read as drift; the `--archive-target` flag is only a
+fallback for rows that lack a recorded destination (it stays the
+store/dispose-time argument). Relocating a destination directory
+therefore reads as `absent` at the recorded path: the trail names where
+the copy was verified, not where bytes may have been moved since.
+Restoring archived bytes back into a store is deferred (design record
+D1 — first operator request); the verify arm is its trust basis.
 
 **Ledger relief, in two named units.** Disposing finalised captures
 drops their charged bytes from the per-context reservation ledger —
