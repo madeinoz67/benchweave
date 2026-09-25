@@ -985,6 +985,134 @@ def test_archive_target_uncreatable_refuses_typed(tmp_path: Path) -> None:
         )
 
 
+def _seed_archive_captures(tmp_path: Path) -> Path:
+    """The #199 archive-CAPTURE fixture: one run key with four finalised
+    overdue archive-tier captures — ``cap-arch-a``'s artifact is shared
+    with a retained review-tier evidence row (the shared-survival arm),
+    and the byte-identical ``cap-arch-c``/``cap-arch-d`` pair shares one
+    artifact (staged once, deduped at the destination)."""
+    import shutil
+
+    data_dir = tmp_path / "data-arch"
+    if data_dir.exists():
+        shutil.rmtree(data_dir)
+    setup(data_dir)
+    data_dir.joinpath("retention-policy.json").write_text(
+        json.dumps({
+            "config_version": "1",
+            "default": {"duration_s": 3600, "retain_after": "landing",
+                        "on_disposition": "review"},
+            "classes": [
+                {"selector": "capture:waveform_f64le", "duration_s": 3600,
+                 "retain_after": "landing", "on_disposition": "archive"},
+            ],
+            "benches": {},
+        }),
+        encoding="utf-8",
+    )
+    store, content = _open(data_dir)
+    try:
+        writer = CaptureStagingStore(store, max_capture_bytes=10_000_000,
+                                     max_dataset_bytes=10_000_000)
+        shared: list[str] = []
+        for cid, payload in (
+            ("cap-arch-a", b"\x11" * 40),
+            ("cap-arch-b", b"\x22" * 50),
+            ("cap-arch-c", b"\x33" * 60),
+            ("cap-arch-d", b"\x33" * 60),  # byte-identical pair
+        ):
+            writer.open_capture(capture_id=cid, context_key="run:arch-run",
+                                fmt="waveform_f64le", sample_count=None,
+                                max_bytes=1000, now=T0)
+            writer.append(cid, payload, "run:arch-run")
+            record = writer.finalise(cid, T0, "run:arch-run")
+            if cid == "cap-arch-a":
+                shared.append(str(record["artifact_id"]))
+        # a retained review-tier evidence row sharing cap-arch-a's
+        # artifact: the shared-survival arm (in-store AND offline).
+        content.put_evidence(
+            "keepkind",
+            {"id": "ref-keepkind", "version": "1",
+             "sha256": hashlib.sha256(b"keep").hexdigest()},
+            shared[0], "manual-labbook", T0,
+        )
+    finally:
+        store.close()
+    return data_dir
+
+
+def test_ar4_archive_relieves_ledger_and_gcs_exactly_like_delete(
+    tmp_path: Path,
+) -> None:
+    """AR4 (ledger + GC): a seeded key with archived captures —
+    ``used_bytes`` drops by exactly Σ charged bytes of the archived
+    capture rows (denominator: that key's archived finalised rows); an
+    unshared archived artifact's in-store row is collected; an artifact
+    shared with a retained row survives in-store AND exists offline;
+    decision artifacts are never collected. The GC predicate is
+    UNCHANGED — ``archived_artifact_id`` is a record, never a live
+    reference."""
+    data_dir = _seed_archive_captures(tmp_path)
+    target = tmp_path / "offline-target"
+    ceiling = 40 + 50 + 60 + 60  # the key's charged total
+    ids = {str(r[0]): str(r[1]) for r in _rows(
+        data_dir, "SELECT capture_id, artifact_id FROM capture_staging")}
+    shared_artifact = ids["cap-arch-a"]
+    solo_artifact = ids["cap-arch-b"]
+    pair_artifact = ids["cap-arch-c"]
+    assert ids["cap-arch-d"] == pair_artifact, "the byte-identical pair shares"
+
+    store = Store.open(db_path(data_dir))
+    try:
+        writer = CaptureStagingStore(store, max_capture_bytes=10_000_000,
+                                     max_dataset_bytes=ceiling)
+        assert writer.used_bytes("run:arch-run") == ceiling
+    finally:
+        store.close()
+
+    model = _dispose(data_dir, now=NOW, execute=True, archive_target=target)
+
+    assert model["counts"]["archived"] == 4
+    assert model["charged_ledger_bytes"] == ceiling, (
+        "the ledger relief covers the archived captures' charged bytes"
+    )
+    assert model["artifact_bytes_freed"] == 50 + 60, (
+        "only the unshared artifacts leave disk (solo 50 + pair 60 once); "
+        "cap-arch-a's survives in-store (keepkind retains it)"
+    )
+    store = Store.open(db_path(data_dir))
+    try:
+        writer = CaptureStagingStore(store, max_capture_bytes=10_000_000,
+                                     max_dataset_bytes=ceiling)
+        assert writer.used_bytes("run:arch-run") == 0, (
+            "used_bytes must drop by exactly the archived rows' charged bytes"
+        )
+    finally:
+        store.close()
+    assert model["artifacts_collected"] == 2
+    assert _rows(data_dir, "SELECT artifact_id FROM artifacts"
+                          " WHERE artifact_id = ?", (shared_artifact,)), (
+        "an artifact shared by a retained row must survive the GC in-store"
+    )
+    assert (target / "objects" / shared_artifact).is_file(), (
+        "…AND the shared artifact's offline copy exists"
+    )
+    assert not _rows(data_dir, "SELECT artifact_id FROM artifacts"
+                               " WHERE artifact_id = ?", (solo_artifact,)), (
+        "a fully unreferenced archived artifact must be collected "
+        "(the offline object is the surviving copy)"
+    )
+    assert not _rows(data_dir, "SELECT artifact_id FROM artifacts"
+                               " WHERE artifact_id = ?", (pair_artifact,))
+    orphans = _rows(
+        data_dir,
+        "SELECT d.disposition_id FROM dispositions d"
+        " LEFT JOIN artifacts a ON a.artifact_id = d.decision_artifact_id"
+        " WHERE a.artifact_id IS NULL",
+    )
+    assert orphans == [], "decision artifacts are live references — never collected"
+
+
 # --- fold fix 5: output units + skip split + disclosure carry ------------------------------
 
 
@@ -1329,3 +1457,92 @@ def test_gc_live_reference_lookups_are_served_by_indexes(tmp_path: Path) -> None
         assert "SCAN dispositions" not in detail, detail
     finally:
         conn.close()
+
+
+# --- the archive scale smoke (bounded; wall time disclosed, not gated) ---------------
+
+
+def test_scale_smoke_5000_archive_rows_objects_and_full_noop_rerun(
+    tmp_path: Path,
+) -> None:
+    """The #199 scale smoke: 5,000 overdue archive rows across three
+    context keys (distinct artifacts, 8-byte payloads) — ``--execute``
+    with a target completes with archived audit rows == 5,000 exactly,
+    destination objects == distinct artifacts exactly, one manifest —
+    and an immediate RE-RUN is a full no-op (0 selected rows, 0 objects
+    placed): the idempotency claim measured, not asserted. Wall time is
+    disclosed, never gated (fsync-bound; CI hardware variance)."""
+    import shutil
+
+    data_dir = tmp_path / "data-scale-arch"
+    if data_dir.exists():
+        shutil.rmtree(data_dir)
+    setup(data_dir)
+    data_dir.joinpath("retention-policy.json").write_text(
+        json.dumps({
+            "config_version": "1",
+            "default": {"duration_s": 3600, "retain_after": "landing",
+                        "on_disposition": "review"},
+            "classes": [
+                {"selector": "capture:waveform_f64le", "duration_s": 3600,
+                 "retain_after": "landing", "on_disposition": "archive"},
+            ],
+            "benches": {},
+        }),
+        encoding="utf-8",
+    )
+    rows: list[tuple[Any, ...]] = []
+    artifacts: list[tuple[Any, ...]] = []
+    for i in range(5000):
+        key = f"scale-arch-key-{chr(ord('a') + i % 3)}"  # three context keys
+        payload = f"a{i:07d}".encode()  # 8 bytes, distinct
+        artifact_id = "art-" + hashlib.sha256(payload).hexdigest()
+        artifacts.append((artifact_id, payload, T0))
+        rows.append((f"scale-cap-{i}", key, "finalised", 0, len(payload),
+                     "waveform_f64le", None, artifact_id, T0, T0, T0))
+    store = Store.open(db_path(data_dir))
+    try:
+        store.connection.executemany(
+            "INSERT INTO artifacts (artifact_id, data, stored_at)"
+            " VALUES (?, ?, ?)", artifacts)
+        store.connection.executemany(
+            "INSERT INTO capture_staging (capture_id, context_key, state,"
+            " reserved_bytes, charged_bytes, format, sample_count,"
+            " artifact_id, started_at, created_at, updated_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows)
+    finally:
+        store.close()
+
+    target = tmp_path / "offline-scale"
+    started = time.monotonic()
+    model = _dispose(data_dir, now=NOW, execute=True, archive_target=target)
+    elapsed = time.monotonic() - started
+
+    assert model["counts"]["archived"] == 5000
+    assert model["counts"]["deleted"] == 0
+    audit = _rows(data_dir, "SELECT COUNT(*) FROM dispositions"
+                            " WHERE outcome = 'archived'")
+    assert int(audit[0][0]) == 5000
+    objects = list((target / "objects").iterdir())
+    assert len(objects) == 5000, (
+        "destination objects == distinct artifacts exactly "
+        "(denominator: the 5,000 synthetic payloads, all distinct)"
+    )
+    assert len(list((target / "manifests").iterdir())) == 1
+    assert model["archive_objects_placed"] == 5000
+    assert model["archive_bytes_copied"] == 8 * 5000
+
+    # the immediate re-run is a full no-op: the governed rows vanished
+    # from the plan, and the destination objects verify-and-skip.
+    rerun = _dispose(data_dir, now=NOW, execute=True, archive_target=target)
+    assert rerun["counts"]["archived"] == 0
+    assert rerun["counts"]["deleted"] == 0
+    assert rerun["archive_objects_placed"] == 0
+    assert rerun["archive_objects_deduped"] == 0
+    assert len(list((target / "manifests").iterdir())) == 1, (
+        "a zero-object re-run writes no manifest — manifests ride Phase A "
+        "and describe staged objects; the store's invocation row is the "
+        "no-op's record"
+    )
+    # wall time is disclosed, never gated (CI hardware variance)
+    print(f"\ndispose --execute --archive-target over 5000 rows: {elapsed:.2f}s")

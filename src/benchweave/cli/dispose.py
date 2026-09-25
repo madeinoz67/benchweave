@@ -632,10 +632,17 @@ def dispose_from_data_dir(
             model["artifacts_collected"] = result["artifacts_collected"]
             model["artifact_bytes_freed"] = result["artifact_bytes_freed"]
             model["charged_ledger_bytes"] = result["charged_ledger_bytes"]
-            if archive_figures is not None:
-                model["archive_objects_placed"] = archive_figures["objects_placed"]
-                model["archive_objects_deduped"] = archive_figures["objects_deduped"]
-                model["archive_bytes_copied"] = archive_figures["bytes_copied"]
+            if archive_target is not None:
+                # An executed invocation WITH a target reports measured
+                # figures — zeros for the full-no-op re-run (the
+                # idempotency claim is measured, never implied by
+                # absence); `None` stays the dry-run placeholder only.
+                figures = archive_figures or {
+                    "objects_placed": 0, "objects_deduped": 0, "bytes_copied": 0,
+                }
+                model["archive_objects_placed"] = figures["objects_placed"]
+                model["archive_objects_deduped"] = figures["objects_deduped"]
+                model["archive_bytes_copied"] = figures["bytes_copied"]
             return model
         except sqlite3.Error as error:
             # The block covers the plan read AND the execution writes —
