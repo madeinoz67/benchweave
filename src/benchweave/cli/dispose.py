@@ -153,7 +153,17 @@ def _resolve_archive_target(
     run refuses it too. With ``create`` (the execute path) the
     ``objects/`` and ``manifests/`` subdirectories are created; the dry
     run and the verify arm never write."""
-    resolved = Path(target).expanduser().resolve()
+    given = Path(target)
+    if given == Path("."):
+        # Review wave R1: an empty or '.' target resolves to the current
+        # working directory — refuse the silent CWD archive (an operator
+        # naming the CWD on purpose can pass an absolute path).
+        raise ArchiveTargetRefused(
+            "archive_target: an empty or '.' target resolves to the "
+            "current working directory — refusing a silent CWD archive; "
+            "name an explicit destination directory"
+        )
+    resolved = given.expanduser().resolve()
     data_resolved = Path(data_dir).resolve()
     if resolved == data_resolved or data_resolved in resolved.parents:
         raise ArchiveTargetRefused(

@@ -1624,6 +1624,34 @@ def test_fold6_archive_binding_reconciled_inside_the_transaction(
     assert str(row[0][0]) == artifact_b
 
 
+def test_r1_empty_and_dot_archive_targets_refuse_typed(tmp_path: Path) -> None:
+    """Review wave R1 (guard): an empty or ``.`` ``--archive-target``
+    resolves to the current working directory — a silent CWD archive.
+    Both refuse typed in the ``archive_target:`` family, and nothing is
+    created anywhere (the lane's repro: ``--archive-target ""``
+    currently exits 0 and writes objects/ into the CWD)."""
+    data_dir = _seed(tmp_path)
+    _write_policy(data_dir / "retention-policy.json")
+    for bad in ("", "."):
+        result = CliRunner().invoke(cli, [
+            "dispose", "--data-dir", str(data_dir), "--execute",
+            "--archive-target", bad])
+        combined = _combined(result)
+        assert result.exit_code == 1, (
+            f"--archive-target {bad!r} must refuse, got exit "
+            f"{result.exit_code}: {combined}"
+        )
+        assert "archive_target:" in combined
+        assert "current working directory" in combined
+        assert "Traceback" not in combined
+    # nothing was disposed and no tree appeared anywhere
+    assert int(_rows(data_dir, "SELECT COUNT(*) FROM evidence"
+                              " WHERE kind = 'event_log'")[0][0]) == 4
+    assert not [p for p in tmp_path.rglob("objects") if p.is_dir()], (
+        "no objects/ tree may appear from a refused target"
+    )
+
+
 # --- fold fix 5: output units + skip split + disclosure carry ------------------------------
 
 
