@@ -179,6 +179,16 @@ All notable changes to this project will be documented in this file.
 - Advance SDK pointer — notes preservation (#170) + paired prose corrections
 - Sdk_compatibility mirror = 0.2.0 with the certified pointer (#187)
 - Refuse non-canonical manifest bytes at resolution (issue #176 row G, design F4)
+- Fsync the whole new-directory chain when creating the archive target
+- Durability errors refuse typed — never laundered into a committed trail
+- Verify reads each row's recorded archive_destination
+- Streaming stager — one payload at a time, hashes in 1MiB blocks
+- Archive rows without artifacts refuse typed — never archive-to-nothing
+- Archive binding reconciled inside the transaction
+- Refuse empty and dot archive targets — no silent CWD archive
+- Symlinked destination objects refuse; late-appearing entries verified
+- --verify-archive honors --out (json and markdown)
+- Deterministic stager placement order — seed-proof the R2 latecomer pin
 
 ### Documentation
 
@@ -351,6 +361,10 @@ All notable changes to this project will be documented in this file.
 - Final fold — baseline lines, README prose/counts, A-R2 sweep scope (#176)
 - One worktree per lane + shared-stash rule (retro R1)
 - Standing gate line in builder briefs (R2) + step-8 entry-shape fields (R4) — retro 2026-09-25
+- Issue #199 archival-tier design record (BUILD-minimal verdict, AR1-AR9 pre-committed)
+- Archival tier shipped — every 'unbuilt' sentence moves; STO-5 amendment + new STO-6
+- Manifest no-consumer status, zero-object manifests, verified_at-vs-mtime (R4+R6)
+- §11 review fold — the fix wave's disposition record
 
 ### Features
 
@@ -496,6 +510,10 @@ All notable changes to this project will be documented in this file.
 - Capture executor branch, resolver arm, host-minted ids (#176 inc 2)
 - Refute-fold production wave — policy guard, event/record shape, floor, ceiling (issue #176 inc 2, commit 3/3)
 - Demo lattice streams — sim_psu bridge adapter + event_sink descriptor (issue #176 row D, design Decision 3)
+- Migration v7 — four additive archive-tier columns on dispositions
+- Disposition writer — outcome 'archived', two-shape envelopes, two-tier invocation
+- Dispose --archive-target — Phase-A stager, reclassification, typed refusals
+- Dispose --verify-archive — the read-only verify arm (AR7)
 
 ### Hardware Evidence
 
@@ -715,6 +733,9 @@ All notable changes to this project will be documented in this file.
 - GF2 canonical-form agreement pin + deferral-table rows (#176)
 - Reconcile the dev-head controls to the promotion's live truth (#176)
 - Derive the healthy-pairing version from the copied pin
+- AR4 ledger+GC over archive captures; archive scale smoke; no-op figure honesty
+- AR5 — the archive tier's three crash windows on the kill harness
+- Freeze rule for the 23-field archive envelope
 
 ### Build
 
