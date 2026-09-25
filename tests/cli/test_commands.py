@@ -41,9 +41,12 @@ from benchweave.interfaces.app import create_app
 from benchweave.interfaces.identity import issue
 from benchweave.state.store import Store
 
-COMMANDS = ["setup", "status", "demo", "report", "backup", "restore", "verify", "serve"]
+COMMANDS = ["setup", "status", "demo", "report", "retention", "dispose",
+            "backup", "restore", "verify", "serve"]
 # Tasks 10-13 made the at-rest commands, demo and report live; Task 14 made
 # serve live too (its behaviour suite lives in test_serve.py) — no stubs remain.
+# retention (issue #43 slice 3) and dispose (issue #194) joined the surface
+# with their own suites; the help membership pin lists them too.
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "execution"
 SECRET = b"wp08-task-nine-secret"

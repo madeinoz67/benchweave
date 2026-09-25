@@ -35,6 +35,7 @@ from benchweave.control.retention_policy import (
     RetentionPolicy,
     RetentionPolicyRejected,
     load_retention_policy,
+    load_retention_policy_with_digest,
 )
 
 A_RULE = {"duration_s": 86400, "retain_after": "landing", "on_disposition": "review"}
@@ -99,6 +100,27 @@ def test_a_full_document_loads_and_round_trips(tmp_path: Path) -> None:
     scope = policy.benches["bench-ov"]
     assert scope.default.duration_s == 60
     assert scope.classes["capture:waveform_f64le"].duration_s == 120
+
+
+def test_with_digest_returns_the_policy_and_the_exact_bytes_digest(
+    tmp_path: Path,
+) -> None:
+    """The issue #194 digest arm: ``load_retention_policy_with_digest``
+    returns the SAME policy object the plain loader returns plus the
+    sha256 of the EXACT file bytes (the digest the disposition invocation
+    row pins as ``policy_sha256``). The digest comes from the loader's
+    single ``read_bytes`` — zero TOCTOU drift by construction is the
+    refactor's whole point, pinned here by comparing against an
+    independently hashed copy of the same bytes."""
+    import hashlib
+
+    path = tmp_path / "retention-policy.json"
+    raw = json.dumps(_document()).encode()
+    path.write_bytes(raw)
+    policy, digest = load_retention_policy_with_digest(path)
+    twin, _ = load_retention_policy_with_digest(path)
+    assert digest == hashlib.sha256(raw).hexdigest()
+    assert policy == twin == load_retention_policy(path)
 
 
 def test_resolution_is_bench_class_bench_default_global_class_global_default(

@@ -36,7 +36,7 @@ The wheel is self-contained for the gateway runtime: the vendored contract
 corpora and the BenchWeave simulator plugins ship inside it (under
 `benchweave/_vendored/`). **The fixture lattice does not** — it is
 operator-supplied input (`--fixtures` / `BENCHWEAVE_FIXTURES`; see
-§4 Demo and §10 Troubleshooting).
+§4 Demo and §11 Troubleshooting).
 
 ### Second-install reuse
 
@@ -154,7 +154,7 @@ bootstrap and the run path apply one standard.
 
 `serve` composes the gateway from the environment and runs it under
 uvicorn in the **foreground** (daemonization belongs to the service
-manager — §8). It reads:
+manager — §9). It reads:
 
 | Variable | Meaning |
 |---|---|
@@ -191,7 +191,7 @@ process exits with `Application startup failed` and logs one
 raises a `FileNotFoundError` naming the device and digest prefix).
 Nothing is written to the store by a refused startup, so a repair (fix
 the lattice, restart) starts from a clean inventory. Under systemd the
-unit then restart-loops (§8) and that log line is the diagnosis surface.
+unit then restart-loops (§9) and that log line is the diagnosis surface.
 
 **Adapter-bridge runs and the quota seam.** A run constructs a real OTDP
 bridge for a bench device only when the device's descriptor declares
@@ -224,7 +224,7 @@ outcome. Recovery never touches the bench: verify the bench's physical
 state before starting new work. A run whose durable record already says
 it completed keeps that record; only its stale queue state is reconciled.
 The worker thread is a daemon and the bound is a fixed
-grace in the gateway's shutdown path, so an external service manager (§8)
+grace in the gateway's shutdown path, so an external service manager (§9)
 remains the real limit on total shutdown time; plan restarts accordingly
 when runs can exceed the grace.
 
@@ -279,7 +279,7 @@ it early is a clean exit. `--timeout` (default 120 s) bounds the wait for
 a terminal state.
 
 The demo refuses to compose if a live gateway already holds a store under
-its scratch dir (one-coordinator rule — §10).
+its scratch dir (one-coordinator rule — §11).
 
 ## 5. Report — run evidence
 
@@ -307,8 +307,9 @@ policy file plus the store's own rows, when each capture and evidence row
 would be disposable and how fast storage is growing. It is a pure
 projection: **it writes nothing back** — no classification stamps, no
 cached disposal dates — **it never migrates the store**, and nothing
-deletes or archives anything (`on_disposition` is a report label until
-the disposition-audit-trail slice exists).
+deletes or archives anything here (`on_disposition` is a report label in
+this command; the audited disposition path is the `dispose` command
+below).
 
 ```sh
 benchweave retention --data-dir /var/lib/benchweave --json
@@ -390,10 +391,12 @@ omitted"). A forecast whose exhaustion instant falls beyond the datetime
 domain keeps `time_to_exhaustion_s` (the honest figure) and renders the
 instant absent, disclosed — it never kills other rows' output. A closed
 run's row is labeled `run closed` and carries no
-exhaustion forecast. Hold-heavy exhaustion hard-blocks new captures with
-no deletion path until the audit-trail slice — that wedge is disclosed in
-the report, and remediation is manual by design (raise the ceiling or
-wait for that slice).
+exhaustion forecast. Hold-heavy exhaustion hard-blocks new captures — that wedge is
+disclosed in the report, and the remediation is now the audited path:
+`benchweave dispose --execute` (next section) reclaims overdue
+delete-tier rows under the store hold. Review- and archive-tier rows
+remain blocked there (the archival tier is unbuilt), and raising the
+ceiling remains the manual arm.
 
 Under `--bench`, rows whose run exists on another bench filter out;
 unattributed keys (including `run:` keys whose run has no run row)
@@ -401,7 +404,76 @@ always stay and are disclosed by count. Like the other at-rest commands,
 `retention` takes the store's exclusive lock for its whole read and
 refuses (naming the holder) while a live gateway owns the store.
 
-## 7. Backup and restore
+## 7. Dispose — audited delete-tier disposition
+
+`dispose` is the audited path the retention wedge disclosure points at:
+it deletes overdue **delete-tier** rows (finalised captures and evidence
+rows whose governing policy rule says `on_disposition: delete` and whose
+disposal date has passed) **through a complete audit trail** — the plan,
+the audit record and the deletion commit in ONE transaction, so a
+committed deletion without its audit row cannot happen.
+
+```sh
+benchweave dispose --data-dir /var/lib/benchweave                 # dry run (default): writes nothing
+benchweave dispose --data-dir /var/lib/benchweave --execute       # dispose through the audit trail
+benchweave dispose --data-dir /var/lib/benchweave --policy /etc/benchweave/retention-policy.json --execute
+benchweave dispose --data-dir /var/lib/benchweave --bench sim-bench --execute
+```
+
+**Dry run by default; `--execute` to act.** Without the flag the command
+projects the plan (per-row outcome, counts, bytes that would be
+reclaimed) and writes nothing — every table stays byte-identical. With
+`--execute` the whole invocation commits as one transaction: the
+invocation row, one audit row per disposed row (its full decision
+envelope content-addressed as an artifact, digest pinned in the row),
+the guarded exact-row deletions, and artifact garbage collection that
+counts live references only.
+
+**A policy is required.** Disposition never runs ungoverned: with no
+policy file at the default location and no `--policy`, the command
+refuses typed. Review-tier rows are **blocked** (moving a row out of
+review is a policy edit); archive-tier rows are **blocked and never
+deleted** (the archival tier is not built — `on_disposition: archive`
+waits for it). Blocked counts are in the output.
+
+**Never migrates the store.** Like `retention`, a schema mismatch (a
+store behind the gateway, holey, or newer) refuses with a
+`retention_store:` message naming the mismatch and the upgrade path
+(open it once with a current gateway, then retry). A missing v6
+disposition-table store refuses the same way.
+
+**Delete is irreversible.** Each audit row retains the deleted
+content's digest and byte length (`deleted_artifact_id` /
+`deleted_byte_length`), never the bytes — delete reclaims space (the
+capture ledger and the G3 allowance recover immediately); it is not a
+backup. The audit trail itself (`dispositions` /
+`disposition_invocations`) is history, never deleted, and is not
+governed by the policy it audits.
+
+**Ledger relief, in two named units.** Disposing finalised captures
+drops their charged bytes from the per-context reservation ledger —
+`charged_ledger_bytes`, the figure G3 enforces — so an at/over-ceiling
+context recovers headroom exactly when its delete-tier rows go. What the
+artifact GC physically removes from disk is reported separately as
+`artifact_bytes_freed`: evidence rows sharing one artifact make a plain
+row-bytes sum double-count and diverge from physical disk, so the two
+units are never summed across meanings (the row-bytes figure is kept as
+`bytes_reclaimed`, labeled as the projection sum).
+
+**Bench scope is inherited from the report.** Under `--bench`, rows whose
+run exists on another bench are excluded — but unattributed keys and
+non-run-prefixed context keys stay in scope by the report's
+never-vanish rule. A bench filter is therefore not a containment
+boundary for keys that never mapped to a bench; scope your policy
+selectors if you need finer containment.
+
+Like the other at-rest commands, `dispose` takes the store's exclusive
+lock for its whole run (a maintenance window: stop the gateway first)
+and refuses, naming the holder, while a live coordinator owns the store.
+Scheduling is operator-side (cron/systemd); the command is the bounded,
+operator-invoked unit.
+
+## 8. Backup and restore
 
 ```sh
 benchweave backup --data-dir /var/lib/benchweave --out /var/backups/benchweave
@@ -420,7 +492,7 @@ anything in the data dir is touched, then swaps it in; your previous
 directory is kept beside it as `<name>.pre-restore-<iso>`.
 
 Both mutating commands refuse (naming the holder) while a live gateway
-holds the store — stop the gateway first (§10).
+holds the store — stop the gateway first (§11).
 
 > **Credentials are deliberately NOT backed up.** `benchweave.env` is
 > never copied into a backup and never written by a restore: a backup
@@ -430,7 +502,7 @@ holds the store — stop the gateway first (§10).
 > secret safe and separate from the backup location. A restored gateway
 > re-uses the operator's kept credential.
 
-## 8. systemd deployment
+## 9. systemd deployment
 
 The shipped unit template is `deploy/systemd/benchweave.service.template`:
 the **nine hardening directives** from `deploy/PERMISSIONS-REVIEW.md` §3
@@ -464,9 +536,9 @@ Every directive's threat rationale lives in
 > cover rendering only; behavioural verification of the unit happens on
 > Linux.
 
-## 9. Command reference
+## 10. Command reference
 
-Ten commands — `benchweave --help` is the full surface:
+Eleven commands — `benchweave --help` is the full surface:
 
 | Command | One-liner | Key flags |
 |---|---|---|
@@ -476,6 +548,7 @@ Ten commands — `benchweave --help` is the full surface:
 | `demo` | Built-in simulator demonstration | `--gateway`/`--token`, `--scratch`, `--keep`, `--timeout`, `--fixtures`, `--json` |
 | `report` | Run evidence from the store at rest | `--data-dir` (req), `--bench`, `--out`, `--json` |
 | `retention` | Disposal/growth projection (read-only; never migrates the store) | `--data-dir` (req), `--bench`, `--policy`, `--max-dataset-bytes`, `--horizon-s`, `--out`, `--json` |
+| `dispose` | Audited delete-tier disposition (dry run by default; never migrates the store) | `--data-dir` (req), `--bench`, `--policy`, `--execute`, `--out`, `--json` |
 | `backup` | Verified snapshot of store + content | `--data-dir` (req), `--out`, `--json` |
 | `restore` | Verify an archive and swap it in | `--archive` (req), `--data-dir` (req), `--json` |
 | `verify` | Manifest digests + store integrity | `--data-dir` (req), `--json` |
@@ -484,7 +557,7 @@ Ten commands — `benchweave --help` is the full surface:
 Exit codes: 0 on success; 1 on any handled refusal (bad usage, unreachable
 gateway, rejected token, failed verify); 130 on Ctrl-C.
 
-## 10. Troubleshooting
+## 11. Troubleshooting
 
 **A mutating command refuses, naming a holder** — e.g.
 `refusing: a live gateway holds /var/lib/benchweave/state.sqlite` or

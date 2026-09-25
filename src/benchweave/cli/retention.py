@@ -17,9 +17,11 @@ WAL into ``state.sqlite`` — a file-bytes effect, not a table write
 (S3-1's pin is logical-table, not byte-forensic), so copy-before/after
 workflows that compare raw file bytes should quiesce the store first.
 Nothing here deletes or archives:
-``on_disposition`` is a report label only, and no automated disposition
-ships until the disposition-audit-trail slice (the record's sequencing
-invariant).
+``on_disposition`` is a report label only in THIS command — the audited
+disposition path the sequencing invariant was waiting for has landed as
+``benchweave dispose`` (:mod:`benchweave.cli.dispose`, issue #194): the
+report stays the plan surface, and every deletion flows through the
+audit trail's one-transaction executor.
 
 Disclosed derivations:
 
@@ -88,9 +90,10 @@ Disclosed derivations:
   (the writer's own ledger read; zero formula-drift copies), plus
   ``time_to_exhaustion_s = (ceiling − used) / rate``. Runs group under
   benches for display via ``run_states.bench_id``; context keys mapping
-  to no run report as their own group. The wedge disclosure: hold-heavy
-  exhaustion hard-blocks G3 with no deletion path until the audit-trail
-  slice; remediation is manual by design.
+  to no run report as their own group. The wedge disclosure (amended,
+  issue #194): the audited disposition path exists — ``benchweave
+  dispose`` reclaims delete-tier rows under the store hold, review and
+  archive stay blocked, and raising the ceiling remains the manual arm.
 """
 
 from __future__ import annotations
@@ -119,6 +122,7 @@ from benchweave.state.store import Store
 __all__ = [
     "build_retention_report",
     "now_iso",
+    "refuse_schema_mismatch",
     "render_json",
     "render_markdown",
     "retention_from_data_dir",
@@ -139,10 +143,16 @@ _STORED_BYTES_METHOD = (
     "SELECT SUM(LENGTH(data)) FROM artifacts — content-addressed dedup "
     "under-counts byte-identical captures"
 )
+#: The wedge disclosure (amended, issue #194 §2.5): every claim scoped to
+#: what the dispose command ships — delete-tier rows reclaim bytes and the
+#: G3 ledger under the store hold; review- and archive-tier rows remain
+#: blocked (the archival tier is unbuilt); or raise the ceiling.
 _WEDGE_DISCLOSURE = (
-    "quota wedge: hold-heavy exhaustion hard-blocks new captures (G3) with "
-    "no deletion path until the disposition audit-trail slice; remediation "
-    "is manual by design — raise the ceiling or wait for that slice"
+    "quota wedge: the audited disposition path exists — benchweave dispose "
+    "(with --execute) deletes overdue delete-tier rows under the store "
+    "hold, reclaiming their charged ledger bytes and artifacts; review- and "
+    "archive-tier rows remain blocked (the archival tier is unbuilt); "
+    "otherwise raise the ceiling"
 )
 # Per-lane method labels (issue #184 finding 10): every emitted figure's
 # basis and denominator is named IN ITS OWN LANE — the old single
@@ -1061,9 +1071,11 @@ class RetentionStoreRefused(AtRestError):
     same refusal family as ``retention_policy:``."""
 
 
-def _refuse_schema_mismatch(db: Path) -> None:
+def refuse_schema_mismatch(db: Path) -> None:
     """Fork A's read posture: inspect ``schema_migrations`` read-only and
-    refuse on any drift. The comparison is SET-based (the R2 fold's
+    refuse on any drift — PUBLIC since issue #194: the never-migrate
+    at-rest family imports this one precheck (``cli/dispose.py``), never
+    a duplicate. The comparison is SET-based (the R2 fold's
     blocking item): ``Store._apply_migrations`` re-applies ANY migration
     whose version row is absent — not only those below ``MAX(version)`` —
     so a MAX-only precheck admits a holey store (the middle v4 row
@@ -1195,7 +1207,7 @@ def retention_from_data_dir(
 
     with StoreHold(db, label=f"retention pid {os.getpid()}"):
         # fork A: never migrate — refuse on any schema mismatch first
-        _refuse_schema_mismatch(db)
+        refuse_schema_mismatch(db)
         try:
             store = Store.open(db)
         except RuntimeError as error:
