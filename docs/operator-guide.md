@@ -490,7 +490,27 @@ ceiling over a two-8-MiB-artifact archive).
 **Mixed invocations are one transaction.** A plan with both tiers
 executes in the ONE transaction: a crash or refusal disposes nothing of
 either tier. Re-runs are idempotent (content-addressed objects
-verify-and-skip; committed rows cannot be re-selected).
+verify-and-skip; committed rows cannot be re-selected). A re-run that
+selects nothing stages nothing and writes NO manifest — manifests ride
+the staging pass and describe the objects it placed; the store's
+invocation row is the no-op's record.
+
+**The manifest has no consumer in the tooling.** It is an operator-facing
+index: the committed trail row is the commitment record and the
+machine-read authority (`--verify-archive` reads the trail, never the
+manifest). The asymmetry worth naming: under TOTAL store loss the
+manifests are the only surviving index of what was archived — the trail
+they summarize is gone with the store — yet nothing in the tooling
+consumes them today. Treat them as durable operator documentation, not
+as verification input.
+
+**`archive_verified_at` is the plan instant.** It is the caller-supplied
+`now` of the invocation (STO-1) — one instant for the whole invocation —
+and the destination objects are fsynced and re-read around it, so an
+object's file mtime can land before OR after the recorded instant.
+mtime-vs-`archive_verified_at` is therefore NOT a valid forensic
+ordering signal; the trail's proof is the content address, not
+timestamp comparisons.
 
 **Typed refusals** (the `archive_target:` family): an unwritable or
 uncreatable target; a target resolving inside the data dir (refused —
