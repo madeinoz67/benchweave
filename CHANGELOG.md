@@ -347,6 +347,8 @@ All notable changes to this project will be documented in this file.
 - Deferral row 15 — the error_code vocabulary split (issue #176 inc 2 fold wave)
 - Demo-lattice streaming surface + canonical manifest emission (issue #176 rows D+G, obligation 3)
 - Council fold wave — row D+G prose disclosures (dF1-dF3, gF1/gF1b/gF4/gF5, critic-D5/D6)
+- Governor fold — released-posture prose after the execution 0.2.0 promotion (#176)
+- Final fold — baseline lines, README prose/counts, A-R2 sweep scope (#176)
 
 ### Features
 
@@ -579,6 +581,7 @@ All notable changes to this project will be documented in this file.
 - Lint and type residue — Unresolvable catch, import order
 - Encode the 2026-09-24 discipline rows R1-R4 (#181)
 - Fold the refute slate's hygiene items (#176)
+- Advance packages/sdk to the execution 0.2.0 sync (#176)
 
 ### Performance
 
@@ -707,6 +710,7 @@ All notable changes to this project will be documented in this file.
 - The demo lattice streams end to end (issue #176 row D, design Decision 3)
 - Strip PYTHONPATH/PYTHONHOME from the wheel child env (issue #176 T11 vet finding)
 - GF2 canonical-form agreement pin + deferral-table rows (#176)
+- Reconcile the dev-head controls to the promotion's live truth (#176)
 
 ### Build
 
@@ -738,6 +742,7 @@ All notable changes to this project will be documented in this file.
 - OPEN the 0.2.0-dev head (issue #176 increment 1)
 - Author the capture family into the 0.2.0-dev head (#176)
 - The compatibility.sdk ground-truth anchor — #187 class closure (#195)
+- Promote 0.2.0-dev to released execution 0.2.0 (#176)
 
 ### Wip
 
