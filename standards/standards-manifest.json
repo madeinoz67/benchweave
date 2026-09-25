@@ -3,7 +3,7 @@
   "sdk_compatibility": {
     "main_project": ">=0.1.0",
     "notes": "Transport providers (gateway #147): increment 2 (this SDK's offline conformance \u2014 checker prefixes, tests/test_transport_providers.py) and increment 3 (gateway admission) are a pair. This lock pins the corpus state increment 2 certified; increment 3 must be built against exactly that state (same schema bytes, exact id+version+sha256), the SDK sync landing first per the design record's build-time amendment. Corpus bytes move between the pair only via a version-incrementing sync \u2014 same-version content drift is refused (standards_version_required), never re-vendored silently.",
-    "sdk": "0.2.0"
+    "sdk": "0.3.0"
   },
   "standards": [
     {
