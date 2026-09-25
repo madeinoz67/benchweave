@@ -97,8 +97,9 @@ rather than rewriting the history — that is how this file earns trust.
   reused"; a gap-free sequence is what makes a missing event detectable as a fault rather
   than an artifact.*
 - **[STO-3]** One coordinator per store file, enforced by an exclusive `flock` on
-  `<db>.hold`: live gateways hold it for their app lifespan; the at-rest command
-  family — backup, restore, retention (report, read-only), dispose (write) — acquires
+  `<db>.hold`: live gateways hold it for their app lifespan; every StoreHold site —
+  the gateway itself, setup, report, retention (read-only), dispose (write), backup,
+  restore — acquires
   the same lock and REFUSE, naming the holder, while a live coordinator
   owns it. The lock itself — never the lockfile body — is the truth —
   `src/benchweave/state/hold.py`. *A03's one-active-procedure rule needs exactly one

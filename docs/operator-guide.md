@@ -36,7 +36,7 @@ The wheel is self-contained for the gateway runtime: the vendored contract
 corpora and the BenchWeave simulator plugins ship inside it (under
 `benchweave/_vendored/`). **The fixture lattice does not** — it is
 operator-supplied input (`--fixtures` / `BENCHWEAVE_FIXTURES`; see
-§4 Demo and §10 Troubleshooting).
+§4 Demo and §11 Troubleshooting).
 
 ### Second-install reuse
 
@@ -154,7 +154,7 @@ bootstrap and the run path apply one standard.
 
 `serve` composes the gateway from the environment and runs it under
 uvicorn in the **foreground** (daemonization belongs to the service
-manager — §8). It reads:
+manager — §9). It reads:
 
 | Variable | Meaning |
 |---|---|
@@ -191,7 +191,7 @@ process exits with `Application startup failed` and logs one
 raises a `FileNotFoundError` naming the device and digest prefix).
 Nothing is written to the store by a refused startup, so a repair (fix
 the lattice, restart) starts from a clean inventory. Under systemd the
-unit then restart-loops (§8) and that log line is the diagnosis surface.
+unit then restart-loops (§9) and that log line is the diagnosis surface.
 
 **Adapter-bridge runs and the quota seam.** A run constructs a real OTDP
 bridge for a bench device only when the device's descriptor declares
@@ -224,7 +224,7 @@ outcome. Recovery never touches the bench: verify the bench's physical
 state before starting new work. A run whose durable record already says
 it completed keeps that record; only its stale queue state is reconciled.
 The worker thread is a daemon and the bound is a fixed
-grace in the gateway's shutdown path, so an external service manager (§8)
+grace in the gateway's shutdown path, so an external service manager (§9)
 remains the real limit on total shutdown time; plan restarts accordingly
 when runs can exceed the grace.
 
@@ -279,7 +279,7 @@ it early is a clean exit. `--timeout` (default 120 s) bounds the wait for
 a terminal state.
 
 The demo refuses to compose if a live gateway already holds a store under
-its scratch dir (one-coordinator rule — §10).
+its scratch dir (one-coordinator rule — §11).
 
 ## 5. Report — run evidence
 
@@ -492,7 +492,7 @@ anything in the data dir is touched, then swaps it in; your previous
 directory is kept beside it as `<name>.pre-restore-<iso>`.
 
 Both mutating commands refuse (naming the holder) while a live gateway
-holds the store — stop the gateway first (§10).
+holds the store — stop the gateway first (§11).
 
 > **Credentials are deliberately NOT backed up.** `benchweave.env` is
 > never copied into a backup and never written by a restore: a backup

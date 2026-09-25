@@ -290,9 +290,12 @@ existing history tables, and the only new executable path composes three proven 
   the dispositions tables have no delete path. *Why: Decision 8's sequencing invariant
   and A07 made structural — audit capacity is not a dependent of the action, it is the
   action's transaction.* Pinned by `tests/cli/test_dispose.py` + `tests/faults/`.
-- **[STO-3] amendment**: the at-rest family list ("backup, restore") is already stale
-  (retention shipped holding the flock) — amend to name the family: backup, restore,
-  retention (report, read-only), dispose (write). Evidence: `retention.py:1196`.
+- **[STO-3] amendment**: the at-rest family list ("backup, restore") was already stale
+  (retention shipped holding the flock) — amended to name EVERY StoreHold site: the
+  gateway itself, setup, report, retention (read-only), dispose (write), backup,
+  restore — seven sites, regenerable from `grep StoreHold( src/`. Evidence:
+  `atrest.py:285` (setup), `report.py:347`, `retention.py:1208`, `dispose.py:190`,
+  `atrest.py:331/444` (backup/restore), `app.py:911` (gateway).
 - **STO-1** holds (caller-supplied `now` throughout); **STO-2** not extended (uuid ids,
   no new sequence authority); CTL/CON/REG untouched — no corpus byte, no interface
   operation, no SDK surface (CON-3/CON-5 untouched; obligations 1/2/6/7/8 not triggered).

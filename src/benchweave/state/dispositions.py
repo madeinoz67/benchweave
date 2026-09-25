@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sqlite3
 import uuid
 from collections.abc import Callable
 from typing import Any
@@ -105,7 +106,7 @@ _LIVE_REFERENCE_SQL = (
 )
 
 
-def _artifact_length(conn: Any, artifact_id: str | None) -> int:
+def _artifact_length(conn: sqlite3.Connection, artifact_id: str | None) -> int:
     """The artifact's byte length (the forensic ``deleted_byte_length``),
     0 for rows that reference no artifact."""
     if artifact_id is None:
