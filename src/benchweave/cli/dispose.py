@@ -28,10 +28,13 @@ Posture:
   configuration is never silently substituted.
 - **Review rows are blocked** (``blocked_review``) — the policy is the
   operator's intent channel; moving a row out of review is a policy
-  edit. **Archive rows are blocked** (``blocked_archive``) and NEVER
-  deleted — the archival tier is unbuilt (record deferral D1), and an
-  archive row falling through to delete would be the worst lie this
-  command could tell.
+  edit. **Archive rows execute only with ``--archive-target``** (issue
+  #199): each archived object is staged at the destination and
+  re-verified against its content address BEFORE the store transaction
+  opens (STO-6); without a target they stay ``blocked_archive`` and are
+  NEVER deleted — an archive row falling through to delete would be the
+  worst lie this command could tell. ``--verify-archive`` re-proves
+  committed archived rows' objects read-only.
 - STO-1: the model never reads a clock — ``now`` is caller-injected at
   the CLI boundary exactly like the retention command.
 """
@@ -115,7 +118,10 @@ _IRREVERSIBLE_DISCLOSURE = (
     "delete is irreversible: each audit row retains the deleted content's "
     "digest and byte length (deleted_artifact_id / deleted_byte_length), "
     "never the bytes — delete reclaims space, it is not a backup; "
-    "recoverable disposition is the archival tier (unbuilt)"
+    "archival is the recoverable tier: with --archive-target each "
+    "archived row's bytes are staged offline, verified at copy time "
+    "(archive_verified_at), and restoring them into a store is deferred "
+    "(first operator request; --verify-archive re-proves the copies)"
 )
 
 _UNITS_DISCLOSURE = (

@@ -394,9 +394,10 @@ run's row is labeled `run closed` and carries no
 exhaustion forecast. Hold-heavy exhaustion hard-blocks new captures — that wedge is
 disclosed in the report, and the remediation is now the audited path:
 `benchweave dispose --execute` (next section) reclaims overdue
-delete-tier rows under the store hold. Review- and archive-tier rows
-remain blocked there (the archival tier is unbuilt), and raising the
-ceiling remains the manual arm.
+delete-tier rows under the store hold. Review-tier rows remain blocked
+there; archive-tier rows move offline when dispose runs with
+`--archive-target` (verified content-addressed copies; the store copy is
+reclaimed); otherwise raise the ceiling.
 
 Under `--bench`, rows whose run exists on another bench filter out;
 unattributed keys (including `run:` keys whose run has no run row)
@@ -418,6 +419,8 @@ benchweave dispose --data-dir /var/lib/benchweave                 # dry run (def
 benchweave dispose --data-dir /var/lib/benchweave --execute       # dispose through the audit trail
 benchweave dispose --data-dir /var/lib/benchweave --policy /etc/benchweave/retention-policy.json --execute
 benchweave dispose --data-dir /var/lib/benchweave --bench sim-bench --execute
+benchweave dispose --data-dir /var/lib/benchweave --execute --archive-target /mnt/offline/benchweave
+benchweave dispose --data-dir /var/lib/benchweave --verify-archive --archive-target /mnt/offline/benchweave
 ```
 
 **Dry run by default; `--execute` to act.** Without the flag the command
@@ -432,9 +435,10 @@ counts live references only.
 **A policy is required.** Disposition never runs ungoverned: with no
 policy file at the default location and no `--policy`, the command
 refuses typed. Review-tier rows are **blocked** (moving a row out of
-review is a policy edit); archive-tier rows are **blocked and never
-deleted** (the archival tier is not built — `on_disposition: archive`
-waits for it). Blocked counts are in the output.
+review is a policy edit); archive-tier rows execute only with
+`--archive-target` — without one they are **blocked and never deleted**
+(the output names the missing flag), and the delete-tier rows in the
+same invocation still execute. Blocked counts are in the output.
 
 **Never migrates the store.** Like `retention`, a schema mismatch (a
 store behind the gateway, holey, or newer) refuses with a
@@ -446,9 +450,74 @@ disposition-table store refuses the same way.
 content's digest and byte length (`deleted_artifact_id` /
 `deleted_byte_length`), never the bytes — delete reclaims space (the
 capture ledger and the G3 allowance recover immediately); it is not a
-backup. The audit trail itself (`dispositions` /
-`disposition_invocations`) is history, never deleted, and is not
-governed by the policy it audits.
+backup. Archival is the recoverable tier (below). The audit trail
+itself (`dispositions` / `disposition_invocations`) is history, never
+deleted, and is not governed by the policy it audits.
+
+### The archive tier (`--archive-target`)
+
+`on_disposition: archive` rows become executable when you name an
+offline destination directory:
+
+```
+<target>/
+  objects/<artifact_id>            # the preserved bytes, named by content
+                                   #   address (art-<sha256>) — the same id
+                                   #   as the in-store artifact had
+  manifests/<invocation_id>.json   # canonical JSON: invocation id, actor,
+                                   #   policy digest, written_at, resolved
+                                   #   destination, objects + lengths, counts
+```
+
+**Copy-verify-commit ordering (the crash story).** The offline
+filesystem is outside the SQLite transaction, so ordering — not
+atomicity — is what makes the move honest. Every distinct archived
+object is staged and re-verified at the destination BEFORE the store
+transaction opens: temp file → fsync → atomic `os.replace` → re-read
+from the destination → re-hash against the content address (a power
+loss after COMMIT cannot leave the trail referencing bytes that never
+reached the destination platter). A crash may therefore leave the
+destination holding MORE bytes than the committed trail references —
+**over-preserved, never under-preserved**. Objects whose invocation
+never committed are content-addressed and verify-and-skip on re-run;
+`--verify-archive` reports the leftovers as orphans.
+
+**Mixed invocations are one transaction.** A plan with both tiers
+executes in the ONE transaction: a crash or refusal disposes nothing of
+either tier. Re-runs are idempotent (content-addressed objects
+verify-and-skip; committed rows cannot be re-selected).
+
+**Typed refusals** (the `archive_target:` family): an unwritable or
+uncreatable target; a target resolving inside the data dir (refused —
+`restore` swaps the whole data directory, and an archive inside it
+would be destroyed by disaster recovery); a pre-existing destination
+object whose bytes do not hash to its content address (never silently
+overwritten — overwriting would launder destination corruption into a
+fresh "verified" copy).
+
+**The audit columns, record vs reference.** An archived row's audit
+envelope carries `archived_artifact_id`, `archived_byte_length`,
+`archive_destination`, `archive_verified_at` (the instant the
+destination re-read matched — the plan instant, one per invocation);
+`deleted_artifact_id` stays NULL and `deleted_byte_length` 0 (nothing
+was destroyed). `archived_artifact_id` is a RECORD, never a live
+reference — the same grammar as `deleted_artifact_id`: counting it in
+the artifact GC would keep every archived artifact in the store forever
+and defeat the move. Once no live row references it, the in-store copy
+is collected; the offline object is the survivor, and the trail row
+plus its decision artifact stay in the store as the finder's index. An
+artifact shared with a retained row survives in-store AND exists
+offline (sharing is a store concept; the object is the content).
+Archived captures relieve the G3 ledger exactly like deleted ones.
+
+**What "archived" does NOT prove: destination health.** The trail
+proves the copy was byte-identical at `archive_verified_at`; the medium
+can rot or be deleted afterwards. `--verify-archive` re-proves every
+archived row's object (present, re-hashed, length matched) and names
+drift per object (`absent` / `digest_mismatch` / `length_mismatch`,
+exit 1 on any drift); orphans are reported, never deleted. Restoring
+archived bytes back into a store is deferred (design record D1 — first
+operator request); the verify arm is its trust basis.
 
 **Ledger relief, in two named units.** Disposing finalised captures
 drops their charged bytes from the per-context reservation ledger —
@@ -548,7 +617,7 @@ Eleven commands — `benchweave --help` is the full surface:
 | `demo` | Built-in simulator demonstration | `--gateway`/`--token`, `--scratch`, `--keep`, `--timeout`, `--fixtures`, `--json` |
 | `report` | Run evidence from the store at rest | `--data-dir` (req), `--bench`, `--out`, `--json` |
 | `retention` | Disposal/growth projection (read-only; never migrates the store) | `--data-dir` (req), `--bench`, `--policy`, `--max-dataset-bytes`, `--horizon-s`, `--out`, `--json` |
-| `dispose` | Audited delete-tier disposition (dry run by default; never migrates the store) | `--data-dir` (req), `--bench`, `--policy`, `--execute`, `--out`, `--json` |
+| `dispose` | Audited disposition (delete tier; archive tier with `--archive-target`; dry run by default; never migrates the store) | `--data-dir` (req), `--bench`, `--policy`, `--execute`, `--archive-target`, `--verify-archive`, `--out`, `--json` |
 | `backup` | Verified snapshot of store + content | `--data-dir` (req), `--out`, `--json` |
 | `restore` | Verify an archive and swap it in | `--archive` (req), `--data-dir` (req), `--json` |
 | `verify` | Manifest digests + store integrity | `--data-dir` (req), `--json` |

@@ -118,12 +118,45 @@ rather than rewriting the history — that is how this file earns trust.
   references: `evidence.artifact_id`, `capture_staging.artifact_id`,
   `dispositions.decision_artifact_id` — the historical `deleted_artifact_id` is a
   record, never a reference). A committed deletion without its audit row is
-  unrepresentable; `review`- and `archive`-tier rows are never deleted; the
+  unrepresentable; `review`-tier rows are never deleted; the
   dispositions tables have no delete path — `src/benchweave/state/dispositions.py`,
   `src/benchweave/cli/dispose.py`, pinned by `tests/cli/test_dispose.py` +
   `tests/faults/test_disposition_faults.py`. *Decision 8's sequencing invariant and
   A07 made structural: audit capacity is not a dependent of the action, it is the
   action's transaction.*
+  Amendment (2026-09-25, issue #199 — the archive tier): the outcome vocabulary
+  gains `'archived'`, and the ONE transaction covers both tiers of a mixed
+  invocation (a crash or refusal disposes nothing of either). An archived row's
+  envelope carries the four archive fields (`archived_artifact_id`,
+  `archived_byte_length`, `archive_destination`, `archive_verified_at`) **iff**
+  its outcome is `'archived'` (the two-shape rule: delete-tier envelopes stay
+  byte-identical to v6's 19-field canonical form; one field-set derivation shared
+  by writer and recomputation). `deleted_artifact_id` is NULL and
+  `deleted_byte_length` 0 on archived rows (nothing was destroyed), and
+  `archived_artifact_id` is a **record, never a live reference** — the archived
+  twin of `deleted_artifact_id`'s grammar: counting it in the GC would keep every
+  archived artifact in the store forever and defeat the move. Archived rows are
+  still deleted from their governed tables by the same guarded deletes (archive
+  relieves the G3 ledger exactly like delete); only with `--archive-target` does
+  an overdue archive-tier row execute — without one it stays `blocked_archive`,
+  never deleted.
+- **[STO-6]** An archival disposition stages every archived object at the
+  destination and re-verifies it against its content address — re-read from the
+  destination, fsynced — BEFORE the store transaction opens; a crash may leave
+  the destination over-preserved (verified objects no committed trail row
+  references), never the trail referencing bytes not verified present at the
+  destination by the executing process; re-runs are idempotent
+  (content-addressed objects verify-and-skip; committed rows cannot be
+  re-selected) — `src/benchweave/cli/dispose.py` (`_stage_archive_objects`,
+  `_place_object`, `_write_archive_manifest`), pinned by
+  `tests/cli/test_dispose.py` + `tests/faults/test_disposition_faults.py`.
+  *Why: the offline filesystem is outside the SQLite transaction, so ordering —
+  not atomicity — is what makes the move's crash story honest; A06's
+  evidence-over-assertion applied to a filesystem claim. Boundary (disclosed):
+  the trail proves the copy at `archive_verified_at`, not destination health
+  afterwards — `--verify-archive` re-proves on demand; destination-byte
+  verification never trusts a write syscall's return or the trail's recorded
+  length.*
 
 ## Contracts & standards invariants
 
