@@ -1229,6 +1229,60 @@ def test_ar7_cli_exit_codes_and_mode_refusals(tmp_path: Path) -> None:
     assert "Traceback" not in combined
 
 
+# --- the review-wave fold (six findings, RED-first) -----------------------------------
+
+
+def test_fold1_fsync_chain_covers_the_target_and_its_parent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Review wave finding 1 (critic#1 + laneB#1, converged): creating
+    the destination tree with ``mkdir(parents=True)`` leaves the NEW
+    directory entries unfsynced — only ``objects/``, the manifest file,
+    and ``manifests/`` ever reach the platter, so a power loss after
+    COMMIT can orphan the objects under an unlinked target. The fix
+    fsyncs the whole new-directory chain: ``objects``, ``manifests``,
+    the target itself, and its parent (the entry naming the target
+    lives there). Pinned by spying on ``os.fsync``/``os.open`` over a
+    real first-invocation ``--execute`` against a fresh target."""
+    import os as os_module
+
+    opened: dict[int, str] = {}
+    fsynced: list[str] = []
+    real_open = os_module.open
+    real_fsync = os_module.fsync
+
+    def spy_open(path: object, flags: int, *args: object, **kwargs: object) -> int:
+        fd = real_open(path, flags, *args, **kwargs)  # type: ignore[arg-type]
+        opened[fd] = str(Path(str(path)).resolve())
+        return fd
+
+    def spy_fsync(fd: int) -> None:
+        fsynced.append(opened.get(fd, f"fd:{fd}"))
+        real_fsync(fd)
+
+    monkeypatch.setattr(os_module, "open", spy_open)
+    monkeypatch.setattr(os_module, "fsync", spy_fsync)
+
+    data_dir = _seed(tmp_path)
+    _write_policy(data_dir / "retention-policy.json")
+    target = tmp_path / "offline-fsync"
+    model = _dispose(data_dir, now=NOW, execute=True, archive_target=target)
+    assert model["counts"]["archived"] == 4, "fixture: the archive tier ran"
+
+    resolved_target = str(target.resolve())
+    resolved_parent = str(target.resolve().parent)
+    assert resolved_target in fsynced, (
+        "the target directory itself must be fsynced — an unfsynced new "
+        "directory entry can vanish with its subtree on power loss"
+    )
+    assert resolved_parent in fsynced, (
+        "the parent must be fsynced — the directory entry naming the "
+        "target is written into it"
+    )
+    for sub in ("objects", "manifests"):
+        assert str((target / sub).resolve()) in fsynced
+
+
 # --- fold fix 5: output units + skip split + disclosure carry ------------------------------
 
 

@@ -164,6 +164,16 @@ def _resolve_archive_target(
             "choose a target outside the data dir"
         )
     if create:
+        # Which ancestors mkdir(parents=True) will have to create — the
+        # whole new-directory chain must reach the platter, not just the
+        # leaf directories (review-wave finding 1: an unfsynced new
+        # directory entry can vanish with its subtree on power loss,
+        # orphaning the objects the committed trail references).
+        missing = [
+            ancestor
+            for ancestor in (resolved, *resolved.parents)
+            if not ancestor.exists()
+        ]
         for sub in ("objects", "manifests"):
             try:
                 (resolved / sub).mkdir(parents=True, exist_ok=True)
@@ -171,6 +181,14 @@ def _resolve_archive_target(
                 raise ArchiveTargetRefused(
                     f"archive_target: cannot create {resolved / sub}: {error}"
                 ) from error
+        # Durability chain: the leaf directories, every ancestor that was
+        # newly created, and the parent (the entry naming the target
+        # lives there, created or not).
+        _fsync_dir(resolved / "objects")
+        _fsync_dir(resolved / "manifests")
+        for ancestor in missing:
+            _fsync_dir(ancestor)
+        _fsync_dir(resolved.parent)
     return resolved
 
 
