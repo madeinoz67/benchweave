@@ -111,6 +111,14 @@ def setup(data_dir: Path, show_secret: bool, json_output: bool) -> None:
         # (WP08 closing audit, Forge minor 4) so is a racing coordinator:
         # setup's StoreHold raises StoreHeldError, which must surface as
         # a refusal naming the holder, not a traceback.
+        if isinstance(error, OSError):
+            # OSError renders its filename with repr(), which doubles a
+            # Windows path's separators into something no user can paste;
+            # name the directory in plain text first (the demo --scratch
+            # precedent, demo.py's "cannot create scratch directory").
+            raise click.ClickException(
+                f"cannot initialize data directory {data_dir}: {error}"
+            ) from error
         raise click.ClickException(str(error)) from error
     secret_file = data_dir / atrest.CREDENTIAL_FILE
     # Mode bits mean nothing to a Windows access list; there setup restricts
