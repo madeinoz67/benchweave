@@ -1794,6 +1794,38 @@ def test_r3_archive_envelope_shape_is_frozen(
     )
 
 
+def test_r7_verify_archive_honors_out(tmp_path: Path) -> None:
+    """Review wave R7: ``--verify-archive --json --out <file>`` (and the
+    markdown form) write through the same ``--out`` path as every other
+    emitter — the verify branch previously ignored the flag and printed
+    to stdout."""
+    data_dir, target = _archived_store(tmp_path)
+    out = tmp_path / "verify-report.json"
+    result = CliRunner().invoke(cli, [
+        "dispose", "--data-dir", str(data_dir), "--verify-archive",
+        "--archive-target", str(target), "--json", "--out", str(out)])
+    assert result.exit_code == 0, _combined(result)
+    assert out.is_file(), "--out must be honored in verify mode"
+    model = json.loads(out.read_text(encoding="utf-8"))
+    assert model["mode"] == "verify-archive"
+    assert model["clean"] is True
+
+    # the drift case still writes the file AND exits 1
+    audit = [r for r in _audit_rows(data_dir) if r["outcome"] == "archived"]
+    flipped = target / "objects" / str(audit[0]["archived_artifact_id"])
+    payload = bytearray(flipped.read_bytes())
+    payload[0] ^= 0xFF
+    flipped.write_bytes(bytes(payload))
+    out2 = tmp_path / "verify-drift.md"
+    result = CliRunner().invoke(cli, [
+        "dispose", "--data-dir", str(data_dir), "--verify-archive",
+        "--archive-target", str(target), "--out", str(out2)])
+    assert result.exit_code == 1
+    assert out2.is_file()
+    text = out2.read_text(encoding="utf-8")
+    assert "digest_mismatch" in text
+
+
 # --- fold fix 5: output units + skip split + disclosure carry ------------------------------
 
 

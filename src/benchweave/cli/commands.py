@@ -679,8 +679,16 @@ def dispose(
     if model.get("mode") == "verify-archive":
         # The verify arm's own surface: drift is exit 1 (the verify
         # command's convention); orphans are reported, never a failure.
+        # --out writes through the same path as every other emitter
+        # (review wave R7), and the file is written even on drift —
+        # the report is the evidence, the exit code is the verdict.
         if json_output:
-            emit(model)
+            if out is not None:
+                _write_out(out, dispose_lib.render_json(model))
+            else:
+                emit(model)
+        elif out is not None:
+            _write_out(out, dispose_lib.render_verify_markdown(model))
         else:
             click.echo(dispose_lib.render_verify_markdown(model))
         if not model["clean"]:
