@@ -349,6 +349,8 @@ All notable changes to this project will be documented in this file.
 - Council fold wave — row D+G prose disclosures (dF1-dF3, gF1/gF1b/gF4/gF5, critic-D5/D6)
 - Governor fold — released-posture prose after the execution 0.2.0 promotion (#176)
 - Final fold — baseline lines, README prose/counts, A-R2 sweep scope (#176)
+- One worktree per lane + shared-stash rule (retro R1)
+- Standing gate line in builder briefs (R2) + step-8 entry-shape fields (R4) — retro 2026-09-25
 
 ### Features
 
