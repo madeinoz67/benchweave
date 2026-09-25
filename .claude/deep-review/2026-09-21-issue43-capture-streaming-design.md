@@ -440,9 +440,13 @@ standalone leg:
   environment variable > the working-directory default. The gateway never reads this
   configuration — host-managed storage stays normative in-gateway, and standalone path
   selection exists only outside the gateway boundary.
-- **capture_id is minted and path-safe (added).** The standalone harness mints
-  `capture_id` (uuid4 slug); the writer enforces segment rules **before any filesystem
-  call** — no separators or `..` components, no Windows device names (`CON`, `NUL`,
+- **capture_id is minted and path-safe (added; corrected 2026-09-25).** Standalone,
+  minting the `capture_id` is the caller's job — the SDK ships no minter, only the
+  writer's validation (record amended after the SDK PR #56 review; a
+  `mint_capture_id()` helper remains a deferred option); the writer enforces segment
+  rules **before any filesystem
+  call** — no separators or `..` components, no trailing dot (Windows strips them),
+  no Windows device names (`CON`, `NUL`,
   …), case-folded collision check, bounded length — the refusal class the repo already
   applies to plugin-ui resource paths (the in-tree precedent). A hostile or clumsy id
   can no longer name a directory outside the capture root.
@@ -488,8 +492,10 @@ standalone leg:
   descriptor root already admits `x-<vendor>-<name>` extension keys (checks ignore
   them today), so standalone capture formats are declared in `x-capture-formats` (or
   the standalone runner's configuration). The writer is content-agnostic — it names,
-  digests, and lengths bytes; it never interprets them, so integrity is identical for
-  text and binary. Extensions come from a small known-format map (`waveform_f64le` →
+  digests, and lengths bytes, and (since SDK PR #56, 2026-09-25) finalise refuses a
+  `waveform_f64le` capture whose byte length is not `sample_count×8` (spec §7), the
+  one interpretation it makes, matching the gateway's writer, so integrity is identical
+  for text and binary. Extensions come from a small known-format map (`waveform_f64le` →
   `.f64`, `raw_binary` → `.bin`, `csv` → `.csv`, `text` → `.txt`, `vcd` → `.vcd`),
   otherwise `.data`; `manifest.json`'s `format` field is always the source of truth.
   Plain-text captures are first-class here — the contributor's ADC prototype already
