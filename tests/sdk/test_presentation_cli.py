@@ -192,7 +192,11 @@ def test_scaffold_hint_pair_validates_identically(
             manifest = json.loads(manifest_path.read_bytes())
             manifest["pages"][0]["plots"][0].pop("channel_hints", None)
             manifest_raw = json.dumps(manifest, indent=2) + "\n"
-            manifest_path.write_text(manifest_raw, encoding="utf-8")
+            # Write the bytes that get hashed below: write_text applies the
+            # platform's newline translation, so on Windows the manifest would
+            # land as CRLF and the envelope digest would never match. The
+            # SDK's own create_ui_resources writes this file with write_bytes.
+            manifest_path.write_bytes(manifest_raw.encode())
             envelope_path = package / "presentation.json"
             envelope = json.loads(envelope_path.read_bytes())
             envelope["manifest"]["sha256"] = hashlib.sha256(manifest_raw.encode()).hexdigest()
