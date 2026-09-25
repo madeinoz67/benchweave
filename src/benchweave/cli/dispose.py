@@ -322,7 +322,20 @@ def _stage_archive_objects(
     order: list[str] = []
     for plan in archive_rows:
         artifact_id = _content_artifact(conn, plan)
-        if artifact_id is None or artifact_id in order:
+        if artifact_id is None:
+            # Review-wave finding 5 (laneA F1): never archive-to-nothing.
+            # A row with no content artifact would be destroyed by the
+            # guarded delete with NO offline copy — refuse typed before
+            # anything is staged (the row survives; repair it or
+            # re-classify it in the policy).
+            raise ArchiveTargetRefused(
+                f"archive_target: archive-tier row {plan['id']!r} "
+                f"({plan['row_kind']}) references no artifact — refusing "
+                "to archive it to nothing (the governed row would be "
+                "destroyed with no offline copy); repair the row or "
+                "re-classify it before disposing"
+            )
+        if artifact_id in order:
             continue
         order.append(artifact_id)
     facts: dict[str, int] = {}

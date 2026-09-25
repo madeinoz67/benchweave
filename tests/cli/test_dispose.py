@@ -1475,6 +1475,84 @@ def test_fold4_stager_streams_one_payload_at_a_time(tmp_path: Path) -> None:
     )
 
 
+def test_fold5_archive_rows_without_artifacts_refuse_typed(tmp_path: Path) -> None:
+    """Review wave finding 5 (laneA F1): an evidence row with
+    ``artifact_id=None`` would archive to nothing — the governed row
+    destroyed, no offline copy, and verify silently passing it. Dispose
+    now refuses typed BEFORE anything is staged (never
+    archive-to-nothing); the verify arm COUNTS binding-less rows as
+    skipped (clean=False, exit 1), naming them — never a silent pass."""
+    import shutil
+
+    from benchweave.cli.dispose import ArchiveTargetRefused
+
+    data_dir = tmp_path / "data-void"
+    if data_dir.exists():
+        shutil.rmtree(data_dir)
+    setup(data_dir)
+    data_dir.joinpath("retention-policy.json").write_text(
+        json.dumps({
+            "config_version": "1",
+            "default": {"duration_s": 3600, "retain_after": "landing",
+                        "on_disposition": "review"},
+            "classes": [
+                {"selector": "evidence:event_log", "duration_s": 3600,
+                 "retain_after": "landing", "on_disposition": "archive"},
+            ],
+            "benches": {},
+        }),
+        encoding="utf-8",
+    )
+    store, content = _open(data_dir)
+    try:
+        content.put_evidence(
+            "event_log",
+            {"id": "ref-void", "version": "1", "sha256": "0" * 64},
+            None, "run:void-run", T0,  # the artifact-less row
+        )
+    finally:
+        store.close()
+
+    target = tmp_path / "offline-void"
+    with pytest.raises(ArchiveTargetRefused, match="archive_target:"):
+        _dispose(data_dir, now=NOW, execute=True, archive_target=target)
+    assert int(_rows(data_dir, "SELECT COUNT(*) FROM evidence"
+                              " WHERE kind = 'event_log'")[0][0]) == 1, (
+        "an artifact-less archive row must SURVIVE — never destroyed "
+        "with no offline copy"
+    )
+    assert _tree_snapshot(target) == {}, (
+        "the refusal fires before any object is placed — the created "
+        "target tree carries no objects and no manifest"
+    )
+
+    # The verify half: a rogue archived row with no binding (inserted
+    # directly — dispose can no longer create one) is COUNTED as
+    # skipped, named, and fails clean.
+    conn = sqlite3.connect(str(db_path(data_dir)))
+    conn.execute(
+        "INSERT INTO dispositions (disposition_id, invocation_id,"
+        " row_kind, target_id, data_class, matched_scope, matched_rule,"
+        " on_disposition, anchor_kind, disposal_date, bytes,"
+        " deleted_byte_length, decision_artifact_id, decision_sha256,"
+        " executed_at, outcome)"
+        " VALUES (?, 'dsp-inv-rogue', 'evidence',"
+        " 'ref-void', 'evidence:event_log', 'class', 'r1', 'archive',"
+        " 'landing', '2026-09-20T00:00:00Z', 0, 0, 'art-rogue',"
+        " ?, '2026-09-27T00:00:00Z', 'archived')",
+        ("dsp-rogue-void", "0" * 64),
+    )
+    conn.commit()
+    conn.close()
+    model = _dispose(data_dir, now=NOW, verify_archive=True)
+    assert model["clean"] is False
+    assert any(
+        item["disposition_id"] == "dsp-rogue-void"
+        and item["reason"] == "no artifact binding"
+        for item in model["skipped"]
+    ), "verify must name the binding-less row, never silently pass it"
+
+
 # --- fold fix 5: output units + skip split + disclosure carry ------------------------------
 
 
