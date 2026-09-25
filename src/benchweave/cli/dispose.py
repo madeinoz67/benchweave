@@ -210,16 +210,28 @@ def _content_artifact(
 
 
 def _fsync_dir(path: Path) -> None:
-    """fsync a directory entry so placed names survive power loss; a
-    no-op where directory fds cannot be opened (Windows)."""
+    """fsync a directory entry so placed names survive power loss. On a
+    platform that cannot open a directory for fsync at all (Windows
+    raises ``PermissionError`` on the open) this is a no-op — the
+    platform offers no directory-durability primitive to lose. Every
+    OTHER failure on the open or the fsync propagates as a typed
+    ``archive_target:`` refusal: a durability error must never be
+    laundered into a committed trail that asserts preservation
+    (review-wave finding 2)."""
     try:
         fd = os.open(path, os.O_RDONLY)
-    except OSError:
+    except PermissionError:
         return
+    except OSError as error:
+        raise ArchiveTargetRefused(
+            f"archive_target: cannot fsync {path}: {error}"
+        ) from error
     try:
         os.fsync(fd)
-    except OSError:
-        pass
+    except OSError as error:
+        raise ArchiveTargetRefused(
+            f"archive_target: fsync of {path} failed: {error}"
+        ) from error
     finally:
         os.close(fd)
 

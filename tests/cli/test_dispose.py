@@ -1283,6 +1283,50 @@ def test_fold1_fsync_chain_covers_the_target_and_its_parent(
         assert str((target / sub).resolve()) in fsynced
 
 
+def test_fold2_durability_errors_refuse_typed_never_laundered(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Review wave finding 2 (critic#2): ``_fsync_dir`` swallowed every
+    OSError on open AND fsync — an EIO on the durability path committed
+    anyway, laundering a failed fsync into a committed trail that
+    asserts preservation. An injected EIO at the objects-directory fsync
+    must refuse typed in the ``archive_target:`` family with the store
+    untouched (Phase A: no transaction was open)."""
+    import errno
+    import os as os_module
+
+    from benchweave.cli.dispose import ArchiveTargetRefused
+
+    opened: dict[int, str] = {}
+    real_open = os_module.open
+    real_fsync = os_module.fsync
+
+    def spy_open(path: object, flags: int, *args: object, **kwargs: object) -> int:
+        fd = real_open(path, flags, *args, **kwargs)  # type: ignore[arg-type]
+        opened[fd] = str(Path(str(path)).resolve())
+        return fd
+
+    def eio_on_objects_dir(fd: int) -> None:
+        if opened.get(fd, "").endswith("/objects"):
+            raise OSError(errno.EIO, "injected I/O error")
+        real_fsync(fd)
+
+    monkeypatch.setattr(os_module, "open", spy_open)
+    monkeypatch.setattr(os_module, "fsync", eio_on_objects_dir)
+
+    data_dir = _seed(tmp_path)
+    _write_policy(data_dir / "retention-policy.json")
+    before = _snapshot_all(data_dir)
+    with pytest.raises(ArchiveTargetRefused, match="archive_target:"):
+        _dispose(data_dir, now=NOW, execute=True,
+                 archive_target=tmp_path / "offline-eio")
+    assert _snapshot_all(data_dir) == before, (
+        "a durability refusal must leave the store untouched"
+    )
+    assert int(_rows(data_dir, "SELECT COUNT(*) FROM"
+                        " disposition_invocations")[0][0]) == 0
+
+
 # --- fold fix 5: output units + skip split + disclosure carry ------------------------------
 
 
