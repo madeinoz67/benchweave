@@ -1716,10 +1716,16 @@ def test_r2_late_appearing_object_is_verified_never_silently_overwritten(
     data_dir = _seed(tmp_path)
     _write_policy(data_dir / "retention-policy.json")
     target = tmp_path / "offline-late"
-    order = [str(r[0]) for r in _rows(
+    # The stager's placement order is its own contract — sorted by
+    # content address (see _stage_archive_objects); the test derives its
+    # targets the same way so the interleave is seed-proof (CI red
+    # 2026-09-25: PYTHONHASHSEED-dependent plan order put the plant's
+    # target at index 0, after its own verification, on some seeds).
+    order = sorted({str(r[0]) for r in _rows(
         data_dir, "SELECT artifact_id FROM evidence"
-                  " WHERE kind = 'event_log' ORDER BY rowid")]
-    first, second = order[0], order[1]
+                  " WHERE kind = 'event_log'")})
+    assert len(order) >= 2, "seed must carry >= 2 distinct event_log artifacts"
+    first, second = order[0], order[-1]
 
     def plant_latecomer(index: int) -> None:
         if index != 0:

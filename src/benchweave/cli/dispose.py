@@ -383,6 +383,12 @@ def _stage_archive_objects(
         if artifact_id in order:
             continue
         order.append(artifact_id)
+    # Deterministic placement sequence (CI red 2026-09-25): the plan's
+    # row order is PYTHONHASHSEED-dependent upstream, so the stager owns
+    # its own order contract — sorted by content address. Placement
+    # order is reproducible across runs, hosts, and seeds (manifest
+    # sequence included).
+    order.sort()
     facts: dict[str, int] = {}
     placed = deduped = copied = 0
     # Pass 1: verify every pre-existing destination object BEFORE placing
