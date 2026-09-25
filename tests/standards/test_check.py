@@ -6,6 +6,7 @@ import json
 import shutil
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +27,14 @@ def _sdk_copy(tmp_path: Path) -> Path:
     )
     shutil.copy2(source / "pyproject.toml", sdk / "pyproject.toml")
     return sdk
+
+
+def _copied_pin_version() -> str:
+    """The ambient ``packages/sdk`` pyproject version — the pyproject the
+    pairing fixtures copy, so a healthy pairing derives its number from the
+    pin it builds on instead of hardcoding one."""
+    with (ROOT / "packages/sdk/pyproject.toml").open("rb") as handle:
+        return str(tomllib.load(handle)["project"]["version"])
 
 
 def _lock(sdk: Path) -> dict[str, Any]:
@@ -351,7 +360,10 @@ def test_mirror_refuses_moved_submodule_with_honest_message(tmp_path: Path) -> N
 def _repo_with_committed_187_pairing(tmp_path: Path, lock_version: str) -> Path:
     """A real parent+submodule whose COMMITTED state pairs the lock at
     ``lock_version`` with a mirror staled to match, at a pin whose pyproject
-    says 0.2.0.
+    version is the ambient ``packages/sdk`` copy's own — pass
+    ``_copied_pin_version()`` when the pairing must be healthy (a hardcoded
+    number reds as soon as the pin legitimately advances past it, found by
+    the 0.3.0 pairing).
 
     The submodule gains one commit (lock compatibility.sdk = lock_version,
     pyproject untouched), the parent's gitlink moves to that commit, and the
@@ -403,7 +415,7 @@ def test_anchor_ignores_a_dirty_tree_over_a_healthy_pairing(tmp_path: Path) -> N
     of working-tree dirt — the dirt is not a compatibility fact."""
     from benchweave.standards.check import run_check
 
-    repo = _repo_with_committed_187_pairing(tmp_path, "0.2.0")
+    repo = _repo_with_committed_187_pairing(tmp_path, _copied_pin_version())
     sdk = repo / "packages/sdk"
     (sdk / "pyproject.toml").write_text(
         '[project]\nname = "benchweave-sdk"\nversion = "9.9.9"\n', encoding="utf-8"
