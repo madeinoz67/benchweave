@@ -1113,6 +1113,122 @@ def test_ar4_archive_relieves_ledger_and_gcs_exactly_like_delete(
     assert orphans == [], "decision artifacts are live references — never collected"
 
 
+# --- issue #199: the verify arm (AR7) ------------------------------------------------
+
+
+def _archived_store(tmp_path: Path) -> tuple[Path, Path]:
+    """A seeded store with the archive tier already executed once:
+    returns ``(data_dir, target)`` with four committed archived rows and
+    their four destination objects."""
+    data_dir = _seed(tmp_path)
+    _write_policy(data_dir / "retention-policy.json")
+    target = tmp_path / "offline-target"
+    _dispose(data_dir, now=NOW, execute=True, archive_target=target)
+    return data_dir, target
+
+
+def test_ar7_verify_archive_clean_drift_and_orphans(tmp_path: Path) -> None:
+    """AR7: a clean destination verifies every archived row with zero
+    drift; a flipped object byte is named ``digest_mismatch`` (re-hash,
+    never trusting ``archived_byte_length``); a deleted object is named
+    ``absent``; a tampered trail length over intact bytes is named
+    ``length_mismatch``; a planted orphan object is REPORTED and never
+    deleted (an orphan is over-preservation, not drift)."""
+    data_dir, target = _archived_store(tmp_path)
+    model = _dispose(data_dir, now=NOW, archive_target=target,
+                     verify_archive=True)
+    assert model["mode"] == "verify-archive"
+    assert model["clean"] is True
+    assert model["drift"] == []
+    assert model["verified"] == 4, (
+        "denominator: the store's archived audit rows"
+    )
+    assert model["executed"] is False  # the verify arm never executes
+
+    audit = _audit_rows(data_dir)
+    archived = [r for r in audit if r["outcome"] == "archived"]
+    flipped = target / "objects" / str(archived[0]["archived_artifact_id"])
+    payload = bytearray(flipped.read_bytes())
+    payload[0] ^= 0xFF  # same length, wrong bytes
+    flipped.write_bytes(bytes(payload))
+    model = _dispose(data_dir, now=NOW, archive_target=target,
+                     verify_archive=True)
+    assert model["clean"] is False
+    assert [(d["problem"], d["disposition_id"]) for d in model["drift"]] == [
+        ("digest_mismatch", archived[0]["disposition_id"])
+    ]
+
+    gone = target / "objects" / str(archived[1]["archived_artifact_id"])
+    gone.unlink()
+    model = _dispose(data_dir, now=NOW, archive_target=target,
+                     verify_archive=True)
+    problems = sorted(d["problem"] for d in model["drift"])
+    assert problems == ["absent", "digest_mismatch"], problems
+
+    # length_mismatch fires when the OBJECT re-hashes to its address but
+    # the TRAIL's recorded length disagrees (trail tampering over intact
+    # bytes — the only lane where it can appear alone).
+    conn = sqlite3.connect(str(db_path(data_dir)))
+    conn.execute(
+        "UPDATE dispositions SET archived_byte_length = archived_byte_length + 1"
+        " WHERE disposition_id = ?", (archived[2]["disposition_id"],))
+    conn.commit()
+    conn.close()
+    model = _dispose(data_dir, now=NOW, archive_target=target,
+                     verify_archive=True)
+    problems = sorted(d["problem"] for d in model["drift"])
+    assert problems == ["absent", "digest_mismatch", "length_mismatch"], problems
+
+    # an orphan is reported, never deleted, and is not drift
+    orphan = target / "objects" / ("art-" + "0" * 64)
+    orphan.write_bytes(b"orphan-object-bytes")
+    model = _dispose(data_dir, now=NOW, archive_target=target,
+                     verify_archive=True)
+    assert model["orphans"] == [orphan.name]
+    assert orphan.is_file(), "orphans are reported, never deleted"
+    assert len(model["drift"]) == 3, "an orphan is over-preservation, not drift"
+
+
+def test_ar7_cli_exit_codes_and_mode_refusals(tmp_path: Path) -> None:
+    """The CLI surface: clean ⇒ exit 0; drift ⇒ exit 1 with the
+    machine-matchable problem names; ``--verify-archive --execute`` is a
+    typed refusal (the verify arm never executes); ``--verify-archive``
+    without a target is a typed refusal."""
+    data_dir, target = _archived_store(tmp_path)
+    result = CliRunner().invoke(cli, [
+        "dispose", "--data-dir", str(data_dir),
+        "--verify-archive", "--archive-target", str(target)])
+    assert result.exit_code == 0, _combined(result)
+
+    audit = _audit_rows(data_dir)
+    archived = [r for r in audit if r["outcome"] == "archived"]
+    flipped = target / "objects" / str(archived[0]["archived_artifact_id"])
+    payload = bytearray(flipped.read_bytes())
+    payload[0] ^= 0xFF
+    flipped.write_bytes(bytes(payload))
+    result = CliRunner().invoke(cli, [
+        "dispose", "--data-dir", str(data_dir),
+        "--verify-archive", "--archive-target", str(target)])
+    assert result.exit_code == 1
+    combined = _combined(result)
+    assert "digest_mismatch" in combined
+    assert "Traceback" not in combined
+
+    result = CliRunner().invoke(cli, [
+        "dispose", "--data-dir", str(data_dir), "--execute",
+        "--verify-archive", "--archive-target", str(target)])
+    assert result.exit_code == 1
+    combined = _combined(result)
+    assert "never executes" in combined
+    assert "Traceback" not in combined
+
+    result = CliRunner().invoke(cli, [
+        "dispose", "--data-dir", str(data_dir), "--verify-archive"])
+    assert result.exit_code == 1
+    assert "--archive-target" in _combined(result)
+    assert "Traceback" not in combined
+
+
 # --- fold fix 5: output units + skip split + disclosure carry ------------------------------
 
 

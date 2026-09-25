@@ -71,11 +71,13 @@ from benchweave.state.hold import StoreHold
 from benchweave.state.store import Store
 
 __all__ = [
+    "ArchiveTargetRefused",
     "build_retention_report",
     "dispose_from_data_dir",
     "now_iso",
     "render_json",
     "render_markdown",
+    "render_verify_markdown",
 ]
 
 _DELETED = "deleted"
@@ -370,6 +372,91 @@ def _write_archive_manifest(
     return path
 
 
+def _verify_archive_model(
+    store: Store, target: Path | None, *, now: str
+) -> dict[str, Any]:
+    """The read-only verify arm (issue #199 §2.5): for every committed
+    ``outcome='archived'`` row, re-prove the object at the destination —
+    present, re-hashing to its content address, matching the trail's
+    recorded length. Destination objects no trail row references are
+    ORPHANS (the disclosed over-preservation window: crashed attempts,
+    superseded runs) — reported, never deleted (deleting destination
+    files is a new authority; record deferral D2). Drift is named per
+    object, machine-matchable (``absent`` / ``digest_mismatch`` /
+    ``length_mismatch``); ``digest_mismatch`` takes precedence — the
+    bytes are re-hashed first, never trusted from ``archived_byte_length``
+    (``length_mismatch`` alone fires only when intact bytes disagree with
+    a tampered trail length)."""
+    if target is None:
+        raise AtRestError(
+            "dispose: --verify-archive requires --archive-target — the "
+            "verify arm re-proves objects at the destination it names"
+        )
+    resolved = Path(target).expanduser().resolve()
+    if not resolved.is_dir():
+        raise ArchiveTargetRefused(
+            f"archive_target: {resolved} does not exist — the verify arm "
+            "re-proves objects at a destination that must be present"
+        )
+    objects_dir = resolved / "objects"
+    drift: list[dict[str, str]] = []
+    referenced: set[str] = set()
+    verified = 0
+    for disposition_id, artifact_id, byte_length in store.connection.execute(
+        "SELECT disposition_id, archived_artifact_id, archived_byte_length"
+        " FROM dispositions WHERE outcome = 'archived' ORDER BY rowid"
+    ):
+        if artifact_id is None:
+            continue  # an artifact-less archived row binds no object
+        artifact_id = str(artifact_id)
+        referenced.add(artifact_id)
+        path = objects_dir / artifact_id
+        if not path.is_file():
+            drift.append({
+                "disposition_id": str(disposition_id),
+                "archived_artifact_id": artifact_id,
+                "problem": "absent",
+            })
+            continue
+        payload = path.read_bytes()
+        if hashlib.sha256(payload).hexdigest() != artifact_id.removeprefix(
+            "art-"
+        ):
+            drift.append({
+                "disposition_id": str(disposition_id),
+                "archived_artifact_id": artifact_id,
+                "problem": "digest_mismatch",
+            })
+            continue
+        if byte_length is not None and len(payload) != int(byte_length):
+            drift.append({
+                "disposition_id": str(disposition_id),
+                "archived_artifact_id": artifact_id,
+                "problem": "length_mismatch",
+            })
+            continue
+        verified += 1
+    orphans: list[str] = []
+    if objects_dir.is_dir():
+        orphans = sorted(
+            entry.name
+            for entry in objects_dir.iterdir()
+            if entry.is_file()
+            and not entry.name.startswith(".")
+            and entry.name not in referenced
+        )
+    return {
+        "generated_at": now,
+        "executed": False,
+        "mode": "verify-archive",
+        "destination": str(resolved),
+        "verified": verified,
+        "drift": drift,
+        "orphans": orphans,
+        "clean": not drift,
+    }
+
+
 def _classify(row: dict[str, Any]) -> str:
     """The executable-set rule, verbatim from the design: only
     ``scheduled ∧ overdue ∧ on_disposition=delete`` rows execute. Review
@@ -438,6 +525,15 @@ def dispose_from_data_dir(
     db = db_path(data_dir)
     if not db.is_file():
         raise AtRestError(f"no store at {db} — run setup first")
+    if verify_archive and execute:
+        raise AtRestError(
+            "dispose: --verify-archive verifies and exits — never "
+            "executes; drop --execute"
+        )
+    if verify_archive and archive_target is None:
+        raise AtRestError(
+            "dispose: --verify-archive requires --archive-target"
+        )
 
     path = Path(policy_path) if policy_path is not None else (
         data_dir / RETENTION_POLICY_FILENAME
@@ -471,6 +567,12 @@ def dispose_from_data_dir(
         except sqlite3.Error as error:
             raise AtRestError(f"cannot open {db}: {error}") from error
         try:
+            if verify_archive:
+                # The read-only verify arm rides the same hold (STO-3's
+                # site list stays regenerable from grep StoreHold( src/).
+                return _verify_archive_model(
+                    store, archive_target, now=now
+                )
             report = build_retention_report(
                 store, policy=policy, bench_id=bench_id, now=now
             )
@@ -723,3 +825,33 @@ def render_json(model: dict[str, Any]) -> str:
     """The machine form: ``json.loads`` of this string round-trips the
     model exactly."""
     return json.dumps(model, indent=2, sort_keys=True)
+
+
+def render_verify_markdown(model: dict[str, Any]) -> str:
+    """The verify arm's operator markdown: destination, verified count,
+    per-object drift (machine-matchable problem names), orphans."""
+    lines = [
+        "# BenchWeave archive verification",
+        f"generated_at: {model['generated_at']}",
+        f"destination: {model['destination']}",
+        "",
+        f"- verified: {model['verified']}",
+        f"- clean: {model['clean']}",
+    ]
+    if model["drift"]:
+        lines.append("- drift:")
+        for item in model["drift"]:
+            lines.append(
+                f"  - {item['problem']}: {item['disposition_id']}"
+                f" ({item['archived_artifact_id']})"
+            )
+    if model["orphans"]:
+        lines.append(
+            "- orphans (objects no trail row references — reported, never"
+            " deleted):"
+        )
+        for name in model["orphans"]:
+            lines.append(f"  - {name}")
+    if not model["drift"] and not model["orphans"]:
+        lines.append("- no drift, no orphans")
+    return "\n".join(lines)

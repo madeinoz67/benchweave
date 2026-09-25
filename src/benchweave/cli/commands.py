@@ -676,6 +676,16 @@ def dispose(
         # and archive-target refusals: every failure is a handled
         # message, never a traceback.
         raise click.ClickException(str(error)) from error
+    if model.get("mode") == "verify-archive":
+        # The verify arm's own surface: drift is exit 1 (the verify
+        # command's convention); orphans are reported, never a failure.
+        if json_output:
+            emit(model)
+        else:
+            click.echo(dispose_lib.render_verify_markdown(model))
+        if not model["clean"]:
+            raise click.exceptions.Exit(1)
+        return
     if json_output:
         if out is not None:
             _write_out(out, dispose_lib.render_json(model))
