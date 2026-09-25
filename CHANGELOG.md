@@ -582,6 +582,7 @@ All notable changes to this project will be documented in this file.
 - Encode the 2026-09-24 discipline rows R1-R4 (#181)
 - Fold the refute slate's hygiene items (#176)
 - Advance packages/sdk to the execution 0.2.0 sync (#176)
+- Sdk_compatibility mirror + pointer = certified 0.3.0 (SDK 0.3.0 pairing)
 
 ### Performance
 
@@ -711,6 +712,7 @@ All notable changes to this project will be documented in this file.
 - Strip PYTHONPATH/PYTHONHOME from the wheel child env (issue #176 T11 vet finding)
 - GF2 canonical-form agreement pin + deferral-table rows (#176)
 - Reconcile the dev-head controls to the promotion's live truth (#176)
+- Derive the healthy-pairing version from the copied pin
 
 ### Build
 
