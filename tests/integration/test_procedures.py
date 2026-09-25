@@ -5,7 +5,7 @@ admits through schema validation plus the full digest pin lattice, any byte
 tamper surfaces as a machine-matchable ``digest_mismatch``, and any structural
 drift (unknown fields, duplicate keys, nonfinite numbers) surfaces as
 ``schema`` — inherited from the exact-byte decoder and the vendored
-execution/0.1.0 schemas. On top of structure, the semantic stage enforces
+execution/0.2.0 schemas. On top of structure, the semantic stage enforces
 step-ID uniqueness, lexical scoping of result references, ``$stg_issue``
 placement at descriptor-marked issued fields, and the budget bounds (worst-case
 body, energised time, commissioning deadline). Profile satisfaction and

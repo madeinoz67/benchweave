@@ -308,7 +308,7 @@ The registry operator owns namespace governance, distribution keys, review workf
 
 ## 19. Procedure and bench document contracts
 
-The companion [execution contract 0.1.0](../standards/execution/0.1.0/execution-contract.md) defines six schemas: portable procedure, bench definition, safety policy, commissioning record, run binding and terminal run record. It preserves the OTDP 0.2.0 and adapter API 1.1 runtime interfaces.
+The companion [execution contract 0.2.0](../standards/execution/0.2.0/execution-contract.md) defines six schemas: portable procedure, bench definition, safety policy, commissioning record, run binding and terminal run record. It preserves the OTDP 0.2.0 and adapter API 1.1 runtime interfaces.
 
 Procedures use bounded sequential steps, fixed-count loops, explicit lexical result references and typed scalar assertions. Logical roles/channels bind to commissioned instances. The host reserves shared resources and protective dependencies before acceptance, validates resolved actions against profile/device/policy constraints and retains the accepted immutable configuration throughout the run.
 
