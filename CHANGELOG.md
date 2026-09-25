@@ -736,6 +736,7 @@ All notable changes to this project will be documented in this file.
 - AR4 ledger+GC over archive captures; archive scale smoke; no-op figure honesty
 - AR5 — the archive tier's three crash windows on the kill harness
 - Freeze rule for the 23-field archive envelope
+- Close the Windows census (#143) (#208)
 
 ### Build
 
