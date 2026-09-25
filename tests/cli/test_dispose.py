@@ -210,9 +210,16 @@ def _audit_rows(data_dir: Path) -> list[dict[str, Any]]:
 def _recomputed_digest(row: dict[str, Any]) -> str:
     """A8's INDEPENDENT recomputation: the envelope is the table row minus
     its two digest columns, canonical-JSON serialized, sha256'd — no
-    production code involved."""
+    production code involved. The v7 two-shape rule applies here too
+    (issue #199 §2.3): the four archive columns join the envelope IFF the
+    row's outcome is 'archived' — delete-tier rows keep the exact v6
+    19-field shape, so their blobs are byte-identical to v6's."""
     envelope = {k: v for k, v in row.items()
                 if k not in ("decision_artifact_id", "decision_sha256")}
+    if row.get("outcome") != "archived":
+        for field in ("archived_artifact_id", "archived_byte_length",
+                      "archive_destination", "archive_verified_at"):
+            envelope.pop(field, None)
     blob = json.dumps(envelope, sort_keys=True).encode()
     return hashlib.sha256(blob).hexdigest()
 
