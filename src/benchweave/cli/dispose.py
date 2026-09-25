@@ -292,6 +292,34 @@ def _place_object(objects_dir: Path, artifact_id: str, data: bytes) -> int:
     return destination.stat().st_size
 
 
+def _verify_preexisting(objects_dir: Path, artifact_id: str) -> int:
+    """The one discipline for a destination object that already exists
+    under a needed content address — whether found in the stager's
+    pre-existing pass or appearing late between the passes (review wave
+    R2): a SYMLINK refuses typed (hash-correct or not — the archive
+    tier preserves bytes at the named path, not a pointer someone can
+    retarget); wrong bytes refuse typed (never silently overwritten —
+    overwriting would launder destination corruption into a fresh
+    'verified' copy). Returns the object's byte length."""
+    destination = objects_dir / artifact_id
+    if destination.is_symlink():
+        raise ArchiveTargetRefused(
+            f"archive_target: destination object {destination} is a "
+            "symlink — the archive tier preserves bytes at the named "
+            "path, not a pointer elsewhere; refusing (hash-correct or "
+            "not)"
+        )
+    if _hash_file(destination) != artifact_id.removeprefix("art-"):
+        raise ArchiveTargetRefused(
+            f"archive_target: pre-existing object {destination} does "
+            "not hash to its content address (destination corrupt or "
+            "tampered); refusing to overwrite it — overwriting would "
+            "launder destination corruption into a fresh 'verified' "
+            "copy"
+        )
+    return destination.stat().st_size
+
+
 def _stage_archive_objects(
     conn: sqlite3.Connection,
     archive_rows: list[dict[str, Any]],
@@ -362,22 +390,24 @@ def _stage_archive_objects(
     # the pre-existing files) — streaming hash, no payload loaded.
     for artifact_id in order:
         destination = objects_dir / artifact_id
-        if not destination.is_file():
+        if not (destination.is_file() or destination.is_symlink()):
             continue
-        if _hash_file(destination) != artifact_id.removeprefix("art-"):
-            raise ArchiveTargetRefused(
-                f"archive_target: pre-existing object {destination} does "
-                "not hash to its content address (destination corrupt or "
-                "tampered); refusing to overwrite it — overwriting would "
-                "launder destination corruption into a fresh 'verified' "
-                "copy"
-            )
+        facts[artifact_id] = _verify_preexisting(objects_dir, artifact_id)
         deduped += 1
-        facts[artifact_id] = destination.stat().st_size
     # Pass 2: place the absent objects, durably, verifying each — read
-    # one payload, place it, release it, then the next.
+    # one payload, place it, release it, then the next. An entry that
+    # APPEARED between the passes gets the same verify-or-refuse
+    # discipline (review wave R2: never a silent os.replace over bytes
+    # nobody checked).
     for index, artifact_id in enumerate(order):
+        destination = objects_dir / artifact_id
         if artifact_id in facts:
+            if stage_hook is not None:
+                stage_hook(index)
+            continue
+        if destination.is_file() or destination.is_symlink():
+            facts[artifact_id] = _verify_preexisting(objects_dir, artifact_id)
+            deduped += 1
             if stage_hook is not None:
                 stage_hook(index)
             continue
@@ -518,6 +548,14 @@ def _verify_archive_model(
             continue
         referenced.setdefault(destination, set()).add(artifact_id)
         path = Path(destination) / "objects" / artifact_id
+        if path.is_symlink():
+            # Review wave R2: a symlinked object refuses typed in verify
+            # too — the trail names a path of bytes, not a pointer.
+            raise ArchiveTargetRefused(
+                f"archive_target: archived object {path} is a symlink — "
+                "the trail's binding names bytes at that path, not a "
+                "pointer elsewhere; refusing (hash-correct or not)"
+            )
         if not path.is_file():
             drift.append({
                 "disposition_id": disposition_id,

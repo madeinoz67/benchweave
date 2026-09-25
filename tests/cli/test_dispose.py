@@ -1652,6 +1652,98 @@ def test_r1_empty_and_dot_archive_targets_refuse_typed(tmp_path: Path) -> None:
     )
 
 
+def test_r2_symlinked_destination_objects_refuse_in_stager_and_verify(
+    tmp_path: Path,
+) -> None:
+    """Review wave R2 (guard, lane B's symlink repro): a destination
+    object that is a SYMLINK — even hash-correct, pointing at the real
+    bytes elsewhere — is refused typed in the stager's pre-existing
+    pass AND in the verify arm. The archive tier preserves bytes at the
+    named path, not a pointer someone can retarget."""
+    import os as os_module
+
+    from benchweave.cli.dispose import ArchiveTargetRefused
+
+    data_dir = _seed(tmp_path)
+    _write_policy(data_dir / "retention-policy.json")
+    target = tmp_path / "offline-link"
+    (target / "objects").mkdir(parents=True)
+    needed = _rows(
+        data_dir, "SELECT artifact_id FROM evidence"
+                  " WHERE kind = 'event_log' ORDER BY rowid")
+    artifact_id = str(needed[0][0])
+    # the real bytes, parked OUTSIDE objects/, with a symlink at the
+    # object's name pointing at them — hash-correct through the link.
+    real = target / "parked" / artifact_id
+    (target / "parked").mkdir()
+    payload = _rows(data_dir, "SELECT data FROM artifacts"
+                              " WHERE artifact_id = ?", (artifact_id,))[0][0]
+    real.write_bytes(bytes(payload))
+    os_module.symlink(real, target / "objects" / artifact_id)
+
+    with pytest.raises(ArchiveTargetRefused, match="archive_target:"):
+        _dispose(data_dir, now=NOW, execute=True, archive_target=target)
+    assert int(_rows(data_dir, "SELECT COUNT(*) FROM evidence"
+                              " WHERE kind = 'event_log'")[0][0]) == 4, (
+        "the refusal must leave the governed rows in place"
+    )
+
+    # the verify arm refuses the symlink too (a committed row whose
+    # object was later replaced by a symlink)
+    data_dir2, target2 = _archived_store(tmp_path)
+    victim = sorted((target2 / "objects").iterdir())[0]
+    parked = target2.parent / "parked-verify"
+    parked.mkdir()
+    parked_target = parked / victim.name
+    parked_target.write_bytes(victim.read_bytes())
+    victim.unlink()
+    os_module.symlink(parked_target, victim)
+    with pytest.raises(ArchiveTargetRefused, match="archive_target:"):
+        _dispose(data_dir2, now=NOW, archive_target=target2,
+                 verify_archive=True)
+
+
+def test_r2_late_appearing_object_is_verified_never_silently_overwritten(
+    tmp_path: Path,
+) -> None:
+    """Review wave R2 (guard, lane B's late-appearance repro): an object
+    that appears at a needed content address BETWEEN the pre-existing
+    pass and the placement pass gets the SAME discipline — verify-or-
+    refuse — never a silent os.replace over bytes nobody checked (the
+    AR3 claim must hold for late-appearing entries too)."""
+    from benchweave.cli.dispose import ArchiveTargetRefused
+
+    data_dir = _seed(tmp_path)
+    _write_policy(data_dir / "retention-policy.json")
+    target = tmp_path / "offline-late"
+    order = [str(r[0]) for r in _rows(
+        data_dir, "SELECT artifact_id FROM evidence"
+                  " WHERE kind = 'event_log' ORDER BY rowid")]
+    first, second = order[0], order[1]
+
+    def plant_latecomer(index: int) -> None:
+        if index != 0:
+            return
+        # between placing object 1 and reaching object 2, a wrong-bytes
+        # file appears under object 2's needed content address.
+        (target / "objects" / second).write_bytes(
+            b"late-appearing-wrong-bytes")
+
+    with pytest.raises(ArchiveTargetRefused, match="archive_target:"):
+        _dispose(data_dir, now=NOW, execute=True, archive_target=target,
+                 stage_hook=plant_latecomer)
+    assert (target / "objects" / second).read_bytes() == (
+        b"late-appearing-wrong-bytes"), (
+        "the late-appearing file is never silently overwritten"
+    )
+    assert int(_rows(data_dir, "SELECT COUNT(*) FROM evidence"
+                              " WHERE kind = 'event_log'")[0][0]) == 4
+    assert _rows(data_dir, "SELECT COUNT(*) FROM dispositions"
+                           " WHERE outcome = 'archived'")[0][0] == 0, (
+        f"first={first} — nothing commits over an unverified latecomer"
+    )
+
+
 # --- fold fix 5: output units + skip split + disclosure carry ------------------------------
 
 
