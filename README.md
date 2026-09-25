@@ -35,7 +35,7 @@ Questions, plugin builds, works in progress — join the [BenchWeave Discord](ht
 - [Documentation index](docs/project-index.md)
 - [Device developer guide — human and AI authors](docs/device-developer-guide.md)
 - [AI device reviewer role and checklist](docs/ai-device-reviewer.md)
-- [Operator guide — running a bench: serve, report, retention, dispose, backup](docs/operator-guide.md) (`retention` is a read-only projection: it writes nothing back and never migrates the store; `dispose` is the audited delete-tier disposition — dry run by default, `--execute` to act, never migrates the store)
+- [Operator guide — running a bench: serve, report, retention, dispose, backup](docs/operator-guide.md) (`retention` is a read-only projection: it writes nothing back and never migrates the store; `dispose` is the audited disposition — delete tier always, archive tier with `--archive-target` (verified content-addressed offline copies; `--verify-archive` re-proves them), dry run by default, `--execute` to act, never migrates the store)
 - [Development and CI](docs/development.md)
 - [Architecture validation](docs/architecture-validation.md)
 

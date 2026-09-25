@@ -20,8 +20,8 @@ Nothing here deletes or archives:
 ``on_disposition`` is a report label only in THIS command — the audited
 disposition path the sequencing invariant was waiting for has landed as
 ``benchweave dispose`` (:mod:`benchweave.cli.dispose`, issue #194): the
-report stays the plan surface, and every deletion flows through the
-audit trail's one-transaction executor.
+report stays the plan surface, and every deletion and archival move
+flows through the audit trail's one-transaction executor.
 
 Disclosed derivations:
 
@@ -143,16 +143,19 @@ _STORED_BYTES_METHOD = (
     "SELECT SUM(LENGTH(data)) FROM artifacts — content-addressed dedup "
     "under-counts byte-identical captures"
 )
-#: The wedge disclosure (amended, issue #194 §2.5): every claim scoped to
+#: The wedge disclosure (amended, issue #199 §2.7): every claim scoped to
 #: what the dispose command ships — delete-tier rows reclaim bytes and the
-#: G3 ledger under the store hold; review- and archive-tier rows remain
-#: blocked (the archival tier is unbuilt); or raise the ceiling.
+#: G3 ledger under the store hold; review-tier rows remain blocked;
+#: archive-tier rows move offline when dispose runs with --archive-target
+#: (verified content-addressed copies; the store copy is reclaimed);
+#: or raise the ceiling.
 _WEDGE_DISCLOSURE = (
     "quota wedge: the audited disposition path exists — benchweave dispose "
     "(with --execute) deletes overdue delete-tier rows under the store "
-    "hold, reclaiming their charged ledger bytes and artifacts; review- and "
-    "archive-tier rows remain blocked (the archival tier is unbuilt); "
-    "otherwise raise the ceiling"
+    "hold, reclaiming their charged ledger bytes and artifacts; review-tier "
+    "rows remain blocked; archive-tier rows move offline when dispose runs "
+    "with --archive-target (verified content-addressed copies; the store "
+    "copy is reclaimed); otherwise raise the ceiling"
 )
 # Per-lane method labels (issue #184 finding 10): every emitted figure's
 # basis and denominator is named IN ITS OWN LANE — the old single

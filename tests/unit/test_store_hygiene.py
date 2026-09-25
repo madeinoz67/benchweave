@@ -146,7 +146,7 @@ def test_d13_events_cursor_read_is_served_by_the_migration_index(
     an index that exists but is not used fails this pin."""
     store = Store.open(tmp_path / "hygiene.db")
     try:
-        assert store.schema_version() == MIGRATIONS[-1].version == 6
+        assert store.schema_version() == MIGRATIONS[-1].version == 7
         plans = store.connection.execute(
             "EXPLAIN QUERY PLAN " + _CURSOR_READ_SQL, ("bench.sim-bench", 0, 100)
         ).fetchall()
@@ -376,7 +376,7 @@ def test_v5_capture_staging_tables_and_the_sweep_serving_index(
     this pin, exactly like the v4 events pin)."""
     store = Store.open(tmp_path / "v5.db")
     try:
-        assert store.schema_version() == 6
+        assert store.schema_version() == 7
         assert _table_columns(store, "capture_staging") == [
             "capture_id",
             "context_key",
@@ -413,7 +413,7 @@ def test_v5_upgrade_from_a_v4_database(tmp_path: Path) -> None:
     _apply_subset(tmp_path, 4)
     store = Store.open(tmp_path / "upgrade.db")
     try:
-        assert store.schema_version() == 6
+        assert store.schema_version() == 7
         assert _table_columns(store, "capture_staging"), "v5 tables must exist"
     finally:
         store.close()
@@ -479,3 +479,68 @@ def test_a_failing_migration_rolls_back_whole(
         assert reopened.schema_version() == MIGRATIONS[-1].version
     finally:
         reopened.close()
+
+
+# --- issue #199: v7 archive-tier columns ------------------------------------------
+
+
+#: The four v7 columns, in migration order (ALTER TABLE appends land in
+#: this order at the table's tail).
+_V7_ARCHIVE_COLUMNS = [
+    "archived_artifact_id",
+    "archived_byte_length",
+    "archive_destination",
+    "archive_verified_at",
+]
+
+
+def test_v7_archive_columns_land_additive_on_fresh_and_upgrading_stores(
+    tmp_path: Path,
+) -> None:
+    """Issue #199's migration v7: four additive ``ALTER TABLE dispositions
+    ADD COLUMN``s (all nullable, zero CHECKs, no new table or index — the
+    v5/v6 additive discipline; ADD COLUMN rewrites no data, the widening
+    sense v6's index-creation on pre-existing tables already established).
+    A v6-shaped INSERT (no archive columns named) still lands — the
+    columns default NULL, so v6-era rows and writers are unaffected — and
+    a store left at v6 by an older gateway upgrades in place."""
+    store = Store.open(tmp_path / "v7.db")
+    try:
+        assert store.schema_version() == MIGRATIONS[-1].version == 7
+        columns = _table_columns(store, "dispositions")
+        assert columns[-4:] == _V7_ARCHIVE_COLUMNS
+        assert len(columns) == 25, (
+            "the 21 v6 columns plus exactly the four archive columns — "
+            "additive, nothing else moved"
+        )
+        store.connection.execute(
+            "INSERT INTO dispositions (disposition_id, invocation_id,"
+            " row_kind, target_id, data_class, matched_scope, matched_rule,"
+            " on_disposition, anchor_kind, disposal_date, bytes,"
+            " deleted_byte_length, decision_artifact_id, decision_sha256,"
+            " executed_at, outcome)"
+            " VALUES ('dsp-v7probe', 'dsp-inv-v7probe', 'capture',"
+            " 'cap-v7probe', 'capture:waveform_f64le', 'class', 'r1',"
+            " 'delete', 'landing', '2026-09-20T00:00:00Z', 1, 0,"
+            " 'art-v7probe', '" + "0" * 64 + "', '2026-09-27T00:00:00Z',"
+            " 'deleted')"
+        )
+        row = store.connection.execute(
+            "SELECT archived_artifact_id, archived_byte_length,"
+            " archive_destination, archive_verified_at FROM dispositions"
+            " WHERE disposition_id = 'dsp-v7probe'"
+        ).fetchone()
+        assert row == (None, None, None, None), (
+            "the archive columns must be nullable — a v6-shaped insert "
+            "lands with NULL archive fields"
+        )
+    finally:
+        store.close()
+
+    _apply_subset(tmp_path, 6)  # a store left at v6 by an older gateway
+    upgraded = Store.open(tmp_path / "upgrade.db")
+    try:
+        assert upgraded.schema_version() == 7
+        assert _table_columns(upgraded, "dispositions")[-4:] == _V7_ARCHIVE_COLUMNS
+    finally:
+        upgraded.close()

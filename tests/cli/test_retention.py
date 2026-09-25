@@ -290,8 +290,8 @@ def test_fw4a_interior_migration_hole_refuses_typed_and_writes_nothing(
     conn.commit()
     conn.close()
     before = _snapshot(data_dir)
-    # v6 made six migration rows; deleting the middle v4 leaves five.
-    assert before["schema_migrations"][0] == 5, "fixture: the v4 row is gone"
+    # v7 made seven migration rows; deleting the middle v4 leaves six.
+    assert before["schema_migrations"][0] == 6, "fixture: the v4 row is gone"
     result = CliRunner().invoke(
         cli, ["retention", "--data-dir", str(data_dir), "--max-dataset-bytes", "10000"]
     )
