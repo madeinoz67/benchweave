@@ -330,7 +330,7 @@ The [interface review scenarios](../standards/interface/0.1.0/review-scenarios.m
 
 ## 21. Consolidated baseline and acceptance
 
-STG 1.5 consolidates the selected architecture with OTDP 0.2.0, adapter API 1.1, registry 0.1.1, execution 0.1.0 and interface 0.1.0 (MCP 2026-07-28). The package manifest identifies the authoritative file bytes. Earlier architecture archives remain historical and must not be mixed into this contract set.
+STG 1.5 consolidates the selected architecture with OTDP 0.2.2, adapter API 1.1, registry 0.1.1, execution 0.2.0 and interface 0.1.0 (MCP 2026-07-28). The package manifest identifies the authoritative file bytes. Earlier architecture archives remain historical and must not be mixed into this contract set.
 
 The [registry composition review](acceptance/registry-composition-review.md) resolves sixteen reuse/dependency cases. The [integrated acceptance review](acceptance/end-to-end-review.md) traces twenty-six normal/failure cases and records cross-contract corrections. Passing assertions cannot conceal missing safety or missing terminal evidence. Manual ownership, exact document bytes, total qualification duration and nonrenewable protective deadlines are now explicit.
 

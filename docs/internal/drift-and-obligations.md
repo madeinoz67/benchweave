@@ -221,6 +221,17 @@ and remain the reviewer's job.
     (l) corpus-manifest row paths — every `standards/corpus-manifest.json`
     row's `path`/`source` names a versioned directory; motion: obligation 6 /
     CON-7 (rows move with the bump's corpus edit, digests via `repin`).
+    (m) the docs baseline lines — the multi-standard version sentences in
+    `docs/device-developer-guide.md` (the **Baseline:** line),
+    `docs/ai-device-reviewer.md` (the review-baseline paragraph),
+    `docs/development.md` (Documentation baseline) and
+    `docs/smart-test-gateway-architecture-v1.5.md` (§21 Consolidated baseline):
+    prose version claims naming OTDP/registry/execution/interface versions;
+    motion: in-arc sweep at the bump of ANY standard a line names (the #176
+    final fold swept all four to execution 0.2.0 / OTDP 0.2.2 after the
+    promotion left them stale); no mechanical gate covers them today — the
+    hygiene pin's class-11 source set does not include `docs/` (deferral 5's
+    shape).
     Closing clause: a new version-bearing literal anywhere is a defect —
     make it a derived surface or register it here with its motion mechanism.
 

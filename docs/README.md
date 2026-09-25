@@ -43,7 +43,7 @@ This is a bounded class baseline, not universal feature coverage. AC power sourc
 
 ## Procedure and bench provision
 
-Execution contract 0.1.0 adds six schemas for procedures, benches, safety policies, commissioning, run bindings and run records. Logical roles make a procedure portable across separately qualified fixtures. Bounded control flow, explicit measurement validity and a required verified safe ending support unattended execution. The fixtures are synthetic; no actual bench limits or qualification are supplied.
+Execution contract 0.2.0 adds six schemas for procedures, benches, safety policies, commissioning, run bindings and run records. Logical roles make a procedure portable across separately qualified fixtures. Bounded control flow, explicit measurement validity and a required verified safe ending support unattended execution. A procedure may capture: the release adds the closed capture step kind (role-bound, with `format`, `sample_count`, `max_bytes` and the capture budget carried by `timeout_ms`) and its capture allow-rule kind, and later steps reference the landed capture manifest through `$stg_ref` (`/capture_id`, `/artifact_id`, `/sha256`). The fixtures are synthetic; no actual bench limits or qualification are supplied.
 
 ## Central repository provision
 
@@ -65,4 +65,4 @@ From the 0.1.0 baseline forward, superseded versions are retained digest-frozen 
 
 ## Baseline verification
 
-979 document/schema and selected semantic/coverage checks passed: OTDP 495, registry 64, execution 150, interface 254 and closure 16. These checks are not a complete runtime or hardware conformance suite. These counts record the architecture review baseline; they are not results from the repository CI.
+1104 document/schema and selected semantic/coverage checks passed: OTDP 616, registry 64, execution 151, interface 256 and closure 17. These checks are not a complete runtime or hardware conformance suite. These counts record the architecture review baseline; they are not results from the repository CI.

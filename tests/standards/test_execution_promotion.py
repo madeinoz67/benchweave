@@ -286,11 +286,14 @@ def test_promoted_diff_is_the_capture_family_plus_the_sweep() -> None:
 
     Every pre-existing schema branch is byte-identical (canonical deep
     equality preserves oneOf order) ONCE F7's contract ceiling is cleared
-    from both sides. The version sweep is the other sanctioned diff: the
-    contract_version consts, the ``$id``s and the titles carry 0.2.0, the
-    examples gain exactly one capture step and one capture rule plus the
-    cascade pins their sweep forces, and the prose moved only in the
-    sections the record names (header included — the title swept).
+    from both sides. The version sweep is the other sanctioned diff, and
+    it is asserted across ALL SIX schemas: the contract_version consts
+    and the ``$id``s carry 0.2.0 everywhere, the four schemas without the
+    capture family differ from 0.1.0 by the sweep ALONE (their cleared-
+    sweep bytes equal the retained bytes), the examples gain exactly one
+    capture step and one capture rule plus the cascade pins their sweep
+    forces, and the prose moved only in the sections the record names
+    (header included — the title swept).
     """
     old_procedure = json.loads((RETAINED / "procedure.schema.json").read_bytes())
     new_procedure = json.loads((RELEASED / "procedure.schema.json").read_bytes())
@@ -344,6 +347,30 @@ def test_promoted_diff_is_the_capture_family_plus_the_sweep() -> None:
     for new_doc in (new_procedure, new_policy):
         assert new_doc["properties"]["contract_version"]["const"] == "0.2.0"
         assert new_doc["$id"].endswith(":0.2.0")
+
+    # The sweep is TOTAL across the corpus's machine files — the
+    # adversary's inversion probe (lane-2 INV2): an inverted $id on any
+    # schema this deep-equality does not load must FAIL here. The four
+    # schemas WITHOUT the capture family (bench, commissioning,
+    # run-binding, run-record) equal the retained bytes with ONLY the
+    # identity fields cleared: their whole released diff is the sweep.
+    # (procedure carries the F7 ceiling and the capture branch, asserted
+    # above; safety-policy carries the capture rule, asserted above.)
+    for name in (
+        "procedure",
+        "safety-policy",
+        "bench",
+        "commissioning",
+        "run-binding",
+        "run-record",
+    ):
+        old_doc = json.loads((RETAINED / f"{name}.schema.json").read_bytes())
+        new_doc = json.loads((RELEASED / f"{name}.schema.json").read_bytes())
+        assert new_doc["properties"]["contract_version"]["const"] == "0.2.0", name
+        assert new_doc["$id"].endswith(":0.2.0"), name
+        if name in ("bench", "commissioning", "run-binding", "run-record"):
+            _clear_sweep(new_doc, old_doc)
+            assert new_doc == old_doc, f"{name}.schema.json moved non-sweep bytes"
     # ... and ONLY the sweep moved there: with identity fields cleared to
     # the retained shapes, the remaining diff is the capture family alone.
     for new_doc, old_doc in ((new_procedure, old_procedure), (new_policy, old_policy)):
