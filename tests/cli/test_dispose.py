@@ -161,9 +161,11 @@ def _dispose(data_dir: Path, **kw: Any) -> dict[str, Any]:
 #: The classification the fixture implies at NOW (exact arithmetic):
 #: deletes cap-wave(100) + cap-dup-a(64) + cap-dup-b(64); review blocks
 #: cap-raw + dataset + spectrummap + keepkind; archive blocks the four
-#: event_log rows; skips futurekind (not overdue) + unreskind (unresolved).
+#: event_log rows; futurekind is not yet overdue and unreskind is
+#: anchor-unresolved (the skip lanes, split by the report's vocabulary).
 _EXPECTED_COUNTS = {"deleted": 3, "blocked_review": 4, "blocked_archive": 4,
-                    "skipped": 2}
+                    "held": 0, "anchor_unresolved": 1, "ungoverned": 0,
+                    "not_yet_overdue": 1, "skipped": 0}
 _EXPECTED_BYTES = 100 + 64 + 64
 
 
@@ -627,6 +629,44 @@ def test_fold3_kind_drift_between_plan_and_execute_refuses(
     assert int(_rows(data_dir, "SELECT COUNT(*) FROM evidence")[0][0]) == 3, (
         "no evidence row may be deleted by a refused invocation"
     )
+
+
+# --- fold fix 5: output units + skip split + disclosure carry ------------------------------
+
+
+def test_fold5_units_split_and_carried_disclosures(tmp_path: Path) -> None:
+    """Output honesty: ``bytes_reclaimed`` (the row-bytes sum) decomposes
+    into ``charged_ledger_bytes`` (the G3 ledger relief — capture rows
+    only) and ``artifact_bytes_freed`` (bytes physically removed by GC);
+    evidence rows sharing artifacts make the row-bytes sum double-count
+    and diverge from disk. The single skipped count splits by the report's
+    status vocabulary, and the REPORT's own disclosures (here: the
+    non-finalised staging count) ride through instead of being dropped."""
+    data_dir = _seed(tmp_path)
+    _write_policy(data_dir / "retention-policy.json")
+
+    dry = _dispose(data_dir, now=NOW)
+    assert dry["charged_ledger_bytes"] == 228  # cap-wave + the dup pair
+    assert dry["artifact_bytes_freed"] is None  # known at execution only
+    assert dry["counts"]["not_yet_overdue"] == 1  # futurekind
+    assert dry["counts"]["anchor_unresolved"] == 1  # unreskind
+    assert dry["counts"]["held"] == 0 and dry["counts"]["ungoverned"] == 0
+    assert any("non-finalised" in d for d in dry["disclosures"]), (
+        "the report's disclosures must ride through the dispose model"
+    )
+
+    model = _dispose(data_dir, now=NOW, execute=True)
+    assert model["charged_ledger_bytes"] == 228
+    assert model["artifact_bytes_freed"] == 64, (
+        "only the byte-identical pair's artifact is collected (64 B); "
+        "cap-wave's survives (keepkind retains it)"
+    )
+    assert model["bytes_reclaimed"] == 228  # the row-bytes sum, still named
+    stored = json.loads(str(_rows(
+        data_dir, "SELECT counts_json FROM disposition_invocations")[0][0]))
+    assert stored["charged_ledger_bytes"] == 228
+    assert stored["artifact_bytes_freed"] == 64
+    assert stored["not_yet_overdue"] == 1 and stored["anchor_unresolved"] == 1
 
 
 # --- A6: refusals ------------------------------------------------------------------------

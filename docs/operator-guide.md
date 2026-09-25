@@ -450,10 +450,22 @@ backup. The audit trail itself (`dispositions` /
 `disposition_invocations`) is history, never deleted, and is not
 governed by the policy it audits.
 
-**Ledger relief.** Disposing finalised captures drops their charged
-bytes from the per-context reservation ledger — the figure G3 enforces —
-so an at/over-ceiling context recovers headroom exactly when its
-delete-tier rows go.
+**Ledger relief, in two named units.** Disposing finalised captures
+drops their charged bytes from the per-context reservation ledger —
+`charged_ledger_bytes`, the figure G3 enforces — so an at/over-ceiling
+context recovers headroom exactly when its delete-tier rows go. What the
+artifact GC physically removes from disk is reported separately as
+`artifact_bytes_freed`: evidence rows sharing one artifact make a plain
+row-bytes sum double-count and diverge from physical disk, so the two
+units are never summed across meanings (the row-bytes figure is kept as
+`bytes_reclaimed`, labeled as the projection sum).
+
+**Bench scope is inherited from the report.** Under `--bench`, rows whose
+run exists on another bench are excluded — but unattributed keys and
+non-run-prefixed context keys stay in scope by the report's
+never-vanish rule. A bench filter is therefore not a containment
+boundary for keys that never mapped to a bench; scope your policy
+selectors if you need finer containment.
 
 Like the other at-rest commands, `dispose` takes the store's exclusive
 lock for its whole run (a maintenance window: stop the gateway first)

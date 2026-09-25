@@ -143,22 +143,25 @@ bounded by disposition activity and disclosed (deferral D7).
 
 New `state/dispositions.py` — a `DispositionLog` writer class over `Store` (the
 `CaptureStagingStore` layering precedent), plus the executor in `cli/dispose.py`. The
-command flow, mirroring `retention_from_data_dir` line by line:
+command flow, mirroring `retention_from_data_dir` line by line (fold-wave correction:
+the policy load is FIRST, before the hold — as built and as `retention_from_data_dir`
+itself orders it; the original numbered list here had the hold first, which described
+the flow inverted):
 
-1. `StoreHold(db, label=f"dispose pid {os.getpid()}")` — refuses naming the holder while
-   a live gateway owns the store (STO-3; disposition runs in a maintenance window).
-2. `refuse_schema_mismatch(db)` — promoted from `_refuse_schema_mismatch` to a public
-   name in `cli/retention.py` and imported (never duplicated). **Dispose never
-   migrates**: a store missing v6 refuses typed with the fork-A wording ("open it once
-   with a current gateway (setup/serve/report) to upgrade, then retry"). This is
-   deliberately stricter than `report` (which applies pending migrations on open — #43
-   record row 15 carries that known family inconsistency).
-3. Policy load through `load_retention_policy` — **imported, never re-implemented**
+1. Policy load through `load_retention_policy` — **imported, never re-implemented**
    (issue constraint (d)). New in this train: `load_retention_policy_with_digest(path)
    -> tuple[RetentionPolicy, str]`, refactoring the existing loader so the digest comes
    from the SAME single `path.read_bytes()` (zero TOCTOU drift by construction); the old
    name delegates. **No policy file ⇒ typed refusal** — disposition never runs
    ungoverned, and explicit configuration is never silently substituted.
+2. `StoreHold(db, label=f"dispose pid {os.getpid()}")` — refuses naming the holder while
+   a live gateway owns the store (STO-3; disposition runs in a maintenance window).
+3. `refuse_schema_mismatch(db)` — promoted from `_refuse_schema_mismatch` to a public
+   name in `cli/retention.py` and imported (never duplicated). **Dispose never
+   migrates**: a store missing v6 refuses typed with the fork-A wording ("open it once
+   with a current gateway (setup/serve/report) to upgrade, then retry"). This is
+   deliberately stricter than `report` (which applies pending migrations on open — #43
+   record row 15 carries that known family inconsistency).
 4. Plan = `build_retention_report(store, policy=..., bench_id=..., now=...)` — the
    report builder itself, so selection, scoping (`_in_scope`'s never-vanish rule),
    resolution semantics, matched-rule identity and honest statuses are the slice-3
@@ -368,7 +371,7 @@ a quiet host; the count invariants still gate either way.
 | Risk | Falsifier / mitigation |
 |---|---|
 | Deleting evidence weakens run accountability — the audit digest proves what was deleted, not the bytes | Disclosed (delete is irreversible; guide sentence). If an operator needs recoverable disposition, that is D1's archival tier triggering — not a redesign of delete |
-| Plan→execute staleness via a non-flock concurrent writer (row-16 residual inherited) | Guarded exact-row deletes make it a typed `store changed under the plan` refusal, never a wrong-row deletion; the structural fix stays row 16/D6 |
+| Plan→execute staleness via a non-flock concurrent writer (row-16 residual inherited) | Guarded exact-row deletes make it a typed `store changed under the plan` refusal, never a wrong-row deletion; the structural fix stays row 16/D6. Sharpened (fold wave): the guards cover IDENTITY AND STAMP drift — the row vanishing, its kind/state changing, its landing stamp moving, or the exact-row delete matching ≠1 row — and the GC re-verifies each deleted artifact's bytes against its content address. NON-STAMP figure drift (a row's `bytes`, bench attribution, context key changing between plan and execution) is NOT guarded: the invocation executes on the plan's figures and the audit row records exactly those figures, verbatim — that residual is carried by D6/row 16 with the rest of the non-flock-writer window |
 | Audit-payload growth is unbounded | Leases/changes history posture, disclosed; D7's trigger is an operator measurably hit by it |
 | `review`/`archive` blocking surprises an operator expecting action | Command output + guide name the blocks and the policy-edit path; A2/A3 pin them; D1/D4 carry the futures |
 | The wedge-disclosure text overclaims | Every sentence scoped to shipped behavior (§2.5); review checks it against A2/A3 outcomes |
@@ -392,3 +395,68 @@ a quiet host; the count invariants still gate either way.
 
 Recommendations are 1/2/3/4 as marked; all four are cheap to reverse before the build
 starts and expensive after.
+
+## 10. Fold-wave amendments (2026-09-25, review wave 1)
+
+The three review reports (mechanism critic + two adversary lanes) folded;
+what changed, and the disclosures the fold added to the record of truth:
+
+**Mechanisms added by the fold:**
+
+- **GC verifies artifact bytes before deleting them** (critic F1): each
+  artifact the GC is about to collect is re-read and re-hashed against
+  the content address embedded in its id; a mismatch refuses typed
+  (`StoreChangedUnderPlan`) and rolls the whole invocation back — the
+  `finalise` mirror: stored bytes are verified, never trusted.
+- **The GC's three live-reference columns are indexed inside v6 itself**
+  (lane A F2): unindexed, each per-dropped-artifact probe scanned its
+  whole table under flock + `BEGIN IMMEDIATE` — quadratic (measured
+  4.24x wall per row-doubling on the no-index code: 3.36 s / 14.28 s /
+  67.58 s at 5k/10k/20k rows; after the indexes 0.29 s / 0.59 s / 1.33 s
+  = 2.01x per doubling, linear). One-time migration cost, measured:
+  5.1 ms on a fresh store; 33.9 ms upgrading a v5 store carrying 20k
+  capture rows + 20k evidence rows + 20k artifacts.
+- **Byte units are decomposed, never summed across meanings** (fold fix
+  5): `charged_ledger_bytes` (the G3 reservation-ledger relief — deleted
+  capture rows' charged bytes), `artifact_bytes_freed` (what the GC
+  physically removed from disk), and `bytes_reclaimed` (the row-bytes
+  sum — the disposal-rows method figure, retained and labeled as
+  double-counting shared artifacts).
+- **The single skipped count splits by the report's status vocabulary**
+  (held / anchor_unresolved / ungoverned / not_yet_overdue, plus a
+  residual bucket for labels outside the enum), and the REPORT's own
+  disclosures ride through the dispose model instead of being dropped.
+- **The invocation row lands last in the transaction**, carrying the
+  complete `counts_json` (including `artifact_bytes_freed`, knowable
+  only after GC) — the transaction is all-or-nothing, so intra-
+  transaction ordering does not change durability, and no post-GC
+  UPDATE is needed.
+
+**Disclosures (behavior unchanged, now stated where the record is read):**
+
+- `executed_at` is the plan instant: every row of one invocation carries
+  the invocation's single caller-supplied `now` (STO-1) — the trail
+  asserts no per-row ordering within an invocation. Cross-invocation
+  ordering authority does not exist either: ids are uuids (STO-2
+  unamended — no sequence), so "which invocation happened first" is read
+  from `invoked_at`, not from id order.
+- The trail records COMMITTED invocations only. A refused or killed
+  invocation leaves no rows anywhere — that is the all-or-nothing
+  property working, not an evidence gap; the fault arm pins it.
+- Measurement figures carry their denominators: the scale figures above
+  are wall-clock times of ONE `--execute` invocation over N synthetic
+  finalised captures (distinct artifacts, payloads of 8–11 bytes, three
+  context keys) plus the audit-row writes and artifact GC — measured on
+  the builder's host, CI hardware will differ; the count invariants gate
+  regardless.
+- Bench-scoped dispose (`--bench`) deletes unattributed and non-run-keyed
+  rows under the filter — the inherited report semantics (`_in_scope`'s
+  never-vanish rule keeps them IN scope), so a bench filter is not a
+  containment boundary for keys that never mapped to a bench. Named in
+  the operator guide's dispose section.
+
+**Record corrections:** §2.2's numbered flow now matches the code (policy
+load before the hold — the original list described it inverted); §8's
+stale-plan row now names exactly what the guards cover (identity/stamp
+drift, rowcount, artifact digests) and what they deliberately do not
+(non-stamp figure drift — carried by D6/row 16).

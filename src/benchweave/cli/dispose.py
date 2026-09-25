@@ -75,7 +75,28 @@ __all__ = [
 _DELETED = "deleted"
 _REVIEW = "blocked_review"
 _ARCHIVE = "blocked_archive"
+_HELD = "held"
+_UNRESOLVED = "anchor_unresolved"
+_UNGOVERNED = "ungoverned"
+_NOT_YET_OVERDUE = "not_yet_overdue"
+#: The residual bucket: an overdue scheduled row whose on_disposition
+#: label is outside the policy enum — never executable, never one of the
+#: named statuses (an unknown label can never widen into a harder action
+#: than it names).
 _SKIPPED = "skipped"
+
+#: The outcome vocabulary the counts carry (the report's own status
+#: vocabulary for the skip lanes, the block tiers for review/archive).
+_OUTCOMES = (
+    _DELETED,
+    _REVIEW,
+    _ARCHIVE,
+    _HELD,
+    _UNRESOLVED,
+    _UNGOVERNED,
+    _NOT_YET_OVERDUE,
+    _SKIPPED,
+)
 
 _IRREVERSIBLE_DISCLOSURE = (
     "delete is irreversible: each audit row retains the deleted content's "
@@ -84,16 +105,33 @@ _IRREVERSIBLE_DISCLOSURE = (
     "recoverable disposition is the archival tier (unbuilt)"
 )
 
+_UNITS_DISCLOSURE = (
+    "byte units are named, never summed across meanings: "
+    "charged_ledger_bytes is the G3 reservation-ledger relief (deleted "
+    "capture rows' charged bytes); artifact_bytes_freed is what the GC "
+    "physically removed from disk; bytes_reclaimed (the row-bytes sum) "
+    "double-counts artifacts shared by several deleted rows and is kept "
+    "only as the disposal-rows method figure"
+)
+
 
 def _classify(row: dict[str, Any]) -> str:
     """The executable-set rule, verbatim from the design: only
     ``scheduled ∧ overdue ∧ on_disposition=delete`` rows execute. Review
-    and archive rows that are overdue are counted as blocked; everything
-    else (held, anchor-unresolved, ungoverned, not yet overdue, or any
-    label outside the enum) is skipped — an unknown label can never widen
-    into a harder action than it names."""
+    and archive rows that are overdue are counted as blocked; the skip
+    lanes split by the report's own status vocabulary (held,
+    anchor-unresolved, ungoverned, not-yet-overdue), and a label outside
+    the enum lands in the residual ``skipped`` bucket — never executed."""
+    if row["status"] == "held":
+        return _HELD
+    if row["status"] == "anchor_unresolved":
+        return _UNRESOLVED
+    if row["status"] == "ungoverned":
+        return _UNGOVERNED
     if row["status"] != "scheduled" or not row["overdue"]:
-        return _SKIPPED
+        # scheduled-but-anchored rows are never overdue before resolution;
+        # an unknown status value never executes either.
+        return _NOT_YET_OVERDUE if row["status"] == "scheduled" else _SKIPPED
     if row["on_disposition"] == "delete":
         return _DELETED
     if row["on_disposition"] == "review":
@@ -168,12 +206,18 @@ def dispose_from_data_dir(
             rows = [{**row, "outcome": _classify(row)} for row in report["rows"]]
             counts = {
                 outcome: sum(1 for row in rows if row["outcome"] == outcome)
-                for outcome in (_DELETED, _REVIEW, _ARCHIVE, _SKIPPED)
+                for outcome in _OUTCOMES
             }
             selected = [row for row in rows if row["outcome"] == _DELETED]
             bytes_reclaimed = sum(int(row["bytes"]) for row in selected)
+            charged_ledger_bytes = sum(
+                int(row["bytes"]) for row in selected if row["row_kind"] == "capture"
+            )
 
-            disclosures: list[str] = []
+            # The report's own disclosures ride through (the non-finalised
+            # staging count, anchor-unresolved counts, scope notes) — the
+            # dispose additions join them, never replace them.
+            disclosures: list[str] = list(report["disclosures"])
             if counts[_REVIEW]:
                 disclosures.append(
                     f"{counts[_REVIEW]} overdue review-tier row(s) blocked — "
@@ -186,18 +230,26 @@ def dispose_from_data_dir(
                     "the archival tier is not built; archive rows are never "
                     "deleted"
                 )
-            if counts[_SKIPPED]:
+            skip_lanes = (
+                f"held {counts[_HELD]}, anchor-unresolved "
+                f"{counts[_UNRESOLVED]}, ungoverned {counts[_UNGOVERNED]}, "
+                f"not-yet-overdue {counts[_NOT_YET_OVERDUE]}"
+            )
+            if any(counts[outcome] for outcome in
+                   (_HELD, _UNRESOLVED, _UNGOVERNED, _NOT_YET_OVERDUE, _SKIPPED)):
                 disclosures.append(
-                    f"{counts[_SKIPPED]} row(s) skipped (held, "
-                    "anchor-unresolved, ungoverned or not yet overdue) — "
-                    "counted, never executed"
+                    f"skipped rows by lane — {skip_lanes} (residual "
+                    f"{counts[_SKIPPED]}): counted, never executed"
                 )
             if selected:
                 disclosures.append(_IRREVERSIBLE_DISCLOSURE)
+                disclosures.append(_UNITS_DISCLOSURE)
             if not execute:
                 disclosures.append(
                     "dry run (no --execute): nothing was written — every "
-                    "table is unchanged; re-run with --execute to dispose"
+                    "table is unchanged; re-run with --execute to dispose "
+                    "(artifact bytes freed are known at execution; the dry "
+                    "run reports the ledger figure only)"
                 )
 
             model: dict[str, Any] = {
@@ -208,6 +260,8 @@ def dispose_from_data_dir(
                 "bench_filter": bench_id,
                 "counts": counts,
                 "bytes_reclaimed": bytes_reclaimed,
+                "charged_ledger_bytes": charged_ledger_bytes,
+                "artifact_bytes_freed": None,
                 "artifacts_collected": None,
                 "rows": rows,
                 "disclosures": disclosures,
@@ -229,9 +283,13 @@ def dispose_from_data_dir(
             model["executed"] = True
             model["invocation_id"] = result["invocation_id"]
             model["artifacts_collected"] = result["artifacts_collected"]
+            model["artifact_bytes_freed"] = result["artifact_bytes_freed"]
+            model["charged_ledger_bytes"] = result["charged_ledger_bytes"]
             return model
         except sqlite3.Error as error:
-            raise AtRestError(f"cannot read {db}: {error}") from error
+            # The block covers the plan read AND the execution writes —
+            # name the failure honestly, not "cannot read".
+            raise AtRestError(f"store operation on {db} failed: {error}") from error
         finally:
             store.close()
 
@@ -256,13 +314,22 @@ def render_markdown(model: dict[str, Any]) -> str:
     lines.append("")
     lines.append("## Outcome")
     counts = model["counts"]
+    freed = model["artifact_bytes_freed"]
+    freed_text = f"{freed}" if freed is not None else "— (known at execution)"
     lines.append(
         f"- deleted: {counts['deleted']}"
-        f" (bytes reclaimed: {model['bytes_reclaimed']})"
+        f" (charged ledger bytes: {model['charged_ledger_bytes']};"
+        f" artifact bytes freed: {freed_text})"
     )
     lines.append(f"- blocked_review: {counts['blocked_review']}")
     lines.append(f"- blocked_archive: {counts['blocked_archive']}")
-    lines.append(f"- skipped: {counts['skipped']}")
+    lines.append(
+        f"- skipped — held: {counts['held']},"
+        f" anchor-unresolved: {counts['anchor_unresolved']},"
+        f" ungoverned: {counts['ungoverned']},"
+        f" not-yet-overdue: {counts['not_yet_overdue']},"
+        f" residual: {counts['skipped']}"
+    )
     if model["artifacts_collected"] is not None:
         lines.append(f"- artifacts collected: {model['artifacts_collected']}")
     lines.append("")

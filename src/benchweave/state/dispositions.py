@@ -192,7 +192,7 @@ class DispositionLog:
             (plan["id"], updated_at),
         )
 
-    def _collect_unreferenced(self, dropped: set[str]) -> int:
+    def _collect_unreferenced(self, dropped: set[str]) -> tuple[int, int]:
         """GC artifacts whose live references are all gone (§2.1's
         predicate); returns the number actually deleted — a shared
         artifact survives, decision artifacts are live references by
@@ -203,8 +203,13 @@ class DispositionLog:
         re-read and re-hashed against the content address embedded in the
         id, and a mismatch refuses typed — stored bytes are verified,
         never trusted. The check rides the invocation transaction, so the
-        refusal rolls the whole disposition back."""
+        refusal rolls the whole disposition back.
+
+        Returns ``(collected, freed_bytes)`` — the count of artifacts
+        deleted and their byte total (the DISK unit; a shared artifact
+        counts nowhere, a deleted one exactly once)."""
         collected = 0
+        freed_bytes = 0
         for artifact_id in sorted(dropped):
             live = int(
                 self._conn.execute(
@@ -224,12 +229,14 @@ class DispositionLog:
                         f"address (corrupt or tampered store); refusing to "
                         f"collect it"
                     )
+                if row is not None:
+                    freed_bytes += len(bytes(row[0]))
                 collected += int(
                     self._conn.execute(
                         "DELETE FROM artifacts WHERE artifact_id = ?", (artifact_id,)
                     ).rowcount
                 )
-        return collected
+        return collected, freed_bytes
 
     # --- the one invocation transaction ----------------------------------------
 
@@ -251,11 +258,15 @@ class DispositionLog:
         artifact + audit row + guarded delete) → reference-checked artifact
         GC → COMMIT.
 
-        ``counts`` is the caller's complete per-outcome classification
-        (deleted / blocked_review / blocked_archive / skipped); the
-        invocation row's ``counts_json`` adds ``bytes_reclaimed`` (Σ the
-        plan rows' bytes figures — the ledger relief the wedge
-        discloses). ``now`` stamps ``invoked_at`` and every row's
+        ``counts`` is the caller's complete per-outcome classification;
+        the invocation row's ``counts_json`` adds the three byte figures:
+        ``bytes_reclaimed`` (Σ the plan rows' bytes figures — the
+        disposal-rows method sum), ``charged_ledger_bytes`` (Σ over
+        deleted CAPTURE rows only — the G3 ledger relief) and
+        ``artifact_bytes_freed`` (bytes physically removed by GC — the
+        disk unit; evidence rows sharing artifacts make the row-bytes sum
+        double-count and diverge from disk, so the units are named
+        separately). ``now`` stamps ``invoked_at`` and every row's
         ``executed_at`` (STO-1: caller-supplied, one instant per
         invocation).
 
@@ -265,28 +276,15 @@ class DispositionLog:
         never pass it.
 
         Returns the execution summary (deleted ids, artifacts collected,
-        bytes reclaimed).
+        the three byte figures).
         """
         bytes_reclaimed = sum(int(row["bytes"]) for row in selected)
-        counts_json = json.dumps({**counts, "bytes_reclaimed": bytes_reclaimed})
+        charged_ledger_bytes = sum(
+            int(row["bytes"]) for row in selected if row["row_kind"] == "capture"
+        )
         dropped: set[str] = set()
         self._conn.execute("BEGIN IMMEDIATE")
         try:
-            self._conn.execute(
-                "INSERT INTO disposition_invocations"
-                " (invocation_id, invoked_at, actor, policy_path,"
-                " policy_sha256, bench_filter, counts_json)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (
-                    invocation_id,
-                    now,
-                    actor,
-                    policy_path,
-                    policy_sha256,
-                    bench_filter,
-                    counts_json,
-                ),
-            )
             for index, plan in enumerate(selected):
                 artifact_id, delete_sql, delete_args = self._current_row(plan)
                 disposition_id = new_disposition_id()
@@ -374,7 +372,33 @@ class DispositionLog:
                     dropped.add(artifact_id)
                 if mid_hook is not None:
                     mid_hook(index)
-            collected = self._collect_unreferenced(dropped)
+            collected, freed_bytes = self._collect_unreferenced(dropped)
+            # The invocation row lands LAST, carrying the complete counts:
+            # the transaction is all-or-nothing, so ordering inside it does
+            # not change durability — and this keeps the fold's
+            # ``artifact_bytes_freed`` in ``counts_json`` without a
+            # post-GC UPDATE ("update nothing else" holds: audit rows and
+            # deletions are the only writes before this insert).
+            self._conn.execute(
+                "INSERT INTO disposition_invocations"
+                " (invocation_id, invoked_at, actor, policy_path,"
+                " policy_sha256, bench_filter, counts_json)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    invocation_id,
+                    now,
+                    actor,
+                    policy_path,
+                    policy_sha256,
+                    bench_filter,
+                    json.dumps({
+                        **counts,
+                        "bytes_reclaimed": bytes_reclaimed,
+                        "charged_ledger_bytes": charged_ledger_bytes,
+                        "artifact_bytes_freed": freed_bytes,
+                    }),
+                ),
+            )
         except BaseException:
             if self._conn.in_transaction:
                 self._conn.execute("ROLLBACK")
@@ -385,4 +409,6 @@ class DispositionLog:
             "deleted": [str(plan["id"]) for plan in selected],
             "artifacts_collected": collected,
             "bytes_reclaimed": bytes_reclaimed,
+            "charged_ledger_bytes": charged_ledger_bytes,
+            "artifact_bytes_freed": freed_bytes,
         }
