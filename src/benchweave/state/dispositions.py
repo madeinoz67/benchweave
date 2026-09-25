@@ -249,17 +249,26 @@ class DispositionLog:
                 row = self._conn.execute(
                     "SELECT data FROM artifacts WHERE artifact_id = ?", (artifact_id,)
                 ).fetchone()
-                if row is not None and hashlib.sha256(bytes(row[0])).hexdigest() != (
-                    artifact_id.removeprefix("art-")
-                ):
-                    raise StoreChangedUnderPlan(
-                        f"dispose: store changed under the plan — artifact "
-                        f"{artifact_id!r} bytes do not hash to their content "
-                        f"address (corrupt or tampered store); refusing to "
-                        f"collect it"
-                    )
                 if row is not None:
-                    freed_bytes += len(bytes(row[0]))
+                    # Bind without copying (review-wave finding 4): the
+                    # verify-before-collect re-hash runs over the fetched
+                    # bytes themselves — bytes(row[0]) copies doubled the
+                    # resident payload for large artifacts.
+                    data = row[0]
+                    if not isinstance(data, bytes):
+                        data = bytes(data)
+                    if hashlib.sha256(data).hexdigest() != (
+                        artifact_id.removeprefix("art-")
+                    ):
+                        raise StoreChangedUnderPlan(
+                            f"dispose: store changed under the plan — artifact "
+                            f"{artifact_id!r} bytes do not hash to their content "
+                            f"address (corrupt or tampered store); refusing to "
+                            f"collect it"
+                        )
+                    freed_bytes += len(data)
+                    del data
+                    del row  # the fetch tuple pins the payload otherwise
                 collected += int(
                     self._conn.execute(
                         "DELETE FROM artifacts WHERE artifact_id = ?", (artifact_id,)

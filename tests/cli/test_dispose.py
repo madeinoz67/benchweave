@@ -1410,6 +1410,71 @@ def test_fold3_verify_reads_each_rows_recorded_destination(tmp_path: Path) -> No
             if d["problem"] == "absent"} == t2_rows
 
 
+def test_fold4_stager_streams_one_payload_at_a_time(tmp_path: Path) -> None:
+    """Review wave finding 4 (laneB#2, measured: 4x34MB -> 168MB peak):
+    ``_stage_archive_objects`` materialized Σ payloads before placing
+    anything. The stager now places artifacts one at a time — read,
+    write, fsync, replace, re-read, re-hash, release — bounded at ≤ 1
+    payload (hashing streams in 1MiB blocks). Pinned by a tracemalloc
+    ceiling over a two-8MB-artifact archive: the peak must stay well
+    under the 16MB two-payload sum."""
+    import shutil
+    import tracemalloc
+
+    data_dir = tmp_path / "data-stream"
+    if data_dir.exists():
+        shutil.rmtree(data_dir)
+    setup(data_dir)
+    data_dir.joinpath("retention-policy.json").write_text(
+        json.dumps({
+            "config_version": "1",
+            "default": {"duration_s": 3600, "retain_after": "landing",
+                        "on_disposition": "review"},
+            "classes": [
+                {"selector": "evidence:event_log", "duration_s": 3600,
+                 "retain_after": "landing", "on_disposition": "archive"},
+            ],
+            "benches": {},
+        }),
+        encoding="utf-8",
+    )
+    big_one = bytes(bytearray(range(256))) * 32_768  # 8 MiB, distinct
+    big_two = bytes(reversed(bytearray(range(256)))) * 32_768  # 8 MiB
+    store, content = _open(data_dir)
+    try:
+        for i, payload in enumerate((big_one, big_two)):
+            content.put_evidence(
+                "event_log",
+                {"id": f"ref-big-{i}", "version": "1",
+                 "sha256": hashlib.sha256(payload).hexdigest()},
+                content.put_artifact(payload, T0),
+                "run:stream-run", T0,
+            )
+    finally:
+        store.close()
+    del big_one, big_two
+
+    target = tmp_path / "offline-stream"
+    # Warm the one-time costs OUTSIDE the measured window (the policy
+    # loader compiles its vendored JSON schema — a fixed ~3.5MB that does
+    # not scale with payloads): a dry run first, proven non-writing by
+    # AR6, so the ceiling below measures the stager's per-payload bound.
+    _dispose(data_dir, now=NOW, archive_target=target)
+    tracemalloc.start()
+    model = _dispose(data_dir, now=NOW, execute=True, archive_target=target)
+    _, peak = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+
+    assert model["counts"]["archived"] == 2
+    assert model["archive_objects_placed"] == 2
+    assert peak < 12 * 1024 * 1024, (
+        f"streaming stager peak {peak / (1024 * 1024):.1f} MiB must stay "
+        "well under the 16 MiB two-payload sum (bound: one payload at a "
+        "time plus block overhead — the peak must not scale with the "
+        "payload count)"
+    )
+
+
 # --- fold fix 5: output units + skip split + disclosure carry ------------------------------
 
 

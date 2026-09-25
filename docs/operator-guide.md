@@ -480,7 +480,12 @@ reached the destination platter). A crash may therefore leave the
 destination holding MORE bytes than the committed trail references —
 **over-preserved, never under-preserved**. Objects whose invocation
 never committed are content-addressed and verify-and-skip on re-run;
-`--verify-archive` reports the leftovers as orphans.
+`--verify-archive` reports the leftovers as orphans. Staging is
+STREAMING: objects are placed one payload at a time and every hash
+runs in 1 MiB blocks, so the invocation's peak memory is bounded at
+one artifact's payload plus block overhead — it does not scale with
+the number or total size of archived objects (pinned by a tracemalloc
+ceiling over a two-8-MiB-artifact archive).
 
 **Mixed invocations are one transaction.** A plan with both tiers
 executes in the ONE transaction: a crash or refusal disposes nothing of

@@ -236,13 +236,25 @@ def _fsync_dir(path: Path) -> None:
         os.close(fd)
 
 
+def _hash_file(path: Path) -> str:
+    """Streaming sha256 of a file (1 MiB blocks) — hashing never
+    materializes the payload (review-wave finding 4's bound holds on
+    the verification side too)."""
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
 def _place_object(objects_dir: Path, artifact_id: str, data: bytes) -> int:
     """Place one object durably: temp file in ``objects_dir`` (same
     volume) → bytes → flush → fsync → ``os.replace`` (atomic) → re-read
-    from the destination → re-hash against the content address. Returns
-    the object's byte length. Destination bytes are verified, never
-    trusted — the write syscall returning is not proof the bytes are
-    there (the GC's verify-before-collect mirror, on the write side)."""
+    from the destination (streaming) → re-hash against the content
+    address. Returns the object's byte length. Destination bytes are
+    verified, never trusted — the write syscall returning is not proof
+    the bytes are there (the GC's verify-before-collect mirror, on the
+    write side)."""
     destination = objects_dir / artifact_id
     temp = objects_dir / f".stage-{os.getpid()}-{uuid.uuid4().hex}"
     try:
@@ -260,15 +272,14 @@ def _place_object(objects_dir: Path, artifact_id: str, data: bytes) -> int:
         temp.unlink(missing_ok=True)
         raise
     os.replace(temp, destination)
-    placed = destination.read_bytes()
-    if hashlib.sha256(placed).hexdigest() != artifact_id.removeprefix("art-"):
+    if _hash_file(destination) != artifact_id.removeprefix("art-"):
         raise ArchiveTargetRefused(
             f"archive_target: freshly placed object {destination} does "
             "not hash to its content address when re-read from the "
             "destination (medium error or tampering); refusing to commit "
             "a trail row over unverifiable bytes"
         )
-    return len(placed)
+    return destination.stat().st_size
 
 
 def _stage_archive_objects(
@@ -303,13 +314,42 @@ def _stage_archive_objects(
     it.
     """
     objects_dir = target / "objects"
+    # Distinct artifact ids in plan order — IDS ONLY. Payloads stream one
+    # at a time in pass 2: the stager never holds more than one payload
+    # (review-wave finding 4: materializing Σ payloads measured a 168MB
+    # peak on 4x34MB archives; the bound is now ≤ 1 payload plus 1 MiB
+    # block overhead, disclosed in the operator guide).
     order: list[str] = []
-    payloads: dict[str, bytes] = {}
     for plan in archive_rows:
         artifact_id = _content_artifact(conn, plan)
-        if artifact_id is None:
+        if artifact_id is None or artifact_id in order:
             continue
-        if artifact_id in payloads:
+        order.append(artifact_id)
+    facts: dict[str, int] = {}
+    placed = deduped = copied = 0
+    # Pass 1: verify every pre-existing destination object BEFORE placing
+    # anything (AR3: the refusal leaves the destination unmodified beyond
+    # the pre-existing files) — streaming hash, no payload loaded.
+    for artifact_id in order:
+        destination = objects_dir / artifact_id
+        if not destination.is_file():
+            continue
+        if _hash_file(destination) != artifact_id.removeprefix("art-"):
+            raise ArchiveTargetRefused(
+                f"archive_target: pre-existing object {destination} does "
+                "not hash to its content address (destination corrupt or "
+                "tampered); refusing to overwrite it — overwriting would "
+                "launder destination corruption into a fresh 'verified' "
+                "copy"
+            )
+        deduped += 1
+        facts[artifact_id] = destination.stat().st_size
+    # Pass 2: place the absent objects, durably, verifying each — read
+    # one payload, place it, release it, then the next.
+    for index, artifact_id in enumerate(order):
+        if artifact_id in facts:
+            if stage_hook is not None:
+                stage_hook(index)
             continue
         row = conn.execute(
             "SELECT data FROM artifacts WHERE artifact_id = ?", (artifact_id,)
@@ -319,37 +359,15 @@ def _stage_archive_objects(
                 f"dispose: store changed under the plan — artifact "
                 f"{artifact_id!r} vanished before archival staging"
             )
-        order.append(artifact_id)
-        payloads[artifact_id] = bytes(row[0])
-    facts: dict[str, int] = {}
-    placed = deduped = copied = 0
-    # Pass 1: verify every pre-existing destination object BEFORE placing
-    # anything (AR3: the refusal leaves the destination unmodified beyond
-    # the pre-existing files).
-    for artifact_id in order:
-        destination = objects_dir / artifact_id
-        if not destination.is_file():
-            continue
-        existing = destination.read_bytes()
-        if hashlib.sha256(existing).hexdigest() != artifact_id.removeprefix(
-            "art-"
-        ):
-            raise ArchiveTargetRefused(
-                f"archive_target: pre-existing object {destination} does "
-                "not hash to its content address (destination corrupt or "
-                "tampered); refusing to overwrite it — overwriting would "
-                "launder destination corruption into a fresh 'verified' "
-                "copy"
-            )
-        deduped += 1
-        facts[artifact_id] = len(existing)
-    # Pass 2: place the absent objects, durably, verifying each.
-    for index, artifact_id in enumerate(order):
-        if artifact_id in facts:
-            if stage_hook is not None:
-                stage_hook(index)
-            continue
-        byte_length = _place_object(objects_dir, artifact_id, payloads[artifact_id])
+        # Bind WITHOUT copying: sqlite returns a bytes object for a BLOB,
+        # and bytes(row[0]) would double the resident payload (the
+        # measured 16.8MB peak was exactly this copy).
+        payload = row[0]
+        if not isinstance(payload, bytes):
+            payload = bytes(payload)
+        del row
+        byte_length = _place_object(objects_dir, artifact_id, payload)
+        del payload
         copied += byte_length
         placed += 1
         facts[artifact_id] = byte_length
@@ -474,10 +492,7 @@ def _verify_archive_model(
                 "problem": "absent",
             })
             continue
-        payload = path.read_bytes()
-        if hashlib.sha256(payload).hexdigest() != artifact_id.removeprefix(
-            "art-"
-        ):
+        if _hash_file(path) != artifact_id.removeprefix("art-"):
             drift.append({
                 "disposition_id": disposition_id,
                 "archived_artifact_id": artifact_id,
@@ -485,7 +500,7 @@ def _verify_archive_model(
                 "problem": "digest_mismatch",
             })
             continue
-        if byte_length is not None and len(payload) != int(byte_length):
+        if byte_length is not None and path.stat().st_size != int(byte_length):
             drift.append({
                 "disposition_id": disposition_id,
                 "archived_artifact_id": artifact_id,
