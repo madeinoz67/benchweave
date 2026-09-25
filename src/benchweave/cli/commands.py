@@ -593,6 +593,29 @@ def retention(
     ),
 )
 @click.option(
+    "--archive-target",
+    "archive_target",
+    type=click.Path(path_type=Path),
+    default=None,
+    help=(
+        "Archive destination directory (content-addressed objects/ plus "
+        "per-invocation manifests/) for overdue archive-tier rows. Without "
+        "it, archive-tier rows stay blocked (counted, never deleted). "
+        "Refuses if it resolves inside the data dir."
+    ),
+)
+@click.option(
+    "--verify-archive",
+    "verify_archive",
+    is_flag=True,
+    help=(
+        "With --archive-target: re-verify every archived audit row's "
+        "destination object against its content address (read-only — the "
+        "command verifies and exits, never executes; orphan objects are "
+        "reported, never deleted)."
+    ),
+)
+@click.option(
     "--out",
     "out",
     type=click.Path(path_type=Path),
@@ -611,17 +634,22 @@ def dispose(
     bench_id: str | None,
     policy: Path | None,
     execute: bool,
+    archive_target: Path | None,
+    verify_archive: bool,
     out: Path | None,
     json_output: bool,
 ) -> None:
     """Dispose overdue delete-tier rows through the audit trail (at-rest).
 
-    Dry run by default (--execute to act). Review- and archive-tier rows
-    are blocked, never deleted; a schema mismatch refuses typed (the
-    store is never migrated)."""
+    Dry run by default (--execute to act). Review-tier rows are blocked,
+    never deleted; archive-tier rows execute only with --archive-target
+    (verified content-addressed offline copies; the store copy is
+    reclaimed), otherwise they stay blocked. A schema mismatch refuses
+    typed (the store is never migrated)."""
     _set_json(json_output)
     from benchweave.cli import dispose as dispose_lib
     from benchweave.cli.atrest import AtRestError
+    from benchweave.cli.dispose import ArchiveTargetRefused
     from benchweave.state.dispositions import StoreChangedUnderPlan
 
     try:
@@ -631,18 +659,22 @@ def dispose(
             policy_path=policy,
             now=dispose_lib.now_iso(),
             execute=execute,
+            archive_target=archive_target,
+            verify_archive=verify_archive,
         )
     except (
         AtRestError,
         StoreHeldError,
         StoreChangedUnderPlan,
+        ArchiveTargetRefused,
         ValueError,
         TypeError,
         OSError,
         OverflowError,
     ) as error:
         # The retention command's catch family, plus the guarded-delete
-        # refusal: every failure is a handled message, never a traceback.
+        # and archive-target refusals: every failure is a handled
+        # message, never a traceback.
         raise click.ClickException(str(error)) from error
     if json_output:
         if out is not None:

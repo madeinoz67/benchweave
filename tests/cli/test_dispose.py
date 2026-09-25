@@ -163,9 +163,9 @@ def _dispose(data_dir: Path, **kw: Any) -> dict[str, Any]:
 #: cap-raw + dataset + spectrummap + keepkind; archive blocks the four
 #: event_log rows; futurekind is not yet overdue and unreskind is
 #: anchor-unresolved (the skip lanes, split by the report's vocabulary).
-_EXPECTED_COUNTS = {"deleted": 3, "blocked_review": 4, "blocked_archive": 4,
-                    "held": 0, "anchor_unresolved": 1, "ungoverned": 0,
-                    "not_yet_overdue": 1, "skipped": 0}
+_EXPECTED_COUNTS = {"deleted": 3, "archived": 0, "blocked_review": 4,
+                    "blocked_archive": 4, "held": 0, "anchor_unresolved": 1,
+                    "ungoverned": 0, "not_yet_overdue": 1, "skipped": 0}
 _EXPECTED_BYTES = 100 + 64 + 64
 
 
@@ -744,6 +744,245 @@ def test_ar8_writer_archived_outcome_lands_two_shape_envelopes(
         str(r[0]) for r in _rows(
             data_dir, "SELECT target_id FROM dispositions"
                       " WHERE outcome = 'archived'"))
+
+
+# --- issue #199: the archive tier end to end (AR1/AR2/AR3/AR6/AR9) ------------------
+
+
+def _tree_snapshot(root: Path) -> dict[str, tuple[int, str]]:
+    """AR6's destination census: every file under ``root`` keyed by
+    POSIX-relative path, with size and sha256 (a missing root is the
+    empty tree — the before/after comparison catches creation too)."""
+    files: dict[str, tuple[int, str]] = {}
+    if root.exists():
+        for path in sorted(root.rglob("*")):
+            if path.is_file():
+                files[path.relative_to(root).as_posix()] = (
+                    path.stat().st_size,
+                    hashlib.sha256(path.read_bytes()).hexdigest(),
+                )
+    return files
+
+
+def test_ar1_archive_executes_through_the_trail(tmp_path: Path) -> None:
+    """AR1: with a target and ``--execute``, the archive tier executes
+    through the audit trail exactly like the delete tier — audit rows
+    with ``outcome='archived'`` equal the plan's archive rows (the four
+    event_log rows), every governed row gone, every archived row's
+    object present at ``objects/<archived_artifact_id>``, re-hashing to
+    its content address with the recorded length, one invocation row,
+    and a per-invocation manifest describing exactly those objects."""
+    data_dir = _seed(tmp_path)
+    _write_policy(data_dir / "retention-policy.json")
+    target = tmp_path / "offline-target"
+    model = _dispose(data_dir, now=NOW, execute=True, archive_target=target)
+    assert model["counts"]["archived"] == 4, (
+        "denominator: the plan's archive rows (the four event_log rows)"
+    )
+    assert model["counts"]["blocked_archive"] == 0
+    assert model["counts"]["deleted"] == 3, "the delete tier still executes"
+    audit = [r for r in _audit_rows(data_dir) if r["outcome"] == "archived"]
+    assert len(audit) == 4
+    assert int(_rows(data_dir, "SELECT COUNT(*) FROM evidence"
+                              " WHERE kind = 'event_log'")[0][0]) == 0, (
+        "every governed archive row is gone (the same guarded delete)"
+    )
+    for r in audit:
+        obj = target / "objects" / str(r["archived_artifact_id"])
+        assert obj.is_file(), f"object missing for {r['disposition_id']}"
+        payload = obj.read_bytes()
+        assert hashlib.sha256(payload).hexdigest() == str(
+            r["archived_artifact_id"]).removeprefix("art-"), (
+            "destination bytes must re-hash to the content address"
+        )
+        assert len(payload) == r["archived_byte_length"]
+    assert int(_rows(data_dir, "SELECT COUNT(*) FROM"
+                               " disposition_invocations")[0][0]) == 1
+    manifest = target / "manifests" / f"{model['invocation_id']}.json"
+    assert manifest.is_file(), "one attempt-scoped manifest per invocation"
+    doc = json.loads(manifest.read_text(encoding="utf-8"))
+    assert doc["invocation_id"] == model["invocation_id"]
+    assert doc["written_at"] == NOW  # STO-1: the caller-supplied now
+    assert {o["artifact_id"] for o in doc["objects"]} == {
+        str(r["archived_artifact_id"]) for r in audit}
+
+
+def test_ar2_no_target_still_blocks_archive_but_delete_tier_proceeds(
+    tmp_path: Path,
+) -> None:
+    """AR2 (fork F3, the review-tier precedent): overdue archive rows
+    with no ``--archive-target`` SURVIVE, are counted ``blocked_archive``,
+    and the disclosure names the missing flag — while delete-tier rows in
+    the SAME invocation still execute. Behavior byte-identical to the
+    pre-#199 command for archive rows (the old A3 semantics)."""
+    data_dir = _seed(tmp_path)
+    _write_policy(data_dir / "retention-policy.json")
+    model = _dispose(data_dir, now=NOW, execute=True)
+    assert model["counts"]["blocked_archive"] == 4
+    assert model["counts"]["archived"] == 0
+    assert model["counts"]["deleted"] == 3, (
+        "a missing archive target never punishes the delete tier"
+    )
+    assert int(_rows(data_dir, "SELECT COUNT(*) FROM evidence"
+                              " WHERE kind = 'event_log'")[0][0]) == 4, (
+        "archive-tier rows are NEVER deleted"
+    )
+    assert any("--archive-target" in d for d in model["disclosures"]), (
+        "the disclosure must name the missing flag"
+    )
+    captures = {str(r[0]) for r in _rows(
+        data_dir, "SELECT capture_id FROM capture_staging")}
+    assert captures == {"cap-raw", "cap-open"}, "the delete tier executed"
+
+
+def test_ar3_corrupt_preexisting_destination_object_refuses_whole(
+    tmp_path: Path,
+) -> None:
+    """AR3 (never delete-without-copy): a pre-existing destination object
+    whose bytes do NOT hash to its content address ⇒ typed
+    ``archive_target:`` refusal BEFORE anything is placed or disposed —
+    the store stays byte-identical (table census), the governed rows are
+    present, and the destination is unmodified beyond the pre-existing
+    file. Overwriting would launder destination corruption into a fresh
+    'verified' copy."""
+    from benchweave.cli.dispose import ArchiveTargetRefused
+
+    data_dir = _seed(tmp_path)
+    _write_policy(data_dir / "retention-policy.json")
+    target = tmp_path / "offline-target"
+    (target / "objects").mkdir(parents=True)
+    needed = _rows(
+        data_dir,
+        "SELECT e.artifact_id FROM evidence e"
+        " WHERE e.kind = 'event_log' ORDER BY e.rowid",
+    )
+    corrupt_id = str(needed[0][0])
+    planted = b"wrong-bytes-under-a-needed-address"
+    (target / "objects" / corrupt_id).write_bytes(planted)
+    before = _snapshot_all(data_dir)
+    with pytest.raises(ArchiveTargetRefused, match="archive_target:"):
+        _dispose(data_dir, now=NOW, execute=True, archive_target=target)
+    assert _snapshot_all(data_dir) == before, (
+        "the refusal must leave the store byte-identical (nothing opened "
+        "a transaction)"
+    )
+    assert int(_rows(data_dir, "SELECT COUNT(*) FROM evidence"
+                              " WHERE kind = 'event_log'")[0][0]) == 4
+    snapshot = _tree_snapshot(target)
+    assert list(snapshot) == [f"objects/{corrupt_id}"], (
+        "the destination is unmodified beyond the pre-existing file"
+    )
+    assert (target / "objects" / corrupt_id).read_bytes() == planted, (
+        "a corrupt pre-existing object is NEVER silently overwritten"
+    )
+
+
+def test_ar6_dry_run_with_target_writes_nothing_to_either_tree(
+    tmp_path: Path,
+) -> None:
+    """AR6 (dry-run purity, both trees): the dry run writes nothing to
+    the store AND nothing to the destination — no objects, no manifests
+    (a target that does not exist yet stays non-existent); the would-be
+    archive outcomes and the resolved target are reported with
+    placeholder copy figures ('objects to place are known at
+    execution')."""
+    data_dir = _seed(tmp_path)
+    _write_policy(data_dir / "retention-policy.json")
+    target = tmp_path / "offline-target"
+    before = _snapshot_all(data_dir)
+    model = _dispose(data_dir, now=NOW, archive_target=target)
+    assert _snapshot_all(data_dir) == before, "store byte-identical"
+    assert not target.exists(), "no objects, no manifests — tree unchanged"
+    assert model["counts"]["archived"] == 4
+    assert model["counts"]["deleted"] == 3  # would-be outcomes
+    assert model["archive_objects_placed"] is None
+    assert model["archive_objects_deduped"] is None
+    assert model["archive_bytes_copied"] is None
+    assert model["archive_target"] is not None
+    assert model["archive_target"]["resolved"]
+    # An existing destination tree is equally untouched.
+    target.mkdir()
+    (target / "objects").mkdir()
+    seeded_object = target / "objects" / "art-preexisting"
+    seeded_object.write_bytes(b"already-there")
+    tree_before = _tree_snapshot(target)
+    store_before = _snapshot_all(data_dir)
+    _dispose(data_dir, now=NOW, archive_target=target)
+    assert _tree_snapshot(target) == tree_before
+    assert _snapshot_all(data_dir) == store_before
+
+
+def test_ar9_archive_plan_parity_with_the_report_builder(tmp_path: Path) -> None:
+    """AR9 (plan parity successor): the dry-run plan's archive-outcome
+    rows ARE ``build_retention_report``'s ``scheduled ∧ overdue ∧
+    on_disposition=archive`` rows — same ids, same matched-rule
+    identity; any second derivation in the executor shows here as
+    drift."""
+    from benchweave.cli.retention import build_retention_report
+    from benchweave.control.retention_policy import load_retention_policy
+
+    data_dir = _seed(tmp_path)
+    policy_path = _write_policy(data_dir / "retention-policy.json")
+    policy = load_retention_policy(policy_path)
+    store = Store.open(db_path(data_dir))
+    try:
+        report = build_retention_report(store, policy=policy, now=NOW)
+    finally:
+        store.close()
+    expected = [
+        (r["id"], r["matched_selector"], r["matched_scope"], r["matched_rule"],
+         r["data_class"], r["bytes"])
+        for r in report["rows"]
+        if r["status"] == "scheduled" and r["overdue"]
+        and r["on_disposition"] == "archive"
+    ]
+    model = _dispose(data_dir, now=NOW, archive_target=tmp_path / "t")
+    planned = [
+        (r["id"], r["matched_selector"], r["matched_scope"], r["matched_rule"],
+         r["data_class"], r["bytes"])
+        for r in model["rows"] if r["outcome"] == "archived"
+    ]
+    assert planned == expected, (
+        "the executor's archive plan must be the report builder's rows "
+        "verbatim — any second derivation shows here as drift"
+    )
+    assert len(planned) == 4
+
+
+def test_archive_target_inside_the_data_dir_refuses_typed(
+    tmp_path: Path,
+) -> None:
+    """The containment refusal: a target resolving INSIDE the data dir
+    would be destroyed or moved by ``restore``'s whole-directory
+    ``os.replace`` — the exact opposite of preservation; typed in the
+    ``archive_target:`` family, refusing in the dry run too (the check
+    is pure path arithmetic)."""
+    from benchweave.cli.dispose import ArchiveTargetRefused
+
+    data_dir = _seed(tmp_path)
+    _write_policy(data_dir / "retention-policy.json")
+    inside = data_dir / "offline"
+    with pytest.raises(ArchiveTargetRefused, match="archive_target:"):
+        _dispose(data_dir, now=NOW, execute=True, archive_target=inside)
+    with pytest.raises(ArchiveTargetRefused, match="inside the data dir"):
+        _dispose(data_dir, now=NOW, archive_target=inside)
+
+
+def test_archive_target_uncreatable_refuses_typed(tmp_path: Path) -> None:
+    """The unwritable/uncreatable target lane: a target under a FILE (the
+    parent path is not a directory) is a typed ``archive_target:``
+    refusal, never a traceback."""
+    from benchweave.cli.dispose import ArchiveTargetRefused
+
+    data_dir = _seed(tmp_path)
+    _write_policy(data_dir / "retention-policy.json")
+    blocker = tmp_path / "blocker"
+    blocker.write_text("a file, not a directory")
+    with pytest.raises(ArchiveTargetRefused, match="archive_target:"):
+        _dispose(
+            data_dir, now=NOW, execute=True,
+            archive_target=blocker / "nested" / "target",
+        )
 
 
 # --- fold fix 5: output units + skip split + disclosure carry ------------------------------
