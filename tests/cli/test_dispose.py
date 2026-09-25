@@ -1744,6 +1744,56 @@ def test_r2_late_appearing_object_is_verified_never_silently_overwritten(
     )
 
 
+def test_r3_archive_envelope_shape_is_frozen(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Review wave R3 (pin): the 23-field archive envelope shape is
+    FROZEN. A silent 24th field is unrepresentable in the writer — the
+    canonical blob is keyed on the field-set tuple, so appending a
+    field without extending the envelope construction CRASHES rather
+    than drifting — and a drifted row written any other way fails A8's
+    independent recomputation. A future v8 must version or migrate the
+    shape, never silently append (record fold §11 carries the rule)."""
+    from benchweave.state import dispositions as disp
+
+    # Writer arm: appending a dummy 24th field to the frozen tuple makes
+    # the very next archived row's blob construction fail loudly —
+    # shape drift cannot land silently through the writer.
+    data_dir = _seed(tmp_path)
+    _write_policy(data_dir / "retention-policy.json")
+    monkeypatch.setattr(
+        disp, "_ARCHIVE_ENVELOPE_FIELDS",
+        disp._ARCHIVE_ENVELOPE_FIELDS + ("dummy_24th",))
+    with pytest.raises(KeyError, match="dummy_24th"):
+        _dispose(data_dir, now=NOW, execute=True,
+                 archive_target=tmp_path / "offline-frozen")
+    monkeypatch.undo()
+
+    # Detector arm: a row whose decision blob carries a 24th field (and
+    # a digest correct OVER THAT blob — i.e. written by a drifted
+    # writer) fails the canonical 23-field recomputation.
+    data_dir2, target2 = _archived_store(tmp_path)
+    audit = [r for r in _audit_rows(data_dir2) if r["outcome"] == "archived"]
+    row = audit[0]
+    envelope = {k: v for k, v in row.items()
+                if k not in ("decision_artifact_id", "decision_sha256")}
+    envelope["dummy_24th"] = "drifted"
+    blob = json.dumps(envelope, sort_keys=True).encode()
+    drifted_digest = hashlib.sha256(blob).hexdigest()
+    conn = sqlite3.connect(str(db_path(data_dir2)))
+    conn.execute(
+        "UPDATE dispositions SET decision_sha256 = ? WHERE disposition_id = ?",
+        (drifted_digest, row["disposition_id"]))
+    conn.commit()
+    conn.close()
+    tampered = [r for r in _audit_rows(data_dir2)
+                if r["disposition_id"] == row["disposition_id"]][0]
+    assert _recomputed_digest(tampered) != tampered["decision_sha256"], (
+        "A8's independent recomputation must detect a drifted envelope "
+        "shape, not just drifted values"
+    )
+
+
 # --- fold fix 5: output units + skip split + disclosure carry ------------------------------
 
 
