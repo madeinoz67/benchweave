@@ -287,7 +287,7 @@ def _stage_archive_objects(
     archive_rows: list[dict[str, Any]],
     target: Path,
     stage_hook: Callable[[int], None] | None,
-) -> tuple[dict[str, int], dict[str, int]]:
+) -> tuple[dict[str, int], dict[str, int], dict[str, str]]:
     """Phase A (issue #199 §2.2): stage every DISTINCT content artifact
     of the archive rows at the destination, BEFORE any store
     transaction opens. Two passes keep AR3's contract deterministic:
@@ -320,8 +320,15 @@ def _stage_archive_objects(
     # peak on 4x34MB archives; the bound is now ≤ 1 payload plus 1 MiB
     # block overhead, disclosed in the operator guide).
     order: list[str] = []
+    # The per-row bindings AS READ AT STAGER ENTRY — these are the
+    # bindings whose bytes get staged and verified; the caller records
+    # THEM in the envelope (never a post-staging re-read, which a rogue
+    # writer could have repointed by then — review-wave finding 6).
+    row_bindings: dict[str, str] = {}
     for plan in archive_rows:
         artifact_id = _content_artifact(conn, plan)
+        if artifact_id is not None:
+            row_bindings[str(plan["id"])] = artifact_id
         if artifact_id is None:
             # Review-wave finding 5 (laneA F1): never archive-to-nothing.
             # A row with no content artifact would be destroyed by the
@@ -388,11 +395,15 @@ def _stage_archive_objects(
             stage_hook(index)
     if placed:
         _fsync_dir(objects_dir)
-    return facts, {
-        "objects_placed": placed,
-        "objects_deduped": deduped,
-        "bytes_copied": copied,
-    }
+    return (
+        facts,
+        {
+            "objects_placed": placed,
+            "objects_deduped": deduped,
+            "bytes_copied": copied,
+        },
+        row_bindings,
+    )
 
 
 def _write_archive_manifest(
@@ -777,12 +788,16 @@ def dispose_from_data_dir(
             invocation_id = new_invocation_id()
             staged: list[dict[str, Any]] = []
             if archived_rows and archive_resolved is not None:
-                facts, archive_figures = _stage_archive_objects(
+                facts, archive_figures, row_bindings = _stage_archive_objects(
                     store.connection, archived_rows,
                     Path(archive_resolved), stage_hook,
                 )
                 for row in archived_rows:
-                    artifact_id = _content_artifact(store.connection, row)
+                    # The binding the STAGER verified at entry — never a
+                    # post-staging re-read (a rogue writer could have
+                    # repointed the row by then; the in-transaction
+                    # reconciliation refuses on exactly that).
+                    artifact_id = row_bindings[str(row["id"])]
                     row["archived_artifact_id"] = artifact_id
                     row["archived_byte_length"] = facts.get(str(artifact_id), 0)
                     row["archive_destination"] = archive_resolved

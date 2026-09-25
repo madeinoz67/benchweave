@@ -1553,6 +1553,77 @@ def test_fold5_archive_rows_without_artifacts_refuse_typed(tmp_path: Path) -> No
     ), "verify must name the binding-less row, never silently pass it"
 
 
+def test_fold6_archive_binding_reconciled_inside_the_transaction(
+    tmp_path: Path,
+) -> None:
+    """Review wave finding 6 (laneA F2): the archive binding was read
+    pre-transaction while the delete tier binds from the single
+    in-transaction read — a rogue non-flock writer repointing a row's
+    artifact between Phase A and Phase B would commit a trail row over
+    never-verified bytes while the GC destroys the real content. The
+    transaction now re-reads the binding and refuses typed on any
+    mismatch (the delete tier's guard, mirrored). The lane's repro:
+    repoint A→B at the stage_hook(0) interleaving — typed refusal, both
+    artifacts intact, whole invocation rolled back."""
+    from benchweave.state.dispositions import StoreChangedUnderPlan
+
+    data_dir = _seed(tmp_path)
+    _write_policy(data_dir / "retention-policy.json")
+    first = _rows(
+        data_dir,
+        "SELECT evidence_id, artifact_id FROM evidence"
+        " WHERE kind = 'event_log' ORDER BY rowid LIMIT 1",
+    )
+    evidence_id, artifact_a = str(first[0][0]), str(first[0][1])
+    rogue_payload = b"rogue-repointed-payload"
+    artifact_b = "art-" + hashlib.sha256(rogue_payload).hexdigest()
+
+    def rogue_repoint(index: int) -> None:
+        if index != 0:
+            return
+        # A rogue non-flock writer (a second connection; Phase A holds
+        # no transaction): plant a validly-addressed artifact B and
+        # repoint the row whose object just staged.
+        rogue = sqlite3.connect(str(db_path(data_dir)))
+        rogue.execute(
+            "INSERT OR REPLACE INTO artifacts (artifact_id, data, stored_at)"
+            " VALUES (?, ?, ?)", (artifact_b, rogue_payload, T0))
+        rogue.execute(
+            "UPDATE evidence SET artifact_id = ? WHERE evidence_id = ?",
+            (artifact_b, evidence_id))
+        rogue.commit()
+        rogue.close()
+
+    target = tmp_path / "offline-repoint"
+    with pytest.raises(StoreChangedUnderPlan, match="store changed under the plan"):
+        _dispose(data_dir, now=NOW, execute=True, archive_target=target,
+                 stage_hook=rogue_repoint)
+
+    audit, invocations = _rows(
+        data_dir, "SELECT (SELECT COUNT(*) FROM dispositions),"
+                  " (SELECT COUNT(*) FROM disposition_invocations)")[0]
+    assert (int(audit), int(invocations)) == (0, 0), (
+        "the binding mismatch must roll the whole invocation back"
+    )
+    # BOTH artifacts intact: A (staged and verified offline, still the
+    # trail's would-be binding) survives in-store; B (never verified)
+    # is never destroyed by a GC over a laundered trail.
+    assert _rows(data_dir, "SELECT artifact_id FROM artifacts"
+                           " WHERE artifact_id = ?", (artifact_a,)), (
+        "the staged-and-verified artifact must survive the refusal"
+    )
+    assert _rows(data_dir, "SELECT artifact_id FROM artifacts"
+                           " WHERE artifact_id = ?", (artifact_b,)), (
+        "the never-verified repointed artifact must not be GC'd over a "
+        "laundered trail"
+    )
+    # the governed row survived the rollback (still repointed — the
+    # rogue write was outside the transaction and stands)
+    row = _rows(data_dir, "SELECT artifact_id FROM evidence"
+                          " WHERE evidence_id = ?", (evidence_id,))
+    assert str(row[0][0]) == artifact_b
+
+
 # --- fold fix 5: output units + skip split + disclosure carry ------------------------------
 
 

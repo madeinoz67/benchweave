@@ -372,6 +372,25 @@ class DispositionLog:
                     "outcome": outcome,
                 }
                 if outcome == _OUTCOME_ARCHIVED:
+                    # Binding reconciliation (review-wave finding 6,
+                    # laneA F2): the staged binding was read pre-Phase-A;
+                    # the delete tier binds from THIS in-transaction read.
+                    # A rogue non-flock writer repointing the row between
+                    # Phase A and Phase B would commit a trail row over
+                    # never-verified bytes while the GC destroys the real
+                    # content — refuse typed on any mismatch (the guarded
+                    # delete's own discipline, mirrored for the binding).
+                    staged_binding = plan.get("archived_artifact_id")
+                    if artifact_id != staged_binding:
+                        raise StoreChangedUnderPlan(
+                            f"dispose: store changed under the plan — the "
+                            f"archive binding of {plan['row_kind']} "
+                            f"{plan['id']!r} moved from the staged "
+                            f"{staged_binding!r} to {artifact_id!r} "
+                            f"between staging and the transaction; "
+                            f"refusing to commit a trail row over "
+                            f"never-verified bytes"
+                        )
                     # Nothing was destroyed: the offline object is the
                     # survivor, and the four archive fields ARE the
                     # binding — the content address the destination copy
