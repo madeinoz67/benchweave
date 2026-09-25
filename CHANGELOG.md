@@ -733,6 +733,14 @@ All notable changes to this project will be documented in this file.
 
 - Census runs on the OS matrix; coverage claims state it
 
+### Dispose
+
+- The audited delete-tier disposition executor + A1-A9 controls (#194)
+
+### Faults
+
+- SIGKILL mid-disposition leaves neither audit nor deletion (#194)
+
 ### Review
 
 - WP11 whole-branch fix wave — both verdicts clean, findings landed
