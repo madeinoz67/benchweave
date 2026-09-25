@@ -154,7 +154,8 @@ def publish(
         raise PublishError(f"version {version!r} is not strict numeric semver (X.Y.Z)")
     plugin_dir = plugin_dir_arg.resolve()
     if not plugin_dir.is_dir():
-        raise PublishError(f"plugin directory not found: {plugin_dir_arg}")
+        # Repository-relative paths render with '/' on every platform (#138).
+        raise PublishError(f"plugin directory not found: {plugin_dir_arg.as_posix()}")
     source_dir = plugin_dir / "src" / f"benchweave_{plugin_dir.name}"
     if not source_dir.is_dir():
         source_dir = plugin_dir

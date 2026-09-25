@@ -19,13 +19,12 @@ import hashlib
 import json
 import threading
 import time
-import urllib.error
-import urllib.request
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 import uvicorn
 from fastapi import FastAPI
@@ -172,23 +171,25 @@ def _post(
     payload: dict[str, Any],
     extra_headers: dict[str, str] | None = None,
 ) -> tuple[int, dict[str, Any] | None, dict[str, str]]:
-    """POST one JSON-RPC frame; parse JSON or SSE framing; 4xx/5xx as status."""
+    """POST one JSON-RPC frame; parse JSON or SSE framing; 4xx/5xx as status.
+
+    httpx, not urllib: urllib always sends ``Connection: close``, and a 401
+    written before the request body arrives can then surface on Windows as
+    WinError 10053 instead of the 401 (#143, as test_interface_parity)."""
     headers = {
         "Content-Type": "application/json",
         "Accept": "application/json, text/event-stream",
     }
     headers.update(extra_headers or {})
-    request = urllib.request.Request(
-        url, data=json.dumps(payload).encode(), headers=headers
+    response = httpx.post(
+        url, content=json.dumps(payload).encode(), headers=headers, timeout=10.0
     )
-    try:
-        with urllib.request.urlopen(request, timeout=10) as response:
-            status = response.status
-            raw = response.read().decode("utf-8")
-            content_type = response.headers.get("Content-Type", "")
-            response_headers = {k.lower(): v for k, v in response.headers.items()}
-    except urllib.error.HTTPError as error:
-        return error.code, None, {k.lower(): v for k, v in error.headers.items()}
+    status = response.status_code
+    response_headers = {k.lower(): v for k, v in response.headers.items()}
+    if status >= 400:
+        return status, None, response_headers
+    raw = response.text
+    content_type = response.headers.get("Content-Type", "")
     if not raw.strip():
         return status, None, response_headers
     if content_type.startswith("text/event-stream"):

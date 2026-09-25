@@ -100,8 +100,6 @@ import json
 import re
 import threading
 import time
-import urllib.error
-import urllib.request
 from collections.abc import Iterator
 from pathlib import Path
 from types import SimpleNamespace
@@ -356,23 +354,27 @@ def _poll_terminal(client: httpx.Client, run_id: str) -> dict[str, Any]:
 def _post(
     port: int, payload: dict[str, Any], headers: dict[str, str] | None = None
 ) -> tuple[int, dict[str, Any] | None]:
-    """POST one JSON-RPC frame; parse JSON or SSE framing; status always kept."""
-    request = urllib.request.Request(
+    """POST one JSON-RPC frame; parse JSON or SSE framing; status always kept.
+
+    httpx, not urllib: urllib always sends ``Connection: close``, so a 401
+    the server writes without reading the request body closes a socket with
+    unread input; Windows answers that with a reset that discards the
+    buffered 401 (WinError 10053) under load (#143)."""
+    response = httpx.post(
         f"http://127.0.0.1:{port}/mcp",
-        data=json.dumps(payload).encode(),
+        content=json.dumps(payload).encode(),
         headers={
             "Content-Type": "application/json",
             "Accept": "application/json, text/event-stream",
             **(headers or {}),
         },
+        timeout=10.0,
     )
-    try:
-        with urllib.request.urlopen(request, timeout=10) as response:
-            status = response.status
-            raw = response.read().decode("utf-8")
-            content_type = response.headers.get("Content-Type", "")
-    except urllib.error.HTTPError as error:  # transport-level rejections (401)
-        return error.code, None
+    status = response.status_code
+    if status >= 400:  # transport-level rejections (401)
+        return status, None
+    raw = response.text
+    content_type = response.headers.get("Content-Type", "")
     if not raw.strip():
         return status, None
     if content_type.startswith("text/event-stream"):
@@ -385,10 +387,11 @@ def _initialize(
     port: int, headers: dict[str, str]
 ) -> tuple[int, str | None]:
     """One MCP initialize frame -> (status, session id); a rejected token
-    surfaces as HTTP 401 with no session (the transport's only expression)."""
-    request = urllib.request.Request(
+    surfaces as HTTP 401 with no session (the transport's only expression).
+    httpx for the reason given on ``_post``."""
+    response = httpx.post(
         f"http://127.0.0.1:{port}/mcp",
-        data=json.dumps(
+        content=json.dumps(
             {
                 "jsonrpc": "2.0",
                 "id": 1,
@@ -405,12 +408,11 @@ def _initialize(
             "Accept": "application/json, text/event-stream",
             **headers,
         },
+        timeout=10.0,
     )
-    try:
-        with urllib.request.urlopen(request, timeout=10) as response:
-            return response.status, response.headers.get("mcp-session-id")
-    except urllib.error.HTTPError as error:
-        return error.code, None
+    if response.status_code >= 400:
+        return response.status_code, None
+    return response.status_code, response.headers.get("mcp-session-id")
 
 
 def _call(

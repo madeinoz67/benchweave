@@ -2,7 +2,8 @@
 
 A session-scoped fixture builds the wheel (``uv build``), installs it into
 a TEMP venv (never the dev venv), and yields the REAL console-script
-binary. Every step then drives ``<venv>/bin/benchweave`` as a subprocess —
+binary. Every step then drives ``<venv>/bin/benchweave`` (on Windows
+``<venv>/Scripts/benchweave.exe``) as a subprocess —
 no CliRunner, no in-process imports of the shipped code — so the gate
 proves the PRD-01 flow on a genuinely fresh install:
 
@@ -116,7 +117,9 @@ def wheel(tmp_path_factory: pytest.TempPathFactory) -> Iterator[WheelInstall]:
             "pip",
             "install",
             "--python",
-            str(venv / "bin" / "python"),
+            # --python takes the venv directory, not <venv>/bin/python: on Windows
+            # the interpreter is Scripts\python.exe and uv does not append the suffix.
+            str(venv),
             str(wheels[0]),
         ],
         capture_output=True,
@@ -125,7 +128,8 @@ def wheel(tmp_path_factory: pytest.TempPathFactory) -> Iterator[WheelInstall]:
         check=False,
     )
     assert installed.returncode == 0, f"wheel install failed:\n{installed.stderr}"
-    binary = venv / "bin" / "benchweave"
+    bin_dir = venv / ("Scripts" if sys.platform == "win32" else "bin")
+    binary = bin_dir / ("benchweave.exe" if sys.platform == "win32" else "benchweave")
     assert binary.is_file(), "the wheel must install the benchweave console script"
     yield WheelInstall(binary=binary)
 

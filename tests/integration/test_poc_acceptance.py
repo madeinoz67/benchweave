@@ -89,6 +89,7 @@ import hashlib
 import json
 import os
 import subprocess
+import sys
 import threading
 import time
 import urllib.error
@@ -1588,7 +1589,9 @@ class WheelTree:
         """
         root = self.site_packages / "benchweave" / "_vendored" / "plugins" / "benchweave"
         digests = {
-            str(path.relative_to(root)): hashlib.sha256(path.read_bytes()).hexdigest()
+            # as_posix(): the keys are a manifest, not paths; they must read
+            # the same on Windows as on POSIX (see the sentinel below).
+            path.relative_to(root).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
             for path in sorted(root.rglob("*"))
             if path.is_file()
             and "__pycache__" not in path.parts
@@ -1624,8 +1627,9 @@ def journey_wheel(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
 def _install_wheel(wheel: Path, root: Path) -> WheelTree:
     """Install the built wheel into a throwaway venv (never the dev venv)
     — the clean-install idiom."""
+    venv = root / "venv"
     created = subprocess.run(
-        ["uv", "venv", str(root / "venv")],
+        ["uv", "venv", str(venv)],
         capture_output=True,
         text=True,
         timeout=300,
@@ -1638,7 +1642,9 @@ def _install_wheel(wheel: Path, root: Path) -> WheelTree:
             "pip",
             "install",
             "--python",
-            str(root / "venv" / "bin" / "python"),
+            # --python takes the venv directory, not <venv>/bin/python: on Windows
+            # the interpreter is Scripts\python.exe and uv does not append the suffix.
+            str(venv),
             str(wheel),
         ],
         capture_output=True,
@@ -1647,10 +1653,14 @@ def _install_wheel(wheel: Path, root: Path) -> WheelTree:
         check=False,
     )
     assert installed.returncode == 0, f"wheel install failed:\n{installed.stderr}"
-    binary = root / "venv" / "bin" / "benchweave"
+    bin_dir = venv / ("Scripts" if sys.platform == "win32" else "bin")
+    binary = bin_dir / ("benchweave.exe" if sys.platform == "win32" else "benchweave")
     assert binary.is_file(), "the wheel must install the benchweave console script"
-    sites = sorted((root / "venv" / "lib").glob("python*/site-packages"))
-    assert len(sites) == 1, f"expected one site-packages, found: {sites}"
+    # Windows lays the venv out as <venv>\Lib\site-packages, with no python3.x level.
+    sites = sorted((venv / "lib").glob("python*/site-packages")) or [
+        venv / "Lib" / "site-packages"
+    ]
+    assert len(sites) == 1 and sites[0].is_dir(), f"expected one site-packages, found: {sites}"
     return WheelTree(binary=binary, site_packages=sites[0])
 
 
@@ -1719,7 +1729,8 @@ def test_journey_second_install_reuse(journey_wheel: Path, tmp_path: Path) -> No
     # sources verbatim (the pyproject force-include contract).
     repo_root = REPO_ROOT / "plugins" / "benchweave"
     repo_digests = {
-        str(path.relative_to(repo_root)): hashlib.sha256(path.read_bytes()).hexdigest()
+        # as_posix() to match plugin_digests()' manifest keys on every OS.
+        path.relative_to(repo_root).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
         for path in sorted(repo_root.rglob("*"))
         if path.is_file()
         and "__pycache__" not in path.parts

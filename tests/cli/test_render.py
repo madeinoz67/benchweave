@@ -26,6 +26,7 @@ The brief's RED tests plus the controller-ruling pins:
 
 from __future__ import annotations
 
+import sys
 import threading
 import time
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
@@ -40,6 +41,7 @@ from fastapi import FastAPI
 from textual.pilot import Pilot
 from textual.widgets import DataTable, Static
 
+from benchweave.cli.atrest import DB_NAME
 from benchweave.cli.client import GatewayClient
 from benchweave.cli.commands import cli
 from benchweave.cli.demo import (
@@ -82,6 +84,19 @@ LIMITS: dict[str, int] = {
 }
 DIGEST_A = "a" * 64
 DIGEST_B = "b" * 64
+
+# ``chmod`` on Windows toggles only FILE_ATTRIBUTE_READONLY, which the OS
+# ignores for directories: creation inside a 0o500 directory still succeeds
+# (st_mode reads 0o40555, os.access W_OK is True, mkdir and sqlite both work),
+# so a chmod-based provocation cannot produce the refusal it asserts there.
+# The refusal path itself is portable and does fire on Windows; see
+# ``test_carry_b_scratch_under_a_file_refuses_truthfully`` and
+# ``test_carry_b_scratch_whose_store_path_is_a_directory_refuses_truthfully``,
+# which pin the same two branches without any mode bits.
+requires_posix_mode_bits = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Path.chmod(0o500) does not make a directory unwritable on Windows",
+)
 
 
 @pytest.fixture
@@ -732,6 +747,7 @@ def test_carry_b_scratch_is_a_file_refuses_truthfully(tmp_path: Path) -> None:
     assert "not a directory" in combined
 
 
+@requires_posix_mode_bits
 def test_carry_b_unwritable_scratch_parent_refuses_truthfully(tmp_path: Path) -> None:
     parent = tmp_path / "locked"
     parent.mkdir()
@@ -747,6 +763,7 @@ def test_carry_b_unwritable_scratch_parent_refuses_truthfully(tmp_path: Path) ->
         parent.chmod(0o700)
 
 
+@requires_posix_mode_bits
 def test_carry_b_unwritable_preexisting_scratch_dir_refuses_truthfully(
     tmp_path: Path,
 ) -> None:
@@ -765,6 +782,25 @@ def test_carry_b_unwritable_preexisting_scratch_dir_refuses_truthfully(
         assert "cannot open a store" in combined
     finally:
         scratch.chmod(0o700)
+
+
+def test_carry_b_scratch_whose_store_path_is_a_directory_refuses_truthfully(
+    tmp_path: Path,
+) -> None:
+    """M1 (review fold), Windows-portable stand-in: the same ``Store.open``
+    branch as the unwritable-scratch pin above, provoked with no mode bits.
+    The canonical store path is itself a directory, so sqlite cannot open it
+    and the sqlite3.OperationalError must still map to a truthful DemoError.
+    Runs on every platform; it is the only Windows coverage of this branch."""
+    scratch = tmp_path / "blocked-store"
+    scratch.mkdir()
+    (scratch / DB_NAME).mkdir()
+    result = CliRunner().invoke(cli, ["demo", "--scratch", str(scratch), "--json"])
+    _handled(result)
+    assert result.exit_code != 0
+    combined = _combined(result)
+    assert str(scratch) in combined
+    assert "cannot open a store" in combined
 
 
 def test_carry_c_mode_crossed_options_note_their_mode_in_help() -> None:
