@@ -308,7 +308,7 @@ The registry operator owns namespace governance, distribution keys, review workf
 
 ## 19. Procedure and bench document contracts
 
-The companion [execution contract 0.1.0](../standards/execution/0.1.0/execution-contract.md) defines six schemas: portable procedure, bench definition, safety policy, commissioning record, run binding and terminal run record. It preserves the OTDP 0.2.0 and adapter API 1.1 runtime interfaces.
+The companion [execution contract 0.2.0](../standards/execution/0.2.0/execution-contract.md) defines six schemas: portable procedure, bench definition, safety policy, commissioning record, run binding and terminal run record. It preserves the OTDP 0.2.0 and adapter API 1.1 runtime interfaces.
 
 Procedures use bounded sequential steps, fixed-count loops, explicit lexical result references and typed scalar assertions. Logical roles/channels bind to commissioned instances. The host reserves shared resources and protective dependencies before acceptance, validates resolved actions against profile/device/policy constraints and retains the accepted immutable configuration throughout the run.
 
@@ -330,7 +330,7 @@ The [interface review scenarios](../standards/interface/0.1.0/review-scenarios.m
 
 ## 21. Consolidated baseline and acceptance
 
-STG 1.5 consolidates the selected architecture with OTDP 0.2.0, adapter API 1.1, registry 0.1.1, execution 0.1.0 and interface 0.1.0 (MCP 2026-07-28). The package manifest identifies the authoritative file bytes. Earlier architecture archives remain historical and must not be mixed into this contract set.
+STG 1.5 consolidates the selected architecture with OTDP 0.2.2, adapter API 1.1, registry 0.1.1, execution 0.2.0 and interface 0.1.0 (MCP 2026-07-28). The package manifest identifies the authoritative file bytes. Earlier architecture archives remain historical and must not be mixed into this contract set.
 
 The [registry composition review](acceptance/registry-composition-review.md) resolves sixteen reuse/dependency cases. The [integrated acceptance review](acceptance/end-to-end-review.md) traces twenty-six normal/failure cases and records cross-contract corrections. Passing assertions cannot conceal missing safety or missing terminal evidence. Manual ownership, exact document bytes, total qualification duration and nonrenewable protective deadlines are now explicit.
 

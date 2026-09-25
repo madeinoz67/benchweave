@@ -1,7 +1,7 @@
 """The commissioned transport-settings surface (issue #147 increment 3).
 
 The identity axis of the execution contract's commissioned-state sentence
-(``standards/execution/0.1.0/execution-contract.md``: "The connection key
+(``standards/execution/0.2.0/execution-contract.md``: "The connection key
 resolves through administrator-owned transport settings and secret storage;
 it is not an endpoint supplied by the procedure") realized NOW as
 gateway-local validated configuration — the #43 retention-policy precedent

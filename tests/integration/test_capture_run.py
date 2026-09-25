@@ -1,4 +1,4 @@
-"""A-R3/A-R4: the capture run through DEV_HEAD-composed ``build_run``.
+"""A-R3/A-R4: the capture run through the default composition.
 
 Issue #176 increment 2's run-level controls over the seam's real
 composition path: the run factory composed with the manifest-declared
@@ -12,7 +12,7 @@ occurrence ledger without re-dispatching.
 The harness composes only through proven in-tree machinery: the unsigned
 dev publisher, the resolver/admission stack, ``registry.activation``,
 and ``_build_run_factory`` — the same construction the run-activation
-controls exercise, threaded with ``contracts=declared_dev_family(...)``.
+controls exercise, resolved against the released execution 0.2.0 corpus.
 Every name in the lattice and the plugin is synthetic.
 """
 
@@ -27,6 +27,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+import pytest
 import test_run_activation as activation
 import uvicorn
 
@@ -41,13 +42,15 @@ from benchweave.registry.activation import activate
 from benchweave.registry.admission import AdmissionLimits, Approval, admit
 from benchweave.registry.resolver import LocalDirectorySource, OriginConfig, Resolver
 from benchweave.state.store import Store
-from benchweave.vendoring import CorpusResolution, declared_dev_family
+from benchweave.vendoring import CorpusResolution, contract_family
 
 REPO = Path(__file__).resolve().parents[2]
 EXECUTION_FIXTURES = REPO / "fixtures" / "execution"
 REGISTRY_FIXTURES = REPO / "fixtures" / "registry"
 
-HEAD = declared_dev_family("execution")
+#: The active execution corpus (the same frozen literal the control
+#: sites resolve — the DEFAULT composition's contracts directory).
+ACTIVE_CORPUS = contract_family("execution/0.2.0")
 NOW_NS = activation.NOW_NS
 NOW_ISO = activation.NOW_ISO
 DEVICE_ID = activation.DEVICE_ID
@@ -306,7 +309,7 @@ def _lattice(
         steps = [_capture_step(), *_note_writes()]
 
     procedure: dict[str, Any] = {
-        "contract_version": "0.1.0",
+        "contract_version": "0.2.0",
         "id": "capture-procedure",
         "version": "0.1.0",
         "description": "Synthetic capture harness procedure.",
@@ -330,7 +333,7 @@ def _lattice(
     procedure_path.write_text(json.dumps(procedure, indent=2) + "\n")
 
     policy: dict[str, Any] = {
-        "contract_version": "0.1.0",
+        "contract_version": "0.2.0",
         "id": "capture-policy",
         "version": "0.1.0",
         "description": "Synthetic capture harness policy.",
@@ -398,7 +401,7 @@ def _lattice(
     lock_path.write_bytes((EXECUTION_FIXTURES / "package-lock.json").read_bytes())
 
     bench: dict[str, Any] = {
-        "contract_version": "0.1.0",
+        "contract_version": "0.2.0",
         "id": BENCH_ID,
         "version": "0.1.0",
         "description": "Synthetic capture harness bench. Not hardware-qualified.",
@@ -477,7 +480,7 @@ def _lattice(
     bench_path.write_text(json.dumps(bench, indent=2) + "\n")
 
     commissioning: dict[str, Any] = {
-        "contract_version": "0.1.0",
+        "contract_version": "0.2.0",
         "id": "capture-commissioning",
         "version": "0.1.0",
         "description": "Synthetic capture harness commissioning. Not hardware-qualified.",
@@ -524,7 +527,7 @@ def _lattice(
     commissioning_path.write_text(json.dumps(commissioning, indent=2) + "\n")
 
     binding: dict[str, Any] = {
-        "contract_version": "0.1.0",
+        "contract_version": "0.2.0",
         "request_id": request_id,
         "procedure": {"id": "capture-procedure", "version": "0.1.0"},
         "bench": {"id": BENCH_ID, "version": "0.1.0"},
@@ -548,7 +551,7 @@ def _lattice(
 
 
 class _CaptureHarness:
-    """One commissioned capture device plus the DEV_HEAD-composed factory."""
+    """One commissioned capture device plus the default-composed factory."""
 
     def __init__(
         self,
@@ -640,7 +643,7 @@ class _CaptureHarness:
         content = ContentStore(store)
         # Startup admission through the seam's bootstrap threading: the
         # dev-resolved contracts admit the capture lattice at boot.
-        admit_startup_bench(store, content, self.lattice_dir, now=NOW_ISO, contracts=HEAD)
+        admit_startup_bench(store, content, self.lattice_dir, now=NOW_ISO, contracts=ACTIVE_CORPUS)
         return store, content
 
     def build_run(self) -> Callable[..., Any]:
@@ -651,7 +654,7 @@ class _CaptureHarness:
             SystemClock().now_iso,
             limits=QUOTA_LIMITS,
             registry_session=self.session,
-            contracts=HEAD,
+            contracts=ACTIVE_CORPUS,
         )
 
     def binding_ref(self) -> dict[str, str]:
@@ -690,7 +693,7 @@ def _adapter_instance(coordinator: Any) -> Any:
 def test_a_r3_no_capture_rule_denies_dispatch_with_zero_device_calls(
     tmp_path: Path,
 ) -> None:
-    """A-R3 (deny-by-default leg): through DEV_HEAD-composed admission a
+    """A-R3 (deny-by-default leg): through the default composition admission a
     capture step on a capture-declaring device ADMITS, but with no capture
     allow rule the dispatch is denied ``no_matching_rule:`` with ZERO
     adapter capture calls — and the minted id records as invalidated."""
@@ -943,7 +946,7 @@ def test_rebuild_boundary_keeps_invalidated_status_and_never_remints(
             SystemClock(),
             SystemClock(),
             coordinator._docs,
-            contracts=HEAD,
+            contracts=ACTIVE_CORPUS,
         )
         assert fresh.occurrence_ledger == {}
         fresh._rebuild_ledger_from_events(run_id)
@@ -979,14 +982,14 @@ def test_rebuild_boundary_keeps_invalidated_status_and_never_remints(
         store.close()
 
 
-def test_dev_head_composition_boots_and_admits_the_committed_lattice(
+def test_default_composition_boots_and_admits_the_committed_lattice(
     tmp_path: Path,
 ) -> None:
-    """The seam end to end: ``create_app(execution_corpus=DEV_HEAD)``
-    resolves the declared head once at composition and the lifespan's
-    startup admission runs against the same family — the committed
-    lattice (no capture steps) admits under BOTH corpora, so the boot
-    succeeds through the dev-resolved path."""
+    """The promotion's activation proof, end to end: the DEFAULT
+    composition boots the committed lattice, and the lifespan's startup
+    admission runs against the released 0.2.0 corpus. A stray
+    ``DEV_HEAD`` composition now refuses at construction — the seam's
+    self-retirement is live truth."""
     import shutil
 
     import test_startup_admission_refusal as boot
@@ -1011,7 +1014,6 @@ def test_dev_head_composition_boots_and_admits_the_committed_lattice(
         fixtures_dir=lattice,
         now_iso=lambda: NOW_ISO,
         now_epoch=lambda: int(time.time()),
-        execution_corpus=CorpusResolution.DEV_HEAD,
     )
     config = uvicorn.Config(app, host="127.0.0.1", port=0, log_level="error")
     server = uvicorn.Server(config)
@@ -1023,7 +1025,26 @@ def test_dev_head_composition_boots_and_admits_the_committed_lattice(
             break
         time.sleep(0.05)
     try:
-        assert server.started, "a DEV_HEAD composition must boot the committed lattice"
+        assert server.started, "the default composition must boot the committed lattice"
+        with pytest.raises(ValueError, match="execution_dev_head_absent:"):
+            create_app(
+                store=store,
+                content=content,
+                secret=b"capture-boot-secret",
+                limits={
+                    "max_json_bytes": 1048576,
+                    "max_page_size": 1000,
+                    "max_chunk_bytes": 65536,
+                    "max_lease_ms": 600000,
+                    "min_poll_ms": 100,
+                    "max_admission_ms": 5000,
+                },
+                gateway_id="gw-capture-boot-stray",
+                fixtures_dir=lattice,
+                now_iso=lambda: NOW_ISO,
+                now_epoch=lambda: int(time.time()),
+                execution_corpus=CorpusResolution.DEV_HEAD,
+            )
     finally:
         server.should_exit = True
         thread.join(timeout=5.0)

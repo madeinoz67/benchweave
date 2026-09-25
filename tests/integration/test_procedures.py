@@ -5,7 +5,7 @@ admits through schema validation plus the full digest pin lattice, any byte
 tamper surfaces as a machine-matchable ``digest_mismatch``, and any structural
 drift (unknown fields, duplicate keys, nonfinite numbers) surfaces as
 ``schema`` — inherited from the exact-byte decoder and the vendored
-execution/0.1.0 schemas. On top of structure, the semantic stage enforces
+execution/0.2.0 schemas. On top of structure, the semantic stage enforces
 step-ID uniqueness, lexical scoping of result references, ``$stg_issue``
 placement at descriptor-marked issued fields, and the budget bounds (worst-case
 body, energised time, commissioning deadline). Profile satisfaction and
@@ -2493,7 +2493,7 @@ def test_start_run_full_pass_over_pristine_fixture(tmp_path: Path) -> None:
         "sha256": docs.digests["binding"],
     }
     schema = json.loads(
-        (Path(__file__).resolve().parents[2] / "standards" / "execution/0.1.0"
+        (Path(__file__).resolve().parents[2] / "standards" / "execution/0.2.0"
          / "run-record.schema.json").read_text(encoding="utf-8")
     )
     Draft202012Validator(schema).validate(record)

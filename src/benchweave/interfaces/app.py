@@ -848,7 +848,7 @@ def create_app(
     manifest-declared execution head ONCE, here at composition, and the
     resulting directory threads the existing injection path (worker build
     factory, startup admission, run recovery); ``ACTIVE`` — the default —
-    resolves the frozen ``execution/0.1.0`` literal, byte-identical to
+    resolves the frozen ``execution/0.2.0`` literal, byte-identical to
     today's posture. A wheel-installed gateway cannot resolve ``DEV_HEAD``
     (the head never exports) and refuses loudly rather than degrading; a
     stray ``DEV_HEAD`` after the promotion's teardown refuses

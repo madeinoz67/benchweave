@@ -1,10 +1,10 @@
 {
-  "contract_version": "0.1.0",
+  "contract_version": "0.2.0",
   "run_id": "synthetic-run",
   "binding": {
     "id": "synthetic-request",
     "version": "0.1.0",
-    "sha256": "61625667fc6cb5e8e455a8c251bf4c9b0ac7f955611b340f4f46fccd07bac0d8"
+    "sha256": "ca534f5789a88f6d1e30b8c916ff653516a6a25fe834731e94c626fa52b4092b"
   },
   "principal_id": "synthetic-user",
   "started_at": "2026-09-09T00:00:00Z",

@@ -1,5 +1,5 @@
 {
-  "contract_version": "0.1.0",
+  "contract_version": "0.2.0",
   "id": "sim-bench",
   "version": "0.1.0",
   "description": "Executable simulator bench. Not hardware-qualified.",
@@ -13,7 +13,7 @@
   "policy": {
     "id": "sim-policy",
     "version": "0.1.0",
-    "sha256": "0a107432fe5c0ffcb20c61e577d3bf382374352ccee851265d73700dc261fc4a"
+    "sha256": "1b7cf86ce04223e514d4abefd860d97b4d9024ec65160e19f8ace52b26eaebfc"
   },
   "package_lock": {
     "id": "sim-lock",

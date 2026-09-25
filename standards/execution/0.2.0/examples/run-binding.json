@@ -1,20 +1,20 @@
 {
-  "contract_version": "0.1.0",
+  "contract_version": "0.2.0",
   "request_id": "synthetic-request",
   "procedure": {
     "id": "synthetic-voltage-check",
     "version": "0.1.0",
-    "sha256": "3c6a80d11e010ae60005cbd474c3d8d6ab61cee1c5698ad806b4ace44b39dcd8"
+    "sha256": "8b01bc7daf580e706d5129fe1270a558579afe7183449e3b6df2c349f1a0a204"
   },
   "bench": {
     "id": "synthetic-bench",
     "version": "0.1.0",
-    "sha256": "7a54d807600f8da4002e9973e6cedb8039dee6804b3740b6d8c2d9afa3a93460"
+    "sha256": "f72b81c48f24f938a48aabbbe4e147b1cd1599fb217fac14f506954c4fc7ab0f"
   },
   "policy": {
     "id": "synthetic-policy",
     "version": "0.1.0",
-    "sha256": "faa8590cedd5ca423e342e31ddad2ff00aead76693b2c7cdb44276824f1b1a63"
+    "sha256": "b4f3f42abc65e4b7fe8323d53a398bf09866393bb2f1f7f1456a57fa0ec68d0d"
   },
   "package_lock": {
     "id": "synthetic-package-lock",
@@ -24,7 +24,7 @@
   "commissioning": {
     "id": "synthetic-commissioning",
     "version": "0.1.0",
-    "sha256": "769b2d99d8c3b65ae62bf632a73db48503fefa30bbf01516deeffda4f262a123"
+    "sha256": "33773df9e1d4b51c13a46aa21d5b60bed3e115690616cb18d5f0fd2d386e1c67"
   },
   "bindings": [
     {
