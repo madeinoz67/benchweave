@@ -99,3 +99,14 @@ commits for you.
 Planning docs under `docs/superpowers/` stay local-untracked in **both**
 repositories (they are force-added only at close-out, when they document
 something that has landed).
+
+## Multi-agent worktree discipline (retro 2026-09-25, R1)
+
+Every concurrently-dispatched agent lane works in its OWN worktree, named in its
+brief — never hand two live agents the same probe path (observed 2026-09-24:
+two adversary lanes shared one build worktree; one lane's RED neutralization sat
+live in the other's probe tree). `git worktree list` before any `worktree remove`;
+remove only your own. The git stash stack is shared across ALL worktrees of this
+repo family — never a blind `git stash pop` (it can apply a peer's stash);
+`git stash push -u -m "<unique-tag>"` if stashing at all, and prefer `cp` backups
+for mechanism-neutralization in RED runs.
