@@ -524,3 +524,83 @@ re-run on a quiet host; the count invariants gate either way.
 
 Recommendations 1/2/3/4 as marked; all four are cheap to reverse before the build
 starts and expensive after.
+
+## 11. Review fold — the fix wave (2026-09-25)
+
+Three refute lanes reviewed the built increment; the owner folded six MEDIUM
+findings and six LOW/NIT rows into one wave. Every fix landed RED-first, one
+commit per fix, gates after every commit. This section is the disposition
+record (the #194 precedent's fold shape); it also records the deviations the
+build commits disclosed, and corrects two of this record's own claims that
+did not survive contact with the code as built.
+
+### 11.1 MEDIUM findings (all FIXED)
+
+| # | Finding | Disposition |
+|---|---|---|
+| F-1 | FSYNC CHAIN (critic#1 + laneB#1, converged): `target/` and its parent were never fsynced after `mkdir(parents=True)` — only `objects/`, the manifest file, and `manifests/` were. An unfsynced new directory entry can vanish with its subtree on power loss, orphaning the objects the committed trail references. | FIXED: `_resolve_archive_target(create=True)` fsyncs the leaf directories, every ancestor mkdir had to create, and the parent. Pinned by an os.fsync/os.open spy over a real first invocation (RED: target and parent absent from the fsynced set). |
+| F-2 | LAUNDERED DURABILITY ERRORS (critic#2): `_fsync_dir` swallowed every OSError — an EIO on the durability path committed anyway. | FIXED: PermissionError on the open stays the documented Windows no-op; every other failure on open or fsync propagates as a typed `archive_target:` refusal. Pinned by an injected EIO at the objects-dir fsync (RED: DID NOT RAISE; the invocation committed). |
+| F-3 | VERIFY READ ONE FLAG (critic#3): verify scanned every archived row against the single passed `--archive-target` while `archive_destination` was write-only — a second target made every earlier row read as drift. | FIXED: verify resolves each row's RECORDED `archive_destination` (the column existed for this); the flag is only a fallback for rows lacking one. Relocation reads as `absent` at the recorded path. The `--verify-archive requires --archive-target` mode refusal was removed (verify-without-flag is the honest default). Pinned by a two-target + relocation test (RED: the old typed refusal fired). |
+| F-4 | NON-STREAMING STAGER (laneB#2, measured 4×34MB → 168MB peak): the stager materialized Σ payloads. | FIXED: streaming — ids first, then one payload at a time (fetch, place, release), all hashing in 1 MiB blocks (`_hash_file`); the same invocation's GC path also stopped double-copying and pinning fetch tuples across iterations (its phase peak alone was 16MB on two 8MB artifacts). Pinned by a tracemalloc ceiling (12MB) over a two-8MB-artifact archive (RED: 27.8MB); the one-time policy-schema compile is warmed outside the measured window so the ceiling isolates the per-payload bound. Guide discloses the bound. |
+| F-5 | NULL-ARTIFACT ROWS ARCHIVED TO NOTHING (laneA F1): an evidence row with `artifact_id=None` was destroyed with no offline copy and verify passed it silently. | FIXED: typed refusal when an archive-tier plan row references no artifact — before anything is staged; the verify arm COUNTS binding-less rows as skipped with `clean=False`, naming them. Pinned by the lane's `put_evidence(kind, ref, None)` repro plus a rogue SQL-inserted archived row (RED: DID NOT RAISE; the row was destroyed). |
+| F-6 | BINDING READ PRE-TRANSACTION (laneA F2): the archive binding came from a pre-Phase-A read while the delete tier binds in-transaction — a rogue non-flock writer repointing a row's artifact between Phase A and B committed a trail row over never-verified bytes while the GC destroyed the real content. | FIXED in two halves: the stager returns the per-row bindings AS READ AT ENTRY (the bindings whose bytes were staged) and the envelope records THOSE — the previous post-staging re-read could itself observe the rogue repoint; and `execute_invocation`'s archived branch reconciles the binding against the single in-transaction `_current_row` read, refusing typed (`StoreChangedUnderPlan`) on mismatch. Pinned by the lane's stage_hook(0) repoint repro (RED: DID NOT RAISE; both artifacts and the governed row survive the refusal). |
+
+### 11.2 LOW/NIT rows (owner fold; all addressed)
+
+| # | Row | Disposition |
+|---|---|---|
+| R1 | Empty/`.` `--archive-target` silently archived into the CWD. | FIXED: typed refusal (a target normalizing to `Path('.')`); an operator naming the CWD on purpose can pass an absolute path. RED: the lane's repro exited 0. |
+| R2 | Symlinked destination objects were followed (hash-correct links deduped) in the stager AND verify; an object appearing between the two passes was `os.replace`d unchecked. | FIXED: `_verify_preexisting` is the one discipline for any existing entry — symlink refuses typed (hash-correct or not), wrong bytes refuse typed — used by pass 1 AND pass 2's late-appearing branch; verify refuses symlinked objects typed too. RED: both lane repros DID NOT RAISE. |
+| R3 | The 23-field envelope shape had no freeze rule. | PINNED (no production change — the freeze was already structural): appending a dummy 24th field makes the writer's blob construction fail loudly (KeyError — the field-set tuple and the envelope construction must move together), and a drifted row written any other way fails A8's independent recomputation. RULE: a future v8 must version or migrate the shape, never silently append. |
+| R4 | The manifest's no-consumer status was implicit. | DOCS: the guide states it explicitly — the trail row is the commitment record and the machine-read authority; the manifest is an operator-facing index; under total store loss it is the only surviving index, and that asymmetry is named. The zero-object-re-run-writes-no-manifest behavior is documented, not just a test message. |
+| R6 | `archive_verified_at` vs mtime confusion risk. | DOCS: the guide discloses that `archive_verified_at` is the invocation's plan instant (one caller-supplied `now`) and object mtimes can land on either side of it — mtime-vs-verified_at is not a valid forensic ordering signal. |
+| R7 | `--verify-archive --json --out <file>` ignored `--out`. | FIXED: the verify branch writes through the same `_write_out` path (json and markdown), writing the file even on drift — the report is the evidence, the exit code is the verdict. RED: the report file was never written. |
+
+### 11.3 Build deviations, recorded properly (previously only in commit messages)
+
+1. **Two-pass stager** (§2.2 described a single per-artifact loop): AR3's
+   pre-committed "destination unmodified beyond the pre-existing file" forces
+   verifying all pre-existing destination objects BEFORE placing any. R2 later
+   extended pass 2 with the same discipline for late-appearing entries.
+2. **Zero-object re-runs write no manifest**: manifests ride the staging pass
+   and describe the objects it placed; the store's invocation row is the
+   no-op's record (documented in the guide since R4).
+3. **Both-tier byte figures**: `bytes_reclaimed` and `charged_ledger_bytes`
+   cover delete AND archive rows — §2.4's "archive relieves exactly like
+   delete" made total. No-archive fixtures are unchanged (the archive sums are
+   zero).
+4. **`length_mismatch` scope**: it can only fire alone via trail tampering
+   over intact bytes — content addressing makes object-side length-only drift
+   unrepresentable (digest precedence in the verify arm).
+5. **Model honesty on no-op re-runs**: an executed invocation WITH a target
+   reports measured copy figures (zeros), never the dry-run `None`
+   placeholder — the idempotency claim is measured (caught by the scale
+   smoke's re-run arm: `assert None == 0`).
+
+### 11.4 Corrections to this record's own claims (laneA F3)
+
+§2.6 and §6 claim the no-target arm stays "byte-identical to today" and that
+"`_EXPECTED_COUNTS` remain[s] valid verbatim". As built, both are false in a
+narrow, additive sense and are corrected here:
+
+- the model's outcome vocabulary gained `archived` (an additive count key —
+  `_EXPECTED_COUNTS` gained `"archived": 0`, without which the dict-equality
+  pin could not hold); with no target every count VALUE is unchanged, and the
+  four `blocked_archive` fixture rows still survive, counted, disclosed;
+- the invocation row's `counts_json` gained four keys on EVERY invocation,
+  including delete-only ones (`archived`, `archive_objects_placed`,
+  `archive_objects_deduped`, `archive_bytes_copied` — zeros when nothing was
+  archived). Delete-only envelopes and audit-row SHAPES are untouched
+  (two-shape rule); the counts extension is additive JSON, not a shape change.
+
+The honest statement: the no-target BEHAVIOR (rows survive, counted,
+disclosed; delete tier proceeds; nothing written anywhere) is byte-identical;
+the no-target OUTPUT is additive-superset, not byte-identical.
+
+### 11.5 Post-wave state
+
+All six MEDIUM findings and all six LOW/NIT rows fixed or pinned; gates green
+after every commit (ruff, bare mypy, focused pytest + tests/faults); the
+acceptance controls from §7 all still pass with their absence arms. Scale
+smoke (5,000 archive rows, streaming stager): wall time disclosed in the
+final report, never gated.
