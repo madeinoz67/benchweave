@@ -603,6 +603,7 @@ All notable changes to this project will be documented in this file.
 - Fold the refute slate's hygiene items (#176)
 - Advance packages/sdk to the execution 0.2.0 sync (#176)
 - Sdk_compatibility mirror + pointer = certified 0.3.0 (SDK 0.3.0 pairing)
+- Advance packages/sdk to e948fd5 (PR #56) and amend the capture record
 
 ### Performance
 
