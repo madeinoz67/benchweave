@@ -638,6 +638,114 @@ def test_fold3_kind_drift_between_plan_and_execute_refuses(
     )
 
 
+# --- issue #199: the archive tier — writer-level two-shape pin (AR8's
+# writer half; the with-target arms below drive the same path end to end)
+
+
+def test_ar8_writer_archived_outcome_lands_two_shape_envelopes(
+    tmp_path: Path,
+) -> None:
+    """The writer-level half of AR8: ``execute_invocation`` with archive
+    rows (each carrying the Phase-A staged facts) lands
+    ``outcome='archived'`` audit rows whose envelopes carry the 19 base
+    fields PLUS the four archive fields (``deleted_*`` NULL/0 — nothing
+    was destroyed), while delete rows in the SAME invocation keep the
+    exact v6 19-field shape; one invocation row carries ``archived`` and
+    the three archive copy figures; the governed rows of both tiers are
+    gone through the same guarded deletes."""
+    from benchweave.cli.retention import build_retention_report
+    from benchweave.control.retention_policy import load_retention_policy
+    from benchweave.state.dispositions import DispositionLog, new_invocation_id
+
+    data_dir = _seed(tmp_path)
+    _write_policy(data_dir / "retention-policy.json")
+    policy = load_retention_policy(data_dir / "retention-policy.json")
+    store = Store.open(db_path(data_dir))
+    try:
+        report = build_retention_report(store, policy=policy, now=NOW)
+        rows = report["rows"]
+        deletes = [dict(r) for r in rows
+                   if r["status"] == "scheduled" and r["overdue"]
+                   and r["on_disposition"] == "delete"]
+        archives = [dict(r) for r in rows
+                    if r["status"] == "scheduled" and r["overdue"]
+                    and r["on_disposition"] == "archive"]
+        assert (len(deletes), len(archives)) == (3, 4)
+        # Attach the staged facts the Phase-A stager produces (§2.2): the
+        # binding content address, its measured byte length, the resolved
+        # destination, and the caller-supplied verified-at instant.
+        pairs = _rows(
+            data_dir,
+            "SELECT e.evidence_id, e.artifact_id, LENGTH(a.data)"
+            " FROM evidence e JOIN artifacts a ON a.artifact_id = e.artifact_id"
+            " WHERE e.kind = 'event_log'",
+        )
+        facts = {str(p[0]): (str(p[1]), int(p[2])) for p in pairs}
+        destination = str(tmp_path / "offline-target")
+        for row in archives:
+            artifact_id, byte_length = facts[str(row["id"])]
+            row["archived_artifact_id"] = artifact_id
+            row["archived_byte_length"] = byte_length
+            row["archive_destination"] = destination
+            row["archive_verified_at"] = NOW
+        result = DispositionLog(store).execute_invocation(
+            deletes,
+            invocation_id=new_invocation_id(),
+            actor="writer-probe pid 0",
+            policy_path=str(data_dir / "retention-policy.json"),
+            policy_sha256="0" * 64,
+            bench_filter=None,
+            counts={"deleted": 3, "blocked_review": 4, "blocked_archive": 0,
+                    "archived": 4, "held": 0, "anchor_unresolved": 1,
+                    "ungoverned": 0, "not_yet_overdue": 1, "skipped": 0},
+            now=NOW,
+            archive_rows=archives,
+            archive_figures={
+                "archive_objects_placed": 4,
+                "archive_objects_deduped": 0,
+                "archive_bytes_copied": 0,
+            },
+        )
+    finally:
+        store.close()
+
+    assert result["charged_ledger_bytes"] == 228, (
+        "the seed's archived rows are evidence — only the delete-tier "
+        "captures charge the ledger here"
+    )
+    audit = _audit_rows(data_dir)
+    by_outcome: dict[str, list[dict[str, Any]]] = {}
+    for r in audit:
+        by_outcome.setdefault(str(r["outcome"]), []).append(r)
+    assert len(by_outcome["deleted"]) == 3
+    assert len(by_outcome["archived"]) == 4
+    for r in by_outcome["deleted"]:
+        assert r["archived_artifact_id"] is None, (
+            "delete rows keep the v6 shape: archive columns NULL"
+        )
+        assert r["deleted_artifact_id"] is not None
+    for r in by_outcome["archived"]:
+        assert r["deleted_artifact_id"] is None, "nothing was destroyed"
+        assert r["deleted_byte_length"] == 0
+        assert str(r["archived_artifact_id"]).startswith("art-")
+        assert r["archive_destination"] == destination
+        assert r["archive_verified_at"] == NOW
+    for r in audit:
+        assert _recomputed_digest(r) == r["decision_sha256"], (
+            f"{r['disposition_id']}: both envelope shapes must recompute"
+        )
+    counts = json.loads(str(_rows(
+        data_dir, "SELECT counts_json FROM disposition_invocations")[0][0]))
+    assert counts["deleted"] == 3 and counts["archived"] == 4
+    assert counts["archive_objects_placed"] == 4
+    assert counts["archive_objects_deduped"] == 0
+    assert counts["archive_bytes_copied"] == 0
+    assert sorted(result["archived"]) == sorted(
+        str(r[0]) for r in _rows(
+            data_dir, "SELECT target_id FROM dispositions"
+                      " WHERE outcome = 'archived'"))
+
+
 # --- fold fix 5: output units + skip split + disclosure carry ------------------------------
 
 
