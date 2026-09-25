@@ -59,7 +59,11 @@ or a public surface, run the loop.
    brief carries the gortex fallback recipe: repo-prefixed MCP reads resolve to the
    PRIMARY checkout, so branch-new files need absolute paths, and `git show`/`git diff`
    is the evidence path when MCP reads stat-fail or serve stale primary bytes (two
-   #129 reviewers hit this independently).
+   #129 reviewers hit this independently). Every builder brief also carries the
+   standing gate line (retro 2026-09-25, R2): **gates re-run in order after EVERY
+   commit — test-only and docs-only commits included** (observed twice 2026-09-24/25:
+   an F841 ruff miss and a stale-evidence mypy both shipped on test-only commits whose
+   authors re-ran only pytest).
 4. **Vet (you, independently).** `uv run ruff check .` and bare `uv run mypy` clean;
    focused `uv run pytest` for the touched modules plus the fault suite. RED-check the
    key guards discriminate (toggle off → fail) using a `cp` backup, NEVER `git checkout`
@@ -108,6 +112,11 @@ or a public surface, run the loop.
    other sessions' live files are never touched. Ledger the retrospective — carrying
    the facts the `retrospective` skill's entry-shape note names — before the run
    reports closed; at period close, the `retrospective` skill harvests these entries.
+   The entry-shape fields (retro 2026-09-25, R4 — adopted): lanes dispatched with
+   each lane's verdict and finding count by severity; the disposition summary
+   (fixed / deferred-with-trigger / accepted); any stall or model-swap; any
+   brief-quality miss — tagged `retrospective`. A lane with no recorded data reads
+   `not recorded` in the entry, never a guessed count.
 
 ## Contributor PRs
 
