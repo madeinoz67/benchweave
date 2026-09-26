@@ -27,8 +27,10 @@ in §7 is provably pre-committed.
   `.claude/deep-review/README.md` (2.0K, an SDK-adapted mirror of the same shape:
   triage rule + measuring section).
 - A census of every committed usage of "reopen trigger" tree-wide (git grep — see the
-  tooling note below): **16 design records + the skill + `docs/internal/drift-and-obligations.md`
-  (line 163) + two implementation-planning docs.** The deferral-table column shapes found:
+  tooling note below; counts corrected per Amendment 1 / F7): **15 design records +
+  the skill + `docs/internal/drift-and-obligations.md`
+  (line 163)**; no implementation-planning doc carries the exact phrase (08/09/10 use
+  "reopen" in the reopen-a-ruling sense). The deferral-table column shapes found:
 
   | Record | Shape | Verdict under the draft contract (§2) |
   |---|---|---|
@@ -296,10 +298,15 @@ that fluff cannot pass.
 
 **SHIP when all three hold:**
 
-1. **RED-able string control:** `git grep -F "(the condition that justifies reopening)"`
-   returns exactly **2** hits on the pre-change tree (main SKILL.md:97; SDK SKILL.md:89)
-   and **0** after; reverting only the two skill commits restores 2. (Disable the
-   mechanism → the undefined-term artifact reappears.)
+1. **RED-able string control (scoped per Amendment 1 / F3):** `git grep -F "(the
+   condition that justifies reopening)" -- .claude/skills/` returns exactly **1** hit
+   per repo on the pre-change trees (main SKILL.md:97; SDK SKILL.md:89 — **2** as the
+   cross-repo union) and **0** in both after; reverting the skill edits restores the
+   hits. The grep is scoped to the live rule text because this record quotes the
+   literal it bans (three self-references) — a record quoting the artifact it removes
+   is evidence, not residue; scoping names the control's denominator, it does not
+   weaken the gate (the mechanism — the undefined parenthetical gone from live rule
+   text — is unchanged).
 2. **Pre-committed conformance verdicts** — the contract text, applied by a reviewer
    who did not write it, must reproduce all four: (i) #146 §6 conforms (all 10 rows,
    "Carrier" accepted as the home label); (ii) #133 §9 conforms via its
@@ -323,8 +330,8 @@ set — those extend the contract's example set (an amendment), they do not kill
 | # | Deferred | Home | Reopen trigger |
 |---|---|---|---|
 | 1 | Mechanical validator for deferral-row conformance (forward-only record gate) | Documentation here | A reviewer dispute over a NEW record's row conformance (evidence the prose contract is ambiguous in practice), or five new records all carrying the canonical header (a stable input set for a header-tolerant checker) |
-| 2 | Backport of the 2026-09-24/25 loop content the SDK skill copy lacks (step 3's gates-after-docs-commits line; step 8's entry-shape fields) — observed drift, out of #99's scope | Documentation here | The next edit to either copy's loop steps 3–8 (it forces the full diff anyway), or the owner's explicit call |
-| 3 | Terminology sweep renaming committed records' "Carrier" home columns to "Home" — refused, not merely deferred: committed records are frozen history | Documentation here (this row exists to close the question) | None exists — a reviewer proposing the sweep is directed to this row |
+| 2 | Backport of the 2026-09-24/25 loop content the SDK skill copy lacks (step 3's gates-after-docs-commits line; step 8's entry-shape fields) — observed drift, out of #99's scope | Documentation here | The next edit to either copy's loop steps 3–8 (it forces the full diff anyway), or the owner's explicit call on the tracker |
+| 3 | Terminology sweep renaming committed records' "Carrier" home columns to "Home" — refused, not merely deferred: committed records are frozen history | Documentation here (this row exists to close the question) | A reviewer or maintainer proposes the sweep (the proposal is the observable event; this row is the answer — frozen history is never retrofitted) |
 
 ---
 
@@ -358,6 +365,44 @@ set — those extend the contract's example set (an amendment), they do not kill
 2. **The SDK README pointer section** (§2.3): include or drop. Design position: include;
    three lines, and it prevents an SDK-side record author hitting a dead end at the
    SDK README.
+
+---
+
+## Amendment 1 — refute fold (2026-09-26)
+
+The adversarial refute (single lane, REFUTE mandate) returned NOT-DEFENDED with eight
+findings (F1–F4 MEDIUM, F5–F7 LOW, F8 NIT); all folded on-branch pre-merge:
+
+- **F1** the definition and the weak→strong paragraph licensed opposite rulings on
+  judgement-predicated triggers → the README now states the weak form's normative
+  status (conforming and weak), names the discriminator (a well-formed trigger names
+  the observable thing that would be seen; judgement about a named thing is weak,
+  absence of the thing is refusal), and decides both boundary strings ("when
+  telemetry shows it matters" refused; owner-fired requires a named channel or a
+  stated none).
+- **F2** the preamble-carriage clause said "above the table" while its own precedent
+  (#133) carries the sentence below, and as written it also saved #67's deictic
+  "lives here" → the clause now reads "adjacent (above or below)" and requires the
+  sentence to designate the home in the rule's own vocabulary, with #133 (counts)
+  and #67 (does not) named as the pair.
+- **F3** §7 control 1 was unsatisfiable as written — this record quotes the literal
+  it bans → control rescoped to the live rule text (above); the mechanism is
+  unchanged and the denominator is now stated.
+- **F4** §8 row 3's trigger cell self-contradicted ("None exists" alongside an
+  em-dash event) → the trigger is now the observable proposal event; row 2's
+  owner-call disjunct names the channel (the tracker).
+- **F5** the two senses of "carrier" were named as a defect but never discriminated
+  → vocabulary note added to the contract's row semantics.
+- **F6** obligation 19's motion mechanism misdescribed the sync shape (skill copies
+  are independent files in two repos, not submodule edits; the pointer advance is a
+  separate train) → row corrected.
+- **F7** §0's census sub-numbers were false (15 records, not 16; zero
+  implementation-planning docs carry the exact phrase) → corrected in place.
+- **F8** SDK skill wrap artifact ("Issues" dangling on its own line) → rewrapped in
+  the SDK fold commit.
+
+The four pre-committed verdicts are unchanged; the fold exists to make them
+unambiguously reproducible, which is what §7 demanded all along.
 
 ---
 

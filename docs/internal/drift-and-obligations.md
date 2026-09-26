@@ -237,9 +237,11 @@ and remain the reviewer's job.
 19. **Skills shared with the SDK repo** (`.claude/skills/increment/`,
     `panel/` — the intersection of the two repos' skill dirs) → a change to
     a shared skill's clauses re-syncs the SDK copy's shared clauses in the
-    same work (two-commit shape per AGENTS.md: SDK commit → push → SDK PR,
-    then the main-side pointer commit); loop prose that is deliberately
-    gateway-specific does not sync (issue #99's design §6).
+    same work: SDK-side copy commit → push → SDK PR, plus the main-side
+    skill-file commit (skill copies are independent files in two repos —
+    AGENTS.md's submodule discipline governs `packages/sdk` only, and any
+    pointer advance rides a train of its own); loop prose that is
+    deliberately gateway-specific does not sync (issue #99's design §6).
 
 ## CI map
 

@@ -50,14 +50,26 @@ owner-fired trigger is legitimate and must be disclosed as such (the #199 preced
 "the reopen trigger fired by the owner's explicit call, not by operator demand").
 Not observable, refused: "when it becomes important", "if needed", "when we have time".
 
-Weak → strong, from the records: "a profile whose fetch semantics need acquisition
-dedup" (#146 §6 row 5 as written — "need" is judgement, no inspection procedure)
-sharpens to "an admitted or dogfood-published profile declaring an acquisition-lifecycle
+Normative status of the weak form: a trigger whose subject is inspectable but whose
+firing predicate is the deferrer's judgement ("a profile whose fetch semantics need
+acquisition dedup", #146 §6 row 5 as written — the subject, an admitted profile, is
+inspectable; "need" is judgement) is **conforming and weak**. Refused is the trigger
+that names no thing to be seen at all: "when it becomes important", "if needed",
+"when we have time", "when telemetry shows it matters" (telemetry is a surface, but
+"matters" names no thing on it). The discriminator: a well-formed trigger names the
+observable thing that would be seen — an arrival, a declaration, a trace, a log
+line, a repeated failure; judgement about a named thing is weak, absence of the
+thing is refusal. An owner-fired trigger ("first time the owner asks") is
+well-formed when it names the channel the call arrives on, or states that none is
+predetermined.
+
+Weak sharpens to strong by naming the thing and the inspection procedure: #146 row 5
+becomes "an admitted or dogfood-published profile declaring an acquisition-lifecycle
 fetch family whose procedure shape re-fetches the same acquisition across steps — a
 real procedure that today would double-publish under two `ds:` ids" (#231 §3.3). The
-strong form is the maturity the contract points at: it additionally names its **nearest
-plausible carrier** — the arriving work or train most likely to carry the reopen (#231
-§5's table shape). Naming the carrier is recommended, not required.
+strong form additionally names its **nearest plausible carrier** — the arriving work
+or train most likely to carry the reopen (#231 §5's table shape); naming the carrier
+is recommended, not required.
 
 **Deferral table row — required semantics (four):**
 
@@ -67,10 +79,18 @@ plausible carrier** — the arriving work or train most likely to carry the reop
 2. **deferred** — the bounded thing deferred.
 3. **home** — where this deferral lives under the skill's rule: "follow-on issue #N" or
    "documentation here". The column may be labelled Home or Carrier (both in active
-   use); a rationale column ("Why") does not satisfy it. A home uniform across all rows
-   may be carried once in a sentence above the table instead of a column (#133's
-   preamble does this).
+   use); a rationale column ("Why") does not satisfy it. A home uniform across all
+   rows may be carried once in a sentence adjacent to the table (above or below)
+   instead of a column — and the sentence must designate the home in this rule's own
+   vocabulary ("documentation …" / "follow-on issue #N"), not imply it by deixis:
+   #133's "(documentation deferrals; no scheduled carrier)" counts; #67's "every
+   deferral lives here" does not.
 4. **reopen trigger** — well-formed per the definition above.
+
+Vocabulary: "carrier" bears two senses in-tree — the nearest plausible carrier of a
+trigger is the future work that would carry the reopen (a train, an admission); a
+"Carrier" column header is a label for the home. They never both bind one use: inside
+a table, the column is always the home.
 
 Extra columns are free. A prose list is an acceptable rendering when every item carries
 all four semantics. The contract governs records written after it lands; committed
