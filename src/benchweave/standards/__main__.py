@@ -26,7 +26,14 @@ def main() -> int:
     if arguments.command == "export":
         from .export import export_bundle
 
-        export_bundle(root, arguments.out)
+        try:
+            export_bundle(root, arguments.out)
+        except ValueError as exc:
+            # Fail-closed exports fail styled like the check/matrix/versions
+            # lanes, never as a raw traceback — the corpus-pin gate's refusal
+            # (#215 fold-wave F-B) reaches the operator by name.
+            print(f"standards export error: {exc}", file=sys.stderr)
+            return 1
         print(f"standards bundle exported to {arguments.out}")
         return 0
     if arguments.command == "check":

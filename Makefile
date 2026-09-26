@@ -24,7 +24,9 @@ sync-sdk-standards:
 	@uv run python -m benchweave.standards versions
 
 # Non-mutating: re-export to a temp dir and compare lock + vendored tree,
-# then gate the committed compatibility matrix on a fresh render.
+# then gate the committed compatibility matrix on a fresh render, and hold
+# the executable-version-literal ratchet (#203 slice 1, A4).
 check-sdk-standards:
 	uv run python -m benchweave.standards check
 	uv run python -m benchweave.standards matrix --check
+	uv run python scripts/standards/count_version_literals.py

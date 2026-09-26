@@ -128,6 +128,13 @@ in the `manifest.py` family, wired into `export_bundle` behind `validate_manifes
   entry naming a version with no retained directory refuses (`policy_entry_unresolved:`);
   a retired identifier that IS the live active version refuses (`policy_retired_active:`);
   the yanked set must be disjoint from retired (`policy_status_conflict:`).
+  [ERRATUM (#215): the sentence above is self-contradictory as written — every retired
+  identifier by construction names no retained directory, so the literal rule refuses the
+  seed policy block itself. The implemented rule splits it: a YANKED entry must name a
+  retained in-range version (`policy_entry_unresolved:`); a RETIRED entry must name NO
+  retained directory and never the active version (`policy_retired_active:` /
+  `policy_status_conflict:`). See the slice measurement record's deviation 3
+  (`docs/implementation-planning/09a-issue215-slice1-baseline.md`).]
 - **Range changes are coordinator decisions (VR-43):** the drift-check lane refuses a
   `dependency_policy` diff in a PR whose body carries no ruling reference
   (`policy_change_unruled:` — the linked-ruling scan the PR-description gate family already
@@ -153,9 +160,17 @@ may overrule to serve 0.1.1's schemas immediately.
   otdp {0.2.0, 0.2.2} (0.2.1 yanked-in-interval); registry {0.1.0, 0.1.1}; execution {0.1.0, 0.2.0};
   interface {0.1.0}; plugin-ui {0.2.0}; plugin-ui-preview {0.1.0, 0.1.1} — 9 served versions
   across 6 standards (denominator: the 16 retained directories listed above).
+  [ERRATUM (#215): the per-id enumeration above sums to 10, not 9 — the per-id sets are the
+  load-bearing rules; the total follows. Corrected in the slice measurement record's
+  deviation 1 (`docs/implementation-planning/09a-issue215-slice1-baseline.md`).]
 - **Export (`export.py`)**: the bundle gains one entry per SERVED (id, version) — bundle paths
   are already version-shaped (`otdp/0.2.2/...`), so multi-version is additive rows, no layout
-  change — plus the `dependency_policy` block verbatim (PKG-1: the range travels to the SDK via
+  change —
+  [ERRATUM (#215): the riding set is the CARRIED set (retained ∧ in-range, yanked versions
+  marked), not the served set — the design's own wheel-payload enumeration, the Q10 ruling and
+  the A1 anti-gaming arm all require the yanked version's bytes offline; every consumer
+  re-derives the served set (¬yanked) from the markers. Corrected in the slice measurement
+  record's deviation 2.] plus the `dependency_policy` block verbatim (PKG-1: the range travels to the SDK via
   committed artifacts, never by reading the gateway checkout; the owner's Q8). The ACTIVE entry
   keeps its marker (`"active": true`) so consumers that want one version (matrix stamps,
   identity derivation) still get it structurally.

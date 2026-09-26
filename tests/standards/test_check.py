@@ -100,7 +100,8 @@ def test_version_mismatch_between_manifest_and_lock(tmp_path: Path) -> None:
 
     sdk = _sdk_copy(tmp_path)
     lock = _lock(sdk)
-    lock["standards"][0]["version"] = "9.9.9"
+    active = next(row for row in lock["standards"] if row["id"] == "otdp" and row.get("active"))
+    active["version"] = "9.9.9"  # multi-version: the ACTIVE row drives the mismatch
     _write_lock(sdk, lock)
     failures = run_check(ROOT, sdk)
     assert "sdk_version_mismatch" in _prefixes(failures)
@@ -132,7 +133,8 @@ def test_incomplete_compatibility_block_for_changed_standard(tmp_path: Path) -> 
 
     sdk = _sdk_copy(tmp_path)
     lock = _lock(sdk)
-    lock["standards"][0]["version"] = "9.9.9"  # changed vs manifest triggers the block
+    active = next(row for row in lock["standards"] if row["id"] == "otdp" and row.get("active"))
+    active["version"] = "9.9.9"  # changed vs manifest triggers the block
     del lock["compatibility"]
     _write_lock(sdk, lock)
     failures = run_check(ROOT, sdk)
@@ -144,7 +146,12 @@ def test_lock_omitting_standard_is_pin_incompatible(tmp_path: Path) -> None:
 
     sdk = _sdk_copy(tmp_path)
     lock = _lock(sdk)
-    lock["standards"] = lock["standards"][1:]
+    # Multi-version: dropping ONE row of an id leaves its other carried
+    # versions — the omission is served_set_drift; dropping EVERY row of an
+    # id is the pin-incompatible shape the prefix names.
+    lock["standards"] = [
+        row for row in lock["standards"] if row["id"] != "otdp"
+    ]
     _write_lock(sdk, lock)
     failures = run_check(ROOT, sdk)
     assert "pinned_sdk_incompatible" in _prefixes(failures)
@@ -669,3 +676,101 @@ def test_versions_glance_head_line_is_unchanged_without_the_marker(tmp_path: Pat
     ):
         lines = _glance_lines(_glance_root(tmp_path / name, block))
         assert "standard demo dev-head 0.2.0-dev (opened 2026-09-23)" in lines, lines
+
+
+def test_served_row_missing_from_the_lock_is_served_set_drift(tmp_path: Path) -> None:
+    """Issue #203 slice 1 (design §3.2): the served set must agree across
+    manifest ↔ export ↔ SDK lock. A lock row removed for a served version is
+    ``served_set_drift:`` — the #166 disagreement class, now refused by name."""
+    from benchweave.standards.check import run_check
+
+    sdk = _sdk_copy(tmp_path)
+    lock = _lock(sdk)
+    victim = next(
+        row for row in lock["standards"] if row["id"] == "otdp" and not row.get("active", True)
+    )
+    lock["standards"] = [row for row in lock["standards"] if row is not victim]
+    _write_lock(sdk, lock)
+    failures = run_check(ROOT, sdk)
+    assert "served_set_drift" in _prefixes(failures)
+    assert any("otdp@0.2.0" in line for line in failures if line.startswith("served_set_drift"))
+
+
+def test_lock_carrying_an_unserved_row_is_served_set_drift(tmp_path: Path) -> None:
+    from benchweave.standards.check import run_check
+
+    sdk = _sdk_copy(tmp_path)
+    lock = _lock(sdk)
+    extra = json.loads(json.dumps(lock["standards"][0]))
+    extra["version"] = "0.1.2"  # retained but out-of-range: unserved
+    extra["active"] = False
+    lock["standards"].append(extra)
+    _write_lock(sdk, lock)
+    failures = run_check(ROOT, sdk)
+    assert "served_set_drift" in _prefixes(failures)
+
+
+# --- #215 fold row 16: an ambiguous active row is named, never guessed. ---
+
+
+def test_an_unmarked_multi_row_lock_refuses_instead_of_picking_a_row(
+    tmp_path: Path,
+) -> None:
+    """Fold row 16 (#215): an unmarked multi-row lock is ambiguous — the
+    check refuses ``lock_invalid`` (parity with the SDK's
+    ``served.active_version``) instead of silently comparing against
+    whichever row happens to come first."""
+    from benchweave.standards.check import run_check
+
+    sdk = _sdk_copy(tmp_path)
+    lock = _lock(sdk)
+    for row in lock["standards"]:
+        if row["id"] == "otdp":
+            row.pop("active", None)  # three unmarked otdp rows: no active is nameable
+    _write_lock(sdk, lock)
+    failures = run_check(ROOT, sdk)
+    assert "lock_invalid" in _prefixes(failures)
+    assert any(
+        line.startswith("lock_invalid: otdp ") and "active" in line
+        for line in failures
+    )
+
+
+def test_a_multi_marked_lock_refuses_instead_of_picking_the_first(tmp_path: Path) -> None:
+    """The mirrored ambiguity: two active-marked rows for one id are as
+    unnameable as none — the SDK lane refuses the same lock
+    (``lock_invalid``), so this lane does too."""
+    from benchweave.standards.check import run_check
+
+    sdk = _sdk_copy(tmp_path)
+    lock = _lock(sdk)
+    for row in lock["standards"]:
+        if row["id"] == "otdp" and row["version"] == "0.2.0":
+            row["active"] = True  # beside the real 0.2.2 marker
+    _write_lock(sdk, lock)
+    failures = run_check(ROOT, sdk)
+    assert "lock_invalid" in _prefixes(failures)
+
+
+def test_lock_policy_mirror_disagreement_is_policy_mirror_drift(tmp_path: Path) -> None:
+    """The dependency-policy block must be mirrored verbatim into the SDK
+    lock; any disagreement is ``policy_mirror_drift:`` (design §3.2)."""
+    from benchweave.standards.check import run_check
+
+    sdk = _sdk_copy(tmp_path)
+    lock = _lock(sdk)
+    lock["dependency_policy"]["standards"]["otdp"]["range"] = ">=0.1.0,<0.3.0"
+    _write_lock(sdk, lock)
+    failures = run_check(ROOT, sdk)
+    assert "policy_mirror_drift" in _prefixes(failures)
+
+
+def test_lock_without_a_policy_mirror_is_policy_mirror_drift(tmp_path: Path) -> None:
+    from benchweave.standards.check import run_check
+
+    sdk = _sdk_copy(tmp_path)
+    lock = _lock(sdk)
+    del lock["dependency_policy"]
+    _write_lock(sdk, lock)
+    failures = run_check(ROOT, sdk)
+    assert "policy_mirror_drift" in _prefixes(failures)

@@ -63,6 +63,7 @@ def run_check(root: Path, sdk_root: Path | None = None) -> list[str]:
     state = _submodule_state_failures(root, sdk)
     failures.extend(state)
     failures.extend(_compare_lock(document, lock))
+    failures.extend(_compare_policy(document, lock))
     failures.extend(_compare_tree(document, sdk))
     failures.extend(_compare_compatibility(document, lock))
     # The mirror lane and the compatibility.sdk anchor both refuse when the
@@ -130,21 +131,118 @@ def _digests(row: dict[str, Any]) -> dict[str, str]:
 
 
 def _compare_lock(document: dict[str, Any], lock: dict[str, Any]) -> list[str]:
-    """Main manifest vs SDK lock: pinning, versions and same-version drift."""
+    """Main manifest vs SDK lock: pinning, versions and same-version drift.
+
+    Since issue #203 slice 1 both sides carry one row per CARRIED (id,
+    version) — retained ∧ in-range, yanked versions riding marked; the
+    served set (¬yanked) is re-derived from the markers, and the carried-set
+    agreement is refused by name (``served_set_drift:`` — the #166
+    disagreement class) while the existing prefixes keep their meanings:
+    ``pinned_sdk_incompatible`` for a standard entirely absent,
+    ``sdk_version_mismatch`` for the ACTIVE version disagreeing,
+    ``content_drift_without_version`` for same-(id, version) digest drift.
+    The active row of an id is its one active-marked row, or the id's single
+    row in the pre-multi-version one-row-per-id shape; anything else is an
+    ambiguous lock refused as ``lock_invalid`` (fold row 16 — never a silent
+    rows[0] pick, parity with the SDK's ``served.active_version``).
+    """
     failures: list[str] = []
+    lock_by_id: dict[str, list[dict[str, Any]]] = {}
+    for row in lock.get("standards", []):
+        lock_by_id.setdefault(str(row["id"]), []).append(row)
+
+    # Fold row 16 (#215): name the ambiguous active-row shapes up front —
+    # an unmarked multi-row id and a multi-marked id have no nameable active
+    # row; comparing against a guessed one would launder the ambiguity into
+    # a misleading version/digest verdict.
+    ambiguous: set[str] = set()
+    for identifier, rows in sorted(lock_by_id.items()):
+        marked = [row for row in rows if row.get("active")]
+        if len(marked) == 1 or (not marked and len(rows) == 1):
+            continue
+        ambiguous.add(identifier)
+        failures.append(
+            f"lock_invalid: {identifier} carries {len(marked)} active-marked rows "
+            f"across {len(rows)} rows; exactly one active row (or the pre-multi-"
+            "version single unmarked row) is required"
+        )
+
+    def _lock_active(identifier: str) -> dict[str, Any] | None:
+        rows = lock_by_id.get(identifier, [])
+        marked = [row for row in rows if row.get("active")]
+        if len(marked) == 1:
+            return marked[0]
+        if not marked and len(rows) == 1:
+            return rows[0]
+        return None
+
+    lock_pairs = {
+        (str(row["id"]), str(row["version"])): bool(row.get("yanked", False))
+        for row in lock.get("standards", [])
+    }
+    bundle_pairs = {
+        (str(row["id"]), str(row["version"])): bool(row.get("yanked", False))
+        for row in document["standards"]
+    }
+    for identifier, version in sorted(set(bundle_pairs) - set(lock_pairs)):
+        failures.append(
+            f"served_set_drift: {identifier}@{version} is carried by the manifest "
+            "but absent from the SDK lock; run make sync-sdk-standards and land "
+            "lock + pointer together"
+        )
+    for identifier, version in sorted(set(lock_pairs) - set(bundle_pairs)):
+        failures.append(
+            f"served_set_drift: {identifier}@{version} is in the SDK lock but not "
+            "in the carried set (retained ∧ in-range; the served set, ¬yanked, is "
+            "re-derived from the markers); run make sync-sdk-standards and land "
+            "lock + pointer together"
+        )
     lock_rows = {str(row["id"]): row for row in lock.get("standards", [])}
     bundle_rows = {str(row["id"]): row for row in document["standards"]}
     for row in document["standards"]:
         identifier = str(row["id"])
-        prior = lock_rows.get(identifier)
+        prior = _lock_active(identifier)
         if prior is None:
-            failures.append(f"pinned_sdk_incompatible: {identifier} absent from the SDK lock")
+            if identifier not in ambiguous:
+                failures.append(
+                    f"pinned_sdk_incompatible: {identifier} absent from the SDK lock"
+                )
             continue
+        if not row.get("active", True):
+            continue  # served-set membership already compared above
         if prior["version"] != row["version"]:
             failures.append(
                 f"sdk_version_mismatch: {identifier} manifest {row['version']} "
                 f"vs SDK lock {prior['version']}"
             )
+            continue
+        exported = _digests(row)
+        recorded = _digests(prior)
+        for path in sorted(set(exported) | set(recorded)):
+            if exported.get(path) != recorded.get(path):
+                failures.append(
+                    f"content_drift_without_version: {path} differs between manifest "
+                    f"and SDK lock at {row['version']}"
+                )
+    # A yank-marker disagreement changes the served set every consumer
+    # derives from the lock plus policy mirror — served_set_drift (the
+    # disagreement class the design names).
+    for pair, yanked in sorted(bundle_pairs.items()):
+        if pair in lock_pairs and lock_pairs[pair] != yanked:
+            failures.append(
+                f"served_set_drift: {pair[0]}@{pair[1]} yank marker disagrees between "
+                "the manifest and the SDK lock; run make sync-sdk-standards and land "
+                "lock + pointer together"
+            )
+    # Same-(id, version) digest drift on NON-active rows carries the
+    # same prefix — same meaning, same-version drift.
+    lock_by_pair = {
+        (str(row["id"]), str(row["version"])): row for row in lock.get("standards", [])
+    }
+    for row in document["standards"]:
+        pair = (str(row["id"]), str(row["version"]))
+        prior = lock_by_pair.get(pair)
+        if prior is None or row.get("active", True):
             continue
         exported = _digests(row)
         recorded = _digests(prior)
@@ -162,6 +260,25 @@ def _compare_lock(document: dict[str, Any], lock: dict[str, Any]) -> list[str]:
     return failures
 
 
+def _compare_policy(document: dict[str, Any], lock: dict[str, Any]) -> list[str]:
+    """The dependency-policy block must be mirrored verbatim into the SDK lock.
+
+    The gateway manifest stays the authority (design §3.1: one committed
+    authority); the lock's copy exists so the SDK can classify pins offline
+    (PKG-1). Any disagreement — including an absent mirror — is
+    ``policy_mirror_drift:``.
+    """
+    expected = json.dumps(document.get("dependency_policy"), sort_keys=True)
+    actual = json.dumps(lock.get("dependency_policy"), sort_keys=True)
+    if expected != actual:
+        return [
+            "policy_mirror_drift: the dependency_policy block disagrees between the "
+            "standards manifest and the SDK lock (or the lock carries no mirror); "
+            "run make sync-sdk-standards and land lock + pointer together"
+        ]
+    return []
+
+
 def _compare_tree(document: dict[str, Any], sdk: Path) -> list[str]:
     """Vendored bytes and file set vs what sync-standards would write."""
     failures: list[str] = []
@@ -175,10 +292,12 @@ def _compare_tree(document: dict[str, Any], sdk: Path) -> list[str]:
         identifier = str(row["id"])
         for path, digest in _digests(row).items():
             exported[path] = digest
-        stamps[identifier] = {
+        # One stamp per standard id accumulates every CARRIED version's files
+        # (issue #203 slice 1); each line already carries its own version.
+        stamps.setdefault(identifier, set()).update(
             STAMP_LINE.format(path=path, identifier=identifier, version=str(row["version"]))
             for path in _digests(row)
-        }
+        )
     present = {
         path.relative_to(tree).as_posix()  # lock rows are '/'-separated (#138)
         for path in tree.rglob("*")
@@ -442,14 +561,32 @@ def _nullable_text(value: str | None) -> str | None:
 
 
 def _compare_compatibility(document: dict[str, Any], lock: dict[str, Any]) -> list[str]:
-    """Changed or deprecated standards require a complete compatibility block."""
+    """Changed or deprecated standards require a complete compatibility block.
+
+    Multi-version serving (#203 slice 1): the trigger compares each id's
+    ACTIVE rows on both sides — a non-active carried row appearing or moving
+    is served-set motion (``served_set_drift:`` owns it), not a version
+    change of the standard, and must not demand a compatibility block."""
     triggers: list[str] = []
-    lock_rows = {str(row["id"]): row for row in lock.get("standards", [])}
+    lock_rows_by_id: dict[str, list[dict[str, Any]]] = {}
+    for row in lock.get("standards", []):
+        lock_rows_by_id.setdefault(str(row["id"]), []).append(row)
+    lock_active: dict[str, dict[str, Any]] = {}
+    for identifier, rows in lock_rows_by_id.items():
+        marked = [row for row in rows if row.get("active")]
+        if marked:
+            lock_active[identifier] = marked[0]
+        elif len(rows) == 1:
+            # The pre-multi-version one-row-per-id shape: its single row is
+            # the id's active row.
+            lock_active[identifier] = rows[0]
     for row in document["standards"]:
         identifier = str(row["id"])
-        prior = lock_rows.get(identifier)
+        if not row.get("active", True):
+            continue
+        prior = lock_active.get(identifier)
         if row["status"] == "deprecated" or (
-            prior is not None and prior["version"] != row["version"]
+            prior is not None and str(prior["version"]) != str(row["version"])
         ):
             triggers.append(identifier)
     if not triggers:

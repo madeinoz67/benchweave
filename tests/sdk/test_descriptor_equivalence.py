@@ -1017,6 +1017,10 @@ def test_corpus_known_feature_derivations_match_across_lanes() -> None:
     """Metric A set-equality arm: the gateway's corpus-known derivation
     (from THIS tree's vendored corpus) equals the SDK's at the same vendored
     version — the two-layer union's layer 1 cannot drift silently."""
+    # Multi-version serving (#203 slice 1): the SDK's census is per-pin;
+    # the set-equality arm compares at the derived active version (the
+    # gateway lane stays active-version this slice).
+    from benchweave_sdk.served import active_version
     from benchweave_sdk.validation import (
         _corpus_known_otdp_features as sdk_known,
     )
@@ -1025,7 +1029,7 @@ def test_corpus_known_feature_derivations_match_across_lanes() -> None:
         _corpus_known_otdp_features as gateway_known,
     )
 
-    assert gateway_known() == sdk_known()
+    assert gateway_known() == sdk_known(active_version("otdp"))
 
 
 # ---------------------------------------------------------------------------
