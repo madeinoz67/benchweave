@@ -735,3 +735,69 @@ def _published_bytes(harness: DatasetHarness, artifact_id: str) -> bytes:
         "SELECT data FROM artifacts WHERE artifact_id = ?", (artifact_id,)
     ).fetchone()
     return bytes(row[0])
+
+
+# --- issue #146 slice 3 S3d: the permission-gated builder (§2.2's table) ----------
+
+
+def _pin_descriptor(harness: DatasetHarness, permissions: list[str]) -> str:
+    raw = {
+        "id": "dev.local.ds-builder",
+        "descriptor_version": "1.0.0",
+        "integration": {"adapter": {"permissions": permissions}},
+        "channels": [{"id": "ch1"}],
+    }
+    blob = json.dumps(raw, sort_keys=True).encode()
+    digest = __import__("hashlib").sha256(blob).hexdigest()
+    harness.content.put_document(blob, digest, raw, "otdp-descriptor", "t")
+    pinned: str = digest
+    return pinned
+
+
+def test_r7_builder_permission_table(tmp_path: Path) -> None:
+    """R7's structure table: publish/lookup always (the invoke lane);
+    payload members only with artifact_writer; artifact_read only with
+    artifact_reader — structural absence, asserted by attribute; and the
+    composed bundle KEEPS the base's capture members (a capturing class
+    device keeps both lanes)."""
+    from benchweave.content.capture_services import CaptureServicesBundle
+    from benchweave.content.dataset_services import build_dataset_services
+
+    harness = DatasetHarness(tmp_path)
+    try:
+        for permissions, payload, reader in (
+            (["scoped_transport"], False, False),
+            (["scoped_transport", "artifact_writer"], True, False),
+            (["scoped_transport", "artifact_reader"], False, True),
+            (["scoped_transport", "artifact_writer", "artifact_reader"], True, True),
+        ):
+            base = CaptureServicesBundle(
+                content=harness.content,
+                clock=lambda: 0.0,
+                wall=lambda: "t",
+                quota_evidence=10,
+                context_key="builder-session",
+                writer=harness.writer,
+            )
+            digest = _pin_descriptor(harness, permissions)
+            composed = build_dataset_services(
+                controller=harness.controller,
+                services=base,
+                descriptor_digest=digest,
+                content=harness.content,
+                writer=harness.writer,
+            )
+            assert hasattr(composed, "dataset_publish"), permissions
+            assert hasattr(composed, "dataset_lookup"), permissions
+            assert hasattr(composed, "payload_create") is payload, permissions
+            assert hasattr(composed, "payload_append") is payload, permissions
+            assert hasattr(composed, "payload_finalise") is payload, permissions
+            assert hasattr(composed, "payload_abort") is payload, permissions
+            assert hasattr(composed, "artifact_read") is reader, permissions
+            # The base's capture members survive the composition.
+            assert hasattr(composed, "artifact_append"), permissions
+            assert hasattr(composed, "artifact_finalise"), permissions
+            assert hasattr(composed, "artifact_abort"), permissions
+            assert composed.monotonic() == 0.0  # the base's state carried
+    finally:
+        harness.close()

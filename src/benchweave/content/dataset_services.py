@@ -32,6 +32,7 @@ from typing import TYPE_CHECKING, Any
 from benchweave.content.capture_services import ScopedServicesBundle
 from benchweave.content.capture_store import CaptureStagingStore, writer_originated
 from benchweave.content.store import ContentStore, EvidenceQuotaExceeded
+from benchweave.control.documents import adapter_permissions
 from benchweave.host.types import EvidenceStamp
 
 if TYPE_CHECKING:
@@ -335,25 +336,72 @@ def build_dataset_controller(
     )
 
 
-class DatasetServicesBundle(ScopedServicesBundle):
-    """The invoke lane's base bundle (§3's shape): the scoped services plus
-    ``dataset_publish`` and ``dataset_lookup``, one bundle per plugin
-    session. The payload members and ``artifact_read`` join by permission
-    through the mixin subclasses below — structural absence, never a
-    runtime flag (spec §3/S15)."""
+def build_dataset_services(
+    *,
+    controller: DatasetController,
+    services: ScopedServicesBundle,
+    descriptor_digest: str,
+    content: ContentStore,
+    writer: CaptureStagingStore,
+) -> ScopedServicesBundle:
+    """The permission-gated construction point (§2.2's table; the
+    build_capture_services precedent). Re-derives the RAW descriptor by
+    pinned digest (the grant-seam precedent — CON-10's re-derives-the-
+    raw-form-by-digest exactly as the permissions precedent does) and
+    composes the dataset members ONTO the caller's services bundle by
+    the adapter's declared permissions:
 
-    def __init__(
-        self,
-        *,
-        controller: DatasetController,
-        writer: CaptureStagingStore,
-        channels: tuple[str, ...] = (),
-        **base: Any,
-    ) -> None:
-        super().__init__(**base)
-        self._controller = controller
-        self._writer = writer
-        self._channels = frozenset(channels)
+    ==================  ==========================================
+    controller          the loader-constructed controller (the
+                        invoke capability ∧ resolved contracts —
+                        §2.1/§2.2's decision, made loader-side where
+                        the verified inventory lives)
+    base members        dataset_publish + dataset_lookup always
+    artifact_writer     the four payload members join
+    artifact_reader     artifact_read joins
+    ==================  ==========================================
+
+    The base keeps every member it already holds — a capturing class
+    device keeps the capture lane. Structural members, never runtime
+    flags (spec §3/S15).
+    """
+    document = content.get_document(descriptor_digest)
+    if document is None:
+        raise ValueError(
+            "raw descriptor not cached at its pinned digest: the dataset "
+            "factory re-derives the full form from the content store "
+            f"(digest {descriptor_digest[:12]}… is absent — descriptors are "
+            "cached when a binding pins them)"
+        )
+    raw = document["content"]
+    channels = tuple(
+        str(channel.get("id"))
+        for channel in raw.get("channels", [])
+        if isinstance(channel, dict)
+    )
+    return attach_dataset_members(
+        services,
+        controller=controller,
+        writer=writer,
+        channels=channels,
+        permissions=adapter_permissions(raw),
+    )
+
+
+class _InvokeMembers:
+    """The invoke lane's members (§3's shape): ``dataset_publish`` and
+    ``dataset_lookup`` as a pure mixin over any services base. The
+    attributes the members rely on are declared here and satisfied by the
+    composing base (ScopedServicesBundle or the capture bundle — a class
+    device that captures AND fetches keeps both lanes)."""
+
+    _controller: DatasetController
+    _writer: CaptureStagingStore
+    _channels: frozenset[str]
+    _content: ContentStore
+    _context_key: str
+    _quota_evidence: int
+    _wall: Any
 
     # --- dataset_publish (§2.2 step 1-6; the validation surface) -------------
 
@@ -843,15 +891,73 @@ class _ReaderMembers:
         return window
 
 
-class DatasetPayloadBundle(DatasetServicesBundle, _PayloadMembers):
+class DatasetServicesBundle(_InvokeMembers, ScopedServicesBundle):
+    """The invoke lane's standalone bundle over the scoped base — publish
+    and lookup only; the payload and reader members join by permission
+    through the subclasses below (structural absence, never a runtime
+    flag, spec §3/S15)."""
+
+    def __init__(
+        self,
+        *,
+        controller: DatasetController,
+        writer: CaptureStagingStore,
+        channels: tuple[str, ...] = (),
+        **base: Any,
+    ) -> None:
+        super().__init__(**base)
+        self._controller = controller
+        self._writer = writer
+        self._channels = frozenset(channels)
+
+
+class DatasetPayloadBundle(_PayloadMembers, DatasetServicesBundle):
     """invoke ∧ resolved ∧ ``artifact_writer``: the base plus the four
     payload members."""
 
 
-class DatasetReaderBundle(DatasetServicesBundle, _ReaderMembers):
+class DatasetReaderBundle(_ReaderMembers, DatasetServicesBundle):
     """invoke ∧ resolved ∧ ``artifact_reader``: the base plus
     ``artifact_read``."""
 
 
-class DatasetFullBundle(DatasetPayloadBundle, DatasetReaderBundle):
+class DatasetFullBundle(_PayloadMembers, _ReaderMembers, DatasetServicesBundle):
     """Both permissions: the complete §3 twelve-member shape."""
+
+
+def attach_dataset_members(
+    services: ScopedServicesBundle,
+    *,
+    controller: DatasetController,
+    writer: CaptureStagingStore,
+    channels: tuple[str, ...],
+    permissions: Any,
+) -> ScopedServicesBundle:
+    """Compose the dataset members ONTO the adapter's existing services
+    bundle by permission (the app.py wiring path). The base keeps every
+    member it already has — a capturing class device keeps
+    ``artifact_append``/``artifact_finalise``/``artifact_abort`` and gains
+    the dataset lane it is permitted to hold; the replacement (rather
+    than extension-in-place) keeps each bridge's services object
+    one-shot: the adapter receives exactly one bundle at open.
+
+    The published surface is a fresh instance of a composed class —
+    ``type(services)`` plus the invoke mixin and, by permission, the
+    payload and reader mixins — carrying the base's state verbatim."""
+    mixins: list[type] = [_InvokeMembers]
+    if ARTIFACT_WRITER in permissions:
+        mixins.append(_PayloadMembers)
+    if ARTIFACT_READER in permissions:
+        mixins.append(_ReaderMembers)
+    composed: Any = type(
+        f"{type(services).__name__}Dataset",
+        (*mixins, type(services)),
+        {},
+    )
+    instance: Any = composed.__new__(composed)
+    instance.__dict__.update(services.__dict__)
+    instance._controller = controller
+    instance._writer = writer
+    instance._channels = frozenset(channels)
+    result: ScopedServicesBundle = instance
+    return result

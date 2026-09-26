@@ -27,6 +27,7 @@ from fastapi import FastAPI
 
 from benchweave.content.capture_services import build_capture_services
 from benchweave.content.capture_store import CaptureStagingStore
+from benchweave.content.dataset_services import build_dataset_services
 from benchweave.content.store import ContentStore, RetainingServices
 from benchweave.content.stream_services import build_stream_services
 from benchweave.control.clocking import MonotonicClock, SystemClock, WallClock
@@ -756,6 +757,30 @@ def _build_run_factory(
                         context_key=context_key,
                         reading_sinks=sinks,
                     )
+                    def dataset_factory(
+                        controller: Any,
+                        *,
+                        _base: Any = bundle,
+                        _digest: str = plan.digest,
+                        _content: Any = content,
+                        _writer: Any = writer,
+                    ) -> Any:
+                        # §2.2's permission-gated builder, loader-mediated
+                        # (the verified inventory's locality keeps contract
+                        # resolution inside load_otdp_plugin, so the builder
+                        # receives the freshly-constructed controller here):
+                        # re-derive the raw descriptor by digest, slice the
+                        # bundle by artifact_writer/artifact_reader, and the
+                        # adapter's services gain the dataset members it is
+                        # permitted to hold.
+                        return build_dataset_services(
+                            controller=controller,
+                            services=_base,
+                            descriptor_digest=_digest,
+                            content=_content,
+                            writer=_writer,
+                        )
+
                     bridge = load_otdp_plugin(
                         _require_registry_session(registry_session).cache_root,
                         plan.closure.manifest,
@@ -777,7 +802,11 @@ def _build_run_factory(
                         # and the session's shared staged writer rides along
                         # for the controller's invoke dispatch clamp — the
                         # same writer instance the capture bundle shares.
+                        # Slice 3: the app.py-side dataset builder composes
+                        # the adapter's permission-sliced services around
+                        # that controller (§2.2's one build call).
                         dataset_writer=writer,
+                        dataset_services=dataset_factory,
                     )
                     bridge.plugin_open(bundle)
                     plugins[device_id] = bridge

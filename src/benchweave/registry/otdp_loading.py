@@ -183,6 +183,7 @@ def load_otdp_plugin(
     capture: Any = None,
     stream: Any = None,
     dataset_writer: Any = None,
+    dataset_services: Any = None,
 ) -> OTDPBridge:
     """Construct an unopened read-only bridge from an admitted package.
 
@@ -243,11 +244,21 @@ def load_otdp_plugin(
     # lie (a dangling $ref/$dynamicRef I5's bare compile cannot resolve)
     # refuse here, never escape the gate region uncontrolled at dispatch.
     probe_descriptor_constraints(descriptor)
+    services_for_bridge = services
     dataset: Any = None
     if resolved is not None and "invoke" in _descriptor_capabilities(descriptor):
         from benchweave.content.dataset_services import build_dataset_controller
 
         dataset = build_dataset_controller(resolved, writer=dataset_writer)
+        if dataset_services is not None:
+            # §2.2's app.py-side builder, loader-mediated: the inventory
+            # locality (NIT-1) keeps resolution loader-side, so the caller
+            # hands a FACTORY that receives the freshly-constructed
+            # controller and returns the adapter's services bundle (the
+            # permission slicing and the raw-descriptor digest
+            # re-derivation live in build_dataset_services, exactly the
+            # capture builder's app.py-side shape).
+            services_for_bridge = dataset_services(dataset)
     # Find the contiguous regular-package chain; never add cache dirs to sys.path.
     root = entry.parent
     if str(root / "__init__.py") not in code_paths:
@@ -279,7 +290,7 @@ def load_otdp_plugin(
         bridge = OTDPBridge(
             factory(),
             descriptor=descriptor,
-            services=services,
+            services=services_for_bridge,
             simulation=simulation,
             capture=capture,
             stream=stream,

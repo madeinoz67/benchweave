@@ -1444,11 +1444,13 @@ def test_measurement_harness_capture_dispatch_over_the_composed_bridge(
 def test_issue146_invoke_lane_composes_over_the_real_activation_path(
     commissioned: _CommissionedHarness,
 ) -> None:
-    """Issue #146 slice 2 wiring: the demo-supply descriptor is
-    invoke-capable and pins the corpus contract pair, so build_run's real
-    activation loop constructs the dataset controller AND hands it the
-    session's shared staged writer — the invoke clamp is live (not the
-    unit-posture nullcontext), without artifact_writer on the descriptor."""
+    """Issue #146 slice 2 wiring + slice 3's composed bundle: the
+    demo-supply descriptor is invoke-capable, pins the corpus contract
+    pair and holds artifact_writer — build_run's real activation loop
+    constructs the dataset controller, hands it the session's shared
+    staged writer (the invoke clamp is live), and the ADAPTER's services
+    bundle carries the composed dataset lane (publish/lookup + the
+    payload members) beside the capture members."""
     run_id = "run-invoke-wiring"
     coordinator, store, content = _coordinator(commissioned, run_id, QUOTA_LIMITS)
     try:
@@ -1468,6 +1470,22 @@ def test_issue146_invoke_lane_composes_over_the_real_activation_path(
         assert not isinstance(clamp, nullcontext), (
             "the controller clamps nothing — the session writer never reached it"
         )
+        # Slice 3: the adapter's services compose the dataset lane over the
+        # capture bundle (the harness's Recording adapter captured them at
+        # open — the only mechanism that reaches the adapter).
+        adapter_services = bridge._adapter.services
+        for member in (
+            "dataset_publish",
+            "dataset_lookup",
+            "payload_create",
+            "payload_append",
+            "payload_finalise",
+            "payload_abort",
+            "artifact_append",
+            "artifact_finalise",
+            "artifact_abort",
+        ):
+            assert hasattr(adapter_services, member), member
     finally:
         store.close()
 
