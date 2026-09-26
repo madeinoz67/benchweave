@@ -7,9 +7,14 @@ mode (the count cannot rise; the baseline is committed beside this script).
 The PRD §1.5 hand count was 13 sites at ``ef969af``; #201 re-versioned values
 without removing any, so the baseline here is THIS SCRIPT's own measurement
 at the slice's merge base (``403c061``) under the definition below — 12
-sites. The definitional delta vs the hand count (one site) is the hand
-count's inclusion of a site this definition classifies as prose; the
-ratchet's authority is the committed baseline number, reproducibly derived.
+sites. The 13-to-12 delta, regenerable (#215 fold row 20): this definition
+counts the SAME 12 sites when re-run at ``ef969af`` and at ``403c061``
+(site-for-site; only the values differ), so the hand count's extra site was
+one this definition classifies as prose — a docstring or comment, excluded
+below. The hand count's worksheet was never committed, so WHICH prose site
+it included is unnameable from evidence; naming one would be invention. The
+ratchet's authority is the committed baseline number, reproducibly derived
+by this script at either ref.
 
 DEFINITION (committed; changing it re-baselines by editorial decision, not
 silently):
@@ -25,6 +30,15 @@ silently):
   corpus-owned code whose literals are acknowledged, pending derivation) —
   in ratchet mode they still COUNT (the ceiling holds them); slice 7's
   zero-mode is what turns the register into an exemption list.
+- Scope is ``src/benchweave/`` only. Literals in ``scripts/`` are outside the
+  counted tree AND registered here when they name a version (#215 fold row
+  22): ``scripts/adc_conformance_control.py`` carries ``YANKED_PIN``/
+  ``MOVE_TO`` ("0.2.1"/"0.2.2") — the A1 anti-gaming arm's planted pin and
+  its expected move-to. Motion mechanism: both flip with the yank policy
+  block, in the same arc as the policy row (a future yank or unk of another
+  version changes the pair); they never ride a corpus bump silently. The A4
+  denominator is unchanged — these sites were never inside the counted
+  tree, and registering them adds no exemption, only the record.
 
 Exit status: 0 when the count is at or below the committed baseline, 1 when
 it rises (or on any parse failure — a count that cannot be computed is a

@@ -11,7 +11,11 @@ docs/implementation-planning/09a-issue215-slice1-baseline.md).
 
 Deliberate shapes:
 - The plugin comes from ``git archive`` of the recorded commit — never a
-  clone-and-edit. The primary run asserts the bytes are unmodified.
+  clone-and-edit. The tested tree IS the archive (unmodified by
+  construction), and the INSTALLED package is byte-asserted against the
+  archive's ``src/`` tree per file (``assert_installed_matches_archive``) —
+  the suite imports the installed copy, so that is the copy whose bytes
+  must be the archive's (#215 fold row 17).
 - The SDK wheel is BUILT from ``packages/sdk`` and installed into a clean
   venv — the checkout's own uv.lock pin is bypassed by construction (there
   is no checkout environment here at all; the bypass is the point).
@@ -30,6 +34,7 @@ for the INSTALL phase (the run phase is offline by the guard).
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import shutil
 import subprocess
@@ -37,6 +42,12 @@ import sys
 import tempfile
 from pathlib import Path
 
+# Third-party dependency (#215 fold row 17): the INSTALL phase fetches this
+# public contributor fork at the pinned commit below. Failure mode: the repo
+# or commit becoming unavailable (renamed, archived, force-pushed away) fails
+# this control's fetch step before any test runs — the lane cannot run, and
+# the committed ADC_COMMIT is the only authority. The external repo is
+# deliberately NOT vendored: the dependency is named here, not inlined.
 ADC_REPO = "https://github.com/parkview/benchweave.git"
 ADC_COMMIT = "de132a292040415f9935b93b424ce15b9980843d"
 ADC_CONFORMANCE_LANE = "tests/adc/test_adapter_conformance.py"
@@ -121,6 +132,40 @@ def make_venv(workspace: Path, wheel: Path, plugin: Path) -> Path:
     return python
 
 
+def assert_installed_matches_archive(plugin: Path, venv: Path) -> None:
+    """The installed ``benchweave`` package must be the archive's bytes.
+
+    #215 fold row 17: the conformance suite runs from the archive tree but
+    IMPORTS the installed package, so "unmodified" needs a real assertion on
+    the installed copy, not only the by-construction posture of running from
+    the archive. Every ``src/benchweave/**/*.py`` file is sha256-compared
+    against its installed counterpart; any difference, or any missing file,
+    fails the control before a test runs.
+    """
+    source = plugin / "src" / "benchweave"
+    installed = sorted((venv / "lib").glob("python3.*/site-packages/benchweave"))
+    if len(installed) != 1 or not installed[0].is_dir():
+        raise SystemExit(
+            "adc_control_failed: the installed benchweave package was not found; "
+            "the byte assertion cannot run"
+        )
+    files = sorted(source.rglob("*.py"))
+    if not files:
+        raise SystemExit("adc_control_failed: the archive carries no src/benchweave files")
+    for relative in files:
+        digest = hashlib.sha256(relative.read_bytes()).hexdigest()
+        counterpart = installed[0] / relative.relative_to(source)
+        if not counterpart.is_file():
+            raise SystemExit(
+                f"adc_control_failed: {relative.name} is missing from the installed package"
+            )
+        if hashlib.sha256(counterpart.read_bytes()).hexdigest() != digest:
+            raise SystemExit(
+                "adc_control_failed: an installed file differs from the archive bytes "
+                f"({relative.relative_to(source)})"
+            )
+
+
 def conformance_run(python: Path, plugin: Path, junit: Path) -> dict[str, int]:
     result = subprocess.run(
         [
@@ -192,6 +237,7 @@ def main() -> int:
         plugin = fetch_plugin(workspace)
         wheel = build_sdk_wheel(checkout, workspace / "wheels")
         python = make_venv(workspace, wheel, plugin)
+        assert_installed_matches_archive(plugin, workspace / "venv")
         primary = conformance_run(python, plugin, workspace / "primary-junit.xml")
         print(f"primary run: {primary}", flush=True)
         if primary["tests"] != EXPECTED_TESTS or primary["failures"] or primary["errors"]:

@@ -133,26 +133,48 @@ def _digests(row: dict[str, Any]) -> dict[str, str]:
 def _compare_lock(document: dict[str, Any], lock: dict[str, Any]) -> list[str]:
     """Main manifest vs SDK lock: pinning, versions and same-version drift.
 
-    Since issue #203 slice 1 both sides carry one row per SERVED (id,
-    version); the served-set agreement is refused by name
-    (``served_set_drift:`` — the #166 disagreement class) while the existing
-    prefixes keep their meanings: ``pinned_sdk_incompatible`` for a standard
-    entirely absent, ``sdk_version_mismatch`` for the ACTIVE version
-    disagreeing, ``content_drift_without_version`` for same-(id, version)
-    digest drift. A lock row with no ``active`` field is the active row of
-    its id (the pre-multi-version one-row-per-id shape).
+    Since issue #203 slice 1 both sides carry one row per CARRIED (id,
+    version) — retained ∧ in-range, yanked versions riding marked; the
+    served set (¬yanked) is re-derived from the markers, and the carried-set
+    agreement is refused by name (``served_set_drift:`` — the #166
+    disagreement class) while the existing prefixes keep their meanings:
+    ``pinned_sdk_incompatible`` for a standard entirely absent,
+    ``sdk_version_mismatch`` for the ACTIVE version disagreeing,
+    ``content_drift_without_version`` for same-(id, version) digest drift.
+    The active row of an id is its one active-marked row, or the id's single
+    row in the pre-multi-version one-row-per-id shape; anything else is an
+    ambiguous lock refused as ``lock_invalid`` (fold row 16 — never a silent
+    rows[0] pick, parity with the SDK's ``served.active_version``).
     """
     failures: list[str] = []
     lock_by_id: dict[str, list[dict[str, Any]]] = {}
     for row in lock.get("standards", []):
         lock_by_id.setdefault(str(row["id"]), []).append(row)
 
+    # Fold row 16 (#215): name the ambiguous active-row shapes up front —
+    # an unmarked multi-row id and a multi-marked id have no nameable active
+    # row; comparing against a guessed one would launder the ambiguity into
+    # a misleading version/digest verdict.
+    ambiguous: set[str] = set()
+    for identifier, rows in sorted(lock_by_id.items()):
+        marked = [row for row in rows if row.get("active")]
+        if len(marked) == 1 or (not marked and len(rows) == 1):
+            continue
+        ambiguous.add(identifier)
+        failures.append(
+            f"lock_invalid: {identifier} carries {len(marked)} active-marked rows "
+            f"across {len(rows)} rows; exactly one active row (or the pre-multi-"
+            "version single unmarked row) is required"
+        )
+
     def _lock_active(identifier: str) -> dict[str, Any] | None:
         rows = lock_by_id.get(identifier, [])
         marked = [row for row in rows if row.get("active")]
-        if marked:
+        if len(marked) == 1:
             return marked[0]
-        return rows[0] if rows else None
+        if not marked and len(rows) == 1:
+            return rows[0]
+        return None
 
     lock_pairs = {
         (str(row["id"]), str(row["version"])): bool(row.get("yanked", False))
@@ -164,15 +186,16 @@ def _compare_lock(document: dict[str, Any], lock: dict[str, Any]) -> list[str]:
     }
     for identifier, version in sorted(set(bundle_pairs) - set(lock_pairs)):
         failures.append(
-            f"served_set_drift: {identifier}@{version} is served by the manifest "
+            f"served_set_drift: {identifier}@{version} is carried by the manifest "
             "but absent from the SDK lock; run make sync-sdk-standards and land "
             "lock + pointer together"
         )
     for identifier, version in sorted(set(lock_pairs) - set(bundle_pairs)):
         failures.append(
             f"served_set_drift: {identifier}@{version} is in the SDK lock but not "
-            "in the served set (retained ∧ in-range ∧ ¬yanked); run make "
-            "sync-sdk-standards and land lock + pointer together"
+            "in the carried set (retained ∧ in-range; the served set, ¬yanked, is "
+            "re-derived from the markers); run make sync-sdk-standards and land "
+            "lock + pointer together"
         )
     lock_rows = {str(row["id"]): row for row in lock.get("standards", [])}
     bundle_rows = {str(row["id"]): row for row in document["standards"]}
@@ -180,7 +203,10 @@ def _compare_lock(document: dict[str, Any], lock: dict[str, Any]) -> list[str]:
         identifier = str(row["id"])
         prior = _lock_active(identifier)
         if prior is None:
-            failures.append(f"pinned_sdk_incompatible: {identifier} absent from the SDK lock")
+            if identifier not in ambiguous:
+                failures.append(
+                    f"pinned_sdk_incompatible: {identifier} absent from the SDK lock"
+                )
             continue
         if not row.get("active", True):
             continue  # served-set membership already compared above

@@ -203,7 +203,7 @@ rather than rewriting the history — that is how this file earns trust.
   by schema — `src/benchweave/control/provider_settings.py`) decode through the
   exact-byte decoder; the settings validator's own prefixes (`settings_schema:`,
   `settings_digest_mismatch:`) join the same list.
-  Amendment (2026-09-26, issue #203 slice 1/3): descriptor admission selects the
+  Amendment (2026-09-26, issue #215, parent #203): descriptor admission selects the
   vendored schema of the version the descriptor's own `otdp_version` names, resolved from the
   served set (retained ∧ in-range ∧ ¬yanked) and digest-verified — the pin's bytes, not the
   active's. A pin outside the served set refuses `version_not_served:` carrying the five VR-37
@@ -232,10 +232,14 @@ rather than rewriting the history — that is how this file earns trust.
   Amendment (2026-09-23, issue #158): the same gate carries the manifest
   `sdk_compatibility` mirror ↔ SDK-lock comparison (CON-12) — the mirror is
   a derived copy whose authority stays with the lock.
-  Amendment (2026-09-26, issue #203): the round-trip gate additionally refuses
+  Amendment (2026-09-26, issue #215, parent #203): the round-trip gate additionally refuses
   served-set disagreement (`served_set_drift:`) and dependency-policy mirror disagreement
   (`policy_mirror_drift:`) across manifest ↔ export ↔ SDK lock ↔ vendored tree, offline on both
-  sides.
+  sides. The SDK-side load path carries the same discipline inward: every document the SDK
+  serves is digest-checked against its lock row at load — planted or unrecorded vendored bytes
+  refuse `vendored_digest_mismatch:` by name (issue #215 fix F1, wiring design §3.2's
+  digest-checked load); a lock row whose vendored directory is missing refuses
+  `served_set_drift:` instead of crashing the import.
 - **[CON-5]** REST v1 and MCP share typed operation/result contracts and durable core run
   identity (A13: 20 REST operations, 17 MCP tools — three administration operations are
   REST-only by design). Transport adapters are adapters: behavior is pinned against the
@@ -282,7 +286,8 @@ rather than rewriting the history — that is how this file earns trust.
   stays decorative and the next reset sweep re-creates prose-vs-machine version drift
   main-side (issue #44: three doc surfaces carried a stale adapter API version with
   every gate green).*
-  Amendment (2026-09-26, issue #203): `validate_manifest` additionally admits the served set: every
+  Amendment (2026-09-26, issue #215, parent #203): the identity block's
+  authority and active-entry derivation are UNCHANGED. `validate_manifest` additionally admits the served set: every
   served version's normative files exist and match corpus pins, and the dependency-policy block
   is cross-checked against the retained tree (unresolved yank/retired entries, retired-active
   conflicts, and status conflicts refuse with `policy_*` prefixes). Declarations verified,
@@ -367,7 +372,7 @@ rather than rewriting the history — that is how this file earns trust.
   silently). The projection itself is UNCHANGED: transport and provider stay
   unprojected; the grant seam (`build_capture_services`) re-derives the raw form by
   digest exactly as the permissions precedent does.
-  Amendment (2026-09-26, issue #203): "the active vendored OTDP schema" reads "the
+  Amendment (2026-09-26, issue #215, parent #203): "the active vendored OTDP schema" reads "the
   vendored OTDP schema of the descriptor's pinned served version" wherever admission resolves
   it; the projection itself is unchanged; the equivalence census extends across the served set
   (clean cells + named faults per served version; the 28-cell mutation matrix remains
@@ -457,10 +462,13 @@ rather than rewriting the history — that is how this file earns trust.
   to diverge from). Refused by name when the pinned bytes are unreadable
   or the field undeclared (`sdk_version_unanchored`); the render's purity
   clause is unchanged — `render_matrix` still never reads the SDK's
-  pyproject. The authority chain is pyproject@pin → lock → mirror.
-  Amendment (2026-09-26, issue #203 slice 5): the matrix renders one row per
-  retained version from the policy block and promotion records; the purity clause (committed
-  state only, no checkout/remote reads) is unchanged and extends to the new inputs.*
+  pyproject. The authority chain is pyproject@pin → lock → mirror.*
+  Amendment (2026-09-26, issue #215, parent #203): the matrix renders one row
+  per retained version from the policy block and promotion records; the purity clause (committed
+  state only, no checkout/remote reads) is unchanged and extends to the new inputs.
+  This amendment lands with slice 5 and becomes true then (CON-14's disclosure
+  style) — the slice-1 mechanism mirrors the policy block; it does not yet
+  render per-version rows.
 
 - **[CON-13]** Website version stamps are a pure function of committed state —
   claim sites in `website/index.html` carry `{{stg-*}}` tokens and never
@@ -488,19 +496,45 @@ rather than rewriting the history — that is how this file earns trust.
   identifiers never resolve; cross-standard constraint rows are committed
   side-table data enforced pairwise at bench admission —
   `src/benchweave/standards/` (the dependency-policy block and its loader,
-  issue #203 slice 1; the resolver lands with slice 2 and makes these clauses
+  issue #215, parent #203; the resolver lands with slice 2 and makes these clauses
   true). *The registry lock-writer precedent (`registry/admission.py`
   `_lock_document`) is the shape; resolution must never depend on network,
   working-tree state, or an LLM in the control path (A04).*
-  Recorded ruling (2026-09-26, issue #203, VR-47 points 1–2): R-1 reopens
-  range pins, the resolver, lock formats, and multi-version serving of
-  retained versions on the out-of-tree-breakage evidence (NOT reopened:
-  cross-version tolerance — PR #59 stands; external indexes); R-2 amends
-  CON-10 — a descriptor validates against exactly one OTDP version, its own
-  pin, resolved from the retained corpus, digest-verified (PR #174's
-  rejection superseded on both stated grounds together). The full ruling
-  artifact is carried verbatim in `standards/GOVERNANCE.md` ("Recorded
-  ruling — VR-47 points 1 and 2").
+  Recorded ruling (2026-09-26, VR-47 points 1–2 of the parent arc #203;
+  landed by #215) — carried VERBATIM here and in `standards/GOVERNANCE.md`
+  ("Recorded ruling — VR-47 points 1 and 2"), not paraphrased:
+
+**R-1 (reopen, VR-47.1).** Issue #97's withdrawal of "range pins, a resolver,
+lock formats, a mutable `-dev` stage, forward-compat tolerance" is superseded
+in part. REOPENED: range pins, the resolver, lock formats, and multi-version
+serving of retained versions — the out-of-tree breakage axis (a plugin
+outside the tree cannot move in-arc with a bump) post-dates the #97 closure
+and is new evidence. The `-dev` record's "Not in scope, ever" (issue #97, the
+dev-stage row) is superseded for the serving/pinning question only, on the
+same evidence, joining the earlier sanctioned reopen of the mutable `-dev`
+stage (#168/#169). NOT reopened: cross-version tolerance (PR #59's rejection
+stands — serving retained versions EXACTLY is the only tolerance; ranges
+never fuzzy-match) and external standards indexes (the PRD's non-goal,
+unchanged).
+
+**R-2 (CON-10 amendment, VR-47.2).** CON-10 keeps what it protects — one
+shared authority (the retained corpus and its manifests), one descriptor
+dialect, one projection — and drops what it never needed: the singularity of
+the served pointer. A descriptor validates against exactly one OTDP version
+— its own pin — resolved from the retained corpus, digest-verified. PR #174's
+rejection of version-matched schema resolution is superseded on both its
+stated grounds together: multi-version serving answers the single-version-tree
+ground (the manifest, export, sync and wheel now carry every served version),
+and wheel-bundling of the served set answers the "structurally unbuildable"
+SDK leg (the SDK validates offline against the pinned version's bundled
+bytes; PRD VR-32, owner Q8). The one-entry-per-id manifest shape is
+undisturbed; the equivalence census extends across the served set. CON-1's
+#63 amendment and CON-8 each gain the dated amendments in
+`docs/internal/invariants.md`. Nothing in PR #59 moves (VR-47.5):
+per-plugin exactness relocates one global gate to N per-pin gates;
+out-of-range stays non-conforming, unretained stays refused.
+
+
 
 ## Registry & plugin invariants
 

@@ -243,22 +243,30 @@ and remain the reviewer's job.
     pointer advance rides a train of its own); loop prose that is
     deliberately gateway-specific does not sync (issue #99's design §6).
 
-19. **The dependency-policy block and the served set** (issue #203 slice 1):
-    `standards/standards-manifest.json`'s `dependency_policy` block is the one
-    committed authority for per-standard ranges, yanks and retired
-    identifiers. If a PR touches it, all four surfaces move together in one
-    arc: the manifest block ↔ the exported bundle (`dependency_policy` rides
-    verbatim; one entry per served (id, version)) ↔ the SDK lock's served rows
-    and mirrored block ↔ the SDK's vendored tree (`make sync-sdk-standards`;
-    land lock + pointer together). Drift refuses by name
-    (`served_set_drift:`, `policy_mirror_drift:` in
-    `benchweave.standards check`). Range changes are coordinator decisions
-    (VR-43) and require a linked ruling reference in the PR body
+19. **The dependency-policy block and the carried set** (issue #215, parent
+    #203 slice 1): `standards/standards-manifest.json`'s `dependency_policy`
+    block is the one committed authority for per-standard ranges, yanks and
+    retired identifiers. If a PR touches it, all four surfaces move together
+    in one arc: the manifest block ↔ the exported bundle
+    (`dependency_policy` rides verbatim; one entry per CARRIED (id, version)
+    — yanked versions ride marked) ↔ the SDK lock's carried rows and mirrored
+    block ↔ the SDK's vendored tree (`make sync-sdk-standards`; land lock +
+    pointer together). Drift refuses by name (`served_set_drift:`,
+    `policy_mirror_drift:` in `benchweave.standards check`); the SDK-side
+    load path carries the discipline inward — every served document is
+    digest-checked against its lock row (`vendored_digest_mismatch:`,
+    issue #215 fix F1). Range changes are coordinator decisions (VR-43) and
+    require a linked ruling reference in the PR body
     (`policy_change_unruled:` is the drift-check lane's refusal, landing with
     slice 2's agreement lane). The yanked 0.2.1 and the retired identifiers
-    enumerated from `ea70c6a5^` are the founding entries; a yank or
-    retirement that names a version with no retained directory refuses
-    (`policy_entry_unresolved:`).
+    enumerated from `ea70c6a5^` are the founding entries. A YANKED entry must
+    name a retained in-range version — bytes have to exist for a
+    yanked-but-conforming pin to validate against
+    (`policy_entry_unresolved:`); a RETIRED entry must name NO retained
+    directory and never the active version (`policy_retired_active:` /
+    `policy_status_conflict:`) — retired means "used and dead", so a retired
+    identifier naming no retained directory is the CORRECT seed state, not a
+    refusal (the earlier inversion here is corrected by #215 fold row 10).
 20. **The executable-version-literal ratchet** (issue #203 slice 1, A4):
     `scripts/standards/count_version_literals.py` is the gate's counter —
     AST-based, reproducible, baseline committed in the script (12 sites at

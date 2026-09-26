@@ -125,6 +125,44 @@ def test_yanked_entry_naming_an_unretained_version_refuses(tmp_path: Path) -> No
         validate_dependency_policy(policy, load_manifest(root), root)
 
 
+# --- #215 fold row 4: the yank record's since is machine-readable history. ---
+
+
+@pytest.mark.parametrize("since", ["not-a-date", "26-09-2026", ""])
+def test_yanked_entry_with_a_non_iso_since_refuses(tmp_path: Path, since: str) -> None:
+    """Fold row 4 (#215): ``since`` was gated only as "a string", unlike the
+    dev-head ``opened`` field's shape gate. A yank date that is not an ISO
+    YYYY-MM-DD string refuses at load — the record is machine-readable
+    history, not free prose."""
+    root = _copy_standards(tmp_path)
+
+    def mutate(block: dict[str, Any]) -> dict[str, Any]:
+        block["standards"]["otdp"]["yanked"]["0.2.1"]["since"] = since
+        return block
+
+    _edit_policy(root, mutate)
+    with pytest.raises(StandardsError, match="not an ISO YYYY-MM-DD date"):
+        load_dependency_policy(root)
+
+
+@pytest.mark.parametrize("since", ["2026-13-45", "9999-99-99", "2026-02-30"])
+def test_yanked_entry_with_an_impossible_calendar_date_refuses(
+    tmp_path: Path, since: str
+) -> None:
+    """The shape gate admits impossible calendars; only a real parse refuses
+    them — the same two-step gate the dev-head ``opened`` field runs
+    (manifest.py review row 4)."""
+    root = _copy_standards(tmp_path)
+
+    def mutate(block: dict[str, Any]) -> dict[str, Any]:
+        block["standards"]["otdp"]["yanked"]["0.2.1"]["since"] = since
+        return block
+
+    _edit_policy(root, mutate)
+    with pytest.raises(StandardsError, match="not a real calendar date"):
+        load_dependency_policy(root)
+
+
 def test_retired_entry_naming_the_active_version_refuses(tmp_path: Path) -> None:
     root = _copy_standards(tmp_path)
 
@@ -220,8 +258,9 @@ def test_served_set_excludes_yanked_in_interval_versions() -> None:
 
 def test_version_literal_ratchet_holds_at_the_baseline() -> None:
     """A4: the committed counter runs clean on the real tree and is
-    reproducible (two runs, byte-identical output); a planted literal makes
-    it exit 1 — proven in the slice record by planting in a scratch copy."""
+    reproducible (two runs, byte-identical output). The planted-literal
+    refusal is pinned beside this test (fold row 13) — the teeth are
+    committed, not cited."""
     import subprocess
 
     result = subprocess.run(
@@ -239,3 +278,40 @@ def test_version_literal_ratchet_holds_at_the_baseline() -> None:
         check=True,
     ).stdout
     assert first == second
+
+
+def test_a_planted_literal_fails_the_ratchet_in_a_scratch_copy(tmp_path: Path) -> None:
+    """Fold row 13 (#215): the A4 ratchet's refusal is demonstrated by the
+    committed test the slice record cites. A scratch copy of the repo's
+    source tree plus ONE planted version literal makes the committed counter
+    report the risen count and exit 1 — ratchet mode refuses, never warns."""
+    import subprocess
+
+    scratch = tmp_path / "scratch-repo"
+    (scratch / "scripts/standards").mkdir(parents=True)
+    shutil.copy(
+        ROOT / "scripts/standards/count_version_literals.py",
+        scratch / "scripts/standards/count_version_literals.py",
+    )
+    shutil.copytree(ROOT / "src/benchweave", scratch / "src/benchweave")
+    (scratch / "src/benchweave" / "planted_literal.py").write_text(
+        'OTDP_PIN = "0.2.2"\n', encoding="utf-8"
+    )
+    script = scratch / "scripts/standards/count_version_literals.py"
+    risen = subprocess.run(
+        [sys.executable, str(script)], capture_output=True, text=True, check=False
+    )
+    assert risen.returncode == 1, risen.stdout + risen.stderr
+    assert "(baseline 12, EXCEEDED)" in risen.stdout
+    detail = subprocess.run(
+        [sys.executable, str(script), "--json"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert detail.returncode == 1
+    payload = json.loads(detail.stdout)
+    assert payload["count"] == payload["baseline"] + 1
+    assert any(
+        row["file"] == "src/benchweave/planted_literal.py" for row in payload["sites"]
+    )

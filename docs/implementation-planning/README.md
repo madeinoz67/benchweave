@@ -14,7 +14,7 @@ The confirmed first instrument is **FNIRSI DPS-150**. **ESP32** is the provision
 
 Other lane planning: [Contributor publishing path PRD (issue #209)](07-contributor-publishing-prd.md) — requirements for the third-party plugin publishing lane (Draft v0.3, ruled 2026-09-26). Also: [Standards dependency management PRD (issue #203)](08-standards-dependency-management-prd.md) — requirements for standards version pinning and dependency management (Draft v0.2, ruled by proceed-direction 2026-09-26).
 
-Design records: [standards dependency management](09-standards-dependency-design.md) (slices #215-#221) and [contributor publishing](10-contributor-publishing-design.md) (slices filed under #209).
+Design records: [standards dependency management](09-standards-dependency-design.md) (slices #215-#221) and [contributor publishing](10-contributor-publishing-design.md) (slices filed under #209). Measurement/fix records: [issue #215 slice 1 baseline + fix wave](09a-issue215-slice1-baseline.md).
 
 The [STG 1.5 architecture](../smart-test-gateway-architecture-v1.5.md) remains the technical contract. This planning pack does not alter its qualification boundaries or constitute an implemented PoC. The first slice is expanded; following packages are expanded into code-level tasks as their dependency gates are resolved.
 

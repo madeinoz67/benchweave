@@ -710,6 +710,48 @@ def test_lock_carrying_an_unserved_row_is_served_set_drift(tmp_path: Path) -> No
     assert "served_set_drift" in _prefixes(failures)
 
 
+# --- #215 fold row 16: an ambiguous active row is named, never guessed. ---
+
+
+def test_an_unmarked_multi_row_lock_refuses_instead_of_picking_a_row(
+    tmp_path: Path,
+) -> None:
+    """Fold row 16 (#215): an unmarked multi-row lock is ambiguous — the
+    check refuses ``lock_invalid`` (parity with the SDK's
+    ``served.active_version``) instead of silently comparing against
+    whichever row happens to come first."""
+    from benchweave.standards.check import run_check
+
+    sdk = _sdk_copy(tmp_path)
+    lock = _lock(sdk)
+    for row in lock["standards"]:
+        if row["id"] == "otdp":
+            row.pop("active", None)  # three unmarked otdp rows: no active is nameable
+    _write_lock(sdk, lock)
+    failures = run_check(ROOT, sdk)
+    assert "lock_invalid" in _prefixes(failures)
+    assert any(
+        line.startswith("lock_invalid: otdp ") and "active" in line
+        for line in failures
+    )
+
+
+def test_a_multi_marked_lock_refuses_instead_of_picking_the_first(tmp_path: Path) -> None:
+    """The mirrored ambiguity: two active-marked rows for one id are as
+    unnameable as none — the SDK lane refuses the same lock
+    (``lock_invalid``), so this lane does too."""
+    from benchweave.standards.check import run_check
+
+    sdk = _sdk_copy(tmp_path)
+    lock = _lock(sdk)
+    for row in lock["standards"]:
+        if row["id"] == "otdp" and row["version"] == "0.2.0":
+            row["active"] = True  # beside the real 0.2.2 marker
+    _write_lock(sdk, lock)
+    failures = run_check(ROOT, sdk)
+    assert "lock_invalid" in _prefixes(failures)
+
+
 def test_lock_policy_mirror_disagreement_is_policy_mirror_drift(tmp_path: Path) -> None:
     """The dependency-policy block must be mirrored verbatim into the SDK
     lock; any disagreement is ``policy_mirror_drift:`` (design §3.2)."""

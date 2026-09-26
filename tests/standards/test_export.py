@@ -329,3 +329,60 @@ def test_cli_export_writes_the_bundle(tmp_path: Path) -> None:
     )
     assert result.returncode == 0, result.stderr
     assert (tmp_path / "bundle" / "bundle-manifest.json").is_file()
+
+
+def test_two_carried_plugin_ui_versions_dedupe_the_parity_code_row(
+    tmp_path: Path,
+) -> None:
+    """Fold row 24 (#215): the same-source dedupe branch under the narrow
+    plugin-ui range. A synthetic second in-range carried version (0.2.1,
+    bytes copied from 0.2.0) makes BOTH carried rows list the parity code
+    row (``src/benchweave/presentation/contracts.py`` → one bundle path) —
+    a dedupe, not a collision: the export succeeds, each row's file set
+    stays complete across the active transition, and the bundle carries
+    the code row once."""
+    import hashlib
+
+    root = tmp_path / "repo"
+    shutil.copytree(ROOT / "standards", root / "standards")
+    (root / "src/benchweave/presentation").mkdir(parents=True)
+    shutil.copy(
+        ROOT / "src/benchweave/presentation/contracts.py",
+        root / "src/benchweave/presentation/contracts.py",
+    )
+    corpus = json.loads((root / "standards/corpus-manifest.json").read_bytes())
+    template_rows = [
+        row for row in corpus["files"] if row["path"].startswith("plugin-ui/0.2.0/")
+    ]
+    assert template_rows, "the seed corpus carries plugin-ui/0.2.0 rows"
+    for row in template_rows:
+        relative = row["path"].replace("plugin-ui/0.2.0/", "plugin-ui/0.2.1/")
+        source = root / "standards" / row["path"]
+        target = root / "standards" / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, target)
+        corpus["files"].append(
+            {
+                "path": relative,
+                "source": row["source"],
+                "sha256": hashlib.sha256(target.read_bytes()).hexdigest(),
+            }
+        )
+    (root / "standards/corpus-manifest.json").write_text(json.dumps(corpus))
+
+    out = tmp_path / "bundle"
+    export_bundle(root, out)  # dedupe, not a collision: the export succeeds
+
+    document = json.loads((out / "bundle-manifest.json").read_bytes())
+    plugin_rows = {
+        row["version"]: row for row in document["standards"] if row["id"] == "plugin-ui"
+    }
+    assert set(plugin_rows) == {"0.2.0", "0.2.1"}  # both carried versions ride
+    for version, row in plugin_rows.items():
+        assert row["active"] is (version == "0.2.0")
+        paths = {file["path"] for file in row["files"]}
+        assert "plugin-ui/contracts.py" in paths, f"the {version} row's set is complete"
+    code = out / "files/plugin-ui/contracts.py"
+    assert code.is_file() and code.read_bytes() == (
+        root / "src/benchweave/presentation/contracts.py"
+    ).read_bytes()

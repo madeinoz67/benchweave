@@ -348,8 +348,24 @@ def load_dependency_policy(root: Path) -> DependencyPolicy:
                     f"{where}: yanked entry {version!r} needs a pure-semver key with "
                     "reason and since strings"
                 )
+            since = record["since"]
+            if DEV_OPENED_PATTERN.fullmatch(since) is None:
+                # Fold row 4 (#215): the yank record's since is machine-readable
+                # history, gated exactly like the dev-head opened field — shape
+                # first, then a real calendar parse.
+                raise StandardsError(
+                    f"{where}: yanked entry {version!r} since {since!r} is not an ISO "
+                    "YYYY-MM-DD date"
+                )
+            try:
+                date.fromisoformat(since)
+            except ValueError:
+                raise StandardsError(
+                    f"{where}: yanked entry {version!r} since {since!r} is not a real "
+                    "calendar date"
+                ) from None
             yanked.append(
-                YankRecord(version=str(version), reason=record["reason"], since=record["since"])
+                YankRecord(version=str(version), reason=record["reason"], since=since)
             )
         retired_raw = raw.get("retired")
         if not isinstance(retired_raw, list) or not all(

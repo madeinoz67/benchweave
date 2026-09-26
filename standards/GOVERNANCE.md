@@ -29,7 +29,7 @@ lock stays the authority); none of these are digest-pinned, so they move no
 corpus rows and need no repin (issue #158).
 The lock's `sdk` field names the pinned SDK's own version (issue #187 fork
 (a)), and `benchweave.standards check` anchors it to the pinned pyproject.
-The `dependency_policy` block (G-3 below; issue #203 slice 1) is governance
+The `dependency_policy` block (G-3 below; issue #215, parent #203) is governance
 data in this same family: a top-level block in `standards-manifest.json`,
 read by its own fail-closed loader, moving no corpus rows and needing no
 repin — the `sdk_compatibility` precedent.
@@ -248,14 +248,16 @@ humans decide exactly the timing, batching and exception calls, and those
 decisions live in reviewable records. Nothing here vests authority in an
 agent: the governor lane reviews, it does not rule.
 
-**G-3 (dependency policy, 2026-09-26, issue #203):** the `dependency_policy`
-block is governance data beside `sdk_compatibility`; range changes are
-coordinator decisions requiring a linked ruling reference; yank and retirement
-are recorded statuses with the 0.2.1 yank and the `ea70c6a5`-enumerated
-retired identifiers as the founding entries. The served set (retained ∧
-in-range ∧ ¬yanked) is derived from it by `benchweave.standards` machinery and
-mirrored verbatim into the exported bundle and the SDK lock; drift between the
-three surfaces is refused by name (`served_set_drift:`,
+**G-3 (dependency policy, 2026-09-26, issue #215, parent #203):** the
+`dependency_policy` block is governance data beside `sdk_compatibility`; range
+changes are coordinator decisions requiring a linked ruling reference; yank and
+retirement are recorded statuses with the 0.2.1 yank and the
+`ea70c6a5`-enumerated retired identifiers as the founding entries. The
+CARRIED set (retained ∧ in-range, yanked versions riding marked) is mirrored
+verbatim into the exported bundle and the SDK lock; every consumer re-derives
+the served set (¬yanked) from the markers plus the mirrored block — a carried
+yanked row is never called served (the #215 fold row 8 correction). Drift
+between the three surfaces is refused by name (`served_set_drift:`,
 `policy_mirror_drift:`).
 
 ## Recorded ruling — VR-47 points 1 and 2 (R-1/R-2, 2026-09-26, issue #203)

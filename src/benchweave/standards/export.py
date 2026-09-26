@@ -89,14 +89,20 @@ def _entry(
     *,
     yanked: bool = False,
 ) -> dict[str, Any]:
-    """One bundle row: the SERVED version's corpus files.
+    """One bundle row: the CARRIED version's corpus files.
 
     The ACTIVE version's row keeps the manifest's full metadata (status,
-    released, supersedes) plus the marker; a non-active served version has no
-    manifest entry of its own, so its row carries ``status: "retained"`` — the
-    true statement about it — and its file set is enumerated from the
-    corpus-manifest rows under ``<id>/<version>/`` (the byte authority), which
-    is exactly the active row's set when the two coincide.
+    released, supersedes) plus the marker; a non-active carried version has
+    no manifest entry of its own, so its row carries ``status: "retained"``
+    — the true statement about it — and its file set is enumerated from the
+    corpus-manifest rows under ``<id>/<version>/`` (the byte authority),
+    which is exactly the active row's set when the two coincide. A carried
+    version always has corpus rows — retention is enumerated FROM those
+    rows (``retained_versions``), so an empty enumeration here is
+    unconstructible from loader-reachable state; the
+    ``served_version_unresolved:`` guard this branch once carried was
+    deleted on that proof (#215 fold row 14; the proof is recorded in the
+    slice fix-wave record).
     """
     active = version == entry.version
     if active:
@@ -109,10 +115,6 @@ def _entry(
             for row in corpus.get("files", [])
             if str(row["path"]).startswith(prefix)
         )
-        if not relatives:
-            raise StandardsError(
-                f"served_version_unresolved: {entry.id}: {version} has no corpus rows"
-            )
         # The entry's live-source rows (paths outside standards/, the
         # plugin-ui parity code row) list in EVERY carried row of the
         # standard: the bytes are one object and cannot multi-serve (F1/D2),
