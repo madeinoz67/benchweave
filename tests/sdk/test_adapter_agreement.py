@@ -98,6 +98,20 @@ GATEWAY_SERVICES_SUBSET = frozenset({"monotonic"})
 EXPECTED_CAPTURE_SERVICES = frozenset(
     {"artifact_append", "artifact_finalise", "artifact_abort"}
 )
+# documented gap: the dataset surface is SDK-only (issue #146 slice 1
+# landed the protocol; the gateway bundle arrives with slice 3 — the
+# bridge itself never calls a dataset member)
+EXPECTED_DATASET_SERVICES = frozenset(
+    {
+        "dataset_publish",
+        "dataset_lookup",
+        "artifact_read",
+        "payload_create",
+        "payload_append",
+        "payload_finalise",
+        "payload_abort",
+    }
+)
 REQUEST_KEYS = frozenset({"operation_id", "verb", "arguments"})
 RESULT_KEYS = frozenset({"operation_id", "verb", "status", "data"})
 ERROR_PATH_KEYS = frozenset({"operation_id", "verb", "status", "error"})
@@ -434,8 +448,10 @@ def check_context_agreement(sdk: ModuleType) -> None:
     assert frozenset(vars(context)) == EXPECTED_CONTEXT_DATA | GATEWAY_CONTEXT_EXTRA, (
         "gateway _Context data members drifted"
     )
-    # documented gap: dataset_id is pinned present on both sides and is always
-    # None from the bridge (no dataset support in the synchronous host)
+    # documented gap, narrowed by issue #146 slice 2: dataset_id is
+    # verb-conditional — None for non-invoke dispatches (this fresh
+    # construction) and a host-minted `ds:` opaque for invoke (gate I6,
+    # minted in dispatch; the bridge unit tests pin the minting itself).
     assert context.dataset_id is None
     gateway_methods = _protocol_methods(otdp_bridge._Context)
     assert set(gateway_methods) == set(CONTEXT_METHODS), "gateway _Context methods drifted"
@@ -487,11 +503,16 @@ def check_adapter_surface(sdk: ModuleType, source: str) -> None:
 
 
 def check_host_services(sdk: ModuleType, source: str) -> None:
-    """expected literals <-> SDK HostServices/CaptureServices <-> the exercised subset."""
+    """expected literals <-> SDK HostServices/CaptureServices/DatasetServices
+    <-> the exercised subset."""
     services = _protocol_surface(sdk.HostServices)
     assert services == EXPECTED_HOST_SERVICES, "SDK HostServices member set drifted"
     capture = _protocol_surface(sdk.CaptureServices)
     assert capture == EXPECTED_HOST_SERVICES | EXPECTED_CAPTURE_SERVICES
+    dataset = _protocol_surface(sdk.DatasetServices)
+    assert dataset == EXPECTED_HOST_SERVICES | EXPECTED_DATASET_SERVICES, (
+        "SDK DatasetServices drifted from the pinned twelve-member shape"
+    )
     used = bridge_services_members(source)
     assert used == GATEWAY_SERVICES_SUBSET, "bridge services subset drifted"
     # each gap row asserts its own presence so silent narrowing becomes a diff
@@ -502,6 +523,7 @@ def check_host_services(sdk: ModuleType, source: str) -> None:
         "record_evidence",
     }
     assert not (EXPECTED_CAPTURE_SERVICES & used), "capture surface must stay SDK-only"
+    assert not (EXPECTED_DATASET_SERVICES & used), "dataset surface must stay SDK-only"
 
 
 def check_envelopes(source: str, runtime: dict[str, Any]) -> None:
@@ -521,12 +543,16 @@ def check_envelopes(source: str, runtime: dict[str, Any]) -> None:
 
     tree = ast.parse(source)
     enforced = _enforced_set_literals(tree)
+    # The invoke data envelope (issue #146 slice 2): the runtime schema's
+    # closed {action_id, result} branch — no x- extension keys, unlike the
+    # stream branches — so the bridge enforces the closed set.
     assert enforced == {
         frozenset(RESULT_KEYS),
         frozenset(ERROR_PATH_KEYS),
         frozenset(ERROR_KEYS),
+        frozenset({"action_id", "result"}),
     }, (
-        "the bridge's raise-guarded envelope key sets drifted from the pinned three: "
+        "the bridge's raise-guarded envelope key sets drifted from the pinned four: "
         f"enforced={sorted(sorted(literal) for literal in enforced)}"
     )
     assert _request_keys_reaching_execute(tree) == REQUEST_KEYS, (

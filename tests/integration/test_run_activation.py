@@ -46,6 +46,7 @@ from benchweave.registry.resolver import (
     OriginConfig,
     Resolver,
 )
+from benchweave.standards.manifest import load_manifest
 from benchweave.state.store import Store
 
 REPO = Path(__file__).resolve().parents[2]
@@ -328,6 +329,20 @@ def _write_plugin_source(tmp_path: Path) -> Path:
     root.mkdir(parents=True)
     (root / "__init__.py").write_text("")
     (root / "plugin.py").write_text(ADAPTER_SOURCE)
+    # The descriptor the harness publishes pins the OTDP class contracts
+    # (catalog + measurement schema) at bundle-root paths, and #146 slice 2
+    # resolves those pins against the verified inventory at load — so the
+    # plugin source carries the corpus bytes and publish_dev ships them at
+    # exactly the pinned root paths.
+    active = next(
+        entry.version
+        for entry in load_manifest(REPO).standards
+        if entry.id == "otdp"
+    )
+    for name in ("device-profile-catalog.json", "otdp-measurement.schema.json"):
+        (root / name).write_bytes(
+            (REPO / "standards" / "otdp" / active / name).read_bytes()
+        )
     return tmp_path / "plugin" / PLUGIN_DIRNAME
 
 
@@ -1422,6 +1437,37 @@ def test_measurement_harness_capture_dispatch_over_the_composed_bridge(
         assert len(manifest["sha256"]) == 64
         spans = [span for span in bridge._adapter.dispatch_spans if span[0] == "capture"]
         assert spans and spans[0][2] > spans[0][1]
+    finally:
+        store.close()
+
+
+def test_issue146_invoke_lane_composes_over_the_real_activation_path(
+    commissioned: _CommissionedHarness,
+) -> None:
+    """Issue #146 slice 2 wiring: the demo-supply descriptor is
+    invoke-capable and pins the corpus contract pair, so build_run's real
+    activation loop constructs the dataset controller AND hands it the
+    session's shared staged writer — the invoke clamp is live (not the
+    unit-posture nullcontext), without artifact_writer on the descriptor."""
+    run_id = "run-invoke-wiring"
+    coordinator, store, content = _coordinator(commissioned, run_id, QUOTA_LIMITS)
+    try:
+        from contextlib import nullcontext
+
+        from benchweave.interfaces.app import _RetainingCoordinator
+
+        assert isinstance(coordinator, _RetainingCoordinator)
+        bridge = coordinator.plugins[DEVICE_ID]
+        assert isinstance(bridge, OTDPBridge)
+        assert bridge._dataset is not None, "no dataset controller on the real path"
+        clamp = bridge._dataset.dispatch_clamp(
+            time.monotonic_ns() + 5_000_000_000, now_ns=time.monotonic_ns()
+        )
+        clamp.__enter__()
+        clamp.__exit__(None, None, None)
+        assert not isinstance(clamp, nullcontext), (
+            "the controller clamps nothing — the session writer never reached it"
+        )
     finally:
         store.close()
 

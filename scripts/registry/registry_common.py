@@ -39,6 +39,10 @@ ROLE_BY_SUFFIX: dict[str, str] = {
     "plugin.py": "implementation",
     "adapter.py": "implementation",
     "__init__.py": "implementation",
+    # The OTDP class contracts a descriptor may pin at bundle-root paths
+    # (#146): they ship as schema-role documents, never implementation.
+    "device-profile-catalog.json": "schema",
+    "otdp-measurement.schema.json": "schema",
     "sbom.json": "sbom",
     "build-provenance.json": "build_provenance",
     "dependency-lock.json": "dependency_lock",

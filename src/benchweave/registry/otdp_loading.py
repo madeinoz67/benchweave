@@ -29,6 +29,10 @@ from benchweave.host.otdp_bridge import OTDPBridge
 from benchweave.host.plugin import SimulationInfo
 from benchweave.registry.activation import ActivationRejected
 from benchweave.registry.manifests import canonical_manifest_bytes
+from benchweave.registry.otdp_contracts import (
+    probe_descriptor_constraints,
+    resolve_otdp_contracts,
+)
 
 
 def _safe_path(value: Any) -> PurePosixPath:
@@ -178,6 +182,7 @@ def load_otdp_plugin(
     simulation: SimulationInfo,
     capture: Any = None,
     stream: Any = None,
+    dataset_writer: Any = None,
 ) -> OTDPBridge:
     """Construct an unopened read-only bridge from an admitted package.
 
@@ -186,6 +191,15 @@ def load_otdp_plugin(
     inside a regular package (including __init__.py), optionally under src/.
     Every Python module must have inventory role implementation. Dependencies
     outside the package are stdlib only; native extensions are not supported.
+
+    Issue #146 slice 2: the descriptor's pinned ``contracts`` resolve here,
+    against the verified inventory above (digest compare, parse, catalog
+    validation, the closed-registry ``$ref`` probe) — every integrity
+    failure is an ``ActivationRejected`` before the adapter module is even
+    imported; a cleanly-resolving but incomplete pair constructs no dataset
+    controller and invoke stays a verb-level UNSUPPORTED. The session's
+    shared staged writer (``dataset_writer``) rides along for the
+    controller's dispatch-clamp forwarding.
     """
     if not re.fullmatch(r"[0-9a-f]{64}", manifest_sha256):
         raise ActivationRejected("manifest_hash_mismatch")
@@ -218,6 +232,22 @@ def load_otdp_plugin(
             code_paths.add(key)
     if str(entry) not in code_paths:
         raise ActivationRejected("entry_not_implementation")
+    # Issue #146 §2.1: pinned-contract resolution against the verified
+    # inventory — a local here, threaded explicitly (never a global, never
+    # a filesystem re-read). Integrity failures refuse BEFORE any plugin
+    # code is imported; an incomplete pair yields no controller (the soft
+    # both-or-neither arm — invoke's verb-level UNSUPPORTED).
+    resolved = resolve_otdp_contracts(descriptor.get("contracts"), inventory=inventory)
+    # Fix wave item 8 (R22): the descriptor's own declared
+    # input_constraints join the probe — present descriptor bytes that
+    # lie (a dangling $ref/$dynamicRef I5's bare compile cannot resolve)
+    # refuse here, never escape the gate region uncontrolled at dispatch.
+    probe_descriptor_constraints(descriptor)
+    dataset: Any = None
+    if resolved is not None and "invoke" in _descriptor_capabilities(descriptor):
+        from benchweave.content.dataset_services import build_dataset_controller
+
+        dataset = build_dataset_controller(resolved, writer=dataset_writer)
     # Find the contiguous regular-package chain; never add cache dirs to sys.path.
     root = entry.parent
     if str(root / "__init__.py") not in code_paths:
@@ -253,9 +283,18 @@ def load_otdp_plugin(
             simulation=simulation,
             capture=capture,
             stream=stream,
+            dataset=dataset,
         )
         bridge._release_loader = release
         return bridge
     except BaseException:
         release()
         raise
+
+
+def _descriptor_capabilities(descriptor: dict[str, Any]) -> list[Any]:
+    """The descriptor's declared capabilities, type-read (a malformed
+    descriptor yields no capability — the gate's type-validation
+    discipline)."""
+    capabilities = descriptor.get("capabilities")
+    return capabilities if isinstance(capabilities, list) else []
