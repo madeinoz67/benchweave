@@ -404,6 +404,28 @@ findings (F1–F4 MEDIUM, F5–F7 LOW, F8 NIT); all folded on-branch pre-merge:
 The four pre-committed verdicts are unchanged; the fold exists to make them
 unambiguously reproducible, which is what §7 demanded all along.
 
+## Amendment 2 — round-2 refute fold (2026-09-26)
+
+Fold verification (same lane, round 2) closed seven of eight round-1 findings and
+returned three fold-introduced findings; all folded:
+
+- **NEW-1 (MEDIUM)** the Amendment 1 owner-fired clause (channel-or-stated-none as a
+  requirement) refused #133 D3's "The owner asks for published retrospectives",
+  flipping verdict (ii) — and falsifying Amendment 1's closing sentence, which
+  claimed the four verdicts were unchanged. That claim was written in the belief
+  the fold preserved them and was wrong against the shipped text as delivered (G4
+  claim-accuracy defect; corrected here, in the record whose job is accuracy). The
+  clause now makes the ask's named object the well-formedness test (bare "when the
+  owner asks" is refused) and demotes channel-naming to the recommended strong
+  form — D3 conforms, the verdict set reproduces, and #67's "a product call on the
+  preview's information architecture" conforms without an attribution test.
+- **NEW-2 (LOW)** the vocabulary tiebreak's "inside a table, the column is always
+  the home" was falsified by #231 §5's carrier-worded fire-condition column →
+  qualified to deferral tables.
+- **NEW-3 (LOW)** the home enumeration's exemplar/exhaustive status was unstated
+  for column values → stated: the two strings are exemplars; values designate,
+  carriage sentences must use the vocabulary outright.
+
 ---
 
 *Provenance: grounded against main @ `67a647c` and the SDK standalone checkout on
