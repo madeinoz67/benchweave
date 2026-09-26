@@ -66,7 +66,11 @@ _MAX_POLICY_BYTES = 1_048_576
 #: constraining ``put_evidence``'s kind at landing is out of this slice's
 #: scope. ``\Z`` (not ``$``) so a trailing-newline selector can never
 #: pass admission into a silently dead rule (finding 14).
-_SELECTOR_PATTERN = r"^(capture|evidence):[A-Za-z0-9][A-Za-z0-9._-]{0,63}\Z"
+# The dataset lane joined the class vocabulary with #146 slice 3's item-5
+# fold (payload staging rows carry dataset:<encoding> labels in BOTH the
+# disposal and growth sections); without selector admission the class is
+# Ungovernable-by-policy — resolvable only through the default rule.
+_SELECTOR_PATTERN = r"^(capture|evidence|dataset):[A-Za-z0-9][A-Za-z0-9._-]{0,63}\Z"
 _BENCH_ID_PATTERN = r"^[a-z][a-z0-9_.-]{0,63}\Z"
 
 #: The duration ceiling (issue #184 finding 3): the datetime domain's

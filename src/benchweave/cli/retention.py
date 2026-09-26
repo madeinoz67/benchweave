@@ -650,8 +650,9 @@ def build_retention_report(
             }
         )
 
-    for context, created_at, updated_at, charged, fmt in store.connection.execute(
-        "SELECT context_key, created_at, updated_at, charged_bytes, format"
+    for context, created_at, updated_at, charged, fmt, cap_id in store.connection.execute(
+        "SELECT context_key, created_at, updated_at, charged_bytes, format,"
+        " capture_id"
         " FROM capture_staging WHERE state = ? ORDER BY updated_at, capture_id",
         (_FINALISED,),
     ):
@@ -681,11 +682,20 @@ def build_retention_report(
         lane["bytes"] += int(charged)
         lane["rows"] += 1
         if policy is not None:
-            fmt_class = (
-                f"capture:{fmt}"
-                if isinstance(fmt, str) and fmt in _CAPTURE_CLASSES
-                else "capture:unknown"
-            )
+            # The SAME lane classification as the disposal section (item 5
+            # rider 2's completion — the adversary's second site): a pay:
+            # row is dataset:<encoding> here too, never capture:unknown —
+            # the report must not disagree with itself about one row.
+            if str(cap_id).startswith("pay:"):
+                fmt_class = (
+                    f"dataset:{fmt}" if isinstance(fmt, str) else "dataset:unknown"
+                )
+            else:
+                fmt_class = (
+                    f"capture:{fmt}"
+                    if isinstance(fmt, str) and fmt in _CAPTURE_CLASSES
+                    else "capture:unknown"
+                )
             lane["governs"] += 1
             if policy.resolve(
                 bench=_bench_of(context, run_states), data_class=fmt_class

@@ -1941,3 +1941,75 @@ def test_w5_pay_rows_carry_the_dataset_row_kind(tmp_path: Path) -> None:
         assert rows["cap-raw"]["data_class"] == "capture:raw_binary"
     finally:
         store.close()
+
+
+def test_w5_growth_site_classes_pay_rows_dataset(tmp_path: Path) -> None:
+    """Item 5 rider 2 COMPLETION (the adversary's second site): the
+    growth/policy-hold classifier classes pay: rows as the dataset lane —
+    the same row must not be capture:unknown in one section of the report
+    and dataset:f64le in the other. A policy that holds dataset:* but not
+    capture:* makes the disagreement observable in the lane's held flag."""
+    from benchweave.cli.retention import build_retention_report
+    from benchweave.control.retention_policy import load_retention_policy
+
+    data_dir = _seed(tmp_path)
+    policy_path = _write_policy(data_dir / "retention-policy.json")
+    # A dataset class that holds; the capture classes default to not.
+    doc = json.loads(policy_path.read_text())
+    doc["classes"].append(
+        {
+            "selector": "dataset:f64le",
+            "duration_s": 3600,
+            "retain_after": "landing",
+            "on_disposition": "review",
+            "hold": True,
+        }
+    )
+    policy_path.write_text(json.dumps(doc))
+    policy = load_retention_policy(policy_path)
+    store, content = _open(data_dir)
+    try:
+        # A dedicated terminal run whose lane holds ONLY payload rows — a
+        # mixed lane cannot discriminate (held requires EVERY row held and
+        # the capture rows are not).
+        store.create_run("run-d", {"procedure_id": "demo"}, "op", T0)
+        store.put_run_state("run-d", BENCH, "terminal", T2)
+        store.finalize_run(
+            "run-d", {"run_id": "run-d", "outcome": "passed", "ended_at": T2}
+        )
+        writer = CaptureStagingStore(
+            store, max_capture_bytes=10_000_000, max_dataset_bytes=10_000_000
+        )
+        for pid in ("pay:run-d:1", "pay:run-d:2"):
+            writer.open_payload(
+                payload_id=pid,
+                context_key="run:run-d",
+                encoding="f64le",
+                byte_limit=64,
+                now=T0,
+            )
+            writer.append(pid, b"\x08" * 8, "run:run-d")
+            writer.finalise(pid, T1, "run:run-d")
+        report = build_retention_report(store, policy=policy, now=NOW)
+        # The disposal section: the dataset label (rider 2's own arm).
+        rows = {r["id"]: r for r in report["rows"]}
+        assert rows["pay:run-d:1"]["row_kind"] == "dataset"
+        assert rows["pay:run-d:1"]["data_class"] == "dataset:f64le"
+        # The growth section: the same class — the dataset hold governs the
+        # lane (both rows dataset:f64le-held; capture rows in run-a's lane
+        # — the waveform caps — are NOT held, so held-ALL is what flips).
+        growth_section = report["growth"]
+        growth = {g["context_key"]: g for g in growth_section["captures"]}
+        payload_lane = growth["run:run-d"]
+        assert payload_lane["n"] == 2
+        assert payload_lane["held"] is True, (
+            "the growth section classed the pay: rows capture:unknown — the "
+            "report disagrees with itself about the same row's class"
+        )
+        # The seed's capture lanes are excluded from the growth projection
+        # on their own arithmetic (run-b n==1; run-a zero-span) — the
+        # payload lane is the section's discriminator, and its capture
+        # rows' DISPOSAL labels were asserted byte-identical in rider 2's
+        # own control.
+    finally:
+        store.close()
