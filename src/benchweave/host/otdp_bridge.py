@@ -1458,10 +1458,14 @@ class OTDPBridge:
                 if admitted is None or canonical_json(admitted) != canonical_json(
                     payload
                 ):
-                    raise InvalidInvokeResult(
+                    note = self._dataset.dataset_shape_note(payload)
+                    refusal = (
                         "invoke returned a dataset-shaped result that was never "
                         "admitted through dataset_publish"
                     )
+                    if note is not None:
+                        refusal = f"{refusal} ({note})"
+                    raise InvalidInvokeResult(refusal)
             value = {"action_id": request.arguments["action_id"], "result": payload}
         else:
             if (

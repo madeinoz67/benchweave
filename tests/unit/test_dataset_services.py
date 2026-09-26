@@ -801,3 +801,38 @@ def test_r7_builder_permission_table(tmp_path: Path) -> None:
             assert composed.monotonic() == 0.0  # the base's state carried
     finally:
         harness.close()
+
+
+# --- issue #146 slice 3 S3e: the riders -------------------------------------------
+
+
+def test_retention_quota_is_derived_from_one_source() -> None:
+    """LOW-3's pin: the max_page_size x 10 retention quota appears as ONE
+    textual derivation in app.py (the helper) — every consumer derives
+    from it, so the three historical sites cannot drift apart."""
+    from pathlib import Path
+
+    source = (Path(__file__).resolve().parents[2] / "src/benchweave/interfaces/app.py").read_text()
+    assert source.count('max_page_size"]) * 10') == 1, (
+        "the max_page_size x10 retention derivation must appear exactly "
+        "once (the _retention_quota helper); consumers derive from it"
+    )
+    assert "def _retention_quota(" in source
+
+
+def test_dataset_shape_note_names_the_schema_finding(tmp_path: Path) -> None:
+    """Rider (c): a dataset-shaped result that also fails the pinned
+    schema carries the validator's own finding in the refusal note (a
+    `kind` outside the corpus's nine dataset kinds names the enum) — and
+    a schema-clean unpublished dataset carries no note (the publication
+    lie stands alone)."""
+    harness = DatasetHarness(tmp_path)
+    try:
+        bogus = a_valid_manifest()
+        bogus["kind"] = "not-a-kind"
+        note = harness.controller.dataset_shape_note(bogus)
+        assert note is not None and "not-a-kind" in note and "kind" in note
+        assert harness.controller.dataset_shape_note(a_valid_manifest()) is None
+        assert harness.controller.dataset_shape_note({"not": "shaped"}) is None
+    finally:
+        harness.close()

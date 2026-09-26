@@ -17,7 +17,7 @@ import logging
 import sys
 import tempfile
 import threading
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Mapping
 from contextlib import asynccontextmanager
 from pathlib import Path
 from types import ModuleType
@@ -514,7 +514,7 @@ def _run_quota_limits(limits: dict[str, int]) -> QuotaLimits:
         )
     return QuotaLimits(
         max_dataset_bytes=int(limits["max_dataset_bytes"]),
-        max_evidence_entries=int(limits["max_page_size"]) * 10,
+        max_evidence_entries=_retention_quota(limits),
         max_event_batch=int(limits["max_event_batch"]),
         max_capture_bytes=int(limits.get("max_capture_bytes", 16 * 1024 * 1024)),
         max_subscriptions=int(limits.get("max_subscriptions", 16)),
@@ -565,6 +565,14 @@ class _SimPlan:
     def __init__(self, name: str) -> None:
         self.name = name
         self.disclosure: str | None = None
+
+
+def _retention_quota(limits: Mapping[str, int]) -> int:
+    """The ONE derivation of the per-context evidence/dataset retention
+    quota: max_page_size x 10 (issue #146 LOW-3). Every consumer derives
+    from here — the quota numbers can no longer drift apart (the pin
+    test asserts the literal appears exactly once in this module)."""
+    return int(limits["max_page_size"]) * 10
 
 
 def _require_registry_session(session: RegistrySession | None) -> RegistrySession:
@@ -707,7 +715,7 @@ def _build_run_factory(
         # event lands on the run's event dimension with a live timestamp.
         services = RetainingServices(
             content,
-            quota=int(limits["max_page_size"]) * 10,
+            quota=_retention_quota(limits),
             now=now_iso(),
             wall=now_iso,
             context_key=f"run:{run_id}",
@@ -900,7 +908,7 @@ def create_app(
     else:
         contracts = _CONTRACTS
     # Same retention arithmetic as the seam's bench-event windows.
-    quota = int(limits["max_page_size"]) * 10
+    quota = _retention_quota(limits)
     worker = RunWorker(
         store,
         content,

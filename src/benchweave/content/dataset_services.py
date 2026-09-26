@@ -249,10 +249,26 @@ class DatasetController:
     # --- the admitted-manifest state -------------------------------------------
 
     def is_dataset_shaped(self, result: Any) -> bool:
-        """The manifest's required keys all present (§2.3's detector)."""
+        """The manifest's required keys all present (§2.3's detector —
+        required keys only, so the honest channel for an unpublished
+        dataset names the publication lie, not a subschema miss)."""
         return isinstance(result, dict) and (
             self._contracts.dataset_required_keys <= set(result)
         )
+
+    def dataset_shape_note(self, result: Any) -> str | None:
+        """The sharper refusal note for a dataset-shaped result that also
+        fails the pinned measurement schema (Amendment 2 rider): the
+        validator's own finding — e.g. a `kind` outside the corpus's nine
+        dataset kinds — appended to the bridge's publication-lie refusal.
+        The corpus's check family is M01-M15; this note never claims a
+        narrower range."""
+        if not self.is_dataset_shaped(result):
+            return None
+        error = next(iter(self._contracts.dataset_validator.iter_errors(result)), None)
+        if error is None:
+            return None
+        return f"the pinned measurement schema refuses it at {error.json_path}: {error.message}"
 
     def admitted_for(self, operation_id: str) -> dict[str, Any] | None:
         """The admitted manifest for THIS operation, if any — the bridge's
