@@ -569,10 +569,14 @@ def test_resolved_pair_without_invoke_capability_constructs_no_controller(
         plugin.plugin_close()
 
 
-def test_contract_path_outside_the_bundle_refused_at_load(tmp_path: Path) -> None:
-    """A contracts path the verified inventory does not carry refuses at
-    load — resolution reads the verified inventory only, never the
-    filesystem (Amendment 1 NIT-1's no-re-read rule)."""
+def test_contract_path_outside_the_bundle_is_soft_unresolved(tmp_path: Path) -> None:
+    """A pin whose path the verified inventory does not carry is the SOFT
+    'unresolved contracts' arm (§2.2's table row, R16's verb-level row):
+    no bytes exist to disagree with anything, so the load proceeds with NO
+    class surface — invoke refuses UNSUPPORTED at the verb — and
+    resolution never reads the filesystem (Amendment 1 NIT-1's no-re-read
+    rule). The hard arms are bytes that ARE present and lie: digest
+    mismatch, unparsable, schema-invalid, unresolvable $ref."""
     measurement = _corpus_bytes("otdp-measurement.schema.json")
     files = {"contracts/measurement.json": measurement}
     descriptor = _contracts_descriptor({"contracts/measurement.json": measurement})
@@ -583,8 +587,11 @@ def test_contract_path_outside_the_bundle_refused_at_load(tmp_path: Path) -> Non
             "sha256": hashlib.sha256(b"absent").hexdigest(),
         }
     )
-    with pytest.raises(ActivationRejected, match="contract_bundle_path_absent"):
-        _load_with_contracts(tmp_path, files, descriptor)
+    plugin = _load_with_contracts(tmp_path, files, descriptor)
+    try:
+        assert plugin._dataset is None
+    finally:
+        plugin.plugin_close()
 
 
 def test_unparsable_contract_refused_at_load(tmp_path: Path) -> None:

@@ -12,8 +12,8 @@ exists in this step.
 The refusal taxonomy (integrity-hard at load, completeness-soft at the
 verb — the design's risk-1 ordering, kept as a named decision):
 
-* LOAD-level (:class:`ActivationRejected` before any dispatch): a contract
-  path the inventory does not carry, a digest mismatch (R9), unparsable
+* LOAD-level (:class:`ActivationRejected` before any dispatch) — pinned
+  bytes that ARE present and LIE: a digest mismatch (R9), unparsable
   bytes, a document that is neither the measurement schema nor
   catalog-schema-valid (C01/M14: unknown required contracts are rejected,
   never treated as opaque success), more than one catalog-shaped document
@@ -27,12 +27,17 @@ verb — the design's risk-1 ordering, kept as a named decision):
   witness that resolution is SET-scoped: its dataset-producing actions
   reference ``urn:otdp:measurement:0.2.2#/$defs/dataset``, so a catalog
   pinned without the measurement schema refuses HERE.
-* VERB-level (structural, never a runtime flag): a pinned set that
-  resolves cleanly but yields only one half of the pair — an action
-  registry without the measurement schema, or vice versa — constructs no
-  class surface at all (the CON-10 capture-keys precedent: a
-  half-declared class surface grants no class surface); ``invoke`` then
-  refuses UNSUPPORTED at the bridge gate.
+* VERB-level (structural, never a runtime flag) — "unresolved contracts"
+  in the design's own words (§2.2's table row, R16's soft arm): a pin
+  whose path the verified inventory does not carry (nothing was verified
+  false — the class surface simply cannot be assembled from this bundle),
+  or a pinned set that resolves cleanly but yields only one half of the
+  pair, constructs no class surface at all (the CON-10 capture-keys
+  precedent: a half-declared class surface grants no class surface);
+  ``invoke`` then refuses UNSUPPORTED at the bridge gate. The committed
+  demo lattice loads under exactly this arm: its descriptor pins the
+  corpus pair, its historical payload predates contract shipping, and no
+  demo run invokes.
 
 External ``$ref`` retrieval stays disabled (extension-contract §1): the
 compiled validators resolve through a CLOSED ``referencing`` registry
@@ -188,16 +193,18 @@ def resolve_otdp_contracts(
 
     Returns the complete class surface when the pinned set resolves to
     exactly one catalog-schema-valid catalog AND the measurement schema;
-    ``None`` when the descriptor pins no contracts or the pair is
-    incomplete (the soft both-or-neither arm — no class surface, invoke
-    refuses UNSUPPORTED at the bridge). Every integrity failure raises
-    :class:`ActivationRejected` at load, before any dispatch.
+    ``None`` when the descriptor pins no contracts, a pinned path is
+    absent from the verified inventory, or the pair is incomplete (the
+    soft "unresolved contracts" arms — no class surface, invoke refuses
+    UNSUPPORTED at the bridge). Every integrity failure of PRESENT bytes
+    raises :class:`ActivationRejected` at load, before any dispatch.
     """
     if not isinstance(entries, list) or not entries:
         return None
     catalog: tuple[str, dict[str, Any]] | None = None
     measurement: tuple[str, dict[str, Any]] | None = None
     documents: list[tuple[str, dict[str, Any]]] = []
+    unresolved = False
     for entry in entries:
         if not isinstance(entry, dict):
             raise ActivationRejected("contract_entry_malformed")
@@ -215,7 +222,13 @@ def resolve_otdp_contracts(
             raise ActivationRejected("contract_entry_malformed")
         data = inventory.get(path)
         if data is None:
-            raise ActivationRejected("contract_bundle_path_absent")
+            # The soft "unresolved contracts" arm (§2.2's table, R16's
+            # verb-level row): no bytes exist to disagree with anything —
+            # the class surface cannot be assembled from this bundle, which
+            # refuses the VERB (no controller), never the run. Bytes that
+            # ARE present and lie refuse the load below.
+            unresolved = True
+            continue
         if hashlib.sha256(data).hexdigest() != declared:
             raise ActivationRejected("contract_hash_mismatch")
         try:
@@ -242,9 +255,10 @@ def resolve_otdp_contracts(
         documents.append((identifier, document))
     registry = _closed_registry(documents)
     _probe_refs(documents, registry)
-    if catalog is None or measurement is None:
-        # The soft both-or-neither arm: the pinned set resolved cleanly but
-        # is half a class surface — no controller, verb-level UNSUPPORTED.
+    if unresolved or catalog is None or measurement is None:
+        # The soft arms: an unassemblable set (a path the inventory does
+        # not carry) or a cleanly-resolving half pair — no controller,
+        # verb-level UNSUPPORTED.
         return None
     actions: dict[str, CompiledAction] = {}
     for action_id, spec in catalog[1].get("actions", {}).items():
