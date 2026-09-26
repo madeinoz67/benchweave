@@ -2878,14 +2878,18 @@ def test_row_b_clamp_negative_injected_remaining_clamps_to_zero(
 _INVOKE_REPO = Path(__file__).resolve().parents[2]
 
 
-def _active_measurement_bytes() -> bytes:
+def _active_otdp_bytes(name: str) -> bytes:
     from benchweave.standards.manifest import load_manifest
 
     active = next(
         entry.version for entry in load_manifest(_INVOKE_REPO).standards if entry.id == "otdp"
     )
-    measurement = _INVOKE_REPO / "standards" / "otdp" / active / "otdp-measurement.schema.json"
-    return measurement.read_bytes()
+    document = _INVOKE_REPO / "standards" / "otdp" / active / name
+    return document.read_bytes()
+
+
+def _active_measurement_bytes() -> bytes:
+    return _active_otdp_bytes("otdp-measurement.schema.json")
 
 
 def _invoke_synthetic_contracts() -> Any:
@@ -2899,9 +2903,13 @@ def _invoke_synthetic_contracts() -> Any:
     from benchweave.registry.otdp_contracts import resolve_otdp_contracts
 
     measurement = _json.loads(_active_measurement_bytes())
+    # The version consts derive from the corpus catalog bytes (the
+    # loader-test precedent) — the schema pins both to the active corpus
+    # version, so a hardcoded literal would be a version-bearing surface.
+    corpus_catalog = _json.loads(_active_otdp_bytes("device-profile-catalog.json"))
     catalog = {
-        "catalog_version": "0.2.2",
-        "otdp_version": "0.2.2",
+        "catalog_version": corpus_catalog["catalog_version"],
+        "otdp_version": corpus_catalog["otdp_version"],
         "profiles": [
             {
                 "id": "demo.profile/1.0.0",

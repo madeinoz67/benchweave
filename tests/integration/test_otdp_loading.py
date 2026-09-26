@@ -334,9 +334,10 @@ def test_the_load_path_hands_over_the_scoped_shape_without_permission(tmp_path: 
 # profiles minItems 1, actions with the five required fields); the
 # measurement schema is identified by its `urn:otdp:measurement:` $id and
 # `$defs/dataset` presence; the load-time $ref probe is design §2.1
-# Amendment 1 MEDIUM-3 (R14) — the real catalog's twelve
-# `urn:otdp:measurement:0.2.2#/$defs/dataset` output refs are the in-tree
-# witness that resolution is SET-scoped, not document-scoped.
+# Amendment 1 MEDIUM-3 (R14) — the real catalog's dataset-producing
+# output refs target the measurement schema's dataset def by urn and are
+# the in-tree witness that resolution is SET-scoped, not
+# document-scoped.
 
 _ROOT = Path(__file__).resolve().parents[2]
 
