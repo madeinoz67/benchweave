@@ -1,6 +1,6 @@
 # Contributor Publishing Path — Requirements PRD
 
-**Status:** Draft v0.3 (2026-09-26; v0.2 2026-09-26; v0.1 2026-09-25) · **Author:** Stephen (madeinoz67), standards coordinator · **Tracking issue:** madeinoz67/benchweave#209 (this PRD, the design record and the work all live under it) · **Posted for commentary**
+**Status:** Draft v0.3 · **ruled 2026-09-26** (Q1 to Q21 accepted as recommended; see §9) · **Author:** Stephen (madeinoz67), standards coordinator · **Tracking issue:** madeinoz67/benchweave#209 (this PRD, the design record and the work all live under it) · **Posted for commentary**
 
 > v0.3 adds §5(l.7) GitHub-native detection and response surfaces (CR-59 to CR-62, Q21), and §5(m) standalone and shared plugins with the kind taxonomy (CR-56 to CR-58, Q20) plus author-sharing user stories — the differentiation and sharing mechanisms for plugins outside the signed-admission path. A decision review of Q1 to Q19 accompanies this draft in the run record; rulings remain with the owner.
 > v0.2 added §5(l) malicious-plugin risk and handling: CR-35 to CR-55, NFR-S1 to NFR-S3, Q12 to Q19, and security entry criteria on the increments. Grounded in a 12-agent adversarial run over the real code: four machinery readers, four threat lenses producing a 56-entry threat catalogue, and two independent refute lanes recording 63 verdicts (59 confirmed gap, 2 owner calls, 2 refuted; lane coverage 32 and 31 entries of 56, with the uncovered and truncated entries disclosed at Q19).
@@ -378,3 +378,29 @@ Cross-references: a shared plugin is untrusted by definition, so the isolated ev
 5. **Execution posture (new, warranted by §5(l))**: loader parity (CR-43), sim-lane separation (CR-44), the isolated evaluation posture (CR-46), the egress decision (CR-47), protective-path responsiveness evidence (CR-48), and the boundary-documentation requirements (CR-51, CR-52, CR-55). These bind the gateway/plugin contract the publishing lane depends on, not the lane's own surfaces, so forcing them into a publishing increment would blur its review. *Acceptance:* each CR's falsifier holds. If the owner holds the line at four increments, these land as named deferrals with owners inside existing increments, and the (l.6) residual note carries them explicitly. The cheap documentation-boundary requirements (CR-51, CR-52, CR-55) should ride whichever increment ships first.
 
 **Relationship to #203:** CR-18 and CR-19 are the only version-declaration touchpoints; the design record must cross-reference #203's PRD so pin semantics do not diverge. **Relationship to #210:** the gateway operator console is out of scope here; CR-30's admin surface is catalogue/registry management, not gateway administration, and where CR-37/CR-52 bind what an approver must be shown, they bind the decision record's data — #210 owns any console that renders it.
+
+## 9. Coordinator rulings (2026-09-26)
+
+All 21 open questions ruled as recommended; the design record treats these as fixed parameters. Q12 confirms CR-13 stands as written.
+
+1. **Q1 — Home = hybrid (option 3):** records and catalogue data in a standalone registry repo, submit tooling in the SDK repo, the gateway-owned website renders a generated index. The CR-59 platform-detection baseline applies to every lane repository.
+2. **Q2 — One signature;** review outcome as minimal fields inside the signed manifest (checklist id and version, reviewer identity, outcome, review-record digest). No countersignature on the release artefact.
+3. **Q3 — `publisher/plugin` ids;** reserve `benchweave`/`otdp`/`dev-`/fixture names; write the reservation list and confusable-similarity rule before the first submission (CR-16).
+4. **Q4 — Review records live in a committed `records/` tree** in the registry repo; PR threads stay discussion-only.
+5. **Q5 — Catalogue is published releases only;** dogfood the DPS-150 plugin as the first entry to cure the empty-catalogue cold start.
+6. **Q6 — AI device reviewer is advisory-only;** GitHub-native detection is mandatory from day one (CR-59/CR-60). A mandated AI pre-check only after its false-positive rate is measured on real submissions.
+7. **Q7 — Static client-side search** over one generated JSON index serving catalogue, search and verification.
+8. **Q8 — The catalogue is the single public advisory point;** origin status/lifecycle files remain the mechanism; GHSA for security-class incidents (CR-62).
+9. **Q9 — Transfer is a re-vetting event:** both-party consent plus coordinator approval; the receiver is held to the CR-35/CR-39 bar.
+10. **Q10 — Submit command is an SDK CLI subcommand;** author-side pre-checks ride pinned vendoring plus a CI drift gate; the authoritative admission replay runs in repo-of-record CI on the submission PR.
+11. **Q11 — Version declaration lives in the manifest's existing compatibility block** (`otdp_versions`/`stg_versions`); #203 owns the semantics and any carrier ruling.
+12. **Q12 — CR-13 is HELD.** No admission-semantics effort is scheduled. The detection gap is compensated by the publishing-process controls plus platform detection recorded as review evidence (CR-60). Intent verification and the registry spec section 10 semantic checks stay unimplemented by decision, not neglect.
+13. **Q13 — Capability enforcement lands at deploy-policy and evaluation only** (systemd directives generated from operator config, informed by CR-45 declarations); no admission gate in this lane. The deferral is recorded in (l.6).
+14. **Q14 — Response reach = run-build status re-read** (cached, staleness bound per NFR-S3 direction) as the primary mechanism, paired with recorded operator delivery for gateways that do not run builds. The bound is stated per NFR-S2 with its denominator (which gateway states it covers).
+15. **Q15 — Pre-commit the `scoped_transport` tier rule now;** the transport-declaration refusal (CR-49) ships in increment 1's entry criteria. The rule is recorded in the lane rules at the moment issue #167's transport lane activates.
+16. **Q16 — Isolation end-state: recorded residual.** Per-plugin process/interpreter isolation, the tamper-evident evidence MAC (keyed outside plugin reach) and the plugin-independent safe-state path are recorded structural needs, not near-term scope; a structural isolation effort, if ever opened, gets its own train. Interim: the systemd unit plus publishing accountability (CR-46, CR-48, CR-52).
+17. **Q17 — Dev-origin posture:** documented dev-loop guidance carries it in the interim; a production-mode structural refusal of dev-unsigned origins ships as increment-5 hardening (tied to CR-40's trust-root work).
+18. **Q18 — Operator deploy config owns the address allowlist;** the CR-45 publisher declaration is the discovery input; the accepted risk is recorded (CR-47) until legitimate endpoints are nameable.
+19. **Q19 — The truncated threat-catalogue entry is re-issued and verdicted** before group (l) is treated complete. Blocking condition on the design record's security section, not on increments 1 to 3.
+20. **Q20 — Author-sharing is open-listing with recorded takedown:** any vetted publisher may share under `community-shared`; anyone may request a takedown (reason recorded); handling is recorded, no response SLA is promised (CR-57).
+21. **Q21 — Publisher-repository protections are declared in the CR-39 vetting checklist and rendered declared-not-verified** (CR-37 class). No enforcement claims are made over repositories the lane cannot read.
