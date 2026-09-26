@@ -12,7 +12,9 @@ The confirmed first instrument is **FNIRSI DPS-150**. **ESP32** is the provision
 | 4 | [First implementation slice](03-first-slice-plan.md) | Concrete proposed code/test task for exact-byte document integrity |
 | 5 | [Planning review](planning-review.md) | Coverage/link/syntax checks and limits of this planning work |
 
-Other lane planning: [Contributor publishing path PRD (issue #209)](07-contributor-publishing-prd.md) — requirements for the third-party plugin publishing lane (Draft v0.3, ruled 2026-09-26). Also: [Standards dependency management PRD (issue #203)](08-standards-dependency-management-prd.md) — requirements for standards version pinning and dependency management (Draft v0.2, coordinator rulings pending).
+Other lane planning: [Contributor publishing path PRD (issue #209)](07-contributor-publishing-prd.md) — requirements for the third-party plugin publishing lane (Draft v0.3, ruled 2026-09-26). Also: [Standards dependency management PRD (issue #203)](08-standards-dependency-management-prd.md) — requirements for standards version pinning and dependency management (Draft v0.2, ruled by proceed-direction 2026-09-26).
+
+Design records: [standards dependency management](09-standards-dependency-design.md) (slices #215-#221) and [contributor publishing](10-contributor-publishing-design.md) (slices filed under #209).
 
 The [STG 1.5 architecture](../smart-test-gateway-architecture-v1.5.md) remains the technical contract. This planning pack does not alter its qualification boundaries or constitute an implemented PoC. The first slice is expanded; following packages are expanded into code-level tasks as their dependency gates are resolved.
 
