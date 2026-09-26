@@ -3636,3 +3636,123 @@ def test_r10_another_operations_payload_replay_poisons(tmp_path: Path) -> None:
         second_plugin.plugin_close()
     finally:
         harness.close()
+
+
+def test_r2_published_dataset_result_passes_the_cross_check(tmp_path: Path) -> None:
+    """R2's inversion now that slice 3 exists: an adapter that publishes
+    its dataset through dataset_publish during the invoke and returns THE
+    ADMITTED manifest passes the bridge's cross-check (OK); a post-publish
+    MUTATION of the returned manifest still poisons — bridge-side state,
+    not adapter cooperation."""
+    harness = InvokeHarness(tmp_path)
+    try:
+        from benchweave.content.dataset_services import DatasetPayloadBundle
+
+        bundle = DatasetPayloadBundle(
+            controller=harness.controller,
+            writer=harness.writer,
+            content=harness.content,
+            channels=("ch1",),
+            clock=lambda: 0.0,
+            wall=lambda: "2026-09-26T00:00:00Z",
+            quota_evidence=50,
+            context_key="invoke-harness-session",
+        )
+
+        class PublishingAdapter(InvokeAdapter):
+            async def execute(self, request: dict[str, Any], context: Any) -> dict[str, Any]:
+                self.calls += 1
+                if request["verb"] != "invoke":
+                    return await Adapter.execute(self, request, context)
+                manifest = _A_PUBLISHABLE_MANIFEST()
+                manifest["dataset_id"] = context.dataset_id
+                admitted = await self.services.dataset_publish(manifest, context)
+                return {
+                    "operation_id": request["operation_id"],
+                    "verb": "invoke",
+                    "status": "ok",
+                    "data": {
+                        "action_id": request["arguments"]["action_id"],
+                        "result": admitted,
+                    },
+                }
+
+        plugin = OTDPBridge(
+            PublishingAdapter(),
+            descriptor=dict(INVOKE_DESCRIPTOR),
+            services=bundle,
+            simulation=SimulationInfo(True, "Synthetic"),
+            dataset=harness.controller,
+        )
+        plugin.plugin_open(object())
+        result = plugin.dispatch(
+            a_invoke_request(action_id="demo.raw/1.0.0", input={}),
+            deadline_ns=11_000_000_000,
+        )
+        assert result.status is OperationStatus.OK, result.error
+        assert result.data["result"]["dataset_id"] == "ds:op-i"
+
+        class MutatingAdapter(PublishingAdapter):
+            async def execute(self, request: dict[str, Any], context: Any) -> dict[str, Any]:
+                if request["verb"] != "invoke":
+                    return await Adapter.execute(self, request, context)
+                envelope = await PublishingAdapter.execute(self, request, context)
+                envelope["data"]["result"]["status"] = "partial"  # post-publish mutation
+                return envelope
+
+        plugin.plugin_close()
+        mutator_bridge = OTDPBridge(
+            MutatingAdapter(),
+            descriptor=dict(INVOKE_DESCRIPTOR),
+            services=bundle,
+            simulation=SimulationInfo(True, "Synthetic"),
+            dataset=harness.controller,
+        )
+        mutator_bridge.plugin_open(object())
+        mutated = mutator_bridge.dispatch(
+            a_invoke_request(action_id="demo.raw/1.0.0", input={}),
+            deadline_ns=11_000_000_000,
+        )
+        assert mutated.status is OperationStatus.UNKNOWN
+        assert mutated.error is not None
+        assert mutated.error.code is ErrorCode.PROTOCOL_ERROR
+        assert "dataset_publish" in mutated.error.message
+        mutator_bridge.plugin_close()
+    finally:
+        harness.close()
+
+
+def _A_PUBLISHABLE_MANIFEST() -> dict[str, Any]:
+    """A schema-valid manifest for the bridge publish tests (the dataset
+    harness's empirically-validated fixture shape, invented names)."""
+    return {
+        "dataset_id": "ds:op-i",
+        "kind": "scalar_set",
+        "configuration_id": None,
+        "acquisition_id": None,
+        "started_at": "2026-09-26T00:00:00Z",
+        "clock": {
+            "domain_id": "demo-clock",
+            "timestamp_source": "device",
+            "synchronisation": "unknown",
+            "uncertainty_s": None,
+        },
+        "axes": [],
+        "variables": [
+            {
+                "id": "voltage_v",
+                "quantity": "voltage",
+                "unit": "V",
+                "channel_ids": ["ch1"],
+                "dtype": "float64",
+                "dimensions": [],
+                "values": [1.0, 2.0, 3.0],
+                "uncertainty": {"status": "unknown"},
+                "calibration": {"status": "unknown"},
+                "status": "valid",
+            }
+        ],
+        "trigger": {"source": "software", "time_relative_s": None},
+        "status": "complete",
+        "context": {},
+    }

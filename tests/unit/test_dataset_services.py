@@ -12,6 +12,7 @@ live in ``test_otdp_bridge.py`` where the real dispatch path exists.
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -30,38 +31,91 @@ from benchweave.host.types import CaptureFinaliseRejected, CaptureQuotaExceeded
 from benchweave.registry.otdp_contracts import CompiledAction, ResolvedOtdpContracts
 from benchweave.state.store import Store
 
+_REPO = Path(__file__).resolve().parents[2]
+
+
+def _measurement() -> dict[str, Any]:
+    """The REAL corpus measurement schema (the publish surface validates
+    against the pinned bytes, not a stub)."""
+    import importlib
+
+    manifest = importlib.import_module("benchweave.standards.manifest")
+    active = next(
+        entry.version for entry in manifest.load_manifest(_REPO).standards
+        if entry.id == "otdp"
+    )
+    measurement: dict[str, Any] = json.loads(
+        (_REPO / "standards" / "otdp" / active / "otdp-measurement.schema.json").read_bytes()
+    )
+    return measurement
+
 
 def _contracts() -> ResolvedOtdpContracts:
     """A directly-constructed contracts value (the resolution machinery has
-    its own loader-test battery; the bundle only needs the value)."""
+    its own loader-test battery; the bundle only needs the value) — with
+    the REAL corpus dataset validator and required keys."""
     from jsonschema import Draft202012Validator
 
+    measurement = _measurement()
+    dataset_def = measurement["$defs"]["dataset"]
     return ResolvedOtdpContracts(
         actions={
             "demo.act/1.0.0": CompiledAction(
-                input_validator=Draft202012Validator({"type": "object"}),
+                input_validator=Draft202012Validator(
+                    {
+                        "type": "object",
+                        "properties": {
+                            "x": {"type": "integer"},
+                            "configuration_id": {"type": "string"},
+                        },
+                    }
+                ),
                 output_validator=Draft202012Validator({"type": "object"}),
                 side_effect="none",
                 lifecycle="direct",
             )
         },
-        dataset_required_keys=frozenset(
-            {
-                "dataset_id",
-                "kind",
-                "configuration_id",
-                "acquisition_id",
-                "started_at",
-                "clock",
-                "axes",
-                "variables",
-                "trigger",
-                "status",
-                "context",
-            }
+        dataset_required_keys=frozenset(dataset_def.get("required", [])),
+        dataset_validator=Draft202012Validator(
+            {"$ref": "#/$defs/dataset", "$defs": measurement["$defs"]}
         ),
-        dataset_validator=Draft202012Validator({"type": "object"}),
     )
+
+
+def a_valid_manifest(dataset_id: str = "ds:op-a") -> dict[str, Any]:
+    """A schema-valid scalar_set manifest (the empirically-validated
+    fixture shape; invented names throughout)."""
+    return {
+        "dataset_id": dataset_id,
+        "kind": "scalar_set",
+        "configuration_id": "conf-1",
+        "acquisition_id": None,
+        "started_at": "2026-09-26T00:00:00Z",
+        "clock": {
+            "domain_id": "demo-clock",
+            "timestamp_source": "device",
+            "synchronisation": "unknown",
+            "uncertainty_s": None,
+        },
+        "axes": [],
+        "variables": [
+            {
+                "id": "voltage_v",
+                "quantity": "voltage",
+                "unit": "V",
+                "channel_ids": ["ch1"],
+                "dtype": "float64",
+                "dimensions": [],
+                "values": [1.0, 2.0, 3.0],
+                "uncertainty": {"status": "unknown"},
+                "calibration": {"status": "unknown"},
+                "status": "valid",
+            }
+        ],
+        "trigger": {"source": "software", "time_relative_s": None},
+        "status": "complete",
+        "context": {},
+    }
 
 
 class DatasetHarness:
@@ -97,6 +151,7 @@ class DatasetHarness:
         self.bundle = DatasetPayloadBundle(
             controller=self.controller,
             writer=self.writer,
+            channels=("ch1",),
             content=self.content,
             clock=lambda: 0.0,
             wall=lambda: "2026-09-26T00:00:00Z",
@@ -104,7 +159,9 @@ class DatasetHarness:
             context_key="dataset-harness-session",
         )
         self.controller.mint_dataset_id(
-            "op-a", action_id="demo.act/1.0.0", input={}
+            "op-a",
+            action_id="demo.act/1.0.0",
+            input={"x": 1, "configuration_id": "conf-1"},
         )
 
     def context(self, operation_id: str = "op-a") -> Any:
@@ -329,5 +386,264 @@ def test_controller_abort_open_and_sweep_reclaim(tmp_path: Path) -> None:
         swept = harness.controller.sweep_open(reason="plugin_close")
         assert swept == ["pay:op-y:2"]  # one per-session counter
         assert harness.staged_count() == 0
+    finally:
+        harness.close()
+
+
+# --- issue #146 slice 3 S3b: dataset_publish + dataset_lookup ----------------------
+
+
+def evidence_rows(harness: DatasetHarness, kind: str = "dataset") -> int:
+    return int(
+        harness.store.connection.execute(
+            "SELECT COUNT(*) FROM evidence WHERE kind = ?", (kind,)
+        ).fetchone()[0]
+    )
+
+
+def test_publish_admits_validates_and_records(tmp_path: Path) -> None:
+    """The happy path: a valid manifest publishes (identity, schema, the
+    M-subset), its bytes route through the staged writer (a finalised
+    staging row whose charged bytes carry the manifest size), one
+    kind-dataset evidence row lands, and dataset_lookup returns it."""
+    harness = DatasetHarness(tmp_path)
+    try:
+        admitted = run(harness.bundle.dataset_publish(a_valid_manifest(), harness.context()))
+        assert admitted["dataset_id"] == "ds:op-a"
+        charged = harness.store.connection.execute(
+            "SELECT COALESCE(SUM(charged_bytes), 0) FROM capture_staging"
+            " WHERE state = 'finalised'"
+        ).fetchone()[0]
+        manifest_bytes = len(json.dumps(a_valid_manifest(), sort_keys=True, separators=(",", ":")))
+        assert charged == manifest_bytes, "the manifest bytes entered the used ledger"
+        assert evidence_rows(harness) == 1
+        looked_up = run(harness.bundle.dataset_lookup("ds:op-a", harness.context()))
+        assert looked_up == a_valid_manifest()
+    finally:
+        harness.close()
+
+
+def test_r2_identity_refusals(tmp_path: Path) -> None:
+    """R2's publish identity arms: a manifest whose dataset_id is not the
+    host-minted context id refuses; a null context.dataset_id forbids
+    publishing."""
+    harness = DatasetHarness(tmp_path)
+    try:
+        with pytest.raises(DatasetServiceRejected, match="does not carry the host-minted"):
+            run(
+                harness.bundle.dataset_publish(
+                    a_valid_manifest("ds:somewhere-else"), harness.context()
+                )
+            )
+        null_context = harness.context()
+        null_context.dataset_id = None
+        with pytest.raises(DatasetServiceRejected, match="null value forbids publishing"):
+            run(harness.bundle.dataset_publish(a_valid_manifest(), null_context))
+        assert evidence_rows(harness) == 0
+    finally:
+        harness.close()
+
+
+def test_publish_schema_refusal_carries_the_validator_message(tmp_path: Path) -> None:
+    harness = DatasetHarness(tmp_path)
+    try:
+        bad = a_valid_manifest()
+        bad["kind"] = "not-a-kind"
+        with pytest.raises(DatasetServiceRejected, match="pinned measurement schema"):
+            run(harness.bundle.dataset_publish(bad, harness.context()))
+        assert evidence_rows(harness) == 0
+    finally:
+        harness.close()
+
+
+@pytest.mark.parametrize(
+    ("mutate", "fragment"),
+    [
+        # M01 duplicate variable ids
+        (
+            lambda m: m["variables"].append(dict(m["variables"][0])),
+            "M01: duplicate variable ids",
+        ),
+        # M01 unknown channel
+        (
+            lambda m: m["variables"][0].__setitem__("channel_ids", ["nope"]),
+            "M01: variable 'voltage_v' references channel 'nope'",
+        ),
+        # M02 inline count disagreement (dimensioned: the product binds)
+        (
+            lambda m: (
+                m.__setitem__(
+                    "axes",
+                    [
+                        {
+                            "id": "sample",
+                            "quantity": "time",
+                            "unit": "s",
+                            "length": 3,
+                            "coordinates": {
+                                "kind": "regular",
+                                "start": 0.0,
+                                "step": 0.1,
+                            },
+                        }
+                    ],
+                ),
+                m["variables"][0].__setitem__("dimensions", ["sample"]),
+                m["variables"][0].__setitem__("values", [1.0, 2.0]),
+            ),
+            "M02: variable 'voltage_v' carries 2 inline values",
+        ),
+        # M04 non-finite inline value
+        (
+            lambda m: m["variables"][0].__setitem__("values", [1.0, float("nan"), 3.0]),
+            "M04",
+        ),
+    ],
+)
+def test_m_structural_refusals(
+    tmp_path: Path, mutate: Any, fragment: str
+) -> None:
+    harness = DatasetHarness(tmp_path)
+    try:
+        manifest = a_valid_manifest()
+        mutate(manifest)
+        with pytest.raises(DatasetServiceRejected, match=fragment):
+            run(harness.bundle.dataset_publish(manifest, harness.context()))
+        assert evidence_rows(harness) == 0
+    finally:
+        harness.close()
+
+
+def test_m10_correlation_refusal_and_agreement(tmp_path: Path) -> None:
+    """M10: the dispatched action's input declares configuration_id, the
+    invoke input carries conf-1 — a manifest echoing a different id
+    refuses; the echoing one admits."""
+    harness = DatasetHarness(tmp_path)
+    try:
+        mismatch = a_valid_manifest()
+        mismatch["configuration_id"] = "conf-other"
+        with pytest.raises(DatasetServiceRejected, match="M10"):
+            run(harness.bundle.dataset_publish(mismatch, harness.context()))
+        agreeing = a_valid_manifest()
+        agreeing["configuration_id"] = "conf-1"
+        run(harness.bundle.dataset_publish(agreeing, harness.context()))
+        assert evidence_rows(harness) == 1
+    finally:
+        harness.close()
+
+
+def test_r11_inline_manifest_bytes_refused_by_dataset_budget(tmp_path: Path) -> None:
+    """R11: an inline manifest of N bytes against max_dataset_bytes = N − 1
+    REFUSES at publish — no artifact_writer permission involved (inline
+    manifests need no payload writers); the refusal exists only because
+    the manifest routes through the staged writer."""
+    probe = a_valid_manifest()
+    size = len(json.dumps(probe, sort_keys=True, separators=(",", ":")))
+    harness = DatasetHarness(tmp_path, max_dataset_bytes=size - 1)
+    try:
+        with pytest.raises(CaptureQuotaExceeded, match="payload allowance"):
+            run(harness.bundle.dataset_publish(probe, harness.context()))
+        assert evidence_rows(harness) == 0
+    finally:
+        harness.close()
+
+
+def test_r8_idempotent_republish_and_divergent_refusal(tmp_path: Path) -> None:
+    """R8: a byte-identical manifest under the same dataset id returns the
+    admitted manifest with no new rows (staging unchanged, evidence
+    unchanged); a divergent manifest under the used id refuses."""
+    harness = DatasetHarness(tmp_path)
+    try:
+        manifest = a_valid_manifest()
+        first = run(harness.bundle.dataset_publish(manifest, harness.context()))
+        staging_after_first = harness.store.connection.execute(
+            "SELECT COUNT(*) FROM capture_staging"
+        ).fetchone()[0]
+        second = run(harness.bundle.dataset_publish(manifest, harness.context()))
+        assert second == first
+        assert (
+            harness.store.connection.execute(
+                "SELECT COUNT(*) FROM capture_staging"
+            ).fetchone()[0]
+            == staging_after_first
+        )
+        assert evidence_rows(harness) == 1  # one row, not two
+        divergent = a_valid_manifest()
+        divergent["variables"][0]["values"] = [9.0, 9.0, 9.0]
+        with pytest.raises(DatasetServiceRejected, match="immutable"):
+            run(harness.bundle.dataset_publish(divergent, harness.context()))
+    finally:
+        harness.close()
+
+
+def test_r15_prior_operation_artifact_refuses(tmp_path: Path) -> None:
+    """R15 (M11 operation-scoped): a manifest referencing an artifact
+    finalised during a PRIOR operation of the same session refuses at
+    publish — session-scoped existence would pass every other check."""
+    harness = DatasetHarness(tmp_path)
+    try:
+        # Operation op-prior finalises a payload artifact.
+        harness.controller.mint_dataset_id("op-prior")
+        prior_id = run(harness.bundle.payload_create("f64le", 24, harness.context("op-prior")))
+        run(harness.bundle.payload_append(prior_id, b"\x02" * 24, harness.context("op-prior")))
+        prior_record = run(harness.bundle.payload_finalise(prior_id, harness.context("op-prior")))
+        # Operation op-a's manifest references it.
+        manifest = a_valid_manifest()
+        manifest["variables"][0]["values"] = None
+        del manifest["variables"][0]["values"]
+        manifest["variables"][0]["artifact"] = {
+            "artifact_id": prior_record["artifact_id"],
+            "encoding": "f64le",
+            "byte_length": prior_record["byte_length"],
+            "sha256": prior_record["sha256"],
+        }
+        with pytest.raises(DatasetServiceRejected, match="M11"):
+            run(harness.bundle.dataset_publish(manifest, harness.context()))
+        assert evidence_rows(harness) == 0
+    finally:
+        harness.close()
+
+
+def test_r3_manifest_artifact_fields_cross_checked(tmp_path: Path) -> None:
+    """R3's publish arm: a variable whose artifact fields disagree with the
+    writer's published record is refused — adapter-supplied digests are
+    cross-checked, never trusted."""
+    harness = DatasetHarness(tmp_path)
+    try:
+        payload_id = run(harness.bundle.payload_create("f64le", 24, harness.context()))
+        run(harness.bundle.payload_append(payload_id, b"\x03" * 24, harness.context()))
+        record = run(harness.bundle.payload_finalise(payload_id, harness.context()))
+        manifest = a_valid_manifest()
+        manifest["configuration_id"] = "conf-1"
+        del manifest["variables"][0]["values"]
+        manifest["variables"][0]["artifact"] = {
+            "artifact_id": record["artifact_id"],
+            "encoding": record["encoding"],
+            "byte_length": record["byte_length"],
+            "sha256": "f" * 64,  # forged digest
+        }
+        with pytest.raises(DatasetServiceRejected, match="M11: .* sha256 .* disagrees"):
+            run(harness.bundle.dataset_publish(manifest, harness.context()))
+        assert evidence_rows(harness) == 0
+    finally:
+        harness.close()
+
+
+def test_dataset_payload_publish_full_round_trip(tmp_path: Path) -> None:
+    """The fetch shape end to end at the service level: a payload-backed
+    variable THIS operation finalised publishes cleanly (M11 agrees, M03
+    dtype/encoding pairs, M02 byte length matches the product)."""
+    harness = DatasetHarness(tmp_path)
+    try:
+        payload_id = run(harness.bundle.payload_create("f64le", 24, harness.context()))
+        run(harness.bundle.payload_append(payload_id, b"\x04" * 24, harness.context()))
+        record = run(harness.bundle.payload_finalise(payload_id, harness.context()))
+        manifest = a_valid_manifest()
+        manifest["configuration_id"] = "conf-1"
+        del manifest["variables"][0]["values"]
+        manifest["variables"][0]["artifact"] = dict(record)
+        admitted = run(harness.bundle.dataset_publish(manifest, harness.context()))
+        assert admitted["dataset_id"] == "ds:op-a"
+        assert evidence_rows(harness) == 1
     finally:
         harness.close()

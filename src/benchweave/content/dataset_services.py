@@ -59,6 +59,15 @@ def dataset_evidence_originated(exception: BaseException, operation_id: str) -> 
     )
 
 
+def _canonical(value: Any) -> str:
+    """Canonical JSON text (sorted keys, tight separators) — the
+    idempotency comparison and the routing bytes share one form; nan/inf
+    are refused at serialization (M04's backstop for routed bytes)."""
+    return json.dumps(
+        value, sort_keys=True, separators=(",", ":"), allow_nan=False
+    )
+
+
 class DatasetServiceRejected(ValueError):
     """The dataset lane's typed refusal channel: the manifest failed
     identity, schema, an M-check of the implemented subset, idempotency or
@@ -114,6 +123,25 @@ class DatasetController:
     @property
     def dataset_required_keys(self) -> frozenset[str]:
         return self._contracts.dataset_required_keys
+
+    @property
+    def dataset_validator(self) -> Any:
+        """The pinned measurement schema's compiled dataset validator
+        (slice 3's publish validation surface)."""
+        return self._contracts.dataset_validator
+
+    def action_for(self, action_id: str | None) -> CompiledAction | None:
+        """The action registry entry for M10's input-schema declaration
+        check (None when unknown — the bridge gate already refused that
+        dispatch shape)."""
+        if action_id is None:
+            return None
+        return self._contracts.actions.get(action_id)
+
+    def dispatch_state(self, operation_id: str) -> dict[str, Any] | None:
+        """The per-operation state the publish path correlates against
+        (action, resolved input, finalise records, admitted manifest)."""
+        return self._operations.get(operation_id)
 
     def dispatch_clamp(self, deadline_ns: int, *, now_ns: int) -> Any:
         """Forward the dispatch clamp to the session's writer (issue #176
@@ -315,7 +343,305 @@ class DatasetServicesBundle(ScopedServicesBundle):
         self._writer = writer
         self._channels = frozenset(channels)
 
-    # --- dataset_publish lands in slice S3b (dataset_publish + lookup) ----
+    # --- dataset_publish (§2.2 step 1-6; the validation surface) -------------
+
+    #: dtype -> (payload encoding, element bytes). The M03 pairing for
+    #: artifact-backed variables; utf8_json is variable-width (element bytes
+    #: None — M02's byte-count agreement does not apply, the record
+    #: cross-check still does).
+    _DTYPE_ENCODING: Mapping[str, tuple[str, int | None]] = {
+        "float64": ("f64le", 8),
+        "int64": ("i64le", 8),
+        "uint64": ("u64le", 8),
+        "uint8": ("u8", 1),
+        "bool": ("bool_u8", 1),
+        "logic": ("logic_u8", 1),
+        "complex128": ("complex_f64le", 16),
+        "string": ("utf8_json", None),
+    }
+
+    async def dataset_publish(
+        self, manifest: dict[str, Any], context: Any
+    ) -> dict[str, Any]:
+        """Validate and admit one measurement manifest for this operation
+        (spec §3; design §2.2 steps 1–6). The submitted ``dataset_id`` is
+        host-reserved — it must equal ``context.dataset_id``, non-null (a
+        null value forbids publishing). The order is load-bearing: identity
+        first, then IDEMPOTENCY (a byte-identical manifest under a used
+        dataset id returns the admitted manifest with no new rows — never
+        re-routed, never double-charged), then the pinned schema, the
+        implemented M-check subset (M01–M04, M10-correlation, M11
+        operation-scoped, M14 by construction), then the manifest bytes
+        ROUTED THROUGH THE STAGED WRITER (Amendment 1 HIGH-2: the staging
+        row's reservation and finalise put the manifest's bytes in the
+        ``used`` ledger, and the published ``art-<sha256>`` row is the
+        manifest's own storage path — R11), and one evidence row (kind
+        ``dataset``) under the session's context key — the dimension shared
+        with the run's retention rows and the monitor's per-tick retention,
+        disclosed (Amendment 1 LOW-3)."""
+        operation_id = str(getattr(context, "operation_id", ""))
+        dataset_id = getattr(context, "dataset_id", None)
+        if not isinstance(manifest, dict):
+            raise DatasetServiceRejected("dataset_publish manifest must be an object")
+        if not isinstance(dataset_id, str) or not dataset_id:
+            raise DatasetServiceRejected(
+                "dataset_publish requires the host-minted context.dataset_id "
+                "(a null value forbids publishing)"
+            )
+        if manifest.get("dataset_id") != dataset_id:
+            raise DatasetServiceRejected(
+                f"manifest dataset_id {manifest.get('dataset_id')!r} does not "
+                f"carry the host-minted id {dataset_id!r}"
+            )
+        admitted = self._controller.admitted_by_dataset_id(dataset_id)
+        if admitted is not None:
+            if _canonical(manifest) == _canonical(admitted):
+                republish: dict[str, Any] = json.loads(json.dumps(admitted))
+                return republish  # idempotent: no new rows, no re-routing
+            raise DatasetServiceRejected(
+                f"dataset {dataset_id!r} is already admitted and immutable: "
+                "a divergent manifest under a used id is refused"
+            )
+        error = next(
+            iter(self._dataset_validator().iter_errors(manifest)), None
+        )
+        if error is not None:
+            raise DatasetServiceRejected(
+                f"manifest violates the pinned measurement schema at "
+                f"{error.json_path}: {error.message}"
+            )
+        self._check_m_structural(manifest)
+        self._check_m10_correlation(manifest, operation_id)
+        self._check_m11_records(manifest, operation_id)
+        # Route the manifest bytes through the staged writer (HIGH-2): the
+        # staging reservation and finalise put them in `used`, and the
+        # published art-<sha256> row is the manifest's own storage path.
+        blob = _canonical(manifest).encode()
+        payload_id = self._controller.mint_payload_id(operation_id)
+        self._writer.open_payload(
+            payload_id=payload_id,
+            context_key=self._context_key,
+            encoding="utf8_json",
+            byte_limit=len(blob),
+            now=self._wall(),
+        )
+        self._writer.append(payload_id, blob, self._context_key)
+        record = self._writer.finalise(payload_id, self._wall(), self._context_key)
+        # The evidence row (kind dataset) on the (context_key, kind)
+        # dimension — shared, disclosed (LOW-3); the bundle's stamp makes
+        # its quota refusal classifiable, exactly the capture bundle's
+        # record_evidence does.
+        now = self._wall()  # a fresh stamp per row
+        reference = {
+            "id": dataset_id,
+            "version": "1",
+            "sha256": record["sha256"],
+        }
+        try:
+            self._put_dataset_evidence(
+                reference, record["artifact_id"], now, context
+            )
+        except EvidenceQuotaExceeded as error_quota:
+            # Reclaim the routed-but-unrecorded manifest row: without the
+            # evidence row the publish never happened, and the charged
+            # bytes would be a leak.
+            self._writer.abort(payload_id)
+            self._controller.note_payload_aborted(payload_id)
+            raise self._stamp_evidence_quota(error_quota, context) from error_quota
+        self._controller.note_payload_finalised(operation_id, payload_id, record)
+        self._controller.record_admitted(operation_id, manifest)
+        result: dict[str, Any] = json.loads(json.dumps(manifest))
+        return result
+
+    def _dataset_validator(self) -> Any:
+        """The pinned measurement schema's dataset validator (§2.1 compiled
+        it; the bundle consults the controller's contracts)."""
+        return self._controller.dataset_validator
+
+    def _put_dataset_evidence(
+        self,
+        reference: dict[str, Any],
+        artifact_id: str,
+        now: str,
+        context: Any,
+    ) -> None:
+        """One kind-`dataset` evidence row under the session context key
+        (the record_evidence precedent: the base bundle's content store and
+        evidence quota; the quota refusal is stamped with THIS module's
+        token so the bridge classifies it clean)."""
+        self._content.put_evidence(
+            "dataset",
+            reference,
+            artifact_id,
+            self._context_key,
+            now,
+            quota=self._quota_evidence,
+        )
+
+
+
+    # --- the implemented M-check subset (§2.4; the class-semantic M05-M09,
+    # M12, M13 remain author-side obligations, named in the guide) ---------
+
+    def _check_m_structural(self, manifest: dict[str, Any]) -> None:
+        """M01 unique/existing references, M02 length agreement, M03
+        dtype/encoding consistency, M04 inline finiteness — the structural
+        core. The corpus text is the authority (measurement-model §7's
+        table); every refusal names its check and the offending id."""
+        axes = manifest.get("axes") or []
+        axis_ids = [str(axis.get("id")) for axis in axes]
+        if len(set(axis_ids)) != len(axis_ids):
+            raise DatasetServiceRejected("M01: duplicate axis ids in the manifest")
+        by_id = {str(axis["id"]): axis for axis in axes}
+        variables = manifest.get("variables") or []
+        variable_ids = [str(variable.get("id")) for variable in variables]
+        if len(set(variable_ids)) != len(variable_ids):
+            raise DatasetServiceRejected("M01: duplicate variable ids in the manifest")
+        for axis in axes:
+            coordinates = axis.get("coordinates")
+            if isinstance(coordinates, dict) and coordinates.get("kind") == "explicit":
+                values = coordinates.get("values") or []
+                if len(values) != int(axis.get("length", -1)):
+                    raise DatasetServiceRejected(
+                        f"M02: axis {axis['id']!r} declares length "
+                        f"{axis.get('length')} but carries {len(values)} "
+                        "explicit coordinates"
+                    )
+                self._check_finite(values, f"axis {axis['id']!r} coordinates")
+            elif isinstance(coordinates, dict) and coordinates.get("kind") == "regular":
+                self._check_finite(
+                    [coordinates.get("start"), coordinates.get("step")],
+                    f"axis {axis['id']!r} regular coordinates",
+                )
+        for variable in variables:
+            vid = str(variable.get("id"))
+            for channel_id in variable.get("channel_ids") or []:
+                if channel_id not in self._channels:
+                    raise DatasetServiceRejected(
+                        f"M01: variable {vid!r} references channel "
+                        f"{channel_id!r} which the descriptor does not declare"
+                    )
+            dimensions = variable.get("dimensions") or []
+            lengths: list[int] = []
+            for dimension in dimensions:
+                axis = by_id.get(dimension)
+                if axis is None:
+                    raise DatasetServiceRejected(
+                        f"M01: variable {vid!r} dimension {dimension!r} "
+                        "names no axis in the manifest"
+                    )
+                lengths.append(int(axis["length"]))
+            # M02's count agreement presumes dimensions: with NONE (a
+            # scalar set), there is no product to agree with and the
+            # count is free — exactly the corpus's suspension note (the
+            # empty-values/empty-dimensions shape suspends the check; a
+            # dimensioned variable's flattened count must equal the
+            # product).
+            product: int | None = None
+            if lengths:
+                product = 1
+                for length in lengths:
+                    product *= length
+            dtype = str(variable.get("dtype"))
+            artifact = variable.get("artifact")
+            if artifact is None:
+                values = variable.get("values") or []
+                if product is not None and len(values) != product:
+                    raise DatasetServiceRejected(
+                        f"M02: variable {vid!r} carries {len(values)} inline "
+                        f"values against a dimension product of {product}"
+                    )
+                self._check_finite(values, f"variable {vid!r} values")
+            else:
+                pair = self._DTYPE_ENCODING.get(dtype)
+                if pair is None or pair[0] != artifact.get("encoding"):
+                    raise DatasetServiceRejected(
+                        f"M03: variable {vid!r} dtype {dtype!r} does not "
+                        f"pair with artifact encoding "
+                        f"{artifact.get('encoding')!r}"
+                    )
+                element_bytes = pair[1]
+                if (
+                    element_bytes is not None
+                    and product is not None
+                    and int(artifact.get("byte_length", -1))
+                    != product * element_bytes
+                ):
+                    raise DatasetServiceRejected(
+                        f"M02: variable {vid!r} artifact byte_length "
+                        f"{artifact.get('byte_length')} disagrees with "
+                        f"{product} elements x {element_bytes} bytes"
+                    )
+
+    @staticmethod
+    def _check_finite(values: Any, label: str) -> None:
+        """M04: every inline ordinary numeric is finite (invalid elements
+        must be explicit nulls per the schema, never NaN/Inf smuggled in
+        from Python floats)."""
+        for value in values:
+            if type(value) is float and (value != value or value in (float("inf"), float("-inf"))):
+                raise DatasetServiceRejected(
+                    f"M04: {label} carry a non-finite value"
+                )
+
+    def _check_m10_correlation(
+        self, manifest: dict[str, Any], operation_id: str
+    ) -> None:
+        """M10's correlation subset: the manifest's configuration_id /
+        acquisition_id echo the invoke input's corresponding string fields
+        when the dispatched action's pinned input schema declares them —
+        a schema-valid result for the wrong acquisition is rejected."""
+        state = self._controller.dispatch_state(operation_id)
+        if state is None:
+            return
+        action = self._controller.action_for(state.get("action_id"))
+        invoke_input = state.get("input")
+        if action is None or not isinstance(invoke_input, dict):
+            return
+        declared = action.input_validator.schema.get("properties", {})
+        if not isinstance(declared, dict):
+            return
+        for field in ("configuration_id", "acquisition_id"):
+            if field not in declared:
+                continue
+            expected = invoke_input.get(field)
+            if isinstance(expected, str) and manifest.get(field) != expected:
+                raise DatasetServiceRejected(
+                    f"M10: manifest {field} {manifest.get(field)!r} does "
+                    f"not echo the invoke input's {expected!r}"
+                )
+
+    def _check_m11_records(
+        self, manifest: dict[str, Any], operation_id: str
+    ) -> None:
+        """M11, OPERATION-scoped (Amendment 1 MEDIUM-4): every referenced
+        payload artifact is one THIS operation's writer published and
+        finalised, with all four record fields agreeing — an artifact
+        finalised under a prior operation of the same session refuses
+        (R15), and adapter-supplied digests are cross-checked against the
+        writer's own record, never trusted."""
+        records = self._controller.finalise_records(operation_id)
+        for variable in manifest.get("variables") or []:
+            vid = str(variable.get("id"))
+            artifact = variable.get("artifact")
+            if artifact is None:
+                continue
+            artifact_id = str(artifact.get("artifact_id"))
+            record = records.get(artifact_id)
+            if record is None:
+                raise DatasetServiceRejected(
+                    f"M11: variable {vid!r} references artifact "
+                    f"{artifact_id!r} which THIS operation never finalised "
+                    "(a prior operation's artifact is a different "
+                    "acquisition)"
+                )
+            for field in ("artifact_id", "encoding", "byte_length", "sha256"):
+                if artifact.get(field) != record.get(field):
+                    raise DatasetServiceRejected(
+                        f"M11: variable {vid!r} artifact field {field} "
+                        f"{artifact.get(field)!r} disagrees with the "
+                        f"writer's published record {record.get(field)!r}"
+                    )
 
     async def dataset_lookup(
         self, dataset_id: str, context: Any
