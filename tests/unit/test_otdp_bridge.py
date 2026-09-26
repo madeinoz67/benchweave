@@ -3495,3 +3495,144 @@ def test_item8_self_contained_constraints_refs_resolve_at_dispatch(
         plugin.plugin_close()
     finally:
         harness.close()
+
+
+# --- issue #146 slice 3 S3a: the payload lane through the invoke dispatch --------
+
+
+class PayloadInvokeAdapter(InvokeAdapter):
+    """Creates a payload then appends past the reservation during invoke
+    execute — the writer's stamped quota refusal surfaces mid-dispatch."""
+
+    def __init__(self, mode: str = "exceed") -> None:
+        super().__init__()
+        self.mode = mode
+        self.saved: BaseException | None = None
+
+    async def execute(self, request: dict[str, Any], context: Any) -> dict[str, Any]:
+        self.calls += 1
+        self.context = context
+        if request["verb"] != "invoke":
+            return await Adapter.execute(self, request, context)
+        payload_id = await self.services.payload_create("u8", 16, context)
+        if self.mode == "exceed":
+            await self.services.payload_append(payload_id, b"a" * 8, context)
+            await self.services.payload_append(payload_id, b"b" * 16, context)
+        elif self.mode == "save-and-replay":
+            try:
+                await self.services.payload_append(payload_id, b"a" * 32, context)
+            except BaseException as exc:  # the genuine stamped refusal
+                self.saved = exc
+            raise RuntimeError("simulated adapter failure after saving")
+        raise AssertionError("unreachable")
+
+
+class ReplayAdapter(InvokeAdapter):
+    """Raises an exception SAVED from a prior dispatch's payload (same
+    module token, wrong operation binding) during a fresh invoke."""
+
+    def __init__(self, saved: BaseException) -> None:
+        super().__init__()
+        self.saved = saved
+
+    async def execute(self, request: dict[str, Any], context: Any) -> dict[str, Any]:
+        self.calls += 1
+        if request["verb"] != "invoke":
+            return await Adapter.execute(self, request, context)
+        raise self.saved
+
+
+def test_r10_this_operations_payload_condition_classifies_clean(tmp_path: Path) -> None:
+    """R10's clean direction: a writer-originated quota condition raised
+    through THIS operation's payload during an invoke dispatch classifies
+    RESOURCE_LIMIT dispatched — the session survives, the still-open
+    payload is reclaimed (zero staging rows), and the refusal names the
+    payload lane with no capture wording."""
+    harness = InvokeHarness(tmp_path)
+    try:
+        from benchweave.content.dataset_services import DatasetPayloadBundle
+
+        bundle = DatasetPayloadBundle(
+            controller=harness.controller,
+            writer=harness.writer,
+            content=harness.content,
+            clock=lambda: 0.0,
+            wall=lambda: "2026-09-26T00:00:00Z",
+            quota_evidence=50,
+            context_key="invoke-harness-session",
+        )
+        adapter = PayloadInvokeAdapter("exceed")
+        plugin = OTDPBridge(
+            adapter,
+            descriptor=dict(INVOKE_DESCRIPTOR),
+            services=bundle,
+            simulation=SimulationInfo(True, "Synthetic"),
+            dataset=harness.controller,
+        )
+        plugin.plugin_open(object())
+        result = plugin.dispatch(a_invoke_request(), deadline_ns=11_000_000_000)
+        assert result.error is not None
+        assert result.error.code is ErrorCode.RESOURCE_LIMIT
+        assert result.error.dispatch_state is DispatchState.DISPATCHED
+        assert "invoke resource condition (payload)" in result.error.message
+        assert "apture" not in result.error.message
+        staged = harness.store.connection.execute(
+            "SELECT COUNT(*) FROM capture_staging WHERE state = 'staged'"
+        ).fetchone()[0]
+        assert staged == 0, "the classified failure reclaimed its open payload"
+        again = plugin.dispatch(a_invoke_request(), deadline_ns=11_000_000_000)
+        assert again.error is not None
+        assert again.error.code is ErrorCode.RESOURCE_LIMIT
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+def test_r10_another_operations_payload_replay_poisons(tmp_path: Path) -> None:
+    """R10's poison direction: a GENUINE stamped exception saved from one
+    operation's payload and replayed during a different invoke keeps the
+    poison posture — the discriminator requires the stamp bound to THIS
+    operation's live payload ids, not module-token presence."""
+    harness = InvokeHarness(tmp_path)
+    try:
+        from benchweave.content.dataset_services import DatasetPayloadBundle
+
+        bundle = DatasetPayloadBundle(
+            controller=harness.controller,
+            writer=harness.writer,
+            content=harness.content,
+            clock=lambda: 0.0,
+            wall=lambda: "2026-09-26T00:00:00Z",
+            quota_evidence=50,
+            context_key="invoke-harness-session",
+        )
+        saver = PayloadInvokeAdapter("save-and-replay")
+        plugin = OTDPBridge(
+            saver,
+            descriptor=dict(INVOKE_DESCRIPTOR),
+            services=bundle,
+            simulation=SimulationInfo(True, "Synthetic"),
+            dataset=harness.controller,
+        )
+        plugin.plugin_open(object())
+        first = plugin.dispatch(a_invoke_request(), deadline_ns=11_000_000_000)
+        assert first.status is OperationStatus.UNKNOWN  # the simulated failure poisoned
+        assert saver.saved is not None
+        plugin.plugin_close()
+        # A fresh bridge + session replays the SAVED (wrong-binding) stamp.
+        replayer = ReplayAdapter(saver.saved)
+        second_plugin = OTDPBridge(
+            replayer,
+            descriptor=dict(INVOKE_DESCRIPTOR),
+            services=bundle,
+            simulation=SimulationInfo(True, "Synthetic"),
+            dataset=harness.controller,
+        )
+        second_plugin.plugin_open(object())
+        replay = second_plugin.dispatch(a_invoke_request(), deadline_ns=11_000_000_000)
+        assert replay.status is OperationStatus.UNKNOWN
+        assert replay.error is not None
+        assert replay.error.code is ErrorCode.PROTOCOL_ERROR
+        second_plugin.plugin_close()
+    finally:
+        harness.close()
