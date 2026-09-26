@@ -2863,3 +2863,586 @@ def test_row_b_clamp_negative_injected_remaining_clamps_to_zero(
         plugin.plugin_close()
     finally:
         harness.close()
+
+
+# --- issue #146 slice 2: invoke dispatch (§2.3) ---------------------------------
+#
+# Derivations (from the corpus, not the plan's restatement): the invoke
+# request arguments are the runtime schema's closed branch {action_id,
+# input}; the success data is the closed {action_id, result}; the dataset
+# cross-check is design §2.3 (the strict posture — §3 slice 2: a
+# dataset-shaped result that was never published through dataset_publish
+# refuses from day one); the gates' bounds-before-device posture and the
+# A7 dispatch-state table are the capture gates' own discipline.
+
+_INVOKE_REPO = Path(__file__).resolve().parents[2]
+
+
+def _active_measurement_bytes() -> bytes:
+    from benchweave.standards.manifest import load_manifest
+
+    active = next(
+        entry.version for entry in load_manifest(_INVOKE_REPO).standards if entry.id == "otdp"
+    )
+    measurement = _INVOKE_REPO / "standards" / "otdp" / active / "otdp-measurement.schema.json"
+    return measurement.read_bytes()
+
+
+def _invoke_synthetic_contracts() -> Any:
+    """A synthetic pinned pair: a catalog-schema-valid catalog with three
+    actions (invented fixture names — the corpus-faithful dataset-ref
+    fetch, a plain configure action, and a permissive-output action for
+    isolating the publication cross-check channel) plus the REAL corpus
+    measurement schema (the dataset required keys are its own)."""
+    import hashlib as _hashlib
+
+    from benchweave.registry.otdp_contracts import resolve_otdp_contracts
+
+    measurement = _json.loads(_active_measurement_bytes())
+    catalog = {
+        "catalog_version": "0.2.2",
+        "otdp_version": "0.2.2",
+        "profiles": [
+            {
+                "id": "demo.profile/1.0.0",
+                "title": "Demo profile",
+                "channel_roles": ["source"],
+                "required_actions": [
+                    "demo.act/1.0.0",
+                    "demo.fetch/1.0.0",
+                    "demo.raw/1.0.0",
+                ],
+                "optional_actions": [],
+            }
+        ],
+        "actions": {
+            "demo.act/1.0.0": {
+                "description": "Configure the demo output.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {"x": {"type": "integer"}},
+                    "required": ["x"],
+                },
+                "output_schema": {
+                    "type": "object",
+                    "properties": {"ok": {"type": "boolean"}},
+                    "required": ["ok"],
+                },
+                "side_effect": "state_change",
+                "lifecycle": "direct",
+            },
+            "demo.fetch/1.0.0": {
+                "description": "Fetch a dataset (corpus-faithful shape).",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {"count": {"type": "integer", "minimum": 1}},
+                    "required": ["count"],
+                },
+                "output_schema": {"$ref": measurement["$id"] + "#/$defs/dataset"},
+                "side_effect": "none",
+                "lifecycle": "acquisition",
+            },
+            "demo.raw/1.0.0": {
+                "description": "Permissive output (the isolation arm).",
+                "input_schema": {"type": "object"},
+                "output_schema": {"type": "object"},
+                "side_effect": "none",
+                "lifecycle": "direct",
+            },
+        },
+    }
+    inventory = {
+        "contracts/catalog.json": _json.dumps(catalog).encode(),
+        "contracts/measurement.json": _active_measurement_bytes(),
+    }
+    entries = [
+        {
+            "id": "urn:demo:catalog",
+            "path": path,
+            "sha256": _hashlib.sha256(data).hexdigest(),
+        }
+        for path, data in sorted(inventory.items())
+    ]
+    resolved = resolve_otdp_contracts(entries, inventory=inventory)
+    assert resolved is not None
+    return resolved
+
+
+INVOKE_DESCRIPTOR = {
+    "capabilities": ["identify", "invoke"],
+    "actions": {
+        "demo.act/1.0.0": {
+            "binding": {"kind": "adapter", "key": "act"},
+            "input_constraints": {
+                "type": "object",
+                "properties": {"x": {"minimum": 10}},
+            },
+            "timeout_ms": 500,
+            "side_effect": "state_change",
+            "cancellable": True,
+            "retry": "never",
+        },
+        "demo.fetch/1.0.0": {
+            "binding": {"kind": "adapter", "key": "fetch"},
+            "input_constraints": {"type": "object"},
+            "timeout_ms": 500,
+            "side_effect": "none",
+            "cancellable": True,
+            "retry": "never",
+        },
+        "demo.raw/1.0.0": {
+            "binding": {"kind": "adapter", "key": "raw"},
+            "input_constraints": {"type": "object"},
+            "timeout_ms": 500,
+            "side_effect": "none",
+            "cancellable": True,
+            "retry": "never",
+        },
+        "demo.local-only/1.0.0": {
+            "binding": {"kind": "adapter", "key": "local"},
+            "input_constraints": {"type": "object"},
+            "timeout_ms": 500,
+            "side_effect": "none",
+            "cancellable": True,
+            "retry": "never",
+        },
+    },
+}
+
+_DATASET_SHAPED_RESULT = {
+    "dataset_id": "ds:op-i",
+    "kind": "scalar_set",
+    "configuration_id": None,
+    "acquisition_id": None,
+    "started_at": "2026-09-25T00:00:00Z",
+    "clock": {"kind": "host_monotonic"},
+    "axes": [],
+    "variables": [],
+    "trigger": "manual",
+    "status": "valid",
+    "context": {},
+}
+
+
+class InvokeHarness:
+    """A real store + writer + scoped bundle + resolved dataset controller
+    over tmp_path — the §2.3 substrate. The descriptor declares the invoke
+    capability WITHOUT artifact_writer, so the composing bundle is the
+    five-member scoped shape and no capture controller exists (invoke is
+    not capture's lane)."""
+
+    def __init__(self, tmp_path: Path, *, evidence_quota: int = 50) -> None:
+        self.store = Store.open(tmp_path / "bridge-invoke.db")
+        self.content = ContentStore(self.store)
+        raw = {
+            "id": "dev.local.invoke-harness",
+            "descriptor_version": "1.0.0",
+            "integration": {
+                "mode": "adapter",
+                "adapter": {
+                    "entry_point": "harness:create_plugin",
+                    "api_version": "1.1",
+                    "version": "1.0.0",
+                    "dependencies": [],
+                    "permissions": ["scoped_transport"],
+                },
+            },
+        }
+        blob = _json.dumps(raw, sort_keys=True).encode()
+        digest = hashlib.sha256(blob).hexdigest()
+        self.content.put_document(blob, digest, raw, "otdp-descriptor", "2026-09-25T00:00:00Z")
+        self.writer = CaptureStagingStore(
+            self.store, max_capture_bytes=8192, max_dataset_bytes=8192
+        )
+        self.bundle, no_capture = build_capture_services(
+            descriptor_digest=digest,
+            content=self.content,
+            writer=self.writer,
+            clock=lambda: 0.0,
+            wall=lambda: "2026-09-25T00:00:00Z",
+            quota=QuotaLimits(
+                max_dataset_bytes=8192,
+                max_evidence_entries=evidence_quota,
+                max_event_batch=10,
+            ),
+            context_key="invoke-harness-session",
+        )
+        assert no_capture is None
+        from benchweave.content.dataset_services import build_dataset_controller
+
+        self.controller = build_dataset_controller(
+            _invoke_synthetic_contracts(), writer=self.writer
+        )
+        self.adapter: Any = None
+
+    def bridge(self, adapter: Any, *, dataset: Any = "default") -> OTDPBridge:
+        self.adapter = adapter
+        return OTDPBridge(
+            adapter,
+            descriptor=dict(INVOKE_DESCRIPTOR),
+            services=self.bundle,
+            simulation=SimulationInfo(True, "Synthetic"),
+            dataset=self.controller if dataset == "default" else dataset,
+        )
+
+    def close(self) -> None:
+        self.store.close()
+
+
+class InvokeAdapter(Adapter):
+    """Returns a fixed invoke result, optionally recording evidence first
+    (the R17 evidence-quota lane)."""
+
+    def __init__(
+        self, result: Any = None, *, evidence_calls: int = 0, action_echo: str | None = None
+    ) -> None:
+        super().__init__()
+        self.result = result if result is not None else {"ok": True}
+        self.evidence_calls = evidence_calls
+        self.action_echo = action_echo
+        self.services: Any = None
+
+    async def open(self, descriptor: dict[str, Any], services: Any, context: Any) -> None:
+        self.services = services
+        await super().open(descriptor, services, context)
+
+    async def execute(self, request: dict[str, Any], context: Any) -> dict[str, Any]:
+        self.calls += 1
+        self.context = context
+        if request["verb"] != "invoke":
+            return await Adapter.execute(self, request, context)
+        for _ in range(self.evidence_calls):
+            await self.services.record_evidence({"lane": "invoke"}, context)
+        return {
+            "operation_id": request["operation_id"],
+            "verb": "invoke",
+            "status": "ok",
+            "data": {
+                "action_id": self.action_echo or request["arguments"]["action_id"],
+                "result": self.result,
+            },
+        }
+
+
+def a_invoke_request(**overrides: Any) -> OperationRequest:
+    arguments: dict[str, Any] = {"action_id": "demo.act/1.0.0", "input": {"x": 10}}
+    arguments.update(overrides)
+    return OperationRequest("op-i", OperationVerb.INVOKE, arguments)
+
+
+def test_i1_invoke_without_a_controller_refuses_unsupported(tmp_path: Path) -> None:
+    """R1/I1: no resolved contract surface, no invoke — a typed UNSUPPORTED
+    not_dispatched with zero adapter calls."""
+    harness = InvokeHarness(tmp_path)
+    try:
+        plugin = harness.bridge(InvokeAdapter(), dataset=None)
+        plugin.plugin_open(object())
+        result = plugin.dispatch(a_invoke_request(), deadline_ns=11_000_000_000)
+        assert result.error is not None
+        assert result.error.code is ErrorCode.UNSUPPORTED
+        assert result.error.dispatch_state is DispatchState.NOT_DISPATCHED
+        assert "invoke requires" in result.error.message
+        assert harness.adapter.calls == 0
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+@pytest.mark.parametrize(
+    ("overrides", "code", "fragment", "label"),
+    [
+        (
+            {"action_id": "demo.nowhere/1.0.0"},
+            ErrorCode.INVALID_ARGUMENT,
+            "not declared by the descriptor",
+            "I2 undeclared action",
+        ),
+        (
+            {"action_id": "demo.local-only/1.0.0"},
+            ErrorCode.INVALID_ARGUMENT,
+            "does not resolve in the pinned profile catalog",
+            "I3 catalog-unknown action (M14)",
+        ),
+        (
+            {"action_id": 123},
+            ErrorCode.INVALID_ARGUMENT,
+            "action_id must be a non-empty string",
+            "I2 non-string action_id",
+        ),
+        (
+            {"input": ["not", "an", "object"]},
+            ErrorCode.INVALID_ARGUMENT,
+            "input must be an object",
+            "I4 non-object input",
+        ),
+        (
+            {"input": {"x": "not-an-integer"}},
+            ErrorCode.INVALID_ARGUMENT,
+            "input violates the action's catalog input schema",
+            "I4 schema-invalid input",
+        ),
+        (
+            {"input": {"x": 1}},
+            ErrorCode.INVALID_ARGUMENT,
+            "input violates the descriptor action's input_constraints",
+            "I5 descriptor narrowing",
+        ),
+    ],
+)
+def test_r1_invoke_bounds_before_the_device(
+    tmp_path: Path, overrides: dict[str, Any], code: ErrorCode, fragment: str, label: str
+) -> None:
+    """R1: every gate refusal is typed, not_dispatched, names its gate, and
+    the spy adapter records ZERO execute calls."""
+    harness = InvokeHarness(tmp_path)
+    try:
+        plugin = harness.bridge(InvokeAdapter())
+        plugin.plugin_open(object())
+        result = plugin.dispatch(a_invoke_request(**overrides), deadline_ns=11_000_000_000)
+        assert result.error is not None, label
+        assert result.error.code is code, label
+        assert result.error.dispatch_state is DispatchState.NOT_DISPATCHED, label
+        assert fragment in result.error.message, (label, result.error.message)
+        assert harness.adapter.calls == 0, label
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+def test_i6_invoke_mints_the_host_dataset_id_on_the_context(tmp_path: Path) -> None:
+    """I6: the host mints ds:{operation_id} on the context for invoke; a
+    non-invoke dispatch on the same bridge keeps dataset_id None."""
+    harness = InvokeHarness(tmp_path)
+    try:
+        plugin = harness.bridge(InvokeAdapter())
+        plugin.plugin_open(object())
+        result = plugin.dispatch(a_invoke_request(), deadline_ns=11_000_000_000)
+        assert result.status is OperationStatus.OK
+        assert harness.adapter.context.dataset_id == "ds:op-i"
+        identify = plugin.dispatch(
+            OperationRequest.identify("op-id"), deadline_ns=11_000_000_000
+        )
+        assert identify.status is OperationStatus.OK
+        assert harness.adapter.context.dataset_id is None
+        # The strict cross-check did not fire for a plain configure result.
+        assert result.data == {"action_id": "demo.act/1.0.0", "result": {"ok": True}}
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+def test_r6_schema_invalid_result_poisons_with_the_validator_message(
+    tmp_path: Path,
+) -> None:
+    """R6: a schema-invalid result poisons PROTOCOL_ERROR carrying the
+    validator's own message — never the generic failed-or-late wording."""
+    harness = InvokeHarness(tmp_path)
+    try:
+        plugin = harness.bridge(InvokeAdapter(result={"ok": "not-a-boolean"}))
+        plugin.plugin_open(object())
+        result = plugin.dispatch(a_invoke_request(), deadline_ns=11_000_000_000)
+        assert result.status is OperationStatus.UNKNOWN
+        assert result.error is not None
+        assert result.error.code is ErrorCode.PROTOCOL_ERROR
+        assert "not of type 'boolean'" in result.error.message
+        assert "Invalid, failed or late adapter result" not in result.error.message
+        second = plugin.dispatch(a_invoke_request(), deadline_ns=11_000_000_000)
+        assert second.error is not None
+        assert second.error.code is ErrorCode.INTERNAL_ERROR
+        assert harness.adapter.calls == 1
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+def test_r6_action_id_echo_mismatch_poisons(tmp_path: Path) -> None:
+    harness = InvokeHarness(tmp_path)
+    try:
+        plugin = harness.bridge(InvokeAdapter(action_echo="demo.other/1.0.0"))
+        plugin.plugin_open(object())
+        result = plugin.dispatch(a_invoke_request(), deadline_ns=11_000_000_000)
+        assert result.status is OperationStatus.UNKNOWN
+        assert result.error is not None
+        assert result.error.code is ErrorCode.PROTOCOL_ERROR
+        assert "action_id" in result.error.message
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+def test_r6_extra_data_key_poisons_the_closed_envelope(tmp_path: Path) -> None:
+    class Extra(InvokeAdapter):
+        async def execute(self, request: dict[str, Any], context: Any) -> dict[str, Any]:
+            self.calls += 1
+            envelope = await super().execute(request, context)
+            envelope["data"]["extra"] = True
+            return envelope
+
+    harness = InvokeHarness(tmp_path)
+    try:
+        plugin = harness.bridge(Extra())
+        plugin.plugin_open(object())
+        result = plugin.dispatch(a_invoke_request(), deadline_ns=11_000_000_000)
+        assert result.status is OperationStatus.UNKNOWN
+        assert result.error is not None
+        assert result.error.code is ErrorCode.PROTOCOL_ERROR
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+def test_r6_unknown_outcome_never_downgraded_through_invoke(tmp_path: Path) -> None:
+    class Unknown(InvokeAdapter):
+        async def execute(self, request: dict[str, Any], context: Any) -> dict[str, Any]:
+            self.calls += 1
+            await context.mark_dispatch_started()
+            return {
+                "operation_id": request["operation_id"],
+                "verb": "invoke",
+                "status": "unknown",
+                "error": {
+                    "code": "DEVICE_REJECTED",
+                    "message": "action refused by the device",
+                    "dispatch_state": "dispatched",
+                },
+            }
+
+    harness = InvokeHarness(tmp_path)
+    try:
+        plugin = harness.bridge(Unknown())
+        plugin.plugin_open(object())
+        result = plugin.dispatch(a_invoke_request(), deadline_ns=11_000_000_000)
+        assert result.status is OperationStatus.UNKNOWN
+        assert result.error is not None
+        assert result.error.dispatch_state is DispatchState.DISPATCHED
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+def test_r2_dataset_shaped_result_without_publication_poisons(
+    tmp_path: Path,
+) -> None:
+    """R2 (strict posture, §3 slice 2): a dataset-shaped invoke result that
+    was never admitted through dataset_publish poisons PROTOCOL_ERROR with
+    the publication lie named — bridge-side state, not adapter
+    cooperation."""
+    harness = InvokeHarness(tmp_path)
+    try:
+        plugin = harness.bridge(InvokeAdapter(result=_DATASET_SHAPED_RESULT))
+        plugin.plugin_open(object())
+        result = plugin.dispatch(
+            a_invoke_request(action_id="demo.raw/1.0.0", input={}),
+            deadline_ns=11_000_000_000,
+        )
+        assert result.status is OperationStatus.UNKNOWN
+        assert result.error is not None
+        assert result.error.code is ErrorCode.PROTOCOL_ERROR
+        assert "dataset_publish" in result.error.message
+        assert "Invalid, failed or late adapter result" not in result.error.message
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+def test_r2_corpus_fetched_dataset_refuses_at_the_schema_channel(
+    tmp_path: Path,
+) -> None:
+    """The corpus-faithful arm: a fetch action whose output_schema refs the
+    measurement dataset def refuses an ill-formed dataset through the
+    schema channel (the validator's message), before the publication
+    cross-check is reached."""
+    harness = InvokeHarness(tmp_path)
+    try:
+        plugin = harness.bridge(InvokeAdapter(result=_DATASET_SHAPED_RESULT))
+        plugin.plugin_open(object())
+        result = plugin.dispatch(
+            a_invoke_request(action_id="demo.fetch/1.0.0", input={"count": 1}),
+            deadline_ns=11_000_000_000,
+        )
+        assert result.status is OperationStatus.UNKNOWN
+        assert result.error is not None
+        assert result.error.code is ErrorCode.PROTOCOL_ERROR
+        assert "required" in result.error.message
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+def test_invoke_dispatch_brackets_the_store_clamp(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The row-B bracket extends to invoke when the controller exists
+    (§2.3): the clamp forwards to the session's shared staged writer with
+    the entry-time deadline."""
+    harness = InvokeHarness(tmp_path)
+    calls: list[dict[str, Any]] = []
+
+    def _spy_clamp(deadline_ns: int, **kwargs: Any) -> Any:
+        calls.append({"deadline_ns": deadline_ns, **kwargs})
+        return contextlib.nullcontext()
+
+    monkeypatch.setattr(harness.controller, "dispatch_clamp", _spy_clamp)
+    try:
+        plugin = harness.bridge(InvokeAdapter())
+        plugin.plugin_open(object())
+        result = plugin.dispatch(a_invoke_request(), deadline_ns=11_000_000_000)
+        assert result.status is OperationStatus.OK
+        assert len(calls) == 1 and calls[0]["deadline_ns"] == 11_000_000_000
+        identify = plugin.dispatch(
+            OperationRequest.identify("op-id"), deadline_ns=11_000_000_000
+        )
+        assert identify.status is OperationStatus.OK
+        assert len(calls) == 1  # a non-invoke dispatch does not clamp
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+def test_r17_invoke_classified_resource_refusal_names_no_capture_lane(
+    tmp_path: Path,
+) -> None:
+    """R17: an invoke-classified RESOURCE_LIMIT refusal (the evidence lane —
+    slice 2's only classifiable origin during invoke) names the invoke
+    lane, never capture wording, and the session survives."""
+    harness = InvokeHarness(tmp_path, evidence_quota=2)
+    try:
+        plugin = harness.bridge(InvokeAdapter(evidence_calls=5))
+        plugin.plugin_open(object())
+        result = plugin.dispatch(a_invoke_request(), deadline_ns=11_000_000_000)
+        assert result.error is not None
+        assert result.error.code is ErrorCode.RESOURCE_LIMIT
+        assert result.error.dispatch_state is DispatchState.DISPATCHED
+        assert "apture" not in result.error.message
+        assert "invoke" in result.error.message
+        # The session survives the classified refusal.
+        again = plugin.dispatch(
+            a_invoke_request(), deadline_ns=11_000_000_000
+        )
+        assert again.error is not None
+        assert again.error.code is ErrorCode.RESOURCE_LIMIT
+        plugin.plugin_close()
+    finally:
+        harness.close()
+
+
+def test_bare_evidence_quota_raise_during_invoke_poisons(tmp_path: Path) -> None:
+    """C3's discriminator through the invoke lane: a bare EvidenceQuotaExceeded
+    the adapter raises itself (no bundle stamp) keeps the poison posture."""
+
+    class Forged(InvokeAdapter):
+        async def execute(self, request: dict[str, Any], context: Any) -> dict[str, Any]:
+            self.calls += 1
+            raise EvidenceQuotaExceeded("forged")
+
+    harness = InvokeHarness(tmp_path)
+    try:
+        plugin = harness.bridge(Forged())
+        plugin.plugin_open(object())
+        result = plugin.dispatch(a_invoke_request(), deadline_ns=11_000_000_000)
+        assert result.status is OperationStatus.UNKNOWN
+        assert result.error is not None
+        assert result.error.code is ErrorCode.PROTOCOL_ERROR
+        plugin.plugin_close()
+    finally:
+        harness.close()

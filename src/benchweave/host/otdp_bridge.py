@@ -2,16 +2,22 @@
 
 Identify, scalar read and scalar write are supported, plus single-channel
 capture (the ``artifact_writer``-gated capture verb: staged appends, a
-host-computed manifest, and an abort with a forensic record on failure)
-and streaming (the ``event_sink``-gated subscribe/unsubscribe verbs with
+host-computed manifest, and an abort with a forensic record on failure),
+streaming (the ``event_sink``-gated subscribe/unsubscribe verbs with
 ``next_event`` poll mediation: host-minted subscription ids, a normative
 interval floor, validated events landed as ``event_log`` evidence, gap
 annotations for unannounced sequence jumps, and host-cause teardown
-markers on quota exhaustion, poison and close).
-Dataset and profile semantics still need a native async host — for poll
-multiplexing across devices on one thread (subscriptions on ONE bridge
-multiplex synchronously through the poll engine) and the eventual
-invoke/dataset scheduling, explicitly NOT for capture/stream correctness.
+markers on quota exhaustion, poison and close), and invoke (issue #146:
+the pinned-contract lane — the descriptor's pinned catalog and
+measurement schema resolve at load, the dispatch gates run before the
+device, results validate against the action's pinned output schema, and
+a dataset-shaped result that was not admitted through the dataset
+services is a protocol lie from day one).
+Dataset publishing/lookup and the payload services still need the
+dataset-services slice; profile scheduling still needs a native async
+host — for poll multiplexing across devices on one thread (subscriptions
+on ONE bridge multiplex synchronously through the poll engine),
+explicitly NOT for capture/stream correctness.
 Services are
 caller-supplied, including the SAME monotonic timebase used for host
 deadlines (seconds versus nanoseconds). No transport provider is created.
@@ -58,6 +64,8 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import uuid4
 
+from jsonschema import Draft202012Validator
+
 from benchweave.content.capture_services import evidence_originated
 from benchweave.content.capture_store import writer_originated
 from benchweave.content.store import EvidenceQuotaExceeded
@@ -86,6 +94,13 @@ from benchweave.host.types import (
 )
 
 
+def canonical_json(value: Any) -> str:
+    """Canonical JSON text for the invoke dataset cross-check's byte
+    equality (sorted keys, tight separators — the manifest-bytes
+    discipline)."""
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
+
+
 class _Context:
     def __init__(self, operation_id: str, deadline: float, services: Any) -> None:
         self.operation_id = operation_id
@@ -111,6 +126,15 @@ class InvalidEvent(ValueError):
     unchanged; poll_event maps it to the PROTOCOL_ERROR poison posture
     WITH the validator's message — the honest invalid-event class, never
     the generic failed-or-late wording (G1/G3, Forge wave)."""
+
+
+class InvalidInvokeResult(ValueError):
+    """The invoke result validator's refusal channel (issue #146 R6, the
+    InvalidEvent discipline): the closed ``{action_id, result}`` data
+    branch, the action's pinned output schema, or the dataset-publication
+    cross-check did not hold. dispatch maps it to the PROTOCOL_ERROR
+    poison posture WITH the specific refusal — the honest invalid-result
+    class, never the generic failed-or-late wording."""
 
 
 @dataclass(frozen=True)
@@ -188,6 +212,10 @@ class OTDPBridge:
         self._opened = False
         self._closed = False
         self._failed = False
+        # Gate I5's compiled descriptor input_constraints, lazily cached per
+        # action (the documents.py lazy-singleton precedent — compiled once
+        # per bridge, on first use).
+        self._invoke_constraints: dict[str, Any] = {}
         self._release_loader: Callable[[], None] = lambda: None
 
     @property
@@ -274,6 +302,14 @@ class OTDPBridge:
                     # with a host-cause ended marker (§7/§8).
                     with suppress(Exception):
                         self._stream.sweep(reason="plugin_close")
+                if self._dataset is not None:
+                    # plugin_close sweeps still-open payloads (issue #146
+                    # §2.3); slice 2 has no openable payloads — the
+                    # controller's sweep is empty until the payload
+                    # services land, and the hook rides now so the close
+                    # path needs no second change when they do.
+                    with suppress(Exception):
+                        self._dataset.sweep_open(reason="plugin_close")
                 self._closed = True
                 self._opened = False
                 try:
@@ -304,12 +340,14 @@ class OTDPBridge:
                 "capture": {"capture_id", "format", "sample_count", "max_bytes"},
                 "stream_subscribe": {"subscription_id", "parameters", "min_interval_ms"},
                 "stream_unsubscribe": {"subscription_id"},
+                "invoke": {"action_id", "input"},
             }
             expected = supported.get(request.verb.value)
             if expected is None:
                 return reject(
                     ErrorCode.UNSUPPORTED,
-                    "Bridge supports identify, read, write, capture and stream verbs",
+                    "Bridge supports identify, read, write, capture, stream and "
+                    "invoke verbs",
                 )
             if set(request.arguments) != expected:
                 return reject(ErrorCode.UNSUPPORTED, "Unsupported arguments for bridge operation")
@@ -342,6 +380,20 @@ class OTDPBridge:
                             now_ns=int(self._services.monotonic() * 1_000_000_000),
                         )
                     )
+                if request.verb.value == "invoke" and self._dataset is not None:
+                    # The same row-B bracket extends to invoke (issue #146
+                    # §2.3) when the controller exists: store writes an
+                    # adapter performs during execute — evidence rows now,
+                    # payload appends once the dataset services land — hit
+                    # the same single-writer store a capture's appends do.
+                    # Entry-time-remaining semantics and the disclosed
+                    # overshoot apply unchanged.
+                    clamp_stack.enter_context(
+                        self._dataset.dispatch_clamp(
+                            deadline_ns,
+                            now_ns=int(self._services.monotonic() * 1_000_000_000),
+                        )
+                    )
                 capture_id: str | None = None
                 if request.verb.value == "capture":
                     gate = self._capture_gate(request)
@@ -359,14 +411,27 @@ class OTDPBridge:
                     if preflight is not None:
                         return preflight
                     subscription_id = str(request.arguments["subscription_id"])
+                if request.verb.value == "invoke":
+                    gate = self._invoke_gate(request)
+                    if gate is not None:
+                        return gate
                 context = _Context(request.operation_id, deadline, self._services)
+                if request.verb.value == "invoke" and self._dataset is not None:
+                    # Gate I6: the host mints the dataset id — unique per
+                    # dispatch (operation ids key on occurrence ids and
+                    # recovered steps never re-dispatch, so replay cannot
+                    # collide it; design §2.3), and the adapter never
+                    # chooses it.
+                    context.dataset_id = self._dataset.mint_dataset_id(
+                        request.operation_id
+                    )
                 envelope = {
                     "operation_id": request.operation_id,
                     "verb": request.verb.value,
                     "arguments": copy.deepcopy(request.arguments),
                 }
 
-                def poison(exc: BaseException) -> OperationResult:
+                def poison(exc: BaseException, message: str | None = None) -> OperationResult:
                     self._failed = True
                     return OperationResult.indeterminate(
                         request.operation_id,
@@ -374,7 +439,9 @@ class OTDPBridge:
                         code=ErrorCode.TIMEOUT
                         if isinstance(exc, TimeoutError)
                         else ErrorCode.PROTOCOL_ERROR,
-                        message="Invalid, failed or late adapter result; no replay",
+                        message=message
+                        if message is not None
+                        else "Invalid, failed or late adapter result; no replay",
                     )
 
                 try:
@@ -401,6 +468,14 @@ class OTDPBridge:
                         # cannot leak live subscriptions until close.
                         self._stream_clear()
                     return converted
+                except InvalidInvokeResult as exc:
+                    # R6's honest invalid-result class (the InvalidEvent
+                    # precedent): the invoke conversion's own refusal —
+                    # envelope shape, the pinned output schema, or the
+                    # dataset-publication cross-check — poisons WITH its
+                    # specific message, never the generic wording.
+                    self._stream_clear()
+                    return poison(exc, message=f"invalid invoke result: {exc}")
                 except (
                     CaptureQuotaExceeded,
                     EvidenceQuotaExceeded,
@@ -414,7 +489,13 @@ class OTDPBridge:
                     # private tokens remains possible: adapters are trusted
                     # Python (the module docstring's boundary); the stamp
                     # separates accidental collision from origin, it does not
-                    # prove origin against deliberate hostility.
+                    # prove origin against deliberate hostility. The dataset
+                    # lane's payload arm joins the discriminator with the
+                    # dataset services (issue #146 slice 3 — the writer's
+                    # payload-stamp registry); the classification here is
+                    # DELIBERATE for invoke, not incidental class overlap:
+                    # slice 2's only invoke-classifiable origin is the
+                    # evidence arm, operation-bound.
                     if not self._capture_originated(exc, capture_id, request):
                         if capture_id is not None:
                             self._abort_contained(capture_id, request.operation_id)
@@ -430,11 +511,23 @@ class OTDPBridge:
                         # reservation it held is released (nothing streamed). An
                         # unsubscribe failure keeps its subscription live.
                         self._stream.release(subscription_id)
+                    # R17 (issue #146, lane-honest refusal prose): the
+                    # classified refusal names the lane that classified it.
+                    # Capture dispatches keep the exact historical message;
+                    # an invoke-classified refusal names the invoke lane and
+                    # its origin — never capture wording.
+                    if request.verb.value == "invoke":
+                        lane = "evidence" if isinstance(exc, EvidenceQuotaExceeded) else "payload"
+                        refusal_message = (
+                            f"invoke resource condition ({lane}): {exc}"
+                        )
+                    else:
+                        refusal_message = f"Capture resource condition: {exc}"
                     return OperationResult.failure(
                         request.operation_id,
                         request.verb,
                         code=ErrorCode.RESOURCE_LIMIT,
-                        message=f"Capture resource condition: {exc}",
+                        message=refusal_message,
                         # A7: every refusal raised after execute entry is
                         # dispatched — never not_dispatched, and the session
                         # survives (no poison).
@@ -593,6 +686,91 @@ class OTDPBridge:
                 dispatch_state=DispatchState.NOT_DISPATCHED,
             )
         return capture_id
+
+    def _invoke_gate(self, request: OperationRequest) -> OperationResult | None:
+        """The pre-dispatch invoke gates I1–I5 (issue #146 §2.3; R1: bounds
+        before the device).
+
+        I1 capability: controller existence IS the capability — the loader
+        constructs one iff the descriptor declares invoke AND §2.1's
+        resolution produced the complete catalog+measurement pair (the
+        soft both-or-neither arm lands here as UNSUPPORTED). I2 declared
+        action (defense in depth under binding's admission refusal — the
+        bridge reads the raw descriptor it deep-copied at construction).
+        I3 catalog resolution (M14: an unknown contract is never opaque
+        success). I4 the pinned catalog's input schema — the RESOLVED
+        input, post-CTL-6, the only place a $stg_ref-resolved value can be
+        schema-checked. I5 the descriptor action's own input_constraints
+        narrowing (the policy-rule intersection already ran at the
+        executor). Every refusal is a clean typed rejection with zero
+        adapter calls; the gate region has no exception frame, so the
+        pinned validators' lazy $ref resolution is guaranteed by §2.1's
+        load-time probe, never caught here.
+        """
+        if self._dataset is None:
+            return OperationResult.failure(
+                request.operation_id,
+                request.verb,
+                code=ErrorCode.UNSUPPORTED,
+                message=(
+                    "invoke requires the pinned contract set (catalog and "
+                    "measurement schema) resolved at load"
+                ),
+                dispatch_state=DispatchState.NOT_DISPATCHED,
+            )
+        arguments = request.arguments
+        action_id = arguments.get("action_id")
+        if not isinstance(action_id, str) or not action_id:
+            return self._invalid(request, "action_id must be a non-empty string")
+        declared = self._descriptor.get("actions")
+        if not isinstance(declared, dict) or action_id not in declared:
+            return self._invalid(
+                request,
+                f"action {action_id!r} is not declared by the descriptor actions map",
+            )
+        action = self._dataset.actions.get(action_id)
+        if action is None:
+            return self._invalid(
+                request,
+                f"action {action_id!r} does not resolve in the pinned profile "
+                "catalog (M14)",
+            )
+        value = arguments.get("input")
+        if not isinstance(value, dict):
+            return self._invalid(request, "input must be an object")
+        error = next(iter(action.input_validator.iter_errors(value)), None)
+        if error is not None:
+            return self._invalid(
+                request,
+                f"input violates the action's catalog input schema at "
+                f"{error.json_path}: {error.message}",
+            )
+        constraints = self._invoke_constraints_validator(action_id, declared[action_id])
+        if constraints is not None:
+            error = next(iter(constraints.iter_errors(value)), None)
+            if error is not None:
+                return self._invalid(
+                    request,
+                    f"input violates the descriptor action's input_constraints at "
+                    f"{error.json_path}: {error.message}",
+                )
+        return None
+
+    def _invoke_constraints_validator(
+        self, action_id: str, declaration: Any
+    ) -> Any | None:
+        """The descriptor action's ``input_constraints`` validator, compiled
+        once per bridge and cached (I5)."""
+        if not isinstance(declaration, dict):
+            return None
+        constraints = declaration.get("input_constraints")
+        if not isinstance(constraints, dict):
+            return None
+        validator = self._invoke_constraints.get(action_id)
+        if validator is None:
+            validator = Draft202012Validator(constraints)
+            self._invoke_constraints[action_id] = validator
+        return validator
 
     def _subscribe_gate(self, request: OperationRequest) -> str | OperationResult:
         """The pre-dispatch stream_subscribe gates (the _capture_gate mirror).
@@ -1219,6 +1397,41 @@ class OTDPBridge:
             if echoed != request.arguments["subscription_id"]:
                 raise ValueError("uncorrelated subscription id")
             value = {"subscription_id": echoed}
+        elif request.verb.value == "invoke":
+            # The runtime schema's invoke data branch is closed: exactly
+            # {action_id, result}, no x- extension keys. Failures raise
+            # InvalidInvokeResult (the honest invalid-result class, R6) so
+            # the specific refusal reaches the record.
+            if set(data) != {"action_id", "result"}:
+                raise InvalidInvokeResult(
+                    "invoke result data must be exactly {action_id, result}"
+                )
+            if data.get("action_id") != request.arguments["action_id"]:
+                raise InvalidInvokeResult("uncorrelated invoke action_id")
+            payload = data["result"]
+            action = self._dataset.actions[request.arguments["action_id"]]
+            errors = list(action.output_validator.iter_errors(payload))
+            if errors:
+                first = errors[0]
+                raise InvalidInvokeResult(
+                    f"result violates the action's catalog output schema at "
+                    f"{first.json_path}: {first.message}"
+                )
+            if self._dataset.is_dataset_shaped(payload):
+                # The dataset-publication cross-check (§2.3; strict from
+                # day one — the design's slice-2 posture): a dataset-shaped
+                # result must be an admitted manifest THIS operation
+                # published through the dataset services. Bridge-side
+                # state, never adapter cooperation.
+                admitted = self._dataset.admitted_for(request.operation_id)
+                if admitted is None or canonical_json(admitted) != canonical_json(
+                    payload
+                ):
+                    raise InvalidInvokeResult(
+                        "invoke returned a dataset-shaped result that was never "
+                        "admitted through dataset_publish"
+                    )
+            value = {"action_id": request.arguments["action_id"], "result": payload}
         else:
             if (
                 data.get("parameter") != request.arguments["parameter"]

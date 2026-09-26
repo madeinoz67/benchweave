@@ -521,12 +521,16 @@ def check_envelopes(source: str, runtime: dict[str, Any]) -> None:
 
     tree = ast.parse(source)
     enforced = _enforced_set_literals(tree)
+    # The invoke data envelope (issue #146 slice 2): the runtime schema's
+    # closed {action_id, result} branch — no x- extension keys, unlike the
+    # stream branches — so the bridge enforces the closed set.
     assert enforced == {
         frozenset(RESULT_KEYS),
         frozenset(ERROR_PATH_KEYS),
         frozenset(ERROR_KEYS),
+        frozenset({"action_id", "result"}),
     }, (
-        "the bridge's raise-guarded envelope key sets drifted from the pinned three: "
+        "the bridge's raise-guarded envelope key sets drifted from the pinned four: "
         f"enforced={sorted(sorted(literal) for literal in enforced)}"
     )
     assert _request_keys_reaching_execute(tree) == REQUEST_KEYS, (
