@@ -1302,6 +1302,102 @@ def test_classifier_refuses_to_arm_fire_and_kill_on_the_same_set() -> None:
     )
 
 
+def test_classifier_fire_requires_exactly_five_t_acq_trials() -> None:
+    """§6 arm 2's denominator is its own letter: ">=3 of 5 trials" — the
+    FIRE series is EXACTLY five T_acq trials. A longer series with the same
+    breach count (3-of-8) or the same breach rate (3-of-10, rate 0.3) is
+    not the clause's input shape: it falls through to arm 4 ("everything
+    else ... raise n and re-run") and reads INCONCLUSIVE, never FIRE."""
+    def series(values: list[float]) -> list[TrialRecord]:
+        return [_table_trial(value_ms=value, t_acq_controls=True) for value in values]
+
+    # The exactly-5 comparator: 3 breaches in a 5-series fires.
+    assert classify(series([105.0] * 3 + [90.0] * 2), _BOUNDS) is Arm.FIRE
+    # 3-of-8 (breach count held, n grown): INCONCLUSIVE, not FIRE.
+    assert classify(series([105.0] * 3 + [90.0] * 5), _BOUNDS) is Arm.INCONCLUSIVE
+    # 3-of-10 (the rate-0.3 class input): INCONCLUSIVE, not FIRE.
+    assert classify(series([105.0] * 3 + [90.0] * 7), _BOUNDS) is Arm.INCONCLUSIVE
+
+
+def test_classifier_never_pools_across_device_classes() -> None:
+    """Device classes never pool (design §2.8): X2 is class-dependent BY
+    DESIGN — buffered reads dispatch-scale ages (~220 ms on this rig),
+    unbuffered collapses to host skew (~1 ms) — so a pooled breach count
+    mixes populations and can manufacture FIRE from two underpowered
+    halves. Arms 1/2/4 evaluate per class; KILL alone aggregates across
+    classes (its own §6 letter). The aggregation keeps §6's precedence: an
+    underpowered class blocks (arm 1) before a firing class fires (arm 2)."""
+    pooled_fire_shaped = [
+        *[
+            _table_trial(value_ms=105.0, t_acq_controls=True, device_class="buffered")
+            for _ in range(3)
+        ],
+        *[
+            _table_trial(value_ms=90.0, t_acq_controls=True, device_class="unbuffered")
+            for _ in range(2)
+        ],
+    ]
+    # Pooled, this ledger is a 5-series with 3 breaches (FIRE-shaped); per
+    # class it is a 3-series and a 2-series — neither is the 5-trial FIRE
+    # input, so the ledger reads INCONCLUSIVE.
+    assert classify(pooled_fire_shaped, _BOUNDS) is Arm.INCONCLUSIVE
+
+    separated_fire = [
+        *[
+            _table_trial(value_ms=105.0, t_acq_controls=True, device_class="buffered")
+            for _ in range(5)
+        ],
+        *[
+            _table_trial(value_ms=90.0, t_acq_controls=True, device_class="unbuffered")
+            for _ in range(5)
+        ],
+    ]
+    # The same measurements, per class complete: the buffered class's own
+    # 5-series fires (5-of-5 breaches); the unbuffered class's clean series
+    # does not veto it (no class reads UNDERPOWERED) — the ledger reads FIRE.
+    assert classify(separated_fire, _BOUNDS) is Arm.FIRE
+
+    one_class_loose = [
+        *[
+            _table_trial(value_ms=value, t_acq_controls=True, device_class="buffered")
+            for value in [105.0, 105.0, 105.0, 90.0, 90.0]
+        ],
+        *[
+            _table_trial(value_ms=value, t_acq_controls=True, device_class="unbuffered")
+            for value in [140.0, 90.0]
+        ],
+    ]
+    # §6 precedence across classes: the unbuffered class's loose range
+    # (140-90 = 50 > 25% of the 100 bound) blocks the buffered class's
+    # FIRE-shaped series — the ledger reads UNDERPOWERED, decide nothing.
+    assert classify(one_class_loose, _BOUNDS) is Arm.UNDERPOWERED
+
+
+def test_classifier_refuses_inconsistent_unsplittable_labels() -> None:
+    """The un-splittable label is a per-class qualification fact (design
+    §2.8, finding F-C): one declaration per class. A ledger whose class
+    carries both labels is malformed input — the classifier refuses it
+    loudly instead of silently reading one trial's label for the group."""
+    inconsistent = [
+        _table_trial(
+            value_ms=10.0,
+            device_class="buffered",
+            t_acq_controls=False,
+            tightening_admitted=True,
+            unsplittable_class=True,
+        ),
+        _table_trial(
+            value_ms=10.0,
+            device_class="buffered",
+            t_acq_controls=False,
+            tightening_admitted=True,
+            unsplittable_class=False,
+        ),
+    ]
+    with pytest.raises(ValueError, match="unsplittable_class"):
+        classify(inconsistent, _BOUNDS)
+
+
 def test_classifier_absent_axis_reads_underpowered() -> None:
     """§6 arm 1's single-instance clause: an axis NO trial measured (the
     single-instance rig cannot measure X2-X4) reads UNDERPOWERED even with
@@ -1455,10 +1551,48 @@ def test_control_arm_and_separation(tmp_path: Path) -> None:
 def test_trial_log_written_with_provenance(tmp_path: Path) -> None:
     """Check 3's artifact half: the measured cells emit the consolidated
     trial log under the trial dir — the future measurement record quotes
-    from this file, never from hand transcription."""
+    from this file, never from hand transcription.
+
+    The vacuity guard: this test enumerates the five cells ITSELF (the
+    module-level cache makes that a no-op after the measurement tests) and
+    asserts the record set is non-empty — the old shape, which read only
+    the cache, passed with zero rows under ``-k trial_log``, proving
+    nothing. Trial-log honesty: a short-T CONTROL trial never carries
+    ``t_acq_controls=True`` — it IS control (i)'s evidence (its acquisition
+    fails by construction at ``SHORT_T_MS``), not a T_acq_min dispatch
+    whose controls were asserted; stamping it True would let the
+    classifier's FIRE series count failed acquisitions as
+    controls-asserted trials."""
+    cells = [
+        (arm, device_class)
+        for arm in ("capture", "non_capture", "control")
+        for device_class in ("buffered", "unbuffered")
+        if not (arm == "control" and device_class == "unbuffered")
+    ]
     records: list[TrialRecord] = []
-    for (arm, device_class), trials in sorted(_TRIAL_CELLS.items()):
-        for trial in trials:
+    for arm, device_class in cells:
+        for trial in _cell(tmp_path, arm, device_class):
+            parameterization: dict[str, Any] = {
+                "fixture": "continuity-rig",
+                "arm": arm,
+                "device_class": device_class,
+                "t_acq_min_ms": T_ACQ_MIN_MS,
+                "poll_ms": POLL_MS,
+                "frame_period_ms": FRAME_PERIOD_MS,
+                "max_age_ms": MAX_AGE_MS,
+                "dispatch_duration_ms": trial["dispatch_duration_ms"],
+                "onset_to_observation_ms": trial["onset_to_observation_ms"],
+                "observation_to_action_ms": trial["observation_to_action_ms"],
+            }
+            if arm == "control":
+                parameterization["t_acq_note"] = (
+                    "short-T control trial: acquisition fails by construction "
+                    "at SHORT_T_MS — control (i)'s evidence, not a T_acq_min "
+                    "dispatch; dispatched via the READ verb (the capture "
+                    "arm's own short-T variant is not run separately — the "
+                    "read-verb control pins the pacing floor for both arms' "
+                    "T_acq_min class)"
+                )
             records.append(
                 TrialRecord(
                     trial=trial["trial"],
@@ -1471,37 +1605,36 @@ def test_trial_log_written_with_provenance(tmp_path: Path) -> None:
                         "X4": trial["x4_ms"],
                     },
                     # The T_acq consistency controls are asserted for the
-                    # measured arms: short-T failure (the control cell) AND
-                    # split refusal (the capture-window test below; the
+                    # MEASURED arms only: short-T failure (the control cell)
+                    # AND split refusal (the capture-window test below; the
                     # scalar arm's split refusal is definitional).
-                    t_acq_controls=True,
+                    t_acq_controls=arm != "control",
                     tightening_admitted=False,
                     splitting_admitted=False,
                     unsplittable_class=True,
-                    parameterization={
-                        "fixture": "continuity-rig",
-                        "arm": arm,
-                        "device_class": device_class,
-                        "t_acq_min_ms": T_ACQ_MIN_MS,
-                        "poll_ms": POLL_MS,
-                        "frame_period_ms": FRAME_PERIOD_MS,
-                        "max_age_ms": MAX_AGE_MS,
-                        "dispatch_duration_ms": trial["dispatch_duration_ms"],
-                        "onset_to_observation_ms": trial["onset_to_observation_ms"],
-                        "observation_to_action_ms": trial["observation_to_action_ms"],
-                    },
+                    parameterization=parameterization,
                     command=(
                         "pytest tests/integration/test_cross_instance_continuity.py"
                         f" -k {arm} and {device_class}"
                     ),
                 )
             )
+    assert records, "the trial log emitted zero rows — the cells never ran"
     path = tmp_path / "continuity-trial-log.json"
     log = write_trial_log(path, records)
     assert path.is_file()
     written = json.loads(path.read_text())
     assert written == log
     assert len(log["rows"]) >= len(records) * 4
+    # The control rows carry the honest stamp and its provenance note.
+    control_rows = [row for row in log["rows"] if row["arm"] == "control"]
+    assert control_rows, "no control rows in the emitted log"
+    assert all(row["value"] is False for row in control_rows if row.get("figure")), (
+        "a short-T control trial claimed t_acq_controls=True"
+    )
+    assert all(
+        "t_acq_note" in row["parameterization"] for row in control_rows
+    ), "the control provenance nuance is missing from the log"
     print(f"\ntrial log: {path}")
 
 
