@@ -412,9 +412,9 @@ class OTDPBridge:
                         return preflight
                     subscription_id = str(request.arguments["subscription_id"])
                 if request.verb.value == "invoke":
-                    gate = self._invoke_gate(request)
-                    if gate is not None:
-                        return gate
+                    invoke_gate = self._invoke_gate(request)
+                    if invoke_gate is not None:
+                        return invoke_gate
                 context = _Context(request.operation_id, deadline, self._services)
                 if request.verb.value == "invoke" and self._dataset is not None:
                     # Gate I6: the host mints the dataset id — unique per

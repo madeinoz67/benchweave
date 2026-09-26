@@ -3009,7 +3009,7 @@ INVOKE_DESCRIPTOR = {
     },
 }
 
-_DATASET_SHAPED_RESULT = {
+_DATASET_SHAPED_RESULT: dict[str, Any] = {
     "dataset_id": "ds:op-i",
     "kind": "scalar_set",
     "configuration_id": None,
