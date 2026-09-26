@@ -369,6 +369,7 @@ All notable changes to this project will be documented in this file.
 - Record #209 coordinator rulings (Q1-Q21) in the publishing PRD
 - Add #203 standards dependency management requirements PRD
 - Add #203 standards dependency management design record
+- Add #209 contributor publishing design record and planning index rows
 
 ### Features
 
