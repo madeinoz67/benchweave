@@ -154,6 +154,16 @@ class DatasetController:
             return nullcontext()
         return self._writer.dispatch_clamp(deadline_ns, now_ns=now_ns)
 
+    def epilogue_floor(self) -> Any:
+        """Forward the failure-path reclaim's bounded floor to the session's
+        writer (§2.2's member list; wave 2 #3): the classified invoke's
+        abort_open runs under ``min(CAPTURE_EPILOGUE_FLOOR_MS, open
+        default)`` so a clamped-out dispatch still reclaims its open
+        payloads — the ``_abort_contained`` precedent, floor and all."""
+        if self._writer is None:
+            return nullcontext()
+        return self._writer.epilogue_floor_window()
+
     def mint_dataset_id(
         self,
         operation_id: str,

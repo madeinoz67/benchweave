@@ -3756,3 +3756,104 @@ def _A_PUBLISHABLE_MANIFEST() -> dict[str, Any]:
         "status": "complete",
         "context": {},
     }
+
+
+def test_w2_abort_open_rides_the_epilogue_floor(tmp_path: Path) -> None:
+    """Wave2 #3 (critic-M): a classified invoke failure's payload reclaim
+    runs under the epilogue floor, not bare. With the write lock held by
+    another connection and the dispatch clamp at ~zero, a BARE abort
+    inherits the clamp and reclaims nothing until the close sweep; under
+    the floor it waits bounded and reclaims DURING the dispatch (the
+    _abort_contained precedent — the floor rode with it)."""
+    import sqlite3 as _sqlite3
+    import time as _time
+
+    harness = InvokeHarness(tmp_path)
+    db_path = str(
+        harness.store.connection.execute("PRAGMA database_list").fetchone()[2]
+    )
+    try:
+        from benchweave.content.dataset_services import DatasetPayloadBundle
+
+        bundle = DatasetPayloadBundle(
+            controller=harness.controller,
+            writer=harness.writer,
+            channels=("ch1",),
+            content=harness.content,
+            clock=lambda: 0.0,
+            wall=lambda: "2026-09-26T00:00:00Z",
+            quota_evidence=50,
+            context_key="invoke-harness-session",
+        )
+
+        release = threading.Event()
+
+        def hold_lock() -> None:
+            # A SEPARATE THREAD holds the write lock past the dispatch's
+            # clamp window but well inside the epilogue floor — the holder
+            # must still hold when the classified failure's reclaim runs
+            # (the adapter's own finally would release too early, which is
+            # exactly the underpowered shape the first version of this
+            # test had).
+            contender = _sqlite3.connect(db_path, timeout=0.05)
+            try:
+                contender.execute("BEGIN IMMEDIATE")
+                # A short hold: past the ~1 ms clamp window, well inside
+                # the 5 s epilogue floor.
+                release.wait(timeout=0.3)
+            finally:
+                contender.rollback()
+                contender.close()
+
+        class HeldLockAppend(InvokeAdapter):
+            async def execute(self, request: dict[str, Any], context: Any) -> dict[str, Any]:
+                self.calls += 1
+                if request["verb"] != "invoke":
+                    return await Adapter.execute(self, request, context)
+                payload_id = await self.services.payload_create("u8", 16, context)
+                holder = threading.Thread(target=hold_lock)
+                holder.start()
+                try:
+                    # Wait for the holder to take the lock, then lose the
+                    # race under the ~1 ms clamp: the writer's stamped
+                    # OperationalError classifies.
+                    _time.sleep(0.05)
+                    await self.services.payload_append(payload_id, b"a" * 8, context)
+                    raise AssertionError("append should have failed on the lock")
+                except _sqlite3.OperationalError:
+                    # Raise IMMEDIATELY: the holder (0.3 s) must still hold
+                    # when the classified failure's reclaim runs — joining
+                    # here would release the contention before the abort
+                    # window opens (the underpowered shape this test's
+                    # first two versions had).
+                    raise
+
+        plugin = OTDPBridge(
+            HeldLockAppend(),
+            descriptor=dict(INVOKE_DESCRIPTOR),
+            services=bundle,
+            simulation=SimulationInfo(True, "Synthetic"),
+            dataset=harness.controller,
+        )
+        plugin.plugin_open(object())
+        # ~1 ms of remaining budget: the clamp is effectively zero for the
+        # 200 ms hold.
+        result = plugin.dispatch(a_invoke_request(), deadline_ns=1_000_000)
+        assert result.error is not None
+        assert result.error.code is ErrorCode.RESOURCE_LIMIT
+        assert result.error.dispatch_state is DispatchState.DISPATCHED
+        staged = harness.store.connection.execute(
+            "SELECT COUNT(*) FROM capture_staging WHERE state = 'staged'"
+        ).fetchone()[0]
+        release.set()
+        assert staged == 0, (
+            "the classified failure's payload reclaim inherited the clamp "
+            "and leaked its staging row past the dispatch"
+        )
+        follow = plugin.dispatch(
+            OperationRequest.identify("op-next"), deadline_ns=11_000_000_000
+        )
+        assert follow.status is OperationStatus.OK  # the session survives
+        plugin.plugin_close()
+    finally:
+        harness.close()

@@ -535,7 +535,16 @@ class OTDPBridge:
                     if request.verb.value == "invoke":
                         lane = "evidence" if isinstance(exc, EvidenceQuotaExceeded) else "payload"
                         if self._dataset is not None:
-                            self._dataset.abort_open(request.operation_id)
+                            # Wave 2 #3: the reclaim rides the epilogue
+                            # floor (the _abort_contained precedent — the
+                            # floor rode with it). Bare, it inherits the
+                            # dispatch clamp's remaining budget (≈0 on a
+                            # clamped-out dispatch) and reclaims nothing
+                            # until the close sweep; under the floor it
+                            # waits bounded and reclaims now. Contained:
+                            # a reclaim failure never replaces the refusal.
+                            with suppress(Exception), self._dataset.epilogue_floor():
+                                self._dataset.abort_open(request.operation_id)
                         refusal_message = (
                             f"invoke resource condition ({lane}): {exc}"
                         )
