@@ -379,3 +379,52 @@ def test_range_narrowing_that_drops_a_carried_version_reports_it_removed(
     assert report.changed == ()
     assert report.added == ("otdp@0.2.3",)
     assert sync(None, sdk, check_only=True) == SyncReport((), (), (), ())
+
+
+# --- #215 late Forge fold 2, gateway twins: the active re-point gate + report. ---
+
+
+def test_active_repoint_without_an_sdk_bump_is_refused(tmp_path: Path) -> None:
+    """Late fold 2 (#215), gateway twin: an active re-point inside an
+    unchanged carried set with an unmoved SDK version refuses
+    ``sdk_bump_class_invalid:`` naming both ends — the derived constants
+    (OTDP_VERSION/ADAPTER_API_VERSION) move with the active row, so one SDK
+    version covering both states is the #166 defect class."""
+    bundle = _export(tmp_path)  # the real export marks otdp 0.2.2 active
+    sdk = _versioned_sdk(tmp_path, "0.3.1")
+    sync(bundle, sdk)
+    document = _manifest(bundle)
+    for row in document["standards"]:
+        if row["id"] == "otdp":
+            if row["version"] == "0.2.2":
+                row["active"] = False
+            if row["version"] == "0.2.0":
+                row["active"] = True  # the re-point: rollback inside the range
+    _rewrite_manifest(bundle, document)
+    with pytest.raises(ValueError, match="^sdk_bump_class_invalid: ") as refusal:
+        sync(bundle, sdk)
+    message = str(refusal.value)
+    assert "0.2.2" in message and "0.2.0" in message, "the refusal names both ends"
+
+
+def test_active_repoint_is_named_in_the_report(tmp_path: Path) -> None:
+    """Late fold 2's report half, gateway twin: a bumped SDK version admits
+    the re-point and the report names it (``active_changes``)."""
+    bundle = _export(tmp_path)
+    sdk = _versioned_sdk(tmp_path, "0.3.1")
+    sync(bundle, sdk)
+    document = _manifest(bundle)
+    for row in document["standards"]:
+        if row["id"] == "otdp":
+            if row["version"] == "0.2.2":
+                row["active"] = False
+            if row["version"] == "0.2.0":
+                row["active"] = True
+    _rewrite_manifest(bundle, document)
+    (sdk / "pyproject.toml").write_text(
+        '[project]\nname = "benchweave-sdk"\nversion = "0.3.2"\n', encoding="utf-8"
+    )
+    report = sync(bundle, sdk)
+    assert report.active_changes == ("otdp@0.2.2->0.2.0",)
+    assert report.added == () and report.removed == () and report.changed == ()
+    assert sync(None, sdk, check_only=True) == SyncReport((), (), (), ())

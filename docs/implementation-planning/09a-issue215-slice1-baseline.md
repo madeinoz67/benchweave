@@ -79,8 +79,15 @@ mechanism.
   copy): 26/26, and `benchweave-sdk check` prints the yank warning naming
   both the pin and the move-to 0.2.2.
 - **Wheel**: `benchweave_sdk-0.3.1-py3-none-any.whl` = 624,791 bytes
-  (sha256 `ffd6d40e...551719`) — **+147,547 bytes (+144.1 KiB, +30.9%)**
-  over the 477,244-byte baseline. The post-slice lock carries 11 CARRIED
+  (sha256 `ffd6d40e...551719`; INFORMATIONAL, not rebuild-reproducible —
+  uv wheel bytes are timestamp-dependent unless SOURCE_DATE_EPOCH is set,
+  so a fresh build needs the same byte total, never the same sha) —
+  **+147,547 bytes (+144.1 KiB, +30.9%)**
+  over the 477,244-byte baseline. The REPRODUCIBLE wheel identity
+  (re-measured locally at the fix-wave tip against a freshly built wheel,
+  matching the Forge audit's figure): all **134** lock-row files
+  digest-match `standards-lock.json`, and the wheel's standards tree
+  carries **zero** unrecorded files. The post-slice lock carries 11 CARRIED
   rows (10 served + the yanked-marked otdp/0.2.1) across the 6 standards —
   corrected here from the design's "9 served versions" slip (deviation 1
   below) and from this section's own earlier "served" mislabel of what
@@ -276,3 +283,61 @@ bytes (exit 0 in a scratch extraction).
 | 23 | TEXT (SDK release-review matrix rows 2 and 5): machine truth names the ACTIVE row of the multi-row lock (the constants derive lazily from it; the active row governs the badges). |
 | 24 | TEST: `test_two_carried_plugin_ui_versions_dedupe_the_parity_code_row` — synthetic plugin-ui/0.2.1 corpus rows put two carried versions under the narrow range; the export succeeds, both rows list the parity code row, one copy ships. Green on landing (the branch existed untested; pinned, not fixed). |
 | 25 | BEHAVIOR (SDK): the yank warning moved to `validate()` — the one path every entry point shares — so envelope validation (`validate_request`/`validate_result` with a pinned yanked version) and explicit-key validation warn too. RED: both new path tests `DID NOT WARN. No warnings of type ... were emitted`; served-pin control silent; the A1 anti-gaming arm's warning text unchanged (re-proven at close-out). |
+
+## Late Forge folds (#215) — the cross-vendor audit findings on the fix tips
+
+Folded into the same branches under the owner's fold-all posture; items 1-2
+RED-first, 3 wording-only, 4 record-only. RED evidence verbatim.
+
+**Late fold 1 (MEDIUM) — the F1 digest gate's coverage hole.** The gate
+wired in F1 covered only what `contract_documents` enumerated —
+('otdp','registry','plugin-ui') — and `fixtures` read the vendored fixture
+schema directly, so plugin-ui-preview (and execution/interface) rows rode
+the lock and wheel outside the verified loader. RED (the executed
+falsifier): tampering
+`src/benchweave_sdk/standards/plugin-ui-preview/0.1.1/fixture.schema.json`
+('required'->'xrequired', parse-valid) loaded clean on the fixture path —
+the test's refusal never fired and the run proceeded to `_target_index`;
+the coverage arm RED: `AssertionError: lock-recorded documents outside the
+verified loader: ['execution/0.1.0/bench.schema.json', ...]`. Fix: the
+loader enumerates EVERY carried standard the lock names, and the fixture
+schema load rides it (`fixtures._fixture_schema` through
+`contract_documents`; `_schema_path` deleted, its fallback-trust tests
+consolidated onto the loader's own pin). Envelope and explicit-key paths
+already loaded through the same gate, so runtime JSON-document coverage
+now equals lock coverage and the claim texts ("every document at load" —
+CON-4 amendment, obligation 19, the F1 note above) are true as written.
+One runtime path deliberately stays OUTSIDE the JSON-document gate and is
+named here so claim and mechanism agree: `presentation` IMPORTS the
+vendored plugin-ui contracts module (a .py code row, deferral D2's
+registered exception) — not a document load; the whole-tree sweep
+(`verify_vendored_digests`, every lock row including .py) covers it at
+check time.
+
+**Late fold 2 (LOW) — the bump-class gate was blind to active re-points.**
+An active re-point inside an unchanged carried set with an unmoved SDK
+version (rollback 0.2.2 -> 0.2.0 inside the range) passed sync self-check
+and the gateway check while `OTDP_VERSION`/`ADAPTER_API_VERSION` derive
+from the active row. RED: `Failed: DID NOT RAISE ValueError` (the refusal
+test) and `AttributeError: 'SyncReport' object has no attribute
+'active_changes'` (the report half). Fix: the gate refuses an active
+re-point on an unmoved version (`sdk_bump_class_invalid:` naming both
+ends — one SDK version never covers two derived-constant states);
+`SyncReport.active_changes` names the pair (`otdp@0.2.2->0.2.0`) in the
+report, the CLI summary and the check-mode drift refusal. Gateway twins
+landed and mutation-proofed (neutralized gate: the refusal twin 1/1 red,
+`Failed: DID NOT RAISE ValueError`; restored: green).
+
+**Late fold 3 (NIT, wording).** The move-to label now reads as what the
+pinned derivation computes — "move-to {v} — the highest served version,
+the recommended re-target" — in `refusal_for` and the yank warning. The
+VR-37 field names and the A3-pinned semantics are unchanged (the
+derivation is max(served) on both arms, so "highest served" is exact);
+"nearest" is retired as overpromising an adjacency nothing computes.
+
+**Late fold 4 (NIT, record).** The wheel section above now carries the
+reproducible identity (all 134 lock-row files digest-match
+`standards-lock.json`; zero unrecorded files in the wheel tree —
+re-measured locally at the tip, matching the audit's figure) and
+annotates the byte total/sha as informational: uv wheel bytes are
+timestamp-dependent without SOURCE_DATE_EPOCH.
