@@ -203,13 +203,21 @@ rather than rewriting the history — that is how this file earns trust.
   by schema — `src/benchweave/control/provider_settings.py`) decode through the
   exact-byte decoder; the settings validator's own prefixes (`settings_schema:`,
   `settings_digest_mismatch:`) join the same list.
-  Amendment (2026-09-26, issue #215, parent #203): descriptor admission selects the
-  vendored schema of the version the descriptor's own `otdp_version` names, resolved from the
-  served set (retained ∧ in-range ∧ ¬yanked) and digest-verified — the pin's bytes, not the
-  active's. A pin outside the served set refuses `version_not_served:` carrying the five VR-37
-  fields; a retired identifier refuses `retired_identifier:` (distinct from
-  `version_unknown:`); a yanked pin validates with a deprecation warning naming the derived
-  move-to. Exact-byte decode, digest pins, and every existing prefix unchanged.
+  Amendment (2026-09-26, issue #215, parent #203): under multi-version serving the
+  descriptor's own `otdp_version` pin selects the vendored schema — the pin's bytes,
+  not the active's — resolved from the CARRIED set (retained ∧ in-range; a yanked
+  pin stays conforming, so the resolution domain is the carried set, never the
+  served set). LANDED NOW on the SDK side: `benchweave_sdk.validate_descriptor`
+  validates a pinned descriptor against the pinned version's digest-verified
+  bytes; a pin outside the carried set refuses `version_not_served:` carrying the
+  five VR-37 fields; a retired identifier refuses `retired_identifier:` (distinct
+  from `version_unknown:`); a yanked pin validates with a deprecation warning
+  naming the derived move-to. The same per-pin selection at GATEWAY admission
+  (`control/documents.py`, whose descriptor validator is active-only at this
+  slice) lands with slice 3 and becomes true then (CON-12's disclosure style;
+  design §4 Slice 3 names it) — at this slice a 0.2.0-pinned descriptor is
+  SDK-validate-clean and gateway-refused by the ACTIVE schema's const. Exact-byte
+  decode, digest pins, and every existing prefix unchanged.
 - **[CON-2]** The digest pin lattice between the execution-contract documents is verified
   at admission; the fixture lattice moves in lockstep (`fixtures/registry/` ↔
   `scripts/registry/build_fixtures.py` ↔ `catalogue.json` ↔ the digest-pinning tests),
@@ -239,7 +247,11 @@ rather than rewriting the history — that is how this file earns trust.
   serves is digest-checked against its lock row at load — planted or unrecorded vendored bytes
   refuse `vendored_digest_mismatch:` by name (issue #215 fix F1, wiring design §3.2's
   digest-checked load); a lock row whose vendored directory is missing refuses
-  `served_set_drift:` instead of crashing the import.
+  `served_set_drift:` instead of crashing the import. The gateway-side export/check path
+  carries the mirror of the same discipline for the corpus itself: every carried
+  version's corpus rows are compared against their corpus pins and a mismatch refuses
+  `corpus_pin_mismatch:` (#215 fold-wave F-B) — a tampered superseded version can no
+  longer export clean with the tampered digest as its authority.
 - **[CON-5]** REST v1 and MCP share typed operation/result contracts and durable core run
   identity (A13: 20 REST operations, 17 MCP tools — three administration operations are
   REST-only by design). Transport adapters are adapters: behavior is pinned against the
@@ -287,11 +299,20 @@ rather than rewriting the history — that is how this file earns trust.
   main-side (issue #44: three doc surfaces carried a stale adapter API version with
   every gate green).*
   Amendment (2026-09-26, issue #215, parent #203): the identity block's
-  authority and active-entry derivation are UNCHANGED. `validate_manifest` additionally admits the served set: every
-  served version's normative files exist and match corpus pins, and the dependency-policy block
-  is cross-checked against the retained tree (unresolved yank/retired entries, retired-active
-  conflicts, and status conflicts refuse with `policy_*` prefixes). Declarations verified,
-  never trusted — unchanged.
+  authority and active-entry derivation are UNCHANGED. The served-set
+  admission the design once named for `validate_manifest` is carried by its
+  real mechanisms, not that function — `validate_manifest` pin-checks only the
+  ACTIVE and dev normative paths, deliberately: its `repin.py` caller must keep
+  admitting the tree repin is about to rewrite. The carriers are the
+  export-time `validate_dependency_policy` (policy block against the retained
+  tree: unresolved yank/retired entries, retired-active conflicts, and status
+  conflicts refuse with `policy_*` prefixes), the export/check-time
+  `validate_carried_corpus_pins` (every carried version's corpus rows against
+  their pins; a mismatch refuses `corpus_pin_mismatch:` — #215 fold-wave F-B),
+  the per-CARRIED-(id, version) row enumeration in `export_bundle`, and the
+  bundle-bytes-to-pins pin
+  `tests/standards/test_export.py::test_bundle_served_rows_match_corpus_digests`.
+  Declarations verified, never trusted — unchanged.
 
 - **[CON-9]** Derived-variable evaluation is a pure post-dispatch function of
   the plugin-returned dataset and the digest-pinned descriptor declaration:
@@ -373,12 +394,17 @@ rather than rewriting the history — that is how this file earns trust.
   unprojected; the grant seam (`build_capture_services`) re-derives the raw form by
   digest exactly as the permissions precedent does.
   Amendment (2026-09-26, issue #215, parent #203): "the active vendored OTDP schema" reads "the
-  vendored OTDP schema of the descriptor's pinned served version" wherever admission resolves
-  it; the projection itself is unchanged; the equivalence census extends across the served set
+  vendored OTDP schema of the descriptor's pinned carried version" wherever admission resolves
+  it (carried, not served — a yanked pin resolves its schema too); the projection itself is
+  unchanged; the equivalence census extends across the served set
   (clean cells + named faults per served version; the 28-cell mutation matrix remains
   active-version); the sanctioned gateway-stricter cells are unchanged and re-pinned per served
   version where they are version-sensitive (the strict-UTF-8 and duplicate-key decode cells are
-  version-independent by mechanism).
+  version-independent by mechanism). This amendment lands with slice 3 and becomes true
+  then (CON-12's disclosure style; design §4 Slice 3 names it) — at this slice gateway
+  admission still resolves the ACTIVE schema only and the census pins the active version;
+  the slice-1 mechanism that IS landed is the SDK-side per-pin validation (CON-1's
+  amendment).
 
 - **[CON-11]** The OTDP validation report of the active version — its path is
   derived, never hardcoded: the live pin resolves

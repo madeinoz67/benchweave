@@ -331,6 +331,88 @@ def test_cli_export_writes_the_bundle(tmp_path: Path) -> None:
     assert (tmp_path / "bundle" / "bundle-manifest.json").is_file()
 
 
+def test_export_refuses_a_tampered_carried_version_corpus_row(
+    tmp_path: Path,
+) -> None:
+    """Fold-wave F-B (#215): a parse-valid tamper of a NON-ACTIVE carried
+    version's corpus bytes used to export clean — ``_entry`` recomputes
+    digests from disk, so the bundle row carried the TAMPERED digest as
+    authority while ``corpus-manifest.json`` still pinned the original, and
+    nothing consulted the pin for superseded rows. GOVERNANCE's
+    frozen-superseded promise now has a gate: every carried version's
+    corpus rows are compared against their pins at export/check time and a
+    mismatch refuses ``corpus_pin_mismatch:`` naming the file and the pin.
+    Both control sides stay green on pristine bytes (the A1 arms and
+    ``make check-sdk-standards`` re-proven at close-out)."""
+    root = tmp_path / "repo"
+    shutil.copytree(ROOT / "standards", root / "standards")
+    (root / "src/benchweave/presentation").mkdir(parents=True)
+    shutil.copy(
+        ROOT / "src/benchweave/presentation/contracts.py",
+        root / "src/benchweave/presentation/contracts.py",
+    )
+    target = root / "standards/otdp/0.2.0/otdp-runtime.schema.json"
+    pinned = json.loads((ROOT / "standards/corpus-manifest.json").read_bytes())
+    pin = next(
+        str(row["sha256"])
+        for row in pinned["files"]
+        if row["path"] == "otdp/0.2.0/otdp-runtime.schema.json"
+    )
+    # 'required' -> 'xrequired': parse-valid, digest-different (the executed
+    # falsifier from the review).
+    target.write_bytes(target.read_bytes().replace(b'"required"', b'"xrequired"'))
+    tampered = hashlib.sha256(target.read_bytes()).hexdigest()
+    assert tampered != pin, "the tamper must change the digest"
+    with pytest.raises(StandardsError, match="corpus_pin_mismatch") as refusal:
+        export_bundle(root, tmp_path / "out")
+    message = str(refusal.value)
+    assert "otdp/0.2.0/otdp-runtime.schema.json" in message, "the file is named"
+    assert pin in message, "the corpus pin is named"
+    assert not (tmp_path / "out").exists(), "export must not leave partial output"
+    assert not (tmp_path / "out.staging").exists(), "no staging behind"
+    # The check lane refuses the same tamper through its export (run_check
+    # re-exports before any comparison; the corpus gate fires first).
+    from benchweave.standards.check import run_check
+
+    with pytest.raises(ValueError, match="corpus_pin_mismatch"):
+        run_check(root, sdk_root=tmp_path / "no-such-sdk")
+
+
+def test_cli_export_refuses_the_tamper_fail_closed(tmp_path: Path) -> None:
+    """The CLI lane of F-B: the refusal is styled like the other fail-closed
+    lanes (``standards export error: …``, exit 1) — never a raw traceback —
+    and names the prefix. Before the gate the same invocation exited 0."""
+    import os
+
+    root = tmp_path / "repo"
+    shutil.copytree(ROOT / "standards", root / "standards")
+    (root / "src/benchweave/presentation").mkdir(parents=True)
+    shutil.copy(
+        ROOT / "src/benchweave/presentation/contracts.py",
+        root / "src/benchweave/presentation/contracts.py",
+    )
+    target = root / "standards/otdp/0.2.0/otdp-runtime.schema.json"
+    target.write_bytes(target.read_bytes().replace(b'"required"', b'"xrequired"'))
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "benchweave.standards",
+            "export",
+            "--out",
+            str(tmp_path / "bundle"),
+        ],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**os.environ, "PYTHONPATH": str(ROOT / "src")},
+    )
+    assert result.returncode == 1, (result.returncode, result.stderr)
+    assert "corpus_pin_mismatch" in result.stderr
+    assert "standards export error" in result.stderr
+
+
 def test_two_carried_plugin_ui_versions_dedupe_the_parity_code_row(
     tmp_path: Path,
 ) -> None:

@@ -83,7 +83,11 @@ class DependencyPolicy:
 
 
 def _version_tuple(version: str) -> tuple[int, int, int]:
-    return tuple(int(part) for part in version.split("."))  # type: ignore[return-value]
+    # Manual 3-unpack: the generator expression types as tuple[int, ...] and
+    # needed a return-value ignore (#215 fold-wave F-E 9); the fixed arity is
+    # the function's own contract.
+    major, minor, patch = version.split(".")
+    return int(major), int(minor), int(patch)
 
 
 @dataclass(frozen=True)
@@ -531,11 +535,15 @@ def validate_dependency_policy(
                     "retained directory; retired identifiers are used-and-dead and never "
                     "reissued"
                 )
-            if any(record.version == version for record in row.yanked):
-                raise StandardsError(
-                    f"policy_status_conflict: {entry.id}: {version} is both yanked and "
-                    "retired; the statuses are distinct"
-                )
+            # No "both yanked and retired" arm here — it was defensively
+            # unreachable and is deleted with this proof (#215 fold-wave
+            # F-E 12, the fold-row-14 pattern): the yanked loop above runs
+            # first and requires every yanked version to be retained
+            # (``policy_entry_unresolved:``), while this loop refuses any
+            # retired version that IS retained — so a version in both sets
+            # is always refused by one of those two conditions before a
+            # dedicated overlap arm could fire. No enumeration ever listed
+            # the deleted prefix.
 
 
 def validate_manifest(manifest: StandardsManifest, root: Path) -> None:
@@ -577,6 +585,53 @@ def _corpus_pins(root: Path) -> dict[str, str]:
         return {}
     document = json.loads(path.read_bytes())
     return {str(row["path"]): str(row["sha256"]) for row in document.get("files", [])}
+
+
+def validate_carried_corpus_pins(
+    manifest: StandardsManifest, policy: DependencyPolicy, root: Path
+) -> None:
+    """Every CARRIED version's corpus rows match their corpus-manifest pins.
+
+    ``validate_manifest`` pins the ACTIVE and dev normative paths; before
+    this check nothing consulted the corpus pins for superseded versions —
+    a parse-valid tamper of a non-active carried version's bytes exported
+    CLEAN, the bundle row carrying the tampered digest as its authority
+    while ``corpus-manifest.json`` still pinned the original (#215
+    fold-wave F-B; GOVERNANCE's frozen-superseded promise had no gate). The
+    active version's rows are re-checked here too: ``export_bundle`` runs
+    ``validate_manifest`` first, so an active-row tamper keeps its
+    ``normative_hash_mismatch:`` refusal — order decides, both refuse.
+    Rows under directories OUTSIDE the carried set ride neither the bundle
+    nor this gate. Called from ``export_bundle`` (hence from
+    ``benchweave.standards export``, ``check`` — which re-exports — and
+    ``make check-sdk-standards``); NOT from ``validate_manifest``, whose
+    repin caller must keep admitting a tree whose superseded rows repin is
+    about to rewrite.
+    """
+    corpus = json.loads((root / "standards/corpus-manifest.json").read_bytes())
+    rows = [str(row["path"]) for row in corpus.get("files", [])]
+    pins = _corpus_pins(root)
+    for entry in manifest.standards:
+        for version in carried_versions(policy, root, entry.id):
+            prefix = f"{entry.id}/{version}/"
+            for relative in rows:
+                if not relative.startswith(prefix):
+                    continue
+                path = root / "standards" / relative
+                if not path.is_file():
+                    raise StandardsError(
+                        f"missing_normative_file: {entry.id}: standards/{relative}"
+                    )
+                digest = hashlib.sha256(path.read_bytes()).hexdigest()
+                pinned = pins[relative]
+                if pinned != digest:
+                    raise StandardsError(
+                        f"corpus_pin_mismatch: standards/{relative}: corpus pin "
+                        f"{pinned} does not match the on-disk bytes ({digest}); "
+                        "superseded versions are digest-frozen — restore the "
+                        "pinned bytes or move the change through a new version, "
+                        "never an in-place edit"
+                    )
 
 
 def load_identity(root: Path) -> dict[str, str]:

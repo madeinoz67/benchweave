@@ -9,7 +9,8 @@ without removing any, so the baseline here is THIS SCRIPT's own measurement
 at the slice's merge base (``403c061``) under the definition below — 12
 sites. The 13-to-12 delta, regenerable (#215 fold row 20): this definition
 counts the SAME 12 sites when re-run at ``ef969af`` and at ``403c061``
-(site-for-site; only the values differ), so the hand count's extra site was
+(same sites, one at a shifted line — the app.py BARE site moved 952 -> 961
+between the refs), so the hand count's extra site was
 one this definition classifies as prose — a docstring or comment, excluded
 below. The hand count's worksheet was never committed, so WHICH prose site
 it included is unnameable from evidence; naming one would be invention. The

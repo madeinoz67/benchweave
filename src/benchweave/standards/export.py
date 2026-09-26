@@ -14,6 +14,7 @@ from .manifest import (
     carried_versions,
     load_dependency_policy,
     load_manifest,
+    validate_carried_corpus_pins,
     validate_dependency_policy,
     validate_identity,
     validate_manifest,
@@ -44,6 +45,10 @@ def export_bundle(root: Path, out: Path) -> Path:
     validate_identity(manifest, root)
     policy = load_dependency_policy(root)
     validate_dependency_policy(policy, manifest, root)
+    # Every carried version's corpus rows against their pins — the frozen-
+    # superseded gate (#215 fold-wave F-B): without it a tampered non-active
+    # carried version exported clean with the tampered digest as authority.
+    validate_carried_corpus_pins(manifest, policy, root)
     sources: dict[str, str] = {}  # bundle path -> repo-relative source path
     rows: list[dict[str, Any]] = []
     for entry in manifest.standards:

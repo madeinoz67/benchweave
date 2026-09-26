@@ -252,7 +252,9 @@ agent: the governor lane reviews, it does not rule.
 `dependency_policy` block is governance data beside `sdk_compatibility`; range
 changes are coordinator decisions requiring a linked ruling reference; yank and
 retirement are recorded statuses with the 0.2.1 yank and the
-`ea70c6a5`-enumerated retired identifiers as the founding entries. The
+`ea70c6a5^`-enumerated retired identifiers as the founding entries (the
+enumeration source is the pre-reset parent tree, per obligation 19's
+phrasing — `ea70c6a5` itself names no retired identifiers). The
 CARRIED set (retained ∧ in-range, yanked versions riding marked) is mirrored
 verbatim into the exported bundle and the SDK lock; every consumer re-derives
 the served set (¬yanked) from the markers plus the mirrored block — a carried

@@ -255,7 +255,11 @@ and remain the reviewer's job.
     `policy_mirror_drift:` in `benchweave.standards check`); the SDK-side
     load path carries the discipline inward — every served document is
     digest-checked against its lock row (`vendored_digest_mismatch:`,
-    issue #215 fix F1). Range changes are coordinator decisions (VR-43) and
+    issue #215 fix F1); and the gateway-side export/check path compares
+    every carried version's corpus rows against their corpus pins
+    (`corpus_pin_mismatch:`, #215 fold-wave F-B — superseded versions are
+    digest-frozen, and a tampered non-active carried version no longer
+    exports clean). Range changes are coordinator decisions (VR-43) and
     require a linked ruling reference in the PR body
     (`policy_change_unruled:` is the drift-check lane's refusal, landing with
     slice 2's agreement lane). The yanked 0.2.1 and the retired identifiers

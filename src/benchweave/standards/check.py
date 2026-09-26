@@ -292,7 +292,7 @@ def _compare_tree(document: dict[str, Any], sdk: Path) -> list[str]:
         identifier = str(row["id"])
         for path, digest in _digests(row).items():
             exported[path] = digest
-        # One stamp per standard id accumulates every served version's files
+        # One stamp per standard id accumulates every CARRIED version's files
         # (issue #203 slice 1); each line already carries its own version.
         stamps.setdefault(identifier, set()).update(
             STAMP_LINE.format(path=path, identifier=identifier, version=str(row["version"]))

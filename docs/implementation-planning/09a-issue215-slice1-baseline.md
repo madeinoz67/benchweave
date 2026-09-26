@@ -83,11 +83,19 @@ mechanism.
   uv wheel bytes are timestamp-dependent unless SOURCE_DATE_EPOCH is set,
   so a fresh build needs the same byte total, never the same sha) —
   **+147,547 bytes (+144.1 KiB, +30.9%)**
-  over the 477,244-byte baseline. The REPRODUCIBLE wheel identity
+  over the 477,244-byte baseline. That byte total is the **`7d580e1`
+  pre-fold measurement** (recorded before the fix-wave commits added the
+  F1-F6 mechanisms); the late-folds tip measures **628,448 bytes
+  (+151,204, +31.7%)**, measured twice by an independent review lane —
+  hatchling on the working tree and on `git archive HEAD` — and carried
+  below in the fold-wave record. The REPRODUCIBLE wheel identity
   (re-measured locally at the fix-wave tip against a freshly built wheel,
   matching the Forge audit's figure): all **134** lock-row files
   digest-match `standards-lock.json`, and the wheel's standards tree
-  carries **zero** unrecorded files. The post-slice lock carries 11 CARRIED
+  carries **zero unrecorded files beyond the sanctioned stamps** — 140
+  standards-tree files = 134 lock-recorded + 6 sync-written
+  `_GENERATED.txt` stamps (one per standard id, `check.py`'s STAMP_NAME
+  accounting excludes them by name). The post-slice lock carries 11 CARRIED
   rows (10 served + the yanked-marked otdp/0.2.1) across the 6 standards —
   corrected here from the design's "9 served versions" slip (deviation 1
   below) and from this section's own earlier "served" mislabel of what
@@ -337,7 +345,111 @@ derivation is max(served) on both arms, so "highest served" is exact);
 
 **Late fold 4 (NIT, record).** The wheel section above now carries the
 reproducible identity (all 134 lock-row files digest-match
-`standards-lock.json`; zero unrecorded files in the wheel tree —
-re-measured locally at the tip, matching the audit's figure) and
-annotates the byte total/sha as informational: uv wheel bytes are
-timestamp-dependent without SOURCE_DATE_EPOCH.
+`standards-lock.json`; zero unrecorded files in the wheel tree beyond the
+six sanctioned `_GENERATED.txt` stamps — re-measured locally at the tip,
+matching the audit's figure) and annotates the byte total/sha as
+informational: uv wheel bytes are timestamp-dependent without
+SOURCE_DATE_EPOCH.
+
+## Maintainer-review fold wave (#215 slice 1) — the NEEDS-WORK findings, owner: fold all
+
+The maintainer review of slice 1 returned NEEDS-WORK with findings F-A
+through F-E; the owner call was "fold all", including the fork (F-B's
+corpus-pin gate lands NOW, not with slice 3). Same branches, same
+two-commit order (SDK first, then the gateway legs and the pointer);
+RED-first for every behavior change, text items recorded as such.
+
+**F-A (MEDIUM, text — claim and mechanism agree).** The CON-1 and CON-10
+#215 amendments described gateway per-pin admission and the
+cross-served-version census as landed behavior; both are slice-3 work
+(design §4 Slice 3) — the review's executed repro: a 0.2.0-pinned
+descriptor is SDK `validate_descriptor`-clean and gateway-refused with the
+ACTIVE schema's const dump (`control/documents.py` is active-only at this
+slice). Both amendments now carry the CON-12-style disclosure marker
+("lands with slice 3 and becomes true then"), keeping the part that IS
+landed (the SDK-side per-pin validation) as the true part. CON-1's
+resolution domain is corrected to the CARRIED set (retained ∧ in-range —
+the served-set wording contradicted the amendment's own
+yanked-pin-validates clause; the G-3 class), and the CON-10 amendment's
+"pinned served version" reads "pinned carried version" for the same
+reason. CON-8's amendment named `validate_manifest` as the served-set
+admission carrier; it now names the real carriers (export-time
+`validate_dependency_policy`, the export/check-time corpus-pin gate
+below, `export_bundle`'s per-CARRIED-(id, version) enumeration, and
+`tests/standards/test_export.py::test_bundle_served_rows_match_corpus_digests`)
+and states why `validate_manifest` stays active+dev-only: its `repin.py`
+caller must keep admitting the tree repin is about to rewrite.
+
+**F-B (MEDIUM, mechanism — the fork, landed now).** No gate compared
+corpus pins to non-active carried version bytes. The review's executed
+falsifier (run twice independently): a parse-valid tamper of
+`standards/otdp/0.2.0/otdp-runtime.schema.json` ("required" →
+"xrequired") exported clean — `benchweave.standards export` exit 0, the
+bundle row carrying the TAMPERED digest as authority while
+`corpus-manifest.json` pinned the original; `_entry` recomputes digests
+from disk and nothing consulted the pin for superseded rows — against
+GOVERNANCE's frozen-superseded promise. RED (both arms, verbatim):
+in-process `Failed: DID NOT RAISE StandardsError`; CLI
+`assert 0 == 1` (exit 0 on tampered bytes). Post:
+`validate_carried_corpus_pins` (`manifest.py`) compares every carried
+version's corpus rows against their pins inside `export_bundle`, so
+`export`, `check` (which re-exports) and `make check-sdk-standards` all
+refuse `corpus_pin_mismatch:` naming the file, the pin and the on-disk
+digest; the CLI export lane fails styled (`standards export error: …`,
+exit 1), never a raw traceback. The prefix joins the enumerations (the
+CON-4 amendment family, obligation 19). A missing corpus-row file under a
+carried prefix refuses `missing_normative_file:` (the active path's own
+prefix) instead of `_entry`'s raw `FileNotFoundError`.
+
+**F-C (LOW, record).** The wheel section above now separates the two
+measurements: 624,791 bytes (+147,547, +30.9%) is the `7d580e1` PRE-FOLD
+figure; the late-folds tip measures 628,448 bytes (+151,204 over the
+477,244-byte baseline, +31.7%), measured twice by an independent review
+lane (hatchling on the working tree AND on `git archive HEAD`). The
+"zero unrecorded files" claim now carries its carve-out: 140
+standards-tree files = 134 lock-recorded + 6 sync-written
+`_GENERATED.txt` stamps (sanctioned, excluded by `check.py`'s STAMP_NAME
+accounting) — "zero unrecorded files beyond the sanctioned stamps",
+re-verified against the tip tree in this fold.
+
+**F-D (LOW, mechanism, RED-first, SDK side).**
+
+- *Note-only policy edits are not range changes* (`_verify_bump_class`):
+  the gate compared whole policy-row dicts, so a note-only edit refused
+  demanding a version bump nothing governed moved. RED (verbatim):
+  `ValueError: sdk_bump_class_invalid: the declared ranges changed but
+  the SDK version moved 0.3.1 -> 0.3.1 (EQUAL); a range change is a
+  MINOR-class SDK bump at least — one SDK version never covers two
+  served sets`. Post: the comparison is per-row over
+  range/yanked/retired only (a `note` key is governance prose;
+  yank-record annotations ride the `yanked` field and stay judged).
+- *Unparsable SDK anchors refuse typed* (`_bump_class`):
+  `compatibility.sdk = "0.3.x2"` (also `"0.3.2.dev0"`, also an unparsable
+  current pyproject version) crashed on the bare `int()`. RED (verbatim):
+  `Regex pattern did not match. Actual message: "invalid literal for
+  int() with base 10: 'x2'"` (and `'dev0'`). Post:
+  `sdk_version_unparsable:` names the value and the side (prior lock
+  anchor / current pyproject) — the F2 defect class, closed on the one
+  path still bare.
+
+**F-E (the held rows, folded per "fold all").**
+
+| # | Disposition |
+|---|---|
+| 7 | TEXT (SDK README): stamp 0.3.0 -> 0.3.1 (pyproject is the authority). |
+| 8 | TEXT (GOVERNANCE G-3): "the ea70c6a5-enumerated retired identifiers" reads "ea70c6a5^" — the enumeration source is the pre-reset parent tree (obligation 19's phrasing; ea70c6a5 itself names no retired identifiers). |
+| 9 | CODE (gateway `manifest.py` `_version_tuple`): the `# type: ignore[return-value]` replaced by a manual 3-unpack; strict mypy needs no ignore. |
+| 10 | BEHAVIOR (SDK `refusal_for`, RED-first): the retired-pin fallback move-to — taken when NO version of the standard is served on the lock — is named as the declared range's lower bound, a fallback naming no servable target. RED (verbatim): `assert 'lower bound' in "retired_identifier: … move-to 0.2.0 — the highest served version, the r…"` failed. The yanked/unserved arms keep the exact "highest served" phrasing (the derivation is max(served) on both, so it stays exact there). |
+| 11 | BEHAVIOR (SDK sync labels, RED-first): the active-succession branch no longer consumes a prior row the bundle still carries — a legacy unmarked lock plus an active re-point DOWN reported the STILL-CARRIED otdp@0.2.2 as `added` (label only; the gates were correct). RED (verbatim): `AssertionError: a still-carried row is not an add` over `assert 'otdp@0.2.2' not in (… 'otdp@0.2.2', …)`. Post: the re-pointed-to row is the add, the still-carried row gets no label, `active_changes` names the re-point, and bundle order can no longer decide the labels. |
+| 12 | DELETED with proof (gateway `manifest.py`): the "both yanked and retired" `policy_status_conflict` arm was unreachable from loader-reachable state — the yanked loop runs first and requires every yanked version retained (`policy_entry_unresolved:`), while the retired loop refuses retained (`policy_status_conflict:`) before an overlap arm could fire; the proof lives in the comment (the fold-row-14 pattern; no enumeration ever listed the deleted prefix). Also swept: `check.py` `_compare_tree`'s "every served version's files" reads CARRIED (fold row 5's missed instance). |
+| 13 | TEXT (count script docstring): fold-row-20's parenthetical reads "same sites, one at a shifted line" — the app.py BARE site (`version="0.1.0"`, the FastAPI constructor) sits at line 952 at `ef969af` and 961 at `403c061`, re-verified in this fold by `git grep` at both refs. |
+
+**Close-out at the tips** (gateway `1e71bcb`/SDK `0e6c4d7`, pointer
+recorded): both A1 control arms green — `scripts/adc_conformance_control.py`
+"26/26 unmodified + 26/26 yank-pinned, warning names 0.2.2" (the yank
+warning's move-to phrasing is unchanged and stays exact on that arm);
+`make check-sdk-standards` clean (standards check clean, matrix clean,
+literal ratchet 12/12 — pristine bytes pass both sides of the new
+corpus-pin gate); SDK gates ruff 0, `mypy src` clean, pytest 530/0/0
+(2 pre-existing skips); gateway gates ruff 0, bare `mypy` clean, full
+battery 2218/0/0 (11 pre-existing skips), junitxml counts.
