@@ -191,6 +191,13 @@ def _otdp_normative_path(document_name: str) -> Path:
     return corpus / str(matches[0]).removeprefix("standards/")
 
 
+def otdp_normative_path(document_name: str) -> Path:
+    """Public read for sibling subsystems (the #146 pinned-contract
+    resolver): the vendored path of the one otdp normative file with this
+    name — same manifest-derived resolution, same exactly-once refusal."""
+    return _otdp_normative_path(document_name)
+
+
 def _decode(
     path: Path,
     logical: str,

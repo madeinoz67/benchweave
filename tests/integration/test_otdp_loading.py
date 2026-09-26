@@ -12,6 +12,7 @@ import pytest
 from benchweave.host.otdp_bridge import OTDPBridge
 from benchweave.host.plugin import SimulationInfo
 from benchweave.registry.activation import ActivationRejected
+from benchweave.standards.manifest import load_manifest
 from benchweave.state.store import Store
 
 ENTRY = (
@@ -322,3 +323,271 @@ def test_the_load_path_hands_over_the_scoped_shape_without_permission(tmp_path: 
         plugin.plugin_close()
     finally:
         store.close()
+
+
+# --- issue #146 slice 2: pinned-contract resolution at load (§2.1) -------------
+#
+# Derivations (from the corpus, not the plan's restatement): the contracts
+# entry shape is the descriptor schema's `contracts` items (required
+# {id, path, sha256}, closed); the catalog document shape is the vendored
+# device-profile-catalog.schema.json (catalog_version/otdp_version consts,
+# profiles minItems 1, actions with the five required fields); the
+# measurement schema is identified by its `urn:otdp:measurement:` $id and
+# `$defs/dataset` presence; the load-time $ref probe is design §2.1
+# Amendment 1 MEDIUM-3 (R14) — the real catalog's twelve
+# `urn:otdp:measurement:0.2.2#/$defs/dataset` output refs are the in-tree
+# witness that resolution is SET-scoped, not document-scoped.
+
+_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _active_otdp_root() -> Path:
+    version = next(
+        entry.version for entry in load_manifest(_ROOT).standards if entry.id == "otdp"
+    )
+    return _ROOT / "standards" / "otdp" / version
+
+
+def _corpus_bytes(name: str) -> bytes:
+    return (_active_otdp_root() / name).read_bytes()
+
+
+def _synthetic_catalog() -> dict[str, Any]:
+    """A minimal catalog-schema-valid catalog with NO cross-document refs —
+    the fixture for the soft both-or-neither arm (the real corpus catalog's
+    measurement refs make its half-pair refuse at load through the probe)."""
+    return {
+        "catalog_version": json.loads(_corpus_bytes("device-profile-catalog.json"))[
+            "catalog_version"
+        ],
+        "otdp_version": json.loads(_corpus_bytes("device-profile-catalog.json"))[
+            "otdp_version"
+        ],
+        "profiles": [
+            {
+                "id": "demo.profile/1.0.0",
+                "title": "Demo profile",
+                "channel_roles": ["source"],
+                "required_actions": ["demo.act/1.0.0"],
+                "optional_actions": [],
+            }
+        ],
+        "actions": {
+            "demo.act/1.0.0": {
+                "description": "Synthetic action (invented fixture name).",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {"x": {"type": "integer"}},
+                    "required": ["x"],
+                },
+                "output_schema": {
+                    "type": "object",
+                    "properties": {"ok": {"type": "boolean"}},
+                    "required": ["ok"],
+                },
+                "side_effect": "none",
+                "lifecycle": "direct",
+            }
+        },
+    }
+
+
+def _contracts_descriptor(
+    payload: dict[str, bytes],
+    *,
+    digests: dict[str, str] | None = None,
+    capabilities: list[str] | None = None,
+) -> dict[str, Any]:
+    """A raw descriptor whose contracts pin the given bundle files."""
+    digests = digests if digests is not None else {}
+    return {
+        "id": "dev.local.contracts-fixture",
+        "descriptor_version": "1.0.0",
+        "capabilities": capabilities
+        if capabilities is not None
+        else ["identify", "invoke"],
+        "contracts": [
+            {
+                "id": f"contract-{index}",
+                "path": path,
+                "sha256": digests.get(
+                    path, hashlib.sha256(data).hexdigest()
+                ),
+            }
+            for index, (path, data) in enumerate(sorted(payload.items()))
+        ],
+    }
+
+
+def _load_with_contracts(
+    tmp_path: Path,
+    contract_files: dict[str, bytes],
+    descriptor: dict[str, Any],
+) -> OTDPBridge:
+    """Load a real bundle whose payload carries the contract files, against
+    the given (contracts-pinning) descriptor — the REAL activation path."""
+    from benchweave.registry.otdp_loading import load_otdp_plugin
+
+    payload = {
+        "src/example/__init__.py": b"",
+        "src/example/plugin.py": ENTRY,
+        "src/example/helper.py": b'VALUE = "one"\n',
+        "src/example/data.txt": b"resource",
+        **contract_files,
+    }
+    manifest, digest = bundle(tmp_path, payload)
+    return load_otdp_plugin(
+        tmp_path,
+        manifest,
+        digest,
+        entry_relpath="src/example/plugin.py",
+        descriptor=descriptor,
+        services=SimpleNamespace(monotonic=lambda: 0.0),
+        simulation=SimulationInfo(True, "test"),
+    )
+
+
+def test_r9_contract_digest_mismatch_refused_at_load(tmp_path: Path) -> None:
+    """R9: pinned catalog bytes that do not hash to the declared sha256
+    refuse the LOAD (ActivationRejected, zero bridges constructed)."""
+    catalog = _corpus_bytes("device-profile-catalog.json")
+    measurement = _corpus_bytes("otdp-measurement.schema.json")
+    files = {"contracts/catalog.json": catalog, "contracts/measurement.json": measurement}
+    digest_of = {"contracts/catalog.json": hashlib.sha256(measurement).hexdigest()}
+    with pytest.raises(ActivationRejected, match="contract_hash_mismatch"):
+        _load_with_contracts(
+            tmp_path, files, _contracts_descriptor(files, digests=digest_of)
+        )
+
+
+def test_r14_external_ref_catalog_refused_at_load(tmp_path: Path) -> None:
+    """R14: a digest-matching catalog whose embedded schema carries one
+    external/unresolvable $ref refuses at LOAD — without the probe the same
+    catalog would pass load and poison at first dispatch instead."""
+    catalog = json.loads(_corpus_bytes("device-profile-catalog.json"))
+    first = next(iter(catalog["actions"]))
+    catalog["actions"][first]["output_schema"] = {
+        "$ref": "https://example.invalid/unresolvable"
+    }
+    measurement = _corpus_bytes("otdp-measurement.schema.json")
+    files = {
+        "contracts/catalog.json": json.dumps(catalog).encode(),
+        "contracts/measurement.json": measurement,
+    }
+    with pytest.raises(ActivationRejected, match="contract_ref_unresolvable"):
+        _load_with_contracts(tmp_path, files, _contracts_descriptor(files))
+
+
+def test_r16_real_catalog_without_measurement_refuses_at_load(tmp_path: Path) -> None:
+    """R16 (catalog half of the both-or-neither pair): the REAL corpus
+    catalog pinned without the measurement schema refuses at LOAD — its
+    twelve measurement-urn output refs are unresolvable in the pinned set
+    (the probe's arm; Amendment 1 MEDIUM-3)."""
+    files = {"contracts/catalog.json": _corpus_bytes("device-profile-catalog.json")}
+    with pytest.raises(ActivationRejected, match="contract_ref_unresolvable"):
+        _load_with_contracts(tmp_path, files, _contracts_descriptor(files))
+
+
+def test_r16_multi_catalog_refused_at_load(tmp_path: Path) -> None:
+    """R16 (NIT-2): two catalog-shaped pinned contracts refuse at load —
+    overlapping action_ids would let merge order silently pick the
+    input_schema that gates I4; the precedence question is closed by
+    refusal, not resolution."""
+    measurement = _corpus_bytes("otdp-measurement.schema.json")
+    files = {
+        "contracts/catalog-a.json": json.dumps(_synthetic_catalog()).encode(),
+        "contracts/catalog-b.json": json.dumps(_synthetic_catalog()).encode(),
+        "contracts/measurement.json": measurement,
+    }
+    with pytest.raises(ActivationRejected, match="contract_multi_catalog"):
+        _load_with_contracts(tmp_path, files, _contracts_descriptor(files))
+
+
+def test_r16_unknown_contract_shape_refused_at_load(tmp_path: Path) -> None:
+    """R16 (C01/M14's unknown-contract edge): a pinned contract that is
+    neither the measurement schema nor a catalog-schema-valid document
+    refuses at load — unknown required contracts are rejected, never
+    treated as opaque success."""
+    measurement = _corpus_bytes("otdp-measurement.schema.json")
+    files = {
+        "contracts/other.json": b'{"kind": "a-third-contract-shape"}',
+        "contracts/measurement.json": measurement,
+    }
+    with pytest.raises(ActivationRejected, match="contract_schema"):
+        _load_with_contracts(tmp_path, files, _contracts_descriptor(files))
+
+
+def test_r7_measurement_without_catalog_constructs_no_controller(
+    tmp_path: Path,
+) -> None:
+    """R7 (the soft half of both-or-neither): a cleanly-resolving
+    measurement schema pinned without any catalog LOADS (no integrity
+    failure) but constructs no class surface — the bridge carries no
+    dataset controller, so invoke is a verb-level UNSUPPORTED (design §2.1:
+    a half-declared class surface grants no class surface)."""
+    files = {"contracts/measurement.json": _corpus_bytes("otdp-measurement.schema.json")}
+    plugin = _load_with_contracts(tmp_path, files, _contracts_descriptor(files))
+    try:
+        assert plugin._dataset is None
+    finally:
+        plugin.plugin_close()
+
+
+def test_resolved_pair_constructs_the_dataset_controller(tmp_path: Path) -> None:
+    """The complete pair — the real corpus catalog and measurement schema,
+    pinned at their true digests — resolves through the REAL load path and
+    the bridge carries the dataset controller (capability ∧ contracts
+    resolved, design §2.2's table)."""
+    files = {
+        "contracts/catalog.json": _corpus_bytes("device-profile-catalog.json"),
+        "contracts/measurement.json": _corpus_bytes("otdp-measurement.schema.json"),
+    }
+    plugin = _load_with_contracts(tmp_path, files, _contracts_descriptor(files))
+    try:
+        assert plugin._dataset is not None
+    finally:
+        plugin.plugin_close()
+
+
+def test_resolved_pair_without_invoke_capability_constructs_no_controller(
+    tmp_path: Path,
+) -> None:
+    """Design §2.2's table, the capability row: the same resolved pair on a
+    descriptor that does NOT declare the invoke capability constructs no
+    controller — the class surface is invoke's, not a side effect of
+    pinning contracts."""
+    files = {
+        "contracts/catalog.json": _corpus_bytes("device-profile-catalog.json"),
+        "contracts/measurement.json": _corpus_bytes("otdp-measurement.schema.json"),
+    }
+    plugin = _load_with_contracts(
+        tmp_path, files, _contracts_descriptor(files, capabilities=["identify"])
+    )
+    try:
+        assert plugin._dataset is None
+    finally:
+        plugin.plugin_close()
+
+
+def test_contract_path_outside_the_bundle_refused_at_load(tmp_path: Path) -> None:
+    """A contracts path the verified inventory does not carry refuses at
+    load — resolution reads the verified inventory only, never the
+    filesystem (Amendment 1 NIT-1's no-re-read rule)."""
+    measurement = _corpus_bytes("otdp-measurement.schema.json")
+    files = {"contracts/measurement.json": measurement}
+    descriptor = _contracts_descriptor({"contracts/measurement.json": measurement})
+    descriptor["contracts"].append(
+        {
+            "id": "contract-absent",
+            "path": "contracts/not-in-bundle.json",
+            "sha256": hashlib.sha256(b"absent").hexdigest(),
+        }
+    )
+    with pytest.raises(ActivationRejected, match="contract_bundle_path_absent"):
+        _load_with_contracts(tmp_path, files, descriptor)
+
+
+def test_unparsable_contract_refused_at_load(tmp_path: Path) -> None:
+    files = {"contracts/broken.json": b"{not json"}
+    with pytest.raises(ActivationRejected, match="contract_unparsable"):
+        _load_with_contracts(tmp_path, files, _contracts_descriptor(files))

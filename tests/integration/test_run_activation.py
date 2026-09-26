@@ -46,6 +46,7 @@ from benchweave.registry.resolver import (
     OriginConfig,
     Resolver,
 )
+from benchweave.standards.manifest import load_manifest
 from benchweave.state.store import Store
 
 REPO = Path(__file__).resolve().parents[2]
@@ -328,6 +329,20 @@ def _write_plugin_source(tmp_path: Path) -> Path:
     root.mkdir(parents=True)
     (root / "__init__.py").write_text("")
     (root / "plugin.py").write_text(ADAPTER_SOURCE)
+    # The descriptor the harness publishes pins the OTDP class contracts
+    # (catalog + measurement schema) at bundle-root paths, and #146 slice 2
+    # resolves those pins against the verified inventory at load — so the
+    # plugin source carries the corpus bytes and publish_dev ships them at
+    # exactly the pinned root paths.
+    active = next(
+        entry.version
+        for entry in load_manifest(REPO).standards
+        if entry.id == "otdp"
+    )
+    for name in ("device-profile-catalog.json", "otdp-measurement.schema.json"):
+        (root / name).write_bytes(
+            (REPO / "standards" / "otdp" / active / name).read_bytes()
+        )
     return tmp_path / "plugin" / PLUGIN_DIRNAME
 
 

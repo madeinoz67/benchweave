@@ -156,6 +156,7 @@ class OTDPBridge:
         lifecycle_timeout: float = 5.0,
         capture: Any = None,
         stream: Any = None,
+        dataset: Any = None,
     ) -> None:
         if not isinstance(simulation, SimulationInfo):
             raise TypeError("explicit SimulationInfo required")
@@ -174,6 +175,12 @@ class OTDPBridge:
         # without the artifact_writer / event_sink permission respectively.
         self._capture = capture
         self._stream = stream
+        # The same §0.3 posture for the invoke/dataset lane (issue #146):
+        # the controller exists iff the descriptor declares the invoke
+        # capability AND §2.1's resolution produced the complete
+        # catalog+measurement pair — None is structural (verb-level
+        # UNSUPPORTED at the invoke gate), never a runtime flag.
+        self._dataset = dataset
         self._simulation = simulation
         self._lifecycle_timeout = lifecycle_timeout
         self._runner: asyncio.Runner | None = None

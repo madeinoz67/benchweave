@@ -138,6 +138,22 @@ def _dep_sort_key(dep: dict[str, Any]) -> tuple[str, str]:
     return (dep["registry_id"], dep["package_id"])
 
 
+#: The OTDP class contracts a class descriptor pins at bundle-root paths
+#: (issue #146): when the plugin source carries them, they ship in the
+#: implementation release at exactly the pinned root paths with the
+#: schema role — a dev-published class plugin's pinned contracts must be
+#: resolvable against the verified inventory at load.
+_OTDP_CONTRACT_FILES = ("device-profile-catalog.json", "otdp-measurement.schema.json")
+
+
+def _contract_members(source_dir: Path) -> list[tuple[str, bytes]]:
+    return [
+        (name, (source_dir / name).read_bytes())
+        for name in _OTDP_CONTRACT_FILES
+        if (source_dir / name).is_file()
+    ]
+
+
 def publish(
     plugin_dir_arg: Path,
     descriptor_arg: Path | None,
@@ -206,6 +222,7 @@ def publish(
         deps=sorted((profile_pin, descriptor_pin), key=_dep_sort_key),
         members=_common_members()
         + _impl_extras()
+        + _contract_members(source_dir)
         + [
             ("plugin/__init__.py", (source_dir / "__init__.py").read_bytes()),
             ("plugin/plugin.py", (source_dir / "plugin.py").read_bytes()),
