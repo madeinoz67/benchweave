@@ -19,6 +19,8 @@ This record is committed before any implementation runs, so the acceptance rule 
 **Amendment 1 (2026-09-25):** mechanism-critique fold — see the Amendment 1
 section. **Amendment 2 (2026-09-26):** slice-2 review fold — see the
 Amendment 2 section; R16's taxonomy corrected in place, §7 gained R18–R21.
+**Amendment 3 (2026-09-26):** slice-3 review fold — see the Amendment 3
+section; §5's tier call corrected in place, §7 gained R23–R24.
 
 ---
 
@@ -256,7 +258,13 @@ per plugin session, constructed by permission:
      references (unique axis/variable ids; channel references exist in the raw
      descriptor's `channels`), M02 length agreement (inline value counts vs
      dimension products; payload artifact `byte_length` vs the writer's
-     published record), M03 encoding/dtype consistency (enum + artifact-record
+     published record) — **with the suspension scoped** (Amendment 3, critic-M
+     + adversary-F2, convergent): the corpus suspends M02 count-agreement
+     ONLY for section 8's unresolved-derived records (empty `values` AND
+     empty `dimensions`, status `invalid`, the S19 derivation marker —
+     `measurement-model.md:186-192`); a well-formed scalar's product is ONE,
+     unconditionally (§1 "exactly one element"; §2 "scalar product one") —
+     never zero, never two (R23), M03 encoding/dtype consistency (enum + artifact-record
      cross-check), M04 inline numeric finiteness, M10-id correlation subset
      (manifest `configuration_id`/`acquisition_id` must echo the invoke input's
      corresponding string fields when the action's input schema declares them),
@@ -273,7 +281,14 @@ per plugin session, constructed by permission:
      finalised within the same publish — so its bytes enter the `used` ledger
      (`Σ reserved staged + Σ charged finalised`, `capture_store.py:267-272`)
      and the published `art-<sha256>` row is the manifest's own storage path
-     (one storage path, no migration). The original text's "manifest bytes
+     (one storage path, no migration). **Ordering rule (Amendment 3,
+     critic-HIGH + adversary-F1, convergent):** the manifest's artifact row
+     and evidence row commit ATOMICALLY with the publish decision —
+     finalise-then-evidence with abort-based reclaim is dead code (abort is
+     a no-op on finalised rows), so the evidence-failure path RETRACTS the
+     finalised row. No row may reach finalised unless the publish it serves
+     also lands (R24 pins `used` returning to its pre-publish value after a
+     refused publish). The original text's "manifest bytes
      charged to the dataset byte quota" had no mechanism: `used` sums
      `capture_staging` rows only and a bare `put_artifact` is invisible to it,
      so unbounded inline manifests — which need no `artifact_writer` — were
@@ -335,8 +350,10 @@ through `self._services`; the pinned exercised subset stays `{monotonic}`):
 - `dispatch_clamp` / `epilogue_floor` forwarding to the session's shared staged
   writer (the writer is the one instance per session, shared with the capture
   bundle exactly as `app.py:734-750` shares it today);
-- `abort_open(operation_id)` — the failure-path reclaim of still-open payloads
-  (the `_abort_contained` precedent, minus the forensic row per §3);
+- `abort_open(operation_id)` — the failure-path reclaim of still-open payloads,
+  under the `_abort_contained` precedent INCLUDING its epilogue floor
+  (Amendment 3: "minus the forensic row" is the only subtraction — the floor
+  rides with the precedent, it is not optional);
 - `sweep_open(reason)` — `plugin_close`'s sweep;
 - the C3-style stamp discipline for dataset-originated resource conditions
   (module token + operation binding — a bare or replayed raise keeps the poison
@@ -515,11 +532,19 @@ serialize on main's merge result (the run rules); slice 1 precedes both.
 
 ## 5. On-disk format / schema involvement
 
-None. No store migration (§4 STO note), no corpus byte moves, no openapi change,
-no interface-contract change. The only schema-adjacent construction — compiling
-the pinned catalog's embedded schemas — reads already-verified bytes. This is a
-Tier-1/Tier-2 increment in the review rubric's terms (new host behavior + SDK
-protocol surface), not Tier 3.
+None — **and the review tier is Tier-3 by the rubric's mechanical rules**
+(Amendment 3, governor M1 — the original "Tier-1/Tier-2 … not Tier 3" call
+was false by `docs/internal/review-rubric.md:30-47`'s own grep rules: the run
+moves the registry-loading path in `registry/otdp_loading.py`, and the
+`sha256`/`hashlib`/`threading`/`asyncio`/`protection` keywords all fire).
+No store migration (§4 STO note), no corpus byte moves, no openapi change,
+no interface-contract change — that no-migration sub-claim stands on its own
+(the v5 dual-use is within the table's contract, governor-ruled), but "no
+migration" never meant "not Tier 3". The run's actual review posture —
+multiple adversary lanes, the governor, an independent measurer, and cold
+full-suite CI including `tests/faults/` — met or exceeded Tier-3 in fact.
+The correction exists so a future reader does not waive posture the rubric
+escalates.
 
 ---
 
@@ -672,6 +697,22 @@ same post-date honesty as R10–R17:
   present bytes that lie, HARD under the corrected R16 taxonomy — while a
   self-contained constraints schema (internal `$defs`) still resolves and
   dispatches.
+
+**Amendment 3 additions (R23–R24).** Slice-3 review fold; same standard,
+same post-date honesty:
+
+- **R23 (M02 scalar boundary table — critic-M + adversary-F2, convergent):**
+  a well-formed scalar variable with values length {0, 2, 3} refuses at
+  publish (product one, unconditionally); a scalar payload artifact whose
+  `byte_length` disagrees with the writer's published record refuses; a
+  derived-invalid unresolved record (empty `values` AND empty `dimensions`,
+  status `invalid`, the S19 marker) ADMITS — the suspension's exact
+  boundary, both sides pinned.
+- **R24 (publish atomicity — critic-HIGH + adversary-F1, convergent):**
+  after a publish that fails at the evidence step, `used` returns to its
+  pre-publish value — the finalised manifest row is retracted, no partial
+  publish survives; §2.2 step 4's ordering rule is the mechanism under
+  test.
 
 **E2E measurement (the value demonstration, sim/test substrate — no hardware
 claims):** N = 30 procedure runs through the real activation path
@@ -843,6 +884,43 @@ compile disclosure in §7/§8.
 slice-2 branch carried a false bare-mypy-green claim in the builder's
 report. The review battery, not the builder's report, is the gate evidence
 of record.
+
+## Amendment 3 — slice-3 review fold (2026-09-26)
+
+The slice-3 review lanes (critic, adversary, governor) returned; this fold
+integrates items 1–4. Item 5 (four LOW-row riders: artifact_read's subset
+extending to payload artifacts referenced by admitted variables of
+this-run datasets, or staying disclosed-as-narrower; the retention/disposal
+view's pay-labelling for rows with a dataset row_kind; the v5 migration
+docstring's payload-lane note; the guide's M-split gaining the M14/M15
+half-sentence) is HELD for the owner's confirmation and is NOT folded —
+these lines exist so the confirm finds its work named. Same discipline as
+Amendments 1–2: falsified text corrected in place, §7 extended only
+(R23–R24), no existing control weakened, post-dated honestly.
+
+**Changed in place:** §5 (the tier call — "Tier-1/Tier-2 … not Tier 3" was
+false by the rubric's own mechanical rules, `docs/internal/
+review-rubric.md:30-47`: the run moves the registry-loading path and the
+sha256/hashlib/threading/asyncio/protection keywords fire; corrected to
+Tier-3, with the no-migration sub-claim standing on its own — the v5
+dual-use is within the table's contract, governor-ruled — and the run's
+actual posture, which met or exceeded Tier-3 in fact, recorded so a future
+reader does not waive escalated posture); §2.2 step 3 (M02's suspension
+scoped to section 8's unresolved-derived records — empty values AND empty
+dimensions, status invalid, the S19 marker, `measurement-model.md:186-192`
+— with a well-formed scalar's product ONE unconditionally); §2.2 step 4
+(the ordering rule: the manifest's artifact row and evidence row commit
+atomically with the publish decision; finalise-then-evidence with
+abort-based reclaim is dead code — abort no-ops on finalised rows — so the
+evidence-failure path retracts the finalised row; no row reaches finalised
+unless the publish it serves also lands); §2.2 controller (abort_open
+rides the `_abort_contained` precedent INCLUDING its epilogue floor —
+"minus the forensic row" is the only subtraction).
+
+**§7 additions:** R23 (the M02 scalar boundary table — lengths {0, 2, 3}
+refuse, artifact byte_length mismatch refuses, derived-invalid unresolved
+admits) and R24 (publish atomicity — `used` returns to pre-publish after a
+refused publish).
 
 ---
 
