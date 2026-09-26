@@ -224,6 +224,50 @@ def _probe_runtime_schemas(
                 ) from None
 
 
+def probe_descriptor_constraints(descriptor: dict[str, Any]) -> None:
+    """The constraints lane of the load-time probe (fix wave item 8, R22).
+
+    Every declared action's ``input_constraints`` schema — the descriptor
+    bytes gate I5's lazy compile validates against, compiled BARE (no
+    registry), so only self-contained references can ever resolve at
+    dispatch — is probed with the same walk (``$ref`` AND
+    ``$dynamicRef``) rooted exactly there: the constraints schema itself
+    over an empty registry, mirroring the compile. Present descriptor
+    bytes that lie refuse at bridge construction; a dangling reference
+    would otherwise escape ``dispatch()`` uncontrolled through the gate
+    region, which has no exception frame.
+
+    Scope note, disclosed: a constraints reference into the PINNED set
+    refuses here too — it is exactly as unresolvable at I5's bare compile
+    as an external one. Threading the closed contract registry into I5's
+    validators would make pinned-set refs resolvable; that is a behavior
+    change behind this probe, not silently taken. Malformed shapes skip
+    (I5's own lenient read: no narrowing without a schema object)."""
+    actions = descriptor.get("actions")
+    if not isinstance(actions, dict):
+        return
+    for action_id, declaration in actions.items():
+        if not isinstance(declaration, dict):
+            continue
+        constraints = declaration.get("input_constraints")
+        if not isinstance(constraints, dict):
+            continue
+        refs: list[str] = []
+        _walk_refs(constraints, refs)
+        if not refs:
+            continue
+        resolver = Registry().resolver_with_root(
+            Resource.from_contents(constraints, default_specification=DRAFT202012)
+        )
+        for ref in dict.fromkeys(refs):
+            try:
+                resolver.lookup(ref)
+            except Unresolvable:
+                raise ActivationRejected(
+                    f"descriptor_constraints_ref_unresolvable: {action_id}: {ref}"
+                ) from None
+
+
 def resolve_otdp_contracts(
     entries: Any, *, inventory: dict[str, bytes]
 ) -> ResolvedOtdpContracts | None:

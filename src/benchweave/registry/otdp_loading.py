@@ -29,7 +29,10 @@ from benchweave.host.otdp_bridge import OTDPBridge
 from benchweave.host.plugin import SimulationInfo
 from benchweave.registry.activation import ActivationRejected
 from benchweave.registry.manifests import canonical_manifest_bytes
-from benchweave.registry.otdp_contracts import resolve_otdp_contracts
+from benchweave.registry.otdp_contracts import (
+    probe_descriptor_constraints,
+    resolve_otdp_contracts,
+)
 
 
 def _safe_path(value: Any) -> PurePosixPath:
@@ -235,6 +238,11 @@ def load_otdp_plugin(
     # code is imported; an incomplete pair yields no controller (the soft
     # both-or-neither arm — invoke's verb-level UNSUPPORTED).
     resolved = resolve_otdp_contracts(descriptor.get("contracts"), inventory=inventory)
+    # Fix wave item 8 (R22): the descriptor's own declared
+    # input_constraints join the probe — present descriptor bytes that
+    # lie (a dangling $ref/$dynamicRef I5's bare compile cannot resolve)
+    # refuse here, never escape the gate region uncontrolled at dispatch.
+    probe_descriptor_constraints(descriptor)
     dataset: Any = None
     if resolved is not None and "invoke" in _descriptor_capabilities(descriptor):
         from benchweave.content.dataset_services import build_dataset_controller

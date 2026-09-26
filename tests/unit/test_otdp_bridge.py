@@ -3454,3 +3454,44 @@ def test_bare_evidence_quota_raise_during_invoke_poisons(tmp_path: Path) -> None
         plugin.plugin_close()
     finally:
         harness.close()
+
+
+def test_item8_self_contained_constraints_refs_resolve_at_dispatch(
+    tmp_path: Path,
+) -> None:
+    """Item 8 (R22), the dispatch-level legitimate arm: a descriptor
+    action whose input_constraints reference an internal ``#/$defs``
+    pointer — the one ref shape I5's bare compile resolves — narrows at
+    the gate with the validator's own message (both directions), with no
+    exception escaping the gate region."""
+    import copy
+
+    harness = InvokeHarness(tmp_path)
+    try:
+        descriptor: dict[str, Any] = copy.deepcopy(INVOKE_DESCRIPTOR)
+        descriptor["actions"]["demo.act/1.0.0"]["input_constraints"] = {
+            "$defs": {"floor": {"minimum": 10}},
+            "properties": {"x": {"$ref": "#/$defs/floor"}},
+        }
+        adapter = InvokeAdapter()
+        harness.adapter = adapter
+        plugin = OTDPBridge(
+            adapter,
+            descriptor=descriptor,
+            services=harness.bundle,
+            simulation=SimulationInfo(True, "Synthetic"),
+            dataset=harness.controller,
+        )
+        plugin.plugin_open(object())
+        ok = plugin.dispatch(a_invoke_request(input={"x": 20}), deadline_ns=11_000_000_000)
+        assert ok.status is OperationStatus.OK
+        refused = plugin.dispatch(a_invoke_request(input={"x": 1}), deadline_ns=11_000_000_000)
+        assert refused.error is not None
+        assert refused.error.code is ErrorCode.INVALID_ARGUMENT
+        assert "input violates the descriptor action's input_constraints" in (
+            refused.error.message
+        )
+        assert harness.adapter.calls == 1  # only the passing dispatch executed
+        plugin.plugin_close()
+    finally:
+        harness.close()

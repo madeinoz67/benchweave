@@ -727,3 +727,89 @@ def test_f4_degenerate_measurement_dataset_required_refused_at_load(
     }
     with pytest.raises(ActivationRejected, match="contract_measurement_degenerate"):
         _load_with_contracts(tmp_path, files, _contracts_descriptor(files))
+
+
+# --- fix wave item 8: the descriptor's input_constraints join the probe ------------
+
+
+def _constraints_descriptor(dangling: bool) -> dict[str, Any]:
+    """An invoke-capable descriptor whose declared action's
+    ``input_constraints`` carry a ``$ref`` — dangling (external, nothing
+    to resolve against: I5 compiles the constraints bare, with no
+    registry, so even a pinned-set urn cannot resolve) or self-contained
+    (an internal ``#/$defs`` pointer, the only ref shape I5's compile can
+    resolve at dispatch)."""
+    constraints = {
+        "$defs": {"floor": {"minimum": 10}},
+        "properties": {"x": {"$ref": "#/$defs/floor"}},
+    }
+    if dangling:
+        constraints["properties"] = {"x": {"$ref": "urn:nowhere:dangling"}}
+    descriptor = _contracts_descriptor({})
+    descriptor["contracts"] = []
+    descriptor["actions"] = {
+        "demo.act/1.0.0": {
+            "binding": {"kind": "adapter", "key": "act"},
+            "input_constraints": constraints,
+            "timeout_ms": 500,
+            "side_effect": "state_change",
+            "cancellable": True,
+            "retry": "never",
+        }
+    }
+    return descriptor
+
+
+def test_item8_dangling_constraints_ref_refused_at_load(tmp_path: Path) -> None:
+    """Item 8 (R22): a descriptor action's ``input_constraints`` carrying a
+    dangling ``$ref`` is present descriptor bytes that lie — the lazy I5
+    compile would raise inside the gate region (no exception frame there)
+    and escape ``dispatch()`` uncontrolled at the first invoke. The probe
+    extends to the constraints lane and refuses at bridge construction."""
+    from benchweave.registry.otdp_loading import load_otdp_plugin
+
+    payload = {
+        "src/example/__init__.py": b"",
+        "src/example/plugin.py": ENTRY,
+        "src/example/helper.py": b'VALUE = "one"\n',
+        "src/example/data.txt": b"resource",
+    }
+    manifest, digest = bundle(tmp_path, payload)
+    with pytest.raises(
+        ActivationRejected, match="descriptor_constraints_ref_unresolvable"
+    ):
+        load_otdp_plugin(
+            tmp_path,
+            manifest,
+            digest,
+            entry_relpath="src/example/plugin.py",
+            descriptor=_constraints_descriptor(dangling=True),
+            services=SimpleNamespace(monotonic=lambda: 0.0),
+            simulation=SimulationInfo(True, "test"),
+        )
+
+
+def test_item8_self_contained_constraints_still_load(tmp_path: Path) -> None:
+    """The legitimate arm: a self-contained constraints schema (internal
+    ``#/$defs`` pointer — exactly what I5's bare compile resolves at
+    dispatch) loads and constructs; the dispatch-level resolution is
+    pinned in the bridge tests."""
+    from benchweave.registry.otdp_loading import load_otdp_plugin
+
+    payload = {
+        "src/example/__init__.py": b"",
+        "src/example/plugin.py": ENTRY,
+        "src/example/helper.py": b'VALUE = "one"\n',
+        "src/example/data.txt": b"resource",
+    }
+    manifest, digest = bundle(tmp_path, payload)
+    plugin = load_otdp_plugin(
+        tmp_path,
+        manifest,
+        digest,
+        entry_relpath="src/example/plugin.py",
+        descriptor=_constraints_descriptor(dangling=False),
+        services=SimpleNamespace(monotonic=lambda: 0.0),
+        simulation=SimulationInfo(True, "test"),
+    )
+    plugin.plugin_close()
