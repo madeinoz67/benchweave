@@ -306,6 +306,17 @@ class DatasetController:
         self._admitted_by_dataset[dataset_id] = manifest
         if artifact_id is not None:
             self._readable_artifacts.add(artifact_id)
+        # Item 5 rider 1 (adversary F3): the read whitelist extends to the
+        # payload artifacts referenced by the admitted manifest's
+        # VARIABLES — artifacts of datasets this run published, not only
+        # the manifest's own routed storage row. Foreign and prior-run
+        # artifacts still refuse (nothing else enters the set).
+        for variable in manifest.get("variables") or []:
+            artifact = variable.get("artifact") if isinstance(variable, dict) else None
+            if isinstance(artifact, dict):
+                referenced = artifact.get("artifact_id")
+                if isinstance(referenced, str):
+                    self._readable_artifacts.add(referenced)
 
     def artifact_readable(self, artifact_id: str) -> bool:
         """artifact_read's authorization subset: one of THIS run's

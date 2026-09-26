@@ -922,3 +922,42 @@ def test_w2_m02_scalar_product_one_boundary_table(tmp_path: Path) -> None:
         assert admitted["variables"][0]["values"] == []
     finally:
         harness.close()
+
+
+def test_w5_artifact_read_serves_published_variable_payloads(tmp_path: Path) -> None:
+    """Item 5 rider 1 (adversary F3): the read whitelist extends to the
+    payload artifacts referenced by variables of manifests this run
+    published. RED (pre-fold): a this-run published dataset's variable
+    payload artifact refuses with 'does not belong to a dataset this run
+    published'; after, it reads. A foreign artifact still refuses."""
+    from benchweave.content.dataset_services import DatasetFullBundle
+
+    harness = DatasetHarness(tmp_path)
+    try:
+        full = DatasetFullBundle(
+            controller=harness.controller,
+            writer=harness.writer,
+            channels=("ch1",),
+            content=harness.content,
+            clock=lambda: 0.0,
+            wall=lambda: "2026-09-26T00:00:00Z",
+            quota_evidence=50,
+            context_key="dataset-harness-session",
+        )
+        payload_id = run(harness.bundle.payload_create("f64le", 8, harness.context()))
+        run(harness.bundle.payload_append(payload_id, b"\x06" * 8, harness.context()))
+        record = run(harness.bundle.payload_finalise(payload_id, harness.context()))
+        manifest = a_valid_manifest()
+        manifest["configuration_id"] = "conf-1"
+        del manifest["variables"][0]["values"]
+        manifest["variables"][0]["artifact"] = dict(record)
+        run(harness.bundle.dataset_publish(manifest, harness.context()))
+        window = run(
+            full.artifact_read(record["artifact_id"], 0, 4, harness.context())
+        )
+        assert window == b"\x06" * 4
+        foreign = harness.content.put_artifact(b"foreign", "2026-09-26T00:00:00Z")
+        with pytest.raises(DatasetServiceRejected, match="this run published"):
+            run(full.artifact_read(foreign, 0, 4, harness.context()))
+    finally:
+        harness.close()
