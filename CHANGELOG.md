@@ -189,6 +189,11 @@ All notable changes to this project will be documented in this file.
 - Symlinked destination objects refuse; late-appearing entries verified
 - --verify-archive honors --out (json and markdown)
 - Deterministic stager placement order — seed-proof the R2 latecomer pin
+- Absent contract pins are the soft unresolved arm (#146 slice 2, taxonomy fold)
+- F1 — invoke gate local renamed, test constant annotated (mypy red)
+- F2 — the probe walks $dynamicRef and roots where the runtime roots
+- F4 — degenerate measurement required-set refuses at load
+- Item 8 — the descriptor's input_constraints join the load-time probe (R22)
 
 ### Documentation
 
@@ -370,6 +375,8 @@ All notable changes to this project will be documented in this file.
 - Add #203 standards dependency management requirements PRD
 - Add #203 standards dependency management design record
 - Add #209 contributor publishing design record and planning index rows
+- F6 — capability-ungated hard arm named; the C3 binding rule in the guide
+- Commit the #146 invoke/dataset record with Amendment 2 (#146)
 
 ### Features
 
@@ -519,6 +526,9 @@ All notable changes to this project will be documented in this file.
 - Disposition writer — outcome 'archived', two-shape envelopes, two-tier invocation
 - Dispose --archive-target — Phase-A stager, reclassification, typed refusals
 - Dispose --verify-archive — the read-only verify arm (AR7)
+- Pinned-contract resolution at load (#146 slice 2, §2.1)
+- Bridge invoke dispatch — gates, conversion, clamp, lane-honest refusals (#146 slice 2, §2.3)
+- Wire the invoke lane through the real activation path + pin narrowing + guide (#146 slice 2)
 
 ### Hardware Evidence
 
@@ -609,6 +619,7 @@ All notable changes to this project will be documented in this file.
 - Advance packages/sdk to the execution 0.2.0 sync (#176)
 - Sdk_compatibility mirror + pointer = certified 0.3.0 (SDK 0.3.0 pairing)
 - Advance packages/sdk to e948fd5 (PR #56) and amend the capture record
+- Advance packages/sdk to 3b14d0e (DatasetServices protocol, #146 slice 1)
 
 ### Performance
 
@@ -743,6 +754,8 @@ All notable changes to this project will be documented in this file.
 - AR5 — the archive tier's three crash windows on the kill harness
 - Freeze rule for the 23-field archive envelope
 - Close the Windows census (#143) (#208)
+- F3 — the catalog-half soft arm pinned, mutation-checked
+- F5 — slice-added version literals derive from corpus bytes
 
 ### Build
 
