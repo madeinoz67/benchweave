@@ -194,6 +194,10 @@ All notable changes to this project will be documented in this file.
 - F2 — the probe walks $dynamicRef and roots where the runtime roots
 - F4 — degenerate measurement required-set refuses at load
 - Item 8 — the descriptor's input_constraints join the load-time probe (R22)
+- Wave 2 #1 — the publish's evidence row joins the finalise transaction (no leak)
+- Wave 2 #2 — M02 narrowed to the corpus's scalar product one
+- Wave 2 #3 — the classified invoke's payload reclaim rides the epilogue floor
+- Item 5 rider 2 completion — the growth site classes pay: rows dataset too (#146)
 
 ### Documentation
 
@@ -377,6 +381,7 @@ All notable changes to this project will be documented in this file.
 - Add #209 contributor publishing design record and planning index rows
 - F6 — capability-ungated hard arm named; the C3 binding rule in the guide
 - Commit the #146 invoke/dataset record with Amendment 2 (#146)
+- Record Amendment 3 — the slice-3 review fold (#146)
 
 ### Features
 
@@ -529,6 +534,13 @@ All notable changes to this project will be documented in this file.
 - Pinned-contract resolution at load (#146 slice 2, §2.1)
 - Bridge invoke dispatch — gates, conversion, clamp, lane-honest refusals (#146 slice 2, §2.3)
 - Wire the invoke lane through the real activation path + pin narrowing + guide (#146 slice 2)
+- The payload lane — writer open_payload, bundle members, registry, R10 (#146 slice 3 S3a, §2.2)
+- Dataset_publish + dataset_lookup — the validation surface (#146 slice 3 S3b, §2.2)
+- Artifact_read — the reader surface with the refused offset floor (#146 slice 3 S3c, R13)
+- The permission-gated builder + app.py composition (#146 slice 3 S3d, §2.2's table)
+- Riders, the N=30 E2E through the real activation path, guide dataset half (#146 slice 3 S3e)
+- Item 5 rider 1 — artifact_read serves published variables' payloads (#146)
+- Item 5 riders 2-4 — dataset row labels, the v5 payload addendum, the guide's M14/M15 status (#146)
 
 ### Hardware Evidence
 
