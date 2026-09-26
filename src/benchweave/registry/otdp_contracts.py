@@ -20,13 +20,16 @@ verb — the design's risk-1 ordering, kept as a named decision):
   (Amendment 1 NIT-2: overlapping ``action_id``\\ s would let merge order
   silently pick the ``input_schema`` that gates I4 — closed by refusal, not
   resolution), and any ``$ref`` that does not resolve within the pinned
-  set (the load-time probe, Amendment 1 MEDIUM-3 / R14: structural
-  validation alone never resolves embedded refs, and an unresolvable one
-  would raise lazily at dispatch and poison through the generic channel
-  instead of refusing at load). The real corpus catalog is the in-tree
-  witness that resolution is SET-scoped: its dataset-producing actions
-  reference ``urn:otdp:measurement:0.2.2#/$defs/dataset``, so a catalog
-  pinned without the measurement schema refuses HERE.
+  set (the load-time probe, Amendment 1 MEDIUM-3 / R14, corrected by fix
+  wave F2: the probe walks ``$ref`` AND ``$dynamicRef`` and roots
+  resolution exactly where the runtime validators root it — the per-action
+  subschema and the measurement dataset wrapper, never the bare document —
+  so a structural validation alone never passes a reference that would
+  raise lazily at dispatch and poison through the generic channel). The
+  real corpus catalog is the in-tree witness that resolution is
+  SET-scoped: its dataset-producing actions reference the measurement
+  schema's dataset def by urn, so a catalog pinned without the
+  measurement schema refuses HERE.
 * VERB-level (structural, never a runtime flag) — "unresolved contracts"
   in the design's own words (§2.2's table row, R16's soft arm): a pin
   whose path the verified inventory does not carry (nothing was verified
@@ -127,20 +130,33 @@ def _is_measurement_schema(document: dict[str, Any]) -> bool:
     )
 
 
-def _walk_documents(node: Any, *, refs: list[str], ids: list[tuple[str, dict[str, Any]]]) -> None:
-    """Collect every ``$ref`` target and every ``$id``-bearing subschema."""
+def _walk_refs(node: Any, refs: list[str]) -> None:
+    """Collect every reference target — ``$ref`` AND ``$dynamicRef`` (fix
+    wave F2: a dangling dynamic reference raises lazily at validation
+    exactly a dangling static one does)."""
     if isinstance(node, dict):
-        ref = node.get("$ref")
-        if isinstance(ref, str):
-            refs.append(ref)
+        for keyword in ("$ref", "$dynamicRef"):
+            ref = node.get(keyword)
+            if isinstance(ref, str):
+                refs.append(ref)
+        for value in node.values():
+            _walk_refs(value, refs)
+    elif isinstance(node, list):
+        for item in node:
+            _walk_refs(item, refs)
+
+
+def _walk_ids(node: Any, ids: list[tuple[str, dict[str, Any]]]) -> None:
+    """Collect every ``$id``-bearing subschema."""
+    if isinstance(node, dict):
         identifier = node.get("$id")
         if isinstance(identifier, str):
             ids.append((identifier, node))
         for value in node.values():
-            _walk_documents(value, refs=refs, ids=ids)
+            _walk_ids(value, ids)
     elif isinstance(node, list):
         for item in node:
-            _walk_documents(item, refs=refs, ids=ids)
+            _walk_ids(item, ids)
 
 
 def _closed_registry(documents: list[tuple[str, dict[str, Any]]]) -> Registry:
@@ -150,9 +166,8 @@ def _closed_registry(documents: list[tuple[str, dict[str, Any]]]) -> Registry:
     resolution outside the pinned set is impossible by construction."""
     registry: Registry = Registry()
     for _identifier, document in documents:
-        refs: list[str] = []
         ids: list[tuple[str, dict[str, Any]]] = []
-        _walk_documents(document, refs=refs, ids=ids)
+        _walk_ids(document, ids)
         for uri, subschema in ids:
             registry = registry.with_resource(
                 uri, Resource.from_contents(subschema, default_specification=DRAFT202012)
@@ -160,28 +175,46 @@ def _closed_registry(documents: list[tuple[str, dict[str, Any]]]) -> Registry:
     return registry.crawl()
 
 
-def _probe_refs(
-    documents: list[tuple[str, dict[str, Any]]], registry: Registry
+def _probe_runtime_schemas(
+    catalog: tuple[str, dict[str, Any]] | None,
+    measurement: tuple[str, dict[str, Any]] | None,
+    registry: Registry,
 ) -> None:
-    """The load-time ``$ref`` probe (Amendment 1 MEDIUM-3, R14): every
-    reference in every pinned document must resolve within the pinned set
-    — local pointers against the document's own root, urn refs through the
-    closed registry. An unresolvable reference is an ``ActivationRejected``
-    at load, never a lazy ``Unresolvable`` escaping dispatch-time
+    """The load-time reference probe (Amendment 1 MEDIUM-3, R14; fix wave
+    F2): every ``$ref`` and ``$dynamicRef`` in every schema the RUNTIME
+    validators are built from must resolve within the pinned set, rooted
+    exactly where the runtime roots it — each action's input/output schema
+    (the per-action subschema ``Draft202012Validator`` validates against,
+    NOT the catalog document: a valid document-root pointer that walks
+    outside the action subschema raises ``PointerToNowhere`` at first
+    dispatch) and the measurement dataset wrapper. An unresolvable
+    reference is an ``ActivationRejected`` at load, never a lazy
+    ``PointerToNowhere``/``NoSuchAnchor`` escaping dispatch-time
     validation into the generic poison channel."""
-    for identifier, document in documents:
+    roots: list[tuple[str, dict[str, Any]]] = []
+    if catalog is not None:
+        for action_id, spec in catalog[1].get("actions", {}).items():
+            roots.append((f"{catalog[0]}:{action_id}:input", spec["input_schema"]))
+            roots.append((f"{catalog[0]}:{action_id}:output", spec["output_schema"]))
+    if measurement is not None:
+        defs = measurement[1].get("$defs", {})
+        roots.append(
+            (f"{measurement[0]}:dataset", {"$ref": "#/$defs/dataset", "$defs": defs})
+        )
+    for label, schema in roots:
         refs: list[str] = []
-        ids: list[tuple[str, dict[str, Any]]] = []
-        _walk_documents(document, refs=refs, ids=ids)
+        _walk_refs(schema, refs)
+        if not refs:
+            continue
         resolver = registry.resolver_with_root(
-            Resource.from_contents(document, default_specification=DRAFT202012)
+            Resource.from_contents(schema, default_specification=DRAFT202012)
         )
         for ref in dict.fromkeys(refs):
             try:
                 resolver.lookup(ref)
             except Unresolvable:
                 raise ActivationRejected(
-                    f"contract_ref_unresolvable: {identifier}: {ref}"
+                    f"contract_ref_unresolvable: {label}: {ref}"
                 ) from None
 
 
@@ -254,7 +287,7 @@ def resolve_otdp_contracts(
             catalog = (identifier, document)
         documents.append((identifier, document))
     registry = _closed_registry(documents)
-    _probe_refs(documents, registry)
+    _probe_runtime_schemas(catalog, measurement, registry)
     if unresolved or catalog is None or measurement is None:
         # The soft arms: an unassemblable set (a path the inventory does
         # not carry) or a cleanly-resolving half pair — no controller,

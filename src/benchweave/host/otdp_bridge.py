@@ -704,8 +704,11 @@ class OTDPBridge:
         narrowing (the policy-rule intersection already ran at the
         executor). Every refusal is a clean typed rejection with zero
         adapter calls; the gate region has no exception frame, so the
-        pinned validators' lazy $ref resolution is guaranteed by §2.1's
-        load-time probe, never caught here.
+        pinned validators' lazy reference resolution is guaranteed by
+        §2.1's load-time probe — every $ref and $dynamicRef in every
+        compiled schema, rooted at the per-action subschema these
+        validators actually validate against, resolves in-bundle — never
+        caught here.
         """
         if self._dataset is None:
             return OperationResult.failure(

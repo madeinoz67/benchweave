@@ -598,3 +598,93 @@ def test_unparsable_contract_refused_at_load(tmp_path: Path) -> None:
     files = {"contracts/broken.json": b"{not json"}
     with pytest.raises(ActivationRejected, match="contract_unparsable"):
         _load_with_contracts(tmp_path, files, _contracts_descriptor(files))
+
+
+# --- fix wave F2: the probe roots where the runtime validators root --------------
+
+
+def _two_action_catalog() -> dict[str, Any]:
+    """A catalog whose action A references sibling action B by a valid
+    DOCUMENT-root pointer — resolvable against the catalog document (the
+    document-rooted probe passes it) but unresolvable at the runtime root,
+    where I4 validates against the per-action SUBSCHEMA alone. The
+    sibling's id carries no slash: a JSON Pointer splits on '/', so a
+    slashed id would fail under ANY rooting (an escape-level accident,
+    not the rooting defect this fixture isolates)."""
+    catalog = _synthetic_catalog()
+    catalog["actions"]["demo_sibling"] = {
+        "description": "The referenced sibling (invented fixture name).",
+        "input_schema": {"type": "object"},
+        "output_schema": {"type": "object"},
+        "side_effect": "none",
+        "lifecycle": "direct",
+    }
+    catalog["actions"]["demo.act/1.0.0"]["input_schema"] = {
+        "type": "object",
+        "properties": {
+            "x": {"$ref": "#/actions/demo_sibling/input_schema"},
+        },
+    }
+    return catalog
+
+
+def test_f2_same_document_relative_ref_refused_at_load(tmp_path: Path) -> None:
+    """F2 fixture 1: a document-root pointer that walks outside the action
+    subschema passes the document-rooted probe but raises PointerToNowhere
+    at first dispatch (the I4 validator's root is the action schema). The
+    corrected probe refuses it at LOAD."""
+    measurement = _corpus_bytes("otdp-measurement.schema.json")
+    files = {
+        "contracts/catalog.json": json.dumps(_two_action_catalog()).encode(),
+        "contracts/measurement.json": measurement,
+    }
+    with pytest.raises(ActivationRejected, match="contract_ref_unresolvable"):
+        _load_with_contracts(tmp_path, files, _contracts_descriptor(files))
+
+
+def test_f2_dangling_dynamic_ref_refused_at_load(tmp_path: Path) -> None:
+    """F2 fixture 2: a dangling ``$dynamicRef`` (no matching dynamic anchor
+    or def anywhere in the pinned set) is not walked by the ``$ref``-only
+    probe and raises NoSuchAnchor/_WrappedReferencingError at first
+    dispatch. The corrected probe walks ``$dynamicRef`` too and refuses at
+    LOAD."""
+    catalog = _synthetic_catalog()
+    catalog["actions"]["demo.act/1.0.0"]["input_schema"] = {
+        "type": "object",
+        "$dynamicRef": "#/$defs/absent",
+    }
+    measurement = _corpus_bytes("otdp-measurement.schema.json")
+    files = {
+        "contracts/catalog.json": json.dumps(catalog).encode(),
+        "contracts/measurement.json": measurement,
+    }
+    with pytest.raises(ActivationRejected, match="contract_ref_unresolvable"):
+        _load_with_contracts(tmp_path, files, _contracts_descriptor(files))
+
+
+def test_f2_legitimate_dynamic_ref_pair_still_loads(tmp_path: Path) -> None:
+    """The probe's dynamic walk must not refuse LEGAL dynamic references:
+    a recursive ``$dynamicAnchor``/``$dynamicRef`` pair (the 2020-12
+    recursive-schema idiom) fully in-bundle resolves and the pair loads."""
+    catalog = _synthetic_catalog()
+    catalog["actions"]["demo.act/1.0.0"]["input_schema"] = {
+        "type": "object",
+        "$defs": {
+            "node": {
+                "$dynamicAnchor": "payload",
+                "type": "object",
+                "properties": {"next": {"$dynamicRef": "#payload"}},
+            }
+        },
+        "properties": {"root": {"$dynamicRef": "#payload"}},
+    }
+    measurement = _corpus_bytes("otdp-measurement.schema.json")
+    files = {
+        "contracts/catalog.json": json.dumps(catalog).encode(),
+        "contracts/measurement.json": measurement,
+    }
+    plugin = _load_with_contracts(tmp_path, files, _contracts_descriptor(files))
+    try:
+        assert plugin._dataset is not None
+    finally:
+        plugin.plugin_close()
