@@ -185,14 +185,18 @@ def test_foreign_host_header_is_rejected(tmp_path: Path) -> None:
 
 def test_backslash_asset_paths_are_rejected_on_every_platform(tmp_path: Path) -> None:
     server_module = importlib.import_module("benchweave_sdk.preview_server")
-    (tmp_path / "index.html").write_text("preview", encoding="utf-8")
+    # Serve a root two levels below tmp_path so the Windows escape target
+    # (root/../../leaked.txt) is tmp_path itself, never outside it (#207).
+    root = tmp_path / "site" / "preview"
+    root.mkdir(parents=True)
+    (root / "index.html").write_text("preview", encoding="utf-8")
     # A literal-backslash filename is legal on POSIX and on Windows resolves as a
     # directory escape: the guard must reject the path itself, not rely on the
     # filesystem happening to miss the file.
-    (tmp_path / "..\\..\\leaked.txt").write_text("leaked", encoding="utf-8")
+    (root / "..\\..\\leaked.txt").write_text("leaked", encoding="utf-8")
 
     with (
-        server_module.PreviewServer(model(), tmp_path) as address,
+        server_module.PreviewServer(model(), root) as address,
         pytest.raises(urllib.error.HTTPError) as error,
     ):
         urllib.request.urlopen(address.url + "/..%5C..%5Cleaked.txt", timeout=2)
