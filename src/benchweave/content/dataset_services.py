@@ -112,6 +112,8 @@ class DatasetController:
         self._operations: dict[str, dict[str, Any]] = {}
         # dataset_id -> admitted manifest (idempotency + this-run lookup)
         self._admitted_by_dataset: dict[str, dict[str, Any]] = {}
+        # this run's published-dataset artifacts (artifact_read's subset)
+        self._readable_artifacts: set[str] = set()
 
     # --- the slice-2 dispatch half (unchanged surface) -----------------------
 
@@ -261,16 +263,26 @@ class DatasetController:
         return admitted if isinstance(admitted, dict) else None
 
     def record_admitted(
-        self, operation_id: str, manifest: dict[str, Any]
+        self, operation_id: str, manifest: dict[str, Any], artifact_id: str | None = None
     ) -> None:
         """Record the admitted manifest (the publish path's final step):
         per-operation for the bridge cross-check, per-dataset-id for
-        idempotency and this-run lookup."""
+        idempotency and this-run lookup, and — with the routing artifact —
+        the read-authorization subset (artifacts belonging to datasets
+        this run published; row 3's wider upload-consumption model stays
+        deferred)."""
         state = self._operations.get(operation_id)
         if state is not None:
             state["admitted"] = manifest
         dataset_id = str(manifest.get("dataset_id"))
         self._admitted_by_dataset[dataset_id] = manifest
+        if artifact_id is not None:
+            self._readable_artifacts.add(artifact_id)
+
+    def artifact_readable(self, artifact_id: str) -> bool:
+        """artifact_read's authorization subset: one of THIS run's
+        published-dataset artifacts."""
+        return artifact_id in self._readable_artifacts
 
     def admitted_by_dataset_id(self, dataset_id: str) -> dict[str, Any] | None:
         """The admitted manifest for a dataset id THIS controller published
@@ -449,7 +461,7 @@ class DatasetServicesBundle(ScopedServicesBundle):
             self._controller.note_payload_aborted(payload_id)
             raise self._stamp_evidence_quota(error_quota, context) from error_quota
         self._controller.note_payload_finalised(operation_id, payload_id, record)
-        self._controller.record_admitted(operation_id, manifest)
+        self._controller.record_admitted(operation_id, manifest, record["artifact_id"])
         result: dict[str, Any] = json.loads(json.dumps(manifest))
         return result
 
@@ -780,10 +792,55 @@ class _PayloadMembers:
 
 class _ReaderMembers:
     """The ``artifact_reader``-gated upload-consumption surface (mixin;
-    structurally absent without the permission). artifact_read lands in
-    slice S3c."""
+    structurally absent without the permission — spec §3/S15)."""
 
-    pass
+    _controller: DatasetController
+    _content: ContentStore
+
+    async def artifact_read(
+        self,
+        artifact_id: str,
+        offset: int,
+        length: int,
+        context: Any,
+    ) -> bytes:
+        """Read a bounded window of an authorised artifact (spec §3; R13's
+        boundary table). The corpus's "nonnegative offset" is a
+        precondition this bundle REFUSES on — never the seam's clamp (the
+        interface seam clamps negative offsets to zero for ITS pinned MCP
+        behavior; a negative offset reaching the store's slicing reads the
+        wrong window — measured: offset −1 with length 1 yields zero
+        bytes eof=False, a non-terminating read loop). Authorization
+        subset: artifacts belonging to datasets this run published (row
+        3's wider model stays deferred). EOF and beyond-size follow the
+        store's D11 contract: offset == size yields zero bytes at EOF;
+        beyond size refuses."""
+        if not isinstance(artifact_id, str) or not artifact_id:
+            raise DatasetServiceRejected("artifact_read requires an artifact id")
+        if type(offset) is not int:
+            raise DatasetServiceRejected("artifact_read offset must be an integer")
+        if offset < 0:
+            raise DatasetServiceRejected(
+                f"artifact_read offset {offset} is negative — refused, "
+                "never clamped (the corpus precondition)"
+            )
+        if type(length) is not int or length < 1:
+            raise DatasetServiceRejected("artifact_read length must be an integer >= 1")
+        if not self._controller.artifact_readable(artifact_id):
+            raise DatasetServiceRejected(
+                f"artifact {artifact_id!r} does not belong to a dataset "
+                "this run published"
+            )
+        try:
+            chunk = self._content.artifact_chunk(artifact_id, offset, length)
+        except ValueError as error:
+            raise DatasetServiceRejected(f"artifact_read window refused: {error}") from error
+        except KeyError as error:
+            raise DatasetServiceRejected(
+                f"unknown artifact id: {artifact_id!r}"
+            ) from error
+        window: bytes = chunk["data"]
+        return window
 
 
 class DatasetPayloadBundle(DatasetServicesBundle, _PayloadMembers):

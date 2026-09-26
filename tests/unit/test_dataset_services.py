@@ -647,3 +647,91 @@ def test_dataset_payload_publish_full_round_trip(tmp_path: Path) -> None:
         assert evidence_rows(harness) == 1
     finally:
         harness.close()
+
+
+# --- issue #146 slice 3 S3c: artifact_read + R13 ----------------------------------
+
+
+def _published_artifact(harness: DatasetHarness) -> tuple[str, bytes]:
+    """Publish a manifest and return (its routed artifact id, its bytes)."""
+    manifest = a_valid_manifest()
+    admitted = run(harness.bundle.dataset_publish(manifest, harness.context()))
+    blob = json.dumps(admitted, sort_keys=True, separators=(",", ":")).encode()
+    return "art-" + __import__("hashlib").sha256(blob).hexdigest(), blob
+
+
+def test_r13_offset_floor_boundary_table(tmp_path: Path) -> None:
+    """R13: negative offsets REFUSE (never clamp — the seam's clamp is the
+    pinned MCP behavior, not this bundle's); EOF (offset == size) yields
+    zero bytes; beyond size refuses; the middle window reads correctly."""
+    from benchweave.content.dataset_services import DatasetFullBundle
+
+    harness = DatasetHarness(tmp_path)
+    try:
+        # Build the full bundle (reader + writer members) over the harness.
+        full = DatasetFullBundle(
+            controller=harness.controller,
+            writer=harness.writer,
+            channels=("ch1",),
+            content=harness.content,
+            clock=lambda: 0.0,
+            wall=lambda: "2026-09-26T00:00:00Z",
+            quota_evidence=50,
+            context_key="dataset-harness-session",
+        )
+        artifact_id, blob = _published_artifact(harness)
+        size = len(blob)
+        assert run(full.artifact_read(artifact_id, 0, 4, harness.context())) == blob[:4]
+        # (-1, 1): refuse, never clamp to zero.
+        with pytest.raises(DatasetServiceRejected, match="negative"):
+            run(full.artifact_read(artifact_id, -1, 1, harness.context()))
+        # (-1, MAX): refuse.
+        with pytest.raises(DatasetServiceRejected, match="negative"):
+            run(full.artifact_read(artifact_id, -1, 2**53 - 1, harness.context()))
+        # (size, 1): EOF — zero bytes, per D11.
+        assert run(full.artifact_read(artifact_id, size, 1, harness.context())) == b""
+        # (size+1, 1): beyond size — refuse.
+        with pytest.raises(DatasetServiceRejected, match="window refused"):
+            run(full.artifact_read(artifact_id, size + 1, 1, harness.context()))
+        # length floor.
+        with pytest.raises(DatasetServiceRejected, match="integer >= 1"):
+            run(full.artifact_read(artifact_id, 0, 0, harness.context()))
+    finally:
+        harness.close()
+
+
+def test_r7_artifact_read_authorization_subset(tmp_path: Path) -> None:
+    """R7's reader arm: an artifact this run did NOT publish refuses —
+    even one that exists in the store (another session's manifest)."""
+    from benchweave.content.dataset_services import DatasetReaderBundle
+
+    harness = DatasetHarness(tmp_path)
+    try:
+        artifact_id, _blob = _published_artifact(harness)
+        # A foreign artifact in the same store (another session's content).
+        foreign = harness.content.put_artifact(b"foreign-bytes", "2026-09-26T00:00:00Z")
+        reader = DatasetReaderBundle(
+            controller=harness.controller,
+            writer=harness.writer,
+            channels=("ch1",),
+            content=harness.content,
+            clock=lambda: 0.0,
+            wall=lambda: "2026-09-26T00:00:00Z",
+            quota_evidence=50,
+            context_key="dataset-harness-session",
+        )
+        assert (
+            run(reader.artifact_read(artifact_id, 0, 8, harness.context()))
+            == _published_bytes(harness, artifact_id)[:8]
+        )
+        with pytest.raises(DatasetServiceRejected, match="this run published"):
+            run(reader.artifact_read(foreign, 0, 8, harness.context()))
+    finally:
+        harness.close()
+
+
+def _published_bytes(harness: DatasetHarness, artifact_id: str) -> bytes:
+    row = harness.store.connection.execute(
+        "SELECT data FROM artifacts WHERE artifact_id = ?", (artifact_id,)
+    ).fetchone()
+    return bytes(row[0])
