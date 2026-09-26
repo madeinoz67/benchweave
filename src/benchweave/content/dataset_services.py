@@ -601,25 +601,37 @@ class _InvokeMembers:
                         "names no axis in the manifest"
                     )
                 lengths.append(int(axis["length"]))
-            # M02's count agreement presumes dimensions: with NONE (a
-            # scalar set), there is no product to agree with and the
-            # count is free — exactly the corpus's suspension note (the
-            # empty-values/empty-dimensions shape suspends the check; a
-            # dimensioned variable's flattened count must equal the
-            # product).
-            product: int | None = None
-            if lengths:
-                product = 1
-                for length in lengths:
-                    product *= length
+            # M02 with the corpus's own arithmetic (mm.md §1/§2, wave 2's
+            # narrowing): the flattened element count is the product of
+            # axis lengths, WITH SCALAR PRODUCT ONE — a dimensionless
+            # variable is a scalar carrying exactly one element (mm.md
+            # line 12), never a free count. The ONLY suspension is the
+            # DERIVED-INVALID record (mm.md 188-191): empty values AND
+            # empty dimensions AND status invalid AND the §8 derivation
+            # marker — a shape that was never established asserts no
+            # element count.
+            product = 1
+            for length in lengths:
+                product *= length
+            derived_invalid = (
+                not dimensions
+                and (variable.get("values") or []) == []
+                and variable.get("status") == "invalid"
+                and isinstance(variable.get("derivation"), dict)
+            )
             dtype = str(variable.get("dtype"))
             artifact = variable.get("artifact")
             if artifact is None:
                 values = variable.get("values") or []
-                if product is not None and len(values) != product:
+                if not derived_invalid and len(values) != product:
                     raise DatasetServiceRejected(
                         f"M02: variable {vid!r} carries {len(values)} inline "
                         f"values against a dimension product of {product}"
+                        + (
+                            " (a scalar variable carries exactly one element)"
+                            if not dimensions
+                            else ""
+                        )
                     )
                 self._check_finite(values, f"variable {vid!r} values")
             else:
@@ -633,7 +645,7 @@ class _InvokeMembers:
                 element_bytes = pair[1]
                 if (
                     element_bytes is not None
-                    and product is not None
+                    and not derived_invalid
                     and int(artifact.get("byte_length", -1))
                     != product * element_bytes
                 ):

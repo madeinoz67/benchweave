@@ -3746,7 +3746,7 @@ def _A_PUBLISHABLE_MANIFEST() -> dict[str, Any]:
                 "channel_ids": ["ch1"],
                 "dtype": "float64",
                 "dimensions": [],
-                "values": [1.0, 2.0, 3.0],
+                "values": [5.0],  # the corpus's scalar: exactly one element
                 "uncertainty": {"status": "unknown"},
                 "calibration": {"status": "unknown"},
                 "status": "valid",

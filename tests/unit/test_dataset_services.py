@@ -106,7 +106,7 @@ def a_valid_manifest(dataset_id: str = "ds:op-a") -> dict[str, Any]:
                 "channel_ids": ["ch1"],
                 "dtype": "float64",
                 "dimensions": [],
-                "values": [1.0, 2.0, 3.0],
+                "values": [5.0],  # the corpus's scalar: exactly one element
                 "uncertainty": {"status": "unknown"},
                 "calibration": {"status": "unknown"},
                 "status": "valid",
@@ -469,33 +469,16 @@ def test_publish_schema_refusal_carries_the_validator_message(tmp_path: Path) ->
             lambda m: m["variables"][0].__setitem__("channel_ids", ["nope"]),
             "M01: variable 'voltage_v' references channel 'nope'",
         ),
-        # M02 inline count disagreement (dimensioned: the product binds)
+        # M02 inline count disagreement: a scalar with two elements
+        # refuses (scalar product one — the wave-2 narrowing).
         (
-            lambda m: (
-                m.__setitem__(
-                    "axes",
-                    [
-                        {
-                            "id": "sample",
-                            "quantity": "time",
-                            "unit": "s",
-                            "length": 3,
-                            "coordinates": {
-                                "kind": "regular",
-                                "start": 0.0,
-                                "step": 0.1,
-                            },
-                        }
-                    ],
-                ),
-                m["variables"][0].__setitem__("dimensions", ["sample"]),
-                m["variables"][0].__setitem__("values", [1.0, 2.0]),
-            ),
+            lambda m: m["variables"][0].__setitem__("values", [1.0, 2.0]),
             "M02: variable 'voltage_v' carries 2 inline values",
         ),
-        # M04 non-finite inline value
+        # M04 non-finite inline value (a single element — M02 binds first
+        # otherwise)
         (
-            lambda m: m["variables"][0].__setitem__("values", [1.0, float("nan"), 3.0]),
+            lambda m: m["variables"][0].__setitem__("values", [float("nan")]),
             "M04",
         ),
     ],
@@ -569,7 +552,7 @@ def test_r8_idempotent_republish_and_divergent_refusal(tmp_path: Path) -> None:
         )
         assert evidence_rows(harness) == 1  # one row, not two
         divergent = a_valid_manifest()
-        divergent["variables"][0]["values"] = [9.0, 9.0, 9.0]
+        divergent["variables"][0]["values"] = [9.0]
         with pytest.raises(DatasetServiceRejected, match="immutable"):
             run(harness.bundle.dataset_publish(divergent, harness.context()))
     finally:
@@ -584,8 +567,8 @@ def test_r15_prior_operation_artifact_refuses(tmp_path: Path) -> None:
     try:
         # Operation op-prior finalises a payload artifact.
         harness.controller.mint_dataset_id("op-prior")
-        prior_id = run(harness.bundle.payload_create("f64le", 24, harness.context("op-prior")))
-        run(harness.bundle.payload_append(prior_id, b"\x02" * 24, harness.context("op-prior")))
+        prior_id = run(harness.bundle.payload_create("f64le", 8, harness.context("op-prior")))
+        run(harness.bundle.payload_append(prior_id, b"\x02" * 8, harness.context("op-prior")))
         prior_record = run(harness.bundle.payload_finalise(prior_id, harness.context("op-prior")))
         # Operation op-a's manifest references it.
         manifest = a_valid_manifest()
@@ -610,8 +593,8 @@ def test_r3_manifest_artifact_fields_cross_checked(tmp_path: Path) -> None:
     cross-checked, never trusted."""
     harness = DatasetHarness(tmp_path)
     try:
-        payload_id = run(harness.bundle.payload_create("f64le", 24, harness.context()))
-        run(harness.bundle.payload_append(payload_id, b"\x03" * 24, harness.context()))
+        payload_id = run(harness.bundle.payload_create("f64le", 8, harness.context()))
+        run(harness.bundle.payload_append(payload_id, b"\x03" * 8, harness.context()))
         record = run(harness.bundle.payload_finalise(payload_id, harness.context()))
         manifest = a_valid_manifest()
         manifest["configuration_id"] = "conf-1"
@@ -635,8 +618,8 @@ def test_dataset_payload_publish_full_round_trip(tmp_path: Path) -> None:
     dtype/encoding pairs, M02 byte length matches the product)."""
     harness = DatasetHarness(tmp_path)
     try:
-        payload_id = run(harness.bundle.payload_create("f64le", 24, harness.context()))
-        run(harness.bundle.payload_append(payload_id, b"\x04" * 24, harness.context()))
+        payload_id = run(harness.bundle.payload_create("f64le", 8, harness.context()))
+        run(harness.bundle.payload_append(payload_id, b"\x04" * 8, harness.context()))
         record = run(harness.bundle.payload_finalise(payload_id, harness.context()))
         manifest = a_valid_manifest()
         manifest["configuration_id"] = "conf-1"
@@ -886,5 +869,56 @@ def test_w2_publish_evidence_quota_refusal_charges_nothing(tmp_path: Path) -> No
             "SELECT capture_id FROM capture_staging"
         ).fetchall()
         assert all("op-b" not in str(row[0]) for row in refused_ids)
+    finally:
+        harness.close()
+
+
+def test_w2_m02_scalar_product_one_boundary_table(tmp_path: Path) -> None:
+    """Wave2 #2 (critic-M + adversary-F2): the flattened element count is
+    the product of axis lengths WITH SCALAR PRODUCT ONE (mm.md §1/§2) — a
+    dimensionless scalar carries exactly one element. The ONLY suspension
+    is mm.md 188-191's derived-invalid record (empty values, empty
+    dimensions, invalid status, the §8 derivation marker) — a shape never
+    established asserts no element count."""
+    harness = DatasetHarness(tmp_path)
+    try:
+        # Refused: scalar with 0, 2 and 3 elements.
+        for _count, values in ((0, []), (2, [1.0, 2.0]), (3, [1.0, 2.0, 3.0])):
+            manifest = a_valid_manifest()
+            manifest["variables"][0]["values"] = values
+            with pytest.raises(
+                DatasetServiceRejected, match="M02: .*dimension product of 1"
+            ):
+                run(harness.bundle.dataset_publish(manifest, harness.context()))
+        # Refused: a scalar artifact whose byte_length is not one element.
+        payload_id = run(harness.bundle.payload_create("f64le", 8, harness.context()))
+        run(harness.bundle.payload_append(payload_id, b"\x05" * 8, harness.context()))
+        record = run(harness.bundle.payload_finalise(payload_id, harness.context()))
+        manifest = a_valid_manifest()
+        manifest["configuration_id"] = "conf-1"
+        del manifest["variables"][0]["values"]
+        forged = dict(record)
+        forged["byte_length"] = 16  # two elements claimed as a scalar
+        manifest["variables"][0]["artifact"] = forged
+        with pytest.raises(DatasetServiceRejected, match="M02: .*byte_length"):
+            run(harness.bundle.dataset_publish(manifest, harness.context()))
+        # Admitted: the derived-invalid record suspends count agreement.
+        derived_invalid = a_valid_manifest()
+        derived_invalid["variables"][0].update(
+            {
+                "values": [],
+                "status": "invalid",
+                "status_reason": "operand_not_established",
+                "derivation": {
+                    "kind": "expression",
+                    "expression": "a / b",
+                    "operand_ids": ["a", "b"],
+                },
+            }
+        )
+        admitted = run(
+            harness.bundle.dataset_publish(derived_invalid, harness.context())
+        )
+        assert admitted["variables"][0]["values"] == []
     finally:
         harness.close()
