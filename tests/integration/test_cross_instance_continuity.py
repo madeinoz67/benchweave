@@ -752,18 +752,35 @@ class ContinuityRig:
         monitor.cause is not None``; "Stops early on a terminal monitor
         cause"), so the drain polls the bridge directly and hands each
         validated event to the host's contained ``on_event`` dispatcher —
-        the identical landing call the engine makes."""
+        the identical landing call the engine makes.
+
+        The pre-trip ``poll_slice`` deadline is ONE POLL CADENCE (50 ms),
+        never a few ms: the engines open each round with a monitor tick
+        BEFORE the deadline check, and a tick reads both signals through
+        their bridges (several ms; more under load) — a 5 ms deadline is
+        already expired by the time the poll is about to run, the round
+        returns without polling, no frame is ever delivered, the buffered
+        read never crosses the hazard and the monitor never trips while
+        the loop spins hot to the cap (the observed CI failure: "the
+        condition never tripped post-dispatch" / "no in-window frames for
+        X3"). The 1 ms yield in the spinning branch keeps the loop off the
+        CPU between rounds. A cap-exit is LOUD: truncating the latency set
+        or the receive point would silently bias X2/X3, so quiet is
+        asserted, not assumed."""
         end = time.monotonic() + cap_ms / 1000.0
         quiet_floor = time.monotonic() + 2 * FRAME_PERIOD_MS / 1000.0 + 0.005
         subscriptions = self.stream_host.subscriptions.get(DEVICE_B, [])
+        quiet = False
         while time.monotonic() < end:
             if self.adapter_b.due_count() <= 0:
                 if time.monotonic() >= quiet_floor:
-                    return
+                    quiet = True
+                    break
                 time.sleep(0.001)
                 continue
             if self.monitor.cause is None:
-                self.stream_host.poll_slice(deadline_ns=self.deadline_ns(5))
+                self.stream_host.poll_slice(deadline_ns=self.deadline_ns(POLL_MS))
+                time.sleep(0.001)
                 continue
             for subscription_id in subscriptions:
                 outcome = self.bridge_b.poll_event(
@@ -776,6 +793,12 @@ class ContinuityRig:
                         outcome.event,
                         outcome.host_received_at or "",
                     )
+        assert quiet, (
+            f"drain_until_quiet hit its {cap_ms:.0f} ms cap with "
+            f"{self.adapter_b.due_count()} frame(s) still due — the delivery "
+            "path starved; a truncated latency set or receive point would "
+            "silently bias X2/X3"
+        )
 
     def align_to_frame(self, *, lead_ms: float = 4.0) -> None:
         """Busy-align the next dispatch start to just before a frame
@@ -836,9 +859,18 @@ def run_trial(
     late-result poison on a fast read) is an infrastructure failure, not a
     measurement — ``run_trial`` retries it on a FRESH rig, at most twice,
     and records the retry count in the outcome. The two retryable classes
-    are pre-dispatch by construction (the pre-flight assert and the
-    blocked/poisoned measured dispatch); a trial that DISPATCHED never
-    retries."""
+    are pre-dispatch by INTENT (the pre-flight assert and the
+    blocked/poisoned measured dispatch), but the matcher is MESSAGE-BASED,
+    not a structural pre/post boundary: two POST-dispatch host-pathology
+    sites embed the bridge's session-failure wording and can therefore
+    also match — the post-trip drain's ``assert not outcome.session_failed,
+    outcome.refusal`` and the write leg's status assert both surface "A
+    fresh opened bridge is required" when the bridge session dies
+    mid-trial. The EFFECT stays honest either way (a retry re-measures on
+    a fresh rig; the dead trial's numbers are discarded), the MECHANISM is
+    substring matching — the explicit-marker refactor is row-called for
+    the owner (review finding F4), and this prose is the interim
+    disclosure."""
     for attempt in range(3):
         try:
             outcome = _run_trial_once(
@@ -1002,14 +1034,23 @@ def _run_trial_once(
         x3 = max(frame["latency_ms"] for frame in in_window)
 
         # X4 — hazard onset -> action landed (the safety-honest zero point,
-        # design §2.4's disclosed pin), with the decomposition recorded so
-        # the reopen can re-cut without re-measuring: onset -> observation
-        # (the first tick that read the crossed level) and observation ->
-        # action (the protective write's landing on B).
+        # design §2.4's disclosed pin), with the 3-way decomposition recorded
+        # so the reopen can re-cut without re-measuring: onset ->
+        # observation (the first tick that read the crossed level),
+        # observation -> enter-call, and enter-call -> action-landed (the
+        # protective write's landing on B). The middle leg is the RIG's OWN
+        # bookkeeping — the X3 drain's quiet floor plus X3's computation
+        # sit between the observing tick and the engine call — so a future
+        # re-cut that wants the engine's response alone sums
+        # onset->observation with enter_call->action and EXCLUDES
+        # observation->enter_call rather than subtracting a guessed floor
+        # out of observation->action.
         if no_trip:
             x4 = None
             onset_to_observation_ms = None
             observation_to_action_ms = None
+            observation_to_enter_call_ms = None
+            enter_call_to_action_ms = None
             safe_state = None
         else:
             tripped_at = next(
@@ -1027,6 +1068,7 @@ def _run_trial_once(
             enter_reasons = (
                 list(rig.monitor.violations) if rig.monitor.cause is not None else []
             )
+            enter_call_ns = rig.clock.now_ns()
             protection = engine.enter(enter_reasons, rig.clock.now_ns())
             rig.monitor.phase = "idle"
             assert rig.adapter_b.write_landed_ns is not None, "the safe action never landed"
@@ -1034,6 +1076,8 @@ def _run_trial_once(
             x4 = (action_ns - t_cross_ns) / 1e6
             onset_to_observation_ms = (tripped_at - t_cross_ns) / 1e6
             observation_to_action_ms = (action_ns - tripped_at) / 1e6
+            observation_to_enter_call_ms = (enter_call_ns - tripped_at) / 1e6
+            enter_call_to_action_ms = (action_ns - enter_call_ns) / 1e6
             safe_state = protection.safe_state
 
         # The write leg (§2.2's "and a write leg") runs AFTER the protective
@@ -1067,6 +1111,8 @@ def _run_trial_once(
             "x4_ms": x4,
             "onset_to_observation_ms": onset_to_observation_ms,
             "observation_to_action_ms": observation_to_action_ms,
+            "observation_to_enter_call_ms": observation_to_enter_call_ms,
+            "enter_call_to_action_ms": enter_call_to_action_ms,
             "dispatch_duration_ms": duration_ms,
             "write_leg_gap_ms": write_gap,
             "in_window_frames": len(in_window),
@@ -1484,7 +1530,11 @@ def test_axis_trials_complete_all_four_axes(
     in-flight duration — the capture arm CUTS at its budget, the
     non-capture arm COMPLETES at T_acq_min; if this ever fails the serial
     model changed and the disclosure is stale). The write leg's gap is
-    recorded on the non-capture arm (§2.2's second leg)."""
+    recorded on the non-capture arm (§2.2's second leg). The retry cap is
+    part of the acceptance: a trial may retry at most twice, and a
+    chronically starved host must not ship all-green on the retry crutch —
+    the assert trips if the retry loop is ever widened without amending
+    the acceptance rule."""
     trials = _cell(tmp_path, arm, device_class)
     assert len(trials) == 5
     dispatch_ms = _ARM_DISPATCH_MS[arm]
@@ -1494,13 +1544,17 @@ def test_axis_trials_complete_all_four_axes(
         assert trial["dispatch_duration_ms"] <= dispatch_ms + 150, trial
         assert dispatch_ms - 50 <= trial["x1_ms"] <= dispatch_ms + 150, trial
         assert trial["in_window_frames"] >= 1, trial
+        assert trial["retries"] <= 2, (
+            f"trial retried {trial['retries']} times (max 2): {trial}"
+        )
         print(
             f"\n{arm}/{device_class} trial {trial['trial']}: "
             f"X1={trial['x1_ms']:.1f} X2={trial['x2_ms']:.1f} "
             f"X3={trial['x3_ms']:.1f} X4={trial['x4_ms']:.1f} "
             f"(dur {trial['dispatch_duration_ms']:.1f}, "
             f"onset->obs {trial['onset_to_observation_ms']:.1f}, "
-            f"obs->action {trial['observation_to_action_ms']:.1f}, "
+            f"obs->enter {trial['observation_to_enter_call_ms']:.1f}, "
+            f"enter->action {trial['enter_call_to_action_ms']:.1f}, "
             f"safe {trial['safe_state']})"
         )
     if arm == "non_capture":
@@ -1521,6 +1575,7 @@ def test_control_arm_and_separation(tmp_path: Path) -> None:
     long_arm = _cell(tmp_path, "non_capture", "buffered")
     for trial in control:
         assert trial["status"] == "unknown", trial
+        assert trial["retries"] <= 2, trial
     control_x2 = _median([t["x2_ms"] for t in control])
     control_x3 = max(t["x3_ms"] for t in control)
     control_x4 = max(t["x4_ms"] for t in control)
@@ -1546,6 +1601,49 @@ def test_control_arm_and_separation(tmp_path: Path) -> None:
     assert unbuffered_x2 < 50, (
         f"unbuffered X2 {unbuffered_x2:.1f} did not collapse to host-side skew"
     )
+
+
+#: §5's instrument-level range-gate denominator: the rig's DISPATCH
+#: DURATION — the 200 ms acquisition class BOTH arms instantiate (§5's
+#: fixture scale names one dispatch arm, 200 ms; the capture arm CUTS the
+#: same acquisition at its 50 ms budget, §8(d)). A per-arm reading (50 ms
+#: for the capture cells) was measured and rejected: its 12.5 ms gate sits
+#: INSIDE the host's own cut-overshoot distribution — single-trial
+#: deadline-max overshoots of 12.3 ms and 16.2 ms on the 50 ms cut in
+#: consecutive local runs, on different trials (stochastic scheduler
+#: stalls, not fixture scatter) — so a per-arm gate would flake on host
+#: load the fixture cannot pace, violating the clause's own intent (the
+#: range measures INSTRUMENT precision). Explicitly never a commissioned
+#: bound (§0's first rule).
+_RANGE_GATE_DENOMINATOR_MS = T_ACQ_MIN_MS
+
+
+def test_instrument_range_gate_per_axis_per_cell(tmp_path: Path) -> None:
+    """§5's instrument-level UNDERPOWERED clause, machine-checked: any
+    axis's trial range > 25% of the DISPATCH DURATION reads UNDERPOWERED —
+    fix fixture pacing, decide nothing (the denominator and the rejected
+    per-arm reading are documented at ``_RANGE_GATE_DENOMINATOR_MS``).
+    The gate covers the four measurement cells; the short-dispatch CONTROL
+    is deliberately excluded — its X2/X3/X4 are cadence/response-scale
+    quantities bounded by §5.2 through medians and maxima (poll_ms
+    multiples, the protection shape), and a 25%-of-20-ms range gate on
+    them would demand 5 ms stability of latencies §5.2 itself allows to
+    reach 150 ms — a scale mismatch the clause never committed to, and a
+    flake generator rather than a quality gate."""
+    for arm in ("capture", "non_capture"):
+        for device_class in ("buffered", "unbuffered"):
+            trials = _cell(tmp_path, arm, device_class)
+            for axis_key in ("x1_ms", "x2_ms", "x3_ms", "x4_ms"):
+                values = [trial[axis_key] for trial in trials]
+                spread = max(values) - min(values)
+                assert spread <= 0.25 * _RANGE_GATE_DENOMINATOR_MS, (
+                    f"{arm}/{device_class} {axis_key.upper()}: trial range "
+                    f"{spread:.1f} ms over {len(values)} trials exceeds 25% of "
+                    f"the {_RANGE_GATE_DENOMINATOR_MS:.0f} ms dispatch "
+                    "duration — §5's UNDERPOWERED reading (fix fixture "
+                    "pacing, decide nothing); "
+                    f"values: {[round(v, 1) for v in values]}"
+                )
 
 
 def test_trial_log_written_with_provenance(tmp_path: Path) -> None:
@@ -1583,6 +1681,8 @@ def test_trial_log_written_with_provenance(tmp_path: Path) -> None:
                 "dispatch_duration_ms": trial["dispatch_duration_ms"],
                 "onset_to_observation_ms": trial["onset_to_observation_ms"],
                 "observation_to_action_ms": trial["observation_to_action_ms"],
+                "observation_to_enter_call_ms": trial["observation_to_enter_call_ms"],
+                "enter_call_to_action_ms": trial["enter_call_to_action_ms"],
             }
             if arm == "control":
                 parameterization["t_acq_note"] = (
