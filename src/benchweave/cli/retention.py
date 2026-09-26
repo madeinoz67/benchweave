@@ -443,11 +443,23 @@ def build_retention_report(
     ):
         if not _in_scope(context, covered, run_states):
             continue
-        data_class = (
-            f"capture:{fmt}"
-            if isinstance(fmt, str) and fmt in _CAPTURE_CLASSES
-            else "capture:unknown"
-        )
+        # Item 5 rider 2 (adversary F4): payload-lane rows (pay: ids, the
+        # format column carrying the payload encoding) are DATASET rows —
+        # an honest data_class, never the inherited capture:unknown.
+        # Capture rows keep their exact historical labels.
+        is_payload = str(cap_id).startswith("pay:")
+        if is_payload:
+            row_kind = "dataset"
+            data_class = (
+                f"dataset:{fmt}" if isinstance(fmt, str) else "dataset:unknown"
+            )
+        else:
+            row_kind = "capture"
+            data_class = (
+                f"capture:{fmt}"
+                if isinstance(fmt, str) and fmt in _CAPTURE_CLASSES
+                else "capture:unknown"
+            )
         rule_after = (
             policy.resolve(
                 bench=_bench_of(context, run_states), data_class=data_class
@@ -458,7 +470,7 @@ def build_retention_report(
         anchor_at = _anchor(rule_after, updated_at, context)
         rows.append(
             _disposal_row(
-                row_kind="capture",
+                row_kind=row_kind,
                 id_=str(cap_id),
                 context_key=context,
                 bench=_bench_of(context, run_states),

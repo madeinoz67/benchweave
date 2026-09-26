@@ -1905,3 +1905,39 @@ def test_g6_4_corrupt_version_rows_stay_in_the_typed_family(
     combined = _combined(result)
     assert "retention_store:" in combined, combined
     assert "Traceback" not in combined
+
+
+def test_w5_pay_rows_carry_the_dataset_row_kind(tmp_path: Path) -> None:
+    """Item 5 rider 2 (adversary F4): a payload-lane staging row (a pay:
+    id, format carrying the payload encoding) is a DATASET row, not a
+    capture — the report must label it row_kind 'dataset' with an honest
+    data_class ('dataset:<encoding>'), never the inherited
+    'capture:unknown'. Capture rows stay byte-identical in shape."""
+    from benchweave.cli.retention import build_retention_report
+
+    data_dir = _seed(tmp_path)
+    store, content = _open(data_dir)
+    try:
+        writer = CaptureStagingStore(
+            store, max_capture_bytes=10_000_000, max_dataset_bytes=10_000_000
+        )
+        writer.open_payload(
+            payload_id="pay:run-a:1",
+            context_key="run:run-a",
+            encoding="f64le",
+            byte_limit=64,
+            now=T0,
+        )
+        writer.append("pay:run-a:1", b"\x07" * 8, "run:run-a")
+        writer.finalise("pay:run-a:1", T1, "run:run-a")
+        report = build_retention_report(store, policy=None, now=NOW)
+        rows = {r["id"]: r for r in report["rows"]}
+        pay_row = rows["pay:run-a:1"]
+        assert pay_row["row_kind"] == "dataset", pay_row
+        assert pay_row["data_class"] == "dataset:f64le", pay_row
+        # Capture rows keep their exact historical labels.
+        assert rows["cap-wave"]["row_kind"] == "capture"
+        assert rows["cap-wave"]["data_class"] == "capture:waveform_f64le"
+        assert rows["cap-raw"]["data_class"] == "capture:raw_binary"
+    finally:
+        store.close()
