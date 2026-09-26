@@ -12,6 +12,8 @@ The confirmed first instrument is **FNIRSI DPS-150**. **ESP32** is the provision
 | 4 | [First implementation slice](03-first-slice-plan.md) | Concrete proposed code/test task for exact-byte document integrity |
 | 5 | [Planning review](planning-review.md) | Coverage/link/syntax checks and limits of this planning work |
 
+Other lane planning: [Contributor publishing path PRD (issue #209)](07-contributor-publishing-prd.md) — requirements for the third-party plugin publishing lane (Draft v0.3, posted for commentary).
+
 The [STG 1.5 architecture](../smart-test-gateway-architecture-v1.5.md) remains the technical contract. This planning pack does not alter its qualification boundaries or constitute an implemented PoC. The first slice is expanded; following packages are expanded into code-level tasks as their dependency gates are resolved.
 
 The BenchWeave repository now contains a Python scaffold and CI workflows. Functional plugins, firmware and services remain to be implemented. Product targets are proposed acceptance criteria, not measured results. Hardware operations require their own commissioning setup and evidence.
