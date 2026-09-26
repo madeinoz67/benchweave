@@ -117,7 +117,8 @@ def test_export_carries_no_dev_head_bytes(tmp_path: Path) -> None:
         part.endswith("-dev") for path in listed for part in path.split("/")
     )
     exported_files = {
-        str(p.relative_to(tmp_path / "out" / "files"))
+        # Bundle listing rows are '/'-separated (#138, #207).
+        p.relative_to(tmp_path / "out" / "files").as_posix()
         for p in (tmp_path / "out" / "files").rglob("*")
         if p.is_file()
     }
