@@ -836,3 +836,55 @@ def test_dataset_shape_note_names_the_schema_finding(tmp_path: Path) -> None:
         assert harness.controller.dataset_shape_note({"not": "shaped"}) is None
     finally:
         harness.close()
+
+
+# --- wave 2: the publish leak, M02 narrowing, the epilogue floor -------------------
+
+
+def test_w2_publish_evidence_quota_refusal_charges_nothing(tmp_path: Path) -> None:
+    """Wave2 #1 (critic-HIGH + adversary-F1, both measured): a publish
+    whose evidence row refuses on quota must leave the ledger EXACTLY as
+    before — the old order finalised the routed manifest BEFORE the
+    evidence write and the reclaim aborted a FINALISED row (a no-op), so
+    the manifest bytes charged `used` permanently and retries ratcheted
+    the dataset budget down. The honest boundary is ONE transaction:
+    artifact, staging flip and evidence row commit together or not at
+    all."""
+    from benchweave.content.store import EvidenceQuotaExceeded
+
+    harness = DatasetHarness(tmp_path, evidence_quota=1)
+    try:
+        manifest = a_valid_manifest()
+        first = run(harness.bundle.dataset_publish(manifest, harness.context()))
+        assert first["dataset_id"] == "ds:op-a"
+        after_first = harness.writer.used_bytes("dataset-harness-session")
+        # The second publish, under a fresh operation and dataset id, hits
+        # the evidence quota (quota=1 is already consumed).
+        second = a_valid_manifest()
+        second["dataset_id"] = "ds:op-b"
+        with pytest.raises(EvidenceQuotaExceeded):
+            run(harness.bundle.dataset_publish(second, harness.context("op-b")))
+        # Nothing charged: the ledger returns to the post-first state.
+        assert harness.writer.used_bytes("dataset-harness-session") == after_first, (
+            "the quota-refused publish leaked its routed manifest bytes "
+            "into the used ledger"
+        )
+        # Zero orphan staging rows and exactly ONE finalised row (the
+        # first publish's); no second artifact.
+        staged = harness.store.connection.execute(
+            "SELECT COUNT(*) FROM capture_staging WHERE state = 'staged'"
+        ).fetchone()[0]
+        finalised = harness.store.connection.execute(
+            "SELECT COUNT(*) FROM capture_staging WHERE state = 'finalised'"
+        ).fetchone()[0]
+        assert staged == 0
+        assert finalised == 1
+        # No registry/store divergence: the refused operation's payload id
+        # is terminal in the registry and ABSENT from the store.
+        assert harness.controller.live_payload_ids("op-b") == ()
+        refused_ids = harness.store.connection.execute(
+            "SELECT capture_id FROM capture_staging"
+        ).fetchall()
+        assert all("op-b" not in str(row[0]) for row in refused_ids)
+    finally:
+        harness.close()

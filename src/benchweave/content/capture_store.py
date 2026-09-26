@@ -491,7 +491,14 @@ class CaptureStagingStore:
 
     # --- finalise ---------------------------------------------------------------
 
-    def finalise(self, capture_id: str, now: str, context_key: str) -> dict[str, Any]:
+    def finalise(
+        self,
+        capture_id: str,
+        now: str,
+        context_key: str,
+        *,
+        evidence: Any = None,
+    ) -> dict[str, Any]:
         """Publish the capture as one explicit transaction (A2).
 
         Under BEGIN IMMEDIATE: read the ordered chunks, cross-check the
@@ -502,6 +509,14 @@ class CaptureStagingStore:
         (participating in this transaction), flip the staging row to
         ``finalised`` with ``charged_bytes`` and ``artifact_id``, delete
         the chunk rows, COMMIT.
+
+        ``evidence`` (issue #146 wave 2, the one-transaction boundary):
+        an optional ``{kind, reference, context_key, quota}`` mapping —
+        ONE evidence row joins the SAME transaction, written after the
+        artifact insert (it names the artifact id). A quota refusal
+        raised by the evidence write rolls the WHOLE finalise back: no
+        artifact, no charged bytes, no staging flip — the caller has
+        nothing to reclaim. The capture path passes nothing (unchanged).
         """
         hasher = self._hashers.get(capture_id)
         try:
@@ -606,6 +621,15 @@ class CaptureStagingStore:
             self._conn.execute(
                 "DELETE FROM capture_chunks WHERE capture_id = ?", (capture_id,)
             )
+            if evidence is not None:
+                self._content.put_evidence(
+                    evidence["kind"],
+                    evidence["reference"],
+                    artifact_id,
+                    evidence["context_key"],
+                    now,
+                    quota=evidence["quota"],
+                )
         except BaseException:
             if self._conn.in_transaction:
                 self._conn.execute("ROLLBACK")

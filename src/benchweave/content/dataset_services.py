@@ -24,6 +24,7 @@ record's, disclosed here.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Mapping
 from contextlib import nullcontext, suppress
@@ -502,25 +503,37 @@ class _InvokeMembers:
             now=self._wall(),
         )
         self._writer.append(payload_id, blob, self._context_key)
-        record = self._writer.finalise(payload_id, self._wall(), self._context_key)
-        # The evidence row (kind dataset) on the (context_key, kind)
-        # dimension — shared, disclosed (LOW-3); the bundle's stamp makes
-        # its quota refusal classifiable, exactly the capture bundle's
-        # record_evidence does.
-        now = self._wall()  # a fresh stamp per row
+        # The evidence row (kind dataset, on the shared disclosed LOW-3
+        # dimension) joins the finalise's ONE transaction (wave 2, the
+        # one-transaction boundary): a quota refusal rolls the whole
+        # publish back — no artifact, no charged bytes, no registry/store
+        # divergence — and the bundle's stamp on the raised refusal makes
+        # it classifiable at the bridge, exactly the capture bundle's
+        # record_evidence is.
         reference = {
             "id": dataset_id,
             "version": "1",
-            "sha256": record["sha256"],
+            "sha256": hashlib.sha256(blob).hexdigest(),
         }
         try:
-            self._put_dataset_evidence(
-                reference, record["artifact_id"], now, context
+            record = self._writer.finalise(
+                payload_id,
+                self._wall(),
+                self._context_key,
+                evidence={
+                    "kind": "dataset",
+                    "reference": reference,
+                    "context_key": self._context_key,
+                    "quota": self._quota_evidence,
+                },
             )
         except EvidenceQuotaExceeded as error_quota:
-            # Reclaim the routed-but-unrecorded manifest row: without the
-            # evidence row the publish never happened, and the charged
-            # bytes would be a leak.
+            # The rollback returned the routed row to STAGED — its
+            # RESERVATION still counts against `used`, so the publish
+            # aborts it (a genuinely effective abort now: pre-wave-2 the
+            # row was finalised and the abort was a no-op — the leak).
+            # Nothing is charged, nothing is staged, and the registry id
+            # goes terminal — no divergence.
             self._writer.abort(payload_id)
             self._controller.note_payload_aborted(payload_id)
             raise self._stamp_evidence_quota(error_quota, context) from error_quota
@@ -534,25 +547,6 @@ class _InvokeMembers:
         it; the bundle consults the controller's contracts)."""
         return self._controller.dataset_validator
 
-    def _put_dataset_evidence(
-        self,
-        reference: dict[str, Any],
-        artifact_id: str,
-        now: str,
-        context: Any,
-    ) -> None:
-        """One kind-`dataset` evidence row under the session context key
-        (the record_evidence precedent: the base bundle's content store and
-        evidence quota; the quota refusal is stamped with THIS module's
-        token so the bridge classifies it clean)."""
-        self._content.put_evidence(
-            "dataset",
-            reference,
-            artifact_id,
-            self._context_key,
-            now,
-            quota=self._quota_evidence,
-        )
 
 
 
