@@ -234,6 +234,14 @@ and remain the reviewer's job.
     shape).
     Closing clause: a new version-bearing literal anywhere is a defect —
     make it a derived surface or register it here with its motion mechanism.
+19. **Skills shared with the SDK repo** (`.claude/skills/increment/`,
+    `panel/` — the intersection of the two repos' skill dirs) → a change to
+    a shared skill's clauses re-syncs the SDK copy's shared clauses in the
+    same work: SDK-side copy commit → push → SDK PR, plus the main-side
+    skill-file commit (skill copies are independent files in two repos —
+    AGENTS.md's submodule discipline governs `packages/sdk` only, and any
+    pointer advance rides a train of its own); loop prose that is
+    deliberately gateway-specific does not sync (issue #99's design §6).
 
 ## CI map
 
