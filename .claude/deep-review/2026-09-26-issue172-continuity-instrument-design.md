@@ -116,10 +116,23 @@ construction of the production objects, no registry/admission stack:
   class (§2.3), and is the safe-action target for X4.
 - Bench signals: `sig-rig-a-temp` sourced from `dev-rig-a` (the §8-bound comparator) and
   `sig-rig-b-level` sourced from `dev-rig-b` with `poll_ms: 50` (streamable; drives
-  `bench_poll_ns` explicitly). **`max_age_ms` is dispatch-scale** (250 ms against a
+  `bench_poll_ns` explicitly). **`max_age_ms` is dispatch-scale** (300 ms against a
   200 ms dispatch arm) — the #159 §2 pin that the old fixture's 600 000 ms made aging
   vacuous. The fixture's `max_age_ms` serves measurement discriminability ONLY; it is a
   rig constant, never a commissioned `G2` (A02 — §0's first rule).
+  **[Amended 2026-09-26, fix wave — 250 → 300, corrected cause.]** The build originally
+  ran the design sketch's 250; the review wave's independent measurer measured the
+  first post-tick age at 219–223 ms — a 27–31 ms margin under the 250 bound — while the
+  read leg's deadline-driven pacing overshoots `T_acq_min` by up to +24 ms on the same
+  host. One frame period (20 ms) of pre-dispatch receive lag rides on top of the
+  overshoot, so the margin is within one overshoot of the bound and pacing jitter
+  alone trips the fail-safe (`signal_invalid`) for a reason that is not the hazard.
+  The original deviation note blamed the write leg's 200 ms blackout — wrong mechanism:
+  the write leg runs in the idle phase after the protective transition and idle-phase
+  ticks perform no signal reads, so its blackout cannot age anything the fail-safe
+  sees. The real jitter sources are the read leg's overshoot and the frame receive
+  lag; 300 keeps both out of the bound. X2 records the age whatever the validity;
+  only the condition's fail-safe reads the bound.
 - Monitor: `_RunMonitor(store, bench_id, policy, bench, **wrapped_plugins**, clock, wall)`
   — unlike the old harness's empty dict, the wrapped plugin dict is passed so ticks
   actually read both signals (this is the load-bearing difference; the C14 priming
@@ -208,9 +221,26 @@ arm × device-class):
   `on_event` landing stamp — one clock domain by construction; the wall-domain
   `observed_at`/`host_received_at` fields are recorded alongside and are the object of
   check 5). Seam: `stream_host.on_event` replaced by the trial recorder. After the
-  dispatch returns, the harness drains via `_MonitoringClock.wait_ns` slices until the
-  subscription is quiet, so every emitted frame eventually lands and the latency set is
-  complete.
+  dispatch returns, the harness drains until the subscription is quiet, so every
+  emitted frame eventually lands and the latency set is complete.
+  **[Amended 2026-09-26, fix wave — the drain's letter vs production's post-trip
+  behaviour, resolved.]** The sketch above said "drains via `_MonitoringClock.wait_ns`
+  slices"; production delivers NOTHING post-trip by design — the poll engines latch
+  `stop = monitor.cause is not None` and `wait_ns` ends a slice early on a terminal
+  cause — and every measured trial trips, so a wait_ns-driven drain would deliver zero
+  frames on any trial. The rig's drain is therefore MEASUREMENT COMPLETION, not
+  production replay: pre-trip it drives the engine's own `poll_slice` rounds (the
+  production path, monitor ticks between polls); post-trip it polls the bridge
+  directly and hands each validated event to the host's contained `on_event`
+  dispatcher — the byte-identical landing call the engine makes, bypassing only the
+  stop latch. Post-trip X3 latencies are rig-constructed completions under that
+  bypass, and are labelled as such here; the X4 trials are unaffected (their axis
+  never reads the stream). The pre-trip deadline is ONE POLL CADENCE (50 ms), never a
+  few ms: the engines open each round with a monitor tick BEFORE the deadline check,
+  and a tick costs several ms under load — a 5 ms deadline expired before the poll
+  starved delivery entirely on CI (both observed flakes trace to this one mechanism;
+  see the rig's `drain_until_quiet` docstring). Quiet is asserted, never assumed: a
+  cap-exit fails loudly rather than silently truncating the latency set.
 - **X4 — protective-action latency to the non-capturing device.** B's device model
   crosses the numeric condition bound at a scripted monotonic instant `T_cross` INSIDE
   A's dispatch window (time-derived step; the harness knows `T_cross` exactly). The
@@ -220,8 +250,16 @@ arm × device-class):
   `action-landed − T_cross`, absolute monotonic ms. **Zero-point decision (disclosed,
   owner may veto):** the frozen rule says "absolute milliseconds" without naming the
   zero; this instrument pins **hazard onset → action landed** (the safety-honest bound)
-  and additionally records the decomposition `onset → observation` and
-  `observation → action` so the reopen can re-cut without re-measuring.
+  and additionally records the decomposition
+  `onset → observation → enter-call → action-landed` so the reopen can re-cut without
+  re-measuring. **[Amended 2026-09-26, fix wave — the 3-way split.]** The original
+  2-way decomposition's `observation → action` leg carried the rig's OWN bookkeeping:
+  the X3 drain's quiet floor plus X3's computation sit between the observing tick and
+  the `ProtectionEngine.enter` call (measured 31–48 ms of bookkeeping against a
+  0.2–5.0 ms engine response). The recorded middle leg `observation → enter-call` is
+  exactly that excludable span; a future re-cut that wants the engine's response alone
+  sums `onset → observation` with `enter-call → action-landed` instead of guessing a
+  floor to subtract out of the 2-way leg.
 
 ### 2.5 `T_acq_min` — consistency controls only, never the authority
 
@@ -231,7 +269,15 @@ as consistency checks in the trial log:
 
 - **(i) Matched short-T control:** the same arm dispatched with `T = 20 ms` budget → the
   acquisition fails (`TIMEOUT`/`UNKNOWN`, never `OK`) — the pacing is a real floor for
-  this fixture, not a label.
+  this fixture, not a label. **[Amended 2026-09-26, fix wave — trial-log honesty.]**
+  The control trials enter the trial log with `t_acq_controls=False`: a short-T trial
+  IS control (i)'s evidence (its acquisition failed by construction), not a
+  controls-asserted `T_acq_min` dispatch — stamping it `True` would let the
+  classifier's FIRE series count failed acquisitions as controls-asserted trials. The
+  control dispatches the READ verb at `SHORT_T_MS`; the capture arm's own short-T
+  variant is not run separately (the read-verb control pins the pacing floor for both
+  arms' `T_acq_min` class), and that nuance rides the log's `parameterization` field
+  as `t_acq_note`.
 - **(ii) Split-refusal control:** capture arm — the fixture's device model makes the
   acquisition one-shot per window; dispatching it as two half-dispatches fails the second
   half (device-rejected; the manifests cannot cover the window), asserted against the
@@ -269,7 +315,10 @@ pinning is the review rubric's job, not a test's).
 ### 2.8 The classifier (check 1) — test-only, the frozen rule made executable
 
 `classify(trials, bounds, controls) -> Arm` in `_continuity_rule.py`, implementing #159 §6
-verbatim with the precedence order:
+verbatim with the precedence order (the built signature is
+`classify(trials, bounds) -> Arm` — the `controls` input rides the per-trial record's
+`t_acq_controls` field, so the conjunctive §6 consistency-control outcome is part of
+each trial, not a separate argument):
 
 1. **UNDERPOWERED** — any axis missing its commissioned bound (a `None` in the bounds
    mapping); any measured axis absent (the single-instance-rig clause); any axis's trial
@@ -282,6 +331,31 @@ verbatim with the precedence order:
 4. **INCONCLUSIVE** — everything else, including 2-of-5 and 1-of-5 breach series with
    tight spread and commissioned bounds.
 
+**[Amended 2026-09-26, fix wave — three fidelity rulings from the review battery;
+the signature is unchanged, the evaluation shape is not.]**
+
+- **FIRE evaluates on EXACTLY five `T_acq` trials.** §6 arm 2's letter is "≥3 of 5
+  trials" — the clause's own denominator. A series of any other size (3-of-8, or a
+  rate-0.3 3-of-10) is not the clause's input shape: it falls through to arm 4 and
+  reads INCONCLUSIVE (raise n and re-run). The pre-fix count-only check (`len ≥ 5`)
+  fired on longer series.
+- **Device classes never pool.** X2 is class-dependent BY DESIGN (§2.3: buffered
+  ≈ 220 ms, unbuffered ≈ 1 ms on this rig), so a pooled breach count mixes
+  populations — it could manufacture FIRE from a 3-breach buffered half plus a
+  2-clean unbuffered half, two underpowered halves arming the highest-precedence
+  action — and a pooled range gate would measure class separation, not instrument
+  precision. The ledger partitions by `device_class`; arms 1 (absent axis, range
+  gate), 2 (FIRE) and 4 evaluate per class; arm 3 (KILL) alone aggregates across
+  classes, by its own §6 letter ("across ≥2 device classes × ≥5 dispatches each").
+  The per-class verdicts aggregate in §6's own precedence order: an underpowered
+  class blocks the whole ledger (arm 1, decide nothing) before a firing class fires
+  it (arm 2); KILL closes the row only when no class blocked or fired.
+- **The un-splittable label is per-class and refused when inconsistent.** The KILL
+  arm's label read was `group[0]` — one trial's label silently decided the class. A
+  class whose trials declare both `unsplittable_class` labels is malformed input and
+  raises `ValueError` at partition time (the label is a qualification fact, F-C);
+  the KILL read itself takes the whole group.
+
 Inputs are the trial ledger + a bounds mapping (`float | None` per axis) + declared
 per-dispatch tightening/splitting outcomes and class labels. **The rig supplies the
 classification INPUTS; the class labels and non-compositionality are device qualification
@@ -290,8 +364,20 @@ table test enumerates the (breach-count 0–5 × splittable × spread × bounds-
 controls) grid and asserts every cell yields exactly one arm; the 2-of-5/tight/bounds cell
 must read INCONCLUSIVE (RED if it reads FIRE or KILL); a both-armed cell is unrepresentable
 (single enum return — the test asserts totality and single-valuedness across the grid);
-equality-at-bound is not a breach; `None` bounds read UNDERPOWERED. Each classifier clause
-carries an inline citation to its §6 line so a record amendment visibly orphans the test.
+equality-at-bound is not a breach; `None` bounds read UNDERPOWERED. The fix wave added
+cells pinning each ruling above: 3-of-8 and 3-of-10 read INCONCLUSIVE (the same three
+breaches in a 5-series still fire); a pooled-FIRE-shaped mixed-class ledger reads
+INCONCLUSIVE while its per-class-complete form reads FIRE; one loose class blocks a
+FIRE-shaped other class (UNDERPOWERED); an inconsistent label set refuses. Each
+classifier clause carries an inline citation to its §6 line so a record amendment
+visibly orphans the test.
+
+**§6-verbatim erratum (deliberate, disclosed):** the classifier reads UNDERPOWERED for
+ANY unmeasured axis, X1 included, where §6 arm 1 words the clause as "single-instance
+rig (X2-X4 unmeasurable)" — and X1 is measurable on a single-instance rig. The
+widening is conservative in the decide-nothing direction only: it can block a
+decision, never arm FIRE or KILL. It exists so the absent-axis check does not need to
+know which axes a given rig topology can measure; the frozen text is unchanged.
 
 ## 3. Machine checks (1)–(7) — what lands now, honestly
 
@@ -333,19 +419,49 @@ fixtures; CI-stable lanes that exist, no Windows lane).
 
 - **SHIP iff all of:**
   1. Every (arm, class) produces 5/5 completed trials with all four axes recorded.
+     **[Amended 2026-09-26, fix wave:]** …with `retries ≤ 2` on every trial (control
+     included) — a chronically starved host cannot ship all-green on the retry crutch.
   2. **Separation** (the instrument's floor semantics — a control that passes both ways
      proves nothing): long-arm buffered X2 median ≥ dispatch − 50 ms AND control X2
      median ≤ 50 ms; X3 worst emission→landing ≥ dispatch − 50 ms in the long arm AND ≤
      3× poll_ms in the control; X4 onset→action ≥ dispatch − 50 ms long AND ≤ 1 s
      control (the verify-loop's `stable_for_ms` makes the control's absolute floor
      protection-shaped, so only the separation is asserted, not a tight control bound).
+     **[Amended 2026-09-26, fix wave:]** AND the unbuffered X2 median collapses below
+     50 ms (host-side skew — the §2.3 class comparator; a machine check, not just
+     prose, since the review wave flagged the assertion as missing from this list).
   3. X1 max tick gap within [dispatch − 50 ms, dispatch + 150 ms] on both arms (blackout
      reality; if this ever fails the serial model changed and the disclosure is stale —
-     inherited verbatim).
+     inherited verbatim). **[Disclosure, 2026-09-26 fix wave:]** on the capture arm this
+     band is [0, 200] — the lower bound is vacuous by arithmetic (`dispatch − 50 = 0`
+     against the 50 ms cut), so the capture arm's blackout-reality pin rests on the
+     upper bound alone.
   4. Classifier grid total + single-valued; 2-of-5 cell = INCONCLUSIVE; None bounds =
-     UNDERPOWERED; equality passes.
+     UNDERPOWERED; equality passes. **[Amended 2026-09-26, fix wave:]** AND FIRE
+     requires exactly-5 `T_acq` trials (3-of-8 and 3-of-10 read INCONCLUSIVE); mixed
+     device classes never pool (pooled-FIRE-shaped mixed ledger = INCONCLUSIVE,
+     per-class-complete = FIRE, one loose class blocks = UNDERPOWERED); an inconsistent
+     `unsplittable_class` label set refuses.
   5. Census: zero additional `Store.open` during trials, one opening thread.
   6. Wall divergence: X2 host-age ≥ 5× baseline under the 10× wall; X1 within ±50 ms.
+     **[Disclosure, 2026-09-26 fix wave:]** the divergence RATIO is epoch-anchored —
+     the stretched wall anchors its epoch at construction while the device wall runs
+     real time — so the measured X2 ratio (≈18–19× under a 10× wall on this rig) must
+     never be quoted as wall-rate → ratio.
+  7. **[Added 2026-09-26, fix wave — the pre-committed range clause, machine-checked
+     at last:]** per-axis-per-cell trial range ≤ 25% of the dispatch duration over the
+     four measurement cells; the drain reaching quiet (not its cap) on every trial;
+     both asserted in the module. Two scope readings, measured and ruled: the
+     denominator is the rig's ONE dispatch scale (200 ms — the acquisition class both
+     arms instantiate; §5's fixture scale names a single dispatch arm), NOT a per-arm
+     50 ms for the capture cells — the per-arm reading's 12.5 ms gate sits inside the
+     host's own deadline-max cut-overshoot distribution (single-trial overshoots of
+     12.3 ms and 16.2 ms on consecutive local runs, on different trials) and would
+     flake on scheduler stalls rather than catch loose pacing. The short-dispatch
+     CONTROL is excluded: its X2/X3/X4 are cadence/response-scale quantities that §5.2
+     bounds by medians/maxima, and a 5 ms range demand on latencies §5.2 allows to
+     reach 150 ms is a scale mismatch the clause never committed to. The rationale is
+     documented at the rig's `_RANGE_GATE_DENOMINATOR_MS`.
 - **KILL the increment if:** separation fails (long ≈ control — the axes are vacuous; a
   wiring/fixture defect to fix before merge, the M-A posture: explicitly NOT row-1
   evidence); OR the census finds a second store-opening thread; OR wall divergence leaks

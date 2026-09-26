@@ -105,11 +105,15 @@ FRAME_PERIOD_MS = 20.0
 #: Dispatch-scale freshness bound — the #159 §2 pin the old fixture's
 #: 600 000 ms made vacuous. A rig constant, never a commissioned G2.
 #: 300 ms (1.5x the 200 ms arm) rather than the design sketch's 250: the
-#: write leg's own 200 ms blackout plus one frame period of receive lag
-#: lands the first post-tick age at ~220-250 ms, and a 250 bound trips the
-#: fail-safe (signal_invalid) on pacing jitter — blocking the measured
-#: read for a reason that is not the hazard. X2 records the age whatever
-#: the validity; only the condition's fail-safe reads the bound.
+#: read leg's deadline-driven pacing overshoots T_acq_min by up to +24 ms
+#: and one frame period (20 ms) of pre-dispatch receive lag rides on top,
+#: landing the first post-tick age at ~219-250 ms — a 27-31 ms margin
+#: under a 250 bound that one overshoot can eat, tripping the fail-safe
+#: (signal_invalid) on pacing jitter and blocking the measured read for a
+#: reason that is not the hazard. (The write leg is NOT a jitter source:
+#: it runs idle-phase after the protective transition and idle-phase ticks
+#: perform no signal reads.) X2 records the age whatever the validity;
+#: only the condition's fail-safe reads the bound.
 MAX_AGE_MS = 300
 
 _SAFE_LEVEL = 1.0
@@ -986,13 +990,25 @@ def _run_trial_once(
         # X2 — sig-rig-b-level's envelope in the FIRST post-dispatch
         # retained snapshot (the retain seam; wall-derived age domain).
         # snapshots[snap_mark] is the wrapper's pre-tick, [snap_mark + 1]
-        # its after-tick — the first one that spans the dispatch.
+        # its after-tick — the first one that spans the dispatch. The
+        # bracket is STRUCTURAL (single-threaded: the wrapper runs tick ->
+        # block -> inner dispatch -> tick, and nothing else can tick in
+        # between), so the wiring check is that [snap_mark] was retained
+        # INSIDE the wrapper — after the measured dispatch began — and
+        # [snap_mark + 1] after it. The original 0.5x-duration span
+        # arithmetic on the RETAIN stamps was retired: retain stamps land
+        # after the tick's signal reads, and under host load a pre-tick's
+        # reads can exceed half of the short control's 20 ms budget
+        # (observed: an 18 ms pre-tick against a 20.9 ms control window
+        # — the wrapper's bracket held, the arithmetic did not).
         assert len(rig.snapshots) > snap_mark + 1, "no post-dispatch snapshot retained"
         pre_snap_ts, _ = rig.snapshots[snap_mark]
         post_snap_ts, post_snapshot = rig.snapshots[snap_mark + 1]
-        assert post_snap_ts - pre_snap_ts >= 0.5 * (
-            dispatch_end_ns - dispatch_start_ns
-        ), "the snapshot pair does not span the dispatch"
+        assert pre_snap_ts > dispatch_start_ns, (
+            "the pre-dispatch snapshot was retained before the measured "
+            "dispatch began — the wrapper's pre-tick did not retain"
+        )
+        assert post_snap_ts > pre_snap_ts, "snapshot ordering inverted"
         x2 = float(post_snapshot[SIG_B].age_ms)
 
         # Drain until quiet so every emitted frame eventually lands (X3's
