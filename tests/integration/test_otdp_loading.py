@@ -705,3 +705,24 @@ def test_f3_self_contained_catalog_without_measurement_is_soft(tmp_path: Path) -
         assert plugin._dataset is None
     finally:
         plugin.plugin_close()
+
+
+def test_f4_degenerate_measurement_dataset_required_refused_at_load(
+    tmp_path: Path,
+) -> None:
+    """F4: a pinned measurement schema whose ``$defs/dataset`` declares an
+    EMPTY (or absent) required set degenerates the dataset-shape detector —
+    ``frozenset() <= set(anything)`` matches every object, so every dict
+    result would poison as a "dataset". Present bytes that lie: the pair
+    refuses at LOAD."""
+    degenerate = {
+        "$id": "urn:otdp:measurement:degenerate",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$defs": {"dataset": {"type": "object"}},
+    }
+    files = {
+        "contracts/catalog.json": json.dumps(_synthetic_catalog()).encode(),
+        "contracts/measurement.json": json.dumps(degenerate).encode(),
+    }
+    with pytest.raises(ActivationRejected, match="contract_measurement_degenerate"):
+        _load_with_contracts(tmp_path, files, _contracts_descriptor(files))

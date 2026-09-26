@@ -310,6 +310,15 @@ def resolve_otdp_contracts(
     if not isinstance(dataset_def, dict):
         raise ActivationRejected("contract_measurement_dataset_def_absent")
     required = frozenset(str(key) for key in dataset_def.get("required", []))
+    if not required:
+        # Present bytes that lie (fix wave F4): an empty/absent required
+        # set degenerates the dataset-shape detector to "every object" —
+        # frozenset() is a subset of any key set — so every dict result
+        # would poison as a dataset. Refuse at load.
+        raise ActivationRejected(
+            "contract_measurement_degenerate: the pinned measurement schema's "
+            "$defs/dataset declares no required keys"
+        )
     dataset_validator = Draft202012Validator(
         {"$ref": "#/$defs/dataset", "$defs": defs}, registry=registry
     )
