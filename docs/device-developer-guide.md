@@ -125,7 +125,7 @@ Use the [descriptor schema](../standards/otdp/0.2.2/otdp-device-descriptor.schem
 | Parameters | Separate setpoints from measurements; specify types, access, units, bounds, freshness and write assurance. |
 | Profiles and actions | Declare exact profile IDs, complete required actions and actual channel mappings. Additional `input_constraints` narrow the standard schema. |
 | Required features | Declare core plus applicable adapter, profile-actions, measurement and exact profile feature IDs. Unknown required features fail admission. |
-| Contract files | Pin exact local catalog/schema bytes and hashes. Resolve contract paths from the admitted bundle root without escape. |
+| Contract files | Pin exact local catalog/schema bytes and hashes. Resolve contract paths from the admitted bundle root without escape. An invoke-capable descriptor pins the profile catalog AND the measurement schema; the gateway verifies every pin at load (digest, catalog-schema validity, and that every embedded `$ref` resolves inside the pinned set) and refuses the whole load on any mismatch — a pinned set with only one of the two documents is not an integrity failure but grants no invoke surface at all. Ship the pinned bytes inside the plugin bundle: the dev publish path includes `device-profile-catalog.json` and `otdp-measurement.schema.json` from the package source at the bundle-root paths your descriptor pins. |
 | Provenance | Record real source revisions and vectors. Vector paths resolve relative to the descriptor and must remain inside the package. |
 | Gateway-issued inputs | If the gateway issues a token for an action input (for example `$stg_issue` for `configuration_id`), declare it in the descriptor-root `x-stg-issued-inputs` map — see below. |
 
@@ -287,6 +287,8 @@ A successful result with actual readback evidence has this shape:
 
 The action must belong to the admitted profile, channel and instance. Never return this success envelope as a placeholder. Enabling a source additionally requires the profile's verified configuration state and current host authorisation.
 
+**How the gateway gates an invoke dispatch.** Before your adapter's `execute` is ever called, the host checks: the descriptor declares the action, the action resolves in the pinned profile catalog, the (resolved) input validates against the action's catalog input schema, and the input also satisfies your descriptor's `input_constraints` narrowing. Any failure is a typed `INVALID_ARGUMENT` refusal with zero device contact. On success the host mints a per-dispatch dataset id (`ds:{operation_id}`) onto `context.dataset_id` — your adapter never chooses it. Your `data` must be exactly `{action_id, result}` with the action_id echoing the request, and `result` must validate against the action's catalog output schema. A dataset-shaped `result` that the host did not admit through its dataset services is refused as a protocol violation from day one: do not return inline datasets until the dataset publish services ship, and when they do, publish through `dataset_publish` with `context.dataset_id` rather than inlining.
+
 ### Capture: single-channel acquisition
 
 The `capture` verb is the retained core lane (spec §7): one channel per capture, `waveform_f64le` (contiguous little-endian float64, byte length = sample_count×8, waveform metadata mandatory) or `raw_binary`. The request carries `{capture_id, format, sample_count, max_bytes}`; the host supplies the capture id, and the successful result's data is the finalised manifest — whose `artifact_id`, `sha256` and `byte_length` the host computes over the real published bytes. Adapter-supplied digest or length values are ignored, never trusted; a short capture (delivered bytes below the declared sample_count×8) is refused at finalise and never published.
@@ -385,7 +387,7 @@ Select the real dataset meaning: scalar set, waveform, digital trace, spectrum, 
 - Make axes, flattened element counts and payload lengths agree. Fixed-width encodings include defined endianness; complex values are Cartesian real/imaginary pairs.
 - Represent invalid/missing values explicitly. Unknown uncertainty is not zero, and resolution is not accuracy.
 - Distinguish host receipt time from device acquisition time. Unknown synchronisation or channel skew must remain visible.
-- Obtain output IDs from the host. Use `context.dataset_id`, publish inline datasets through `dataset_publish`, and use bounded payload services for larger results.
+- Obtain output IDs from the host. The host mints `context.dataset_id` per invoke dispatch (`ds:{operation_id}`); publish inline datasets through `dataset_publish`, and use bounded payload services for larger results. Until the dataset publish services ship on the gateway, a dataset-shaped invoke result is refused outright — the host will not accept unadmitted dataset content.
 
 Payload creation/writing requires `artifact_writer`; reading authorised upload inputs requires `artifact_reader`. Finalising bytes does not validate their physical meaning: the manifest must still pass the dataset and class checks. Partial data must not become a complete successful acquisition merely because the file was written.
 

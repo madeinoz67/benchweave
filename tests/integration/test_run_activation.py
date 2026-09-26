@@ -1441,6 +1441,37 @@ def test_measurement_harness_capture_dispatch_over_the_composed_bridge(
         store.close()
 
 
+def test_issue146_invoke_lane_composes_over_the_real_activation_path(
+    commissioned: _CommissionedHarness,
+) -> None:
+    """Issue #146 slice 2 wiring: the demo-supply descriptor is
+    invoke-capable and pins the corpus contract pair, so build_run's real
+    activation loop constructs the dataset controller AND hands it the
+    session's shared staged writer — the invoke clamp is live (not the
+    unit-posture nullcontext), without artifact_writer on the descriptor."""
+    run_id = "run-invoke-wiring"
+    coordinator, store, content = _coordinator(commissioned, run_id, QUOTA_LIMITS)
+    try:
+        from contextlib import nullcontext
+
+        from benchweave.interfaces.app import _RetainingCoordinator
+
+        assert isinstance(coordinator, _RetainingCoordinator)
+        bridge = coordinator.plugins[DEVICE_ID]
+        assert isinstance(bridge, OTDPBridge)
+        assert bridge._dataset is not None, "no dataset controller on the real path"
+        clamp = bridge._dataset.dispatch_clamp(
+            time.monotonic_ns() + 5_000_000_000, now_ns=time.monotonic_ns()
+        )
+        clamp.__enter__()
+        clamp.__exit__(None, None, None)
+        assert not isinstance(clamp, nullcontext), (
+            "the controller clamps nothing — the session writer never reached it"
+        )
+    finally:
+        store.close()
+
+
 def test_demo_lattice_without_commissioned_closure_keeps_declarative_fallback(
     tmp_path: Path,
 ) -> None:

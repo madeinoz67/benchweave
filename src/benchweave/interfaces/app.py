@@ -769,6 +769,15 @@ def _build_run_factory(
                         ),
                         capture=capture_controller,
                         stream=stream_controller,
+                        # Issue #146 slice 2: the loader resolves the
+                        # descriptor's pinned contracts against the verified
+                        # bundle inventory (load-level integrity refusals,
+                        # the dataset controller when the invoke capability
+                        # and the complete catalog+measurement pair resolve)
+                        # and the session's shared staged writer rides along
+                        # for the controller's invoke dispatch clamp — the
+                        # same writer instance the capture bundle shares.
+                        dataset_writer=writer,
                     )
                     bridge.plugin_open(bundle)
                     plugins[device_id] = bridge
