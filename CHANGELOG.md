@@ -365,6 +365,7 @@ All notable changes to this project will be documented in this file.
 - Archival tier shipped — every 'unbuilt' sentence moves; STO-5 amendment + new STO-6
 - Manifest no-consumer status, zero-object manifests, verified_at-vs-mtime (R4+R6)
 - §11 review fold — the fix wave's disposition record
+- Add contributor publishing path requirements PRD (#209)
 
 ### Features
 
