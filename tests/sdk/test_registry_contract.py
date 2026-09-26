@@ -39,7 +39,11 @@ SKILL_ENTRY: dict[str, Any] = {
 
 
 def _registry_standard() -> dict[str, Any]:
-    return next(s for s in LOCK["standards"] if s["id"] == "registry")
+    # Multi-version serving (#203 slice 1): the lock carries registry 0.1.0
+    # beside 0.1.1; the contract under test is the ACTIVE version's.
+    return next(
+        s for s in LOCK["standards"] if s["id"] == "registry" and s.get("active")
+    )
 
 
 def _manifest_schema_key() -> str:
@@ -124,5 +128,6 @@ def test_registry_manifest_unknown_role_refused() -> None:
 
 
 def test_registry_standard_version_is_0_1_1() -> None:
-    """Sweep sentinel: the committed lock pins registry 0.1.1 post-sync."""
+    """Sweep sentinel: the committed lock's ACTIVE registry row is 0.1.1
+    post-sync (0.1.0 rides beside it, carried and served)."""
     assert _registry_standard()["version"] == "0.1.1"

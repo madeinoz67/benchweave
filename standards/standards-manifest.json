@@ -3,7 +3,59 @@
   "sdk_compatibility": {
     "main_project": ">=0.1.0",
     "notes": "Transport providers (gateway #147): increment 2 (this SDK's offline conformance \u2014 checker prefixes, tests/test_transport_providers.py) and increment 3 (gateway admission) are a pair. This lock pins the corpus state increment 2 certified; increment 3 must be built against exactly that state (same schema bytes, exact id+version+sha256), the SDK sync landing first per the design record's build-time amendment. Corpus bytes move between the pair only via a version-incrementing sync \u2014 same-version content drift is refused (standards_version_required), never re-vendored silently.",
-    "sdk": "0.3.0"
+    "sdk": "0.3.1"
+  },
+  "dependency_policy": {
+    "policy_version": 1,
+    "standards": {
+      "otdp": {
+        "range": ">=0.2.0,<0.3.0",
+        "yanked": {
+          "0.2.1": {
+            "reason": "superseded re-roll of the #171 fold; see #174",
+            "since": "2026-09-26"
+          }
+        },
+        "retired": [
+          "0.3.0"
+        ]
+      },
+      "registry": {
+        "range": ">=0.1.0,<0.2.0",
+        "yanked": {},
+        "retired": [
+          "1.0.0"
+        ]
+      },
+      "execution": {
+        "range": ">=0.1.0,<0.3.0",
+        "yanked": {},
+        "retired": [
+          "1.0.0"
+        ]
+      },
+      "interface": {
+        "range": ">=0.1.0,<0.2.0",
+        "yanked": {},
+        "retired": [
+          "1.1.0",
+          "1.1.1"
+        ]
+      },
+      "plugin-ui": {
+        "range": ">=0.2.0,<0.3.0",
+        "yanked": {},
+        "retired": [],
+        "note": "Below the two-release window floor by design (F1, issue #203): plugin-ui's corpus-owned code row (src/benchweave/presentation/contracts.py) is one live object and cannot multi-serve; the narrow range holds until deferral D2 closes. The owner may overrule to serve 0.1.1's schemas."
+      },
+      "plugin-ui-preview": {
+        "range": ">=0.1.0,<0.2.0",
+        "yanked": {},
+        "retired": [
+          "1.0.0"
+        ]
+      }
+    }
   },
   "standards": [
     {

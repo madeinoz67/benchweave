@@ -74,7 +74,9 @@ def _synced_sdk(tmp_path: Path, bundle: Path) -> Path:
         f'[project]\nname = "benchweave-sdk"\nversion = "{mirror["sdk"]}"\n'
     )
     first = sync(bundle, sdk)
-    assert set(first.added) == ALL_IDS
+    # Multi-version serving (#203 slice 1): the report labels carried rows
+    # id@version; the id coverage assertion is unchanged under the labels.
+    assert {label.split("@")[0] for label in first.added} == ALL_IDS
     return sdk
 
 
@@ -88,20 +90,64 @@ def _first_cycle(tmp_path: Path, repo: Path) -> tuple[Path, Path]:
 
 
 def _break_normative(repo: Path) -> None:
-    """A real content change: new bytes, still valid JSON, new digest."""
-    document: dict[str, Any] = json.loads((repo / NORMATIVE).read_bytes())
+    """A real content change: new bytes, still valid JSON, new digest.
+
+    Edits the NEW version's copy when it exists (scenario 3 breaks the
+    bumped bytes), else the live old-version bytes."""
+    target = NORMATIVE.replace(f"/{OLD_VERSION}/", f"/{NEW_VERSION}/")
+    path = repo / target if (repo / target).is_file() else repo / NORMATIVE
+    document: dict[str, Any] = json.loads(path.read_bytes())
     document["x_scenario_breaking_change"] = "renamed a required binding field"
-    (repo / NORMATIVE).write_text(json.dumps(document, indent=2) + "\n")
+    path.write_text(json.dumps(document, indent=2) + "\n")
 
 
 def _bump_version(repo: Path) -> None:
-    """The matching standards version increment in the canonical manifest."""
+    """The matching standards version increment in the canonical manifest.
+
+    Issue #203 slice 1: a bump is copy-never-move — the new version gets its
+    own corpus directory (copied from the old), the manifest's normative
+    list re-points at it, and the policy range widens to cover it (the
+    active version must sit inside the served set, and the served set is
+    bounded by the range)."""
     document: dict[str, Any] = json.loads(
         (repo / "standards/standards-manifest.json").read_bytes()
     )
     entry = next(s for s in document["standards"] if s["id"] == STANDARD)
     assert entry["version"] == OLD_VERSION
     entry["version"] = NEW_VERSION
+    entry["normative"] = [
+        path.replace(f"/{OLD_VERSION}/", f"/{NEW_VERSION}/")
+        if path.startswith("standards/")
+        else path  # the parity code row (live source) stays on the entry
+        for path in entry["normative"]
+    ]
+    old_dir = repo / "standards" / STANDARD / OLD_VERSION
+    new_dir = repo / "standards" / STANDARD / NEW_VERSION
+    shutil.copytree(old_dir, new_dir)
+    # A breaking bump leaves the old declared range; the policy widens with
+    # it and the new version's corpus rows join the manifest (retention is
+    # enumerated from corpus rows — the new directory is what makes the new
+    # active version served).
+    policy_row = document["dependency_policy"]["standards"][STANDARD]
+    lower = policy_row["range"].split(",")[0]
+    major = int(NEW_VERSION.split(".")[0])
+    minor = int(NEW_VERSION.split(".")[1])
+    policy_row["range"] = f"{lower},<{major}.{minor + 1}.0"
+    corpus = json.loads((repo / "standards/corpus-manifest.json").read_bytes())
+    for row in corpus["files"]:
+        if row["path"].startswith(f"{STANDARD}/{OLD_VERSION}/"):
+            new_row = dict(row)
+            new_row["path"] = row["path"].replace(
+                f"{STANDARD}/{OLD_VERSION}/", f"{STANDARD}/{NEW_VERSION}/"
+            )
+            new_row["source"] = row["path"]
+            new_row["sha256"] = hashlib.sha256(
+                (repo / "standards" / new_row["path"]).read_bytes()
+            ).hexdigest()
+            corpus["files"].append(new_row)
+    (repo / "standards/corpus-manifest.json").write_text(
+        json.dumps(corpus, indent=2) + "\n"
+    )
     (repo / "standards/standards-manifest.json").write_text(
         json.dumps(document, indent=2) + "\n"
     )
@@ -110,8 +156,10 @@ def _bump_version(repo: Path) -> None:
 def _repin(repo: Path) -> None:
     """Point the corpus pin back at the (mutated) bytes on disk."""
     document: dict[str, Any] = json.loads((repo / "standards/corpus-manifest.json").read_bytes())
-    row = next(f for f in document["files"] if f["path"] == PIN_KEY)
-    row["sha256"] = hashlib.sha256((repo / NORMATIVE).read_bytes()).hexdigest()
+    new_key = PIN_KEY.replace(f"{STANDARD}/{OLD_VERSION}/", f"{STANDARD}/{NEW_VERSION}/")
+    key = new_key if any(f["path"] == new_key for f in document["files"]) else PIN_KEY
+    row = next(f for f in document["files"] if f["path"] == key)
+    row["sha256"] = hashlib.sha256((repo / "standards" / key).read_bytes()).hexdigest()
     (repo / "standards/corpus-manifest.json").write_text(json.dumps(document, indent=2) + "\n")
 
 
@@ -156,15 +204,32 @@ def test_spec10_versioned_breaking_change_updates_the_lock(tmp_path: Path) -> No
 
     repo = _repo_copy(tmp_path)
     bundle, sdk = _first_cycle(tmp_path, repo)
-    _break_normative(repo)
+    # Copy-then-edit-the-copy: a real breaking bump never touches the
+    # retained version's bytes (#203 slice 1 — the carried set keeps 0.2.0
+    # beside the new version, byte-frozen).
     _bump_version(repo)
+    _break_normative(repo)
     _repin(repo)
+    # The widened range is a MINOR-class SDK bump (owner Q8): the throwaway
+    # SDK root's version moves with it or the sync refuses
+    # sdk_bump_class_invalid — one SDK version never covers two served sets.
+    pyproject = sdk / "pyproject.toml"
+    pyproject.write_text(pyproject.read_text().replace('version = "0.3.1"', 'version = "0.4.0"'))
+    # The mirror follows the SDK version (CON-12's authority chain).
+    manifest_path = repo / "standards/standards-manifest.json"
+    manifest_document = json.loads(manifest_path.read_bytes())
+    manifest_document["sdk_compatibility"]["sdk"] = "0.4.0"
+    manifest_path.write_text(json.dumps(manifest_document, indent=2) + "\n")
     export_bundle(repo, bundle)
     report = sync(bundle, sdk)
-    assert report.changed == (STANDARD,)
-    assert report.added == () and report.deprecated == () and report.removed == ()
+    # Multi-version (#203 slice 1): the predecessor stays carried inside the
+    # widened range, so the new ACTIVE version is an ADDED row (the old
+    # one-row world reported it as the id's CHANGED row); the lock's ACTIVE
+    # plugin-ui row is the new version, the old row rides beside it.
+    assert report.added == (f"{STANDARD}@{NEW_VERSION}",)
+    assert report.changed == () and report.deprecated == () and report.removed == ()
     lock: dict[str, Any] = json.loads((sdk / "standards-lock.json").read_bytes())
-    entry = next(s for s in lock["standards"] if s["id"] == STANDARD)
+    entry = next(s for s in lock["standards"] if s["id"] == STANDARD and s.get("active"))
     assert entry["version"] == NEW_VERSION
     assert run_check(repo, sdk) == []
 

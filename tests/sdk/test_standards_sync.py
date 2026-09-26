@@ -88,7 +88,14 @@ def test_versioned_change_reports_changed(tmp_path: Path) -> None:
     bundle = _export(tmp_path)
     sdk = _synced_sdk(tmp_path, bundle)
     document = json.loads((bundle / "bundle-manifest.json").read_bytes())
-    target = next(s for s in document["standards"] if s["id"] == "otdp")
+    # Multi-version serving: the version-increment arm is the ACTIVE row's
+    # succession; mutating a non-active carried row is add-plus-remove.
+    from benchweave_sdk.served import active_version
+
+    active = active_version("otdp")
+    target = next(
+        s for s in document["standards"] if s["id"] == "otdp" and s["version"] == active
+    )
     asset = bundle / "files" / target["files"][0]["path"]
     asset.write_bytes(asset.read_bytes() + b"\n")
     target["files"][0]["sha256"] = hashlib.sha256(asset.read_bytes()).hexdigest()
@@ -97,7 +104,7 @@ def test_versioned_change_reports_changed(tmp_path: Path) -> None:
         (json.dumps(document, sort_keys=True, separators=(",", ":")) + "\n").encode()
     )
     report = sync(bundle, sdk)
-    assert report.changed == ("otdp",)
+    assert report.changed == ("otdp@0.3.1",)
 
 
 def test_status_only_deprecation_is_reported(tmp_path: Path) -> None:
@@ -111,7 +118,8 @@ def test_status_only_deprecation_is_reported(tmp_path: Path) -> None:
         (json.dumps(document, sort_keys=True, separators=(",", ":")) + "\n").encode()
     )
     report = sync(bundle, sdk)
-    assert report.deprecated == ("otdp",)
+    # The label names the row the status moved on (multi-version labels).
+    assert report.deprecated == ("otdp@0.2.0",)
     assert report.changed == ()
 
 

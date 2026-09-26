@@ -38,6 +38,54 @@ class StandardsError(ValueError):
     """A standards-manifest inconsistency; always names the offending entry."""
 
 
+# The dependency-policy range grammar: explicit half-open intervals only
+# (">=X.Y.Z,<X.Y.Z", inclusive lower, exclusive upper — design §3.1). Caret
+# sugar is AUTHORING input expanded before anything is stored; a caret stored
+# in a committed file refuses (constraint_syntax_unexpanded).
+RANGE_PATTERN = re.compile(r">=(\d+\.\d+\.\d+),<(\d+\.\d+\.\d+)")
+VERSION_PATTERN = re.compile(r"\d+\.\d+\.\d+")
+
+
+@dataclass(frozen=True)
+class YankRecord:
+    """One yanked version: retained, digest-frozen, in-interval, unserved.
+
+    ``reason`` and ``since`` are recorded governance data; explicit pins to a
+    yanked version stay conforming with a deprecation warning naming the
+    derived move-to (the 0.2.1 template, design Q10).
+    """
+
+    version: str
+    reason: str
+    since: str
+
+
+@dataclass(frozen=True)
+class StandardPolicy:
+    """One standard's declared range and recorded statuses."""
+
+    id: str
+    lower: str
+    upper: str
+    yanked: tuple[YankRecord, ...]
+    retired: tuple[str, ...]
+    note: str | None
+
+    def in_range(self, version: str) -> bool:
+        return _version_tuple(self.lower) <= _version_tuple(version) < _version_tuple(self.upper)
+
+
+@dataclass(frozen=True)
+class DependencyPolicy:
+    """The committed dependency-policy block (design §3.1), read whole."""
+
+    standards: dict[str, StandardPolicy]
+
+
+def _version_tuple(version: str) -> tuple[int, int, int]:
+    return tuple(int(part) for part in version.split("."))  # type: ignore[return-value]
+
+
 @dataclass(frozen=True)
 class DevHead:
     """One open dev head on a standard's entry (devstage record §4.1).
@@ -244,6 +292,234 @@ def load_sdk_compatibility(root: Path) -> SdkCompatibility:
         main_project=str(block["main_project"]),
         notes=notes,
     )
+
+
+def load_dependency_policy(root: Path) -> DependencyPolicy:
+    """Read the dependency-policy block; fail closed when malformed.
+
+    The exact ``load_sdk_compatibility`` posture (governance data in the
+    standards manifest, read by its own loader): the block must be an object
+    with ``policy_version`` 1 and a ``standards`` map whose rows carry the
+    explicit half-open ``range`` plus ``yanked`` and ``retired`` statuses.
+    Shape errors refuse ``dependency_policy_invalid:``; a caret (or any other
+    authoring sugar) stored in the committed file refuses
+    ``constraint_syntax_unexpanded:`` — sugar is expanded before storage, never
+    stored (design §3.1).
+    """
+    path = root / "standards/standards-manifest.json"
+    document = json.loads(path.read_bytes())
+    block = document.get("dependency_policy")
+    if not isinstance(block, dict) or block.get("policy_version") != 1:
+        raise StandardsError(
+            "dependency_policy_invalid: dependency_policy block absent, not an "
+            "object, or not policy_version 1"
+        )
+    rows = block.get("standards")
+    if not isinstance(rows, dict) or not rows:
+        raise StandardsError(
+            "dependency_policy_invalid: the block's standards map is absent or empty"
+        )
+    policies: dict[str, StandardPolicy] = {}
+    for identifier, raw in sorted(rows.items()):
+        if not isinstance(identifier, str) or not isinstance(raw, dict):
+            raise StandardsError("dependency_policy_invalid: a standards row is malformed")
+        where = f"dependency_policy_invalid: {identifier}"
+        lower, upper, problem = _parse_range(raw.get("range"))
+        if problem == "unexpanded":
+            raise StandardsError(
+                f"constraint_syntax_unexpanded: {identifier}: {raw.get('range')!r} — "
+                "caret sugar is authoring input; expand it to an explicit "
+                "half-open interval before storing it"
+            )
+        if problem is not None:
+            raise StandardsError(f"{where}: {problem}")
+        yanked_raw = raw.get("yanked")
+        if not isinstance(yanked_raw, dict):
+            raise StandardsError(f"{where}: yanked must be an object")
+        yanked: list[YankRecord] = []
+        for version, record in sorted(yanked_raw.items()):
+            if (
+                VERSION_PATTERN.fullmatch(str(version)) is None
+                or not isinstance(record, dict)
+                or not isinstance(record.get("reason"), str)
+                or not isinstance(record.get("since"), str)
+            ):
+                raise StandardsError(
+                    f"{where}: yanked entry {version!r} needs a pure-semver key with "
+                    "reason and since strings"
+                )
+            yanked.append(
+                YankRecord(version=str(version), reason=record["reason"], since=record["since"])
+            )
+        retired_raw = raw.get("retired")
+        if not isinstance(retired_raw, list) or not all(
+            isinstance(item, str) for item in retired_raw
+        ):
+            raise StandardsError(f"{where}: retired must be a list of version strings")
+        for version in retired_raw:
+            if VERSION_PATTERN.fullmatch(version) is None:
+                raise StandardsError(
+                    f"{where}: retired entry {version!r} is not a pure semver version"
+                )
+        note = raw.get("note")
+        if note is not None and not isinstance(note, str):
+            raise StandardsError(f"{where}: note must be a string or absent")
+        policies[identifier] = StandardPolicy(
+            id=identifier,
+            lower=lower or "",
+            upper=upper or "",
+            yanked=tuple(yanked),
+            retired=tuple(retired_raw),
+            note=note,
+        )
+    return DependencyPolicy(policies)
+
+
+def _parse_range(value: object) -> tuple[str | None, str | None, str | None]:
+    """Return (lower, upper, problem); the range grammar is exact."""
+    if not isinstance(value, str):
+        return None, None, "range must be a string"
+    if "^" in value or "~" in value:
+        return None, None, "unexpanded"
+    match = RANGE_PATTERN.fullmatch(value)
+    if match is None:
+        return None, None, (
+            f"range {value!r} is not an explicit half-open interval "
+            "(>=X.Y.Z,<X.Y.Z — inclusive lower, exclusive upper)"
+        )
+    return match.group(1), match.group(2), None
+
+
+def retained_versions(root: Path, standard_id: str) -> tuple[str, ...]:
+    """The digest-pinned version set for one standard, from corpus rows.
+
+    The corpus manifest is the byte authority, so retention is enumerated from
+    its rows (never a directory listing): every ``<id>/<version>/`` prefix
+    with at least one row is a retained version directory.
+    """
+    path = root / "standards/corpus-manifest.json"
+    if not path.is_file():
+        return ()
+    document = json.loads(path.read_bytes())
+    prefix = f"{standard_id}/"
+    versions: set[str] = set()
+    for row in document.get("files", []):
+        relative = str(row["path"])
+        if relative.startswith(prefix):
+            remainder = relative.removeprefix(prefix).split("/", 1)
+            if len(remainder) == 2 and VERSION_PATTERN.fullmatch(remainder[0]):
+                versions.add(remainder[0])
+    return tuple(sorted(versions))
+
+
+def served_versions(policy: DependencyPolicy, root: Path, standard_id: str) -> tuple[str, ...]:
+    """Served = retained ∧ in-range ∧ ¬yanked, derived, never hand-listed."""
+    entry = policy.standards.get(standard_id)
+    if entry is None:
+        raise StandardsError(
+            f"dependency_policy_invalid: no policy row for standard {standard_id!r}"
+        )
+    yanked = {record.version for record in entry.yanked}
+    return tuple(
+        version
+        for version in retained_versions(root, standard_id)
+        if entry.in_range(version) and version not in yanked
+    )
+
+
+def carried_versions(policy: DependencyPolicy, root: Path, standard_id: str) -> tuple[str, ...]:
+    """Carried = retained ∧ in-range (yanked included): the byte-carrying set.
+
+    The design's served-set rule governs classification and auto-selection
+    (served = carried ∧ ¬yanked), but the export, the SDK lock and the wheel
+    carry the CARRIED set — an explicit pin to a yanked-in-interval version
+    stays conforming with a deprecation warning (the Q10 ruling), which needs
+    the yanked version's bytes offline (PKG-1/VR-32). The design record's own
+    wheel-payload enumeration (otdp/0.2.1 present, 688 KB du) and the A1
+    anti-gaming arm (a 0.2.1-pinned suite, green with the warning) both
+    require it; rows carry a ``yanked`` marker so every consumer re-derives
+    the served set from the mirrored policy block. Recorded as a design
+    contradiction resolution in the slice measurement record.
+    """
+    entry = policy.standards.get(standard_id)
+    if entry is None:
+        raise StandardsError(
+            f"dependency_policy_invalid: no policy row for standard {standard_id!r}"
+        )
+    return tuple(
+        version
+        for version in retained_versions(root, standard_id)
+        if entry.in_range(version)
+    )
+
+
+def validate_dependency_policy(
+    policy: DependencyPolicy, manifest: StandardsManifest, root: Path
+) -> None:
+    """Cross-check the policy block against the manifest and the retained tree.
+
+    Fail-closed (design §3.1): every manifest standard declares a policy row
+    and vice versa; the active version sits inside the served set; a yanked
+    entry names a retained in-range version (bytes must exist for a
+    yanked-but-conforming pin to validate against — ``policy_entry_unresolved:``);
+    a retired entry naming the ACTIVE version refuses ``policy_retired_active:``;
+    retired and yanked stay disjoint and retired names no retained version
+    (``policy_status_conflict:`` — retired means "used and dead": the number
+    shipped once and the tree no longer carries it, so a live directory
+    contradicts the status).
+    """
+    manifest_ids = {entry.id for entry in manifest.standards}
+    unknown = sorted(set(policy.standards) - manifest_ids)
+    if unknown:
+        raise StandardsError(
+            f"dependency_policy_invalid: policy rows for standards the manifest "
+            f"does not carry: {', '.join(unknown)}"
+        )
+    missing = sorted(manifest_ids - set(policy.standards))
+    if missing:
+        raise StandardsError(
+            f"dependency_policy_invalid: manifest standards with no policy row: "
+            f"{', '.join(missing)}"
+        )
+    for entry in manifest.standards:
+        row = policy.standards[entry.id]
+        retained = retained_versions(root, entry.id)
+        served = served_versions(policy, root, entry.id)
+        if entry.version not in served:
+            raise StandardsError(
+                f"dependency_policy_invalid: {entry.id}: the manifest's active version "
+                f"{entry.version} is not in the served set (range >={row.lower},<{row.upper}"
+                f"{'; yanked: ' + ', '.join(r.version for r in row.yanked) if row.yanked else ''})"
+            )
+        for record in row.yanked:
+            if record.version not in retained:
+                raise StandardsError(
+                    f"policy_entry_unresolved: {entry.id}: yanked {record.version} names a "
+                    "version with no retained directory"
+                )
+            if not row.in_range(record.version):
+                raise StandardsError(
+                    f"policy_status_conflict: {entry.id}: yanked {record.version} is outside "
+                    f"the declared range >={row.lower},<{row.upper}; the yank status could "
+                    "never matter"
+                )
+        for version in row.retired:
+            if version == entry.version:
+                raise StandardsError(
+                    f"policy_retired_active: {entry.id}: retired {version} IS the live "
+                    "active version"
+                )
+            if version in retained:
+                raise StandardsError(
+                    f"policy_status_conflict: {entry.id}: retired {version} names a "
+                    "retained directory; retired identifiers are used-and-dead and never "
+                    "reissued"
+                )
+            if any(record.version == version for record in row.yanked):
+                raise StandardsError(
+                    f"policy_status_conflict: {entry.id}: {version} is both yanked and "
+                    "retired; the statuses are distinct"
+                )
 
 
 def validate_manifest(manifest: StandardsManifest, root: Path) -> None:
