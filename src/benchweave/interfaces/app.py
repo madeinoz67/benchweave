@@ -17,7 +17,7 @@ import logging
 import sys
 import tempfile
 import threading
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Mapping
 from contextlib import asynccontextmanager
 from pathlib import Path
 from types import ModuleType
@@ -27,6 +27,7 @@ from fastapi import FastAPI
 
 from benchweave.content.capture_services import build_capture_services
 from benchweave.content.capture_store import CaptureStagingStore
+from benchweave.content.dataset_services import build_dataset_services
 from benchweave.content.store import ContentStore, RetainingServices
 from benchweave.content.stream_services import build_stream_services
 from benchweave.control.clocking import MonotonicClock, SystemClock, WallClock
@@ -513,7 +514,7 @@ def _run_quota_limits(limits: dict[str, int]) -> QuotaLimits:
         )
     return QuotaLimits(
         max_dataset_bytes=int(limits["max_dataset_bytes"]),
-        max_evidence_entries=int(limits["max_page_size"]) * 10,
+        max_evidence_entries=_retention_quota(limits),
         max_event_batch=int(limits["max_event_batch"]),
         max_capture_bytes=int(limits.get("max_capture_bytes", 16 * 1024 * 1024)),
         max_subscriptions=int(limits.get("max_subscriptions", 16)),
@@ -564,6 +565,14 @@ class _SimPlan:
     def __init__(self, name: str) -> None:
         self.name = name
         self.disclosure: str | None = None
+
+
+def _retention_quota(limits: Mapping[str, int]) -> int:
+    """The ONE derivation of the per-context evidence/dataset retention
+    quota: max_page_size x 10 (issue #146 LOW-3). Every consumer derives
+    from here — the quota numbers can no longer drift apart (the pin
+    test asserts the literal appears exactly once in this module)."""
+    return int(limits["max_page_size"]) * 10
 
 
 def _require_registry_session(session: RegistrySession | None) -> RegistrySession:
@@ -706,7 +715,7 @@ def _build_run_factory(
         # event lands on the run's event dimension with a live timestamp.
         services = RetainingServices(
             content,
-            quota=int(limits["max_page_size"]) * 10,
+            quota=_retention_quota(limits),
             now=now_iso(),
             wall=now_iso,
             context_key=f"run:{run_id}",
@@ -756,6 +765,30 @@ def _build_run_factory(
                         context_key=context_key,
                         reading_sinks=sinks,
                     )
+                    def dataset_factory(
+                        controller: Any,
+                        *,
+                        _base: Any = bundle,
+                        _digest: str = plan.digest,
+                        _content: Any = content,
+                        _writer: Any = writer,
+                    ) -> Any:
+                        # §2.2's permission-gated builder, loader-mediated
+                        # (the verified inventory's locality keeps contract
+                        # resolution inside load_otdp_plugin, so the builder
+                        # receives the freshly-constructed controller here):
+                        # re-derive the raw descriptor by digest, slice the
+                        # bundle by artifact_writer/artifact_reader, and the
+                        # adapter's services gain the dataset members it is
+                        # permitted to hold.
+                        return build_dataset_services(
+                            controller=controller,
+                            services=_base,
+                            descriptor_digest=_digest,
+                            content=_content,
+                            writer=_writer,
+                        )
+
                     bridge = load_otdp_plugin(
                         _require_registry_session(registry_session).cache_root,
                         plan.closure.manifest,
@@ -777,7 +810,11 @@ def _build_run_factory(
                         # and the session's shared staged writer rides along
                         # for the controller's invoke dispatch clamp — the
                         # same writer instance the capture bundle shares.
+                        # Slice 3: the app.py-side dataset builder composes
+                        # the adapter's permission-sliced services around
+                        # that controller (§2.2's one build call).
                         dataset_writer=writer,
+                        dataset_services=dataset_factory,
                     )
                     bridge.plugin_open(bundle)
                     plugins[device_id] = bridge
@@ -871,7 +908,7 @@ def create_app(
     else:
         contracts = _CONTRACTS
     # Same retention arithmetic as the seam's bench-event windows.
-    quota = int(limits["max_page_size"]) * 10
+    quota = _retention_quota(limits)
     worker = RunWorker(
         store,
         content,

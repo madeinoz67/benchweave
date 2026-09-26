@@ -66,6 +66,20 @@ def writer_originated(exception: BaseException, capture_id: str) -> bool:
     )
 
 
+#: Payload staging ids mint by the dataset controller as ``pay:{op}:{n}``;
+#: capture ids carry the ``cap:`` mint. The writer's refusal PROSE is
+#: parametrized on the lane (issue #146 LOW-2, R17's extension): a refusal
+#: bound to a payload id names the payload lane, never capture wording —
+#: capture ids produce exactly the historical capture strings.
+_PAYLOAD_ID_PREFIX = "pay:"
+
+
+def _lane(capture_id: str | None) -> str:
+    return "payload" if isinstance(capture_id, str) and capture_id.startswith(
+        _PAYLOAD_ID_PREFIX
+    ) else "capture"
+
+
 _STATE_STAGED = "staged"
 _STATE_FINALISED = "finalised"
 _STATE_ABORTED = "aborted"
@@ -220,8 +234,8 @@ class CaptureStagingStore:
             if max_bytes > allowance:
                 raise self._quota(
                     CaptureQuotaExceeded(
-                        f"capture allowance {allowance} bytes exceeded for "
-                        f"{context_key!r}: requested {max_bytes} "
+                        f"{_lane(capture_id)} allowance {allowance} bytes exceeded "
+                        f"for {context_key!r}: requested {max_bytes} "
                         f"(min(max_capture_bytes={self._max_capture_bytes}, "
                         f"max_dataset_bytes−used={self._max_dataset_bytes}−{used}))"
                     ),
@@ -263,6 +277,93 @@ class CaptureStagingStore:
         # B3: ALWAYS (re)initialise the hasher entry for this id — a
         # reused-after-abort id starts a fresh digest, never a stale one.
         self._hashers[capture_id] = hashlib.sha256()
+
+    def open_payload(
+        self,
+        *,
+        payload_id: str,
+        context_key: str,
+        encoding: str,
+        byte_limit: int,
+        now: str,
+    ) -> None:
+        """Reserve and open a PAYLOAD staging entry (issue #146 §2.2) — the
+        dataset lane's allowance, which differs from ``open_capture``'s G3
+        formula by one term: payload bytes belong to the dataset budget and
+        are NOT clamped by ``max_capture_bytes``. The refusal is
+        ``min(byte_limit, max_dataset_bytes − used)`` — refuse at create,
+        never silently reduce (the owner ruling; R12).
+
+        Disclosed dual-use of the v5 columns (no migration — §5's Tier-3
+        note): ``capture_id`` carries the ``pay:`` staging id, ``format``
+        carries the encoding, ``sample_count`` is NULL (the raw_binary
+        captures already open with ``sample_count=None``). Everything else —
+        the transactional check-and-reserve, the stamp, the hasher entry —
+        is the capture open's own machinery, verbatim.
+        """
+        if self._max_dataset_bytes is None:
+            raise RuntimeError(
+                "dataset quota envelope not configured for this writer: "
+                "max_dataset_bytes is required at every construction site "
+                "that opens payloads"
+            )
+        try:
+            self._conn.execute("BEGIN IMMEDIATE")
+        except sqlite3.OperationalError as error:
+            self._restamp(error, payload_id)
+            raise
+        try:
+            existing = self._conn.execute(
+                "SELECT 1 FROM capture_staging WHERE capture_id = ?", (payload_id,)
+            ).fetchone()
+            if existing is not None:
+                raise self._reject(
+                    CaptureFinaliseRejected(
+                        f"payload id already exists: {payload_id!r}"
+                    ),
+                    payload_id,
+                )
+            used = self._used_bytes_locked(context_key)
+            allowance = self._max_dataset_bytes - used
+            if byte_limit > allowance:
+                raise self._quota(
+                    CaptureQuotaExceeded(
+                        f"payload allowance {allowance} bytes exceeded for "
+                        f"{context_key!r}: requested {byte_limit} "
+                        f"(max_dataset_bytes−used={self._max_dataset_bytes}"
+                        f"−{used})"
+                    ),
+                    payload_id,
+                )
+            self._conn.execute(
+                "INSERT INTO capture_staging"
+                " (capture_id, context_key, state, reserved_bytes, charged_bytes,"
+                " format, sample_count, artifact_id, started_at, created_at,"
+                " updated_at)"
+                " VALUES (?, ?, ?, ?, 0, ?, NULL, NULL, ?, ?, ?)",
+                (
+                    payload_id,
+                    context_key,
+                    _STATE_STAGED,
+                    min(byte_limit, allowance),
+                    encoding,
+                    now,
+                    now,
+                    now,
+                ),
+            )
+        except BaseException:
+            if self._conn.in_transaction:
+                self._conn.execute("ROLLBACK")
+            raise
+        try:
+            self._conn.execute("COMMIT")
+        except BaseException as error:
+            self._restamp(error, payload_id)
+            if self._conn.in_transaction:
+                self._conn.execute("ROLLBACK")
+            raise
+        self._hashers[payload_id] = hashlib.sha256()
 
     def _used_bytes_locked(self, context_key: str) -> int:
         """Σ reserved over staged + Σ charged over finalised (the record's
@@ -326,23 +427,26 @@ class CaptureStagingStore:
             staged = self._staged_row(capture_id)
             if staged is None:
                 raise self._reject(
-                    CaptureFinaliseRejected(f"unknown capture id: {capture_id!r}"),
+                    CaptureFinaliseRejected(
+                        f"unknown {_lane(capture_id)} id: {capture_id!r}"
+                    ),
                     capture_id,
                 )
             row_context, state, reserved, _fmt, _count = staged
             if state != _STATE_STAGED:
                 raise self._reject(
                     CaptureFinaliseRejected(
-                        f"capture {capture_id!r} is terminal ({state}): "
-                        "appends are refused"
+                        f"{_lane(capture_id)} {capture_id!r} is terminal "
+                        f"({state}): appends are refused"
                     ),
                     capture_id,
                 )
             if row_context != context_key:
                 raise self._reject(
                     CaptureFinaliseRejected(
-                        f"wrong session for capture {capture_id!r}: "
-                        f"opened by {row_context!r}, append from {context_key!r}"
+                        f"wrong session for {_lane(capture_id)} "
+                        f"{capture_id!r}: opened by {row_context!r}, "
+                        f"append from {context_key!r}"
                     ),
                     capture_id,
                 )
@@ -350,8 +454,9 @@ class CaptureStagingStore:
             if already + len(data) > int(reserved):
                 raise self._quota(
                     CaptureQuotaExceeded(
-                        f"capture reservation exceeded for {capture_id!r}: "
-                        f"{already} + {len(data)} > {reserved} bytes"
+                        f"{_lane(capture_id)} reservation exceeded for "
+                        f"{capture_id!r}: {already} + {len(data)} > "
+                        f"{reserved} bytes"
                     ),
                     capture_id,
                 )
@@ -386,7 +491,14 @@ class CaptureStagingStore:
 
     # --- finalise ---------------------------------------------------------------
 
-    def finalise(self, capture_id: str, now: str, context_key: str) -> dict[str, Any]:
+    def finalise(
+        self,
+        capture_id: str,
+        now: str,
+        context_key: str,
+        *,
+        evidence: Any = None,
+    ) -> dict[str, Any]:
         """Publish the capture as one explicit transaction (A2).
 
         Under BEGIN IMMEDIATE: read the ordered chunks, cross-check the
@@ -397,6 +509,14 @@ class CaptureStagingStore:
         (participating in this transaction), flip the staging row to
         ``finalised`` with ``charged_bytes`` and ``artifact_id``, delete
         the chunk rows, COMMIT.
+
+        ``evidence`` (issue #146 wave 2, the one-transaction boundary):
+        an optional ``{kind, reference, context_key, quota}`` mapping —
+        ONE evidence row joins the SAME transaction, written after the
+        artifact insert (it names the artifact id). A quota refusal
+        raised by the evidence write rolls the WHOLE finalise back: no
+        artifact, no charged bytes, no staging flip — the caller has
+        nothing to reclaim. The capture path passes nothing (unchanged).
         """
         hasher = self._hashers.get(capture_id)
         try:
@@ -410,15 +530,17 @@ class CaptureStagingStore:
             staged = self._staged_row(capture_id)
             if staged is None:
                 raise self._reject(
-                    CaptureFinaliseRejected(f"unknown capture id: {capture_id!r}"),
+                    CaptureFinaliseRejected(
+                        f"unknown {_lane(capture_id)} id: {capture_id!r}"
+                    ),
                     capture_id,
                 )
             row_context, state, _reserved, fmt, sample_count = staged
             if state != _STATE_STAGED:
                 raise self._reject(
                     CaptureFinaliseRejected(
-                        f"capture {capture_id!r} is terminal ({state}): "
-                        "finalise is refused"
+                        f"{_lane(capture_id)} {capture_id!r} is terminal "
+                        f"({state}): finalise is refused"
                     ),
                     capture_id,
                 )
@@ -432,8 +554,9 @@ class CaptureStagingStore:
                 # deliberately session-free.
                 raise self._reject(
                     CaptureFinaliseRejected(
-                        f"wrong session for capture {capture_id!r}: "
-                        f"opened by {row_context!r}, finalise from {context_key!r}"
+                        f"wrong session for {_lane(capture_id)} "
+                        f"{capture_id!r}: opened by {row_context!r}, "
+                        f"finalise from {context_key!r}"
                     ),
                     capture_id,
                 )
@@ -498,6 +621,15 @@ class CaptureStagingStore:
             self._conn.execute(
                 "DELETE FROM capture_chunks WHERE capture_id = ?", (capture_id,)
             )
+            if evidence is not None:
+                self._content.put_evidence(
+                    evidence["kind"],
+                    evidence["reference"],
+                    artifact_id,
+                    evidence["context_key"],
+                    now,
+                    quota=evidence["quota"],
+                )
         except BaseException:
             if self._conn.in_transaction:
                 self._conn.execute("ROLLBACK")

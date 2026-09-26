@@ -68,6 +68,9 @@ from jsonschema import Draft202012Validator
 
 from benchweave.content.capture_services import evidence_originated
 from benchweave.content.capture_store import writer_originated
+from benchweave.content.dataset_services import (
+    dataset_evidence_originated,
+)
 from benchweave.content.store import EvidenceQuotaExceeded
 from benchweave.content.stream_services import (
     LandedEvent,
@@ -421,9 +424,17 @@ class OTDPBridge:
                     # dispatch (operation ids key on occurrence ids and
                     # recovered steps never re-dispatch, so replay cannot
                     # collide it; design §2.3), and the adapter never
-                    # chooses it.
+                    # chooses it. The dispatch's action id and RESOLVED input
+                    # ride the per-operation state for the publish path's
+                    # M10-correlation cross-check (design §2.2).
                     context.dataset_id = self._dataset.mint_dataset_id(
-                        request.operation_id
+                        request.operation_id,
+                        action_id=request.arguments.get("action_id")
+                        if isinstance(request.arguments.get("action_id"), str)
+                        else None,
+                        input=request.arguments.get("input")
+                        if isinstance(request.arguments.get("input"), dict)
+                        else None,
                     )
                 envelope = {
                     "operation_id": request.operation_id,
@@ -515,9 +526,25 @@ class OTDPBridge:
                     # classified refusal names the lane that classified it.
                     # Capture dispatches keep the exact historical message;
                     # an invoke-classified refusal names the invoke lane and
-                    # its origin — never capture wording.
+                    # its origin — never capture wording. The payload lane's
+                    # classification (R10's clean direction) also reclaims
+                    # the operation's still-open payloads — the session
+                    # survives the resource condition (A6/A7 posture,
+                    # identical to captures' abort epilogue, minus the
+                    # forensic row per the corpus §3).
                     if request.verb.value == "invoke":
                         lane = "evidence" if isinstance(exc, EvidenceQuotaExceeded) else "payload"
+                        if self._dataset is not None:
+                            # Wave 2 #3: the reclaim rides the epilogue
+                            # floor (the _abort_contained precedent — the
+                            # floor rode with it). Bare, it inherits the
+                            # dispatch clamp's remaining budget (≈0 on a
+                            # clamped-out dispatch) and reclaims nothing
+                            # until the close sweep; under the floor it
+                            # waits bounded and reclaims now. Contained:
+                            # a reclaim failure never replaces the refusal.
+                            with suppress(Exception), self._dataset.epilogue_floor():
+                                self._dataset.abort_open(request.operation_id)
                         refusal_message = (
                             f"invoke resource condition ({lane}): {exc}"
                         )
@@ -1217,17 +1244,26 @@ class OTDPBridge:
         if reading["source"] not in ("device", "cache", "commissioned"):
             raise InvalidEvent("telemetry reading source is not in the corpus enum")
 
-    @staticmethod
     def _capture_originated(
-        exc: BaseException, capture_id: str | None, request: OperationRequest
+        self, exc: BaseException, capture_id: str | None, request: OperationRequest
     ) -> bool:
         """C3's discriminator as amended: the writer's stamp must carry the
         writer module's token bound to THIS capture's id; the bundle's
-        evidence stamp must carry the bundle module's token bound to THIS
-        operation's id. Presence alone proves nothing."""
+        evidence stamp must carry its bundle module's token bound to THIS
+        operation's id (either bundle — capture or dataset); the dataset
+        arm (issue #146, Amendment 1 HIGH-1 / R10) matches the writer's
+        stamp bound to one of THIS operation's live payload ids. Presence
+        alone proves nothing; a genuine saved instance replayed on another
+        dispatch keeps the poison posture."""
         if isinstance(exc, EvidenceQuotaExceeded):
-            return evidence_originated(exc, request.operation_id)
-        return capture_id is not None and writer_originated(exc, capture_id)
+            return evidence_originated(
+                exc, request.operation_id
+            ) or dataset_evidence_originated(exc, request.operation_id)
+        if capture_id is not None and writer_originated(exc, capture_id):
+            return True
+        return self._dataset is not None and self._dataset.payload_stamp_originated(
+            exc, request.operation_id
+        )
 
     @staticmethod
     def _exact_int(value: Any) -> int | None:
@@ -1431,10 +1467,14 @@ class OTDPBridge:
                 if admitted is None or canonical_json(admitted) != canonical_json(
                     payload
                 ):
-                    raise InvalidInvokeResult(
+                    note = self._dataset.dataset_shape_note(payload)
+                    refusal = (
                         "invoke returned a dataset-shaped result that was never "
                         "admitted through dataset_publish"
                     )
+                    if note is not None:
+                        refusal = f"{refusal} ({note})"
+                    raise InvalidInvokeResult(refusal)
             value = {"action_id": request.arguments["action_id"], "result": payload}
         else:
             if (

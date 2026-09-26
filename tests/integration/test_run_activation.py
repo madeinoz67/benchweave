@@ -293,7 +293,11 @@ def _pin(document: dict[str, Any], path: Path) -> dict[str, str]:
 
 
 def _mutated_descriptor(
-    tmp_path: Path, *, stream_floor_ms: int = 10, streaming: bool = True
+    tmp_path: Path,
+    *,
+    stream_floor_ms: int = 10,
+    streaming: bool = True,
+    extra_permissions: tuple[str, ...] = (),
 ) -> Path:
     """The committed sim-psu descriptor with the capture/stream permissions.
 
@@ -307,7 +311,12 @@ def _mutated_descriptor(
     adapter = descriptor["integration"]["adapter"]
     adapter["entry_point"] = "benchweave_sim_psu.plugin:create_plugin"
     if streaming:
-        adapter["permissions"] = ["scoped_transport", "artifact_writer", "event_sink"]
+        adapter["permissions"] = [
+            "scoped_transport",
+            "artifact_writer",
+            "event_sink",
+            *extra_permissions,
+        ]
         descriptor["stream_limits"] = {
             "min_interval_ms": stream_floor_ms,
             "max_subscriptions": 4,
@@ -316,7 +325,7 @@ def _mutated_descriptor(
         # The committed fixture shape: transport-only permissions, no event
         # services, no capture writer (the F1 leak case — a commissioned
         # bridge the streaming registry never sees).
-        adapter["permissions"] = ["scoped_transport"]
+        adapter["permissions"] = ["scoped_transport", *extra_permissions]
     # The capture lane's descriptor bounds (the gate's G2 read): sized for
     # the measurement harness's smoke-scale captures.
     descriptor["capture_limits"] = {"max_samples": 1024, "max_bytes": 65536}
@@ -324,11 +333,11 @@ def _mutated_descriptor(
     return _write(tmp_path / "descriptor-demo-supply.json", descriptor)
 
 
-def _write_plugin_source(tmp_path: Path) -> Path:
+def _write_plugin_source(tmp_path: Path, source: str | None = None) -> Path:
     root = tmp_path / "plugin" / PLUGIN_DIRNAME / "src" / f"benchweave_{PLUGIN_DIRNAME}"
     root.mkdir(parents=True)
     (root / "__init__.py").write_text("")
-    (root / "plugin.py").write_text(ADAPTER_SOURCE)
+    (root / "plugin.py").write_text(ADAPTER_SOURCE if source is None else source)
     # The descriptor the harness publishes pins the OTDP class contracts
     # (catalog + measurement schema) at bundle-root paths, and #146 slice 2
     # resolves those pins against the verified inventory at load — so the
@@ -376,6 +385,9 @@ def _lattice(
     streaming: bool = True,
     two_devices: bool = False,
     simulated: bool = True,
+    steps: list[dict[str, Any]] | None = None,
+    allow_rules: list[dict[str, Any]] | None = None,
+    extra_permissions: tuple[str, ...] = (),
 ) -> Path:
     """Author the activation lattice: one commissioned supply device.
 
@@ -386,7 +398,10 @@ def _lattice(
     """
     tmp_path.mkdir(parents=True, exist_ok=True)
     descriptor_path = _mutated_descriptor(
-        tmp_path, stream_floor_ms=stream_floor_ms, streaming=streaming
+        tmp_path,
+        stream_floor_ms=stream_floor_ms,
+        streaming=streaming,
+        extra_permissions=extra_permissions,
     )
     descriptor = json.loads(descriptor_path.read_text())
     controller_descriptor_path = tmp_path / "descriptor-controller.json"
@@ -407,7 +422,7 @@ def _lattice(
         ],
         "max_body_ms": 8000,
         "max_protection_ms": 2000,
-        "steps": [
+        "steps": steps if steps is not None else [
             {
                 "id": "set-voltage",
                 "kind": "write",
@@ -457,7 +472,7 @@ def _lattice(
                 "max_energised_ms": 10000,
             }
         ],
-        "allow_rules": [
+        "allow_rules": allow_rules if allow_rules is not None else [
             {
                 "device_id": DEVICE_ID,
                 "kind": "write",
@@ -699,6 +714,10 @@ class _CommissionedHarness:
         simulated: bool = True,
         commissioned: bool = True,
         release_mutator: Callable[[Path], None] | None = None,
+        adapter_source: str | None = None,
+        steps: list[dict[str, Any]] | None = None,
+        allow_rules: list[dict[str, Any]] | None = None,
+        extra_permissions: tuple[str, ...] = (),
     ) -> None:
         self.root = tmp_path
         self._release_mutator = release_mutator
@@ -713,9 +732,12 @@ class _CommissionedHarness:
             streaming=streaming,
             two_devices=two_devices,
             simulated=simulated,
+            steps=steps,
+            allow_rules=allow_rules,
+            extra_permissions=extra_permissions,
         )
         descriptor_path = self.lattice_dir / "descriptor-demo-supply.json"
-        plugin_dir = _write_plugin_source(tmp_path / "pluginroot")
+        plugin_dir = _write_plugin_source(tmp_path / "pluginroot", adapter_source)
         registry_root = tmp_path / "dev-registry"
         _publish(plugin_dir, descriptor_path, registry_root)
         if release_mutator is not None:
@@ -831,12 +853,20 @@ def commissioned(tmp_path: Path) -> _CommissionedHarness:
 
 
 def _coordinator(
-    harness: _CommissionedHarness, run_id: str, limits: dict[str, int]
+    harness: _CommissionedHarness,
+    run_id: str,
+    limits: dict[str, int],
+    *,
+    request_id: str | None = None,
 ) -> tuple[Any, Store, ContentStore]:
+    # A fresh request id REWRITES the binding file BEFORE open_store:
+    # startup admission stores the lattice documents it finds, so the
+    # rewritten binding must be on disk first.
+    binding = harness.binding_ref(request_id)
     store, content = harness.open_store()
     try:
         factory = harness.build_run(limits)
-        return factory(run_id, "principal-activation", harness.binding_ref(), store), store, content
+        return factory(run_id, "principal-activation", binding, store), store, content
     except BaseException:
         store.close()
         raise
@@ -1444,11 +1474,13 @@ def test_measurement_harness_capture_dispatch_over_the_composed_bridge(
 def test_issue146_invoke_lane_composes_over_the_real_activation_path(
     commissioned: _CommissionedHarness,
 ) -> None:
-    """Issue #146 slice 2 wiring: the demo-supply descriptor is
-    invoke-capable and pins the corpus contract pair, so build_run's real
-    activation loop constructs the dataset controller AND hands it the
-    session's shared staged writer — the invoke clamp is live (not the
-    unit-posture nullcontext), without artifact_writer on the descriptor."""
+    """Issue #146 slice 2 wiring + slice 3's composed bundle: the
+    demo-supply descriptor is invoke-capable, pins the corpus contract
+    pair and holds artifact_writer — build_run's real activation loop
+    constructs the dataset controller, hands it the session's shared
+    staged writer (the invoke clamp is live), and the ADAPTER's services
+    bundle carries the composed dataset lane (publish/lookup + the
+    payload members) beside the capture members."""
     run_id = "run-invoke-wiring"
     coordinator, store, content = _coordinator(commissioned, run_id, QUOTA_LIMITS)
     try:
@@ -1468,6 +1500,22 @@ def test_issue146_invoke_lane_composes_over_the_real_activation_path(
         assert not isinstance(clamp, nullcontext), (
             "the controller clamps nothing — the session writer never reached it"
         )
+        # Slice 3: the adapter's services compose the dataset lane over the
+        # capture bundle (the harness's Recording adapter captured them at
+        # open — the only mechanism that reaches the adapter).
+        adapter_services = bridge._adapter.services
+        for member in (
+            "dataset_publish",
+            "dataset_lookup",
+            "payload_create",
+            "payload_append",
+            "payload_finalise",
+            "payload_abort",
+            "artifact_append",
+            "artifact_finalise",
+            "artifact_abort",
+        ):
+            assert hasattr(adapter_services, member), member
     finally:
         store.close()
 

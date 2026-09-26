@@ -21,6 +21,16 @@ Design notes pinned by the surrounding slice:
 - STO-1: no clock reads; all timestamps are caller-supplied. Chunk ``seq``
   is assigned ``MAX(seq)+1`` per capture under BEGIN IMMEDIATE by the
   writer (STO-2 precedent).
+
+Payload-lane addendum (issue #146 slice 3, no STATEMENTS change — the
+dual-use is within this table's contract, governor-ruled): the dataset
+lane's staged payloads ride the SAME rows through the writer's
+``open_payload`` — ``capture_id`` carries the ``pay:{op}:{n}`` staging
+id, ``format`` carries the payload encoding (the manifest artifact
+enum), and ``sample_count`` is NULL (the raw_binary captures already
+open with ``sample_count=None``). No migration: the columns admit both
+lanes as declared, and the retention report labels the lanes apart
+(``dataset:<encoding>`` vs ``capture:<format>``).
 """
 
 from __future__ import annotations
