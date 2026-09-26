@@ -368,6 +368,7 @@ All notable changes to this project will be documented in this file.
 - Add contributor publishing path requirements PRD (#209)
 - Record #209 coordinator rulings (Q1-Q21) in the publishing PRD
 - Add #203 standards dependency management requirements PRD
+- Add #203 standards dependency management design record
 
 ### Features
 
