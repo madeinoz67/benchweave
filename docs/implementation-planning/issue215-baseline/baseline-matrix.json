@@ -1,0 +1,77 @@
+{
+  "source": "junitxml from three clean-venv runs; host paths and timestamps removed",
+  "runs": {
+    "run1": {
+      "collected": 26,
+      "failures": 3,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 23,
+      "failed_tests": [
+        {
+          "name": "test_descriptor_is_schema_valid",
+          "first_line": "ValueError: Contract validation failed: '0.2.2' was expected",
+          "shape": "const-dump"
+        },
+        {
+          "name": "test_lifecycle_is_quiet",
+          "first_line": "ValueError: Contract validation failed: '0.2.2' was expected",
+          "shape": "const-dump"
+        },
+        {
+          "name": "test_capture_sequence_configure_arm_events_fetch_abort",
+          "first_line": "ValueError: unknown_contract_schema: otdp/0.2.0/otdp-runtime.schema.json",
+          "shape": "unknown-contract-schema"
+        }
+      ]
+    },
+    "run2": {
+      "collected": 26,
+      "failures": 3,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 23,
+      "failed_tests": [
+        {
+          "name": "test_descriptor_is_schema_valid",
+          "first_line": "ValueError: Contract validation failed: '0.2.2' was expected",
+          "shape": "const-dump"
+        },
+        {
+          "name": "test_lifecycle_is_quiet",
+          "first_line": "ValueError: Contract validation failed: '0.2.2' was expected",
+          "shape": "const-dump"
+        },
+        {
+          "name": "test_capture_sequence_configure_arm_events_fetch_abort",
+          "first_line": "ValueError: unknown_contract_schema: otdp/0.2.0/otdp-runtime.schema.json",
+          "shape": "unknown-contract-schema"
+        }
+      ]
+    },
+    "run3": {
+      "collected": 26,
+      "failures": 3,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 23,
+      "failed_tests": [
+        {
+          "name": "test_descriptor_is_schema_valid",
+          "first_line": "ValueError: Contract validation failed: '0.2.2' was expected",
+          "shape": "const-dump"
+        },
+        {
+          "name": "test_lifecycle_is_quiet",
+          "first_line": "ValueError: Contract validation failed: '0.2.2' was expected",
+          "shape": "const-dump"
+        },
+        {
+          "name": "test_capture_sequence_configure_arm_events_fetch_abort",
+          "first_line": "ValueError: unknown_contract_schema: otdp/0.2.0/otdp-runtime.schema.json",
+          "shape": "unknown-contract-schema"
+        }
+      ]
+    }
+  }
+}
