@@ -16,7 +16,9 @@ verb — the design's risk-1 ordering, kept as a named decision):
   bytes that ARE present and LIE: a digest mismatch (R9), unparsable
   bytes, a document that is neither the measurement schema nor
   catalog-schema-valid (C01/M14: unknown required contracts are rejected,
-  never treated as opaque success), more than one catalog-shaped document
+  never treated as opaque success), a measurement schema whose dataset
+  definition declares no required keys (fix wave F4), more than one
+  catalog-shaped document
   (Amendment 1 NIT-2: overlapping ``action_id``\\ s would let merge order
   silently pick the ``input_schema`` that gates I4 — closed by refusal, not
   resolution), and any ``$ref`` that does not resolve within the pinned
@@ -29,7 +31,11 @@ verb — the design's risk-1 ordering, kept as a named decision):
   real corpus catalog is the in-tree witness that resolution is
   SET-scoped: its dataset-producing actions reference the measurement
   schema's dataset def by urn, so a catalog pinned without the
-  measurement schema refuses HERE.
+  measurement schema refuses HERE. The hard arm is NOT gated on the
+  invoke capability: resolution runs for every descriptor that pins
+  contracts, so a transport-only descriptor whose pins lie dies at load
+  exactly an invoke-capable one's does — only the SOFT arm (an
+  unassemblable or half pair) leaves a non-invoking run untouched.
 * VERB-level (structural, never a runtime flag) — "unresolved contracts"
   in the design's own words (§2.2's table row, R16's soft arm): a pin
   whose path the verified inventory does not carry (nothing was verified

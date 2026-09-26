@@ -389,7 +389,7 @@ Select the real dataset meaning: scalar set, waveform, digital trace, spectrum, 
 - Distinguish host receipt time from device acquisition time. Unknown synchronisation or channel skew must remain visible.
 - Obtain output IDs from the host. The host mints `context.dataset_id` per invoke dispatch (`ds:{operation_id}`); publish inline datasets through `dataset_publish`, and use bounded payload services for larger results. Until the dataset publish services ship on the gateway, a dataset-shaped invoke result is refused outright — the host will not accept unadmitted dataset content.
 
-Payload creation/writing requires `artifact_writer`; reading authorised upload inputs requires `artifact_reader`. Finalising bytes does not validate their physical meaning: the manifest must still pass the dataset and class checks. Partial data must not become a complete successful acquisition merely because the file was written.
+Payload creation/writing requires `artifact_writer`; reading authorised upload inputs requires `artifact_reader`. Finalising bytes does not validate their physical meaning: the manifest must still pass the dataset and class checks. Partial data must not become a complete successful acquisition merely because the file was written. The capture-lane services are for capture dispatches: a capture-stamped resource condition surfacing during an `invoke` dispatch is not yours to satisfy — the host treats it as an uncorrelated failure and poisons the session (the stamp's operation-binding rule).
 
 See the [measurement model](../standards/otdp/0.2.0/measurement-model.md) for all M01–M15 rules and the [extension contract](../standards/otdp/0.2.0/extension-contract.md) for host method signatures.
 
