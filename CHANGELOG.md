@@ -382,6 +382,7 @@ All notable changes to this project will be documented in this file.
 - F6 — capability-ungated hard arm named; the C3 binding rule in the guide
 - Commit the #146 invoke/dataset record with Amendment 2 (#146)
 - Record Amendment 3 — the slice-3 review fold (#146)
+- Issue #231 park design — per-row dispositions for the #146 follow-ons (#232)
 
 ### Features
 
