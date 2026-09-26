@@ -45,7 +45,8 @@ state) on a surface a third party can inspect, so a GO/CLOSE pass can answer "ha
 fired?" by looking at that surface, not by asking the deferrer what they meant.
 Observable: an admission or publication arriving; a corpus train opening; a measured
 trace or repeated log line; a harness or corpus convention changing; a second run
-exhibiting a named failure; the owner's explicit call on a named channel — an
+exhibiting a named failure; the owner's explicit call (in its strong form, on a
+named channel) — an
 owner-fired trigger is legitimate and must be disclosed as such (the #199 precedent:
 "the reopen trigger fired by the owner's explicit call, not by operator demand").
 Not observable, refused: "when it becomes important", "if needed", "when we have time".

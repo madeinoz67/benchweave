@@ -330,7 +330,7 @@ set — those extend the contract's example set (an amendment), they do not kill
 | # | Deferred | Home | Reopen trigger |
 |---|---|---|---|
 | 1 | Mechanical validator for deferral-row conformance (forward-only record gate) | Documentation here | A reviewer dispute over a NEW record's row conformance (evidence the prose contract is ambiguous in practice), or five new records all carrying the canonical header (a stable input set for a header-tolerant checker) |
-| 2 | Backport of the 2026-09-24/25 loop content the SDK skill copy lacks (step 3's gates-after-docs-commits line; step 8's entry-shape fields) — observed drift, out of #99's scope | Documentation here | The next edit to either copy's loop steps 3–8 (it forces the full diff anyway), or the owner's explicit call on the tracker |
+| 2 | Backport of the 2026-09-24/25 loop content the SDK skill copy lacks (step 3's gates-after-docs-commits line; step 8's entry-shape fields) — observed drift, out of #99's scope | Documentation here | The next edit to either copy's loop steps 3–8 (it forces the full diff anyway), or the owner's explicit call on the tracker for the backport |
 | 3 | Terminology sweep renaming committed records' "Carrier" home columns to "Home" — refused, not merely deferred: committed records are frozen history | Documentation here (this row exists to close the question) | A reviewer or maintainer proposes the sweep (the proposal is the observable event; this row is the answer — frozen history is never retrofitted) |
 
 ---
