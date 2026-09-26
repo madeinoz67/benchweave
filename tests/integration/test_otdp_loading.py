@@ -688,3 +688,20 @@ def test_f2_legitimate_dynamic_ref_pair_still_loads(tmp_path: Path) -> None:
         assert plugin._dataset is not None
     finally:
         plugin.plugin_close()
+
+
+def test_f3_self_contained_catalog_without_measurement_is_soft(tmp_path: Path) -> None:
+    """F3 — the catalog half of the both-or-neither pair, pinned: a
+    SELF-CONTAINED catalog (every reference resolvable at its per-action
+    runtime root — here none at all) pinned without the measurement schema
+    resolves cleanly, refuses nothing at load, and constructs NO class
+    surface: the bridge loads with `_dataset is None` and invoke stays a
+    verb-level UNSUPPORTED. The real corpus catalog cannot express this
+    arm (its measurement-urn refs refuse at load through the probe), so
+    the synthetic ref-free catalog is the arm's only in-tree witness."""
+    files = {"contracts/catalog.json": json.dumps(_synthetic_catalog()).encode()}
+    plugin = _load_with_contracts(tmp_path, files, _contracts_descriptor(files))
+    try:
+        assert plugin._dataset is None
+    finally:
+        plugin.plugin_close()
