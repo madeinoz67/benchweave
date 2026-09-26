@@ -69,3 +69,54 @@ Merge-base wheel (one served version per standard, 6 lock rows):
 477,244 bytes. The post-slice wheel (9 served versions across 6 standards)
 delta is re-measured from a wheel built the same way and committed with the
 mechanism.
+
+## Post-slice results (same build path, SDK commit `7d580e1`, 0.3.1)
+
+- **A1 post-run**: 26/26 (junit: 26 collected, 0 failures, 0 errors) with
+  the network blocked, the built wheel installed into a clean venv over the
+  checkout pin, the plugin installed from the same unmodified archive.
+- **Anti-gaming arm** (descriptor pin flipped to the yanked 0.2.1 in a
+  copy): 26/26, and `benchweave-sdk check` prints the yank warning naming
+  both the pin and the move-to 0.2.2.
+- **Wheel**: `benchweave_sdk-0.3.1-py3-none-any.whl` = 624,791 bytes
+  (sha256 `ffd6d40e...551719`) — **+147,547 bytes (+144.1 KiB, +30.9%)**
+  over the 477,244-byte baseline. Uncompressed file-byte sums of the five
+  newly carried version directories: otdp/0.2.0 475,076 + otdp/0.2.1
+  490,955 + registry/0.1.0 29,904 + execution/0.1.0 67,376 +
+  plugin-ui-preview/0.1.0 7,437 = 1,070,748 bytes; `du -sk` of the four
+  non-yanked additions totals 664 KB (the design's "≈1,604 KB" figure
+  counted otdp/0.2.1's du — 688 KB — which the corrected Q10 ruling carries
+  as yanked-marked, and pre-dated the F1 exclusion of plugin-ui 0.1.1; see
+  the deviations below).
+
+## Design-record deviations found during the build (evidence in the tests)
+
+1. **"9 served versions" is an arithmetic slip.** The design §3.2's own
+   per-id enumeration (otdp {0.2.0, 0.2.2}, registry {0.1.0, 0.1.1},
+   execution {0.1.0, 0.2.0}, interface {0.1.0}, plugin-ui {0.2.0},
+   plugin-ui-preview {0.1.0, 0.1.1}) sums to 10. The per-id sets are the
+   load-bearing rules; the total follows (pinned in
+   `tests/standards/test_dependency_policy.py`).
+2. **The CARRIED set, not the served set, rides the export/lock/wheel.** The
+   design's §3.2 "one entry per SERVED (id, version)" (served = ¬yanked)
+   contradicts its own wheel-payload enumeration (which includes
+   otdp/0.2.1), the Q10 ruling (explicit pins to a yanked version stay
+   conforming — they need the yanked version's bytes offline), and the A1
+   anti-gaming arm (a 0.2.1-pinned suite, green). Resolution: the bundle,
+   lock and wheel carry retained ∧ in-range (yanked included, marked
+   `"yanked": true`); the served set (¬yanked) is re-derived by every
+   consumer from the markers plus the mirrored policy block. Pinned in
+   `test_bundle_carries_one_entry_per_carried_version`.
+3. **The §3.1 cross-check "a yanked or retired entry naming a version with
+   no retained directory refuses" is self-contradictory as written**: every
+   retired identifier by construction has no retained directory (they are
+   the pre-reset enumeration), so the literal rule refuses the seed policy
+   block itself. Resolution: yanked entries must name retained in-range
+   versions (`policy_entry_unresolved:`); retired entries must name NO
+   retained directory and never the active version
+   (`policy_retired_active:` / `policy_status_conflict:`). Pinned in
+   `test_retired_entry_naming_a_retained_version_refuses`.
+4. **§3.2's payload figure and slice-1's scope label name `standards_sync
+   _sync_tree`** — no such symbol exists at the merge base (the writer is
+   `_write_vendored` + `sync`); names only, the cited mechanisms were
+   extended as designed.
