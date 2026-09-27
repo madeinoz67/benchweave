@@ -85,16 +85,22 @@ itself is mechanical/CAD, tracked outside this repo.
 
 ## Contribute ADC plugin upstream
 
-Logged 2026-09-14 · **deferred** — user returns to this **Friday 2026-09-18**.
+Logged 2026-09-14 · **updated 2026-09-27** — SDK adaptation **done** (PR #4 merged); coordinate shape/scope with madeinoz67 on 2026-09-28 before the PR.
 
 PR the ADC plugin (and optionally the web gateway + firmware) back to the parent
-repo `madeinoz67/benchweave`. The plugin almost certainly needs reworking to fit
-the upstream plugin SDK before it can be accepted.
+repo `madeinoz67/benchweave`. The SDK rework that blocked this is landed: the
+plugin is OTDP 0.2.2 and its adapter matches the current SDK (0.3.1) interfaces.
 
 - Draft feature request is committed at `docs/feature-request-measurement-profiles.md`.
-- Branch off `upstream/main` — never fork `main`, which carries ~46 commits of
-  divergence.
-- First step: open an issue to confirm shape and scope before doing SDK-adaptation work.
+- Remaining before the PR: relayout `plugins/adc_6ch_12bit/` into upstream's
+  self-contained `plugins/<vendor>/<device>/` package shape, bump `benchweave-sdk`
+  to 0.3.1 and re-verify the descriptor validates, and scope the PR to plugin +
+  `tests/adc/` only (drop the web gateway, `host.py`, firmware).
+- Upstream now implements capture/streaming host services (Issue #43 completed
+  2026-09-24), so the adapter no longer depends on the fork's host.
+- Branch off `upstream/main` — never fork `main`, which now carries ~152 commits
+  of divergence (upstream is ~1024 ahead).
+- First step: settle shape and scope with madeinoz67, then branch and port.
 
 ## Webcam MCP service
 
