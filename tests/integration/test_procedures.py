@@ -2506,8 +2506,11 @@ def test_start_run_full_pass_over_pristine_fixture(tmp_path: Path) -> None:
     assert [int(event["sequence"]) for event in events] == list(
         range(1, len(events) + 1)
     )
+    # devices_pinned: the VR-46 run-evidence record (issue #217) the
+    # coordinator appends before the body's eight kinds.
     assert {event["kind"] for event in events} == {
-        "invoke", "read", "write", "delay", "sample", "assert", "if", "repeat"
+        "devices_pinned",
+        "invoke", "read", "write", "delay", "sample", "assert", "if", "repeat",
     }
 
     assert store.get_active_lease("sim-bench") is None  # the lease was released

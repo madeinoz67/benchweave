@@ -116,6 +116,22 @@ def terminal_outcome(body_outcome: str, safe_state: str) -> str:
     return _OUTCOME_BY_BODY.get(body_outcome, body_outcome)
 
 
+def _pin_evidence(pin: Any) -> dict[str, Any]:
+    """One device's pin facts as run-event evidence (VR-46): the validated
+    version and its conformance class always; the yank deprecation note and
+    the recorded operator acknowledgement only when they apply — a
+    conforming pin claims nothing it was not."""
+    view: dict[str, Any] = {
+        "otdp_version": pin.otdp_version,
+        "conformance": pin.conformance,
+    }
+    if pin.deprecated:
+        view["deprecation"] = pin.note
+    if pin.acknowledgement is not None:
+        view["acknowledgement"] = pin.acknowledgement
+    return view
+
+
 def _record_validator(contracts: Path = _CONTRACTS) -> Any:
     key = contracts.resolve()
     validator = _RUN_RECORD_VALIDATORS.get(key)
@@ -663,6 +679,24 @@ class RunCoordinator:
                     run_id, binding=self._binding_pin(), principal_id=principal_id,
                     now=acceptance_iso,
                 )
+            # VR-46 (issue #217): the run-evidence surface of the per-device
+            # pins. The terminal run-record document is schema-frozen (closed
+            # evidence refs — an interface motion this slice does not make),
+            # so each device's validated version and conformance class land
+            # as the FIRST record on the run's own evidence stream — durable
+            # before the body executes, and digest-covered by the terminal
+            # record's events:{run_id} ref. The deprecation warning and the
+            # recorded acknowledgement ride the same event when they apply.
+            self._store.append_event(
+                f"run:{run_id}",
+                {
+                    "kind": "devices_pinned",
+                    "devices": {
+                        device_id: _pin_evidence(pin)
+                        for device_id, pin in sorted(self._docs.pins.items())
+                    },
+                },
+            )
         except BaseException:
             release(self._store, reservation, self._wall.now_iso())
             raise

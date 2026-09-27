@@ -1409,9 +1409,12 @@ def _leg_stale_sample(
         binding_ref=ref,
         expected_generation=generation,
     )
+    # devices_pinned (VR-46, issue #217) carries no occurrence — the walk
+    # keys step events only.
     by_step = {
         str(event["occurrence"][1]): event
         for event in app.store.read_events(f"run:{record.run_id}")
+        if "occurrence" in event
     }
     assert by_step["voltage"]["status"] == "error"
     assert by_step["voltage"]["error_code"] == "INVALID_SAMPLE"
@@ -1444,9 +1447,11 @@ def _leg_trip(
         binding_ref=ref,
         expected_generation=generation,
     )
+    # devices_pinned (VR-46, issue #217) carries no occurrence.
     by_step = {
         str(event["occurrence"][1]): event
         for event in app.store.read_events(f"run:{record.run_id}")
+        if "occurrence" in event
     }
     assert by_step["enable"]["status"] == "error"
     assert by_step["enable"]["error_code"] == "DEVICE_REJECTED"
