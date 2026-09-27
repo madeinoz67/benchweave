@@ -407,6 +407,8 @@ touches expensive.
 | D4 | The RED multiplexing control (disabled → X2–X4 return to dispatch-duration class; enabled → cadence class) | #159 §6 RED-control clause | The host existing (D1) |
 | D5 | The decision evaluation itself — running `classify` against commissioned `G1/G2/P/TB` | #159 §6 + the #172 issue | First commissioned bench supplying the bounds (the #159 §3 row-2 completion trigger) |
 | D6 | Classifier promotion out of `tests/` (e.g. a reporting surface) | Follow-on to this record, if ever wanted | An operator-facing row-1 report being commissioned |
+| D7 | Retry-class widening to TIMEOUT-flavor poll poison (host starvation that flake-reds a trial instead of retrying — demonstrated by the 2026-09-27 mechanism critique's live probe; disclosed as a residual in `_poll_found_dead_session`'s docstring) | #159 row-1 trail + this record | The owner calling the row (fold it), or the first commissioned-bench run where a starved host flakes the drain assert |
+| D8 | Fractional-age truncation pin (wall-derived ages truncate up to 1 ms before the `max_age_ms` boundary; the −1/0/+1 pin holds only for integral ages) | This record | The owner calling the row (fold it), or first evidence the retry classification hinges on fractional wall-derived ages |
 
 ## 5. Measurable proof and the pre-committed acceptance rule (instrument-level)
 
