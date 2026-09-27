@@ -29,6 +29,10 @@ lock stays the authority); none of these are digest-pinned, so they move no
 corpus rows and need no repin (issue #158).
 The lock's `sdk` field names the pinned SDK's own version (issue #187 fork
 (a)), and `benchweave.standards check` anchors it to the pinned pyproject.
+The `dependency_policy` block (G-3 below; issue #215, parent #203) is governance
+data in this same family: a top-level block in `standards-manifest.json`,
+read by its own fail-closed loader, moving no corpus rows and needing no
+repin — the `sdk_compatibility` precedent.
 
 ## Change classes and their bumps
 
@@ -139,6 +143,15 @@ pinned at a
 `-dev` version would have to churn its version per edit or carve an exemption
 into the same-version refusal — neither is sanctioned.
 
+> **G-1 (recorded supersession, 2026-09-26, issue #203; supersedes the
+> paragraph above per the dev-pin ruling VR-47.3).** "The SDK never consumes
+> `-dev` bytes" is replaced by: consumers may pin a dev head under three
+> conditions — explicit per-plugin opt-in in the plugin's constraints; the
+> lock row records content identity (git sha plus per-file digests); every
+> coupled guard keeps its force (one head per standard, the window promise,
+> wheel exclusion, promotion deletes dev bytes). Immutability still starts
+> at release; a dev PIN is immutable by content, not by label.
+
 The head is train-shared state: one head per standard, carried on the train's
 working branch, owned by no author, named for the target version — no author
 suffix, because authorship already lives in git history and PR review.
@@ -235,6 +248,59 @@ humans decide exactly the timing, batching and exception calls, and those
 decisions live in reviewable records. Nothing here vests authority in an
 agent: the governor lane reviews, it does not rule.
 
+**G-3 (dependency policy, 2026-09-26, issue #215, parent #203):** the
+`dependency_policy` block is governance data beside `sdk_compatibility`; range
+changes are coordinator decisions requiring a linked ruling reference; yank and
+retirement are recorded statuses with the 0.2.1 yank and the
+`ea70c6a5^`-enumerated retired identifiers as the founding entries (the
+enumeration source is the pre-reset parent tree, per obligation 19's
+phrasing — `ea70c6a5` itself names no retired identifiers). The
+CARRIED set (retained ∧ in-range, yanked versions riding marked) is mirrored
+verbatim into the exported bundle and the SDK lock; every consumer re-derives
+the served set (¬yanked) from the markers plus the mirrored block — a carried
+yanked row is never called served (the #215 fold row 8 correction). Drift
+between the three surfaces is refused by name (`served_set_drift:`,
+`policy_mirror_drift:`).
+
+## Recorded ruling — VR-47 points 1 and 2 (R-1/R-2, 2026-09-26, issue #203)
+
+Points 1 and 2 are mutually load-bearing — the reopen (point 1) exists to make
+the CON-10 amendment (point 2) buildable — so they are recorded as ONE ruling
+(append-with-evidence; the original assertion texts above are never edited).
+Framed as fresh supersession on new evidence under the recorded-ruling rule;
+the executed precedent for revisiting a ratified figure by owner ruling is the
+bump-floor history above.
+
+> **R-1 (reopen, VR-47.1).** Issue #97's withdrawal of "range pins, a resolver,
+> lock formats, a mutable `-dev` stage, forward-compat tolerance" is superseded
+> in part. REOPENED: range pins, the resolver, lock formats, and multi-version
+> serving of retained versions — the out-of-tree breakage axis (a plugin
+> outside the tree cannot move in-arc with a bump) post-dates the #97 closure
+> and is new evidence. The `-dev` record's "Not in scope, ever" (issue #97, the
+> dev-stage row) is superseded for the serving/pinning question only, on the
+> same evidence, joining the earlier sanctioned reopen of the mutable `-dev`
+> stage (#168/#169). NOT reopened: cross-version tolerance (PR #59's rejection
+> stands — serving retained versions EXACTLY is the only tolerance; ranges
+> never fuzzy-match) and external standards indexes (the PRD's non-goal,
+> unchanged).
+>
+> **R-2 (CON-10 amendment, VR-47.2).** CON-10 keeps what it protects — one
+> shared authority (the retained corpus and its manifests), one descriptor
+> dialect, one projection — and drops what it never needed: the singularity of
+> the served pointer. A descriptor validates against exactly one OTDP version
+> — its own pin — resolved from the retained corpus, digest-verified. PR #174's
+> rejection of version-matched schema resolution is superseded on both its
+> stated grounds together: multi-version serving answers the single-version-tree
+> ground (the manifest, export, sync and wheel now carry every served version),
+> and wheel-bundling of the served set answers the "structurally unbuildable"
+> SDK leg (the SDK validates offline against the pinned version's bundled
+> bytes; PRD VR-32, owner Q8). The one-entry-per-id manifest shape is
+> undisturbed; the equivalence census extends across the served set. CON-1's
+> #63 amendment and CON-8 each gain the dated amendments in
+> `docs/internal/invariants.md`. Nothing in PR #59 moves (VR-47.5):
+> per-plugin exactness relocates one global gate to N per-pin gates;
+> out-of-range stays non-conforming, unretained stays refused.
+
 ## Retention
 
 Superseded versions stay digest-frozen forever. A version is retired by
@@ -291,3 +357,8 @@ importable Python contract; until then the declaration plus the three-way
 agreement test (`tests/sdk/test_adapter_agreement.py`) is the honest boundary —
 it pins names, arity, keyword-only-ness, coroutine-ness and key/enum sets, not
 semantics.
+
+**G-2 (amendment, 2026-09-26, issue #203):** under multi-version admission the
+adapter API version's authority is the PINNED version's descriptor schema
+`$defs.adapter.properties.api_version` const, not the active's; the identity
+block's active-declared value is unchanged (CON-8).

@@ -32,6 +32,79 @@ def test_export_is_byte_identical_across_runs(tmp_path: Path) -> None:
     assert _tree_digest(first) == _tree_digest(second)
 
 
+def test_bundle_carries_one_entry_per_carried_version(tmp_path: Path) -> None:
+    """Issue #203 slice 1 (design §3.2, as resolved against the Q10 ruling):
+    the bundle gains one entry per CARRIED (id, version) — retained ∧
+    in-range, 11 entries at the seed — with yanked-in-interval versions
+    riding MARKED (an explicit pin to a yanked version stays conforming with
+    a deprecation warning, so its bytes must travel; the design's own
+    wheel-payload enumeration includes otdp/0.2.1). The ACTIVE entry keeps
+    its marker so one-version consumers still get it structurally, and the
+    dependency_policy block travels verbatim (PKG-1)."""
+    manifest_path = export_bundle(ROOT, tmp_path)
+    bundle = json.loads(manifest_path.read_bytes())
+    served = {
+        (str(row["id"]), str(row["version"])): row for row in bundle["standards"]
+    }
+    assert set(served) == {
+        ("otdp", "0.2.0"),
+        ("otdp", "0.2.1"),
+        ("otdp", "0.2.2"),
+        ("registry", "0.1.0"),
+        ("registry", "0.1.1"),
+        ("execution", "0.1.0"),
+        ("execution", "0.2.0"),
+        ("interface", "0.1.0"),
+        ("plugin-ui", "0.2.0"),
+        ("plugin-ui-preview", "0.1.0"),
+        ("plugin-ui-preview", "0.1.1"),
+    }
+    assert served[("otdp", "0.2.1")]["yanked"] is True
+    assert served[("otdp", "0.2.0")]["yanked"] is False
+    assert served[("otdp", "0.2.2")]["yanked"] is False
+    active_rows = {
+        (str(row["id"]), str(row["version"]))
+        for row in bundle["standards"]
+        if row.get("active")
+    }
+    manifest = json.loads((ROOT / "standards/standards-manifest.json").read_bytes())
+    assert active_rows == {
+        (str(entry["id"]), str(entry["version"])) for entry in manifest["standards"]
+    }
+    manifest_statuses = {
+        (str(entry["id"]), str(entry["version"])): str(entry["status"])
+        for entry in manifest["standards"]
+    }
+    for row in bundle["standards"]:
+        key = (str(row["id"]), str(row["version"]))
+        assert isinstance(row["active"], bool)
+        if row["active"]:
+            assert row["status"] == manifest_statuses[key]
+        else:
+            assert row["status"] == "retained"
+    # The policy block rides verbatim.
+    assert bundle["dependency_policy"] == manifest["dependency_policy"]
+
+
+def test_bundle_served_rows_match_corpus_digests(tmp_path: Path) -> None:
+    """Every served row's version-directory files are the corpus-pinned bytes
+    of that version (the plugin-ui parity validator — live source, not a
+    corpus row — is digest-checked against the file itself)."""
+    import hashlib
+
+    manifest_path = export_bundle(ROOT, tmp_path)
+    bundle = json.loads(manifest_path.read_bytes())
+    corpus = json.loads((ROOT / "standards/corpus-manifest.json").read_bytes())
+    pins = {str(row["path"]): str(row["sha256"]) for row in corpus["files"]}
+    for row in bundle["standards"]:
+        for file in row["files"]:
+            path = file["path"]
+            digest = hashlib.sha256((tmp_path / "files" / path).read_bytes()).hexdigest()
+            assert digest == file["sha256"], path
+            if path in pins:  # version-directory files are corpus-pinned
+                assert pins[path] == file["sha256"], path
+
+
 def _tree_digest(root: Path) -> dict[str, str]:
     return {
         str(p.relative_to(root)): p.read_bytes().hex()[:16]
@@ -41,13 +114,33 @@ def _tree_digest(root: Path) -> dict[str, str]:
 
 
 def test_bundle_covers_every_normative_file(tmp_path: Path) -> None:
+    """Multi-version serving (issue #203 slice 1) widens the bundle: every
+    ACTIVE normative file is still covered (now as a subset — the served set
+    adds the other served versions' corpus rows), and nothing outside the
+    served set's corpus rows plus the parity validator ships."""
     manifest_path = export_bundle(ROOT, tmp_path)
     bundle = json.loads(manifest_path.read_bytes())
     listed = {f["path"] for s in bundle["standards"] for f in s["files"]}
     expected: set[str] = set()
     for entry in load_manifest(ROOT).standards:
         expected |= _bundle_paths(entry)
-    assert listed == expected
+    assert expected <= listed
+    corpus = json.loads((ROOT / "standards/corpus-manifest.json").read_bytes())
+    served = {
+        (str(row["id"]), str(row["version"])) for row in bundle["standards"]
+    }
+    from benchweave.standards.manifest import carried_versions, load_dependency_policy
+
+    policy = load_dependency_policy(ROOT)
+    for entry in load_manifest(ROOT).standards:
+        for version in carried_versions(policy, ROOT, entry.id):
+            assert (entry.id, version) in served
+    corpus_paths = {
+        str(row["path"])
+        for row in corpus["files"]
+        if (str(row["path"]).split("/")[0], str(row["path"]).split("/")[1]) in served
+    }
+    assert listed == corpus_paths | {"plugin-ui/contracts.py"}
 
 
 def _bundle_paths(entry: StandardEntry) -> set[str]:
@@ -87,6 +180,14 @@ def test_export_carries_no_dev_head_bytes(tmp_path: Path) -> None:
         "normative": [dev_descriptor],
     }
     document["standards"] = [entry]
+    # A reduced manifest must carry a consistent reduced policy (the export
+    # validates policy rows against the manifest's ids, issue #203 slice 1).
+    document["dependency_policy"] = {
+        "policy_version": 1,
+        "standards": {
+            entry["id"]: {"range": ">=0.1.0,<1.0.0", "yanked": {}, "retired": []}
+        },
+    }
     for relative in (descriptor, dev_descriptor):
         target = root / relative
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -150,6 +251,12 @@ def test_export_refuses_normative_paths_that_collide_in_the_bundle(tmp_path: Pat
         "src/benchweave/presentation/other/contracts.py",
     ]
     document["standards"] = [entry]
+    document["dependency_policy"] = {
+        "policy_version": 1,
+        "standards": {
+            entry["id"]: {"range": ">=0.1.0,<1.0.0", "yanked": {}, "retired": []}
+        },
+    }
     shutil.copy(
         ROOT / "src/benchweave/presentation/contracts.py",
         broken / "src/benchweave/presentation/contracts.py",
@@ -222,3 +329,142 @@ def test_cli_export_writes_the_bundle(tmp_path: Path) -> None:
     )
     assert result.returncode == 0, result.stderr
     assert (tmp_path / "bundle" / "bundle-manifest.json").is_file()
+
+
+def test_export_refuses_a_tampered_carried_version_corpus_row(
+    tmp_path: Path,
+) -> None:
+    """Fold-wave F-B (#215): a parse-valid tamper of a NON-ACTIVE carried
+    version's corpus bytes used to export clean — ``_entry`` recomputes
+    digests from disk, so the bundle row carried the TAMPERED digest as
+    authority while ``corpus-manifest.json`` still pinned the original, and
+    nothing consulted the pin for superseded rows. GOVERNANCE's
+    frozen-superseded promise now has a gate: every carried version's
+    corpus rows are compared against their pins at export/check time and a
+    mismatch refuses ``corpus_pin_mismatch:`` naming the file and the pin.
+    Both control sides stay green on pristine bytes (the A1 arms and
+    ``make check-sdk-standards`` re-proven at close-out)."""
+    root = tmp_path / "repo"
+    shutil.copytree(ROOT / "standards", root / "standards")
+    (root / "src/benchweave/presentation").mkdir(parents=True)
+    shutil.copy(
+        ROOT / "src/benchweave/presentation/contracts.py",
+        root / "src/benchweave/presentation/contracts.py",
+    )
+    target = root / "standards/otdp/0.2.0/otdp-runtime.schema.json"
+    pinned = json.loads((ROOT / "standards/corpus-manifest.json").read_bytes())
+    pin = next(
+        str(row["sha256"])
+        for row in pinned["files"]
+        if row["path"] == "otdp/0.2.0/otdp-runtime.schema.json"
+    )
+    # 'required' -> 'xrequired': parse-valid, digest-different (the executed
+    # falsifier from the review).
+    target.write_bytes(target.read_bytes().replace(b'"required"', b'"xrequired"'))
+    tampered = hashlib.sha256(target.read_bytes()).hexdigest()
+    assert tampered != pin, "the tamper must change the digest"
+    with pytest.raises(StandardsError, match="corpus_pin_mismatch") as refusal:
+        export_bundle(root, tmp_path / "out")
+    message = str(refusal.value)
+    assert "otdp/0.2.0/otdp-runtime.schema.json" in message, "the file is named"
+    assert pin in message, "the corpus pin is named"
+    assert not (tmp_path / "out").exists(), "export must not leave partial output"
+    assert not (tmp_path / "out.staging").exists(), "no staging behind"
+    # The check lane refuses the same tamper through its export (run_check
+    # re-exports before any comparison; the corpus gate fires first).
+    from benchweave.standards.check import run_check
+
+    with pytest.raises(ValueError, match="corpus_pin_mismatch"):
+        run_check(root, sdk_root=tmp_path / "no-such-sdk")
+
+
+def test_cli_export_refuses_the_tamper_fail_closed(tmp_path: Path) -> None:
+    """The CLI lane of F-B: the refusal is styled like the other fail-closed
+    lanes (``standards export error: …``, exit 1) — never a raw traceback —
+    and names the prefix. Before the gate the same invocation exited 0."""
+    import os
+
+    root = tmp_path / "repo"
+    shutil.copytree(ROOT / "standards", root / "standards")
+    (root / "src/benchweave/presentation").mkdir(parents=True)
+    shutil.copy(
+        ROOT / "src/benchweave/presentation/contracts.py",
+        root / "src/benchweave/presentation/contracts.py",
+    )
+    target = root / "standards/otdp/0.2.0/otdp-runtime.schema.json"
+    target.write_bytes(target.read_bytes().replace(b'"required"', b'"xrequired"'))
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "benchweave.standards",
+            "export",
+            "--out",
+            str(tmp_path / "bundle"),
+        ],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**os.environ, "PYTHONPATH": str(ROOT / "src")},
+    )
+    assert result.returncode == 1, (result.returncode, result.stderr)
+    assert "corpus_pin_mismatch" in result.stderr
+    assert "standards export error" in result.stderr
+
+
+def test_two_carried_plugin_ui_versions_dedupe_the_parity_code_row(
+    tmp_path: Path,
+) -> None:
+    """Fold row 24 (#215): the same-source dedupe branch under the narrow
+    plugin-ui range. A synthetic second in-range carried version (0.2.1,
+    bytes copied from 0.2.0) makes BOTH carried rows list the parity code
+    row (``src/benchweave/presentation/contracts.py`` → one bundle path) —
+    a dedupe, not a collision: the export succeeds, each row's file set
+    stays complete across the active transition, and the bundle carries
+    the code row once."""
+    import hashlib
+
+    root = tmp_path / "repo"
+    shutil.copytree(ROOT / "standards", root / "standards")
+    (root / "src/benchweave/presentation").mkdir(parents=True)
+    shutil.copy(
+        ROOT / "src/benchweave/presentation/contracts.py",
+        root / "src/benchweave/presentation/contracts.py",
+    )
+    corpus = json.loads((root / "standards/corpus-manifest.json").read_bytes())
+    template_rows = [
+        row for row in corpus["files"] if row["path"].startswith("plugin-ui/0.2.0/")
+    ]
+    assert template_rows, "the seed corpus carries plugin-ui/0.2.0 rows"
+    for row in template_rows:
+        relative = row["path"].replace("plugin-ui/0.2.0/", "plugin-ui/0.2.1/")
+        source = root / "standards" / row["path"]
+        target = root / "standards" / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, target)
+        corpus["files"].append(
+            {
+                "path": relative,
+                "source": row["source"],
+                "sha256": hashlib.sha256(target.read_bytes()).hexdigest(),
+            }
+        )
+    (root / "standards/corpus-manifest.json").write_text(json.dumps(corpus))
+
+    out = tmp_path / "bundle"
+    export_bundle(root, out)  # dedupe, not a collision: the export succeeds
+
+    document = json.loads((out / "bundle-manifest.json").read_bytes())
+    plugin_rows = {
+        row["version"]: row for row in document["standards"] if row["id"] == "plugin-ui"
+    }
+    assert set(plugin_rows) == {"0.2.0", "0.2.1"}  # both carried versions ride
+    for version, row in plugin_rows.items():
+        assert row["active"] is (version == "0.2.0")
+        paths = {file["path"] for file in row["files"]}
+        assert "plugin-ui/contracts.py" in paths, f"the {version} row's set is complete"
+    code = out / "files/plugin-ui/contracts.py"
+    assert code.is_file() and code.read_bytes() == (
+        root / "src/benchweave/presentation/contracts.py"
+    ).read_bytes()

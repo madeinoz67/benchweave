@@ -49,3 +49,10 @@ jobs:
         run: >-
           uv run --no-project --python 3.13 scripts/sdk_smoke.py
           --out-dir dist/packages
+      - name: Clean-venv ADC conformance control
+        # Issue #203 slice 1, acceptance A1: the out-of-tree ADC plugin at its
+        # pre-restamp commit passes its SDK conformance suite UNMODIFIED
+        # against the wheel built from this checkout's pinned submodule,
+        # network disabled at run time (~1-2 min: one venv, one fetch, two
+        # 26-test runs). The anti-gaming arm rides in the same script.
+        run: uv run --no-project --python 3.13 scripts/adc_conformance_control.py

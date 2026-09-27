@@ -243,14 +243,52 @@ and remain the reviewer's job.
     pointer advance rides a train of its own); loop prose that is
     deliberately gateway-specific does not sync (issue #99's design §6).
 
+19. **The dependency-policy block and the carried set** (issue #215, parent
+    #203 slice 1): `standards/standards-manifest.json`'s `dependency_policy`
+    block is the one committed authority for per-standard ranges, yanks and
+    retired identifiers. If a PR touches it, all four surfaces move together
+    in one arc: the manifest block ↔ the exported bundle
+    (`dependency_policy` rides verbatim; one entry per CARRIED (id, version)
+    — yanked versions ride marked) ↔ the SDK lock's carried rows and mirrored
+    block ↔ the SDK's vendored tree (`make sync-sdk-standards`; land lock +
+    pointer together). Drift refuses by name (`served_set_drift:`,
+    `policy_mirror_drift:` in `benchweave.standards check`); the SDK-side
+    load path carries the discipline inward — every served document is
+    digest-checked against its lock row (`vendored_digest_mismatch:`,
+    issue #215 fix F1); and the gateway-side export/check path compares
+    every carried version's corpus rows against their corpus pins
+    (`corpus_pin_mismatch:`, #215 fold-wave F-B — superseded versions are
+    digest-frozen, and a tampered non-active carried version no longer
+    exports clean). Range changes are coordinator decisions (VR-43) and
+    require a linked ruling reference in the PR body
+    (`policy_change_unruled:` is the drift-check lane's refusal, landing with
+    slice 2's agreement lane). The yanked 0.2.1 and the retired identifiers
+    enumerated from `ea70c6a5^` are the founding entries. A YANKED entry must
+    name a retained in-range version — bytes have to exist for a
+    yanked-but-conforming pin to validate against
+    (`policy_entry_unresolved:`); a RETIRED entry must name NO retained
+    directory and never the active version (`policy_retired_active:` /
+    `policy_status_conflict:`) — retired means "used and dead", so a retired
+    identifier naming no retained directory is the CORRECT seed state, not a
+    refusal (the earlier inversion here is corrected by #215 fold row 10).
+20. **The executable-version-literal ratchet** (issue #203 slice 1, A4):
+    `scripts/standards/count_version_literals.py` is the gate's counter —
+    AST-based, reproducible, baseline committed in the script (12 sites at
+    merge base `403c061`). It runs in `make check-sdk-standards`; the count
+    cannot rise (a planted literal fails CI — proven in the slice record).
+    Removing a literal lowers the count and may re-baseline DOWN by editorial
+    decision recorded in the script; the register (`DECLARED_FILES`) names the
+    D2 exception (plugin-ui corpus-owned code) that slice 7's zero-mode
+    consumes.
+
 ## CI map
 
 | Job | What it catches |
 |---|---|
-| `gates` | submodules recursive; fixture keys materialised from secrets; `ruff check .`; config-driven `mypy` (bare — explicit path args drop `packages/sdk/src` from the build); `pytest -q` (including the adapter agreement test, which pins the SDK↔gateway protocol mirror and the version triplet — see obligation 8); `make check-sdk-standards` (main standards ↔ SDK lock ↔ vendored tree, plus the identity `adapter_api` derivation check) |
+| `gates` | submodules recursive; fixture keys materialised from secrets; `ruff check .`; config-driven `mypy` (bare — explicit path args drop `packages/sdk/src` from the build); `pytest -q` (including the adapter agreement test, which pins the SDK↔gateway protocol mirror and the version triplet — see obligation 8); `make check-sdk-standards` (main standards ↔ SDK lock ↔ vendored tree, plus the identity `adapter_api` derivation check, plus the served-set/policy-mirror lanes and the executable-version-literal ratchet — issue #203 slice 1) |
 | `ui` | `npm ci` + typecheck + lint + unit tests + Storybook build; the renderer freshness gate (see obligation 7); `npm audit --audit-level=high` |
 | `systemd` | unit-template render + `systemd-analyze verify` with rehearsed deployment preconditions (see obligation 9) |
-| `package` (OS matrix: ubuntu + macos) | installed-wheel/SDK smoke against the built packages; `make check-sdk-standards`; and the derived-variable census selection (`tests/unit/test_derivation.py` + `tests/faults/test_derivation_faults.py`) — the lane where cross-platform binary64 agreement is actually measured (no Windows lane; the design record's risk 4 states the coverage) |
+| `package` (OS matrix: ubuntu + macos) | installed-wheel/SDK smoke against the built packages; `make check-sdk-standards`; the clean-venv ADC conformance control (issue #203 slice 1: the out-of-tree ADC plugin at its pre-restamp commit, `git archive`-installed, the built SDK wheel forced over the checkout pin, network blocked — 26/26 or red); and the derived-variable census selection (`tests/unit/test_derivation.py` + `tests/faults/test_derivation_faults.py`) — the lane where cross-platform binary64 agreement is actually measured (no Windows lane; the design record's risk 4 states the coverage) |
 
 What CI does **not** catch: every numbered obligation above that names a doc, a guide, or
 a cross-repo push — those are the reviewer's, which is why G5 exists in the rubric.

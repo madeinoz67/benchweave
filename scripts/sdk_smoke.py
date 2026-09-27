@@ -258,8 +258,14 @@ def build_and_check(out_dir: Path) -> None:
         "checkout": str(checkout),
         "gateway_version": gateway_metadata["project"]["version"],
         "sdk_version": sdk_metadata["project"]["version"],
+        # Multi-version serving (#203 slice 1): the lock carries several
+        # otdp rows; the public constant tracks the ACTIVE one.
         "otdp_version": str(
-            next(standard["version"] for standard in standards if standard["id"] == "otdp")
+            next(
+                standard["version"]
+                for standard in standards
+                if standard["id"] == "otdp" and standard.get("active")
+            )
         ),
         "presentation_sha256": presentation_sha256,
         "standard_ids": sorted(str(standard["id"]) for standard in standards),

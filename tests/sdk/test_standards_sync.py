@@ -6,6 +6,7 @@ import hashlib
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -88,7 +89,14 @@ def test_versioned_change_reports_changed(tmp_path: Path) -> None:
     bundle = _export(tmp_path)
     sdk = _synced_sdk(tmp_path, bundle)
     document = json.loads((bundle / "bundle-manifest.json").read_bytes())
-    target = next(s for s in document["standards"] if s["id"] == "otdp")
+    # Multi-version serving: the version-increment arm is the ACTIVE row's
+    # succession; mutating a non-active carried row is add-plus-remove.
+    from benchweave_sdk.served import active_version
+
+    active = active_version("otdp")
+    target = next(
+        s for s in document["standards"] if s["id"] == "otdp" and s["version"] == active
+    )
     asset = bundle / "files" / target["files"][0]["path"]
     asset.write_bytes(asset.read_bytes() + b"\n")
     target["files"][0]["sha256"] = hashlib.sha256(asset.read_bytes()).hexdigest()
@@ -97,7 +105,7 @@ def test_versioned_change_reports_changed(tmp_path: Path) -> None:
         (json.dumps(document, sort_keys=True, separators=(",", ":")) + "\n").encode()
     )
     report = sync(bundle, sdk)
-    assert report.changed == ("otdp",)
+    assert report.changed == ("otdp@0.3.1",)
 
 
 def test_status_only_deprecation_is_reported(tmp_path: Path) -> None:
@@ -111,7 +119,8 @@ def test_status_only_deprecation_is_reported(tmp_path: Path) -> None:
         (json.dumps(document, sort_keys=True, separators=(",", ":")) + "\n").encode()
     )
     report = sync(bundle, sdk)
-    assert report.deprecated == ("otdp",)
+    # The label names the row the status moved on (multi-version labels).
+    assert report.deprecated == ("otdp@0.2.0",)
     assert report.changed == ()
 
 
@@ -247,3 +256,175 @@ def test_check_command_without_bundle_verifies_real_committed_tree() -> None:
     from benchweave_sdk import cli as sdk_cli
 
     assert sdk_cli.main(["sync-standards", "--check"]) == 0
+
+
+# --- #215 fix wave: the bump-class gate is pinned here too; narrowing reports. ---
+
+
+def _manifest(bundle: Path) -> dict[str, Any]:
+    document: dict[str, Any] = json.loads((bundle / "bundle-manifest.json").read_bytes())
+    return document
+
+
+def _rewrite_manifest(bundle: Path, document: dict[str, Any]) -> None:
+    (bundle / "bundle-manifest.json").write_bytes(
+        (json.dumps(document, sort_keys=True, separators=(",", ":")) + "\n").encode()
+    )
+
+
+def _versioned_sdk(tmp_path: Path, version: str) -> Path:
+    """A sync target whose pyproject names an SDK version (the gate's anchor)."""
+    sdk = tmp_path / "sdk"
+    (sdk / "src/benchweave_sdk").mkdir(parents=True)
+    (sdk / "src/benchweave_sdk/__init__.py").write_text("")
+    (sdk / "pyproject.toml").write_text(
+        f'[project]\nname = "benchweave-sdk"\nversion = "{version}"\n', encoding="utf-8"
+    )
+    return sdk
+
+
+def test_carried_set_change_without_an_sdk_bump_is_refused(tmp_path: Path) -> None:
+    """F4 (#215), gateway twin: the two-sided gate's SDK leg is exercised
+    through the submodule import — a carried-set change inside an unchanged
+    declared range with an unmoved SDK version refuses ``sdk_bump_class_invalid:``.
+    Neutralizing the gate in the SDK tree turns this test red (the mutation
+    proof is recorded in the fix-wave record)."""
+    import shutil
+
+    bundle = _export(tmp_path)  # the real export carries dependency_policy + markers
+    sdk = _versioned_sdk(tmp_path, "0.3.1")
+    sync(bundle, sdk)  # anchors compatibility.sdk = 0.3.1 in the prior lock
+    document = _manifest(bundle)
+    template = next(
+        s
+        for s in document["standards"]
+        if s["id"] == "otdp" and s["version"] == "0.2.2"
+    )
+    new_row = {**template, "version": "0.2.9", "active": False}
+    new_row["files"] = [
+        {
+            "path": file["path"].replace("otdp/0.2.2/", "otdp/0.2.9/", 1),
+            "sha256": file["sha256"],
+        }
+        for file in template["files"]
+    ]
+    for file in template["files"]:
+        source = bundle / "files" / file["path"]
+        target = bundle / "files" / file["path"].replace("otdp/0.2.2/", "otdp/0.2.9/", 1)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, target)
+    document["standards"].append(new_row)
+    _rewrite_manifest(bundle, document)
+    with pytest.raises(ValueError, match="^sdk_bump_class_invalid: "):
+        sync(bundle, sdk)
+
+
+def test_range_change_with_a_patch_bump_is_refused(tmp_path: Path) -> None:
+    """F4's second arm, gateway twin: a declared-range change is a MINOR-class
+    SDK bump at least; a PATCH motion refuses."""
+    bundle = _export(tmp_path)
+    sdk = _versioned_sdk(tmp_path, "0.3.1")
+    sync(bundle, sdk)
+    document = _manifest(bundle)
+    document["dependency_policy"]["standards"]["otdp"]["range"] = ">=0.2.1,<0.3.0"
+    _rewrite_manifest(bundle, document)
+    (sdk / "pyproject.toml").write_text(
+        '[project]\nname = "benchweave-sdk"\nversion = "0.3.2"\n', encoding="utf-8"
+    )
+    with pytest.raises(ValueError, match="^sdk_bump_class_invalid: "):
+        sync(bundle, sdk)
+
+
+def test_range_narrowing_that_drops_a_carried_version_reports_it_removed(
+    tmp_path: Path,
+) -> None:
+    """F5 (#215), gateway twin: a range-narrowing train must REPORT the
+    dropped row under ``removed()`` — the active-succession branch used to
+    consume the one remaining same-id row silently."""
+    import shutil
+
+    bundle = _export(tmp_path)
+    sdk = _synced_sdk(tmp_path, bundle)  # the real export marks active/yanked + policy
+    document = _manifest(bundle)
+    document["dependency_policy"]["standards"]["otdp"]["range"] = ">=0.2.1,<0.3.0"
+    rows = [r for r in document["standards"] if r["id"] != "otdp"]
+    active_row = next(
+        r
+        for r in document["standards"]
+        if r["id"] == "otdp" and r.get("active")
+    )
+    del active_row["active"]
+    new_row = {**active_row, "version": "0.2.3", "active": True}
+    new_row["files"] = [
+        {
+            "path": file["path"].replace("otdp/0.2.2/", "otdp/0.2.3/", 1),
+            "sha256": file["sha256"],
+        }
+        for file in active_row["files"]
+    ]
+    for file in active_row["files"]:
+        source = bundle / "files" / file["path"]
+        target = bundle / "files" / file["path"].replace("otdp/0.2.2/", "otdp/0.2.3/", 1)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, target)
+    otdp_rows = [
+        r
+        for r in document["standards"]
+        if r["id"] == "otdp" and r["version"] != "0.2.0"
+    ]
+    document["standards"] = rows + otdp_rows + [new_row]
+    _rewrite_manifest(bundle, document)
+    report = sync(bundle, sdk)
+    assert report.removed == ("otdp@0.2.0",)
+    assert report.changed == ()
+    assert report.added == ("otdp@0.2.3",)
+    assert sync(None, sdk, check_only=True) == SyncReport((), (), (), ())
+
+
+# --- #215 late Forge fold 2, gateway twins: the active re-point gate + report. ---
+
+
+def test_active_repoint_without_an_sdk_bump_is_refused(tmp_path: Path) -> None:
+    """Late fold 2 (#215), gateway twin: an active re-point inside an
+    unchanged carried set with an unmoved SDK version refuses
+    ``sdk_bump_class_invalid:`` naming both ends — the derived constants
+    (OTDP_VERSION/ADAPTER_API_VERSION) move with the active row, so one SDK
+    version covering both states is the #166 defect class."""
+    bundle = _export(tmp_path)  # the real export marks otdp 0.2.2 active
+    sdk = _versioned_sdk(tmp_path, "0.3.1")
+    sync(bundle, sdk)
+    document = _manifest(bundle)
+    for row in document["standards"]:
+        if row["id"] == "otdp":
+            if row["version"] == "0.2.2":
+                row["active"] = False
+            if row["version"] == "0.2.0":
+                row["active"] = True  # the re-point: rollback inside the range
+    _rewrite_manifest(bundle, document)
+    with pytest.raises(ValueError, match="^sdk_bump_class_invalid: ") as refusal:
+        sync(bundle, sdk)
+    message = str(refusal.value)
+    assert "0.2.2" in message and "0.2.0" in message, "the refusal names both ends"
+
+
+def test_active_repoint_is_named_in_the_report(tmp_path: Path) -> None:
+    """Late fold 2's report half, gateway twin: a bumped SDK version admits
+    the re-point and the report names it (``active_changes``)."""
+    bundle = _export(tmp_path)
+    sdk = _versioned_sdk(tmp_path, "0.3.1")
+    sync(bundle, sdk)
+    document = _manifest(bundle)
+    for row in document["standards"]:
+        if row["id"] == "otdp":
+            if row["version"] == "0.2.2":
+                row["active"] = False
+            if row["version"] == "0.2.0":
+                row["active"] = True
+    _rewrite_manifest(bundle, document)
+    (sdk / "pyproject.toml").write_text(
+        '[project]\nname = "benchweave-sdk"\nversion = "0.3.2"\n', encoding="utf-8"
+    )
+    report = sync(bundle, sdk)
+    assert report.active_changes == ("otdp@0.2.2->0.2.0",)
+    assert report.added == () and report.removed == () and report.changed == ()
+    assert sync(None, sdk, check_only=True) == SyncReport((), (), (), ())
