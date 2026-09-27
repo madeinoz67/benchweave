@@ -35,6 +35,7 @@ Design record:
 from __future__ import annotations
 
 import asyncio
+import copy
 import hashlib
 import json
 import statistics
@@ -43,7 +44,7 @@ import time
 from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from _continuity_rule import Arm, TrialRecord, classify, emit_trial_log, write_trial_log
@@ -65,7 +66,9 @@ from benchweave.host.otdp_bridge import OTDPBridge, PollOutcome
 from benchweave.host.plugin import DevicePlugin, SimulationInfo
 from benchweave.host.services import QuotaLimits
 from benchweave.host.types import (
+    DispatchState,
     ErrorCode,
+    OperationError,
     OperationRequest,
     OperationResult,
     OperationStatus,
@@ -2162,3 +2165,339 @@ def test_infrastructure_marker_exhausts_at_two_retries(
         run_trial(tmp_path, arm="control", device_class="unbuffered", trial_index=1)
     assert len(calls) == 3  # the attempt plus at most two retries
     assert isinstance(raised.value, AssertionError)
+
+
+# --- F1 fold: block-ness is the monitor's latch, never cause-adjacency (#159) ------
+
+
+_FRESHNESS_REASON = "rig-b-level-bounds: signal_invalid: sig-rig-b-level"
+_ESCAPE_REASON = (
+    "rig-b-level-bounds: interval_escape: [4.95, 5.05] escapes [-0.1, 4.5]"
+)
+
+
+class _ClassifierMonitor:
+    """The monitor state ``_dispatch_failure_is_infrastructure`` reads — the
+    direct-classifier table's stand-in (the F1 refute lanes' coverage
+    finding: the classifier family had zero direct tests, which is how the
+    cause-adjacency hole landed unwitnessed)."""
+
+    def __init__(
+        self, *, cause: str | None, cause_reasons: list[str], blocked: bool
+    ) -> None:
+        self.cause = cause
+        self.cause_reasons = cause_reasons
+        self.blocked = blocked
+
+
+class _ClassifierBridge:
+    def __init__(self, *, failed: bool) -> None:
+        self._failed = failed
+
+
+class _ClassifierRig:
+    def __init__(
+        self, *, monitor: _ClassifierMonitor, bridge: _ClassifierBridge
+    ) -> None:
+        self.monitor = monitor
+        self.bridge_a = bridge
+
+
+def _classifier_result(
+    code: ErrorCode, state: DispatchState, message: str
+) -> OperationResult:
+    return OperationResult.failure(
+        "op-classifier",
+        OperationVerb.WRITE,
+        code=code,
+        message=message,
+        dispatch_state=state,
+    )
+
+
+def _device_rejection_envelope(request: dict[str, Any]) -> dict[str, Any]:
+    """A plain device-side OTDP refusal — the standard "device said no"
+    posture (``DEVICE_REJECTED``, nothing sent)."""
+    return {
+        "operation_id": request["operation_id"],
+        "verb": request["verb"],
+        "status": "error",
+        "error": {
+            "code": "DEVICE_REJECTED",
+            "message": "device refused: parameter outside permitted range",
+            "dispatch_state": "not_dispatched",
+        },
+    }
+
+
+@pytest.mark.parametrize(
+    ("result", "monitor", "bridge", "expected"),
+    [
+        pytest.param(
+            _classifier_result(
+                ErrorCode.DEVICE_REJECTED,
+                DispatchState.NOT_DISPATCHED,
+                f"protection trip: {_FRESHNESS_REASON}",
+            ),
+            _ClassifierMonitor(
+                cause="tripped", cause_reasons=[_FRESHNESS_REASON], blocked=True
+            ),
+            _ClassifierBridge(failed=False),
+            True,
+            id="genuine-monitor-freshness-block-retries",
+        ),
+        pytest.param(
+            _classifier_result(
+                ErrorCode.INTERNAL_ERROR,
+                DispatchState.NOT_DISPATCHED,
+                "A fresh opened bridge is required",
+            ),
+            _ClassifierMonitor(cause=None, cause_reasons=[], blocked=False),
+            _ClassifierBridge(failed=True),
+            True,
+            id="dead-session-door-retries",
+        ),
+        pytest.param(
+            _classifier_result(
+                ErrorCode.DEVICE_REJECTED,
+                DispatchState.NOT_DISPATCHED,
+                "parameter outside permitted range",
+            ),
+            _ClassifierMonitor(
+                cause="tripped", cause_reasons=[_FRESHNESS_REASON], blocked=False
+            ),
+            _ClassifierBridge(failed=False),
+            False,
+            id="f1-write-leg-device-rejection-with-latched-cause-never-retries",
+        ),
+        pytest.param(
+            _classifier_result(
+                ErrorCode.DEVICE_REJECTED,
+                DispatchState.NOT_DISPATCHED,
+                "device refused: parameter not readable in current state",
+            ),
+            _ClassifierMonitor(
+                cause="tripped", cause_reasons=[_FRESHNESS_REASON], blocked=False
+            ),
+            _ClassifierBridge(failed=False),
+            False,
+            id="f1-measured-dispatch-device-rejection-post-tick-cause-never-retries",
+        ),
+        pytest.param(
+            _classifier_result(
+                ErrorCode.INTERNAL_ERROR,
+                DispatchState.DISPATCHED,
+                "adapter-reported internal failure after execution",
+            ),
+            _ClassifierMonitor(cause=None, cause_reasons=[], blocked=False),
+            _ClassifierBridge(failed=True),
+            False,
+            id="dispatched-internal-error-envelope-never-retries",
+        ),
+        pytest.param(
+            _classifier_result(
+                ErrorCode.DEVICE_REJECTED,
+                DispatchState.DISPATCHED,
+                f"protection trip: {_FRESHNESS_REASON}",
+            ),
+            _ClassifierMonitor(
+                cause="tripped", cause_reasons=[_FRESHNESS_REASON], blocked=True
+            ),
+            _ClassifierBridge(failed=False),
+            False,
+            id="dispatched-block-shaped-envelope-never-retries",
+        ),
+        pytest.param(
+            _classifier_result(
+                ErrorCode.DEVICE_REJECTED,
+                DispatchState.NOT_DISPATCHED,
+                f"protection trip: {_ESCAPE_REASON}",
+            ),
+            _ClassifierMonitor(cause="tripped", cause_reasons=[_ESCAPE_REASON], blocked=True),
+            _ClassifierBridge(failed=False),
+            False,
+            id="real-trip-block-stays-plain",
+        ),
+        pytest.param(
+            _classifier_result(
+                ErrorCode.INTERNAL_ERROR,
+                DispatchState.NOT_DISPATCHED,
+                "capture open failed: store busy",
+            ),
+            _ClassifierMonitor(cause=None, cause_reasons=[], blocked=False),
+            _ClassifierBridge(failed=False),
+            False,
+            id="capture-gate-store-refusal-stays-plain",
+        ),
+        pytest.param(
+            _classifier_result(
+                ErrorCode.PROTOCOL_ERROR,
+                DispatchState.UNKNOWN,
+                "Invalid, failed or late adapter result; no replay",
+            ),
+            _ClassifierMonitor(cause=None, cause_reasons=[], blocked=False),
+            _ClassifierBridge(failed=True),
+            False,
+            id="late-result-poison-stays-plain",
+        ),
+    ],
+)
+def test_dispatch_failure_classifier_table(
+    result: OperationResult,
+    monitor: _ClassifierMonitor,
+    bridge: _ClassifierBridge,
+    expected: bool,
+) -> None:
+    """Direct classifier pins (F1's coverage remedy): a genuine monitor
+    block — read from the monitor's OWN blocked latch — and the
+    dead-session door stay retryable; a device-side rejection never
+    retries, whatever cause is latched (F1's two lanes present the SAME
+    classifier state: cause latched, no block — block-ness is what
+    differs); and no envelope claiming the work was dispatched retries
+    (retryable infrastructure means the dispatch NEVER ran)."""
+    rig = cast(ContinuityRig, _ClassifierRig(monitor=monitor, bridge=bridge))
+    assert _dispatch_failure_is_infrastructure(rig, result) is expected
+
+
+@pytest.mark.parametrize(
+    ("outcome", "expected"),
+    [
+        pytest.param(
+            PollOutcome(
+                refusal=OperationError(
+                    ErrorCode.INTERNAL_ERROR,
+                    "A fresh opened bridge is required",
+                    DispatchState.NOT_DISPATCHED,
+                ),
+                session_failed=True,
+            ),
+            True,
+            id="dead-at-the-door-retries",
+        ),
+        pytest.param(
+            PollOutcome(
+                refusal=OperationError(
+                    ErrorCode.PROTOCOL_ERROR,
+                    "Invalid, failed or late adapter event; no replay",
+                    DispatchState.UNKNOWN,
+                ),
+                session_failed=True,
+            ),
+            False,
+            id="self-poisoned-protocol-lie-stays-plain",
+        ),
+        pytest.param(
+            PollOutcome(
+                refusal=OperationError(
+                    ErrorCode.TIMEOUT,
+                    "Invalid, failed or late adapter event; no replay",
+                    DispatchState.UNKNOWN,
+                ),
+                session_failed=True,
+            ),
+            False,
+            id="timeout-flavor-starvation-is-a-disclosed-residual-not-retryable",
+        ),
+        pytest.param(
+            PollOutcome(
+                refusal=OperationError(
+                    ErrorCode.INTERNAL_ERROR,
+                    "registry invariant violated",
+                    DispatchState.NOT_DISPATCHED,
+                ),
+            ),
+            False,
+            id="internal-error-without-session-failure-stays-plain",
+        ),
+        pytest.param(PollOutcome(), False, id="quiet-poll-stays-plain"),
+    ],
+)
+def test_poll_dead_session_classifier_table(
+    outcome: PollOutcome, expected: bool
+) -> None:
+    """Direct pins for the drain-side classifier: only a session already
+    dead at the poll door retries. The TIMEOUT-flavor poison is
+    starvation-shaped yet stays non-retryable — the disclosed owner-row
+    residual, deliberately not a classifier input here."""
+    assert _poll_found_dead_session(outcome) is expected
+
+
+def _starved_trip_rig_counter(monkeypatch: pytest.MonkeyPatch) -> list[ContinuityRig]:
+    """The F1 repro precondition: count every rig constructed, and tighten
+    SIG_B's commissioned freshness bound so the measured dispatch's own
+    blackout latches ``signal_invalid`` at the wrapper's post-dispatch tick
+    (the starved-host trip class) — a latched cause WITHOUT any block."""
+    rigs: list[ContinuityRig] = []
+    original_init = ContinuityRig.__init__
+
+    def counting_init(self: ContinuityRig, *args: Any, **kwargs: Any) -> None:
+        rigs.append(self)
+        original_init(self, *args, **kwargs)
+
+    monkeypatch.setattr(ContinuityRig, "__init__", counting_init)
+    tightened = copy.deepcopy(BENCH)
+    for signal in tightened["signals"]:
+        if signal["id"] == SIG_B:
+            signal["max_age_ms"] = 150
+    monkeypatch.setitem(globals(), "BENCH", tightened)
+    return rigs
+
+
+def test_transient_device_write_refusal_cannot_launder_into_clean_verdict(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F1 lane 1, end to end: with the freshness cause latched (the
+    protective transition is done — phase idle, so no block is possible),
+    device A refuses the write leg ONCE — first rig only — with a plain
+    device-side ``DEVICE_REJECTED`` envelope. The cause-adjacency
+    classifier retried it and the fresh rig measured clean, returning a
+    CLEAN verdict with the device's refusal swallowed (adversarial probe:
+    2 rigs, no raise). Pin: attempt 0, ONE rig, loud plain AssertionError."""
+    rigs = _starved_trip_rig_counter(monkeypatch)
+    original_execute = ARigAdapter.execute
+
+    async def rejecting_first_write(
+        self: ARigAdapter, request: dict[str, Any], context: Any
+    ) -> dict[str, Any]:
+        if request["verb"] == "write" and len(rigs) == 1:
+            return _device_rejection_envelope(request)
+        return await original_execute(self, request, context)
+
+    monkeypatch.setattr(ARigAdapter, "execute", rejecting_first_write)
+    with pytest.raises(AssertionError) as raised:
+        run_trial(tmp_path, arm="non_capture", device_class="buffered", trial_index=44)
+    assert len(rigs) == 1, (
+        f"a transient first-rig device refusal ran {len(rigs)} rigs — the "
+        "retrial was laundering it toward a clean verdict"
+    )
+    assert type(raised.value) is AssertionError
+
+
+def test_measured_dispatch_device_refusal_with_latched_staleness_never_retries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F1 lane 2, end to end: the device consumes the acquisition window
+    (a 220 ms paced read against the tightened 150 ms freshness bound) and
+    then refuses the MEASURED dispatch device-side; the wrapper's
+    post-dispatch tick latches ``signal_invalid`` BEFORE the site
+    classifies — cause-adjacent, never a block. Pin: attempt 0, ONE rig,
+    plain AssertionError."""
+    rigs = _starved_trip_rig_counter(monkeypatch)
+    original_execute = ARigAdapter.execute
+
+    async def window_consuming_refusal(
+        self: ARigAdapter, request: dict[str, Any], context: Any
+    ) -> dict[str, Any]:
+        if request["verb"] == "read" and request["operation_id"] == "op-acq":
+            await asyncio.sleep(0.22)
+            return _device_rejection_envelope(request)
+        return await original_execute(self, request, context)
+
+    monkeypatch.setattr(ARigAdapter, "execute", window_consuming_refusal)
+    with pytest.raises(AssertionError) as raised:
+        run_trial(tmp_path, arm="non_capture", device_class="buffered", trial_index=45)
+    assert len(rigs) == 1, (
+        f"a device-side measured-dispatch refusal was retried across "
+        f"{len(rigs)} rigs — cause-adjacency classified it as a block"
+    )
+    assert type(raised.value) is AssertionError
