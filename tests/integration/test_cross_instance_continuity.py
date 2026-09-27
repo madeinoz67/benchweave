@@ -1988,3 +1988,38 @@ def test_check2_boundary_ages_inclusive_and_aged_reading_deficiency() -> None:
     )
     violations = evaluate_conditions(POLICY, {SIG_B: stale})
     assert violations and violations[0].startswith("rig-b-level-bounds: signal_invalid")
+
+
+# --- the retry matcher's discrimination (#159 owner call 1, review finding F4) ------
+
+
+@pytest.mark.parametrize(
+    "wording",
+    [
+        "A fresh opened bridge is required",
+        "pre-dispatch staleness: sig-rig-b age 999 ms",
+        "protection trip: rig-b-level-bounds: signal_invalid: sig-rig-b",
+    ],
+)
+def test_plain_assertion_with_legacy_wording_never_retries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, wording: str
+) -> None:
+    """The retry matcher must key on an explicit structural marker, never
+    on message text (review finding F4 on PR #236): a PLAIN
+    ``AssertionError`` whose message merely quotes one of the historical
+    retryable wordings raises straight through on the first attempt — one
+    ``_run_trial_once`` call, no retry."""
+    calls: list[int] = []
+
+    def failing_once(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        calls.append(kwargs["trial_index"])
+        raise AssertionError(wording)
+
+    monkeypatch.setitem(globals(), "_run_trial_once", failing_once)
+    with pytest.raises(AssertionError) as raised:
+        run_trial(tmp_path, arm="non_capture", device_class="buffered", trial_index=3)
+    assert len(calls) == 1, (
+        f"a plain AssertionError was retried {len(calls)} time(s) — the "
+        "matcher keyed on message text, not the structural marker"
+    )
+    assert type(raised.value) is AssertionError
