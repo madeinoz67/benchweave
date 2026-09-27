@@ -215,6 +215,8 @@ All notable changes to this project will be documented in this file.
 - Malformed corpus-manifest rows refuse typed (#216 fold wave 2 R6)
 - Drift messages name non-canonical serialization (#216 fold wave 2 R11)
 - Bounded note, single descriptor read, row batching; digest-scope comment (#216 fold wave 2 R15 + R12)
+- Structural infrastructure marker replaces message-based retry matcher (#159)
+- Block-ness from the monitor's latch; dispatched envelopes never retry (#159)
 
 ### Documentation
 
@@ -406,6 +408,7 @@ All notable changes to this project will be documented in this file.
 - Issue #216 slice-2 resolver design — BUILD verdict record
 - The slice-2 invariant, governance and obligations text (#216)
 - G-4 numbered; the duplicate obligations 19 renumbered (#216 fold wave 2 R16)
+- Deferral rows D7/D8 for the retry-policy residuals (#159)
 
 ### Features
 
@@ -821,6 +824,8 @@ All notable changes to this project will be documented in this file.
 - R15a unbounded cross-constraints note, RED (#216 fold wave 2)
 - R7 prior-yanked retention + the R8 refusal corners (#216 fold wave 2)
 - R4 masking XOR arms, R9 caret precedent, R10 table rows (#216 fold wave 2)
+- Pin retry discrimination — legacy wording must not retry (#159)
+- RED — pin that block-ness, not cause-adjacency, gates the retry (#159)
 
 ### Build
 
