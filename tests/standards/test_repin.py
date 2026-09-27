@@ -438,8 +438,10 @@ def _dev_head_repo(tmp_path: Path, *, with_block: bool = True) -> Path:
         (root / "standards/standards-manifest.json").write_text(
             json.dumps(governance, indent=2) + "\n", encoding="utf-8"
         )
+    # LF on every platform: repin's write path refuses a CRLF manifest as
+    # non-canonical (#207).
     (root / CORPUS_MANIFEST).write_text(
-        json.dumps(document, indent=2) + "\n", encoding="utf-8"
+        json.dumps(document, indent=2) + "\n", encoding="utf-8", newline="\n"
     )
     return root
 
@@ -480,7 +482,7 @@ def test_repin_accepts_a_row_with_lineage(tmp_path: Path) -> None:
     target = next(r for r in document["files"] if r["path"] == REGENERABLE)
     target["lineage"] = "standards/registry/0.1.0/examples/package-lock.json"
     (root / CORPUS_MANIFEST).write_text(
-        json.dumps(document, indent=2) + "\n", encoding="utf-8"
+        json.dumps(document, indent=2) + "\n", encoding="utf-8", newline="\n"
     )
     _flip(root, REGENERABLE)
 

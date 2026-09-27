@@ -165,10 +165,13 @@ def test_s_r3_packaged_refusal_never_falls_back_to_active(
     with pytest.raises(ValueError, match="dev_head_unresolvable:") as refused:
         declared_dev_family("execution")
     message = str(refused.value)
-    assert "standards/execution/0.2.0-dev" in message
+    # The refusal names the absolute directory it missed in the platform's
+    # own form (backslashes on Windows), so the expectation is built as a
+    # Path rather than a '/' literal (#207).
+    assert str(root / "standards" / "execution" / "0.2.0-dev") in message
     # Never-a-fallback, stated in the refusal itself: the active tree is
     # not in the resolved path, and the message does not offer it.
-    assert "execution/0.1.0" not in message
+    assert not any(s in message for s in ("execution/0.1.0", "execution\\0.1.0"))
 
 
 def test_loader_dev_block_refusals_are_inherited_verbatim(

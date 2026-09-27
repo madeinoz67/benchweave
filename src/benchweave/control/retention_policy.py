@@ -33,7 +33,7 @@ The capture lane is CLOSED (the in-tree format vocabulary
 evidence lane is OPEN — a novel kind gets its literal class at report
 time and falls to the default, never a refusal here. The selector
 pattern admits the in-tree kind shapes (letters, digits, dot, underscore,
-hyphen — issue #184 finding 12) and anchors with ``\Z`` (finding 14:
+hyphen — issue #184 finding 12) and anchors with ``\\Z`` (finding 14:
 ``$`` matched before a trailing newline, admitting dead rules).
 ``duration_s`` is bounded by the datetime domain ceiling
 (:data:`MAX_DURATION_S`, finding 3).
