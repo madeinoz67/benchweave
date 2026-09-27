@@ -882,3 +882,32 @@ def test_f4_map_additions_carry_the_fetch_existence_warning(tmp_path: Path) -> N
     assert "recorded revision" in result.stdout
     document = json.loads(_lock_path(package).read_bytes())
     assert "device-profile-catalog.schema.json" in document["sha256"]
+
+
+# --- fold wave 2, R1: authoring crashes are styled refusals ------------------------
+
+
+@pytest.mark.parametrize("shape", ["{}", "[]", "not json at all"])
+def test_r1_set_on_a_wrong_shape_constraints_file_refuses_styled(
+    tmp_path: Path, shape: str
+) -> None:
+    """A wrong-shape constraints file under ``pin --set`` refuses with its
+    own prefix — never a KeyError/TypeError/JSONDecodeError traceback."""
+    root = _copy_standards(tmp_path)
+    package = _package(root, constraints=None)
+    (package / "contracts" / "constraints.json").write_text(shape)
+    result = _run(root, "pin", "--set", "otdp=^0.2", "--package", "plugins/acme/widget")
+    assert result.returncode == 1, result.stderr
+    assert "standards pin error:" in result.stderr
+    assert "Traceback" not in result.stderr
+    assert "constraint_document_invalid" in result.stderr or "corrupt" in result.stderr
+
+
+def test_r1_set_on_a_missing_package_dir_refuses_styled(tmp_path: Path) -> None:
+    """A package directory that does not exist refuses ``package_absent:``
+    before any staged write is attempted."""
+    root = _copy_standards(tmp_path)
+    result = _run(root, "pin", "--set", "otdp=^0.2", "--package", "plugins/acme/widget")
+    assert result.returncode == 1, result.stderr
+    assert "standards pin error: package_absent" in result.stderr
+    assert "Traceback" not in result.stderr
