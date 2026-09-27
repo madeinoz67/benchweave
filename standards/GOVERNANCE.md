@@ -253,7 +253,7 @@ agent: the governor lane reviews, it does not rule.
 changes are coordinator decisions requiring a linked ruling reference; yank and
 retirement are recorded statuses with the 0.2.1 yank and the
 `ea70c6a5^`-enumerated retired identifiers as the founding entries (the
-enumeration source is the pre-reset parent tree, per obligation 19's
+enumeration source is the pre-reset parent tree, per obligation 21's
 phrasing — `ea70c6a5` itself names no retired identifiers). The
 CARRIED set (retained ∧ in-range, yanked versions riding marked) is mirrored
 verbatim into the exported bundle and the SDK lock; every consumer re-derives
@@ -262,7 +262,7 @@ yanked row is never called served (the #215 fold row 8 correction). Drift
 between the three surfaces is refused by name (`served_set_drift:`,
 `policy_mirror_drift:`).
 
-**Cross-constraints (2026-09-27, issue #216, parent #203 slice 2):**
+**G-4 (cross-constraints, 2026-09-27, issue #216, parent #203 slice 2):**
 `standards/cross-constraints.json` is governance data in this same family — a
 committed side table beside the two manifests, moving no corpus rows and
 needing no repin (its exemption from corpus-row coverage is root-scoped, in

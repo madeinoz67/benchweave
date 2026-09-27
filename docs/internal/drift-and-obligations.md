@@ -251,7 +251,7 @@ and remain the reviewer's job.
     pointer advance rides a train of its own); loop prose that is
     deliberately gateway-specific does not sync (issue #99's design §6).
 
-19. **The dependency-policy block and the carried set** (issue #215, parent
+21. **The dependency-policy block and the carried set** (issue #215, parent
     #203 slice 1): `standards/standards-manifest.json`'s `dependency_policy`
     block is the one committed authority for per-standard ranges, yanks and
     retired identifiers. If a PR touches it, all four surfaces move together
