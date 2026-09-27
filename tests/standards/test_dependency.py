@@ -975,3 +975,28 @@ def test_r5_leading_zero_components_refuse(value: str) -> None:
     leading-zero component is hand-typed drift, not a version."""
     with pytest.raises(StandardsError, match="constraint_document_invalid"):
         parse_interval(value)
+
+
+# --- fold wave 2, R6: malformed corpus rows refuse typed ---------------------------
+
+
+def test_r6_a_malformed_corpus_row_refuses_typed(tmp_path: Path) -> None:
+    """A corpus-manifest row missing its digest refuses with its own prefix
+    wherever the rows are consumed — never a bare KeyError."""
+    root = _copy_standards(tmp_path)
+    package = _package(root, constraints={"otdp": ">=0.2.0,<0.3.0"})
+    corpus = json.loads((root / "standards/corpus-manifest.json").read_bytes())
+    corpus["files"].append({"path": "otdp/0.2.2/ghost.json"})  # no sha256
+    (root / "standards/corpus-manifest.json").write_bytes(canonical_json(corpus))
+    with pytest.raises(StandardsError, match="corpus_manifest_row_invalid"):
+        resolve_package(root, package)
+
+
+def test_r6_a_non_object_row_refuses_typed(tmp_path: Path) -> None:
+    root = _copy_standards(tmp_path)
+    package = _package(root, constraints={"otdp": ">=0.2.0,<0.3.0"})
+    corpus = json.loads((root / "standards/corpus-manifest.json").read_bytes())
+    corpus["files"].append("not-a-row")
+    (root / "standards/corpus-manifest.json").write_bytes(canonical_json(corpus))
+    with pytest.raises(StandardsError, match="corpus_manifest_row_invalid"):
+        resolve_package(root, package)
