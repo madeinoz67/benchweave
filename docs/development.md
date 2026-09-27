@@ -123,9 +123,13 @@ Change propagation, end to end:
 ## GitHub workflows
 
 - **CI** runs the Python gates (sync, ruff check, config-driven mypy,
-  pytest) and the standards sync check (`make check-sdk-standards`), plus a
-  **systemd** template-verification job and a **ui** job (typecheck, lint,
-  unit tests, Storybook build, renderer freshness gate, `npm audit`) on Linux.
+  `pytest -q -m "not timing"`) and the standards sync check
+  (`make check-sdk-standards`), plus a **timing** job that runs the
+  real-paced, marker-selected set (`pytest -q -m timing`) serialized on its
+  own fresh VM — the two filters are complementary, so their union is the
+  full collection and no test loses CI execution — plus a **systemd**
+  template-verification job and a **ui** job (typecheck, lint, unit tests,
+  Storybook build, renderer freshness gate, `npm audit`) on Linux.
 - **Device plugins** checks independent manufacturer/model plugin projects in
   their own locked environments.
 - **Package** builds sdists and wheels for the gateway and SDK, installs them

@@ -36,6 +36,13 @@ the repository (CI materialises them from secrets); on a fresh clone those
 tests **skip** with a named reason — skips there are expected, failures are
 not.
 
+CI partitions the suite across two complementary jobs — `gates` runs
+`pytest -q -m "not timing"` and a dedicated `timing` lane runs the
+real-paced, marker-selected set serialized on its own VM. The unfiltered
+local command above executes the union of both, which is exactly what you
+want before a PR; reach for `-m 'not timing'` only when iterating on
+something unrelated and in a hurry.
+
 Bug fixes ship test-first: a failing test that reproduces the bug lands in
 the same change as the fix.
 
