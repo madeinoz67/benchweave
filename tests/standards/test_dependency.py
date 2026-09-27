@@ -1017,3 +1017,20 @@ def test_r11_drift_messages_name_non_canonical_serialization(tmp_path: Path) -> 
     assert result.returncode == 1, result.stderr
     assert "plugin_lock_drift" in result.stderr
     assert "non-canonical serialization" in result.stderr
+
+
+# --- fold wave 2, R15a: the cross-constraints note is bounded ----------------------
+
+
+def test_r15a_an_unbounded_note_refuses(tmp_path: Path) -> None:
+    """The honest-negative note is a bounded field — an unbounded prose
+    surface in a governance file is drift bait."""
+    root = _copy_standards(tmp_path)
+
+    def mutate(document: dict[str, Any]) -> dict[str, Any]:
+        document["note"] = "x" * 3000
+        return document
+
+    _mutate_cross(root, mutate)
+    with pytest.raises(StandardsError, match="cross_constraint_invalid"):
+        load_cross_constraints(root)
