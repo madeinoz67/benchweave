@@ -357,7 +357,15 @@ def test_c4_retired_identifier_refuses_with_vr37(tmp_path: Path) -> None:
     message = str(raised.value)
     assert message.startswith("retired_identifier:"), message
     assert "0.4.0" in message, message
-    assert "standard: otdp" in message and "pinned: 0.3.0" in message, message
+    # All five VR-37 fields, not a sample (review fold R2).
+    for field in (
+        "standard: otdp",
+        "pinned: 0.3.0",
+        "supported: >=0.2.0,<0.3.0",
+        "move-to:",
+        "migration guidance pending",
+    ):
+        assert field in message, f"VR-37 field {field!r} missing: {message}"
 
 
 def test_never_carried_pin_refuses_version_unknown(tmp_path: Path) -> None:
@@ -371,6 +379,15 @@ def test_never_carried_pin_refuses_version_unknown(tmp_path: Path) -> None:
     message = str(raised.value)
     assert message.startswith("version_unknown:"), message
     assert "never carried" in message, message
+    # All five VR-37 fields, not a sample (review fold R2).
+    for field in (
+        "standard: otdp",
+        "pinned: 9.9.9",
+        "supported: >=0.2.0,<0.3.0",
+        "move-to:",
+        "migration guidance pending",
+    ):
+        assert field in message, f"VR-37 field {field!r} missing: {message}"
 
 
 def test_malformed_pin_still_refuses_at_the_schema(tmp_path: Path) -> None:
@@ -427,3 +444,90 @@ def test_vr37_text_matches_the_resolver_vocabulary() -> None:
     assert classify_descriptor_pin("0.1.2").note == (
         "standard_nonconforming: " + expected
     )
+    # Review fold R9: the same text-equality pin on the refusal arms — the
+    # VR-37 segment of the retired and unknown notes is the resolver's
+    # formatting, verbatim, not a paraphrase.
+    from benchweave.control.documents import classify_descriptor_pin as classify
+
+    for pin in ("0.3.0", "9.9.9"):
+        note = str(classify(pin).note)
+        assert note.endswith(
+            _vr37(policy, "otdp", pin, row, root)
+        ), f"{pin}: {note}"
+
+
+# --- the unexercised edges (review fold R11) --------------------------------------
+
+
+def _corpus_copy(tmp_path: Path, name: str) -> Path:
+    """A mutable copy of the committed corpus (the cross-constraint arm's
+    pattern)."""
+    import shutil
+
+    corpus = tmp_path / name
+    shutil.copytree(CORPUS, corpus)
+    return corpus
+
+
+def _set_otdp_policy(corpus: Path, **fields: object) -> None:
+    """Rewrite the policy block's otdp row (merge over the committed row)."""
+    manifest = json.loads((corpus / "standards-manifest.json").read_text())
+    row = manifest["dependency_policy"]["standards"]["otdp"]
+    row.update(fields)
+    (corpus / "standards-manifest.json").write_text(json.dumps(manifest, indent=1))
+
+
+def test_r11_yanked_and_out_of_range_is_nonconforming(tmp_path: Path) -> None:
+    """The design table's row-3 precedence: a pin that is BOTH yanked-listed
+    and out of range classifies NON-conforming (the range check precedes the
+    yank consult), never conforming-with-warning. Crafted policy: 0.1.2
+    (retained, below the range floor) also named yanked — the loader's
+    cross-checks would refuse this block at validation time, so the arm
+    builds it directly and pins the classifier's ORDER."""
+    from benchweave.control.documents import classify_descriptor_pin
+
+    corpus = _corpus_copy(tmp_path, "yanked-out-of-range")
+    _set_otdp_policy(
+        corpus,
+        yanked={"0.1.2": {"reason": "synthetic double status", "since": "2026-09-27"}},
+    )
+    record = classify_descriptor_pin("0.1.2", corpus=corpus)
+    assert record.conformance == "non-conforming"
+    assert str(record.note).startswith("standard_nonconforming:")
+    assert record.deprecated is False
+
+
+def test_r11_the_exclusive_upper_bound_is_out_of_range(tmp_path: Path) -> None:
+    """Half-open interval: a pin at EXACTLY the exclusive upper bound
+    (0.3.0 with range <0.3.0) is out of range even when the corpus carries
+    its bytes and the identifier is NOT retired — crafted corpus with
+    0.3.0 rows present and the retirement list emptied, so the out-of-range
+    class is what fires (not retired_identifier, not version_unknown)."""
+    import hashlib
+    import shutil
+
+    from benchweave.control.documents import classify_descriptor_pin
+
+    corpus = _corpus_copy(tmp_path, "upper-bound")
+    shutil.copytree(corpus / "otdp" / "0.2.2", corpus / "otdp" / "0.3.0")
+    manifest_path = corpus / "corpus-manifest.json"
+    corpus_manifest = json.loads(manifest_path.read_text())
+    existing = {row["path"] for row in corpus_manifest["files"]}
+    for path in sorted((corpus / "otdp" / "0.3.0").rglob("*")):
+        if not path.is_file():
+            continue
+        relative = path.relative_to(corpus).as_posix()
+        if relative not in existing:
+            corpus_manifest["files"].append(
+                {
+                    "path": relative,
+                    "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                }
+            )
+    manifest_path.write_text(json.dumps(corpus_manifest, indent=1))
+    _set_otdp_policy(corpus, retired=[])
+
+    record = classify_descriptor_pin("0.3.0", corpus=corpus)
+    assert record.conformance == "non-conforming"
+    assert str(record.note).startswith("standard_nonconforming:")
+    assert "supported: >=0.2.0,<0.3.0" in str(record.note)
