@@ -183,15 +183,54 @@ Generate a real one: `openssl rand -hex 32`.
 **Startup admission gate.** Before the gateway serves anything, the
 fixture lattice passes the same admission gate execution and recovery
 use: every document is decoded exactly, validated against the vendored
-schemas (the OTDP device descriptors included) and pin-verified against
-the bench's digest lattice. A lattice that fails refuses startup — the
-process exits with `Application startup failed` and logs one
-`startup_admission_rejected:` line carrying the typed reason
-(`schema:`, `digest_mismatch:` or `pin_absent:`; an absent pinned file
-raises a `FileNotFoundError` naming the device and digest prefix).
-Nothing is written to the store by a refused startup, so a repair (fix
-the lattice, restart) starts from a clean inventory. Under systemd the
-unit then restart-loops (§9) and that log line is the diagnosis surface.
+schemas (each OTDP device descriptor against the schema of its own
+`otdp_version` pin) and pin-verified against the bench's digest lattice.
+A lattice that fails refuses startup — the process exits with
+`Application startup failed` and logs one `startup_admission_rejected:`
+line carrying the typed reason (`schema:`, `digest_mismatch:` or
+`pin_absent:`, plus the version prefixes below where a pin
+misclassifies; an absent pinned file raises a `FileNotFoundError` naming
+the device and digest prefix). Nothing is written to the store by a
+refused startup, so a repair (fix the lattice, restart) starts from a
+clean inventory. Under systemd the unit then restart-loops (§9) and that
+log line is the diagnosis surface.
+
+**Version pins, conformance classes, and the operator acknowledgement.**
+Admission classifies each device descriptor's `otdp_version` pin against
+the gateway's dependency policy before schema validation. A served pin
+conforms and validates against its own digest-verified bytes — the pin
+does not have to be the corpus's active version. A yanked pin also
+conforms; the admission record and the run's evidence stream carry a
+deprecation warning naming the derived move-to. A **retained but
+out-of-range** pin is **non-conforming**: the gateway can validate it
+against its own retained bytes, but loads it only behind a recorded
+per-device **operator acknowledgement**. The acknowledgement is a
+mapping of device id to the exact OTDP pin it covers
+(`operator_acknowledgements`, threaded to the admission call): it binds
+the pin it names, so an acknowledgement recorded for one version does
+not authorise a device later re-pinned to another, and one
+acknowledgement cannot cover a bench's other devices. When a
+non-conforming device admits, the recorded acknowledgement appears on
+the admission record and on the run's evidence stream alongside the pin
+and its class — a non-conforming device is never silently shown as
+conforming. Without the acknowledgement, admission refuses with
+`operator_ack_required:` (carrying the `standard_nonconforming:`
+classification).
+
+The remaining pin classes refuse outright, each with the five inline
+fields (standard, pinned version, supported range, derived move-to,
+migration-note pointer): `retired_identifier:` (the number was used
+once and is never reissued — the refusal names the next minor to
+re-target to), `version_unknown:` (this corpus never carried the
+version — publish it or fix the pin), and
+`cross_constraint_violation:` (the bench's execution version constrains
+the OTDP range its devices may pin; a pin outside it refuses naming
+both versions and the constraining row's evidence — an operator
+acknowledgement authorises the version window, never the execution
+runtime interface). The startup composition threads no
+acknowledgements: a non-conforming pin in the startup lattice is a hard
+`startup_admission_rejected:` refusal — bring the pin back inside the
+served window rather than acknowledging at startup.
 
 **Adapter-bridge runs and the quota seam.** A run constructs a real OTDP
 bridge for a bench device only when the device's descriptor declares
