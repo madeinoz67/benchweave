@@ -203,6 +203,18 @@ All notable changes to this project will be documented in this file.
 - The F-fix gateway legs + the folded LOW/NIT rows
 - Late Forge folds, gateway side — active re-point twins + the reproducible wheel identity
 - Maintainer-review folds gateway side — the corpus-pin gate lands now (the fork), claim/mechanism agreement, and the held rows
+- Version-ordered selection at both order-sensitive sites (#216 fold F1)
+- The dependency lane surfaces deprecation warnings (#216 fold F2)
+- The derived map is an allowlist, not directory coverage (#216 fold F3)
+- The revision scissors — the map digests the bytes AT the revision (#216 fold F4)
+- The #146 e2e dataset fixture claims the live service clock (#146)
+- Authoring crashes are styled refusals (#216 fold wave 2 R1)
+- List validates the policy join before rendering (#216 fold wave 2 R2)
+- Cross-constraint requirement intervals validate at load (#216 fold wave 2 R3)
+- The interval grammar admits canonical numerals only (#216 fold wave 2 R5)
+- Malformed corpus-manifest rows refuse typed (#216 fold wave 2 R6)
+- Drift messages name non-canonical serialization (#216 fold wave 2 R11)
+- Bounded note, single descriptor read, row batching; digest-scope comment (#216 fold wave 2 R15 + R12)
 
 ### Documentation
 
@@ -391,6 +403,9 @@ All notable changes to this project will be documented in this file.
 - Define reopen trigger and deferral table row — the deferral-row contract (#99) (#235)
 - Issue #172 cross-instance continuity instrument — BUILD verdict record
 - A1 baseline measurement — 23/26 x3 reproduced at merge base
+- Issue #216 slice-2 resolver design — BUILD verdict record
+- The slice-2 invariant, governance and obligations text (#216)
+- G-4 numbered; the duplicate obligations 19 renumbered (#216 fold wave 2 R16)
 
 ### Features
 
@@ -553,6 +568,11 @@ All notable changes to this project will be documented in this file.
 - Issue #172 classifier + ledger — frozen #159 §6 made executable
 - Issue #172 two-instance continuity rig — axes X1-X4, controls, checks
 - Multi-version serving — policy block, multi-entry export, two-sided gate
+- Intervals, caret expansion, classification, CLI siblings (#216)
+- Fail-closed loader + the root-scoped exemption (#216)
+- The resolver and the lock v2 writer; DPS-150 relocked (#216)
+- The version-normalized comparator (#216)
+- Pin --locked and check's plugin dependency lane (#216)
 
 ### Hardware Evidence
 
@@ -783,6 +803,24 @@ All notable changes to this project will be documented in this file.
 - F3 — the catalog-half soft arm pinned, mutation-checked
 - F5 — slice-added version literals derive from corpus bytes
 - The #207 Windows separator and CRLF batch, plus the retention_policy SyntaxWarning (#237)
+- B3/B4 RED battery + the resolver module skeleton (#216)
+- The side-table battery lands RED with its file (#216)
+- B1/B2 writer battery + cross-constraint resolve arms, RED (#216)
+- B6 raw-digest control battery, RED (#216)
+- B5 agreement-lane battery, RED (#216)
+- F1 version-ordered selection, RED (#216 fold)
+- F2 retained-yanked-pin warning surface, RED (#216 fold)
+- F3 stray-file allowlist arms, RED (#216 fold)
+- F4 revision-scissors chain, RED (#216 fold)
+- R1 authoring crash classes, RED (#216 fold wave 2)
+- R2 list desync refusal, RED (#216 fold wave 2)
+- R3 malformed requires refuse at load, RED (#216 fold wave 2)
+- R5 leading-zero interval components refuse, RED (#216 fold wave 2)
+- R6 malformed corpus rows, RED (#216 fold wave 2)
+- R11 drift messages name the reflow cause, RED (#216 fold wave 2)
+- R15a unbounded cross-constraints note, RED (#216 fold wave 2)
+- R7 prior-yanked retention + the R8 refusal corners (#216 fold wave 2)
+- R4 masking XOR arms, R9 caret precedent, R10 table rows (#216 fold wave 2)
 
 ### Build
 
