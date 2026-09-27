@@ -28,6 +28,7 @@ from benchweave.standards.dependency import (
     load_cross_constraints,
     load_prior_lock,
     normalized_equal,
+    parse_interval,
     resolve_package,
 )
 from benchweave.standards.export import canonical_json
@@ -960,3 +961,17 @@ def test_r3_a_malformed_requirement_interval_refuses_at_load(tmp_path: Path) -> 
 def test_r3_a_wellformed_requirement_still_loads(tmp_path: Path) -> None:
     root = _copy_standards(tmp_path)
     assert len(load_cross_constraints(root)) == 1
+
+
+# --- fold wave 2, R5: no leading zeros in the stored interval grammar --------------
+
+
+@pytest.mark.parametrize(
+    "value",
+    [">=00.2.0,<0.3.0", ">=0.2.0,<00.3.0", ">=0.02.0,<0.3.0"],
+)
+def test_r5_leading_zero_components_refuse(value: str) -> None:
+    """The interval grammar admits canonical numeric components only — a
+    leading-zero component is hand-typed drift, not a version."""
+    with pytest.raises(StandardsError, match="constraint_document_invalid"):
+        parse_interval(value)

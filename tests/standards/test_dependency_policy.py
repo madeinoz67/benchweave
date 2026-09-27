@@ -315,3 +315,18 @@ def test_a_planted_literal_fails_the_ratchet_in_a_scratch_copy(tmp_path: Path) -
     assert any(
         row["file"] == "src/benchweave/planted_literal.py" for row in payload["sites"]
     )
+
+
+def test_leading_zero_range_components_refuse(tmp_path: Path) -> None:
+    """Fold wave 2 R5 (#216): the shared interval grammar admits canonical
+    numeric components only — a leading-zero range component refuses at
+    policy load instead of parsing as its integer value."""
+    root = _copy_standards(tmp_path)
+
+    def mutate(block: dict[str, Any]) -> dict[str, Any]:
+        block["standards"]["otdp"]["range"] = ">=00.2.0,<0.3.0"
+        return block
+
+    _edit_policy(root, mutate)
+    with pytest.raises(StandardsError, match="dependency_policy_invalid"):
+        load_dependency_policy(root)
