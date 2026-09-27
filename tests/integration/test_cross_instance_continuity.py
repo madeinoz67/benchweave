@@ -35,6 +35,7 @@ Design record:
 from __future__ import annotations
 
 import asyncio
+import copy
 import hashlib
 import json
 import statistics
@@ -43,7 +44,7 @@ import time
 from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from _continuity_rule import Arm, TrialRecord, classify, emit_trial_log, write_trial_log
@@ -61,10 +62,13 @@ from benchweave.control.coordinator import (
 from benchweave.control.policy import SignalValue, evaluate_conditions
 from benchweave.control.protection import ProtectionEngine, bench_poll_ns, read_signal_values
 from benchweave.control.stream_host import RunStreamHost
-from benchweave.host.otdp_bridge import OTDPBridge
+from benchweave.host.otdp_bridge import OTDPBridge, PollOutcome
 from benchweave.host.plugin import DevicePlugin, SimulationInfo
 from benchweave.host.services import QuotaLimits
 from benchweave.host.types import (
+    DispatchState,
+    ErrorCode,
+    OperationError,
     OperationRequest,
     OperationResult,
     OperationStatus,
@@ -790,6 +794,10 @@ class ContinuityRig:
                 outcome = self.bridge_b.poll_event(
                     subscription_id, deadline_ns=self.deadline_ns(50)
                 )
+                if _poll_found_dead_session(outcome):
+                    raise TrialInfrastructureError(
+                        f"rig-b session already dead at the poll door: {outcome.refusal}"
+                    )
                 assert not outcome.session_failed, outcome.refusal
                 if outcome.event is not None:
                     self.stream_host._contained_on_event(
@@ -830,6 +838,100 @@ def _max_tick_gap_ms(tick_times: list[int]) -> float:
     return max(b - a for a, b in zip(tick_times, tick_times[1:], strict=False)) / 1_000_000
 
 
+class TrialInfrastructureError(AssertionError):
+    """The retryable failure class (review finding F4 on PR #236): host
+    starvation of the fixture, never a property of the measured system.
+
+    A site that has classified its own failure as infrastructure raises
+    this marker; ``run_trial``'s matcher inspects the TYPE and never
+    message text, so a plain ``AssertionError`` quoting a historical
+    retryable wording raises straight through (pinned by test).
+    Subclassing ``AssertionError`` keeps an exhausted retry a normal
+    assertion failure for pytest.
+    """
+
+
+def _dead_session_reject(bridge: OTDPBridge, result: OperationResult) -> bool:
+    """The structural signal behind a dispatch's ``INTERNAL_ERROR`` "A
+    fresh opened bridge is required" door reject: the bridge's own failure
+    latch plus NOT_DISPATCHED — retryable infrastructure means the dispatch
+    NEVER ran, so an error envelope claiming the work was dispatched stays
+    plain whatever its code (an adapter envelope can claim dispatch; the
+    door reject never does). The door itself is the three-disjunct
+    ``not _opened or _closed or _failed`` (otdp_bridge.py); checking only
+    ``_failed`` is a mid-trial narrowing, sound because a rig bridge is
+    open from ``plugin_open`` and closes only at teardown/finally — after
+    every site that classifies. The capture gate's own ``INTERNAL_ERROR``
+    store refusals fire with the latch down and stay non-retryable."""
+    error = result.error
+    return (
+        error is not None
+        and error.code is ErrorCode.INTERNAL_ERROR
+        and error.dispatch_state is DispatchState.NOT_DISPATCHED
+        and bridge._failed
+    )
+
+
+def _freshness_trip_block(rig: ContinuityRig, result: OperationResult) -> bool:
+    """A dispatch the protective fail-safe refused at the door — the
+    settle/pre-tick starvation class. Block-ness is read from the
+    monitor's OWN §5 latch (``blocked``, set by ``block_result`` when it
+    actually refused a dispatch) plus the block result's NOT_DISPATCHED
+    state, NEVER inferred from a latched cause: after the post-dispatch
+    tick — or past the protective transition, where phase idle makes a
+    block impossible — a freshness cause can be latched while the failing
+    dispatch was device-side (F1's two lanes), and a device-side
+    ``DEVICE_REJECTED`` must never retry whatever cause is latched. The
+    freshness KIND still gates: only ``signal_invalid`` (staleness) is the
+    starvation class; a real (non-freshness) trip's block keeps the plain
+    assert."""
+    error = result.error
+    if error is None or error.code is not ErrorCode.DEVICE_REJECTED:
+        return False
+    if error.dispatch_state is not DispatchState.NOT_DISPATCHED:
+        return False
+    if not rig.monitor.blocked:
+        return False
+    kinds = {
+        reason.split(":", 2)[1].strip()
+        for reason in rig.monitor.cause_reasons
+        if reason.count(":") >= 1
+    }
+    return "signal_invalid" in kinds
+
+
+def _dispatch_failure_is_infrastructure(
+    rig: ContinuityRig, result: OperationResult
+) -> bool:
+    """Classify an unexpected dispatch status by structure (F4): the
+    dead-session door reject and the freshness-trip block are host
+    starvation; every other landing — a wrong status for its own sake, a
+    real trip, a store refusal at the capture gate, a late-result poison —
+    is a measurement failure and must fail the trial, not retry it."""
+    return _dead_session_reject(rig.bridge_a, result) or _freshness_trip_block(
+        rig, result
+    )
+
+
+def _poll_found_dead_session(outcome: PollOutcome) -> bool:
+    """A drain poll that found the session already dead (the door reject —
+    ``INTERNAL_ERROR`` with ``session_failed``). NOT classified: a session
+    the poll itself poisoned — the protocol-lie flavors are deterministic
+    rig defects, but the TIMEOUT flavor (a poll whose event delivery
+    outran the poll's own 50 ms deadline under host stall) is
+    starvation-shaped and still non-retryable. Known NON-retryable
+    starvation residuals, disclosed as an owner row rather than widened
+    here: TIMEOUT-flavor poll poison, drain-cap starvation
+    (``drain_until_quiet``'s loud cap assert), and entry-timeout at the
+    dispatch door."""
+    refusal = outcome.refusal
+    return (
+        outcome.session_failed
+        and refusal is not None
+        and refusal.code is ErrorCode.INTERNAL_ERROR
+    )
+
+
 #: Per-arm dispatch references. The X1 band reference is the arm's own
 #: in-flight duration (design §5.3 with §2.2/§8(d)): the capture arm CUTS
 #: at its budget (in-flight ~50 ms), the non-capture arm COMPLETES at
@@ -862,19 +964,26 @@ def run_trial(
     dispatch-scale bound, or a >50 ms read path tripping the bridge's
     late-result poison on a fast read) is an infrastructure failure, not a
     measurement — ``run_trial`` retries it on a FRESH rig, at most twice,
-    and records the retry count in the outcome. The two retryable classes
-    are pre-dispatch by INTENT (the pre-flight assert and the
-    blocked/poisoned measured dispatch), but the matcher is MESSAGE-BASED,
-    not a structural pre/post boundary: two POST-dispatch host-pathology
-    sites embed the bridge's session-failure wording and can therefore
-    also match — the post-trip drain's ``assert not outcome.session_failed,
-    outcome.refusal`` and the write leg's status assert both surface "A
-    fresh opened bridge is required" when the bridge session dies
-    mid-trial. The EFFECT stays honest either way (a retry re-measures on
-    a fresh rig; the dead trial's numbers are discarded), the MECHANISM is
-    substring matching — the explicit-marker refactor is row-called for
-    the owner (review finding F4), and this prose is the interim
-    disclosure."""
+    and records the retry count in the outcome. The retryable class is
+    carried STRUCTURALLY (review finding F4): every site that has
+    classified its own failure as host starvation raises
+    ``TrialInfrastructureError`` — an ``AssertionError`` subclass, so an
+    exhausted retry still fails the trial as an assertion — and the
+    matcher below inspects that TYPE, never message text. The carrying
+    sites: the pre-flight staleness check (pre-dispatch by intent), a
+    dispatch whose refusal is the dead-session door reject (the bridge's
+    failure latch plus NOT_DISPATCHED, not its wording) or the monitor's
+    own ``blocked``-latched freshness (``signal_invalid``) door-refusal —
+    block-ness read from the monitor's latch, never inferred from a
+    latched cause — and a post-trip drain poll that found the session
+    already dead at the door. Everything else — a wrong status for any
+    other reason, a real (non-freshness) trip, a device-side rejection
+    whatever cause is latched (F1's two lanes), an error envelope claiming
+    the work was dispatched, a session the poll itself poisoned — keeps
+    its plain ``AssertionError`` and raises straight through, as does any
+    ``AssertionError`` that merely quotes the historical retryable wording
+    (pinned by test). Starvation-shaped NON-retryables that remain are
+    disclosed at ``_poll_found_dead_session`` as an owner row."""
     for attempt in range(3):
         try:
             outcome = _run_trial_once(
@@ -887,14 +996,8 @@ def run_trial(
             )
             outcome["retries"] = attempt
             return outcome
-        except AssertionError as exc:
-            message = str(exc)
-            infrastructure = (
-                "pre-dispatch staleness" in message
-                or "A fresh opened bridge" in message
-                or ("protection trip" in message and "signal_invalid" in message)
-            )
-            if not infrastructure or attempt == 2:
+        except TrialInfrastructureError:
+            if attempt == 2:
                 raise
     raise AssertionError("unreachable retry exhaustion")
 
@@ -934,9 +1037,13 @@ def _run_trial_once(
         # follows would misreport the cause — fail HERE with the actual age.
         if not no_trip:
             last_sig_b = rig.snapshots[-1][1][SIG_B]
-            assert last_sig_b.valid, (
-                f"pre-dispatch staleness: {SIG_B} age {last_sig_b.age_ms} ms"
-            )
+            if not last_sig_b.valid:
+                # Pre-dispatch by intent (F4): entering the measured window
+                # with an already-stale signal is fixture starvation, never
+                # a property of the measurement — the marker says retry.
+                raise TrialInfrastructureError(
+                    f"pre-dispatch staleness: {SIG_B} age {last_sig_b.age_ms} ms"
+                )
         write_gap: float | None = None
 
         tick_mark = len(rig.tick_times)
@@ -978,10 +1085,17 @@ def _run_trial_once(
             )
             expected = OperationStatus.OK  # the deadline ACCOMMODATES T_acq
         dispatch_end_ns = rig.clock.now_ns()
-        assert result.status is expected, (
-            f"{arm} dispatch landed {result.status.value}, expected {expected.value}: "
-            f"{result.error.message if result.error else ''}"
-        )
+        if result.status is not expected:
+            # F4/F1: classify by structure before failing — see
+            # _dispatch_failure_is_infrastructure (block-ness is the
+            # monitor's latch, never a latched cause).
+            detail = (
+                f"{arm} dispatch landed {result.status.value}, expected {expected.value}: "
+                f"{result.error.message if result.error else ''}"
+            )
+            if _dispatch_failure_is_infrastructure(rig, result):
+                raise TrialInfrastructureError(detail)
+            raise AssertionError(detail)
         duration_ms = (dispatch_end_ns - dispatch_start_ns) / 1e6
 
         # X1 — the tick-gap class (monotonic, the _recording_tick seam).
@@ -1114,7 +1228,19 @@ def _run_trial_once(
                 OperationRequest.write("op-acq-w", parameter="acq_scalar", value=1),
                 deadline_ns=rig.deadline_ns(T_ACQ_MIN_MS + 500),
             )
-            assert write_result.status is OperationStatus.OK, write_result.error
+            if write_result.status is not OperationStatus.OK:
+                # F4/F1: the dead bridge session's door reject is the
+                # mid-trial host-pathology class; a device-side write
+                # refusal — whatever cause the monitor still holds; the
+                # post-trip latch makes it cause-adjacent, not a block
+                # (phase is idle here) — and any real write failure stay
+                # plain, non-retryable assertions.
+                detail = (
+                    f"write leg landed {write_result.status.value}: {write_result.error}"
+                )
+                if _dispatch_failure_is_infrastructure(rig, write_result):
+                    raise TrialInfrastructureError(detail)
+                raise AssertionError(detail)
             write_gap = _max_tick_gap_ms(rig.tick_times[write_mark:])
 
         outcome = {
@@ -1988,3 +2114,416 @@ def test_check2_boundary_ages_inclusive_and_aged_reading_deficiency() -> None:
     )
     violations = evaluate_conditions(POLICY, {SIG_B: stale})
     assert violations and violations[0].startswith("rig-b-level-bounds: signal_invalid")
+
+
+# --- the retry matcher's discrimination (#159 owner call 1, review finding F4) ------
+
+
+@pytest.mark.parametrize(
+    "wording",
+    [
+        "A fresh opened bridge is required",
+        "pre-dispatch staleness: sig-rig-b age 999 ms",
+        "protection trip: rig-b-level-bounds: signal_invalid: sig-rig-b",
+    ],
+)
+def test_plain_assertion_with_legacy_wording_never_retries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, wording: str
+) -> None:
+    """The retry matcher must key on an explicit structural marker, never
+    on message text (review finding F4 on PR #236): a PLAIN
+    ``AssertionError`` whose message merely quotes one of the historical
+    retryable wordings raises straight through on the first attempt — one
+    ``_run_trial_once`` call, no retry."""
+    calls: list[int] = []
+
+    def failing_once(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        calls.append(kwargs["trial_index"])
+        raise AssertionError(wording)
+
+    monkeypatch.setitem(globals(), "_run_trial_once", failing_once)
+    with pytest.raises(AssertionError) as raised:
+        run_trial(tmp_path, arm="non_capture", device_class="buffered", trial_index=3)
+    assert len(calls) == 1, (
+        f"a plain AssertionError was retried {len(calls)} time(s) — the "
+        "matcher keyed on message text, not the structural marker"
+    )
+    assert type(raised.value) is AssertionError
+
+
+def test_infrastructure_marker_retries_on_a_fresh_trial(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F4, direction (a): a marker-carrying failure is retried on a fresh
+    trial index and the outcome records the retry count."""
+    calls: list[int] = []
+
+    def flaky_once(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        calls.append(kwargs["trial_index"])
+        if len(calls) == 1:
+            raise TrialInfrastructureError("pre-dispatch staleness: synthetic")
+        return {"arm": kwargs["arm"], "trial": kwargs["trial_index"]}
+
+    monkeypatch.setitem(globals(), "_run_trial_once", flaky_once)
+    outcome = run_trial(
+        tmp_path, arm="non_capture", device_class="buffered", trial_index=7
+    )
+    assert outcome["retries"] == 1
+    # trial_index * 10 + attempt: the retry re-ran as a FRESH trial index.
+    assert calls == [70, 71]
+
+
+def test_infrastructure_marker_exhausts_at_two_retries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The cap: a chronically starved host fails after exactly three
+    attempts, and the marker stays an ``AssertionError`` subclass so the
+    exhausted trial still fails as an assertion (the axis trials'
+    starved-host guard keeps its meaning)."""
+    calls: list[int] = []
+
+    def always_failing_once(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        calls.append(kwargs["trial_index"])
+        raise TrialInfrastructureError("starved")
+
+    monkeypatch.setitem(globals(), "_run_trial_once", always_failing_once)
+    with pytest.raises(TrialInfrastructureError) as raised:
+        run_trial(tmp_path, arm="control", device_class="unbuffered", trial_index=1)
+    assert len(calls) == 3  # the attempt plus at most two retries
+    assert isinstance(raised.value, AssertionError)
+
+
+# --- F1 fold: block-ness is the monitor's latch, never cause-adjacency (#159) ------
+
+
+_FRESHNESS_REASON = "rig-b-level-bounds: signal_invalid: sig-rig-b-level"
+_ESCAPE_REASON = (
+    "rig-b-level-bounds: interval_escape: [4.95, 5.05] escapes [-0.1, 4.5]"
+)
+
+
+class _ClassifierMonitor:
+    """The monitor state ``_dispatch_failure_is_infrastructure`` reads — the
+    direct-classifier table's stand-in (the F1 refute lanes' coverage
+    finding: the classifier family had zero direct tests, which is how the
+    cause-adjacency hole landed unwitnessed)."""
+
+    def __init__(
+        self, *, cause: str | None, cause_reasons: list[str], blocked: bool
+    ) -> None:
+        self.cause = cause
+        self.cause_reasons = cause_reasons
+        self.blocked = blocked
+
+
+class _ClassifierBridge:
+    def __init__(self, *, failed: bool) -> None:
+        self._failed = failed
+
+
+class _ClassifierRig:
+    def __init__(
+        self, *, monitor: _ClassifierMonitor, bridge: _ClassifierBridge
+    ) -> None:
+        self.monitor = monitor
+        self.bridge_a = bridge
+
+
+def _classifier_result(
+    code: ErrorCode, state: DispatchState, message: str
+) -> OperationResult:
+    return OperationResult.failure(
+        "op-classifier",
+        OperationVerb.WRITE,
+        code=code,
+        message=message,
+        dispatch_state=state,
+    )
+
+
+def _device_rejection_envelope(request: dict[str, Any]) -> dict[str, Any]:
+    """A plain device-side OTDP refusal — the standard "device said no"
+    posture (``DEVICE_REJECTED``, nothing sent)."""
+    return {
+        "operation_id": request["operation_id"],
+        "verb": request["verb"],
+        "status": "error",
+        "error": {
+            "code": "DEVICE_REJECTED",
+            "message": "device refused: parameter outside permitted range",
+            "dispatch_state": "not_dispatched",
+        },
+    }
+
+
+@pytest.mark.parametrize(
+    ("result", "monitor", "bridge", "expected"),
+    [
+        pytest.param(
+            _classifier_result(
+                ErrorCode.DEVICE_REJECTED,
+                DispatchState.NOT_DISPATCHED,
+                f"protection trip: {_FRESHNESS_REASON}",
+            ),
+            _ClassifierMonitor(
+                cause="tripped", cause_reasons=[_FRESHNESS_REASON], blocked=True
+            ),
+            _ClassifierBridge(failed=False),
+            True,
+            id="genuine-monitor-freshness-block-retries",
+        ),
+        pytest.param(
+            _classifier_result(
+                ErrorCode.INTERNAL_ERROR,
+                DispatchState.NOT_DISPATCHED,
+                "A fresh opened bridge is required",
+            ),
+            _ClassifierMonitor(cause=None, cause_reasons=[], blocked=False),
+            _ClassifierBridge(failed=True),
+            True,
+            id="dead-session-door-retries",
+        ),
+        pytest.param(
+            _classifier_result(
+                ErrorCode.DEVICE_REJECTED,
+                DispatchState.NOT_DISPATCHED,
+                "parameter outside permitted range",
+            ),
+            _ClassifierMonitor(
+                cause="tripped", cause_reasons=[_FRESHNESS_REASON], blocked=False
+            ),
+            _ClassifierBridge(failed=False),
+            False,
+            id="f1-write-leg-device-rejection-with-latched-cause-never-retries",
+        ),
+        pytest.param(
+            _classifier_result(
+                ErrorCode.DEVICE_REJECTED,
+                DispatchState.NOT_DISPATCHED,
+                "device refused: parameter not readable in current state",
+            ),
+            _ClassifierMonitor(
+                cause="tripped", cause_reasons=[_FRESHNESS_REASON], blocked=False
+            ),
+            _ClassifierBridge(failed=False),
+            False,
+            id="f1-measured-dispatch-device-rejection-post-tick-cause-never-retries",
+        ),
+        pytest.param(
+            _classifier_result(
+                ErrorCode.INTERNAL_ERROR,
+                DispatchState.DISPATCHED,
+                "adapter-reported internal failure after execution",
+            ),
+            _ClassifierMonitor(cause=None, cause_reasons=[], blocked=False),
+            _ClassifierBridge(failed=True),
+            False,
+            id="dispatched-internal-error-envelope-never-retries",
+        ),
+        pytest.param(
+            _classifier_result(
+                ErrorCode.DEVICE_REJECTED,
+                DispatchState.DISPATCHED,
+                f"protection trip: {_FRESHNESS_REASON}",
+            ),
+            _ClassifierMonitor(
+                cause="tripped", cause_reasons=[_FRESHNESS_REASON], blocked=True
+            ),
+            _ClassifierBridge(failed=False),
+            False,
+            id="dispatched-block-shaped-envelope-never-retries",
+        ),
+        pytest.param(
+            _classifier_result(
+                ErrorCode.DEVICE_REJECTED,
+                DispatchState.NOT_DISPATCHED,
+                f"protection trip: {_ESCAPE_REASON}",
+            ),
+            _ClassifierMonitor(cause="tripped", cause_reasons=[_ESCAPE_REASON], blocked=True),
+            _ClassifierBridge(failed=False),
+            False,
+            id="real-trip-block-stays-plain",
+        ),
+        pytest.param(
+            _classifier_result(
+                ErrorCode.INTERNAL_ERROR,
+                DispatchState.NOT_DISPATCHED,
+                "capture open failed: store busy",
+            ),
+            _ClassifierMonitor(cause=None, cause_reasons=[], blocked=False),
+            _ClassifierBridge(failed=False),
+            False,
+            id="capture-gate-store-refusal-stays-plain",
+        ),
+        pytest.param(
+            _classifier_result(
+                ErrorCode.PROTOCOL_ERROR,
+                DispatchState.UNKNOWN,
+                "Invalid, failed or late adapter result; no replay",
+            ),
+            _ClassifierMonitor(cause=None, cause_reasons=[], blocked=False),
+            _ClassifierBridge(failed=True),
+            False,
+            id="late-result-poison-stays-plain",
+        ),
+    ],
+)
+def test_dispatch_failure_classifier_table(
+    result: OperationResult,
+    monitor: _ClassifierMonitor,
+    bridge: _ClassifierBridge,
+    expected: bool,
+) -> None:
+    """Direct classifier pins (F1's coverage remedy): a genuine monitor
+    block — read from the monitor's OWN blocked latch — and the
+    dead-session door stay retryable; a device-side rejection never
+    retries, whatever cause is latched (F1's two lanes present the SAME
+    classifier state: cause latched, no block — block-ness is what
+    differs); and no envelope claiming the work was dispatched retries
+    (retryable infrastructure means the dispatch NEVER ran)."""
+    rig = cast(ContinuityRig, _ClassifierRig(monitor=monitor, bridge=bridge))
+    assert _dispatch_failure_is_infrastructure(rig, result) is expected
+
+
+@pytest.mark.parametrize(
+    ("outcome", "expected"),
+    [
+        pytest.param(
+            PollOutcome(
+                refusal=OperationError(
+                    ErrorCode.INTERNAL_ERROR,
+                    "A fresh opened bridge is required",
+                    DispatchState.NOT_DISPATCHED,
+                ),
+                session_failed=True,
+            ),
+            True,
+            id="dead-at-the-door-retries",
+        ),
+        pytest.param(
+            PollOutcome(
+                refusal=OperationError(
+                    ErrorCode.PROTOCOL_ERROR,
+                    "Invalid, failed or late adapter event; no replay",
+                    DispatchState.UNKNOWN,
+                ),
+                session_failed=True,
+            ),
+            False,
+            id="self-poisoned-protocol-lie-stays-plain",
+        ),
+        pytest.param(
+            PollOutcome(
+                refusal=OperationError(
+                    ErrorCode.TIMEOUT,
+                    "Invalid, failed or late adapter event; no replay",
+                    DispatchState.UNKNOWN,
+                ),
+                session_failed=True,
+            ),
+            False,
+            id="timeout-flavor-starvation-is-a-disclosed-residual-not-retryable",
+        ),
+        pytest.param(
+            PollOutcome(
+                refusal=OperationError(
+                    ErrorCode.INTERNAL_ERROR,
+                    "registry invariant violated",
+                    DispatchState.NOT_DISPATCHED,
+                ),
+            ),
+            False,
+            id="internal-error-without-session-failure-stays-plain",
+        ),
+        pytest.param(PollOutcome(), False, id="quiet-poll-stays-plain"),
+    ],
+)
+def test_poll_dead_session_classifier_table(
+    outcome: PollOutcome, expected: bool
+) -> None:
+    """Direct pins for the drain-side classifier: only a session already
+    dead at the poll door retries. The TIMEOUT-flavor poison is
+    starvation-shaped yet stays non-retryable — the disclosed owner-row
+    residual, deliberately not a classifier input here."""
+    assert _poll_found_dead_session(outcome) is expected
+
+
+def _starved_trip_rig_counter(monkeypatch: pytest.MonkeyPatch) -> list[ContinuityRig]:
+    """The F1 repro precondition: count every rig constructed, and tighten
+    SIG_B's commissioned freshness bound so the measured dispatch's own
+    blackout latches ``signal_invalid`` at the wrapper's post-dispatch tick
+    (the starved-host trip class) — a latched cause WITHOUT any block."""
+    rigs: list[ContinuityRig] = []
+    original_init = ContinuityRig.__init__
+
+    def counting_init(self: ContinuityRig, *args: Any, **kwargs: Any) -> None:
+        rigs.append(self)
+        original_init(self, *args, **kwargs)
+
+    monkeypatch.setattr(ContinuityRig, "__init__", counting_init)
+    tightened = copy.deepcopy(BENCH)
+    for signal in tightened["signals"]:
+        if signal["id"] == SIG_B:
+            signal["max_age_ms"] = 150
+    monkeypatch.setitem(globals(), "BENCH", tightened)
+    return rigs
+
+
+def test_transient_device_write_refusal_cannot_launder_into_clean_verdict(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F1 lane 1, end to end: with the freshness cause latched (the
+    protective transition is done — phase idle, so no block is possible),
+    device A refuses the write leg ONCE — first rig only — with a plain
+    device-side ``DEVICE_REJECTED`` envelope. The cause-adjacency
+    classifier retried it and the fresh rig measured clean, returning a
+    CLEAN verdict with the device's refusal swallowed (adversarial probe:
+    2 rigs, no raise). Pin: attempt 0, ONE rig, loud plain AssertionError."""
+    rigs = _starved_trip_rig_counter(monkeypatch)
+    original_execute = ARigAdapter.execute
+
+    async def rejecting_first_write(
+        self: ARigAdapter, request: dict[str, Any], context: Any
+    ) -> dict[str, Any]:
+        if request["verb"] == "write" and len(rigs) == 1:
+            return _device_rejection_envelope(request)
+        return await original_execute(self, request, context)
+
+    monkeypatch.setattr(ARigAdapter, "execute", rejecting_first_write)
+    with pytest.raises(AssertionError) as raised:
+        run_trial(tmp_path, arm="non_capture", device_class="buffered", trial_index=44)
+    assert len(rigs) == 1, (
+        f"a transient first-rig device refusal ran {len(rigs)} rigs — the "
+        "retrial was laundering it toward a clean verdict"
+    )
+    assert type(raised.value) is AssertionError
+
+
+def test_measured_dispatch_device_refusal_with_latched_staleness_never_retries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F1 lane 2, end to end: the device consumes the acquisition window
+    (a 220 ms paced read against the tightened 150 ms freshness bound) and
+    then refuses the MEASURED dispatch device-side; the wrapper's
+    post-dispatch tick latches ``signal_invalid`` BEFORE the site
+    classifies — cause-adjacent, never a block. Pin: attempt 0, ONE rig,
+    plain AssertionError."""
+    rigs = _starved_trip_rig_counter(monkeypatch)
+    original_execute = ARigAdapter.execute
+
+    async def window_consuming_refusal(
+        self: ARigAdapter, request: dict[str, Any], context: Any
+    ) -> dict[str, Any]:
+        if request["verb"] == "read" and request["operation_id"] == "op-acq":
+            await asyncio.sleep(0.22)
+            return _device_rejection_envelope(request)
+        return await original_execute(self, request, context)
+
+    monkeypatch.setattr(ARigAdapter, "execute", window_consuming_refusal)
+    with pytest.raises(AssertionError) as raised:
+        run_trial(tmp_path, arm="non_capture", device_class="buffered", trial_index=45)
+    assert len(rigs) == 1, (
+        f"a device-side measured-dispatch refusal was retried across "
+        f"{len(rigs)} rigs — cause-adjacency classified it as a block"
+    )
+    assert type(raised.value) is AssertionError
