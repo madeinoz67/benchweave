@@ -559,8 +559,86 @@ class CrossConstraintRow:
 
 
 def load_cross_constraints(root: Path) -> tuple[CrossConstraintRow, ...]:
-    """Load the cross-constraints side table; fail closed on shape and retention."""
-    raise NotImplementedError(load_cross_constraints.__name__)
+    """Load the cross-constraints side table; fail closed on shape and retention.
+
+    The file is governance data beside the two manifests (no corpus rows);
+    its ABSENCE refuses too — a tree that lost its cross-standard governance
+    data does not silently degrade to "no constraints". Stored sugar in a
+    requirement refuses ``constraint_syntax_unexpanded:`` before the schema
+    runs; a row naming a version with no retained directory refuses
+    ``cross_constraint_unresolved:`` (rows name released versions of their
+    own standard); unknown standards on either side of a row refuse
+    ``constraint_standard_unknown:``; ``adapter_api`` requirements name an
+    exact two-component version, everything else an explicit interval.
+    """
+    path = root / "standards/cross-constraints.json"
+    if not path.is_file():
+        raise StandardsError(
+            "cross_constraint_invalid: standards/cross-constraints.json absent — "
+            "the tree's cross-standard governance data is missing, not empty"
+        )
+    document = json.loads(path.read_bytes())
+    if isinstance(document, dict) and isinstance(document.get("rows"), list):
+        for row in document["rows"]:
+            if isinstance(row, dict) and isinstance(row.get("requires"), dict):
+                for key, value in sorted(row["requires"].items()):
+                    if isinstance(value, str) and ("^" in value or "~" in value):
+                        raise StandardsError(
+                            f"constraint_syntax_unexpanded: {row.get('standard')!r} "
+                            f"requires {key}: {value!r} — caret sugar is authoring "
+                            "input; a stored document never carries it"
+                        )
+    error = next(
+        iter(_validator("cross-constraints", CROSS_CONSTRAINTS_SCHEMA).iter_errors(document)),
+        None,
+    )
+    if error is not None:
+        raise StandardsError(
+            f"cross_constraint_invalid: {path.name} {error.json_path}: {error.message}"
+        )
+    policy = load_dependency_policy(root)
+    rows: list[CrossConstraintRow] = []
+    seen: set[tuple[str, str]] = set()
+    for raw in document["rows"]:
+        standard = str(raw["standard"])
+        version = str(raw["version"])
+        if standard not in policy.standards:
+            raise StandardsError(
+                f"constraint_standard_unknown: {standard!r} names a standard the "
+                f"dependency-policy block does not carry; supported: "
+                f"{', '.join(sorted(policy.standards))}"
+            )
+        if version not in retained_versions(root, standard):
+            raise StandardsError(
+                f"cross_constraint_unresolved: {standard}@{version} names a version "
+                "with no retained directory; rows name released versions of their "
+                "own standard"
+            )
+        if (standard, version) in seen:
+            raise StandardsError(
+                f"cross_constraint_invalid: duplicate row for {standard}@{version}"
+            )
+        seen.add((standard, version))
+        requires: dict[str, str] = {}
+        for key, value in sorted(raw["requires"].items()):
+            if key == "adapter_api":
+                if not isinstance(value, str) or ADAPTER_API_PATTERN.fullmatch(value) is None:
+                    raise StandardsError(
+                        f"cross_constraint_invalid: {standard}@{version} requires "
+                        f"adapter_api {value!r} — an exact two-component version"
+                    )
+            elif key not in policy.standards:
+                raise StandardsError(
+                    f"constraint_standard_unknown: {standard}@{version} requires "
+                    f"{key!r}, a standard the dependency-policy block does not carry"
+                )
+            requires[key] = str(value)
+        rows.append(
+            CrossConstraintRow(
+                standard=standard, version=version, requires=requires, evidence=str(raw["evidence"])
+            )
+        )
+    return tuple(rows)
 
 
 # --- resolution and the lock writer -----------------------------------------------

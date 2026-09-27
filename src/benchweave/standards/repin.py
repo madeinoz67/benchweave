@@ -32,7 +32,15 @@ _ROW_KEYS = frozenset({"path", "source", "sha256"})
 # version's corresponding path — the predecessor edge the deleted staging
 # directory cannot carry on its own.
 _OPTIONAL_ROW_KEYS = frozenset({"lineage"})
-_MANIFESTS = frozenset({"corpus-manifest.json", "standards-manifest.json"})
+# Governance JSON living BESIDE the corpus (no corpus rows, no repin): the
+# two manifests, plus the cross-constraints side table (#216, issue #203
+# slice 2) — and, from slice 4, promotion records. Membership is by
+# ROOT-RELATIVE path, tighter than the old basename check: a nested file
+# named like one of these never matches (the tightening is pinned by
+# tests/standards/test_cross_constraints.py).
+_GOVERNANCE_JSON = frozenset(
+    {"corpus-manifest.json", "standards-manifest.json", "cross-constraints.json"}
+)
 
 
 def repin_manifest(root: Path) -> list[str]:
@@ -245,7 +253,7 @@ def _check_coverage(root: Path, pinned: set[str]) -> None:
     on_disk = {
         path.relative_to(corpus).as_posix()  # manifest rows are '/'-separated (#138)
         for path in corpus.rglob("*.json")
-        if path.name not in _MANIFESTS
+        if path.relative_to(corpus).as_posix() not in _GOVERNANCE_JSON
     }
     unpinned = sorted(on_disk - pinned)
     if unpinned:
