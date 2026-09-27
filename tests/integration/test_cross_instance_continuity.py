@@ -854,30 +854,43 @@ class TrialInfrastructureError(AssertionError):
 def _dead_session_reject(bridge: OTDPBridge, result: OperationResult) -> bool:
     """The structural signal behind a dispatch's ``INTERNAL_ERROR`` "A
     fresh opened bridge is required" door reject: the bridge's own failure
-    latch, not the reject's wording. Mid-trial the bridge is open and not
-    closed, so the latch is exactly the door condition; the capture gate's
-    own ``INTERNAL_ERROR`` store refusals fire with the latch down and
-    stay non-retryable."""
+    latch plus NOT_DISPATCHED — retryable infrastructure means the dispatch
+    NEVER ran, so an error envelope claiming the work was dispatched stays
+    plain whatever its code (an adapter envelope can claim dispatch; the
+    door reject never does). The door itself is the three-disjunct
+    ``not _opened or _closed or _failed`` (otdp_bridge.py); checking only
+    ``_failed`` is a mid-trial narrowing, sound because a rig bridge is
+    open from ``plugin_open`` and closes only at teardown/finally — after
+    every site that classifies. The capture gate's own ``INTERNAL_ERROR``
+    store refusals fire with the latch down and stay non-retryable."""
     error = result.error
     return (
         error is not None
         and error.code is ErrorCode.INTERNAL_ERROR
+        and error.dispatch_state is DispatchState.NOT_DISPATCHED
         and bridge._failed
     )
 
 
 def _freshness_trip_block(rig: ContinuityRig, result: OperationResult) -> bool:
-    """A dispatch the protective fail-safe refused at the door because the
-    freshness condition had ALREADY tripped — the settle/pre-tick
-    starvation class; the dispatch never ran. Structural: the block
-    result's code, the monitor's latched cause, and the violation KIND
-    from the monitor's own typed reason list (policy.py's closed
-    ``"<condition_id>: <kind>[: <detail>]"`` grammar) — a real
-    (non-freshness) trip keeps the plain assert."""
+    """A dispatch the protective fail-safe refused at the door — the
+    settle/pre-tick starvation class. Block-ness is read from the
+    monitor's OWN §5 latch (``blocked``, set by ``block_result`` when it
+    actually refused a dispatch) plus the block result's NOT_DISPATCHED
+    state, NEVER inferred from a latched cause: after the post-dispatch
+    tick — or past the protective transition, where phase idle makes a
+    block impossible — a freshness cause can be latched while the failing
+    dispatch was device-side (F1's two lanes), and a device-side
+    ``DEVICE_REJECTED`` must never retry whatever cause is latched. The
+    freshness KIND still gates: only ``signal_invalid`` (staleness) is the
+    starvation class; a real (non-freshness) trip's block keeps the plain
+    assert."""
     error = result.error
     if error is None or error.code is not ErrorCode.DEVICE_REJECTED:
         return False
-    if rig.monitor.cause is None:
+    if error.dispatch_state is not DispatchState.NOT_DISPATCHED:
+        return False
+    if not rig.monitor.blocked:
         return False
     kinds = {
         reason.split(":", 2)[1].strip()
@@ -902,10 +915,15 @@ def _dispatch_failure_is_infrastructure(
 
 def _poll_found_dead_session(outcome: PollOutcome) -> bool:
     """A drain poll that found the session already dead (the door reject —
-    ``INTERNAL_ERROR`` with ``session_failed``). A session the poll ITSELF
-    poisoned (the protocol-lie classes carry ``PROTOCOL_ERROR`` or
-    ``TIMEOUT``) keeps the plain assert: a deterministic rig defect, not
-    host starvation."""
+    ``INTERNAL_ERROR`` with ``session_failed``). NOT classified: a session
+    the poll itself poisoned — the protocol-lie flavors are deterministic
+    rig defects, but the TIMEOUT flavor (a poll whose event delivery
+    outran the poll's own 50 ms deadline under host stall) is
+    starvation-shaped and still non-retryable. Known NON-retryable
+    starvation residuals, disclosed as an owner row rather than widened
+    here: TIMEOUT-flavor poll poison, drain-cap starvation
+    (``drain_until_quiet``'s loud cap assert), and entry-timeout at the
+    dispatch door."""
     refusal = outcome.refusal
     return (
         outcome.session_failed
@@ -953,15 +971,19 @@ def run_trial(
     exhausted retry still fails the trial as an assertion — and the
     matcher below inspects that TYPE, never message text. The carrying
     sites: the pre-flight staleness check (pre-dispatch by intent), a
-    dispatch whose refusal is the dead-session door reject (classified by
-    the bridge's failure latch, not its wording) or the freshness
-    (``signal_invalid``) protection-trip block while the monitor holds the
-    cause, and a post-trip drain poll that found the session already dead
-    at the door. Everything else — a wrong status for any other reason, a
-    real (non-freshness) trip, a session the poll itself poisoned — keeps
+    dispatch whose refusal is the dead-session door reject (the bridge's
+    failure latch plus NOT_DISPATCHED, not its wording) or the monitor's
+    own ``blocked``-latched freshness (``signal_invalid``) door-refusal —
+    block-ness read from the monitor's latch, never inferred from a
+    latched cause — and a post-trip drain poll that found the session
+    already dead at the door. Everything else — a wrong status for any
+    other reason, a real (non-freshness) trip, a device-side rejection
+    whatever cause is latched (F1's two lanes), an error envelope claiming
+    the work was dispatched, a session the poll itself poisoned — keeps
     its plain ``AssertionError`` and raises straight through, as does any
     ``AssertionError`` that merely quotes the historical retryable wording
-    (pinned by test)."""
+    (pinned by test). Starvation-shaped NON-retryables that remain are
+    disclosed at ``_poll_found_dead_session`` as an owner row."""
     for attempt in range(3):
         try:
             outcome = _run_trial_once(
@@ -1064,8 +1086,9 @@ def _run_trial_once(
             expected = OperationStatus.OK  # the deadline ACCOMMODATES T_acq
         dispatch_end_ns = rig.clock.now_ns()
         if result.status is not expected:
-            # F4: classify by structure before failing — see
-            # _dispatch_failure_is_infrastructure.
+            # F4/F1: classify by structure before failing — see
+            # _dispatch_failure_is_infrastructure (block-ness is the
+            # monitor's latch, never a latched cause).
             detail = (
                 f"{arm} dispatch landed {result.status.value}, expected {expected.value}: "
                 f"{result.error.message if result.error else ''}"
@@ -1206,9 +1229,12 @@ def _run_trial_once(
                 deadline_ns=rig.deadline_ns(T_ACQ_MIN_MS + 500),
             )
             if write_result.status is not OperationStatus.OK:
-                # F4: the dead bridge session's door reject is the mid-trial
-                # host-pathology class; a real write failure stays a plain,
-                # non-retryable assertion.
+                # F4/F1: the dead bridge session's door reject is the
+                # mid-trial host-pathology class; a device-side write
+                # refusal — whatever cause the monitor still holds; the
+                # post-trip latch makes it cause-adjacent, not a block
+                # (phase is idle here) — and any real write failure stay
+                # plain, non-retryable assertions.
                 detail = (
                     f"write leg landed {write_result.status.value}: {write_result.error}"
                 )
