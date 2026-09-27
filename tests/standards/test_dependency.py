@@ -24,6 +24,7 @@ from benchweave.standards.dependency import (
     expand_caret,
     load_constraints,
     load_prior_lock,
+    resolve_package,
 )
 from benchweave.standards.export import canonical_json
 from benchweave.standards.manifest import StandardsError, load_dependency_policy
@@ -308,3 +309,220 @@ def test_list_renders_every_standard_deterministically(tmp_path: Path) -> None:
     assert "retired 0.3.0" in result.stdout
     again = _run(root, "list")
     assert result.stdout == again.stdout
+
+
+# --- B1/B2: the writer — determinism and minimal motion ---------------------------
+
+
+_SYNTHETIC_CONSTRAINTS = {
+    "otdp": ">=0.2.0,<0.3.0",
+    "plugin-ui": ">=0.2.0,<0.3.0",
+    "registry": ">=0.1.0,<0.2.0",
+}
+
+
+def _dps150_copy(tmp_path: Path) -> Path:
+    """The real DPS-150 package (contracts only — the materialized corpus
+    dirs are gitignored local artifacts) over a copied standards tree."""
+    root = _copy_standards(tmp_path)
+    package = root / "plugins" / "fnirsi" / "dps150"
+    (package / "contracts").mkdir(parents=True)
+    for name in ("constraints.json", "lock.json"):
+        shutil.copy(
+            ROOT / "plugins" / "fnirsi" / "dps150" / "contracts" / name,
+            package / "contracts" / name,
+        )
+    return root
+
+
+def _lock_path(package: Path) -> Path:
+    return package / "contracts" / "lock.json"
+
+
+def _rows(raw: bytes) -> dict[str, dict[str, object]]:
+    return {str(row["id"]): row for row in json.loads(raw)["standards"]}
+
+
+def test_b1_resolve_twice_is_byte_identical(tmp_path: Path) -> None:
+    """n=2 runs, same inputs: byte-identical locks. KILL: any diff."""
+    root = _copy_standards(tmp_path)
+    package = _package(root, constraints=_SYNTHETIC_CONSTRAINTS, otdp_version="0.2.0")
+    first = resolve_package(root, package)
+    second = resolve_package(root, package)
+    assert first.raw == second.raw
+    assert first.raw == resolve_package(root, package).raw
+
+
+def test_b1_synthetic_pin_is_deterministic_and_minimal(tmp_path: Path) -> None:
+    """The prior otdp 0.2.0 stays (minimal motion: prior ∧ in-interval ∧
+    served), plugin-ui and registry resolve to their highest served."""
+    root = _copy_standards(tmp_path)
+    package = _package(root, constraints=_SYNTHETIC_CONSTRAINTS, otdp_version="0.2.0")
+    result = _run(root, "pin", "--package", "plugins/acme/widget")
+    assert result.returncode == 0, result.stderr
+    raw = _lock_path(package).read_bytes()
+    rows = _rows(raw)
+    assert [row["version"] for row in (rows["otdp"], rows["plugin-ui"], rows["registry"])] == [
+        "0.2.0",
+        "0.2.0",
+        "0.1.1",
+    ]
+    again = _run(root, "pin", "--package", "plugins/acme/widget")
+    assert again.returncode == 0, again.stderr
+    assert _lock_path(package).read_bytes() == raw  # idempotent re-pin
+
+
+def test_b1_dps150_pin_is_deterministic_with_values_verbatim(tmp_path: Path) -> None:
+    """The real package: v1 lock relocks to v2, every legacy VALUE preserved
+    verbatim (repository, revision, the 8-file map, adapter API) and the
+    byte-form reformats once to canonical JSON; a second pin is a no-op."""
+    root = _dps150_copy(tmp_path)
+    package = root / "plugins" / "fnirsi" / "dps150"
+    first = _run(root, "pin", "--package", "plugins/fnirsi/dps150")
+    assert first.returncode == 0, first.stderr
+    raw = _lock_path(package).read_bytes()
+    document = json.loads(raw)
+    v1 = json.loads(
+        (ROOT / "plugins" / "fnirsi" / "dps150" / "contracts" / "lock.json").read_bytes()
+    )
+    assert document["lock_version"] == 2
+    assert document["otdp_version"] == v1["otdp_version"]
+    assert document["repository"] == v1["repository"]
+    assert document["revision"] == v1["revision"]
+    assert document["directory"] == v1["directory"]
+    assert document["adapter_api_version"] == v1["adapter_api_version"]
+    assert document["sha256"] == v1["sha256"]
+    second = _run(root, "pin", "--package", "plugins/fnirsi/dps150")
+    assert second.returncode == 0, second.stderr
+    assert _lock_path(package).read_bytes() == raw
+
+
+def test_b2_upgrade_otdp_moves_only_the_otdp_projection(tmp_path: Path) -> None:
+    """`upgrade otdp --precise 0.2.2` from a 0.2.0 pin: the otdp row and its
+    legacy projection move; every other row and the provenance keys stay
+    byte-identical. KILL: any collateral row motion."""
+    root = _copy_standards(tmp_path)
+    package = _package(root, constraints=_SYNTHETIC_CONSTRAINTS, otdp_version="0.2.0")
+    assert _run(root, "pin", "--package", "plugins/acme/widget").returncode == 0
+    before_raw = _lock_path(package).read_bytes()
+    before = json.loads(before_raw)
+    result = _run(
+        root, "upgrade", "otdp", "--precise", "0.2.2", "--package", "plugins/acme/widget"
+    )
+    assert result.returncode == 0, result.stderr
+    after = json.loads(_lock_path(package).read_bytes())
+    assert after["otdp_version"] == "0.2.2"
+    assert after["directory"] == "standards/otdp/0.2.2"
+    assert after["sha256"] == before["sha256"]  # same eight file names, frozen bytes
+    assert after["repository"] == before["repository"]
+    assert after["revision"] == before["revision"]
+    rows, rows_before = _rows(_lock_path(package).read_bytes()), _rows(before_raw)
+    assert rows["plugin-ui"] == rows_before["plugin-ui"]
+    assert rows["registry"] == rows_before["registry"]
+    assert rows["otdp"]["version"] == "0.2.2"
+    assert rows["otdp"]["digest"] != rows_before["otdp"]["digest"]
+
+
+def test_b2_upgrade_registry_moves_only_the_registry_row(tmp_path: Path) -> None:
+    """The motion control: a deliberate registry downgrade (0.1.1 -> 0.1.0)
+    moves exactly the registry row — every other row AND the whole legacy
+    otdp projection stay byte-identical."""
+    root = _copy_standards(tmp_path)
+    package = _package(root, constraints=_SYNTHETIC_CONSTRAINTS, otdp_version="0.2.0")
+    assert _run(root, "pin", "--package", "plugins/acme/widget").returncode == 0
+    before_raw = _lock_path(package).read_bytes()
+    result = _run(
+        root,
+        "upgrade",
+        "registry",
+        "--precise",
+        "0.1.0",
+        "--package",
+        "plugins/acme/widget",
+    )
+    assert result.returncode == 0, result.stderr
+    after_raw = _lock_path(package).read_bytes()
+    before, after = json.loads(before_raw), json.loads(after_raw)
+    for key in (
+        "repository",
+        "revision",
+        "directory",
+        "otdp_version",
+        "adapter_api_version",
+        "sha256",
+    ):
+        assert after[key] == before[key], key
+    rows, rows_before = _rows(after_raw), _rows(before_raw)
+    assert rows["registry"]["version"] == "0.1.0"
+    assert rows["otdp"] == rows_before["otdp"]
+    assert rows["plugin-ui"] == rows_before["plugin-ui"]
+
+
+def test_b2_upgrade_plugin_ui_to_its_only_served_version_is_a_no_op(tmp_path: Path) -> None:
+    """plugin-ui's served set is {0.2.0} (the F1 narrow range): the design's
+    `upgrade plugin-ui --precise 0.2.0` control is the no-op arm — the lock
+    stays byte-identical (the DPS-150 0.2.2->0.2.2 pin is the same shape)."""
+    root = _copy_standards(tmp_path)
+    package = _package(root, constraints=_SYNTHETIC_CONSTRAINTS, otdp_version="0.2.0")
+    assert _run(root, "pin", "--package", "plugins/acme/widget").returncode == 0
+    before_raw = _lock_path(package).read_bytes()
+    result = _run(
+        root,
+        "upgrade",
+        "plugin-ui",
+        "--precise",
+        "0.2.0",
+        "--package",
+        "plugins/acme/widget",
+    )
+    assert result.returncode == 0, result.stderr
+    assert _lock_path(package).read_bytes() == before_raw
+
+
+def test_pin_set_end_to_end_expands_and_relocks(tmp_path: Path) -> None:
+    """The CLI authoring arm: `pin --set otdp=^0.2` writes the expanded
+    interval into the committed constraints and completes the relock."""
+    root = _copy_standards(tmp_path)
+    package = _package(root, constraints=_SYNTHETIC_CONSTRAINTS, otdp_version="0.2.0")
+    result = _run(root, "pin", "--set", "otdp=^0.2", "--package", "plugins/acme/widget")
+    assert result.returncode == 0, result.stderr
+    constraints = json.loads(
+        (package / "contracts" / "constraints.json").read_bytes()
+    )
+    assert constraints["standards"]["otdp"] == ">=0.2.0,<0.3.0"
+    assert json.loads(_lock_path(package).read_bytes())["lock_version"] == 2
+
+
+# --- cross-constraint enforcement at resolve time ---------------------------------
+
+
+def test_cross_constraint_violation_refuses_at_resolve(tmp_path: Path) -> None:
+    """A resolved set combining execution 0.2.0 with an otdp outside the
+    row's requirement refuses, naming both versions and the row's evidence."""
+    root = _copy_standards(tmp_path)
+    cross = root / "standards" / "cross-constraints.json"
+    document = json.loads(cross.read_bytes())
+    document["rows"][0]["requires"]["otdp"] = ">=0.2.2,<0.3.0"
+    cross.write_bytes(canonical_json(document))
+    package = _package(
+        root,
+        constraints={"execution": ">=0.1.0,<0.3.0", "otdp": ">=0.2.0,<0.3.0"},
+        otdp_version="0.2.0",
+    )
+    with pytest.raises(StandardsError, match="cross_constraint_violation") as raised:
+        resolve_package(root, package)
+    message = str(raised.value)
+    assert "execution" in message and "0.2.0" in message
+    assert "PR #201" in message  # the row's evidence rides the refusal
+
+
+def test_a_satisfied_cross_constraint_row_resolves_clean(tmp_path: Path) -> None:
+    root = _copy_standards(tmp_path)
+    package = _package(
+        root,
+        constraints={"execution": ">=0.1.0,<0.3.0", "otdp": ">=0.2.0,<0.3.0"},
+        otdp_version="0.2.0",
+    )
+    resolution = resolve_package(root, package)
+    rows = {str(row["id"]): str(row["version"]) for row in resolution.document["standards"]}
+    assert rows == {"execution": "0.2.0", "otdp": "0.2.0"}
