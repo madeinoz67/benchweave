@@ -99,9 +99,11 @@ CONSTRAINTS_SCHEMA: dict[str, Any] = {
 #: OTDP PROJECTION (they were otdp-only): ``directory``, ``otdp_version`` and
 #: ``adapter_api_version`` are re-derived from the resolved otdp row and move
 #: iff it moves, while ``repository``/``revision`` are immutable fetch
-#: provenance carried verbatim; ``sha256`` is the version directory's
-#: top-level file map (the fetch-verify set — prose companions included,
-#: deliberately not the corpus-row set).
+#: provenance carried verbatim. TWO DIGEST SCOPES (fold wave 2 R12): the
+#: top-level ``sha256`` is the version directory's top-level file map — the
+#: fetch-verify set, prose companions (.md) included, examples/ excluded;
+#: each ``standards[].digest`` is the digest-of-digests over the CORPUS ROWS
+#: under the version — machine files and examples/ included, .md excluded.
 LOCK_V2_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -156,7 +158,7 @@ CROSS_CONSTRAINTS_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
         "cross_constraint_version": {"const": 1},
-        "note": {"type": "string"},
+        "note": {"type": "string", "maxLength": 2000},
         "rows": {
             "type": "array",
             "items": {
@@ -728,7 +730,9 @@ def _corpus_rows(root: Path) -> list[tuple[str, str]]:
     return rows
 
 
-def row_digest(root: Path, standard_id: str, version: str) -> str:
+def row_digest(
+    root: Path, standard_id: str, version: str, rows: list[tuple[str, str]] | None = None
+) -> str:
     """The digest-of-digests over the corpus-manifest rows of one version.
 
     The lock's per-standard row digest is derived from the byte authority's
@@ -739,7 +743,10 @@ def row_digest(root: Path, standard_id: str, version: str) -> str:
     manifest.
     """
     prefix = f"{standard_id}/{version}/"
-    pairs = sorted(pair for pair in _corpus_rows(root) if pair[0].startswith(prefix))
+    pairs = sorted(
+        pair for pair in (rows if rows is not None else _corpus_rows(root))
+        if pair[0].startswith(prefix)
+    )
     if not pairs:
         raise StandardsError(
             f"version_unknown: {standard_id} {version} has no corpus-manifest rows"
@@ -747,7 +754,9 @@ def row_digest(root: Path, standard_id: str, version: str) -> str:
     return hashlib.sha256(canonical_json([list(pair) for pair in pairs])).hexdigest()
 
 
-def adapter_api_for(root: Path, otdp_version: str) -> str:
+def adapter_api_for(
+    root: Path, otdp_version: str, rows: list[tuple[str, str]] | None = None
+) -> str:
     """``adapter_api`` for the PINNED version, from its descriptor schema.
 
     The ``validate_identity`` derivation (manifest.py) relocated to the
@@ -757,7 +766,7 @@ def adapter_api_for(root: Path, otdp_version: str) -> str:
     no independent range axis this arc.
     """
     relative = f"otdp/{otdp_version}/{DESCRIPTOR_SCHEMA_NAME}"
-    pins = dict(_corpus_rows(root))
+    pins = dict(rows if rows is not None else _corpus_rows(root))
     pinned = pins.get(relative)
     path = root / "standards" / relative
     if pinned is None or not path.is_file():
@@ -765,13 +774,14 @@ def adapter_api_for(root: Path, otdp_version: str) -> str:
             f"adapter_api_unresolved: otdp@{otdp_version} has no corpus-pinned "
             f"{DESCRIPTOR_SCHEMA_NAME}"
         )
-    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    raw = path.read_bytes()  # read once: the digest and the parse share bytes
+    digest = hashlib.sha256(raw).hexdigest()
     if digest != pinned:
         raise StandardsError(
             f"corpus_pin_mismatch: standards/{relative}: corpus pin {pinned} does "
             f"not match the on-disk bytes ({digest})"
         )
-    schema = json.loads(path.read_bytes())
+    schema = json.loads(raw)
     try:
         const = schema["$defs"]["adapter"]["properties"]["api_version"]["const"]
     except (KeyError, TypeError):
@@ -786,7 +796,12 @@ def adapter_api_for(root: Path, otdp_version: str) -> str:
     return const
 
 
-def otdp_file_map(root: Path, version: str, prior_map: dict[str, str]) -> dict[str, str]:
+def otdp_file_map(
+    root: Path,
+    version: str,
+    prior_map: dict[str, str],
+    rows: list[tuple[str, str]] | None = None,
+) -> dict[str, str]:
     """The top-level file map of ``standards/otdp/<version>/`` — an ALLOWLIST.
 
     Fold F3: the derived map admits exactly corpus-rowed top-level files
@@ -805,7 +820,9 @@ def otdp_file_map(root: Path, version: str, prior_map: dict[str, str]) -> dict[s
     directory = root / "standards" / "otdp" / version
     if not directory.is_dir():
         raise StandardsError(f"version_directory_absent: standards/otdp/{version}")
-    pins = dict(_corpus_rows(root))
+    # Fold wave 2 R15c: the rows load once per resolution and thread through
+    # every consumer (map, adapter derivation, row digests).
+    pins = dict(rows if rows is not None else _corpus_rows(root))
     prefix = f"otdp/{version}/"
     pins_lowered = {key.lower(): value for key, value in pins.items()}
     rowed_top_lower = {
@@ -899,10 +916,11 @@ def resolve_package(
     legacy otdp projection re-derived and canonical bytes validated through
     LOCK_V2_SCHEMA before anything is written or returned.
     """
-    # Fold wave 2 R6: the corpus rows validate once, up front, through the
-    # shared helper — a malformed row refuses typed before any consumer
-    # (classification included) indexes into it.
-    _corpus_rows(root)
+    # Fold wave 2 R6 + R15c: the corpus rows load and validate ONCE, up
+    # front, through the shared helper — a malformed row refuses typed
+    # before any consumer indexes into it, and the per-helper re-reads are
+    # gone (the rows thread through map/adapter/digest derivations).
+    rows = _corpus_rows(root)
     policy = load_dependency_policy(root)
     constraints = load_constraints(package)
     prior = load_prior_lock(package)
@@ -976,7 +994,7 @@ def resolve_package(
             "lock_otdp_absent: the legacy otdp projection requires an otdp "
             "constraint; add one (pin --set otdp=...)"
         )
-    adapter_api = adapter_api_for(root, otdp_version)
+    adapter_api = adapter_api_for(root, otdp_version, rows)
     violations = _cross_violations(root, resolved, adapter_api)
     if violations:
         raise StandardsError(
@@ -991,13 +1009,13 @@ def resolve_package(
         "directory": f"standards/otdp/{otdp_version}",
         "otdp_version": otdp_version,
         "adapter_api_version": adapter_api,
-        "sha256": otdp_file_map(root, otdp_version, prior.file_map),
+        "sha256": otdp_file_map(root, otdp_version, prior.file_map, rows),
         "standards": [
             {
                 "id": standard_id,
                 "version": resolved[standard_id],
                 "stage": "released",
-                "digest": row_digest(root, standard_id, resolved[standard_id]),
+                "digest": row_digest(root, standard_id, resolved[standard_id], rows),
             }
             for standard_id in sorted(resolved)
         ],
