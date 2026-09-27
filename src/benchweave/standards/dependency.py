@@ -994,7 +994,17 @@ def resolve_package(
             "lock_otdp_absent: the legacy otdp projection requires an otdp "
             "constraint; add one (pin --set otdp=...)"
         )
+    # Coarse-to-fine refusal ladder (fold wave 2 R8): the version
+    # directory's existence is the coarsest fact, then the pinned
+    # descriptor's derivation (its own named refusals for a missing row or
+    # const), then the file map and the pairwise cross rows — each refusal
+    # names its own layer, never a downstream symptom of an earlier gap.
+    if not (root / "standards" / "otdp" / otdp_version).is_dir():
+        raise StandardsError(
+            f"version_directory_absent: standards/otdp/{otdp_version}"
+        )
     adapter_api = adapter_api_for(root, otdp_version, rows)
+    file_map = otdp_file_map(root, otdp_version, prior.file_map, rows)
     violations = _cross_violations(root, resolved, adapter_api)
     if violations:
         raise StandardsError(
@@ -1009,7 +1019,7 @@ def resolve_package(
         "directory": f"standards/otdp/{otdp_version}",
         "otdp_version": otdp_version,
         "adapter_api_version": adapter_api,
-        "sha256": otdp_file_map(root, otdp_version, prior.file_map, rows),
+        "sha256": file_map,
         "standards": [
             {
                 "id": standard_id,

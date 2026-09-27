@@ -1034,3 +1034,88 @@ def test_r15a_an_unbounded_note_refuses(tmp_path: Path) -> None:
     _mutate_cross(root, mutate)
     with pytest.raises(StandardsError, match="cross_constraint_invalid"):
         load_cross_constraints(root)
+
+
+# --- fold wave 2, R7: prior yanked retention ---------------------------------------
+
+
+def test_b1_prior_yanked_retention(tmp_path: Path) -> None:
+    """A prior lock AT the yanked 0.2.1 with an unchanged constraint
+    retains the pin — minimal motion — and the relock surfaces the
+    deprecation warning naming the move-to."""
+    root = _copy_standards(tmp_path)
+    package = _package(root, constraints={"otdp": ">=0.2.0,<0.3.0"}, otdp_version="0.2.1")
+    result = _run(root, "pin", "--package", "plugins/acme/widget")
+    assert result.returncode == 0, result.stderr
+    document = json.loads(_lock_path(package).read_bytes())
+    assert document["otdp_version"] == "0.2.1"
+    assert "deprecation warning" in result.stdout
+    assert "move-to: 0.2.2" in result.stdout
+
+
+# --- fold wave 2, R8: the refusal corners ------------------------------------------
+
+
+def test_r8_locked_and_set_refuse_together(tmp_path: Path) -> None:
+    root = _copy_standards(tmp_path)
+    _package(root, constraints={"otdp": ">=0.2.0,<0.3.0"})
+    result = _run(
+        root, "pin", "--locked", "--set", "otdp=^0.2", "--package", "plugins/acme/widget"
+    )
+    assert result.returncode == 1, result.stderr
+    assert "standards pin error: constraint_set_invalid" in result.stderr
+
+
+def test_r8_adapter_api_unresolved_no_row(tmp_path: Path) -> None:
+    """The pinned version's descriptor carries no corpus row."""
+    root = _copy_standards(tmp_path)
+    package = _package(root, constraints={"otdp": ">=0.2.0,<0.3.0"})
+    corpus = json.loads((root / "standards/corpus-manifest.json").read_bytes())
+    corpus["files"] = [
+        row
+        for row in corpus["files"]
+        if row["path"] != "otdp/0.2.2/otdp-device-descriptor.schema.json"
+    ]
+    (root / "standards/corpus-manifest.json").write_bytes(canonical_json(corpus))
+    with pytest.raises(StandardsError, match="adapter_api_unresolved"):
+        resolve_package(root, package)
+
+
+def test_r8_adapter_api_unresolved_no_const(tmp_path: Path) -> None:
+    """A self-consistent corpus whose descriptor lost the api_version const
+    (bytes AND row digest updated together) — the derivation refuses, not
+    a laundered None."""
+    root = _copy_standards(tmp_path)
+    package = _package(root, constraints={"otdp": ">=0.2.0,<0.3.0"})
+    descriptor = root / "standards/otdp/0.2.2/otdp-device-descriptor.schema.json"
+    schema = json.loads(descriptor.read_bytes())
+    del schema["$defs"]["adapter"]["properties"]["api_version"]["const"]
+    raw = json.dumps(schema, sort_keys=True, separators=(",", ":")).encode() + b"\n"
+    descriptor.write_bytes(raw)
+    corpus = json.loads((root / "standards/corpus-manifest.json").read_bytes())
+    for row in corpus["files"]:
+        if row["path"] == "otdp/0.2.2/otdp-device-descriptor.schema.json":
+            row["sha256"] = hashlib.sha256(raw).hexdigest()
+    (root / "standards/corpus-manifest.json").write_bytes(canonical_json(corpus))
+    with pytest.raises(StandardsError, match="adapter_api_unresolved"):
+        resolve_package(root, package)
+
+
+def test_r8_version_directory_absent(tmp_path: Path) -> None:
+    """Rows without the directory: retention is row-derived, so the refusal
+    fires where the bytes are actually needed."""
+    import shutil as _shutil
+
+    root = _copy_standards(tmp_path)
+    package = _package(root, constraints={"otdp": ">=0.2.0,<0.3.0"})
+    _shutil.rmtree(root / "standards/otdp/0.2.2")
+    with pytest.raises(StandardsError, match="version_directory_absent"):
+        resolve_package(root, package)
+
+
+def test_r8_lock_otdp_absent(tmp_path: Path) -> None:
+    """Constraints without otdp: the legacy projection has no source."""
+    root = _copy_standards(tmp_path)
+    package = _package(root, constraints={"registry": ">=0.1.0,<0.2.0"})
+    with pytest.raises(StandardsError, match="lock_otdp_absent"):
+        resolve_package(root, package)
