@@ -21,7 +21,7 @@ from types import ModuleType
 from typing import Any
 
 import pytest
-from test_documents_perpin import _admit, _controller_document, _psu_document
+from test_documents_perpin import CORPUS, _admit, _controller_document, _psu_document
 
 from benchweave.control.clocking import TestClock
 from benchweave.control.coordinator import RunCoordinator
@@ -310,3 +310,70 @@ def test_r5_the_classify_cache_is_bounded() -> None:
     assert info.currsize <= 512, (
         f"the classify cache grew past its bound: currsize {info.currsize}"
     )
+
+
+# --- review fold R10: the read path degrades, never 500s --------------------------
+
+
+def test_r10_malformed_governance_bytes_do_not_500_the_devices_surface(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """R10: a corrupted dependency-policy block (classify raises
+    StandardsError — fail-closed where it belongs, at admission) must not
+    take the devices list/get down with it: the projection degrades to a
+    NAMED log line (the D4 channel) and still returns the contract object."""
+    import logging
+    import shutil
+
+    import benchweave.control.documents as documents_module
+    from benchweave.interfaces.operations import Operations
+
+    corpus = tmp_path / "broken-governance"
+    shutil.copytree(CORPUS, corpus)
+    manifest = json.loads((corpus / "standards-manifest.json").read_text())
+    del manifest["dependency_policy"]
+    (corpus / "standards-manifest.json").write_text(json.dumps(manifest))
+    monkeypatch.setattr(documents_module, "_otdp_corpus", lambda: corpus)
+
+    row = {
+        "device_id": "psu",
+        "generation": 1,
+        "profiles_json": "[]",
+        "descriptor_json": json.dumps(_psu_document()),
+        "identity_state": "matched",
+        "licence": "proprietary",
+        "updated_at": "2026-09-27T00:00:00Z",
+    }
+    seam = object.__new__(Operations)  # the projection is pure over ``row``
+    with caplog.at_level(logging.ERROR, logger="benchweave.interfaces.operations"):
+        view = seam._device_projection(row)
+    assert set(view) == {
+        "device_id",
+        "generation",
+        "profiles",
+        "descriptor",
+        "identity_state",
+    }
+    assert any(
+        "device_conformance_unavailable" in record.message for record in caplog.records
+    ), [record.message for record in caplog.records]
+
+
+def test_r10_a_legacy_row_without_a_pin_classifies_nothing(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """R10: a legacy pre-full-form row (no ``otdp_version`` key) skips
+    classification silently — no 'pins None' mismatch spam for rows that
+    predate the dialect."""
+    import logging
+
+    from benchweave.interfaces.operations import _log_device_conformance
+
+    legacy: dict[str, Any] = {"id": "legacy-device", "version": "1"}
+    with caplog.at_level(logging.WARNING, logger="benchweave.interfaces.operations"):
+        _log_device_conformance("legacy", legacy)
+    assert not [
+        record
+        for record in caplog.records
+        if "device_conformance_mismatch" in record.message
+    ], [record.message for record in caplog.records]

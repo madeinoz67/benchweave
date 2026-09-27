@@ -25,6 +25,7 @@ from benchweave.registry.activation import ActivationRejected, activate
 from benchweave.registry.admission import AdmissionRejected, Admitted, Approval, admit
 from benchweave.registry.authenticity import AuthenticityRejected
 from benchweave.registry.schemas import RegistryRejected
+from benchweave.standards.manifest import StandardsError
 from benchweave.state.store import Conflict, Lease, LeaseNotActive, Store
 
 # D4 (interface-errata slice): operational context that left the event wire
@@ -194,7 +195,21 @@ def _log_device_conformance(
     warning is for the unacknowledged state; an ack naming a different pin
     does not apply (review fold R4). No production caller threads
     acknowledgements yet (design record D11 — slice 5)."""
-    pin = classify_descriptor_pin(descriptor.get("otdp_version"))
+    pin_value = descriptor.get("otdp_version")
+    if not isinstance(pin_value, str) or not pin_value:
+        # A legacy pre-full-form row carries no pin: nothing to classify
+        # (review fold R10 — no "pins None" spam for pre-dialect rows).
+        return
+    try:
+        pin = classify_descriptor_pin(pin_value)
+    except StandardsError as exc:
+        # Malformed governance bytes must not take the devices surface down
+        # (R10): fail-closed belongs at admission, not on the read path —
+        # the derivation degrades to a named log line, the D4 channel.
+        _LOG.error(
+            "device_conformance_unavailable: device %s — %s", device_id, exc
+        )
+        return
     if pin.conformance != "non-conforming":
         return
     acked = (acknowledged_pins or {}).get(str(device_id))
