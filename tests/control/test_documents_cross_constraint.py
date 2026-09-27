@@ -17,6 +17,7 @@ note) is where the acked class is reachable at all.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -101,3 +102,40 @@ def test_the_adapter_api_leg_rides_the_same_row(tmp_path: Path) -> None:
     )
     const = schema["$defs"]["adapter"]["properties"]["api_version"]["const"]
     assert const == "1.1"
+
+
+def test_the_adapter_leg_bites_on_a_planted_row(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F1 (#217 review fold): the adapter_api leg is enforced by code no
+    COMMITTED byte can fail — every retained otdp schema's
+    ``$defs.adapter`` api_version const is 1.1, equal to the committed
+    row's ``requires.adapter_api`` — so the leg needs a planted
+    disagreement to be falsifiable at all (the design's own C2
+    planted-disagreement pattern). A planted row requiring adapter_api 1.2
+    against a served 0.2.2 device (whose pinned schema declares 1.1, its
+    otdp requirement satisfied so ONLY this leg can fire) refuses with
+    ``cross_constraint_violation:`` naming the pinned version, both API
+    values, and the row's evidence. The corpus copy is byte-identical
+    except the planted row; the resolver is pointed at it the way the
+    census teeth arm points its sabotage."""
+    import shutil
+
+    import benchweave.control.documents as documents_module
+
+    corpus = tmp_path / "standards"
+    shutil.copytree(CORPUS, corpus)
+    planted = json.loads((corpus / "cross-constraints.json").read_text())
+    planted["rows"][0]["requires"]["adapter_api"] = "1.2"
+    (corpus / "cross-constraints.json").write_text(json.dumps(planted))
+    monkeypatch.setattr(documents_module, "_otdp_corpus", lambda: corpus)
+
+    psu = _psu_document()  # served 0.2.2 pin; the otdp leg stays satisfied
+    with pytest.raises(AdmissionRejected) as raised:
+        _admit(tmp_path, {"psu": psu})
+    message = str(raised.value)
+    assert message.startswith("cross_constraint_violation:"), message
+    assert "adapter API is 1.1" in message, message
+    assert "requires adapter_api 1.2" in message, message
+    assert "otdp@0.2.2" in message and "execution@0.2.0" in message, message
+    assert "PR #201" in message, message  # the row's evidence, named
