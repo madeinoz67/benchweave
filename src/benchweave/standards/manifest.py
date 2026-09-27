@@ -319,7 +319,23 @@ def load_dependency_policy(root: Path) -> DependencyPolicy:
     ``constraint_syntax_unexpanded:`` — sugar is expanded before storage, never
     stored (design §3.1).
     """
-    path = root / "standards/standards-manifest.json"
+    return _dependency_policy_from(root / "standards" / "standards-manifest.json")
+
+
+def load_dependency_policy_from_corpus(corpus: Path) -> DependencyPolicy:
+    """The same block read from a CORPUS directory (issue #217).
+
+    ``control/documents.py`` resolves the corpus packaged-first
+    (``standards/`` in a checkout, ``benchweave/_vendored/contracts`` in a
+    wheel — the ``_otdp_normative_path`` idiom), which is not the repo-root
+    shape this package's loaders take; this twin keeps ONE parser (the
+    root-shaped wrapper delegates here) so gateway admission and the
+    resolver's CLI read identical policy bytes.
+    """
+    return _dependency_policy_from(corpus / "standards-manifest.json")
+
+
+def _dependency_policy_from(path: Path) -> DependencyPolicy:
     document = json.loads(path.read_bytes())
     block = document.get("dependency_policy")
     if not isinstance(block, dict) or block.get("policy_version") != 1:
@@ -426,7 +442,17 @@ def retained_versions(root: Path, standard_id: str) -> tuple[str, ...]:
     its rows (never a directory listing): every ``<id>/<version>/`` prefix
     with at least one row is a retained version directory.
     """
-    path = root / "standards/corpus-manifest.json"
+    return _retained_from(root / "standards" / "corpus-manifest.json", standard_id)
+
+
+def retained_versions_from_corpus(corpus: Path, standard_id: str) -> tuple[str, ...]:
+    """``retained_versions`` over a CORPUS directory (issue #217's twin —
+    the packaged-first admission seam; see
+    ``load_dependency_policy_from_corpus``)."""
+    return _retained_from(corpus / "corpus-manifest.json", standard_id)
+
+
+def _retained_from(path: Path, standard_id: str) -> tuple[str, ...]:
     if not path.is_file():
         return ()
     document = json.loads(path.read_bytes())
@@ -443,6 +469,19 @@ def retained_versions(root: Path, standard_id: str) -> tuple[str, ...]:
 
 def served_versions(policy: DependencyPolicy, root: Path, standard_id: str) -> tuple[str, ...]:
     """Served = retained ∧ in-range ∧ ¬yanked, derived, never hand-listed."""
+    return _served_from(policy, retained_versions(root, standard_id), standard_id)
+
+
+def served_versions_from_corpus(
+    policy: DependencyPolicy, corpus: Path, standard_id: str
+) -> tuple[str, ...]:
+    """``served_versions`` over a CORPUS directory (issue #217's twin)."""
+    return _served_from(policy, retained_versions_from_corpus(corpus, standard_id), standard_id)
+
+
+def _served_from(
+    policy: DependencyPolicy, retained: tuple[str, ...], standard_id: str
+) -> tuple[str, ...]:
     entry = policy.standards.get(standard_id)
     if entry is None:
         raise StandardsError(
@@ -451,7 +490,7 @@ def served_versions(policy: DependencyPolicy, root: Path, standard_id: str) -> t
     yanked = {record.version for record in entry.yanked}
     return tuple(
         version
-        for version in retained_versions(root, standard_id)
+        for version in retained
         if entry.in_range(version) and version not in yanked
     )
 

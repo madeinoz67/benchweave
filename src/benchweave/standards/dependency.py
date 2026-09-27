@@ -67,8 +67,10 @@ from .manifest import (
     StandardsError,
     carried_versions,
     load_dependency_policy,
+    load_dependency_policy_from_corpus,
     load_manifest,
     retained_versions,
+    retained_versions_from_corpus,
     served_versions,
     validate_dependency_policy,
     version_tuple,
@@ -616,10 +618,24 @@ def load_cross_constraints(root: Path) -> tuple[CrossConstraintRow, ...]:
     ``constraint_standard_unknown:``; ``adapter_api`` requirements name an
     exact two-component version, everything else an explicit interval.
     """
-    path = root / "standards/cross-constraints.json"
+    return _load_cross(root / "standards", "standards/cross-constraints.json")
+
+
+def load_cross_constraints_from_corpus(corpus: Path) -> tuple[CrossConstraintRow, ...]:
+    """``load_cross_constraints`` over a CORPUS directory (issue #217).
+
+    The pairwise admission check (design §3.3) resolves the corpus
+    packaged-first like every other admission read; same loader, same
+    validation, same refusal prefixes — one implementation, two entry shapes.
+    """
+    return _load_cross(corpus, "cross-constraints.json")
+
+
+def _load_cross(corpus: Path, named: str) -> tuple[CrossConstraintRow, ...]:
+    path = corpus / Path(named).name
     if not path.is_file():
         raise StandardsError(
-            "cross_constraint_invalid: standards/cross-constraints.json absent — "
+            f"cross_constraint_invalid: {named} absent — "
             "the tree's cross-standard governance data is missing, not empty"
         )
     document = json.loads(path.read_bytes())
@@ -641,7 +657,7 @@ def load_cross_constraints(root: Path) -> tuple[CrossConstraintRow, ...]:
         raise StandardsError(
             f"cross_constraint_invalid: {path.name} {error.json_path}: {error.message}"
         )
-    policy = load_dependency_policy(root)
+    policy = load_dependency_policy_from_corpus(corpus)
     rows: list[CrossConstraintRow] = []
     seen: set[tuple[str, str]] = set()
     for raw in document["rows"]:
@@ -653,7 +669,7 @@ def load_cross_constraints(root: Path) -> tuple[CrossConstraintRow, ...]:
                 f"dependency-policy block does not carry; supported: "
                 f"{', '.join(sorted(policy.standards))}"
             )
-        if version not in retained_versions(root, standard):
+        if version not in retained_versions_from_corpus(corpus, standard):
             raise StandardsError(
                 f"cross_constraint_unresolved: {standard}@{version} names a version "
                 "with no retained directory; rows name released versions of their "
