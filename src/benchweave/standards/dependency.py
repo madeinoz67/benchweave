@@ -70,6 +70,7 @@ from .manifest import (
     load_manifest,
     retained_versions,
     served_versions,
+    validate_dependency_policy,
     version_tuple,
 )
 
@@ -1033,6 +1034,9 @@ def list_lines(root: Path) -> list[str]:
     """
     manifest = load_manifest(root)
     policy = load_dependency_policy(root)
+    # Fold wave 2 R2: the render trusts the cross-check, not the join — a
+    # manifest/policy desync refuses here instead of KeyError-ing per entry.
+    validate_dependency_policy(policy, manifest, root)
     lines: list[str] = []
     for entry in manifest.standards:
         row = policy.standards[entry.id]
