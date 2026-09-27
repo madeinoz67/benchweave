@@ -81,18 +81,19 @@ def main() -> int:
         print(f"standards bundle exported to {arguments.out}")
         return 0
     if arguments.command == "check":
-        from .check import run_check
+        from .check import count_failures, run_check
 
         try:
-            failures = run_check(root)
+            lines = run_check(root)
         except ValueError as exc:
             print(f"standards check error: {exc}", file=sys.stderr)
             return 1
-        for line in failures:
+        for line in lines:
             print(line)
-        if failures:
+        if count_failures(lines):
             print(
-                f"{len(failures)} standards check failure(s); run make sync-sdk-standards",
+                f"{count_failures(lines)} standards check failure(s); "
+                "run make sync-sdk-standards",
                 file=sys.stderr,
             )
             return 1

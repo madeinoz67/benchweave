@@ -21,6 +21,16 @@ from .export import export_bundle
 from .manifest import load_identity, load_manifest, load_sdk_compatibility
 
 LOCK_NAME = "standards-lock.json"
+# Fold F2 (#216): the dependency lane's deprecation warnings ride the same
+# line list but are NOT failures — run_check's empty-list-is-clean contract
+# keeps its meaning, and the CLI's exit decision filters through
+# count_failures so a retained-yanked-pin package warns without failing.
+DEPRECATION_WARNING_PREFIX = "plugin_deprecation_warning"
+
+
+def count_failures(lines: list[str]) -> int:
+    """Lines that are failures — deprecation warnings are not (fold F2)."""
+    return sum(1 for line in lines if not line.startswith(DEPRECATION_WARNING_PREFIX))
 VENDORED = "src/benchweave_sdk/standards"
 STAMP_NAME = "_GENERATED.txt"
 # Mirrors standards_sync.STAMP_LINE in the SDK; a format change there must be
@@ -121,6 +131,12 @@ def _compare_plugin_dependencies(root: Path) -> list[str]:
                 "constraints does not reproduce the committed lock (hand-edited "
                 "constraint, forged digest, or stale lock); run "
                 f"python -m benchweave.standards pin --package {relative}"
+            )
+            continue
+        for warning in resolution.warnings:
+            # Fold F2: surfaced, never silently green — but not a failure.
+            failures.append(
+                f"{DEPRECATION_WARNING_PREFIX}: {relative} — {warning}"
             )
     return failures
 
