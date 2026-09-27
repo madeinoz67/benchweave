@@ -218,6 +218,27 @@ rather than rewriting the history — that is how this file earns trust.
   design §4 Slice 3 names it) — at this slice a 0.2.0-pinned descriptor is
   SDK-validate-clean and gateway-refused by the ACTIVE schema's const. Exact-byte
   decode, digest pins, and every existing prefix unchanged.
+  Amendment (2026-09-27, issue #217 — slice 3 LANDED): the gateway half is true
+  now — `_descriptor_validator(version)` resolves the pin's own digest-verified
+  bytes (cache keyed by corpus directory + schema filename); classification is
+  the Q6 table (`classify_descriptor_pin`: served → conforming; yanked →
+  conforming with the recorded deprecation warning naming the derived move-to;
+  retained-out-of-range → non-conforming, loaded only behind a recorded
+  per-device operator acknowledgement naming that pin — the refusal carrying
+  `operator_ack_required:` with `standard_nonconforming:` and the five VR-37
+  fields; retired/never-carried → `retired_identifier:` / `version_unknown:`).
+  The gateway deliberately splits the SDK's `version_not_served:` fold three
+  ways (the resolver's documented convergence); the census pins the split. The
+  pairwise bench check refuses a device outside the bench's execution version's
+  declared cross-constraint range (`cross_constraint_violation:`, naming both
+  versions and the row's evidence) — an ack authorises the otdp-window load,
+  never the execution runtime interface. `AdmittedDocuments.pins` is the
+  admission-record surface; run evidence carries the pins + classes as the
+  run stream's first event (`devices_pinned`, digest-covered by the terminal
+  record's `events:{run_id}` ref — the run-record document itself is
+  schema-frozen); the API view derives the class at the projection and logs a
+  non-conforming derivation server-side (the wire's device object is
+  contract-closed; the wire field lands with the next interface bump).
 - **[CON-2]** The digest pin lattice between the execution-contract documents is verified
   at admission; the fixture lattice moves in lockstep (`fixtures/registry/` ↔
   `scripts/registry/build_fixtures.py` ↔ `catalogue.json` ↔ the digest-pinning tests),
@@ -405,6 +426,15 @@ rather than rewriting the history — that is how this file earns trust.
   admission still resolves the ACTIVE schema only and the census pins the active version;
   the slice-1 mechanism that IS landed is the SDK-side per-pin validation (CON-1's
   amendment).
+  Amendment (2026-09-27, issue #217 — slice 3 LANDED): the census sweeps the
+  served set on both lanes (34 clean cells over the native example sets of
+  {0.2.0, 0.2.2}, per-version id-pattern fault arms, the 0.1.2 prefix-split
+  cell, and a teeth arm re-deriving the pre-slice ACTIVE-const refusal);
+  gateway admission resolves the PIN's schema (CON-1's landing note above);
+  the 28-cell mutation matrix stays ACTIVE-version; the dialect test
+  (`tests/contract/test_plugin_descriptor_dialect.py`) goes within-range
+  (`lock == descriptor == a-served-pin`, VR-45) with the retired `== active`
+  form kept visibly failing against an advanced fixture.
 
 - **[CON-11]** The OTDP validation report of the active version — its path is
   derived, never hardcoded: the live pin resolves
