@@ -705,9 +705,27 @@ class Resolution:
 
 
 def _corpus_rows(root: Path) -> list[tuple[str, str]]:
-    """The corpus manifest's (path, sha256) rows, in file order."""
+    """The corpus manifest's (path, sha256) rows, in file order.
+
+    Fold wave 2 R6: a malformed row refuses with its own prefix here, at
+    the one consumption point the resolver's helpers share — never a bare
+    KeyError at whatever downstream site first indexes the missing field.
+    """
     document = json.loads((root / "standards/corpus-manifest.json").read_bytes())
-    return [(str(row["path"]), str(row["sha256"])) for row in document.get("files", [])]
+    rows: list[tuple[str, str]] = []
+    for index, row in enumerate(document.get("files", [])):
+        if (
+            not isinstance(row, dict)
+            or not isinstance(row.get("path"), str)
+            or not isinstance(row.get("sha256"), str)
+        ):
+            where = row.get("path") if isinstance(row, dict) else index
+            raise StandardsError(
+                f"corpus_manifest_row_invalid: row {where!r} needs string "
+                "'path' and 'sha256' fields"
+            )
+        rows.append((row["path"], row["sha256"]))
+    return rows
 
 
 def row_digest(root: Path, standard_id: str, version: str) -> str:
@@ -881,6 +899,10 @@ def resolve_package(
     legacy otdp projection re-derived and canonical bytes validated through
     LOCK_V2_SCHEMA before anything is written or returned.
     """
+    # Fold wave 2 R6: the corpus rows validate once, up front, through the
+    # shared helper — a malformed row refuses typed before any consumer
+    # (classification included) indexes into it.
+    _corpus_rows(root)
     policy = load_dependency_policy(root)
     constraints = load_constraints(package)
     prior = load_prior_lock(package)
