@@ -28,3 +28,22 @@ def test_lock_pins_the_standards_corpus_bytes() -> None:
     for name, expected in lock["sha256"].items():
         digest = hashlib.sha256((directory / name).read_bytes()).hexdigest()
         assert digest == expected, f"{name}: lock pins {expected}, tree hashes {digest}"
+
+
+def test_lock_v2_rows_agree_with_the_corpus_rows() -> None:
+    """Issue #216 (#203 slice 2): the v2 standards row's digest-of-digests
+    equals sha256 over the canonical ``[[path, sha256], ...]`` list of the
+    corpus manifest's own rows under the locked version — the lock stays a
+    claim every consumer re-derives from the byte authority."""
+    from benchweave.standards.dependency import row_digest
+
+    lock = json.loads(LOCK.read_text())
+    assert lock["lock_version"] == 2
+    version = str(lock["otdp_version"])
+    (row,) = [row for row in lock["standards"] if row["id"] == "otdp"]
+    assert row == {
+        "id": "otdp",
+        "version": version,
+        "stage": "released",
+        "digest": row_digest(REPO, "otdp", version),
+    }

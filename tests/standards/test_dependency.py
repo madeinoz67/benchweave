@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -321,17 +322,45 @@ _SYNTHETIC_CONSTRAINTS = {
 }
 
 
+#: The DPS-150 v1 lock's committed bytes at the slice's merge base (the
+#: historical shape the v2 relock must preserve — the repository's own lock
+#: is v2 from this slice on, so the fixture carries the v1 prior).
+_DPS150_V1_LOCK: dict[str, Any] = {
+    'repository': 'https://github.com/madeinoz67/benchweave',
+    'revision': '8a080d149ebfb972f5ab697c252c73f9ebec4019',
+    'directory': 'standards/otdp/0.2.2',
+    'otdp_version': '0.2.2',
+    'adapter_api_version': '1.1',
+    "sha256": {
+        'otdp-device-descriptor.schema.json':
+            'e43fe4583f5f118415f7fbf3dbe55ff681d4ee1e9dd3d4758e93207d9f07e11f',
+        'otdp-runtime.schema.json':
+            'd2e62a22a118aad11e247c7a087947b24cf8fcf7c1cc3c77a71b5a249f8342ea',
+        'otdp-specification.md': '6469e40d9e98a2e52857c0165091fd639e47475893e66a6cc593ed4452c427e6',
+        'extension-contract.md': '3595b6655b012af350ccda1a4715c3515cdfbe8163120cc6f369d08922e5e627',
+        'device-classes.md': '712ec652c85033f84e79b4679e6756d9bf0eab93af319c55ca45b5962b0a3860',
+        'measurement-model.md': '1d40f0c32676149d360c127c6c974a2e227b2dfd190d9044fec24d8c3312305e',
+        'otdp-measurement.schema.json':
+            '7905795bed6139b9705edfa17b7a17226b99cddda6656030d73bb63dc998a4b3',
+        'device-profile-catalog.json':
+            '2e8c7841a397f794724ab2f484e7531cef47889c5f514ed68ff2c1273f0b493c',
+    },
+}
+
+
 def _dps150_copy(tmp_path: Path) -> Path:
-    """The real DPS-150 package (contracts only — the materialized corpus
-    dirs are gitignored local artifacts) over a copied standards tree."""
+    """The real DPS-150 package (constraints from the committed file; the
+    v1 lock planted from its historical bytes) over a copied standards tree."""
     root = _copy_standards(tmp_path)
     package = root / "plugins" / "fnirsi" / "dps150"
     (package / "contracts").mkdir(parents=True)
-    for name in ("constraints.json", "lock.json"):
-        shutil.copy(
-            ROOT / "plugins" / "fnirsi" / "dps150" / "contracts" / name,
-            package / "contracts" / name,
-        )
+    shutil.copy(
+        ROOT / "plugins" / "fnirsi" / "dps150" / "contracts" / "constraints.json",
+        package / "contracts" / "constraints.json",
+    )
+    (package / "contracts" / "lock.json").write_text(
+        json.dumps(_DPS150_V1_LOCK, indent=2)
+    )
     return root
 
 
@@ -373,25 +402,37 @@ def test_b1_synthetic_pin_is_deterministic_and_minimal(tmp_path: Path) -> None:
 
 
 def test_b1_dps150_pin_is_deterministic_with_values_verbatim(tmp_path: Path) -> None:
-    """The real package: v1 lock relocks to v2, every legacy VALUE preserved
-    verbatim (repository, revision, the 8-file map, adapter API) and the
-    byte-form reformats once to canonical JSON; a second pin is a no-op."""
+    """The real package: v1 lock relocks to v2 with every legacy VALUE
+    preserved verbatim (repository, revision, directory, otdp and adapter
+    API versions), the byte-form reformatted once to canonical JSON, and a
+    second pin a no-op.
+
+    The file map is a SUPERSET of the v1 map with identical digests: the
+    v1 lock's 8-file set predates four top-level files that later landed in
+    the 0.2.2 directory (05354b4's catalog schema and validation report,
+    a103a4c's transport-provider schema and prose) — a pre-existing staleness
+    nothing verified, disclosed as a design-premise break (the record's
+    premise table says 8 files). The derived map covers every top-level
+    file of the directory; the digests the v1 lock carried are unchanged.
+    """
     root = _dps150_copy(tmp_path)
     package = root / "plugins" / "fnirsi" / "dps150"
     first = _run(root, "pin", "--package", "plugins/fnirsi/dps150")
     assert first.returncode == 0, first.stderr
     raw = _lock_path(package).read_bytes()
     document = json.loads(raw)
-    v1 = json.loads(
-        (ROOT / "plugins" / "fnirsi" / "dps150" / "contracts" / "lock.json").read_bytes()
-    )
+    v1 = _DPS150_V1_LOCK
     assert document["lock_version"] == 2
     assert document["otdp_version"] == v1["otdp_version"]
     assert document["repository"] == v1["repository"]
     assert document["revision"] == v1["revision"]
     assert document["directory"] == v1["directory"]
     assert document["adapter_api_version"] == v1["adapter_api_version"]
-    assert document["sha256"] == v1["sha256"]
+    for name, digest in v1["sha256"].items():
+        assert document["sha256"][name] == digest, name
+    directory = root / "standards" / "otdp" / str(document["otdp_version"])
+    top_level = {path.name for path in directory.iterdir() if path.is_file()}
+    assert set(document["sha256"]) == top_level
     second = _run(root, "pin", "--package", "plugins/fnirsi/dps150")
     assert second.returncode == 0, second.stderr
     assert _lock_path(package).read_bytes() == raw
@@ -413,7 +454,14 @@ def test_b2_upgrade_otdp_moves_only_the_otdp_projection(tmp_path: Path) -> None:
     after = json.loads(_lock_path(package).read_bytes())
     assert after["otdp_version"] == "0.2.2"
     assert after["directory"] == "standards/otdp/0.2.2"
-    assert after["sha256"] == before["sha256"]  # same eight file names, frozen bytes
+    # the projection map moves with the row: it is the TARGET directory's
+    # top-level file set (0.2.2 carries the transport-provider pair 0.2.0
+    # predates — the map is derived, never carried)
+    assert set(after["sha256"]) == {
+        path.name
+        for path in (root / "standards/otdp/0.2.2").iterdir()
+        if path.is_file()
+    }
     assert after["repository"] == before["repository"]
     assert after["revision"] == before["revision"]
     rows, rows_before = _rows(_lock_path(package).read_bytes()), _rows(before_raw)

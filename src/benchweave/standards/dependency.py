@@ -48,6 +48,7 @@ migration-note pointer ("migration guidance pending" until slice 5).
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -59,6 +60,7 @@ from jsonschema import Draft202012Validator, FormatChecker
 
 from .export import canonical_json
 from .manifest import (
+    DESCRIPTOR_SCHEMA_NAME,
     RANGE_PATTERN,
     VERSION_PATTERN,
     StandardPolicy,
@@ -653,16 +655,268 @@ class Resolution:
     warnings: tuple[str, ...]
 
 
-def resolve_package(
-    root: Path, package: Path, *, precise: dict[str, str] | None = None
-) -> Resolution:
-    """Resolve constraints to a lock document (minimal motion; deterministic)."""
-    raise NotImplementedError(resolve_package.__name__)
+def _corpus_rows(root: Path) -> list[tuple[str, str]]:
+    """The corpus manifest's (path, sha256) rows, in file order."""
+    document = json.loads((root / "standards/corpus-manifest.json").read_bytes())
+    return [(str(row["path"]), str(row["sha256"])) for row in document.get("files", [])]
 
 
 def row_digest(root: Path, standard_id: str, version: str) -> str:
-    """The digest-of-digests over the corpus-manifest rows of one version."""
-    raise NotImplementedError(row_digest.__name__)
+    """The digest-of-digests over the corpus-manifest rows of one version.
+
+    The lock's per-standard row digest is derived from the byte authority's
+    own rows — sha256 over the canonical JSON of the sorted
+    ``[[path, sha256], ...]`` list under ``<id>/<version>/`` — so the lock
+    stays a CLAIM every consumer re-derives (the anti-forgery posture,
+    design §7 risk 1); the per-file truth already lives in the corpus
+    manifest.
+    """
+    prefix = f"{standard_id}/{version}/"
+    pairs = sorted(pair for pair in _corpus_rows(root) if pair[0].startswith(prefix))
+    if not pairs:
+        raise StandardsError(
+            f"version_unknown: {standard_id} {version} has no corpus-manifest rows"
+        )
+    return hashlib.sha256(canonical_json([list(pair) for pair in pairs])).hexdigest()
+
+
+def adapter_api_for(root: Path, otdp_version: str) -> str:
+    """``adapter_api`` for the PINNED version, from its descriptor schema.
+
+    The ``validate_identity`` derivation (manifest.py) relocated to the
+    pinned version (G-2's amendment): the descriptor schema named by the
+    corpus row at ``otdp/<version>/`` is read, digest-verified against that
+    row, and its ``$defs.adapter.properties.api_version`` const returned —
+    no independent range axis this arc.
+    """
+    relative = f"otdp/{otdp_version}/{DESCRIPTOR_SCHEMA_NAME}"
+    pins = dict(_corpus_rows(root))
+    pinned = pins.get(relative)
+    path = root / "standards" / relative
+    if pinned is None or not path.is_file():
+        raise StandardsError(
+            f"adapter_api_unresolved: otdp@{otdp_version} has no corpus-pinned "
+            f"{DESCRIPTOR_SCHEMA_NAME}"
+        )
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    if digest != pinned:
+        raise StandardsError(
+            f"corpus_pin_mismatch: standards/{relative}: corpus pin {pinned} does "
+            f"not match the on-disk bytes ({digest})"
+        )
+    schema = json.loads(path.read_bytes())
+    try:
+        const = schema["$defs"]["adapter"]["properties"]["api_version"]["const"]
+    except (KeyError, TypeError):
+        raise StandardsError(
+            f"adapter_api_unresolved: api_version const absent from standards/{relative}"
+        ) from None
+    if not isinstance(const, str):
+        raise StandardsError(
+            f"adapter_api_unresolved: api_version const is not a string in "
+            f"standards/{relative}"
+        )
+    return const
+
+
+def otdp_file_map(root: Path, version: str) -> dict[str, str]:
+    """The top-level file map of ``standards/otdp/<version>/``.
+
+    The v1 lock's fetch-verify set, re-derived: every top-level regular file
+    of the resolved version directory (the four schema/catalog machine files
+    plus the four prose companions — deliberately NOT the corpus-row set,
+    which also carries ``examples/``). Machine files verify against their
+    corpus pins while they are being read; prose companions carry no pins
+    (they are not corpus rows) and hash as-is.
+    """
+    directory = root / "standards" / "otdp" / version
+    if not directory.is_dir():
+        raise StandardsError(f"version_directory_absent: standards/otdp/{version}")
+    pins = dict(_corpus_rows(root))
+    mapping: dict[str, str] = {}
+    for path in sorted(directory.iterdir(), key=lambda item: item.name):
+        if not path.is_file():
+            continue
+        raw = path.read_bytes()
+        if path.suffix == ".json":
+            relative = f"otdp/{version}/{path.name}"
+            pinned = pins.get(relative)
+            if pinned is None:
+                raise StandardsError(
+                    f"corpus_file_unpinned: {relative} (a machine file inside a "
+                    "version directory must carry a corpus row)"
+                )
+            digest = hashlib.sha256(raw).hexdigest()
+            if digest != pinned:
+                raise StandardsError(
+                    f"corpus_pin_mismatch: standards/{relative}: corpus pin "
+                    f"{pinned} does not match the on-disk bytes ({digest})"
+                )
+        mapping[path.name] = hashlib.sha256(raw).hexdigest()
+    if not mapping:
+        raise StandardsError(
+            f"version_directory_absent: standards/otdp/{version} carries no files"
+        )
+    return mapping
+
+
+def _cross_violations(
+    root: Path, resolved: dict[str, str], adapter_api: str
+) -> list[str]:
+    """Pairwise cross-constraint violations over the resolved set, evidenced."""
+    violations: list[str] = []
+    for row in load_cross_constraints(root):
+        if resolved.get(row.standard) != row.version:
+            continue  # the row constrains that exact version of its own standard
+        for key, value in sorted(row.requires.items()):
+            if key == "adapter_api":
+                if adapter_api != value:
+                    violations.append(
+                        f"{row.standard}@{row.version} requires adapter_api "
+                        f"{value}, the lock carries {adapter_api} ({row.evidence})"
+                    )
+            else:
+                got = resolved.get(key)
+                if got is None or not parse_interval(value).contains(got):
+                    violations.append(
+                        f"{row.standard}@{row.version} requires {key} {value}; the "
+                        f"lock carries {key}@{got or 'nothing'} ({row.evidence})"
+                    )
+    return violations
+
+
+def resolve_package(
+    root: Path, package: Path, *, precise: dict[str, str] | None = None
+) -> Resolution:
+    """Resolve constraints to a lock document (minimal motion; deterministic).
+
+    Per constrained standard the candidate is the prior locked version when
+    it still satisfies the authored interval and classifies served-or-yanked
+    (a prior pin that no longer classifies falls through to auto-selection,
+    never refuses); else the highest SERVED version inside the interval —
+    auto-selection never picks yanked (the 0.2.1 rule) or a pre-release
+    (VR-28). ``precise`` overrides exactly one standard with an explicit
+    classification of its target. The resolved set then clears the
+    cross-constraint rows pairwise, and the document is emitted with its
+    legacy otdp projection re-derived and canonical bytes validated through
+    LOCK_V2_SCHEMA before anything is written or returned.
+    """
+    policy = load_dependency_policy(root)
+    constraints = load_constraints(package)
+    prior = load_prior_lock(package)
+    if prior is None:
+        raise StandardsError(
+            f"plugin_lock_absent: {package / 'contracts' / 'lock.json'} — hand-author "
+            "the v1 provenance keys (repository, revision, the otdp projection), "
+            "then pin; fresh-lock creation is deferral D9"
+        )
+    overrides = precise or {}
+    unknown = sorted(set(overrides) - set(constraints.standards))
+    if unknown:
+        raise StandardsError(
+            f"constraint_standard_unknown: {unknown[0]!r} is not in this package's "
+            f"constraints ({', '.join(sorted(constraints.standards)) or 'none'})"
+        )
+    resolved: dict[str, str] = {}
+    warnings: list[str] = []
+    for standard_id in sorted(constraints.standards):
+        interval = constraints.standards[standard_id]
+        if standard_id not in policy.standards:
+            raise StandardsError(
+                f"constraint_standard_unknown: {standard_id!r} names a standard the "
+                f"dependency-policy block does not carry; supported: "
+                f"{', '.join(sorted(policy.standards))}"
+            )
+        classification: PinClassification | None = None
+        target = overrides.get(standard_id)
+        if target is not None:
+            classification = classify_pin(policy, root, standard_id, target)
+            if not interval.contains(target):
+                raise StandardsError(
+                    f"constraint_unresolvable: {standard_id}: the precise target "
+                    f"{target} is outside the authored interval {interval.text()}; "
+                    "widen the constraint (pin --set) or choose a version inside it"
+                )
+            if classification.warning is not None:
+                warnings.append(classification.warning)
+            resolved[standard_id] = target
+            continue
+        candidate: str | None = None
+        prior_version = prior.rows.get(standard_id)
+        if prior_version is not None and interval.contains(prior_version):
+            try:
+                classification = classify_pin(policy, root, standard_id, prior_version)
+            except StandardsError:
+                # the prior pin no longer classifies; fall through to auto-select
+                classification = None
+            if classification is not None:
+                candidate = prior_version
+                if classification.warning is not None:
+                    warnings.append(classification.warning)
+        if candidate is None:
+            served = [
+                version
+                for version in served_versions(policy, root, standard_id)
+                if interval.contains(version)
+            ]
+            if not served:
+                every = ", ".join(served_versions(policy, root, standard_id)) or "nothing"
+                raise StandardsError(
+                    f"constraint_unresolvable: {standard_id}: no served version "
+                    f"inside {interval.text()} (served: {every}); publish a version "
+                    "into the interval or widen the constraint"
+                )
+            candidate = served[-1]
+        resolved[standard_id] = candidate
+    otdp_version = resolved.get("otdp")
+    if otdp_version is None:
+        raise StandardsError(
+            "lock_otdp_absent: the legacy otdp projection requires an otdp "
+            "constraint; add one (pin --set otdp=...)"
+        )
+    adapter_api = adapter_api_for(root, otdp_version)
+    violations = _cross_violations(root, resolved, adapter_api)
+    if violations:
+        raise StandardsError(
+            "cross_constraint_violation: " + "; ".join(violations)
+        )
+    document = {
+        "lock_version": 2,
+        "repository": prior.repository,
+        "revision": prior.revision,
+        "directory": f"standards/otdp/{otdp_version}",
+        "otdp_version": otdp_version,
+        "adapter_api_version": adapter_api,
+        "sha256": otdp_file_map(root, otdp_version),
+        "standards": [
+            {
+                "id": standard_id,
+                "version": resolved[standard_id],
+                "stage": "released",
+                "digest": row_digest(root, standard_id, resolved[standard_id]),
+            }
+            for standard_id in sorted(resolved)
+        ],
+    }
+    error = next(iter(_validator("lock-v2", LOCK_V2_SCHEMA).iter_errors(document)), None)
+    if error is not None:
+        raise StandardsError(
+            f"lock_document_invalid: {error.json_path}: {error.message}"
+        )
+    return Resolution(document=document, raw=canonical_json(document), warnings=tuple(warnings))
+
+
+def write_lock(package: Path, raw: bytes) -> bool:
+    """Staged atomic write; ``False`` when the bytes already match.
+
+    The repin "writes only when a digest changed" idiom: an unchanged
+    resolution never rewrites the committed file.
+    """
+    path = package / "contracts" / "lock.json"
+    if path.is_file() and path.read_bytes() == raw:
+        return False
+    _atomic_write(path, raw)
+    return True
 
 
 def normalized_equal(path_a: Path, path_b: Path, version_a: str, version_b: str) -> bool:
@@ -733,18 +987,24 @@ def pin_lock(root: Path, package: Path, sets: list[tuple[str, str]] | None = Non
     """The ``pin`` command: author through ``--set``, resolve, write the lock."""
     if sets:
         apply_set(root, package, sets)
-    load_constraints(package)
-    raise StandardsError(
-        "lock_writer_pending: the lock v2 writer lands with this slice's "
-        "B1/B2 implementation commit (design §5 ordering)"
-    )
+    resolution = resolve_package(root, package)
+    written = write_lock(package, resolution.raw)
+    lines = list(resolution.warnings)
+    state = "relocked" if written else "lock already current"
+    lines.append(f"{state}: {package / 'contracts' / 'lock.json'}")
+    for row in resolution.document["standards"]:
+        lines.append(f"  {row['id']}@{row['version']}")
+    return lines
 
 
 def upgrade_lock(root: Path, package: Path, standard_id: str, precise: str) -> list[str]:
     """The ``upgrade`` command: one standard, one explicit target, minimal motion.
 
     Classification refusals (retired / unknown / not-served / dev / shape)
-    fire before anything is written; a legal target proceeds to the writer.
+    fire inside the resolution before anything is written; a legal target —
+    served, or yanked with the deprecation warning — re-locks the package
+    with exactly this standard's row moved. The move line carries the
+    migration-note pointer ("migration guidance pending" until slice 5).
     """
     policy = load_dependency_policy(root)
     constraints = load_constraints(package)
@@ -754,20 +1014,24 @@ def upgrade_lock(root: Path, package: Path, standard_id: str, precise: str) -> l
             f"dependency-policy block does not carry; supported: "
             f"{', '.join(sorted(policy.standards))}"
         )
-    classify_pin(policy, root, standard_id, precise)  # refusals fire before any write
-    interval = constraints.standards.get(standard_id)
-    if interval is None:
+    if standard_id not in constraints.standards:
         raise StandardsError(
             f"constraint_standard_unknown: {standard_id!r} is not in this package's "
             f"constraints ({', '.join(sorted(constraints.standards)) or 'none'})"
         )
-    if not interval.contains(precise):
+    prior = load_prior_lock(package)
+    if prior is None:
         raise StandardsError(
-            f"constraint_unresolvable: {standard_id}: the precise target {precise} "
-            f"is outside the authored interval {interval.text()}; widen the "
-            "constraint (pin --set) or choose a version inside it"
+            f"plugin_lock_absent: {package / 'contracts' / 'lock.json'} — hand-author "
+            "the v1 provenance keys (repository, revision, the otdp projection), "
+            "then pin; fresh-lock creation is deferral D9"
         )
-    raise StandardsError(
-        "lock_writer_pending: the lock v2 writer lands with this slice's "
-        "B1/B2 implementation commit (design §5 ordering)"
+    resolution = resolve_package(root, package, precise={standard_id: precise})
+    write_lock(package, resolution.raw)
+    before = prior.rows.get(standard_id)
+    lines = list(resolution.warnings)
+    lines.append(
+        f"{standard_id}: {before or 'unpinned'} -> {precise}; "
+        "migration guidance pending"
     )
+    return lines
