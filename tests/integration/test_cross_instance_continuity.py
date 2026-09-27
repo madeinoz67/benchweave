@@ -1803,7 +1803,7 @@ def test_axis_trials_complete_all_four_axes(
             f"(dur {trial['dispatch_duration_ms']:.1f}, "
             f"onset->obs {trial['onset_to_observation_ms']:.1f}, "
             f"obs->enter {trial['observation_to_enter_call_ms']:.1f}, "
-            f"enter->action {trial['enter_to_action_ms']:.1f}, "
+            f"enter->action {trial['enter_call_to_action_ms']:.1f}, "
             f"safe {trial['safe_state']}, "
             f"retries {trial['retries']}{sites_note})"
         )
