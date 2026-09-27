@@ -42,7 +42,13 @@ class StandardsError(ValueError):
 # (">=X.Y.Z,<X.Y.Z", inclusive lower, exclusive upper — design §3.1). Caret
 # sugar is AUTHORING input expanded before anything is stored; a caret stored
 # in a committed file refuses (constraint_syntax_unexpanded).
-RANGE_PATTERN = re.compile(r">=(\d+\.\d+\.\d+),<(\d+\.\d+\.\d+)")
+# Fold wave 2 R5 (#216): components are canonical numerals — a leading
+# zero (>=00.2.0) is hand-typed drift that would otherwise parse as its
+# integer value in every downstream comparator.
+RANGE_PATTERN = re.compile(
+    r">=((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)),"
+    r"<((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))"
+)
 VERSION_PATTERN = re.compile(r"\d+\.\d+\.\d+")
 
 
