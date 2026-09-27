@@ -10,12 +10,12 @@ from collections.abc import Callable, MutableMapping
 from typing import Any
 
 import pytest
-from fakes import FakeBoardManager
 from fastapi.testclient import TestClient
 from starlette.types import ASGIApp
 
 from plugins.adc_6ch_12bit.config import DEFAULT_CONFIG
-from plugins.adc_6ch_12bit.driver import Sample
+from plugins.adc_6ch_12bit.protocol import Sample
+from tests.web.fakes import FakeBoardManager
 
 PNG_BYTES = b"\x89PNG\r\n\x1a\nfake-image-data"
 
@@ -201,7 +201,7 @@ def test_set_channels_valid(client: TestClient, fake_manager: FakeBoardManager) 
     assert fake_manager.called("set_channels") == [(0x0F,)]
 
 
-@pytest.mark.parametrize("mask", [-1, 0x40])
+@pytest.mark.parametrize("mask", [-1, 0, 0x40])
 def test_set_channels_invalid_is_422(
     client: TestClient, fake_manager: FakeBoardManager, mask: int
 ) -> None:
