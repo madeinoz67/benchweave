@@ -1007,15 +1007,41 @@ def parse_set_argument(value: str) -> tuple[str, str]:
     return identifier, text
 
 
-def pin_lock(root: Path, package: Path, sets: list[tuple[str, str]] | None = None) -> list[str]:
-    """The ``pin`` command: author through ``--set``, resolve, write the lock."""
+def pin_lock(
+    root: Path,
+    package: Path,
+    sets: list[tuple[str, str]] | None = None,
+    *,
+    locked: bool = False,
+) -> list[str]:
+    """The ``pin`` command: author through ``--set``, resolve, write the lock.
+
+    ``--locked`` (VR-30) is verify-only: resolve in memory, byte-compare the
+    on-disk lock, refuse ``plugin_lock_drift:`` on disagreement — zero
+    network by construction, and never a write.
+    """
+    if locked and sets:
+        raise StandardsError(
+            "constraint_set_invalid: --set authors the constraints file; --locked "
+            "is verify-only and never writes"
+        )
     if sets:
         apply_set(root, package, sets)
     resolution = resolve_package(root, package)
+    path = package / "contracts" / "lock.json"
+    if locked:
+        if path.read_bytes() != resolution.raw:
+            raise StandardsError(
+                f"plugin_lock_drift: {path} — re-resolving the authored "
+                "constraints does not reproduce the committed lock (hand-edited "
+                "constraint, forged digest, or stale lock); run "
+                f"python -m benchweave.standards pin --package {package}"
+            )
+        return list(resolution.warnings) + [f"lock agrees with the authored constraints: {path}"]
     written = write_lock(package, resolution.raw)
     lines = list(resolution.warnings)
     state = "relocked" if written else "lock already current"
-    lines.append(f"{state}: {package / 'contracts' / 'lock.json'}")
+    lines.append(f"{state}: {path}")
     for row in resolution.document["standards"]:
         lines.append(f"  {row['id']}@{row['version']}")
     return lines

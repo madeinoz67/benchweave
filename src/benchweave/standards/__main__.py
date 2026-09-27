@@ -46,6 +46,12 @@ def main() -> int:
         help="author one constraint interval (caret sugar accepted, expanded on write);"
         " repeatable",
     )
+    pin.add_argument(
+        "--locked",
+        action="store_true",
+        help="verify only: refuse plugin_lock_drift when the on-disk lock is not the"
+        " resolution; never writes",
+    )
     upgrade = sub.add_parser(
         "upgrade", help="move exactly one standard's lock row to a precise version"
     )
@@ -172,7 +178,7 @@ def main() -> int:
             )
             if arguments.command == "pin":
                 sets = [parse_set_argument(value) for value in arguments.sets]
-                lines = pin_lock(root, package, sets)
+                lines = pin_lock(root, package, sets, locked=arguments.locked)
             else:
                 lines = upgrade_lock(root, package, arguments.standard, arguments.precise)
         except ValueError as exc:

@@ -16,6 +16,7 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
+from .dependency import resolve_package
 from .export import export_bundle
 from .manifest import load_identity, load_manifest, load_sdk_compatibility
 
@@ -71,6 +72,56 @@ def run_check(root: Path, sdk_root: Path | None = None) -> list[str]:
     # on top of that refusal (#187).
     failures.extend(_compare_mirror(root, sdk, lock, state))
     failures.extend(_compare_anchor(root, sdk, lock, state))
+    failures.extend(_compare_plugin_dependencies(root))
+    return failures
+
+
+def _compare_plugin_dependencies(root: Path) -> list[str]:
+    """Every in-tree package's constraints, re-resolved, vs its committed lock.
+
+    Issue #216 (#203 slice 2, design §1.5): for every package under
+    ``plugins/**/contracts/`` — constraints absent refuses
+    ``plugin_constraints_absent:``; lock absent refuses
+    ``plugin_lock_absent:`` (bootstrap is deferral D9); otherwise the
+    constraints are re-resolved in memory and byte-compared against the
+    committed lock, so a hand-edited constraint, a hand-forged digest or a
+    stale lock all surface as ``plugin_lock_drift:`` — the
+    re-derive-never-trust posture, reading nothing the resolver does not
+    already read.
+    """
+    failures: list[str] = []
+    plugins = root / "plugins"
+    if not plugins.is_dir():
+        return failures
+    for contracts in sorted(plugins.rglob("contracts")):
+        if not contracts.is_dir():
+            continue
+        package = contracts.parent
+        relative = package.relative_to(root).as_posix()
+        if not (contracts / "constraints.json").is_file():
+            failures.append(
+                f"plugin_constraints_absent: {relative}/contracts/constraints.json — "
+                "every in-tree package authors its constraints (#203 slice 2)"
+            )
+            continue
+        if not (contracts / "lock.json").is_file():
+            failures.append(
+                f"plugin_lock_absent: {relative}/contracts/lock.json — hand-author "
+                "the v1 provenance keys, then pin (deferral D9)"
+            )
+            continue
+        try:
+            resolution = resolve_package(root, package)
+        except ValueError as exc:
+            failures.append(f"plugin_lock_drift: {relative} ({exc})")
+            continue
+        if (contracts / "lock.json").read_bytes() != resolution.raw:
+            failures.append(
+                f"plugin_lock_drift: {relative} — re-resolving the authored "
+                "constraints does not reproduce the committed lock (hand-edited "
+                "constraint, forged digest, or stale lock); run "
+                f"python -m benchweave.standards pin --package {relative}"
+            )
     return failures
 
 
