@@ -86,6 +86,7 @@ testpaths = ["tests"]
 junit_family = "xunit1"
 markers = [
   "slow: real child-process orchestration (kill-mid-run); CI runs these — deselect locally for quick iteration with -m 'not slow'",
+  "timing: real-paced wall-clock measurements (pacing bands, precision gates, busy-retry windows); CI runs these serialized in the dedicated timing lane — deselect locally with -m 'not timing'",
 ]
 
 # Report-only coverage: `uv run pytest --cov` prints the table; no gate or

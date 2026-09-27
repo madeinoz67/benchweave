@@ -48,6 +48,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from benchweave.content.capture_services import build_capture_services
 from benchweave.content.capture_store import CaptureStagingStore
 from benchweave.content.store import ContentStore
@@ -67,6 +69,12 @@ from benchweave.host.types import (
 )
 from benchweave.interfaces.worker import RunWorker
 from benchweave.state.store import Store
+
+# The file IS one of the two real-paced rigs (issue #241 slice 1): every
+# quantity here asserts a wall-clock band (100–150 ms tolerances on ~50–300
+# ms fixtures), so the whole module runs serialized in the dedicated timing
+# lane.
+pytestmark = [pytest.mark.timing]
 
 BUDGET_MS = 50
 TOLERANCE_MS = 150

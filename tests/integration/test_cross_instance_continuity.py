@@ -76,6 +76,13 @@ from benchweave.host.types import (
 )
 from benchweave.state.store import Store
 
+# The file IS one of the two real-paced rigs (issue #241 slice 1): every
+# trial here measures wall-clock quantities against pacing bands, so the
+# whole module runs serialized in the dedicated timing lane. The static
+# classifier-table and retry-pin tests ride along — they still run in CI,
+# just in the lane (sub-second cost, disclosed).
+pytestmark = [pytest.mark.timing]
+
 # --- the rig's fixture constants ----------------------------------------------------
 #
 # Every number here is a FIXTURE parameter for measurement discriminability
