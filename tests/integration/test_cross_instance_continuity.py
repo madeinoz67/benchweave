@@ -704,6 +704,25 @@ class ContinuityRig:
             OperationRequest.read("prime-a", parameter="temp"),
             deadline_ns=self.deadline_ns(2000),
         )
+        # Construction-time starvation, read-#1 presentation (review fold,
+        # HIGH+MEDIUM converged): when the stall predates the wrapper's
+        # pre-dispatch tick, that tick itself reads the aged signal, the
+        # fail-safe latches signal_invalid, and the monitor REFUSES the
+        # priming dispatch at the door — primed.status lands ERROR with a
+        # NOT_DISPATCHED freshness-block envelope. The discriminant is the
+        # same one the measured dispatch uses (_freshness_trip_block: the
+        # monitor's own blocked latch plus the freshness kind), and the
+        # class is the same host starvation, so it retries rather than
+        # dying on the degenerate-wiring assert below.
+        if (
+            primed.status is not OperationStatus.OK
+            and _freshness_trip_block(self, primed)
+        ):
+            raise TrialInfrastructureError(
+                "a bench signal failed to serve at priming (read-#1 "
+                "starvation: the pre-dispatch tick read an aged signal "
+                "and the fail-safe refused the priming read)"
+            )
         assert primed.status is OperationStatus.OK, "monitoring fixture degenerate"
         assert len(self.tick_times) >= 2, "the wrapper never ticked"
         assert self.snapshots, "the retain seam never fired"
@@ -987,9 +1006,13 @@ def run_trial(
     ``TrialInfrastructureError`` — an ``AssertionError`` subclass, so an
     exhausted retry still fails the trial as an assertion — and the
     matcher below inspects that TYPE, never message text. The carrying
-    sites: the construction-time priming signal-validity check (issue
-    #241 slice 1, the observed CI failure), the pre-flight staleness
-    check (pre-dispatch by intent), a
+    sites: the construction-time priming block-refusal — read-#1
+    starvation, where the wrapper's pre-dispatch tick reads the aged
+    signal and the fail-safe refuses the priming dispatch at the door
+    (review fold: the heaviest presentation of the exact slice-1
+    condition) — the construction-time priming signal-validity check
+    (issue #241 slice 1, the observed CI failure), the pre-flight
+    staleness check (pre-dispatch by intent), a
     dispatch whose refusal is the dead-session door reject (the bridge's
     failure latch plus NOT_DISPATCHED, not its wording) or the monitor's
     own ``blocked``-latched freshness (``signal_invalid``) door-refusal —
@@ -2216,18 +2239,25 @@ def test_infrastructure_marker_exhausts_at_two_retries(
 
 
 def _install_priming_starvation(
-    monkeypatch: pytest.MonkeyPatch, *, every_construction: bool
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    every_construction: bool,
+    starve_from_read: int = 2,
 ) -> list[ContinuityRig]:
     """Force the over-aged priming B-read (#241 slice 1, design §2.1): B's
     FIRST tick read serves fresh (the healthy fixture — a stale first read
-    would trip the block at the pre-tick and fail the degenerate-wiring
-    assert instead), and every read AFTER it lands ten seconds before the
-    open reference — far past the 300 ms ``max_age_ms`` — so the
-    post-dispatch tick's retained snapshot is the one that goes invalid,
-    which is how the observed CI failure reached the validity assert. The
-    first construction's adapter only, or every construction's in the
-    exhaustion shape. Returns the rigs (including any that raised partway
-    through construction) for the caller's failure belt."""
+    trips the block at the pre-tick, the read-#1 presentation the review
+    fold classifies as retryable infrastructure), and every read AFTER it
+    lands ten seconds before the open reference — far past the 300 ms
+    ``max_age_ms`` — so the post-dispatch tick's retained snapshot is the
+    one that goes invalid, which is how the observed CI failure reached
+    the validity assert. ``starve_from_read`` moves the threshold: 2 (the
+    default) starves reads two onward — the post-tick presentation; 1
+    starves every read including the first — the pre-tick block-refusal
+    presentation. The first construction's adapter only, or every
+    construction's in the exhaustion shape. Returns the rigs (including
+    any that raised partway through construction) for the caller's
+    failure belt."""
     rigs: list[ContinuityRig] = []
     adapters: list[BRigAdapter] = []
     reads: dict[int, int] = {}
@@ -2252,7 +2282,7 @@ def _install_priming_starvation(
         if any(self is adapter for adapter in starved):
             seen = reads.get(id(self), 0) + 1
             reads[id(self)] = seen
-            if seen > 1:
+            if seen >= starve_from_read:
                 stamp = datetime.fromtimestamp(self._ref_epoch - 10.0, tz=UTC)
                 return stamp.isoformat().replace("+00:00", "Z")
         return original_wall_at(self, mono_ns)
@@ -2315,6 +2345,53 @@ def test_priming_signal_starvation_exhausts_at_two_retries(
             )
         assert len(rigs) == 3  # the attempt plus at most two retries
         assert isinstance(raised.value, AssertionError)
+    finally:
+        _close_partially_constructed(rigs)
+
+
+def test_priming_read1_starvation_routes_the_block_refusal_to_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review fold (HIGH+MEDIUM converged): read-#1 starvation — the
+    heaviest presentation, the exact slice-1 condition — never reaches the
+    validity assert. The wrapper's pre-dispatch tick reads the already-aged
+    signal, the fail-safe latches ``signal_invalid``, and the monitor
+    REFUSES the priming dispatch at the door (``primed.status`` not OK).
+    That block-refusal is the same starvation class as the validity
+    presentation — the discriminant is the monitor's own ``blocked`` latch
+    plus the freshness kind (``_freshness_trip_block``) — so it must retry
+    on a fresh rig, not die on the degenerate-wiring assert: the first
+    construction's starved reads retry, the second, unpatched construction
+    completes."""
+    rigs = _install_priming_starvation(
+        monkeypatch, every_construction=False, starve_from_read=1
+    )
+    try:
+        outcome = run_trial(
+            tmp_path, arm="non_capture", device_class="buffered", trial_index=8
+        )
+        assert outcome["retries"] == 1, outcome["retries"]
+    finally:
+        _close_partially_constructed(rigs)
+
+
+def test_priming_read1_starvation_exhaustion_is_the_starvation_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The read-#1 exhaustion arm: EVERY construction's every read aged
+    fails every priming dispatch at the door, and the exhausted failure is
+    the starvation marker itself — never the degenerate-wiring assert
+    (which would misattribute a starved host to broken wiring)."""
+    rigs = _install_priming_starvation(
+        monkeypatch, every_construction=True, starve_from_read=1
+    )
+    try:
+        with pytest.raises(TrialInfrastructureError) as raised:
+            run_trial(
+                tmp_path, arm="non_capture", device_class="buffered", trial_index=9
+            )
+        assert len(rigs) == 3
+        assert "monitoring fixture degenerate" not in str(raised.value)
     finally:
         _close_partially_constructed(rigs)
 
