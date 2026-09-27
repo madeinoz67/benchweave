@@ -290,6 +290,10 @@ def classify_descriptor_pin(pin: object, *, corpus: Path | None = None) -> Descr
     The Q6 taxonomy as a pure function of committed bytes plus the pin —
     the surface the API-view derivation reuses (a stored device row's pin
     must READ, never crash, even when a later policy motion retired it).
+    TOTAL OVER PIN VALUES, not over governance bytes: malformed policy or
+    corpus-manifest data raises StandardsError fail-closed here exactly as
+    it does at admission — the read path catches and logs it (R10's
+    seam), it never silently classifies (review fold R8).
     Admission wraps this with the raising/refusing decisions
     (``_authorise_pin``); refused classes fold to ``"non-conforming"``
     carrying their refusal text in ``note``. A pin that is not a parseable
