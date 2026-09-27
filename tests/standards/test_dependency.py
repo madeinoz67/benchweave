@@ -25,6 +25,7 @@ from benchweave.standards.dependency import (
     classify_pin,
     expand_caret,
     load_constraints,
+    load_cross_constraints,
     load_prior_lock,
     normalized_equal,
     resolve_package,
@@ -928,3 +929,34 @@ def test_r2_list_refuses_a_manifest_policy_desync_styled(tmp_path: Path) -> None
     assert result.returncode == 1, result.stdout
     assert "standards list error: dependency_policy_invalid" in result.stderr
     assert "Traceback" not in result.stderr
+
+
+# --- fold wave 2, R3: requires intervals validate at load --------------------------
+
+
+
+def _mutate_cross(root: Path, mutate: Any) -> None:
+    cross = root / "standards" / "cross-constraints.json"
+    document = json.loads(cross.read_bytes())
+    document = mutate(document)
+    cross.write_bytes(canonical_json(document))
+
+
+def test_r3_a_malformed_requirement_interval_refuses_at_load(tmp_path: Path) -> None:
+    """A requires value that is neither an explicit interval nor an
+    adapter_api shape refuses cross_constraint_invalid AT LOAD — today it
+    loads clean and fires later under the wrong prefix."""
+    root = _copy_standards(tmp_path)
+
+    def mutate(document: dict[str, Any]) -> dict[str, Any]:
+        document["rows"][0]["requires"]["otdp"] = "banana"
+        return document
+
+    _mutate_cross(root, mutate)
+    with pytest.raises(StandardsError, match="cross_constraint_invalid"):
+        load_cross_constraints(root)
+
+
+def test_r3_a_wellformed_requirement_still_loads(tmp_path: Path) -> None:
+    root = _copy_standards(tmp_path)
+    assert len(load_cross_constraints(root)) == 1
