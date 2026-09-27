@@ -117,6 +117,8 @@ def _run(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
         ("^0.0.3", "0.0.3", "0.0.4"),
         ("^1.2.3", "1.2.3", "2.0.0"),
         ("^0.0", "0.0.0", "0.1.0"),
+        ("^0.0.0", "0.0.0", "0.0.1"),
+        ("^1.0", "1.0.0", "2.0.0"),
     ],
 )
 def test_b3_expand_caret_table(value: str, lower: str, upper: str) -> None:
@@ -137,7 +139,19 @@ def test_b3_zero_minor_boundary_is_not_the_major_jump() -> None:
 
 @pytest.mark.parametrize(
     "value",
-    ["^0", "~1.2", "~1", "^1", "0.2", ">=0.2.0,<0.3.0", "^x.y", "^0.2.3.4", "^01.2"],
+    [
+        "^0",
+        "~1.2",
+        "~1",
+        "^1",
+        "0.2",
+        ">=0.2.0,<0.3.0",
+        "^x.y",
+        "^0.2.3.4",
+        "^01.2",
+        "^0..2",
+        "^0.02",
+    ],
 )
 def test_b3_unexpandable_authoring_sugar_refuses(value: str) -> None:
     """Sugar beyond the caret table refuses ``constraint_syntax_unexpanded:`` —
@@ -1119,3 +1133,32 @@ def test_r8_lock_otdp_absent(tmp_path: Path) -> None:
     package = _package(root, constraints={"registry": ">=0.1.0,<0.2.0"})
     with pytest.raises(StandardsError, match="lock_otdp_absent"):
         resolve_package(root, package)
+
+
+# --- fold wave 2, R4: the masking arms around normalized_equal ---------------------
+
+
+def test_r4_a_difference_in_an_other_version_bearing_field_refuses(tmp_path: Path) -> None:
+    """XOR arm 1: two documents differing ONLY in a non-version field that
+    bears the OTHER document's version string refuse — each side's own
+    version is masked, the other's is not, so the real difference survives."""
+    a = tmp_path / "a.json"
+    b = tmp_path / "b.json"
+    a.write_text(json.dumps({"requires": "the peer runs 0.2.2"}))
+    b.write_text(json.dumps({"requires": "the peer runs 0.2.1"}))
+    assert not normalized_equal(a, b, "0.2.1", "0.2.2")
+
+
+def test_r4_own_version_bearing_fields_mask_to_equal_the_known_limitation(
+    tmp_path: Path,
+) -> None:
+    """XOR arm 2 — the DOCUMENTED false-accept class: a real difference in a
+    non-version field that bears each document's OWN version string is
+    masked away. Substring replacement cannot tell a version-bearing field
+    from a version field; field-scoped replacement is the named fix shape,
+    deliberately not taken this slice."""
+    a = tmp_path / "a.json"
+    b = tmp_path / "b.json"
+    a.write_text(json.dumps({"tested-with": "0.2.1 itself"}))
+    b.write_text(json.dumps({"tested-with": "0.2.2 itself"}))
+    assert normalized_equal(a, b, "0.2.1", "0.2.2")

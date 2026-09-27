@@ -1068,6 +1068,13 @@ def normalized_equal(path_a: Path, path_b: Path, version_a: str, version_b: str)
     the design's own B6 arms compare two DISTINCT versions (0.2.1 vs
     0.2.2), and a single ``own_version`` parameter cannot name both
     subtrees' version strings.
+
+    KNOWN FALSE-ACCEPT CLASS (fold wave 2 R4): substring replacement
+    masks a real difference in any non-version field that happens to BEAR
+    a document's own version string ("tested-with": "0.2.1 itself") —
+    both sides collapse to the placeholder and the pair admits. The R4
+    XOR arms pin both directions; field-scoped replacement is the fix
+    shape, deliberately not taken this slice.
     """
     placeholder = b"<OWN-VERSION>"
     return _normalize_subtree(path_a, version_a, placeholder) == _normalize_subtree(
