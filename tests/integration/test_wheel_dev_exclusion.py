@@ -69,7 +69,15 @@ def test_wheel_carries_no_dev_stage_bytes(tmp_path: Path) -> None:
     assert any(
         name.startswith("benchweave/_vendored/contracts/otdp/0.2.0/") for name in names
     ), "the active contracts tree must keep shipping"
-    for root_file in ("standards-manifest.json", "corpus-manifest.json"):
+    # cross-constraints.json ships beside the two manifests: the pairwise
+    # admission check reads it fail-closed, so a wheel that dropped it would
+    # break every provider-bearing admission at runtime, not a test (#217
+    # review fold R1).
+    for root_file in (
+        "standards-manifest.json",
+        "corpus-manifest.json",
+        "cross-constraints.json",
+    ):
         assert f"benchweave/_vendored/contracts/{root_file}" in names
 
 

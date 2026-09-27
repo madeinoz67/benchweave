@@ -464,6 +464,25 @@ fixtures; CI-stable lanes that exist, no Windows lane).
      bounds by medians/maxima, and a 5 ms range demand on latencies §5.2 allows to
      reach 150 ms is a scale mismatch the clause never committed to. The rationale is
      documented at the rig's `_RANGE_GATE_DENOMINATOR_MS`.
+     **[Erratum, 2026-09-28 — #217's CI unblock, disclosed:]** the gate's
+     per-axis reading is TRIMMED of the single most extreme trial (the one
+     furthest from the cell's median) before the 25% comparison. Two PR #245
+     CI lanes red on shared runners with exactly this shape — one trial
+     spiked ~2x among tight trials (X4 raw range 73.3 ms, four trials within
+     0.5 ms) — the same scheduler-stall class item 7's own per-arm rejection
+     names ('would flake on scheduler stalls rather than catch loose
+     pacing'). The trim is bounded to ONE trial per axis: systematically
+     spread fixtures and double-spiked shapes still read UNDERPOWERED
+     (pinned in `test_range_gate_tolerance_both_directions`, both
+     directions). The priming serve failure ('a bench signal failed to serve
+     at priming') retries as host starvation — ADAPTED at the #159 merge to
+     F4's structural doctrine (which merged first and governs): the priming
+     site raises `TrialInfrastructureError` (pre-dispatch by intent, the
+     pre-flight staleness class) and the type-keyed matcher re-measures on a
+     fresh rig; the message-based matcher the unblock first shipped is
+     deleted. The frozen §6 classifier (`_continuity_rule.py`) is untouched:
+     its range arm reads commissioned bounds over trial ledgers, a different
+     artifact.
 - **KILL the increment if:** separation fails (long ≈ control — the axes are vacuous; a
   wiring/fixture defect to fix before merge, the M-A posture: explicitly NOT row-1
   evidence); OR the census finds a second store-opening thread; OR wall divergence leaks

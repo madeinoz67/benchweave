@@ -57,6 +57,14 @@ The gateway leg runs through the REAL ``admit_documents`` over the
 fixture lattice (never the projection function directly), so the pin
 lattice is exercised; the SDK leg runs the check CLI in-process (the
 syspath-prepend precedent, ``test_presentation_cli.py``).
+
+Issue #217 (#203 slice 3) extends the census across the SERVED set
+(CON-10's amendment): the 28-cell matrix above stays ACTIVE-version; the
+served-version arms sweep every served version's NATIVE example set
+(0.2.0 and 0.2.2 at the seed — 34 clean cells, counted from the run) plus per-version
+id-pattern fault arms and the disclosed 0.1.2 prefix-split cell (the SDK's
+``version_not_served:`` fold vs the gateway's ack gate), with a teeth arm
+that re-derives C1's RED on every run.
 """
 
 from __future__ import annotations
@@ -1135,3 +1143,202 @@ def test_the_provider_pin_cap_mirrors_the_sdk_bound() -> None:
     from benchweave.control.documents import _PROVIDER_PIN_MAX_BYTES
 
     assert _PROVIDER_PIN_MAX_BYTES == INPUT_BYTE_LIMIT == 262_144
+
+
+# ---------------------------------------------------------------------------
+# Issue #217 (#203 slice 3): the census extends across the SERVED set
+# (CON-10's amendment — clean cells + named faults per served version; the
+# 28-cell mutation matrix above stays ACTIVE-version). Served versions
+# derive from the policy block, never hand-listed: otdp {0.2.0, 0.2.2} at
+# the seed (0.2.1 retained-in-interval but yanked — its conforming-with-
+# warning arm lives in tests/control/test_documents_perpin.py; the census
+# sweeps SERVED examples only, both lanes green).
+# ---------------------------------------------------------------------------
+
+
+def _served_otdp_versions() -> list[str]:
+    """The served otdp versions from the committed policy block."""
+    from benchweave.standards.manifest import load_dependency_policy, served_versions
+
+    versions = list(served_versions(load_dependency_policy(ROOT), ROOT, "otdp"))
+    assert "0.2.2" in versions, "the active version must be served"
+    return versions
+
+
+def _native_example_names(version: str) -> list[str]:
+    """Descriptor-shaped examples native to one served version's set."""
+    directory = ROOT / "standards" / "otdp" / version / "examples"
+    names = [
+        path.name
+        for path in sorted(directory.glob("*.json"))
+        if "otdp_version" in json.loads(path.read_text())
+    ]
+    assert names, f"the {version} example set has no descriptors"
+    return names
+
+
+def _provider_contract_source(pinned: str, declared: str) -> Path:
+    """The corpus file a provider pin names: the declared version's example
+    set first, then any served version's (a RE-PINNED body still pins the
+    contract its original example set carries)."""
+    candidates = [
+        ROOT / "standards" / "otdp" / version / "examples" / pinned
+        for version in [declared, *_served_otdp_versions()]
+    ]
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    raise AssertionError(f"no served example set carries {pinned!r}")
+
+
+def _spool_sdk_document(
+    tmp_path: Path, label: str, document: dict[str, Any]
+) -> Path:
+    """Spool one document for the SDK lane, its provider pin beside it."""
+    package = tmp_path / f"sdk-{label}"
+    package.mkdir(parents=True)
+    transport = document.get("transport")
+    if isinstance(transport, dict) and isinstance(transport.get("provider"), dict):
+        pinned = transport["provider"]["path"]
+        (package / pinned).write_bytes(
+            _provider_contract_source(pinned, document["otdp_version"]).read_bytes()
+        )
+    path = package / "descriptor.json"
+    path.write_text(json.dumps(document, indent=2) + "\n")
+    return path
+
+
+def _example_admits_gateway(
+    tmp_path: Path, label: str, document: dict[str, Any]
+) -> tuple[bool, str]:
+    """One example document through the REAL gateway lane.
+
+    Provider-bearing examples (0.2.2's reference pair) get a package whose
+    contract bytes the descriptor-relative pin resolves to, plus a settings
+    document admitting that exact triple — the increment-3 pattern."""
+    transport = document.get("transport")
+    if isinstance(transport, dict) and isinstance(transport.get("provider"), dict):
+        package = tmp_path / f"gw-{label}"
+        package.mkdir(parents=True)
+        pinned = transport["provider"]["path"]
+        (package / pinned).write_bytes(
+            _provider_contract_source(pinned, document["otdp_version"]).read_bytes()
+        )
+        descriptor_path = package / "descriptor.json"
+        descriptor_path.write_text(json.dumps(document, indent=2) + "\n")
+        return _admit(
+            tmp_path,
+            "psu",
+            document,
+            descriptor_path=descriptor_path,
+            provider_settings=_settings_for_package(package),
+            now_wall=NOW_WALL,
+        )
+    return _admit(tmp_path, "psu", document)
+
+
+@pytest.mark.parametrize(
+    "version_name",
+    [
+        (version, name)
+        for version in _served_otdp_versions()
+        for name in _native_example_names(version)
+    ],
+    ids=[f"{v}-{n}" for v in _served_otdp_versions() for n in _native_example_names(v)],
+)
+def test_served_version_examples_admit_on_both_lanes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, version_name: tuple[str, str]
+) -> None:
+    """C2's clean cells: every NATIVE example of every served version is
+    clean on both lanes — the SDK per-pin against its vendored served set,
+    the gateway per-pin against the retained corpus. The example's own pin
+    selects its bytes on both sides; nothing re-pins anything here."""
+    version, name = version_name
+    path = ROOT / "standards" / "otdp" / version / "examples" / name
+    document = json.loads(path.read_text())
+    assert document["otdp_version"] == version
+
+    exit_code, output = _sdk_check(_spool_sdk_document(tmp_path, f"{version}-{name}", document))
+    assert exit_code == 0, f"{version}/{name}: SDK lane dirty: {output}"
+    admitted, message = _example_admits_gateway(tmp_path, f"{version}-{name}", document)
+    assert admitted, f"{version}/{name}: gateway lane refused: {message}"
+
+
+@pytest.mark.parametrize("version", _served_otdp_versions())
+def test_served_version_fault_arms_refuse_on_both_lanes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, version: str
+) -> None:
+    """The per-version named fault: an id-pattern violation (the no-dot
+    segment form) is refused by BOTH lanes whichever served version's bytes
+    validate the document — the schema-layer fault is version-independent
+    by mechanism, and the sweep's green cells above mean something because
+    these stay red on every served version."""
+    name = _native_example_names(version)[0]
+    document = json.loads(
+        (ROOT / "standards" / "otdp" / version / "examples" / name).read_text()
+    )
+    document["id"] = "no-dot-segment-id"
+
+    exit_code, output = _sdk_check(
+        _spool_sdk_document(tmp_path, f"fault-{version}", document)
+    )
+    assert exit_code == 1, f"{version}: SDK lane clean on an id-pattern fault"
+    admitted, message = _example_admits_gateway(tmp_path, f"fault-{version}", document)
+    assert not admitted, f"{version}: gateway lane admitted an id-pattern fault"
+    assert message.startswith("schema: descriptor[psu]"), message
+
+
+def test_the_012_split_is_sanctioned_not_drift(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The disclosed asymmetric cell: a 0.1.2-pinned descriptor is refused
+    by BOTH lanes with DIFFERENT prefixes — the SDK folds never-carried and
+    out-of-range into ``version_not_served:`` (design risk 3's deliberate
+    fold), the gateway ack-gates the retained-out-of-range class
+    (``operator_ack_required:`` riding ``standard_nonconforming:``; the SDK
+    cannot see operator acknowledgements — the same posture as
+    ``provider_not_admitted:``). Both refuse; the census pins the split so
+    it stays deliberate, not silent drift."""
+    document = json.loads(CORPUS["sim_psu"].read_text())
+    document["otdp_version"] = "0.1.2"
+
+    exit_code, output = _sdk_check(
+        _spool_sdk_document(tmp_path, "split-012", document)
+    )
+    assert exit_code == 1
+    assert "version_not_served:" in output, output
+
+    admitted, message = _admit(tmp_path, "psu", document)
+    assert not admitted
+    assert message.startswith("operator_ack_required:"), message
+    assert "standard_nonconforming:" in message, message
+
+
+def test_the_sweep_bites_on_a_planted_disagreement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """C2's teeth, permanent: re-introduce the pre-#217 behavior (validate
+    every pin against the ACTIVE schema regardless of the descriptor's own
+    pin) and the sweep's clean cell GOES RED — the 0.2.0 example the census
+    demands both-clean on is refused by the ACTIVE schema's const. This is
+    the census-resident re-derivation of C1's RED: the regression this
+    slice removed, re-proven on every run, not only in the slice's
+    evidence."""
+    import benchweave.control.documents as documents_module
+
+    real = documents_module._descriptor_validator
+    monkeypatch.setattr(
+        documents_module, "_descriptor_validator", lambda version=None: real(None)
+    )
+
+    version = next(v for v in _served_otdp_versions() if v != "0.2.2")
+    name = _native_example_names(version)[0]
+    document = json.loads(
+        (ROOT / "standards" / "otdp" / version / "examples" / name).read_text()
+    )
+    admitted, message = _example_admits_gateway(tmp_path, f"teeth-{version}", document)
+    assert not admitted, (
+        f"the sabotaged active-only gateway admitted the {version} example — "
+        "the teeth arm expects the const refusal"
+    )
+    assert "$.otdp_version" in message and "0.2.2" in message, message

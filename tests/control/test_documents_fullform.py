@@ -182,15 +182,18 @@ def test_reversed_range_refused(tmp_path: Path) -> None:
 
 
 def test_stale_otdp_version_refused(tmp_path: Path) -> None:
-    """The schema's otdp_version const enforces corpus alignment (dps150's
-    actual condition): a 0.1.0 declaration is a schema refusal, not a
-    gateway constant."""
+    """A 0.1.0 declaration is retained-but-out-of-range: NON-conforming, and
+    without a recorded operator acknowledgement admission refuses (VR-14/18,
+    issue #217). Before per-pin admission this pin refused at the ACTIVE
+    schema's const — the interim the Q6 taxonomy retired; the class flip is
+    the design's own ``operator_ack_required:`` landing, not a prefix
+    meaning change (``schema:`` still means schema)."""
 
     def mutate(descriptor: dict[str, Any]) -> None:
         descriptor["otdp_version"] = "0.1.0"
 
     with pytest.raises(
-        AdmissionRejected, match=r"schema: descriptor\[psu\] \$.otdp_version"
+        AdmissionRejected, match=r"^operator_ack_required: standard_nonconforming:"
     ):
         readmit_mutated(tmp_path, _mutated_scope(mutate))
 

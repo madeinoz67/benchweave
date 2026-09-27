@@ -136,13 +136,18 @@ Use the [descriptor schema](../standards/otdp/0.2.2/otdp-device-descriptor.schem
 Validate all applicable **S01–S18**, **C01–C12** and **M01–M14** obligations from the linked specifications. Schema validity covers only part of admission.
 
 **Full-form is the execution-admitted form.** Runtime admission validates the
-descriptor against the active vendored OTDP descriptor schema plus the S01
-and S02 semantic checks — the same contract `benchweave-sdk check` enforces —
-and projects the execution view the gateway consumes from it (identity,
+descriptor against the vendored OTDP descriptor schema of **its own
+`otdp_version` pin** — the pin's bytes, digest-verified against the corpus
+manifest — plus the S01 and S02 semantic checks: the same per-pin contract
+`benchweave-sdk check` enforces. The gateway falls back to the active
+schema only for a pin that does not classify as a version at all, so the
+schema's own `otdp_version` const error names the malformed value. Admission
+then projects the execution view the gateway consumes from it (identity,
 version, profiles, parameter names, actions). A descriptor that is not
 `check`-clean is not execution-admissible: `check`-clean is a necessary
-condition for admission, pinned equivalent over the in-tree corpus by
-`tests/sdk/test_descriptor_equivalence.py`. The one gateway-owned addition:
+condition for admission, pinned equivalent over the in-tree corpus and the
+served version sets by `tests/sdk/test_descriptor_equivalence.py`. The one
+gateway-owned addition:
 
 **The `x-stg-issued-inputs` extension.** A descriptor-root object
 `{action_id: [input field, ...]}` naming which invoke inputs of which
@@ -156,6 +161,43 @@ action or an undeclared field is an admission refusal
 (`schema: descriptor[<id>] issued_map:`). Verifying the fields against the
 profile catalog's canonical action inputs belongs to the deferred
 profile-satisfaction stage.
+
+### OTDP version pins: serve, deprecate, or refuse
+
+The `otdp_version` field is an exact pin, and admission classifies it
+against the gateway's dependency policy before any schema validation. Pin a
+**served** version — retained in the corpus, inside the declared supported
+range, and not yanked. The pin does **not** have to be the corpus's active
+version: a plugin stays admissible while the corpus moves on, as long as
+its pin stays inside the served window. Only a bump that pushes your pin
+out of that window (a retired identifier, a yank, a raised range floor)
+forces a restamp — that is the whole point of the per-pin rule.
+
+The classes, and what each one means for your plugin:
+
+- **Served pin** — conforms. Validated against the pin's own schema bytes.
+- **Yanked pin** — still conforms. Admission validates it and records a
+  deprecation warning naming the derived move-to (the highest served
+  version). Re-pin at the next convenient release; nothing forces one.
+- **Retained but out-of-range pin** — **non-conforming**. The gateway can
+  still validate it against its own retained bytes, but loads it only
+  behind a recorded per-device operator acknowledgement (see the operator
+  guide's admission section); without one, admission refuses.
+- **Retired identifier** — refused outright. The number was used once and
+  is never reissued; the refusal names the next minor version to re-target
+  to.
+- **Never carried by this corpus** — refused. Either the version was never
+  released here or the pin is mistyped; publish it or fix the pin.
+
+Every version refusal and the non-conforming classification carries the
+same five fields inline — the standard, the pinned version, the supported
+range, the derived move-to version, and the migration-note pointer — so a
+refusal is actionable without cross-referencing. The machine-matchable
+prefixes: `retired_identifier:`, `version_unknown:`,
+`operator_ack_required:` (riding with the `standard_nonconforming:`
+classification), and `cross_constraint_violation:` (the bench's execution
+version constrains the OTDP range its devices may pin — a pin outside it
+refuses naming both versions and the constraining row's evidence).
 
 ### Named settings as presets
 

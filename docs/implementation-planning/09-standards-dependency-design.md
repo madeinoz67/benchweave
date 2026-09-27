@@ -215,8 +215,10 @@ validation and classifies (the owner's Q6 taxonomy):
 | not retained (unknown or retired identifier) | **refused** | no bytes exist to validate against; named error (VR-15) |
 
 Every refusal and classification carries the VR-37 fields: standard, pinned version, supported
-range, nearest move-to, migration-note pointer. New stable prefixes (VR-38 — existing prefixes
-unchanged): `version_not_served:`, `retired_identifier:` (distinct from
+range, nearest move-to, migration-note pointer. New stable prefixes arc-wide
+(VR-38 — existing prefixes unchanged; `version_not_served:` is the SDK lane's fold — the
+gateway never emits it, splitting that fold into `version_unknown:` plus the
+non-conforming class): `version_not_served:`, `retired_identifier:` (distinct from
 `version_unknown:` — retired means "used and dead, never reissued"; unknown means "this gateway
 has never carried it"), `standard_nonconforming:`, `operator_ack_required:`. The warning channel
 reuses the deprecation-cell vocabulary already in the matrix (`matrix.py::_guidance`,
@@ -659,6 +661,8 @@ that predate them where coexistence is possible.
 | D6 | Per-version migration notes for ALREADY-RELEASED versions (SM-5 is "from adoption") | Policy-block note pointers exist only for post-adoption releases | A support request pinned to a pre-adoption version hitting a refusal |
 | D7 | Interface multi-version serving (older interface versions for API clients) | Interface declares its range and serves its single released version; the named-refusal requirement (VR: API client story) is met by VR-37 errors | The first interface bump with live external clients |
 | D8 | The counting script's plugin-tree CI lane (device-plugins workflow integration for the zero-mode gate) | Ratchet mode runs in `gates`; plugin-side zero-mode lands with slice 7 | Slice 7 |
+| D11 | The operator acknowledgement's PRODUCTION surface — `bootstrap`/`app` never thread `operator_acknowledgements`; the seam exists on `admit_documents` only (#217 slice 3; D9/D10 live in the slice-2 record) | Slice 5's persistence landing (per-device, admission-record-owned acknowledgements wired through bootstrap/app) | Slice 5 lands — until then a non-conforming pin in the STARTUP lattice is a hard `startup_admission_rejected:` refusal, the posture the operator guide documents |
+| D12 | The API-view WIRE field for the per-device conformance class (VR-16) — interface 0.1.0's device object is `additionalProperties: false`, and #217 slice 3 moves no standards bytes; the server-side derivation (`classify_descriptor_pin` over the stored pin, at `Operations._device_projection`) and the `device_conformance_mismatch` log DID land | The next interface version bump that opens the closed device object — the field rides it (the derivation seam is in place and tested) | That interface bump |
 
 ## 7. Top risks — and what an adversary attacks first
 

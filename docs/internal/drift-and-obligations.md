@@ -88,7 +88,10 @@ and remain the reviewer's job.
    has a second gate: the descriptor-semantics census
    (`tests/sdk/test_descriptor_equivalence.py`) pins the gateway's S01/S02 mirrors
    equivalent to the SDK checker over the in-tree corpus (CON-10) — a semantics
-   bump on either side surfaces there.
+   bump on either side surfaces there. Since #217 (slice 3) the census also sweeps
+   the SERVED set (both lanes per-pin; the 28-cell matrix stays ACTIVE-version) and
+   pins the disclosed 0.1.2 prefix-split cell (SDK `version_not_served:` fold vs the
+   gateway's ack gate).
 
 9. **`deploy/systemd/` templates** 🪝 → the `systemd` CI job renders the template and
    `systemd-analyze verify`s it against rehearsed preconditions (dedicated user, one
@@ -278,7 +281,9 @@ and remain the reviewer's job.
     two manifests, no corpus rows, root-scoped exemption in repin and the
     baseline walks) ↔ its loader in `src/benchweave/standards/dependency.py`
     ↔ resolve-time pairwise enforcement, with slice 3's bench admission
-    consuming the same loader; rows require citable evidence, and the
+    consuming the same loader (LANDED, #217: `control/documents.py`
+    `_check_cross_constraints`, pairwise per device against the bench's
+    execution version, `cross_constraint_violation:`); rows require citable evidence, and the
     package carriers are `contracts/constraints.json` (authored) ↔
     `contracts/lock.json` (generated, verified by `pin --locked` and check's
     `plugin_lock_drift:` lane). The yanked 0.2.1 and the retired identifiers

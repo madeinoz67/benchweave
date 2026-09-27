@@ -3,12 +3,15 @@
 Decodes each admission input with the exact-byte JSON decoder, validates the
 five execution-contract documents against the vendored execution/0.2.0
 schemas, and verifies the digest pin lattice between them. Device descriptors
-are full-form OTDP documents: each validates against the ACTIVE vendored OTDP
-descriptor schema (version derived from the vendored standards manifest, never
-a hardcoded constant), the S01/S02 semantic mirrors and the gateway-owned
-``x-stg-issued-inputs`` extension, then projects the execution view
-binding/semantics/coordinator read (CON-10). The package lock keeps a minimal
-structural check (id and version strings) — it has no vendored schema.
+are full-form OTDP documents: each validates against the vendored OTDP
+descriptor schema OF ITS OWN ``otdp_version`` PIN (issue #217, design §3.3 —
+resolved from the retained corpus, digest-verified against the corpus
+manifest; the ACTIVE schema only for a pin that does not classify, so the
+schema's own const error names it), the S01/S02 semantic mirrors and the
+gateway-owned ``x-stg-issued-inputs`` extension, then projects the execution
+view binding/semantics/coordinator read (CON-10). The package lock keeps a
+minimal structural check (id and version strings) — it has no vendored
+schema.
 
 Structure and pins only for the contract documents: semantic admission
 (profile satisfaction, policy envelope evaluation, binding completeness)
@@ -18,6 +21,19 @@ prefix: ``schema:`` (structure, including the mirrors and the issued map),
 ``digest_mismatch:`` (a pin disagrees with the bytes it names), or
 ``pin_absent:`` (a required pin or descriptor is missing). File-level errors
 for the given paths propagate unchanged.
+
+Version-prefix vocabulary (issue #217, VR-37/38 — the Q6 classification's
+refusals, every one carrying the five VR-37 fields inline):
+``retired_identifier:`` (used and dead, never reissued), ``version_unknown:``
+(this corpus never carried it), ``operator_ack_required:`` with the
+``standard_nonconforming:`` classification riding the same message (a
+retained but out-of-range pin loads only behind a recorded per-device
+acknowledgement), and ``cross_constraint_violation:`` (the pairwise bench
+check). The SDK's ``version_not_served:`` folds "never carried" and
+"out-of-range" into one refusal; the gateway deliberately splits the three
+ways instead — the same convergence the resolver documents
+(``standards/dependency.py``'s module docstring; the census pins the SDK
+lane's fold on the 0.1.2 arm so the split stays visible cross-lane).
 """
 
 from __future__ import annotations
@@ -25,8 +41,9 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
+from functools import lru_cache
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -40,7 +57,19 @@ from benchweave.control.provider_settings import (
     provider_contract_validator,
 )
 from benchweave.measurement.derivation import DerivationRejected, check_derived_variables
-from benchweave.standards.manifest import DESCRIPTOR_SCHEMA_NAME, StandardsError
+from benchweave.standards.dependency import (
+    load_cross_constraints_from_corpus,
+    parse_interval,
+)
+from benchweave.standards.manifest import (
+    DESCRIPTOR_SCHEMA_NAME,
+    VERSION_PATTERN,
+    StandardsError,
+    load_dependency_policy_from_corpus,
+    retained_versions_from_corpus,
+    served_versions_from_corpus,
+    version_tuple,
+)
 from benchweave.vendoring import contract_family
 
 #: The vendored execution contracts (packaged in the wheel, repo-relative
@@ -119,6 +148,10 @@ class AdmittedDocuments:
     commissioning: dict[str, Any]
     descriptors: dict[str, dict[str, Any]]  # device_id -> projected descriptor view
     digests: dict[str, str]  # logical name -> sha256 hex
+    #: Per-device OTDP pin facts (VR-46): the validated version, its
+    #: conformance class, the yank deprecation warning where one fired, and
+    #: the recorded operator acknowledgement behind a non-conforming load.
+    pins: dict[str, DescriptorPin]
 
 
 def _validator(schema_filename: str, contracts: Path = _CONTRACTS) -> Any:
@@ -137,29 +170,273 @@ def _validator(schema_filename: str, contracts: Path = _CONTRACTS) -> Any:
     return validator
 
 
-_DESCRIPTOR_CACHE: dict[str, Any] = {}
+_DESCRIPTOR_CACHE: dict[tuple[Path, str], Any] = {}
+
+#: The OTDP standard id, named once for the classification literals below.
+_OTDP = "otdp"
 
 
-def _descriptor_validator() -> Any:
-    """The ACTIVE vendored OTDP descriptor schema's validator, cached.
+@dataclass(frozen=True)
+class DescriptorPin:
+    """One device descriptor's OTDP pin facts, recorded at admission (VR-46).
 
-    The active version derives from the vendored standards manifest — the
-    same authority :func:`benchweave.standards.manifest.validate_identity`
-    resolves the descriptor schema by for identity derivation — never a
-    hardcoded gateway constant; the schema's ``otdp_version`` const then
-    enforces corpus alignment itself. OTDP stays manifest-ACTIVE in every
-    composition (the seam is execution-only), so this cache is filename-
-    keyed and deliberately separate from the per-corpus execution-schema
-    cache.
+    ``status`` is the classification's decision key — ``served``, ``yanked``,
+    ``nonconforming``, ``retired``, ``unknown``, ``unclassifiable`` — and
+    authorisation reads IT, never the note's wording (review fold R6: the
+    prefixes stay message vocabulary only). ``conformance`` is
+    ``"conforming"`` or ``"non-conforming"`` — the Q6 table's two admitting
+    classes; the refused classes (retired, never carried) refuse admission,
+    and the total :func:`classify_descriptor_pin` folds them into
+    ``"non-conforming"`` with the refusal text riding ``note`` so display
+    surfaces read where admission refuses. ``deprecated`` marks the
+    yanked-but-conforming pin (the Q10 ruling); ``note`` carries the
+    deprecation warning or the five VR-37 fields; ``acknowledgement`` is the
+    recorded operator acknowledgement (VR-18), or None.
     """
-    validator = _DESCRIPTOR_CACHE.get(DESCRIPTOR_SCHEMA_NAME)
-    if validator is None:
-        schema = json.loads(
-            _otdp_normative_path(DESCRIPTOR_SCHEMA_NAME).read_text(encoding="utf-8")
+
+    otdp_version: str
+    status: str
+    conformance: str
+    deprecated: bool = False
+    note: str | None = None
+    acknowledgement: dict[str, Any] | None = None
+
+
+def _otdp_corpus() -> Path:
+    """The vendored corpus root (packaged-first — ``_otdp_normative_path``'s
+    resolution, named once for the per-pin readers below)."""
+    return contract_family(_OTDP).parent
+
+
+def _vr37_text(row: Any, pin: str, corpus: Path, policy: Any) -> str:
+    """The five VR-37 fields inline, in the resolver's format (dependency.py
+    ``_vr37`` — the deliberate vocabulary convergence; the two derivations
+    are pinned text-equal by test). Move-to: the highest served version —
+    identical under the ≥-pin filter and its fallback (proof: when the
+    served max is ≥ the pin it is itself a candidate; when it is not, the
+    candidate set is empty and both rules fall back to it)."""
+    served = served_versions_from_corpus(policy, corpus, _OTDP)
+    move_to = max(served, key=version_tuple) if served else row.lower
+    return (
+        f"standard: {_OTDP}; pinned: {pin}; "
+        f"supported: >={row.lower},<{row.upper}; "
+        f"move-to: {move_to}; "
+        "migration: migration guidance pending"
+    )
+
+
+@lru_cache(maxsize=512)
+def _classify_cached(pin: str, corpus_text: str) -> DescriptorPin:
+    corpus = Path(corpus_text)
+    policy = load_dependency_policy_from_corpus(corpus)
+    row = policy.standards.get(_OTDP)
+    if row is None:
+        # Fail closed: a tree whose policy block carries no otdp row has
+        # broken governance data — classification is not a guess.
+        raise StandardsError(
+            "dependency_policy_invalid: no policy row for standard 'otdp'"
         )
+    vr37 = _vr37_text(row, pin, corpus, policy)
+    if pin in row.retired:
+        major, minor, _patch = version_tuple(pin)
+        return DescriptorPin(
+            otdp_version=pin,
+            status="retired",
+            conformance="non-conforming",
+            note=(
+                f"retired_identifier: {_OTDP} {pin} is a retired identifier "
+                f"(used and dead, never reissued); the next minor is "
+                f"{major}.{minor + 1}.0; {vr37}"
+            ),
+        )
+    if pin not in retained_versions_from_corpus(corpus, _OTDP):
+        return DescriptorPin(
+            otdp_version=pin,
+            status="unknown",
+            conformance="non-conforming",
+            note=(
+                f"version_unknown: {_OTDP} {pin} was never carried by this "
+                f"corpus — publish it or widen the constraint; {vr37}"
+            ),
+        )
+    if not row.in_range(pin):
+        return DescriptorPin(
+            otdp_version=pin,
+            status="nonconforming",
+            conformance="non-conforming",
+            note=f"standard_nonconforming: {vr37}",
+        )
+    for record in row.yanked:
+        if record.version == pin:
+            served = served_versions_from_corpus(policy, corpus, _OTDP)
+            move_to = max(served, key=version_tuple) if served else row.lower
+            return DescriptorPin(
+                otdp_version=pin,
+                status="yanked",
+                conformance="conforming",
+                deprecated=True,
+                note=(
+                    f"deprecation warning: {_OTDP} {pin} is yanked "
+                    f"({record.reason}; since {record.since}); "
+                    f"move-to: {move_to}"
+                ),
+            )
+    return DescriptorPin(otdp_version=pin, status="served", conformance="conforming")
+
+
+def classify_descriptor_pin(pin: object, *, corpus: Path | None = None) -> DescriptorPin:
+    """Classify one OTDP pin against the committed policy block (total).
+
+    The Q6 taxonomy as a pure function of committed bytes plus the pin —
+    the surface the API-view derivation reuses (a stored device row's pin
+    must READ, never crash, even when a later policy motion retired it).
+    TOTAL OVER PIN VALUES, not over governance bytes: malformed policy or
+    corpus-manifest data raises StandardsError fail-closed here exactly as
+    it does at admission — the read path catches and logs it (R10's
+    seam), it never silently classifies (review fold R8).
+    Admission wraps this with the raising/refusing decisions
+    (``_authorise_pin``); refused classes fold to ``"non-conforming"``
+    carrying their refusal text in ``note``. A pin that is not a parseable
+    MAJOR.MINOR.PATCH string never orders against the corpus — it folds
+    the same way, and the schema's own const error refuses it at admission
+    (the SDK's no-pin posture, mirrored).
+    """
+    if not isinstance(pin, str) or VERSION_PATTERN.fullmatch(pin) is None:
+        shown = pin if isinstance(pin, str) else repr(pin)
+        return DescriptorPin(
+            otdp_version=shown,
+            status="unclassifiable",
+            conformance="non-conforming",
+            note=(
+                f"version_not_classifiable: {_OTDP} pin {shown!r} is not a "
+                "parseable MAJOR.MINOR.PATCH version; the descriptor schema's "
+                "own otdp_version const names it at validation"
+            ),
+        )
+    return _classify_cached(pin, str(corpus if corpus is not None else _otdp_corpus()))
+
+
+def _authorise_pin(
+    logical: str,
+    record: DescriptorPin,
+    *,
+    acknowledged_pin: str | None,
+    now_wall: str | None,
+) -> dict[str, Any] | None:
+    """Admission's decision over one classified pin (the Q6 table's rows).
+
+    Retired and never-carried pins refuse outright — there are no bytes to
+    validate against (VR-15); the decision reads the classification's
+    STATUS field, never the note's wording (R6). A retained but out-of-range pin is
+    NON-conforming and loads only behind a recorded per-device operator
+    acknowledgement that names THIS pin (VR-14/18: an ack for a different
+    pin does not apply — one ack cannot blanket a bench of unknown
+    pairings); without it admission refuses with both new prefixes riding
+    one message and the five VR-37 fields inline. Conforming (served or
+    yanked) pins need no acknowledgement.
+    """
+    # The decision reads STATUS, never the note's wording (review fold R6);
+    # the prefixes stay message vocabulary. Prefix-first message, logical
+    # inside — the provider_not_admitted convention. There is no
+    # unclassifiable arm: its caller gates the call on the pin's shape, so
+    # an unclassifiable record never reaches authorisation (review fold
+    # R11c — the arm was unreachable and is deleted, not exercised).
+    if record.status in ("retired", "unknown"):
+        prefix = (
+            "retired_identifier:" if record.status == "retired" else "version_unknown:"
+        )
+        rest = (record.note or "").partition(":")[2].strip()
+        raise AdmissionRejected(f"{prefix}: {logical} {rest}")
+    if record.status != "nonconforming":
+        return None
+    note = record.note or ""
+    if acknowledged_pin != record.otdp_version:
+        raise AdmissionRejected(
+            f"operator_ack_required: standard_nonconforming: {logical} pins "
+            f"{note} — a retained but out-of-range version loads only behind "
+            "a recorded per-device operator acknowledgement naming this pin "
+            f"(VR-14/18); pass operator_acknowledgements with "
+            f"{{{logical}: '{record.otdp_version}'}} once the acknowledgement "
+            "is recorded"
+        )
+    # recorded_at stays None when no now_wall was supplied — the seam never
+    # fabricates a clock (A04); persistence and stamping land with slice 5.
+    return {"otdp_version": record.otdp_version, "recorded_at": now_wall}
+
+
+def _descriptor_validator(version: str | None = None) -> Any:
+    """The vendored OTDP descriptor schema's validator for ONE version.
+
+    ``version`` None resolves the ACTIVE schema (the manifest's exactly-once
+    normative name — malformed or absent pins validate against it so the
+    schema's own const error names them, mirroring the SDK's no-pin
+    posture); a classified pin resolves ``otdp/<version>/`` — the pin's own
+    digest-verified bytes, never the active's (VR-13, CON-1's amendment).
+    Cache keyed by (corpus directory, schema filename): the per-corpus
+    execution-schema cache's pattern, extended across versions so ACTIVE
+    and DEV_HEAD compositions and every served pin never share a validator.
+    """
+    path = _otdp_versioned_path(DESCRIPTOR_SCHEMA_NAME, version)
+    key = (path.parent, DESCRIPTOR_SCHEMA_NAME)
+    validator = _DESCRIPTOR_CACHE.get(key)
+    if validator is None:
+        schema = json.loads(path.read_text(encoding="utf-8"))
         validator = Draft202012Validator(schema, format_checker=FormatChecker())
-        _DESCRIPTOR_CACHE[DESCRIPTOR_SCHEMA_NAME] = validator
+        _DESCRIPTOR_CACHE[key] = validator
     return validator
+
+
+def _corpus_row_pin(corpus: Path, relative: str) -> str | None:
+    """The corpus-manifest sha256 for one corpus-relative row path."""
+    document = json.loads((corpus / "corpus-manifest.json").read_bytes())
+    for row in document.get("files", []):
+        if str(row.get("path")) == relative:
+            return str(row["sha256"]) if row.get("sha256") is not None else None
+    return None
+
+
+def _otdp_versioned_path(document_name: str, version: str | None) -> Path:
+    """The vendored path of one otdp normative file, digest-verified.
+
+    ``version`` None keeps the ACTIVE manifest resolution (exactly-once
+    normative name); a version resolves ``otdp/<version>/<name>`` and
+    verifies the bytes against the corpus row — a pin's schema is served
+    from digest-frozen retained bytes (CON-1's amendment), and a tampered
+    or unrowed file refuses with the corpus vocabulary, never silently
+    becomes the schema a descriptor validates against.
+    """
+    if version is None:
+        return _otdp_normative_path(document_name)
+    return _otdp_versioned_schema_path(_otdp_corpus(), version, document_name)
+
+
+def _otdp_versioned_schema_path(
+    corpus: Path, version: str, document_name: str = DESCRIPTOR_SCHEMA_NAME
+) -> Path:
+    """The corpus-parameterized half of the versioned resolution (the
+    adapter-const cache keys by corpus, so its read cannot resolve the
+    corpus through the module default)."""
+    relative = f"{_OTDP}/{version}/{document_name}"
+    path = corpus / relative
+    if not path.is_file():
+        raise AdmissionRejected(
+            f"version_unknown: {_OTDP} {version} retains no {document_name} "
+            f"under {relative}"
+        )
+    raw = path.read_bytes()
+    pinned = _corpus_row_pin(corpus, relative)
+    if pinned is None:
+        raise AdmissionRejected(
+            f"corpus_file_unpinned: {relative} (a machine file inside a "
+            "version directory must carry a corpus row)"
+        )
+    digest = hashlib.sha256(raw).hexdigest()
+    if digest != pinned:
+        raise AdmissionRejected(
+            f"corpus_pin_mismatch: standards/{relative}: corpus pin {pinned} "
+            f"does not match the on-disk bytes ({digest})"
+        )
+    return path
 
 
 def _otdp_normative_path(document_name: str) -> Path:
@@ -368,24 +645,28 @@ def _check_derived(logical: str, derived: Any) -> None:
         raise AdmissionRejected(f"schema: {logical} derivation: {exc}") from exc
 
 
-_KNOWN_FEATURES: frozenset[str] | None = None
+_KNOWN_FEATURES: dict[str | None, frozenset[str]] = {}
 
 
-def _corpus_known_otdp_features() -> frozenset[str]:
+def _corpus_known_otdp_features(version: str | None = None) -> frozenset[str]:
     """The corpus-known ``otdp.*`` feature ids, derived from the vendored tree.
 
     The gateway mirror of the SDK's derivation (its ``validation.py`` —
     the census pins the two derivations equal at the same vendored
-    version): the feature-shaped ``const`` values the ACTIVE vendored
-    descriptor schema itself carries (its ``required_features``
-    contains-conditions spell the core lanes) plus the vendored catalog's
-    ``profiles[].id`` — never hand-listed. Layer 1 of the known-features
-    union; layer 2 is the host-admitted set (transport-providers §2).
+    version): the feature-shaped ``const`` values the pinned version's
+    vendored descriptor schema itself carries (its ``required_features``
+    contains-conditions spell the core lanes) plus that version's vendored
+    catalog ``profiles[].id`` — never hand-listed, resolved per pin (the
+    ACTIVE version when ``version`` is None, matching the SDK's
+    ``active_version`` default). Layer 1 of the known-features union;
+    layer 2 is the host-admitted set (transport-providers §2).
     """
-    global _KNOWN_FEATURES
-    if _KNOWN_FEATURES is None:
+    known = _KNOWN_FEATURES.get(version)
+    if known is None:
         schema = json.loads(
-            _otdp_normative_path(DESCRIPTOR_SCHEMA_NAME).read_text(encoding="utf-8")
+            _otdp_versioned_path(DESCRIPTOR_SCHEMA_NAME, version).read_text(
+                encoding="utf-8"
+            )
         )
         lanes: set[str] = set()
 
@@ -402,13 +683,14 @@ def _corpus_known_otdp_features() -> frozenset[str]:
 
         sweep(schema)
         catalog = json.loads(
-            _otdp_normative_path("device-profile-catalog.json").read_text(
+            _otdp_versioned_path("device-profile-catalog.json", version).read_text(
                 encoding="utf-8"
             )
         )
         profiles = {profile["id"] for profile in catalog["profiles"]}
-        _KNOWN_FEATURES = frozenset(lanes | profiles)
-    return _KNOWN_FEATURES
+        known = frozenset(lanes | profiles)
+        _KNOWN_FEATURES[version] = known
+    return known
 
 
 def _check_provider_placement(logical: str, descriptor: dict[str, Any]) -> None:
@@ -440,6 +722,7 @@ def _check_provider_mirror(
     logical: str,
     descriptor: dict[str, Any],
     provider_state: ProviderRegistry | None,
+    version: str | None = None,
 ) -> None:
     """S04 extended: provider declarations and the closed ``otdp.*`` namespace.
 
@@ -447,9 +730,9 @@ def _check_provider_mirror(
     mirrored refusal-for-refusal and in the same order so each single
     fault lands on its named prefix, with one divergence by design: the
     known set is the TWO-LAYER union — corpus-known (layer 1, derived
-    above) plus the feature ids of the operator's admitted contracts
-    (layer 2). The SDK proves the declaration well-formed; only the
-    gateway can prove it admitted.
+    above from the PIN's version under per-pin admission) plus the feature
+    ids of the operator's admitted contracts (layer 2). The SDK proves the
+    declaration well-formed; only the gateway can prove it admitted.
     """
     transport = descriptor["transport"]
     provider = transport.get("provider")
@@ -491,7 +774,7 @@ def _check_provider_mirror(
             f"schema: {logical} provider_transport_undeclared: {feature!r} "
             f"is required but {detail}"
         )
-    known = _corpus_known_otdp_features()
+    known = _corpus_known_otdp_features(version)
     if provider_state is not None:
         known = known | provider_state.feature_ids()
     for feature in required:
@@ -818,21 +1101,117 @@ def _check_provider_admission(
         )
 
 
+def _adapter_api_const(version: str) -> str:
+    """The pinned version's descriptor-schema ``api_version`` const (G-2's
+    authority under multi-version admission: the PINNED version's const, not
+    the active's) — the fact the cross-constraint row's ``adapter_api``
+    requirement is enforced against. The cache is keyed by (corpus,
+    version) like its siblings: a version-only key collides the moment two
+    corpora in one process carry different consts at the same version
+    (review fold R3, lane A's repro)."""
+    return _adapter_api_const_cached(str(_otdp_corpus()), version)
+
+
+@lru_cache(maxsize=512)
+def _adapter_api_const_cached(corpus_text: str, version: str) -> str:
+    schema = json.loads(
+        _otdp_versioned_schema_path(Path(corpus_text), version).read_text(
+            encoding="utf-8"
+        )
+    )
+    try:
+        const = schema["$defs"]["adapter"]["properties"]["api_version"]["const"]
+    except (KeyError, TypeError):
+        raise AdmissionRejected(
+            f"adapter_api_unresolved: api_version const absent from the pinned "
+            f"otdp/{version}/{DESCRIPTOR_SCHEMA_NAME}"
+        ) from None
+    if not isinstance(const, str):
+        raise AdmissionRejected(
+            f"adapter_api_unresolved: api_version const is not a string in the "
+            f"pinned otdp/{version}/{DESCRIPTOR_SCHEMA_NAME}"
+        )
+    return const
+
+
+def _check_cross_constraints(contracts: Path, pins: dict[str, DescriptorPin]) -> None:
+    """The pairwise bench check (design §3.3, VR-31's admission half).
+
+    Each device's OTDP pin must sit inside the BENCH's execution version's
+    declared range, read from the committed cross-constraints side table —
+    the same rows the resolver enforces at resolve time, single-sourced
+    through ``load_cross_constraints_from_corpus``. The bench's execution
+    version derives from the ``contracts`` directory's name (the
+    composition seam's own fact); a composition carrying no row for its
+    version constrains nothing it has no evidence for (execution 0.1.0's
+    honest negative). The row's ``adapter_api`` requirement rides the same
+    row, judged against the pinned schema's own const. An acknowledged
+    non-conforming pin still refuses here: the acknowledgement authorises
+    the otdp-window load, never the execution runtime interface."""
+    execution_version = contracts.name
+    for row in load_cross_constraints_from_corpus(_otdp_corpus()):
+        if row.standard != "execution" or row.version != execution_version:
+            continue
+        otdp_requirement = row.requires.get(_OTDP)
+        adapter_requirement = row.requires.get("adapter_api")
+        for device_id, record in sorted(pins.items()):
+            if otdp_requirement is not None and not parse_interval(
+                otdp_requirement
+            ).contains(record.otdp_version):
+                raise AdmissionRejected(
+                    f"cross_constraint_violation: descriptor[{device_id}] pins "
+                    f"{_OTDP}@{record.otdp_version} but this bench validates "
+                    f"against execution@{execution_version}, whose "
+                    f"cross-constraint row requires {_OTDP} {otdp_requirement} "
+                    f"({row.evidence})"
+                )
+            if adapter_requirement is not None and _adapter_api_const(
+                record.otdp_version
+            ) != adapter_requirement:
+                raise AdmissionRejected(
+                    f"cross_constraint_violation: descriptor[{device_id}] pins "
+                    f"{_OTDP}@{record.otdp_version} whose adapter API is "
+                    f"{_adapter_api_const(record.otdp_version)}, but this bench "
+                    f"validates against execution@{execution_version}, whose "
+                    f"cross-constraint row requires adapter_api "
+                    f"{adapter_requirement} ({row.evidence})"
+                )
+
+
 def _project_full_form(
     device_id: str,
     descriptor: dict[str, Any],
     provider_state: ProviderRegistry | None = None,
+    *,
+    acknowledged_pin: str | None = None,
+    now_wall: str | None = None,
 ) -> dict[str, Any]:
     """Validate a full-form OTDP descriptor; project the execution view.
 
-    Schema first (the active vendored corpus schema), then the S01/S02
-    mirrors, then the issued-input extension, then the projection — a
+    The descriptor's own ``otdp_version`` pin resolves and classifies
+    BEFORE schema validation (design §3.3): the pin's bytes validate the
+    pin (VR-13), the classification applies the Q6 table's decisions
+    (``_authorise_pin`` — refusals, the ack gate), then the schema, the
+    S01/S02 mirrors, the issued-input extension, and the projection — a
     total function of the schema-guaranteed fields, so nothing downstream
-    can see an unvalidated shape.
+    can see an unvalidated shape. A malformed pin never classifies: it
+    validates against the ACTIVE schema so the const error names it (the
+    SDK's no-pin posture, mirrored).
     """
     logical = f"descriptor[{device_id}]"
     derived = descriptor.get("derived_variables")
-    error = next(iter(_descriptor_validator().iter_errors(descriptor)), None)
+    pin = descriptor.get("otdp_version")
+    record = classify_descriptor_pin(pin)
+    ack: dict[str, Any] | None = None
+    classifiable = isinstance(pin, str) and VERSION_PATTERN.fullmatch(pin) is not None
+    if classifiable:
+        ack = _authorise_pin(
+            logical, record, acknowledged_pin=acknowledged_pin, now_wall=now_wall
+        )
+    # An unclassifiable pin validates against the ACTIVE schema: the const
+    # error is the honest refusal (the ack gate is for classified pins only).
+    version = record.otdp_version if classifiable else None
+    error = next(iter(_descriptor_validator(version).iter_errors(descriptor)), None)
     if error is not None:
         # Mirror the SDK's precedence (validate_descriptor's except branch):
         # when derived_variables is present, the S19 grammar/static checks
@@ -848,7 +1227,7 @@ def _project_full_form(
         _check_provider_placement(logical, descriptor)
         raise AdmissionRejected(f"schema: {logical} {error.json_path}: {error.message}")
     _check_semantic_mirrors(logical, descriptor)
-    _check_provider_mirror(logical, descriptor, provider_state)
+    _check_provider_mirror(logical, descriptor, provider_state, version)
     issued_map = _check_issued_map(logical, descriptor)
     if derived is not None:
         # Same admission posture as the slim branch: grammar and static
@@ -881,6 +1260,17 @@ def _project_full_form(
         # reads False with no capture keys — no permission is granted by a
         # malformed shape (the adapter_permissions posture, projected).
         "artifact_writer": "artifact_writer" in adapter_permissions(descriptor),
+        # The pin facts the three VR-46 surfaces read (issue #217): the
+        # validated version, its conformance class (VR-16 — never silently
+        # conforming), and the note (the yank deprecation warning naming the
+        # move-to, or the VR-37 text on a non-conforming pin).
+        "otdp_version": descriptor["otdp_version"],
+        "conformance": record.conformance,
+        "conformance_note": record.note,
+        # The structured pin record (R7): the classification authorisation
+        # already computed — admit_documents threads THIS instead of
+        # re-deriving classification and acknowledgement from the view.
+        "pin": replace(record, acknowledgement=ack),
     }
     capture_formats = descriptor.get("capture_formats")
     capture_limits = descriptor.get("capture_limits")
@@ -902,21 +1292,30 @@ def _project_descriptor(
     device_id: str,
     descriptor: dict[str, Any],
     provider_state: ProviderRegistry | None = None,
+    *,
+    acknowledged_pin: str | None = None,
+    now_wall: str | None = None,
 ) -> dict[str, Any]:
     """Validate one descriptor and return the execution view (CON-10).
 
     A device descriptor is a full-form OTDP document: it validates against
-    the active vendored schema plus the S01/S02 mirrors and the gateway's
-    issued-input extension, then projects the execution view binding,
-    semantics and the coordinator read. The pre-conversion slim list
-    dialect is refused — it fails the schema; a descriptor that is not
-    OTDP-valid is not execution-admissible.
+    the PIN's vendored schema (the ACTIVE one for an unclassifiable pin)
+    plus the S01/S02 mirrors and the gateway's issued-input extension, then
+    projects the execution view binding, semantics and the coordinator
+    read. The pre-conversion slim list dialect is refused — it fails the
+    schema; a descriptor that is not OTDP-valid is not execution-admissible.
     """
     # The CON-10 anchor: the single admission path. The dual-accept branch
     # that lived here during the tree conversion is gone by design — do not
     # hunt for it; the slim-death control (test_documents_fullform) pins its
     # absence.
-    return _project_full_form(device_id, descriptor, provider_state)
+    return _project_full_form(
+        device_id,
+        descriptor,
+        provider_state,
+        acknowledged_pin=acknowledged_pin,
+        now_wall=now_wall,
+    )
 
 
 def _verify_pin(
@@ -981,6 +1380,7 @@ def admit_documents(
     provider_settings: Path | None = None,
     now_wall: str | None = None,
     contracts: Path = _CONTRACTS,
+    operator_acknowledgements: dict[str, str] | None = None,
 ) -> AdmittedDocuments:
     """Admit an execution document set or raise :class:`AdmissionRejected`.
 
@@ -1006,6 +1406,14 @@ def admit_documents(
     (caller-supplied; expiry is arithmetic on declared values, never an
     ambient clock read). A provider-less lattice is untouched by every
     check above.
+
+    The per-pin lane (issue #217): each descriptor validates against its
+    own ``otdp_version`` pin's digest-verified bytes under the Q6
+    classification (see ``_project_full_form``);
+    ``operator_acknowledgements`` carries the recorded per-device operator
+    acknowledgements (device_id -> the acked OTDP pin) that alone admit a
+    retained-but-out-of-range pin (VR-14/18) — an ack naming a different
+    pin does not apply. ``None`` (the default) acknowledges nothing.
     """
     provider_state: ProviderRegistry | None = None
     if provider_settings is not None:
@@ -1118,11 +1526,19 @@ def admit_documents(
 
     descriptors: dict[str, dict[str, Any]] = {}
     descriptor_digests: dict[str, str] = {}
+    pins: dict[str, DescriptorPin] = {}
+    acked = operator_acknowledgements or {}
     for device_id, pin in device_pins.items():
         descriptor, descriptor_digest = _decode(
             descriptor_paths[device_id], f"descriptor[{device_id}]"
         )
-        view = _project_descriptor(device_id, descriptor, provider_state)
+        view = _project_descriptor(
+            device_id,
+            descriptor,
+            provider_state,
+            acknowledged_pin=acked.get(device_id),
+            now_wall=now_wall,
+        )
         # The pin verifies against the RAW document's identity and the RAW
         # bytes' digest; consumers see the projected view.
         _verify_pin(
@@ -1145,6 +1561,15 @@ def admit_documents(
         )
         descriptors[device_id] = view
         descriptor_digests[f"descriptor/{device_id}"] = descriptor_digest
+        # The admission-record surface of the pin facts (VR-46): the
+        # projection's threaded record (R7) — classification ran once, the
+        # authorisation's acknowledgement rides it, and every refusal and
+        # the ack gate were enforced before the view existed.
+        pins[device_id] = view["pin"]
+
+    # The pairwise bench check runs AFTER every device admitted: it is a
+    # fact about the bench's execution version, not any one descriptor.
+    _check_cross_constraints(contracts, pins)
 
     pinned_by_binding = {
         "procedure": (procedure, procedure_digest),
@@ -1180,6 +1605,7 @@ def admit_documents(
         commissioning=commissioning,
         descriptors=descriptors,
         digests=digests,
+        pins=pins,
     )
 
 
