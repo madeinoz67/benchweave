@@ -57,6 +57,10 @@ from benchweave.control.provider_settings import (
     provider_contract_validator,
 )
 from benchweave.measurement.derivation import DerivationRejected, check_derived_variables
+from benchweave.standards.dependency import (
+    load_cross_constraints_from_corpus,
+    parse_interval,
+)
 from benchweave.standards.manifest import (
     DESCRIPTOR_SCHEMA_NAME,
     VERSION_PATTERN,
@@ -1068,6 +1072,76 @@ def _check_provider_admission(
         )
 
 
+@cache
+def _adapter_api_const(version: str) -> str:
+    """The pinned version's descriptor-schema ``api_version`` const (G-2's
+    authority under multi-version admission: the PINNED version's const, not
+    the active's) — the fact the cross-constraint row's ``adapter_api``
+    requirement is enforced against."""
+    schema = json.loads(
+        _otdp_versioned_path(DESCRIPTOR_SCHEMA_NAME, version).read_text(
+            encoding="utf-8"
+        )
+    )
+    try:
+        const = schema["$defs"]["adapter"]["properties"]["api_version"]["const"]
+    except (KeyError, TypeError):
+        raise AdmissionRejected(
+            f"adapter_api_unresolved: api_version const absent from the pinned "
+            f"otdp/{version}/{DESCRIPTOR_SCHEMA_NAME}"
+        ) from None
+    if not isinstance(const, str):
+        raise AdmissionRejected(
+            f"adapter_api_unresolved: api_version const is not a string in the "
+            f"pinned otdp/{version}/{DESCRIPTOR_SCHEMA_NAME}"
+        )
+    return const
+
+
+def _check_cross_constraints(contracts: Path, pins: dict[str, DescriptorPin]) -> None:
+    """The pairwise bench check (design §3.3, VR-31's admission half).
+
+    Each device's OTDP pin must sit inside the BENCH's execution version's
+    declared range, read from the committed cross-constraints side table —
+    the same rows the resolver enforces at resolve time, single-sourced
+    through ``load_cross_constraints_from_corpus``. The bench's execution
+    version derives from the ``contracts`` directory's name (the
+    composition seam's own fact); a composition carrying no row for its
+    version constrains nothing it has no evidence for (execution 0.1.0's
+    honest negative). The row's ``adapter_api`` requirement rides the same
+    row, judged against the pinned schema's own const. An acknowledged
+    non-conforming pin still refuses here: the acknowledgement authorises
+    the otdp-window load, never the execution runtime interface."""
+    execution_version = contracts.name
+    for row in load_cross_constraints_from_corpus(_otdp_corpus()):
+        if row.standard != "execution" or row.version != execution_version:
+            continue
+        otdp_requirement = row.requires.get(_OTDP)
+        adapter_requirement = row.requires.get("adapter_api")
+        for device_id, record in sorted(pins.items()):
+            if otdp_requirement is not None and not parse_interval(
+                otdp_requirement
+            ).contains(record.otdp_version):
+                raise AdmissionRejected(
+                    f"cross_constraint_violation: descriptor[{device_id}] pins "
+                    f"{_OTDP}@{record.otdp_version} but this bench validates "
+                    f"against execution@{execution_version}, whose "
+                    f"cross-constraint row requires {_OTDP} {otdp_requirement} "
+                    f"({row.evidence})"
+                )
+            if adapter_requirement is not None and _adapter_api_const(
+                record.otdp_version
+            ) != adapter_requirement:
+                raise AdmissionRejected(
+                    f"cross_constraint_violation: descriptor[{device_id}] pins "
+                    f"{_OTDP}@{record.otdp_version} whose adapter API is "
+                    f"{_adapter_api_const(record.otdp_version)}, but this bench "
+                    f"validates against execution@{execution_version}, whose "
+                    f"cross-constraint row requires adapter_api "
+                    f"{adapter_requirement} ({row.evidence})"
+                )
+
+
 def _project_full_form(
     device_id: str,
     descriptor: dict[str, Any],
@@ -1464,6 +1538,10 @@ def admit_documents(
                 },
             )
         pins[device_id] = record
+
+    # The pairwise bench check runs AFTER every device admitted: it is a
+    # fact about the bench's execution version, not any one descriptor.
+    _check_cross_constraints(contracts, pins)
 
     pinned_by_binding = {
         "procedure": (procedure, procedure_digest),
