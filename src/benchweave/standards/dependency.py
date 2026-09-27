@@ -1192,7 +1192,8 @@ def pin_lock(
             raise StandardsError(
                 f"plugin_lock_drift: {path} — re-resolving the authored "
                 "constraints does not reproduce the committed lock (hand-edited "
-                "constraint, forged digest, or stale lock); run "
+                "constraint, forged digest, stale lock, or a non-canonical "
+                "serialization of identical values); run "
                 f"python -m benchweave.standards pin --package {package}"
             )
         return list(resolution.warnings) + [f"lock agrees with the authored constraints: {path}"]

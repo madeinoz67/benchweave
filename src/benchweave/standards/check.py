@@ -129,7 +129,8 @@ def _compare_plugin_dependencies(root: Path) -> list[str]:
             failures.append(
                 f"plugin_lock_drift: {relative} — re-resolving the authored "
                 "constraints does not reproduce the committed lock (hand-edited "
-                "constraint, forged digest, or stale lock); run "
+                "constraint, forged digest, stale lock, or a non-canonical "
+                "serialization of identical values); run "
                 f"python -m benchweave.standards pin --package {relative}"
             )
             continue
