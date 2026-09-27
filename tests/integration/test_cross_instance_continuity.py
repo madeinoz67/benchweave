@@ -559,6 +559,18 @@ class BRigAdapter:
         return event
 
 
+def _probe_wall_injection(monitor_wall_rate: float, no_trip: bool) -> bool:
+    """One predicate for the probe-wall exemption (review fold, reviewer
+    finding 4): host-computed ages carry no starvation signal whenever the
+    fixture itself injects the wall — a stretched monitor wall (rate != 1.0
+    inflates every age by its own factor) OR the probe's no-condition policy
+    variant. The priming classification arms and the pre-flight staleness
+    check share it; the only classify state is a real wall at a live policy
+    (1.0, False), which today's probes never mix — the shared predicate
+    exists so a future partial probe cannot fall between the two signals."""
+    return monitor_wall_rate != 1.0 or no_trip
+
+
 class ContinuityRig:
     """The two-instance harness (design §2.1): direct construction of the
     production objects — ONE store, A capturing (adopted, no stream), B
@@ -574,6 +586,7 @@ class ContinuityRig:
         *,
         device_class: str = "buffered",
         monitor_wall_rate: float = 1.0,
+        no_trip: bool = False,
         policy: dict[str, Any] | None = None,
     ) -> None:
         self.clock = SystemClock()
@@ -715,17 +728,17 @@ class ContinuityRig:
         # class is the same host starvation, so it retries rather than
         # dying on the degenerate-wiring assert below.
         #
-        # Both priming classification arms guard on the REAL wall rate
-        # (review fold, critic F2): a stretched monitor wall inflates every
-        # host-computed age by its own factor, so under the divergent-wall
-        # probe an over-aged priming read is the probe's OWN injection —
-        # the same guard the pre-flight staleness check gives itself under
-        # no_trip. Classifying it would both retry structurally uselessly
+        # Both priming classification arms guard on the SHARED probe-wall
+        # predicate (review folds, critic F2 + reviewer finding 4): a
+        # stretched monitor wall inflates every host-computed age by its
+        # own factor, and the no-condition probe variant ages by policy —
+        # either way an over-aged priming read is the probe's OWN
+        # injection. Classifying it would both retry structurally uselessly
         # (every construction re-injects the wall) and attribute a probe
         # artifact to host starvation, misdirecting slice 2.
         if (
             primed.status is not OperationStatus.OK
-            and monitor_wall_rate == 1.0
+            and not _probe_wall_injection(monitor_wall_rate, no_trip)
             and _freshness_trip_block(self, primed)
         ):
             raise TrialInfrastructureError(
@@ -745,9 +758,9 @@ class ContinuityRig:
         # on a fresh rig. The sibling wiring asserts above stay plain:
         # degenerate wiring has no CI evidence of load-triggering, and
         # retrying it would mask a dropped wrapper behind two wasted rigs.
-        # The real-wall-rate guard is above, shared with the block-refusal
-        # arm.
-        if monitor_wall_rate == 1.0 and not all(
+        # The shared probe-wall predicate guards here too, same as the
+        # block-refusal arm above.
+        if not _probe_wall_injection(monitor_wall_rate, no_trip) and not all(
             value.valid for value in self.snapshots[-1][1].values()
         ):
             raise TrialInfrastructureError(
@@ -1116,6 +1129,7 @@ def _run_trial_once(
         tmp_path / f"rig-{arm}-{device_class}-{trial_index}.db",
         device_class=device_class,
         monitor_wall_rate=monitor_wall_rate,
+        no_trip=no_trip,
         policy=NO_TRIP_POLICY if no_trip else POLICY,
     )
     try:
@@ -1132,11 +1146,12 @@ def _run_trial_once(
         rig.settle(100)
         rig.drain_until_quiet()
         rig.align_to_frame()
-        # Loud pre-flight (skipped for the stretched-wall probe, whose 10x
-        # host ages are the point): if the fixture ever enters the measured
-        # dispatch with the monitored signal already stale, the block that
-        # follows would misreport the cause — fail HERE with the actual age.
-        if not no_trip:
+        # Loud pre-flight (skipped whenever the fixture itself injects the
+        # wall — the shared probe-wall predicate, reviewer finding 4): if
+        # the fixture ever enters the measured dispatch with the monitored
+        # signal already stale, the block that follows would misreport the
+        # cause — fail HERE with the actual age.
+        if not _probe_wall_injection(monitor_wall_rate, no_trip):
             last_sig_b = rig.snapshots[-1][1][SIG_B]
             if not last_sig_b.valid:
                 # Pre-dispatch by intent (F4): entering the measured window
@@ -2578,6 +2593,48 @@ def test_divergent_wall_priming_age_never_reads_as_starvation(
         assert outcome["retries"] == 0, outcome["retries"]
     finally:
         _close_partially_constructed(rigs)
+
+
+def test_partial_probe_pre_flight_starvation_classification_skips(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review fold (LOW, reviewer finding 4): the probe-wall exemption had
+    two predicates — the priming arms keyed on ``monitor_wall_rate == 1.0``,
+    the pre-flight staleness check on ``no_trip`` — and a partial probe
+    (stretched wall, live policy) fell in the gap: the pre-flight check
+    could classify its own wall-inflated age as host starvation and burn
+    the whole retry budget on rigs that re-inject the same wall. One
+    shared predicate (``_probe_wall_injection``: rate != 1.0 OR no_trip)
+    covers both probe signals at all three classification sites. Pin: the
+    partial probe's terminal failure never carries the pre-flight
+    staleness attribution, and the truth table pins the one classify
+    state (a real wall at a live policy). The threshold is calibrated:
+    construction's own reads (initial, pre-tick, subscribe) stay fresh so
+    construction completes, and the injected age lands exactly at the
+    pre-flight read — pre-fix it reads as starvation (age ~10.5 s against
+    the 300 ms bound) and exhausts the budget."""
+    rigs = _install_priming_starvation(
+        monkeypatch, every_construction=True, starve_from_read=4
+    )
+    try:
+        with pytest.raises(AssertionError) as raised:
+            run_trial(
+                tmp_path,
+                arm="non_capture",
+                device_class="buffered",
+                trial_index=11,
+                monitor_wall_rate=10.0,
+                no_trip=False,
+            )
+        assert "pre-dispatch staleness" not in str(raised.value), raised.value
+        if isinstance(raised.value, TrialInfrastructureError):
+            assert raised.value.site != "pre-flight-staleness", raised.value.site
+    finally:
+        _close_partially_constructed(rigs)
+    assert not _probe_wall_injection(1.0, False)
+    assert _probe_wall_injection(10.0, False)
+    assert _probe_wall_injection(10.0, True)
+    assert _probe_wall_injection(1.0, True)
 
 
 # --- F1 fold: block-ness is the monitor's latch, never cause-adjacency (#159) ------
