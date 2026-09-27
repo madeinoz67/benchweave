@@ -675,6 +675,14 @@ def load_cross_constraints(root: Path) -> tuple[CrossConstraintRow, ...]:
                     f"constraint_standard_unknown: {standard}@{version} requires "
                     f"{key!r}, a standard the dependency-policy block does not carry"
                 )
+            elif RANGE_PATTERN.fullmatch(str(value)) is None:
+                # Fold wave 2 R3: requirement intervals validate AT LOAD with
+                # this file's own prefix (stored sugar already refused above).
+                raise StandardsError(
+                    f"cross_constraint_invalid: {standard}@{version} requires "
+                    f"{key} {value!r} — not an explicit half-open interval "
+                    "(>=X.Y.Z,<X.Y.Z)"
+                )
             requires[key] = str(value)
         rows.append(
             CrossConstraintRow(
