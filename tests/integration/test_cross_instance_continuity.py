@@ -700,9 +700,19 @@ class ContinuityRig:
         assert primed.status is OperationStatus.OK, "monitoring fixture degenerate"
         assert len(self.tick_times) >= 2, "the wrapper never ticked"
         assert self.snapshots, "the retain seam never fired"
-        assert all(value.valid for value in self.snapshots[-1][1].values()), (
-            "a bench signal failed to serve at priming"
-        )
+        # Construction-time starvation (issue #241 slice 1, the observed CI
+        # failure): construction itself is an un-polled window (drain_until_
+        # quiet's docstring names it), so sig-rig-b's first read can arrive
+        # aged past max_age_ms on a loaded host — an infrastructure fact,
+        # never a property of the measured system, so the marker says retry
+        # on a fresh rig. The sibling wiring asserts above stay plain:
+        # degenerate wiring has no CI evidence of load-triggering, and
+        # retrying it would mask a dropped wrapper behind two wasted rigs.
+        if not all(value.valid for value in self.snapshots[-1][1].values()):
+            raise TrialInfrastructureError(
+                "a bench signal failed to serve at priming "
+                "(construction-time starvation; run 36309281160)"
+            )
         # Armed exactly as production: B's subscription derives from the
         # bench signal's declared poll_ms (sig-rig-b -> min_interval_ms 50).
         self.stream_host.arm(BENCH, self.wrapped, self.monitor)
@@ -970,7 +980,9 @@ def run_trial(
     ``TrialInfrastructureError`` — an ``AssertionError`` subclass, so an
     exhausted retry still fails the trial as an assertion — and the
     matcher below inspects that TYPE, never message text. The carrying
-    sites: the pre-flight staleness check (pre-dispatch by intent), a
+    sites: the construction-time priming signal-validity check (issue
+    #241 slice 1, the observed CI failure), the pre-flight staleness
+    check (pre-dispatch by intent), a
     dispatch whose refusal is the dead-session door reject (the bridge's
     failure latch plus NOT_DISPATCHED, not its wording) or the monitor's
     own ``blocked``-latched freshness (``signal_invalid``) door-refusal —
