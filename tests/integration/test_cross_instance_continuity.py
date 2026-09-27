@@ -714,8 +714,18 @@ class ContinuityRig:
         # monitor's own blocked latch plus the freshness kind), and the
         # class is the same host starvation, so it retries rather than
         # dying on the degenerate-wiring assert below.
+        #
+        # Both priming classification arms guard on the REAL wall rate
+        # (review fold, critic F2): a stretched monitor wall inflates every
+        # host-computed age by its own factor, so under the divergent-wall
+        # probe an over-aged priming read is the probe's OWN injection —
+        # the same guard the pre-flight staleness check gives itself under
+        # no_trip. Classifying it would both retry structurally uselessly
+        # (every construction re-injects the wall) and attribute a probe
+        # artifact to host starvation, misdirecting slice 2.
         if (
             primed.status is not OperationStatus.OK
+            and monitor_wall_rate == 1.0
             and _freshness_trip_block(self, primed)
         ):
             raise TrialInfrastructureError(
@@ -734,7 +744,11 @@ class ContinuityRig:
         # on a fresh rig. The sibling wiring asserts above stay plain:
         # degenerate wiring has no CI evidence of load-triggering, and
         # retrying it would mask a dropped wrapper behind two wasted rigs.
-        if not all(value.valid for value in self.snapshots[-1][1].values()):
+        # The real-wall-rate guard is above, shared with the block-refusal
+        # arm.
+        if monitor_wall_rate == 1.0 and not all(
+            value.valid for value in self.snapshots[-1][1].values()
+        ):
             raise TrialInfrastructureError(
                 "a bench signal failed to serve at priming "
                 "(construction-time starvation; run 36309281160)"
@@ -2392,6 +2406,35 @@ def test_priming_read1_starvation_exhaustion_is_the_starvation_error(
             )
         assert len(rigs) == 3
         assert "monitoring fixture degenerate" not in str(raised.value)
+    finally:
+        _close_partially_constructed(rigs)
+
+
+def test_divergent_wall_priming_age_never_reads_as_starvation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review fold (MEDIUM, critic F2): under the divergent-wall probe's
+    own injection the priming classification is meaningless and its retry
+    structurally useless — every construction re-injects the stretched
+    wall, and the inflated age (measured ~9x construction elapsed at
+    rate 10; the critic's crossing estimate sits inside the lane's target
+    regime) would red with a FALSE construction-time starvation
+    attribution, misdirecting slice 2. Pin: the probe variant (10x wall,
+    no-condition policy) with every construction's post-tick priming read
+    forced over-aged COMPLETES on the first construction — no
+    TrialInfrastructureError, retries == 0 — the same guard the pre-flight
+    staleness check gives itself under no_trip."""
+    rigs = _install_priming_starvation(monkeypatch, every_construction=True)
+    try:
+        outcome = run_trial(
+            tmp_path,
+            arm="non_capture",
+            device_class="buffered",
+            trial_index=3,
+            monitor_wall_rate=10.0,
+            no_trip=True,
+        )
+        assert outcome["retries"] == 0, outcome["retries"]
     finally:
         _close_partially_constructed(rigs)
 
