@@ -316,7 +316,9 @@ def _move_to(policy: Any, row: StandardPolicy, root: Path, standard_id: str) -> 
     names a concrete next step.
     """
     served = served_versions(policy, root, standard_id)
-    return max(served) if served else row.lower
+    # version-ordered, never string-ordered: 0.2.10 > 0.2.2 by tuple, below by
+    # string (fold F1 — both reproducers picked the string max)
+    return max(served, key=version_tuple) if served else row.lower
 
 
 def _vr37(
@@ -866,7 +868,7 @@ def resolve_package(
                     f"inside {interval.text()} (served: {every}); publish a version "
                     "into the interval or widen the constraint"
                 )
-            candidate = served[-1]
+            candidate = max(served, key=version_tuple)
         resolved[standard_id] = candidate
     otdp_version = resolved.get("otdp")
     if otdp_version is None:

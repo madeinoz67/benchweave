@@ -191,3 +191,19 @@ Gate commands: `UV_PROJECT_ENVIRONMENT=venv uv run pytest -q tests/standards tes
 ---
 
 *Design by the increment-designer lane (MAX), 2026-09-27; owner-pass fork rulings by the controller. Acceptance rule B is pre-committed in `docs/implementation-planning/09-standards-dependency-design.md` §4 Slice 2 and is not weakened anywhere in this record.*
+
+---
+
+## Amendment — refute fold (2026-09-27)
+
+Four M-class findings from the slice's refute lanes, folded RED-first. Acceptance rule B is unchanged.
+
+(a) **§1.1's "highest SERVED version" is ordered by `version_tuple`, not list position or string max.** The record's own `max(served_versions)` phrasing specified the defect: `served_versions` returns a string-sorted tuple, so the first double-digit component (0.2.10) silently selected 0.2.2 at auto-selection and understated both move-to surfaces (the refusal field and the yank warning). Both sites now take `max(..., key=version_tuple)` (critic M1 / adv216a, independently reproduced twice). `served_versions`' own order is unchanged — the slice-1 render and tests consume it.
+
+(b) **§1.3's "the 8-file map kept verbatim / provable via `test_dps150_lock.py` passing unchanged" is corrected.** The writer re-derives directory coverage: all 8 v1 digests are carried verbatim (machine-checked by `test_b1_dps150_pin_is_deterministic_with_values_verbatim`), and the map grew 8→12 repairing under-coverage that existed at the pinned revision itself (governor-verified via `git ls-tree` at `8a080d14`; the test file was extended, not unchanged). Fold F3 additionally tightens the derivation to an ALLOWLIST — corpus-rowed files ∪ the prior lock's map; any other file present in the version directory refuses with a named disposition (remove it, corpus-pin it, or extend the prior map deliberately). This is deliberately stricter than bare directory coverage: a legitimately NEW prose companion (no corpus row, absent from the prior map) refuses until the prior map is extended deliberately, instead of being silently adopted (A02: qualified, not assumed).
+
+(c) **Named residual (adv216b L1):** a hand-edited `standards[].version` that stays inside its constraint interval is adopted by minimal motion and laundered green — accepted, because the constraints and the lock are the same party's authored data; the lane verifies agreement between them, not authorship.
+
+(d) **Fold F2:** check's dependency lane surfaces resolution warnings (a package retained on a yanked pin) as `plugin_deprecation_warning:` lines that do not trip the exit-1 contract — otherwise an unattended surface stays CI-green on a deprecated pin forever.
+
+(e) **Fold F4 (revision scissors):** the write path refuses when a digest VALUE in the derived map moves against the prior map at an UNCHANGED resolved version, unless `--revision <sha>` records the motion's revision alongside it; map additions carry the fetch-existence warning. The same-version gate is the fold's own scenario (a regenerated `validation-report.md` at a pinned version) made precise: under a version MOVE the map's shared names differ because they are different versions' corpus-frozen files, not because bytes moved at the recorded revision — refusing there would break every legitimate upgrade. The check lane does not apply the rule; committed locks are byte-compared as today.
