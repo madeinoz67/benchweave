@@ -1000,3 +1000,20 @@ def test_r6_a_non_object_row_refuses_typed(tmp_path: Path) -> None:
     (root / "standards/corpus-manifest.json").write_bytes(canonical_json(corpus))
     with pytest.raises(StandardsError, match="corpus_manifest_row_invalid"):
         resolve_package(root, package)
+
+
+# --- fold wave 2, R11: the drift message names the fourth cause --------------------
+
+
+def test_r11_drift_messages_name_non_canonical_serialization(tmp_path: Path) -> None:
+    """A values-identical reflow of the lock is drift too — both refusal
+    sites say so (the relock remediation is byte-form, not values)."""
+    root = _copy_standards(tmp_path)
+    package = _package(root, constraints={"otdp": ">=0.2.0,<0.3.0"})
+    assert _run(root, "pin", "--package", "plugins/acme/widget").returncode == 0
+    document = json.loads(_lock_path(package).read_bytes())
+    _lock_path(package).write_text(json.dumps(document, indent=2))  # values-identical reflow
+    result = _run(root, "pin", "--locked", "--package", "plugins/acme/widget")
+    assert result.returncode == 1, result.stderr
+    assert "plugin_lock_drift" in result.stderr
+    assert "non-canonical serialization" in result.stderr

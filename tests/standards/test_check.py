@@ -895,3 +895,21 @@ def test_check_surfaces_a_retained_yanked_pin_as_a_non_failing_warning(
 
     assert count_failures(warnings) == 0
     assert count_failures([*warnings, "plugin_lock_drift: x"]) == 1
+
+
+def test_check_drift_message_names_non_canonical_serialization(tmp_path: Path) -> None:
+    """The check lane's drift remediation names the reflow cause too."""
+    from benchweave.standards.check import run_check
+
+    sdk = _sdk_copy(tmp_path)
+    root = _standards_root(tmp_path)
+    package = _plugin_package(root, interval=">=0.2.0,<0.3.0")
+    from benchweave.standards.dependency import resolve_package, write_lock
+
+    write_lock(package, resolve_package(root, package).raw)
+    document = json.loads((package / "contracts" / "lock.json").read_bytes())
+    (package / "contracts" / "lock.json").write_text(json.dumps(document, indent=2))
+    failures = run_check(root, sdk)
+    drift = [line for line in failures if line.startswith("plugin_lock_drift")]
+    assert drift, failures
+    assert any("non-canonical serialization" in line for line in drift)
