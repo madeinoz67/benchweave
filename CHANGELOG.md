@@ -200,6 +200,9 @@ All notable changes to this project will be documented in this file.
 - Item 5 rider 2 completion — the growth site classes pay: rows dataset too (#146)
 - Issue #172 classifier fidelity — exactly-5 FIRE, per-class evaluation, label honesty
 - Issue #172 drain robustness, range gate, X4 3-way split, retry cap
+- The F-fix gateway legs + the folded LOW/NIT rows
+- Late Forge folds, gateway side — active re-point twins + the reproducible wheel identity
+- Maintainer-review folds gateway side — the corpus-pin gate lands now (the fork), claim/mechanism agreement, and the held rows
 
 ### Documentation
 
@@ -387,6 +390,7 @@ All notable changes to this project will be documented in this file.
 - Issue #231 park design — per-row dispositions for the #146 follow-ons (#232)
 - Define reopen trigger and deferral table row — the deferral-row contract (#99) (#235)
 - Issue #172 cross-instance continuity instrument — BUILD verdict record
+- A1 baseline measurement — 23/26 x3 reproduced at merge base
 
 ### Features
 
@@ -548,6 +552,7 @@ All notable changes to this project will be documented in this file.
 - Item 5 riders 2-4 — dataset row labels, the v5 payload addendum, the guide's M14/M15 status (#146)
 - Issue #172 classifier + ledger — frozen #159 §6 made executable
 - Issue #172 two-instance continuity rig — axes X1-X4, controls, checks
+- Multi-version serving — policy block, multi-entry export, two-sided gate
 
 ### Hardware Evidence
 
@@ -639,6 +644,8 @@ All notable changes to this project will be documented in this file.
 - Sdk_compatibility mirror + pointer = certified 0.3.0 (SDK 0.3.0 pairing)
 - Advance packages/sdk to e948fd5 (PR #56) and amend the capture record
 - Advance packages/sdk to 3b14d0e (DatasetServices protocol, #146 slice 1)
+- Advance the SDK pointer to the fix-wave tip
+- Advance the SDK pointer to the late-folds tip
 
 ### Performance
 
@@ -792,6 +799,7 @@ All notable changes to this project will be documented in this file.
 - Push CHANGELOG.md via changelog app token
 - Add manual trigger
 - Consistent action pinning, locked syncs, honest workflow behaviour
+- Clean-venv ADC conformance control + the slice measurement postscript
 
 ### Ci+docs
 
