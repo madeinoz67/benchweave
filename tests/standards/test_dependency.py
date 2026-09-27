@@ -9,6 +9,7 @@ every refusal carrying the five VR-37 fields inline.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 import subprocess
@@ -25,6 +26,7 @@ from benchweave.standards.dependency import (
     expand_caret,
     load_constraints,
     load_prior_lock,
+    normalized_equal,
     resolve_package,
 )
 from benchweave.standards.export import canonical_json
@@ -574,3 +576,35 @@ def test_a_satisfied_cross_constraint_row_resolves_clean(tmp_path: Path) -> None
     resolution = resolve_package(root, package)
     rows = {str(row["id"]): str(row["version"]) for row in resolution.document["standards"]}
     assert rows == {"execution": "0.2.0", "otdp": "0.2.0"}
+
+
+# --- B6: the version-normalized comparator (the Q6 raw-digest control) ------------
+
+
+_DESCRIPTOR = "otdp-device-descriptor.schema.json"
+
+
+def test_b6_normalized_comparator_admits_the_version_strings_only_pair() -> None:
+    """0.2.1 <-> 0.2.2 differ only in version strings (const, $id, title,
+    description — the verified 4-line diff); the normalized comparator
+    admits the pair."""
+    a = ROOT / "standards/otdp/0.2.1" / _DESCRIPTOR
+    b = ROOT / "standards/otdp/0.2.2" / _DESCRIPTOR
+    assert normalized_equal(a, b, "0.2.1", "0.2.2")
+
+
+def test_b6_a_raw_digest_comparator_fails_the_same_pair() -> None:
+    """The control both asserted: a raw sha256 comparison on the same pair
+    FAILS — the normalization is doing the work."""
+    a = ROOT / "standards/otdp/0.2.1" / _DESCRIPTOR
+    b = ROOT / "standards/otdp/0.2.2" / _DESCRIPTOR
+    assert hashlib.sha256(a.read_bytes()).digest() != hashlib.sha256(b.read_bytes()).digest()
+
+
+def test_b6_normalized_comparator_refuses_the_structural_pair() -> None:
+    """0.2.0 <-> 0.2.2 differ by the provider element in $defs.customTransport
+    (verified live); the comparator has teeth — it is not everything-equals.
+    KILL: admitting 0.2.0 <-> 0.2.2."""
+    a = ROOT / "standards/otdp/0.2.0" / _DESCRIPTOR
+    b = ROOT / "standards/otdp/0.2.2" / _DESCRIPTOR
+    assert not normalized_equal(a, b, "0.2.0", "0.2.2")
