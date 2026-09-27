@@ -736,3 +736,46 @@ def test_f1_the_derived_move_to_is_version_ordered(tmp_path: Path) -> None:
     classification = classify_pin(policy, root, "otdp", "0.2.1")
     assert classification.warning is not None
     assert "move-to: 0.2.10" in classification.warning
+
+
+# --- fold F3: the derived map is an allowlist, not directory coverage ---------------
+
+
+def test_f3_a_stray_ds_store_refuses_and_is_never_adopted(tmp_path: Path) -> None:
+    """.DS_Store is neither corpus-rowed nor in the prior map: both pin modes
+    refuse naming it, and the committed lock never adopts it."""
+    root = _copy_standards(tmp_path)
+    package = _package(root, constraints={"otdp": ">=0.2.0,<0.3.0"})
+    assert _run(root, "pin", "--package", "plugins/acme/widget").returncode == 0
+    (root / "standards/otdp/0.2.2/.DS_Store").write_bytes(b"junk\n")
+    for *args, in (
+        ("pin", "--locked"),
+        ("pin",),
+    ):
+        result = _run(root, *args, "--package", "plugins/acme/widget")
+        assert result.returncode == 1, (args, result.stdout, result.stderr)
+        assert "corpus_file_stray" in result.stderr, result.stderr
+        assert ".DS_Store" in result.stderr, result.stderr
+    assert ".DS_Store" not in json.loads(_lock_path(package).read_bytes())["sha256"]
+
+
+def test_f3_b_an_uppercase_stray_json_refuses(tmp_path: Path) -> None:
+    """STRAY.JSON dodges the case-sensitive .json pin check today and enters
+    unpinned; the allowlist refuses it regardless of suffix case."""
+    root = _copy_standards(tmp_path)
+    package = _package(root, constraints={"otdp": ">=0.2.0,<0.3.0"})
+    assert _run(root, "pin", "--package", "plugins/acme/widget").returncode == 0
+    (root / "standards/otdp/0.2.2/STRAY.JSON").write_text("{}\n")
+    result = _run(root, "pin", "--locked", "--package", "plugins/acme/widget")
+    assert result.returncode == 1, result.stderr
+    assert "corpus_file_stray" in result.stderr and "STRAY.JSON" in result.stderr
+
+
+def test_f3_c_the_shipped_dps150_map_rederives_clean() -> None:
+    """The honest case: every one of the shipped lock's 12 entries is
+    corpus-rowed or prior-mapped, so the allowlist admits the exact map and
+    the resolution is byte-identical to the committed lock."""
+    package = ROOT / "plugins" / "fnirsi" / "dps150"
+    resolution = resolve_package(ROOT, package)
+    assert len(resolution.document["sha256"]) == 12
+    assert resolution.raw == (package / "contracts" / "lock.json").read_bytes()
