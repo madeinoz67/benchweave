@@ -195,7 +195,10 @@ def main() -> int:
                 )
             else:
                 lines = upgrade_lock(root, package, arguments.standard, arguments.precise)
-        except ValueError as exc:
+        except (ValueError, OSError) as exc:
+            # Fold wave 2 R1: the ValueError family carries the typed
+            # refusals; OSError (a vanished path mid-command) fails styled
+            # like the family, never as a traceback.
             print(f"standards {arguments.command} error: {exc}", file=sys.stderr)
             return 1
         for line in lines:

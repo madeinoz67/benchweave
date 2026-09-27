@@ -423,7 +423,14 @@ def load_constraints(package: Path) -> Constraints:
     path = package / "contracts" / "constraints.json"
     if not path.is_file():
         raise StandardsError(f"plugin_constraints_absent: {path}")
-    document = json.loads(path.read_bytes())
+    try:
+        document = json.loads(path.read_bytes())
+    except json.JSONDecodeError as exc:
+        # Fold wave 2 R1: a file that does not decode refuses with the typed
+        # prefix, never a bare decoder message.
+        raise StandardsError(
+            f"constraint_document_invalid: {path} does not decode as JSON ({exc})"
+        ) from exc
     if not isinstance(document, dict):
         raise StandardsError(f"constraint_document_invalid: {path} is not an object")
     raw_standards = document.get("standards")
@@ -459,9 +466,20 @@ def apply_set(root: Path, package: Path, pairs: list[tuple[str, str]]) -> None:
     authoring to storage, so a caret never persists. An unknown standard
     refuses before any byte is written.
     """
+    if not (package / "contracts").is_dir():
+        # Fold wave 2 R1: refuse before any staged write is attempted — a
+        # missing package directory is an authoring fact, not a crash.
+        raise StandardsError(
+            f"package_absent: {package / 'contracts'} — create the package "
+            "before authoring its constraints"
+        )
     policy = load_dependency_policy(root)
     path = package / "contracts" / "constraints.json"
     if path.is_file():
+        # Fold wave 2 R1: the existing file routes through the loader's
+        # validation first — a wrong-shape document refuses with its own
+        # prefix instead of KeyError-ing under the authoring mutation.
+        load_constraints(package)
         document = json.loads(path.read_bytes())
     else:
         document = {"constraint_version": 1, "standards": {}, "opt_in": {}}
