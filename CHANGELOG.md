@@ -782,6 +782,7 @@ All notable changes to this project will be documented in this file.
 - Close the Windows census (#143) (#208)
 - F3 — the catalog-half soft arm pinned, mutation-checked
 - F5 — slice-added version literals derive from corpus bytes
+- The #207 Windows separator and CRLF batch, plus the retention_policy SyntaxWarning (#237)
 
 ### Build
 
