@@ -1005,6 +1005,28 @@ def _poll_found_dead_session(outcome: PollOutcome) -> bool:
 _ARM_DISPATCH_MS = {"capture": CAPTURE_BUDGET_MS, "non_capture": T_ACQ_MIN_MS}
 
 
+def _construct_rig(db_path: Path, **kwargs: Any) -> ContinuityRig:
+    """Construct a ``ContinuityRig`` whose FAILED construction still closes
+    what it built (review fold, critic F4 + adversary F3):
+    ``_run_trial_once`` builds the rig before its own try, so a raise
+    inside ``__init__`` never reaches that try's finally belt — and the
+    instance handle is lost mid-construction, where no except clause can
+    see it. Allocating the instance first and calling ``__init__``
+    explicitly keeps the handle, so the module's belt shape
+    (``_close_partially_constructed``) can close the partial rig's stream
+    host and store — the only OS-bearing objects; the adapters spawn no
+    threads, adversary-verified on this fold. Best-effort and idempotent
+    (sqlite closes are idempotent; the stream host's close sweeps every
+    constructed bridge)."""
+    rig = ContinuityRig.__new__(ContinuityRig)
+    try:
+        ContinuityRig.__init__(rig, db_path, **kwargs)
+    except BaseException:
+        _close_partially_constructed([rig])
+        raise
+    return rig
+
+
 def run_trial(
     tmp_path: Path,
     *,
@@ -1090,7 +1112,7 @@ def _run_trial_once(
     monitor_wall_rate: float,
     no_trip: bool,
 ) -> dict[str, Any]:
-    rig = ContinuityRig(
+    rig = _construct_rig(
         tmp_path / f"rig-{arm}-{device_class}-{trial_index}.db",
         device_class=device_class,
         monitor_wall_rate=monitor_wall_rate,
@@ -2388,6 +2410,52 @@ def _close_partially_constructed(rigs: list[ContinuityRig]) -> None:
         if store is not None:
             with suppress(Exception):
                 store.close()
+
+
+def test_failed_construction_leaves_no_unclosed_store(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review fold (LOW, critic F4 + NIT, adversary F3): a construction-time
+    raise escapes ``_run_trial_once``'s failure belt — the rig is built
+    BEFORE the try whose finally closes the stream host and store, so a
+    starved construction leaked its sqlite handle and bridge objects into
+    the next attempt's timing envelope (the pins carried their own belt;
+    the module machinery had none). Machine check, census style: across an
+    exhausted construction-starved trial, every ``Store.open`` is matched
+    by a ``Store.close`` — zero unclosed stores."""
+    opened: list[Store] = []
+    closed: list[Store] = []
+    original_open = Store.open
+    original_close = Store.close
+
+    def counting_open(path: Any, **kwargs: Any) -> Store:
+        store = original_open(path, **kwargs)
+        opened.append(store)
+        return store
+
+    def counting_close(self: Store) -> None:
+        closed.append(self)
+        original_close(self)
+
+    monkeypatch.setattr(Store, "open", staticmethod(counting_open))
+    monkeypatch.setattr(Store, "close", counting_close)
+    rigs = _install_priming_starvation(monkeypatch, every_construction=True)
+    try:
+        with pytest.raises(TrialInfrastructureError):
+            run_trial(
+                tmp_path, arm="non_capture", device_class="buffered", trial_index=6
+            )
+        assert len(rigs) == 3
+        assert opened, "the census saw no Store.open"
+        unclosed = [store for store in opened if store not in closed]
+        assert not unclosed, (
+            f"{len(unclosed)} of {len(opened)} opened store(s) left unclosed "
+            "by failed constructions"
+        )
+    finally:
+        # Session hygiene for the RED shape: pre-fix the module leaks them,
+        # and this test must not leak them into the session too.
+        _close_partially_constructed(rigs)
 
 
 def test_priming_signal_starvation_is_infrastructure_and_retries(
