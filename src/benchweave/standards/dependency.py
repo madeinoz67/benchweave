@@ -835,7 +835,11 @@ def _cross_violations(
 
 
 def resolve_package(
-    root: Path, package: Path, *, precise: dict[str, str] | None = None
+    root: Path,
+    package: Path,
+    *,
+    precise: dict[str, str] | None = None,
+    revision: str | None = None,
 ) -> Resolution:
     """Resolve constraints to a lock document (minimal motion; deterministic).
 
@@ -932,7 +936,9 @@ def resolve_package(
     document = {
         "lock_version": 2,
         "repository": prior.repository,
-        "revision": prior.revision,
+        # Fold F4: --revision records a motion's revision alongside it; the
+        # resolver stays git-free — the value is caller-provided provenance.
+        "revision": revision if revision is not None else prior.revision,
         "directory": f"standards/otdp/{otdp_version}",
         "otdp_version": otdp_version,
         "adapter_api_version": adapter_api,
@@ -1056,27 +1062,78 @@ def parse_set_argument(value: str) -> tuple[str, str]:
     return identifier, text
 
 
+def _scissors(
+    prior: PriorLock, resolution: Resolution, revision: str | None
+) -> list[str]:
+    """Fold F4 (revision scissors), WRITE PATH ONLY: same-version digest
+    motion against the prior map refuses unless ``--revision`` records the
+    motion's revision; additions are not motion and carry the
+    fetch-existence warning. Under a VERSION MOVE the map's shared names
+    differ because they are different versions' corpus-frozen files, not
+    because bytes moved at the recorded revision — refusing there would
+    break every legitimate upgrade, so the gate applies only when the
+    resolved otdp version is unchanged.
+    """
+    lines: list[str] = []
+    derived = {
+        str(name): str(digest) for name, digest in resolution.document["sha256"].items()
+    }
+    additions = sorted(name for name in derived if name not in prior.file_map)
+    if additions:
+        lines.append(
+            f"map addition: {', '.join(additions)} (no digest motion; each file "
+            "must exist at the recorded revision — fetch verifies fail closed)"
+        )
+    if prior.rows.get("otdp") == str(resolution.document["otdp_version"]):
+        motion = sorted(
+            name
+            for name, digest in derived.items()
+            if name in prior.file_map and prior.file_map[name] != digest
+        )
+        if motion and revision is None:
+            raise StandardsError(
+                f"revision_scissors: the derived map's digest moved for "
+                f"{', '.join(motion)} while the recorded revision stays "
+                f"{prior.revision!r} — the map must digest the bytes AT the "
+                "recorded revision; restore the bytes or pass "
+                "pin --revision <sha> to record the motion's revision alongside it"
+            )
+    return lines
+
+
 def pin_lock(
     root: Path,
     package: Path,
     sets: list[tuple[str, str]] | None = None,
     *,
     locked: bool = False,
+    revision: str | None = None,
 ) -> list[str]:
     """The ``pin`` command: author through ``--set``, resolve, write the lock.
 
     ``--locked`` (VR-30) is verify-only: resolve in memory, byte-compare the
     on-disk lock, refuse ``plugin_lock_drift:`` on disagreement — zero
-    network by construction, and never a write.
+    network by construction, and never a write. ``--revision`` (fold F4)
+    records a new revision alongside same-version digest motion.
     """
     if locked and sets:
         raise StandardsError(
             "constraint_set_invalid: --set authors the constraints file; --locked "
             "is verify-only and never writes"
         )
+    if locked and revision is not None:
+        raise StandardsError(
+            "constraint_set_invalid: --revision records a new revision; --locked "
+            "is verify-only and never writes"
+        )
     if sets:
         apply_set(root, package, sets)
-    resolution = resolve_package(root, package)
+    # The prior is loaded BEFORE any write: post-write, the just-written lock
+    # would be its own prior and the scissors could never see motion.
+    prior = load_prior_lock(package)
+    resolution = resolve_package(root, package, revision=revision)
+    if prior is None:  # unreachable: resolve_package refused on the absent lock
+        raise StandardsError("plugin_lock_absent: the prior lock vanished mid-pin")
     path = package / "contracts" / "lock.json"
     if locked:
         if path.read_bytes() != resolution.raw:
@@ -1087,10 +1144,9 @@ def pin_lock(
                 f"python -m benchweave.standards pin --package {package}"
             )
         return list(resolution.warnings) + [f"lock agrees with the authored constraints: {path}"]
+    lines = [*resolution.warnings, *_scissors(prior, resolution, revision)]
     written = write_lock(package, resolution.raw)
-    lines = list(resolution.warnings)
-    state = "relocked" if written else "lock already current"
-    lines.append(f"{state}: {path}")
+    lines.append(f"{'relocked' if written else 'lock already current'}: {path}")
     for row in resolution.document["standards"]:
         lines.append(f"  {row['id']}@{row['version']}")
     return lines
@@ -1128,7 +1184,7 @@ def upgrade_lock(root: Path, package: Path, standard_id: str, precise: str) -> l
     resolution = resolve_package(root, package, precise={standard_id: precise})
     write_lock(package, resolution.raw)
     before = prior.rows.get(standard_id)
-    lines = list(resolution.warnings)
+    lines = [*resolution.warnings, *_scissors(prior, resolution, None)]
     lines.append(
         f"{standard_id}: {before or 'unpinned'} -> {precise}; "
         "migration guidance pending"

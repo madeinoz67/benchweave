@@ -203,7 +203,11 @@ and remain the reviewer's job.
     corpus the bump admits (#216, lock v2: the `standards` rows re-derive
     from corpus rows; the legacy otdp projection — `directory`,
     `otdp_version`, `adapter_api_version`, the file map — moves with the
-    resolved otdp row and only with it);
+    resolved otdp row and only with it). Revision motion is explicit
+    (#216 fold F4): same-version digest-value motion in the map requires
+    `pin --revision <sha>` — the recorded revision must carry the bytes the
+    map digests (the revision-scissors invariant; the map itself is an
+    allowlist — corpus-rowed ∪ prior-mapped, fold F3);
     (h) live authority pointers that name one versioned path as THE
     authority — obligations 1-2 above (`standards/interface/0.1.0/…`) and
     the `drift-guard.mjs` hook advice text that repeats them; motion: those

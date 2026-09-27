@@ -52,6 +52,13 @@ def main() -> int:
         help="verify only: refuse plugin_lock_drift when the on-disk lock is not the"
         " resolution; never writes",
     )
+    pin.add_argument(
+        "--revision",
+        metavar="SHA",
+        default=None,
+        help="record a new revision alongside same-version digest motion (the"
+        " revision-scissors override)",
+    )
     upgrade = sub.add_parser(
         "upgrade", help="move exactly one standard's lock row to a precise version"
     )
@@ -179,7 +186,13 @@ def main() -> int:
             )
             if arguments.command == "pin":
                 sets = [parse_set_argument(value) for value in arguments.sets]
-                lines = pin_lock(root, package, sets, locked=arguments.locked)
+                lines = pin_lock(
+                    root,
+                    package,
+                    sets,
+                    locked=arguments.locked,
+                    revision=arguments.revision,
+                )
             else:
                 lines = upgrade_lock(root, package, arguments.standard, arguments.precise)
         except ValueError as exc:
