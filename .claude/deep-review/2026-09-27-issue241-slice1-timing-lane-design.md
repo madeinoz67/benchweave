@@ -331,3 +331,79 @@ the forward 20-execution sample only).
 
 No `src/` bytes move. No `standards/` bytes move. Every numeric bound in the
 marked set is byte-identical after this slice.
+
+## 8. Review-fold amendment (post-build, pre-merge; principal directive: fold all)
+
+The adversarial + mechanism-critic review wave on the built branch folded seven
+findings. Each fold is RED-first with its own commit; every mechanism choice and
+deviation is below.
+
+**F0 (CRITICAL, adversary) — the timing job's workflow did not parse.**
+`python-version` sat at step level outside `with:` in the timing job's setup-uv
+step (`.github/workflows/ci.yml:79`); pushed run 36320315011 failed with the
+invalid-workflow signature. Folded standalone (b455386): one-line indent, action
+clean on the fixed tree, RED reproduced locally on the pre-fix blob
+(`unexpected key "python-version" for step to execute action`).
+
+**F1/F2 (HIGH, critic + MEDIUM, adversary — converged) — the classification
+covered a sub-band of the class it names.** Read-#1 starvation never reached the
+validity site: the wrapper's pre-dispatch tick read the aged signal itself, the
+fail-safe latched `signal_invalid`, and the monitor refused the priming dispatch
+at the door — the trial died non-retryably on the plain degenerate-wiring assert
+(confirmed live: the refused envelope in the RED output carries exactly the
+`_freshness_trip_block` discriminant inputs). Mechanism **(a)** chosen over
+**(b)** with evidence: the priming site classifies a non-OK priming result whose
+refusal is the monitor's own `blocked` latch plus the freshness kind — the
+discriminant the measured dispatch already uses. Mechanism (b) — hoisting a
+validity check before the gated dispatch — was rejected: the first snapshots
+exist BECAUSE the wrapper ticks inside the priming dispatch, so a hoisted check
+needs a new pre-priming tick (a different construction rhythm, perturbing the
+very un-polled window under measurement), and the block-refusal can still land
+after a fresh hoisted check — (b) narrows the window without closing it.
+`_install_priming_starvation` gained `starve_from_read` (0f69607).
+
+**F2b (MEDIUM, critic) — clock-domain hole at the classified site.** Under the
+divergent-wall probe's rate-10 injection the priming age inflates ~9x
+construction elapsed; a loaded-host probe could fire the classification with a
+FALSE starvation attribution, and the retry is structurally useless (every
+construction re-injects the wall). Fold: both priming classification arms guard
+on the real wall rate — the same protection the pre-flight staleness check
+gives itself under `no_trip` (d160534).
+
+**F3 (MEDIUM, critic) — the retry budget had no evidence base.** A bare
+`retries` int discarded the composition; exhaustion reported only the last
+attempt's site. Fold: `TrialInfrastructureError` gains a REQUIRED `site=`
+keyword (a defaulted label would let a future site raise unlabelled); every
+production raise is labelled; `run_trial` records `outcome["retry_sites"]` and
+the trial line prints the count and the ordered sites (70a6d77).
+
+**F4/F3' (LOW, critic + NIT, adversary) — construction raises escaped the
+failure belt.** The rig is built before `_run_trial_once`'s try, so a starved
+construction leaked its store and bridges into the next attempt's timing
+envelope. Fold — **mechanism deviates from the briefed shape, with evidence**:
+a run_trial-level None-guarded belt cannot see the partial rig (when
+`__init__` raises, the local assignment never happens and the half-built
+instance is unreachable). `_construct_rig` allocates the instance first
+(`__new__` + explicit `__init__`) and belts the failure through the module's
+`_close_partially_constructed` shape; machine-checked by a store census —
+every `Store.open` across an exhausted construction-starved trial is matched
+by a `Store.close` (840df2a).
+
+**F5 (LOW, critic) — disclosure: intra-lane ordering residue.** Collection
+order runs the sequential-model battery before the continuity rig; the fresh-VM
+claim removes bulk-suite residue from other jobs, not ordering within the lane.
+Folded into the CI-map `timing` row's Does-NOT-catch clause (this wave's docs
+commit).
+
+**F6 (NIT, critic) — disclosure: the ride-along.** The `-m timing` set carries
+the continuity file's 45 mostly-static tests alongside the real-paced cells, so
+a LOGIC regression in that file presents as a timing-lane red. Accepted with
+eyes open: the alternative (per-test marking inside the file) splits the file's
+retry-machinery pins from the rigs they pin and costs marker discipline for a
+diagnosis step a red's traceback already resolves. The PR body carries this
+note; recorded here per the fold directive.
+
+**Post-fold state:** still no `src/` bytes, no `standards/` bytes; AR-1's
+partition re-proven at wave end with the new collected counts (the fold adds
+pins to the timing-marked continuity file, so T grows; the design's §5 numbers
+are superseded by the wave-end numbers in the builder's report).
