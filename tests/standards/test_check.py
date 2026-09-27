@@ -835,3 +835,50 @@ def test_check_plugin_lane_is_silent_on_an_agreeing_package(tmp_path: Path) -> N
     write_lock(package, resolve_package(root, package).raw)
     failures = run_check(root, sdk)
     assert not [line for line in failures if line.startswith("plugin_")], failures
+
+
+# --- fold F2: the dependency lane surfaces deprecation warnings ---------------------
+
+
+def test_check_surfaces_a_retained_yanked_pin_as_a_non_failing_warning(
+    tmp_path: Path,
+) -> None:
+    """A package whose resolution retains a yanked pin (prior 0.2.1,
+    in-interval, agreeing lock) must not be CI-green FOREVER on the
+    unattended surface: the lane surfaces the resolution's warning as a
+    ``plugin_deprecation_warning:`` line that does NOT count as a failure."""
+    from benchweave.standards.check import DEPRECATION_WARNING_PREFIX, run_check
+    from benchweave.standards.dependency import resolve_package, write_lock
+
+    sdk = _sdk_copy(tmp_path)
+    root = _standards_root(tmp_path)
+    package = root / "plugins" / "acme" / "widget"
+    (package / "contracts").mkdir(parents=True)
+    (package / "contracts" / "constraints.json").write_text(
+        json.dumps(
+            {"constraint_version": 1, "standards": {"otdp": ">=0.2.0,<0.3.0"}, "opt_in": {}}
+        )
+    )
+    (package / "contracts" / "lock.json").write_text(
+        json.dumps(
+            {
+                "repository": "https://example.invalid/acme-widget",
+                "revision": "0" * 40,
+                "directory": "standards/otdp/0.2.1",
+                "otdp_version": "0.2.1",  # yanked, in-interval: minimal motion retains it
+                "adapter_api_version": "1.1",
+                "sha256": {"otdp-specification.md": "0" * 64},
+            }
+        )
+    )
+    resolution = resolve_package(root, package)
+    assert resolution.warnings, "the fixture must retain a yanked pin"
+    write_lock(package, resolution.raw)
+    lines = run_check(root, sdk)
+    warnings = [line for line in lines if line.startswith(DEPRECATION_WARNING_PREFIX)]
+    assert any("plugins/acme/widget" in line and "0.2.1" in line for line in warnings), lines
+    assert not [line for line in lines if line.startswith("plugin_lock_drift")], lines
+    from benchweave.standards.check import count_failures
+
+    assert count_failures(warnings) == 0
+    assert count_failures([*warnings, "plugin_lock_drift: x"]) == 1
