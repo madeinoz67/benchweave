@@ -684,3 +684,55 @@ def test_b5_unresolvable_constraint_refuses_with_zero_socket_attempts(
     with pytest.raises(StandardsError, match="constraint_unresolvable"):
         resolve_package(root, package)
     assert socket_guard.attempts == 0
+
+
+# --- fold F1: version-ordered selection (critic M1 / adv216a, twice reproduced) ----
+
+
+def _add_otdp_version(root: Path, version: str) -> None:
+    """A corpus-rowed new version directory: 0.2.2's bytes under a new number,
+    every top-level machine file rowed with its real digest."""
+    import hashlib
+
+    source = root / "standards" / "otdp" / "0.2.2"
+    target = root / "standards" / "otdp" / version
+    shutil.copytree(source, target)
+    corpus = json.loads((root / "standards/corpus-manifest.json").read_bytes())
+    for path in sorted(target.iterdir()):
+        if path.is_file() and path.suffix == ".json":
+            corpus["files"].append(
+                {
+                    "path": f"otdp/{version}/{path.name}",
+                    "source": f"standards/otdp/0.2.2/{path.name}",
+                    "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                }
+            )
+    (root / "standards/corpus-manifest.json").write_bytes(canonical_json(corpus))
+
+
+def test_f1_auto_selection_is_version_ordered_not_string_ordered(tmp_path: Path) -> None:
+    """0.2.10 string-sorts below 0.2.2; selection and move-to must order by
+    version_tuple (both reproducers: the prior-out-of-interval auto-select
+    silently picked 0.2.2 and the yank warning's move-to understated)."""
+    root = _copy_standards(tmp_path)
+    _add_otdp_version(root, "0.2.10")
+    package = _package(root, constraints={"otdp": ">=0.2.0,<0.3.0"}, otdp_version="9.9.9")
+    resolution = resolve_package(root, package)
+    rows = {str(row["id"]): str(row["version"]) for row in resolution.document["standards"]}
+    assert rows["otdp"] == "0.2.10", rows
+    assert resolution.document["directory"] == "standards/otdp/0.2.10"
+
+
+def test_f1_the_derived_move_to_is_version_ordered(tmp_path: Path) -> None:
+    """Both move-to surfaces: the refusal field and the yank deprecation
+    warning name the highest served version by version order, not string
+    order."""
+    root = _copy_standards(tmp_path)
+    _add_otdp_version(root, "0.2.10")
+    policy = load_dependency_policy(root)
+    with pytest.raises(StandardsError, match="version_unknown") as raised:
+        classify_pin(policy, root, "otdp", "9.9.9")
+    assert "move-to: 0.2.10" in str(raised.value)
+    classification = classify_pin(policy, root, "otdp", "0.2.1")
+    assert classification.warning is not None
+    assert "move-to: 0.2.10" in classification.warning
