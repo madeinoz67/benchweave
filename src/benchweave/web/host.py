@@ -55,16 +55,26 @@ class Transport(Protocol):
     timeout: float | None
 
     @property
-    def in_waiting(self) -> int: ...
+    def in_waiting(self) -> int:
+        """Bytes already buffered by the OS, readable without blocking."""
+        ...
 
-    def read(self, size: int = 1) -> bytes: ...
+    def read(self, size: int = 1) -> bytes:
+        """Read up to ``size`` bytes (bounded by ``timeout``)."""
+        ...
 
-    def write(self, data: bytes) -> int | None: ...
+    def write(self, data: bytes) -> int | None:
+        """Write ``data`` to the port; returns the byte count (or None)."""
+        ...
 
-    def close(self) -> None: ...
+    def close(self) -> None:
+        """Close the port."""
+        ...
 
     @property
-    def is_open(self) -> bool: ...
+    def is_open(self) -> bool:
+        """Whether the port is still open."""
+        ...
 
 
 class SerialLink:
@@ -86,9 +96,12 @@ class SerialLink:
 
     @property
     def faulted(self) -> bool:
+        """True once a transport error has permanently failed the link."""
         return self._faulted
 
     def write(self, data: bytes) -> None:
+        """Write ``data`` to the port; a failure, or a short count reported by
+        the port, faults the link and raises ``ConnectionError``."""
         if self._faulted or not self._running:
             raise ConnectionError("serial link is closed or faulted")
         try:
@@ -146,6 +159,7 @@ class SerialLink:
         return taken
 
     def close(self) -> None:
+        """Stop the reader thread and close the transport (best effort)."""
         self._running = False
         with self._condition:
             self._condition.notify_all()
@@ -198,12 +212,15 @@ class AdcOperationContext:
         self.dispatched = False
 
     def is_cancelled(self) -> bool:
+        """Whether the host has cancelled this operation."""
         return self._cancelled.is_set()
 
     def cancel(self) -> None:
+        """Cancel the operation; safe to call from any thread."""
         self._cancelled.set()
 
     async def mark_dispatch_started(self) -> None:
+        """Record that the adapter is about to transmit (dispatch point)."""
         self.dispatched = True
 
 
@@ -236,9 +253,11 @@ class SerialHostServices:
     # -- clocks ----------------------------------------------------------------
 
     def monotonic(self) -> float:
+        """The host's monotonic clock (the deadline reference)."""
         return time.monotonic()
 
     def utc_now(self) -> str:
+        """Current UTC time as an ISO-8601 string with a ``Z`` suffix."""
         return datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
     # -- transport ---------------------------------------------------------------
@@ -248,6 +267,15 @@ class SerialHostServices:
             raise TimeoutError("operation cancelled or expired")
 
     async def transfer(self, transaction: dict[str, Any], context: Any) -> dict[str, Any]:
+        """Run one OTDP section 8.1 stream transaction for the adapter.
+
+        ``stream_send`` writes ``data`` and answers ``{}``; ``stream_receive``
+        reads; ``stream_exchange`` does both. A transaction missing a field of
+        its kind, or carrying any other, raises ``ValueError`` before any I/O.
+        A receive answers ``{"data": b""}`` when nothing arrives within
+        :data:`RECEIVE_WAIT_S` (a quiet line) and is otherwise only ever
+        answered complete; one still unfinished at the deadline raises
+        ``TimeoutError`` and its bytes stay buffered for the next receive."""
         kind = transaction.get("kind")
         if kind not in _FIELDS or set(transaction) != _FIELDS[kind]:
             fields = sorted(str(key) for key in transaction)
@@ -279,11 +307,15 @@ class SerialHostServices:
         return taken
 
     async def close_transport(self, context: Any) -> None:
+        """Close the underlying serial link (called from the adapter's close)."""
         self._link.close()
 
     # -- evidence ----------------------------------------------------------------
 
     async def record_evidence(self, entry: dict[str, Any], context: Any) -> None:
+        """Append one JSON evidence line to the evidence file, stamped with the
+        host's time and operation id (an entry cannot override either); a
+        no-op when none is configured."""
         if self._evidence_path is None:
             return
         line = json.dumps(
@@ -298,6 +330,8 @@ class SerialHostServices:
     # -- capture artifacts ---------------------------------------------------------
 
     async def artifact_append(self, capture_id: str, data: bytes, context: Any) -> None:
+        """Append bytes to the capture's ``.part`` file in the artifact
+        directory, creating it on first use."""
         part = self._artifacts.get(capture_id)
         if part is None:
             self._artifact_dir.mkdir(parents=True, exist_ok=True)
@@ -310,6 +344,9 @@ class SerialHostServices:
     async def artifact_finalise(
         self, capture_id: str, metadata: dict[str, Any], context: Any
     ) -> dict[str, Any]:
+        """Seal a capture artifact: rename ``.part`` to ``.bin`` and return
+        its identity, byte length, and SHA-256. Raises ``ValueError`` for an
+        unknown capture id."""
         part = self._artifacts.pop(capture_id, None)
         if part is None:
             raise ValueError(f"unknown capture artifact: {capture_id}")
@@ -324,6 +361,7 @@ class SerialHostServices:
         }
 
     async def artifact_abort(self, capture_id: str) -> None:
+        """Discard a partial capture artifact, deleting its ``.part`` file."""
         part = self._artifacts.pop(capture_id, None)
         if part is not None:
             part.unlink(missing_ok=True)
