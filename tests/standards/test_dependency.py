@@ -608,3 +608,79 @@ def test_b6_normalized_comparator_refuses_the_structural_pair() -> None:
     a = ROOT / "standards/otdp/0.2.0" / _DESCRIPTOR
     b = ROOT / "standards/otdp/0.2.2" / _DESCRIPTOR
     assert not normalized_equal(a, b, "0.2.0", "0.2.2")
+
+
+# --- B5: offline drift and the agreement lane --------------------------------------
+
+
+class _SocketCounter:
+    """Counts attempts instead of blocking them: zero is the proof."""
+
+    def __init__(self) -> None:
+        self.attempts = 0
+
+    def __call__(self, *args: object, **kwargs: object) -> object:
+        self.attempts += 1
+        raise AssertionError("network attempt during offline resolution")
+
+
+@pytest.fixture
+def socket_guard(monkeypatch: pytest.MonkeyPatch) -> _SocketCounter:
+    """The five SOCKET_GUARD names from scripts/adc_conformance_control.py,
+    monkeypatched with a counter: B5's proof that resolution makes ZERO
+    network attempts, offline by construction."""
+    import socket
+
+    counter = _SocketCounter()
+    monkeypatch.setattr(socket.socket, "connect", counter)
+    monkeypatch.setattr(socket.socket, "connect_ex", counter)
+    monkeypatch.setattr(socket, "create_connection", counter)
+    monkeypatch.setattr(socket, "getaddrinfo", counter)
+    monkeypatch.setattr(socket, "gethostbyname", counter)
+    return counter
+
+
+def test_b5_a_hand_edited_constraint_fails_locked(tmp_path: Path) -> None:
+    """Narrowing the authored interval after the lock was written changes
+    the resolution; ``pin --locked`` refuses ``plugin_lock_drift:`` without
+    writing."""
+    root = _copy_standards(tmp_path)
+    package = _package(root, constraints={"otdp": ">=0.2.0,<0.3.0"})
+    assert _run(root, "pin", "--package", "plugins/acme/widget").returncode == 0
+    locked = _lock_path(package).read_bytes()
+    constraints = json.loads((package / "contracts" / "constraints.json").read_bytes())
+    constraints["standards"]["otdp"] = ">=0.2.0,<0.2.2"  # the prior 0.2.2 no longer fits
+    (package / "contracts" / "constraints.json").write_bytes(canonical_json(constraints))
+    result = _run(root, "pin", "--locked", "--package", "plugins/acme/widget")
+    assert result.returncode == 1, result.stderr
+    assert "standards pin error: plugin_lock_drift" in result.stderr
+    assert _lock_path(package).read_bytes() == locked  # verify-only: never writes
+
+
+def test_b5_locked_greens_on_an_agreeing_tree(tmp_path: Path) -> None:
+    root = _copy_standards(tmp_path)
+    _package(root, constraints={"otdp": ">=0.2.0,<0.3.0"})
+    assert _run(root, "pin", "--package", "plugins/acme/widget").returncode == 0
+    result = _run(root, "pin", "--locked", "--package", "plugins/acme/widget")
+    assert result.returncode == 0, result.stderr
+    assert "error" not in result.stderr
+
+
+def test_b5_unresolvable_constraint_refuses_with_zero_socket_attempts(
+    tmp_path: Path, socket_guard: _SocketCounter
+) -> None:
+    """A carried version's rows removed from the corpus manifest, with a
+    constraint demanding exactly that version: the named offline refusal
+    fires with ZERO network attempts (the five guard names counted)."""
+    root = _copy_standards(tmp_path)
+    package = _package(root, constraints={"otdp": ">=0.2.0,<0.2.1"})
+    corpus = json.loads((root / "standards" / "corpus-manifest.json").read_bytes())
+    corpus["files"] = [
+        row
+        for row in corpus["files"]
+        if not str(row["path"]).startswith("otdp/0.2.0/")
+    ]
+    (root / "standards" / "corpus-manifest.json").write_bytes(canonical_json(corpus))
+    with pytest.raises(StandardsError, match="constraint_unresolvable"):
+        resolve_package(root, package)
+    assert socket_guard.attempts == 0
