@@ -2193,6 +2193,113 @@ def test_infrastructure_marker_exhausts_at_two_retries(
     assert isinstance(raised.value, AssertionError)
 
 
+# --- the priming-starvation classification (#241 slice 1) ---------------------------
+
+
+def _install_priming_starvation(
+    monkeypatch: pytest.MonkeyPatch, *, every_construction: bool
+) -> list[ContinuityRig]:
+    """Force the over-aged priming B-read (#241 slice 1, design §2.1): B's
+    FIRST tick read serves fresh (the healthy fixture — a stale first read
+    would trip the block at the pre-tick and fail the degenerate-wiring
+    assert instead), and every read AFTER it lands ten seconds before the
+    open reference — far past the 300 ms ``max_age_ms`` — so the
+    post-dispatch tick's retained snapshot is the one that goes invalid,
+    which is how the observed CI failure reached the validity assert. The
+    first construction's adapter only, or every construction's in the
+    exhaustion shape. Returns the rigs (including any that raised partway
+    through construction) for the caller's failure belt."""
+    rigs: list[ContinuityRig] = []
+    adapters: list[BRigAdapter] = []
+    reads: dict[int, int] = {}
+    original_init = ContinuityRig.__init__
+
+    def counting_init(self: ContinuityRig, db_path: Path, **kwargs: Any) -> None:
+        rigs.append(self)
+        original_init(self, db_path, **kwargs)
+
+    monkeypatch.setattr(ContinuityRig, "__init__", counting_init)
+    original_b_init = BRigAdapter.__init__
+
+    def counting_b_init(self: BRigAdapter, *, buffered: bool) -> None:
+        original_b_init(self, buffered=buffered)
+        adapters.append(self)
+
+    monkeypatch.setattr(BRigAdapter, "__init__", counting_b_init)
+    original_wall_at = BRigAdapter._wall_at
+
+    def starved_wall_at(self: BRigAdapter, mono_ns: int) -> str:
+        starved = adapters if every_construction else adapters[:1]
+        if any(self is adapter for adapter in starved):
+            seen = reads.get(id(self), 0) + 1
+            reads[id(self)] = seen
+            if seen > 1:
+                stamp = datetime.fromtimestamp(self._ref_epoch - 10.0, tz=UTC)
+                return stamp.isoformat().replace("+00:00", "Z")
+        return original_wall_at(self, mono_ns)
+
+    monkeypatch.setattr(BRigAdapter, "_wall_at", starved_wall_at)
+    return rigs
+
+
+def _close_partially_constructed(rigs: list[ContinuityRig]) -> None:
+    """The failure belt for rigs whose construction raised before
+    ``_run_trial_once``'s own belt could see them — the module's belt shape
+    (the stream host's close sweeps every constructed bridge; sqlite closes
+    are idempotent), best-effort over whatever the failed construction
+    managed to build."""
+    for rig in rigs:
+        stream_host = getattr(rig, "stream_host", None)
+        if stream_host is not None:
+            with suppress(Exception):
+                stream_host.close()
+        store = getattr(rig, "store", None)
+        if store is not None:
+            with suppress(Exception):
+                store.close()
+
+
+def test_priming_signal_starvation_is_infrastructure_and_retries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Issue #241 slice 1, direction (a): construction-time priming
+    starvation is infrastructure, so it retries on a fresh rig. The C14
+    priming block's signal-validity check is a ``TrialInfrastructureError``
+    site (construction itself is an un-polled window — ``drain_until_quiet``'s
+    own docstring names it — so sig-rig-b's first read can arrive aged past
+    ``max_age_ms`` on a loaded host, the observed CI failure): the first
+    construction's starved priming read must retry, not fail the trial, and
+    the second, unpatched construction must complete it."""
+    rigs = _install_priming_starvation(monkeypatch, every_construction=False)
+    try:
+        outcome = run_trial(
+            tmp_path, arm="non_capture", device_class="buffered", trial_index=7
+        )
+        assert outcome["retries"] == 1, outcome["retries"]
+    finally:
+        _close_partially_constructed(rigs)
+
+
+def test_priming_signal_starvation_exhausts_at_two_retries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The cap at the new site: a host so starved that EVERY construction's
+    priming read is over-aged exhausts the budget — three attempts — and the
+    exhausted failure is still an ``AssertionError`` (the existing
+    exhaustion-pin shape, carried by the real construction path rather than
+    a patched ``_run_trial_once``)."""
+    rigs = _install_priming_starvation(monkeypatch, every_construction=True)
+    try:
+        with pytest.raises(TrialInfrastructureError) as raised:
+            run_trial(
+                tmp_path, arm="non_capture", device_class="buffered", trial_index=1
+            )
+        assert len(rigs) == 3  # the attempt plus at most two retries
+        assert isinstance(raised.value, AssertionError)
+    finally:
+        _close_partially_constructed(rigs)
+
+
 # --- F1 fold: block-ness is the monitor's latch, never cause-adjacency (#159) ------
 
 
