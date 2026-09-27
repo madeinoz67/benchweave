@@ -43,6 +43,20 @@ def _copy_standards(tmp_path: Path) -> Path:
     return root
 
 
+def _prior_map(root: Path, version: str) -> dict[str, str]:
+    """The at-revision truth for a synthetic prior lock: every top-level
+    file of the version directory, digested (fold F3's allowlist prior arm
+    and F4's scissors comparison both consume it)."""
+    directory = root / "standards" / "otdp" / version
+    if not directory.is_dir():
+        return {}  # a fictional prior pin (an out-of-interval 9.9.9) has no map
+    return {
+        path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in sorted(directory.iterdir())
+        if path.is_file()
+    }
+
+
 def _package(
     root: Path,
     *,
@@ -51,9 +65,11 @@ def _package(
 ) -> Path:
     """A synthetic in-tree package over the copied standards tree.
 
-    The v1 prior lock carries only the provenance keys plus the otdp
-    projection's version: the v2 writer re-derives every other projection
-    value, so the fixture never needs a real file map.
+    The v1 prior lock carries the provenance keys, the otdp projection's
+    version, and the REAL top-level file map of the pinned version (the
+    projection's other values are re-derived; the map's names are the
+    allowlist's prior arm, so a fixture with a fictional map would refuse
+    at the first pin under fold F3).
     """
     package = root / "plugins" / "acme" / "widget"
     (package / "contracts").mkdir(parents=True)
@@ -71,7 +87,7 @@ def _package(
                 "directory": f"standards/otdp/{otdp_version}",
                 "otdp_version": otdp_version,
                 "adapter_api_version": "1.1",
-                "sha256": {"otdp-specification.md": "0" * 64},
+                "sha256": _prior_map(root, otdp_version),
             }
         )
     )
@@ -360,8 +376,10 @@ def _dps150_copy(tmp_path: Path) -> Path:
         ROOT / "plugins" / "fnirsi" / "dps150" / "contracts" / "constraints.json",
         package / "contracts" / "constraints.json",
     )
+    import copy
+
     (package / "contracts" / "lock.json").write_text(
-        json.dumps(_DPS150_V1_LOCK, indent=2)
+        json.dumps(copy.deepcopy(_DPS150_V1_LOCK), indent=2)
     )
     return root
 
@@ -419,6 +437,20 @@ def test_b1_dps150_pin_is_deterministic_with_values_verbatim(tmp_path: Path) -> 
     """
     root = _dps150_copy(tmp_path)
     package = root / "plugins" / "fnirsi" / "dps150"
+    # Fold F3: the historical v1 map under-covers the directory (the two
+    # unrowed latecomers are neither corpus-rowed nor prior-mapped), so the
+    # first relock REFUSES naming them — the governed transition is the
+    # refusal's own disposition: extend the prior map deliberately, then pin.
+    refused = _run(root, "pin", "--package", "plugins/fnirsi/dps150")
+    assert refused.returncode == 1, refused.stderr
+    assert "corpus_file_stray" in refused.stderr
+    for latecomer in ("transport-providers.md", "validation-report.md"):
+        assert latecomer in refused.stderr
+        extended = json.loads((package / "contracts" / "lock.json").read_text())
+        extended["sha256"][latecomer] = hashlib.sha256(
+            (root / "standards/otdp/0.2.2" / latecomer).read_bytes()
+        ).hexdigest()
+        (package / "contracts" / "lock.json").write_text(json.dumps(extended, indent=2))
     first = _run(root, "pin", "--package", "plugins/fnirsi/dps150")
     assert first.returncode == 0, first.stderr
     raw = _lock_path(package).read_bytes()
@@ -449,6 +481,20 @@ def test_b2_upgrade_otdp_moves_only_the_otdp_projection(tmp_path: Path) -> None:
     assert _run(root, "pin", "--package", "plugins/acme/widget").returncode == 0
     before_raw = _lock_path(package).read_bytes()
     before = json.loads(before_raw)
+    # Fold F3: 0.2.2 carries transport-providers.md (unrowed, absent from the
+    # 0.2.0 prior map) — the upgrade refuses naming it; the governed move
+    # extends the prior map deliberately, then proceeds.
+    refused = _run(
+        root, "upgrade", "otdp", "--precise", "0.2.2", "--package", "plugins/acme/widget"
+    )
+    assert refused.returncode == 1, refused.stderr
+    assert "corpus_file_stray" in refused.stderr
+    assert "transport-providers.md" in refused.stderr
+    prior = json.loads(before_raw)
+    prior["sha256"]["transport-providers.md"] = hashlib.sha256(
+        (root / "standards/otdp/0.2.2/transport-providers.md").read_bytes()
+    ).hexdigest()
+    _lock_path(package).write_text(json.dumps(prior))
     result = _run(
         root, "upgrade", "otdp", "--precise", "0.2.2", "--package", "plugins/acme/widget"
     )
@@ -696,10 +742,14 @@ def _add_otdp_version(root: Path, version: str) -> None:
 
     source = root / "standards" / "otdp" / "0.2.2"
     target = root / "standards" / "otdp" / version
-    shutil.copytree(source, target)
+    target.mkdir()
     corpus = json.loads((root / "standards/corpus-manifest.json").read_bytes())
-    for path in sorted(target.iterdir()):
+    for path in sorted(source.iterdir()):
+        # machine files only, all rowed: the allowlist (fold F3) admits
+        # corpus-rowed ∪ prior-mapped, and this synthetic prior (a fictional
+        # out-of-interval pin) carries no map.
         if path.is_file() and path.suffix == ".json":
+            shutil.copy2(path, target / path.name)
             corpus["files"].append(
                 {
                     "path": f"otdp/{version}/{path.name}",
@@ -763,7 +813,7 @@ def test_f3_b_an_uppercase_stray_json_refuses(tmp_path: Path) -> None:
     """STRAY.JSON dodges the case-sensitive .json pin check today and enters
     unpinned; the allowlist refuses it regardless of suffix case."""
     root = _copy_standards(tmp_path)
-    package = _package(root, constraints={"otdp": ">=0.2.0,<0.3.0"})
+    _package(root, constraints={"otdp": ">=0.2.0,<0.3.0"})
     assert _run(root, "pin", "--package", "plugins/acme/widget").returncode == 0
     (root / "standards/otdp/0.2.2/STRAY.JSON").write_text("{}\n")
     result = _run(root, "pin", "--locked", "--package", "plugins/acme/widget")

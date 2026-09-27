@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 import subprocess
@@ -795,7 +796,13 @@ def _plugin_package(root: Path, *, interval: str) -> Path:
                 "directory": "standards/otdp/0.2.2",
                 "otdp_version": "0.2.2",
                 "adapter_api_version": "1.1",
-                "sha256": {"otdp-specification.md": "0" * 64},
+                "sha256": {
+                    path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+                    for path in sorted(
+                        (root / "standards/otdp/0.2.2").iterdir()
+                    )
+                    if path.is_file()
+                },
             }
         )
     )
@@ -867,7 +874,13 @@ def test_check_surfaces_a_retained_yanked_pin_as_a_non_failing_warning(
                 "directory": "standards/otdp/0.2.1",
                 "otdp_version": "0.2.1",  # yanked, in-interval: minimal motion retains it
                 "adapter_api_version": "1.1",
-                "sha256": {"otdp-specification.md": "0" * 64},
+                "sha256": {
+                    path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+                    for path in sorted(
+                        (root / "standards/otdp/0.2.1").iterdir()
+                    )
+                    if path.is_file()
+                },
             }
         )
     )

@@ -486,13 +486,16 @@ class PriorLock:
 
     ``version`` is 1 (the DPS-150 shape — the legacy keys parse into their
     otdp projection) or 2 (rows). ``rows`` maps standard id to its locked
-    version; everything else the writer needs is re-derived, never carried.
+    version; ``file_map`` carries the prior sha256 map's names and digests
+    (the allowlist's prior arm and the revision-scissors comparison); every
+    other projection value is re-derived, never carried.
     """
 
     version: int
     repository: str
     revision: str
     rows: dict[str, str]
+    file_map: dict[str, str]
 
 
 def _stored_version(value: object, where: str) -> str:
@@ -539,13 +542,30 @@ def load_prior_lock(package: Path) -> PriorLock | None:
             rows[row["id"]] = _stored_version(
                 row.get("version"), f"standards[{row['id']}]"
             )
-        return PriorLock(version=2, repository=repository, revision=revision, rows=rows)
+        file_map = document.get("sha256")
+        if not isinstance(file_map, dict) or not all(
+            isinstance(value, str) for value in file_map.values()
+        ):
+            raise StandardsError("lock_document_invalid: sha256 must be a digest map")
+        return PriorLock(
+            version=2,
+            repository=repository,
+            revision=revision,
+            rows=rows,
+            file_map={str(key): str(value) for key, value in file_map.items()},
+        )
     otdp_version = _stored_version(document.get("otdp_version"), "otdp_version")
+    file_map = document.get("sha256")
+    if not isinstance(file_map, dict) or not all(
+        isinstance(value, str) for value in file_map.values()
+    ):
+        raise StandardsError("lock_document_invalid: sha256 must be a digest map")
     return PriorLock(
         version=1,
         repository=repository,
         revision=revision,
         rows={"otdp": otdp_version},
+        file_map={str(key): str(value) for key, value in file_map.items()},
     )
 
 
@@ -721,40 +741,67 @@ def adapter_api_for(root: Path, otdp_version: str) -> str:
     return const
 
 
-def otdp_file_map(root: Path, version: str) -> dict[str, str]:
-    """The top-level file map of ``standards/otdp/<version>/``.
+def otdp_file_map(root: Path, version: str, prior_map: dict[str, str]) -> dict[str, str]:
+    """The top-level file map of ``standards/otdp/<version>/`` — an ALLOWLIST.
 
-    The v1 lock's fetch-verify set, re-derived: every top-level regular file
-    of the resolved version directory (the four schema/catalog machine files
-    plus the four prose companions — deliberately NOT the corpus-row set,
-    which also carries ``examples/``). Machine files verify against their
-    corpus pins while they are being read; prose companions carry no pins
-    (they are not corpus rows) and hash as-is.
+    Fold F3: the derived map admits exactly corpus-rowed top-level files
+    (matched case-insensitively — on a case-insensitive filesystem
+    ``STRAY.JSON`` and a ``stray.json`` row are the same file) plus files
+    named in the prior lock's map. ANY other file present in the version
+    directory refuses ``corpus_file_stray:`` naming its disposition — a
+    ``.DS_Store`` or stray upload never enters a committed lock, and a
+    legitimately NEW prose companion (no row, absent from the prior map)
+    refuses until the prior map is extended deliberately, instead of being
+    silently adopted (A02: qualified, not assumed — deliberately stricter
+    than bare directory coverage). Machine files (``.json`` in any letter
+    case) must carry a corpus row and verify against it; prose companions
+    hash as-is.
     """
     directory = root / "standards" / "otdp" / version
     if not directory.is_dir():
         raise StandardsError(f"version_directory_absent: standards/otdp/{version}")
     pins = dict(_corpus_rows(root))
+    prefix = f"otdp/{version}/"
+    pins_lowered = {key.lower(): value for key, value in pins.items()}
+    rowed_top_lower = {
+        key.removeprefix(prefix).lower()
+        for key in pins
+        if key.startswith(prefix) and "/" not in key.removeprefix(prefix)
+    }
     mapping: dict[str, str] = {}
+    strays: list[str] = []
     for path in sorted(directory.iterdir(), key=lambda item: item.name):
         if not path.is_file():
             continue
+        relative = f"otdp/{version}/{path.name}"
+        rowed = path.name.lower() in rowed_top_lower
+        if not rowed and path.name not in prior_map:
+            strays.append(relative)
+            continue
         raw = path.read_bytes()
-        if path.suffix == ".json":
-            relative = f"otdp/{version}/{path.name}"
-            pinned = pins.get(relative)
+        digest = hashlib.sha256(raw).hexdigest()
+        if path.name.lower().endswith(".json"):
+            pinned = pins_lowered.get(relative.lower())
             if pinned is None:
                 raise StandardsError(
                     f"corpus_file_unpinned: {relative} (a machine file inside a "
                     "version directory must carry a corpus row)"
                 )
-            digest = hashlib.sha256(raw).hexdigest()
             if digest != pinned:
                 raise StandardsError(
                     f"corpus_pin_mismatch: standards/{relative}: corpus pin "
                     f"{pinned} does not match the on-disk bytes ({digest})"
                 )
-        mapping[path.name] = hashlib.sha256(raw).hexdigest()
+        mapping[path.name] = digest
+    if strays:
+        # Named together, sorted: the operator sees the whole deliberate act
+        # the fold demands, not one file per run.
+        raise StandardsError(
+            "corpus_file_stray: "
+            + ", ".join(f"standards/{relative}" for relative in sorted(strays))
+            + " — neither corpus-rowed nor in the prior lock's map; remove them, "
+            "corpus-pin them, or extend the prior map deliberately"
+        )
     if not mapping:
         raise StandardsError(
             f"version_directory_absent: standards/otdp/{version} carries no files"
@@ -889,7 +936,7 @@ def resolve_package(
         "directory": f"standards/otdp/{otdp_version}",
         "otdp_version": otdp_version,
         "adapter_api_version": adapter_api,
-        "sha256": otdp_file_map(root, otdp_version),
+        "sha256": otdp_file_map(root, otdp_version, prior.file_map),
         "standards": [
             {
                 "id": standard_id,
