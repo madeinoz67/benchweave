@@ -2354,8 +2354,12 @@ def _install_priming_starvation(
     fold classifies as retryable infrastructure), and every read AFTER it
     lands ten seconds before the open reference — far past the 300 ms
     ``max_age_ms`` — so the post-dispatch tick's retained snapshot is the
-    one that goes invalid, which is how the observed CI failure reached
-    the validity assert. ``starve_from_read`` moves the threshold: 2 (the
+    one that goes invalid. (The observed CI failure reached the same
+    assert by another driver — the divergent-wall probe's rate-10
+    injection inflating every host age on a condition-free config, which
+    the wall-rate guard excludes from the classification; this helper
+    forces the aged-read presentations the classification itself routes
+    to retry.) ``starve_from_read`` moves the threshold: 2 (the
     default) starves reads two onward — the post-tick presentation; 1
     starves every read including the first — the pre-tick block-refusal
     presentation. The first construction's adapter only, or every

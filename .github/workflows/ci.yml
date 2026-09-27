@@ -54,12 +54,14 @@ jobs:
 
       - name: Test
         # Complementary partition with the timing job (issue #241 slice 1):
-        # `-m "not timing"` here + `-m timing` there = the full collection,
-        # proven structurally at build time (the two collected-id lists are
-        # diffed — union equals the unfiltered set, intersection empty), so
-        # no test loses CI execution. The real-paced set runs on its own
-        # fresh VM in the timing lane instead of behind this job's bulk-suite
-        # residue.
+        # `-m "not timing"` here + `-m timing` there = the full collection —
+        # structural by construction (the complementary markers admit no
+        # third state), with the proof at PR time: the builder diffs the two
+        # collected-id lists against the unfiltered collection (union equal,
+        # intersection empty) and records it in the PR body (design §5 AR-1;
+        # not an automated gate), so no test loses CI execution. The
+        # real-paced set runs on its own fresh VM in the timing lane instead
+        # of behind this job's bulk-suite residue.
         run: uv run pytest -q -m "not timing"
 
       - name: Standards sync check
@@ -86,7 +88,9 @@ jobs:
       # serialized on its own fresh VM, within ~2 min of boot, so its
       # wall-clock bands are measured before any bulk-suite residue (page
       # cache, draining threads, WAL checkpoints) lands on the runner — and
-      # a red here reads as a timing question, not a logic one. No lint, no
+      # a red in the real-paced subset reads as a timing question, not a
+      # logic one. Exception: the continuity file's ride-along logic tests
+      # (design-record ride-along disclosure) can red as logic. No lint, no
       # mypy, no fixture keys, no standards check: gates runs those over the
       # same tree, and no marked test depends on the signing keys (the
       # signing tests are registry tests, unmarked). Stays SERIAL FOREVER:

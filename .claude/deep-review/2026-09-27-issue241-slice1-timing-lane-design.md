@@ -34,21 +34,33 @@ That mechanism does not exist. Evidence:
   (that test exists to prove uvicorn exits 3 on a poisoned lifespan — invariants
   CON-1 amendment). The sweep lane read adjacent log lines as the mechanism.
 
-The real row-7 mechanism: `ContinuityRig.__init__`'s C14 priming block asserts
-every bench signal served **valid** at the priming read. Under a loaded runner,
-construction itself (store migration, descriptor publishes, two bridge opens) is
-an un-polled window — `drain_until_quiet`'s own docstring names it ("construction
-time — imports, the store migration, the priming dispatch — is itself an
-un-polled window whose backlog would otherwise age the first settle tick past
-the bound on a loaded host") — so sig-rig-b's first read can arrive aged past
-`max_age_ms` and the assert fires. This is construction-time fixture starvation:
-exactly the class `TrialInfrastructureError` (review finding F4 on PR #236) was
-built for — "a trial whose measured dispatch never ran because the host starved
-the fixture BEFORE it" — but the priming site predates the classification and
-raises a plain `AssertionError`, which `run_trial`'s retry loop
-(`test_cross_instance_continuity.py:943`) lets straight through. The rig-side
-startup retry the sweep asked for already exists; one classification site is
-missing. Slice 1 adds it (§2.1).
+The row-7 failure SITE: `ContinuityRig.__init__`'s C14 priming block asserts
+every bench signal served **valid** at the priming read. The observed
+invocation's attribution is corrected by the fold review (§8 R1): run
+36309281160's failing leg is the PROBE leg of the same test
+(`monitor_wall_rate=10.0`, `no_trip=True`, `continuous_conditions=[]` — db
+`rig-non_capture-buffered-10.db` in the log), where the divergent wall inflates
+every host age ~9x construction elapsed and, with no conditions live, nothing
+can latch a block — the validity assert is the only gate; the same run's
+rate-1.0 baseline trials passed moments earlier. So the OBSERVED red is
+wall-rate-driven age inflation on the probe config, not bare loaded-host
+starvation, and the wall-rate guard (§8 F2b) is what closes that instance. The
+classification this slice adds remains load-bearing for the CONDITIONED-policy
+presentation the same site admits (the wave-1 adversary showed it is the only
+retry path): under a loaded runner, construction itself (store migration,
+descriptor publishes, two bridge opens) is an un-polled window —
+`drain_until_quiet`'s own docstring names it ("construction time — imports, the
+store migration, the priming dispatch — is itself an un-polled window whose
+backlog would otherwise age the first settle tick past the bound on a loaded
+host") — so sig-rig-b's first read can arrive aged past `max_age_ms` with a
+conditioned policy live, and the assert fires. That presentation is
+construction-time fixture starvation: exactly the class `TrialInfrastructureError`
+(review finding F4 on PR #236) was built for — "a trial whose measured dispatch
+never ran because the host starved the fixture BEFORE it" — but the priming site
+predates the classification and raises a plain `AssertionError`, which
+`run_trial`'s retry loop (`test_cross_instance_continuity.py:943`) lets straight
+through. The rig-side startup retry the sweep asked for already exists; one
+classification site is missing. Slice 1 adds it (§2.1).
 
 A correction comment goes on issue #241 as part of this slice's arc (the
 inventory is evidence; wrong mechanisms in it would misdirect slice 2).
@@ -403,7 +415,48 @@ retry-machinery pins from the rigs they pin and costs marker discipline for a
 diagnosis step a red's traceback already resolves. The PR body carries this
 note; recorded here per the fold directive.
 
+### Wave 2 — reviewer residuals on tip 7ee2264 (docs-only; fold-all)
+
+The reviewer verdict on the folded branch was READY with three residual
+findings. All three are attribution/wording corrections — no behavior change,
+no new pins.
+
+**R1 (MEDIUM, reviewer) — mechanism attribution overclaim at three sites.**
+The reviewer pulled run 36309281160's log: the failing invocation is the PROBE
+leg of `test_divergent_wall_moves_x2_not_x1` (`monitor_wall_rate=10.0`,
+`no_trip=True`, `continuous_conditions=[]`), where the wall inflates every
+host age ~9x construction elapsed and the condition-free config leaves the
+validity assert as the only gate; the same run's rate-1.0 baseline trials
+passed moments earlier. The observed red is therefore wall-rate-driven age
+inflation on the probe config — closed by the F2b wall-rate guard (d160534),
+NOT by the classification. Folded: §0's mechanism passage rescopes the
+loaded-host sentence to the conditioned-policy presentation and names the
+wall-rate term for the observed run; the `_install_priming_starvation`
+docstring drops "which is how the observed CI failure reached the validity
+assert" for the same scoping. The classification stays as built — wave 1's
+adversary proved it the only retry path for the conditioned presentation.
+**Disclosed erratum:** commit 0f69607's message attributes the observed run
+to construction-time fixture starvation; history is not rewritten — that
+attribution is wrong per this finding, and this entry is its correction of
+record.
+
+**R2 (LOW, reviewer) — the lane comment overclaimed attribution.** The
+ci.yml lane comment said "a red here reads as a timing question, not a logic
+one", contradicting F6's own ride-along disclosure (50 of 58 wave-end marked
+ids are the continuity file, static logic tests included). Folded: the
+comment now scopes the attribution to the real-paced subset and names the
+ride-along as the exception where a red can be logic.
+
+**R3 (LOW, reviewer) — "proven structurally at build time" overstated the
+proof's home.** ci.yml's Test-step comment and the CI-map `timing` row said
+the partition is proven at build time; AR-1 places that proof at PR time —
+a human-recorded set diff in the PR body, not an automated gate. Folded:
+both reworded. The complementary markers make the partition structural BY
+CONSTRUCTION (no third state exists); the PROOF is AR-1's recorded diff at
+PR time.
+
 **Post-fold state:** still no `src/` bytes, no `standards/` bytes; AR-1's
 partition re-proven at wave end with the new collected counts (the fold adds
 pins to the timing-marked continuity file, so T grows; the design's §5 numbers
-are superseded by the wave-end numbers in the builder's report).
+are superseded by the wave-end numbers in the builder's report). Wave 2 moves
+prose only — the collected counts stand (T=58, G=2309, U=2367).
