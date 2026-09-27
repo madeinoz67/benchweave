@@ -1063,7 +1063,9 @@ def run_trial(
     the host starved the fixture BEFORE it (a settle stretched past the
     dispatch-scale bound, or a >50 ms read path tripping the bridge's
     late-result poison on a fast read) is an infrastructure failure, not a
-    measurement — ``run_trial`` retries it on a FRESH rig, at most twice,
+    measurement — ``run_trial`` retries it on a FRESH rig under a fixed
+    three-attempt budget (the initial attempt plus two retries, so an
+    exhausted trial has built exactly three rigs, pinned ``len(rigs) == 3``),
     and records the retry count in the outcome, alongside the ordered
     ``retry_sites`` label of every failed attempt (review fold, critic F3:
     a bare count discards the composition — a priming-then-pre-flight
@@ -1790,8 +1792,10 @@ def test_axis_trials_complete_all_four_axes(
     non-capture arm COMPLETES at T_acq_min; if this ever fails the serial
     model changed and the disclosure is stale). The write leg's gap is
     recorded on the non-capture arm (§2.2's second leg). The retry cap is
-    part of the acceptance: a trial may retry at most twice, and a
-    chronically starved host must not ship all-green on the retry crutch —
+    part of the acceptance: a trial runs a fixed three-attempt budget (the
+    initial attempt plus two retries — exhaustion builds exactly three
+    rigs, pinned ``len(rigs) == 3``), and a chronically starved host must
+    not ship all-green on the retry crutch —
     the assert trips if the retry loop is ever widened without amending
     the acceptance rule."""
     trials = _cell(tmp_path, arm, device_class)

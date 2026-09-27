@@ -252,8 +252,9 @@ the existing exhaustion-pin shape).
   yields set T; `-m "not timing"` yields set G; unfiltered yields set U. Require
   T ∪ G == U and T ∩ G == ∅ (complementary markers make this structural, but it
   is proven, not asserted: the two collected-id lists are diffed), T non-empty,
-  and T's membership exactly the two marked files plus the four row-B param
-  cells. Recorded in the PR body.
+  and T's membership exactly the two marked files plus the 4 row-B test ids in
+  `tests/unit/test_otdp_bridge.py` (4 ids across 3 functions — one
+  parametrized function contributes two). Recorded in the PR body.
 - **AR-2 (RED→GREEN):** the §2.1 pin test is shown failing on unmodified
   `main` (plain `AssertionError` propagates; observed failure output in the PR)
   and passing on the branch. Collected-count check per the RED-sanity
@@ -408,7 +409,8 @@ Folded into the CI-map `timing` row's Does-NOT-catch clause (this wave's docs
 commit).
 
 **F6 (NIT, critic) — disclosure: the ride-along.** The `-m timing` set carries
-the continuity file's 45 mostly-static tests alongside the real-paced cells, so
+the continuity file's mostly-static tests alongside the real-paced cells (50 at
+tip — 45 when this fold landed; the fold waves' own pins grew the file), so
 a LOGIC regression in that file presents as a timing-lane red. Accepted with
 eyes open: the alternative (per-test marking inside the file) splits the file's
 retry-machinery pins from the rigs they pin and costs marker discipline for a
@@ -460,3 +462,43 @@ partition re-proven at wave end with the new collected counts (the fold adds
 pins to the timing-marked continuity file, so T grows; the design's §5 numbers
 are superseded by the wave-end numbers in the builder's report). Wave 2 moves
 prose only — the collected counts stand (T=58, G=2309, U=2367).
+
+### Wave 3 — reviewer findings 4–5 on PR #246 (fold-all, late findings)
+
+**R4 (LOW, reviewer FU-1) — guard-predicate asymmetry at the probe-wall
+exemption.** The pre-flight staleness check exempted on `no_trip` while the
+priming arms exempted on `monitor_wall_rate == 1.0` — two predicates for one
+conceptual exemption. The latent hole (a probe with rate != 1.0 but a live
+policy, where the pre-flight check false-fires on wall-inflated ages exactly
+as the priming site did pre-F2b) is closed by one shared predicate,
+`_probe_wall_injection(rate, no_trip) = rate != 1.0 or no_trip`, used at all
+three classification sites; the rig carries the `no_trip` fact explicitly
+(policy identity was not a clean carrier). RED (pre-fix, `starve_from_read=4`
+— calibrated past construction's own reads so construction completes and the
+injected age lands at the pre-flight read): the partial probe's terminal was
+`TrialInfrastructureError('pre-dispatch staleness: sig-rig-b-level age 10512
+ms')` at rate=10.0/no_trip=False — the misfire itself, exhausted across three
+rigs that each re-injected it. Post-fix the same trial never carries the
+pre-flight attribution; the pin's truth table holds the one classify state
+(1.0, live policy). Calibration note: thresholds 2 and 3 die inside
+construction (the pre-tick latch and the subscribe read) — 4 is the first
+threshold that presents the pre-flight misfire (394c4b4).
+
+**R5 (NIT, reviewer) — wording drift, four fixes.** (a) AR-1's "four row-B
+param cells" now names the verified shape: 4 test ids across 3 functions in
+`tests/unit/test_otdp_bridge.py` (one parametrized function contributes
+two — verified by collect). (b) F6's ride-along count now reads 50 at tip
+(45 when that fold landed; the waves' own pins grew the file). (c) The two
+"at most two retries" phrasings now state the fixed three-attempt budget the
+exact-equality pin (`len(rigs) == 3`) actually enforces. (d) The
+sequential-model "100–150 ms tolerances" claim — drifted against the real
+`BUDGET_MS + 300` queued-run band — now names the per-quantity bands; the
+same drift appeared in BOTH the module docstring and the marker comment
+(review's finding named the comment only; both fixed). None of the edited
+strings sits inside an assertion message tests match on (checked: the
+synthetic `pre-dispatch staleness` raises pin TYPE-based matching and are
+untouched).
+
+**Wave-3 state:** the new pin moves T 58 → 59 (continuity 51 + sequential
+model 4 + row-B 4); G and U move with it. Still no `src/` bytes, no
+`standards/` bytes.
