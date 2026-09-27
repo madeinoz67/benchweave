@@ -259,3 +259,54 @@ def test_a_conforming_stored_device_logs_nothing(
         for record in caplog.records
         if "device_conformance_mismatch" in record.message
     ]
+
+
+# --- review folds R4/R5: the acked-log seam and the bounded cache -----------------
+
+
+def test_r4_an_acked_nonconforming_pin_does_not_warn(caplog: pytest.LogCaptureFixture) -> None:
+    """R4: the API-view warning fires for an UNACKED non-conforming stored
+    pin and stays silent when the recorded acknowledgement covers exactly
+    that pin (the acknowledgement travels as device_id -> acked pin; an ack
+    naming a different pin does not silence the warning)."""
+    import logging
+
+    from benchweave.interfaces.operations import _log_device_conformance
+
+    raw = _psu_document()
+    raw["otdp_version"] = "0.1.2"
+
+    with caplog.at_level(logging.WARNING, logger="benchweave.interfaces.operations"):
+        _log_device_conformance("psu", raw, acknowledged_pins={"psu": "0.1.2"})
+    assert not [
+        record
+        for record in caplog.records
+        if "device_conformance_mismatch" in record.message
+    ], [record.message for record in caplog.records]
+
+    with caplog.at_level(logging.WARNING, logger="benchweave.interfaces.operations"):
+        _log_device_conformance("psu", raw, acknowledged_pins=None)
+    assert any(
+        "device_conformance_mismatch" in record.message for record in caplog.records
+    )
+
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="benchweave.interfaces.operations"):
+        _log_device_conformance("psu", raw, acknowledged_pins={"psu": "0.1.1"})
+    assert any(
+        "device_conformance_mismatch" in record.message for record in caplog.records
+    ), "an ack naming a different pin must not silence the warning"
+
+
+def test_r5_the_classify_cache_is_bounded() -> None:
+    """R5: the classification cache is keyed by raw pin strings, so 600
+    distinct never-carried pins must not grow it without bound — the bound
+    (512) is asserted from the cache's own info, not inferred."""
+    from benchweave.control.documents import _classify_cached, classify_descriptor_pin
+
+    for minor in range(600):
+        classify_descriptor_pin(f"9.{minor}.0")
+    info = _classify_cached.cache_info()
+    assert info.currsize <= 512, (
+        f"the classify cache grew past its bound: currsize {info.currsize}"
+    )

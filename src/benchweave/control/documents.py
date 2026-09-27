@@ -43,7 +43,7 @@ import json
 import re
 from dataclasses import dataclass
 from datetime import datetime
-from functools import cache
+from functools import lru_cache
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -220,7 +220,7 @@ def _vr37_text(row: Any, pin: str, corpus: Path, policy: Any) -> str:
     )
 
 
-@cache
+@lru_cache(maxsize=512)
 def _classify_cached(pin: str, corpus_text: str) -> DescriptorPin:
     corpus = Path(corpus_text)
     policy = load_dependency_policy_from_corpus(corpus)
@@ -386,7 +386,15 @@ def _otdp_versioned_path(document_name: str, version: str | None) -> Path:
     """
     if version is None:
         return _otdp_normative_path(document_name)
-    corpus = _otdp_corpus()
+    return _otdp_versioned_schema_path(_otdp_corpus(), version, document_name)
+
+
+def _otdp_versioned_schema_path(
+    corpus: Path, version: str, document_name: str = DESCRIPTOR_SCHEMA_NAME
+) -> Path:
+    """The corpus-parameterized half of the versioned resolution (the
+    adapter-const cache keys by corpus, so its read cannot resolve the
+    corpus through the module default)."""
     relative = f"{_OTDP}/{version}/{document_name}"
     path = corpus / relative
     if not path.is_file():
@@ -1072,14 +1080,21 @@ def _check_provider_admission(
         )
 
 
-@cache
 def _adapter_api_const(version: str) -> str:
     """The pinned version's descriptor-schema ``api_version`` const (G-2's
     authority under multi-version admission: the PINNED version's const, not
     the active's) — the fact the cross-constraint row's ``adapter_api``
-    requirement is enforced against."""
+    requirement is enforced against. The cache is keyed by (corpus,
+    version) like its siblings: a version-only key collides the moment two
+    corpora in one process carry different consts at the same version
+    (review fold R3, lane A's repro)."""
+    return _adapter_api_const_cached(str(_otdp_corpus()), version)
+
+
+@lru_cache(maxsize=512)
+def _adapter_api_const_cached(corpus_text: str, version: str) -> str:
     schema = json.loads(
-        _otdp_versioned_path(DESCRIPTOR_SCHEMA_NAME, version).read_text(
+        _otdp_versioned_schema_path(Path(corpus_text), version).read_text(
             encoding="utf-8"
         )
     )

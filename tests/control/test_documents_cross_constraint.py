@@ -139,3 +139,54 @@ def test_the_adapter_leg_bites_on_a_planted_row(
     assert "requires adapter_api 1.2" in message, message
     assert "otdp@0.2.2" in message and "execution@0.2.0" in message, message
     assert "PR #201" in message, message  # the row's evidence, named
+
+
+# --- review fold R3: the adapter-const cache is corpus-keyed -----------------------
+
+
+def _self_consistent_corpus(tmp_path: Path, name: str, adapter_const: str) -> Path:
+    """A tmp corpus whose otdp/0.2.2 descriptor schema declares a DIFFERENT
+    adapter api_version const, with the corpus-manifest row re-pinned so the
+    tree stays self-consistent (digest-verified)."""
+    import hashlib
+    import shutil
+
+    corpus = tmp_path / name
+    shutil.copytree(CORPUS, corpus)
+    schema_path = corpus / "otdp" / "0.2.2" / "otdp-device-descriptor.schema.json"
+    schema = json.loads(schema_path.read_text())
+    schema["$defs"]["adapter"]["properties"]["api_version"]["const"] = adapter_const
+    schema_path.write_text(json.dumps(schema, indent=2) + "\n")
+    manifest_path = corpus / "corpus-manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    relative = "otdp/0.2.2/otdp-device-descriptor.schema.json"
+    digest = hashlib.sha256(schema_path.read_bytes()).hexdigest()
+    for row in manifest["files"]:
+        if row["path"] == relative:
+            row["sha256"] = digest
+    manifest_path.write_text(json.dumps(manifest, indent=1))
+    return corpus
+
+
+def test_r3_the_adapter_const_cache_is_keyed_by_corpus(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Lane A's collision repro: two self-consistent corpora, the same
+    version, consts 1.2 vs 1.1 — the second read must return 1.1, not the
+    first call's cached 1.2 (a version-only cache key collides across
+    corpora)."""
+    import benchweave.control.documents as documents_module
+
+    alpha = _self_consistent_corpus(tmp_path, "alpha", "1.2")
+    beta = _self_consistent_corpus(tmp_path, "beta", "1.1")
+
+    monkeypatch.setattr(documents_module, "_otdp_corpus", lambda: alpha)
+    first = documents_module._adapter_api_const("0.2.2")
+    assert first == "1.2", first
+
+    monkeypatch.setattr(documents_module, "_otdp_corpus", lambda: beta)
+    second = documents_module._adapter_api_const("0.2.2")
+    assert second == "1.1", (
+        f"the adapter-const cache collided across corpora: expected beta's "
+        f"1.1, got {second} (alpha's cached value)"
+    )

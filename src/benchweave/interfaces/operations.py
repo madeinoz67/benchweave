@@ -174,7 +174,12 @@ def _resolve_event_evidence(
     )
 
 
-def _log_device_conformance(device_id: Any, descriptor: dict[str, Any]) -> None:
+def _log_device_conformance(
+    device_id: Any,
+    descriptor: dict[str, Any],
+    *,
+    acknowledged_pins: dict[str, str] | None = None,
+) -> None:
     """VR-16's API-view channel for the conformance class (issue #217).
 
     The wire's device object is contract-frozen (interface 0.1.0's closed
@@ -183,15 +188,24 @@ def _log_device_conformance(device_id: Any, descriptor: dict[str, Any]) -> None:
     server-side log. The derivation itself is
     :func:`benchweave.control.documents.classify_descriptor_pin` — total,
     pure over the committed policy block, and the same classifier admission
-    enforces."""
+    enforces. A non-conforming pin whose EXACT version is carried in
+    ``acknowledged_pins`` (device_id -> acked pin, the admission record's
+    mapping) was operator-acknowledged at load and does not warn — the
+    warning is for the unacknowledged state; an ack naming a different pin
+    does not apply (review fold R4). No production caller threads
+    acknowledgements yet (design record D11 — slice 5)."""
     pin = classify_descriptor_pin(descriptor.get("otdp_version"))
-    if pin.conformance == "non-conforming":
-        _LOG.warning(
-            "device_conformance_mismatch: device %s pins %s — %s",
-            device_id,
-            pin.otdp_version,
-            pin.note,
-        )
+    if pin.conformance != "non-conforming":
+        return
+    acked = (acknowledged_pins or {}).get(str(device_id))
+    if acked == pin.otdp_version:
+        return
+    _LOG.warning(
+        "device_conformance_mismatch: device %s pins %s — %s",
+        device_id,
+        pin.otdp_version,
+        pin.note,
+    )
 
 
 def append_bench_event(
