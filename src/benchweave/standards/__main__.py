@@ -1,4 +1,7 @@
-"""Command line: python -m benchweave.standards export|check|matrix|versions|repin."""
+"""Command line: python -m benchweave.standards.
+
+Subcommands: export | check | matrix | versions | repin | list | pin | upgrade.
+"""
 
 from __future__ import annotations
 
@@ -20,6 +23,41 @@ def main() -> int:
     sub.add_parser("versions", help="print main, standard, SDK lock and submodule versions")
     sub.add_parser(
         "repin", help="recompute corpus-manifest sha256 rows from the on-disk corpus"
+    )
+    sub.add_parser(
+        "list",
+        help="print per-standard range, retained/carried/served sets, yanks, retirements",
+    )
+    pin = sub.add_parser(
+        "pin", help="resolve a package's constraints into its contracts/lock.json"
+    )
+    pin.add_argument(
+        "--package",
+        type=Path,
+        default=None,
+        help="the package directory (default: the single in-tree package)",
+    )
+    pin.add_argument(
+        "--set",
+        dest="sets",
+        action="append",
+        default=[],
+        metavar="ID=INTERVAL",
+        help="author one constraint interval (caret sugar accepted, expanded on write);"
+        " repeatable",
+    )
+    upgrade = sub.add_parser(
+        "upgrade", help="move exactly one standard's lock row to a precise version"
+    )
+    upgrade.add_argument("standard", help="the standard id whose row moves")
+    upgrade.add_argument(
+        "--precise", required=True, help="the exact target version (served or yanked)"
+    )
+    upgrade.add_argument(
+        "--package",
+        type=Path,
+        default=None,
+        help="the package directory (default: the single in-tree package)",
     )
     arguments = parser.parse_args()
     root = Path.cwd()
@@ -106,6 +144,42 @@ def main() -> int:
             print(f"re-pinned {len(changed)} row(s): {', '.join(changed)}")
         else:
             print("corpus manifest already current")
+        return 0
+    if arguments.command == "list":
+        from .dependency import list_lines
+
+        try:
+            lines = list_lines(root)
+        except ValueError as exc:
+            print(f"standards list error: {exc}", file=sys.stderr)
+            return 1
+        for line in lines:
+            print(line)
+        return 0
+    if arguments.command in ("pin", "upgrade"):
+        from .dependency import (
+            default_package,
+            parse_set_argument,
+            pin_lock,
+            upgrade_lock,
+        )
+
+        try:
+            package = (
+                arguments.package
+                if arguments.package is not None
+                else default_package(root)
+            )
+            if arguments.command == "pin":
+                sets = [parse_set_argument(value) for value in arguments.sets]
+                lines = pin_lock(root, package, sets)
+            else:
+                lines = upgrade_lock(root, package, arguments.standard, arguments.precise)
+        except ValueError as exc:
+            print(f"standards {arguments.command} error: {exc}", file=sys.stderr)
+            return 1
+        for line in lines:
+            print(line)
         return 0
     return 2
 

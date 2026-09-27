@@ -72,7 +72,7 @@ class StandardPolicy:
     note: str | None
 
     def in_range(self, version: str) -> bool:
-        return _version_tuple(self.lower) <= _version_tuple(version) < _version_tuple(self.upper)
+        return version_tuple(self.lower) <= version_tuple(version) < version_tuple(self.upper)
 
 
 @dataclass(frozen=True)
@@ -82,10 +82,13 @@ class DependencyPolicy:
     standards: dict[str, StandardPolicy]
 
 
-def _version_tuple(version: str) -> tuple[int, int, int]:
-    # Manual 3-unpack: the generator expression types as tuple[int, ...] and
-    # needed a return-value ignore (#215 fold-wave F-E 9); the fixed arity is
-    # the function's own contract.
+def version_tuple(version: str) -> tuple[int, int, int]:
+    # The ONE version comparator for the standards package (public since the
+    # #216 resolver: dependency.py's Interval comparison shares it — two
+    # private version parsers in one package was drift bait). Manual 3-unpack:
+    # the generator expression types as tuple[int, ...] and needed a
+    # return-value ignore (#215 fold-wave F-E 9); the fixed arity is the
+    # function's own contract.
     major, minor, patch = version.split(".")
     return int(major), int(minor), int(patch)
 
