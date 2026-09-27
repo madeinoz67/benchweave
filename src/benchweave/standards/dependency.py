@@ -920,8 +920,32 @@ def write_lock(package: Path, raw: bytes) -> bool:
 
 
 def normalized_equal(path_a: Path, path_b: Path, version_a: str, version_b: str) -> bool:
-    """Version-normalized subtree comparison (the B6 raw-digest control)."""
-    raise NotImplementedError(normalized_equal.__name__)
+    """Version-normalized subtree comparison (the B6 raw-digest control).
+
+    Each subtree is canonical-JSON'd, its OWN version string replaced with
+    a fixed placeholder, and the two compared — so a pair whose only
+    difference is version strings (const, ``$id``, title, description — the
+    0.2.1/0.2.2 descriptor pair) compares equal while a structural
+    difference (the 0.2.0 pair's missing ``provider`` element) still
+    refuses. The comparator answers "equal apart from their own version
+    strings", never "equal": a raw-digest comparison on the same
+    version-strings-only pair fails (pinned by the B6 battery, the Q6 RED).
+
+    Signature deviation from the design record's
+    ``normalized_equal(path_a, path_b, own_version)`` sketch, disclosed:
+    the design's own B6 arms compare two DISTINCT versions (0.2.1 vs
+    0.2.2), and a single ``own_version`` parameter cannot name both
+    subtrees' version strings.
+    """
+    placeholder = b"<OWN-VERSION>"
+    return _normalize_subtree(path_a, version_a, placeholder) == _normalize_subtree(
+        path_b, version_b, placeholder
+    )
+
+
+def _normalize_subtree(path: Path, version: str, placeholder: bytes) -> bytes:
+    document = json.loads(path.read_bytes())
+    return canonical_json(document).replace(version.encode(), placeholder)
 
 
 # --- CLI command drivers -----------------------------------------------------------
