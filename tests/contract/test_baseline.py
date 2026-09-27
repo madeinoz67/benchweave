@@ -22,6 +22,13 @@ from referencing.jsonschema import DRAFT202012
 
 ROOT = Path(__file__).resolve().parents[2]
 CONTRACTS = ROOT / "standards"
+# Governance JSON living BESIDE the corpus (no corpus rows): the two
+# manifests plus the cross-constraints side table (#216, issue #203 slice 2)
+# — excluded from every corpus walk below by ROOT-RELATIVE path, tighter
+# than a basename check (a nested same-named file never matches).
+_GOVERNANCE_JSON = frozenset(
+    {"corpus-manifest.json", "standards-manifest.json", "cross-constraints.json"}
+)
 
 
 def _strict_loads(text: str) -> Any:
@@ -57,7 +64,7 @@ def _contract_files() -> list[Path]:
     return sorted(
         p
         for p in CONTRACTS.rglob("*.json")
-        if p.name not in ("corpus-manifest.json", "standards-manifest.json")
+        if p.relative_to(CONTRACTS).as_posix() not in _GOVERNANCE_JSON
         # Mirrors check_documents.py's exclusion (review row 2): a dev copy
         # shares the active documents' $ids and shadows them — the mirror
         # must not condemn released files for a head's edits either.
@@ -78,7 +85,7 @@ def _all_corpus_json_files() -> list[Path]:
     return sorted(
         p
         for p in CONTRACTS.rglob("*.json")
-        if p.name not in ("corpus-manifest.json", "standards-manifest.json")
+        if p.relative_to(CONTRACTS).as_posix() not in _GOVERNANCE_JSON
     )
 
 

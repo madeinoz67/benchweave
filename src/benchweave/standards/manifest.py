@@ -42,7 +42,13 @@ class StandardsError(ValueError):
 # (">=X.Y.Z,<X.Y.Z", inclusive lower, exclusive upper — design §3.1). Caret
 # sugar is AUTHORING input expanded before anything is stored; a caret stored
 # in a committed file refuses (constraint_syntax_unexpanded).
-RANGE_PATTERN = re.compile(r">=(\d+\.\d+\.\d+),<(\d+\.\d+\.\d+)")
+# Fold wave 2 R5 (#216): components are canonical numerals — a leading
+# zero (>=00.2.0) is hand-typed drift that would otherwise parse as its
+# integer value in every downstream comparator.
+RANGE_PATTERN = re.compile(
+    r">=((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)),"
+    r"<((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))"
+)
 VERSION_PATTERN = re.compile(r"\d+\.\d+\.\d+")
 
 
@@ -72,7 +78,7 @@ class StandardPolicy:
     note: str | None
 
     def in_range(self, version: str) -> bool:
-        return _version_tuple(self.lower) <= _version_tuple(version) < _version_tuple(self.upper)
+        return version_tuple(self.lower) <= version_tuple(version) < version_tuple(self.upper)
 
 
 @dataclass(frozen=True)
@@ -82,10 +88,13 @@ class DependencyPolicy:
     standards: dict[str, StandardPolicy]
 
 
-def _version_tuple(version: str) -> tuple[int, int, int]:
-    # Manual 3-unpack: the generator expression types as tuple[int, ...] and
-    # needed a return-value ignore (#215 fold-wave F-E 9); the fixed arity is
-    # the function's own contract.
+def version_tuple(version: str) -> tuple[int, int, int]:
+    # The ONE version comparator for the standards package (public since the
+    # #216 resolver: dependency.py's Interval comparison shares it — two
+    # private version parsers in one package was drift bait). Manual 3-unpack:
+    # the generator expression types as tuple[int, ...] and needed a
+    # return-value ignore (#215 fold-wave F-E 9); the fixed arity is the
+    # function's own contract.
     major, minor, patch = version.split(".")
     return int(major), int(minor), int(patch)
 

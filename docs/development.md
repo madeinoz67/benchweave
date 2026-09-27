@@ -78,6 +78,35 @@ manifest and the SDK lock; regenerate with
 and migration guidance but no commit SHAs — `python -m benchweave.standards
 versions` prints the live main/SDK/standards combination.
 
+### Standards dependency resolution (issue #216, #203 slice 2)
+
+Each in-tree package authors its requirements in
+`plugins/<manufacturer>/<model>/contracts/constraints.json` (explicit
+half-open intervals; caret sugar is accepted only at the CLI boundary and
+refuses wherever it is found stored) and resolves them into
+`contracts/lock.json` — canonical JSON, re-derived, never hand-edited; the
+in-tree example is `plugins/fnirsi/dps150/contracts/`. The command family
+(`python -m benchweave.standards …`):
+
+- `list` — per standard: the declared range, the derived retained /
+  carried / served sets, every yank (reason, since) and the retired
+  identifiers.
+- `pin [--package <dir>] [--set ID=INTERVAL] [--locked]` — resolve the
+  constraints and (re)write the package lock; `--set` authors one interval
+  (`^0.2` accepted, expanded before anything is stored); `--locked`
+  verifies only, refusing `plugin_lock_drift` when the committed lock is
+  not the resolution.
+- `upgrade <standard> --precise <version> [--package <dir>]` — move
+  exactly one standard's row; every other row stays byte-identical.
+- `check` — the SDK-pairing lanes plus the dependency lane: every in-tree
+  package's constraints are re-resolved and byte-compared against its
+  committed lock.
+
+Resolution is offline and deterministic: the same committed inputs give
+byte-identical locks, a prior pin holds while it still satisfies its
+authored interval, and auto-selection never picks a yanked version or a
+pre-release.
+
 Change propagation, end to end:
 
 1. Change the canonical specification in the main repo.

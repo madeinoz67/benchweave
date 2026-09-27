@@ -1,4 +1,7 @@
-"""Command line: python -m benchweave.standards export|check|matrix|versions|repin."""
+"""Command line: python -m benchweave.standards.
+
+Subcommands: export | check | matrix | versions | repin | list | pin | upgrade.
+"""
 
 from __future__ import annotations
 
@@ -21,6 +24,54 @@ def main() -> int:
     sub.add_parser(
         "repin", help="recompute corpus-manifest sha256 rows from the on-disk corpus"
     )
+    sub.add_parser(
+        "list",
+        help="print per-standard range, retained/carried/served sets, yanks, retirements",
+    )
+    pin = sub.add_parser(
+        "pin", help="resolve a package's constraints into its contracts/lock.json"
+    )
+    pin.add_argument(
+        "--package",
+        type=Path,
+        default=None,
+        help="the package directory (default: the single in-tree package)",
+    )
+    pin.add_argument(
+        "--set",
+        dest="sets",
+        action="append",
+        default=[],
+        metavar="ID=INTERVAL",
+        help="author one constraint interval (caret sugar accepted, expanded on write);"
+        " repeatable",
+    )
+    pin.add_argument(
+        "--locked",
+        action="store_true",
+        help="verify only: refuse plugin_lock_drift when the on-disk lock is not the"
+        " resolution; never writes",
+    )
+    pin.add_argument(
+        "--revision",
+        metavar="SHA",
+        default=None,
+        help="record a new revision alongside same-version digest motion (the"
+        " revision-scissors override)",
+    )
+    upgrade = sub.add_parser(
+        "upgrade", help="move exactly one standard's lock row to a precise version"
+    )
+    upgrade.add_argument("standard", help="the standard id whose row moves")
+    upgrade.add_argument(
+        "--precise", required=True, help="the exact target version (served or yanked)"
+    )
+    upgrade.add_argument(
+        "--package",
+        type=Path,
+        default=None,
+        help="the package directory (default: the single in-tree package)",
+    )
     arguments = parser.parse_args()
     root = Path.cwd()
     if arguments.command == "export":
@@ -37,18 +88,19 @@ def main() -> int:
         print(f"standards bundle exported to {arguments.out}")
         return 0
     if arguments.command == "check":
-        from .check import run_check
+        from .check import count_failures, run_check
 
         try:
-            failures = run_check(root)
+            lines = run_check(root)
         except ValueError as exc:
             print(f"standards check error: {exc}", file=sys.stderr)
             return 1
-        for line in failures:
+        for line in lines:
             print(line)
-        if failures:
+        if count_failures(lines):
             print(
-                f"{len(failures)} standards check failure(s); run make sync-sdk-standards",
+                f"{count_failures(lines)} standards check failure(s); "
+                "run make sync-sdk-standards",
                 file=sys.stderr,
             )
             return 1
@@ -106,6 +158,51 @@ def main() -> int:
             print(f"re-pinned {len(changed)} row(s): {', '.join(changed)}")
         else:
             print("corpus manifest already current")
+        return 0
+    if arguments.command == "list":
+        from .dependency import list_lines
+
+        try:
+            lines = list_lines(root)
+        except ValueError as exc:
+            print(f"standards list error: {exc}", file=sys.stderr)
+            return 1
+        for line in lines:
+            print(line)
+        return 0
+    if arguments.command in ("pin", "upgrade"):
+        from .dependency import (
+            default_package,
+            parse_set_argument,
+            pin_lock,
+            upgrade_lock,
+        )
+
+        try:
+            package = (
+                arguments.package
+                if arguments.package is not None
+                else default_package(root)
+            )
+            if arguments.command == "pin":
+                sets = [parse_set_argument(value) for value in arguments.sets]
+                lines = pin_lock(
+                    root,
+                    package,
+                    sets,
+                    locked=arguments.locked,
+                    revision=arguments.revision,
+                )
+            else:
+                lines = upgrade_lock(root, package, arguments.standard, arguments.precise)
+        except (ValueError, OSError) as exc:
+            # Fold wave 2 R1: the ValueError family carries the typed
+            # refusals; OSError (a vanished path mid-command) fails styled
+            # like the family, never as a traceback.
+            print(f"standards {arguments.command} error: {exc}", file=sys.stderr)
+            return 1
+        for line in lines:
+            print(line)
         return 0
     return 2
 

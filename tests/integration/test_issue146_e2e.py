@@ -145,7 +145,11 @@ class DatasetSupplyAdapter:
             "kind": "scalar_set",
             "configuration_id": invoke_input["configuration_id"],
             "acquisition_id": None,
-            "started_at": "2026-09-26T00:00:00Z",
+            # The service clock at measure time — a fixed calendar date here
+            # went stale at the 24h max_age_ms boundary the moment the date
+            # rolled past it (main red 2026-09-27; the sample ages against
+            # this claim, so it must be live, like observed_at is).
+            "started_at": self.services.utc_now(),
             "clock": {
                 "domain_id": "demo-clock",
                 "timestamp_source": "device",
@@ -225,7 +229,7 @@ INVOKE_STEPS: list[dict[str, Any]] = [
         "source_step": "fetch",
         "variable_id": "voltage_v",
         "unit": "V",
-        "max_age_ms": 86400000,  # the fixture started_at is fixed; a day of slack
+        "max_age_ms": 86400000,  # started_at is the live service clock; a day of slack
         "require_known_uncertainty": False,  # the fixture declares unknown honestly
     },
     # The monitor-feeding tail LAST: terminal safety verifies on a fresh

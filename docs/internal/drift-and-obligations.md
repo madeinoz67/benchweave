@@ -198,8 +198,16 @@ and remain the reviewer's job.
     it permanently resolvable and it claims nothing about "active" (issue
     #188 design deferral 2);
     (g) plugin contract locks — `plugins/fnirsi/dps150/contracts/lock.json`
-    declares `otdp_version` (and its corpus `directory`); motion: relock in
-    the bump arc, against the corpus the bump admits;
+    declares `otdp_version` (and its corpus `directory`); motion: relock via
+    `uv run python -m benchweave.standards pin` in the bump arc, against the
+    corpus the bump admits (#216, lock v2: the `standards` rows re-derive
+    from corpus rows; the legacy otdp projection — `directory`,
+    `otdp_version`, `adapter_api_version`, the file map — moves with the
+    resolved otdp row and only with it). Revision motion is explicit
+    (#216 fold F4): same-version digest-value motion in the map requires
+    `pin --revision <sha>` — the recorded revision must carry the bytes the
+    map digests (the revision-scissors invariant; the map itself is an
+    allowlist — corpus-rowed ∪ prior-mapped, fold F3);
     (h) live authority pointers that name one versioned path as THE
     authority — obligations 1-2 above (`standards/interface/0.1.0/…`) and
     the `drift-guard.mjs` hook advice text that repeats them; motion: those
@@ -243,7 +251,7 @@ and remain the reviewer's job.
     pointer advance rides a train of its own); loop prose that is
     deliberately gateway-specific does not sync (issue #99's design §6).
 
-19. **The dependency-policy block and the carried set** (issue #215, parent
+21. **The dependency-policy block and the carried set** (issue #215, parent
     #203 slice 1): `standards/standards-manifest.json`'s `dependency_policy`
     block is the one committed authority for per-standard ranges, yanks and
     retired identifiers. If a PR touches it, all four surfaces move together
@@ -261,8 +269,19 @@ and remain the reviewer's job.
     digest-frozen, and a tampered non-active carried version no longer
     exports clean). Range changes are coordinator decisions (VR-43) and
     require a linked ruling reference in the PR body
-    (`policy_change_unruled:` is the drift-check lane's refusal, landing with
-    slice 2's agreement lane). The yanked 0.2.1 and the retired identifiers
+    (`policy_change_unruled:` is DEFERRED as D10 — no gateway workflow reads
+    PR bodies today, so no check harness can carry it; the governor lane
+    reviews every `standards/` touch meanwhile. This slice's PR amends this
+    row's original "landing with slice 2's agreement lane" sentence — the
+    owner's merge is the blessing). Slice 2 (#216) adds the resolver
+    surface: `standards/cross-constraints.json` (governance data beside the
+    two manifests, no corpus rows, root-scoped exemption in repin and the
+    baseline walks) ↔ its loader in `src/benchweave/standards/dependency.py`
+    ↔ resolve-time pairwise enforcement, with slice 3's bench admission
+    consuming the same loader; rows require citable evidence, and the
+    package carriers are `contracts/constraints.json` (authored) ↔
+    `contracts/lock.json` (generated, verified by `pin --locked` and check's
+    `plugin_lock_drift:` lane). The yanked 0.2.1 and the retired identifiers
     enumerated from `ea70c6a5^` are the founding entries. A YANKED entry must
     name a retained in-range version — bytes have to exist for a
     yanked-but-conforming pin to validate against

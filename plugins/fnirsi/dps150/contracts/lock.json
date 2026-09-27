@@ -1,17 +1,1 @@
-{
-  "repository": "https://github.com/madeinoz67/benchweave",
-  "revision": "8a080d149ebfb972f5ab697c252c73f9ebec4019",
-  "directory": "standards/otdp/0.2.2",
-  "otdp_version": "0.2.2",
-  "adapter_api_version": "1.1",
-  "sha256": {
-    "otdp-device-descriptor.schema.json": "e43fe4583f5f118415f7fbf3dbe55ff681d4ee1e9dd3d4758e93207d9f07e11f",
-    "otdp-runtime.schema.json": "d2e62a22a118aad11e247c7a087947b24cf8fcf7c1cc3c77a71b5a249f8342ea",
-    "otdp-specification.md": "6469e40d9e98a2e52857c0165091fd639e47475893e66a6cc593ed4452c427e6",
-    "extension-contract.md": "3595b6655b012af350ccda1a4715c3515cdfbe8163120cc6f369d08922e5e627",
-    "device-classes.md": "712ec652c85033f84e79b4679e6756d9bf0eab93af319c55ca45b5962b0a3860",
-    "measurement-model.md": "1d40f0c32676149d360c127c6c974a2e227b2dfd190d9044fec24d8c3312305e",
-    "otdp-measurement.schema.json": "7905795bed6139b9705edfa17b7a17226b99cddda6656030d73bb63dc998a4b3",
-    "device-profile-catalog.json": "2e8c7841a397f794724ab2f484e7531cef47889c5f514ed68ff2c1273f0b493c"
-  }
-}
+{"adapter_api_version":"1.1","directory":"standards/otdp/0.2.2","lock_version":2,"otdp_version":"0.2.2","repository":"https://github.com/madeinoz67/benchweave","revision":"8a080d149ebfb972f5ab697c252c73f9ebec4019","sha256":{"device-classes.md":"712ec652c85033f84e79b4679e6756d9bf0eab93af319c55ca45b5962b0a3860","device-profile-catalog.json":"2e8c7841a397f794724ab2f484e7531cef47889c5f514ed68ff2c1273f0b493c","device-profile-catalog.schema.json":"1e61ab24a3b683a4a405d156dca0aa0efdff795adab4992ef95306521c1226c6","extension-contract.md":"3595b6655b012af350ccda1a4715c3515cdfbe8163120cc6f369d08922e5e627","measurement-model.md":"1d40f0c32676149d360c127c6c974a2e227b2dfd190d9044fec24d8c3312305e","otdp-device-descriptor.schema.json":"e43fe4583f5f118415f7fbf3dbe55ff681d4ee1e9dd3d4758e93207d9f07e11f","otdp-measurement.schema.json":"7905795bed6139b9705edfa17b7a17226b99cddda6656030d73bb63dc998a4b3","otdp-runtime.schema.json":"d2e62a22a118aad11e247c7a087947b24cf8fcf7c1cc3c77a71b5a249f8342ea","otdp-specification.md":"6469e40d9e98a2e52857c0165091fd639e47475893e66a6cc593ed4452c427e6","otdp-transport-provider.schema.json":"1e4a50e34e5b996dd6e63d617263e3fae846346155e11c0bd75051fb8d60ef43","transport-providers.md":"cc12d4c8e7d5154c99b71beb35575f933ae4af0ac5dab3d7d4c046dedc38d4ae","validation-report.md":"b30fa9b7eb13c9c07db78f6123718cb9eabb63a197874597c6f1255ed63ccae6"},"standards":[{"digest":"cd5471792b7883dd95009fe2994f5d1d96a9b36d3af5311ae827126a32141eac","id":"otdp","stage":"released","version":"0.2.2"}]}

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 import subprocess
@@ -774,3 +775,141 @@ def test_lock_without_a_policy_mirror_is_policy_mirror_drift(tmp_path: Path) -> 
     _write_lock(sdk, lock)
     failures = run_check(ROOT, sdk)
     assert "policy_mirror_drift" in _prefixes(failures)
+
+
+# --- #216 (#203 slice 2): the plugin dependency lane in check ----------------------
+
+
+def _plugin_package(root: Path, *, interval: str) -> Path:
+    """A synthetic in-tree package: authored constraints plus a v1 prior
+    lock pinning 0.2.2 (so an interval narrower than 0.2.2 plants drift)."""
+    package = root / "plugins" / "acme" / "widget"
+    (package / "contracts").mkdir(parents=True)
+    (package / "contracts" / "constraints.json").write_text(
+        json.dumps({"constraint_version": 1, "standards": {"otdp": interval}, "opt_in": {}})
+    )
+    (package / "contracts" / "lock.json").write_text(
+        json.dumps(
+            {
+                "repository": "https://example.invalid/acme-widget",
+                "revision": "0" * 40,
+                "directory": "standards/otdp/0.2.2",
+                "otdp_version": "0.2.2",
+                "adapter_api_version": "1.1",
+                "sha256": {
+                    path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+                    for path in sorted(
+                        (root / "standards/otdp/0.2.2").iterdir()
+                    )
+                    if path.is_file()
+                },
+            }
+        )
+    )
+    return package
+
+
+def test_check_names_plugin_lock_drift(tmp_path: Path) -> None:
+    """The dependency lane re-resolves every in-tree package's constraints
+    and byte-compares the committed lock: a constraint interval the lock
+    disagrees with surfaces as ``plugin_lock_drift:``.
+
+    The SDK-pairing lanes of this fixture shape co-fire with their recorded
+    pre-existing failures wherever packages/sdk sits away from its gitlink
+    pin (the ambient submodule state this branch develops on); the
+    assertion is the plant's OWN failure line, independent of those.
+    """
+    from benchweave.standards.check import run_check
+
+    sdk = _sdk_copy(tmp_path)
+    root = _standards_root(tmp_path)
+    _plugin_package(root, interval=">=0.2.0,<0.2.2")
+    failures = run_check(root, sdk)
+    assert any(
+        line.startswith("plugin_lock_drift: plugins/acme/widget") for line in failures
+    ), failures
+
+
+def test_check_plugin_lane_is_silent_on_an_agreeing_package(tmp_path: Path) -> None:
+    """The green control: a package whose committed lock IS its resolution
+    adds no line."""
+    from benchweave.standards.check import run_check
+    from benchweave.standards.dependency import resolve_package, write_lock
+
+    sdk = _sdk_copy(tmp_path)
+    root = _standards_root(tmp_path)
+    package = _plugin_package(root, interval=">=0.2.0,<0.3.0")
+    write_lock(package, resolve_package(root, package).raw)
+    failures = run_check(root, sdk)
+    assert not [line for line in failures if line.startswith("plugin_")], failures
+
+
+# --- fold F2: the dependency lane surfaces deprecation warnings ---------------------
+
+
+def test_check_surfaces_a_retained_yanked_pin_as_a_non_failing_warning(
+    tmp_path: Path,
+) -> None:
+    """A package whose resolution retains a yanked pin (prior 0.2.1,
+    in-interval, agreeing lock) must not be CI-green FOREVER on the
+    unattended surface: the lane surfaces the resolution's warning as a
+    ``plugin_deprecation_warning:`` line that does NOT count as a failure."""
+    from benchweave.standards.check import DEPRECATION_WARNING_PREFIX, run_check
+    from benchweave.standards.dependency import resolve_package, write_lock
+
+    sdk = _sdk_copy(tmp_path)
+    root = _standards_root(tmp_path)
+    package = root / "plugins" / "acme" / "widget"
+    (package / "contracts").mkdir(parents=True)
+    (package / "contracts" / "constraints.json").write_text(
+        json.dumps(
+            {"constraint_version": 1, "standards": {"otdp": ">=0.2.0,<0.3.0"}, "opt_in": {}}
+        )
+    )
+    (package / "contracts" / "lock.json").write_text(
+        json.dumps(
+            {
+                "repository": "https://example.invalid/acme-widget",
+                "revision": "0" * 40,
+                "directory": "standards/otdp/0.2.1",
+                "otdp_version": "0.2.1",  # yanked, in-interval: minimal motion retains it
+                "adapter_api_version": "1.1",
+                "sha256": {
+                    path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+                    for path in sorted(
+                        (root / "standards/otdp/0.2.1").iterdir()
+                    )
+                    if path.is_file()
+                },
+            }
+        )
+    )
+    resolution = resolve_package(root, package)
+    assert resolution.warnings, "the fixture must retain a yanked pin"
+    write_lock(package, resolution.raw)
+    lines = run_check(root, sdk)
+    warnings = [line for line in lines if line.startswith(DEPRECATION_WARNING_PREFIX)]
+    assert any("plugins/acme/widget" in line and "0.2.1" in line for line in warnings), lines
+    assert not [line for line in lines if line.startswith("plugin_lock_drift")], lines
+    from benchweave.standards.check import count_failures
+
+    assert count_failures(warnings) == 0
+    assert count_failures([*warnings, "plugin_lock_drift: x"]) == 1
+
+
+def test_check_drift_message_names_non_canonical_serialization(tmp_path: Path) -> None:
+    """The check lane's drift remediation names the reflow cause too."""
+    from benchweave.standards.check import run_check
+
+    sdk = _sdk_copy(tmp_path)
+    root = _standards_root(tmp_path)
+    package = _plugin_package(root, interval=">=0.2.0,<0.3.0")
+    from benchweave.standards.dependency import resolve_package, write_lock
+
+    write_lock(package, resolve_package(root, package).raw)
+    document = json.loads((package / "contracts" / "lock.json").read_bytes())
+    (package / "contracts" / "lock.json").write_text(json.dumps(document, indent=2))
+    failures = run_check(root, sdk)
+    drift = [line for line in failures if line.startswith("plugin_lock_drift")]
+    assert drift, failures
+    assert any("non-canonical serialization" in line for line in drift)
