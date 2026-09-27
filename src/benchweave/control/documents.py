@@ -41,7 +41,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path, PurePosixPath
@@ -180,17 +180,22 @@ _OTDP = "otdp"
 class DescriptorPin:
     """One device descriptor's OTDP pin facts, recorded at admission (VR-46).
 
-    ``conformance`` is ``"conforming"`` or ``"non-conforming"`` — the Q6
-    table's two admitting classes; the refused classes (retired, never
-    carried) refuse admission, and the total :func:`classify_descriptor_pin`
-    folds them into ``"non-conforming"`` with the refusal text riding
-    ``note`` so display surfaces read where admission refuses. ``deprecated``
-    marks the yanked-but-conforming pin (the Q10 ruling); ``note`` carries
-    the deprecation warning or the five VR-37 fields; ``acknowledgement``
-    is the recorded operator acknowledgement (VR-18), or None.
+    ``status`` is the classification's decision key — ``served``, ``yanked``,
+    ``nonconforming``, ``retired``, ``unknown``, ``unclassifiable`` — and
+    authorisation reads IT, never the note's wording (review fold R6: the
+    prefixes stay message vocabulary only). ``conformance`` is
+    ``"conforming"`` or ``"non-conforming"`` — the Q6 table's two admitting
+    classes; the refused classes (retired, never carried) refuse admission,
+    and the total :func:`classify_descriptor_pin` folds them into
+    ``"non-conforming"`` with the refusal text riding ``note`` so display
+    surfaces read where admission refuses. ``deprecated`` marks the
+    yanked-but-conforming pin (the Q10 ruling); ``note`` carries the
+    deprecation warning or the five VR-37 fields; ``acknowledgement`` is the
+    recorded operator acknowledgement (VR-18), or None.
     """
 
     otdp_version: str
+    status: str
     conformance: str
     deprecated: bool = False
     note: str | None = None
@@ -236,6 +241,7 @@ def _classify_cached(pin: str, corpus_text: str) -> DescriptorPin:
         major, minor, _patch = version_tuple(pin)
         return DescriptorPin(
             otdp_version=pin,
+            status="retired",
             conformance="non-conforming",
             note=(
                 f"retired_identifier: {_OTDP} {pin} is a retired identifier "
@@ -246,6 +252,7 @@ def _classify_cached(pin: str, corpus_text: str) -> DescriptorPin:
     if pin not in retained_versions_from_corpus(corpus, _OTDP):
         return DescriptorPin(
             otdp_version=pin,
+            status="unknown",
             conformance="non-conforming",
             note=(
                 f"version_unknown: {_OTDP} {pin} was never carried by this "
@@ -255,6 +262,7 @@ def _classify_cached(pin: str, corpus_text: str) -> DescriptorPin:
     if not row.in_range(pin):
         return DescriptorPin(
             otdp_version=pin,
+            status="nonconforming",
             conformance="non-conforming",
             note=f"standard_nonconforming: {vr37}",
         )
@@ -264,6 +272,7 @@ def _classify_cached(pin: str, corpus_text: str) -> DescriptorPin:
             move_to = max(served, key=version_tuple) if served else row.lower
             return DescriptorPin(
                 otdp_version=pin,
+                status="yanked",
                 conformance="conforming",
                 deprecated=True,
                 note=(
@@ -272,7 +281,7 @@ def _classify_cached(pin: str, corpus_text: str) -> DescriptorPin:
                     f"move-to: {move_to}"
                 ),
             )
-    return DescriptorPin(otdp_version=pin, conformance="conforming")
+    return DescriptorPin(otdp_version=pin, status="served", conformance="conforming")
 
 
 def classify_descriptor_pin(pin: object, *, corpus: Path | None = None) -> DescriptorPin:
@@ -292,6 +301,7 @@ def classify_descriptor_pin(pin: object, *, corpus: Path | None = None) -> Descr
         shown = pin if isinstance(pin, str) else repr(pin)
         return DescriptorPin(
             otdp_version=shown,
+            status="unclassifiable",
             conformance="non-conforming",
             note=(
                 f"version_not_classifiable: {_OTDP} pin {shown!r} is not a "
@@ -312,7 +322,8 @@ def _authorise_pin(
     """Admission's decision over one classified pin (the Q6 table's rows).
 
     Retired and never-carried pins refuse outright — there are no bytes to
-    validate against (VR-15). A retained but out-of-range pin is
+    validate against (VR-15); the decision reads the classification's
+    STATUS field, never the note's wording (R6). A retained but out-of-range pin is
     NON-conforming and loads only behind a recorded per-device operator
     acknowledgement that names THIS pin (VR-14/18: an ack for a different
     pin does not apply — one ack cannot blanket a bench of unknown
@@ -320,15 +331,21 @@ def _authorise_pin(
     one message and the five VR-37 fields inline. Conforming (served or
     yanked) pins need no acknowledgement.
     """
-    note = record.note or ""
-    if note.startswith("retired_identifier:") or note.startswith("version_unknown:"):
-        # Prefix-first, logical inside — the provider_not_admitted convention.
-        prefix, _, rest = note.partition(":")
-        raise AdmissionRejected(f"{prefix}: {logical} {rest.strip()}")
-    if note.startswith("version_not_classifiable:") or record.conformance != "non-conforming":
-        # An unclassifiable pin reaches the schema (its const error is the
-        # honest refusal); a conforming pin needs no acknowledgement.
+    # The decision reads STATUS, never the note's wording (review fold R6);
+    # the prefixes stay message vocabulary. Prefix-first message, logical
+    # inside — the provider_not_admitted convention. There is no
+    # unclassifiable arm: its caller gates the call on the pin's shape, so
+    # an unclassifiable record never reaches authorisation (review fold
+    # R11c — the arm was unreachable and is deleted, not exercised).
+    if record.status in ("retired", "unknown"):
+        prefix = (
+            "retired_identifier:" if record.status == "retired" else "version_unknown:"
+        )
+        rest = (record.note or "").partition(":")[2].strip()
+        raise AdmissionRejected(f"{prefix}: {logical} {rest}")
+    if record.status != "nonconforming":
         return None
+    note = record.note or ""
     if acknowledged_pin != record.otdp_version:
         raise AdmissionRejected(
             f"operator_ack_required: standard_nonconforming: {logical} pins "
@@ -1181,9 +1198,10 @@ def _project_full_form(
     derived = descriptor.get("derived_variables")
     pin = descriptor.get("otdp_version")
     record = classify_descriptor_pin(pin)
+    ack: dict[str, Any] | None = None
     classifiable = isinstance(pin, str) and VERSION_PATTERN.fullmatch(pin) is not None
     if classifiable:
-        _authorise_pin(
+        ack = _authorise_pin(
             logical, record, acknowledged_pin=acknowledged_pin, now_wall=now_wall
         )
     # An unclassifiable pin validates against the ACTIVE schema: the const
@@ -1245,6 +1263,10 @@ def _project_full_form(
         "otdp_version": descriptor["otdp_version"],
         "conformance": record.conformance,
         "conformance_note": record.note,
+        # The structured pin record (R7): the classification authorisation
+        # already computed — admit_documents threads THIS instead of
+        # re-deriving classification and acknowledgement from the view.
+        "pin": replace(record, acknowledgement=ack),
     }
     capture_formats = descriptor.get("capture_formats")
     capture_limits = descriptor.get("capture_limits")
@@ -1536,23 +1558,10 @@ def admit_documents(
         descriptors[device_id] = view
         descriptor_digests[f"descriptor/{device_id}"] = descriptor_digest
         # The admission-record surface of the pin facts (VR-46): the
-        # classification re-derives from the view's validated pin — pure
-        # over committed state, and the projection has already enforced
-        # every refusal and the ack gate, so a non-conforming pin arriving
-        # here is by construction an acked one.
-        record = classify_descriptor_pin(str(view["otdp_version"]))
-        if record.conformance == "non-conforming":
-            record = DescriptorPin(
-                otdp_version=record.otdp_version,
-                conformance=record.conformance,
-                deprecated=record.deprecated,
-                note=record.note,
-                acknowledgement={
-                    "otdp_version": record.otdp_version,
-                    "recorded_at": now_wall,
-                },
-            )
-        pins[device_id] = record
+        # projection's threaded record (R7) — classification ran once, the
+        # authorisation's acknowledgement rides it, and every refusal and
+        # the ack gate were enforced before the view existed.
+        pins[device_id] = view["pin"]
 
     # The pairwise bench check runs AFTER every device admitted: it is a
     # fact about the bench's execution version, not any one descriptor.

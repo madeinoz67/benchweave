@@ -531,3 +531,43 @@ def test_r11_the_exclusive_upper_bound_is_out_of_range(tmp_path: Path) -> None:
     assert record.conformance == "non-conforming"
     assert str(record.note).startswith("standard_nonconforming:")
     assert "supported: >=0.2.0,<0.3.0" in str(record.note)
+
+
+# --- review fold R6: the authorisation decision reads status, not note wording -----
+
+
+def test_r6_the_authorisation_decision_is_invariant_under_note_rewording() -> None:
+    """R6's RED proof: the load/refuse/ack DECISION keys off the
+    classification's status, never the note's wording — a reworded note
+    (same status) must not change what admission does. Before the refactor
+    the decision read note.startswith, so a reworded retired note fell
+    through to the ack gate and changed the refusal."""
+    from dataclasses import replace
+
+    from benchweave.control.documents import (
+        AdmissionRejected,
+        DescriptorPin,
+        _authorise_pin,
+        classify_descriptor_pin,
+    )
+
+    def decision(record: DescriptorPin, acked: str | None) -> str:
+        try:
+            _authorise_pin(
+                "descriptor[x]", record, acknowledged_pin=acked, now_wall=None
+            )
+        except AdmissionRejected as exc:
+            return f"refused:{str(exc).split(':', 1)[0]}"
+        return "loaded"
+
+    for pin in ("0.3.0", "9.9.9", "0.1.2", "0.2.2", "0.2.1"):
+        record = classify_descriptor_pin(pin)
+        note = record.note
+        reworded = replace(
+            record, note=f"REWORDED {note}" if note is not None else note
+        )
+        for acked in (None, str(record.otdp_version)):
+            assert decision(reworded, acked) == decision(record, acked), (
+                f"{pin} (acked={acked!r}): the decision moved with the note's "
+                "wording, not the classification's status"
+            )
