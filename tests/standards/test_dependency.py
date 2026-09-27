@@ -829,3 +829,56 @@ def test_f3_c_the_shipped_dps150_map_rederives_clean() -> None:
     resolution = resolve_package(ROOT, package)
     assert len(resolution.document["sha256"]) == 12
     assert resolution.raw == (package / "contracts" / "lock.json").read_bytes()
+
+
+# --- fold F4: revision scissors — the map digests the bytes AT the revision ---------
+
+
+def test_f4_the_revision_scissors_chain(tmp_path: Path) -> None:
+    """The executed chain: same-version byte motion after a relock (a
+    regenerated report) first surfaces as --locked drift, then pin WITHOUT
+    --revision refuses naming the scissors invariant, and WITH --revision it
+    relocks, recording the motion's revision alongside it."""
+    root = _copy_standards(tmp_path)
+    package = _package(root, constraints={"otdp": ">=0.2.0,<0.3.0"})
+    assert _run(root, "pin", "--package", "plugins/acme/widget").returncode == 0
+    report = root / "standards/otdp/0.2.2/validation-report.md"
+    moved = report.read_bytes() + b"regenerated\n"
+    report.write_bytes(moved)
+    locked = _run(root, "pin", "--locked", "--package", "plugins/acme/widget")
+    assert locked.returncode == 1, locked.stderr
+    assert "plugin_lock_drift" in locked.stderr
+    refused = _run(root, "pin", "--package", "plugins/acme/widget")
+    assert refused.returncode == 1, refused.stderr
+    assert "revision_scissors" in refused.stderr
+    assert "validation-report.md" in refused.stderr
+    assert _run(root, "pin", "--package", "plugins/acme/widget").returncode == 1
+    relock = _run(
+        root, "pin", "--revision", "f" * 40, "--package", "plugins/acme/widget"
+    )
+    assert relock.returncode == 0, relock.stderr
+    document = json.loads(_lock_path(package).read_bytes())
+    assert document["revision"] == "f" * 40
+    assert document["sha256"]["validation-report.md"] == hashlib.sha256(moved).hexdigest()
+    # the recorded motion is now stable: a plain re-pin is a no-op
+    again = _run(root, "pin", "--package", "plugins/acme/widget")
+    assert again.returncode == 0, again.stderr
+
+
+def test_f4_map_additions_carry_the_fetch_existence_warning(tmp_path: Path) -> None:
+    """Additions are not digest motion: a rowed file absent from the prior
+    map re-enters the derived map with a warning naming the invariant — the
+    file must exist at the recorded revision."""
+    root = _copy_standards(tmp_path)
+    package = _package(root, constraints={"otdp": ">=0.2.0,<0.3.0"})
+    assert _run(root, "pin", "--package", "plugins/acme/widget").returncode == 0
+    prior = json.loads(_lock_path(package).read_bytes())
+    del prior["sha256"]["device-profile-catalog.schema.json"]
+    _lock_path(package).write_text(json.dumps(prior))
+    result = _run(root, "pin", "--package", "plugins/acme/widget")
+    assert result.returncode == 0, result.stderr
+    assert "map addition" in result.stdout
+    assert "device-profile-catalog.schema.json" in result.stdout
+    assert "recorded revision" in result.stdout
+    document = json.loads(_lock_path(package).read_bytes())
+    assert "device-profile-catalog.schema.json" in document["sha256"]
