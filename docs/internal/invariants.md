@@ -526,6 +526,14 @@ rather than rewriting the history — that is how this file earns trust.
   true). *The registry lock-writer precedent (`registry/admission.py`
   `_lock_document`) is the shape; resolution must never depend on network,
   working-tree state, or an LLM in the control path (A04).*
+  Amendment (2026-09-27, issue #216, parent #203 slice 2): the resolution
+  clauses are TRUE as of this slice — `src/benchweave/standards/dependency.py`
+  (intervals and caret expansion at the authoring boundary, the three-answer
+  classification, minimal-motion resolution, the canonical lock v2 writer,
+  `pin --locked`, and check's plugin dependency lane; `standards/cross-constraints.json`
+  is the committed side table, enforced pairwise at resolve time). The dev
+  clauses (content-addressed dev pins, wheel refusal) remain slice-4 future
+  and become true there — CON-12's disclosure style.
   Recorded ruling (2026-09-26, VR-47 points 1–2 of the parent arc #203;
   landed by #215) — carried VERBATIM here and in `standards/GOVERNANCE.md`
   ("Recorded ruling — VR-47 points 1 and 2"), not paraphrased:

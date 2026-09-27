@@ -262,6 +262,19 @@ yanked row is never called served (the #215 fold row 8 correction). Drift
 between the three surfaces is refused by name (`served_set_drift:`,
 `policy_mirror_drift:`).
 
+**Cross-constraints (2026-09-27, issue #216, parent #203 slice 2):**
+`standards/cross-constraints.json` is governance data in this same family — a
+committed side table beside the two manifests, moving no corpus rows and
+needing no repin (its exemption from corpus-row coverage is root-scoped, in
+both `repin` and the baseline corpus walks, exactly like the two manifests).
+A row names one released version of its own standard and what it requires of
+the others (explicit half-open intervals, or an exact `adapter_api`
+two-component version) and REQUIRES CITABLE EVIDENCE a reviewer can locate;
+rows accreting without citations is the failure the file's honest-negative
+note guards against. Enforced pairwise at resolve time
+(`src/benchweave/standards/dependency.py`), with slice 3's bench admission
+consuming the same loader — one authority, both consumers.
+
 ## Recorded ruling — VR-47 points 1 and 2 (R-1/R-2, 2026-09-26, issue #203)
 
 Points 1 and 2 are mutually load-bearing — the reopen (point 1) exists to make
