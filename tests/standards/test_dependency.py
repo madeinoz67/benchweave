@@ -911,3 +911,20 @@ def test_r1_set_on_a_missing_package_dir_refuses_styled(tmp_path: Path) -> None:
     assert result.returncode == 1, result.stderr
     assert "standards pin error: package_absent" in result.stderr
     assert "Traceback" not in result.stderr
+
+
+# --- fold wave 2, R2: list refuses desync styled -----------------------------------
+
+
+def test_r2_list_refuses_a_manifest_policy_desync_styled(tmp_path: Path) -> None:
+    """A manifest entry with no policy row is dependency_policy_invalid —
+    list must refuse styled, never a raw KeyError traceback."""
+    root = _copy_standards(tmp_path)
+    manifest = root / "standards" / "standards-manifest.json"
+    document = json.loads(manifest.read_bytes())
+    del document["dependency_policy"]["standards"]["registry"]
+    manifest.write_text(json.dumps(document, indent=2))
+    result = _run(root, "list")
+    assert result.returncode == 1, result.stdout
+    assert "standards list error: dependency_policy_invalid" in result.stderr
+    assert "Traceback" not in result.stderr
