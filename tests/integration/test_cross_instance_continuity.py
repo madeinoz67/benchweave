@@ -731,7 +731,8 @@ class ContinuityRig:
             raise TrialInfrastructureError(
                 "a bench signal failed to serve at priming (read-#1 "
                 "starvation: the pre-dispatch tick read an aged signal "
-                "and the fail-safe refused the priming read)"
+                "and the fail-safe refused the priming read)",
+                site="priming-block-refusal",
             )
         assert primed.status is OperationStatus.OK, "monitoring fixture degenerate"
         assert len(self.tick_times) >= 2, "the wrapper never ticked"
@@ -751,7 +752,8 @@ class ContinuityRig:
         ):
             raise TrialInfrastructureError(
                 "a bench signal failed to serve at priming "
-                "(construction-time starvation; run 36309281160)"
+                "(construction-time starvation; run 36309281160)",
+                site="priming-validity",
             )
         # Armed exactly as production: B's subscription derives from the
         # bench signal's declared poll_ms (sig-rig-b -> min_interval_ms 50).
@@ -846,7 +848,8 @@ class ContinuityRig:
                 )
                 if _poll_found_dead_session(outcome):
                     raise TrialInfrastructureError(
-                        f"rig-b session already dead at the poll door: {outcome.refusal}"
+                        f"rig-b session already dead at the poll door: {outcome.refusal}",
+                        site="drain-poll-door",
                     )
                 assert not outcome.session_failed, outcome.refusal
                 if outcome.event is not None:
@@ -898,7 +901,19 @@ class TrialInfrastructureError(AssertionError):
     retryable wording raises straight through (pinned by test).
     Subclassing ``AssertionError`` keeps an exhausted retry a normal
     assertion failure for pytest.
+
+    Every raise carries a ``site`` label (review fold, critic F3): the
+    retry budget's evidence base. A bare retry count discards the
+    intermediate sites — exhaustion would report only the last attempt's
+    site — so ``run_trial`` records each failed attempt's label in
+    ``outcome["retry_sites"]`` and the exhausted exception carries its own
+    (the last) site. The keyword is REQUIRED: a defaulted label would let
+    a future site raise unlabelled and silently re-open the hole.
     """
+
+    def __init__(self, message: str, *, site: str) -> None:
+        super().__init__(message)
+        self.site = site
 
 
 def _dead_session_reject(bridge: OTDPBridge, result: OperationResult) -> bool:
@@ -1014,7 +1029,12 @@ def run_trial(
     dispatch-scale bound, or a >50 ms read path tripping the bridge's
     late-result poison on a fast read) is an infrastructure failure, not a
     measurement — ``run_trial`` retries it on a FRESH rig, at most twice,
-    and records the retry count in the outcome. The retryable class is
+    and records the retry count in the outcome, alongside the ordered
+    ``retry_sites`` label of every failed attempt (review fold, critic F3:
+    a bare count discards the composition — a priming-then-pre-flight
+    retry is not the same lane health signal as a single-site retry — and
+    an exhausted trial's exception carries its own, last, site). The
+    retryable class is
     carried STRUCTURALLY (review finding F4): every site that has
     classified its own failure as host starvation raises
     ``TrialInfrastructureError`` — an ``AssertionError`` subclass, so an
@@ -1040,6 +1060,7 @@ def run_trial(
     ``AssertionError`` that merely quotes the historical retryable wording
     (pinned by test). Starvation-shaped NON-retryables that remain are
     disclosed at ``_poll_found_dead_session`` as an owner row."""
+    retry_sites: list[str] = []
     for attempt in range(3):
         try:
             outcome = _run_trial_once(
@@ -1051,8 +1072,10 @@ def run_trial(
                 no_trip=no_trip,
             )
             outcome["retries"] = attempt
+            outcome["retry_sites"] = retry_sites
             return outcome
-        except TrialInfrastructureError:
+        except TrialInfrastructureError as error:
+            retry_sites.append(error.site)
             if attempt == 2:
                 raise
     raise AssertionError("unreachable retry exhaustion")
@@ -1098,7 +1121,8 @@ def _run_trial_once(
                 # with an already-stale signal is fixture starvation, never
                 # a property of the measurement — the marker says retry.
                 raise TrialInfrastructureError(
-                    f"pre-dispatch staleness: {SIG_B} age {last_sig_b.age_ms} ms"
+                    f"pre-dispatch staleness: {SIG_B} age {last_sig_b.age_ms} ms",
+                    site="pre-flight-staleness",
                 )
         write_gap: float | None = None
 
@@ -1150,7 +1174,7 @@ def _run_trial_once(
                 f"{result.error.message if result.error else ''}"
             )
             if _dispatch_failure_is_infrastructure(rig, result):
-                raise TrialInfrastructureError(detail)
+                raise TrialInfrastructureError(detail, site="dispatch-door")
             raise AssertionError(detail)
         duration_ms = (dispatch_end_ns - dispatch_start_ns) / 1e6
 
@@ -1295,7 +1319,7 @@ def _run_trial_once(
                     f"write leg landed {write_result.status.value}: {write_result.error}"
                 )
                 if _dispatch_failure_is_infrastructure(rig, write_result):
-                    raise TrialInfrastructureError(detail)
+                    raise TrialInfrastructureError(detail, site="write-leg-door")
                 raise AssertionError(detail)
             write_gap = _max_tick_gap_ms(rig.tick_times[write_mark:])
 
@@ -1745,6 +1769,11 @@ def test_axis_trials_complete_all_four_axes(
         assert trial["retries"] <= 2, (
             f"trial retried {trial['retries']} times (max 2): {trial}"
         )
+        sites_note = (
+            f", sites {','.join(trial['retry_sites'])}"
+            if trial["retry_sites"]
+            else ""
+        )
         print(
             f"\n{arm}/{device_class} trial {trial['trial']}: "
             f"X1={trial['x1_ms']:.1f} X2={trial['x2_ms']:.1f} "
@@ -1752,8 +1781,9 @@ def test_axis_trials_complete_all_four_axes(
             f"(dur {trial['dispatch_duration_ms']:.1f}, "
             f"onset->obs {trial['onset_to_observation_ms']:.1f}, "
             f"obs->enter {trial['observation_to_enter_call_ms']:.1f}, "
-            f"enter->action {trial['enter_call_to_action_ms']:.1f}, "
-            f"safe {trial['safe_state']})"
+            f"enter->action {trial['enter_to_action_ms']:.1f}, "
+            f"safe {trial['safe_state']}, "
+            f"retries {trial['retries']}{sites_note})"
         )
     if arm == "non_capture":
         # The write leg blacked out ticks too (the exposure class runs
@@ -2217,7 +2247,9 @@ def test_infrastructure_marker_retries_on_a_fresh_trial(
     def flaky_once(*args: Any, **kwargs: Any) -> dict[str, Any]:
         calls.append(kwargs["trial_index"])
         if len(calls) == 1:
-            raise TrialInfrastructureError("pre-dispatch staleness: synthetic")
+            raise TrialInfrastructureError(
+                "pre-dispatch staleness: synthetic", site="pre-flight-staleness"
+            )
         return {"arm": kwargs["arm"], "trial": kwargs["trial_index"]}
 
     monkeypatch.setitem(globals(), "_run_trial_once", flaky_once)
@@ -2235,18 +2267,54 @@ def test_infrastructure_marker_exhausts_at_two_retries(
     """The cap: a chronically starved host fails after exactly three
     attempts, and the marker stays an ``AssertionError`` subclass so the
     exhausted trial still fails as an assertion (the axis trials'
-    starved-host guard keeps its meaning)."""
+    starved-host guard keeps its meaning). The exhausted exception carries
+    its own site label — the LAST attempt's site travels with the raise,
+    not only with a successful outcome."""
     calls: list[int] = []
 
     def always_failing_once(*args: Any, **kwargs: Any) -> dict[str, Any]:
         calls.append(kwargs["trial_index"])
-        raise TrialInfrastructureError("starved")
+        raise TrialInfrastructureError("starved", site="synthetic")
 
     monkeypatch.setitem(globals(), "_run_trial_once", always_failing_once)
     with pytest.raises(TrialInfrastructureError) as raised:
         run_trial(tmp_path, arm="control", device_class="unbuffered", trial_index=1)
     assert len(calls) == 3  # the attempt plus at most two retries
     assert isinstance(raised.value, AssertionError)
+    assert raised.value.site == "synthetic"
+
+
+def test_retry_composition_records_each_failed_attempts_site(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review fold (MEDIUM, critic F3): the retry budget's evidence base.
+    A bare ``retries`` int discards the intermediate sites — exhaustion
+    reports only the LAST attempt's site, so a mixed-sequence trial (priming
+    starvation, then pre-flight staleness, then success) was indistinguishable
+    from a single-site retry, and the design's lane-sits-at-2 signal was
+    unobservable. Pin: ``outcome["retry_sites"]`` carries each failed
+    attempt's site IN ORDER across a forced mixed-site sequence."""
+    calls: list[int] = []
+
+    def mixed_sites_once(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        calls.append(kwargs["trial_index"])
+        if len(calls) == 1:
+            raise TrialInfrastructureError(
+                "priming starvation: synthetic", site="priming-validity"
+            )
+        if len(calls) == 2:
+            raise TrialInfrastructureError(
+                "pre-dispatch staleness: synthetic", site="pre-flight-staleness"
+            )
+        return {"arm": kwargs["arm"], "trial": kwargs["trial_index"]}
+
+    monkeypatch.setitem(globals(), "_run_trial_once", mixed_sites_once)
+    outcome = run_trial(
+        tmp_path, arm="non_capture", device_class="buffered", trial_index=9
+    )
+    assert outcome["retries"] == 2, outcome["retries"]
+    assert outcome["retry_sites"] == ["priming-validity", "pre-flight-staleness"]
+    assert calls == [90, 91, 92]
 
 
 # --- the priming-starvation classification (#241 slice 1) ---------------------------
@@ -2339,6 +2407,7 @@ def test_priming_signal_starvation_is_infrastructure_and_retries(
             tmp_path, arm="non_capture", device_class="buffered", trial_index=7
         )
         assert outcome["retries"] == 1, outcome["retries"]
+        assert outcome["retry_sites"] == ["priming-validity"], outcome["retry_sites"]
     finally:
         _close_partially_constructed(rigs)
 
