@@ -198,6 +198,8 @@ All notable changes to this project will be documented in this file.
 - Wave 2 #2 — M02 narrowed to the corpus's scalar product one
 - Wave 2 #3 — the classified invoke's payload reclaim rides the epilogue floor
 - Item 5 rider 2 completion — the growth site classes pay: rows dataset too (#146)
+- Issue #172 classifier fidelity — exactly-5 FIRE, per-class evaluation, label honesty
+- Issue #172 drain robustness, range gate, X4 3-way split, retry cap
 
 ### Documentation
 
@@ -384,6 +386,7 @@ All notable changes to this project will be documented in this file.
 - Record Amendment 3 — the slice-3 review fold (#146)
 - Issue #231 park design — per-row dispositions for the #146 follow-ons (#232)
 - Define reopen trigger and deferral table row — the deferral-row contract (#99) (#235)
+- Issue #172 cross-instance continuity instrument — BUILD verdict record
 
 ### Features
 
@@ -543,6 +546,8 @@ All notable changes to this project will be documented in this file.
 - Riders, the N=30 E2E through the real activation path, guide dataset half (#146 slice 3 S3e)
 - Item 5 rider 1 — artifact_read serves published variables' payloads (#146)
 - Item 5 riders 2-4 — dataset row labels, the v5 payload addendum, the guide's M14/M15 status (#146)
+- Issue #172 classifier + ledger — frozen #159 §6 made executable
+- Issue #172 two-instance continuity rig — axes X1-X4, controls, checks
 
 ### Hardware Evidence
 
