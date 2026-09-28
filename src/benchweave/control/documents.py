@@ -65,6 +65,7 @@ from benchweave.standards.manifest import (
     DESCRIPTOR_SCHEMA_NAME,
     VERSION_PATTERN,
     StandardsError,
+    declared_dev_head,
     load_dependency_policy_from_corpus,
     retained_versions_from_corpus,
     served_versions_from_corpus,
@@ -93,6 +94,12 @@ _SANCTIONED_PROVIDER_FEATURE = re.compile(
     r"^otdp\.transport\.[a-z][a-z0-9-]*/[0-9]+\.[0-9]+\.[0-9]+$"
 )
 _FEATURE_ID = re.compile(r"^[a-z][a-z0-9_.-]*/[0-9]+\.[0-9]+(?:\.[0-9]+)?$")
+
+#: A dev-pin label's shape (issue #218, design §3.6): canonical-numeral
+#: target plus ``-dev`` — the resolver's ``dependency._DEV_LABEL`` grammar,
+#: mirrored here so classification and the opt-in lane agree on one shape
+#: (the SDK-constant mirroring convention).
+_DEV_PIN_SHAPE = re.compile(r"^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)-dev$")
 
 #: The generic §8.1 transfer kinds (specification §8.1; transport-providers
 #: §3): a provider grammar introduces NEW kinds and never shadows one. The
@@ -181,7 +188,9 @@ class DescriptorPin:
     """One device descriptor's OTDP pin facts, recorded at admission (VR-46).
 
     ``status`` is the classification's decision key — ``served``, ``yanked``,
-    ``nonconforming``, ``retired``, ``unknown``, ``unclassifiable`` — and
+    ``nonconforming``, ``retired``, ``unknown``, ``unclassifiable``, and the
+    dev-stage pair ``dev``/``rc`` (issue #218: a pin naming the manifest's
+    declared head classifies conforming at its stage, VR-9) — and
     authorisation reads IT, never the note's wording (review fold R6: the
     prefixes stay message vocabulary only). ``conformance`` is
     ``"conforming"`` or ``"non-conforming"`` — the Q6 table's two admitting
@@ -236,6 +245,27 @@ def _classify_cached(pin: str, corpus_text: str) -> DescriptorPin:
         raise StandardsError(
             "dependency_policy_invalid: no policy row for standard 'otdp'"
         )
+    if _DEV_PIN_SHAPE.fullmatch(pin):
+        # The dev-pin arm (issue #218, design §3.6): a dev-shaped pin is
+        # CLASSIFIED, never schema-dumped — it must name the manifest's one
+        # declared head exactly (any other dev label is never-carried:
+        # bytes the pin could validate against do not exist as a head).
+        # The stage distinguishes dev from RC (VR-9); the pin validates
+        # against the head's own corpus-pinned bytes (VR-20's side by side).
+        head = declared_dev_head(corpus, _OTDP)
+        if head is None or head.version != pin:
+            return DescriptorPin(
+                otdp_version=pin,
+                status="unknown",
+                conformance="non-conforming",
+                note=(
+                    f"version_unknown: {_OTDP} {pin} names no declared dev head "
+                    "on this corpus (a head is declared or it is not — the "
+                    "active family is never substituted)"
+                ),
+            )
+        status = "rc" if head.candidate else "dev"
+        return DescriptorPin(otdp_version=pin, status=status, conformance="conforming")
     vr37 = _vr37_text(row, pin, corpus, policy)
     if pin in row.retired:
         major, minor, _patch = version_tuple(pin)
@@ -301,7 +331,9 @@ def classify_descriptor_pin(pin: object, *, corpus: Path | None = None) -> Descr
     the same way, and the schema's own const error refuses it at admission
     (the SDK's no-pin posture, mirrored).
     """
-    if not isinstance(pin, str) or VERSION_PATTERN.fullmatch(pin) is None:
+    if not isinstance(pin, str) or (
+        VERSION_PATTERN.fullmatch(pin) is None and _DEV_PIN_SHAPE.fullmatch(pin) is None
+    ):
         shown = pin if isinstance(pin, str) else repr(pin)
         return DescriptorPin(
             otdp_version=shown,
@@ -309,8 +341,9 @@ def classify_descriptor_pin(pin: object, *, corpus: Path | None = None) -> Descr
             conformance="non-conforming",
             note=(
                 f"version_not_classifiable: {_OTDP} pin {shown!r} is not a "
-                "parseable MAJOR.MINOR.PATCH version; the descriptor schema's "
-                "own otdp_version const names it at validation"
+                "parseable MAJOR.MINOR.PATCH version (or <target>-dev label); "
+                "the descriptor schema's own otdp_version const names it at "
+                "validation"
             ),
         )
     return _classify_cached(pin, str(corpus if corpus is not None else _otdp_corpus()))
@@ -1155,6 +1188,18 @@ def _check_cross_constraints(contracts: Path, pins: dict[str, DescriptorPin]) ->
         otdp_requirement = row.requires.get(_OTDP)
         adapter_requirement = row.requires.get("adapter_api")
         for device_id, record in sorted(pins.items()):
+            if record.status in ("dev", "rc"):
+                # Cross-constraint rows are RELEASED-interface facts (their
+                # evidence cites a released version's runtime-interface
+                # claims); a dev-staged pin sits outside them by construction
+                # — a head's target is strictly greater than active, so no
+                # dev pin could ever sit inside a released range, and judging
+                # it there would refuse VR-20's side-by-side outright. The
+                # dev pin's own gates govern it (the resolver's opt-in and
+                # content identity); the laundering hole is closed by the
+                # classifier — a dev label that does not name the declared
+                # head classifies unknown and refuses above.
+                continue
             if otdp_requirement is not None and not parse_interval(
                 otdp_requirement
             ).contains(record.otdp_version):
@@ -1203,7 +1248,10 @@ def _project_full_form(
     pin = descriptor.get("otdp_version")
     record = classify_descriptor_pin(pin)
     ack: dict[str, Any] | None = None
-    classifiable = isinstance(pin, str) and VERSION_PATTERN.fullmatch(pin) is not None
+    classifiable = isinstance(pin, str) and (
+        VERSION_PATTERN.fullmatch(pin) is not None
+        or _DEV_PIN_SHAPE.fullmatch(pin) is not None
+    )
     if classifiable:
         ack = _authorise_pin(
             logical, record, acknowledged_pin=acknowledged_pin, now_wall=now_wall
