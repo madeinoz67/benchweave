@@ -227,6 +227,7 @@ All notable changes to this project will be documented in this file.
 - Corpus-keyed adapter cache, acked-aware warning, bounded classify cache (#217 review fold R3/R4/R5)
 - The devices read path degrades, never 500s (#217 review fold R10)
 - Fold refute F1 dead-log pointers + F2 zero-evidence PASS (#247)
+- Refute fold — six fork-independent MEDIUMs A/B/C/F2/F3/F6 (#218)
 
 ### Documentation
 
@@ -603,6 +604,10 @@ All notable changes to this project will be documented in this file.
 - Pairwise cross-constraint admission check (#217)
 - Run-evidence and API-view surfaces for the pin facts (#217)
 - Gate wrapper with honest machine-readable evidence (#247)
+- Content-addressed dev pins — opt-in, sha lock rows, wheel refusal (#218)
+- Dev-pin admission — dev and released side by side on one bench (#218)
+- Promotion records and their three gates — digest, sweep, pending-successor (#218)
+- The founding promotion record — execution 0.2.0 recovered from history (#218)
 
 ### Hardware Evidence
 
