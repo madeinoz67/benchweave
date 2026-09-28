@@ -75,7 +75,10 @@ one, not an error to work around.
 `docs/compatibility-matrix.md` is generated (never hand edited) from the
 manifest and the SDK lock; regenerate with
 `uv run python -m benchweave.standards matrix`. It carries versions, status
-and migration guidance but no commit SHAs — `python -m benchweave.standards
+and migration guidance, plus the per-version Retained-versions table
+(stage with promotion provenance, range membership, yank, and each
+release's from-predecessor migration note — VR-52), all rendered from
+committed state only; no commit SHAs — `python -m benchweave.standards
 versions` prints the live main/SDK/standards combination.
 
 ### Standards dependency resolution (issue #216, #203 slice 2)

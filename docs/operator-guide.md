@@ -205,15 +205,21 @@ deprecation warning naming the derived move-to. A **retained but
 out-of-range** pin is **non-conforming**: the gateway can validate it
 against its own retained bytes, but loads it only behind a recorded
 per-device **operator acknowledgement**. The acknowledgement is a
-mapping of device id to the exact OTDP pin it covers
-(`operator_acknowledgements`, threaded to the admission call): it binds
+mapping of device id to the exact OTDP pin it covers: authored in an
+optional `operator-acknowledgements.json` beside the lattice documents
+(`{"acknowledgements": {"<device-id>": "<otdp-version>"}}`, validated
+fail-closed — a malformed file refuses startup by name), threaded to
+startup and recovery admission by the shared resolution body. It binds
 the pin it names, so an acknowledgement recorded for one version does
 not authorise a device later re-pinned to another, and one
 acknowledgement cannot cover a bench's other devices. When a
-non-conforming device admits, the recorded acknowledgement appears on
-the admission record and on the run's evidence stream alongside the pin
-and its class — a non-conforming device is never silently shown as
-conforming. Without the acknowledgement, admission refuses with
+non-conforming device admits, the recorded acknowledgement — stamped
+with the admission's time — appears on the admission record, on the
+run's evidence stream alongside the pin and its class, and on the
+device's stored row (the read surfaces derive from that row: an
+acknowledged device does not re-warn on every read) — a non-conforming
+device is never silently shown as conforming. Without the
+acknowledgement, admission refuses with
 `operator_ack_required:` (carrying the `standard_nonconforming:`
 classification).
 
@@ -227,10 +233,10 @@ version — publish it or fix the pin), and
 the OTDP range its devices may pin; a pin outside it refuses naming
 both versions and the constraining row's evidence — an operator
 acknowledgement authorises the version window, never the execution
-runtime interface). The startup composition threads no
-acknowledgements: a non-conforming pin in the startup lattice is a hard
-`startup_admission_rejected:` refusal — bring the pin back inside the
-served window rather than acknowledging at startup.
+runtime interface). A non-conforming pin in the startup lattice without
+a matching entry in `operator-acknowledgements.json` is a hard
+`startup_admission_rejected:` refusal; with one, it loads flagged, and
+withdrawing the file withdraws the authorisation at the next startup.
 
 **Adapter-bridge runs and the quota seam.** A run constructs a real OTDP
 bridge for a bench device only when the device's descriptor declares

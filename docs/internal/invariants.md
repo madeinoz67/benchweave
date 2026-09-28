@@ -525,6 +525,25 @@ rather than rewriting the history — that is how this file earns trust.
   This amendment lands with slice 5 and becomes true then (CON-14's disclosure
   style) — the slice-1 mechanism mirrors the policy block; it does not yet
   render per-version rows.
+  Amendment (2026-09-28, issue #219 — slice 5 LANDED): the per-version table
+  is true now. `render_matrix` renders one row per retained version —
+  stage (naming a recorded promotion where the promotion records carry
+  one), range membership, yank with the derived move-to, and the
+  from-predecessor migration-note pointer — from the policy block and
+  the promotion records, and every render input (the two manifests, the
+  promotion records, `pyproject.toml`, `.gitmodules`) is read from the
+  commit HEAD records through a temp committed-view staging, falling
+  back to the working tree only where the root carries no committed
+  copy to diverge from (the `check.py` pyproject@pin dual posture), so
+  an uncommitted edit moves no rendered byte — pinned by E3's
+  working-tree-only-edit control. The SM-5 gate
+  (`benchweave.standards.migration_notes`, suite-run like the train
+  window and self-anchored on its own arrival the same way) refuses a
+  post-adoption MINOR-or-greater bump whose from-predecessor note row is
+  absent (`migration_note_missing:`) or whose pointer does not resolve
+  to a file under the root (`migration_note_unresolved:`); the note
+  carrier is the policy block's per-version row, and pre-adoption
+  releases carry none by design (D6).
 
 - **[CON-13]** Website version stamps are a pure function of committed state —
   claim sites in `website/index.html` carry `{{stg-*}}` tokens and never
