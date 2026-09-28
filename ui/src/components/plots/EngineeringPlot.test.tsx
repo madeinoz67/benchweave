@@ -4,8 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // The mock captures every setOption payload so trace styling is asserted on the
 // real option object echarts would receive, never on rendered pixels. jsdom's
 // getComputedStyle returns no custom properties, so the component resolves the
-// documented fallback literals: accent #0b7181, alert #a96608 — and a MISSING
-// text-muted token makes a muted hint fall back to the pass-1 default (C4).
+// documented fallback literals: the series palette's LIGHT values (series-1
+// #253421, series-2 #8e7588, series-3 #2f3300, ...), alert #a96608 — and a
+// MISSING text-muted token makes a muted hint fall back to the pass-1 default
+// (C4).
 const setOption = vi.fn();
 vi.mock("echarts/core", () => ({
   init: () => ({ setOption, resize: () => undefined, dispose: () => undefined }),
@@ -63,10 +65,14 @@ function stubMutedToken(value: string) {
  *  changes the answer and the test input stays coupled to the mutation
  *  (light accent #0b7181, dark accent #42cee2). */
 function stubThemeTokens() {
+  const lightSeries = ["#253421", "#8e7588", "#2f3300", "#00379d", "#7e002d", "#746084", "#5a1538", "#183058"];
+  const darkSeries = ["#00744a", "#e3d7ff", "#567200", "#805e71", "#007df3", "#755d9a", "#7d8f00", "#5f8379"];
   vi.stubGlobal("getComputedStyle", (element: Element) => ({
     getPropertyValue: (name: string) => {
       const theme = element.closest("[data-theme]")?.getAttribute("data-theme") ?? "light";
-      if (name === "--bw-accent") return theme === "dark" ? "#42cee2" : "#0b7181";
+      const series = theme === "dark" ? darkSeries : lightSeries;
+      const slot = /^--bw-series-(\d)$/.exec(name);
+      if (slot) return series[Number(slot[1]) - 1] ?? "";
       if (name === "--bw-text-muted") return theme === "dark" ? "#9fb4bd" : "#5b6a73";
       return "";
     },
@@ -103,23 +109,25 @@ describe("EngineeringPlot", () => {
       <EngineeringPlot kind="waveform" title="Untinted" x={{ label: "Time", unit: "s" }} traces={traces} />,
     );
 
-    // Pass-1 defaults pinned against literal expectations: index 0 takes the
-    // accent token, every other index the threshold-severity token; symbol and
-    // line style alternate on index % 2.
+    // Pass-1 defaults pinned against literal expectations (evolved with
+    // #242 slice 3 — the old pins asserted the index-based defect this slice
+    // replaces, and red against the set-derived implementation): the declared
+    // set {a,b,c} sorts to slots 0,1,2 — series-1/2/3, symbols
+    // circle/rect/triangle, all dash-1 solid (slots < 8).
     expect(seriesOf("a")).toMatchObject({
       symbol: "circle",
-      lineStyle: { color: "#0b7181", type: "solid" },
-      itemStyle: { color: "#0b7181" },
+      lineStyle: { color: "#253421", type: "solid" },
+      itemStyle: { color: "#253421" },
     });
     expect(seriesOf("b")).toMatchObject({
-      symbol: "diamond",
-      lineStyle: { color: "#a96608", type: "dashed" },
-      itemStyle: { color: "#a96608" },
+      symbol: "rect",
+      lineStyle: { color: "#8e7588", type: "solid" },
+      itemStyle: { color: "#8e7588" },
     });
     expect(seriesOf("c")).toMatchObject({
-      symbol: "circle",
-      lineStyle: { color: "#a96608", type: "solid" },
-      itemStyle: { color: "#a96608" },
+      symbol: "triangle",
+      lineStyle: { color: "#2f3300", type: "solid" },
+      itemStyle: { color: "#2f3300" },
     });
   });
 
@@ -129,9 +137,9 @@ describe("EngineeringPlot", () => {
     // hold; the hint loses silently.
     plot(new Map([["b", { colorRole: "accent" }]]));
 
-    expect(seriesOf("a").lineStyle.color).toBe("#0b7181");
-    expect(seriesOf("b").lineStyle.color).toBe("#a96608");
-    expect(seriesOf("c").lineStyle.color).toBe("#a96608");
+    expect(seriesOf("a").lineStyle.color).toBe("#253421");
+    expect(seriesOf("b").lineStyle.color).toBe("#8e7588");
+    expect(seriesOf("c").lineStyle.color).toBe("#2f3300");
   });
 
   it("resolves the muted role to the theme's text-muted token when present", () => {
@@ -139,8 +147,8 @@ describe("EngineeringPlot", () => {
     plot(new Map([["c", { colorRole: "muted" }]]));
 
     expect(seriesOf("c").lineStyle.color).toBe("#777777");
-    expect(seriesOf("a").lineStyle.color).toBe("#0b7181");
-    expect(seriesOf("b").lineStyle.color).toBe("#a96608");
+    expect(seriesOf("a").lineStyle.color).toBe("#253421");
+    expect(seriesOf("b").lineStyle.color).toBe("#8e7588");
   });
 
   it("falls back to the pass-1 default when the theme lacks the muted token", () => {
@@ -148,8 +156,8 @@ describe("EngineeringPlot", () => {
     // to the trace's pass-1 default, never paint a light-theme literal.
     plot(new Map([["c", { colorRole: "muted" }]]));
 
-    expect(seriesOf("c").lineStyle.color).toBe("#a96608");
-    expect(seriesOf("c").itemStyle.color).toBe("#a96608");
+    expect(seriesOf("c").lineStyle.color).toBe("#2f3300");
+    expect(seriesOf("c").itemStyle.color).toBe("#2f3300");
   });
 
   it("mutes index 0 and accents a later trace: exactly one accent, on the hinted trace", () => {
@@ -159,8 +167,8 @@ describe("EngineeringPlot", () => {
     plot(new Map([["a", { colorRole: "muted" }], ["c", { colorRole: "accent" }]]));
 
     expect(seriesOf("a").lineStyle.color).toBe("#777777");
-    expect(seriesOf("b").lineStyle.color).toBe("#a96608");
-    expect(seriesOf("c").lineStyle.color).toBe("#0b7181");
+    expect(seriesOf("b").lineStyle.color).toBe("#8e7588");
+    expect(seriesOf("c").lineStyle.color).toBe("#253421");
   });
 
   it("lets only the earliest accent hint win when index 0 is muted", () => {
@@ -173,8 +181,8 @@ describe("EngineeringPlot", () => {
       ]),
     );
 
-    expect(seriesOf("b").lineStyle.color).toBe("#0b7181");
-    expect(seriesOf("c").lineStyle.color).toBe("#a96608");
+    expect(seriesOf("b").lineStyle.color).toBe("#253421");
+    expect(seriesOf("c").lineStyle.color).toBe("#2f3300");
   });
 
   it("keeps visible accent uniqueness across the enumerated claimant-state cross-product", () => {
@@ -217,7 +225,7 @@ describe("EngineeringPlot", () => {
     for (const [hints, expected] of cases) {
       setOption.mockClear();
       plot(new Map(Object.entries(hints)));
-      const accents = series().filter((entry) => entry.lineStyle.color === "#0b7181");
+      const accents = series().filter((entry) => entry.lineStyle.color === "#253421");
       expect(
         accents.map((entry) => entry.id),
         `hints ${JSON.stringify(hints)}`,
@@ -242,13 +250,13 @@ describe("EngineeringPlot", () => {
     // a and c keep exactly the styles they carry in the no-hints control.
     expect(rendered[0]).toMatchObject({
       symbol: "circle",
-      lineStyle: { color: "#0b7181", type: "solid" },
-      itemStyle: { color: "#0b7181" },
+      lineStyle: { color: "#253421", type: "solid" },
+      itemStyle: { color: "#253421" },
     });
     expect(rendered[1]).toMatchObject({
-      symbol: "circle",
-      lineStyle: { color: "#a96608", type: "solid" },
-      itemStyle: { color: "#a96608" },
+      symbol: "triangle",
+      lineStyle: { color: "#2f3300", type: "solid" },
+      itemStyle: { color: "#2f3300" },
     });
     // The accessible description drops the hidden channel; the HTML legend
     // discloses it as a struck-through row instead.
@@ -336,8 +344,8 @@ describe("EngineeringPlot", () => {
     // documented behavior, not surprise.
     plot(new Map([["a", { colorRole: "muted" }], ["b", { colorRole: "accent" }]]));
 
-    expect(seriesOf("a").lineStyle.color).toBe("#0b7181");
-    expect(seriesOf("b").lineStyle.color).toBe("#a96608");
+    expect(seriesOf("a").lineStyle.color).toBe("#253421");
+    expect(seriesOf("b").lineStyle.color).toBe("#8e7588");
   });
 
   it("drives legend swatch colours from the resolved trace styles", () => {
@@ -361,8 +369,8 @@ describe("EngineeringPlot", () => {
     const swatch = (label: string) =>
       screen.getByText(label).closest("li")!.style.getPropertyValue("--legend-swatch");
     expect(swatch("Channel A · V")).toBe("#777777");
-    expect(swatch("Channel B · V")).toBe("#a96608");
-    expect(swatch("Channel C · V")).toBe("#0b7181");
+    expect(swatch("Channel B · V")).toBe("#8e7588");
+    expect(swatch("Channel C · V")).toBe("#253421");
   });
 
   it("renders the threshold carrier-independently when every trace is hidden", () => {
@@ -402,16 +410,16 @@ describe("EngineeringPlot", () => {
         <EngineeringPlot kind="time_series" title="Theme flip" x={{ label: "Time", unit: "s" }} traces={traces} />
       </div>,
     );
-    expect(seriesOf("a").lineStyle.color).toBe("#0b7181");
+    expect(seriesOf("a").lineStyle.color).toBe("#253421");
     const swatch = () =>
       screen.getByText("Channel A · V").closest("li")!.style.getPropertyValue("--legend-swatch");
-    expect(swatch()).toBe("#0b7181");
+    expect(swatch()).toBe("#253421");
 
     container.firstElementChild!.setAttribute("data-theme", "dark");
     await waitFor(() => expect(setOption).toHaveBeenCalledTimes(2));
     const second = setOption.mock.calls[1][0].series as Array<{ id: string; lineStyle: { color: string } }>;
-    expect(second.find((entry) => entry.id === "a")!.lineStyle.color).toBe("#42cee2");
-    expect(swatch()).toBe("#42cee2");
+    expect(second.find((entry) => entry.id === "a")!.lineStyle.color).toBe("#00744a");
+    expect(swatch()).toBe("#00744a");
   });
 
   it("does not re-resolve without an attribute flip (FC6 control)", () => {

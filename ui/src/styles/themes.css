@@ -17,6 +17,14 @@
   --bw-critical: #b63830;
   --bw-trip: #a92858;
   --bw-success: #177158;
+  --bw-series-1: #253421;
+  --bw-series-2: #8e7588;
+  --bw-series-3: #2f3300;
+  --bw-series-4: #00379d;
+  --bw-series-5: #7e002d;
+  --bw-series-6: #746084;
+  --bw-series-7: #5a1538;
+  --bw-series-8: #183058;
 }
 
 [data-theme="dark"] {
@@ -37,4 +45,12 @@
   --bw-critical: #ff6d63;
   --bw-trip: #ff5d91;
   --bw-success: #67d8b2;
+  --bw-series-1: #00744a;
+  --bw-series-2: #e3d7ff;
+  --bw-series-3: #567200;
+  --bw-series-4: #805e71;
+  --bw-series-5: #007df3;
+  --bw-series-6: #ae686e;
+  --bw-series-7: #755d9a;
+  --bw-series-8: #7d8f00;
 }

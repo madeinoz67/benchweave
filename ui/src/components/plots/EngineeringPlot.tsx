@@ -2,7 +2,7 @@ import * as echarts from "echarts/core";
 import { GridComponent, LegendComponent, MarkLineComponent, TooltipComponent } from "echarts/components";
 import { LineChart } from "echarts/charts";
 import { SVGRenderer } from "echarts/renderers";
-import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
 import "./engineering-plot.css";
 
@@ -39,52 +39,105 @@ export interface EngineeringPlotProps {
 
 interface TraceStyle {
   color: string;
-  symbol: "circle" | "diamond";
+  symbol: string;
   lineType: "solid" | "dashed";
 }
 
-/** Resolve index-derived defaults (pass 1) over the FULL ordered trace list,
+/** The contract's symbol sequence (§E.2.2): 8 framework-neutral shapes; the
+ *  reference binding uses the ECharts built-ins plus two custom SVG paths
+ *  (plus, saltire) where the chart library lacks a shape. */
+const SYMBOL_SEQUENCE = [
+  "circle",
+  "rect",
+  "triangle",
+  "diamond",
+  "pin",
+  "arrow",
+  "path://M5,-1.4 L1.4,-1.4 L1.4,-5 L-1.4,-5 L-1.4,-1.4 L-5,-1.4 L-5,1.4 L-1.4,1.4 L-1.4,5 L1.4,5 L1.4,1.4 L5,1.4 Z",
+  "path://M4.74,3.04 L3.04,4.74 L-3.04,-4.74 L-4.74,-3.04 Z M3.04,-4.74 L4.74,-3.04 L-4.74,3.04 L-3.04,4.74 Z",
+] as const;
+
+/** Bytewise lexicographic comparison (UTF-8 byte order) — the contract's
+ *  slot-assignment order. UTF-8 byte order equals code-point order, so this
+ *  compares code points left to right, NOT JS string ordering (which is
+ *  UTF-16 code-unit order). */
+const bytewiseLess = (a: string, b: string): boolean => {
+  const encoder = new TextEncoder();
+  const left = encoder.encode(a);
+  const right = encoder.encode(b);
+  const length = Math.min(left.length, right.length);
+  for (let i = 0; i < length; i += 1) {
+    if (left[i]! < right[i]!) return true;
+    if (left[i]! > right[i]!) return false;
+  }
+  return left.length < right.length;
+};
+
+/** The trace-id -> slot map (pass 1's assignment), used by the legend's
+ *  data-bw-series-slot disclosure. */
+function slotMap(traces: readonly PlotTrace[]): Map<string, number> {
+  const slots = new Map<string, number>();
+  [...traces].map((trace) => trace.id).sort((a, b) => (bytewiseLess(a, b) ? -1 : bytewiseLess(b, a) ? 1 : 0)).forEach((id, index) => slots.set(id, index));
+  return slots;
+}
+
+/** Resolve SET-derived defaults (pass 1) over the FULL declared trace id set,
  *  then bias colours by hint (pass 2). Styles are computed before any
  *  visibility filtering so hiding a channel can never shift the styling of
- *  the channels around it. */
+ *  the channels around it.
+ *
+ *  Pass 1 (the contract §E.2.1 slot grammar): the declared ids are sorted
+ *  bytewise (UTF-8 byte order) and slot i takes colour series-((i mod 8)+1),
+ *  dash-1/dash-2 by i<8, and symbol-((i mod 8)+1). Assignment is a pure
+ *  function of the declared id SET — display order never enters it, so
+ *  reordering the declared list restyles nothing, and hiding a channel (a
+ *  display concern) never restyles its siblings. Adding or removing a
+ *  declared id re-derives the plot's slots (the set changed). */
 function resolveStyles(
   traces: readonly PlotTrace[],
   hints: ReadonlyMap<string, TraceHint> | undefined,
-  tokens: { accent: string; alert: string; muted?: string },
+  tokens: { series: readonly string[]; alert: string; muted?: string },
 ): TraceStyle[] {
-  const defaults: TraceStyle[] = traces.map((_, index) => ({
-    color: index === 0 ? tokens.accent : tokens.alert,
-    symbol: index % 2 === 0 ? "circle" : "diamond",
-    lineType: index % 2 === 0 ? "solid" : "dashed",
-  }));
+  const slots = slotMap(traces);
+  const defaults: TraceStyle[] = traces.map((trace) => {
+    const slot = slots.get(trace.id) ?? 0;
+    return {
+      // readTokens guarantees eight entries (fallback literals when the theme
+      // resolves none), so the slot colour is always defined.
+      color: tokens.series[slot % 8]!,
+      symbol: SYMBOL_SEQUENCE[slot % 8],
+      lineType: slot < 8 ? "solid" : "dashed",
+    };
+  });
   if (hints === undefined) return defaults;
   // Uniqueness of the emphasis colour is a host invariant, arbitrated over
-  // the VISIBLE traces in trace order: pass-1 index-0 accent is the FIRST
+  // the VISIBLE traces in trace order: pass-1 slot-1 (series-1) is the FIRST
   // claim, so an accent hint on a later trace loses silently to it (no
-  // cascade: index 0 keeps its default). A hidden trace releases its claim
+  // cascade: slot 1 keeps its default). A hidden trace releases its claim
   // and neither claims nor starves — so "no emphasis rendered" is never
   // laundered from "no emphasis requested". A muted trace releases its claim
   // only when the theme provides the muted token: a token-less muted hint
-  // falls back to its pass-1 default, which still claims for index 0.
-  // Muting index 0 is the sanctioned emphasis composition; among visible
+  // falls back to its pass-1 default, which still claims for slot 1.
+  // Muting slot 1 is the sanctioned emphasis composition; among visible
   // traces hinting accent, the earliest in trace order wins while the others
-  // revert to their pass-1 defaults.
+  // revert to their pass-1 defaults. The accent hint's binding is
+  // --bw-series-1 (the plot's emphasis role), per the contract §E.2.
   let accentClaimed = false;
   return traces.map((trace, index) => {
     const hint = hints.get(trace.id);
     const hidden = hint?.visible === false;
     if (hint?.colorRole === "muted" && tokens.muted !== undefined) {
-      return { ...defaults[index], color: tokens.muted };
+      return { ...defaults[index]!, color: tokens.muted };
     }
-    if (!hidden && defaults[index].color === tokens.accent) {
+    if (!hidden && defaults[index]!.color === tokens.series[0]) {
       accentClaimed = true;
-      return defaults[index];
+      return defaults[index]!;
     }
     if (!hidden && hint?.colorRole === "accent" && !accentClaimed) {
       accentClaimed = true;
-      return { ...defaults[index], color: tokens.accent };
+      return { ...defaults[index]!, color: tokens.series[0] };
     }
-    return defaults[index];
+    return defaults[index]!;
   });
 }
 
@@ -98,12 +151,16 @@ function readTokens(
   styles: CSSStyleDeclaration,
 ) {
   const mutedToken = styles.getPropertyValue("--bw-text-muted").trim() || undefined;
+  // The series fallback literals are the LIGHT theme's slot values (the same
+  // jsdom-compat pattern as the other documented fallbacks); the in-tree
+  // themes always define all eight, and L3 pins the mirror.
+  const seriesFallback = ["#253421", "#8e7588", "#2f3300", "#00379d", "#7e002d", "#746084", "#5a1538", "#183058"];
   return {
     text: mutedToken ?? "#5b6a73",
     muted: mutedToken,
     border: styles.getPropertyValue("--bw-border").trim() || "#c3cfd5",
-    accent: styles.getPropertyValue("--bw-accent").trim() || "#0b7181",
     alert: styles.getPropertyValue(`--bw-${severity ?? "warning"}`).trim() || "#a96608",
+    series: Array.from({ length: 8 }, (_, i) => styles.getPropertyValue(`--bw-series-${i + 1}`).trim() || seriesFallback[i]!),
   };
 }
 
@@ -119,6 +176,7 @@ export function EngineeringPlot({ kind, title, x, traces, threshold, hints }: En
   const descriptionId = useId();
   const [themeVersion, setThemeVersion] = useState(0);
   const [legendStyles, setLegendStyles] = useState<TraceStyle[]>([]);
+  const slots = useMemo(() => slotMap(traces), [traces]);
   const visible = (trace: PlotTrace) => hints?.get(trace.id)?.visible !== false;
   const description = `${inUnit(x.label, x.unit)}; ${traces.filter(visible).map((trace) => inUnit(trace.label, trace.unit)).join("; ")}`;
 
@@ -236,7 +294,8 @@ export function EngineeringPlot({ kind, title, x, traces, threshold, hints }: En
           return (
             <li
               key={trace.id}
-              data-line={index % 2 === 0 ? "solid" : "dashed"}
+              data-line={legendStyles[index]?.lineType ?? "solid"}
+              data-bw-series-slot={String((slots.get(trace.id) ?? 0) % 8 + 1)}
               data-hidden={isHidden ? "true" : undefined}
               aria-label={isHidden ? `${labelled(trace.label, trace.unit)} (hidden by presentation preference)` : undefined}
               style={{ "--legend-swatch": legendStyles[index]?.color ?? "" } as CSSProperties}

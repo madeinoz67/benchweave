@@ -52,14 +52,15 @@ describe("EngineeringPlot real rendering", () => {
     expect(canvasSvg(container).textContent).toContain("Warning limit");
   });
 
-  it("redraws the SVG with the flipped theme's accent (FC6, real renderer)", async () => {
+  it("redraws the SVG with the flipped theme's series token (FC6, real renderer)", async () => {
     // Metric D at the FC1 bar: the theme tokens are keyed to the DOM
-    // (light accent #0b7181, dark accent #42cee2) and the flip must reach
+    // (light series-1 #253421, dark series-1 #00744a — evolved with #242
+    // slice 3: pass-1 slot-1 is the series-1 token) and the flip must reach
     // the drawn pixels through a fresh render, not just a recorded option.
     vi.stubGlobal("getComputedStyle", (element: Element) => ({
       getPropertyValue: (name: string) => {
         const theme = element.closest("[data-theme]")?.getAttribute("data-theme") ?? "light";
-        if (name === "--bw-accent") return theme === "dark" ? "#42cee2" : "#0b7181";
+        if (name === "--bw-series-1") return theme === "dark" ? "#00744a" : "#253421";
         if (name === "--bw-text-muted") return theme === "dark" ? "#9fb4bd" : "#5b6a73";
         return "";
       },
@@ -74,11 +75,11 @@ describe("EngineeringPlot real rendering", () => {
         />
       </div>,
     );
-    expect(canvasSvg(container).innerHTML).toContain("#0b7181");
+    expect(canvasSvg(container).innerHTML).toContain("#253421");
 
     container.firstElementChild!.setAttribute("data-theme", "dark");
-    await waitFor(() => expect(canvasSvg(container).innerHTML).toContain("#42cee2"));
-    expect(canvasSvg(container).innerHTML).not.toContain("#0b7181");
+    await waitFor(() => expect(canvasSvg(container).innerHTML).toContain("#00744a"));
+    expect(canvasSvg(container).innerHTML).not.toContain("#253421");
   });
 });
 

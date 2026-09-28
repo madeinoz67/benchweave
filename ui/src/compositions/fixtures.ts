@@ -123,9 +123,15 @@ export const daqProofFixture: DeviceWorkbenchFixture = {
   ],
   stagedVoltage: 5,
   message: "Excitation output within the commissioned envelope",
+  // Six declared channels: the S3-A5 example-fixture proof draws exactly
+  // these six traces and asserts six distinct series tokens.
   traces: [
     { id: "ch1", label: "Channel 1", unit: "V", values: [[-1, 4.98], [0, 4.98]] },
     { id: "ch2", label: "Channel 2", unit: "V", values: [[-1, 1.02], [0, 1.02]] },
+    { id: "ch3", label: "Channel 3", unit: "V", values: [[-1, 0.24], [0, 0.24]] },
+    { id: "ch4", label: "Channel 4", unit: "V", values: [[-1, -0.11], [0, -0.11]] },
+    { id: "ch5", label: "Channel 5", unit: "V", values: [[-1, 3.3], [0, 3.3]] },
+    { id: "ch6", label: "Channel 6", unit: "V", values: [[-1, 0.5], [0, 0.5]] },
   ],
   output: { energised: true, trip: false },
 };

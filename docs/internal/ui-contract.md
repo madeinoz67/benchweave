@@ -41,14 +41,16 @@ those files, in both themes, in both directions (a change to either requires the
 to change in the same commit). Components must not hard-code a colour or shadow that
 conveys product meaning; theme changes luminance and contrast, not meaning.
 
-Series tokens (`--bw-series-1…8`), the dash sequence and the symbol sequence are added
-by the plot-series slice (issue #242 slice 3); their absence here is a deferral, not a
-gap in this contract's authority.
+The plot-series tokens (`--bw-series-1…8`), the dash sequence and the symbol sequence
+land with the plot-series slice (issue #242 slice 3); their values carry the computed
+proofs in `ui/src/series-colors.test.ts` (contrast, severity non-confusion under dual
+CVD models, adjacency — thresholds pre-committed in the design record §6).
 
 ### §A.1 Colour palette
 
-Schema: `Token | Light | Dark | Use` — 16 rows. The first 14 carry product meaning;
-the last 2 are the theme-dependent colour inputs the elevation shadow compositions in
+Schema: `Token | Light | Dark | Use` — 24 rows. The first 14 carry product meaning;
+the next 8 are the plot-series slots (§E.2 — set-derived trace assignment); the last 2
+are the theme-dependent colour inputs the elevation shadow compositions in
 `tokens.css` reference (pinned so that every theme-varying colour in `themes.css` is
 contract-pinned).
 
@@ -68,6 +70,14 @@ contract-pinned).
 | `--bw-critical` | `#b63830` | `#ff6d63` | Immediate operator action |
 | `--bw-trip` | `#a92858` | `#ff5d91` | Protective trip and inhibited control |
 | `--bw-success` | `#177158` | `#67d8b2` | Confirmed successful outcome |
+| `--bw-series-1` | `#253421` | `#00744a` | Plot series slot 1 (§E.2; set-derived assignment) |
+| `--bw-series-2` | `#8e7588` | `#e3d7ff` | Plot series slot 2 (§E.2; set-derived assignment) |
+| `--bw-series-3` | `#2f3300` | `#567200` | Plot series slot 3 (§E.2; set-derived assignment) |
+| `--bw-series-4` | `#00379d` | `#805e71` | Plot series slot 4 (§E.2; set-derived assignment) |
+| `--bw-series-5` | `#7e002d` | `#007df3` | Plot series slot 5 (§E.2; set-derived assignment) |
+| `--bw-series-6` | `#746084` | `#ae686e` | Plot series slot 6 (§E.2; set-derived assignment) |
+| `--bw-series-7` | `#5a1538` | `#755d9a` | Plot series slot 7 (§E.2; set-derived assignment) |
+| `--bw-series-8` | `#183058` | `#7d8f00` | Plot series slot 8 (§E.2; set-derived assignment) |
 | `--bw-shadow-dark` | `#b9c5cc` | `#0c1317` | Dark component of elevation shadows |
 | `--bw-shadow-light` | `#ffffff` | `#354852` | Light component of elevation shadows |
 
@@ -248,11 +258,99 @@ Schema: `Component | Root element | Required attributes | Required roles | Requi
 | `rotary-control` | `div` | `type=button ~ aria-label ~ aria-valuemin ~ aria-valuemax ~ aria-valuenow ~ aria-valuetext~=staged` | `slider` | `bw-rotary ~ bw-rotary__knob ~ bw-rotary__value ~ bw-rotary__state` | `Staged` | A rotary control is always paired with a precise numeric field and an explicit Apply action; it stages intent and emits no device command while dragged. `aria-valuetext` reads "`{value} {unit}`, staged". |
 | `reading-tile` | `section` | `data-severity ~ aria-label` | `region` | `bw-reading ~ bw-reading__header ~ bw-reading__severity ~ bw-reading__value ~ bw-reading__quality` | `steady · 2 s` | The tile renders the severity icon and its label, the value with adjacent unit, and a quality line "`{quality} · {freshness}`" (canonical fixture values: quality `steady`, freshness `2 s` — the required-text literal is the canonical line, so it discriminates a renderer that drops or misjoins either side). A reading does not become verified merely because it rendered; do not optimistically copy a requested value into an applied reading. |
 | `alert-bubble` | `aside` | `data-severity ~ aria-label=Dismiss` | `status` | `bw-alert-bubble ~ bw-alert-bubble__content` | — | Title renders in a strong element, message in a paragraph, optional source in small. Critical and trip use live region `alert` (§B.1); the dismiss affordance renders only for dismissible severities (§B.1) and carries `aria-label="Dismiss"`. |
-| `engineering-plot` | `figure` | `role=img ~ aria-label ~ aria-describedby ~ aria-label=Traces ~ aria-label~=(hidden by presentation preference) ~ data-line ~ data-hidden` | `img` | `bw-plot ~ bw-plot__canvas ~ bw-plot__legend ~ bw-visually-hidden` | `hidden` | The canvas carries `role="img"` with the plot title and a described-by textual chart description. Every trace is listed in a visible legend labelled "Traces"; legend items expose their line form via `data-line` (`solid`/`dashed`) and hidden channels via `data-hidden`, the hidden marker text, and an aria-label ending "(hidden by presentation preference)". Series assignment: issue #242 slice 3. |
+| `engineering-plot` | `figure` | `role=img ~ aria-label ~ aria-describedby ~ aria-label=Traces ~ aria-label~=(hidden by presentation preference) ~ data-line ~ data-bw-series-slot ~ data-hidden` | `img` | `bw-plot ~ bw-plot__canvas ~ bw-plot__legend ~ bw-visually-hidden` | `hidden` | The canvas carries `role="img"` with the plot title and a described-by textual chart description. Every trace is listed in a visible legend labelled "Traces"; legend items expose their line form via `data-line` (`solid`/`dashed` — the resolved dash, not a display position), their series slot via `data-bw-series-slot` (§E.2.1: `((i mod 8) + 1)`, wrapping at 8), and hidden channels via `data-hidden`, the hidden marker text, and an aria-label ending "(hidden by presentation preference)". Series assignment: §E.2. |
 | `data-table` | `div` | `scope=col` | `table` | `bw-table-wrap ~ bw-data-table` | — | The table carries a caption naming the data; column headers are `th[scope=col]`; rows keep a stable key. Dense data sits on a recessed surface. |
 | `panel` | `section` | `data-surface ~ aria-label` | `region` | `bw-panel ~ bw-panel__header ~ bw-panel__title ~ bw-panel__body` | — | `data-surface` is `raised` for actionable groups and bounded modules, `recessed` for plots, tables, logs and dense data. An optional eyebrow span (`bw-panel__eyebrow`) precedes the title. Structural narrative and example HTML are renderer guidance. |
 | `mode-banner` | `section` | `data-bw-mode-banner ~ data-bw-mode ~ aria-label=Presentation mode` | `region` | `bw-mode-banner ~ bw-mode-banner__entry` | `SIMULATED PRESENTATION DATA ~ NO GATEWAY · LOCAL PRESENTATION ONLY ~ NO CONTROLLER LEASE · ACTIONS CANNOT BE AUTHORISED ~ NO POLICY ENGINE · POLICY CHECKS UNAVAILABLE` | Contract §D: persistent, non-dismissible, first element of the page's main region; one entry per active mode in the fixed order of §D.1; absence asserts full-authority presentation. The required-text literals are the four fixed wordings (the enforcement fixture renders all four modes; a page renders only its active modes). |
 | `confirm-action` | `div` | `data-bw-confirm=armed ~ aria-expanded` | — | `bw-confirm ~ bw-confirm__step ~ bw-confirm__text` | `the output will be energised ~ 12.5 V ~ PSU-07 output ~ Confirm to proceed. ~ Confirm: Energise output ~ Cancel` | Contract §C.1 R-ENERGISE-1: the initial control only stages; the confirm step — a second explicit action — states the effect, the exact value with unit (non-optional — a confirm that cannot state the values it will apply is not conforming), and the target. The armed text joins as "`effect`: `value unit` to `target`. Confirm to proceed."; the second action is labelled "Confirm: `label`" and the dismissal "Cancel"; the initial control carries `aria-expanded` and the root's `data-bw-confirm` is `armed` or `idle`. **The guard holds at fire time**: `disabled`/`disabledReason` apply to the armed Confirm button as well as the initial control — a guard arriving while armed (protective trip, lost authority) disables the dispatch with its required visible reason, and the combined trip-plus-no-authority state presents `protection-active` (the trip is the present blocker). The staged intent is never silently discarded: no auto-disarm, Cancel stays enabled, and a departing guard re-enables the confirm. For energy-sourcing actions only; an energy-removing action is one action, never confirmed, never gated (R-DEENERGISE-1) and must not use this pattern. |
+
+### §E.2 Series assignment (`engineering-plot` sub-rows)
+
+Series assignment is a pure function of the plot's declared channel id set (plugin-ui
+`$defs/plot` `y`, `maxItems: 16` — cited from the standard, never restated as our
+number): the declared ids are sorted bytewise (UTF-8 byte order) and slot `i` (0-based)
+takes the colour, dash and symbol below. Display order never enters the assignment;
+hiding or reordering display restyles nothing; adding or removing a declared id
+re-derives the plot's slots (the set changed). Uniqueness at the ceiling: the 16
+declared ids produce 16 distinct (colour, dash) pairs and 16 distinct (symbol, dash)
+pairs — the second is the monochrome/dash-only reproduction arm (8 symbols × 2 dashes
+with no colour at all). A 17th declared id would collide with slot 8's pair; it is
+refused by the wire schema (the ceiling), not by the renderer.
+
+Legend disclosure: each legend row carries `data-bw-series-slot="((i mod 8) + 1)"` and
+`data-line` naming its resolved dash.
+
+**Waveform residual (disclosed):** symbols render on `time_series` plots only;
+in `waveform` plots identity is carried by colour and dash alone, so the
+same-dash census below (all 28 token pairs per theme ≥ 8 ΔE00) is the
+load-bearing separation for waveforms. Whether symbols should render in
+waveforms is an owner fork, not part of this contract.
+
+#### §E.2.0 Pass-2 composition (channel_hints)
+
+Schema: `Hint | Effect` — 4 rows. These rows are NORMATIVE on top of the slot
+assignment: a contract-only host must paint identically to the reference
+renderer (the concrete divergence case: an accent hint on a channel that slot
+assignment alone would paint `--bw-series-6`).
+
+| Hint | Effect |
+| --- | --- |
+| `color_role: "accent"` | The hinted channel is repainted `--bw-series-1` (the plot's emphasis role — the binding of the accent hint), overriding its slot colour. Exactly one emphasis colour renders per plot: pass-1 slot 1 (the first bytewise slot among visible traces) is the FIRST claim, so an accent hint on any other trace loses silently to it — no cascade, slot 1 keeps its default. Among visible traces hinting accent, the earliest in trace order wins; the others revert to their slot colours. |
+| `color_role: "muted"` | The hinted channel is repainted `--bw-text-muted`, releasing its emphasis claim — but only when the theme resolves the muted token; a token-less muted hint falls back to the trace's slot colour (which still claims if it is slot 1). |
+| `visible: false` | The channel is not drawn, but its SLOT never moves: styles are resolved over the full declared set before visibility filters, so hiding a channel never restyles its siblings. A hidden trace releases its emphasis claim and neither claims nor starves. |
+| (no hint) | The channel keeps its §E.2.1 slot colour, dash and symbol. |
+
+#### §E.2.1 Slot mapping
+
+Schema: `Slot i | Colour | Dash | Symbol` — 16 rows. Slot `i` is 0-based; the
+series and symbol NAMES are 1-based (`series-1` = slot 0). The ceiling is
+plugin-ui `y.maxItems: 16` WITH `uniqueItems: true` (ids are unique on the
+wire), cited from the standard. A 17th declared id is refused by the wire
+schema, not the renderer; the formula would map it (i=16) onto the same
+(colour, dash) pair as i=8.
+
+| Slot i | Colour | Dash | Symbol |
+| --- | --- | --- | --- |
+| 0 | `--bw-series-1` | `dash-1` | `symbol-1` |
+| 1 | `--bw-series-2` | `dash-1` | `symbol-2` |
+| 2 | `--bw-series-3` | `dash-1` | `symbol-3` |
+| 3 | `--bw-series-4` | `dash-1` | `symbol-4` |
+| 4 | `--bw-series-5` | `dash-1` | `symbol-5` |
+| 5 | `--bw-series-6` | `dash-1` | `symbol-6` |
+| 6 | `--bw-series-7` | `dash-1` | `symbol-7` |
+| 7 | `--bw-series-8` | `dash-1` | `symbol-8` |
+| 8 | `--bw-series-1` | `dash-2` | `symbol-1` |
+| 9 | `--bw-series-2` | `dash-2` | `symbol-2` |
+| 10 | `--bw-series-3` | `dash-2` | `symbol-3` |
+| 11 | `--bw-series-4` | `dash-2` | `symbol-4` |
+| 12 | `--bw-series-5` | `dash-2` | `symbol-5` |
+| 13 | `--bw-series-6` | `dash-2` | `symbol-6` |
+| 14 | `--bw-series-7` | `dash-2` | `symbol-7` |
+| 15 | `--bw-series-8` | `dash-2` | `symbol-8` |
+
+The colour values are the §A.1 series tokens (`--bw-series-1…8`, per theme), carrying
+the computed proofs of `ui/src/series-colors.test.ts`.
+
+#### §E.2.2 Sequences
+
+Schema: `Key | Shape description | Reference binding` — 10 rows (2 dash, 8 symbol).
+
+| Key | Shape description | Reference binding |
+| --- | --- | --- |
+| `dash-1` | Solid line — no gaps | ECharts `solid` |
+| `dash-2` | Fixed dash pattern — equal on/off segments (the reference binding draws 4 px on, 4 px off at the default stroke width) | ECharts `dashed` |
+| `symbol-1` | Filled circle | `circle` |
+| `symbol-2` | Filled square | `rect` |
+| `symbol-3` | Filled upward triangle | `triangle` |
+| `symbol-4` | Filled diamond | `diamond` |
+| `symbol-5` | Filled teardrop (pin) | `pin` |
+| `symbol-6` | Filled arrowhead | `arrow` |
+| `symbol-7` | Filled plus (cross of two bars) | custom SVG path |
+| `symbol-8` | Filled saltire (diagonal cross of two bars) | custom SVG path |
+
+The reference binding is implementation guidance (the ECharts marker names the
+reference renderer uses; where the chart library lacks a shape the binding is a custom
+SVG path). Any icon set can bind from the shape descriptions.
 
 ## §F Icon set
 

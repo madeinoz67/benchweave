@@ -289,7 +289,11 @@ stating the exact value and target; de-energising is always one action;
 energy-sourcing controls disable with a visible reason while a protective
 trip is active; every page carries the presentation-mode banner; and
 transport failures at the boundary render as the no-response refusal —
-unknown whether anything was sent, do not retry blindly.
+unknown whether anything was sent, do not retry blindly. Since the
+plot-series slice, trace colours and symbols derive from the declared
+channel id SET: adding or removing a declared channel re-derives every
+slot in that plot, so an operator's learned colour-to-channel mapping
+goes stale the moment the declaration changes.
 
 A manifest page of kind `readings` or `dataset` may declare `plots`
 (`time_series` over an observation binding, `waveform` over a dataset
