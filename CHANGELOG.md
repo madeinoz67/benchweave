@@ -233,6 +233,7 @@ All notable changes to this project will be documented in this file.
 - The matrix committed-read fallback, gated and env-immune (#219 fold FIX B + F4)
 - SM-5 pairs on the version lattice, not committer clocks (#219 fold FIX C)
 - LOW folds — the token's absence semantics and the guard pin (#219 refute wave)
+- Fold the #257 review battery — 12 rows, one batch
 
 ### Documentation
 
@@ -624,6 +625,7 @@ All notable changes to this project will be documented in this file.
 - The matrix's per-version rows, from committed state (#219 slice 5)
 - The SM-5 migration-note gate and its walk (#219 slice 5)
 - Operator acknowledgement persistence — D11 lands (#219 slice 5)
+- Safety behaviours in the reference renderer (#242 slice 2)
 
 ### Hardware Evidence
 
@@ -717,6 +719,8 @@ All notable changes to this project will be documented in this file.
 - Advance packages/sdk to 3b14d0e (DatasetServices protocol, #146 slice 1)
 - Advance the SDK pointer to the fix-wave tip
 - Advance the SDK pointer to the late-folds tip
+- Advance packages/sdk to the safety-behaviours renderer (#242 slice 2)
+- Advance packages/sdk to the review-fold renderer (#242 slice 2)
 
 ### Performance
 
