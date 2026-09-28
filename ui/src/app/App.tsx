@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Moon, Sun } from "lucide-react";
 
 import { Button } from "../components/actions/Button";
+import { ModeBanner } from "../components/feedback/ModeBanner";
 import { DeviceWorkbench } from "../compositions/DeviceWorkbench";
 import { warningWorkbench } from "../compositions/fixtures";
 import "./app.css";
@@ -21,8 +22,8 @@ export function App() {
 
   return (
     <main className="bw-app" data-theme={theme}>
+      <ModeBanner modes={["simulated"]} />
       <div className="bw-app__toolbar">
-        <p className="bw-simulation-banner">Simulated presentation data</p>
         <Button variant="tertiary" onClick={switchTheme} aria-label={`Use ${nextTheme} theme`}>
           {theme === "light" ? <Moon size={17} aria-hidden="true" /> : <Sun size={17} aria-hidden="true" />}
           {nextTheme === "dark" ? "Dark" : "Light"}

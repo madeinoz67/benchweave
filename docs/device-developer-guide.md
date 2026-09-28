@@ -272,7 +272,15 @@ proof the projection gate (not a rewrite) did the work. Its own
 How any host renders a plugin — tokens, severities, component contracts and
 safety-relevant presentation — is defined normatively by the
 [UI renderer-neutral component contract](internal/ui-contract.md); the
-`ui/` workbench is one implementation of it.
+`ui/` workbench is one implementation of it. Since the safety-behaviours
+slice (#242 slice 2), that contract's safety rules are enforced in the
+reference renderer and its built preview: energy-sourcing actions
+(output on, set-point change on an energised output) take a confirm step
+stating the exact value and target; de-energising is always one action;
+energy-sourcing controls disable with a visible reason while a protective
+trip is active; every page carries the presentation-mode banner; and
+transport failures at the boundary render as the no-response refusal —
+unknown whether anything was sent, do not retry blindly.
 
 A manifest page of kind `readings` or `dataset` may declare `plots`
 (`time_series` over an observation binding, `waveform` over a dataset

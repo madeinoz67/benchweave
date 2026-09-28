@@ -110,3 +110,12 @@
     flex-direction: column;
   }
 }
+
+.bw-output-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--bw-space-3);
+  align-items: flex-start;
+  padding-top: var(--bw-space-3);
+  border-top: 1px solid var(--bw-border);
+}

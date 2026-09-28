@@ -4,26 +4,51 @@ import { createElement, type ReactElement } from "react";
 import { describe, expect, it } from "vitest";
 
 import { Button } from "./components/actions/Button";
+import { ConfirmAction } from "./components/actions/ConfirmAction";
 import { DataTable, type DataColumn } from "./components/data/DataTable";
 import { AlertBubble } from "./components/feedback/AlertBubble";
+import { ModeBanner } from "./components/feedback/ModeBanner";
+import { RefusalMessage, type RefusalCode } from "./components/feedback/refusals";
 import { NumericInput } from "./components/inputs/NumericInput";
 import { RotaryControl } from "./components/instruments/RotaryControl";
 import { EngineeringPlot, type PlotTrace, type TraceHint } from "./components/plots/EngineeringPlot";
 import { ReadingTile } from "./components/readings/ReadingTile";
 import { Panel } from "./components/surfaces/Panel";
 
+// Kept as .ts (the designed filename, referenced by the contract's authoring
+// rule and drift obligation 12) with createElement fixtures rather than JSX,
+// which would force a .tsx rename.
+
 /**
- * L2 — generated renderer pins over the normative contract's §E.1 component
- * rows (../docs/internal/ui-contract.md). One assertion is generated per
+ * L2 — generated renderer pins over the normative contract
+ * (../docs/internal/ui-contract.md). One assertion is generated per
  * contract-required attribute, role, class hook and required-text item of
- * each enforced row, asserted on the reference renderer's canonical
- * rendering.
+ * each enforced component row, asserted on the reference renderer's canonical
+ * rendering — plus the §C.2 disabled-reason labels and the §C.3 refusal rows'
+ * required message elements, rendered key by key and code by code.
  *
  * A contract row whose component id has no fixture below fails the test:
  * rows cannot appear without implementations (red by construction).
  */
 
 const CONTRACT = readFileSync("../docs/internal/ui-contract.md", "utf8");
+
+/** Parse the pipe table under an exact heading, fail-closed (missing heading,
+ *  missing table, wrong header cells, empty body all throw). */
+function contractTable(heading: string, expectedHeader: readonly string[]): string[][] {
+  const lines = CONTRACT.split("\n");
+  const headingIndex = lines.findIndex((line) => line.trim() === heading);
+  if (headingIndex < 0) throw new Error(`contract section missing: ${heading}`);
+  const rows: string[][] = [];
+  for (let i = headingIndex + 1; i < lines.length && !lines[i].trim().startsWith("#"); i += 1) {
+    if (lines[i].trim().startsWith("|")) rows.push(lines[i].trim().replace(/^\|/, "").replace(/\|$/, "").split("|"));
+  }
+  if (rows.length < 3) throw new Error(`no parsable table under ${heading}`);
+  expect(rows[0].map((cell) => cell.trim())).toEqual([...expectedHeader]);
+  return rows.slice(2).map((row) => row.map((cell) => cell.trim()));
+}
+
+const literal = (cell: string): string => cell.replace(/^`/, "").replace(/`$/, "");
 
 function componentRows(): Array<{
   component: string;
@@ -32,28 +57,18 @@ function componentRows(): Array<{
   classHooks: string[];
   requiredText: string[];
 }> {
-  const lines = CONTRACT.split("\n");
-  const headingIndex = lines.findIndex((line) => line.trim() === "### §E.1 Components");
-  if (headingIndex < 0) throw new Error("contract section missing: ### §E.1 Components");
-  const expectedHeader = ["Component", "Root element", "Required attributes", "Required roles", "Required class hooks", "Required text", "Notes"];
-  const rows: string[][] = [];
-  for (let i = headingIndex + 1; i < lines.length && !lines[i].trim().startsWith("#"); i += 1) {
-    if (lines[i].trim().startsWith("|")) rows.push(lines[i].trim().replace(/^\|/, "").replace(/\|$/, "").split("|"));
-  }
-  if (rows.length < 3) throw new Error("no parsable table under ### §E.1 Components");
-  expect(rows[0].map((cell) => cell.trim())).toEqual(expectedHeader);
-  return rows.slice(2).map((row) => {
-    const cells = row.map((cell) => cell.trim());
-    // The item separator is the SPACED ` ~ `; the contains-operator `~=`
-    // is unspaced, so splitting on " ~ " keeps `name~=substring` intact.
+  return contractTable(
+    "### §E.1 Components",
+    ["Component", "Root element", "Required attributes", "Required roles", "Required class hooks", "Required text", "Notes"],
+  ).map((row) => {
     const items = (cell: string): string[] =>
-      cell.replace(/^`/, "").replace(/`$/, "").split(" ~ ").map((item) => item.trim()).filter((item) => item !== "" && item !== "—");
+      literal(cell).split(" ~ ").map((item) => item.trim()).filter((item) => item !== "" && item !== "—");
     return {
-      component: cells[0]!.replace(/^`/, "").replace(/`$/, ""),
-      attributes: items(cells[2]!),
-      roles: items(cells[3]!),
-      classHooks: items(cells[4]!),
-      requiredText: items(cells[5]!),
+      component: literal(row[0]!),
+      attributes: items(row[2]!),
+      roles: items(row[3]!),
+      classHooks: items(row[4]!),
+      requiredText: items(row[5]!),
     };
   });
 }
@@ -95,40 +110,44 @@ const tableColumns: DataColumn<TableRow>[] = [
 ];
 
 /** The enforced-row fixture: the canonical rendering of every enforced
- *  component. Slice 2 grows this with mode-banner and confirm-action. */
-const fixtures: Record<string, () => ReactElement> = {
-  button: () => createElement(Button, { variant: "secondary" }, "Apply staged set-point"),
-  "numeric-input": () =>
-    createElement(NumericInput, { label: "Precise voltage", value: 1.5, unit: "V", min: 0, max: 15, step: 0.1, onChange: () => undefined }),
-  "rotary-control": () =>
-    createElement(RotaryControl, { label: "Voltage set-point", value: 1.5, unit: "V", min: 0, max: 15, step: 0.1, onStage: () => undefined }),
-  "reading-tile": () =>
-    createElement(ReadingTile, { label: "Output voltage", value: 12.1, unit: "V", freshness: "2 s", quality: "steady", severity: "warning" }),
-  "alert-bubble": () =>
-    createElement(AlertBubble, {
-      severity: "advisory",
-      title: "Operating margin",
-      message: "Approaching the configured limit.",
-      source: "PSU-01",
-      onDismiss: () => undefined,
-    }),
-  "engineering-plot": () =>
-    createElement(EngineeringPlot, {
-      kind: "time_series",
-      title: "Output activity",
-      x: { label: "Receipt time", unit: "s" },
-      traces: plotTraces,
-      hints: plotHints,
-    }),
-  "data-table": () => createElement(DataTable, { caption: "Channel readings", rows: tableRows, columns: tableColumns, rowKey: (row: TableRow) => row.id }),
-  panel: () =>
-    createElement(Panel, { title: "Output set-point", eyebrow: "Staged configuration" }, createElement("p", undefined, "Staged configuration content.")),
+ *  component, as a RenderResult so a fixture can include its arming
+ *  interaction (the confirm-action row's required text lives in the ARMED
+ *  step). Slice 2 adds mode-banner and confirm-action. */
+const element = (component: typeof Button | typeof AlertBubble | typeof DataTable | typeof ModeBanner | typeof NumericInput | typeof RotaryControl | typeof EngineeringPlot | typeof ReadingTile | typeof Panel | typeof ConfirmAction | typeof RefusalMessage | "p", props: Record<string, unknown>, ...children: unknown[]): ReactElement =>
+  createElement(component as never, props as never, ...((children ?? []) as never[]));
+
+const fixtures: Record<string, () => RenderResult> = {
+  button: () => render(element(Button, { variant: "secondary" }, "Apply staged set-point")),
+  "numeric-input": () => render(element(NumericInput, { label: "Precise voltage", value: 1.5, unit: "V", min: 0, max: 15, step: 0.1, onChange: () => undefined })),
+  "rotary-control": () => render(element(RotaryControl, { label: "Voltage set-point", value: 1.5, unit: "V", min: 0, max: 15, step: 0.1, onStage: () => undefined })),
+  "reading-tile": () => render(element(ReadingTile, { label: "Output voltage", value: 12.1, unit: "V", freshness: "2 s", quality: "steady", severity: "warning" })),
+  "alert-bubble": () => render(element(AlertBubble, { severity: "advisory", title: "Operating margin", message: "Approaching the configured limit.", source: "PSU-01", onDismiss: () => undefined })),
+  "engineering-plot": () => render(element(EngineeringPlot, { kind: "time_series", title: "Output activity", x: { label: "Receipt time", unit: "s" }, traces: plotTraces, hints: plotHints })),
+  "data-table": () => render(element(DataTable, { caption: "Channel readings", rows: tableRows, columns: tableColumns, rowKey: (row: TableRow) => row.id })),
+  panel: () => render(element(Panel, { title: "Output set-point", eyebrow: "Staged configuration" }, element("p", {}, "Staged configuration content."))),
+  // §D: the enforcement fixture renders ALL FOUR modes so every fixed wording
+  // is pinned; a page renders only its active modes.
+  "mode-banner": () => render(element(ModeBanner, { modes: ["simulated", "no-gateway", "no-lease", "no-policy"] })),
+  // R-ENERGISE-1's required text (effect, value+unit, target) lives in the
+  // ARMED confirm step; the component's initiallyArmed seam renders it
+  // directly (the armed state is the safety-critical presentation).
+  "confirm-action": () =>
+    render(
+      element(ConfirmAction, {
+        label: "Energise output",
+        effect: "the output will be energised",
+        value: { amount: 12.5, unit: "V" },
+        target: "PSU-07 output",
+        onConfirm: () => undefined,
+        initiallyArmed: true,
+      }),
+    ),
 };
 
 describe("contract L2: the reference renderer enforces every component row", () => {
   const rows = componentRows();
 
-  it("parses the 8 slice-1 component rows and has a fixture for each", () => {
+  it("parses the 10 component rows and has a fixture for each", () => {
     const ids = rows.map((row) => row.component);
     for (const component of [
       "button",
@@ -139,6 +158,8 @@ describe("contract L2: the reference renderer enforces every component row", () 
       "engineering-plot",
       "data-table",
       "panel",
+      "mode-banner",
+      "confirm-action",
     ]) {
       expect(ids).toContain(component);
     }
@@ -150,7 +171,7 @@ describe("contract L2: the reference renderer enforces every component row", () 
 
   for (const row of rows) {
     it(`renders ${row.component} with every contract-required attribute, role, class hook and text`, () => {
-      const rendered: RenderResult = render(fixtures[row.component]!());
+      const rendered = fixtures[row.component]!();
       const container = rendered.container;
 
       for (const attribute of row.attributes) {
@@ -171,6 +192,68 @@ describe("contract L2: the reference renderer enforces every component row", () 
       for (const text of row.requiredText) {
         expect(container.textContent, `${row.component}: required text "${text}" not rendered`).toContain(text);
       }
+    });
+  }
+});
+
+describe("contract L2: the reference renderer enforces §C.2 disabled-reason labels", () => {
+  const table = contractTable("### §C.2 Disabled-reason enum", ["Key", "Required label text", "Parameter"]);
+
+  it("parses the five-key enum", () => {
+    expect(table.length).toBe(5);
+  });
+
+  for (const row of table) {
+    const key = literal(row[0]!);
+    const template = literal(row[1]!);
+    it(`renders ${key} with its required visible label`, () => {
+      const { container } = render(element(Button, { disabled: true, disabledReason: { key, state: "idle" } }, "Act"));
+      const control = container.querySelector("[data-bw-disabled-reason]");
+      expect(control, `${key}: reason attribute not rendered`).not.toBeNull();
+      expect(control!.getAttribute("data-bw-disabled-reason")).toBe(key);
+      const label = container.querySelector("[data-bw-disabled-label]");
+      expect(label, `${key}: visible label not rendered beside the control`).not.toBeNull();
+      // Visible, not merely present: jest-dom visibility catches an
+      // inline-style hide (display/visibility on the label element). The
+      // CSS-class-hiding residual stands — jsdom applies no stylesheets, so a
+      // label hidden by a class rule is not catchable here and stays a
+      // browser-review arm.
+      expect(label!, `${key}: label must be visible, not hidden`).toBeVisible();
+      // The device-state key's template carries the {state} slot; the
+      // canonical blocking state from the contract is `idle`.
+      expect(label!.textContent).toBe(template.replace("{state}", "idle"));
+    });
+  }
+});
+
+describe("contract L2: the reference renderer enforces §C.3 refusal rendering", () => {
+  const table = contractTable(
+    "### §C.3 Refusal mapping",
+    ["Code", "Severity", "What happened", "Sent status", "Operator action"],
+  );
+
+  it("parses all 14 interface codes plus the no-response row", () => {
+    expect(table.length).toBe(15);
+  });
+
+  for (const row of table) {
+    const code = literal(row[0]!);
+    const severity = literal(row[1]!);
+    const whatHappened = literal(row[2]!);
+    const sent = literal(row[3]!);
+    const operatorAction = literal(row[4]!);
+    it(`renders the ${code} refusal with its required message elements`, () => {
+      const { container } = render(element(RefusalMessage, { code: code as RefusalCode }));
+      const bubble = container.querySelector(".bw-alert-bubble");
+      expect(bubble, `${code}: refusal not rendered`).not.toBeNull();
+      expect(bubble!.getAttribute("data-severity")).toBe(severity);
+      const text = container.textContent ?? "";
+      expect(text, `${code}: what happened not rendered`).toContain(whatHappened);
+      expect(text, `${code}: operator action not rendered`).toContain(operatorAction);
+      // The sent-status element: NO renders "nothing was sent"; UNKNOWN (A06)
+      // renders that it is unknown whether anything was sent.
+      const sentElement = sent === "NO" ? "Nothing was sent." : "It is unknown whether anything was sent";
+      expect(text, `${code}: sent status not rendered`).toContain(sentElement);
     });
   }
 });

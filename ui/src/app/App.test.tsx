@@ -9,10 +9,13 @@ vi.mock("echarts/core", () => ({
 import { App } from "./App";
 
 describe("App", () => {
-  it("identifies the mock-up as simulated", () => {
+  it("identifies the mock-up as simulated through the mode banner (contract §D)", () => {
     render(<App />);
     expect(screen.getByRole("heading", { name: "BenchWeave UI workbench" })).toBeVisible();
-    expect(screen.getByText("Simulated presentation data")).toBeVisible();
+    const banner = screen.getByLabelText("Presentation mode");
+    expect(banner).toHaveAttribute("data-bw-mode-banner");
+    expect(screen.getByText("SIMULATED PRESENTATION DATA")).toBeVisible();
+    expect(banner.querySelector("[data-bw-mode='simulated']")).not.toBeNull();
   });
 
   it("lets the operator switch to the matched dark theme", () => {

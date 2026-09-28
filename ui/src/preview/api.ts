@@ -22,6 +22,31 @@ function decodePlotChannel(value: unknown): PlotChannelView { const row = object
 function decodePlotView(value: unknown): PlotView { const row = object(value, "preview_invalid_plot_view"); for (const key of Object.keys(row)) if (key !== "page_id" && key !== "kind" && key !== "binding_id" && key !== "title" && key !== "x" && key !== "channels") throw new Error("preview_invalid_plot_view"); const kind = row.kind; if (kind !== "time_series" && kind !== "waveform") throw new Error("preview_invalid_plot_view"); if (!Array.isArray(row.channels) || row.channels.length < 1) throw new Error("preview_invalid_plot_view"); return { page_id: text(row.page_id, "preview_invalid_plot_view"), kind, binding_id: text(row.binding_id, "preview_invalid_plot_view"), title: text(row.title, "preview_invalid_plot_view"), x: decodePlotAxis(row.x), channels: row.channels.map(decodePlotChannel) }; }
 function decodeScenario(value: unknown): PreviewScenario { const row = object(value, "preview_invalid_scenario"); if (!Array.isArray(row.observations) || !Array.isArray(row.request_outcomes)) throw new Error("preview_invalid_scenario_arrays"); const severity = text(row.expected_severity, "preview_invalid_severity") as PreviewSeverity; if (!["neutral", "success", "advisory", "warning", "critical", "trip"].includes(severity)) throw new Error("preview_invalid_severity"); const timestamp = text(row.timestamp_strategy, "preview_invalid_timestamp"); if (timestamp !== "fixed" && timestamp !== "relative") throw new Error("preview_invalid_timestamp"); if (typeof row.baseline !== "boolean") throw new Error("preview_invalid_baseline"); return { id: text(row.id, "preview_invalid_scenario_id"), title: text(row.title, "preview_invalid_scenario_title"), description: text(row.description, "preview_invalid_scenario_description"), timestamp_strategy: timestamp, observations: row.observations.map(decodeObservation), permissions: texts(row.permissions, "preview_invalid_permissions"), lease_state: text(row.lease_state, "preview_invalid_lease"), approval_state: text(row.approval_state, "preview_invalid_approval"), unavailable_panels: texts(row.unavailable_panels, "preview_invalid_panels"), expected_severity: severity, request_outcomes: row.request_outcomes.map(decodeReceipt), baseline: row.baseline }; }
 export function decodePreview(value: unknown): PreviewDocument { const row = object(value, "preview_invalid_document"); if (row.api_version !== 1) throw new Error(`preview_api_version: expected 1, received ${String(row.api_version)}`); if (row.simulation !== true || !Array.isArray(row.scenarios) || !Array.isArray(row.pages)) throw new Error("preview_invalid_document"); if (row.plot_views !== undefined && !Array.isArray(row.plot_views)) throw new Error("preview_invalid_document"); const scenarios = row.scenarios.map(decodeScenario); const pages = row.pages.map((page) => object(page, "preview_invalid_page")); const plot_views = row.plot_views === undefined ? [] : row.plot_views.map(decodePlotView); const ids = new Set<string>(); for (const scenario of scenarios) { if (ids.has(scenario.id)) throw new Error(`preview_duplicate_scenario: ${scenario.id}`); ids.add(scenario.id); } return { api_version: 1, renderer_version: text(row.renderer_version, "preview_invalid_renderer"), simulation: true, plugin_id: text(row.plugin_id, "preview_invalid_plugin_id"), pages, scenarios, plot_views }; }
-async function json(response: Response): Promise<unknown> { if (!response.ok) throw new Error(`preview_http_error: ${response.status}`); return response.json(); }
-export async function fetchPreview(baseUrl = "", fetcher: Fetcher = fetch): Promise<PreviewDocument> { return decodePreview(await json(await fetcher(`${baseUrl}/api/v1/preview`, { cache: "no-store" }))); }
-export async function requestSimulatedAction(baseUrl: string, scenarioId: string, bindingId: string, value: ObservationValue, fetcher: Fetcher = fetch): Promise<SimulatedReceipt> { const response = await fetcher(`${baseUrl}/api/v1/scenarios/${encodeURIComponent(scenarioId)}/requests`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ binding_id: bindingId, value }) }); return decodeReceipt(await json(response)); }
+/** No-response territory: a network failure, a timeout, or a response that
+ *  arrived but cannot be decoded at all — no usable interface answer, so the
+ *  presentation boundary renders the contract's no-response refusal (UNKNOWN
+ *  whether anything was sent, A06). */
+export class PreviewTransportError extends Error {}
+
+/** A DEFINITIVE refusal: the server answered with an error status and a
+ *  readable error body ({"error": code}). The operation was not accepted and
+ *  nothing was dispatched — sent-NO territory, never the no-response row. */
+export class PreviewRefusalError extends Error {
+  constructor(message: string, readonly code: string) {
+    super(message);
+  }
+}
+
+async function json(response: Response): Promise<unknown> {
+  if (response.ok) return response.json();
+  let body: unknown;
+  try { body = await response.json(); } catch { throw new PreviewTransportError(`preview_http_error: ${response.status} (undecodable body)`); }
+  if (typeof body === "object" && body !== null && "error" in body && typeof (body as Record<string, unknown>).error === "string") {
+    const code = (body as Record<string, unknown>).error as string;
+    throw new PreviewRefusalError(`${code} (HTTP ${response.status})`, code);
+  }
+  throw new PreviewTransportError(`preview_http_error: ${response.status}`);
+}
+async function transport(input: string, init: RequestInit, fetcher: Fetcher): Promise<Response> { try { return await fetcher(input, init); } catch (cause: unknown) { throw new PreviewTransportError(cause instanceof Error ? cause.message : String(cause)); } }
+export async function fetchPreview(baseUrl = "", fetcher: Fetcher = fetch): Promise<PreviewDocument> { return decodePreview(await json(await transport(`${baseUrl}/api/v1/preview`, { cache: "no-store" }, fetcher))); }
+export async function requestSimulatedAction(baseUrl: string, scenarioId: string, bindingId: string, value: ObservationValue, fetcher: Fetcher = fetch): Promise<SimulatedReceipt> { const response = await transport(`${baseUrl}/api/v1/scenarios/${encodeURIComponent(scenarioId)}/requests`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ binding_id: bindingId, value }) }, fetcher); return decodeReceipt(await json(response)); }

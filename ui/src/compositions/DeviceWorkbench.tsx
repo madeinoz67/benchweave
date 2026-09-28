@@ -2,6 +2,8 @@ import { useState } from "react";
 import { Activity, Cable, Clock3, ShieldCheck } from "lucide-react";
 
 import { Button } from "../components/actions/Button";
+import { ConfirmAction } from "../components/actions/ConfirmAction";
+import type { DisabledReason } from "../components/actions/disabledReasons";
 import { DataTable } from "../components/data/DataTable";
 import { AlertBubble } from "../components/feedback/AlertBubble";
 import { NumericInput } from "../components/inputs/NumericInput";
@@ -15,6 +17,8 @@ import "./compositions.css";
 export interface DeviceWorkbenchProps {
   fixture: DeviceWorkbenchFixture;
   onRequestSetPoint?(value: number): void;
+  onRequestOutputOn?(value: number): void;
+  onRequestOutputOff?(): void;
   requestEnabled?: boolean;
   /** A threshold is caller-supplied configuration, never a workbench default:
    *  the preview passes none (simulated snapshot data has no qualified limit),
@@ -22,8 +26,30 @@ export interface DeviceWorkbenchProps {
   threshold?: { value: number; label: string; severity: "warning" | "critical" };
 }
 
-export function DeviceWorkbench({ fixture, onRequestSetPoint = () => undefined, requestEnabled = true, threshold }: DeviceWorkbenchProps) {
+export function DeviceWorkbench({
+  fixture,
+  onRequestSetPoint = () => undefined,
+  onRequestOutputOn = () => undefined,
+  onRequestOutputOff = () => undefined,
+  requestEnabled = true,
+  threshold,
+}: DeviceWorkbenchProps) {
   const [stagedVoltage, setStagedVoltage] = useState(fixture.stagedVoltage);
+  const outputTarget = `${fixture.device.id.toUpperCase()} output`;
+  // R-PROTECT-1: while a protective trip is active, energy-sourcing actions
+  // are disabled with reason `protection-active` — the guard's reason wins
+  // over the authority reason, because the trip is the present blocker.
+  // R-DEENERGISE-1: the de-energise action carries NO guard at all — never
+  // confirmed, never gated, whatever the trip or authority state.
+  const energiseGuard: DisabledReason | undefined = fixture.output.trip
+    ? { key: "protection-active" }
+    : requestEnabled
+      ? undefined
+      : { key: "no-authority" };
+  // R-ENERGISE-1: changing the set-point of a CURRENTLY-ENERGISED output is
+  // energy-sourcing and takes the confirm step; on a de-energised output the
+  // staged value is inert, so the apply is a single action.
+  const setPointIsEnergising = fixture.output.energised;
   return (
     <section className="bw-workbench" aria-labelledby="device-workbench-title">
       <header className="bw-workbench__header">
@@ -41,16 +67,40 @@ export function DeviceWorkbench({ fixture, onRequestSetPoint = () => undefined, 
       </div>
 
       <div className="bw-readings-grid">{fixture.readings.map((reading) => <ReadingTile key={reading.id} {...reading} />)}</div>
-      <AlertBubble severity="warning" title="Operating margin" message={fixture.message} source="PSU-01 · current" />
+      <AlertBubble severity="warning" title="Operating margin" message={fixture.message} source={`${fixture.device.id.toUpperCase()} · current`} />
 
       <div className="bw-workbench__grid">
-        <Panel title="Output set-point" eyebrow="Staged configuration">
+        <Panel title="Output control" eyebrow="Staged configuration">
           <div className="bw-setpoint">
             <RotaryControl label="Voltage set-point" value={stagedVoltage} unit="V" min={0} max={15} step={0.1} onStage={setStagedVoltage} />
             <div className="bw-setpoint__entry">
               <NumericInput label="Precise voltage" value={stagedVoltage} unit="V" min={0} max={15} step={0.1} onChange={setStagedVoltage} />
-              <Button variant="primary" disabled={!requestEnabled} onClick={() => onRequestSetPoint(stagedVoltage)}>Apply staged set-point</Button>
+              {setPointIsEnergising ? (
+                <ConfirmAction
+                  label="Apply staged set-point"
+                  effect="the set-point of the energised output will change"
+                  value={{ amount: stagedVoltage, unit: "V" }}
+                  target={outputTarget}
+                  disabled={energiseGuard !== undefined}
+                  disabledReason={energiseGuard}
+                  onConfirm={() => onRequestSetPoint(stagedVoltage)}
+                />
+              ) : (
+                <Button variant="primary" disabled={energiseGuard !== undefined} disabledReason={energiseGuard} onClick={() => onRequestSetPoint(stagedVoltage)}>Apply staged set-point</Button>
+              )}
               <small>Request remains subject to authority, policy and device verification.</small>
+            </div>
+            <div className="bw-output-actions">
+              <ConfirmAction
+                label="Energise output"
+                effect="the output will be energised"
+                value={{ amount: stagedVoltage, unit: "V" }}
+                target={outputTarget}
+                disabled={energiseGuard !== undefined}
+                disabledReason={energiseGuard}
+                onConfirm={() => onRequestOutputOn(stagedVoltage)}
+              />
+              <Button variant="destructive" onClick={onRequestOutputOff}>De-energise output</Button>
             </div>
           </div>
         </Panel>

@@ -48,3 +48,17 @@
   opacity: 0.55;
   box-shadow: none;
 }
+
+/* The contract's disabled-reason presentation (§C.2): the required label
+   renders visibly BESIDE the disabled control, not aria-only. */
+.bw-button__reason {
+  display: inline-flex;
+  flex-direction: column;
+  gap: var(--bw-space-1);
+}
+
+.bw-button__reason-text {
+  color: var(--bw-text-muted);
+  font-size: 0.75rem;
+  line-height: 1.3;
+}

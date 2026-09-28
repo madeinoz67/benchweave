@@ -1,0 +1,3 @@
+/* RefusalMessage renders through AlertBubble's existing styles; this file
+   exists so the refusals module owns its import side effects like every other
+   component family. */
