@@ -147,7 +147,10 @@ describe("PreviewPlots panel", () => {
     stubMutedToken("#777777");
     render(<PreviewPlots views={[view([channel()])]} scenario={scenario} />);
     const series = setOption.mock.calls[0][0].series as Array<{ id: string; lineStyle: { color: string } }>;
-    expect(series[0].lineStyle.color).toBe("#0b7181");
+    // Evolved with #242 slice 3: pass-1 slot-1 is the series-1 token (the
+    // accent-token binding died with the index-based defaults); jsdom
+    // resolves no custom properties, so the LIGHT fallback literal applies.
+    expect(series[0].lineStyle.color).toBe("#eb3b70");
   });
 
   it("renders nothing when the decoded document carries no plot views", () => {

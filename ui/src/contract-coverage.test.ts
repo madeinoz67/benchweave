@@ -88,9 +88,9 @@ function cssBlock(source: string, selector: string): Map<string, string> {
 }
 
 describe("contract L1: fixture rows present and parsable", () => {
-  it("§A.1 pins the colour palette (14 enumerated + 2 shadow inputs)", () => {
+  it("§A.1 pins the colour palette (14 enumerated + 8 series slots + 2 shadow inputs)", () => {
     const rows = parseTable("### §A.1 Colour palette", ["Token", "Light", "Dark", "Use"]);
-    expect(rows.length).toBe(16);
+    expect(rows.length).toBe(24);
     const tokens = rows.map((row) => literal(row[0]!));
     // The 14 enumerated rows (moved verbatim from the guide).
     for (const token of [
@@ -109,6 +109,11 @@ describe("contract L1: fixture rows present and parsable", () => {
       "--bw-trip",
       "--bw-success",
     ]) {
+      expect(tokens).toContain(token);
+    }
+    // The 8 series slots (issue #242 slice 3; values carry the computed
+    // proofs in series-colors.test.ts).
+    for (const token of ["--bw-series-1", "--bw-series-2", "--bw-series-3", "--bw-series-4", "--bw-series-5", "--bw-series-6", "--bw-series-7", "--bw-series-8"]) {
       expect(tokens).toContain(token);
     }
     // The pinned superset: the two elevation-shadow colour inputs.
@@ -307,6 +312,7 @@ describe("contract L1: fixture rows present and parsable", () => {
           "aria-label=Traces",
           "aria-label~=(hidden by presentation preference)",
           "data-line",
+          "data-bw-series-slot",
           "data-hidden",
         ],
         roles: ["img"],
@@ -391,6 +397,29 @@ describe("contract L1: fixture rows present and parsable", () => {
       expect(literal(row[1]!), key).toBe(pair[0]);
       expect(literal(row[3]!), key).toBe(pair[1]);
       expect(contractCell([row], 0, 2), `${key} shape`).not.toBe("");
+    }
+  });
+
+  it("§E.2.1 pins the 16-row slot mapping exactly", () => {
+    const rows = parseTable("#### §E.2.1 Slot mapping", ["Slot i", "Colour", "Dash", "Symbol"]);
+    expect(rows.length).toBe(16);
+    rows.forEach((row, i) => {
+      expect(literal(row[0]!)).toBe(String(i));
+      expect(literal(row[1]!), `slot ${i} colour`).toBe(`--bw-series-${i % 8 + 1}`);
+      expect(literal(row[2]!), `slot ${i} dash`).toBe(`dash-${i < 8 ? 1 : 2}`);
+      expect(literal(row[3]!), `slot ${i} symbol`).toBe(`symbol-${i % 8 + 1}`);
+    });
+  });
+
+  it("§E.2.2 pins the two dash keys and the eight symbol shapes", () => {
+    const rows = parseTable("#### §E.2.2 Sequences", ["Key", "Shape description", "Reference binding"]);
+    expect(rows.length).toBe(10);
+    expect(literal(rows[0]![0]!)).toBe("dash-1");
+    expect(literal(rows[1]![0]!)).toBe("dash-2");
+    for (let i = 0; i < 8; i += 1) {
+      expect(literal(rows[i + 2]![0]!), `symbol row ${i}`).toBe(`symbol-${i + 1}`);
+      expect(contractCell([rows[i + 2]!], 0, 1), `symbol-${i + 1} shape`).not.toBe("");
+      expect(contractCell([rows[i + 2]!], 0, 2), `symbol-${i + 1} binding`).not.toBe("");
     }
   });
 

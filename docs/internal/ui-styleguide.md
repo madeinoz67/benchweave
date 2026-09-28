@@ -178,7 +178,7 @@ The severity model — meanings, dismissal classes and live regions — is norma
 - Respect reduced motion.
 - Supply a textual chart description for assistive technology.
 
-The initial plot supports time series and waveforms. Spectrum, digital traces, sweeps and polar/Smith charts belong to the complete-catalogue follow-on and must retain these same rules. Series tokens and their assignment are normative in the contract once the plot-series slice lands.
+The initial plot supports time series and waveforms. Spectrum, digital traces, sweeps and polar/Smith charts belong to the complete-catalogue follow-on and must retain these same rules. Series tokens and their assignment are normative in the contract ([§E.2](ui-contract.md#e2-series-assignment-engineering-plot-sub-rows)): slots derive from the bytewise-sorted declared id set — the emphasis (accent) hint binds to `--bw-series-1`, and `ui/src/series-colors.test.ts` carries the computed colour proofs (contrast, severity non-confusion under dual CVD models, adjacency) on the actual token values.
 
 ## Administrative consistency
 
