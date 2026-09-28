@@ -1,8 +1,12 @@
 # BenchWeave UI style guide
 
-**Status:** Initial executable vertical slice
+**Status:** Implementation guidance for the reference renderer
 
-**Design authority:** [UI style guide and workbench design](ui-styleguide-workbench-design.md)
+**Normative contract:** [UI renderer-neutral component contract](ui-contract.md) — tokens,
+severity model, safety definitions and component contracts are defined there. This file
+is how the reference React/Storybook renderer implements that contract.
+
+**Design history:** [UI style guide and workbench design](ui-styleguide-workbench-design.md)
 
 **Portable visual reference:** [Layered Precision light/dark mock-up](ui-styleguide-mockup.html)
 
@@ -38,59 +42,14 @@ The supported project runtime is Node.js 22 LTS. Dependency versions are exact i
 
 ## Tokens
 
-Use CSS custom properties from `ui/src/styles/tokens.css` and `themes.css`. Components must not hard-code a colour or shadow that conveys product meaning.
+The token inventory and every token value are normative in the contract ([§A](ui-contract.md#a-tokens)). Implementation rules for the reference renderer:
 
-This section is normative. The tables below define the design values; the CSS files are their executable mirror. A change to either requires the other to change in the same commit.
+- consume the CSS custom properties from `ui/src/styles/tokens.css` and `themes.css` — those files are the executable mirror of the contract tables, and the contract↔CSS value-equality pin in `ui/src/contract-coverage.test.ts` refuses drift in either direction;
+- components must not hard-code a colour or shadow that conveys product meaning;
+- a new semantic token is added to both themes in the same change, and to the contract table in the same change;
+- hexadecimal values belong only in theme definitions, documentation and visual-test fixtures — never on a component.
 
-Token groups include:
-
-- `--bw-space-*` for layout rhythm;
-- `--bw-radius-*` for controls and panels;
-- `--bw-font-ui` and `--bw-font-data`;
-- `--bw-canvas`, `--bw-surface` and `--bw-surface-recessed`;
-- `--bw-text`, `--bw-text-muted` and `--bw-border`;
-- `--bw-shadow-raised` and `--bw-shadow-recessed`;
-- `--bw-advisory`, `--bw-warning`, `--bw-critical`, `--bw-trip` and `--bw-success`.
-
-Add a semantic token to both themes in the same change. Do not introduce a raw colour prop on a component.
-
-### Colour palette
-
-Theme changes luminance and contrast, not meaning. Use semantic names in components; hexadecimal values belong only in theme definitions, documentation and visual-test fixtures.
-
-| Token | Light | Dark | Use |
-| --- | --- | --- | --- |
-| `--bw-canvas` | `#e4ebef` | `#19252c` | Application background |
-| `--bw-surface` | `#f5f8f9` | `#26363f` | Raised panel and control face |
-| `--bw-surface-recessed` | `#dce5ea` | `#101a20` | Plots, tables, logs and wells |
-| `--bw-text` | `#17242c` | `#eef5f7` | Primary text and values |
-| `--bw-text-muted` | `#5b6a73` | `#aebbc2` | Labels, metadata and secondary text |
-| `--bw-border` | `#c3cfd5` | `#40515b` | Neutral boundaries and dividers |
-| `--bw-accent` | `#0b7181` | `#42cee2` | Selected state and primary action |
-| `--bw-accent-contrast` | `#ffffff` | `#07161a` | Text/icons on accent |
-| `--bw-focus` | `#087f8c` | `#59d9eb` | Keyboard focus ring only |
-| `--bw-advisory` | `#2476b8` | `#62aee8` | Informative state requiring awareness |
-| `--bw-warning` | `#a96608` | `#ffb342` | Attention required |
-| `--bw-critical` | `#b63830` | `#ff6d63` | Immediate operator action |
-| `--bw-trip` | `#a92858` | `#ff5d91` | Protective trip and inhibited control |
-| `--bw-success` | `#177158` | `#67d8b2` | Confirmed successful outcome |
-
-Severity colours are not general decoration. Normal state uses neutral surfaces; success is reserved for a confirmed transition or outcome. Charts use accent first, then severity colours only when the series itself has that meaning.
-
-### Spacing and layout
-
-The base unit is `0.25rem` (normally 4 px). Use only the defined steps for component padding and gaps.
-
-| Token | Value | Typical use |
-| --- | --- | --- |
-| `--bw-space-1` | `0.25rem` | Tight label/value separation |
-| `--bw-space-2` | `0.5rem` | Icon gaps and compact rows |
-| `--bw-space-3` | `0.75rem` | Control groups and alert padding |
-| `--bw-space-4` | `1rem` | Standard component padding |
-| `--bw-space-5` | `1.5rem` | Panel and page-section gaps |
-| `--bw-space-6` | `2rem` | Major composition separation |
-
-Layout rules:
+Layout constants for the reference renderer:
 
 - page content maximum width: `90rem`;
 - page gutter: `1.5rem`, reducing to `1rem` below 48rem;
@@ -101,24 +60,15 @@ Layout rules:
 - use CSS grid for device/plugin panels so unknown plugin compositions wrap without absolute placement;
 - breakpoints are content-driven, with reference points at 30rem, 48rem, 64rem and 90rem; do not branch component behaviour by device name.
 
-### Radius, borders and elevation
+### Borders, elevation and shadows
 
-| Token or rule | Value | Use |
-| --- | --- | --- |
-| `--bw-radius-control` | `0.5rem` | Buttons, fields, bubbles and compact controls |
-| `--bw-radius-panel` | `0.875rem` | Panels, cards and instrument groups |
-| Standard border | `1px solid var(--bw-border)` | Component boundary |
-| Focus outline | `0.125rem solid var(--bw-focus)` | Keyboard focus |
-| Focus offset | `0.125rem` | Separation from component edge |
-| Raised shadow | `0.5rem 0.625rem 1.5rem` dark plus `-0.35rem -0.35rem 1rem` light | Panels/readings |
-| Recessed shadow | inset `0.25rem 0.25rem 0.625rem` dark plus inset `-0.2rem -0.2rem 0.5rem` light | Plots, tables and wells |
-| Abnormal glow | `0 0 1.5rem`, state colour at 32% | Affected reading only |
+Component boundaries use the standard border `1px solid var(--bw-border)`. Keyboard focus uses the focus outline `0.125rem solid var(--bw-focus)` offset by `0.125rem`. The raised and recessed shadows compose `--bw-shadow-dark`/`--bw-shadow-light` exactly as `tokens.css` defines them — the composition values are implementation, the colour inputs are contract tokens. The focus ring (`--bw-focus-ring`) and the standard transition (`--bw-transition-fast`) are likewise implementation tokens in `tokens.css`, not contract-pinned. The abnormal glow is `0 0 1.5rem` of the state colour at 32%, on the affected reading only (contract §B.2 SR-B2).
 
 Elevation has three levels: canvas (0), recessed (-1) and raised (+1). Dialogs and menus may use +2 by strengthening the raised shadow once. Do not create arbitrary elevation levels or nest strong shadows.
 
 ### Typography
 
-UI text uses `Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`. Numeric readings, timestamps, identifiers and source evidence use `"SFMono-Regular", Consolas, "Liberation Mono", monospace` with tabular numerals.
+UI text uses `var(--bw-font-ui)`. Numeric readings, timestamps, identifiers and source evidence use `var(--bw-font-data)` with tabular numerals. Both stacks are contract tokens ([§A.4](ui-contract.md#a4-typography-fonts)); the role table below is implementation guidance.
 
 | Role | Size / line height | Weight | Treatment |
 | --- | --- | --- | --- |
@@ -141,7 +91,7 @@ Do not use more than three text sizes in one compact panel. Uppercase is limited
 - touch-first or safety-significant action minimum target: `2.75rem` square;
 - button horizontal padding: `0.9rem`; vertical padding: `0.55rem`;
 - standard icon: 16–18 px; status icon: 16 px; empty-state illustration maximum: 48 px;
-- use Lucide icons with `1.75px`–`2px` stroke and `aria-hidden="true"` when adjacent text supplies the name;
+- use Lucide icons with `1.75px`–`2px` stroke and `aria-hidden="true"` when adjacent text supplies the name; the icon keys and reference bindings are normative in the contract ([§F](ui-contract.md#f-icon-set));
 - destructive and protective actions always include a text label; icon-only is not allowed;
 - a rotary control is paired with a precise numeric field and explicit Apply action.
 
@@ -165,6 +115,8 @@ Do not stack multiple strong raised shadows. A reading tile may sit inside a fla
 
 ## Choosing a component
 
+The component inventory and each component's required attributes, roles, class hooks and text are normative in the contract ([§E](ui-contract.md#e-per-component-contracts)).
+
 | Need | Use |
 | --- | --- |
 | Explicit request | `Button` with the appropriate semantic variant |
@@ -177,38 +129,24 @@ Do not stack multiple strong raised shadows. A reading tile may sit inside a fla
 | Actionable group | raised `Panel` |
 | Plot, table or dense result | recessed `Panel` |
 
-If the need is not covered, check the approved component inventory before designing an extension. New components require a concrete user need, accessibility behaviour, light/dark states, tests and stories.
+If the need is not covered, check the approved component inventory before designing an extension. New components require a concrete user need, accessibility behaviour, light/dark states, tests and stories — and a contract row.
 
 ## Observation and control
 
 Readings report gateway observations. Controls stage intent. Buttons submit explicit requests.
 
-- A reading does not become “verified” merely because it rendered.
+- A reading does not become "verified" merely because it rendered.
 - A knob, dial, slider or field does not emit device commands while dragged or typed.
 - The staged value must be labelled as staged.
 - Precise keyboard entry must remain available beside a dial or knob.
 - Applying a value must state that authority, policy and device verification still apply.
 - Do not optimistically copy a requested value into an applied reading.
-- Permission, lease, policy, transport and device rejection remain distinct outcomes.
+- Permission, lease, policy, transport and device rejection remain distinct outcomes — rendered per the refusal mapping (contract §C.3).
+- Energy-sourcing actions confirm; energy-removing actions never stand behind a confirmation (contract §C.1).
 
 ## Alerts and message persistence
 
-The severity model is defined in `ui/src/components/feedback/severity.tsx`:
-
-| Severity | Meaning | Dismissal |
-| --- | --- | --- |
-| Neutral | Context or helper detail | Allowed |
-| Success | Confirmed completion with no continuing risk | Allowed |
-| Advisory | Non-urgent evidence or state note | Allowed |
-| Warning | Attention required | Persistent until acknowledged or resolved |
-| Critical | Immediate operator action | Persistent until resolved |
-| Protective trip | Protective action and inhibited control | Non-dismissible while active |
-
-`AlertBubble` may appear inline, anchored to a source, inside a panel or as a global banner. A transient toast is limited to neutral, success and advisory confirmation. Warning, critical and trip information must remain present in the affected context.
-
-Glow is an additional cue. Advisory through trip may use localised glow around the affected reading or message. Normal and success readings do not glow. Every abnormal state also needs an icon, explicit label, border and text.
-
-Dismissing a message is not acknowledgement of the underlying gateway or device condition. Model acknowledgement as a separately labelled authorised request.
+The severity model — meanings, dismissal classes and live regions — is normative in the contract ([§B](ui-contract.md#b-states-and-severity-model)); the reference implementation lives in `ui/src/components/feedback/severity.tsx`. A transient toast is limited to neutral, success and advisory confirmation; warning, critical and trip information must remain present in the affected context. Dismissal is not acknowledgement.
 
 ## Numbers and units
 
@@ -233,7 +171,7 @@ Dismissing a message is not acknowledgement of the underlying gateway or device 
 - Respect reduced motion.
 - Supply a textual chart description for assistive technology.
 
-The initial plot supports time series and waveforms. Spectrum, digital traces, sweeps and polar/Smith charts belong to the complete-catalogue follow-on and must retain these same rules.
+The initial plot supports time series and waveforms. Spectrum, digital traces, sweeps and polar/Smith charts belong to the complete-catalogue follow-on and must retain these same rules. Series tokens and their assignment are normative in the contract once the plot-series slice lands.
 
 ## Administrative consistency
 
@@ -261,7 +199,7 @@ Each applicable component must include:
 - light and dark theme coverage through the Storybook toolbar;
 - default, hover, focus, active and disabled states;
 - loading or busy state;
-- permission-disabled state for controlled actions;
+- permission-disabled state for controlled actions — presented as the contract's `no-authority` disabled reason once the safety-behaviours slice lands;
 - empty, stale, partial and error states for data components;
 - warning, critical and trip states where relevant;
 - keyboard interaction and accessible-name checks.

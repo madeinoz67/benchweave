@@ -269,6 +269,11 @@ proof the projection gate (not a rewrite) did the work. Its own
 
 ### Declared plots and the UI preview
 
+How any host renders a plugin — tokens, severities, component contracts and
+safety-relevant presentation — is defined normatively by the
+[UI renderer-neutral component contract](internal/ui-contract.md); the
+`ui/` workbench is one implementation of it.
+
 A manifest page of kind `readings` or `dataset` may declare `plots`
 (`time_series` over an observation binding, `waveform` over a dataset
 binding; axis ids resolve against the binding catalogue's variables, and
