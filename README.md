@@ -56,7 +56,7 @@ uv run pytest tests/contracts -s
 
 ## UI development
 
-The UI foundation and executable component workbench live under `ui/`. See the [approved UI design](docs/internal/ui-styleguide-workbench-design.md), [implementation style guide](docs/internal/ui-styleguide.md), and [portable light/dark mock-up](docs/internal/ui-styleguide-mockup.html).
+The UI foundation and executable component workbench live under `ui/`. See the [renderer-neutral component contract](docs/internal/ui-contract.md) (normative), the [approved UI design](docs/internal/ui-styleguide-workbench-design.md), [implementation style guide](docs/internal/ui-styleguide.md), and [portable light/dark mock-up](docs/internal/ui-styleguide-mockup.html).
 
 ```sh
 cd ui

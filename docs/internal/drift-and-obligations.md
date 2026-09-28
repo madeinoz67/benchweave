@@ -107,10 +107,19 @@ and remain the reviewer's job.
     the posture text and the posture).
 
 12. **The UI/preview renderer surface** (ui components + compositions, the SDK
-    preview stack, and the served wire document) → plugin-visible rendering
-    behavior: `docs/device-developer-guide.md` (presentation section);
-    component behavior: the ui component tests and Storybook stories; the
-    wire shape: `standards/plugin-ui-preview/<active>/preview-document.schema.json`,
+    preview stack, and the served wire document) → the normative surface for
+    plugin-visible rendering behavior is `docs/internal/ui-contract.md`
+    (issue #242: renderer-neutral contract; tokens, severity model, safety
+    definitions, component rows); its gates are
+    `ui/src/contract-coverage.test.ts` (L1 fixture pins + contract↔CSS token
+    value equality) and `ui/src/contract-enforcement.test.ts` (L2 per-component
+    rendered-attribute pins) — a contract-table edit lands with its pins in
+    the same change. `docs/internal/ui-styleguide.md` is implementation
+    guidance for the reference renderer, not the authority.
+    Plugin-visible rendering behavior → `docs/device-developer-guide.md`
+    (presentation section); component behavior: the ui component tests and
+    Storybook stories; the wire shape:
+    `standards/plugin-ui-preview/<active>/preview-document.schema.json`,
     conformance-tested from both the Python emitter and the TS decoder. The
     renderer freshness gate (obligation 7) carries the committed
     `preview_assets` half.
