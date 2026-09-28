@@ -52,7 +52,14 @@ function parseTable(heading: string, expectedHeader: readonly string[]): string[
 
   const header = rows[0].map((cell) => cell.trim());
   expect(header, `column schema drift under ${heading}`).toEqual([...expectedHeader]);
-  return rows.slice(2).map((row) => row.map((cell) => cell.trim()));
+  const body = rows.slice(2).map((row) => row.map((cell) => cell.trim()));
+  // A body row whose cell count differs from the header's is a parse failure,
+  // not a silently mis-parsed row (an appended or dropped cell must never
+  // present as a pass).
+  for (const row of body) {
+    expect(row.length, `row under ${heading} has ${row.length} cells, header has ${expectedHeader.length}`).toBe(expectedHeader.length);
+  }
+  return body;
 }
 
 /** Strip surrounding backticks from a contract cell value. */
@@ -237,11 +244,14 @@ describe("contract L1: fixture rows present and parsable", () => {
     }
   });
 
-  it("§E.1 pins the 8 slice-1 component rows", () => {
+  it("§E.1 pins the 8 slice-1 component rows and their full cell content", () => {
     const rows = parseTable(
       "### §E.1 Components",
       ["Component", "Root element", "Required attributes", "Required roles", "Required class hooks", "Required text", "Notes"],
     );
+    // Exact arity: a truncated collection (e.g. an interleaved non-pipe line
+    // mid-table) reds here, not only downstream on id loss.
+    expect(rows.length, "§E.1 exact row count").toBe(8);
     const ids = rows.map((row) => literal(row[0]!));
     for (const component of [
       "button",
@@ -254,6 +264,84 @@ describe("contract L1: fixture rows present and parsable", () => {
       "panel",
     ]) {
       expect(ids).toContain(component);
+    }
+    // Load-bearing cell content (review fold row 1): every item of every
+    // pinned column of every row, so a WEAKENED cell — an attribute, role,
+    // class hook or required-text item dropped while the row stays — reds L1,
+    // not just row removal. Full-content pin, matching how L1 pins every
+    // other contract table. Additions stay legal (superset); the map updates
+    // deliberately with the contract.
+    const loadBearing: Record<string, { attributes: string[]; roles: string[]; classHooks: string[]; requiredText: string[] }> = {
+      button: { attributes: ["data-variant", "aria-busy"], roles: ["button"], classHooks: ["bw-button"], requiredText: [] },
+      "numeric-input": {
+        attributes: ["type=number", "min", "max", "step", "aria-describedby", "for"],
+        roles: [],
+        classHooks: ["bw-numeric", "bw-numeric__label", "bw-numeric__field", "bw-numeric__unit", "bw-numeric__help"],
+        requiredText: ["Staged value; use Apply to request the change"],
+      },
+      "rotary-control": {
+        attributes: ["type=button", "aria-label", "aria-valuemin", "aria-valuemax", "aria-valuenow", "aria-valuetext~=staged"],
+        roles: ["slider"],
+        classHooks: ["bw-rotary", "bw-rotary__knob", "bw-rotary__value", "bw-rotary__state"],
+        requiredText: ["Staged"],
+      },
+      "reading-tile": {
+        attributes: ["data-severity", "aria-label"],
+        roles: ["region"],
+        classHooks: ["bw-reading", "bw-reading__header", "bw-reading__severity", "bw-reading__value", "bw-reading__quality"],
+        requiredText: ["steady · 2 s"],
+      },
+      "alert-bubble": {
+        attributes: ["data-severity", "aria-label=Dismiss"],
+        roles: ["status"],
+        classHooks: ["bw-alert-bubble", "bw-alert-bubble__content"],
+        requiredText: [],
+      },
+      "engineering-plot": {
+        attributes: [
+          "role=img",
+          "aria-label",
+          "aria-describedby",
+          "aria-label=Traces",
+          "aria-label~=(hidden by presentation preference)",
+          "data-line",
+          "data-hidden",
+        ],
+        roles: ["img"],
+        classHooks: ["bw-plot", "bw-plot__canvas", "bw-plot__legend", "bw-visually-hidden"],
+        requiredText: ["hidden"],
+      },
+      "data-table": {
+        attributes: ["scope=col"],
+        roles: ["table"],
+        classHooks: ["bw-table-wrap", "bw-data-table"],
+        requiredText: [],
+      },
+      panel: {
+        attributes: ["data-surface", "aria-label"],
+        roles: ["region"],
+        classHooks: ["bw-panel", "bw-panel__header", "bw-panel__title", "bw-panel__body"],
+        requiredText: [],
+      },
+    };
+    // Same item split as the L2 parser: spaced " ~ " separator, "—" is empty.
+    const items = (cell: string): string[] =>
+      cell.replace(/^`/, "").replace(/`$/, "").split(" ~ ").map((item) => item.trim()).filter((item) => item !== "" && item !== "—");
+    for (const [component, expected] of Object.entries(loadBearing)) {
+      const row = rows.find((candidate) => literal(candidate[0]!) === component);
+      if (row === undefined) throw new Error(`§E.1 row missing: ${component}`);
+      for (const item of expected.attributes) {
+        expect(items(row[2]!), `${component}: attribute cell must contain "${item}"`).toContain(item);
+      }
+      for (const role of expected.roles) {
+        expect(items(row[3]!), `${component}: role cell must contain "${role}"`).toContain(role);
+      }
+      for (const hook of expected.classHooks) {
+        expect(items(row[4]!), `${component}: class-hook cell must contain "${hook}"`).toContain(hook);
+      }
+      for (const text of expected.requiredText) {
+        expect(items(row[5]!), `${component}: required-text cell must contain "${text}"`).toContain(text);
+      }
     }
     // Every row must carry the full column set (no emptied cells except text/notes).
     for (const row of rows) {

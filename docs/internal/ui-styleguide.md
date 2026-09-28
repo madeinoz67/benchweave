@@ -62,7 +62,7 @@ Layout constants for the reference renderer:
 
 ### Borders, elevation and shadows
 
-Component boundaries use the standard border `1px solid var(--bw-border)`. Keyboard focus uses the focus outline `0.125rem solid var(--bw-focus)` offset by `0.125rem`. The raised and recessed shadows compose `--bw-shadow-dark`/`--bw-shadow-light` exactly as `tokens.css` defines them — the composition values are implementation, the colour inputs are contract tokens. The abnormal glow is `0 0 1.5rem` of the state colour at 32%, on the affected reading only (contract §B.2 SR-B2).
+Component boundaries use the standard border `1px solid var(--bw-border)`. Keyboard focus uses the focus outline `0.125rem solid var(--bw-focus)` offset by `0.125rem`. The raised and recessed shadows compose `--bw-shadow-dark`/`--bw-shadow-light` exactly as `tokens.css` defines them — the composition values are implementation, the colour inputs are contract tokens. The focus ring (`--bw-focus-ring`) and the standard transition (`--bw-transition-fast`) are likewise implementation tokens in `tokens.css`, not contract-pinned. The abnormal glow is `0 0 1.5rem` of the state colour at 32%, on the affected reading only (contract §B.2 SR-B2).
 
 Elevation has three levels: canvas (0), recessed (-1) and raised (+1). Dialogs and menus may use +2 by strengthening the raised shadow once. Do not create arbitrary elevation levels or nest strong shadows.
 

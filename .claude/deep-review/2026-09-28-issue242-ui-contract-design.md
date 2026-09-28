@@ -83,13 +83,14 @@ parses those tables, so a table that does not parse is a pin failure, not a sile
 ### 1.2 What the contract contains (items 1–6)
 
 **§A Tokens.** The existing token tables (14 colour tokens × 2 themes, spacing, radius,
-typography roles) move verbatim from the guide; `tokens.css`/`themes.css` remain the
-executable mirror. Plus (slice 3) `--bw-series-1…8` × 2 themes, the dash sequence
+the two font tokens) move verbatim from the guide, and typography roles stay renderer
+guidance; `tokens.css`/`themes.css` remain the executable mirror. Plus (slice 3) `--bw-series-1…8` × 2 themes, the dash sequence
 (`dash-1` solid, `dash-2` fixed pattern) and the symbol sequence (8 framework-neutral
 shapes). The mockup stays a visual reference and is not part of the equality pin.
 
 **§B States and severity model.** The six severities with meanings and dismissal classes
-(moved from the guide's alerts section), the glow rule, the acknowledgement rule.
+(moved from the guide's alerts section), and the three state rules SR-B1 (placement and
+persistence), SR-B2 (glow) and SR-B3 (acknowledgement).
 
 **§C Safety rules (issue items 1–3), as definition rows:**
 
