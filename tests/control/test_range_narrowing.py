@@ -165,3 +165,91 @@ def test_e1_narrowing_mid_run_keeps_the_record_and_reclassifies_the_next_admissi
     # The in-range device is untouched by the narrowing: per-pin, per-range.
     assert admitted.pins["controller"].conformance == "conforming"
     assert admitted.pins["controller"].acknowledgement is None
+
+
+# --- fold LOW-1: the corpus-state token follows the loader's absence semantics ----
+
+
+def _boundary_corpus(tmp_path: Path, name: str, *, drop: tuple[str, ...]) -> Path:
+    corpus = tmp_path / name
+    shutil.copytree(CORPUS, corpus)
+    for relative in drop:
+        (corpus / relative).unlink()
+    return corpus
+
+
+@pytest.mark.parametrize(
+    ("drop", "pin", "expected"),
+    [
+        # Both manifests present: the seed classification (served /
+        # non-conforming / unknown-dev — no head is declared on this tree).
+        ((), "0.2.0", "conforming"),
+        ((), "0.1.2", "non-conforming"),
+        ((), "0.3.0-dev", "non-conforming-unknown"),
+        # corpus-manifest ABSENT: the loader's own semantics are retained=()
+        # (every semver pin reads version_unknown, never carried); the dev
+        # label still consults the manifest's (absent) head. The token must
+        # not turn this state into a crash the loader never raises.
+        (("corpus-manifest.json",), "0.2.0", "non-conforming-unknown"),
+        (("corpus-manifest.json",), "0.1.2", "non-conforming-unknown"),
+        (("corpus-manifest.json",), "0.3.0-dev", "non-conforming-unknown"),
+    ],
+    ids=[
+        "both-served",
+        "both-out-of-range",
+        "both-dev",
+        "no-corpus-manifest-in-range",
+        "no-corpus-manifest-out-of-range",
+        "no-corpus-manifest-dev",
+    ],
+)
+def test_the_token_follows_the_loaders_absence_semantics(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    drop: tuple[str, ...],
+    pin: str,
+    expected: str,
+) -> None:
+    """Fold LOW-1 (#219 refute wave): with only the corpus manifest
+    missing, ``_corpus_state_token`` raised a raw FileNotFoundError while
+    the loader it feeds treats that absence as ``retained == ()`` — a
+    typed never-carried refusal, not a crash. The token follows the
+    loader now; a missing STANDARDS manifest keeps raising exactly like
+    the loader's own file read (the both-absent arms live below)."""
+    from benchweave.control.documents import classify_descriptor_pin
+
+    corpus = _boundary_corpus(tmp_path, "boundary", drop=drop)
+    monkeypatch.setattr(documents_module, "_otdp_corpus", lambda: corpus)
+    record = classify_descriptor_pin(pin)
+    if expected == "conforming":
+        assert record.conformance == "conforming"
+        assert record.status == "served"
+    elif expected == "non-conforming":
+        assert record.conformance == "non-conforming"
+        assert str(record.note).startswith("standard_nonconforming:")
+    else:
+        assert record.conformance == "non-conforming"
+        assert str(record.note).startswith("version_unknown:"), str(record.note)
+
+
+@pytest.mark.parametrize(
+    "pin",
+    ["0.2.0", "0.1.2"],
+    ids=["in-range", "out-of-range"],
+)
+def test_a_missing_standards_manifest_raises_like_the_loader(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    pin: str,
+) -> None:
+    """The other boundary half: without the standards manifest the policy
+    loader itself dies on its own file read — the token must raise the
+    SAME exception (it does, at its own read), never something broader."""
+    from benchweave.control.documents import classify_descriptor_pin
+
+    corpus = _boundary_corpus(
+        tmp_path, "no-standards", drop=("standards-manifest.json",)
+    )
+    monkeypatch.setattr(documents_module, "_otdp_corpus", lambda: corpus)
+    with pytest.raises(FileNotFoundError):
+        classify_descriptor_pin(pin)

@@ -253,15 +253,31 @@ def _corpus_state_token(corpus: Path) -> tuple[str, str]:
     are stored facts, never re-derived). Reading both files is what makes
     the cache key move when the policy moves; the cached body still runs
     only on a key miss.
+
+    Absence follows the LOADER's semantics, not a blanket crash (fold
+    LOW-1, #219 refute wave): a missing standards-manifest raises the same
+    ``FileNotFoundError`` the policy loader's own file read raises (the
+    token's read stands in for it); a missing corpus-manifest contributes
+    the empty-bytes sentinel so classification proceeds to the loader's
+    ``retained == ()`` — a typed never-carried refusal, never a
+    FileNotFoundError the loader never raises.
     """
 
-    def _digest(name: str) -> str:
-        # The exact bytes classification reads — a failed read propagates
-        # the same OSError the cached body would raise (fail closed, no
-        # degraded "unknown" verdict).
-        return hashlib.sha256((corpus / name).read_bytes()).hexdigest()
+    def _digest(name: str, *, absent_as_empty: bool = False) -> str:
+        path = corpus / name
+        if path.is_file():
+            return hashlib.sha256(path.read_bytes()).hexdigest()
+        if absent_as_empty:
+            # The loader's own absent state (retained == ()): a key no
+            # real digest can collide with, so absence and a present
+            # (even empty) file never share a cache entry.
+            return ""
+        # The loader's own posture for its own file: the read raises.
+        raise FileNotFoundError(path)
 
-    return _digest("standards-manifest.json"), _digest("corpus-manifest.json")
+    return _digest("standards-manifest.json"), _digest(
+        "corpus-manifest.json", absent_as_empty=True
+    )
 
 
 @lru_cache(maxsize=512)

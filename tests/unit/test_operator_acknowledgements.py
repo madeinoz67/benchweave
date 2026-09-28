@@ -287,3 +287,60 @@ def test_the_projection_stays_silent_for_an_acked_stored_pin(
     warnings = projection(None)
     assert warnings, "an unacked non-conforming pin must still warn"
     assert "0.1.2" in warnings[0]
+
+
+# --- fold LOW-2: the corrupt-record guard on the projection (green-on-arrival) ----
+
+
+@pytest.mark.parametrize(
+    "corrupt",
+    [
+        "{not json at all",
+        '{"recorded_at": "2026-09-28T00:00:00Z"}',
+        '{"otdp_version": null, "recorded_at": "2026-09-28T00:00:00Z"}',
+        '{"otdp_version": 3, "recorded_at": "2026-09-28T00:00:00Z"}',
+        '"a json string, not an object"',
+    ],
+    ids=["not-json", "missing-key", "null-version", "non-string-version", "non-object"],
+)
+def test_a_corrupt_ack_record_reads_as_unacknowledged(
+    caplog: pytest.LogCaptureFixture, corrupt: str
+) -> None:
+    """Fold LOW-2 (#219 refute wave, lane A F2): a corrupt or
+    shape-mismatched ``acknowledgement_json`` must degrade to the
+    UNacknowledged warning (the conservative direction — an unreadable
+    acknowledgement proves nothing) and never take the devices surface
+    down. This arm is a green-on-arrival PIN, not a RED fold: the guard
+    already behaved correctly untested; the row's claim was the missing
+    coverage, and this closes it (disclosed in the fold commit message).
+    """
+    import logging
+
+    from benchweave.interfaces.operations import Operations
+
+    raw = json.loads((FIXTURES / "descriptor-sim-psu.json").read_text())
+    raw["otdp_version"] = "0.1.2"
+    row = {
+        "device_id": "psu",
+        "generation": 1,
+        "profiles_json": "[]",
+        "descriptor_json": json.dumps(raw),
+        "identity_state": "matched",
+        "licence": "proprietary",
+        "updated_at": NOW,
+        "acknowledgement_json": corrupt,
+    }
+    seam = object.__new__(Operations)
+    with caplog.at_level(logging.WARNING, logger="benchweave.interfaces.operations"):
+        view = seam._device_projection(row)
+    assert set(view) == {
+        "device_id",
+        "generation",
+        "profiles",
+        "descriptor",
+        "identity_state",
+    }
+    assert any(
+        "device_conformance_mismatch" in record.message and "0.1.2" in record.message
+        for record in caplog.records
+    ), "a corrupt acknowledgement record must read as unacknowledged (warn)"
