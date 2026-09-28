@@ -432,6 +432,8 @@ All notable changes to this project will be documented in this file.
 - #247 gate-efficiency design — batched-fold doctrine, xdist, gate wrapper
 - Parallel-lane worktrees under .wt/ keep gortex overlays (owner directive) + design-record pointer corrections (#247)
 - Split gate doctrine into per-commit fast lane + per-push battery (#247)
+- Issue #241 slice 2 record — re-band decisions (D1 drain-cap classification, row-17 marker, HOLD arms)
+- Wave-2 fold — record errata for the unbuildable patch shape and the headroom arithmetic
 
 ### Features
 
@@ -864,6 +866,9 @@ All notable changes to this project will be documented in this file.
 - The dialect triangle goes within-range — VR-45 (#217)
 - Pin the carriage, the full VR-37 field set, and the classification edges (#217 review fold R1/R2/R9/R11a-b)
 - #172 continuity instrument tolerates CI-runner contention (#217 unblock)
+- Classify the drain cap as retryable infrastructure (site="drain-cap")
+- Row-17 clamp test joins the timing lane (marker only, no band change)
+- Wave-1 fold — exhaustion renders the retry composition (7 findings, one commit)
 
 ### Build
 
