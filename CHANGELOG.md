@@ -226,6 +226,7 @@ All notable changes to this project will be documented in this file.
 - One shared probe-wall predicate at all three classification sites
 - Corpus-keyed adapter cache, acked-aware warning, bounded classify cache (#217 review fold R3/R4/R5)
 - The devices read path degrades, never 500s (#217 review fold R10)
+- Fold refute F1 dead-log pointers + F2 zero-evidence PASS (#247)
 
 ### Documentation
 
@@ -427,6 +428,9 @@ All notable changes to this project will be documented in this file.
 - Per-pin admission across the developer and operator guides (#217 review fold)
 - D12 — the API-view wire field deferral gets its §6 row (#217 review fold)
 - Classify_descriptor_pin's totality is over pin values, not governance bytes (#217 review fold R8)
+- #247 gate-efficiency design — batched-fold doctrine, xdist, gate wrapper
+- Parallel-lane worktrees under .wt/ keep gortex overlays (owner directive) + design-record pointer corrections (#247)
+- Split gate doctrine into per-commit fast lane + per-push battery (#247)
 
 ### Features
 
@@ -598,6 +602,7 @@ All notable changes to this project will be documented in this file.
 - Per-pin descriptor admission — the Q6 classification table (#217)
 - Pairwise cross-constraint admission check (#217)
 - Run-evidence and API-view surfaces for the pin facts (#217)
+- Gate wrapper with honest machine-readable evidence (#247)
 
 ### Hardware Evidence
 
@@ -873,6 +878,7 @@ All notable changes to this project will be documented in this file.
 - Consistent action pinning, locked syncs, honest workflow behaviour
 - Clean-venv ADC conformance control + the slice measurement postscript
 - Dedicated timing lane for the real-paced set (#241 slice 1)
+- Run the suite in parallel with pytest-xdist (#247)
 
 ### Ci+docs
 
