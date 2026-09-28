@@ -114,6 +114,14 @@ def collect_bump_entries(root: Path) -> tuple[BumpEntry, ...]:
     raw = _git(
         root,
         "log",
+        # --no-renames: default rename detection reclassifies a
+        # copy-never-move bump's file Adds as renames of the predecessor's
+        # files and DROPS them from --diff-filter=A (measured on this tree:
+        # all six 0.1.0 reset-batch directories invisible to the default
+        # query). A bump the census cannot see is a window the floor never
+        # judges — the same fix migration_notes' census carries (#219
+        # refute wave, FIX A).
+        "--no-renames",
         "--diff-filter=A",
         "--format=%ct%x00%H",
         "--name-only",

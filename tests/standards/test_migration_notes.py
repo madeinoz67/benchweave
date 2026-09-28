@@ -263,3 +263,41 @@ def test_real_tree_carries_no_unnoted_post_adoption_bump() -> None:
     from benchweave.standards.migration_notes import check_migration_notes
 
     assert check_migration_notes(ROOT) == ()
+
+
+# --- fold FIX A: the Add census must see copy-shaped Adds (#219 refute wave) ----
+
+
+def test_the_add_census_covers_every_version_dir_in_the_tree() -> None:
+    """Rename detection must not hide Adds from the shared census.
+
+    Under default rename detection, git reclassifies a copy-never-move
+    bump's file Adds as RENAMES of the predecessor's files and drops them
+    from ``--diff-filter=A`` — measured on this tree, all six 0.1.0
+    directories (the 2026-09-16 reset batch, each a copy of a pre-reset
+    tree) were invisible to the default query. A census the gate cannot
+    see is a bump the gate cannot judge (and, under lattice pairing, a
+    missing lowest version mis-places the admission exemption). The
+    property: every pure-semver version directory the TREE carries appears
+    as a landed key — intersected with tree membership, so deleted-dir
+    ghosts (the pre-reset numbers git still lists as Adds) do not count.
+    """
+    from benchweave.standards.manifest import VERSION_PATTERN
+    from benchweave.standards.migration_notes import _landed_sequences
+
+    landed = {
+        (standard, version)
+        for standard, entries in _landed_sequences(ROOT).items()
+        for _timestamp, version in entries
+    }
+    tree = {
+        (directory.parent.name, directory.name)
+        for directory in (ROOT / "standards").glob("*/*")
+        if directory.is_dir() and VERSION_PATTERN.fullmatch(directory.name)
+    }
+    assert tree, "the enumeration itself found nothing — the fixture broke"
+    missing = sorted(tree - landed)
+    assert not missing, (
+        f"the Add census is blind to {missing} — rename detection "
+        "reclassified their Adds; run the shared log with --no-renames"
+    )

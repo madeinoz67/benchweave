@@ -114,23 +114,21 @@ def _refuse_shallow(root: Path) -> None:
         )
 
 
-def collect_note_bumps(root: Path) -> tuple[NoteBump, ...]:
-    """Every post-adoption MINOR-or-greater bump, with its predecessor.
+def _landed_sequences(root: Path) -> dict[str, list[tuple[int, str]]]:
+    """Every landed (standard, version) from git Adds, earliest add first.
 
-    Version-directory additions are read from git history (file paths git
-    emits, derived to version directories — train_window's grammar), one
-    bump per (standard, version) at its earliest commit, ordered
-    chronologically per standard. The predecessor is the version that came
-    before it in that landed sequence — the version the bump copied from
-    (copy-never-move keeps it in history either way). PATCH-only motion and
-    everything landed before the anchor are exempt; the shallow history
-    refuses to judge.
+    The census runs with ``--no-renames``: under default rename detection
+    git reclassifies a copy-never-move bump's Adds as renames of the
+    predecessor's files and DROPS them from ``--diff-filter=A`` — measured
+    on this tree, all six 0.1.0 directories (the reset batch) were
+    invisible to the default query while ``--no-renames`` sees every
+    version directory the tree carries. One parser for both gates
+    (train_window shares the fix).
     """
-    _refuse_shallow(root)
-    anchor = _anchor(root)
     raw = _git(
         root,
         "log",
+        "--no-renames",
         "--diff-filter=A",
         "--format=%ct%x00%H",
         "--name-only",
@@ -149,6 +147,25 @@ def collect_note_bumps(root: Path) -> tuple[NoteBump, ...]:
     sequences: dict[str, list[tuple[int, str]]] = {}
     for (standard, version), timestamp in landed.items():
         sequences.setdefault(standard, []).append((timestamp, version))
+    return sequences
+
+
+def collect_note_bumps(root: Path) -> tuple[NoteBump, ...]:
+    """Every post-adoption MINOR-or-greater bump, with its predecessor.
+
+    Version-directory additions are read from git history (file paths git
+    emits, derived to version directories — train_window's grammar,
+    ``--no-renames`` so copy-shaped Adds stay Adds), one bump per
+    (standard, version) at its earliest commit, ordered chronologically per
+    standard. The predecessor is the version that came before it in that
+    landed sequence — the version the bump copied from (copy-never-move
+    keeps it in history either way). PATCH-only motion and everything
+    landed before the anchor are exempt; the shallow history refuses to
+    judge.
+    """
+    _refuse_shallow(root)
+    anchor = _anchor(root)
+    sequences = _landed_sequences(root)
 
     bumps: list[NoteBump] = []
     for standard, entries in sorted(sequences.items()):
