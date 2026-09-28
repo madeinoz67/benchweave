@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any
 from benchweave.content.store import ContentStore
 from benchweave.control.clocking import SystemClock
 from benchweave.control.coordinator import _iso_plus_ms, _parse_utc
+from benchweave.control.documents import classify_descriptor_pin
 from benchweave.interfaces import errors
 from benchweave.interfaces.bootstrap import RegistrySession
 from benchweave.interfaces.identity import Identity, IdentityRejected, validate
@@ -24,6 +25,7 @@ from benchweave.registry.activation import ActivationRejected, activate
 from benchweave.registry.admission import AdmissionRejected, Admitted, Approval, admit
 from benchweave.registry.authenticity import AuthenticityRejected
 from benchweave.registry.schemas import RegistryRejected
+from benchweave.standards.manifest import StandardsError
 from benchweave.state.store import Conflict, Lease, LeaseNotActive, Store
 
 # D4 (interface-errata slice): operational context that left the event wire
@@ -170,6 +172,54 @@ def _resolve_event_evidence(
     raise ValueError(
         f"no document anchor for event on bench {bench_id!r}"
         f" (run {run_id!r} has no row and the bench has no configuration)"
+    )
+
+
+def _log_device_conformance(
+    device_id: Any,
+    descriptor: dict[str, Any],
+    *,
+    acknowledged_pins: dict[str, str] | None = None,
+) -> None:
+    """VR-16's API-view channel for the conformance class (issue #217).
+
+    The wire's device object is contract-frozen (interface 0.1.0's closed
+    def — an interface bump this slice does not make), so a non-conforming
+    stored pin surfaces through the D4-sanctioned free-form channel: the
+    server-side log. The derivation itself is
+    :func:`benchweave.control.documents.classify_descriptor_pin` — total,
+    pure over the committed policy block, and the same classifier admission
+    enforces. A non-conforming pin whose EXACT version is carried in
+    ``acknowledged_pins`` (device_id -> acked pin, the admission record's
+    mapping) was operator-acknowledged at load and does not warn — the
+    warning is for the unacknowledged state; an ack naming a different pin
+    does not apply (review fold R4). No production caller threads
+    acknowledgements yet (design record D11 — slice 5)."""
+    pin_value = descriptor.get("otdp_version")
+    if not isinstance(pin_value, str) or not pin_value:
+        # A legacy pre-full-form row carries no pin: nothing to classify
+        # (review fold R10 — no "pins None" spam for pre-dialect rows).
+        return
+    try:
+        pin = classify_descriptor_pin(pin_value)
+    except StandardsError as exc:
+        # Malformed governance bytes must not take the devices surface down
+        # (R10): fail-closed belongs at admission, not on the read path —
+        # the derivation degrades to a named log line, the D4 channel.
+        _LOG.error(
+            "device_conformance_unavailable: device %s — %s", device_id, exc
+        )
+        return
+    if pin.conformance != "non-conforming":
+        return
+    acked = (acknowledged_pins or {}).get(str(device_id))
+    if acked == pin.otdp_version:
+        return
+    _LOG.warning(
+        "device_conformance_mismatch: device %s pins %s — %s",
+        device_id,
+        pin.otdp_version,
+        pin.note,
     )
 
 
@@ -1462,6 +1512,15 @@ class Operations:
         # ``version``. The "1" tail is the pre-dialect fallback for rows
         # predating both — never fabricated for a full-form row.
         version = descriptor.get("version") or descriptor.get("descriptor_version")
+        # VR-16's API-view surface (issue #217): the device's conformance
+        # class derives from the stored pin against the committed policy
+        # block (total — a pin a later policy motion retired READS here,
+        # never crashes). The wire object is contract-frozen (interface
+        # 0.1.0's closed device def — an interface bump this slice does not
+        # make), so a non-conforming derivation surfaces through D4's
+        # sanctioned free-form channel: the server-side log. The wire field
+        # lands with the interface lane.
+        _log_device_conformance(row.get("device_id"), descriptor)
         return {
             "device_id": row["device_id"],
             "generation": row["generation"],

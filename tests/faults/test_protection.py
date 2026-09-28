@@ -693,7 +693,9 @@ def test_truthful_passed_run_record_validates(tmp_path: Path) -> None:
     assert run is not None
     assert run["terminal"] == record
     events = _assert_monotonic_events(store, "run-pass")
-    assert len(events) == 21  # the full eight-kind body
+    # 22 = the eight-kind body (21) + the devices_pinned evidence record
+    # (VR-46, issue #217) the coordinator appends before the body's events.
+    assert len(events) == 22
     assert store.get_active_lease(BENCH_ID) is None
 
 

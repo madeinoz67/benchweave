@@ -396,8 +396,10 @@ def test_control_stack_run_on_cached_plugin(
         assert record["safe_state"] == "verified"
         assert record["reasons"] == []
         assert store.get_active_lease("sim-bench") is None  # the lease was released
+        # devices_pinned: the VR-46 run-evidence record (issue #217).
         assert {event["kind"] for event in store.read_events(f"run:{RUN_ID}")} == {
-            "invoke", "read", "write", "delay", "sample", "assert", "if", "repeat"
+            "devices_pinned",
+            "invoke", "read", "write", "delay", "sample", "assert", "if", "repeat",
         }
     finally:
         store.close()
