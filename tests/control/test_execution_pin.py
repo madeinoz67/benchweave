@@ -560,6 +560,53 @@ def test_r4_execution_dev_label_without_a_head_is_never_carried() -> None:
     assert "declared dev head" in str(record.note), record.note
 
 
+# --- F3: the run guard — running is a composition-version fact -------------------
+
+
+def test_f3_run_start_on_pinned_old_lattice_refuses(tmp_path: Path) -> None:
+    """F3: startup may HOLD and validate a pinned-old lattice (F1a's
+    surface — the procedure-author story), but a RUN start over it refuses
+    ``execution_version_not_runnable:`` naming both versions and the
+    move-to, BEFORE any device plan or bridge is constructed. KILL: a
+    0.1.0-lattice run producing a terminal record — build_terminal_record
+    hardcodes the 0.2.0 contract_version beside the binding's 0.1.0
+    identity, the internally-contradictory evidence record (A06). RED
+    within the slice: at the routing-landed/guard-absent posture the run
+    path ADMITTED the lattice and built the coordinator (DID NOT RAISE)."""
+    from benchweave.content.store import ContentStore
+    from benchweave.control.clocking import SystemClock
+    from benchweave.interfaces.app import _build_run_factory
+    from benchweave.interfaces.bootstrap import admit_startup_bench
+    from benchweave.state.store import Store
+
+    lattice = tmp_path / "lattice"
+    shutil.copytree(LATTICE_010, lattice)
+    store = Store.open(tmp_path / "state.db")
+    try:
+        content = ContentStore(store)
+        # Startup admits the lattice (that IS F1a at the gateway surface).
+        admit_startup_bench(store, content, lattice, now=NOW_WALL)
+        binding_bytes = (lattice / "run-binding.json").read_bytes()
+        binding = json.loads(binding_bytes)
+        binding_ref = {
+            "id": str(binding["request_id"]),
+            "version": str(binding["contract_version"]),
+            "sha256": hashlib.sha256(binding_bytes).hexdigest(),
+        }
+        factory = _build_run_factory(
+            lattice, SystemClock().now_iso, limits=QUOTA_LIMITS
+        )
+        with pytest.raises(AdmissionRejected) as raised:
+            factory("run-pin-guard-1", "principal-pin", binding_ref, store)
+        message = str(raised.value)
+        assert message.startswith("execution_version_not_runnable:"), message
+        assert "execution@0.2.0" in message, message
+        assert "execution@0.1.0" in message, message
+        assert "move-to: 0.2.0" in message, message
+    finally:
+        store.close()
+
+
 # --- F4: the version-literal ratchet holds ---------------------------------------
 
 
