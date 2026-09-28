@@ -34,6 +34,19 @@ check). The SDK's ``version_not_served:`` folds "never carried" and
 ways instead — the same convergence the resolver documents
 (``standards/dependency.py``'s module docstring; the census pins the SDK
 lane's fold on the 0.1.2 arm so the split stays visible cross-lane).
+
+The execution pin (issue #220, #203 slice 6): the BENCH document's own
+``contract_version`` classifies against the same policy block
+(``standard="execution"``) and routes ALL five execution documents — they
+validate against the pinned version's digest-verified schemas, never the
+ambient composition's (CON-1's amendment). Refused classes carry the same
+vocabulary verbatim (``version_unknown:`` / ``retired_identifier:`` /
+``standard_nonconforming:``); a non-conforming execution pin refuses
+outright — no ack path exists for it (an acknowledgement authorises an
+otdp-window load, never the execution runtime interface). An
+unclassifiable pin keeps the composition posture: the threaded directory's
+own schema const names it. The gateway still never emits
+``version_not_served:``.
 """
 
 from __future__ import annotations
@@ -159,15 +172,45 @@ class AdmittedDocuments:
     #: conformance class, the yank deprecation warning where one fired, and
     #: the recorded operator acknowledgement behind a non-conforming load.
     pins: dict[str, DescriptorPin]
+    #: The bench's own execution pin — the version label all five documents
+    #: validated against (the routed pin, or the composition directory's
+    #: name when the pin does not classify; issue #220). The run guard reads
+    #: this: running is a composition-version fact, validated admission is
+    #: the pin's.
+    execution_version: str
 
 
-def _validator(schema_filename: str, contracts: Path = _CONTRACTS) -> Any:
+def _corpus_root_of(family_version_dir: Path) -> Path:
+    """``<corpus>/<family>/<version>`` → ``<corpus>``.
+
+    The composition hands admission a VERSION directory; the manifests the
+    classification and the digest-verified resolution read live at the
+    corpus root, two levels up (the same layout ``_otdp_corpus`` resolves
+    from the family directory)."""
+    return family_version_dir.parent.parent
+
+
+def _validator(
+    schema_filename: str, contracts: Path = _CONTRACTS, routed_version: str | None = None
+) -> Any:
     """The execution-schema validator for one corpus directory (cached).
 
     Keyed per directory so an ACTIVE and a DEV_HEAD composition in one
     process never share a validator — the DEV_HEAD corpus validates the
     capture shapes the frozen-literal corpus refuses.
+
+    ``routed_version`` names the execution pin that selected this directory
+    (issue #220): the schema bytes then resolve digest-verified against the
+    corpus row — every request re-verifies (the descriptor lane's posture;
+    only the validator CONSTRUCTION is cached), so a pin's schema is served
+    from digest-frozen retained bytes or refused by name
+    (``version_unknown:`` / ``corpus_file_unpinned:`` / ``corpus_pin_mismatch:``).
+    The composition posture keeps the trusted composition seam's plain read.
     """
+    if routed_version is not None:
+        contracts = _versioned_schema_path(
+            _corpus_root_of(contracts), _EXECUTION, routed_version, schema_filename
+        ).parent
     key = (contracts, schema_filename)
     validator = _VALIDATORS.get(key)
     if validator is None:
@@ -181,6 +224,10 @@ _DESCRIPTOR_CACHE: dict[tuple[Path, str], Any] = {}
 
 #: The OTDP standard id, named once for the classification literals below.
 _OTDP = "otdp"
+
+#: The execution standard id — the pin carrier is the bench document's own
+#: ``contract_version`` (issue #220); named once for the same reason.
+_EXECUTION = "execution"
 
 
 @dataclass(frozen=True)
@@ -217,7 +264,7 @@ def _otdp_corpus() -> Path:
     return contract_family(_OTDP).parent
 
 
-def _vr37_text(row: Any, pin: str, corpus: Path, policy: Any) -> str:
+def _vr37_text(row: Any, pin: str, corpus: Path, policy: Any, standard: str) -> str:
     """The five VR-37 fields inline, in the resolver's format (dependency.py
     ``_vr37`` — the deliberate vocabulary convergence; the two derivations
     are pinned text-equal by test). Move-to: the highest served version —
@@ -227,13 +274,15 @@ def _vr37_text(row: Any, pin: str, corpus: Path, policy: Any) -> str:
     move-to version's from-predecessor note pointer when the policy block
     carries one (#219's carrier), else the documented placeholder — the
     seed carries no note rows (SM-5 from adoption, D6), so a real pointer
-    appears exactly when a release has one."""
-    served = served_versions_from_corpus(policy, corpus, _OTDP)
+    appears exactly when a release has one. ``standard`` names the policy
+    row's standard id (issue #220: the execution classification reuses the
+    derivation verbatim)."""
+    served = served_versions_from_corpus(policy, corpus, standard)
     move_to = max(served, key=version_tuple) if served else row.lower
     note_pointer = row.versions.get(move_to)
     migration = note_pointer if note_pointer is not None else "migration guidance pending"
     return (
-        f"standard: {_OTDP}; pinned: {pin}; "
+        f"standard: {standard}; pinned: {pin}; "
         f"supported: >={row.lower},<{row.upper}; "
         f"move-to: {move_to}; "
         f"migration: {migration}"
@@ -282,19 +331,29 @@ def _corpus_state_token(corpus: Path) -> tuple[str, str]:
 
 @lru_cache(maxsize=512)
 def _classify_cached(
-    pin: str, corpus_text: str, policy_digest: str, retained_digest: str
+    pin: str,
+    corpus_text: str,
+    policy_digest: str,
+    retained_digest: str,
+    standard: str = _OTDP,
 ) -> DescriptorPin:
     # ``policy_digest``/``retained_digest`` are cache-KEY material only —
     # they bind the entry to the corpus state it was computed from and are
     # deliberately unused below (see ``_corpus_state_token``).
+    # ``standard`` is key material that is NOT derivable from them: the two
+    # manifest digests are shared by every standard's classification, so a
+    # key without the standard would let an otdp and an execution
+    # classification of the same pin string share one entry (issue #220,
+    # Risk 4 — otdp's never-carried row answering execution's retired pin).
     corpus = Path(corpus_text)
     policy = load_dependency_policy_from_corpus(corpus)
-    row = policy.standards.get(_OTDP)
+    row = policy.standards.get(standard)
     if row is None:
-        # Fail closed: a tree whose policy block carries no otdp row has
-        # broken governance data — classification is not a guess.
+        # Fail closed: a tree whose policy block carries no row for this
+        # standard has broken governance data — classification is not a
+        # guess.
         raise StandardsError(
-            "dependency_policy_invalid: no policy row for standard 'otdp'"
+            f"dependency_policy_invalid: no policy row for standard {standard!r}"
         )
     if _DEV_PIN_SHAPE.fullmatch(pin):
         # The dev-pin arm (issue #218, design §3.6): a dev-shaped pin is
@@ -303,21 +362,21 @@ def _classify_cached(
         # bytes the pin could validate against do not exist as a head).
         # The stage distinguishes dev from RC (VR-9); the pin validates
         # against the head's own corpus-pinned bytes (VR-20's side by side).
-        head = declared_dev_head(corpus, _OTDP)
+        head = declared_dev_head(corpus, standard)
         if head is None or head.version != pin:
             return DescriptorPin(
                 otdp_version=pin,
                 status="unknown",
                 conformance="non-conforming",
                 note=(
-                    f"version_unknown: {_OTDP} {pin} names no declared dev head "
+                    f"version_unknown: {standard} {pin} names no declared dev head "
                     "on this corpus (a head is declared or it is not — the "
                     "active family is never substituted)"
                 ),
             )
         status = "rc" if head.candidate else "dev"
         return DescriptorPin(otdp_version=pin, status=status, conformance="conforming")
-    vr37 = _vr37_text(row, pin, corpus, policy)
+    vr37 = _vr37_text(row, pin, corpus, policy, standard)
     if pin in row.retired:
         major, minor, _patch = version_tuple(pin)
         return DescriptorPin(
@@ -325,18 +384,18 @@ def _classify_cached(
             status="retired",
             conformance="non-conforming",
             note=(
-                f"retired_identifier: {_OTDP} {pin} is a retired identifier "
+                f"retired_identifier: {standard} {pin} is a retired identifier "
                 f"(used and dead, never reissued); the next minor is "
                 f"{major}.{minor + 1}.0; {vr37}"
             ),
         )
-    if pin not in retained_versions_from_corpus(corpus, _OTDP):
+    if pin not in retained_versions_from_corpus(corpus, standard):
         return DescriptorPin(
             otdp_version=pin,
             status="unknown",
             conformance="non-conforming",
             note=(
-                f"version_unknown: {_OTDP} {pin} was never carried by this "
+                f"version_unknown: {standard} {pin} was never carried by this "
                 f"corpus — publish it or widen the constraint; {vr37}"
             ),
         )
@@ -349,7 +408,7 @@ def _classify_cached(
         )
     for record in row.yanked:
         if record.version == pin:
-            served = served_versions_from_corpus(policy, corpus, _OTDP)
+            served = served_versions_from_corpus(policy, corpus, standard)
             move_to = max(served, key=version_tuple) if served else row.lower
             return DescriptorPin(
                 otdp_version=pin,
@@ -357,7 +416,7 @@ def _classify_cached(
                 conformance="conforming",
                 deprecated=True,
                 note=(
-                    f"deprecation warning: {_OTDP} {pin} is yanked "
+                    f"deprecation warning: {standard} {pin} is yanked "
                     f"({record.reason}; since {record.since}); "
                     f"move-to: {move_to}"
                 ),
@@ -405,7 +464,42 @@ def classify_descriptor_pin(pin: object, *, corpus: Path | None = None) -> Descr
             ),
         )
     resolved = Path(corpus if corpus is not None else _otdp_corpus())
-    return _classify_cached(pin, str(resolved), *_corpus_state_token(resolved))
+    return _classify_cached(pin, str(resolved), *_corpus_state_token(resolved), _OTDP)
+
+
+def _classify_execution_pin(pin: object, *, corpus: Path | None = None) -> DescriptorPin:
+    """Classify one execution pin — the bench document's own
+    ``contract_version`` (issue #220) — against the committed policy block.
+
+    The descriptor classifier's exact Q6 table, re-keyed to
+    ``standard="execution"``: same totals, same refusals, same VR-37
+    derivation, distinct cache entries (the key carries the standard —
+    Risk 4). The record's ``otdp_version`` field name is the descriptor
+    lane's legacy vocabulary; E3 defers a fuller execution pin record.
+    TOTAL over pin values: a value that is not a parseable
+    MAJOR.MINOR.PATCH string (or ``<target>-dev`` label) folds to
+    ``unclassifiable`` and the ADMISSION keeps the composition posture, so
+    the schema's own const error names it.
+    """
+    if not isinstance(pin, str) or (
+        VERSION_PATTERN.fullmatch(pin) is None and _DEV_PIN_SHAPE.fullmatch(pin) is None
+    ):
+        shown = pin if isinstance(pin, str) else repr(pin)
+        return DescriptorPin(
+            otdp_version=shown,
+            status="unclassifiable",
+            conformance="non-conforming",
+            note=(
+                f"version_not_classifiable: execution pin {shown!r} is not a "
+                "parseable MAJOR.MINOR.PATCH version (or <target>-dev label); "
+                "the bench schema's own contract_version const names it at "
+                "validation"
+            ),
+        )
+    resolved = Path(corpus if corpus is not None else contract_family(_EXECUTION).parent)
+    return _classify_cached(
+        pin, str(resolved), *_corpus_state_token(resolved), _EXECUTION
+    )
 
 
 def _authorise_pin(
@@ -502,17 +596,18 @@ def _otdp_versioned_path(document_name: str, version: str | None) -> Path:
     return _otdp_versioned_schema_path(_otdp_corpus(), version, document_name)
 
 
-def _otdp_versioned_schema_path(
-    corpus: Path, version: str, document_name: str = DESCRIPTOR_SCHEMA_NAME
+def _versioned_schema_path(
+    corpus: Path, standard: str, version: str, document_name: str
 ) -> Path:
-    """The corpus-parameterized half of the versioned resolution (the
-    adapter-const cache keys by corpus, so its read cannot resolve the
-    corpus through the module default)."""
-    relative = f"{_OTDP}/{version}/{document_name}"
+    """The corpus-parameterized versioned resolution, one mechanism for both
+    families (issue #220 generalized the otdp half): file-exists, corpus
+    row, digest — a pin's schema is served from digest-frozen retained
+    bytes or refused by name, never silently substituted."""
+    relative = f"{standard}/{version}/{document_name}"
     path = corpus / relative
     if not path.is_file():
         raise AdmissionRejected(
-            f"version_unknown: {_OTDP} {version} retains no {document_name} "
+            f"version_unknown: {standard} {version} retains no {document_name} "
             f"under {relative}"
         )
     raw = path.read_bytes()
@@ -529,6 +624,16 @@ def _otdp_versioned_schema_path(
             f"does not match the on-disk bytes ({digest})"
         )
     return path
+
+
+def _otdp_versioned_schema_path(
+    corpus: Path, version: str, document_name: str = DESCRIPTOR_SCHEMA_NAME
+) -> Path:
+    """The corpus-parameterized half of the otdp versioned resolution (the
+    adapter-const cache keys by corpus, so its read cannot resolve the
+    corpus through the module default) — delegation to the generalized
+    mechanism."""
+    return _versioned_schema_path(corpus, _OTDP, version, document_name)
 
 
 def _otdp_normative_path(document_name: str) -> Path:
@@ -572,6 +677,7 @@ def _decode(
     logical: str,
     schema_filename: str | None = None,
     contracts: Path = _CONTRACTS,
+    routed_version: str | None = None,
 ) -> tuple[dict[str, Any], str]:
     """Decode ``path`` exactly; return its content and byte digest.
 
@@ -579,7 +685,9 @@ def _decode(
     duplicate-key, nonfinite-number and size gates apply. When a schema
     filename is given the document must also validate against it (against
     ``contracts`` — the composition-resolved corpus directory, the module
-    default when none is threaded).
+    default when none is threaded). ``routed_version`` (issue #220) marks
+    the directory as pin-selected: the schema then resolves digest-verified
+    (see ``_validator``).
     """
 
     raw = path.read_bytes()
@@ -591,7 +699,7 @@ def _decode(
     if schema_filename is not None:
         error = next(
             iter(
-                _validator(schema_filename, contracts).iter_errors(
+                _validator(schema_filename, contracts, routed_version).iter_errors(
                     document.content
                 )
             ),
@@ -1226,21 +1334,22 @@ def _adapter_api_const_cached(corpus_text: str, version: str) -> str:
     return const
 
 
-def _check_cross_constraints(contracts: Path, pins: dict[str, DescriptorPin]) -> None:
+def _check_cross_constraints(execution_version: str, pins: dict[str, DescriptorPin]) -> None:
     """The pairwise bench check (design §3.3, VR-31's admission half).
 
     Each device's OTDP pin must sit inside the BENCH's execution version's
     declared range, read from the committed cross-constraints side table —
     the same rows the resolver enforces at resolve time, single-sourced
-    through ``load_cross_constraints_from_corpus``. The bench's execution
-    version derives from the ``contracts`` directory's name (the
-    composition seam's own fact); a composition carrying no row for its
-    version constrains nothing it has no evidence for (execution 0.1.0's
-    honest negative). The row's ``adapter_api`` requirement rides the same
-    row, judged against the pinned schema's own const. An acknowledged
-    non-conforming pin still refuses here: the acknowledgement authorises
-    the otdp-window load, never the execution runtime interface."""
-    execution_version = contracts.name
+    through ``load_cross_constraints_from_corpus``. ``execution_version`` is
+    the bench's OWN declared fact since issue #220: the routed pin when the
+    bench's ``contract_version`` classifies, the composition directory's
+    name when it does not (previously the ambient directory name alone). A
+    version carrying no row constrains nothing it has no evidence for
+    (execution 0.1.0's honest negative). The row's ``adapter_api``
+    requirement rides the same row, judged against the pinned schema's own
+    const. An acknowledged non-conforming pin still refuses here: the
+    acknowledgement authorises the otdp-window load, never the execution
+    runtime interface."""
     for row in load_cross_constraints_from_corpus(_otdp_corpus()):
         if row.standard != "execution" or row.version != execution_version:
             continue
@@ -1476,6 +1585,52 @@ def _check_allow_rule_constraints(logical: str, policy: dict[str, Any]) -> None:
                 ) from exc
 
 
+def _route_execution_contracts(
+    bench_path: Path, contracts: Path
+) -> tuple[str, Path, str | None]:
+    """Route admission by the bench's own ``contract_version`` (issue #220).
+
+    The routing read decodes the bench through the exact-byte gates (no
+    schema — the const has not been judged yet), classifies the pin, and
+    selects the corpus directory all five documents validate against:
+
+    - served / yanked / dev / rc → ``contracts.parent / <pin>`` — the
+      pinned version's own bytes, digest-verified at every validator
+      resolution (CON-1's amendment: the pin's bytes, never the ambient
+      composition's);
+    - retired / never-carried / retained-out-of-range → the Q6 refusal
+      verbatim, OUTRIGHT for the execution family (no ack path — an
+      acknowledgement authorises an otdp-window load, never the execution
+      runtime interface);
+    - unclassifiable → ``(contracts.name, contracts, None)`` — the
+      composition posture, so the schema's own const error names it.
+
+    Returns ``(execution_version, routed_directory, routed_pin)``. The
+    routing read and the later validating read are two reads of one path;
+    the TOCTOU is self-defending because the pin lives in the validated
+    bytes — a swap between the reads routes on bytes A and validates bytes
+    B, and the routed schema's ``contract_version`` const refuses B unless
+    it declares exactly the routed version (pinned by
+    ``tests/control/test_execution_pin.py`` Risk-2 arm).
+    """
+    probe, _probe_digest = _decode(bench_path, "bench")
+    record = _classify_execution_pin(
+        probe.get("contract_version"), corpus=_corpus_root_of(contracts)
+    )
+    if record.status in ("served", "yanked", "dev", "rc"):
+        pin = record.otdp_version
+        return pin, contracts.parent / pin, pin
+    if record.status in ("retired", "unknown", "nonconforming"):
+        prefix = {
+            "retired": "retired_identifier:",
+            "unknown": "version_unknown:",
+            "nonconforming": "standard_nonconforming:",
+        }[record.status]
+        rest = (record.note or "").partition(":")[2].strip()
+        raise AdmissionRejected(f"{prefix} bench {rest}")
+    return contracts.name, contracts, None
+
+
 def admit_documents(
     procedure_path: Path,
     policy_path: Path,
@@ -1521,23 +1676,45 @@ def admit_documents(
     acknowledgements (device_id -> the acked OTDP pin) that alone admit a
     retained-but-out-of-range pin (VR-14/18) — an ack naming a different
     pin does not apply. ``None`` (the default) acknowledges nothing.
+
+    The execution lane (issue #220): the bench's own ``contract_version``
+    routes ALL five documents — they validate against the pinned version's
+    digest-verified schemas, never the ambient composition's
+    (``contracts`` is the composition BASE; the pin selects within the
+    family). Refused classes raise outright; an unclassifiable pin keeps
+    the composition posture. The routed label returns as
+    ``AdmittedDocuments.execution_version``.
     """
     provider_state: ProviderRegistry | None = None
     if provider_settings is not None:
         provider_state = load_transport_settings(provider_settings)
 
+    execution_version, contracts_dir, routed_version = _route_execution_contracts(
+        bench_path, contracts
+    )
+
     procedure, procedure_digest = _decode(
-        procedure_path, "procedure", _SCHEMA_FILES["procedure"], contracts
+        procedure_path,
+        "procedure",
+        _SCHEMA_FILES["procedure"],
+        contracts_dir,
+        routed_version,
     )
     policy, policy_digest = _decode(
-        policy_path, "policy", _SCHEMA_FILES["policy"], contracts
+        policy_path, "policy", _SCHEMA_FILES["policy"], contracts_dir, routed_version
     )
-    bench, bench_digest = _decode(bench_path, "bench", _SCHEMA_FILES["bench"], contracts)
+    bench, bench_digest = _decode(
+        bench_path, "bench", _SCHEMA_FILES["bench"], contracts_dir, routed_version
+    )
     binding, binding_digest = _decode(
-        binding_path, "binding", _SCHEMA_FILES["binding"], contracts
+        binding_path, "binding", _SCHEMA_FILES["binding"], contracts_dir, routed_version
     )
     commissioning, commissioning_digest = _decode(
-        commissioning_path, "commissioning", _SCHEMA_FILES["commissioning"], contracts
+        commissioning_path,
+        "commissioning",
+        _SCHEMA_FILES["commissioning"],
+        contracts_dir,
+        routed_version,
     )
     lock, lock_digest = _decode(bench_path.parent / _PACKAGE_LOCK_FILENAME, "package_lock")
     _check_package_lock(lock)
@@ -1675,8 +1852,9 @@ def admit_documents(
         pins[device_id] = view["pin"]
 
     # The pairwise bench check runs AFTER every device admitted: it is a
-    # fact about the bench's execution version, not any one descriptor.
-    _check_cross_constraints(contracts, pins)
+    # fact about the bench's execution version, not any one descriptor —
+    # and that version is the bench's own declared pin since issue #220.
+    _check_cross_constraints(execution_version, pins)
 
     pinned_by_binding = {
         "procedure": (procedure, procedure_digest),
@@ -1713,6 +1891,7 @@ def admit_documents(
         descriptors=descriptors,
         digests=digests,
         pins=pins,
+        execution_version=execution_version,
     )
 
 
