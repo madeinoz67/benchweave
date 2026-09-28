@@ -9,6 +9,7 @@ import re
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
+from typing import Any
 
 VALID_STATUS = frozenset({"draft", "stable", "deprecated"})
 DESCRIPTOR_SCHEMA_NAME = "otdp-device-descriptor.schema.json"
@@ -142,6 +143,21 @@ class SdkCompatibility:
     notes: str | None
 
 
+def _retired_for(document: dict[str, Any], entry_id: str) -> tuple[str, ...]:
+    """The policy block's retired identifiers for one standard, or ``()``.
+
+    The block is co-located in the same document (the devstage design's
+    placement) — a minimal manifest without it cannot carry the
+    retired-target check and every other dev-block guard still fires.
+    """
+    try:
+        row = document["dependency_policy"]["standards"][entry_id]
+        retired = row["retired"]
+    except (KeyError, TypeError):
+        return ()
+    return tuple(str(item) for item in retired) if isinstance(retired, list) else ()
+
+
 def load_manifest(root: Path) -> StandardsManifest:
     path = root / "standards/standards-manifest.json"
     document = json.loads(path.read_bytes())
@@ -173,7 +189,9 @@ def load_manifest(root: Path) -> StandardsManifest:
             released=str(raw["released"]),
             supersedes=raw.get("supersedes"),
             normative=normative,
-            dev=_load_dev_head(raw.get("dev"), entry_id, version),
+            dev=_load_dev_head(
+                raw.get("dev"), entry_id, version, _retired_for(document, entry_id)
+            ),
         )
         if entry.id in seen:
             # Two entries for one id make every id-keyed derivation (identity,
@@ -184,15 +202,28 @@ def load_manifest(root: Path) -> StandardsManifest:
     return StandardsManifest(tuple(entries))
 
 
-def _load_dev_head(raw: object, entry_id: str, active_version: str) -> DevHead | None:
+def _load_dev_head(
+    raw: object,
+    entry_id: str,
+    active_version: str,
+    retired: tuple[str, ...] = (),
+) -> DevHead | None:
     """Parse and structurally vet one optional dev block (devstage §4.1).
 
     Every bad state is unloadable, not warned about: a malformed block, a
     non-``<target>-dev`` version, a missing open date, a target that is not
     strictly greater than active (the leftover head a forgotten promotion
     teardown leaves — equal target — and its class-escalated form — target
-    below active), and any path outside ``standards/<id>/<target>-dev/``
-    each refuse with their own machine-matchable prefix.
+    below active), any path outside ``standards/<id>/<target>-dev/``, and —
+    refute fold, lane A (#218) — a target that is a RETIRED identifier
+    (``dev_target_retired:`` with the next-minor re-target hint, the
+    resolver's own vocabulary): a head that could never promote is refused
+    at LOAD, so admission and the resolver cannot disagree about a pin
+    (before the fold the manifest admitted 0.3.0-dev over active 0.2.2
+    while the resolver refused it). ``retired`` is the policy block's list
+    for this standard when the document carries one; a minimal manifest
+    without a policy block cannot carry the check, and every other guard
+    here still fires.
     """
     if raw is None:
         return None
@@ -259,6 +290,16 @@ def _load_dev_head(raw: object, entry_id: str, active_version: str) -> DevHead |
             f"dev_head_stale: {entry_id}: dev target {target} is below "
             f"active {active_version}"
         )
+    if target in retired:
+        # Refute fold, lane A (#218): a retired identifier is used-and-dead,
+        # never reissued — the head could never promote, so it is refused at
+        # load with the resolver's own prefix and re-target hint.
+        major, minor, _patch = version_tuple(target)
+        raise StandardsError(
+            f"dev_target_retired: {entry_id} {version} targets retired "
+            f"identifier {target} (used and dead, never reissued — the head "
+            f"could never promote); the next minor is {major}.{minor + 1}.0"
+        )
     head_prefix = f"standards/{entry_id}/{version}/"
     for relative in normative:
         # Review row 5: containment is checked on the LEXICALLY NORMALIZED
@@ -276,6 +317,40 @@ def _load_dev_head(raw: object, entry_id: str, active_version: str) -> DevHead |
     return DevHead(
         version=version, opened=opened, normative=tuple(normative), candidate=candidate
     )
+
+
+def declared_dev_head(corpus: Path, standard_id: str) -> DevHead | None:
+    """The dev head one standard's entry declares, over a CORPUS directory.
+
+    The corpus-shaped twin of ``load_manifest``'s dev-block parsing (the
+    ``load_dependency_policy_from_corpus`` pattern, #217): the manifest is
+    read directly from ``<corpus>/standards-manifest.json`` and the entry's
+    optional block through the SAME ``_load_dev_head`` shape vetting, so a
+    malformed block refuses identically on both surfaces. ``None`` when the
+    standard carries no entry or no head — the caller owns the wording of
+    "nothing declared" (``dev_head_unresolvable:`` in the resolver and
+    admission lanes; never a silent active-family substitution).
+    """
+    document = json.loads((corpus / "standards-manifest.json").read_bytes())
+    if document.get("manifest_version") != 1:
+        raise StandardsError("standards_manifest_version_unsupported")
+    for raw in document.get("standards", []):
+        if str(raw.get("id")) != standard_id:
+            continue
+        version = str(raw["version"])
+        if ACTIVE_VERSION_PATTERN.fullmatch(version) is None:
+            # The active-semver guard precedes dev parsing exactly as in
+            # load_manifest — the target comparison int-parses the active
+            # version, so a non-semver active entry is refused first.
+            raise StandardsError(
+                f"standards_entry_version_invalid: {standard_id}: {version} "
+                "(the active version must be pure semver; a -dev suffix is "
+                "legal only in a dev head)"
+            )
+        return _load_dev_head(
+            raw.get("dev"), standard_id, version, _retired_for(document, standard_id)
+        )
+    return None
 
 
 def load_sdk_compatibility(root: Path) -> SdkCompatibility:

@@ -391,11 +391,14 @@ def test_never_carried_pin_refuses_version_unknown(tmp_path: Path) -> None:
 
 
 def test_malformed_pin_still_refuses_at_the_schema(tmp_path: Path) -> None:
-    """A malformed pin (pre-release suffix) never reaches classification —
-    the schema's own const error names it honestly (the SDK's no-pin
-    posture, mirrored: classification orders only parseable pins)."""
+    """A malformed pin (a pre-release suffix that is not the dev-label
+    grammar) never reaches classification — the schema's own const error
+    names it honestly (the SDK's no-pin posture, mirrored: classification
+    orders only parseable pins). Slice 4 (#218) moved the ``<target>-dev``
+    LABEL into classification (it names a head or it does not); ``rc.N``
+    and friends stay unclassifiable."""
     psu = _psu_document()
-    psu["otdp_version"] = "0.3.0-dev"
+    psu["otdp_version"] = "0.3.0-rc.1"
     with pytest.raises(AdmissionRejected, match=r"schema: descriptor\[psu\]"):
         _admit(tmp_path, {"psu": psu})
 
@@ -424,9 +427,16 @@ def test_classify_descriptor_pin_is_pure_over_committed_state() -> None:
     unknown = classify_descriptor_pin("9.9.9")
     assert unknown.conformance == "non-conforming"
     assert "version_unknown:" in str(unknown.note)
-    malformed = classify_descriptor_pin("0.3.0-dev")
+    malformed = classify_descriptor_pin("0.3.0-rc.1")
     assert malformed.conformance == "non-conforming"
     assert "version_not_classifiable:" in str(malformed.note)
+    # The dev LABEL classifies on the real headless tree (issue #218): it
+    # names no declared head, so it folds non-conforming with the
+    # never-carried note — pinned in test_documents_devpin.py with the
+    # planted-head arms.
+    dev_shaped = classify_descriptor_pin("0.3.0-dev")
+    assert dev_shaped.conformance == "non-conforming"
+    assert "version_unknown:" in str(dev_shaped.note)
 
 
 def test_vr37_text_matches_the_resolver_vocabulary() -> None:

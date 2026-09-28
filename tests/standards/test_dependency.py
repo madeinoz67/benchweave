@@ -255,12 +255,16 @@ def test_b4_retired_names_the_next_minor_retarget(tmp_path: Path) -> None:
         classify_pin(policy, root, "otdp", "0.3.0")
 
 
-def test_b4_dev_shape_refuses_naming_slice_four(tmp_path: Path) -> None:
+def test_b4_dev_shape_refuses_naming_the_opt_in_carrier(tmp_path: Path) -> None:
+    """VR-38 prefix stability across slice 4's landing (#218): the prefix and
+    its meaning (the INTERVAL block never carries a dev pin) are unchanged;
+    the remediation now names the landed carrier — the content-addressed
+    opt-in — instead of the interim "lands with slice 4" pointer."""
     root = _copy_standards(tmp_path)
     policy = load_dependency_policy(root)
     with pytest.raises(StandardsError, match="dev_pin_unsupported") as raised:
         classify_pin(policy, root, "otdp", "0.3.0-dev")
-    assert "slice 4" in str(raised.value)
+    assert "opt_in" in str(raised.value)
 
 
 def test_b4_pre_release_suffix_refuses(tmp_path: Path) -> None:

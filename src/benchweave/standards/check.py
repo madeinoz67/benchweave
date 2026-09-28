@@ -16,9 +16,10 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-from .dependency import resolve_package
+from .dependency import _dev_head_state, resolve_package
 from .export import export_bundle
 from .manifest import load_identity, load_manifest, load_sdk_compatibility
+from .promotion import pending_warning_lines
 
 LOCK_NAME = "standards-lock.json"
 # Fold F2 (#216): the dependency lane's deprecation warnings ride the same
@@ -26,11 +27,17 @@ LOCK_NAME = "standards-lock.json"
 # keeps its meaning, and the CLI's exit decision filters through
 # count_failures so a retained-yanked-pin package warns without failing.
 DEPRECATION_WARNING_PREFIX = "plugin_deprecation_warning"
+# #218 (design §3.6): pending promotion records print as a warning line on
+# every drift-check run — a state to finish inside its train, never a
+# failure (the pending-SUCCESSOR refusal is the gate with teeth, in
+# promotion.validate_promotion_records).
+PENDING_WARNING_PREFIX = "promotion_pending_warning"
+_WARNING_PREFIXES = (DEPRECATION_WARNING_PREFIX, PENDING_WARNING_PREFIX)
 
 
 def count_failures(lines: list[str]) -> int:
-    """Lines that are failures — deprecation warnings are not (fold F2)."""
-    return sum(1 for line in lines if not line.startswith(DEPRECATION_WARNING_PREFIX))
+    """Lines that are failures — warning lines are not (fold F2, #218)."""
+    return sum(1 for line in lines if not line.startswith(_WARNING_PREFIXES))
 VENDORED = "src/benchweave_sdk/standards"
 STAMP_NAME = "_GENERATED.txt"
 # Mirrors standards_sync.STAMP_LINE in the SDK; a format change there must be
@@ -83,6 +90,13 @@ def run_check(root: Path, sdk_root: Path | None = None) -> list[str]:
     failures.extend(_compare_mirror(root, sdk, lock, state))
     failures.extend(_compare_anchor(root, sdk, lock, state))
     failures.extend(_compare_plugin_dependencies(root))
+    # #218 (design §3.6): pending promotion records print on every run — a
+    # warning line, tolerated by count_failures. The record GATES (digest,
+    # sweep, pending-successor) live in promotion.validate_promotion_records
+    # and run in the standards suite; wiring them into this real-tree lane
+    # waits on the founding record for the tree's pre-mechanism dev-sourced
+    # promotions (a standards-byte act this slice's branch does not make).
+    failures.extend(pending_warning_lines(root))
     return failures
 
 
@@ -134,6 +148,13 @@ def _compare_plugin_dependencies(root: Path) -> list[str]:
                 f"python -m benchweave.standards pin --package {relative}"
             )
             continue
+        try:
+            # Refute fold, lane A (#218): the dev head-state check rides the
+            # ALWAYS-ON check lane too — before the fold it lived only in
+            # pin_lock and `standards check` stayed green on a drifted head.
+            _dev_head_state(root, resolution)
+        except ValueError as exc:
+            failures.append(str(exc))
         for warning in resolution.warnings:
             # Fold F2: surfaced, never silently green — but not a failure.
             failures.append(
