@@ -509,6 +509,46 @@ describe("S3-D2 census: ALL same-dash pairs stay ΔE00 ≥ 8.0 apart (waveform m
   }
 });
 
+describe("S1-A3 (#243): --bw-limiting computed proofs", () => {
+  // T1: contrast >= 3.0:1 vs BOTH --bw-surface AND --bw-surface-recessed,
+  // both themes (4 ratios). T2-limiting: ΔE00 >= 10.0 vs all 6 severity keys
+  // (neutral renders as the theme's text colour) x 4 viewing conditions x
+  // 2 themes = 48 values, dual CVD models, both arms every pair.
+  const severityAll = (tokens: Map<string, string>): string[] => {
+    const hues = ["--bw-advisory", "--bw-warning", "--bw-critical", "--bw-trip", "--bw-success"].map((name) => {
+      const value = tokens.get(name);
+      if (value === undefined) throw new Error(`${name} missing`);
+      return value;
+    });
+    const neutral = tokens.get("--bw-text");
+    if (neutral === undefined) throw new Error("--bw-text missing (the neutral severity's hue)");
+    return [...hues, neutral];
+  };
+
+  for (const [name, tokens] of THEMES) {
+    it(`${name}: T1 vs both surfaces (2 ratios) and T2 vs all 6 severity keys (24 pairs x both arms)`, () => {
+      const limiting = tokens.get("--bw-limiting");
+      if (limiting === undefined) throw new Error("--bw-limiting missing from themes.css");
+      const surface = tokens.get("--bw-surface");
+      const recessed = tokens.get("--bw-surface-recessed");
+      if (surface === undefined || recessed === undefined) throw new Error("surface tokens missing");
+      console.info(`[limiting-margins] ${name} T1 surface ${contrast(limiting, surface).toFixed(2)} recessed ${contrast(limiting, recessed).toFixed(2)}`);
+      expect(contrast(limiting, surface), `${name} vs surface`).toBeGreaterThanOrEqual(3.0);
+      expect(contrast(limiting, recessed), `${name} vs recessed`).toBeGreaterThanOrEqual(3.0);
+      let worst = Number.POSITIVE_INFINITY;
+      for (const sev of severityAll(tokens)) {
+        for (const condition of CONDITIONS) {
+          const [primary, secondary] = de2000(limiting, sev, condition);
+          worst = Math.min(worst, primary, secondary);
+          expect(primary, `${name} limiting vs ${sev} (${condition}, Machado)`).toBeGreaterThanOrEqual(10.0);
+          expect(secondary, `${name} limiting vs ${sev} (${condition}, Viénot/Brettel)`).toBeGreaterThanOrEqual(10.0);
+        }
+      }
+      console.info(`[limiting-margins] ${name} T2 dual-arm worst ${worst.toFixed(2)} (threshold 10.0)`);
+    });
+  }
+});
+
 describe("S3-A3: adjacent slots stay ΔE00 ≥ 8.0 apart, both models", () => {
   for (const [name, tokens] of THEMES) {
     it(`${name}: 7 adjacent pairs × 4 conditions, both arms ≥ 8.0`, () => {

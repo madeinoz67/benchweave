@@ -120,7 +120,7 @@ const fixtures: Record<string, () => RenderResult> = {
   button: () => render(element(Button, { variant: "secondary" }, "Apply staged set-point")),
   "numeric-input": () => render(element(NumericInput, { label: "Precise voltage", value: 1.5, unit: "V", min: 0, max: 15, step: 0.1, onChange: () => undefined })),
   "rotary-control": () => render(element(RotaryControl, { label: "Voltage set-point", value: 1.5, unit: "V", min: 0, max: 15, step: 0.1, onStage: () => undefined })),
-  "reading-tile": () => render(element(ReadingTile, { label: "Output voltage", value: 12.1, unit: "V", freshness: "2 s", quality: "steady", severity: "warning" })),
+  "reading-tile": () => render(element(ReadingTile, { label: "Output voltage", value: 12.1, unit: "V", freshness: "2 s", quality: "steady", severity: "warning", set: { value: 12.5, unit: "V" }, state: "limiting" })),
   "alert-bubble": () => render(element(AlertBubble, { severity: "advisory", title: "Operating margin", message: "Approaching the configured limit.", source: "PSU-01", onDismiss: () => undefined })),
   "engineering-plot": () => render(element(EngineeringPlot, { kind: "time_series", title: "Output activity", x: { label: "Receipt time", unit: "s" }, traces: plotTraces, hints: plotHints })),
   "data-table": () => render(element(DataTable, { caption: "Channel readings", rows: tableRows, columns: tableColumns, rowKey: (row: TableRow) => row.id })),
@@ -224,6 +224,48 @@ describe("contract L2: the reference renderer enforces §C.2 disabled-reason lab
       expect(label!.textContent).toBe(template.replace("{state}", "idle"));
     });
   }
+});
+
+describe("contract L2: the reference renderer enforces §B.3 reading states", () => {
+  it("renders the limiting state: icon, visible label, state attribute and hook — and NO alert machinery", () => {
+    const { container } = render(element(ReadingTile, { label: "Output current", value: 1.9, unit: "A", freshness: "84 ms", quality: "Near limit", severity: "success", state: "limiting" }));
+    const tile = container.querySelector(".bw-reading");
+    expect(tile, "tile rendered").not.toBeNull();
+    expect(tile!.getAttribute("data-bw-reading-state")).toBe("limiting");
+    const stateElement = container.querySelector(".bw-reading__state");
+    expect(stateElement, "state hook").not.toBeNull();
+    expect(stateElement!.textContent).toContain("Limiting");
+    expect(stateElement!.querySelector("svg, [aria-hidden]"), "the state icon").not.toBeNull();
+    // None of the alert machinery: no alert role, no alert-bubble classes.
+    expect(container.querySelector("[role=alert]")).toBeNull();
+    expect(container.querySelector(".bw-alert-bubble")).toBeNull();
+  });
+});
+
+describe("contract L2: the reference renderer enforces §E.3 the setpoint triad", () => {
+  it("renders the set role adjacent with its required labelling", () => {
+    const { container } = render(element(ReadingTile, { label: "Output voltage", value: 12.1, unit: "V", freshness: "2 s", quality: "steady", severity: "success", set: { value: 12.5, unit: "V" } }));
+    const setElement = container.querySelector(".bw-reading__set");
+    expect(setElement, "set hook").not.toBeNull();
+    expect(setElement!.getAttribute("data-bw-reading-role")).toBe("set");
+    expect(setElement!.textContent).toBe("Set 12.5 V");
+    // The set value renders in the value block, adjacent to the measured value.
+    expect(container.querySelector(".bw-reading__value")!.textContent).toContain("12.1");
+    expect(container.querySelector(".bw-reading__value")!.textContent).toContain("Set 12.5 V");
+  });
+
+  it("the plain tile renders NO set element (the R5 control — no set evidence, no set role)", () => {
+    const { container } = render(element(ReadingTile, { label: "Output voltage", value: 12.1, unit: "V", freshness: "2 s", quality: "steady", severity: "success" }));
+    expect(container.querySelector(".bw-reading__set")).toBeNull();
+    expect(container.querySelector("[data-bw-reading-role]")).toBeNull();
+  });
+
+  it("renders the stale treatment dimmed with its visible marker (§B.4 ST-4)", () => {
+    const { container } = render(element(ReadingTile, { label: "Output voltage", value: 12.1, unit: "V", freshness: "2 s", quality: "steady", severity: "success", stale: true }));
+    const tile = container.querySelector(".bw-reading");
+    expect(tile!.getAttribute("data-bw-stale")).toBe("true");
+    expect(container.querySelector(".bw-reading__quality")!.textContent).toContain("stale");
+  });
 });
 
 describe("contract L2: the reference renderer enforces §C.3 refusal rendering", () => {

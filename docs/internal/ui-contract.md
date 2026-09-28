@@ -48,11 +48,12 @@ CVD models, adjacency — thresholds pre-committed in the design record §6).
 
 ### §A.1 Colour palette
 
-Schema: `Token | Light | Dark | Use` — 24 rows. The first 14 carry product meaning;
-the next 8 are the plot-series slots (§E.2 — set-derived trace assignment); the last 2
-are the theme-dependent colour inputs the elevation shadow compositions in
-`tokens.css` reference (pinned so that every theme-varying colour in `themes.css` is
-contract-pinned).
+Schema: `Token | Light | Dark | Use` — 25 rows. The first 15 carry product meaning
+(including `--bw-limiting`, the reading-state border/label token carrying the computed
+non-confusion proofs of §B.3); the next 8 are the plot-series slots (§E.2 — set-derived
+trace assignment); the last 2 are the theme-dependent colour inputs the elevation
+shadow compositions in `tokens.css` reference (pinned so that every theme-varying
+colour in `themes.css` is contract-pinned).
 
 | Token | Light | Dark | Use |
 | --- | --- | --- | --- |
@@ -70,6 +71,7 @@ contract-pinned).
 | `--bw-critical` | `#b63830` | `#ff6d63` | Immediate operator action |
 | `--bw-trip` | `#a92858` | `#ff5d91` | Protective trip and inhibited control |
 | `--bw-success` | `#177158` | `#67d8b2` | Confirmed successful outcome |
+| `--bw-limiting` | `#877085` | `#5f9500` | Limiting reading-state border and label (§B.3) |
 | `--bw-series-1` | `#253421` | `#00744a` | Plot series slot 1 (§E.2; set-derived assignment) |
 | `--bw-series-2` | `#8e7588` | `#e3d7ff` | Plot series slot 2 (§E.2; set-derived assignment) |
 | `--bw-series-3` | `#2f3300` | `#567200` | Plot series slot 3 (§E.2; set-derived assignment) |
@@ -145,6 +147,34 @@ Schema: `Rule id | Requirement` — 3 rows.
 | `SR-B1` | A state message may appear inline, anchored to its source, inside a panel, or as a global banner. A transient toast is limited to neutral, success and advisory confirmations; warning, critical and trip information must remain present in the affected context. |
 | `SR-B2` | Glow is an additional cue only: advisory through trip may use localised glow around the affected reading or message; normal and success readings do not glow. Every abnormal state also carries an icon, an explicit label, a border and text. |
 | `SR-B3` | Dismissing a message is not acknowledgement of the underlying gateway or device condition; acknowledgement is modelled as a separately labelled, authorised request. |
+
+### §B.3 Reading states
+
+Schema: `State key | Meaning | Rendering | Announcement` — 1 row.
+
+| State key | Meaning | Rendering | Announcement |
+| --- | --- | --- | --- |
+| `limiting` | A limit, not the set-point, is constraining the value (constant-current operation; a channel near full scale). Significant, not abnormal. | Icon + visible label `Limiting` + border in `--bw-limiting`, on the affected reading. No glow (SR-B2 reserves glow for advisory–trip SEVERITIES). Never dismissible while active; never rendered via the alert-bubble pattern; never enters a live region `alert`. Composes with any severity (both render; the severity keeps its glow rights). | Entry announces once via a `status` live region, coalesced; exit is silent. |
+
+`limiting` is NOT a severity key (§B.1 unchanged), NOT a disabled reason (§C.2
+unchanged), and MUST NOT be counted, aggregated or announced as an alert anywhere a
+host summarises alerts. Distinct from `protection-active`: a limiting reading is
+operating normally inside its envelope; `protection-active` is a control-disabled
+reason tied to a protective trip.
+
+### §B.4 Staleness
+
+Schema: `Rule id | Requirement` — 4 rows. The staleness cadence is the descriptor's own
+committed value: for a streaming observation, `stream_limits.min_interval_ms`; for a
+polled read, the parameter's `max_age_ms` (`otdp-device-descriptor.schema.json` —
+cited from the corpus, not restated).
+
+| Rule id | Requirement |
+| --- | --- |
+| `ST-1` | The staleness cadence is the descriptor's own committed value: for a streaming observation, `stream_limits.min_interval_ms`; for a polled read, the parameter's `max_age_ms`. The cadence is host-supplied configuration from the descriptor/profile — never invented, never a renderer default. |
+| `ST-2` | A reading is stale iff `freshness_ms > 2 × cadence_ms` (strictly greater; equality is not stale). The predicate is a pure function of the wire's `freshness_ms` and the commissioned cadence. |
+| `ST-3` | No known cadence (the descriptor/profile supplies none for that binding) ⇒ NO staleness verdict renders — the reading renders without a stale marker, which asserts freshness NOWHERE. `freshness_ms: null` renders `Unavailable` (existing behaviour) and is not stale. A device-declared quality string renders verbatim in the quality slot and is never overwritten or augmented by the computed verdict — two channels, never laundered into one. |
+| `ST-4` | A stale reading renders dimmed (muted text treatment) and carries `data-bw-stale="true"` plus the visible marker `stale` appended to the quality line; it renders at reduced prominence, never at normal reading prominence. The fresh→stale transition announces once via a `status` live region, coalesced. A stale reading never renders without its marker (the OTDP §5 rule that stale readings cannot satisfy verification, at the presentation boundary). |
 
 ## §C Safety rules (definition rows)
 
@@ -256,7 +286,7 @@ Schema: `Component | Root element | Required attributes | Required roles | Requi
 | `button` | `button` | `data-variant ~ aria-busy` | `button` | `bw-button` | — | Variants: primary, secondary, tertiary, destructive, protective. Destructive and protective actions always include a text label; icon-only is not allowed. Slice 2 adds `data-bw-disabled-reason` and the visible disabled label. |
 | `numeric-input` | `div` | `type=number ~ min ~ max ~ step ~ aria-describedby ~ for` | — | `bw-numeric ~ bw-numeric__label ~ bw-numeric__field ~ bw-numeric__unit ~ bw-numeric__help` | `Staged value; use Apply to request the change` | The input is labelled by `label[for]`; bounds and step are exposed on the input; the help text states the value is staged. Applying a value must state that authority, policy and device verification still apply. |
 | `rotary-control` | `div` | `type=button ~ aria-label ~ aria-valuemin ~ aria-valuemax ~ aria-valuenow ~ aria-valuetext~=staged` | `slider` | `bw-rotary ~ bw-rotary__knob ~ bw-rotary__value ~ bw-rotary__state` | `Staged` | A rotary control is always paired with a precise numeric field and an explicit Apply action; it stages intent and emits no device command while dragged. `aria-valuetext` reads "`{value} {unit}`, staged". |
-| `reading-tile` | `section` | `data-severity ~ aria-label` | `region` | `bw-reading ~ bw-reading__header ~ bw-reading__severity ~ bw-reading__value ~ bw-reading__quality` | `steady · 2 s` | The tile renders the severity icon and its label, the value with adjacent unit, and a quality line "`{quality} · {freshness}`" (canonical fixture values: quality `steady`, freshness `2 s` — the required-text literal is the canonical line, so it discriminates a renderer that drops or misjoins either side). A reading does not become verified merely because it rendered; do not optimistically copy a requested value into an applied reading. |
+| `reading-tile` | `section` | `data-severity ~ aria-label ~ data-bw-reading-state` | `region` | `bw-reading ~ bw-reading__header ~ bw-reading__severity ~ bw-reading__value ~ bw-reading__set ~ bw-reading__state ~ bw-reading__quality` | `steady · 2 s` | The tile renders the severity icon and its label, the value with adjacent unit, and a quality line "`{quality} · {freshness}`" (canonical fixture values: quality `steady`, freshness `2 s` — the required-text literal is the canonical line, so it discriminates a renderer that drops or misjoins either side). A reading does not become verified merely because it rendered; do not optimistically copy a requested value into an applied reading. With a reading state (§B.3): `data-bw-reading-state="<key>"` on the section, the state icon and its visible label in `bw-reading__state`. With gateway-observed set evidence (§E.3): `Set {value} {unit}` adjacent in `bw-reading__set` with `data-bw-reading-role="set"`. When stale (§B.4): dimmed with `data-bw-stale="true"` and the `stale` marker appended to the quality line — the enforcement fixture renders the canonical tile WITH the state and set evidence (the mode-banner all-modes precedent). |
 | `alert-bubble` | `aside` | `data-severity ~ aria-label=Dismiss` | `status` | `bw-alert-bubble ~ bw-alert-bubble__content` | — | Title renders in a strong element, message in a paragraph, optional source in small. Critical and trip use live region `alert` (§B.1); the dismiss affordance renders only for dismissible severities (§B.1) and carries `aria-label="Dismiss"`. |
 | `engineering-plot` | `figure` | `role=img ~ aria-label ~ aria-describedby ~ aria-label=Traces ~ aria-label~=(hidden by presentation preference) ~ data-line ~ data-bw-series-slot ~ data-hidden` | `img` | `bw-plot ~ bw-plot__canvas ~ bw-plot__legend ~ bw-visually-hidden` | `hidden` | The canvas carries `role="img"` with the plot title and a described-by textual chart description. Every trace is listed in a visible legend labelled "Traces"; legend items expose their line form via `data-line` (`solid`/`dashed` — the resolved dash, not a display position), their series slot via `data-bw-series-slot` (§E.2.1: `((i mod 8) + 1)`, wrapping at 8), and hidden channels via `data-hidden`, the hidden marker text, and an aria-label ending "(hidden by presentation preference)". Series assignment: §E.2. |
 | `data-table` | `div` | `scope=col` | `table` | `bw-table-wrap ~ bw-data-table` | — | The table carries a caption naming the data; column headers are `th[scope=col]`; rows keep a stable key. Dense data sits on a recessed surface. |
@@ -352,6 +382,20 @@ The reference binding is implementation guidance (the ECharts marker names the
 reference renderer uses; where the chart library lacks a shape the binding is a custom
 SVG path). Any icon set can bind from the shape descriptions.
 
+### §E.3 Setpoint presentation (reading-tile sub-rows)
+
+Schema: `Role | Placement | Required labelling | Never` — 3 rows. The host derives role
+eligibility from the descriptor's parameter semantic roles (OTDP spec §4:
+`measurement`/`setpoint`/`state`/`configuration` — cited from the corpus, not
+restated): an observation bound to a `setpoint`-role parameter supplies the `set`
+role; a `measurement`-role parameter supplies `measured`.
+
+| Role | Placement | Required labelling | Never |
+| --- | --- | --- | --- |
+| `measured` | The tile's primary value position (`bw-reading__value`) | — | Never sourced from a requested or staged value; a reading does not become verified because it rendered |
+| `set` | Adjacent to the measured value, in the same tile (`bw-reading__set`), carrying `data-bw-reading-role="set"` | `Set {value} {unit}` — visible text, data font | Never derived from a staged input; renders only from gateway-observed device state (a setpoint-parameter read or a verified write's reported effective value) |
+| `staged` | Only in the staging input (`numeric-input` / `rotary-control` rows already carry the `Staged` required text) | `Staged` (existing pins) | Never rendered inside a reading tile; never copied into the `measured` or `set` role |
+
 ## §F Icon set
 
 Framework-neutral icon keys keyed by severity or state. Any icon set can bind from the
@@ -363,7 +407,7 @@ stories.
 
 ### §F.1 Icons
 
-Schema: `Icon key | Class | Shape description | Reference binding` — 9 rows.
+Schema: `Icon key | Class | Shape description | Reference binding` — 10 rows.
 
 | Icon key | Class | Shape description | Reference binding |
 | --- | --- | --- | --- |
@@ -376,6 +420,7 @@ Schema: `Icon key | Class | Shape description | Reference binding` — 9 rows.
 | `busy` | `state` | Circular arc with an arrowhead, suggesting rotation | `none today` |
 | `hidden` | `state` | Eye shape crossed by a diagonal slash | `none today` |
 | `staged` | `state` | Half-filled circle marking a value not yet applied | `none today` |
+| `limiting` | `state` | Vertical arrow rising to meet a horizontal ceiling bar | `ArrowUpToLine` |
 
 Icons render with `aria-hidden="true"` when adjacent text supplies the name. Destructive
 and protective actions always include a text label; icon-only is not allowed.

@@ -145,6 +145,19 @@ Readings report gateway observations. Controls stage intent. Buttons submit expl
 - Applying a value must state that authority, policy and device verification still apply.
 - Do not optimistically copy a requested value into an applied reading.
 - Permission, lease, policy, transport and device rejection remain distinct outcomes — rendered per the refusal mapping (contract §C.3).
+
+**Reading states, the setpoint triad, staleness (contract §B.3/§B.4/§E.3):** a
+limiting reading (a limit, not the set-point, constrains the value) renders the
+state icon and its `Limiting` label in `--bw-limiting` — never a severity, never
+an alert bubble, never glow. The setpoint triad keeps the three roles apart:
+measured is the tile's primary, the gateway-observed set value renders adjacent
+as `Set {value} {unit}`, and staged lives only in the staging input. Staleness
+is computed arithmetic (ST-2: `freshness_ms > 2 × cadence_ms`, strict), the
+cadence always the descriptor's own committed value; no cadence ⇒ no verdict
+(ST-3's honest negative), and a computed stale marker never touches the
+device-declared quality string. The reference renderer's `ReadingTile` carries
+the `set`/`state`/`stale` props and the pure `staleness.ts` predicate is the
+ST-2 mechanism.
 - Energy-sourcing actions confirm; energy-removing actions never stand behind a confirmation (contract §C.1).
 
 **The reference renderer's disabled-reason reach (honest scope):** the contract's §C.2 keys are normative for every host, but this reference composition emits only two of the five. `no-authority` fires whenever the simulated authority state blocks energising actions, and `protection-active` while a protective trip is active. `invalid-staged-input` is never emitted here because `NumericInput` clamps staged values to the declared bounds (`bounds.ts`) — a clamped value is always in range, so the reference renderer cannot stage an invalid one; a host whose inputs can be invalid emits the key. `capability-absent` and `device-state` have no emitting mechanism in the reference composition (it renders one device with all capabilities and no state gate) — they exist for hosts that have partial-capability devices or required idle states.
