@@ -126,3 +126,6 @@ plugins/*/*/contracts/*-*.*.*/
 
 # Design records: private/ holds pre-promotion designs (see .claude/deep-review/README.md)
 .claude/deep-review/private/
+
+# Parallel-lane worktrees (session-CWD-anchored gortex overlays; see AGENTS.md)
+/.wt/

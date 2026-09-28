@@ -28,7 +28,7 @@ The #217 fold-all (11 LOW/NIT rows) took ~75 min, ~70% ceremony: five full ~2400
 
 The load-bearing condition repeated once: the fast lane must never acquire a "test-only commits run pytest only" exemption — that exemption IS the hole that produced incident 1.
 
-**Encoding surfaces:** `AGENTS.md` §3 item 2 (rewrite); `CLAUDE.md` @-imports unchanged; `.claude/skills/increment/SKILL.md` step 3's standing gate line (rewrite to the fast/push split + one-commit folds); the memory rule ("Gates re-run in order after EVERY commit" retro item) superseded with this doctrine; benchweave-sdk's AGENTS.md if it mirrors the line (check at build).
+**Encoding surfaces:** the how-we-work section in `CLAUDE.md` §3 item 2 (rewrite — correction 2026-09-28: the section lives in CLAUDE.md, not AGENTS.md; AGENTS.md has no §3); `CLAUDE.md` @-imports unchanged; `.claude/skills/increment/SKILL.md` step 3's standing gate line (rewrite to the fast/push split + one-commit folds); the memory rule ("Gates re-run in order after EVERY commit" retro item) superseded with this doctrine; benchweave-sdk's AGENTS.md if it mirrors the line (check at build).
 
 ## 2. Leg B — pytest-xdist
 
@@ -52,7 +52,7 @@ Consolidation already landed (2026-09-28): canonical MuninnDB record (default va
 
 ## 5. Increments
 
-1. **Increment 1 (Leg A + encoding)**: rule text in AGENTS.md + increment skill + memory-rule supersede note; no code. Acceptance: the texts name the fast/push split, the no-exemption condition, the evidence rules, and one-commit folds; the incident table above is reproduced in the rule's rationale.
+1. **Increment 1 (Leg A + encoding)**: rule text in CLAUDE.md §3 item 2 (see encoding-surfaces correction) + increment skill + memory-rule supersede note; no code. Acceptance: the texts name the fast/push split, the no-exemption condition, the evidence rules, and one-commit folds; the incident table above is reproduced in the rule's rationale.
 2. **Increment 2 (Leg B)**: dev dep + CI gates `-n auto -m "not timing"` + 3× green verification + the measured before/after posted to #247.
 3. **Increment 3 (Leg D)**: the gate wrapper + one consumer (the increment-builder brief line) + its own tests (a planted failing gate reads FAIL, a piped lie cannot false-green it).
 
