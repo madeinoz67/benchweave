@@ -136,6 +136,7 @@ files = [
     "scripts/registry",
     "packages/sdk/src",
     "scripts/sdk_smoke.py",
+    "scripts/gate.py",
     "scripts/architecture/_validation_report.py",
 ]
 # Independent manufacturer/model projects use their own environments and CI checks.
