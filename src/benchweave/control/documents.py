@@ -234,8 +234,37 @@ def _vr37_text(row: Any, pin: str, corpus: Path, policy: Any) -> str:
     )
 
 
+def _corpus_state_token(corpus: Path) -> tuple[str, str]:
+    """Digests of the two committed files classification reads (VR-19).
+
+    ``standards-manifest.json`` carries the dependency-policy block (the
+    range, the yanks, the retirements, the dev head) and
+    ``corpus-manifest.json`` the retained version set — every input
+    ``_classify_cached`` consults. The pair is key material for the
+    classification cache: a range narrowing mid-process must re-classify
+    the NEXT admission (VR-19's second half) while stored run records keep
+    the classification they were recorded with (the first half — records
+    are stored facts, never re-derived). Reading both files is what makes
+    the cache key move when the policy moves; the cached body still runs
+    only on a key miss.
+    """
+
+    def _digest(name: str) -> str:
+        # The exact bytes classification reads — a failed read propagates
+        # the same OSError the cached body would raise (fail closed, no
+        # degraded "unknown" verdict).
+        return hashlib.sha256((corpus / name).read_bytes()).hexdigest()
+
+    return _digest("standards-manifest.json"), _digest("corpus-manifest.json")
+
+
 @lru_cache(maxsize=512)
-def _classify_cached(pin: str, corpus_text: str) -> DescriptorPin:
+def _classify_cached(
+    pin: str, corpus_text: str, policy_digest: str, retained_digest: str
+) -> DescriptorPin:
+    # ``policy_digest``/``retained_digest`` are cache-KEY material only —
+    # they bind the entry to the corpus state it was computed from and are
+    # deliberately unused below (see ``_corpus_state_token``).
     corpus = Path(corpus_text)
     policy = load_dependency_policy_from_corpus(corpus)
     row = policy.standards.get(_OTDP)
@@ -330,6 +359,13 @@ def classify_descriptor_pin(pin: object, *, corpus: Path | None = None) -> Descr
     MAJOR.MINOR.PATCH string never orders against the corpus — it folds
     the same way, and the schema's own const error refuses it at admission
     (the SDK's no-pin posture, mirrored).
+
+    The cache binding follows the same freshness rule (VR-19): the entry is
+    keyed on the corpus state the classification reads
+    (``_corpus_state_token``), so a range narrowing re-classifies the NEXT
+    call, while this function never reads — let alone rewrites — a stored
+    run record (VR-19's first half is the record's own stored-fact
+    property, pinned in ``tests/control/test_range_narrowing.py``).
     """
     if not isinstance(pin, str) or (
         VERSION_PATTERN.fullmatch(pin) is None and _DEV_PIN_SHAPE.fullmatch(pin) is None
@@ -346,7 +382,8 @@ def classify_descriptor_pin(pin: object, *, corpus: Path | None = None) -> Descr
                 "validation"
             ),
         )
-    return _classify_cached(pin, str(corpus if corpus is not None else _otdp_corpus()))
+    resolved = Path(corpus if corpus is not None else _otdp_corpus())
+    return _classify_cached(pin, str(resolved), *_corpus_state_token(resolved))
 
 
 def _authorise_pin(
