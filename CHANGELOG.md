@@ -234,6 +234,7 @@ All notable changes to this project will be documented in this file.
 - SM-5 pairs on the version lattice, not committer clocks (#219 fold FIX C)
 - LOW folds — the token's absence semantics and the guard pin (#219 refute wave)
 - Fold the #257 review battery — 12 rows, one batch
+- Fold wave — recovery era-skip, carried pin record, typed seam refusal, splice, boundary arms (#220 refute)
 
 ### Documentation
 
@@ -446,6 +447,8 @@ All notable changes to this project will be documented in this file.
 - Issue #254 rubric tier-rules design of record
 - Step 1 ui/ tier rule, design-time keyword check, interplay note
 - Fold the #254 review battery — 19 rows, one batch
+- Slice-6 design record — contract_version is the pin carrier
+- CON-1 amendment — the execution per-document pin (#220, #203 slice 6)
 
 ### Features
 
@@ -626,6 +629,8 @@ All notable changes to this project will be documented in this file.
 - The SM-5 migration-note gate and its walk (#219 slice 5)
 - Operator acknowledgement persistence — D11 lands (#219 slice 5)
 - Safety behaviours in the reference renderer (#242 slice 2)
+- The execution per-document pin — the bench's contract_version routes the lattice (#220, #203 slice 6)
+- The run guard — execution_version_not_runnable (#220, #203 slice 6)
 
 ### Hardware Evidence
 
