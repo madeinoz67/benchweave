@@ -10,9 +10,10 @@ the walk is the compatibility matrix's per-version Migration note column
 Judgement, all from committed history plus the committed policy block:
 
 - a **bump** is a version-directory addition whose (major, minor) line
-  moved from the standard's previous landed version (PATCH-only motion is
-  exempt — SHOULD, not MUST; the first version of a standard is its
-  admission and is exempt);
+  moved from its LATTICE predecessor — the largest landed version below it
+  in semver order, never the previous landing by committer timestamp
+  (PATCH-only motion is exempt — SHOULD, not MUST; the lattice's lowest
+  version of a standard is its admission and is exempt);
 - the clock **self-anchors** at this module's own first arrival, exactly
   like ``train_window``: every release the tree carried before SM-5's
   adoption is grandfathered by mechanism, never by a hand-maintained date
@@ -155,13 +156,30 @@ def collect_note_bumps(root: Path) -> tuple[NoteBump, ...]:
 
     Version-directory additions are read from git history (file paths git
     emits, derived to version directories — train_window's grammar,
-    ``--no-renames`` so copy-shaped Adds stay Adds), one bump per
-    (standard, version) at its earliest commit, ordered chronologically per
-    standard. The predecessor is the version that came before it in that
-    landed sequence — the version the bump copied from (copy-never-move
-    keeps it in history either way). PATCH-only motion and everything
-    landed before the anchor are exempt; the shallow history refuses to
-    judge.
+    ``--no-renames`` so copy-shaped Adds stay Adds), one entry per
+    (standard, version) at its earliest commit. PAIRING and the admission
+    exemption derive from the VERSION LATTICE (semver order —
+    copy-never-move's own ground truth), never from committer timestamps:
+    a skewed clock (a MINOR committed with a committer date before its
+    admission's) would otherwise accuse the innocent version, exempt the
+    real un-noted MINOR, and hand out remediation advice that goes clean
+    while the MINOR rides free; a backport PATCH landing after the minor
+    it patches behind would otherwise pair with that MINOR and demand a
+    MUST note for a PATCH (fold FIX C). The predecessor of ``v`` is the
+    largest landed version below it; the lattice's lowest version is the
+    admission and pairs with nothing. Timestamps feed EXACTLY ONE thing:
+    the adoption cutoff (an entry landed before this module's own arrival
+    is grandfathered, D6) — with the disclosed bound that a FORGED
+    pre-anchor committer date escapes the cutoff the same way it escapes
+    train_window's floor (git history is trusted input to both gates).
+    PATCH-only motion is exempt (SM-5 is SHOULD there); the shallow
+    history refuses to judge.
+
+    Residual, disclosed: a version directory added and later deleted
+    post-anchor (a reset-class shape) pairs with its lattice predecessor
+    and would demand a note the policy cannot carry (its validate refuses
+    rows for unretained versions) — reset-class events are executive and
+    ride the coordinator's window exception like train_window's.
     """
     _refuse_shallow(root)
     anchor = _anchor(root)
@@ -169,14 +187,15 @@ def collect_note_bumps(root: Path) -> tuple[NoteBump, ...]:
 
     bumps: list[NoteBump] = []
     for standard, entries in sorted(sequences.items()):
-        entries.sort(key=lambda item: (item[0], version_tuple(item[1])))
-        # Each pair (previous, following): FOLLOWING is the bump, PREVIOUS
-        # is what it bumped from — the standard's first entry is its
+        landed_at = {version: timestamp for timestamp, version in entries}
+        versions = sorted(landed_at, key=version_tuple)
+        # Lattice pairs (previous, version): FOLLOWING is the bump, PREVIOUS
+        # is the largest landed version below it; the lowest version is the
         # admission and pairs with nothing (never judged).
-        for (_, previous), (timestamp, version) in zip(entries, entries[1:], strict=False):
+        for previous, version in zip(versions, versions[1:], strict=False):
             if version_tuple(version)[:2] == version_tuple(previous)[:2]:
                 continue  # PATCH-only motion — SM-5 is SHOULD here
-            if anchor is None or timestamp < anchor:
+            if anchor is None or landed_at[version] < anchor:
                 continue  # pre-adoption: grandfathered by mechanism (D6)
             bumps.append(NoteBump(standard=standard, version=version, predecessor=previous))
     return tuple(bumps)

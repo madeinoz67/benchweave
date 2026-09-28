@@ -45,14 +45,26 @@ def _commit(repo: Path, date: str, *paths_contents: tuple[str, str]) -> None:
     )
 
 
-def _manifest(version: str, *, note: str | None = None) -> str:
-    """A minimal-but-complete standards manifest (the render's inputs)."""
+def _manifest(
+    version: str,
+    *,
+    note: str | None = None,
+    versions: dict[str, dict[str, str]] | None = None,
+) -> str:
+    """A minimal-but-complete standards manifest (the render's inputs).
+
+    ``note`` is the 0.2.0 shorthand the original arms use; ``versions``
+    overrides the per-version rows outright (the fold arms need notes on
+    other versions).
+    """
     otdp_row: dict[str, object] = {
         "range": ">=0.1.0,<0.3.0",
         "yanked": {},
         "retired": [],
     }
-    if note is not None:
+    if versions is not None:
+        otdp_row["versions"] = versions
+    elif note is not None:
         otdp_row["versions"] = {"0.2.0": {"migration_note": note}}
     document = {
         "manifest_version": 1,
@@ -301,3 +313,119 @@ def test_the_add_census_covers_every_version_dir_in_the_tree() -> None:
         f"the Add census is blind to {missing} — rename detection "
         "reclassified their Adds; run the shared log with --no-renames"
     )
+
+
+# --- fold FIX C: lattice pairing, not committer-timestamp pairing (#219 refute) ---
+
+
+def _skewed_minor_bump(repo: Path, *, note_for_010: str | None = None) -> None:
+    """0.1.0 landed at 13:00; the un-noted MINOR 0.2.0 committed with a
+    committer date of 12:30 — ordinary clock skew, no forgery. Under
+    timestamp pairing the sequence reads [0.2.0@12:30, 0.1.0@13:00]: the
+    innocent 0.1.0 is judged as 'bumping from 0.2.0' and the real un-noted
+    MINOR rides free behind the first-entry exemption."""
+    versions = {"0.1.0", "0.2.0"}
+    _commit(
+        repo,
+        "2026-09-20T13:00:00+08:00",
+        ("standards/otdp/0.1.0/x.schema.json", "{}\n"),
+        ("standards/standards-manifest.json", _manifest("0.1.0")),
+        ("standards/corpus-manifest.json", _corpus_manifest(*sorted(versions))),
+        ("pyproject.toml", (ROOT / "pyproject.toml").read_text()),
+        (".gitmodules", (ROOT / ".gitmodules").read_text()),
+    )
+    note_rows = (
+        {"0.1.0": {"migration_note": note_for_010}}
+        if note_for_010 is not None
+        else None
+    )
+    _commit(
+        repo,
+        "2026-09-20T12:30:00+08:00",  # skewed BEFORE the admission
+        ("standards/otdp/0.2.0/x.schema.json", "{}\n"),
+        (
+            "standards/standards-manifest.json",
+            _manifest("0.2.0", versions=note_rows),
+        ),
+        ("standards/corpus-manifest.json", _corpus_manifest("0.1.0", "0.2.0")),
+    )
+
+
+def test_clock_skew_pairs_the_bump_with_its_lattice_predecessor(tmp_path: Path) -> None:
+    """Lane B F2's repro, arm 1: the refusal must name the real un-noted
+    MINOR (0.2.0, bumping FROM 0.1.0) — pairing and the admission exemption
+    derive from the version lattice (semver, copy-never-move's own ground
+    truth), with timestamps feeding ONLY the adoption cutoff."""
+    from benchweave.standards.migration_notes import (
+        MigrationNoteError,
+        check_migration_notes,
+    )
+
+    repo = _scratch_repo(tmp_path)
+    _skewed_minor_bump(repo)
+    with pytest.raises(MigrationNoteError) as raised:
+        check_migration_notes(repo)
+    message = str(raised.value)
+    assert "migration_note_missing: otdp 0.2.0 bumps from 0.1.0" in message, message
+    assert "0.1.0 bumps from" not in message, message
+
+
+def test_following_the_skewed_message_advice_does_not_go_clean(tmp_path: Path) -> None:
+    """Lane B F2's repro, arm 2: the state today's skewed message tells you
+    to author (a note on the INNOCENT 0.1.0) must not clean the gate — the
+    real un-noted MINOR is still refusing. Remediation advice you can
+    follow into a false clean is worse than no advice."""
+    from benchweave.standards.migration_notes import (
+        MigrationNoteError,
+        check_migration_notes,
+    )
+
+    repo = _scratch_repo(tmp_path)
+    _commit(repo, "2026-09-20T12:05:00+08:00", ("docs/migration/otdp-0.1.0.md", "n\n"))
+    _skewed_minor_bump(repo, note_for_010="docs/migration/otdp-0.1.0.md")
+    with pytest.raises(MigrationNoteError) as raised:
+        check_migration_notes(repo)
+    assert "migration_note_missing: otdp 0.2.0 bumps from 0.1.0" in str(raised.value)
+
+
+def test_a_backport_patch_pairs_with_its_lattice_predecessor(tmp_path: Path) -> None:
+    """The critic's mispair: landed [0.2.2, 0.3.0], then a 0.2.3 backport.
+    Timestamp pairing reads 0.2.3 as bumping from 0.3.0 — MINOR-class,
+    demanding a MUST note for a PATCH. Lattice order pairs 0.2.3 with 0.2.2
+    (PATCH, SHOULD) and the gate goes clean."""
+    from benchweave.standards.migration_notes import check_migration_notes
+
+    repo = _scratch_repo(tmp_path)
+    _commit(
+        repo,
+        "2026-09-20T13:00:00+08:00",
+        ("standards/otdp/0.2.2/x.schema.json", "{}\n"),
+        ("standards/standards-manifest.json", _manifest("0.2.2")),
+        ("standards/corpus-manifest.json", _corpus_manifest("0.2.2")),
+        ("pyproject.toml", (ROOT / "pyproject.toml").read_text()),
+        (".gitmodules", (ROOT / ".gitmodules").read_text()),
+    )
+    _commit(
+        repo,
+        "2026-09-20T14:00:00+08:00",
+        ("standards/otdp/0.3.0/x.schema.json", "{}\n"),
+        (
+            "standards/standards-manifest.json",
+            _manifest(
+                "0.3.0",
+                versions={"0.3.0": {"migration_note": "docs/migration/otdp-0.3.0.md"}},
+            ),
+        ),
+        ("docs/migration/otdp-0.3.0.md", "note\n"),
+        ("standards/corpus-manifest.json", _corpus_manifest("0.2.2", "0.3.0")),
+    )
+    # The backport lands AFTER the minor it patches behind: 0.2.3 at 15:00,
+    # un-noted, no corpus rows for it yet (a PATCH under lattice pairing).
+    _commit(
+        repo,
+        "2026-09-20T15:00:00+08:00",
+        ("standards/otdp/0.2.3/x.schema.json", "{}\n"),
+        ("standards/corpus-manifest.json", _corpus_manifest("0.2.2", "0.2.3", "0.3.0")),
+    )
+    # 0.2.3 is un-noted: a PATCH under lattice pairing — clean is the call.
+    assert check_migration_notes(repo) == ()
