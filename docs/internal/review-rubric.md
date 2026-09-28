@@ -44,14 +44,30 @@ Run the diff's file list through these rules, top to bottom. First match wins.
 - adds, removes, or re-pins a dependency (`pyproject.toml`, `uv.lock`)
 - advances the `packages/sdk` submodule pointer
 
-**TIER 2 — standard.** Any other change to Python logic under `src/`, `scripts/`, `tests/`,
-`.github/`, or root config (`pyproject.toml`, hatchling config). Test-only changes sit here,
-not in Tier 1 — the CI contract and the fixture lockstep live in the test tree.
+**TIER 2 — standard.** Any other change to production or test code under `src/`,
+`scripts/`, `tests/`, `ui/` (the TypeScript renderer, its tests and styles — including
+the contract-pin tests), `.github/`, or root config (`pyproject.toml`, hatchling
+config). Test-only changes sit here, not in Tier 1 — the CI contract and the fixture
+lockstep live in the test tree, and the ui contract pins live in `ui/src`.
 
 **TIER 1 — light.** Only docs (`*.md`), comments, or web copy — and nothing that matches
 Tier 3.
 
 State the tier and the rule that triggered it at the top of your review.
+
+**Design-time tier call (#254).** The tier is not first discovered at review: a design
+record (`.claude/deep-review/`) states its slice's tier and that the Step-1 keyword scan
+was run over the record's expected diff text — the whole expected diff, docs and code
+alike. The review re-derives the tier independently; a record that omits the tier
+statement or the scan, or whose stated tier disagrees with the rules, is a review
+finding, not a reclassification courtesy.
+
+**Keyword-rule interplay.** The keyword rule is text-based and first-match-wins, by
+design: a docs-only change whose diff text merely mentions a protection-related key — a
+contract row naming `protection-active`, prose defining protective behaviour — still
+takes the Tier-3 lane. The deep lane is bought by what the text carries, not by the
+file type; text that defines or carries protective behaviour gets the protective
+review depth.
 
 **Standards-governor mandate (#69) — applies regardless of tier:** any diff touching
 `standards/` (corpus, prose, or either manifest), plugin contract locks, the SDK
