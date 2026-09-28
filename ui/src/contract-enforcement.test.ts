@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { fireEvent, render, within, type RenderResult } from "@testing-library/react";
+import { render, within, type RenderResult } from "@testing-library/react";
 import { createElement, type ReactElement } from "react";
 import { describe, expect, it } from "vitest";
 
@@ -129,20 +129,19 @@ const fixtures: Record<string, () => RenderResult> = {
   // is pinned; a page renders only its active modes.
   "mode-banner": () => render(element(ModeBanner, { modes: ["simulated", "no-gateway", "no-lease", "no-policy"] })),
   // R-ENERGISE-1's required text (effect, value+unit, target) lives in the
-  // ARMED confirm step, so the fixture stages the action first.
-  "confirm-action": () => {
-    const rendered = render(
+  // ARMED confirm step; the component's initiallyArmed seam renders it
+  // directly (the armed state is the safety-critical presentation).
+  "confirm-action": () =>
+    render(
       element(ConfirmAction, {
         label: "Energise output",
         effect: "the output will be energised",
         value: { amount: 12.5, unit: "V" },
         target: "PSU-07 output",
         onConfirm: () => undefined,
+        initiallyArmed: true,
       }),
-    );
-    fireEvent.click(rendered.getByRole("button", { name: "Energise output" }));
-    return rendered;
-  },
+    ),
 };
 
 describe("contract L2: the reference renderer enforces every component row", () => {
@@ -214,6 +213,12 @@ describe("contract L2: the reference renderer enforces §C.2 disabled-reason lab
       expect(control!.getAttribute("data-bw-disabled-reason")).toBe(key);
       const label = container.querySelector("[data-bw-disabled-label]");
       expect(label, `${key}: visible label not rendered beside the control`).not.toBeNull();
+      // Visible, not merely present: jest-dom visibility catches an
+      // inline-style hide (display/visibility on the label element). The
+      // CSS-class-hiding residual stands — jsdom applies no stylesheets, so a
+      // label hidden by a class rule is not catchable here and stays a
+      // browser-review arm.
+      expect(label!, `${key}: label must be visible, not hidden`).toBeVisible();
       // The device-state key's template carries the {state} slot; the
       // canonical blocking state from the contract is `idle`.
       expect(label!.textContent).toBe(template.replace("{state}", "idle"));

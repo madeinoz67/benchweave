@@ -44,6 +44,9 @@ function expectEveryDisabledControlLabelled() {
     expect(wrap, `control with reason ${key} has a reason wrapper`).not.toBeNull();
     const label = wrap!.querySelector("[data-bw-disabled-label]");
     expect(label, `control with reason ${key} carries a visible label`).not.toBeNull();
+    // Visible, not merely present (inline-style hides caught; the CSS-class
+    // residual is disclosed in the contract tests).
+    expect(label!, `control with reason ${key} carries a VISIBLE label`).toBeVisible();
     expect(label!.textContent).toBe(disabledReasonLabel({ key }));
   }
 }

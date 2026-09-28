@@ -244,7 +244,7 @@ describe("contract L1: fixture rows present and parsable", () => {
     }
   });
 
-  it("§E.1 pins the 8 slice-1 component rows and their full cell content", () => {
+  it("§E.1 pins the 10 component rows and their full cell content", () => {
     const rows = parseTable(
       "### §E.1 Components",
       ["Component", "Root element", "Required attributes", "Required roles", "Required class hooks", "Required text", "Notes"],
@@ -337,10 +337,10 @@ describe("contract L1: fixture rows present and parsable", () => {
         ],
       },
       "confirm-action": {
-        attributes: ["data-bw-confirm"],
+        attributes: ["data-bw-confirm=armed", "aria-expanded"],
         roles: [],
         classHooks: ["bw-confirm", "bw-confirm__step", "bw-confirm__text"],
-        requiredText: ["the output will be energised", "12.5 V", "PSU-07 output"],
+        requiredText: ["the output will be energised", "12.5 V", "PSU-07 output", "Confirm to proceed.", "Confirm: Energise output", "Cancel"],
       },
     };
     // Same item split as the L2 parser: spaced " ~ " separator, "—" is empty.

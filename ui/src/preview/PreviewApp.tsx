@@ -4,7 +4,7 @@ import { ModeBanner } from "../components/feedback/ModeBanner";
 import { RefusalMessage, type RefusalCode } from "../components/feedback/refusals";
 import { DeviceWorkbench } from "../compositions/DeviceWorkbench";
 import { scenarioToWorkbenchFixture } from "../compositions/fixtures";
-import { fetchPreview, PreviewTransportError, requestSimulatedAction, type PreviewDocument, type SimulatedReceipt } from "./api";
+import { fetchPreview, PreviewRefusalError, PreviewTransportError, requestSimulatedAction, type PreviewDocument, type SimulatedReceipt } from "./api";
 import { PreviewPlots } from "./PreviewPlots";
 
 export interface PreviewAppProps { apiBase?: string }
@@ -15,9 +15,16 @@ export function PreviewApp({ apiBase }: PreviewAppProps) {
   const [scenarioId, setScenarioId] = useState("");
   const [receipt, setReceipt] = useState<SimulatedReceipt | null>(null);
   const [refusal, setRefusal] = useState<RefusalCode | null>(null);
+  /** A definitive server refusal (readable error body — sent-NO territory). */
+  const [serverRefusal, setServerRefusal] = useState<string | null>(null);
+  /** The server answered but the receipt could not be read: the outcome is
+   *  UNKNOWN (A06) — not "rejected", and not the no-response row either. */
+  const [unknownOutcome, setUnknownOutcome] = useState(false);
   const [role, setRole] = useState("controller");
   const [theme, setTheme] = useState("dark");
   const [error, setError] = useState<Error | null>(null);
+
+  const clearBoundary = () => { setReceipt(null); setRefusal(null); setServerRefusal(null); setUnknownOutcome(false); };
 
   useEffect(() => {
     const controller = new AbortController();
@@ -39,26 +46,28 @@ export function PreviewApp({ apiBase }: PreviewAppProps) {
     && scenario.request_outcomes.length > 0,
   );
 
-  // A transport failure (network or HTTP) at this boundary is the contract's
-  // no-response refusal — no interface answer arrived, so whether anything was
-  // sent is UNKNOWN (A06) and the operator action is to reconcile, not retry
-  // blindly. A decode failure is not an interface refusal: an answer arrived
-  // and the client could not read it, so it keeps the plain critical alert.
+  // The document boundary, honestly split: a network failure or undecodable
+  // response is the contract's no-response refusal (nothing usable arrived —
+  // UNKNOWN whether anything was sent, A06); a decode failure of an otherwise
+  // accepted document keeps the plain critical alert (an answer arrived that
+  // the client could not read — a client defect, not an interface refusal).
   if (error) return <main className="bw-preview">
     <ModeBanner modes={["simulated"]} />
     {error instanceof PreviewTransportError
       ? <RefusalMessage code="no-response" />
       : <AlertBubble severity="critical" title="Preview unavailable" message={error.message} source="SDK preview" />}
   </main>;
-  if (!preview || !scenario || !fixture) return <main className="bw-preview" aria-busy="true">Loading simulated preview…</main>;
+  if (!preview || !scenario || !fixture) return <main className="bw-preview" aria-busy="true"><ModeBanner modes={["simulated"]} />Loading simulated preview…</main>;
 
   const outputBinding = scenario.observations.find((observation) => observation.unit === "V")?.binding_id ?? scenario.observations[0]?.binding_id;
   const sendRequest = async (value: boolean | number) => {
     if (!outputBinding) return;
+    clearBoundary();
     try { setReceipt(await requestSimulatedAction(resolvedApiBase, scenario.id, outputBinding, value)); }
     catch (reason: unknown) {
       if (reason instanceof PreviewTransportError) { setRefusal("no-response"); return; }
-      setReceipt({ binding_id: outputBinding, outcome: "error", message: reason instanceof Error ? reason.message : String(reason) });
+      if (reason instanceof PreviewRefusalError) { setServerRefusal(reason.message); return; }
+      setUnknownOutcome(true);
     }
   };
 
@@ -66,15 +75,17 @@ export function PreviewApp({ apiBase }: PreviewAppProps) {
     <ModeBanner modes={["simulated"]} />
     <header className="bw-preview__header">
       <div><span className="bw-eyebrow">SDK preview · API v{preview.api_version}</span><h1>{preview.plugin_id}</h1></div>
-      <label>Preview scenario<select value={scenario.id} onChange={(event) => { setScenarioId(event.target.value); setReceipt(null); setRefusal(null); }}>{preview.scenarios.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label>
-      <label>Simulated role<select value={role} onChange={(event) => { setRole(event.target.value); setReceipt(null); setRefusal(null); }}><option value="observer">Observer</option><option value="controller">Controller</option><option value="administrator">Administrator</option></select></label>
+      <label>Preview scenario<select value={scenario.id} onChange={(event) => { setScenarioId(event.target.value); clearBoundary(); }}>{preview.scenarios.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label>
+      <label>Simulated role<select value={role} onChange={(event) => { setRole(event.target.value); clearBoundary(); }}><option value="observer">Observer</option><option value="controller">Controller</option><option value="administrator">Administrator</option></select></label>
       <label>Preview theme<select value={theme} onChange={(event) => setTheme(event.target.value)}><option value="dark">Dark</option><option value="light">Light</option></select></label>
     </header>
     <p>{scenario.title} · {scenario.description}</p>
     {scenario.unavailable_panels.length ? <AlertBubble severity="warning" title="Panels unavailable" message={scenario.unavailable_panels.join(", ")} source="SDK preview" /> : null}
     {refusal ? <RefusalMessage code={refusal} /> : null}
+    {serverRefusal ? <AlertBubble severity="warning" title="Request refused" message={`${serverRefusal} Nothing was sent.`} source="SDK preview" /> : null}
+    {unknownOutcome ? <AlertBubble severity="warning" title="Request outcome unknown" message="The server answered but the receipt could not be read; whether anything was sent is unknown — reconcile before retrying." source="SDK preview" /> : null}
     {receipt ? <AlertBubble severity={receipt.outcome === "accepted" ? "success" : "warning"} title={receipt.outcome === "accepted" ? "Simulated request accepted" : "Simulated request rejected"} message={receipt.message} source={receipt.binding_id} /> : null}
-    {!canRequest ? <p role="status">Controls are read-only for this simulated authority state.</p> : null}
+    {!canRequest ? <p role="status">Energy-sourcing controls are read-only for this simulated authority state; de-energising stays available.</p> : null}
     <DeviceWorkbench
       key={scenario.id}
       fixture={fixture}

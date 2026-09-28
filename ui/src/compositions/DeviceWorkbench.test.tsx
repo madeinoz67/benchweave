@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { DeviceWorkbench } from "./DeviceWorkbench";
@@ -61,5 +61,46 @@ describe("DeviceWorkbench", () => {
     fireEvent.click(screen.getByRole("button", { name: "Apply staged set-point" }));
     expect(onRequestSetPoint).toHaveBeenCalledWith(12);
     expect(screen.queryByText(/Confirm: Apply staged set-point/)).not.toBeInTheDocument();
+  });
+});
+
+describe("DeviceWorkbench armed guard (the guard holds at fire time)", () => {
+  it("disables an armed energise confirm when the trip arrives mid-flight, and does not dispatch", () => {
+    const onRequestOutputOn = vi.fn();
+    const { rerender } = render(
+      <DeviceWorkbench fixture={{ ...warningWorkbench, output: { energised: false, trip: false } }} onRequestOutputOn={onRequestOutputOn} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Energise output" }));
+    rerender(
+      <DeviceWorkbench fixture={{ ...warningWorkbench, output: { energised: false, trip: true } }} onRequestOutputOn={onRequestOutputOn} />,
+    );
+    const confirm = screen.getByRole("button", { name: "Confirm: Energise output" });
+    expect(confirm).toBeDisabled();
+    expect(confirm).toHaveAttribute("data-bw-disabled-reason", "protection-active");
+    // The armed confirm's own reason wrapper carries the required visible label.
+    within(confirm.closest(".bw-button__reason") as HTMLElement).getByText("Protection trip active");
+    fireEvent.click(confirm);
+    expect(onRequestOutputOn).not.toHaveBeenCalled();
+  });
+
+  it("presents protection-active — not no-authority — when trip and missing authority combine", () => {
+    const { rerender } = render(
+      <DeviceWorkbench
+        fixture={{ ...warningWorkbench, output: { energised: false, trip: false } }}
+        requestEnabled
+        onRequestOutputOn={() => undefined}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Energise output" }));
+    rerender(
+      <DeviceWorkbench
+        fixture={{ ...warningWorkbench, output: { energised: false, trip: true } }}
+        requestEnabled={false}
+        onRequestOutputOn={() => undefined}
+      />,
+    );
+    const confirm = screen.getByRole("button", { name: "Confirm: Energise output" });
+    expect(confirm).toHaveAttribute("data-bw-disabled-reason", "protection-active");
+    expect(screen.queryByText("No lease or policy authority")).not.toBeInTheDocument();
   });
 });

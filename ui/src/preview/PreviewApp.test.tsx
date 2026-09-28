@@ -33,7 +33,7 @@ describe("PreviewApp", () => {
     fireEvent.change(screen.getByLabelText("Preview scenario"), { target: { value: "trip" } });
     expect(screen.getByText("Protective trip · Simulated protective trip")).toBeVisible();
     expect(screen.getByText("SIMULATED PRESENTATION DATA")).toBeVisible();
-    expect(screen.getByText(/Controls are read-only/)).toBeVisible();
+    expect(screen.getByText(/Energy-sourcing controls are read-only/)).toBeVisible();
     expect(screen.getByRole("button", { name: "Apply staged set-point" })).toBeDisabled();
   });
 
@@ -71,5 +71,54 @@ describe("PreviewApp", () => {
     expect(screen.getByText(/It is unknown whether anything was sent/)).toBeVisible();
     expect(screen.getByText(/Do not retry blindly/)).toBeVisible();
     expect(document.querySelector(".bw-alert-bubble")).toHaveAttribute("data-severity", "critical");
+  });
+});
+
+describe("PreviewApp response boundary honesty", () => {
+  it("holds the armed guard across a role switch — the reviewer's path (armed confirm will not post without authority)", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => preview }));
+    render(<PreviewApp />);
+    await screen.findByText("SIMULATED PRESENTATION DATA");
+    fireEvent.click(screen.getByRole("button", { name: "Apply staged set-point" }));
+    expect(screen.getByText(/Confirm to proceed/)).toBeVisible();
+    fireEvent.change(screen.getByLabelText("Simulated role"), { target: { value: "observer" } });
+    const confirm = screen.getByRole("button", { name: "Confirm: Apply staged set-point" });
+    expect(confirm).toBeDisabled();
+    expect(confirm).toHaveAttribute("data-bw-disabled-reason", "no-authority");
+    expect(screen.getAllByText("No lease or policy authority").length).toBeGreaterThan(0);
+  });
+
+  it("renders a readable error body as a definitive refusal, not no-response", async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => preview })
+      .mockResolvedValueOnce({ ok: false, status: 400, json: async () => ({ error: "unknown_binding" }) });
+    vi.stubGlobal("fetch", fetcher);
+    render(<PreviewApp />);
+    expect((await screen.findAllByText("12.04"))[0]).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "De-energise output" }));
+    const refusal = await screen.findByText(/unknown_binding/);
+    expect(refusal).toBeVisible();
+    expect(screen.getByText(/Nothing was sent/)).toBeVisible();
+    expect(screen.queryByText(/It is unknown whether anything was sent/)).not.toBeInTheDocument();
+  });
+
+  it("renders an unreadable receipt as an UNKNOWN outcome, not a rejection", async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => preview })
+      .mockResolvedValueOnce({ ok: true, json: async () => Promise.reject(new SyntaxError("Unexpected token")) });
+    vi.stubGlobal("fetch", fetcher);
+    render(<PreviewApp />);
+    expect((await screen.findAllByText("12.04"))[0]).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "De-energise output" }));
+    expect(await screen.findByText(/Request outcome unknown/)).toBeVisible();
+    expect(screen.getByText(/reconcile before retrying/)).toBeVisible();
+    expect(screen.queryByText(/Simulated request rejected/)).not.toBeInTheDocument();
+  });
+
+  it("carries the mode banner on the loading page too (§D every page)", () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => undefined)));
+    render(<PreviewApp />);
+    expect(screen.getByText("SIMULATED PRESENTATION DATA")).toBeVisible();
+    expect(screen.getByText(/Loading simulated preview/)).toBeVisible();
   });
 });

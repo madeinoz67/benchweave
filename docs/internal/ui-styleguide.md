@@ -147,6 +147,8 @@ Readings report gateway observations. Controls stage intent. Buttons submit expl
 - Permission, lease, policy, transport and device rejection remain distinct outcomes — rendered per the refusal mapping (contract §C.3).
 - Energy-sourcing actions confirm; energy-removing actions never stand behind a confirmation (contract §C.1).
 
+**The reference renderer's disabled-reason reach (honest scope):** the contract's §C.2 keys are normative for every host, but this reference composition emits only two of the five. `no-authority` fires whenever the simulated authority state blocks energising actions, and `protection-active` while a protective trip is active. `invalid-staged-input` is never emitted here because `NumericInput` clamps staged values to the declared bounds (`bounds.ts`) — a clamped value is always in range, so the reference renderer cannot stage an invalid one; a host whose inputs can be invalid emits the key. `capability-absent` and `device-state` have no emitting mechanism in the reference composition (it renders one device with all capabilities and no state gate) — they exist for hosts that have partial-capability devices or required idle states.
+
 ## Alerts and message persistence
 
 The severity model — meanings, dismissal classes and live regions — is normative in the contract ([§B](ui-contract.md#b-states-and-severity-model)); the reference implementation lives in `ui/src/components/feedback/severity.tsx`. A transient toast is limited to neutral, success and advisory confirmation; warning, critical and trip information must remain present in the affected context. Dismissal is not acknowledgement.

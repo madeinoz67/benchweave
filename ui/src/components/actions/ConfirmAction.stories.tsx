@@ -17,6 +17,9 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Idle: Story = {};
+/** The safety-critical state, rendered statically via the story seam: the
+ *  armed confirm step with the effect, the exact value, and the target. */
+export const Armed: Story = { args: { initiallyArmed: true } };
+export const ArmedAndGuarded: Story = { args: { initiallyArmed: true, disabled: true, disabledReason: { key: "protection-active" } } };
 export const DisabledNoAuthority: Story = { args: { disabled: true, disabledReason: { key: "no-authority" } } };
 export const DisabledProtectionActive: Story = { args: { disabled: true, disabledReason: { key: "protection-active" } } };
-export const WithoutValue: Story = { args: { value: undefined } };

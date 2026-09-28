@@ -72,12 +72,18 @@ export function scenarioToWorkbenchFixture(scenario: PreviewScenario, preview: P
     stagedVoltage: voltage,
     message: scenario.description,
     traces: numeric.map((observation) => ({ id: observation.binding_id, label: titleFor(observation.binding_id), unit: observation.unit ?? "", values: [[-1, observation.value], [0, observation.value]] })),
-    // Output-state derivation, disclosed: a scenario whose expected severity is
-    // `trip` is the protective-trip scenario (R-PROTECT-1's guard fires on it);
-    // a non-zero voltage reading means the output is presently energised
-    // (R-ENERGISE-1's set-point confirm fires on it). The preview document has
-    // no dedicated output-state field, so the workbench derives both from the
-    // observations it already carries.
+    // Output-state derivation, disclosed with its edges: a scenario whose
+    // expected severity is `trip` is the protective-trip scenario
+    // (R-PROTECT-1's guard fires on it); a POSITIVE voltage reading derives an
+    // energised output (R-ENERGISE-1's set-point confirm fires on it) — the
+    // mechanism is `voltage > 0`, not "non-zero", so a negative bipolar
+    // reading derives de-energised. `voltage` itself is the FIRST V-unit
+    // observation in scenario order (order-dependent when several exist), and
+    // the severity mapping is uniform across a scenario's readings (every
+    // reading shares expected_severity — the preview document has no
+    // per-observation severity). The preview document has no dedicated
+    // output-state field, so the workbench derives both from the observations
+    // it already carries.
     output: { energised: voltage > 0, trip: scenario.expected_severity === "trip" },
   };
 }

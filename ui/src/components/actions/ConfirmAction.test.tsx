@@ -2,15 +2,17 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { ConfirmAction } from "./ConfirmAction";
+import type { DisabledReason } from "./disabledReasons";
+
+const props = {
+  label: "Energise output",
+  effect: "the output will be energised",
+  value: { amount: 12.5, unit: "V" },
+  target: "PSU-07 output",
+  onConfirm: vi.fn(),
+};
 
 describe("ConfirmAction (contract §C.1 R-ENERGISE-1)", () => {
-  const props = {
-    label: "Energise output",
-    effect: "the output will be energised",
-    value: { amount: 12.5, unit: "V" },
-    target: "PSU-07 output",
-    onConfirm: vi.fn(),
-  };
 
   it("stages on the first action and fires only on the second explicit action", () => {
     const onConfirm = vi.fn();
@@ -46,5 +48,46 @@ describe("ConfirmAction (contract §C.1 R-ENERGISE-1)", () => {
     expect(button).toBeDisabled();
     expect(button).toHaveAttribute("data-bw-disabled-reason", "protection-active");
     expect(screen.getByText("Protection trip active")).toBeVisible();
+  });
+});
+
+describe("ConfirmAction armed guard (R-PROTECT-1 holds at FIRE time)", () => {
+  function armedThenGuarded(guard: { disabled?: boolean; disabledReason?: DisabledReason }) {
+    const onConfirm = vi.fn();
+    const initial = render(
+      <ConfirmAction {...props} onConfirm={onConfirm} />,
+    );
+    fireEvent.click(initial.getByRole("button", { name: "Energise output" }));
+    initial.rerender(
+      <ConfirmAction {...props} {...guard} onConfirm={onConfirm} />,
+    );
+    return { initial, onConfirm };
+  }
+
+  it("disables the armed Confirm when the guard arrives, and does not dispatch on click", () => {
+    const { initial, onConfirm } = armedThenGuarded({ disabled: true, disabledReason: { key: "protection-active" } });
+    const confirm = initial.getByRole("button", { name: "Confirm: Energise output" });
+    expect(confirm).toBeDisabled();
+    expect(confirm).toHaveAttribute("data-bw-disabled-reason", "protection-active");
+    expect(initial.getAllByText("Protection trip active").length).toBe(2);
+    fireEvent.click(confirm);
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it("keeps Cancel enabled under the guard — the staged intent is never silently discarded", () => {
+    const { initial } = armedThenGuarded({ disabled: true, disabledReason: { key: "no-authority" } });
+    expect(initial.getByRole("button", { name: "Cancel" })).toBeEnabled();
+    expect(initial.getAllByText("No lease or policy authority").length).toBe(2);
+  });
+
+  it("re-enables the armed Confirm when the guard departs", () => {
+    const { initial, onConfirm } = armedThenGuarded({ disabled: true, disabledReason: { key: "protection-active" } });
+    initial.rerender(<ConfirmAction {...props} onConfirm={onConfirm} />);
+    expect(initial.getByRole("button", { name: "Confirm: Energise output" })).toBeEnabled();
+  });
+
+  it("renders the armed presentation from initiallyArmed (the story/test seam)", () => {
+    render(<ConfirmAction {...props} initiallyArmed />);
+    expect(screen.getByText(/the output will be energised/)).toBeVisible();
   });
 });
