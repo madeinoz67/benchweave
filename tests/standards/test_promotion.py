@@ -216,7 +216,7 @@ def _fixture(
                 row.pop("lineage", None)
     corpus_path.write_text(json.dumps(corpus, indent=1), encoding="utf-8")
     _git(root, "init", "-q", "-b", "main")
-    _commit(root, "base")
+    base_sha = _commit(root, "base")
     _git(root, "checkout", "-q", "-b", "dev-train")
     _plant_head(root)
     _commit(root, "open head")
@@ -235,17 +235,22 @@ def _fixture(
     _git(root, "checkout", "-q", "main")
     _landing_tree(root, sweep_edit=sweep_edit, successor=successor)
     landing_sha = _commit(root, "promotion landing")
-    facts = {"dev_edit_sha": dev_edit_sha, "landing_sha": landing_sha}
+    facts = {
+        "dev_edit_sha": dev_edit_sha,
+        "landing_sha": landing_sha,
+        "base_sha": base_sha,
+    }
     if isinstance(record, (dict, type(None))):
         _write_records(root, record)
     return root, facts
 
 
 def _write_records(root: Path, record: dict[str, Any] | None) -> None:
-    document = {
-        "promotion_record_version": 1,
-        "records": [record] if record is not None else [],
-    }
+    _write_records_many(root, [record] if record is not None else [])
+
+
+def _write_records_many(root: Path, records: list[dict[str, Any]]) -> None:
+    document = {"promotion_record_version": 1, "records": records}
     (root / "standards" / "promotion-records.json").write_bytes(
         canonical_json(document)
     )
@@ -510,3 +515,71 @@ def test_records_parse_into_the_carrier(tmp_path: Path) -> None:
     assert record.standard == "otdp"
     assert record.target == TARGET
     assert record.pending is False
+
+
+# --- refute fold (lane B): duplicate rows, landing-sha identity, re-stamp teeth ----
+
+
+def test_duplicate_rows_refuse_rather_than_shadow(tmp_path: Path) -> None:
+    """F2: two records for one (standard, target) shadow silently — the
+    dict build takes the LAST, so a flipped-digest record followed by an
+    honest one launders the flip. Loading must refuse
+    ``promotion_record_invalid:`` naming the duplicate (lane B's P1 arm:
+    [BAD-flipped-digest, HONEST] passed)."""
+    root, facts = _fixture(tmp_path, record=None)
+    honest = _honest_record(root, facts)
+    flipped = dict(honest)
+    flipped["dev_tree_digest"] = "0" + honest["dev_tree_digest"][1:]
+    _write_records_many(root, [flipped, honest])
+    with pytest.raises(StandardsError) as raised:
+        load_promotion_records(root)
+    message = str(raised.value)
+    assert message.startswith("promotion_record_invalid:"), message
+    assert f"duplicate row for otdp@{TARGET}" in message
+
+
+def test_landing_sha_must_name_the_promotion_landing_commit(tmp_path: Path) -> None:
+    """F3: the landing sha's check is existence-only — a BLOB sha and a
+    pre-promotion base commit both pass today (lane B's P2). The landing
+    must be a COMMIT whose tree carries the promoted directory: the
+    record's audit claim is about the landing, not about any object the
+    repository happens to hold."""
+    root, facts = _fixture(tmp_path, record=None)
+    honest = _honest_record(root, facts)
+    blob = _git(root, "rev-parse", "HEAD:standards/corpus-manifest.json")
+    _write_records(root, {**honest, "landing_sha": blob})
+    with pytest.raises(StandardsError) as raised:
+        validate_promotion_records(root)
+    message = str(raised.value)
+    assert message.startswith("promotion_landing_invalid:"), message
+    assert "blob" in message, "the refusal names the object type it found"
+    _write_records(root, {**honest, "landing_sha": facts["base_sha"]})
+    with pytest.raises(StandardsError) as raised:
+        validate_promotion_records(root)
+    message = str(raised.value)
+    assert message.startswith("promotion_landing_invalid:"), message
+    assert f"standards/otdp/{TARGET}" in message
+
+
+def test_a_re_stamp_line_carrying_a_fake_digest_refuses(tmp_path: Path) -> None:
+    """F6: the digest re-stamp rule used ``any()`` over the line's digests —
+    ONE real digest launders fakes beside it (lane B's W1). Line-wise, EVERY
+    digest-shaped token on a re-stamped line must be a known digest of the
+    right tree."""
+    root, facts = _fixture(tmp_path, record=None)
+    _write_records(root, _honest_record(root, facts))
+    # Append ONE line to a prose companion (no re-serialization of the
+    # whole file — the arm must trip the digest rule and only the digest
+    # rule): one real digest of the promoted tree, one fake.
+    prose = root / "standards" / "otdp" / TARGET / "device-classes.md"
+    real = hashlib.sha256(
+        (root / "standards" / "otdp" / TARGET / "otdp-measurement.schema.json").read_bytes()
+    ).hexdigest()
+    prose.write_bytes(
+        prose.read_bytes() + f"X-Adversary-Note: {real} {'f' * 64}\n".encode()
+    )
+    with pytest.raises(StandardsError) as raised:
+        validate_promotion_records(root)
+    message = str(raised.value)
+    assert message.startswith("promotion_sweep_violation:"), message
+    assert "f" * 64 in message, "the refusal names the unexplained digest"

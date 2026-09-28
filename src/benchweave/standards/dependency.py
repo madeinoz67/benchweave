@@ -1679,6 +1679,24 @@ def _dev_head_state(root: Path, resolution: Resolution) -> None:
                     "commit the head's state, move the opt-in to its sha and "
                     "re-pin"
                 )
+        if head_dir.is_dir():
+            # Refute fold, lane A (#218): a file ADDED to the head after the
+            # pin is drift the lock cannot name — the loop above only sees
+            # the lock's own files. Enumerate the head and refuse names
+            # absent from the per-file map.
+            for path in sorted(head_dir.rglob("*")):
+                if not path.is_file():
+                    continue
+                name = path.relative_to(head_dir).as_posix()
+                if name not in row["files"]:
+                    raise StandardsError(
+                        f"dev_pin_drift: {row['id']} {row['version']}@"
+                        f"{row['git_sha']} — standards/{row['id']}/"
+                        f"{row['version']}/{name} appeared in the head after "
+                        "the pin and the lock names no such file; the label "
+                        "is mutable, the pin is not — move the opt-in to the "
+                        "head's current sha and re-pin"
+                    )
 
 
 def _scissors(

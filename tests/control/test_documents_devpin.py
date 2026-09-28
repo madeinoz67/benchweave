@@ -33,6 +33,7 @@ from benchweave.control.documents import (
     admit_documents,
     classify_descriptor_pin,
 )
+from benchweave.standards.manifest import StandardsError, declared_dev_head
 
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / "fixtures" / "execution"
@@ -43,18 +44,18 @@ CORPUS = ROOT / "standards"
 HEAD_LABEL = "0.4.0-dev"
 
 
-def _plant_head(corpus: Path, *, candidate: bool = False) -> None:
+def _plant_head(corpus: Path, *, label: str = HEAD_LABEL, candidate: bool = False) -> None:
     """Plant a dev head on a copied corpus: a copy of the active 0.2.2
     directory whose descriptor schema accepts the dev label (the const
     swap — a descriptor pinned to the head validates against the HEAD's
     bytes and only those), corpus rows citing the active path as source,
     and the manifest's dev block naming every head file normative."""
     active = corpus / "otdp" / "0.2.2"
-    head = corpus / "otdp" / HEAD_LABEL
+    head = corpus / "otdp" / label
     shutil.copytree(active, head)
     schema_path = head / "otdp-device-descriptor.schema.json"
     schema = json.loads(schema_path.read_bytes())
-    schema["properties"]["otdp_version"]["const"] = HEAD_LABEL
+    schema["properties"]["otdp_version"]["const"] = label
     schema_path.write_text(json.dumps(schema, indent=2), encoding="utf-8")
 
     manifest_path = corpus / "standards-manifest.json"
@@ -63,9 +64,9 @@ def _plant_head(corpus: Path, *, candidate: bool = False) -> None:
     for entry in manifest["standards"]:
         if entry["id"] == "otdp":
             entry["dev"] = {
-                "version": HEAD_LABEL,
+                "version": label,
                 "opened": "2026-09-28",
-                "normative": [f"standards/otdp/{HEAD_LABEL}/{name}" for name in names],
+                "normative": [f"standards/otdp/{label}/{name}" for name in names],
                 **({"candidate": True} if candidate else {}),
             }
     manifest_path.write_text(json.dumps(manifest, indent=1), encoding="utf-8")
@@ -76,7 +77,7 @@ def _plant_head(corpus: Path, *, candidate: bool = False) -> None:
         raw = (head / name).read_bytes()
         document["files"].append(
             {
-                "path": f"otdp/{HEAD_LABEL}/{name}",
+                "path": f"otdp/{label}/{name}",
                 "source": f"standards/otdp/0.2.2/{name}",
                 "sha256": hashlib.sha256(raw).hexdigest(),
             }
@@ -408,3 +409,34 @@ def test_a_malformed_pre_release_shape_still_never_classifies() -> None:
     record = classify_descriptor_pin("0.4.0-rc.1")
     assert record.conformance == "non-conforming"
     assert "version_not_classifiable:" in str(record.note)
+
+
+# --- refute fold (lane A): the retired-target head refuses at LOAD -----------------
+
+
+def test_a_retired_target_head_refuses_at_load_and_admission(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A head targeting a RETIRED identifier could never promote (used and
+    dead, never reissued) — the resolver refuses the pin
+    (``dev_target_retired:``), so the manifest LOAD must refuse the head
+    itself with the same vocabulary and the re-target hint, and admission
+    must refuse with it (refute lane A: before this fold, admission
+    ADMITTED the head at status=dev conforming while the resolver refused
+    — two surfaces, one pin, opposite verdicts)."""
+    corpus = tmp_path / "planted-retired"
+    shutil.copytree(CORPUS, corpus)
+    _plant_head(corpus, label="0.3.0-dev")
+    packaged = tmp_path / "packaged-retired"
+    (packaged / "contracts").mkdir(parents=True)
+    shutil.copytree(corpus, packaged / "contracts", dirs_exist_ok=True)
+    monkeypatch.setattr(vendoring, "_PACKAGED_ROOT", packaged)
+    with pytest.raises(StandardsError) as raised:
+        declared_dev_head(corpus, "otdp")
+    message = str(raised.value)
+    assert message.startswith("dev_target_retired:"), message
+    assert "0.4.0" in message, "the refusal names the re-target hint"
+    psu = _psu_document()
+    psu["otdp_version"] = "0.3.0-dev"
+    with pytest.raises(StandardsError, match="dev_target_retired:"):
+        _admit(tmp_path / "retired", {"psu": psu})

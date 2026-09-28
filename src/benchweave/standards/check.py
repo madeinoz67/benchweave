@@ -16,7 +16,7 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-from .dependency import resolve_package
+from .dependency import _dev_head_state, resolve_package
 from .export import export_bundle
 from .manifest import load_identity, load_manifest, load_sdk_compatibility
 from .promotion import pending_warning_lines
@@ -148,6 +148,13 @@ def _compare_plugin_dependencies(root: Path) -> list[str]:
                 f"python -m benchweave.standards pin --package {relative}"
             )
             continue
+        try:
+            # Refute fold, lane A (#218): the dev head-state check rides the
+            # ALWAYS-ON check lane too — before the fold it lived only in
+            # pin_lock and `standards check` stayed green on a drifted head.
+            _dev_head_state(root, resolution)
+        except ValueError as exc:
+            failures.append(str(exc))
         for warning in resolution.warnings:
             # Fold F2: surfaced, never silently green — but not a failure.
             failures.append(

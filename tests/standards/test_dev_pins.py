@@ -446,3 +446,46 @@ def test_the_interval_block_still_refuses_dev_shapes_pointing_at_opt_in(
         classify_pin(policy, root, "otdp", HEAD_LABEL)
     assert "opt_in" in str(raised.value)
     assert "slice 4" not in str(raised.value)
+
+
+# --- refute fold (lane A): the always-on check lane sees dev drift -----------------
+
+
+def test_check_lane_refuses_a_moved_dev_head_naming_both_digests(
+    tmp_path: Path,
+) -> None:
+    """Lane A's B-arm: ``standards check`` is the always-on drift lane and
+    must refuse a dev head that moved under a locked pin with
+    ``dev_pin_drift:`` naming both digests — before this fold the drift
+    check rode only ``pin_lock`` and the check lane stayed GREEN on a
+    drifted head."""
+    from benchweave.standards.check import _compare_plugin_dependencies
+
+    root, sha = _git_root(tmp_path)
+    _package(root, opt_in={"otdp": f"{HEAD_LABEL}@{sha}"})
+    written = _run(root, "pin", "--package", "plugins/acme/widget")
+    assert written.returncode == 0, written.stderr
+    head_file = root / "standards" / "otdp" / HEAD_LABEL / "device-classes.md"
+    head_file.write_bytes(head_file.read_bytes() + b"\nA moved-head edit.\n")
+    failures = _compare_plugin_dependencies(root)
+    drift = [line for line in failures if line.startswith("dev_pin_drift:")]
+    assert drift, f"the check lane stayed green on a drifted head: {failures}"
+    assert "device-classes.md" in drift[0]
+    assert hashlib.sha256(head_file.read_bytes()).hexdigest() in drift[0]
+
+
+def test_an_added_head_file_trips_drift(tmp_path: Path) -> None:
+    """Lane A's C-arm: a file ADDED to the head after locking is drift the
+    lock cannot name — the head-state check must enumerate the head
+    directory and refuse names absent from the lock's per-file map (before
+    this fold ``pin --locked`` stayed green with the addition)."""
+    root, sha = _git_root(tmp_path)
+    _package(root, opt_in={"otdp": f"{HEAD_LABEL}@{sha}"})
+    written = _run(root, "pin", "--package", "plugins/acme/widget")
+    assert written.returncode == 0, written.stderr
+    added = root / "standards" / "otdp" / HEAD_LABEL / "added-by-adversary.schema.json"
+    added.write_text("{}\n", encoding="utf-8")
+    locked = _run(root, "pin", "--locked", "--package", "plugins/acme/widget")
+    assert locked.returncode == 1, locked.stdout
+    assert "dev_pin_drift:" in locked.stderr, locked.stderr
+    assert "added-by-adversary.schema.json" in locked.stderr

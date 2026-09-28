@@ -170,17 +170,30 @@ def load_promotion_records(root: Path) -> tuple[PromotionRecord, ...]:
         raise StandardsError(
             f"promotion_record_invalid: {path.name} {error.json_path}: {error.message}"
         )
-    return tuple(
-        PromotionRecord(
-            standard=str(row["standard"]),
-            target=str(row["target"]),
-            dev_head=str(row["dev_head"]),
-            dev_edit_sha=str(row["dev_edit_sha"]),
-            dev_tree_digest=str(row["dev_tree_digest"]),
-            landing_sha=row["landing_sha"],
+    records: list[PromotionRecord] = []
+    seen: set[tuple[str, str]] = set()
+    for row in document["records"]:
+        key = (str(row["standard"]), str(row["target"]))
+        if key in seen:
+            # Refute fold, lane B F2 (#218): duplicate rows shadow silently
+            # (the callers' dict build takes the last) — a flipped record
+            # followed by an honest one would launder the flip. Loading
+            # refuses instead of ordering.
+            raise StandardsError(
+                f"promotion_record_invalid: duplicate row for {key[0]}@{key[1]}"
+            )
+        seen.add(key)
+        records.append(
+            PromotionRecord(
+                standard=str(row["standard"]),
+                target=str(row["target"]),
+                dev_head=str(row["dev_head"]),
+                dev_edit_sha=str(row["dev_edit_sha"]),
+                dev_tree_digest=str(row["dev_tree_digest"]),
+                landing_sha=row["landing_sha"],
+            )
         )
-        for row in document["records"]
-    )
+    return tuple(records)
 
 
 def _git_show(root: Path, ref: str) -> bytes | None:
@@ -192,6 +205,19 @@ def _git_show(root: Path, ref: str) -> bytes | None:
         check=False,
     )
     return result.stdout if result.returncode == 0 else None
+
+
+def _git_object_type(root: Path, sha: str) -> str | None:
+    """The object's type (``commit``/``tree``/``blob``/``tag``), or ``None``
+    when the sha does not resolve — the landing check's identity half
+    (refute fold, lane B F3: existence alone admits any object)."""
+    result = subprocess.run(  # noqa: S603 — fixed argv
+        ["git", "-C", str(root), "cat-file", "-t", sha],  # noqa: S607 — PATH git is the supported invocation
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return result.stdout.strip() if result.returncode == 0 else None
 
 
 def _head_normative_at(root: Path, standard_id: str, label: str, sha: str) -> list[str]:
@@ -297,6 +323,30 @@ _VERSIONISH = re.compile(r"\d+\.\d+\.\d+(?:-dev)?")
 _HEXDIGEST = re.compile(r"\b[a-f0-9]{64}\b")
 
 
+def _line_offends(
+    line: str, tokens: list[str], stripped_opposite: set[str], known_digests: set[str]
+) -> str | None:
+    """Whether one changed line is unexplained by the transition rules.
+
+    ``None`` when the line admits (a version token, an identity re-stamp,
+    or a VERIFIED digest re-stamp); else the detail to quote — the
+    unexplained digest when that rule is what failed (refute fold, lane B
+    F6: every digest-shaped token on a re-stamped line must name a real
+    file of the right tree — one real digest no longer launders fakes
+    beside it)."""
+    if any(token in line for token in tokens):
+        return None
+    if _VERSIONISH.sub("", line) in stripped_opposite:
+        return None
+    digests = _HEXDIGEST.findall(line)
+    if digests:
+        unknown = [digest for digest in digests if digest not in known_digests]
+        if not unknown:
+            return None
+        return f" [unexplained digest: {unknown[0]}]"
+    return ""
+
+
 def _sweep_check(
     root: Path,
     record: PromotionRecord,
@@ -313,12 +363,13 @@ def _sweep_check(
     than a widened token list:
 
     - DIGEST RE-STAMP (VR-36a's "URN/digest restamp"): a changed line
-      carrying a bare sha256 admits when the digest NAMES A REAL FILE —
-      removed side a file of the dev tree at the sha, added side a file of
-      the promoted tree (bidirectional set membership; an invented digest
-      matches nothing and refuses). Verified on the founding record: every
-      one of its 10 changed digest lines maps, 10/10, removed→dev-tree and
-      added→promoted-tree.
+      carrying bare sha256s admits when EVERY digest on the line NAMES A
+      REAL FILE — removed side a file of the dev tree at the sha, added
+      side a file of the promoted tree (bidirectional set membership; an
+      invented digest matches nothing and refuses — refute fold F6: one
+      real digest no longer launders fakes beside it). Verified on the
+      founding record: every one of its 10 changed digest lines maps,
+      10/10, removed→dev-tree and added→promoted-tree.
     - IDENTITY RE-STAMP: a changed line admits when the OPPOSITE side of
       the same file's diff carries a line equal after stripping every
       version-like substring — the same sentence/URN with its version
@@ -414,31 +465,19 @@ def _sweep_check(
         stripped_removed = {_VERSIONISH.sub("", line) for line in removed}
         offending: list[str] = []
         for line in removed:
-            if (
-                not any(token in line for token in tokens)
-                and _VERSIONISH.sub("", line) not in stripped_added
-                and not any(
-                    digest in dev_digests
-                    for digest in _HEXDIGEST.findall(line)
-                )
-            ):
-                offending.append("-" + line.strip())
+            detail = _line_offends(line, tokens, stripped_added, dev_digests)
+            if detail is not None:
+                offending.append(f"{detail}-" + line.strip()[:100])
         for line in added:
-            if (
-                not any(token in line for token in tokens)
-                and _VERSIONISH.sub("", line) not in stripped_removed
-                and not any(
-                    digest in promoted_digests
-                    for digest in _HEXDIGEST.findall(line)
-                )
-            ):
-                offending.append("+" + line.strip())
+            detail = _line_offends(line, tokens, stripped_removed, promoted_digests)
+            if detail is not None:
+                offending.append(f"{detail}+" + line.strip()[:100])
         if offending:
             raise StandardsError(
                 f"promotion_sweep_violation: {record.standard}/{record.target}/"
                 f"{name} differs from the dev tree at {record.dev_edit_sha} on "
                 f"non-transition lines ({len(offending)} line(s), first: "
-                f"{offending[0][:120]!r}) — the promotion sweep may carry only "
+                f"{offending[0][:160]!r}) — the promotion sweep may carry only "
                 f"the version transition (tokens {', '.join(tokens)}, verified "
                 "digest re-stamps, identity re-stamps); move the change "
                 "through the dev head or a new version, never under cover of "
@@ -490,14 +529,46 @@ def validate_promotion_records(root: Path) -> None:
                 f"{record.dev_tree_digest} but the dev tree at "
                 f"{record.dev_edit_sha} digests to {computed}"
             )
-        if record.landing_sha is not None and _git_show(
-            root, record.landing_sha
-        ) is None:
-            raise StandardsError(
-                f"promotion_landing_unresolved: {where} records landing_sha "
-                f"{record.landing_sha}, which does not resolve in the object "
-                "store"
+        if record.landing_sha is not None:
+            kind = _git_object_type(root, record.landing_sha)
+            if kind is None:
+                raise StandardsError(
+                    f"promotion_landing_unresolved: {where} records landing_sha "
+                    f"{record.landing_sha}, which does not resolve in the "
+                    "object store"
+                )
+            if kind != "commit":
+                # Refute fold, lane B F3: the landing is a COMMIT — a blob
+                # or tree sha resolves and would pass an existence-only
+                # check while naming no landing at all.
+                raise StandardsError(
+                    f"promotion_landing_invalid: {where} records landing_sha "
+                    f"{record.landing_sha}, a {kind} object, not the promotion "
+                    "landing commit"
+                )
+            listing = subprocess.run(  # noqa: S603 — fixed argv
+                [  # noqa: S607 — PATH git is the supported invocation
+                    "git",
+                    "-C",
+                    str(root),
+                    "ls-tree",
+                    "-r",
+                    "--name-only",
+                    record.landing_sha,
+                    "--",
+                    f"standards/{record.standard}/{record.target}",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
             )
+            if listing.returncode != 0 or not listing.stdout.splitlines():
+                raise StandardsError(
+                    f"promotion_landing_invalid: {where} records landing_sha "
+                    f"{record.landing_sha}, whose tree carries no "
+                    f"standards/{record.standard}/{record.target}/ — the "
+                    "landing commit must contain the promotion it records"
+                )
         _sweep_check(root, record, corpus_rows)
         if record.pending:
             successors = [
