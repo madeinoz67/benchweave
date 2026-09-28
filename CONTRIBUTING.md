@@ -37,10 +37,12 @@ tests **skip** with a named reason — skips there are expected, failures are
 not.
 
 CI partitions the suite across two complementary jobs — `gates` runs
-`pytest -q -m "not timing"` and a dedicated `timing` lane runs the
-real-paced, marker-selected set serialized on its own VM. The unfiltered
-local command above executes the union of both, which is exactly what you
-want before a PR; reach for `-m 'not timing'` only when iterating on
+`pytest -q -n auto -m "not timing"` (parallel via pytest-xdist) and a
+dedicated `timing` lane runs the real-paced, marker-selected set
+serialized on its own VM. The unfiltered local command above executes
+the union of both, which is exactly what you want before a PR; a local
+full run can mirror the gates lane with `pytest -q -n auto -m "not timing"`
+(issue #247). Reach for `-m 'not timing'` only when iterating on
 something unrelated and in a hurry.
 
 Bug fixes ship test-first: a failing test that reproduces the bug lands in

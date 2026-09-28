@@ -309,7 +309,7 @@ and remain the reviewer's job.
 
 | Job | What it catches |
 |---|---|
-| `gates` | submodules recursive; fixture keys materialised from secrets; `ruff check .`; config-driven `mypy` (bare — explicit path args drop `packages/sdk/src` from the build); `pytest -q -m "not timing"` (including the adapter agreement test, which pins the SDK↔gateway protocol mirror and the version triplet — see obligation 8); `make check-sdk-standards` (main standards ↔ SDK lock ↔ vendored tree, plus the identity `adapter_api` derivation check, plus the served-set/policy-mirror lanes and the executable-version-literal ratchet — issue #203 slice 1) |
+| `gates` | submodules recursive; fixture keys materialised from secrets; `ruff check .`; config-driven `mypy` (bare — explicit path args drop `packages/sdk/src` from the build); `pytest -q -n auto -m "not timing"` (including the adapter agreement test, which pins the SDK↔gateway protocol mirror and the version triplet — see obligation 8); `make check-sdk-standards` (main standards ↔ SDK lock ↔ vendored tree, plus the identity `adapter_api` derivation check, plus the served-set/policy-mirror lanes and the executable-version-literal ratchet — issue #203 slice 1) |
 | `timing` | the real-paced set (`-m timing`: the two integration rig files whole, plus the row-B contention cells in `tests/unit/test_otdp_bridge.py`), serialized on its own fresh VM within ~2 min of boot so its wall-clock bands are measured before any bulk-suite residue (page cache, draining threads, WAL checkpoints); complementary partition with `gates` — union = the full collection, structural by construction from the complementary markers, with the proof at PR time (the builder's collected-id set diff recorded in the PR body per the design's AR-1 — not an automated gate), and serial forever (xdist would reintroduce exactly the competition the split removes; issue #241 slice 1). Does NOT catch: a guarantee of a quiet host — a noisy neighbor can still stretch a band; slice 2 owns the evidence-backed re-bands; intra-lane ordering residue — review-fold disclosure: collection order runs the sequential-model battery before the continuity rig, so the rig measures after the lane's own earlier real-paced battery; the fresh-VM claim removes bulk-suite residue from other jobs, not ordering within this one; red-attribution is scoped — a red in the real-paced subset reads as a timing question, but the continuity file's ride-along logic tests can red as logic (the fold disclosure) |
 | `ui` | `npm ci` + typecheck + lint + unit tests + Storybook build; the renderer freshness gate (see obligation 7); `npm audit --audit-level=high` |
 | `systemd` | unit-template render + `systemd-analyze verify` with rehearsed deployment preconditions (see obligation 9) |
@@ -335,7 +335,7 @@ a cross-repo push — those are the reviewer's, which is why G5 exists in the ru
 - **Real-clock ms bounds live in the timing lane**: a wall-clock bound assert on
   a real clock (pacing bands, precision gates, busy-retry windows) carries the
   `timing` marker and runs serialized in the dedicated CI lane — or the quantity
-  moves to an injected clock. `gates` runs `-m "not timing"`; an unmarked
+  moves to an injected clock. `gates` runs `-n auto -m "not timing"`; an unmarked
   real-clock bound will flake in `gates` exactly the way issue #241's sweep
   rows did (marker-rot guard is the deferred D5).
 - **`tests/faults/`** runs for any change touching `state/`, `control/`, or anything

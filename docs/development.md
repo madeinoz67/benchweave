@@ -16,7 +16,7 @@ uv build
 ```
 
 The lint/type/test trio mirrors CI's main gate, which runs `uv sync`,
-`uv run ruff check .`, `uv run mypy`, `uv run pytest -q` and
+`uv run ruff check .`, `uv run mypy`, `uv run pytest -q -n auto -m "not timing"` and
 `make check-sdk-standards`. `ruff format` is available
 locally but is not part of that main gate; the one place CI enforces it is
 `device-plugins.yml`, which runs `ruff format --check` inside the DPS-150
@@ -123,7 +123,7 @@ Change propagation, end to end:
 ## GitHub workflows
 
 - **CI** runs the Python gates (sync, ruff check, config-driven mypy,
-  `pytest -q -m "not timing"`) and the standards sync check
+  `pytest -q -n auto -m "not timing"`) and the standards sync check
   (`make check-sdk-standards`), plus a **timing** job that runs the
   real-paced, marker-selected set (`pytest -q -m timing`) serialized on its
   own fresh VM — the two filters are complementary, so their union is the
