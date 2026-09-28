@@ -27,19 +27,6 @@
   align-items: center;
 }
 
-.bw-simulation-banner {
-  width: fit-content;
-  margin: 0;
-  padding: 0.4rem 0.7rem;
-  border: 1px solid var(--bw-advisory);
-  border-radius: 999px;
-  color: var(--bw-advisory);
-  font-family: var(--bw-font-data);
-  font-size: 0.72rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
 
 .bw-preview__plots {
   margin-top: var(--bw-space-5);

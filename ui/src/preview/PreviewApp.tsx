@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertBubble } from "../components/feedback/AlertBubble";
+import { ModeBanner } from "../components/feedback/ModeBanner";
+import { RefusalMessage, type RefusalCode } from "../components/feedback/refusals";
 import { DeviceWorkbench } from "../compositions/DeviceWorkbench";
 import { scenarioToWorkbenchFixture } from "../compositions/fixtures";
-import { fetchPreview, requestSimulatedAction, type PreviewDocument, type SimulatedReceipt } from "./api";
+import { fetchPreview, PreviewTransportError, requestSimulatedAction, type PreviewDocument, type SimulatedReceipt } from "./api";
 import { PreviewPlots } from "./PreviewPlots";
 
 export interface PreviewAppProps { apiBase?: string }
@@ -12,13 +14,14 @@ export function PreviewApp({ apiBase }: PreviewAppProps) {
   const [preview, setPreview] = useState<PreviewDocument | null>(null);
   const [scenarioId, setScenarioId] = useState("");
   const [receipt, setReceipt] = useState<SimulatedReceipt | null>(null);
+  const [refusal, setRefusal] = useState<RefusalCode | null>(null);
   const [role, setRole] = useState("controller");
   const [theme, setTheme] = useState("dark");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
-    fetchPreview(resolvedApiBase).then((loaded) => { if (!controller.signal.aborted) { setPreview(loaded); setScenarioId(loaded.scenarios[0]?.id ?? ""); } }).catch((reason: unknown) => { if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : String(reason)); });
+    fetchPreview(resolvedApiBase).then((loaded) => { if (!controller.signal.aborted) { setPreview(loaded); setScenarioId(loaded.scenarios[0]?.id ?? ""); } }).catch((reason: unknown) => { if (!controller.signal.aborted) setError(reason instanceof Error ? reason : new Error(String(reason))); });
     return () => controller.abort();
   }, [resolvedApiBase]);
 
@@ -36,29 +39,50 @@ export function PreviewApp({ apiBase }: PreviewAppProps) {
     && scenario.request_outcomes.length > 0,
   );
 
-  if (error) return <main className="bw-preview"><AlertBubble severity="critical" title="Preview unavailable" message={error} source="SDK preview" /></main>;
+  // A transport failure (network or HTTP) at this boundary is the contract's
+  // no-response refusal — no interface answer arrived, so whether anything was
+  // sent is UNKNOWN (A06) and the operator action is to reconcile, not retry
+  // blindly. A decode failure is not an interface refusal: an answer arrived
+  // and the client could not read it, so it keeps the plain critical alert.
+  if (error) return <main className="bw-preview">
+    <ModeBanner modes={["simulated"]} />
+    {error instanceof PreviewTransportError
+      ? <RefusalMessage code="no-response" />
+      : <AlertBubble severity="critical" title="Preview unavailable" message={error.message} source="SDK preview" />}
+  </main>;
   if (!preview || !scenario || !fixture) return <main className="bw-preview" aria-busy="true">Loading simulated preview…</main>;
 
-  const requestSetPoint = async (value: number) => {
-    const binding = scenario.observations.find((observation) => observation.unit === "V")?.binding_id ?? scenario.observations[0]?.binding_id;
-    if (!binding) return;
-    try { setReceipt(await requestSimulatedAction(resolvedApiBase, scenario.id, binding, value)); }
-    catch (reason) { setReceipt({ binding_id: binding, outcome: "error", message: reason instanceof Error ? reason.message : String(reason) }); }
+  const outputBinding = scenario.observations.find((observation) => observation.unit === "V")?.binding_id ?? scenario.observations[0]?.binding_id;
+  const sendRequest = async (value: boolean | number) => {
+    if (!outputBinding) return;
+    try { setReceipt(await requestSimulatedAction(resolvedApiBase, scenario.id, outputBinding, value)); }
+    catch (reason: unknown) {
+      if (reason instanceof PreviewTransportError) { setRefusal("no-response"); return; }
+      setReceipt({ binding_id: outputBinding, outcome: "error", message: reason instanceof Error ? reason.message : String(reason) });
+    }
   };
 
   return <main className="bw-preview">
+    <ModeBanner modes={["simulated"]} />
     <header className="bw-preview__header">
       <div><span className="bw-eyebrow">SDK preview · API v{preview.api_version}</span><h1>{preview.plugin_id}</h1></div>
-      <strong className="bw-badge" data-tone="advisory">SIMULATED PRESENTATION DATA</strong>
-      <label>Preview scenario<select value={scenario.id} onChange={(event) => { setScenarioId(event.target.value); setReceipt(null); }}>{preview.scenarios.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label>
-      <label>Simulated role<select value={role} onChange={(event) => { setRole(event.target.value); setReceipt(null); }}><option value="observer">Observer</option><option value="controller">Controller</option><option value="administrator">Administrator</option></select></label>
+      <label>Preview scenario<select value={scenario.id} onChange={(event) => { setScenarioId(event.target.value); setReceipt(null); setRefusal(null); }}>{preview.scenarios.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label>
+      <label>Simulated role<select value={role} onChange={(event) => { setRole(event.target.value); setReceipt(null); setRefusal(null); }}><option value="observer">Observer</option><option value="controller">Controller</option><option value="administrator">Administrator</option></select></label>
       <label>Preview theme<select value={theme} onChange={(event) => setTheme(event.target.value)}><option value="dark">Dark</option><option value="light">Light</option></select></label>
     </header>
     <p>{scenario.title} · {scenario.description}</p>
     {scenario.unavailable_panels.length ? <AlertBubble severity="warning" title="Panels unavailable" message={scenario.unavailable_panels.join(", ")} source="SDK preview" /> : null}
+    {refusal ? <RefusalMessage code={refusal} /> : null}
     {receipt ? <AlertBubble severity={receipt.outcome === "accepted" ? "success" : "warning"} title={receipt.outcome === "accepted" ? "Simulated request accepted" : "Simulated request rejected"} message={receipt.message} source={receipt.binding_id} /> : null}
     {!canRequest ? <p role="status">Controls are read-only for this simulated authority state.</p> : null}
-    <DeviceWorkbench key={scenario.id} fixture={fixture} requestEnabled={canRequest} onRequestSetPoint={requestSetPoint} />
+    <DeviceWorkbench
+      key={scenario.id}
+      fixture={fixture}
+      requestEnabled={canRequest}
+      onRequestSetPoint={(value) => { void sendRequest(value); }}
+      onRequestOutputOn={() => { void sendRequest(true); }}
+      onRequestOutputOff={() => { void sendRequest(false); }}
+    />
     <PreviewPlots views={preview.plot_views} scenario={scenario} />
   </main>;
 }

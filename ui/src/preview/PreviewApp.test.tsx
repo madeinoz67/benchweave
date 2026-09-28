@@ -52,8 +52,24 @@ describe("PreviewApp", () => {
     vi.stubGlobal("fetch", fetcher);
     render(<PreviewApp />);
     expect((await screen.findAllByText("12.04"))[0]).toBeVisible();
+    // The scenario's voltage reading is non-zero, so the output is energised
+    // and the set-point apply takes the R-ENERGISE-1 confirm step.
     fireEvent.click(screen.getByRole("button", { name: "Apply staged set-point" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm: Apply staged set-point" }));
     await waitFor(() => expect(screen.getAllByText("Simulated request accepted").length).toBeGreaterThan(0));
     expect(screen.getAllByText("12.04").length).toBeGreaterThan(0);
+  });
+
+  it("routes a transport failure through the no-response refusal (contract §C.3, A06)", async () => {
+    const fetcher = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => preview }).mockRejectedValueOnce(new TypeError("network down"));
+    vi.stubGlobal("fetch", fetcher);
+    render(<PreviewApp />);
+    expect((await screen.findAllByText("12.04"))[0]).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "De-energise output" }));
+    const refusal = await screen.findByText(/No interface answer arrived/);
+    expect(refusal).toBeVisible();
+    expect(screen.getByText(/It is unknown whether anything was sent/)).toBeVisible();
+    expect(screen.getByText(/Do not retry blindly/)).toBeVisible();
+    expect(document.querySelector(".bw-alert-bubble")).toHaveAttribute("data-severity", "critical");
   });
 });

@@ -20,6 +20,10 @@ export interface DeviceWorkbenchFixture {
   stagedVoltage: number;
   message: string;
   traces: readonly PlotTrace[];
+  /** Output state for the safety behaviours (contract §C.1): `trip` disables
+   *  energy-sourcing actions with reason `protection-active` (R-PROTECT-1);
+   *  `energised` makes a set-point change energy-sourcing (R-ENERGISE-1). */
+  output: { energised: boolean; trip: boolean };
 }
 
 const voltageTrend = Array.from({ length: 60 }, (_, index) => [index - 59, 12 + Math.sin(index / 7) * 0.06 + index * 0.001] as const);
@@ -40,6 +44,7 @@ export const warningWorkbench: DeviceWorkbenchFixture = {
     { id: "voltage", label: "Voltage", unit: "V", values: voltageTrend },
     { id: "current", label: "Current", unit: "A", values: currentTrend },
   ],
+  output: { energised: true, trip: false },
 };
 
 const severityFor = (severity: PreviewSeverity): Severity => severity === "trip" ? "critical" : severity;
@@ -67,8 +72,57 @@ export function scenarioToWorkbenchFixture(scenario: PreviewScenario, preview: P
     stagedVoltage: voltage,
     message: scenario.description,
     traces: numeric.map((observation) => ({ id: observation.binding_id, label: titleFor(observation.binding_id), unit: observation.unit ?? "", values: [[-1, observation.value], [0, observation.value]] })),
+    // Output-state derivation, disclosed: a scenario whose expected severity is
+    // `trip` is the protective-trip scenario (R-PROTECT-1's guard fires on it);
+    // a non-zero voltage reading means the output is presently energised
+    // (R-ENERGISE-1's set-point confirm fires on it). The preview document has
+    // no dedicated output-state field, so the workbench derives both from the
+    // observations it already carries.
+    output: { energised: voltage > 0, trip: scenario.expected_severity === "trip" },
   };
 }
+
+/** S2-A2 proof fixtures (issue #242 slice 2): a bench PSU workbench page and a
+ *  multi-channel DAQ page, INVENTED identities. Each carries an energy-sourcing
+ *  action (output / excitation on) and an energy-removing action (output /
+ *  excitation off) — the vacuous-pass control for the five proof properties. */
+export const psuProofFixture: DeviceWorkbenchFixture = {
+  simulation: false,
+  device: { id: "psu-07", title: "Bench supply", connected: true },
+  lease: { owner: "bench-operator@example.invalid", expiresInSeconds: 120 },
+  readings: [
+    { id: "voltage", label: "Voltage", value: "12.04", unit: "V", severity: "success", freshness: "120 ms", quality: "Verified" },
+    { id: "current", label: "Current", value: "1.92", unit: "A", severity: "success", freshness: "120 ms", quality: "Verified" },
+    { id: "power", label: "Power", value: "23.1", unit: "W", severity: "success", freshness: "120 ms", quality: "Verified" },
+  ],
+  stagedVoltage: 12.5,
+  message: "Output within the commissioned envelope",
+  traces: [
+    { id: "voltage", label: "Voltage", unit: "V", values: voltageTrend },
+    { id: "current", label: "Current", unit: "A", values: currentTrend },
+  ],
+  output: { energised: true, trip: false },
+};
+
+export const daqProofFixture: DeviceWorkbenchFixture = {
+  simulation: false,
+  device: { id: "daq-47", title: "Multi-channel logger", connected: true },
+  lease: { owner: "bench-operator@example.invalid", expiresInSeconds: 120 },
+  readings: [
+    { id: "ch1", label: "Channel 1", value: "4.98", unit: "V", severity: "success", freshness: "95 ms", quality: "Verified" },
+    { id: "ch2", label: "Channel 2", value: "1.02", unit: "V", severity: "success", freshness: "95 ms", quality: "Verified" },
+    { id: "ch3", label: "Channel 3", value: "0.24", unit: "V", severity: "success", freshness: "95 ms", quality: "Verified" },
+    { id: "ch4", label: "Channel 4", value: "-0.11", unit: "V", severity: "success", freshness: "95 ms", quality: "Verified" },
+    { id: "excitation", label: "Excitation", value: "On", unit: null, severity: "success", freshness: "95 ms", quality: "Verified" },
+  ],
+  stagedVoltage: 5,
+  message: "Excitation output within the commissioned envelope",
+  traces: [
+    { id: "ch1", label: "Channel 1", unit: "V", values: [[-1, 4.98], [0, 4.98]] },
+    { id: "ch2", label: "Channel 2", unit: "V", values: [[-1, 1.02], [0, 1.02]] },
+  ],
+  output: { energised: true, trip: false },
+};
 
 export interface AdminFixture {
   packages: readonly { id: string; revision: string; status: string }[];

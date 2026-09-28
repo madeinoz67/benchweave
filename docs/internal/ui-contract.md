@@ -234,13 +234,12 @@ stays a device badge; unification is deferred (design record row D4).
 One row per component. Enforced rows are pinned by `ui/src/contract-enforcement.test.ts`
 against the reference renderer's canonical rendering; a row whose component has no
 enforcement fixture fails that test (rows cannot appear without implementations).
-`mode-banner` and `confirm-action` rows land with the safety-behaviours slice
-(issue #242 slice 2); `engineering-plot` gains its series-assignment sub-rows with the
-plot-series slice (issue #242 slice 3).
+`engineering-plot` gains its series-assignment sub-rows with the plot-series slice
+(issue #242 slice 3).
 
 ### §E.1 Components
 
-Schema: `Component | Root element | Required attributes | Required roles | Required class hooks | Required text | Notes` — 8 rows.
+Schema: `Component | Root element | Required attributes | Required roles | Required class hooks | Required text | Notes` — 10 rows.
 
 | Component | Root element | Required attributes | Required roles | Required class hooks | Required text | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -252,6 +251,8 @@ Schema: `Component | Root element | Required attributes | Required roles | Requi
 | `engineering-plot` | `figure` | `role=img ~ aria-label ~ aria-describedby ~ aria-label=Traces ~ aria-label~=(hidden by presentation preference) ~ data-line ~ data-hidden` | `img` | `bw-plot ~ bw-plot__canvas ~ bw-plot__legend ~ bw-visually-hidden` | `hidden` | The canvas carries `role="img"` with the plot title and a described-by textual chart description. Every trace is listed in a visible legend labelled "Traces"; legend items expose their line form via `data-line` (`solid`/`dashed`) and hidden channels via `data-hidden`, the hidden marker text, and an aria-label ending "(hidden by presentation preference)". Series assignment: issue #242 slice 3. |
 | `data-table` | `div` | `scope=col` | `table` | `bw-table-wrap ~ bw-data-table` | — | The table carries a caption naming the data; column headers are `th[scope=col]`; rows keep a stable key. Dense data sits on a recessed surface. |
 | `panel` | `section` | `data-surface ~ aria-label` | `region` | `bw-panel ~ bw-panel__header ~ bw-panel__title ~ bw-panel__body` | — | `data-surface` is `raised` for actionable groups and bounded modules, `recessed` for plots, tables, logs and dense data. An optional eyebrow span (`bw-panel__eyebrow`) precedes the title. Structural narrative and example HTML are renderer guidance. |
+| `mode-banner` | `section` | `data-bw-mode-banner ~ data-bw-mode ~ aria-label=Presentation mode` | `region` | `bw-mode-banner ~ bw-mode-banner__entry` | `SIMULATED PRESENTATION DATA ~ NO GATEWAY · LOCAL PRESENTATION ONLY ~ NO CONTROLLER LEASE · ACTIONS CANNOT BE AUTHORISED ~ NO POLICY ENGINE · POLICY CHECKS UNAVAILABLE` | Contract §D: persistent, non-dismissible, first element of the page's main region; one entry per active mode in the fixed order of §D.1; absence asserts full-authority presentation. The required-text literals are the four fixed wordings (the enforcement fixture renders all four modes; a page renders only its active modes). |
+| `confirm-action` | `div` | `data-bw-confirm` | — | `bw-confirm ~ bw-confirm__step ~ bw-confirm__text` | `the output will be energised ~ 12.5 V ~ PSU-07 output` | Contract §C.1 R-ENERGISE-1: the initial control only stages; the confirm step — a second explicit action — states the effect, the exact value with unit, and the target (the required-text literals are the canonical armed fixture's three elements). For energy-sourcing actions only; an energy-removing action is one action, never confirmed, never gated (R-DEENERGISE-1) and must not use this pattern. |
 
 ## §F Icon set
 

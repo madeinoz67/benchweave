@@ -120,10 +120,13 @@ The component inventory and each component's required attributes, roles, class h
 | Need | Use |
 | --- | --- |
 | Explicit request | `Button` with the appropriate semantic variant |
+| Energy-sourcing action | `ConfirmAction` — the initial control stages, the confirm states effect, value and target |
+| Presentation-mode marking on a page | `ModeBanner` — first element of the main region |
 | Precise bounded value | `NumericInput` |
 | Coarse or stepped set-point | `RotaryControl` paired with `NumericInput` |
 | Live or retained scalar | `ReadingTile` |
 | Contextual state message | `AlertBubble` |
+| Interface refusal at the presentation boundary | `RefusalMessage` — severity and message elements per the contract's §C.3 mapping |
 | Time-series or waveform | `EngineeringPlot` |
 | Structured channel or event data | `DataTable` |
 | Actionable group | raised `Panel` |
@@ -147,6 +150,8 @@ Readings report gateway observations. Controls stage intent. Buttons submit expl
 ## Alerts and message persistence
 
 The severity model — meanings, dismissal classes and live regions — is normative in the contract ([§B](ui-contract.md#b-states-and-severity-model)); the reference implementation lives in `ui/src/components/feedback/severity.tsx`. A transient toast is limited to neutral, success and advisory confirmation; warning, critical and trip information must remain present in the affected context. Dismissal is not acknowledgement.
+
+**Label authority (decided with the safety-behaviours slice, issue #242 slice 2):** the contract pins severity KEYS, meanings, dismissal classes and live regions — not display labels. The reference renderer's label map (`severityLabels` in `severity.tsx`) renders the `success` key with the user-facing word "Normal"; that wording is the reference renderer's choice, kept for continuity with its pinned tests, and a host renderer may label severities in its own voice. The key, never the label, is the machine-checkable identity.
 
 ## Numbers and units
 
