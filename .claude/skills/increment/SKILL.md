@@ -48,7 +48,9 @@ or a public surface, run the loop.
    the invariants (`docs/internal/invariants.md`). It must deliver: the mechanism, the
    minimal first-increment scope with explicit deferrals, precedent from proven in-tree
    mechanisms, invariant impacts, the MEASURABLE proof with a pre-committed acceptance
-   rule, and top risks. DON'T-BUILD is an accepted outcome.
+   rule, top risks, and the slice's review tier with the Step-1 keyword-scan result
+   over the expected diff text (keywords and counts — the review rubric's design-time
+   tier call, issue #254). DON'T-BUILD is an accepted outcome.
 2. **Decide.** Read the design. Surface any genuine product-behavior fork to the owner;
    otherwise pick the defensible default and proceed. For a contested call, run the
    `panel` skill.

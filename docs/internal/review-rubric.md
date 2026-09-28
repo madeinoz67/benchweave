@@ -44,14 +44,46 @@ Run the diff's file list through these rules, top to bottom. First match wins.
 - adds, removes, or re-pins a dependency (`pyproject.toml`, `uv.lock`)
 - advances the `packages/sdk` submodule pointer
 
-**TIER 2 — standard.** Any other change to Python logic under `src/`, `scripts/`, `tests/`,
-`.github/`, or root config (`pyproject.toml`, hatchling config). Test-only changes sit here,
-not in Tier 1 — the CI contract and the fixture lockstep live in the test tree.
+**TIER 2 — standard.** Any other change to production or test code under `src/`,
+`scripts/`, `tests/`, `ui/` (code, config, and manifests: the TypeScript renderer, its
+tests and styles — including the contract-pin tests — `package.json`, lint and build
+config, `.storybook/`, and scripts), `.github/`, or root config (`pyproject.toml`,
+hatchling config). Test-only changes sit here, not in Tier 1 — the CI contract and the
+fixture lockstep live in the test tree, and the ui contract pins live in `ui/src`.
 
 **TIER 1 — light.** Only docs (`*.md`), comments, or web copy — and nothing that matches
 Tier 3.
 
+**Default tier.** A diff that matches no rule above is Tier 2 — nothing falls through
+the classification un-tiered. Docs-only diffs land Tier 1 by their own rule before
+reaching this line; the default catches everything else.
+
 State the tier and the rule that triggered it at the top of your review.
+
+**Design-time tier call (#254).** For any change that carries a design record, the tier
+is not first discovered at review (record-less trivial changes still take their tier at
+review): the record (`.claude/deep-review/`) states its slice's tier and the RESULT of
+the Step-1 keyword scan over the record's expected diff text — the whole expected diff,
+docs and code alike — as keywords and counts, not a bare "was run". A multi-slice record
+states the tier per slice, or states the maximum tier across its slices and which
+expected diff each scan covers. The review re-derives the tier independently; a record
+that omits the tier statement or the scan result, or whose stated tier disagrees with
+the rules, is a review finding whose verdict floor is APPROVE WITH REQUIRED CHANGES,
+listing the record defect — the record is never retrofitted; the finding stands as
+documentation. This rule governs records written after it lands; committed records are
+frozen history and are never retrofitted (the deferral contract's own clause).
+
+**Keyword-rule interplay.** The keyword rule is text-based and first-match-wins, by
+design: a docs-only change whose diff text merely mentions a protection-related key — a
+contract row naming `protection-active`, prose defining protective behaviour — still
+takes the Tier-3 lane. The deep lane is bought by what the text carries, not by the
+file type; text that defines or carries protective behaviour gets the protective
+review depth. The converse is the disclosed residual: a protective change whose diff
+text carries none of the eight keywords — deleting a check in `control/` is the
+canonical shape — takes the path-tier default; the eight words are a proxy for
+protective content, not the territory, and the path rules carry what the words miss.
+Editing the keyword list or this Step-1 text itself self-fires the rule — the diff
+carries the keywords by construction — intended.
 
 **Standards-governor mandate (#69) — applies regardless of tier:** any diff touching
 `standards/` (corpus, prose, or either manifest), plugin contract locks, the SDK
@@ -86,7 +118,9 @@ strict-mode: a new `Any` or an untyped def is a finding, not a style note. Any f
 **G2 Tests (Tier 2 and 3; Tier 1 if any test exists).** Run the focused tests for the
 packages the diff touches; run the **full suite** for Tier 3 and for any
 `.github/workflows/` change (cold, not warm-cache). Include `tests/faults/` when the change
-touches `state/`, `control/`, or anything concurrency-shaped. Paste the tail. **Read the
+touches `state/`, `control/`, or anything concurrency-shaped. For `ui/` diffs: bare
+`npm --prefix ui` exit codes for test, typecheck, and lint, plus the renderer-freshness
+gate (obligation 7 in `docs/internal/drift-and-obligations.md`). Paste the tail. **Read the
 counts from `--junitxml` attributes or the exit code, not from an output-filter summary** —
 the rtk filter can print "No tests collected" over a fully green run (observed twice on this
 repo). Any failure → **BLOCK**.

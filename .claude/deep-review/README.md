@@ -3,7 +3,11 @@
 One document per increment, written before the code. The `increment` skill
 (`.claude/skills/increment/`) requires one for any non-trivial change: the mechanism, the
 minimal first-increment scope with explicit deferrals, invariant impacts, the measurable
-proof, and the top risks.
+proof, and the top risks. A record also states its slice's review tier and that the
+review rubric's Step-1 keyword scan was run over the record's expected diff text (issue
+#254) — the tier call is part of the pre-commitment, and
+`docs/internal/review-rubric.md` is the authority for both rules. That requirement
+governs records written after issue #254 lands; committed records are frozen history.
 
 These are committed deliberately. A design whose pre-committed acceptance rule was written
 BEFORE any number was looked at is only provably so if the document exists in git history
