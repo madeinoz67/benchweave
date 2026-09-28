@@ -3,8 +3,13 @@
 # Standards compatibility matrix
 
 Generated from `standards/standards-manifest.json` and the SDK
-`standards-lock.json`. One row per canonical standard; the standard
-version IS the schema/protocol version. Regenerate with
+`standards-lock.json`. The first table is one row per canonical
+standard; the standard version IS the schema/protocol version.
+The second table (Retained versions) is the release-review walk of
+VR-52: one row per retained version with stage, range membership,
+yank/deprecation and the from-predecessor migration note, from the
+dependency-policy block and the promotion records. Both render
+committed state only. Regenerate with
 `uv run python -m benchweave.standards matrix`; CI fails when the
 committed file is stale. Commit SHAs are not pinned here — run
 `uv run python -m benchweave.standards versions` for them.
@@ -17,3 +22,31 @@ committed file is stale. Commit SHAs are not pinned here — run
 | interface | 0.1.0 | stable | 0.3.1 | >=0.1.0 | — | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
 | plugin-ui | 0.2.0 | stable | 0.3.1 | >=0.1.0 | Supersedes 0.1.1 | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
 | plugin-ui-preview | 0.1.1 | stable | 0.3.1 | >=0.1.0 | Supersedes 0.1.0 | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
+
+## Retained versions
+
+One row per retained version (the corpus manifest's version
+directories), rendered from committed state only: range membership,
+yank and the migration note come from the dependency-policy block;
+the stage cell names a recorded promotion where one exists.
+Pre-adoption releases carry no migration note (SM-5 is from
+adoption, design record D6).
+
+| Standard | Version | Stage | Range | Yank / deprecation | Migration note |
+| --- | --- | --- | --- | --- | --- |
+| otdp | 0.1.0 | released | out of range | — | — |
+| otdp | 0.1.1 | released | out of range | — | — |
+| otdp | 0.1.2 | released | out of range | — | — |
+| otdp | 0.2.0 | released | in range | — | — |
+| otdp | 0.2.1 | released | in range | yanked (since 2026-09-26) — superseded re-roll of the #171 fold; see #174; move-to 0.2.2 | — |
+| otdp | 0.2.2 | released | in range | — | — |
+| registry | 0.1.0 | released | in range | — | — |
+| registry | 0.1.1 | released | in range | — | — |
+| execution | 0.1.0 | released | in range | — | — |
+| execution | 0.2.0 | released (promoted from 0.2.0-dev) | in range | — | — |
+| interface | 0.1.0 | released | in range | — | — |
+| plugin-ui | 0.1.0 | released | out of range | — | — |
+| plugin-ui | 0.1.1 | released | out of range | — | — |
+| plugin-ui | 0.2.0 | released | in range | — | — |
+| plugin-ui-preview | 0.1.0 | released | in range | — | — |
+| plugin-ui-preview | 0.1.1 | released | in range | — | — |

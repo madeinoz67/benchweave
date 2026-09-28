@@ -26,11 +26,20 @@ def _repo_copy(tmp_path: Path) -> Path:
 
 
 def _deprecated_repo(tmp_path: Path, notes: str | None) -> Path:
-    """A one-standard (deprecated) manifest whose mirror carries `notes`."""
+    """A one-standard (deprecated) manifest whose mirror carries `notes`.
+
+    The corpus manifest rides along: the per-version table enumerates
+    retained versions from it (a committed input whose absence refuses,
+    CON-12), while the manifest's trimmed entry set still drives the
+    summary table and the rows the per-version table renders.
+    """
     repo = tmp_path / "repo"
     (repo / "standards").mkdir(parents=True)
     shutil.copy2(ROOT / "pyproject.toml", repo / "pyproject.toml")
     shutil.copy2(ROOT / ".gitmodules", repo / ".gitmodules")
+    shutil.copy2(
+        ROOT / "standards/corpus-manifest.json", repo / "standards/corpus-manifest.json"
+    )
     document = json.loads((ROOT / "standards/standards-manifest.json").read_bytes())
     document["standards"] = [document["standards"][0]]
     document["standards"][0]["status"] = "deprecated"
@@ -258,3 +267,123 @@ def test_cli_matrix_check_fails_styled_without_pyproject(tmp_path: Path) -> None
     combined = result.stdout + result.stderr
     assert "standards matrix error:" in combined
     assert "Traceback" not in combined, "the matrix lane must fail styled, not raw"
+
+
+# --- E3: one row per retained version, from committed state (#219 slice 5) ---
+
+
+def _version_table_rows(rendered: str, header: str) -> list[str]:
+    """The per-version table's data rows: everything after the header's
+    rule until the table ends."""
+    lines = rendered.splitlines()
+    start = lines.index(header)
+    rows: list[str] = []
+    for line in lines[start + 2 :]:
+        if not line.startswith("|"):
+            break
+        rows.append(line)
+    return rows
+
+
+def test_e3_one_row_per_retained_version_at_the_seed() -> None:
+    """E3 half 1: one row per retained version — 16 rows at the seed.
+
+    16 = the retained version directories enumerated from the corpus
+    manifest across the six manifest standards at this commit (otdp 6,
+    registry 2, execution 2, interface 1, plugin-ui 3, plugin-ui-preview
+    2). The expected count is re-derived from the same mechanism the
+    render uses, and the literal 16 pins the seed denominator: if either
+    moves, the test names which.
+    """
+    from benchweave.standards.manifest import load_manifest, retained_versions
+    from benchweave.standards.matrix import VERSION_HEADER, render_matrix
+
+    rendered = render_matrix(ROOT)
+    rows = _version_table_rows(rendered, VERSION_HEADER)
+    expected = sum(
+        len(retained_versions(ROOT, entry.id)) for entry in load_manifest(ROOT).standards
+    )
+    assert expected == 16, f"the seed retained-set denominator moved: {expected}"
+    assert len(rows) == expected, (
+        f"the matrix rendered {len(rows)} per-version rows, expected {expected} "
+        "(one row per retained version)"
+    )
+
+
+def _committed_repo(tmp_path: Path) -> Path:
+    """A git root whose inputs are COMMITTED (the CON-12 purity fixture)."""
+    repo = _repo_copy(tmp_path)
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+            "commit",
+            "-q",
+            "-m",
+            "seed",
+        ],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        env={
+            **__import__("os").environ,
+            "GIT_AUTHOR_DATE": "2026-09-27T12:00:00+08:00",
+            "GIT_COMMITTER_DATE": "2026-09-27T12:00:00+08:00",
+        },
+    )
+    return repo
+
+
+def test_e3_a_working_tree_only_policy_edit_does_not_change_the_render(
+    tmp_path: Path,
+) -> None:
+    """E3 half 2 (the CON-12 fork-injection control): the render reads
+    committed state only.
+
+    The named control edits the POLICY BLOCK (the new per-version inputs'
+    home) with the edit left uncommitted; the render must not move a byte.
+    The same working-tree write also bumps the manifest's active version —
+    the input the pre-slice render DID read from the working tree — so the
+    control cannot pass vacuously before the committed-state read lands
+    (the RED arm). A dirty working tree is asserted before the second
+    render, so the control can never pass because the edit failed to
+    apply.
+    """
+    from benchweave.standards.matrix import render_matrix
+
+    repo = _committed_repo(tmp_path)
+    before = render_matrix(repo)
+
+    manifest_path = repo / "standards/standards-manifest.json"
+    document = json.loads(manifest_path.read_bytes())
+    document["dependency_policy"]["standards"]["otdp"]["range"] = ">=0.2.2,<0.3.0"
+    # Drop any live dev head first: bumping the active past a head's
+    # target would refuse at load (dev_head_stale) — the pure render
+    # input is the point of this arm.
+    document["standards"][0].pop("dev", None)
+    document["standards"][0]["version"] = "9.9.9"
+    manifest_path.write_text(json.dumps(document))
+    dirty = subprocess.run(
+        ["git", "status", "--porcelain"], cwd=repo, capture_output=True, text=True, check=True
+    )
+    assert dirty.stdout.strip(), "the working-tree edit must actually apply"
+    committed = subprocess.run(
+        ["git", "show", "HEAD:standards/standards-manifest.json"],
+        cwd=repo,
+        capture_output=True,
+        check=True,
+    )
+    assert committed.stdout != manifest_path.read_bytes(), (
+        "the edit must be working-tree-only (HEAD still carries the seed bytes)"
+    )
+
+    after = render_matrix(repo)
+    assert after == before, (
+        "a working-tree-only edit changed the render — the matrix reads "
+        "committed state only (CON-12)"
+    )
