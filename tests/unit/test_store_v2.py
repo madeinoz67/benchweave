@@ -89,6 +89,9 @@ def test_device_roundtrip_returns_all_fields(store: Store) -> None:
         "identity_state": "activated",
         "licence": "MIT",
         "updated_at": "2026-09-12T00:00:00Z",
+        # v8's additive column (issue #219, D11): NULL for a device that
+        # loaded behind no acknowledgement.
+        "acknowledgement_json": None,
     }
 
 

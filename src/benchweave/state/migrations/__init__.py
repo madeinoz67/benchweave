@@ -14,6 +14,7 @@ from .v4_events_index import STATEMENTS as V4_STATEMENTS
 from .v5_capture_staging import STATEMENTS as V5_STATEMENTS
 from .v6_dispositions import STATEMENTS as V6_STATEMENTS
 from .v7_archive_tier import STATEMENTS as V7_STATEMENTS
+from .v8_device_acknowledgements import STATEMENTS as V8_STATEMENTS
 
 MIGRATIONS: tuple[Migration, ...] = (
     V1_INITIAL,
@@ -23,6 +24,7 @@ MIGRATIONS: tuple[Migration, ...] = (
     Migration(version=5, statements=V5_STATEMENTS),
     Migration(version=6, statements=V6_STATEMENTS),
     Migration(version=7, statements=V7_STATEMENTS),
+    Migration(version=8, statements=V8_STATEMENTS),
 )
 
 __all__ = ["MIGRATIONS", "Migration"]

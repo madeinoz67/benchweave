@@ -30,6 +30,10 @@ from benchweave.control.documents import (
     admit_documents,
     decode_resolution_document,
 )
+from benchweave.control.operator_acknowledgements import (
+    ACKNOWLEDGEMENTS_FILENAME,
+    load_operator_acknowledgements,
+)
 from benchweave.control.provider_settings import TRANSPORT_SETTINGS_FILENAME
 from benchweave.registry.admission import AdmissionLimits
 from benchweave.registry.authenticity import TrustRoot, load_trust_root
@@ -85,9 +89,17 @@ def admit_fixture_lattice(
     ``transport-settings.json`` beside the lattice documents is passed to
     admission when it exists (``None`` otherwise — the closed default
     refuses provider-declaring descriptors), with ``now_wall`` for the
-    approval-expiry arithmetic. ``contracts`` threads the
-    composition-resolved corpus directory (issue #176 increment 2 seam);
-    the default is the frozen ACTIVE literal.
+    approval-expiry arithmetic. The operator-acknowledgement lane (issue
+    #219, D11) rides the same seam: an optional
+    ``operator-acknowledgements.json`` beside the lattice documents loads
+    to the per-device pin map admission's ``operator_acknowledgements``
+    parameter takes — the one threading both THIS body's callers (startup
+    and recovery) need, so a retained-but-out-of-range pin loads behind a
+    recorded per-device acknowledgement instead of a hard
+    ``startup_admission_rejected:`` / contained recovery refusal. A file
+    that fails its loader refuses like any other admission input.
+    ``contracts`` threads the composition-resolved corpus directory (issue
+    #176 increment 2 seam); the default is the frozen ACTIVE literal.
     """
     binding = decode_resolution_document(fixtures_dir / "run-binding.json", "binding")
     procedure_sha = str(binding["procedure"]["sha256"])
@@ -115,6 +127,7 @@ def admit_fixture_lattice(
             )
         descriptor_paths[device_id] = path
     settings_path = fixtures_dir / TRANSPORT_SETTINGS_FILENAME
+    ack_path = fixtures_dir / ACKNOWLEDGEMENTS_FILENAME
     return admit_documents(
         procedure_path=procedure_path,
         policy_path=fixtures_dir / "safety-policy.json",
@@ -123,6 +136,9 @@ def admit_fixture_lattice(
         commissioning_path=fixtures_dir / "commissioning.json",
         descriptor_paths=descriptor_paths,
         provider_settings=settings_path if settings_path.is_file() else None,
+        operator_acknowledgements=(
+            load_operator_acknowledgements(ack_path) if ack_path.is_file() else None
+        ),
         now_wall=now_wall,
         contracts=contracts,
     )
@@ -194,6 +210,13 @@ def admit_startup_bench(
         view = docs.descriptors[bench_device_id]
         raw = by_sha[str(device["descriptor"]["sha256"])].read_bytes()
         descriptor = json.loads(raw)
+        # The admission record OWNS the persisted acknowledgement (issue
+        # #219, D11): this load's pin record — the acknowledgement it ran
+        # behind with ``now`` as its recorded_at stamp — lands on the
+        # device's row; None for every device that needed none, and
+        # whole-row replace means a withdrawn acknowledgement cannot
+        # linger past the next admission.
+        acknowledgement = docs.pins[bench_device_id].acknowledgement
         store.put_device(
             str(view["id"]),
             bench_id,
@@ -203,6 +226,9 @@ def admit_startup_bench(
             "matched",
             str(descriptor.get("licence", "proprietary")),
             now,
+            acknowledgement_json=(
+                json.dumps(acknowledgement) if acknowledgement is not None else None
+            ),
         )
 
     for descriptor_path in sorted(fixtures_dir.glob("descriptor-*.json")):

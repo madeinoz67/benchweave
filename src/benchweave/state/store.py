@@ -690,20 +690,27 @@ class Store:
         identity_state: str,
         licence: str,
         now: str,
+        acknowledgement_json: str | None = None,
     ) -> None:
         """Upsert the device inventory row — whole-row replace keyed on
-        ``device_id`` (a re-put may re-home the device to another bench)."""
+        ``device_id`` (a re-put may re-home the device to another bench).
+        ``acknowledgement_json`` is the admission record's persisted
+        operator acknowledgement (issue #219, D11): the acknowledgement
+        record this load ran behind, or None — whole-row replace means a
+        withdrawn acknowledgement does not linger on the next re-put."""
         self._conn.execute("BEGIN IMMEDIATE")
         try:
             self._conn.execute(
                 "INSERT INTO devices (device_id, bench_id, generation, profiles_json,"
-                " descriptor_json, identity_state, licence, updated_at)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+                " descriptor_json, identity_state, licence, updated_at,"
+                " acknowledgement_json)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
                 " ON CONFLICT(device_id) DO UPDATE SET bench_id = excluded.bench_id,"
                 " generation = excluded.generation, profiles_json = excluded.profiles_json,"
                 " descriptor_json = excluded.descriptor_json,"
                 " identity_state = excluded.identity_state, licence = excluded.licence,"
-                " updated_at = excluded.updated_at",
+                " updated_at = excluded.updated_at,"
+                " acknowledgement_json = excluded.acknowledgement_json",
                 (
                     device_id,
                     bench_id,
@@ -713,6 +720,7 @@ class Store:
                     identity_state,
                     licence,
                     now,
+                    acknowledgement_json,
                 ),
             )
         except BaseException:
@@ -725,7 +733,8 @@ class Store:
         come back raw — the projection layer owns decoding."""
         row = self._conn.execute(
             "SELECT device_id, bench_id, generation, profiles_json, descriptor_json,"
-            " identity_state, licence, updated_at FROM devices WHERE device_id = ?",
+            " identity_state, licence, updated_at, acknowledgement_json"
+            " FROM devices WHERE device_id = ?",
             (device_id,),
         ).fetchone()
         if row is None:
@@ -739,6 +748,7 @@ class Store:
             "identity_state": row[5],
             "licence": row[6],
             "updated_at": row[7],
+            "acknowledgement_json": row[8],
         }
 
     def list_devices(
@@ -749,7 +759,8 @@ class Store:
         ``list_benches``."""
         rows = self._conn.execute(
             "SELECT device_id, bench_id, generation, profiles_json, descriptor_json,"
-            " identity_state, licence, updated_at FROM devices WHERE bench_id = ?"
+            " identity_state, licence, updated_at, acknowledgement_json"
+            " FROM devices WHERE bench_id = ?"
             " ORDER BY device_id LIMIT ? OFFSET ?",
             (bench_id, limit + 1, offset),
         ).fetchall()
@@ -764,6 +775,7 @@ class Store:
                 "identity_state": row[5],
                 "licence": row[6],
                 "updated_at": row[7],
+                "acknowledgement_json": row[8],
             }
             for row in rows[:limit]
         ]
