@@ -360,6 +360,44 @@ def declared_dev_head(corpus: Path, standard_id: str) -> DevHead | None:
     return None
 
 
+def active_version_from_corpus(corpus: Path, standard_id: str) -> str:
+    """The active version one standard's entry declares, over a CORPUS directory.
+
+    The fourth corpus-shaped twin of the family slice 1/#217 established
+    (``declared_dev_head``, ``load_dependency_policy_from_corpus``,
+    ``retained_versions_from_corpus``, ``served_versions_from_corpus``):
+    the manifest is read from ``<corpus>/standards-manifest.json`` and the
+    entry's version passes the SAME ``ACTIVE_VERSION_PATTERN`` guard
+    ``declared_dev_head`` applies. Refusals: the loader's
+    ``standards_manifest_version_unsupported``, the same
+    ``standards_entry_version_invalid`` (a non-semver active entry), and a
+    loud ``standards_entry_absent: <id>`` when no entry matches — a
+    countable-standards manifest always carries all six, so absence is
+    corruption, refused, never defaulted. The identity block IS the active
+    authority (CON-8); this twin is the read every version-literal
+    derivation consumes (issue #221).
+    """
+    document = json.loads((corpus / "standards-manifest.json").read_bytes())
+    if document.get("manifest_version") != 1:
+        raise StandardsError("standards_manifest_version_unsupported")
+    for raw in document.get("standards", []):
+        if str(raw.get("id")) != standard_id:
+            continue
+        version = str(raw["version"])
+        if ACTIVE_VERSION_PATTERN.fullmatch(version) is None:
+            raise StandardsError(
+                f"standards_entry_version_invalid: {standard_id}: {version} "
+                "(the active version must be pure semver; a -dev suffix is "
+                "legal only in a dev head)"
+            )
+        return version
+    raise StandardsError(
+        f"standards_entry_absent: {standard_id} (the manifest carries no entry "
+        "for this standard — a countable-standards manifest always does; "
+        "absence is corruption, not an empty answer)"
+    )
+
+
 def load_sdk_compatibility(root: Path) -> SdkCompatibility:
     """Read the mirrored SDK compatibility block; fail closed when malformed.
 

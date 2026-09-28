@@ -21,7 +21,11 @@ from __future__ import annotations
 from enum import StrEnum
 from pathlib import Path
 
-from benchweave.standards.manifest import StandardsError, load_manifest
+from benchweave.standards.manifest import (
+    StandardsError,
+    active_version_from_corpus,
+    load_manifest,
+)
 
 #: Packaged trees (present in a wheel install; absent in a dev checkout).
 _PACKAGED_ROOT = Path(__file__).resolve().parent / "_vendored"
@@ -53,6 +57,40 @@ def contract_family(name: str) -> Path:
     if packaged.is_dir():
         return packaged
     return _REPO_ROOT / "standards" / name
+
+
+def corpus_root() -> Path:
+    """The vendored contract corpus ROOT, packaged-first (issue #221).
+
+    The root that ``_otdp_corpus()`` (``control/documents.py``) re-derives
+    today as ``contract_family(_OTDP).parent``, named once: the packaged
+    ``benchweave/_vendored/contracts`` when it is a directory (a wheel
+    install), else the repository ``standards/`` (a dev checkout). Because
+    ``hatch_build.py:_contracts_rows`` maps ``standards/`` top-level files
+    one-for-one, ``standards-manifest.json`` exists at the packaged root in
+    every wheel — the same two-layout contract
+    ``load_dependency_policy_from_corpus`` documents. Import-time use is
+    loud on corruption (``StandardsError`` at import — degrade loudly; the
+    manifest is committed and packaged, and ``contract_family`` already
+    does import-time resolution).
+    """
+    packaged = _PACKAGED_ROOT / "contracts"
+    if packaged.is_dir():
+        return packaged
+    return _REPO_ROOT / "standards"
+
+
+def active_contract_family(standard_id: str) -> Path:
+    """The ACTIVE family directory for one standard, derived from the corpus
+    manifest (issue #221 — never a version literal at the call site).
+
+    ``contract_family(f"{sid}/{active_version_from_corpus(corpus_root(), sid)}")``:
+    one bump = one manifest edit, and every derivation of the family moves
+    together (VR-21's motion mechanism, made structural). The derived
+    family dir's name IS the active version.
+    """
+    version = active_version_from_corpus(corpus_root(), standard_id)
+    return contract_family(f"{standard_id}/{version}")
 
 
 def sim_plugins_root() -> Path:
