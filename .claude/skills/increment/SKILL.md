@@ -60,10 +60,18 @@ or a public surface, run the loop.
    PRIMARY checkout, so branch-new files need absolute paths, and `git show`/`git diff`
    is the evidence path when MCP reads stat-fail or serve stale primary bytes (two
    #129 reviewers hit this independently). Every builder brief also carries the
-   standing gate line (retro 2026-09-25, R2): **gates re-run in order after EVERY
-   commit — test-only and docs-only commits included** (observed twice 2026-09-24/25:
-   an F841 ruff miss and a stale-evidence mypy both shipped on test-only commits whose
-   authors re-ran only pytest).
+   standing gate line (#247, superseding retro 2026-09-25, R2): **per-commit FAST lane
+   on EVERY commit, no test-only/docs-only exemption — bare `uv run ruff check .` +
+   fresh-cache bare `uv run mypy` + focused touched-module pytest (+ `tests/faults/`
+   for `state/`, `control/`, concurrency); the full battery ONCE, immediately before
+   push; batches (row-call folds) land as ONE commit with per-row RED evidence in the
+   message, one battery; gates read TRUE exit codes (unpiped / `PIPESTATUS` /
+   output-to-file) and any mypy claim from a fresh cache.** (Rationale, 2026-09-24/25:
+   an F841 ruff miss shipped on a test-only commit — the exemption-shaped hole this
+   split closes; the no-exemption fast lane now catches that class at the offending
+   commit, EARLIER than the adversary pass that found it, and the push battery still
+   catches it. The stale-evidence mypy miss was an evidence failure — piped exit +
+   warm cache — closed by the true-exit/fresh-cache rules, not run frequency.)
 4. **Vet (you, independently).** `uv run ruff check .` and bare `uv run mypy` clean;
    focused `uv run pytest` for the touched modules plus the fault suite. RED-check the
    key guards discriminate (toggle off → fail) using a `cp` backup, NEVER `git checkout`

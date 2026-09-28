@@ -177,12 +177,29 @@ Each traces to a decision record (`docs/smart-test-gateway-decisions.md`) or a
    `git branch --show-current` / `git log --oneline -3` and diff against `main` before
    asserting what the code does. Work happens on working branches — never commit to
    `main` directly. When in doubt, work in a fresh worktree off `origin/main`.
-2. **Run the real gates, not the diff**: with `UV_PROJECT_ENVIRONMENT=venv` —
-   `uv run ruff check .`, `uv run mypy` (**bare, config-driven** — explicit path args
-   silently drop `packages/sdk/src` from the build), and the focused
-   `uv run pytest` for the touched modules plus `tests/faults/` for anything touching
-   `state/`, `control/`, or concurrency. Read counts from `--junitxml` attributes or exit
-   codes, never from an output-filter summary line.
+2. **Run the real gates, not the diff (#247).** Two lanes, both with
+   `UV_PROJECT_ENVIRONMENT=venv`:
+   - **FAST lane — every commit, no exemptions.** Test-only and docs-only commits
+     included; a "docs-only skips ruff" exemption is the hole that shipped the F841
+     miss below. Bare `uv run ruff check .`, fresh-cache bare `uv run mypy` (**bare,
+     config-driven** — explicit path args silently drop `packages/sdk/src` from the
+     build; fresh cache = `rm -rf .mypy_cache` or `--no-incremental`), and the focused
+     `uv run pytest` for the touched modules plus `tests/faults/` for anything touching
+     `state/`, `control/`, or concurrency.
+   - **Full battery — once, immediately before push.** The fast triple plus the full
+     suite and both standards tripwires. A batch (a row-call fold) lands as ONE commit
+     carrying per-row RED evidence in its message, with one battery.
+   - **Evidence discipline is part of the gate definition.** Gates read TRUE exit
+     codes — unpiped, `PIPESTATUS`, or output-to-file (`cmd | tail -1; echo $?` echoes
+     tail's status, not the command's); any claimed mypy result comes from a fresh
+     cache. Read counts from `--junitxml` attributes or exit codes, never from an
+     output-filter summary line.
+   Why both 2026-09-24/25 incidents stay caught: the F841 ruff miss (#176) was lint in
+   test code — invisible to pytest by construction — so the no-exemption fast lane
+   catches it at the offending commit, EARLIER than the adversary pass that found it
+   an hour later; the stale-evidence mypy miss (#146) was an evidence failure (piped
+   exit + warm cache), not a coverage gap, so the true-exit-code and fresh-cache rules
+   close it, not run frequency.
 3. **RED-sanity-check bug fixes.** The test must be shown to *fail without the fix*;
    `no tests ran` is a FAILED check (pytest exits 5 when it collects nothing) — look for
    the collected count, not a green run.
