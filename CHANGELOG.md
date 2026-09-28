@@ -442,6 +442,9 @@ All notable changes to this project will be documented in this file.
 - Slice 5's surfaces — CON-12 landing, operator ack guide, D11 closed (#219)
 - Issue #242 UI renderer-neutral contract design of record
 - Split the style guide into a normative contract plus guidance
+- Issue #254 rubric tier-rules design of record
+- Step 1 ui/ tier rule, design-time keyword check, interplay note
+- Fold the #254 review battery — 19 rows, one batch
 
 ### Features
 
