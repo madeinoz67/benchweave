@@ -278,6 +278,38 @@ def _load_dev_head(raw: object, entry_id: str, active_version: str) -> DevHead |
     )
 
 
+def declared_dev_head(corpus: Path, standard_id: str) -> DevHead | None:
+    """The dev head one standard's entry declares, over a CORPUS directory.
+
+    The corpus-shaped twin of ``load_manifest``'s dev-block parsing (the
+    ``load_dependency_policy_from_corpus`` pattern, #217): the manifest is
+    read directly from ``<corpus>/standards-manifest.json`` and the entry's
+    optional block through the SAME ``_load_dev_head`` shape vetting, so a
+    malformed block refuses identically on both surfaces. ``None`` when the
+    standard carries no entry or no head — the caller owns the wording of
+    "nothing declared" (``dev_head_unresolvable:`` in the resolver and
+    admission lanes; never a silent active-family substitution).
+    """
+    document = json.loads((corpus / "standards-manifest.json").read_bytes())
+    if document.get("manifest_version") != 1:
+        raise StandardsError("standards_manifest_version_unsupported")
+    for raw in document.get("standards", []):
+        if str(raw.get("id")) != standard_id:
+            continue
+        version = str(raw["version"])
+        if ACTIVE_VERSION_PATTERN.fullmatch(version) is None:
+            # The active-semver guard precedes dev parsing exactly as in
+            # load_manifest — the target comparison int-parses the active
+            # version, so a non-semver active entry is refused first.
+            raise StandardsError(
+                f"standards_entry_version_invalid: {standard_id}: {version} "
+                "(the active version must be pure semver; a -dev suffix is "
+                "legal only in a dev head)"
+            )
+        return _load_dev_head(raw.get("dev"), standard_id, version)
+    return None
+
+
 def load_sdk_compatibility(root: Path) -> SdkCompatibility:
     """Read the mirrored SDK compatibility block; fail closed when malformed.
 

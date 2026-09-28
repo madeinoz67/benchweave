@@ -14,15 +14,21 @@ Input kinds. The RESOLUTION — which version each standard resolves to — read
 committed data of exactly four kinds: the dependency-policy block in
 ``standards/standards-manifest.json``, the rows of
 ``standards/corpus-manifest.json``, ``standards/cross-constraints.json``, and
-the package's ``contracts/{constraints,lock}.json``. Never git, never the
-network, never a clock (A04). The lock WRITER additionally reads the resolved
-OTDP version's committed directory bytes for the legacy otdp projection —
-the descriptor schema's ``api_version`` const (the ``validate_identity``
-derivation relocated to the pinned version, digest-verified against its
-corpus row) and the top-level file map (the fetch-verify set, deliberately
-not the corpus-row set) — disclosed as the design's §1.1 four-kinds sentence
-resolved in favour of §1.3's explicit derivation; still committed bytes
-only, so CON-14's purity clause holds.
+the package's ``contracts/{constraints,lock}.json``. Never the network, never
+a clock (A04). The lock WRITER additionally reads the resolved OTDP version's
+committed directory bytes for the legacy otdp projection — the descriptor
+schema's ``api_version`` const (the ``validate_identity`` derivation
+relocated to the pinned version, digest-verified against its corpus row) and
+the top-level file map (the fetch-verify set, deliberately not the
+corpus-row set) — disclosed as the design's §1.1 four-kinds sentence
+resolved in favour of §1.3's explicit derivation. Slice 4 (#218) adds ONE
+further input kind, disclosed the same way: a DEV-PINNED standard's bytes
+materialize from the git OBJECT STORE at the opt-in's recorded sha
+(``git show <sha>:<path>`` — the ``check.py::_pinned_sdk_package_version``
+precedent), which is committed bytes by construction (a commit's tree), never
+working-tree state and never a wheel's packaged tree. Repo checkout only: a
+context without an object store refuses ``dev_head_unresolvable:`` and never
+substitutes the active family.
 
 Prefix vocabulary (deliberate drift from the SDK, design risk 3): the SDK's
 ``version_not_served:`` folds "never carried" into "not served"; this
@@ -33,8 +39,13 @@ adopts the same three-way split so the vocabularies converge deliberately.
 Refusal prefixes, each machine-matchable: ``constraint_syntax_unexpanded:``,
 ``constraint_document_invalid:``, ``lock_document_invalid:``,
 ``constraint_standard_unknown:``, ``constraint_unresolvable:``,
-``version_shape_invalid:``, ``dev_pin_unsupported:``,
-``retired_identifier:``, ``version_unknown:``, ``version_not_served:``,
+``version_shape_invalid:``, ``dev_pin_unsupported:`` (the INTERVAL block
+never carries a dev pin — the opt-in does),
+``dev_head_unresolvable:`` (the wheel/no-store posture and every
+unaddressable head, by name — never a fallback to the active family),
+``dev_target_retired:``, ``dev_pin_drift:`` (the head moved under a locked
+dev pin — VR-29's revalidation refusal), ``retired_identifier:``,
+``version_unknown:``, ``version_not_served:``,
 ``plugin_constraints_absent:``, ``plugin_lock_absent:``,
 ``plugin_lock_drift:``, ``cross_constraint_invalid:``,
 ``cross_constraint_unresolved:``, ``cross_constraint_violation:``,
@@ -52,6 +63,7 @@ import hashlib
 import json
 import os
 import re
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -66,6 +78,7 @@ from .manifest import (
     StandardPolicy,
     StandardsError,
     carried_versions,
+    declared_dev_head,
     load_dependency_policy,
     load_dependency_policy_from_corpus,
     load_manifest,
@@ -76,12 +89,23 @@ from .manifest import (
     version_tuple,
 )
 
+#: The content-addressed dev pin's grammar: a canonical-numeral semver target
+#: (the R5 leading-zero refusal), the ``-dev`` suffix, a literal ``@``, and a
+#: full 40-hex git sha — the label is the human-readable half, the sha is
+#: the address (VR-29: the pin records content identity, not only a label).
+OPT_IN_PATTERN = (
+    r"^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)-dev@[0-9a-f]{40}$"
+)
+_OPT_IN_SHAPE = re.compile(OPT_IN_PATTERN)
+
 #: The constraints document's validating schema — gateway machinery, inline
 #: in gateway source exactly like ``TRANSPORT_SETTINGS_SCHEMA``
 #: (``control/provider_settings.py``): ``contracts/`` is plugin-authored
 #: DATA; the schema that validates it is not. Stored form is explicit
-#: intervals only (a stored caret refuses before the schema ever sees it);
-#: ``opt_in`` stays empty until slice 4's dev pins.
+#: intervals only (a stored caret refuses before the schema ever sees it).
+#: ``opt_in`` carries slice 4's content-addressed dev pins (design §3.6):
+#: one per standard, ``<target>-dev@<40-hex-git-sha>`` — explicit,
+#: per-plugin, never ambient (VR-28).
 CONSTRAINTS_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -91,7 +115,11 @@ CONSTRAINTS_SCHEMA: dict[str, Any] = {
             "propertyNames": {"pattern": "^[a-z][a-z0-9-]*$"},
             "additionalProperties": {"type": "string", "minLength": 1},
         },
-        "opt_in": {"type": "object", "maxProperties": 0},
+        "opt_in": {
+            "type": "object",
+            "propertyNames": {"pattern": "^[a-z][a-z0-9-]*$"},
+            "additionalProperties": {"type": "string", "pattern": OPT_IN_PATTERN},
+        },
     },
     "required": ["constraint_version", "standards", "opt_in"],
     "additionalProperties": False,
@@ -105,7 +133,13 @@ CONSTRAINTS_SCHEMA: dict[str, Any] = {
 #: top-level ``sha256`` is the version directory's top-level file map — the
 #: fetch-verify set, prose companions (.md) included, examples/ excluded;
 #: each ``standards[].digest`` is the digest-of-digests over the CORPUS ROWS
-#: under the version — machine files and examples/ included, .md excluded.
+#: under the version — machine files and examples/ included, .md excluded —
+#: EXCEPT a dev row, whose digest is the digest-of-digests over the head's
+#: per-file digests AT THE RECORDED SHA (there are no frozen corpus rows for
+#: a mutable head; the sha is the address). A dev row additionally carries
+#: ``git_sha`` (the content address) and ``files`` (the per-file digests,
+#: head-relative names) — VR-29's content identity, re-derivable by every
+#: consumer from the object store.
 LOCK_V2_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -114,9 +148,12 @@ LOCK_V2_SCHEMA: dict[str, Any] = {
         "revision": {"type": "string", "minLength": 1},
         "directory": {
             "type": "string",
-            "pattern": r"^standards/otdp/\d+\.\d+\.\d+$",
+            "pattern": r"^standards/otdp/(?:\d+\.)+\d+(?:-dev)?$",
         },
-        "otdp_version": {"type": "string", "pattern": r"^\d+\.\d+\.\d+$"},
+        "otdp_version": {
+            "type": "string",
+            "pattern": r"^(?:\d+\.)+\d+(?:-dev)?$",
+        },
         "adapter_api_version": {"type": "string", "pattern": r"^\d+\.\d+$"},
         "sha256": {
             "type": "object",
@@ -129,11 +166,43 @@ LOCK_V2_SCHEMA: dict[str, Any] = {
                 "type": "object",
                 "properties": {
                     "id": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"},
-                    "version": {"type": "string", "pattern": r"^\d+\.\d+\.\d+$"},
-                    "stage": {"const": "released"},
+                    "version": {
+                        "type": "string",
+                        "pattern": r"^(?:\d+\.)+\d+(?:-dev)?$",
+                    },
+                    "stage": {"enum": ["released", "dev"]},
                     "digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                    "git_sha": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+                    "files": {
+                        "type": "object",
+                        "propertyNames": {"pattern": "^[A-Za-z0-9._/-]+$"},
+                        "additionalProperties": {
+                            "type": "string",
+                            "pattern": "^[a-f0-9]{64}$",
+                        },
+                    },
                 },
                 "required": ["id", "version", "stage", "digest"],
+                "allOf": [
+                    {
+                        "if": {"properties": {"stage": {"const": "dev"}}},
+                        "then": {"required": ["git_sha", "files"]},
+                    },
+                    {
+                        "if": {"properties": {"stage": {"const": "released"}}},
+                        "then": {
+                            "properties": {
+                                "version": {"pattern": r"^(?:\d+\.)+\d+$"}
+                            },
+                            "not": {
+                                "anyOf": [
+                                    {"required": ["git_sha"]},
+                                    {"required": ["files"]},
+                                ]
+                            },
+                        },
+                    },
+                ],
                 "additionalProperties": False,
             },
         },
@@ -344,8 +413,9 @@ def classify_pin(
     """Classify one pin against the policy block and the retained tree.
 
     Yanked/retired/unknown are three answers, one comparator (design §1.1):
-    shape first (``-dev`` refuses naming slice 4 as the carrier; any other
-    suffix refuses the pin-shape extension of
+    shape first (``-dev`` refuses naming the OPT-IN as the carrier — the
+    interval block never carries a dev pin, #218 landed the mechanism; any
+    other suffix refuses the pin-shape extension of
     ``standards_entry_version_invalid``), then retired (used-and-dead, never
     reissued — the refusal carries the next-minor re-target hint), then
     retained (never carried = ``version_unknown:`` with the publish-or-widen
@@ -361,8 +431,10 @@ def classify_pin(
         )
     if "-dev" in version:
         raise StandardsError(
-            f"dev_pin_unsupported: {standard_id} {version} pins a dev head — dev "
-            "resolution lands with slice 4 (#203); "
+            f"dev_pin_unsupported: {standard_id} {version} names a dev head — the "
+            "interval block never carries one; author a content-addressed opt-in "
+            "(opt_in entry \"<target>-dev@<git-sha>\" in contracts/constraints.json, "
+            "or pin --opt-in) instead; "
             f"{_vr37(policy, standard_id, version, row, root)}"
         )
     if VERSION_PATTERN.fullmatch(version) is None:
@@ -409,11 +481,46 @@ def classify_pin(
 # --- the constraints carrier ------------------------------------------------------
 
 
+def parse_opt_in(value: object, where: str = "opt_in") -> tuple[str, str]:
+    """Split a content-addressed dev pin into ``(label, sha)``.
+
+    The grammar is exact (``OPT_IN_PATTERN``): canonical-numeral target,
+    ``-dev``, ``@``, full 40-hex sha. A malformed value refuses
+    ``constraint_document_invalid:``; authoring sugar (a caret) refuses
+    ``constraint_syntax_unexpanded:`` — sugar is never silently interpreted
+    in any stored document.
+    """
+    if not isinstance(value, str):
+        raise StandardsError(
+            f"constraint_document_invalid: {where}: {value!r} is not a string"
+        )
+    if "^" in value or "~" in value:
+        raise StandardsError(
+            f"constraint_syntax_unexpanded: {where}: {value!r} — caret sugar is "
+            "authoring input; a stored document never carries it"
+        )
+    if _OPT_IN_SHAPE.fullmatch(value) is None:
+        raise StandardsError(
+            f"constraint_document_invalid: {where}: {value!r} is not a "
+            "content-addressed dev pin (<target>-dev@<40-hex git sha>)"
+        )
+    label, _, sha = value.partition("@")
+    return label, sha
+
+
 @dataclass(frozen=True)
 class Constraints:
-    """One package's authored constraints, parsed into intervals."""
+    """One package's authored constraints, parsed into intervals.
+
+    ``opt_in`` maps a standard id to its content-addressed dev pin
+    (``<target>-dev@<sha>``) — explicit, per-plugin, never ambient; an
+    opt-in standard must also carry its released interval in ``standards``
+    (the opt-in documents an OVERRIDE, and the released interval is what a
+    de-opted package falls back to).
+    """
 
     standards: dict[str, Interval]
+    opt_in: dict[str, str]
     path: Path
 
 
@@ -421,9 +528,11 @@ def load_constraints(package: Path) -> Constraints:
     """Load and validate ``contracts/constraints.json``; fail closed.
 
     Stored sugar refuses ``constraint_syntax_unexpanded:`` BEFORE the schema
-    runs (the exact ``_parse_range`` ordering); a dev-shaped value refuses
-    ``dev_pin_unsupported:`` naming slice 4; every other shape error refuses
-    ``constraint_document_invalid:`` with the JSON path.
+    runs (the exact ``_parse_range`` ordering); a dev-shaped value in the
+    INTERVAL block refuses ``dev_pin_unsupported:`` naming the opt-in as the
+    carrier; a malformed opt-in value refuses with its own grammar; every
+    other shape error refuses ``constraint_document_invalid:`` with the JSON
+    path.
     """
     path = package / "contracts" / "constraints.json"
     if not path.is_file():
@@ -443,24 +552,44 @@ def load_constraints(package: Path) -> Constraints:
         # The schema below refuses the shape with its JSON path; there is
         # nothing for the sugar pre-check to walk.
         raw_standards = {}
+    raw_opt_in = document.get("opt_in")
+    if not isinstance(raw_opt_in, dict):
+        raw_opt_in = {}
     for identifier, value in sorted(raw_standards.items()):
         if isinstance(value, str) and "-dev" in value:
             raise StandardsError(
-                f"dev_pin_unsupported: {identifier}: {value!r} — dev pins are "
-                "content-addressed opt-in and land with slice 4 (#203)"
+                f"dev_pin_unsupported: {identifier}: {value!r} — the interval "
+                "block never carries a dev pin; author a content-addressed "
+                "opt-in (opt_in entry \"<target>-dev@<git-sha>\") instead"
             )
         parse_interval(value)  # sugar + grammar refusals, before the schema
+    for identifier, value in sorted(raw_opt_in.items()):
+        parse_opt_in(value, where=f"opt_in.{identifier}")
     errors = _validator("constraints", CONSTRAINTS_SCHEMA).iter_errors(document)
     error = next(iter(errors), None)
     if error is not None:
         raise StandardsError(
             f"constraint_document_invalid: {path.name} {error.json_path}: {error.message}"
         )
+    stray = sorted(set(raw_opt_in) - set(raw_standards))
+    if stray:
+        # The opt-in documents a per-standard override: its standard must
+        # carry the released interval in the same document, or the de-opted
+        # fallback has nothing to fall back to.
+        raise StandardsError(
+            f"constraint_document_invalid: opt_in names {str(stray[0])!r}, which "
+            "carries no interval in standards — an opt-in standard also "
+            "declares its released interval"
+        )
     intervals = {
         str(identifier): parse_interval(value)
         for identifier, value in sorted(raw_standards.items())
     }
-    return Constraints(standards=intervals, path=path)
+    return Constraints(
+        standards=intervals,
+        opt_in={str(key): str(value) for key, value in sorted(raw_opt_in.items())},
+        path=path,
+    )
 
 
 def apply_set(root: Path, package: Path, pairs: list[tuple[str, str]]) -> None:
@@ -500,6 +629,72 @@ def apply_set(root: Path, package: Path, pairs: list[tuple[str, str]]) -> None:
     _atomic_write(path, canonical_json(document))
 
 
+def apply_opt_in(root: Path, package: Path, pairs: list[tuple[str, str]]) -> None:
+    """Author a content-addressed dev opt-in through the CLI boundary.
+
+    ``--opt-in <id>=<label>@<sha>`` validates BEFORE any byte is written:
+    the standard is carried by the policy block AND by this document's
+    interval block, the label names the manifest-DECLARED head exactly
+    (accept-exactly-the-declared-head — one head per standard), and the
+    target is not a retired identifier. Resolution re-verifies every one of
+    these against the object store; authoring refuses early so the operator
+    hears the typo at the authoring step, not at the pin.
+    """
+    if not (package / "contracts").is_dir():
+        raise StandardsError(
+            f"package_absent: {package / 'contracts'} — create the package "
+            "before authoring its constraints"
+        )
+    policy = load_dependency_policy(root)
+    path = package / "contracts" / "constraints.json"
+    if path.is_file():
+        load_constraints(package)
+        document = json.loads(path.read_bytes())
+    else:
+        raise StandardsError(
+            f"plugin_constraints_absent: {path} — author the released intervals "
+            "first (pin --set), then the opt-in"
+        )
+    for identifier, value in pairs:
+        if identifier not in policy.standards:
+            raise StandardsError(
+                f"constraint_standard_unknown: {identifier!r} names a standard the "
+                f"dependency-policy block does not carry; supported: "
+                f"{', '.join(sorted(policy.standards))}"
+            )
+        if identifier not in document["standards"]:
+            raise StandardsError(
+                f"constraint_document_invalid: opt_in names {identifier!r}, which "
+                "carries no interval in standards — an opt-in standard also "
+                "declares its released interval"
+            )
+        label, _sha = parse_opt_in(value, where=f"opt-in {identifier}")
+        head = declared_dev_head(root / "standards", identifier)
+        if head is None:
+            raise StandardsError(
+                f"dev_head_unresolvable: {identifier} opt-in {value!r} — the "
+                "manifest declares no dev head for this standard (promoted or "
+                "abandoned); nothing to opt into"
+            )
+        if head.version != label:
+            raise StandardsError(
+                f"dev_head_unresolvable: {identifier} opt-in {value!r} — the "
+                f"manifest declares {head.version} (one head per standard; the "
+                "opt-in names no declared head)"
+            )
+        target = label.removesuffix("-dev")
+        row = policy.standards[identifier]
+        if target in row.retired:
+            major, minor, _patch = version_tuple(target)
+            raise StandardsError(
+                f"dev_target_retired: {identifier} {label} targets retired "
+                f"identifier {target} (used and dead, never reissued — the head "
+                f"could never promote); the next minor is {major}.{minor + 1}.0"
+            )
+        document["opt_in"][identifier] = value
+    _atomic_write(path, canonical_json(document))
+
+
 # --- the prior-lock carrier --------------------------------------------------------
 
 
@@ -509,9 +704,10 @@ class PriorLock:
 
     ``version`` is 1 (the DPS-150 shape — the legacy keys parse into their
     otdp projection) or 2 (rows). ``rows`` maps standard id to its locked
-    version; ``file_map`` carries the prior sha256 map's names and digests
-    (the allowlist's prior arm and the revision-scissors comparison); every
-    other projection value is re-derived, never carried.
+    version (a dev row's ``<target>-dev`` label included — stage awareness
+    lives in ``stages``); ``file_map`` carries the prior sha256 map's names
+    and digests (the allowlist's prior arm and the revision-scissors
+    comparison); every other projection value is re-derived, never carried.
     """
 
     version: int
@@ -519,10 +715,23 @@ class PriorLock:
     revision: str
     rows: dict[str, str]
     file_map: dict[str, str]
+    stages: dict[str, str]
+
+
+#: A dev row's version label: ``<target>-dev`` with a canonical-numeral
+#: target (the manifest's own ``DEV_VERSION_PATTERN`` grammar, kept in one
+#: place there).
+_DEV_LABEL = re.compile(r"^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)-dev$")
 
 
 def _stored_version(value: object, where: str) -> str:
-    """A version stored in a committed document: pure semver, never sugar."""
+    """A version stored in a committed document: pure semver or a dev label.
+
+    Pure semver for every released surface (the v1 projection and released
+    rows); the ``-dev`` label form is legal ONLY in a v2 row whose stage is
+    ``dev`` — the stage↔shape pairing is enforced by the caller that knows
+    the row's stage, this helper only refuses sugar and malformed shapes.
+    """
     if not isinstance(value, str):
         raise StandardsError(f"lock_document_invalid: {where} must be a version string")
     if "^" in value or "~" in value:
@@ -530,8 +739,11 @@ def _stored_version(value: object, where: str) -> str:
             f"constraint_syntax_unexpanded: {where}: {value!r} — caret sugar is "
             "authoring input; a stored document never carries it"
         )
-    if VERSION_PATTERN.fullmatch(value) is None:
-        raise StandardsError(f"lock_document_invalid: {where}: {value!r} is not pure semver")
+    if VERSION_PATTERN.fullmatch(value) is None and _DEV_LABEL.fullmatch(value) is None:
+        raise StandardsError(
+            f"lock_document_invalid: {where}: {value!r} is not pure semver or a "
+            "<target>-dev label"
+        )
     return value
 
 
@@ -556,15 +768,32 @@ def load_prior_lock(package: Path) -> PriorLock | None:
                 "not 2 (a v1 lock carries no lock_version key)"
             )
         rows: dict[str, str] = {}
+        stages: dict[str, str] = {}
         raw_rows = document.get("standards")
         if not isinstance(raw_rows, list):
             raise StandardsError("lock_document_invalid: standards must be a list")
         for row in raw_rows:
             if not isinstance(row, dict) or not isinstance(row.get("id"), str):
                 raise StandardsError("lock_document_invalid: a standards row is malformed")
-            rows[row["id"]] = _stored_version(
-                row.get("version"), f"standards[{row['id']}]"
-            )
+            stage = row.get("stage", "released")
+            if stage not in ("released", "dev"):
+                raise StandardsError(
+                    f"lock_document_invalid: standards[{row['id']}] stage "
+                    f"{stage!r} is neither released nor dev"
+                )
+            version = _stored_version(row.get("version"), f"standards[{row['id']}]")
+            # The stage↔shape pairing: a released row's version is pure
+            # semver, a dev row's carries the -dev label — a swapped pair is
+            # refused here, never carried into the ladder where the dev
+            # label would order against released versions.
+            if version.endswith("-dev") != (stage == "dev"):
+                raise StandardsError(
+                    f"lock_document_invalid: standards[{row['id']}] carries "
+                    f"version {version!r} at stage {stage!r} — a dev stage pairs "
+                    "with a <target>-dev label and a released stage with pure semver"
+                )
+            rows[row["id"]] = version
+            stages[row["id"]] = str(stage)
         file_map = document.get("sha256")
         if not isinstance(file_map, dict) or not all(
             isinstance(value, str) for value in file_map.values()
@@ -576,8 +805,14 @@ def load_prior_lock(package: Path) -> PriorLock | None:
             revision=revision,
             rows=rows,
             file_map={str(key): str(value) for key, value in file_map.items()},
+            stages=stages,
         )
     otdp_version = _stored_version(document.get("otdp_version"), "otdp_version")
+    if otdp_version.endswith("-dev"):
+        raise StandardsError(
+            "lock_document_invalid: the v1 otdp projection never carries a dev "
+            f"label ({otdp_version!r}) — dev pins are v2 rows"
+        )
     file_map = document.get("sha256")
     if not isinstance(file_map, dict) or not all(
         isinstance(value, str) for value in file_map.values()
@@ -589,6 +824,7 @@ def load_prior_lock(package: Path) -> PriorLock | None:
         revision=revision,
         rows={"otdp": otdp_version},
         file_map={str(key): str(value) for key, value in file_map.items()},
+        stages={"otdp": "released"},
     )
 
 
@@ -770,6 +1006,165 @@ def row_digest(
     return hashlib.sha256(canonical_json([list(pair) for pair in pairs])).hexdigest()
 
 
+# --- dev heads: content-addressed resolution (issue #218, design §3.6) ------------
+
+
+def _git_show(root: Path, ref: str) -> bytes | None:
+    """One object-store read (the ``check.py::_pinned_sdk_package_version``
+    git-show precedent); ``None`` on any git failure — the caller refuses by
+    name, never guesses which of not-a-repo / bad-sha / bad-path it was."""
+    result = subprocess.run(  # noqa: S603 — fixed argv
+        ["git", "-C", str(root), "show", ref],  # noqa: S607 — PATH git is the supported invocation
+        capture_output=True,
+        check=False,
+    )
+    return result.stdout if result.returncode == 0 else None
+
+
+def _git_ls_tree(root: Path, sha: str, prefix: str) -> list[str] | None:
+    """The file names under ``prefix`` in ``sha``'s tree; ``None`` on git
+    failure (not a repository, absent sha — the wheel posture and the dead
+    address, one refusal channel)."""
+    result = subprocess.run(  # noqa: S603 — fixed argv
+        [  # noqa: S607 — PATH git is the supported invocation
+            "git",
+            "-C",
+            str(root),
+            "ls-tree",
+            "-r",
+            "--name-only",
+            sha,
+            "--",
+            prefix,
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return None
+    return [line for line in result.stdout.splitlines() if line]
+
+
+@dataclass(frozen=True)
+class DevResolution:
+    """One dev head's bytes at the recorded sha — the lock row's content."""
+
+    version: str
+    git_sha: str
+    files: dict[str, str]
+    digest: str
+
+
+def _resolve_dev_pin(
+    root: Path, policy: Any, standard_id: str, label: str, sha: str
+) -> DevResolution:
+    """Resolve a content-addressed dev pin from the object store; fail loud.
+
+    The ladder (every refusal names the standard and the pin): the manifest
+    declares a head and the label names it exactly (accept-exactly-the-
+    declared-head — one head per standard); the target is not a retired
+    identifier (a head that could never promote is a dead end); then the
+    bytes — ``git ls-tree``/``git show`` at the recorded sha, which is
+    committed bytes by construction. A context with no object store (a
+    packaged/wheel install) and an unaddressable sha both refuse
+    ``dev_head_unresolvable:`` — the head's bytes ON DISK are never
+    substituted for the object-store read, and the active family is never
+    substituted for the head.
+    """
+    head = declared_dev_head(root / "standards", standard_id)
+    if head is None:
+        raise StandardsError(
+            f"dev_head_unresolvable: {standard_id} opt-in {label}@{sha} — the "
+            "manifest declares no dev head for this standard (promoted or "
+            "abandoned); nothing to resolve"
+        )
+    if head.version != label:
+        raise StandardsError(
+            f"dev_head_unresolvable: {standard_id} opt-in {label}@{sha} — the "
+            f"manifest declares {head.version} (one head per standard; the "
+            "opt-in names no declared head)"
+        )
+    target = label.removesuffix("-dev")
+    row = policy.standards.get(standard_id)
+    if row is not None and target in row.retired:
+        major, minor, _patch = version_tuple(target)
+        raise StandardsError(
+            f"dev_target_retired: {standard_id} {label} targets retired "
+            f"identifier {target} (used and dead, never reissued — the head "
+            f"could never promote); the next minor is {major}.{minor + 1}.0"
+        )
+    prefix = f"standards/{standard_id}/{label}"
+    names = _git_ls_tree(root, sha, prefix)
+    if names is None:
+        raise StandardsError(
+            f"dev_head_unresolvable: {standard_id} opt-in {label}@{sha} — no git "
+            f"object store resolves at {root} (a packaged/wheel install "
+            "physically cannot resolve a dev head; the head's working-tree "
+            "bytes are never substituted and the active family is never "
+            "substituted)"
+        )
+    if not names:
+        raise StandardsError(
+            f"dev_head_unresolvable: {standard_id} opt-in {label}@{sha} — the "
+            f"commit's tree carries no {prefix}/ (wrong sha or a pre-head "
+            "commit)"
+        )
+    files: dict[str, str] = {}
+    for relative in names:
+        raw = _git_show(root, f"{sha}:{relative}")
+        if raw is None:
+            raise StandardsError(
+                f"dev_head_unresolvable: {standard_id} opt-in {label}@{sha} — "
+                f"{relative} does not resolve in the object store"
+            )
+        files[relative.removeprefix(prefix + "/")] = hashlib.sha256(raw).hexdigest()
+    missing = [
+        relative
+        for relative in head.normative
+        if relative.removeprefix(prefix + "/") not in files
+    ]
+    if missing:
+        raise StandardsError(
+            f"dev_head_unresolvable: {standard_id} opt-in {label}@{sha} — the "
+            f"declared head's normative files are absent at the sha "
+            f"({', '.join(missing)})"
+        )
+    digest = hashlib.sha256(
+        canonical_json([[name, files[name]] for name in sorted(files)])
+    ).hexdigest()
+    return DevResolution(version=label, git_sha=sha, files=files, digest=digest)
+
+
+def _dev_adapter_api(root: Path, dev: DevResolution) -> str:
+    """``adapter_api`` for a DEV-pinned otdp row, from the head's descriptor
+    schema AT THE SHA (G-2's authority under the pin; the working tree's head
+    copy is never consulted — it may have moved since the pin)."""
+    raw = _git_show(
+        root,
+        f"{dev.git_sha}:standards/otdp/{dev.version}/{DESCRIPTOR_SCHEMA_NAME}",
+    )
+    if raw is None:
+        raise StandardsError(
+            f"adapter_api_unresolved: otdp@{dev.version} has no descriptor "
+            f"schema at {dev.git_sha}"
+        )
+    schema = json.loads(raw)
+    try:
+        const = schema["$defs"]["adapter"]["properties"]["api_version"]["const"]
+    except (KeyError, TypeError):
+        raise StandardsError(
+            f"adapter_api_unresolved: api_version const absent from the dev "
+            f"head's descriptor schema at {dev.git_sha}"
+        ) from None
+    if not isinstance(const, str):
+        raise StandardsError(
+            f"adapter_api_unresolved: api_version const is not a string in the "
+            f"dev head's descriptor schema at {dev.git_sha}"
+        )
+    return const
+
+
 def adapter_api_for(
     root: Path, otdp_version: str, rows: list[tuple[str, str]] | None = None
 ) -> str:
@@ -888,21 +1283,36 @@ def otdp_file_map(
 
 
 def _cross_violations(
-    root: Path, resolved: dict[str, str], adapter_api: str
+    root: Path,
+    resolved: dict[str, str],
+    adapter_api: str,
+    dev_ids: frozenset[str] = frozenset(),
 ) -> list[str]:
-    """Pairwise cross-constraint violations over the resolved set, evidenced."""
+    """Pairwise cross-constraint violations over the resolved set, evidenced.
+
+    Cross-constraint rows are RELEASED-interface facts (their evidence cites
+    a released version's runtime-interface claims), so a DEV-staged entry is
+    not judged by them — the dev pin's own gates (the opt-in, the content
+    identity, the head-state check) govern it. Skipping is closed against
+    laundering: a dev label must name the manifest-declared head (one per
+    standard), so no released pin can dodge a row by suffixing ``-dev``.
+    """
     violations: list[str] = []
     for row in load_cross_constraints(root):
         if resolved.get(row.standard) != row.version:
             continue  # the row constrains that exact version of its own standard
         for key, value in sorted(row.requires.items()):
             if key == "adapter_api":
+                if "otdp" in dev_ids:
+                    continue  # the lock's adapter const is a dev head's, not a released pin's
                 if adapter_api != value:
                     violations.append(
                         f"{row.standard}@{row.version} requires adapter_api "
                         f"{value}, the lock carries {adapter_api} ({row.evidence})"
                     )
             else:
+                if key in dev_ids:
+                    continue
                 got = resolved.get(key)
                 if got is None or not parse_interval(value).contains(got):
                     violations.append(
@@ -954,6 +1364,8 @@ def resolve_package(
             f"constraints ({', '.join(sorted(constraints.standards)) or 'none'})"
         )
     resolved: dict[str, str] = {}
+    stages: dict[str, str] = {}
+    dev_resolutions: dict[str, DevResolution] = {}
     warnings: list[str] = []
     for standard_id in sorted(constraints.standards):
         interval = constraints.standards[standard_id]
@@ -963,6 +1375,22 @@ def resolve_package(
                 f"dependency-policy block does not carry; supported: "
                 f"{', '.join(sorted(policy.standards))}"
             )
+        if standard_id in constraints.opt_in:
+            if overrides.get(standard_id) is not None:
+                raise StandardsError(
+                    f"constraint_unresolvable: {standard_id} is dev-opted at "
+                    f"{constraints.opt_in[standard_id]}; remove the opt-in before "
+                    "precise-targeting a released version"
+                )
+            label, sha = parse_opt_in(
+                constraints.opt_in[standard_id], where=f"opt_in.{standard_id}"
+            )
+            dev_resolutions[standard_id] = _resolve_dev_pin(
+                root, policy, standard_id, label, sha
+            )
+            resolved[standard_id] = label
+            stages[standard_id] = "dev"
+            continue
         classification: PinClassification | None = None
         target = overrides.get(standard_id)
         if target is not None:
@@ -976,10 +1404,18 @@ def resolve_package(
             if classification.warning is not None:
                 warnings.append(classification.warning)
             resolved[standard_id] = target
+            stages[standard_id] = "released"
             continue
         candidate: str | None = None
         prior_version = prior.rows.get(standard_id)
-        if prior_version is not None and interval.contains(prior_version):
+        # A prior DEV row never feeds the released ladder: its label does not
+        # order against released versions, and its pin's authority (the sha)
+        # died with the opt-in that recorded it — fall through to auto-select.
+        if (
+            prior_version is not None
+            and not prior_version.endswith("-dev")
+            and interval.contains(prior_version)
+        ):
             try:
                 classification = classify_pin(policy, root, standard_id, prior_version)
             except StandardsError:
@@ -1004,6 +1440,7 @@ def resolve_package(
                 )
             candidate = max(served, key=version_tuple)
         resolved[standard_id] = candidate
+        stages[standard_id] = "released"
     otdp_version = resolved.get("otdp")
     if otdp_version is None:
         raise StandardsError(
@@ -1015,36 +1452,65 @@ def resolve_package(
     # descriptor's derivation (its own named refusals for a missing row or
     # const), then the file map and the pairwise cross rows — each refusal
     # names its own layer, never a downstream symptom of an earlier gap.
-    if not (root / "standards" / "otdp" / otdp_version).is_dir():
-        raise StandardsError(
-            f"version_directory_absent: standards/otdp/{otdp_version}"
-        )
-    adapter_api = adapter_api_for(root, otdp_version, rows)
-    file_map = otdp_file_map(root, otdp_version, prior.file_map, rows)
-    violations = _cross_violations(root, resolved, adapter_api)
+    # The DEV arm replaces the first two rungs with the object-store
+    # resolution above (the sha IS the address) and its own map.
+    if stages["otdp"] == "dev":
+        dev = dev_resolutions["otdp"]
+        adapter_api = _dev_adapter_api(root, dev)
+        # The top-level projection map keeps the released scope (top-level
+        # files only, examples/ excluded); the dev ROW's ``files`` carries
+        # the whole head at the sha — the row is the content identity, the
+        # projection is the fetch-verify set.
+        file_map = {name: digest for name, digest in dev.files.items() if "/" not in name}
+    else:
+        if not (root / "standards" / "otdp" / otdp_version).is_dir():
+            raise StandardsError(
+                f"version_directory_absent: standards/otdp/{otdp_version}"
+            )
+        adapter_api = adapter_api_for(root, otdp_version, rows)
+        file_map = otdp_file_map(root, otdp_version, prior.file_map, rows)
+    dev_ids = frozenset(dev_resolutions)
+    violations = _cross_violations(root, resolved, adapter_api, dev_ids)
     if violations:
         raise StandardsError(
             "cross_constraint_violation: " + "; ".join(violations)
         )
+    lock_rows: list[dict[str, Any]] = []
+    for standard_id in sorted(resolved):
+        if stages[standard_id] == "dev":
+            dev = dev_resolutions[standard_id]
+            lock_rows.append(
+                {
+                    "id": standard_id,
+                    "version": dev.version,
+                    "stage": "dev",
+                    "digest": dev.digest,
+                    "git_sha": dev.git_sha,
+                    "files": dict(dev.files),
+                }
+            )
+        else:
+            lock_rows.append(
+                {
+                    "id": standard_id,
+                    "version": resolved[standard_id],
+                    "stage": "released",
+                    "digest": row_digest(root, standard_id, resolved[standard_id], rows),
+                }
+            )
     document = {
         "lock_version": 2,
         "repository": prior.repository,
         # Fold F4: --revision records a motion's revision alongside it; the
-        # resolver stays git-free — the value is caller-provided provenance.
+        # value is caller-provided provenance. (The resolver reads the git
+        # object store for DEV pins — the recorded sha is a superior anchor
+        # to a branch tip, which is why the dev arm of _scissors skips.)
         "revision": revision if revision is not None else prior.revision,
         "directory": f"standards/otdp/{otdp_version}",
         "otdp_version": otdp_version,
         "adapter_api_version": adapter_api,
         "sha256": file_map,
-        "standards": [
-            {
-                "id": standard_id,
-                "version": resolved[standard_id],
-                "stage": "released",
-                "digest": row_digest(root, standard_id, resolved[standard_id], rows),
-            }
-            for standard_id in sorted(resolved)
-        ],
+        "standards": lock_rows,
     }
     error = next(iter(_validator("lock-v2", LOCK_V2_SCHEMA).iter_errors(document)), None)
     if error is not None:
@@ -1125,6 +1591,17 @@ def list_lines(root: Path) -> list[str]:
             f"standard {entry.id}@{entry.version} ({entry.status}) — "
             f"range >={row.lower},<{row.upper}"
         )
+        if entry.dev is not None:
+            # VR-9's stage distinction on the dependency lane's surface: the
+            # open head is stage-tagged dev (release candidate when the
+            # coordinator declared one) and names its pinning channel — the
+            # ``versions`` glance carries the same fact (check.py
+            # ``version_lines``).
+            marker = ", release candidate" if entry.dev.candidate else ""
+            lines.append(
+                f"  dev head {entry.dev.version} (opened {entry.dev.opened}{marker}; "
+                "pins are content-addressed opt-in, never auto-selected)"
+            )
         lines.append(f"  retained {', '.join(retained_versions(root, entry.id)) or '—'}")
         lines.append(
             f"  carried {', '.join(carried_versions(policy, root, entry.id)) or '—'}"
@@ -1165,6 +1642,45 @@ def parse_set_argument(value: str) -> tuple[str, str]:
     return identifier, text
 
 
+def _dev_head_state(root: Path, resolution: Resolution) -> None:
+    """The locked-check half of VR-29: a dev row's per-file digests must
+    match the head's CURRENT working-tree bytes.
+
+    Resolution is content-addressed (the object store at the recorded sha
+    reproduces the lock forever); this check is the one that sees the head
+    MOVE — the label is mutable, the pin is not. A moved or deleted head
+    file refuses ``dev_pin_drift:`` naming the file, the lock's recorded
+    digest and the head's current digest; the remediation is to move the
+    opt-in to the head's current sha and re-pin. A file absent from the head
+    directory entirely (the promotion teardown shape) refuses with the same
+    prefix naming the orphaned file.
+    """
+    for row in resolution.document["standards"]:
+        if row.get("stage") != "dev":
+            continue
+        head_dir = root / "standards" / str(row["id"]) / str(row["version"])
+        for name, digest in sorted(row["files"].items()):
+            path = head_dir / str(name)
+            if not path.is_file():
+                raise StandardsError(
+                    f"dev_pin_drift: {row['id']} {row['version']}@{row['git_sha']} — "
+                    f"standards/{row['id']}/{row['version']}/{name} is absent from "
+                    "the head (moved on, or the promotion teardown deleted it); "
+                    "the label is mutable, the pin is not — move the opt-in to a "
+                    "live head state and re-pin"
+                )
+            current = hashlib.sha256(path.read_bytes()).hexdigest()
+            if current != digest:
+                raise StandardsError(
+                    f"dev_pin_drift: {row['id']} {row['version']}@{row['git_sha']} — "
+                    f"standards/{row['id']}/{row['version']}/{name} changed under "
+                    f"the pin: the lock records {digest}, the head's bytes hash "
+                    f"to {current}; the label is mutable, the pin is not — "
+                    "commit the head's state, move the opt-in to its sha and "
+                    "re-pin"
+                )
+
+
 def _scissors(
     prior: PriorLock, resolution: Resolution, revision: str | None
 ) -> list[str]:
@@ -1175,7 +1691,10 @@ def _scissors(
     differ because they are different versions' corpus-frozen files, not
     because bytes moved at the recorded revision — refusing there would
     break every legitimate upgrade, so the gate applies only when the
-    resolved otdp version is unchanged.
+    resolved otdp version is unchanged. A DEV-resolved otdp row skips the
+    motion gate: its map's motion is anchored by the row's own git sha (a
+    content address, stricter than a branch tip), so demanding ``--revision``
+    beside it would be ceremony, not evidence.
     """
     lines: list[str] = []
     derived = {
@@ -1187,7 +1706,11 @@ def _scissors(
             f"map addition: {', '.join(additions)} (no digest motion; each file "
             "must exist at the recorded revision — fetch verifies fail closed)"
         )
-    if prior.rows.get("otdp") == str(resolution.document["otdp_version"]):
+    otdp_dev = any(
+        row.get("id") == "otdp" and row.get("stage") == "dev"
+        for row in resolution.document["standards"]
+    )
+    if not otdp_dev and prior.rows.get("otdp") == str(resolution.document["otdp_version"]):
         motion = sorted(
             name
             for name, digest in derived.items()
@@ -1208,21 +1731,31 @@ def pin_lock(
     root: Path,
     package: Path,
     sets: list[tuple[str, str]] | None = None,
+    opt_ins: list[tuple[str, str]] | None = None,
     *,
     locked: bool = False,
     revision: str | None = None,
 ) -> list[str]:
-    """The ``pin`` command: author through ``--set``, resolve, write the lock.
+    """The ``pin`` command: author through ``--set``/``--opt-in``, resolve,
+    write the lock.
 
     ``--locked`` (VR-30) is verify-only: resolve in memory, byte-compare the
     on-disk lock, refuse ``plugin_lock_drift:`` on disagreement — zero
     network by construction, and never a write. ``--revision`` (fold F4)
-    records a new revision alongside same-version digest motion.
+    records a new revision alongside same-version digest motion. Every mode
+    runs the dev head-state check (VR-29): a dev row whose head moved under
+    the pin refuses ``dev_pin_drift:`` — a stale dev pin never re-verifies
+    green anywhere.
     """
     if locked and sets:
         raise StandardsError(
             "constraint_set_invalid: --set authors the constraints file; --locked "
             "is verify-only and never writes"
+        )
+    if locked and opt_ins:
+        raise StandardsError(
+            "constraint_set_invalid: --opt-in authors the constraints file; "
+            "--locked is verify-only and never writes"
         )
     if locked and revision is not None:
         raise StandardsError(
@@ -1231,10 +1764,13 @@ def pin_lock(
         )
     if sets:
         apply_set(root, package, sets)
+    if opt_ins:
+        apply_opt_in(root, package, opt_ins)
     # The prior is loaded BEFORE any write: post-write, the just-written lock
     # would be its own prior and the scissors could never see motion.
     prior = load_prior_lock(package)
     resolution = resolve_package(root, package, revision=revision)
+    _dev_head_state(root, resolution)
     if prior is None:  # unreachable: resolve_package refused on the absent lock
         raise StandardsError("plugin_lock_absent: the prior lock vanished mid-pin")
     path = package / "contracts" / "lock.json"
@@ -1252,7 +1788,8 @@ def pin_lock(
     written = write_lock(package, resolution.raw)
     lines.append(f"{'relocked' if written else 'lock already current'}: {path}")
     for row in resolution.document["standards"]:
-        lines.append(f"  {row['id']}@{row['version']}")
+        marker = " (dev)" if row.get("stage") == "dev" else ""
+        lines.append(f"  {row['id']}@{row['version']}{marker}")
     return lines
 
 

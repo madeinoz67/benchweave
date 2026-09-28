@@ -47,6 +47,15 @@ def main() -> int:
         " repeatable",
     )
     pin.add_argument(
+        "--opt-in",
+        dest="opt_ins",
+        action="append",
+        default=[],
+        metavar="ID=LABEL@SHA",
+        help="author one content-addressed dev opt-in (<target>-dev@<git-sha>);"
+        " repeatable",
+    )
+    pin.add_argument(
         "--locked",
         action="store_true",
         help="verify only: refuse plugin_lock_drift when the on-disk lock is not the"
@@ -186,10 +195,12 @@ def main() -> int:
             )
             if arguments.command == "pin":
                 sets = [parse_set_argument(value) for value in arguments.sets]
+                opt_ins = [parse_set_argument(value) for value in arguments.opt_ins]
                 lines = pin_lock(
                     root,
                     package,
                     sets,
+                    opt_ins,
                     locked=arguments.locked,
                     revision=arguments.revision,
                 )
