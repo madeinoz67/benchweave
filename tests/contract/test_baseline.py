@@ -23,12 +23,14 @@ from referencing.jsonschema import DRAFT202012
 ROOT = Path(__file__).resolve().parents[2]
 CONTRACTS = ROOT / "standards"
 # Governance JSON living BESIDE the corpus (no corpus rows): the two
-# manifests plus the cross-constraints side table (#216, issue #203 slice 2)
-# — excluded from every corpus walk below by ROOT-RELATIVE path, tighter
-# than a basename check (a nested same-named file never matches).
-_GOVERNANCE_JSON = frozenset(
-    {"corpus-manifest.json", "standards-manifest.json", "cross-constraints.json"}
-)
+# manifests, the cross-constraints side table (#216, slice 2) and the
+# promotion records (#218, slice 4) — excluded from every corpus walk below
+# by ROOT-RELATIVE path, tighter than a basename check (a nested same-named
+# file never matches). Imported from repin (the authority, whose own
+# comment names this file) so the two walks can never drift apart again —
+# the 2026-09-28 founding-record commit added the file to one set and the
+# other walk immediately condemned it.
+from benchweave.standards.repin import _GOVERNANCE_JSON  # noqa: E402
 
 
 def _strict_loads(text: str) -> Any:

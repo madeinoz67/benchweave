@@ -16,11 +16,15 @@ The gates (:func:`validate_promotion_records`, run by the standards suite):
 (a) DIGEST — the record's ``dev_tree_digest`` equals the digest of the dev
     tree at ``dev_edit_sha`` read through the object store;
 (b) SWEEP-AWARE DIFF — the diff between the dev tree at ``dev_edit_sha``
-    and the promoted directory on main contains ONLY lines carrying the
-    version transition tokens (the ``<target>-dev`` string, the target, the
-    pre-dev active version derived from the promoted rows' ``lineage``);
-    any other changed line refuses ``promotion_sweep_violation:`` — the
-    sweep-laundry mitigation (design risk 6);
+    and the promoted directory on main contains ONLY version-transition
+    lines: the design's tokens (the ``<target>-dev`` string, the target,
+    the pre-dev active version derived from the promoted rows' ``lineage``)
+    plus the three classes the FOUNDING RECORD proved the real sweep
+    mechanically produces — verified digest re-stamps (VR-36a), identity
+    re-stamps (the same line with version numbers moved), and the
+    regenerated ``validation-report.md``; any other changed line refuses
+    ``promotion_sweep_violation:`` — the sweep-laundry mitigation (design
+    risk 6);
 (c) PENDING-SUCCESSOR — a pending record refuses once a SUCCESSOR version
     of the same standard exists on main (pendingness must not outlive a
     train); the drift-check lane (:func:`pending_warning_lines`, wired into
@@ -40,15 +44,13 @@ branch away cannot verify the digest — the gate fails loudly there, it
 never silently passes.
 
 Carrier semantics: the file's ABSENCE is an empty history, not a refusal —
-the mechanism's own first promotion authors it. Until the founding record
-lands for the tree's PRE-MECHANISM dev-sourced promotions (this repo's
-execution 0.2.0, promoted 2026-09-24 before this slice), the no-record gate
-is exercised by the suite's fixtures, not wired against the real tree —
-wiring it into a real-tree lane is the founding record's prerequisite, a
-standards-byte act this slice's branch does not make (issue #218's
-tripwire). ``validate_promotion_records`` on a tree with dev-sourced rows
-and no founding record therefore refuses by design; call sites that want
-the drift-warning lane only use :func:`pending_warning_lines`.
+a tree before its first recorded promotion. This tree's founding record
+(execution 0.2.0 — the pre-mechanism promotion recovered from history by
+the coordinator directive of 2026-09-28, option (a); both shas are main
+ancestors, so every fresh clone verifies it) landed with the mechanism;
+the gates run in the standards suite against fixtures AND the founded real
+tree, and the tamper arm pins that a corrupted founding record still
+refuses — the gates stay armed on the real tree, never grandfathered.
 
 Refusal prefixes: ``promotion_record_invalid:``, ``promotion_record_absent:``,
 ``promotion_dev_edit_unresolved:``, ``promotion_landing_unresolved:``,
@@ -101,6 +103,7 @@ PROMOTION_RECORDS_SCHEMA: dict[str, Any] = {
                         "type": ["string", "null"],
                         "pattern": "^[0-9a-f]{40}$",
                     },
+                    "evidence": {"type": "string", "minLength": 1},
                 },
                 "required": [
                     "standard",
@@ -258,7 +261,9 @@ def _lineage_version(
         relative = str(row.get("path", ""))
         if not relative.startswith(prefix):
             continue
-        lineage = str(row.get("lineage") or "")
+        # ``lineage`` (like ``source``) is repo-relative — strip the
+        # standards/ prefix so the version segment parses.
+        lineage = str(row.get("lineage") or "").removeprefix("standards/")
         match = re.fullmatch(rf"{standard_id}/(\d+\.\d+\.\d+)/.+", lineage)
         if match is not None:
             versions.add(match.group(1))
@@ -277,20 +282,54 @@ def _corpus_rows(root: Path) -> list[dict[str, Any]]:
     ]
 
 
+#: The machine-written report regenerated at promotion (GOVERNANCE's
+#: promotion flow: "regenerate the validation report"; its dev-proof lane:
+#: "machine-written reports are a property of released versions" — which is
+#: why it is absent from every dev tree by rule). Only the file's ADDITION
+#: at landing is sanctioned here: a report present in the dev tree and
+#: EDITED at landing still goes through the line rules below.
+_LANDING_REGENERATED = "validation-report.md"
+
+#: A version-like substring (three components, optional ``-dev``) — the
+#: identity re-stamp rule's strip unit.
+_VERSIONISH = re.compile(r"\d+\.\d+\.\d+(?:-dev)?")
+#: A bare sha256 hex digest — the digest re-stamp rule's unit.
+_HEXDIGEST = re.compile(r"\b[a-f0-9]{64}\b")
+
+
 def _sweep_check(
     root: Path,
     record: PromotionRecord,
     corpus_rows: list[dict[str, Any]],
 ) -> None:
-    """Gate (b): only version-token lines may differ between the dev tree
-    at ``dev_edit_sha`` and the promoted directory.
+    """Gate (b): only version-transition lines may differ between the dev
+    tree at ``dev_edit_sha`` and the promoted directory.
 
-    Tokens: the ``<target>-dev`` label, the target version, and the pre-dev
-    active version (derived from the promoted rows' ``lineage`` — the one
-    version the promotion swept AWAY from; absent lineage narrows the token
-    set, never widens it). A file present in one tree and absent from the
-    other is judged by its own lines: every line must carry a token, else
-    the addition/removal is a non-version change and refuses."""
+    The design names the version transition tokens (the ``<target>-dev``
+    label, the target, the pre-dev active version from the promoted rows'
+    ``lineage``). The FOUNDING RECORD (execution 0.2.0, coordinator
+    directive 2026-09-28) surfaced three further classes the real sweep
+    mechanically produces, each admitted by its own verifiable rule rather
+    than a widened token list:
+
+    - DIGEST RE-STAMP (VR-36a's "URN/digest restamp"): a changed line
+      carrying a bare sha256 admits when the digest NAMES A REAL FILE —
+      removed side a file of the dev tree at the sha, added side a file of
+      the promoted tree (bidirectional set membership; an invented digest
+      matches nothing and refuses). Verified on the founding record: every
+      one of its 10 changed digest lines maps, 10/10, removed→dev-tree and
+      added→promoted-tree.
+    - IDENTITY RE-STAMP: a changed line admits when the OPPOSITE side of
+      the same file's diff carries a line equal after stripping every
+      version-like substring — the same sentence/URN with its version
+      numbers moved (the founding record's pre-reset ``1.0.0`` URNs and the
+      prose title both ride this rule). KNOWN FALSE-ACCEPT CLASS, disclosed
+      (the slice-2 comparator's R4 class): a version-string motion in a
+      non-version SEMANTIC field admits; the planted-wording control keeps
+      the teeth — any non-version text difference still refuses.
+    - The regenerated ``validation-report.md``, absent from the dev tree,
+      is the sanctioned landing artifact (``_LANDING_REGENERATED``).
+    """
     tokens = [record.dev_head, record.target]
     pre_dev = _lineage_version(corpus_rows, record.standard, record.target)
     if pre_dev is not None:
@@ -301,7 +340,6 @@ def _sweep_check(
             f"promotion_record_invalid: {record.standard}@{record.target} names "
             "no promoted directory on this tree"
         )
-    names = set()
     listing = subprocess.run(  # noqa: S603 — fixed argv
         [  # noqa: S607 — PATH git is the supported invocation
             "git",
@@ -325,41 +363,86 @@ def _sweep_check(
             "store"
         )
     prefix = f"standards/{record.standard}/{record.dev_head}/"
-    for line in listing.stdout.splitlines():
-        if line:
-            names.add(line.removeprefix(prefix))
+    names = {
+        line.removeprefix(prefix)
+        for line in listing.stdout.splitlines()
+        if line
+    }
     on_disk = {
         str(path.relative_to(promoted_dir))
         for path in promoted_dir.rglob("*")
         if path.is_file()
     }
+    # The digest re-stamp rule's two name-sets: every file's digest in each
+    # tree, so membership is the whole verification.
+    dev_digests: set[str] = set()
+    for relative in listing.stdout.splitlines():
+        if not relative:
+            continue
+        raw = _git_show(root, f"{record.dev_edit_sha}:{relative}")
+        if raw is not None:
+            dev_digests.add(hashlib.sha256(raw).hexdigest())
+    promoted_digests = {
+        hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in promoted_dir.rglob("*")
+        if path.is_file()
+    }
     for name in sorted(names | on_disk):
-        old = _git_show(
-            root, f"{record.dev_edit_sha}:{prefix}{name}"
-        )
+        old = _git_show(root, f"{record.dev_edit_sha}:{prefix}{name}")
         path = promoted_dir / name
         new = path.read_bytes() if path.is_file() else None
         if old == new:
             continue
+        if old is None and name == _LANDING_REGENERATED:
+            # The sanctioned regeneration: absent from the dev tree by the
+            # dev-proof lane's own rule, machine-written at landing.
+            continue
         old_lines = (old or b"").decode("utf-8", "replace").splitlines(keepends=True)
         new_lines = (new or b"").decode("utf-8", "replace").splitlines(keepends=True)
-        offending = [
-            line.strip()
-            for line in difflib.unified_diff(old_lines, new_lines, n=0)
-            if (line.startswith("+") or line.startswith("-"))
-            and not line.startswith("+++")
-            and not line.startswith("---")
-            and not any(token in line for token in tokens)
-        ]
+        removed: list[str] = []
+        added: list[str] = []
+        for line in difflib.unified_diff(old_lines, new_lines, n=0):
+            if line.startswith(("+++", "---")):
+                continue
+            if line.startswith("-"):
+                removed.append(line[1:])
+            elif line.startswith("+"):
+                added.append(line[1:])
+        # The identity re-stamp rule's comparison set: the opposite side's
+        # lines with every version-like substring stripped.
+        stripped_added = {_VERSIONISH.sub("", line) for line in added}
+        stripped_removed = {_VERSIONISH.sub("", line) for line in removed}
+        offending: list[str] = []
+        for line in removed:
+            if (
+                not any(token in line for token in tokens)
+                and _VERSIONISH.sub("", line) not in stripped_added
+                and not any(
+                    digest in dev_digests
+                    for digest in _HEXDIGEST.findall(line)
+                )
+            ):
+                offending.append("-" + line.strip())
+        for line in added:
+            if (
+                not any(token in line for token in tokens)
+                and _VERSIONISH.sub("", line) not in stripped_removed
+                and not any(
+                    digest in promoted_digests
+                    for digest in _HEXDIGEST.findall(line)
+                )
+            ):
+                offending.append("+" + line.strip())
         if offending:
             raise StandardsError(
                 f"promotion_sweep_violation: {record.standard}/{record.target}/"
                 f"{name} differs from the dev tree at {record.dev_edit_sha} on "
-                f"non-token lines ({len(offending)} line(s), first: "
+                f"non-transition lines ({len(offending)} line(s), first: "
                 f"{offending[0][:120]!r}) — the promotion sweep may carry only "
-                f"the version transition tokens ({', '.join(tokens)}); move the "
-                "change through the dev head or a new version, never under "
-                "cover of the sweep"
+                f"the version transition (tokens {', '.join(tokens)}, verified "
+                "digest re-stamps, identity re-stamps); move the change "
+                "through the dev head or a new version, never under cover of "
+                "the sweep"
             )
 
 

@@ -198,9 +198,12 @@ def _fixture(
     shutil.copytree(ROOT / "standards", root / "standards")
     # The copied tree's PRE-MECHANISM dev-sourced promotion (execution 0.2.0,
     # promoted 2026-09-24 before this slice) would fire the no-record gate
-    # ahead of every planted arm — the fixture's tree carries ONLY the
-    # promotion it plants, so its rows read as ordinary lineage-sourced
-    # copies. The real tree's own posture is pinned separately below.
+    # ahead of every planted arm — and its founding record cites shas this
+    # fresh repository does not carry. The fixture's tree carries ONLY the
+    # promotion it plants: rows read as ordinary lineage-sourced copies and
+    # the founding record is dropped. The real tree's own posture is pinned
+    # separately below.
+    (root / "standards" / "promotion-records.json").unlink(missing_ok=True)
     corpus_path = root / "standards" / "corpus-manifest.json"
     corpus = json.loads(corpus_path.read_bytes())
     for row in corpus["files"]:
@@ -381,6 +384,7 @@ def test_an_absent_records_file_is_an_empty_history_not_a_refusal(
     root = tmp_path / "bare"
     root.mkdir()
     shutil.copytree(ROOT / "standards", root / "standards")
+    (root / "standards" / "promotion-records.json").unlink(missing_ok=True)
     corpus_path = root / "standards" / "corpus-manifest.json"
     corpus = json.loads(corpus_path.read_bytes())
     for row in corpus["files"]:
@@ -395,20 +399,56 @@ def test_an_absent_records_file_is_an_empty_history_not_a_refusal(
     validate_promotion_records(root)
 
 
-def test_the_real_tree_refuses_until_the_founding_record_lands() -> None:
-    """The REAL tree's posture, pinned: execution 0.2.0 was promoted from a
-    dev head on 2026-09-24, BEFORE this mechanism existed, and carries no
-    founding record — so validate_promotion_records refuses naming it. This
-    is why the record gates run in the standards suite (fixtures) and are
-    NOT wired into the real-tree check lane: the founding record is the
-    coordinator's standards-byte act (issue #218's tripwire forbids this
-    branch from touching standards/), and until it lands the real-tree
-    refusal is the honest state, not a defect."""
+def test_the_founded_real_tree_validates() -> None:
+    """The PERMANENT posture (was: ``test_the_real_tree_refuses_until_the_
+    founding_record_lands`` — the temporary pre-founding state). The
+    founding record (coordinator directive 2026-09-28, option (a))
+    recovered execution 0.2.0's pre-mechanism promotion from history —
+    dev_edit_sha 53d700d17ec2 (the final dev state), landing_sha 54a59fab364a
+    — and the real tree now VALIDATES: the digest matches the tree at the
+    sha by construction (dev_tree_digest_at derived it), the sweep is
+    transition-only under the refined rules, and both shas are main
+    ancestors, so every fresh clone verifies the record forever."""
+    validate_promotion_records(ROOT)
+    records = {
+        (record.standard, record.target): record
+        for record in load_promotion_records(ROOT)
+    }
+    founding = records[("execution", "0.2.0")]
+    assert founding.dev_edit_sha.startswith("53d700d17ec2")
+    assert founding.landing_sha is not None and founding.landing_sha.startswith(
+        "54a59fab364a"
+    )
+    assert founding.pending is False
+
+
+def test_a_tampered_founding_record_still_refuses(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The gates stay armed on the real tree, never grandfathered: the
+    founding record with ONE flipped digest digit refuses
+    ``promotion_digest_mismatch:`` naming both values — audited by the same
+    machinery as every future record, over the REAL tree and object store
+    (the loader is patched to hand the gate the tampered record; nothing on
+    disk is touched)."""
+    from dataclasses import replace
+
+    import benchweave.standards.promotion as promotion_module
+
+    (honest_record,) = load_promotion_records(ROOT)
+    assert honest_record.dev_tree_digest[0] != "0"  # the flip below changes it
+    tampered = replace(
+        honest_record, dev_tree_digest="0" + honest_record.dev_tree_digest[1:]
+    )
+    monkeypatch.setattr(
+        promotion_module, "load_promotion_records", lambda root: (tampered,)
+    )
     with pytest.raises(StandardsError) as raised:
         validate_promotion_records(ROOT)
     message = str(raised.value)
-    assert message.startswith("promotion_record_absent:"), message
-    assert "execution@0.2.0" in message, message
+    assert message.startswith("promotion_digest_mismatch:"), message
+    assert honest_record.dev_tree_digest in message
+    assert tampered.dev_tree_digest in message
 
 
 def test_a_malformed_record_refuses_typed(tmp_path: Path) -> None:

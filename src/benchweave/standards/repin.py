@@ -39,7 +39,12 @@ _OPTIONAL_ROW_KEYS = frozenset({"lineage"})
 # named like one of these never matches (the tightening is pinned by
 # tests/standards/test_cross_constraints.py).
 _GOVERNANCE_JSON = frozenset(
-    {"corpus-manifest.json", "standards-manifest.json", "cross-constraints.json"}
+    {
+        "corpus-manifest.json",
+        "standards-manifest.json",
+        "cross-constraints.json",
+        "promotion-records.json",
+    }
 )
 
 
