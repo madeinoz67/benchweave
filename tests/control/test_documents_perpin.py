@@ -581,3 +581,43 @@ def test_r6_the_authorisation_decision_is_invariant_under_note_rewording() -> No
                 f"{pin} (acked={acked!r}): the decision moved with the note's "
                 "wording, not the classification's status"
             )
+
+
+def test_vr37_names_the_move_tos_note_pointer_when_the_policy_carries_one(
+    tmp_path: Path,
+) -> None:
+    """The fifth VR-37 field is the migration-note POINTER, not a
+    placeholder forever: when the move-to version's policy row carries a
+    from-predecessor note (#219's carrier), the refusal names it; without
+    one the documented placeholder stands (the seed carries no rows, D6).
+    The resolver's twin formatter must stay text-equal either way — the
+    vocabulary convergence pin, now exercised with a real pointer."""
+    import shutil
+
+    from benchweave.control.documents import classify_descriptor_pin
+    from benchweave.standards.dependency import _vr37
+    from benchweave.standards.manifest import load_dependency_policy
+
+    # One root, two shapes: root/standards is the packaged-first corpus
+    # (classify_descriptor_pin's view) and the root itself the loader's.
+    root = tmp_path / "vr37-note-pointer-root"
+    shutil.copytree(CORPUS, root / "standards")
+    corpus = root / "standards"
+    assert "migration guidance pending" in str(
+        classify_descriptor_pin("0.1.2", corpus=corpus).note
+    ), "precondition: no note rows yet, the placeholder stands"
+
+    _set_otdp_policy(
+        corpus,
+        versions={"0.2.2": {"migration_note": "docs/migration/otdp-0.2.2.md"}},
+    )
+    record = classify_descriptor_pin("0.1.2", corpus=corpus)
+    note = str(record.note)
+    assert "docs/migration/otdp-0.2.2.md" in note, note
+    assert "migration guidance pending" not in note, note
+    policy = load_dependency_policy(root)
+    row = policy.standards["otdp"]
+    assert note.endswith(_vr37(policy, "otdp", "0.1.2", row, root)), (
+        "the gateway classifier and the resolver's VR-37 twin must stay "
+        "text-equal with a real pointer"
+    )

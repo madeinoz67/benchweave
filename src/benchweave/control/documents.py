@@ -223,19 +223,70 @@ def _vr37_text(row: Any, pin: str, corpus: Path, policy: Any) -> str:
     are pinned text-equal by test). Move-to: the highest served version —
     identical under the ≥-pin filter and its fallback (proof: when the
     served max is ≥ the pin it is itself a candidate; when it is not, the
-    candidate set is empty and both rules fall back to it)."""
+    candidate set is empty and both rules fall back to it). Migration: the
+    move-to version's from-predecessor note pointer when the policy block
+    carries one (#219's carrier), else the documented placeholder — the
+    seed carries no note rows (SM-5 from adoption, D6), so a real pointer
+    appears exactly when a release has one."""
     served = served_versions_from_corpus(policy, corpus, _OTDP)
     move_to = max(served, key=version_tuple) if served else row.lower
+    note_pointer = row.versions.get(move_to)
+    migration = note_pointer if note_pointer is not None else "migration guidance pending"
     return (
         f"standard: {_OTDP}; pinned: {pin}; "
         f"supported: >={row.lower},<{row.upper}; "
         f"move-to: {move_to}; "
-        "migration: migration guidance pending"
+        f"migration: {migration}"
+    )
+
+
+def _corpus_state_token(corpus: Path) -> tuple[str, str]:
+    """Digests of the two committed files classification reads (VR-19).
+
+    ``standards-manifest.json`` carries the dependency-policy block (the
+    range, the yanks, the retirements, the dev head) and
+    ``corpus-manifest.json`` the retained version set — every input
+    ``_classify_cached`` consults. The pair is key material for the
+    classification cache: a range narrowing mid-process must re-classify
+    the NEXT admission (VR-19's second half) while stored run records keep
+    the classification they were recorded with (the first half — records
+    are stored facts, never re-derived). Reading both files is what makes
+    the cache key move when the policy moves; the cached body still runs
+    only on a key miss.
+
+    Absence follows the LOADER's semantics, not a blanket crash (fold
+    LOW-1, #219 refute wave): a missing standards-manifest raises the same
+    ``FileNotFoundError`` the policy loader's own file read raises (the
+    token's read stands in for it); a missing corpus-manifest contributes
+    the empty-bytes sentinel so classification proceeds to the loader's
+    ``retained == ()`` — a typed never-carried refusal, never a
+    FileNotFoundError the loader never raises.
+    """
+
+    def _digest(name: str, *, absent_as_empty: bool = False) -> str:
+        path = corpus / name
+        if path.is_file():
+            return hashlib.sha256(path.read_bytes()).hexdigest()
+        if absent_as_empty:
+            # The loader's own absent state (retained == ()): a key no
+            # real digest can collide with, so absence and a present
+            # (even empty) file never share a cache entry.
+            return ""
+        # The loader's own posture for its own file: the read raises.
+        raise FileNotFoundError(path)
+
+    return _digest("standards-manifest.json"), _digest(
+        "corpus-manifest.json", absent_as_empty=True
     )
 
 
 @lru_cache(maxsize=512)
-def _classify_cached(pin: str, corpus_text: str) -> DescriptorPin:
+def _classify_cached(
+    pin: str, corpus_text: str, policy_digest: str, retained_digest: str
+) -> DescriptorPin:
+    # ``policy_digest``/``retained_digest`` are cache-KEY material only —
+    # they bind the entry to the corpus state it was computed from and are
+    # deliberately unused below (see ``_corpus_state_token``).
     corpus = Path(corpus_text)
     policy = load_dependency_policy_from_corpus(corpus)
     row = policy.standards.get(_OTDP)
@@ -330,6 +381,13 @@ def classify_descriptor_pin(pin: object, *, corpus: Path | None = None) -> Descr
     MAJOR.MINOR.PATCH string never orders against the corpus — it folds
     the same way, and the schema's own const error refuses it at admission
     (the SDK's no-pin posture, mirrored).
+
+    The cache binding follows the same freshness rule (VR-19): the entry is
+    keyed on the corpus state the classification reads
+    (``_corpus_state_token``), so a range narrowing re-classifies the NEXT
+    call, while this function never reads — let alone rewrites — a stored
+    run record (VR-19's first half is the record's own stored-fact
+    property, pinned in ``tests/control/test_range_narrowing.py``).
     """
     if not isinstance(pin, str) or (
         VERSION_PATTERN.fullmatch(pin) is None and _DEV_PIN_SHAPE.fullmatch(pin) is None
@@ -346,7 +404,8 @@ def classify_descriptor_pin(pin: object, *, corpus: Path | None = None) -> Descr
                 "validation"
             ),
         )
-    return _classify_cached(pin, str(corpus if corpus is not None else _otdp_corpus()))
+    resolved = Path(corpus if corpus is not None else _otdp_corpus())
+    return _classify_cached(pin, str(resolved), *_corpus_state_token(resolved))
 
 
 def _authorise_pin(

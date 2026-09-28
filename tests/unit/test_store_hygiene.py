@@ -146,7 +146,7 @@ def test_d13_events_cursor_read_is_served_by_the_migration_index(
     an index that exists but is not used fails this pin."""
     store = Store.open(tmp_path / "hygiene.db")
     try:
-        assert store.schema_version() == MIGRATIONS[-1].version == 7
+        assert store.schema_version() == MIGRATIONS[-1].version == 8
         plans = store.connection.execute(
             "EXPLAIN QUERY PLAN " + _CURSOR_READ_SQL, ("bench.sim-bench", 0, 100)
         ).fetchall()
@@ -376,7 +376,7 @@ def test_v5_capture_staging_tables_and_the_sweep_serving_index(
     this pin, exactly like the v4 events pin)."""
     store = Store.open(tmp_path / "v5.db")
     try:
-        assert store.schema_version() == 7
+        assert store.schema_version() == 8
         assert _table_columns(store, "capture_staging") == [
             "capture_id",
             "context_key",
@@ -413,7 +413,7 @@ def test_v5_upgrade_from_a_v4_database(tmp_path: Path) -> None:
     _apply_subset(tmp_path, 4)
     store = Store.open(tmp_path / "upgrade.db")
     try:
-        assert store.schema_version() == 7
+        assert store.schema_version() == 8
         assert _table_columns(store, "capture_staging"), "v5 tables must exist"
     finally:
         store.close()
@@ -506,7 +506,7 @@ def test_v7_archive_columns_land_additive_on_fresh_and_upgrading_stores(
     a store left at v6 by an older gateway upgrades in place."""
     store = Store.open(tmp_path / "v7.db")
     try:
-        assert store.schema_version() == MIGRATIONS[-1].version == 7
+        assert store.schema_version() == MIGRATIONS[-1].version == 8
         columns = _table_columns(store, "dispositions")
         assert columns[-4:] == _V7_ARCHIVE_COLUMNS
         assert len(columns) == 25, (
@@ -540,7 +540,46 @@ def test_v7_archive_columns_land_additive_on_fresh_and_upgrading_stores(
     _apply_subset(tmp_path, 6)  # a store left at v6 by an older gateway
     upgraded = Store.open(tmp_path / "upgrade.db")
     try:
-        assert upgraded.schema_version() == 7
+        assert upgraded.schema_version() == 8
         assert _table_columns(upgraded, "dispositions")[-4:] == _V7_ARCHIVE_COLUMNS
+    finally:
+        upgraded.close()
+
+
+# --- issue #219: v8 device acknowledgement column -------------------------------
+
+
+def test_v8_device_acknowledgement_column_adds_and_upgrades(tmp_path: Path) -> None:
+    """Issue #219's migration v8: one additive ``ALTER TABLE devices ADD
+    COLUMN acknowledgement_json TEXT`` — the admission record's persisted
+    operator acknowledgement (D11). A v7-shaped device INSERT (no
+    acknowledgement named) still lands with the column NULL, and a store
+    left at v7 by an older gateway upgrades in place."""
+    store = Store.open(tmp_path / "v8.db")
+    try:
+        assert store.schema_version() == MIGRATIONS[-1].version == 8
+        assert _table_columns(store, "devices")[-1] == "acknowledgement_json", (
+            "v8 adds exactly the one column, appended last"
+        )
+        store.connection.execute(
+            "INSERT INTO devices (device_id, bench_id, generation, profiles_json,"
+            " descriptor_json, identity_state, licence, updated_at)"
+            " VALUES ('dev-v8probe', 'bench-v8probe', 1, '[]', '{}', 'matched',"
+            " 'proprietary', '2026-09-28T00:00:00Z')"
+        )
+        row = store.connection.execute(
+            "SELECT acknowledgement_json FROM devices WHERE device_id = 'dev-v8probe'"
+        ).fetchone()
+        assert row == (None,), "the column must be nullable for v7-era writers"
+        fetched = store.get_device("dev-v8probe")
+        assert fetched is not None and fetched["acknowledgement_json"] is None
+    finally:
+        store.close()
+
+    _apply_subset(tmp_path, 7)  # a store left at v7 by an older gateway
+    upgraded = Store.open(tmp_path / "upgrade.db")
+    try:
+        assert upgraded.schema_version() == 8
+        assert _table_columns(upgraded, "devices")[-1] == "acknowledgement_json"
     finally:
         upgraded.close()

@@ -398,12 +398,21 @@ def _move_to(policy: Any, row: StandardPolicy, root: Path, standard_id: str) -> 
 def _vr37(
     policy: Any, standard_id: str, version: str, row: StandardPolicy, root: Path
 ) -> str:
-    """The five VR-37 fields inline: standard, pinned, supported, move-to, note."""
+    """The five VR-37 fields inline: standard, pinned, supported, move-to, note.
+
+    ``migration`` is the move-to version's from-predecessor note pointer
+    when the policy block carries one (#219's carrier), else the documented
+    placeholder — text-identical to ``control/documents._vr37_text``'s
+    derivation, pinned by test either way.
+    """
+    move_to = _move_to(policy, row, root, standard_id)
+    note_pointer = row.versions.get(move_to)
+    migration = note_pointer if note_pointer is not None else "migration guidance pending"
     return (
         f"standard: {standard_id}; pinned: {version}; "
         f"supported: >={row.lower},<{row.upper}; "
-        f"move-to: {_move_to(policy, row, root, standard_id)}; "
-        "migration: migration guidance pending"
+        f"move-to: {move_to}; "
+        f"migration: {migration}"
     )
 
 

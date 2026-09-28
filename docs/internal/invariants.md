@@ -525,6 +525,37 @@ rather than rewriting the history — that is how this file earns trust.
   This amendment lands with slice 5 and becomes true then (CON-14's disclosure
   style) — the slice-1 mechanism mirrors the policy block; it does not yet
   render per-version rows.
+  Amendment (2026-09-28, issue #219 — slice 5 LANDED): the per-version table
+  is true now. `render_matrix` renders one row per retained version —
+  stage (naming a recorded promotion where the promotion records carry
+  one), range membership, yank with the derived move-to, and the
+  from-predecessor migration-note pointer — from the policy block and
+  the promotion records, and every render input (the two manifests, the
+  promotion records, `pyproject.toml`, `.gitmodules`) is read from the
+  commit HEAD records through a temp committed-view staging, falling
+  back to the working tree only where the root carries no committed
+  copy to diverge from (the `check.py` pyproject@pin dual posture), so
+  an uncommitted edit moves no rendered byte — pinned by E3's
+  working-tree-only-edit control. The SM-5 gate
+  (`benchweave.standards.migration_notes`, suite-run like the train
+  window and self-anchored on its own arrival the same way) refuses a
+  post-adoption MINOR-or-greater bump whose from-predecessor note row is
+  absent (`migration_note_missing:`) or whose pointer does not resolve
+  to a file under the root (`migration_note_unresolved:`); the note
+  carrier is the policy block's per-version row, and pre-adoption
+  releases carry none by design (D6).
+  Fold-wave correction (2026-09-28, #219 refute FIX B/F4): the committed
+  read's fallback breadth is narrower than first written, and now stated
+  exactly — wherever HEAD verifies, a path it does not carry is
+  COMMITTED-ABSENT (required inputs refuse; the optional promotion-records
+  input skips staging), never a working-tree read; the working tree is read
+  only where no committed copy can exist to diverge from (a non-git root,
+  or a repository with an unborn HEAD); a repository that exists but cannot
+  be read refuses `matrix_committed_state_unreadable:` rather than
+  substituting working-tree bytes. The git invocations scrub GIT_*
+  environment variables, so a caller's environment cannot redirect the
+  committed read. Pinned by the untracked-promotion-record and
+  poisoned-GIT_DIR repros (`tests/standards/test_matrix.py`).
 
 - **[CON-13]** Website version stamps are a pure function of committed state —
   claim sites in `website/index.html` carry `{{stg-*}}` tokens and never

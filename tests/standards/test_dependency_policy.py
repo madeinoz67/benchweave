@@ -330,3 +330,62 @@ def test_leading_zero_range_components_refuse(tmp_path: Path) -> None:
     _edit_policy(root, mutate)
     with pytest.raises(StandardsError, match="dependency_policy_invalid"):
         load_dependency_policy(root)
+
+
+# --- per-version rows: the SM-5 migration-note carrier (#219 slice 5, E2/E3) ---
+
+
+def test_per_version_rows_carry_the_from_predecessor_migration_note(
+    tmp_path: Path,
+) -> None:
+    """The policy block's per-version row holds the migration-note pointer
+    (design §3.5: a machine-readable pointer in the policy block's
+    per-version row, walked by the release matrix — VR-36/SM-5). The seed
+    block carries NO rows (SM-5 is from adoption; D6 exempts the
+    already-released versions), so this plants one in a fixture."""
+    root = _copy_standards(tmp_path)
+
+    def mutate(block: dict[str, Any]) -> dict[str, Any]:
+        block["standards"]["otdp"]["versions"] = {
+            "0.2.2": {"migration_note": "docs/migration/otdp-0.2.2.md"}
+        }
+        return block
+
+    _edit_policy(root, mutate)
+    policy = load_dependency_policy(root)
+    assert policy.standards["otdp"].versions == {
+        "0.2.2": "docs/migration/otdp-0.2.2.md"
+    }
+
+
+def test_a_versions_row_without_a_note_pointer_refuses(tmp_path: Path) -> None:
+    """A per-version row exists to carry the note; a row without one (or
+    with a non-string) is malformed governance data, refused at load —
+    fail-closed like the yanked record's shape checks."""
+    root = _copy_standards(tmp_path)
+
+    def mutate(block: dict[str, Any]) -> dict[str, Any]:
+        block["standards"]["otdp"]["versions"] = {"0.2.2": {}}
+        return block
+
+    _edit_policy(root, mutate)
+    with pytest.raises(StandardsError, match="dependency_policy_invalid"):
+        load_dependency_policy(root)
+
+
+def test_a_versions_row_naming_an_unretained_version_refuses(tmp_path: Path) -> None:
+    """A migration note can only exist for a version the tree retains —
+    the yanked-entry rule applied to the new carrier
+    (``policy_entry_unresolved:``): a note for a never-carried number is
+    dead governance data."""
+    root = _copy_standards(tmp_path)
+
+    def mutate(block: dict[str, Any]) -> dict[str, Any]:
+        block["standards"]["otdp"]["versions"] = {
+            "9.9.9": {"migration_note": "docs/migration/otdp-9.9.9.md"}
+        }
+        return block
+
+    _edit_policy(root, mutate)
+    with pytest.raises(StandardsError, match="policy_entry_unresolved"):
+        validate_dependency_policy(load_dependency_policy(root), load_manifest(root), root)

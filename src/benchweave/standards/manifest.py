@@ -69,7 +69,13 @@ class YankRecord:
 
 @dataclass(frozen=True)
 class StandardPolicy:
-    """One standard's declared range and recorded statuses."""
+    """One standard's declared range and recorded statuses.
+
+    ``versions`` maps a retained version to its from-predecessor
+    migration-note pointer (design §3.5, VR-36/SM-5 — one row per release
+    that carries one; the seed block carries none, SM-5 being from
+    adoption and D6 exempting the already-released versions).
+    """
 
     id: str
     lower: str
@@ -77,6 +83,7 @@ class StandardPolicy:
     yanked: tuple[YankRecord, ...]
     retired: tuple[str, ...]
     note: str | None
+    versions: dict[str, str]
 
     def in_range(self, version: str) -> bool:
         return version_tuple(self.lower) <= version_tuple(version) < version_tuple(self.upper)
@@ -484,6 +491,28 @@ def _dependency_policy_from(path: Path) -> DependencyPolicy:
         note = raw.get("note")
         if note is not None and not isinstance(note, str):
             raise StandardsError(f"{where}: note must be a string or absent")
+        versions_raw = raw.get("versions")
+        if versions_raw is None:
+            versions: dict[str, str] = {}
+        elif not isinstance(versions_raw, dict):
+            raise StandardsError(f"{where}: versions must be an object of per-version rows")
+        else:
+            versions = {}
+            for version, record in sorted(versions_raw.items()):
+                # A per-version row exists to carry the note (its only
+                # field); a row without one is malformed governance data,
+                # refused fail-closed like the yanked record's shape.
+                note_pointer = record.get("migration_note") if isinstance(record, dict) else None
+                if (
+                    VERSION_PATTERN.fullmatch(str(version)) is None
+                    or not isinstance(note_pointer, str)
+                    or not note_pointer
+                ):
+                    raise StandardsError(
+                        f"{where}: versions entry {version!r} needs a pure-semver "
+                        "key and a non-empty migration_note string"
+                    )
+                versions[str(version)] = note_pointer
         policies[identifier] = StandardPolicy(
             id=identifier,
             lower=lower or "",
@@ -491,6 +520,7 @@ def _dependency_policy_from(path: Path) -> DependencyPolicy:
             yanked=tuple(yanked),
             retired=tuple(retired_raw),
             note=note,
+            versions=versions,
         )
     return DependencyPolicy(policies)
 
@@ -609,7 +639,9 @@ def validate_dependency_policy(
     retired and yanked stay disjoint and retired names no retained version
     (``policy_status_conflict:`` — retired means "used and dead": the number
     shipped once and the tree no longer carries it, so a live directory
-    contradicts the status).
+    contradicts the status); a per-version migration-note row names a retained
+    version (the yanked entry's ``policy_entry_unresolved:`` — a note for a
+    number the tree never retained or already retired is dead governance data).
     """
     manifest_ids = {entry.id for entry in manifest.standards}
     unknown = sorted(set(policy.standards) - manifest_ids)
@@ -667,6 +699,15 @@ def validate_dependency_policy(
             # is always refused by one of those two conditions before a
             # dedicated overlap arm could fire. No enumeration ever listed
             # the deleted prefix.
+        for version in sorted(row.versions):
+            # Same carrier rule as yanked (#219, VR-36/SM-5): a
+            # from-predecessor note can only exist for a retained version
+            # — a retired identifier is refused here too (not retained).
+            if version not in retained:
+                raise StandardsError(
+                    f"policy_entry_unresolved: {entry.id}: migration-note row "
+                    f"{version} names a version with no retained directory"
+                )
 
 
 def validate_manifest(manifest: StandardsManifest, root: Path) -> None:

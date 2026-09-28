@@ -193,8 +193,10 @@ def _log_device_conformance(
     ``acknowledged_pins`` (device_id -> acked pin, the admission record's
     mapping) was operator-acknowledged at load and does not warn — the
     warning is for the unacknowledged state; an ack naming a different pin
-    does not apply (review fold R4). No production caller threads
-    acknowledgements yet (design record D11 — slice 5)."""
+    does not apply (review fold R4). Production threading is the device
+    row's persisted ``acknowledgement_json`` (issue #219, D11): the
+    admission record's own copy of the acknowledgement this load ran
+    behind, read back by ``Operations._device_projection``."""
     pin_value = descriptor.get("otdp_version")
     if not isinstance(pin_value, str) or not pin_value:
         # A legacy pre-full-form row carries no pin: nothing to classify
@@ -1519,8 +1521,19 @@ class Operations:
         # 0.1.0's closed device def — an interface bump this slice does not
         # make), so a non-conforming derivation surfaces through D4's
         # sanctioned free-form channel: the server-side log. The wire field
-        # lands with the interface lane.
-        _log_device_conformance(row.get("device_id"), descriptor)
+        # lands with the interface lane. The acknowledged-pin map comes
+        # from the ROW (issue #219, D11): the admission record's persisted
+        # acknowledgement — pure over the row, and a corrupt record reads
+        # as unacknowledged (the conservative warning direction).
+        acknowledged: dict[str, str] | None = None
+        record_text = row.get("acknowledgement_json")
+        if record_text:
+            try:
+                record = json.loads(record_text)
+                acknowledged = {str(row["device_id"]): str(record["otdp_version"])}
+            except (KeyError, TypeError, ValueError):
+                acknowledged = None
+        _log_device_conformance(row.get("device_id"), descriptor, acknowledged_pins=acknowledged)
         return {
             "device_id": row["device_id"],
             "generation": row["generation"],
