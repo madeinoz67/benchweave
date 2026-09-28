@@ -223,14 +223,20 @@ def _vr37_text(row: Any, pin: str, corpus: Path, policy: Any) -> str:
     are pinned text-equal by test). Move-to: the highest served version —
     identical under the ≥-pin filter and its fallback (proof: when the
     served max is ≥ the pin it is itself a candidate; when it is not, the
-    candidate set is empty and both rules fall back to it)."""
+    candidate set is empty and both rules fall back to it). Migration: the
+    move-to version's from-predecessor note pointer when the policy block
+    carries one (#219's carrier), else the documented placeholder — the
+    seed carries no note rows (SM-5 from adoption, D6), so a real pointer
+    appears exactly when a release has one."""
     served = served_versions_from_corpus(policy, corpus, _OTDP)
     move_to = max(served, key=version_tuple) if served else row.lower
+    note_pointer = row.versions.get(move_to)
+    migration = note_pointer if note_pointer is not None else "migration guidance pending"
     return (
         f"standard: {_OTDP}; pinned: {pin}; "
         f"supported: >={row.lower},<{row.upper}; "
         f"move-to: {move_to}; "
-        "migration: migration guidance pending"
+        f"migration: {migration}"
     )
 
 
