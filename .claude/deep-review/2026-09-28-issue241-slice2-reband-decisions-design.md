@@ -289,6 +289,15 @@ unforced widening — the arm is refused in that case.
   with row 17 counted in T (Evidence A's tip baseline: T=61 → 62, G shrinks by one, U
   unchanged — union and intersection re-proven by the recorded collect diff, not
   asserted).
+
+  *Erratum (2026-09-28, wave-1 review fold — adversary F4; history above not
+  rewritten): the prediction was made before the D1 pins were counted as marked-set
+  members. The ACTUALS, measured at the pre-fold branch tip and now the
+  outcome-of-record: **T=64, G=2396, U=2460** (T = 61 + 1 row-17 + 2 D1 pins;
+  G = 2397 − 1 row-17; U = 2458 + 2 pins), `T∪G == U` and `T∩G == ∅` re-proven by
+  collected-id set diff. The PR body carries the actuals, including the wave-1 fold's
+  own recount (two further marked-set members: the mixed-composition arm and the
+  drain-cap exhaustion arm, both in the timing-marked continuity file).*
 - **AR-3 (both lanes green, full rollup):** `gates` (`-n auto -m "not timing"`) and
   `timing` (`-m timing`) green on the PR, read from the COMPLETE `gh pr checks` output
   (zero fail, zero pending — never a piped view; `scripts/merge-verified.sh`).
@@ -477,9 +486,16 @@ the row-17 marker, and documentation with denominators.
 
 1. **The D1 retry masks a real delivery defect.** A fixture that generates frames
    faster than delivery drains would burn three rigs per trial before reding.
-   Falsifier/mitigation: exhaustion still reds; `retry_sites` prints the composition —
-   a lane log showing `drain-cap` repeated to exhaustion is the visible signature; the
-   site-agnostic exhaustion machinery (already pinned) proves the red survives.
+   Falsifier/mitigation: exhaustion still reds; the site-agnostic exhaustion machinery
+   (already pinned) proves the red survives. The visible signature — a lane log
+   showing `drain-cap` repeated to exhaustion — required the wave-1 fold (critic F1)
+   to exist: pre-fold the exhaustion re-raise carried only the LAST attempt's site
+   and dropped the composition; post-fold it renders the full site sequence into the
+   message (pinned MIXED — drain-cap, priming-validity, drain-cap — and homogeneous).
+   Green-path retries are outcome-recorded (`outcome["retry_sites"]`) but NOT
+   lane-visible — `pytest -q` swallows the per-trial print — so the lane-health
+   signal is exhaustion-only, and the fold is what makes that signal carry the
+   composition (wave-1 disclosure, critic F2).
 2. **The row-17 override is contested** (slice 1 said "stays unmarked"). The override
    is evidence-based (convention line + xdist environment change post-dating the
    disposition), disclosed here and in the issue comment. Falsifier: the owner's
@@ -497,7 +513,17 @@ the row-17 marker, and documentation with denominators.
    outside its window.
 6. **Pin-test runtime.** The D1 integration arm burns one real 2000 ms cap spin
    (~2–4 s in the lane). Accepted, disclosed; the type arm uses a short explicit
-   `cap_ms` so the classification itself is pinned cheaply.
+   `cap_ms` so the classification itself is pinned cheaply. Wave-1 fold arithmetic
+   (critic F3, reviewer's numbers; measured where noted): per cap-hit attempt
+   ~2.35 s = 2000 ms cap + ~300 ms construction + ~50 ms belt; an exhaustion reds
+   at ×3.0 time-to-red — the wave-1 drain-cap exhaustion arm measured **6.02 s**
+   (junitxml time attribute, one local serialized run; three cap spins) against the
+   reviewer's ~7 s estimate; a worst-case all-starved lane adds ~3.5 min to the
+   ~35 s pytest portion (Evidence A: 12 timing executions, job wall 42–52 s
+   including uv sync, pytest portion ~35 s serialized) — the GHA default 360-min
+   job timeout is nowhere near conversion. REOPEN TRIGGER: the first timing-lane
+   wall ≥ 2x baseline with drain-cap retries visible in the log — retry cost has
+   then become a lane-shape change, not a transient.
 7. **Measurement-vs-rule ordering** (the pre-commitment residual of §0's protocol).
    Mitigated by the timestamped rules message and the measurer's independence; named,
    not hidden.
@@ -510,7 +536,7 @@ the row-17 marker, and documentation with denominators.
 | `tests/unit/test_otdp_bridge.py` | row-17 test gains `@pytest.mark.timing` (no band change). RESOLVED: document-only — quiet append_wait_ms 236.2–267.4 inside the [150, 350] window; no band change |
 | `drain cap value` | RESOLVED: unchanged at 2000 ms — D_max = 102.3 ms (max over quiet 88.2 / loaded 102.3), 22.6x headroom; the raise refused as an unforced widening (§5.2 D1 kill direction) |
 | `.claude/deep-review/2026-09-28-issue241-slice2-reband-decisions-design.md` | this record, commit 1 on the branch, §6 filled |
-| `docs/internal/drift-and-obligations.md` | G5 sweep only if a bound moved or prose names the marked-set membership (the CI-map row's "the row-B contention cells" phrasing stays true — row 17 is a row-B clamp test) |
+| `docs/internal/drift-and-obligations.md` | G5 sweep only if a bound moved or prose names the marked-set membership (the CI-map row's "the row-B contention cells" phrasing stays true — row 17 is a row-B clamp test). *Wave-1 fold (adversary F3): the pre-adjudication is superseded — the phrase now reads "the contention and clamp cells", because row 17 moved the marked set's membership and G4 named-set regenerability outweighs the row-B taxonomy reading* |
 | issue #241 | outcome comment: per-gate verdicts with numbers, the slice-1 post-merge counter status, the #247 handoff disposition (the promised handoff, now posted), the row-17 override disclosure |
 
 No `src/` bytes. No `standards/` bytes. Every numeric bound in the marked set is
