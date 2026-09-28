@@ -29,9 +29,10 @@ Quantities (record item 10, amended by B2/C4/C5/C14):
    is reported as row-9 input (the busy-timeout clamp itself is row-9
    scope).
 
-Assertions are orderings with generous tolerances (100–150 ms bands on
-~50–300 ms fixtures) — CI-stable on the lanes that exist (no Windows
-lane). Monitor prerequisites per C14: active lease, phase=body, bench
+Assertions are orderings with generous per-quantity tolerances (the
+TOLERANCE_MS model bands and the queued-run delay's BUDGET_MS−40..+300
+band, over ~50–300 ms fixtures) — CI-stable on the lanes that exist (no
+Windows lane). Monitor prerequisites per C14: active lease, phase=body, bench
 signals, a non-tripping policy — the fixture fails loudly if the wrapper
 is dropped to "simplify" (the priming dispatch asserts ticks and reads
 actually flow).
@@ -47,6 +48,8 @@ import threading
 import time
 from pathlib import Path
 from typing import Any
+
+import pytest
 
 from benchweave.content.capture_services import build_capture_services
 from benchweave.content.capture_store import CaptureStagingStore
@@ -67,6 +70,13 @@ from benchweave.host.types import (
 )
 from benchweave.interfaces.worker import RunWorker
 from benchweave.state.store import Store
+
+# The file IS one of the two real-paced rigs (issue #241 slice 1): every
+# quantity here asserts a wall-clock band (per-quantity tolerances — e.g.
+# TOLERANCE_MS on the model bands, BUDGET_MS−40..+300 on the queued-run
+# delay — over ~50–300 ms fixtures), so the whole module runs serialized
+# in the dedicated timing lane.
+pytestmark = [pytest.mark.timing]
 
 BUDGET_MS = 50
 TOLERANCE_MS = 150

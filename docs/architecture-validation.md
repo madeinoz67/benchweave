@@ -1,10 +1,14 @@
 # Architecture validation
 
 Architecture contracts are executable review surfaces. The **gates** job in
-GitHub CI validates them on every push and pull request via `pytest -q`,
-without path filters. Schema violations, contract drift and failed rejection
-cases fail the job. Configure this job as a required status check when enabling
-GitHub branch protection; adding a workflow alone does not enforce merge rules.
+GitHub CI validates them on every push and pull request via
+`pytest -q -m "not timing"`, without path filters — no contract,
+schema or rejection test carries the `timing` marker, so the deselection
+never touches this surface (the real-paced set runs in the dedicated
+**timing** lane instead). Schema violations, contract drift and failed
+rejection cases fail the job. Configure this job as a required status check
+when enabling GitHub branch protection; adding a workflow alone does not
+enforce merge rules.
 
 ## Run locally
 

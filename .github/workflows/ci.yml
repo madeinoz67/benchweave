@@ -53,12 +53,53 @@ jobs:
           uv run mypy
 
       - name: Test
-        run: uv run pytest -q
+        # Complementary partition with the timing job (issue #241 slice 1):
+        # `-m "not timing"` here + `-m timing` there = the full collection —
+        # structural by construction (the complementary markers admit no
+        # third state), with the proof at PR time: the builder diffs the two
+        # collected-id lists against the unfiltered collection (union equal,
+        # intersection empty) and records it in the PR body (design §5 AR-1;
+        # not an automated gate), so no test loses CI execution. The
+        # real-paced set runs on its own fresh VM in the timing lane instead
+        # of behind this job's bulk-suite residue.
+        run: uv run pytest -q -m "not timing"
 
       - name: Standards sync check
         # Re-export the corpus to a temp dir and refuse any drift between
         # the main-repo standards, the SDK lock and the vendored tree.
         run: make check-sdk-standards
+
+  timing:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          python-version: "3.13"
+
+      - name: Sync environment
+        run: uv sync --locked
+
+      # The real-paced lane (issue #241 slice 1): the marked set runs
+      # serialized on its own fresh VM, within ~2 min of boot, so its
+      # wall-clock bands are measured before any bulk-suite residue (page
+      # cache, draining threads, WAL checkpoints) lands on the runner — and
+      # a red in the real-paced subset reads as a timing question, not a
+      # logic one. Exception: the continuity file's ride-along logic tests
+      # (design-record ride-along disclosure) can red as logic. No lint, no
+      # mypy, no fixture keys, no standards check: gates runs those over the
+      # same tree, and no marked test depends on the signing keys (the
+      # signing tests are registry tests, unmarked). Stays SERIAL FOREVER:
+      # adopting xdist here would reintroduce exactly the intra-suite
+      # competition this lane exists to remove. What this lane cannot buy is
+      # a quiet host — a noisy neighbor can still stretch a band; slice 2's
+      # re-bands are the answer to that, not parallelism.
+      - name: Test (timing lane)
+        run: uv run pytest -q -m timing
 
   ui:
     runs-on: ubuntu-latest

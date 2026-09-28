@@ -2510,6 +2510,7 @@ def _row_b_dispatch(
     return plugin, worker, outcome
 
 
+@pytest.mark.timing
 def test_row_b_clamp_bounds_the_mid_capture_wait_by_the_step_deadline(
     tmp_path: Path,
 ) -> None:
@@ -2583,6 +2584,7 @@ def test_row_b_clamp_bounds_the_mid_capture_wait_by_the_step_deadline(
         harness.close()
 
 
+@pytest.mark.timing
 @pytest.mark.parametrize(
     ("default_ms", "deadline_ms", "hold_s", "clamp_wins"),
     [
@@ -2635,6 +2637,7 @@ def test_row_b_both_clamp_orderings_classify_one_pair(
         harness.close()
 
 
+@pytest.mark.timing
 def test_row_b_clamp_is_entry_time_remaining_disclosed_overshoot(
     tmp_path: Path,
 ) -> None:

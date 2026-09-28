@@ -76,6 +76,13 @@ from benchweave.host.types import (
 )
 from benchweave.state.store import Store
 
+# The file IS one of the two real-paced rigs (issue #241 slice 1): every
+# trial here measures wall-clock quantities against pacing bands, so the
+# whole module runs serialized in the dedicated timing lane. The static
+# classifier-table and retry-pin tests ride along — they still run in CI,
+# just in the lane (sub-second cost, disclosed).
+pytestmark = [pytest.mark.timing]
+
 # --- the rig's fixture constants ----------------------------------------------------
 #
 # Every number here is a FIXTURE parameter for measurement discriminability
@@ -552,6 +559,18 @@ class BRigAdapter:
         return event
 
 
+def _probe_wall_injection(monitor_wall_rate: float, no_trip: bool) -> bool:
+    """One predicate for the probe-wall exemption (review fold, reviewer
+    finding 4): host-computed ages carry no starvation signal whenever the
+    fixture itself injects the wall — a stretched monitor wall (rate != 1.0
+    inflates every age by its own factor) OR the probe's no-condition policy
+    variant. The priming classification arms and the pre-flight staleness
+    check share it; the only classify state is a real wall at a live policy
+    (1.0, False), which today's probes never mix — the shared predicate
+    exists so a future partial probe cannot fall between the two signals."""
+    return monitor_wall_rate != 1.0 or no_trip
+
+
 class ContinuityRig:
     """The two-instance harness (design §2.1): direct construction of the
     production objects — ONE store, A capturing (adopted, no stream), B
@@ -567,6 +586,7 @@ class ContinuityRig:
         *,
         device_class: str = "buffered",
         monitor_wall_rate: float = 1.0,
+        no_trip: bool = False,
         policy: dict[str, Any] | None = None,
     ) -> None:
         self.clock = SystemClock()
@@ -697,18 +717,56 @@ class ContinuityRig:
             OperationRequest.read("prime-a", parameter="temp"),
             deadline_ns=self.deadline_ns(2000),
         )
+        # Construction-time starvation, read-#1 presentation (review fold,
+        # HIGH+MEDIUM converged): when the stall predates the wrapper's
+        # pre-dispatch tick, that tick itself reads the aged signal, the
+        # fail-safe latches signal_invalid, and the monitor REFUSES the
+        # priming dispatch at the door — primed.status lands ERROR with a
+        # NOT_DISPATCHED freshness-block envelope. The discriminant is the
+        # same one the measured dispatch uses (_freshness_trip_block: the
+        # monitor's own blocked latch plus the freshness kind), and the
+        # class is the same host starvation, so it retries rather than
+        # dying on the degenerate-wiring assert below.
+        #
+        # Both priming classification arms guard on the SHARED probe-wall
+        # predicate (review folds, critic F2 + reviewer finding 4): a
+        # stretched monitor wall inflates every host-computed age by its
+        # own factor, and the no-condition probe variant ages by policy —
+        # either way an over-aged priming read is the probe's OWN
+        # injection. Classifying it would both retry structurally uselessly
+        # (every construction re-injects the wall) and attribute a probe
+        # artifact to host starvation, misdirecting slice 2.
+        if (
+            primed.status is not OperationStatus.OK
+            and not _probe_wall_injection(monitor_wall_rate, no_trip)
+            and _freshness_trip_block(self, primed)
+        ):
+            raise TrialInfrastructureError(
+                "a bench signal failed to serve at priming (read-#1 "
+                "starvation: the pre-dispatch tick read an aged signal "
+                "and the fail-safe refused the priming read)",
+                site="priming-block-refusal",
+            )
         assert primed.status is OperationStatus.OK, "monitoring fixture degenerate"
         assert len(self.tick_times) >= 2, "the wrapper never ticked"
         assert self.snapshots, "the retain seam never fired"
-        if not all(value.valid for value in self.snapshots[-1][1].values()):
-            # #217 unblock, ADAPTED to #159's F4 doctrine (merged first; it
-            # governs): the priming serve failure is construction-time host
-            # starvation — pre-dispatch by intent, the pre-flight staleness
-            # class — so the SITE raises the structural marker and the
-            # type-keyed matcher retries on a fresh rig; the message-based
-            # matcher this replaced is gone.
+        # Construction-time starvation (issue #241 slice 1, the observed CI
+        # failure): construction itself is an un-polled window (drain_until_
+        # quiet's docstring names it), so sig-rig-b's first read can arrive
+        # aged past max_age_ms on a loaded host — an infrastructure fact,
+        # never a property of the measured system, so the marker says retry
+        # on a fresh rig. The sibling wiring asserts above stay plain:
+        # degenerate wiring has no CI evidence of load-triggering, and
+        # retrying it would mask a dropped wrapper behind two wasted rigs.
+        # The shared probe-wall predicate guards here too, same as the
+        # block-refusal arm above.
+        if not _probe_wall_injection(monitor_wall_rate, no_trip) and not all(
+            value.valid for value in self.snapshots[-1][1].values()
+        ):
             raise TrialInfrastructureError(
-                "a bench signal failed to serve at priming"
+                "a bench signal failed to serve at priming "
+                "(construction-time starvation; run 36309281160)",
+                site="priming-validity",
             )
         # Armed exactly as production: B's subscription derives from the
         # bench signal's declared poll_ms (sig-rig-b -> min_interval_ms 50).
@@ -803,7 +861,8 @@ class ContinuityRig:
                 )
                 if _poll_found_dead_session(outcome):
                     raise TrialInfrastructureError(
-                        f"rig-b session already dead at the poll door: {outcome.refusal}"
+                        f"rig-b session already dead at the poll door: {outcome.refusal}",
+                        site="drain-poll-door",
                     )
                 assert not outcome.session_failed, outcome.refusal
                 if outcome.event is not None:
@@ -855,7 +914,19 @@ class TrialInfrastructureError(AssertionError):
     retryable wording raises straight through (pinned by test).
     Subclassing ``AssertionError`` keeps an exhausted retry a normal
     assertion failure for pytest.
+
+    Every raise carries a ``site`` label (review fold, critic F3): the
+    retry budget's evidence base. A bare retry count discards the
+    intermediate sites — exhaustion would report only the last attempt's
+    site — so ``run_trial`` records each failed attempt's label in
+    ``outcome["retry_sites"]`` and the exhausted exception carries its own
+    (the last) site. The keyword is REQUIRED: a defaulted label would let
+    a future site raise unlabelled and silently re-open the hole.
     """
+
+    def __init__(self, message: str, *, site: str) -> None:
+        super().__init__(message)
+        self.site = site
 
 
 def _dead_session_reject(bridge: OTDPBridge, result: OperationResult) -> bool:
@@ -947,6 +1018,28 @@ def _poll_found_dead_session(outcome: PollOutcome) -> bool:
 _ARM_DISPATCH_MS = {"capture": CAPTURE_BUDGET_MS, "non_capture": T_ACQ_MIN_MS}
 
 
+def _construct_rig(db_path: Path, **kwargs: Any) -> ContinuityRig:
+    """Construct a ``ContinuityRig`` whose FAILED construction still closes
+    what it built (review fold, critic F4 + adversary F3):
+    ``_run_trial_once`` builds the rig before its own try, so a raise
+    inside ``__init__`` never reaches that try's finally belt — and the
+    instance handle is lost mid-construction, where no except clause can
+    see it. Allocating the instance first and calling ``__init__``
+    explicitly keeps the handle, so the module's belt shape
+    (``_close_partially_constructed``) can close the partial rig's stream
+    host and store — the only OS-bearing objects; the adapters spawn no
+    threads, adversary-verified on this fold. Best-effort and idempotent
+    (sqlite closes are idempotent; the stream host's close sweeps every
+    constructed bridge)."""
+    rig = ContinuityRig.__new__(ContinuityRig)
+    try:
+        ContinuityRig.__init__(rig, db_path, **kwargs)
+    except BaseException:
+        _close_partially_constructed([rig])
+        raise
+    return rig
+
+
 def run_trial(
     tmp_path: Path,
     *,
@@ -970,14 +1063,27 @@ def run_trial(
     the host starved the fixture BEFORE it (a settle stretched past the
     dispatch-scale bound, or a >50 ms read path tripping the bridge's
     late-result poison on a fast read) is an infrastructure failure, not a
-    measurement — ``run_trial`` retries it on a FRESH rig, at most twice,
-    and records the retry count in the outcome. The retryable class is
+    measurement — ``run_trial`` retries it on a FRESH rig under a fixed
+    three-attempt budget (the initial attempt plus two retries, so an
+    exhausted trial has built exactly three rigs, pinned ``len(rigs) == 3``),
+    and records the retry count in the outcome, alongside the ordered
+    ``retry_sites`` label of every failed attempt (review fold, critic F3:
+    a bare count discards the composition — a priming-then-pre-flight
+    retry is not the same lane health signal as a single-site retry — and
+    an exhausted trial's exception carries its own, last, site). The
+    retryable class is
     carried STRUCTURALLY (review finding F4): every site that has
     classified its own failure as host starvation raises
     ``TrialInfrastructureError`` — an ``AssertionError`` subclass, so an
     exhausted retry still fails the trial as an assertion — and the
     matcher below inspects that TYPE, never message text. The carrying
-    sites: the pre-flight staleness check (pre-dispatch by intent), a
+    sites: the construction-time priming block-refusal — read-#1
+    starvation, where the wrapper's pre-dispatch tick reads the aged
+    signal and the fail-safe refuses the priming dispatch at the door
+    (review fold: the heaviest presentation of the exact slice-1
+    condition) — the construction-time priming signal-validity check
+    (issue #241 slice 1, the observed CI failure), the pre-flight
+    staleness check (pre-dispatch by intent), a
     dispatch whose refusal is the dead-session door reject (the bridge's
     failure latch plus NOT_DISPATCHED, not its wording) or the monitor's
     own ``blocked``-latched freshness (``signal_invalid``) door-refusal —
@@ -991,6 +1097,7 @@ def run_trial(
     ``AssertionError`` that merely quotes the historical retryable wording
     (pinned by test). Starvation-shaped NON-retryables that remain are
     disclosed at ``_poll_found_dead_session`` as an owner row."""
+    retry_sites: list[str] = []
     for attempt in range(3):
         try:
             outcome = _run_trial_once(
@@ -1002,8 +1109,10 @@ def run_trial(
                 no_trip=no_trip,
             )
             outcome["retries"] = attempt
+            outcome["retry_sites"] = retry_sites
             return outcome
-        except TrialInfrastructureError:
+        except TrialInfrastructureError as error:
+            retry_sites.append(error.site)
             if attempt == 2:
                 raise
     raise AssertionError("unreachable retry exhaustion")
@@ -1019,10 +1128,11 @@ def _run_trial_once(
     monitor_wall_rate: float,
     no_trip: bool,
 ) -> dict[str, Any]:
-    rig = ContinuityRig(
+    rig = _construct_rig(
         tmp_path / f"rig-{arm}-{device_class}-{trial_index}.db",
         device_class=device_class,
         monitor_wall_rate=monitor_wall_rate,
+        no_trip=no_trip,
         policy=NO_TRIP_POLICY if no_trip else POLICY,
     )
     try:
@@ -1039,18 +1149,20 @@ def _run_trial_once(
         rig.settle(100)
         rig.drain_until_quiet()
         rig.align_to_frame()
-        # Loud pre-flight (skipped for the stretched-wall probe, whose 10x
-        # host ages are the point): if the fixture ever enters the measured
-        # dispatch with the monitored signal already stale, the block that
-        # follows would misreport the cause — fail HERE with the actual age.
-        if not no_trip:
+        # Loud pre-flight (skipped whenever the fixture itself injects the
+        # wall — the shared probe-wall predicate, reviewer finding 4): if
+        # the fixture ever enters the measured dispatch with the monitored
+        # signal already stale, the block that follows would misreport the
+        # cause — fail HERE with the actual age.
+        if not _probe_wall_injection(monitor_wall_rate, no_trip):
             last_sig_b = rig.snapshots[-1][1][SIG_B]
             if not last_sig_b.valid:
                 # Pre-dispatch by intent (F4): entering the measured window
                 # with an already-stale signal is fixture starvation, never
                 # a property of the measurement — the marker says retry.
                 raise TrialInfrastructureError(
-                    f"pre-dispatch staleness: {SIG_B} age {last_sig_b.age_ms} ms"
+                    f"pre-dispatch staleness: {SIG_B} age {last_sig_b.age_ms} ms",
+                    site="pre-flight-staleness",
                 )
         write_gap: float | None = None
 
@@ -1102,7 +1214,7 @@ def _run_trial_once(
                 f"{result.error.message if result.error else ''}"
             )
             if _dispatch_failure_is_infrastructure(rig, result):
-                raise TrialInfrastructureError(detail)
+                raise TrialInfrastructureError(detail, site="dispatch-door")
             raise AssertionError(detail)
         duration_ms = (dispatch_end_ns - dispatch_start_ns) / 1e6
 
@@ -1247,7 +1359,7 @@ def _run_trial_once(
                     f"write leg landed {write_result.status.value}: {write_result.error}"
                 )
                 if _dispatch_failure_is_infrastructure(rig, write_result):
-                    raise TrialInfrastructureError(detail)
+                    raise TrialInfrastructureError(detail, site="write-leg-door")
                 raise AssertionError(detail)
             write_gap = _max_tick_gap_ms(rig.tick_times[write_mark:])
 
@@ -1681,8 +1793,10 @@ def test_axis_trials_complete_all_four_axes(
     non-capture arm COMPLETES at T_acq_min; if this ever fails the serial
     model changed and the disclosure is stale). The write leg's gap is
     recorded on the non-capture arm (§2.2's second leg). The retry cap is
-    part of the acceptance: a trial may retry at most twice, and a
-    chronically starved host must not ship all-green on the retry crutch —
+    part of the acceptance: a trial runs a fixed three-attempt budget (the
+    initial attempt plus two retries — exhaustion builds exactly three
+    rigs, pinned ``len(rigs) == 3``), and a chronically starved host must
+    not ship all-green on the retry crutch —
     the assert trips if the retry loop is ever widened without amending
     the acceptance rule."""
     trials = _cell(tmp_path, arm, device_class)
@@ -1697,6 +1811,11 @@ def test_axis_trials_complete_all_four_axes(
         assert trial["retries"] <= 2, (
             f"trial retried {trial['retries']} times (max 2): {trial}"
         )
+        sites_note = (
+            f", sites {','.join(trial['retry_sites'])}"
+            if trial["retry_sites"]
+            else ""
+        )
         print(
             f"\n{arm}/{device_class} trial {trial['trial']}: "
             f"X1={trial['x1_ms']:.1f} X2={trial['x2_ms']:.1f} "
@@ -1705,7 +1824,8 @@ def test_axis_trials_complete_all_four_axes(
             f"onset->obs {trial['onset_to_observation_ms']:.1f}, "
             f"obs->enter {trial['observation_to_enter_call_ms']:.1f}, "
             f"enter->action {trial['enter_call_to_action_ms']:.1f}, "
-            f"safe {trial['safe_state']})"
+            f"safe {trial['safe_state']}, "
+            f"retries {trial['retries']}{sites_note})"
         )
     if arm == "non_capture":
         # The write leg blacked out ticks too (the exposure class runs
@@ -2168,7 +2288,10 @@ def test_priming_serve_failure_retries_as_the_infrastructure_marker(
     def flaky_once(*args: Any, **kwargs: Any) -> dict[str, Any]:
         calls.append(kwargs["trial_index"])
         if len(calls) == 1:
-            raise TrialInfrastructureError("a bench signal failed to serve at priming")
+            raise TrialInfrastructureError(
+                "a bench signal failed to serve at priming",
+                site="priming-validity",
+            )
         return {"arm": kwargs["arm"], "trial": kwargs["trial_index"]}
 
     monkeypatch.setitem(globals(), "_run_trial_once", flaky_once)
@@ -2248,7 +2371,9 @@ def test_infrastructure_marker_retries_on_a_fresh_trial(
     def flaky_once(*args: Any, **kwargs: Any) -> dict[str, Any]:
         calls.append(kwargs["trial_index"])
         if len(calls) == 1:
-            raise TrialInfrastructureError("pre-dispatch staleness: synthetic")
+            raise TrialInfrastructureError(
+                "pre-dispatch staleness: synthetic", site="pre-flight-staleness"
+            )
         return {"arm": kwargs["arm"], "trial": kwargs["trial_index"]}
 
     monkeypatch.setitem(globals(), "_run_trial_once", flaky_once)
@@ -2266,18 +2391,337 @@ def test_infrastructure_marker_exhausts_at_two_retries(
     """The cap: a chronically starved host fails after exactly three
     attempts, and the marker stays an ``AssertionError`` subclass so the
     exhausted trial still fails as an assertion (the axis trials'
-    starved-host guard keeps its meaning)."""
+    starved-host guard keeps its meaning). The exhausted exception carries
+    its own site label — the LAST attempt's site travels with the raise,
+    not only with a successful outcome."""
     calls: list[int] = []
 
     def always_failing_once(*args: Any, **kwargs: Any) -> dict[str, Any]:
         calls.append(kwargs["trial_index"])
-        raise TrialInfrastructureError("starved")
+        raise TrialInfrastructureError("starved", site="synthetic")
 
     monkeypatch.setitem(globals(), "_run_trial_once", always_failing_once)
     with pytest.raises(TrialInfrastructureError) as raised:
         run_trial(tmp_path, arm="control", device_class="unbuffered", trial_index=1)
     assert len(calls) == 3  # the attempt plus at most two retries
     assert isinstance(raised.value, AssertionError)
+    assert raised.value.site == "synthetic"
+
+
+def test_retry_composition_records_each_failed_attempts_site(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review fold (MEDIUM, critic F3): the retry budget's evidence base.
+    A bare ``retries`` int discards the intermediate sites — exhaustion
+    reports only the LAST attempt's site, so a mixed-sequence trial (priming
+    starvation, then pre-flight staleness, then success) was indistinguishable
+    from a single-site retry, and the design's lane-sits-at-2 signal was
+    unobservable. Pin: ``outcome["retry_sites"]`` carries each failed
+    attempt's site IN ORDER across a forced mixed-site sequence."""
+    calls: list[int] = []
+
+    def mixed_sites_once(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        calls.append(kwargs["trial_index"])
+        if len(calls) == 1:
+            raise TrialInfrastructureError(
+                "priming starvation: synthetic", site="priming-validity"
+            )
+        if len(calls) == 2:
+            raise TrialInfrastructureError(
+                "pre-dispatch staleness: synthetic", site="pre-flight-staleness"
+            )
+        return {"arm": kwargs["arm"], "trial": kwargs["trial_index"]}
+
+    monkeypatch.setitem(globals(), "_run_trial_once", mixed_sites_once)
+    outcome = run_trial(
+        tmp_path, arm="non_capture", device_class="buffered", trial_index=9
+    )
+    assert outcome["retries"] == 2, outcome["retries"]
+    assert outcome["retry_sites"] == ["priming-validity", "pre-flight-staleness"]
+    assert calls == [90, 91, 92]
+
+
+# --- the priming-starvation classification (#241 slice 1) ---------------------------
+
+
+def _install_priming_starvation(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    every_construction: bool,
+    starve_from_read: int = 2,
+) -> list[ContinuityRig]:
+    """Force the over-aged priming B-read (#241 slice 1, design §2.1): B's
+    FIRST tick read serves fresh (the healthy fixture — a stale first read
+    trips the block at the pre-tick, the read-#1 presentation the review
+    fold classifies as retryable infrastructure), and every read AFTER it
+    lands ten seconds before the open reference — far past the 300 ms
+    ``max_age_ms`` — so the post-dispatch tick's retained snapshot is the
+    one that goes invalid. (The observed CI failure reached the same
+    assert by another driver — the divergent-wall probe's rate-10
+    injection inflating every host age on a condition-free config, which
+    the wall-rate guard excludes from the classification; this helper
+    forces the aged-read presentations the classification itself routes
+    to retry.) ``starve_from_read`` moves the threshold: 2 (the
+    default) starves reads two onward — the post-tick presentation; 1
+    starves every read including the first — the pre-tick block-refusal
+    presentation. The first construction's adapter only, or every
+    construction's in the exhaustion shape. Returns the rigs (including
+    any that raised partway through construction) for the caller's
+    failure belt."""
+    rigs: list[ContinuityRig] = []
+    adapters: list[BRigAdapter] = []
+    reads: dict[int, int] = {}
+    original_init = ContinuityRig.__init__
+
+    def counting_init(self: ContinuityRig, db_path: Path, **kwargs: Any) -> None:
+        rigs.append(self)
+        original_init(self, db_path, **kwargs)
+
+    monkeypatch.setattr(ContinuityRig, "__init__", counting_init)
+    original_b_init = BRigAdapter.__init__
+
+    def counting_b_init(self: BRigAdapter, *, buffered: bool) -> None:
+        original_b_init(self, buffered=buffered)
+        adapters.append(self)
+
+    monkeypatch.setattr(BRigAdapter, "__init__", counting_b_init)
+    original_wall_at = BRigAdapter._wall_at
+
+    def starved_wall_at(self: BRigAdapter, mono_ns: int) -> str:
+        starved = adapters if every_construction else adapters[:1]
+        if any(self is adapter for adapter in starved):
+            seen = reads.get(id(self), 0) + 1
+            reads[id(self)] = seen
+            if seen >= starve_from_read:
+                stamp = datetime.fromtimestamp(self._ref_epoch - 10.0, tz=UTC)
+                return stamp.isoformat().replace("+00:00", "Z")
+        return original_wall_at(self, mono_ns)
+
+    monkeypatch.setattr(BRigAdapter, "_wall_at", starved_wall_at)
+    return rigs
+
+
+def _close_partially_constructed(rigs: list[ContinuityRig]) -> None:
+    """The failure belt for rigs whose construction raised before
+    ``_run_trial_once``'s own belt could see them — the module's belt shape
+    (the stream host's close sweeps every constructed bridge; sqlite closes
+    are idempotent), best-effort over whatever the failed construction
+    managed to build."""
+    for rig in rigs:
+        stream_host = getattr(rig, "stream_host", None)
+        if stream_host is not None:
+            with suppress(Exception):
+                stream_host.close()
+        store = getattr(rig, "store", None)
+        if store is not None:
+            with suppress(Exception):
+                store.close()
+
+
+def test_failed_construction_leaves_no_unclosed_store(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review fold (LOW, critic F4 + NIT, adversary F3): a construction-time
+    raise escapes ``_run_trial_once``'s failure belt — the rig is built
+    BEFORE the try whose finally closes the stream host and store, so a
+    starved construction leaked its sqlite handle and bridge objects into
+    the next attempt's timing envelope (the pins carried their own belt;
+    the module machinery had none). Machine check, census style: across an
+    exhausted construction-starved trial, every ``Store.open`` is matched
+    by a ``Store.close`` — zero unclosed stores."""
+    opened: list[Store] = []
+    closed: list[Store] = []
+    original_open = Store.open
+    original_close = Store.close
+
+    def counting_open(path: Any, **kwargs: Any) -> Store:
+        store = original_open(path, **kwargs)
+        opened.append(store)
+        return store
+
+    def counting_close(self: Store) -> None:
+        closed.append(self)
+        original_close(self)
+
+    monkeypatch.setattr(Store, "open", staticmethod(counting_open))
+    monkeypatch.setattr(Store, "close", counting_close)
+    rigs = _install_priming_starvation(monkeypatch, every_construction=True)
+    try:
+        with pytest.raises(TrialInfrastructureError):
+            run_trial(
+                tmp_path, arm="non_capture", device_class="buffered", trial_index=6
+            )
+        assert len(rigs) == 3
+        assert opened, "the census saw no Store.open"
+        unclosed = [store for store in opened if store not in closed]
+        assert not unclosed, (
+            f"{len(unclosed)} of {len(opened)} opened store(s) left unclosed "
+            "by failed constructions"
+        )
+    finally:
+        # Session hygiene for the RED shape: pre-fix the module leaks them,
+        # and this test must not leak them into the session too.
+        _close_partially_constructed(rigs)
+
+
+def test_priming_signal_starvation_is_infrastructure_and_retries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Issue #241 slice 1, direction (a): construction-time priming
+    starvation is infrastructure, so it retries on a fresh rig. The C14
+    priming block's signal-validity check is a ``TrialInfrastructureError``
+    site (construction itself is an un-polled window — ``drain_until_quiet``'s
+    own docstring names it — so sig-rig-b's first read can arrive aged past
+    ``max_age_ms`` on a loaded host, the observed CI failure): the first
+    construction's starved priming read must retry, not fail the trial, and
+    the second, unpatched construction must complete it."""
+    rigs = _install_priming_starvation(monkeypatch, every_construction=False)
+    try:
+        outcome = run_trial(
+            tmp_path, arm="non_capture", device_class="buffered", trial_index=7
+        )
+        assert outcome["retries"] == 1, outcome["retries"]
+        assert outcome["retry_sites"] == ["priming-validity"], outcome["retry_sites"]
+    finally:
+        _close_partially_constructed(rigs)
+
+
+def test_priming_signal_starvation_exhausts_at_two_retries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The cap at the new site: a host so starved that EVERY construction's
+    priming read is over-aged exhausts the budget — three attempts — and the
+    exhausted failure is still an ``AssertionError`` (the existing
+    exhaustion-pin shape, carried by the real construction path rather than
+    a patched ``_run_trial_once``)."""
+    rigs = _install_priming_starvation(monkeypatch, every_construction=True)
+    try:
+        with pytest.raises(TrialInfrastructureError) as raised:
+            run_trial(
+                tmp_path, arm="non_capture", device_class="buffered", trial_index=1
+            )
+        assert len(rigs) == 3  # the attempt plus at most two retries
+        assert isinstance(raised.value, AssertionError)
+    finally:
+        _close_partially_constructed(rigs)
+
+
+def test_priming_read1_starvation_routes_the_block_refusal_to_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review fold (HIGH+MEDIUM converged): read-#1 starvation — the
+    heaviest presentation, the exact slice-1 condition — never reaches the
+    validity assert. The wrapper's pre-dispatch tick reads the already-aged
+    signal, the fail-safe latches ``signal_invalid``, and the monitor
+    REFUSES the priming dispatch at the door (``primed.status`` not OK).
+    That block-refusal is the same starvation class as the validity
+    presentation — the discriminant is the monitor's own ``blocked`` latch
+    plus the freshness kind (``_freshness_trip_block``) — so it must retry
+    on a fresh rig, not die on the degenerate-wiring assert: the first
+    construction's starved reads retry, the second, unpatched construction
+    completes."""
+    rigs = _install_priming_starvation(
+        monkeypatch, every_construction=False, starve_from_read=1
+    )
+    try:
+        outcome = run_trial(
+            tmp_path, arm="non_capture", device_class="buffered", trial_index=8
+        )
+        assert outcome["retries"] == 1, outcome["retries"]
+    finally:
+        _close_partially_constructed(rigs)
+
+
+def test_priming_read1_starvation_exhaustion_is_the_starvation_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The read-#1 exhaustion arm: EVERY construction's every read aged
+    fails every priming dispatch at the door, and the exhausted failure is
+    the starvation marker itself — never the degenerate-wiring assert
+    (which would misattribute a starved host to broken wiring)."""
+    rigs = _install_priming_starvation(
+        monkeypatch, every_construction=True, starve_from_read=1
+    )
+    try:
+        with pytest.raises(TrialInfrastructureError) as raised:
+            run_trial(
+                tmp_path, arm="non_capture", device_class="buffered", trial_index=9
+            )
+        assert len(rigs) == 3
+        assert "monitoring fixture degenerate" not in str(raised.value)
+    finally:
+        _close_partially_constructed(rigs)
+
+
+def test_divergent_wall_priming_age_never_reads_as_starvation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review fold (MEDIUM, critic F2): under the divergent-wall probe's
+    own injection the priming classification is meaningless and its retry
+    structurally useless — every construction re-injects the stretched
+    wall, and the inflated age (measured ~9x construction elapsed at
+    rate 10; the critic's crossing estimate sits inside the lane's target
+    regime) would red with a FALSE construction-time starvation
+    attribution, misdirecting slice 2. Pin: the probe variant (10x wall,
+    no-condition policy) with every construction's post-tick priming read
+    forced over-aged COMPLETES on the first construction — no
+    TrialInfrastructureError, retries == 0 — the same guard the pre-flight
+    staleness check gives itself under no_trip."""
+    rigs = _install_priming_starvation(monkeypatch, every_construction=True)
+    try:
+        outcome = run_trial(
+            tmp_path,
+            arm="non_capture",
+            device_class="buffered",
+            trial_index=3,
+            monitor_wall_rate=10.0,
+            no_trip=True,
+        )
+        assert outcome["retries"] == 0, outcome["retries"]
+    finally:
+        _close_partially_constructed(rigs)
+
+
+def test_partial_probe_pre_flight_starvation_classification_skips(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review fold (LOW, reviewer finding 4): the probe-wall exemption had
+    two predicates — the priming arms keyed on ``monitor_wall_rate == 1.0``,
+    the pre-flight staleness check on ``no_trip`` — and a partial probe
+    (stretched wall, live policy) fell in the gap: the pre-flight check
+    could classify its own wall-inflated age as host starvation and burn
+    the whole retry budget on rigs that re-inject the same wall. One
+    shared predicate (``_probe_wall_injection``: rate != 1.0 OR no_trip)
+    covers both probe signals at all three classification sites. Pin: the
+    partial probe's terminal failure never carries the pre-flight
+    staleness attribution, and the truth table pins the one classify
+    state (a real wall at a live policy). The threshold is calibrated:
+    construction's own reads (initial, pre-tick, subscribe) stay fresh so
+    construction completes, and the injected age lands exactly at the
+    pre-flight read — pre-fix it reads as starvation (age ~10.5 s against
+    the 300 ms bound) and exhausts the budget."""
+    rigs = _install_priming_starvation(
+        monkeypatch, every_construction=True, starve_from_read=4
+    )
+    try:
+        with pytest.raises(AssertionError) as raised:
+            run_trial(
+                tmp_path,
+                arm="non_capture",
+                device_class="buffered",
+                trial_index=11,
+                monitor_wall_rate=10.0,
+                no_trip=False,
+            )
+        assert "pre-dispatch staleness" not in str(raised.value), raised.value
+        if isinstance(raised.value, TrialInfrastructureError):
+            assert raised.value.site != "pre-flight-staleness", raised.value.site
+    finally:
+        _close_partially_constructed(rigs)
+    assert not _probe_wall_injection(1.0, False)
+    assert _probe_wall_injection(10.0, False)
+    assert _probe_wall_injection(10.0, True)
+    assert _probe_wall_injection(1.0, True)
 
 
 # --- F1 fold: block-ness is the monitor's latch, never cause-adjacency (#159) ------
