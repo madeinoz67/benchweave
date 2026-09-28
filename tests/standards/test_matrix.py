@@ -8,6 +8,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 
 HEADER = (
@@ -387,3 +389,93 @@ def test_e3_a_working_tree_only_policy_edit_does_not_change_the_render(
         "a working-tree-only edit changed the render — the matrix reads "
         "committed state only (CON-12)"
     )
+
+
+# --- fold FIX B: the committed-read fallback's breadth (#219 refute wave) ----------
+
+
+def test_an_untracked_promotion_record_in_a_committed_tree_renders_nothing(
+    tmp_path: Path,
+) -> None:
+    """Lane B's repro: a repo committed WITHOUT promotion-records.json,
+    with an untracked copy dropped in carrying a promotion. The old
+    fallback read the untracked bytes and rendered a 'promoted' stage cell
+    that exists in NO commit — E3's KILL clause (the render reading
+    non-committed state). Path-absent-at-HEAD is committed-absent: the
+    optional input skips staging, the render never moves.
+    """
+    from benchweave.standards.matrix import render_matrix
+
+    repo = _repo_copy(tmp_path)
+    (repo / "standards/promotion-records.json").unlink()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "seed"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )
+    before = render_matrix(repo)
+    assert "promoted" not in before, "precondition: the seed render carries no stage cell"
+
+    record = {
+        "promotion_record_version": 1,
+        "records": [
+            {
+                "standard": "otdp",
+                "target": "0.2.2",
+                "dev_head": "0.2.2-dev",
+                "dev_edit_sha": "0" * 40,
+                "dev_tree_digest": "0" * 64,
+                "landing_sha": "1" * 40,
+            }
+        ],
+    }
+    (repo / "standards/promotion-records.json").write_text(json.dumps(record))
+    dirty = subprocess.run(
+        ["git", "status", "--porcelain"], cwd=repo, capture_output=True, text=True, check=True
+    )
+    assert dirty.stdout.strip(), "the untracked copy must actually be present"
+
+    after = render_matrix(repo)
+    assert after == before, (
+        "an untracked file moved the render — bytes in no commit produced a "
+        "rendered stage cell (CON-12: committed state only)"
+    )
+    assert "promoted" not in after
+
+
+def test_a_poisoned_git_dir_cannot_flip_the_render_to_working_tree_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Lane A's repro: a healthy repo with every input committed, a
+    working-tree edit to the manifest, and GIT_DIR pointed at a broken
+    directory. The old fallback treated the poisoned git failure as
+    'no committed copy' and rendered the WORKING-TREE edit silently. The
+    render must never emit bytes that exist in no commit: the environment
+    cannot redirect the committed read, and a repo that exists but cannot
+    be read refuses loudly rather than degrading.
+    """
+    from benchweave.standards.matrix import render_matrix
+
+    repo = _committed_repo(tmp_path)
+    before = render_matrix(repo)
+
+    manifest_path = repo / "standards/standards-manifest.json"
+    document = json.loads(manifest_path.read_bytes())
+    document["standards"][0].pop("dev", None)
+    document["standards"][0]["version"] = "9.9.9"
+    manifest_path.write_text(json.dumps(document))
+
+    broken = tmp_path / "broken-git-dir"
+    broken.mkdir()
+    (broken / "HEAD").write_text("garbage\n")
+    monkeypatch.setenv("GIT_DIR", str(broken))
+
+    after = render_matrix(repo)
+    assert "9.9.9" not in after, (
+        "a poisoned GIT_DIR flipped the render to working-tree bytes — the "
+        "committed read must not silently degrade"
+    )
+    assert after == before

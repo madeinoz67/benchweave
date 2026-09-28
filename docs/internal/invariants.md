@@ -544,6 +544,18 @@ rather than rewriting the history — that is how this file earns trust.
   to a file under the root (`migration_note_unresolved:`); the note
   carrier is the policy block's per-version row, and pre-adoption
   releases carry none by design (D6).
+  Fold-wave correction (2026-09-28, #219 refute FIX B/F4): the committed
+  read's fallback breadth is narrower than first written, and now stated
+  exactly — wherever HEAD verifies, a path it does not carry is
+  COMMITTED-ABSENT (required inputs refuse; the optional promotion-records
+  input skips staging), never a working-tree read; the working tree is read
+  only where no committed copy can exist to diverge from (a non-git root,
+  or a repository with an unborn HEAD); a repository that exists but cannot
+  be read refuses `matrix_committed_state_unreadable:` rather than
+  substituting working-tree bytes. The git invocations scrub GIT_*
+  environment variables, so a caller's environment cannot redirect the
+  committed read. Pinned by the untracked-promotion-record and
+  poisoned-GIT_DIR repros (`tests/standards/test_matrix.py`).
 
 - **[CON-13]** Website version stamps are a pure function of committed state —
   claim sites in `website/index.html` carry `{{stg-*}}` tokens and never

@@ -5,11 +5,17 @@ edited; :func:`check_matrix` is the staleness gate CI runs. The render reads
 COMMITTED state only (CON-12): every input — the standards manifest (rows,
 the mirrored ``sdk_compatibility`` block, the dependency-policy block), the
 corpus manifest (retained versions), the promotion records, ``pyproject.toml``
-and ``.gitmodules`` — is read from the commit HEAD records, falling back to
-the working tree only when the root carries no committed copy to diverge
-from (the ``check.py`` pyproject@pin dual posture: no pin, no divergence).
-No remote URL and no submodule init enters it, so a fork clone, a moved
-submodule or an uncommitted local edit cannot change a rendered byte.
+and ``.gitmodules`` — is read from the commit HEAD records wherever HEAD
+verifies (a path HEAD does not carry is committed-absent: required inputs
+refuse, the optional promotion-records input skips). The working tree is
+read only where no committed copy can exist to diverge from — a non-git
+root, or a repository whose HEAD is merely unborn — and a repository that
+exists but cannot be read refuses loudly rather than substituting
+working-tree bytes (``_committed_bytes`` states the exact breadth). The
+git invocations run with GIT_* environment variables scrubbed, so a
+caller's environment cannot redirect the committed read. No remote URL and
+no submodule init enters it, so a fork clone, a moved submodule or an
+uncommitted local edit cannot change a rendered byte.
 Commit SHAs are deliberately absent — they move per checkout — and stay in
 the ``versions`` output instead.
 
@@ -22,6 +28,7 @@ promotion records).
 
 from __future__ import annotations
 
+import os
 import subprocess
 import tempfile
 import tomllib
@@ -68,28 +75,88 @@ _COMMITTED_INPUTS = (
 _REQUIRED_INPUTS = frozenset(_COMMITTED_INPUTS) - {"standards/promotion-records.json"}
 
 
-def _committed_bytes(root: Path, relative: str) -> bytes:
-    """HEAD's bytes for ``relative``; the working tree when HEAD has none.
+def _git_result(root: Path, *arguments: str) -> subprocess.CompletedProcess[bytes] | None:
+    """One git invocation, immune to GIT_* environment redirection.
 
-    ``git show`` fails when the root is not a git checkout, HEAD is
-    unborn, or the file was never committed — in each case there is no
-    committed copy to diverge from, so the working tree is the only input
-    (the ``_pinned_sdk_package_version`` dual posture, CON-12's
-    2026-09-25 amendment). A git invocation that cannot even start
-    degrades to the same fallback; the file read that follows refuses by
-    name when nothing exists.
+    The committed read's authority is the root's own repository: a caller's
+    or a harness's ``GIT_DIR``/``GIT_WORK_TREE``/... must not be able to
+    point it elsewhere, so every GIT_* variable is scrubbed from the
+    child's environment (the same reason check.py reads the submodule
+    through its own object store). ``None`` only when git cannot even
+    start — the callers treat that as an unreadable repository, never as
+    "no committed copy".
     """
+    environment = {
+        key: value for key, value in os.environ.items() if not key.startswith("GIT_")
+    }
     try:
-        result = subprocess.run(  # noqa: S603 — fixed argv
-            ["git", "-C", str(root), "show", f"HEAD:./{relative}"],  # noqa: S607 — PATH git is the supported invocation
+        return subprocess.run(  # noqa: S603 — fixed argv
+            ["git", "-C", str(root), *arguments],  # noqa: S607 — PATH git is the supported invocation
             capture_output=True,
             check=False,
+            env=environment,
         )
     except OSError:
-        result = None
-    if result is not None and result.returncode == 0:
-        return result.stdout
-    return (root / relative).read_bytes()
+        return None
+
+
+def _committed_bytes(root: Path, relative: str) -> bytes | None:
+    """HEAD's bytes for ``relative``; None when HEAD carries no copy.
+
+    The fallback's breadth is exact (fold FIX B, #219 refute wave):
+
+    - a root whose HEAD verifies is STRICT — the path is read from HEAD or
+      is committed-absent (``None``); the working tree is never consulted,
+      so an uncommitted edit or an untracked file cannot move a rendered
+      byte;
+    - the working tree is read ONLY where no committed copy can exist to
+      diverge from: the root is not a git repository at all, or the
+      repository exists and HEAD is merely unborn (the non-git and
+      ``git init``-no-commit test fixtures — CON-12's dual posture);
+    - a repository that exists but cannot be read (corrupt HEAD, ambiguous
+      refs, a git failure that is neither "no repo" nor "unborn") refuses
+      loudly (``StandardsError``) — rendering working-tree bytes from a
+      repo whose history is unreadable would launder uncommitted state as
+      committed.
+    """
+    head = _git_result(root, "rev-parse", "--verify", "--quiet", "HEAD")
+    if head is not None and head.returncode == 0:
+        shown = _git_result(root, "show", f"HEAD:./{relative}")
+        if shown is not None and shown.returncode == 0:
+            return shown.stdout
+        return None  # committed-absent: the path is not in HEAD
+    # No verified HEAD. Distinguish "no history can exist here" from
+    # "history exists but cannot be read" — only the former may fall back.
+    gitdir = _git_result(root, "rev-parse", "--absolute-git-dir")
+    if gitdir is None or gitdir.returncode != 0:
+        if not (root / ".git").exists():
+            # Not a git checkout at all: the working tree is the only
+            # input there is. A file absent here too is committed-absent
+            # (the caller refuses for required inputs, skips for optional).
+            try:
+                return (root / relative).read_bytes()
+            except FileNotFoundError:
+                return None
+        raise StandardsError(
+            "matrix_committed_state_unreadable: the root carries a .git but "
+            "its history cannot be read (git rev-parse failed); the matrix "
+            "renders committed state only and will not substitute "
+            "working-tree bytes"
+        )
+    symbolic = _git_result(root, "symbolic-ref", "-q", "HEAD")
+    if symbolic is not None and symbolic.returncode == 0:
+        # Unborn HEAD: a repository with no commits — nothing has ever been
+        # committed here, so there is no committed copy to diverge from.
+        try:
+            return (root / relative).read_bytes()
+        except FileNotFoundError:
+            return None
+    raise StandardsError(
+        "matrix_committed_state_unreadable: HEAD does not verify and is not "
+        "an unborn branch — the repository's history is unreadable; the "
+        "matrix renders committed state only and will not substitute "
+        "working-tree bytes"
+    )
 
 
 @contextmanager
@@ -99,16 +166,22 @@ def _committed_view(root: Path) -> Iterator[Path]:
     The loaders (manifest, policy, promotion records, the two repo-identity
     reads) keep their exact semantics — they are pointed at a root whose
     files are HEAD's bytes, so no loader learns about git and no
-    working-tree state can enter the render.
+    working-tree state can enter the render. A required input that is
+    committed-absent (or absent from a non-git root) refuses
+    ``FileNotFoundError`` — the styled CLI path — never a degraded cell;
+    the optional promotion-records input skips staging (its loader's own
+    absent-means-empty contract).
     """
     with tempfile.TemporaryDirectory(prefix="benchweave-matrix-view-") as tmp:
         view = Path(tmp)
         for relative in _COMMITTED_INPUTS:
-            try:
-                raw = _committed_bytes(root, relative)
-            except FileNotFoundError:
+            raw = _committed_bytes(root, relative)
+            if raw is None:
                 if relative in _REQUIRED_INPUTS:
-                    raise
+                    raise FileNotFoundError(
+                        f"no committed copy of {relative}, a required render "
+                        "input; the matrix renders committed state only"
+                    )
                 continue
             target = view / relative
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -263,21 +336,21 @@ def _main_repo_url(root: Path) -> str:
 
 
 def _sdk_repo_url(root: Path) -> str:
-    """SDK-repo URL from the committed ``.gitmodules`` submodule declaration."""
-    result = subprocess.run(  # noqa: S603 — fixed argv
-        [  # noqa: S607 — PATH git is the supported invocation
-            "git",
-            "config",
-            "--file",
-            str(root / ".gitmodules"),
-            "--get",
-            "submodule.packages/sdk.url",
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
+    """SDK-repo URL from the committed ``.gitmodules`` submodule declaration.
+
+    Routed through :func:`_git_result` for the same GIT_*-scrubbing reason
+    as the committed read — the Sources cell must not be redirectable from
+    the caller's environment.
+    """
+    result = _git_result(
+        root, "config", "--file", str(root / ".gitmodules"), "--get",
+        "submodule.packages/sdk.url",
     )
-    url = result.stdout.strip() if result.returncode == 0 else ""
+    url = (
+        result.stdout.decode("utf-8", errors="replace").strip()
+        if result is not None and result.returncode == 0
+        else ""
+    )
     if not url:
         raise StandardsError(
             "sdk_repo_url_absent: .gitmodules submodule.packages/sdk.url; "
