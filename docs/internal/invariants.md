@@ -239,6 +239,29 @@ rather than rewriting the history — that is how this file earns trust.
   schema-frozen); the API view derives the class at the projection and logs a
   non-conforming derivation server-side (the wire's device object is
   contract-closed; the wire field lands with the next interface bump).
+  Amendment (2026-09-28, issue #220, parent #203 slice 6): under
+  per-document execution pinning, the bench document's own
+  `contract_version` selects the vendored execution corpus version all
+  five documents validate against — the pin's digest-verified bytes,
+  never the ambient composition's (the descriptor lane's VR-13 rule
+  applied to the lattice; classification is the same Q6 table re-keyed to
+  `standard="execution"`, the standard riding the classification cache
+  key so otdp and execution never share an entry). The Q6 classes and
+  prefixes apply verbatim (`version_unknown:` / `retired_identifier:` /
+  `standard_nonconforming:` with the five VR-37 fields); a non-conforming
+  execution pin refuses OUTRIGHT — the acknowledgement authorises
+  otdp-window loads, never the execution runtime interface — and an
+  unclassifiable pin keeps the composition posture (the schema's own
+  const error names it). The pairwise cross-constraint check reads the
+  BENCH'S PINNED version, not the composition directory's name (a
+  version with no row constrains nothing it has no evidence for).
+  Running is a composition-version fact, not the pin's: a run start over
+  a non-active-pinned lattice refuses `execution_version_not_runnable:`
+  before any device plan or bridge is constructed (the terminal record's
+  `contract_version` is the record lane's literal — E1 threads it); a
+  pinned-old lattice still validates and loads at startup (the
+  procedure-author story). Exact-byte decode, digest pins, and every
+  existing prefix unchanged.
 - **[CON-2]** The digest pin lattice between the execution-contract documents is verified
   at admission; the fixture lattice moves in lockstep (`fixtures/registry/` ↔
   `scripts/registry/build_fixtures.py` ↔ `catalogue.json` ↔ the digest-pinning tests),

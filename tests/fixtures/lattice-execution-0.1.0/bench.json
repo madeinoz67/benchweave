@@ -1,0 +1,125 @@
+{
+  "contract_version": "0.1.0",
+  "id": "sim-bench",
+  "version": "0.1.0",
+  "description": "Executable simulator bench. Not hardware-qualified.",
+  "gateway_id": "sim-gateway",
+  "fixture": {
+    "id": "sim-fixture",
+    "revision": "1",
+    "identity_record_id": "ident-fixture"
+  },
+  "dut_class": "low_voltage_embedded",
+  "policy": {
+    "id": "sim-policy",
+    "version": "0.1.0",
+    "sha256": "0a107432fe5c0ffcb20c61e577d3bf382374352ccee851265d73700dc261fc4a"
+  },
+  "package_lock": {
+    "id": "sim-lock",
+    "version": "0.1.0",
+    "sha256": "e7b140b5224bfc6eeac7a5b0c5bfe30fe6f28b96531f1bf5c8237b5db12967ce"
+  },
+  "commissioning_id": "sim-commissioning",
+  "dut_ids": [
+    "controller"
+  ],
+  "protection_mechanisms": [],
+  "devices": [
+    {
+      "id": "psu",
+      "generation": 1,
+      "descriptor": {
+        "id": "dev.benchweave.sim-psu",
+        "version": "1.0.0",
+        "sha256": "6fea030b65fbef1367e5964b52053b488a043eac2a7d319c883aee2a5ccfe29a"
+      },
+      "identity_record_id": "ident-psu",
+      "connection_key": "sim_psu_local",
+      "channels": [
+        "ch1"
+      ]
+    },
+    {
+      "id": "controller",
+      "generation": 1,
+      "descriptor": {
+        "id": "dev.benchweave.sim-controller",
+        "version": "1.0.0",
+        "sha256": "1975e607b3b67d2854c1b9deb3cb6910082aa47635b0fbba371907c56edeac9e"
+      },
+      "identity_record_id": "ident-controller",
+      "connection_key": "sim_controller_local",
+      "channels": [
+        "ch1"
+      ]
+    }
+  ],
+  "resources": [
+    {
+      "id": "dut-net",
+      "device_ids": [
+        "psu",
+        "controller"
+      ],
+      "depends_on": []
+    }
+  ],
+  "terminals": [
+    {
+      "id": "psu-out",
+      "owner_kind": "device",
+      "owner_id": "psu",
+      "channel_id": "ch1",
+      "name": "out",
+      "domain_id": "dut"
+    },
+    {
+      "id": "ctl-vin",
+      "owner_kind": "device",
+      "owner_id": "controller",
+      "channel_id": "ch1",
+      "name": "vin",
+      "domain_id": "dut"
+    }
+  ],
+  "nets": [
+    {
+      "id": "n1",
+      "terminal_ids": [
+        "psu-out",
+        "ctl-vin"
+      ]
+    }
+  ],
+  "signals": [
+    {
+      "id": "dut-voltage",
+      "quantity": "voltage",
+      "unit": "V",
+      "poll_ms": 50,
+      "max_age_ms": 500,
+      "absolute_error": 0.05,
+      "resource_id": "dut-net",
+      "source": {
+        "kind": "parameter",
+        "device_id": "psu",
+        "parameter": "output_voltage_v"
+      }
+    },
+    {
+      "id": "dut-current",
+      "quantity": "current",
+      "unit": "A",
+      "poll_ms": 50,
+      "max_age_ms": 500,
+      "absolute_error": 0.01,
+      "resource_id": "dut-net",
+      "source": {
+        "kind": "parameter",
+        "device_id": "psu",
+        "parameter": "output_current_a"
+      }
+    }
+  ]
+}

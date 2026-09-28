@@ -24,6 +24,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from benchweave.control.coordinator import build_terminal_record
 from benchweave.interfaces.app import _recover_interrupted_runs
 from benchweave.interfaces.operations import LIVE_RUN_STATES
@@ -33,8 +35,12 @@ ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / "fixtures" / "execution"
 BENCH_ID = "sim-bench"  # the bootstrap bench (fixtures/execution/bench.json)
 NOW = "2026-09-23T00:00:00Z"
-#: Synthetic closed binding ref — invented names, never a real corpus.
-BINDING: dict[str, Any] = {"id": "req-sweep-ghost", "version": "1.0.0", "sha256": "0" * 64}
+#: Synthetic closed binding ref — invented names, never a real corpus. The
+#: version agrees with the composition the sweep admits through (the sweep
+#: mechanics arms below pin discovery/terminalisation/projection-close, not
+#: version agreement; DISAGREEMENT is its own pinned behavior — the era
+#: cohort arms at the bottom, issue #220 fold).
+BINDING: dict[str, Any] = {"id": "req-sweep-ghost", "version": "0.2.0", "sha256": "0" * 64}
 
 
 def _busy(store: Store) -> bool:
@@ -193,5 +199,128 @@ def test_sweep_probe_terminal_with_stale_lease_and_live_projection(
         assert row is not None and row["state"] == "terminal"
         assert _busy(store) is False
         assert _sweep(store) == []
+    finally:
+        store.close()
+
+
+# --- the era cohort: a stored run older than the composition (issue #220 fold) ---
+
+#: The pre-promotion cohort (execution 0.1.0 ran on this store before 54a59fa
+#: promoted 0.2.0): an upgrade brings the OLD lattice in fixtures and the NEW
+#: gateway. The stored binding's version is the era's fact — recovery must
+#: neither rewrite it into the active record dialect (laundering) nor crash.
+ERA_BINDING: dict[str, Any] = {"id": "req-era-1", "version": "0.1.0", "sha256": "0" * 64}
+LATTICE_010 = ROOT / "tests" / "fixtures" / "lattice-execution-0.1.0"
+
+#: The typed containment reason (the poison-path log channel).
+SKIP_LOG = "recovery_execution_version_not_runnable"
+
+
+def _era_sweep(store: Store) -> list[str]:
+    """The sweep over the 0.1.0 lattice — the upgrade path's own posture
+    (post-slice the lattice ADMITS at startup; recovery is the remaining
+    record-writer)."""
+    return _recover_interrupted_runs(store, LATTICE_010, emit_keep=100, now_iso=lambda: NOW)
+
+
+def test_era_lease_held_run_is_skipped_not_laundered(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Fold row 1: a store holding a non-terminal 0.1.0-era run (binding
+    version 0.1.0, an active run: lease) recovers against the 0.1.0 lattice
+    — terminalising it would persist binding.version 0.1.0 beside the
+    record lane's literal contract_version 0.2.0, the internally
+    contradictory evidence record (F3's KILL condition, on an ordinary
+    upgrade path). The honest wedge: NO terminal record, the run stays
+    non-terminal, the typed reason is logged, the lease is released."""
+    import logging
+
+    store = Store.open(tmp_path / "era-lease.db")
+    try:
+        store.create_run("run-era-1", ERA_BINDING, "p1", NOW)
+        store.put_run_state("run-era-1", BENCH_ID, "running", NOW)
+        store.next_lease(
+            BENCH_ID, "lease-era-1", holder="run:run-era-1", expires_at=NOW
+        )
+        with caplog.at_level(logging.ERROR, logger="benchweave.control.coordinator"):
+            recovered = _era_sweep(store)
+        assert recovered == [], (
+            f"an era run must not be reported for projection close; "
+            f"recovered={recovered}"
+        )
+        run = store.get_run("run-era-1")
+        assert run is not None
+        assert run["terminal"] is None, (
+            "no terminal record may be persisted for an era run — the "
+            "record dialect disagrees with the run's own binding"
+        )
+        assert any(
+            SKIP_LOG in record.message and "run-era-1" in record.message
+            for record in caplog.records
+        ), f"the typed containment reason must be logged: {[r.message for r in caplog.records]}"
+    finally:
+        store.close()
+
+
+def test_era_ghost_run_is_skipped_not_laundered(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Fold row 1, second leg: the same era cohort through the run-state
+    leg (no lease — the queued-ghost shape). Same honest wedge: the run is
+    neither terminalised nor reported for projection close, and the typed
+    reason is logged — idempotently, every restart, until the lattice is
+    upgraded or E1 threads the record lane."""
+    import logging
+
+    store = Store.open(tmp_path / "era-ghost.db")
+    try:
+        store.create_run("run-era-2", ERA_BINDING, "p1", NOW)
+        store.put_run_state("run-era-2", BENCH_ID, "accepted", NOW)
+        with caplog.at_level(logging.ERROR, logger="benchweave.control.coordinator"):
+            recovered = _era_sweep(store)
+        assert recovered == [], f"recovered={recovered}"
+        run = store.get_run("run-era-2")
+        assert run is not None
+        assert run["terminal"] is None
+        assert _busy(store) is True, (
+            "the honest wedge stays visible: the non-terminal row keeps the "
+            "bench busy (E1's lifter), never silently cleared"
+        )
+        assert any(
+            SKIP_LOG in record.message for record in caplog.records
+        ), f"the typed containment reason must be logged: {[r.message for r in caplog.records]}"
+        # Idempotent: a second restart skips again, never crashes.
+        assert _era_sweep(store) == []
+    finally:
+        store.close()
+
+
+def test_caller_data_ref_version_terminalizes_as_before(tmp_path: Path) -> None:
+    """Fold row 1's boundary, the other side: the stored binding version is
+    the §5 ref's caller-supplied echo (D4 — the frozen contract types it as
+    any non-empty string), so it is JUDGED, never trusted. A version the
+    corpus never carried as a served dialect ("1.0.0" is RETIRED — no
+    gateway ever ran it) is caller data, not an era fact: the sweep
+    terminalises exactly as before the fold, and the record's
+    contract_version literal beside it faithfully records the ref. (The
+    real-path twin: the child-process kill-mid-run suite posts exactly such
+    a ref and must keep recovering.)"""
+    store = Store.open(tmp_path / "caller-data.db")
+    try:
+        store.create_run("run-cd-1", BINDING, "p1", NOW)
+        store.put_run_state("run-cd-1", BENCH_ID, "running", NOW)
+        store.next_lease(
+            BENCH_ID, "lease-cd-1", holder="run:run-cd-1", expires_at=NOW
+        )
+        recovered = _sweep(store)
+        assert recovered == ["run-cd-1"], f"recovered={recovered}"
+        run = store.get_run("run-cd-1")
+        assert run is not None
+        assert run["terminal"] is not None, (
+            "a caller-data version is not an era fact — the honest "
+            "interrupted record still lands"
+        )
+        assert run["terminal"]["binding"]["version"] == BINDING["version"]
+        assert run["terminal"]["contract_version"] == "0.2.0"
     finally:
         store.close()

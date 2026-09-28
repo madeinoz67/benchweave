@@ -34,6 +34,7 @@ from benchweave.control.clocking import MonotonicClock, SystemClock, WallClock
 from benchweave.control.coordinator import RunCoordinator, _PreparedRun, _RunMonitor
 from benchweave.control.documents import (
     _CONTRACTS,
+    AdmissionRejected,
     AdmittedDocuments,
     admit_documents,
 )
@@ -700,6 +701,27 @@ def _build_run_factory(
             now_wall=now_iso(),
             contracts=contracts,
         )
+        # The run guard (issue #220, design §1.2): validated admission is the
+        # PIN's fact; RUNNING is a composition-version fact. The terminal
+        # record is built and validated against THIS composition's run-record
+        # schema and its literal contract_version (coordinator
+        # build_terminal_record), so a run on a pinned-old lattice would
+        # carry binding.version <pin> beside contract_version <composition> —
+        # the internally contradictory evidence record (A06's laundering
+        # class). Refusal lands here, BEFORE any device plan or bridge is
+        # constructed, loudly, with the move-to. Recovery cannot bypass it:
+        # no pinned-old run can exist in any store (pre-slice such a lattice
+        # refused at startup; post-slice, starts are guarded). Startup
+        # deliberately does NOT guard — holding and validating the old
+        # lattice is F1's surface. The record lane (E1) is what lifts this.
+        if docs.execution_version != contracts.name:
+            raise AdmissionRejected(
+                f"execution_version_not_runnable: this gateway runs "
+                f"execution@{contracts.name}; the lattice pins "
+                f"execution@{docs.execution_version} — validation and "
+                "inventory load (the procedure-author story); running needs "
+                f"the record lane (follow-on); move-to: {contracts.name}"
+            )
         clock = SystemClock()
         bench_id = str(docs.bench["id"])
         plans = _device_plans(content, docs, bench_id, run_id, registry_session)

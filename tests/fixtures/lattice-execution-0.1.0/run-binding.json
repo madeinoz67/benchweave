@@ -1,0 +1,43 @@
+{
+  "contract_version": "0.1.0",
+  "request_id": "req-voltage-check-1",
+  "procedure": {
+    "id": "voltage-check",
+    "version": "0.1.0",
+    "sha256": "f5e970d476d0a5000266aa07f360b152f9238be96a36c1694a2d29cfe850cbf6"
+  },
+  "bench": {
+    "id": "sim-bench",
+    "version": "0.1.0",
+    "sha256": "1b54a1ac1955854e78b00be5d4850ff29ab9022d04e1698c2c6e3dab55fc6813"
+  },
+  "policy": {
+    "id": "sim-policy",
+    "version": "0.1.0",
+    "sha256": "0a107432fe5c0ffcb20c61e577d3bf382374352ccee851265d73700dc261fc4a"
+  },
+  "package_lock": {
+    "id": "sim-lock",
+    "version": "0.1.0",
+    "sha256": "e7b140b5224bfc6eeac7a5b0c5bfe30fe6f28b96531f1bf5c8237b5db12967ce"
+  },
+  "commissioning": {
+    "id": "sim-commissioning",
+    "version": "0.1.0",
+    "sha256": "00d6b525226886b960370275ce8e90ffefd9ddf90810a74ae86558036f004bbd"
+  },
+  "bindings": [
+    {
+      "role": "supply",
+      "device_id": "psu",
+      "channels": {
+        "output": "ch1"
+      }
+    },
+    {
+      "role": "dut",
+      "device_id": "controller",
+      "channels": {}
+    }
+  ]
+}

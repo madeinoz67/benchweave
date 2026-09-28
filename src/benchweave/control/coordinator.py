@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -54,7 +55,11 @@ from jsonschema import Draft202012Validator
 
 from benchweave.control.binding import Reservation, release, reserve, resolve_binding
 from benchweave.control.clocking import MonotonicClock, WallClock
-from benchweave.control.documents import AdmittedDocuments
+from benchweave.control.documents import (
+    AdmittedDocuments,
+    _classify_execution_pin,
+    _corpus_root_of,
+)
 from benchweave.control.executor import (
     BODY_EXECUTION_ERROR,
     BodyResult,
@@ -114,6 +119,62 @@ def terminal_outcome(body_outcome: str, safe_state: str) -> str:
     if body_outcome == "outcome_unknown" or safe_state != "verified":
         return "outcome_unknown"
     return _OUTCOME_BY_BODY.get(body_outcome, body_outcome)
+
+
+_LOG = logging.getLogger(__name__)
+
+
+def _is_other_carried_dialect(stored_version: str, contracts: Path) -> bool:
+    """Fold row 1 (issue #220): whether a stored run's binding version names
+    a CARRIED execution dialect other than this composition's — the era
+    cohort a restart must not terminalise into the active record dialect.
+
+    The stored binding's version is the §5 ref's caller-supplied echo (D4:
+    the seam records it verbatim — the frozen contract types it as any
+    non-empty string), so it is JUDGED, never trusted: only a version the
+    corpus CARRIES (a served/yanked/dev/rc classification — a dialect a
+    gateway could really have run) that differs from the composition's is
+    an era fact. Anything else (retired, never carried, unclassifiable) is
+    caller data; the record lane's literal beside it faithfully records the
+    ref, it does not claim a dialect. Classification failure is containment:
+    an unjudgeable version refuses the record too (fail-closed — ambiguity
+    never becomes a clean terminal record), logged as the same wedge.
+    """
+    if stored_version == contracts.name:
+        return False
+    try:
+        record = _classify_execution_pin(
+            stored_version, corpus=_corpus_root_of(contracts)
+        )
+    except Exception:
+        # Recovery containment, never a startup crash: an unjudgeable
+        # version refuses the record too (the honest wedge above).
+        return True
+    return record.status in ("served", "yanked", "dev", "rc")
+
+
+def _log_era_run_skip(run_id: str, stored_version: str, active_version: str) -> None:
+    """The typed containment reason for an era run (fold row 1, issue #220).
+
+    A stored non-terminal run whose binding names a carried execution
+    dialect other than this composition's must NOT be terminalised:
+    ``build_terminal_record`` stamps the record lane's literal
+    ``contract_version`` beside the binding's own, the internally
+    contradictory evidence record (A06). The honest wedge — matching
+    pre-slice behavior, where the era lattice refused startup outright — is
+    to write NOTHING and leave the run non-terminal, logged under a
+    recovery-family prefix that embeds the guard's class vocabulary so the
+    CON-1-named grep finds every instance. The record lane (E1) lifts this.
+    """
+    _LOG.error(
+        "recovery_execution_version_not_runnable: run %s binding pins "
+        "execution@%s but this gateway runs execution@%s; no terminal record "
+        "is written and the run stays non-terminal (the honest wedge — the "
+        "record lane, E1, lifts this)",
+        run_id,
+        stored_version,
+        active_version,
+    )
 
 
 def _pin_evidence(pin: Any) -> dict[str, Any]:
@@ -545,24 +606,32 @@ class RunCoordinator:
                 self._store.release_lease(bench_id, lease.sequence, now)
                 continue
             if run["terminal"] is None:
-                record = build_terminal_record(
-                    run_id=run_id,
-                    binding_pin=run["binding"],
-                    principal_id=run["principal_id"],
-                    started_at=run["started_at"],
-                    ended_at=now,
-                    body_outcome="interrupted",
-                    safe_state="unknown",
-                    reasons=[
-                        "gateway restart: run was not terminalised; body execution "
-                        "never resumes automatically"
-                    ],
-                    evidence_refs=self._recovery_evidence_refs(run_id, run["binding"]),
-                    contracts=self._contracts,
-                )
-                self._store.finalize_run(run_id, record)
-                self._rebuild_ledger_from_events(run_id)
-                recovered.append(run_id)
+                stored_version = str(run["binding"].get("version", ""))
+                if _is_other_carried_dialect(stored_version, self._contracts):
+                    # Fold row 1 (issue #220): the era cohort — terminalising
+                    # would persist the binding's carried-dialect version
+                    # beside this composition's record literal. The honest
+                    # wedge; the lease is still released below.
+                    _log_era_run_skip(run_id, stored_version, self._contracts.name)
+                else:
+                    record = build_terminal_record(
+                        run_id=run_id,
+                        binding_pin=run["binding"],
+                        principal_id=run["principal_id"],
+                        started_at=run["started_at"],
+                        ended_at=now,
+                        body_outcome="interrupted",
+                        safe_state="unknown",
+                        reasons=[
+                            "gateway restart: run was not terminalised; body execution "
+                            "never resumes automatically"
+                        ],
+                        evidence_refs=self._recovery_evidence_refs(run_id, run["binding"]),
+                        contracts=self._contracts,
+                    )
+                    self._store.finalize_run(run_id, record)
+                    self._rebuild_ledger_from_events(run_id)
+                    recovered.append(run_id)
             self._store.release_lease(bench_id, lease.sequence, now)
         # Run-state-aware leg (issue #156 fix wave). The lease leg above has
         # by now released every active ``run:`` lease it saw, so a crash
@@ -590,6 +659,15 @@ class RunCoordinator:
                 # run's end is owned by its tombstone, not the sweep.
                 continue
             if run["terminal"] is None:
+                stored_version = str(run["binding"].get("version", ""))
+                if _is_other_carried_dialect(stored_version, self._contracts):
+                    # Fold row 1 (issue #220), second leg: the same era
+                    # cohort through the ghost leg — skipped, never
+                    # terminalised, never reported for projection close (the
+                    # caller marks reported ids terminal, which would
+                    # launder the same way).
+                    _log_era_run_skip(run_id, stored_version, self._contracts.name)
+                    continue
                 # Queued ghost: same interrupted record, same evidence and
                 # ledger semantics as the lease-held leg (a never-started
                 # run rebuilds zero occurrence identities — nothing
