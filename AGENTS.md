@@ -110,3 +110,12 @@ remove only your own. The git stash stack is shared across ALL worktrees of this
 repo family — never a blind `git stash pop` (it can apply a peer's stash);
 `git stash push -u -m "<unique-tag>"` if stashing at all, and prefer `cp` backups
 for mechanism-neutralization in RED runs.
+
+**Worktree placement (2026-09-28, owner directive):** parallel-lane worktrees
+live UNDER the repo root at `.wt/<lane>-<nonce>/` (gitignored) — never `/tmp` —
+and the lane's session CWD is that worktree. Gortex discovers a session-anchored
+in-family checkout as an automatic overlay of the primary graph, so parallel
+lanes keep graph access for the worktree's life and lose it on fold (the
+temporary tracking the owner requires); a `/tmp` worktree forfeits indexing
+entirely (the tourniquet rule) and is only for truly external scratch. Folding
+at run close: `git worktree remove` your own path only, after `git worktree list`.
