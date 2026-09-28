@@ -440,6 +440,8 @@ All notable changes to this project will be documented in this file.
 - Issue #241 slice 2 record — re-band decisions (D1 drain-cap classification, row-17 marker, HOLD arms)
 - Wave-2 fold — record errata for the unbuildable patch shape and the headroom arithmetic
 - Slice 5's surfaces — CON-12 landing, operator ack guide, D11 closed (#219)
+- Issue #242 UI renderer-neutral contract design of record
+- Split the style guide into a normative contract plus guidance
 
 ### Features
 
@@ -879,6 +881,9 @@ All notable changes to this project will be documented in this file.
 - Row-17 clamp test joins the timing lane (marker only, no band change)
 - Wave-1 fold — exhaustion renders the retry composition (7 findings, one commit)
 - V8 accompaniment — the retention hole fixture counts eight rows (#219 slice 5)
+- L1 fixture pins and L3 contract-CSS value equality
+- L2 generated renderer pins for the 8 contract components
+- Fold review rows 1-7 on the contract pins (#242 slice 1)
 
 ### Build
 
