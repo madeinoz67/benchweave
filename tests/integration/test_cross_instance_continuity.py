@@ -838,8 +838,10 @@ class ContinuityRig:
         condition never tripped post-dispatch" / "no in-window frames for
         X3"). The 1 ms yield in the spinning branch keeps the loop off the
         CPU between rounds. A cap-exit is LOUD: truncating the latency set
-        or the receive point would silently bias X2/X3, so quiet is
-        asserted, not assumed."""
+        or the receive point would silently bias X2/X3, so a cap-exit
+        raises the ``drain-cap`` infrastructure site (issue #241 slice 2;
+        an ``AssertionError`` subclass — an exhausted retry still fails
+        the trial as an assertion), never a silent return."""
         end = time.monotonic() + cap_ms / 1000.0
         quiet_floor = time.monotonic() + 2 * FRAME_PERIOD_MS / 1000.0 + 0.005
         subscriptions = self.stream_host.subscriptions.get(DEVICE_B, [])
@@ -871,12 +873,20 @@ class ContinuityRig:
                         outcome.event,
                         outcome.host_received_at or "",
                     )
-        assert quiet, (
-            f"drain_until_quiet hit its {cap_ms:.0f} ms cap with "
-            f"{self.adapter_b.due_count()} frame(s) still due — the delivery "
-            "path starved; a truncated latency set or receive point would "
-            "silently bias X2/X3"
-        )
+        if not quiet:
+            # The delivery-drain cap (issue #241 slice 2): frames still due
+            # at the cap is the delivery path starved by the HOST — the F4
+            # class, the sweep's 39-frames-due gates failure — not a
+            # property of the measured system, so the marker says retry on
+            # a fresh rig. An ``AssertionError`` subclass: an exhausted
+            # retry still fails the trial as an assertion.
+            raise TrialInfrastructureError(
+                f"drain_until_quiet hit its {cap_ms:.0f} ms cap with "
+                f"{self.adapter_b.due_count()} frame(s) still due — the delivery "
+                "path starved; a truncated latency set or receive point would "
+                "silently bias X2/X3",
+                site="drain-cap",
+            )
 
     def align_to_frame(self, *, lead_ms: float = 4.0) -> None:
         """Busy-align the next dispatch start to just before a frame
@@ -920,7 +930,9 @@ class TrialInfrastructureError(AssertionError):
     intermediate sites — exhaustion would report only the last attempt's
     site — so ``run_trial`` records each failed attempt's label in
     ``outcome["retry_sites"]`` and the exhausted exception carries its own
-    (the last) site. The keyword is REQUIRED: a defaulted label would let
+    (the last) site — and, since the wave-1 fold (critic F1), renders the
+    full recorded sequence into the re-raised message at exhaustion. The
+    keyword is REQUIRED: a defaulted label would let
     a future site raise unlabelled and silently re-open the hole.
     """
 
@@ -999,9 +1011,11 @@ def _poll_found_dead_session(outcome: PollOutcome) -> bool:
     outran the poll's own 50 ms deadline under host stall) is
     starvation-shaped and still non-retryable. Known NON-retryable
     starvation residuals, disclosed as an owner row rather than widened
-    here: TIMEOUT-flavor poll poison, drain-cap starvation
-    (``drain_until_quiet``'s loud cap assert), and entry-timeout at the
-    dispatch door."""
+    here: TIMEOUT-flavor poll poison and entry-timeout at the dispatch
+    door. (Wave-1 fold, adversary F1: drain-cap starvation was listed
+    here before #241 slice 2 classified it — it is now the retryable
+    ``drain-cap`` site in ``run_trial``'s carrying list, not a
+    residual.)"""
     refusal = outcome.refusal
     return (
         outcome.session_failed
@@ -1069,8 +1083,11 @@ def run_trial(
     and records the retry count in the outcome, alongside the ordered
     ``retry_sites`` label of every failed attempt (review fold, critic F3:
     a bare count discards the composition — a priming-then-pre-flight
-    retry is not the same lane health signal as a single-site retry — and
-    an exhausted trial's exception carries its own, last, site). The
+    retry is not the same lane health signal as a single-site retry; and
+    wave-1 fold, critic F1: at exhaustion the re-raised error RENDERS the
+    full site sequence into its message, so a lane log shows every failed
+    site — the last attempt's site still travels as the error's own
+    ``site``). The
     retryable class is
     carried STRUCTURALLY (review finding F4): every site that has
     classified its own failure as host starvation raises
@@ -1088,14 +1105,18 @@ def run_trial(
     failure latch plus NOT_DISPATCHED, not its wording) or the monitor's
     own ``blocked``-latched freshness (``signal_invalid``) door-refusal —
     block-ness read from the monitor's latch, never inferred from a
-    latched cause — and a post-trip drain poll that found the session
-    already dead at the door. Everything else — a wrong status for any
+    latched cause — a post-trip drain poll that found the session
+    already dead at the door, and the delivery-drain cap — frames still
+    due at the 2000 ms cap, the sweep's 39-frames-due gates failure
+    (issue #241 slice 2). Everything else — a wrong status for any
     other reason, a real (non-freshness) trip, a device-side rejection
     whatever cause is latched (F1's two lanes), an error envelope claiming
     the work was dispatched, a session the poll itself poisoned — keeps
     its plain ``AssertionError`` and raises straight through, as does any
     ``AssertionError`` that merely quotes the historical retryable wording
-    (pinned by test). Starvation-shaped NON-retryables that remain are
+    (pinned by test). Starvation-shaped NON-retryables that remain — the
+    drain-cap starvation this row once pointed at is now the classified
+    ``drain-cap`` carrying site above (wave-1 fold, adversary F1) — are
     disclosed at ``_poll_found_dead_session`` as an owner row."""
     retry_sites: list[str] = []
     for attempt in range(3):
@@ -1114,6 +1135,17 @@ def run_trial(
         except TrialInfrastructureError as error:
             retry_sites.append(error.site)
             if attempt == 2:
+                # Wave-1 fold, critic F1: exhaustion must not drop the
+                # composition — the re-raise renders every failed site
+                # into the message (pytest shows str(error)), so a lane
+                # log at exhaustion carries the full sequence, not only
+                # the last attempt's site. Type, traceback, and the
+                # error's own (last) site are untouched.
+                error.args = (
+                    f"{error.args[0]} [retry composition exhausted after "
+                    f"{len(retry_sites)} attempts: "
+                    f"{' -> '.join(retry_sites)}]",
+                )
                 raise
     raise AssertionError("unreachable retry exhaustion")
 
@@ -2408,6 +2440,34 @@ def test_infrastructure_marker_exhausts_at_two_retries(
     assert raised.value.site == "synthetic"
 
 
+def test_exhaustion_renders_the_full_retry_composition(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Wave-1 fold, critic F1: at exhaustion the re-raise carries the
+    WHOLE site sequence rendered into the message — the record's risk-1
+    falsifier (a lane log showing drain-cap repeated to exhaustion)
+    requires the composition where pytest shows it, and pre-fold the
+    re-raise dropped it (only the LAST attempt's site travelled). The
+    sequence is deliberately MIXED (drain-cap, priming-validity,
+    drain-cap): a homogeneous sequence cannot distinguish the rendered
+    composition from the last site's own label."""
+    calls: list[int] = []
+    sequence = ["drain-cap", "priming-validity", "drain-cap"]
+
+    def failing_mixed_sites(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        calls.append(kwargs["trial_index"])
+        raise TrialInfrastructureError("starved", site=sequence[len(calls) - 1])
+
+    monkeypatch.setitem(globals(), "_run_trial_once", failing_mixed_sites)
+    with pytest.raises(TrialInfrastructureError) as raised:
+        run_trial(tmp_path, arm="control", device_class="unbuffered", trial_index=1)
+    assert len(calls) == 3
+    assert raised.value.site == "drain-cap"  # the LAST attempt's own site
+    assert "drain-cap -> priming-validity -> drain-cap" in str(raised.value), (
+        str(raised.value)
+    )
+
+
 def test_retry_composition_records_each_failed_attempts_site(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -2722,6 +2782,162 @@ def test_partial_probe_pre_flight_starvation_classification_skips(
     assert _probe_wall_injection(10.0, False)
     assert _probe_wall_injection(10.0, True)
     assert _probe_wall_injection(1.0, True)
+
+
+# --- the drain-cap classification (#241 slice 2) -----------------------------------
+
+
+def _install_drain_cap_starvation(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    every_construction: bool = False,
+) -> list[ContinuityRig]:
+    """Force the drain-cap presentation (issue #241 slice 2, design §1.1
+    — patch shape reworked on mechanism evidence, disclosed in the commit
+    message): the FIRST construction's adapter never delivers a frame, so
+    the adapter's REAL ``due_count`` grows without bound and
+    ``drain_until_quiet``'s quiet guard never sees zero — delivery
+    starvation, the sweep's total-starvation subclass ("the backlog GROWS
+    through the cap; delivery ~0", frame-due 20–103 at the observed hits,
+    ~100 frames at a full 2000 ms spin). The design's letter patched
+    ``due_count`` positive instead, but ``next_event`` shares that method
+    as its delivery-liveness check, so an always-positive reading makes
+    delivery OUTPACE the 20 ms schedule — the receive point races into
+    the future and the fixture degrades into a ``drain-poll-door`` death
+    inside the spin (measured: both arms failed with site
+    ``drain-poll-door`` pre-fix), never reaching the cap. Starving
+    delivery instead reproduces the real mechanism with real quantities.
+    Construction itself never polls events, so the patched construction
+    completes healthy and the rig dies at the trial path's FIRST drain
+    call site — nothing downstream (settle, the measured dispatch) runs.
+    ``every_construction=True`` starves EVERY construction's adapter
+    (wave-1 fold, adversary F2): all three attempts die at their first
+    drain, so the trial exhausts its budget entirely at the drain-cap
+    site. Returns the rigs (the slice-1 counter shape) for the caller's
+    failure belt."""
+    rigs: list[ContinuityRig] = []
+    adapters: list[BRigAdapter] = []
+    original_init = ContinuityRig.__init__
+
+    def counting_init(self: ContinuityRig, db_path: Path, **kwargs: Any) -> None:
+        rigs.append(self)
+        original_init(self, db_path, **kwargs)
+
+    monkeypatch.setattr(ContinuityRig, "__init__", counting_init)
+    original_b_init = BRigAdapter.__init__
+
+    def counting_b_init(self: BRigAdapter, *, buffered: bool) -> None:
+        original_b_init(self, buffered=buffered)
+        adapters.append(self)
+
+    monkeypatch.setattr(BRigAdapter, "__init__", counting_b_init)
+    original_next_event = BRigAdapter.next_event
+
+    async def starved_next_event(
+        self: BRigAdapter, subscription_id: str, context: Any
+    ) -> dict[str, Any] | None:
+        starved = adapters if every_construction else adapters[:1]
+        if any(self is adapter for adapter in starved):
+            return None  # delivery ~0: the starved-delivery presentation
+        return await original_next_event(self, subscription_id, context)
+
+    monkeypatch.setattr(BRigAdapter, "next_event", starved_next_event)
+    return rigs
+
+
+def test_drain_cap_hit_is_infrastructure_at_the_drain_cap_site(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Issue #241 slice 2, the TYPE arm: the drain cap's raise is a
+    ``TrialInfrastructureError`` carrying ``site="drain-cap"`` — matched
+    on TYPE and site label, never message text. A short explicit
+    ``cap_ms`` spins the REAL loop to its REAL cap (cheap — no full-cap
+    burn) with delivery starved on the instance's adapter, so the real
+    backlog grows past the quiet floor. Constructed under the no-trip
+    probe policy (``_run_trial_once``'s own wiring for ``no_trip``): a
+    condition-free monitor cannot latch mid-spin, so the spin stays on
+    the pre-trip polling branch regardless of host load. The
+    ``isinstance`` pin is the exhaustion-still-reds property at the type
+    level: an exhausted drain-cap retry fails the trial as an
+    assertion."""
+    rig = _construct_rig(
+        tmp_path / "drain-cap-type.db",
+        device_class="buffered",
+        no_trip=True,
+        policy=NO_TRIP_POLICY,
+    )
+    try:
+
+        async def never_delivers(subscription_id: str, context: Any) -> dict[str, Any] | None:
+            return None
+
+        monkeypatch.setattr(rig.adapter_b, "next_event", never_delivers)
+        with pytest.raises(TrialInfrastructureError) as raised:
+            rig.drain_until_quiet(cap_ms=250.0)
+        assert type(raised.value) is TrialInfrastructureError
+        assert raised.value.site == "drain-cap", raised.value.site
+        assert isinstance(raised.value, AssertionError)
+    finally:
+        _close_partially_constructed([rig])
+
+
+def test_drain_cap_starvation_retries_on_a_fresh_rig(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Issue #241 slice 2, the INTEGRATION arm (AR-1): the trial path's
+    first drain hits the default 2000 ms cap on the patched construction,
+    the raise rides ``run_trial``'s fresh-rig retry, and the unpatched
+    second construction completes the trial — the outcome carries
+    ``retries == 1`` and ``retry_sites == ["drain-cap"]``. Runs the
+    production policy (the real cap-hits were real-policy trials); if the
+    aged signal latches the monitor mid-spin the drain simply switches to
+    its post-trip direct-poll branch — either branch reaches the cap
+    raise, which is branch-independent by construction. Burns one real
+    cap spin (~2 s; design §7 risk 6 — accepted, disclosed). Site-level
+    exhaustion is pinned next door (wave-1 fold, adversary F2:
+    ``test_drain_cap_starvation_exhausts_at_the_drain_cap_site``); the
+    site-agnostic machinery stays pinned at
+    ``test_infrastructure_marker_exhausts_at_two_retries``."""
+    rigs = _install_drain_cap_starvation(monkeypatch)
+    try:
+        outcome = run_trial(
+            tmp_path, arm="non_capture", device_class="buffered", trial_index=7
+        )
+        assert outcome["retries"] == 1, outcome["retries"]
+        assert outcome["retry_sites"] == ["drain-cap"], outcome["retry_sites"]
+    finally:
+        _close_partially_constructed(rigs)
+
+
+def test_drain_cap_starvation_exhausts_at_the_drain_cap_site(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Wave-1 fold, adversary F2: the drain-cap-specific exhaustion arm —
+    EVERY construction starved, so all three rigs die at their first
+    drain and the trial exhausts its budget entirely at the drain-cap
+    site (the site-agnostic budget is pinned at ``synthetic``; this pins
+    the real site end-to-end, and its site/count/type asserts are
+    regression pins over the committed D1 mechanism — they pass on the
+    pre-fold tip). The exhaustion raise renders the homogeneous
+    composition (critic F1's mechanism): ``drain-cap`` repeated to
+    exhaustion is the record's risk-1 lane log, now real. Burns three
+    real cap spins (~7 s; design §7 risk 6's per-attempt arithmetic,
+    ×3)."""
+    rigs = _install_drain_cap_starvation(monkeypatch, every_construction=True)
+    try:
+        with pytest.raises(TrialInfrastructureError) as raised:
+            run_trial(
+                tmp_path, arm="non_capture", device_class="buffered", trial_index=8
+            )
+        assert len(rigs) == 3, len(rigs)
+        assert type(raised.value) is TrialInfrastructureError
+        assert raised.value.site == "drain-cap", raised.value.site
+        assert isinstance(raised.value, AssertionError)
+        assert "drain-cap -> drain-cap -> drain-cap" in str(raised.value), (
+            str(raised.value)
+        )
+    finally:
+        _close_partially_constructed(rigs)
 
 
 # --- F1 fold: block-ness is the monitor's latch, never cause-adjacency (#159) ------

@@ -100,7 +100,8 @@ jobs:
       # adopting xdist here would reintroduce exactly the intra-suite
       # competition this lane exists to remove. What this lane cannot buy is
       # a quiet host — a noisy neighbor can still stretch a band; slice 2's
-      # re-bands are the answer to that, not parallelism.
+      # re-bands (resolved as HOLD/document-only in that slice) are the answer
+      # to that, not parallelism.
       - name: Test (timing lane)
         run: uv run pytest -q -m timing
 

@@ -2832,6 +2832,7 @@ def test_row_b_clamp_reads_the_injected_clock_no_hidden_second_clock(
         harness.close()
 
 
+@pytest.mark.timing
 def test_row_b_clamp_negative_injected_remaining_clamps_to_zero(
     tmp_path: Path,
 ) -> None:
