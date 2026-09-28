@@ -124,5 +124,10 @@ plugins/*/*/contracts/*-*.*.*/
 /site/
 /standards_pages/
 
+# Gate wrapper retained logs (scripts/gate.py) — per-run evidence, pruned to
+# the last 20 runs by the wrapper itself. Anchored: a nested gate-logs/ must
+# never be hidden.
+/.gate-logs/
+
 # Design records: private/ holds pre-promotion designs (see .claude/deep-review/README.md)
 .claude/deep-review/private/

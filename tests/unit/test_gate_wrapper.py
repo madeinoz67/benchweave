@@ -5,6 +5,7 @@ Leg D — evidence discipline is part of the gate definition)."""
 from __future__ import annotations
 
 import importlib.util
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -12,6 +13,12 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 GATE = ROOT / "scripts" / "gate.py"
+
+
+def _failure_log_path(proc_stdout: str) -> Path:
+    match = re.search(r"full log: ([^)]+)", proc_stdout)
+    assert match, proc_stdout
+    return Path(match.group(1))
 
 
 def _load_gate() -> Any:
@@ -188,3 +195,80 @@ def test_mypy_pass_path_reads_pass_on_a_clean_tree() -> None:
 def test_missing_mode_is_a_usage_error_not_a_silent_default() -> None:
     proc = _run_gate("--only", "ruff")
     assert proc.returncode == 2
+
+
+# --- refute fold F1: the "full log:" pointer must survive the run --------------
+
+
+def test_failure_log_path_exists_after_the_run_completes(tmp_path: Path) -> None:
+    planted = _planted_failing_test(tmp_path)
+    proc = _run_gate("--fast", "--only", "pytest", str(planted))
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    log_path = _failure_log_path(proc.stdout)
+    assert log_path.exists(), f"log pointer dead on arrival: {log_path}"
+
+
+def test_every_planted_failure_reachable_in_stdout_or_retained_log(
+    tmp_path: Path,
+) -> None:
+    """Eight planted failures overflow the 30-line excerpt; the tail carries
+    only the last few, so the earlier messages must stay reachable through
+    the retained log file."""
+    planted = tmp_path / "test_planted_eight.py"
+    planted.write_text(
+        "\n".join(
+            f'def test_planted_{i}() -> None:\n    assert False, "PLANTED-F1-{i}"\n'
+            for i in range(8)
+        ),
+        encoding="utf-8",
+    )
+    proc = _run_gate("--fast", "--only", "pytest", str(planted))
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    log_path = _failure_log_path(proc.stdout)
+    reachable = proc.stdout + (
+        log_path.read_text(errors="replace") if log_path.exists() else ""
+    )
+    for i in range(8):
+        assert f"PLANTED-F1-{i}" in reachable, f"planted failure {i} unreachable"
+
+
+def test_prune_keeps_only_the_newest_runs(tmp_path: Path, monkeypatch: object) -> None:
+    gate = _load_gate()
+    monkeypatch.setattr(gate, "LOG_ROOT", tmp_path)  # type: ignore[attr-defined]
+    for i in range(25):
+        (tmp_path / f"20260101-0000{i:02d}-1").mkdir()
+    (tmp_path / "stray-file").write_text("x", encoding="utf-8")
+    gate.prune_old_runs()
+    remaining = sorted(path.name for path in tmp_path.iterdir())
+    assert len(remaining) == 21, remaining  # 20 runs + the untouched stray file
+    assert "20260101-000024-1" in remaining, remaining
+    assert "20260101-000000-1" not in remaining, remaining
+
+
+# --- refute fold F2: zero tests ran is a FAILED check, not a pass --------------
+
+
+def test_collect_only_is_not_gate_evidence_reads_fail(tmp_path: Path) -> None:
+    """A runnable test + `--collect-only` exits 0 with junit tests=0 — the
+    gate read `GATE pytest 0 0 0 0 PASS` (verified against the unfixed
+    wrapper). No tests ran; a pass verdict here is the exact green-shaped
+    no-op the #247 doctrine calls a FAILED check."""
+    planted = tmp_path / "test_probe_passing.py"
+    planted.write_text(
+        "def test_probe_passing() -> None:\n    assert True\n", encoding="utf-8"
+    )
+    proc = _run_gate(
+        "--fast", "--only", "pytest", str(planted), "--", "--collect-only", "-q"
+    )
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert "GATE pytest 0 0 0 0 FAIL" in proc.stdout, proc.stdout
+
+
+def test_zero_tests_without_collect_only_also_reads_fail(tmp_path: Path) -> None:
+    """Plain invocation over a dir with no tests: pytest exits 5, but the
+    wrapper's zero-count guard must hold even if an exit code were ever 0."""
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    proc = _run_gate("--fast", "--only", "pytest", str(empty))
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert "GATE pytest 0 0 0 0 FAIL" in proc.stdout, proc.stdout

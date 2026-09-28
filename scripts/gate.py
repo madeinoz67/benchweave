@@ -33,17 +33,25 @@ silently running nothing — the fast lane has no exemptions, and a hidden
 no-op is how a gate starts lying.
 
 The mypy leg runs `--no-incremental` (fresh-cache evidence per the #247
-doctrine) rather than deleting .mypy_cache, which a concurrent agent may be
-reading.
+doctrine) rather than deleting .mypy_cache (it avoids READING stale cache
+entries — the honest-evidence point; it still WRITES shared cache shards,
+an availability hazard for concurrent agents, never an honesty one, which
+is why the wrapper does not delete the directory).
+
+Gate output survives the run: each invocation writes to
+.gate-logs/<run-id>/ (gitignored, pruned to the last 20 runs) and failing
+gates print the retained path plus a 30-line excerpt — a "full log:"
+pointer that vanishes at process exit is a dead reference, not evidence.
 """
 
 from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import subprocess
 import sys
-import tempfile
+import time
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
@@ -53,6 +61,12 @@ REPO = Path(__file__).resolve().parent.parent
 UV = "uv"
 GATE_NAMES = ("ruff", "mypy", "pytest")
 EXCERPT_LINES = 30
+LOG_ROOT = REPO / ".gate-logs"
+MAX_RETAINED_RUNS = 20
+
+#: pytest flags whose run COLLECTS but never EXECUTES: whatever they print,
+#: they are not gate evidence, and the pytest leg reads FAIL under them.
+COLLECT_ONLY_FLAGS = ("--collect-only", "--co")
 
 #: The pytest-xdist parallel flags (design §2): full suite, excluding the
 #: `timing` marker, which stays serialized in its own lane.
@@ -71,10 +85,22 @@ class GateResult:
     returncode: int
     counts: tuple[int, int, int, int] | None
     log_path: Path
+    collect_only: bool = False
 
     @property
     def status(self) -> str:
-        return "PASS" if self.returncode == 0 else "FAIL"
+        if self.returncode != 0:
+            return "FAIL"
+        if self.collect_only:
+            # Collection executes nothing; a green collect-only run is not
+            # evidence of anything.
+            return "FAIL"
+        if self.counts is not None and self.counts[0] == 0:
+            # Zero tests ran — a FAILED check per the #247 doctrine, not a
+            # pass. Does not catch an all-skipped run: tests>0 still PASSes,
+            # visibly, in the skipped cell.
+            return "FAIL"
+        return "PASS"
 
 
 def parse_junit_counts(path: Path) -> tuple[int, int, int, int]:
@@ -165,7 +191,11 @@ def run_gate_cmd(
     counts = None
     if cmd.junit is not None and cmd.junit.exists():
         counts = parse_junit_counts(cmd.junit)
-    return GateResult(cmd.name, proc.returncode, counts, log_path)
+    collect_only = any(
+        arg in COLLECT_ONLY_FLAGS or arg.startswith("--collect-only=")
+        for arg in cmd.args
+    )
+    return GateResult(cmd.name, proc.returncode, counts, log_path, collect_only)
 
 
 def print_excerpt(result: GateResult) -> None:
@@ -182,6 +212,25 @@ def print_excerpt(result: GateResult) -> None:
     )
     for line in excerpt:
         print(line)
+
+
+def prune_old_runs(keep: int = MAX_RETAINED_RUNS) -> None:
+    """Best-effort hygiene: keep the newest `keep` run dirs. Pruning must
+    never become a gate verdict, so every error is ignored."""
+    try:
+        runs = sorted(path for path in LOG_ROOT.iterdir() if path.is_dir())
+        for stale in runs[:-keep]:
+            shutil.rmtree(stale, ignore_errors=True)
+    except OSError:
+        pass
+
+
+def new_log_dir() -> Path:
+    """A stable, collision-resistant per-run directory: run-id is
+    timestamp + pid, so concurrent wrappers never share a log dir."""
+    log_dir = LOG_ROOT / f"{time.strftime('%Y%m%d-%H%M%S')}-{os.getpid()}"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    return log_dir
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -228,29 +277,29 @@ def main(argv: list[str] | None = None) -> int:
 
     cwd = REPO
     env = child_env()
-    with tempfile.TemporaryDirectory(prefix="benchweave-gate-") as tmp:
-        log_dir = Path(tmp)
-        commands = [
-            cmd
-            for cmd in build_commands(
-                args.mode,
-                args.pytest_args,
-                xdist_available(env, cwd) if args.mode == "full" else False,
-                log_dir,
-            )
-            if cmd.name in selected
-        ]
-        failures: list[GateResult] = []
-        for cmd in commands:
-            if cmd.name == "pytest" and args.mode == "fast" and not args.pytest_args:
-                print(format_gate_line("pytest", None, "SKIP"), flush=True)
-                continue
-            result = run_gate_cmd(cmd, env, cwd, log_dir)
-            print(format_gate_line(result.name, result.counts, result.status), flush=True)
-            if result.returncode != 0:
-                failures.append(result)
-        for failure in failures:
-            print_excerpt(failure)
+    log_dir = new_log_dir()
+    commands = [
+        cmd
+        for cmd in build_commands(
+            args.mode,
+            args.pytest_args,
+            xdist_available(env, cwd) if args.mode == "full" else False,
+            log_dir,
+        )
+        if cmd.name in selected
+    ]
+    failures: list[GateResult] = []
+    for cmd in commands:
+        if cmd.name == "pytest" and args.mode == "fast" and not args.pytest_args:
+            print(format_gate_line("pytest", None, "SKIP"), flush=True)
+            continue
+        result = run_gate_cmd(cmd, env, cwd, log_dir)
+        print(format_gate_line(result.name, result.counts, result.status), flush=True)
+        if result.status == "FAIL":
+            failures.append(result)
+    for failure in failures:
+        print_excerpt(failure)
+    prune_old_runs()
     return 1 if failures else 0
 
 
