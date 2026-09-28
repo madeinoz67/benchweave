@@ -30,6 +30,7 @@ import json
 import shutil
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -450,6 +451,9 @@ def test_f2c_out_of_range_refuses_with_no_ack_path(tmp_path: Path) -> None:
         )
     message = str(raised.value)
     assert message.startswith("standard_nonconforming:"), message
+    # The fold's splice shape (row 5): the bench's own pin is named once in
+    # prose, then the five fields ride verbatim — no "bench standard:" splice.
+    assert "bench contract_version 0.1.0" in message, message
     for field in (
         "standard: execution",
         "pinned: 0.1.0",
@@ -622,3 +626,113 @@ def test_f4_version_literal_ratchet_holds() -> None:
         check=False,
     )
     assert result.returncode == 0, f"{result.stdout}\n{result.stderr}"
+
+
+# --- fold rows 2/4/6: the carried record, the typed seam refusal, the boundary table
+
+
+def _copied_standards(tmp_path: Path, name: str) -> Path:
+    """A mutable copy of the standards tree (the cross-constraints suite's
+    ``_copy_standards`` pattern); returns the copy's CORPUS ROOT."""
+    root = tmp_path / name
+    root.mkdir(parents=True)
+    shutil.copytree(CORPUS, root / "standards")
+    return root / "standards"
+
+
+def _rewrite_policy(
+    corpus: Path, standard: str, mutate: Callable[[dict[str, Any]], None]
+) -> None:
+    manifest_path = corpus / "standards-manifest.json"
+    manifest = json.loads(manifest_path.read_bytes())
+    mutate(manifest["dependency_policy"]["standards"][standard])
+    manifest_path.write_text(json.dumps(manifest, indent=2))
+
+
+def test_row2_yanked_execution_pin_carries_its_record(tmp_path: Path) -> None:
+    """Fold row 2: the yanked deprecation note SURVIVES admission — the
+    routing classification is carried on the admitted object beside the
+    version label (the descriptor lane's pins symmetry). RED at eb05d52:
+    the router returned only the version string and discarded the record,
+    so the deprecation note was silently dropped."""
+    corpus = _copied_standards(tmp_path, "yanked-corpus")
+
+    def yank_010(row: dict[str, Any]) -> None:
+        row["yanked"] = {
+            "0.1.0": {"reason": "fold fixture: synthetic yank", "since": "2026-09-28"}
+        }
+
+    _rewrite_policy(corpus, "execution", yank_010)
+    docs = _admit_010(contracts=corpus / "execution" / "0.2.0")
+    assert docs.execution_version == "0.1.0"
+    record = docs.execution_pin
+    assert record.status == "yanked", record
+    assert record.conformance == "conforming"
+    assert record.deprecated is True
+    assert "deprecation warning" in str(record.note), record.note
+    assert "0.2.0" in str(record.note), record.note  # the derived move-to
+
+
+def test_row4_family_symlinked_composition_refuses_typed(tmp_path: Path) -> None:
+    """Fold row 4: a composition threaded through a family-level symlink
+    (``<alias>/execution/0.2.0`` with alias → the FAMILY directory) resolves
+    its corpus root INSIDE the family, where no standards manifest lives.
+    RED at eb05d52: a raw FileNotFoundError escaped the typed refusal
+    vocabulary; GREEN: ``corpus_family_unresolved:`` naming the threaded
+    directory."""
+    alias = tmp_path / "alias"
+    alias.symlink_to(CORPUS / "execution", target_is_directory=True)
+    with pytest.raises(AdmissionRejected, match="corpus_family_unresolved:") as raised:
+        _admit_010(contracts=alias / "execution" / "0.2.0")
+    assert "carries no standards manifest" in str(raised.value), str(raised.value)
+
+
+def test_row6a_retired_precedes_range_for_both_standards(tmp_path: Path) -> None:
+    """Fold row 6a: the retired check precedes the range check in
+    ``_classify_cached`` — a version BOTH retired and out-of-range
+    classifies retired. No real corpus carries such a row (a retired
+    identifier is by definition outside the supported window), so the
+    precedence is pinned via the copied-standards fixture shape for BOTH
+    standards at once."""
+    corpus = _copied_standards(tmp_path, "boundary-corpus")
+
+    def retire_execution_010(row: dict[str, Any]) -> None:
+        row["range"] = ">=0.2.0,<0.3.0"
+        row["retired"].append("0.1.0")
+
+    def retire_otdp_022(row: dict[str, Any]) -> None:
+        row["range"] = ">=0.2.0,<0.2.2"
+        row["retired"].append("0.2.2")
+
+    _rewrite_policy(corpus, "execution", retire_execution_010)
+    _rewrite_policy(corpus, "otdp", retire_otdp_022)
+    from benchweave.control.documents import _classify_execution_pin
+
+    execution = _classify_execution_pin("0.1.0", corpus=corpus)
+    otdp = classify_descriptor_pin("0.2.2", corpus=corpus)
+    assert execution.status == "retired", execution
+    assert "retired_identifier:" in str(execution.note), execution.note
+    assert otdp.status == "retired", otdp
+    assert "retired_identifier:" in str(otdp.note), otdp.note
+
+
+def test_row6b_leading_zero_pins_classify_never_carried_by_exact_string() -> None:
+    """Fold row 6b: the inherited #217 boundary — leading-zero numerals pass
+    ``VERSION_PATTERN`` (``\\d+`` matches ``01``) but fail EXACT-STRING
+    membership in the retained set and the retired list, so ``01.0.0``
+    classifies never-carried under BOTH standards while ``1.0.0`` is
+    retired under execution. Fail-closed by construction; pinned as a
+    documented boundary table arm, no behavior change."""
+    from benchweave.control.documents import _classify_execution_pin
+
+    for classify in (classify_descriptor_pin, _classify_execution_pin):
+        record = classify("01.0.0")
+        assert record.status == "unknown", record
+        assert record.conformance == "non-conforming"
+        assert "never carried" in str(record.note) or "names no declared" in str(
+            record.note
+        ), record.note
+    # The distinction the exact-string rule buys: the true identifier is
+    # retired; its zero-padded twin is merely unknown.
+    execution = _classify_execution_pin("1.0.0")
+    assert execution.status == "retired", execution

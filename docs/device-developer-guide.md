@@ -199,6 +199,15 @@ classification), and `cross_constraint_violation:` (the bench's execution
 version constrains the OTDP range its devices may pin — a pin outside it
 refuses naming both versions and the constraining row's evidence).
 
+The bench side carries the same pinning (issue #220): the bench
+document's own `contract_version` selects the vendored execution corpus
+version the whole lattice validates against, refusing with
+`version_unknown:`, `retired_identifier:`, or `standard_nonconforming:`
+(the same five inline fields; a non-conforming execution pin has no
+acknowledgement path), and a run request over a lattice pinned to a
+non-active execution version refuses `execution_version_not_runnable:`
+naming both versions and the move-to.
+
 ### Named settings as presets
 
 `plugins/benchweave/sim_scope/` is the reference instance for shipping named,

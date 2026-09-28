@@ -69,7 +69,13 @@ the pin's own const re-asserts itself in the validated bytes — if the file cha
 reads, the routed schema's `contract_version` const refuses the swapped content. A builder may
 restructure to a single read (decode once, validate the decoded content) provided the refusal
 prefixes and their order for existing multi-fault fixtures are unchanged; the double read is the
-minimal-diff shape.
+minimal-diff shape. **Fold correction (refute lane 1, reproduced): the routing read CHANGES the
+refusal order for multi-fault lattices, and the original "order ... unchanged" constraint does not
+hold for the shape that landed** — bench byte-faults (its exact-byte decode) and the pin
+classification refusals now fire BEFORE the procedure/policy schema faults, because the routing
+read precedes the five validating decodes. No test pinned the old order (the five-decode order was
+implementation detail, never asserted), so nothing regresses; the new order is the disclosure, and
+the fold's row-5 splice correction is asserted in `test_execution_pin.py`.
 
 **The classification core, generalized by standard.** The served-set machinery is already
 standard-parameterized — `load_dependency_policy_from_corpus(corpus)` (policy for all standards),
@@ -93,7 +99,7 @@ which is None today and refuses as never-carried — total, no crash).
 
 | `contract_version` class | Behavior |
 |---|---|
-| served or yanked (dev/rc if a head is ever declared) | validate all five documents against `contracts.parent / <pin>`, each schema file digest-verified against its corpus-manifest row at load (the `_validator` cache key `(dir, filename)` already keeps versions apart, documents.py:164-177) |
+| served or yanked (dev/rc if a head is ever declared) | validate all five documents against `contracts.parent / <pin>`, each schema file digest-verified against its corpus-manifest row at load (the `_validator` cache key `(dir, filename)` already keeps versions apart, documents.py:164-177). Fold note (refute lane 2, both cells proven): a declared dev head needs corpus-manifest ROWS for the head directory — a dev-pin admission whose head files are unrowed refuses `corpus_file_unpinned:`; the dev-head precondition is manifest-declaration ∧ corpus rows, never either alone |
 | retained ∧ out-of-range (`nonconforming`) | REFUSE `standard_nonconforming:` + the five VR-37 fields — **no ack path**; the #217 landing note is the ruling: "an ack authorises the otdp-window load, never the execution runtime interface" (invariants.md CON-1 amendment 2026-09-27) |
 | retired (`1.0.0`) | REFUSE `retired_identifier:` (distinct from unknown; the re-target hint wording) + VR-37 |
 | never carried (`0.3.0`, `0.2.5`, an undeclared dev label) | REFUSE `version_unknown:` + VR-37 |
@@ -158,11 +164,36 @@ story); running needs the record lane (follow-on); move-to: <contracts.name>
 ```
 
 A new stable prefix, additive per VR-38. The guard fires BEFORE device plans and bridges are built
-(app.py:705+). Recovery cannot bypass it: no 0.1.0-lattice run can exist in any store (pre-slice,
-such a lattice refused at startup — F1's RED; post-slice, starts are guarded), so recovery
-terminalization never touches a pinned-old run. Startup deliberately does NOT guard — F1's surface
+(app.py:705+). Startup deliberately does NOT guard — F1's surface
 is the gateway holding and validating the old lattice; the refusal lands at the run request, loudly,
 with the move-to.
+
+**Fold correction (2026-09-28, refute wave) — wire posture and recovery, corrected from the
+original text.** (a) The guard's typed refusal is LOG-ONLY at the wire today: a run POST
+202-accepts, the worker's contained build-run failure carries the message into the gateway error
+log, and the run's final projection shows `terminal` / `outcome_unknown` / `terminal_record: null`
+— the poison-path containment precedent; safety is intact (nothing executes) and wire surfacing of
+the refusal is E1's, together with the persisted-version + run_start pre-check decision. (b) The
+original claim "recovery cannot bypass it: no 0.1.0-lattice run can exist in any store" was FALSE
+for the pre-promotion cohort: a store holding a non-terminal run whose binding pins 0.1.0
+(recorded 2026-09-11..2026-09-25, before 54a59fa promoted 0.2.0) upgrades into exactly the state
+where the lattice now admits and recovery terminalized the run through the same literal — the
+adversary reproduced it end to end. The slice's recovery legs therefore SKIP emitting a terminal
+record when the stored binding's version names a CARRIED execution dialect other than the
+composition's: the run stays
+non-terminal (the honest wedge, matching pre-slice behavior), logged typed under
+`recovery_execution_version_not_runnable:` (a recovery-family prefix embedding the guard's class
+vocabulary, so the CON-1-named grep finds every instance), the lease is still released, and the
+run is never reported for projection close. E1's record lane lifts both. The carried-dialect
+qualification (build-time correction, caught by the suite net): the stored binding version is the
+§5 ref's CALLER-SUPPLIED echo (D4 records it verbatim; the frozen contract types it as any
+non-empty string), so it is judged, never trusted — only a version the corpus carries (the same
+Q6 classification admission used for the lattice's own pin) that differs from the composition's
+is an era fact; a caller-data version (retired, never carried, unclassifiable) terminalises
+exactly as before the fold, and a classification failure is containment (no record written).
+Pinned both sides in `tests/faults/test_recovery_sweep_faults.py` (the era arms and the
+caller-data boundary arm) and proven by the real-path child-process kill-mid-run suite, whose
+harness posts exactly such a caller-data ref.
 
 ### 1.3 Tests and fixtures
 
@@ -207,7 +238,7 @@ bytes, no CLI.
 
 | # | Deferred | Home | Reopen trigger |
 |---|---|---|---|
-| E1 | Terminal-record construction and validation against the pinned version's own run-record schema (`build_terminal_record`'s literal coordinator.py:171 and its `contracts` validation; recovery terminalization) — unblocks RUNS on non-active-pinned lattices and lifts the §1.2 guard | Follow-on issue (the slice PR opens it) | The `execution_version_not_runnable:` guard firing in real operator use, or the owner's explicit call to allow running non-active-pinned lattices (the ask naming the lattice version) |
+| E1 | Terminal-record construction and validation against the pinned version's own run-record schema (`build_terminal_record`'s literal coordinator.py:171 and its `contracts` validation; recovery terminalization) — unblocks RUNS on non-active-pinned lattices and lifts the §1.2 guard. Sharpened at the fold (refute wave): E1 also owns (a) the WIRE surfacing of the guard refusal — today log-only (run POST 202-accepts; the final projection shows `terminal`/`outcome_unknown`/`terminal_record: null`; the message lives in the gateway error log), which needs the persisted-version + run_start pre-check decision; (b) the recovery-side skip's lifter (`recovery_execution_version_not_runnable:` leaves era runs non-terminal — the honest wedge); (c) the run-refusal label definition for non-active-pinned lattices | Follow-on issue (the slice PR opens it) | The `execution_version_not_runnable:` guard firing in real operator use (wire-visible or in the log), an era-cohort recovery skip firing on an upgrade path, or the owner's explicit call to allow running non-active-pinned lattices (the ask naming the lattice version) |
 | E2 | An ack-shaped load for a retained-but-out-of-range EXECUTION pin (refused outright this slice, consistent with #217's "never the execution runtime interface") | Documentation here + the slice PR body | The first retained execution version that sits outside the declared range (a state change visible in `standards-manifest.json`'s execution row vs the retained tree) |
 | E3 | Public surface for the execution pin's classification (an API-view derivation or run-event recording of the lattice's execution class, VR-46-style) and a full pin record on `AdmittedDocuments` beyond the version string | Documentation here | The first consumer surface requesting the lattice's execution class (E1's record lane, or an interface bump opening the wire object) |
 | E4 | Deriving the module-default `_CONTRACTS` literal from the manifest active entry (documents.py:78) — already the arc's slice-7 lane (§3.7); this slice neither adds nor removes literals (counter at 12, baseline 12, `scripts/standards/count_version_literals.py`) | The #203 slice-7 sub-issue | Slice 7 |
@@ -242,8 +273,12 @@ bytes, no CLI.
 - **Surfaces that move:** `control/documents.py` (Tier 3 by rubric), `interfaces/app.py` (one guard),
   the test tree, `docs/internal/invariants.md` (append). MCP tools / REST / openapi / CLI: no motion
   (the new refusal prefixes ride inside `AdmissionRejected` messages, exactly as #217's did — no wire
-  enumeration). Operator docs: the refusal vocabulary is documented where #217's is (the module
-  docstring + the CON-1 amendment). SDK repo: no motion — the SDK validates descriptors, not
+  enumeration). Operator docs: the refusal vocabulary is documented where #217's is — the module
+  docstring, the CON-1 amendment, AND the two machine-matchable-prefix lists the obligations rows
+  3+4 name: `docs/operator-guide.md` and `docs/device-developer-guide.md` (fold row 3: the original
+  claim here named only the docstring + amendment; the full enumeration — the three execution-pin
+  classes and `execution_version_not_runnable:` — landed in both guides with the slice).
+  SDK repo: no motion — the SDK validates descriptors, not
   execution documents (verified: one incidental comment mention at the pin, nothing functional).
 - **CI cost:** negligible — one new focused test module (seconds), no new lanes. The ratchet is
   untouched (12 = baseline 12; the coordinator literal stays, made safe by the guard, removed by E1).
@@ -384,7 +419,9 @@ statistical arms exist in this slice; nothing here depends on sample size.
 - **The double-read restructure.** Whether the builder keeps the two bench reads (minimal diff) or
   restructures `_decode` to validate already-decoded content — either is conformant; the
   refusal-order pin (existing multi-fault fixtures) is verified only by the focused suite at build
-  time, not by this design.
+  time, not by this design. Fold correction (refute lane 1): the landed double-read shape DOES move
+  the refusal order for multi-fault lattices — bench byte-faults and classification refusals now
+  precede procedure/policy schema faults; corrected in §1.1, and no test pinned the old order.
 - **CI checkout depth.** The recovered lattice is COMMITTED under `tests/fixtures/` (no
   `git show` at test time), so CI history depth is irrelevant — but the recovery step itself
   (extracting `4743bd4` bytes) was done in THIS checkout; the builder re-verifies the committed

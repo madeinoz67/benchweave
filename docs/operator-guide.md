@@ -238,6 +238,28 @@ a matching entry in `operator-acknowledgements.json` is a hard
 `startup_admission_rejected:` refusal; with one, it loads flagged, and
 withdrawing the file withdraws the authorisation at the next startup.
 
+The execution lattice is itself pinned (issue #220): the bench document's
+own `contract_version` selects the vendored execution corpus version all
+five documents validate against — the pin's digest-verified bytes, not
+the gateway's active version. Its refusals carry the same
+machine-matchable vocabulary and the five inline fields:
+`version_unknown:`, `retired_identifier:`, and `standard_nonconforming:`
+— a non-conforming execution pin refuses outright; no operator
+acknowledgement authorises it (an acknowledgement covers an otdp window,
+never the execution runtime interface). A lattice that pins a non-active
+execution version still validates and loads at startup — the
+procedure-author story — but a run request over it refuses
+`execution_version_not_runnable:` naming both versions and the move-to;
+the run never starts. A stored run whose binding names a carried
+execution dialect other than the active one (an era run — recorded under
+a retained version the gateway no longer serves) is left non-terminal at
+restart recovery, logged as
+`recovery_execution_version_not_runnable:` — its honest end cannot be
+written in the active record dialect until the record lane is
+version-threaded. (A binding ref carrying a version the corpus never
+served is caller data, recorded verbatim; recovery judges the stored
+version against the corpus, never trusting the echo.)
+
 **Adapter-bridge runs and the quota seam.** A run constructs a real OTDP
 bridge for a bench device only when the device's descriptor declares
 `integration.mode: "adapter"` AND the device's declared `generation`

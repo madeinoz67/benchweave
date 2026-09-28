@@ -178,6 +178,11 @@ class AdmittedDocuments:
     #: this: running is a composition-version fact, validated admission is
     #: the pin's.
     execution_version: str
+    #: The bench pin's full classification record (fold row 2, issue #220):
+    #: the yanked deprecation warning, the conformance class, the note —
+    #: carried, never dropped at the router or re-derived. A public wire
+    #: surface for it is E3's deferral.
+    execution_pin: DescriptorPin
 
 
 def _corpus_root_of(family_version_dir: Path) -> Path:
@@ -1587,7 +1592,7 @@ def _check_allow_rule_constraints(logical: str, policy: dict[str, Any]) -> None:
 
 def _route_execution_contracts(
     bench_path: Path, contracts: Path
-) -> tuple[str, Path, str | None]:
+) -> tuple[str, Path, str | None, DescriptorPin]:
     """Route admission by the bench's own ``contract_version`` (issue #220).
 
     The routing read decodes the bench through the exact-byte gates (no
@@ -1605,21 +1610,35 @@ def _route_execution_contracts(
     - unclassifiable → ``(contracts.name, contracts, None)`` — the
       composition posture, so the schema's own const error names it.
 
-    Returns ``(execution_version, routed_directory, routed_pin)``. The
-    routing read and the later validating read are two reads of one path;
-    the TOCTOU is self-defending because the pin lives in the validated
-    bytes — a swap between the reads routes on bytes A and validates bytes
-    B, and the routed schema's ``contract_version`` const refuses B unless
-    it declares exactly the routed version (pinned by
+    Returns ``(execution_version, routed_directory, routed_pin, record)`` —
+    the full classification record rides beside the version label (fold row
+    2: a yanked pin's deprecation warning is carried on the admitted
+    object, never dropped at the router; a wire surface for it is E3's).
+    The routing read and the later validating read are two reads of one
+    path; the TOCTOU is self-defending because the pin lives in the
+    validated bytes — a swap between the reads routes on bytes A and
+    validates bytes B, and the routed schema's ``contract_version`` const
+    refuses B unless it declares exactly the routed version (pinned by
     ``tests/control/test_execution_pin.py`` Risk-2 arm).
     """
+    corpus_root = _corpus_root_of(contracts)
+    if not (corpus_root / "standards-manifest.json").is_file():
+        # Fold row 4: a family-symlinked (or otherwise mis-threaded)
+        # composition resolves its corpus root INSIDE the family, where no
+        # manifest lives. Classification would crash with the loader's raw
+        # FileNotFoundError; the seam fault is the CALLER's and it refuses
+        # typed, in the corpus_ vocabulary family.
+        raise AdmissionRejected(
+            f"corpus_family_unresolved: {contracts} does not resolve to a "
+            f"vendored corpus family (its corpus root {corpus_root} carries "
+            "no standards manifest); thread the composition's own version "
+            "directory"
+        )
     probe, _probe_digest = _decode(bench_path, "bench")
-    record = _classify_execution_pin(
-        probe.get("contract_version"), corpus=_corpus_root_of(contracts)
-    )
+    record = _classify_execution_pin(probe.get("contract_version"), corpus=corpus_root)
     if record.status in ("served", "yanked", "dev", "rc"):
         pin = record.otdp_version
-        return pin, contracts.parent / pin, pin
+        return pin, contracts.parent / pin, pin, record
     if record.status in ("retired", "unknown", "nonconforming"):
         prefix = {
             "retired": "retired_identifier:",
@@ -1627,8 +1646,17 @@ def _route_execution_contracts(
             "nonconforming": "standard_nonconforming:",
         }[record.status]
         rest = (record.note or "").partition(":")[2].strip()
+        if record.status == "nonconforming":
+            # Fold row 5: the non-conforming note carries no prose head —
+            # just the VR-37 fields, whose first field is
+            # ``standard: execution`` — so name the bench's own pin in
+            # prose instead of splicing a second bare ``standard`` after
+            # the logical name.
+            raise AdmissionRejected(
+                f"{prefix} bench contract_version {record.otdp_version}; {rest}"
+            )
         raise AdmissionRejected(f"{prefix} bench {rest}")
-    return contracts.name, contracts, None
+    return contracts.name, contracts, None, record
 
 
 def admit_documents(
@@ -1689,8 +1717,8 @@ def admit_documents(
     if provider_settings is not None:
         provider_state = load_transport_settings(provider_settings)
 
-    execution_version, contracts_dir, routed_version = _route_execution_contracts(
-        bench_path, contracts
+    execution_version, contracts_dir, routed_version, execution_pin = (
+        _route_execution_contracts(bench_path, contracts)
     )
 
     procedure, procedure_digest = _decode(
@@ -1892,6 +1920,7 @@ def admit_documents(
         digests=digests,
         pins=pins,
         execution_version=execution_version,
+        execution_pin=execution_pin,
     )
 
 
