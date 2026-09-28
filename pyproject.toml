@@ -53,6 +53,7 @@ dev = [
   "referencing>=0.35",
   "types-jsonschema>=4.26.0.20260518",
   "httpx>=0.28.1",
+  "pytest-xdist>=3.8.0",
 ]
 
 [project.scripts]

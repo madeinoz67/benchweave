@@ -61,8 +61,11 @@ jobs:
         # intersection empty) and records it in the PR body (design §5 AR-1;
         # not an automated gate), so no test loses CI execution. The
         # real-paced set runs on its own fresh VM in the timing lane instead
-        # of behind this job's bulk-suite residue.
-        run: uv run pytest -q -m "not timing"
+        # of behind this job's bulk-suite residue. Parallel via pytest-xdist
+        # (issue #247 increment 2): the timing lane stays serialized — xdist
+        # there would reintroduce the competition the lane removes (issue #241
+        # slice 1).
+        run: uv run pytest -q -n auto -m "not timing"
 
       - name: Standards sync check
         # Re-export the corpus to a temp dir and refuse any drift between
