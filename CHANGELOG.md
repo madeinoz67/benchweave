@@ -228,6 +228,11 @@ All notable changes to this project will be documented in this file.
 - The devices read path degrades, never 500s (#217 review fold R10)
 - Fold refute F1 dead-log pointers + F2 zero-evidence PASS (#247)
 - Refute fold — six fork-independent MEDIUMs A/B/C/F2/F3/F6 (#218)
+- Classify against fresh policy state — VR-19 both halves (#219 slice 5)
+- --no-renames on the shared Add census — rename-blind Adds (#219 fold FIX A)
+- The matrix committed-read fallback, gated and env-immune (#219 fold FIX B + F4)
+- SM-5 pairs on the version lattice, not committer clocks (#219 fold FIX C)
+- LOW folds — the token's absence semantics and the guard pin (#219 refute wave)
 
 ### Documentation
 
@@ -434,6 +439,7 @@ All notable changes to this project will be documented in this file.
 - Split gate doctrine into per-commit fast lane + per-push battery (#247)
 - Issue #241 slice 2 record — re-band decisions (D1 drain-cap classification, row-17 marker, HOLD arms)
 - Wave-2 fold — record errata for the unbuildable patch shape and the headroom arithmetic
+- Slice 5's surfaces — CON-12 landing, operator ack guide, D11 closed (#219)
 
 ### Features
 
@@ -610,6 +616,9 @@ All notable changes to this project will be documented in this file.
 - Dev-pin admission — dev and released side by side on one bench (#218)
 - Promotion records and their three gates — digest, sweep, pending-successor (#218)
 - The founding promotion record — execution 0.2.0 recovered from history (#218)
+- The matrix's per-version rows, from committed state (#219 slice 5)
+- The SM-5 migration-note gate and its walk (#219 slice 5)
+- Operator acknowledgement persistence — D11 lands (#219 slice 5)
 
 ### Hardware Evidence
 
@@ -869,6 +878,7 @@ All notable changes to this project will be documented in this file.
 - Classify the drain cap as retryable infrastructure (site="drain-cap")
 - Row-17 clamp test joins the timing lane (marker only, no band change)
 - Wave-1 fold — exhaustion renders the retry composition (7 findings, one commit)
+- V8 accompaniment — the retention hole fixture counts eight rows (#219 slice 5)
 
 ### Build
 
