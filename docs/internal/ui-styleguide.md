@@ -180,6 +180,8 @@ The severity model — meanings, dismissal classes and live regions — is norma
 
 The initial plot supports time series and waveforms. Spectrum, digital traces, sweeps and polar/Smith charts belong to the complete-catalogue follow-on and must retain these same rules. Series tokens and their assignment are normative in the contract ([§E.2](ui-contract.md#e2-series-assignment-engineering-plot-sub-rows)): slots derive from the bytewise-sorted declared id set — the emphasis (accent) hint binds to `--bw-series-1`, and `ui/src/series-colors.test.ts` carries the computed colour proofs (contrast, severity non-confusion under dual CVD models, adjacency) on the actual token values.
 
+**Thresholds as convention (disclosed):** the series thresholds (T1 contrast ≥ 3:1, T2 severity non-confusion ΔE00 ≥ 10, T3/census pair separation ≥ 8) are pre-committed conventions in the design record §6, chosen in the conservative direction — a proxy for "distinguishable as trace identity at plot line width", not a perceptual guarantee at every size. **The dual-model residual:** requiring BOTH CVD models to pass catches model-specific errors, but cannot catch defects shared by the whole pipeline — a bug in the shared CIEDE2000 implementation moves both arms identically, and a constant typo in the permissive direction can pass both arms. The countermeasures are the Sharma reference table, the constant-identity pins (row sums, anchor fixed points, the arms-differ reference vector); the residual counter-class is a same-direction error in a shared constant.
+
 ## Administrative consistency
 
 Operator and administrative surfaces share tokens and components. Administrative mutations remain visually distinct from ordinary controls, but they do not invent a separate design language.

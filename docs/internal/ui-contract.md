@@ -70,14 +70,14 @@ contract-pinned).
 | `--bw-critical` | `#b63830` | `#ff6d63` | Immediate operator action |
 | `--bw-trip` | `#a92858` | `#ff5d91` | Protective trip and inhibited control |
 | `--bw-success` | `#177158` | `#67d8b2` | Confirmed successful outcome |
-| `--bw-series-1` | `#eb3b70` | `#557db7` | Plot series slot 1 (§E.2; set-derived assignment) |
-| `--bw-series-2` | `#0c4298` | `#acd0f0` | Plot series slot 2 (§E.2; set-derived assignment) |
-| `--bw-series-3` | `#9a7884` | `#009131` | Plot series slot 3 (§E.2; set-derived assignment) |
-| `--bw-series-4` | `#3b4473` | `#dbb3cb` | Plot series slot 4 (§E.2; set-derived assignment) |
-| `--bw-series-5` | `#648a68` | `#007df3` | Plot series slot 5 (§E.2; set-derived assignment) |
-| `--bw-series-6` | `#6a5d85` | `#6f9082` | Plot series slot 6 (§E.2; set-derived assignment) |
-| `--bw-series-7` | `#772f31` | `#a37300` | Plot series slot 7 (§E.2; set-derived assignment) |
-| `--bw-series-8` | `#837187` | `#5f8379` | Plot series slot 8 (§E.2; set-derived assignment) |
+| `--bw-series-1` | `#253421` | `#00744a` | Plot series slot 1 (§E.2; set-derived assignment) |
+| `--bw-series-2` | `#8e7588` | `#e3d7ff` | Plot series slot 2 (§E.2; set-derived assignment) |
+| `--bw-series-3` | `#2f3300` | `#567200` | Plot series slot 3 (§E.2; set-derived assignment) |
+| `--bw-series-4` | `#00379d` | `#805e71` | Plot series slot 4 (§E.2; set-derived assignment) |
+| `--bw-series-5` | `#7e002d` | `#007df3` | Plot series slot 5 (§E.2; set-derived assignment) |
+| `--bw-series-6` | `#746084` | `#ae686e` | Plot series slot 6 (§E.2; set-derived assignment) |
+| `--bw-series-7` | `#5a1538` | `#755d9a` | Plot series slot 7 (§E.2; set-derived assignment) |
+| `--bw-series-8` | `#183058` | `#7d8f00` | Plot series slot 8 (§E.2; set-derived assignment) |
 | `--bw-shadow-dark` | `#b9c5cc` | `#0c1317` | Dark component of elevation shadows |
 | `--bw-shadow-light` | `#ffffff` | `#354852` | Light component of elevation shadows |
 
@@ -280,9 +280,34 @@ refused by the wire schema (the ceiling), not by the renderer.
 Legend disclosure: each legend row carries `data-bw-series-slot="((i mod 8) + 1)"` and
 `data-line` naming its resolved dash.
 
+**Waveform residual (disclosed):** symbols render on `time_series` plots only;
+in `waveform` plots identity is carried by colour and dash alone, so the
+same-dash census below (all 28 token pairs per theme ≥ 8 ΔE00) is the
+load-bearing separation for waveforms. Whether symbols should render in
+waveforms is an owner fork, not part of this contract.
+
+#### §E.2.0 Pass-2 composition (channel_hints)
+
+Schema: `Hint | Effect` — 4 rows. These rows are NORMATIVE on top of the slot
+assignment: a contract-only host must paint identically to the reference
+renderer (the concrete divergence case: an accent hint on a channel that slot
+assignment alone would paint `--bw-series-6`).
+
+| Hint | Effect |
+| --- | --- |
+| `color_role: "accent"` | The hinted channel is repainted `--bw-series-1` (the plot's emphasis role — the binding of the accent hint), overriding its slot colour. Exactly one emphasis colour renders per plot: pass-1 slot 1 (the first bytewise slot among visible traces) is the FIRST claim, so an accent hint on any other trace loses silently to it — no cascade, slot 1 keeps its default. Among visible traces hinting accent, the earliest in trace order wins; the others revert to their slot colours. |
+| `color_role: "muted"` | The hinted channel is repainted `--bw-text-muted`, releasing its emphasis claim — but only when the theme resolves the muted token; a token-less muted hint falls back to the trace's slot colour (which still claims if it is slot 1). |
+| `visible: false` | The channel is not drawn, but its SLOT never moves: styles are resolved over the full declared set before visibility filters, so hiding a channel never restyles its siblings. A hidden trace releases its emphasis claim and neither claims nor starves. |
+| (no hint) | The channel keeps its §E.2.1 slot colour, dash and symbol. |
+
 #### §E.2.1 Slot mapping
 
-Schema: `Slot i | Colour | Dash | Symbol` — 16 rows.
+Schema: `Slot i | Colour | Dash | Symbol` — 16 rows. Slot `i` is 0-based; the
+series and symbol NAMES are 1-based (`series-1` = slot 0). The ceiling is
+plugin-ui `y.maxItems: 16` WITH `uniqueItems: true` (ids are unique on the
+wire), cited from the standard. A 17th declared id is refused by the wire
+schema, not the renderer; the formula would map it (i=16) onto the same
+(colour, dash) pair as i=8.
 
 | Slot i | Colour | Dash | Symbol |
 | --- | --- | --- | --- |
@@ -312,8 +337,8 @@ Schema: `Key | Shape description | Reference binding` — 10 rows (2 dash, 8 sym
 
 | Key | Shape description | Reference binding |
 | --- | --- | --- |
-| `dash-1` | Solid line | ECharts `solid` |
-| `dash-2` | Fixed dash pattern | ECharts `dashed` |
+| `dash-1` | Solid line — no gaps | ECharts `solid` |
+| `dash-2` | Fixed dash pattern — equal on/off segments (the reference binding draws 4 px on, 4 px off at the default stroke width) | ECharts `dashed` |
 | `symbol-1` | Filled circle | `circle` |
 | `symbol-2` | Filled square | `rect` |
 | `symbol-3` | Filled upward triangle | `triangle` |

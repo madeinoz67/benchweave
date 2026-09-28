@@ -40,7 +40,7 @@
   /* The swatch colour is set per row from the resolved trace style (pass-2
      included) via the inline --legend-swatch custom property; the fallback
      only covers rows rendered before any style resolution. */
-  border-top: 0.16rem solid var(--legend-swatch, var(--bw-accent));
+  border-top: 0.16rem solid var(--legend-swatch, var(--bw-series-1));
   content: "";
   vertical-align: middle;
 }

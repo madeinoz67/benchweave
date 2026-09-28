@@ -15,7 +15,7 @@ vi.mock("echarts/core", () => ({
 
 import { EngineeringPlot, type PlotTrace } from "./EngineeringPlot";
 
-const LIGHT_SERIES = ["#eb3b70", "#0c4298", "#9a7884", "#3b4473", "#648a68", "#6a5d85", "#772f31", "#837187"];
+const LIGHT_SERIES = ["#253421", "#8e7588", "#2f3300", "#00379d", "#7e002d", "#746084", "#5a1538", "#183058"];
 
 interface SeriesRow {
   id: string;

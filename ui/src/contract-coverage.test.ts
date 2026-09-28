@@ -400,6 +400,17 @@ describe("contract L1: fixture rows present and parsable", () => {
     }
   });
 
+  it("§E.2.0 pins the four pass-2 composition rows", () => {
+    const rows = parseTable("#### §E.2.0 Pass-2 composition (channel_hints)", ["Hint", "Effect"]);
+    expect(rows.length).toBe(4);
+    expect(literal(rows[0]![0]!)).toBe("color_role: \"accent\"");
+    expect(literal(rows[1]![0]!)).toBe("color_role: \"muted\"");
+    expect(literal(rows[2]![0]!)).toBe("visible: false");
+    for (const row of rows) {
+      expect(contractCell([row], 0, 1), `${literal(row[0]!)} effect`).not.toBe("");
+    }
+  });
+
   it("§E.2.1 pins the 16-row slot mapping exactly", () => {
     const rows = parseTable("#### §E.2.1 Slot mapping", ["Slot i", "Colour", "Dash", "Symbol"]);
     expect(rows.length).toBe(16);

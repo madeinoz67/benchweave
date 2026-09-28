@@ -150,7 +150,7 @@ describe("PreviewPlots panel", () => {
     // Evolved with #242 slice 3: pass-1 slot-1 is the series-1 token (the
     // accent-token binding died with the index-based defaults); jsdom
     // resolves no custom properties, so the LIGHT fallback literal applies.
-    expect(series[0].lineStyle.color).toBe("#eb3b70");
+    expect(series[0].lineStyle.color).toBe("#253421");
   });
 
   it("renders nothing when the decoded document carries no plot views", () => {

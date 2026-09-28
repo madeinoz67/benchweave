@@ -102,10 +102,9 @@ function resolveStyles(
   const defaults: TraceStyle[] = traces.map((trace) => {
     const slot = slots.get(trace.id) ?? 0;
     return {
-      // A theme that somehow resolves no series token degrades that trace to
-      // the threshold-severity colour rather than rendering it invisible; the
-      // in-tree themes always define all eight (L3 pins the mirror).
-      color: tokens.series[slot % 8] || tokens.alert,
+      // readTokens guarantees eight entries (fallback literals when the theme
+      // resolves none), so the slot colour is always defined.
+      color: tokens.series[slot % 8]!,
       symbol: SYMBOL_SEQUENCE[slot % 8],
       lineType: slot < 8 ? "solid" : "dashed",
     };
@@ -155,7 +154,7 @@ function readTokens(
   // The series fallback literals are the LIGHT theme's slot values (the same
   // jsdom-compat pattern as the other documented fallbacks); the in-tree
   // themes always define all eight, and L3 pins the mirror.
-  const seriesFallback = ["#eb3b70", "#0c4298", "#9a7884", "#3b4473", "#648a68", "#6a5d85", "#772f31", "#837187"];
+  const seriesFallback = ["#253421", "#8e7588", "#2f3300", "#00379d", "#7e002d", "#746084", "#5a1538", "#183058"];
   return {
     text: mutedToken ?? "#5b6a73",
     muted: mutedToken,
