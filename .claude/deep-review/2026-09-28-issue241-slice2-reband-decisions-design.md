@@ -129,6 +129,25 @@ Four things, one of them conditional on pre-committed arms:
    post-trip poll stays plain — that is the poll-poisoned-the-session class already
    disclosed as a starvation-shaped NON-retryable at `_poll_found_dead_session`; D1
    widens the retryable class by exactly one site.
+
+   *Erratum (2026-09-28, wave-2 review fold — reviewer MEDIUM; history above not
+   rewritten): the "patch is faithful by construction — `due_count > 0` keeps delivery
+   working … the healthy-path-under-starvation shape" claim describes the letter's
+   patch shape, which is measured UNBUILDABLE: `next_event` shares `due_count` as its
+   delivery-liveness check, so an always-positive `due_count` makes delivery OUTPACE
+   the 20 ms frame schedule and the fixture dies at the `drain-poll-door` site inside
+   the spin, never reaching the cap (the builder's first RED run on the letter shape:
+   both arms failed `'drain-poll-door' != 'drain-cap'`). The shipped pins starve
+   `next_event` on the first construction's adapter instead — the real `due_count`
+   backlog grows without bound, the quiet guard never sees zero — which is faithful to
+   the record's MECHANISM claim (§0 D1 and C.2's total-starvation subclass: the backlog
+   grows through the cap; delivery ~0). Two statements in the passage above are
+   superseded by what shipped: the faithful-by-construction claim (the shape is
+   reworked, as just described) and "site-level exhaustion is NOT re-pinned" (the
+   wave-1 fold, adversary F2, pins exhaustion at the real site). Corrected pin count:
+   four D1-family pins ship at `19b410d` — the type arm, the integration arm, the
+   mixed-composition arm, and the drain-cap exhaustion arm — against the "two pin
+   tests" the §2 build order and §8 file table were written for.*
 2. **Row-17 marker (selection change, one line).** `@pytest.mark.timing` on
    `test_row_b_clamp_negative_injected_remaining_clamps_to_zero` — conformance to the
    testing-conventions line; NO band change; the slice-1 row-17 clause is overridden on
@@ -157,7 +176,8 @@ Build order (each RED-first where behavior changes, one slice per commit):
 
 1. Commit 1: this design record (complete, with numbers and selected arms).
 2. D1 classification + the two pin tests (RED on unmodified `main`: the integration
-   arm errors with the plain `AssertionError` propagating out of `run_trial`).
+   arm errors with the plain `AssertionError` propagating out of `run_trial`; wave-2
+   erratum: two further pins land at the wave-1 fold — four D1-family pins ship).
 3. Row-17 marker + the AR-2 partition re-proof.
 4. Any fired §5 arm (D3 re-band, D-max cap raise, #247 band amendment) — its own
    commit, its own RED where a pin asserts the old number. **None fired — this
@@ -284,7 +304,8 @@ unforced widening — the arm is refused in that case.
   `retry_sites == ["drain-cap"]`. The type arm pins the raise's TYPE and `site` label
   directly (TYPE-matched — no test matches on message text); exhaustion stays covered by
   the existing site-agnostic pin (`test_infrastructure_marker_exhausts_at_two_retries`,
-  `len(rigs) == 3`).
+  `len(rigs) == 3`) *(wave-1 fold: the drain-cap exhaustion arm also pins exhaustion at
+  the real site — four D1-family pins at `19b410d`)*.
 - **AR-2 (partition integrity):** the §5 AR-1 collect-diff re-recorded in the PR body
   with row 17 counted in T (Evidence A's tip baseline: T=61 → 62, G shrinks by one, U
   unchanged — union and intersection re-proven by the recorded collect diff, not
@@ -417,8 +438,10 @@ self-limiting spinners with 0 survivors verified per loaded batch.
 - **D_max** (wrapper-timed successful drains): quiet n=720 at load 39.9–51.4 →
   median 45.7 / p95 46.6 / max 88.2; loaded n=720 at load 148–269 → median 46.0 /
   p95 51.9 / max 102.3, 0 failures. **D_max (quiet+loaded) = 102.3 ms** — 22.6x
-  headroom under the 2000 ms cap; the §5.2 raise trigger (D_max > 1200) is
-  decisively not met.
+  quiet / 19.6x loaded headroom under the 2000 ms cap (2000/88.2 quiet vs
+  2000/102.3 loaded; the figure as written quoted 22.6x against the loaded max,
+  which is the quiet ratio — corrected at the wave-2 review fold); the §5.2 raise
+  trigger (D_max > 1200) is decisively not met.
 - **Row-B quiet bands** (n=12 per condition; driver replicates each test's
   measurement section verbatim over the module's own helpers; quiet load 39–55,
   loaded ~120): append_wait_ms [120,450] quiet 236.2–267.4 (median ~259), loaded
@@ -532,9 +555,9 @@ the row-17 marker, and documentation with denominators.
 
 | file | change |
 |---|---|
-| `tests/integration/test_cross_instance_continuity.py` | D1: cap assert → `TrialInfrastructureError(site="drain-cap")`; `run_trial` docstring carrying-site list gains the site; two pin tests beside the F4 pins (type arm + integration arm). RESOLVED: D3 HOLD (M_q = 38.0 ≤ 42, R_A = 0) — no bound change; the `control_x2` 50 ms ceiling and the `unbuffered_x2` bound are untouched |
+| `tests/integration/test_cross_instance_continuity.py` | D1: cap assert → `TrialInfrastructureError(site="drain-cap")`; `run_trial` docstring carrying-site list gains the site; two pin tests beside the F4 pins (type arm + integration arm) *(wave-2 erratum: four D1-family pins ship at `19b410d` — type, integration, mixed-composition, drain-cap exhaustion; see the §1.1 erratum)*. RESOLVED: D3 HOLD (M_q = 38.0 ≤ 42, R_A = 0) — no bound change; the `control_x2` 50 ms ceiling and the `unbuffered_x2` bound are untouched |
 | `tests/unit/test_otdp_bridge.py` | row-17 test gains `@pytest.mark.timing` (no band change). RESOLVED: document-only — quiet append_wait_ms 236.2–267.4 inside the [150, 350] window; no band change |
-| `drain cap value` | RESOLVED: unchanged at 2000 ms — D_max = 102.3 ms (max over quiet 88.2 / loaded 102.3), 22.6x headroom; the raise refused as an unforced widening (§5.2 D1 kill direction) |
+| `drain cap value` | RESOLVED: unchanged at 2000 ms — D_max = 102.3 ms (max over quiet 88.2 / loaded 102.3), 22.6x quiet / 19.6x loaded headroom (wave-2 correction — 22.6x is 2000/88.2; 2000/102.3 = 19.6x); the raise refused as an unforced widening (§5.2 D1 kill direction) |
 | `.claude/deep-review/2026-09-28-issue241-slice2-reband-decisions-design.md` | this record, commit 1 on the branch, §6 filled |
 | `docs/internal/drift-and-obligations.md` | G5 sweep only if a bound moved or prose names the marked-set membership (the CI-map row's "the row-B contention cells" phrasing stays true — row 17 is a row-B clamp test). *Wave-1 fold (adversary F3): the pre-adjudication is superseded — the phrase now reads "the contention and clamp cells", because row 17 moved the marked set's membership and G4 named-set regenerability outweighs the row-B taxonomy reading* |
 | issue #241 | outcome comment: per-gate verdicts with numbers, the slice-1 post-merge counter status, the #247 handoff disposition (the promised handoff, now posted), the row-17 override disclosure |
