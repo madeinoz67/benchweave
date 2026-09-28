@@ -235,6 +235,7 @@ All notable changes to this project will be documented in this file.
 - LOW folds — the token's absence semantics and the guard pin (#219 refute wave)
 - Fold the #257 review battery — 12 rows, one batch
 - Fold wave — recovery era-skip, carried pin record, typed seam refusal, splice, boundary arms (#220 refute)
+- Fold the #258 review battery — proof instrument + re-searched palette
 
 ### Documentation
 
@@ -631,6 +632,7 @@ All notable changes to this project will be documented in this file.
 - Safety behaviours in the reference renderer (#242 slice 2)
 - The execution per-document pin — the bench's contract_version routes the lattice (#220, #203 slice 6)
 - The run guard — execution_version_not_runnable (#220, #203 slice 6)
+- Plot-series tokens, set-derived assignment, sequences (#242 slice 3)
 
 ### Hardware Evidence
 
@@ -726,6 +728,8 @@ All notable changes to this project will be documented in this file.
 - Advance the SDK pointer to the late-folds tip
 - Advance packages/sdk to the safety-behaviours renderer (#242 slice 2)
 - Advance packages/sdk to the review-fold renderer (#242 slice 2)
+- Advance packages/sdk to the series-tokens renderer (#242 slice 3)
+- Advance packages/sdk to the folded-instrument renderer (#242 slice 3)
 
 ### Performance
 
