@@ -44,10 +44,17 @@ list, the interplay note, the walkthrough). No path rule fires (docs-only).
   rubric's design: path rules set the default depth, the keyword rule escalates on what
   the text carries.
 
-Disclosed non-goal: `ui/package.json` dependency changes fall under the ui/ Tier-2 path
-rule, not the Tier-3 Python dependency trigger. npm deps are isolated, exact-pinned in
-`package-lock.json`, and audited in CI's `ui` job; if the owner wants ui dependency
-motion deep-laned, that is a separate rubric row, not this amendment.
+Disclosed non-goal, structurally backstopped: `ui/package.json` dependency changes fall
+under the ui/ Tier-2 path rule, not the Tier-3 Python dependency trigger. npm deps are
+isolated, exact-pinned in `package-lock.json`, and audited in CI's `ui` job — and any
+ui-dep change that affects shipped renderer bytes is forced deeper regardless of the
+ui/ tier: `ui/vite.preview.config.ts:13` writes the preview build into
+`packages/sdk/src/benchweave_sdk/preview_assets/site`, and CI's renderer-freshness step
+(`ci.yml:146-148`, `git -C packages/sdk diff --exit-code`) fails on any diff there, so
+the change cannot land without advancing the `packages/sdk` submodule pointer — itself a
+Tier-3 trigger that also dispatches the standards-governor. A dep change that leaves
+shipped bytes identical (dev-only tooling) stays Tier 2 by path; if the owner wants ALL
+ui dependency motion deep-laned, that is a separate rubric row, not this amendment.
 
 ## 3. The amendments (wording)
 
@@ -93,6 +100,10 @@ where the record contract lives; the rubric stays the authority for both rules:
 > is part of the pre-commitment, and `docs/internal/review-rubric.md` is the authority
 > for both rules.
 
+The rubric↔README coupling is a one-directional authority pointer, the same shape as
+CLAUDE.md's references to the rubric: the README points at the rubric as authority and
+restates nothing, so no drift row is registered for the pair, by that precedent.
+
 ## 4. Cross-reference inventory (tier-bearing surfaces)
 
 | Surface | Content | Disposition |
@@ -100,8 +111,12 @@ where the record contract lives; the rubric stays the authority for both rules:
 | `docs/internal/review-rubric.md` | Step 1 tier rules — the authority | **touched** (§3.1–3.3) |
 | `.claude/deep-review/README.md` | the design-record content contract; silent on tiers today | **touched** (§3.4, one sentence) |
 | `packages/sdk/docs/internal/review-rubric.md` | independent SDK adaptation: different Tier-3 triggers (lock/tree/stamps, refusal prefixes, scaffold, conformance, self-containment), Tier 2 names SDK paths, NO keyword rule, no `ui/` tree | untouched — not a synced copy (no sync obligation governs it; drift obligation 19 covers skills only); the ui/ rule and the main keyword rule are meaningless in the SDK repo; no contradiction arises |
-| `.claude/agents/*` (code-reviewer et al.) | no tier rules; defer to the rubric as the authority | untouched — defers |
-| `.claude/skills/increment/SKILL.md` | design-doc step defers to the deep-review README ("see its README") | untouched — defers; the §3.4 touch covers it |
+| `packages/sdk/.claude/deep-review/README.md` | the SDK repo's own record-content contract (same opening shape as the main README, pre-#254 text) | untouched — no sync obligation (obligation 19 covers skills only), and the new requirement references the main rubric's Step-1 keyword scan, a rule the SDK rubric lacks; the temporal clause governs SDK-side records only if the SDK adopts its own rule |
+| `.claude/agents/code-reviewer.md` | paraphrases the rubric's Tier-3 trigger list (line 46: "contracts, standards artifacts, persisted format, registry entry seam, fixture digests, concurrency, dependencies, the SDK submodule pointer") — an accurate description, not a restatement | untouched — the paraphrase names no rule text that could drift, and the agent's own opener makes the rubric the authority ("Follow docs/internal/review-rubric.md literally") |
+| `.claude/agents/increment-designer.md` | the design author's enumeration ("What a design must contain") and reading list — read neither the rubric nor the deep-review README before this fold | **touched** (fold row 12) — the reading list gains the review rubric (item 5), and the enumeration gains the tier + keyword-scan-result clause |
+| `.claude/agents/*` (others: adversary, standards-governor, bench-measurer, mechanism-critic) | no tier rules; defer to the rubric as the authority | untouched — defers |
+| `.claude/skills/increment/SKILL.md` | the Design step's deliverables enumeration (the loop's step 1); the record contract itself is deferred to the deep-review README | **touched** (fold row 11) — the deliverables gain the tier + keyword-scan-result clause, so designs the skill commissions are compliant by construction |
+| `.claude/skills/panel/SKILL.md` | tier-bearing activation gate: "a **Tier-3 or doctrine fork**" (line 22) decides when the panel runs | untouched — the gate names the tier concept but no rubric rule text, and this amendment changes no tier trigger the gate cites; no drift today |
 | `CLAUDE.md` / `AGENTS.md` | no tier rules; the review section names the rubric as authority | untouched — defers |
 | `docs/evidence/poc/decisions/d13-async-posture.md` | "Tier 2 — stress" is the timing-lane stress-tier concept | untouched — different concept, same word |
 | `.codex/agents/*.toml` | paraphrases the rubric; **untracked** (0 tracked files) | untouched — local-only tooling, not repo content; owner refreshes locally |
@@ -132,8 +147,10 @@ Tier 3's keyword rule: the diff text contains `protection` (via `protection-acti
 now do take, explicitly, no hedge). The design record must state its tier and that the
 scan ran; the record written under the new rules reads "Tier 3, keyword `protection`"
 before any code exists. The exact miss — a record self-classifying Tier 2 while its diff
-text carries a Tier-3 keyword — is now a stated review finding, impossible to repeat
-silently.
+text carries a Tier-3 keyword — is now a stated review finding and cannot repeat
+silently where the review's re-derivation runs; the mechanism is procedural, not
+structural (a review that skips the re-derivation still skips it — the rule makes that
+a defect, not an impossibility).
 
 ## 6. Gates
 
@@ -141,3 +158,28 @@ Docs-only increment: per-commit bare ruff + fresh-cache bare mypy + focused pyte
 (PYTHONPATH workaround for the .wt/ UF_HIDDEN environment defect), full battery once
 before push, `git diff origin/main...HEAD -- standards/` empty. No Python, no ui tree
 touched — the battery is the regression net, not the proof.
+
+## 7. Review fold (2026-09-29)
+
+The review battery's 19-row fold landed as one batch commit on this branch. Where the
+folded rubric text is stronger than §3's proposed wording, the LANDED text is the rule
+and §3 remains the proposal as written (not retro-absorbed). The fold adds: the ui/
+parenthetical widened to "code, config, and manifests" plus a default-tier clause
+(nothing falls through un-tiered); the design-time paragraph's conditional opener,
+scan-RESULT requirement (keywords and counts, not "was run"), multi-slice allowance
+(per-slice tiers or maximum tier + per-scan diffs), verdict floor (minimum APPROVE WITH
+REQUIRED CHANGES; records never retrofitted), and temporal clause (records written
+after the rule lands); the interplay paragraph's converse residual (keyword-free
+protective changes take the path-tier default — the eight words are a proxy, not the
+territory) and self-fire sentence (keyword-list/Step-1 edits self-fire Tier 3, intended);
+G2's ui battery clause (bare `npm --prefix ui` exit codes + the renderer-freshness
+gate); the same temporal clause on the README sentence; and the two authoring surfaces
+(`.claude/skills/increment/SKILL.md` Design-step deliverables;
+`.claude/agents/increment-designer.md` reading list + design enumeration), so designs
+are compliant by construction rather than corrected at review. §2's npm non-goal gained
+its structural backstop (the renderer-freshness gate forces any shipped-byte-affecting
+ui-dep change through the SDK pointer — a Tier-3 trigger and a governor dispatch,
+regardless of the ui/ tier); §4's inventory gained the SDK record-README and panel-skill
+rows, corrected the code-reviewer row (it paraphrases the Tier-3 trigger list at line 46
+— an accurate description, not "no tier rules"), and marks the two touched authoring
+surfaces; §5's walkthrough overclaim was reworded to the procedural truth.

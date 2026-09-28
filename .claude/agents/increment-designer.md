@@ -31,7 +31,10 @@ Always, in this order:
    is a failed design.
 4. `docs/internal/drift-and-obligations.md` — the cross-surface obligations and the CI
    map.
-5. The actual code paths you intend to change, and the tests that pin them. Cite
+5. `docs/internal/review-rubric.md` — Step 1's tier rules and the design-time tier call
+   (#254): your design states its slice's tier and the keyword-scan result, so the tier
+   is settled at design time, not rediscovered at review.
+6. The actual code paths you intend to change, and the tests that pin them. Cite
    `file:line`. A design built on what you assume the code does is worthless here.
 
 ## What a design must contain
@@ -49,6 +52,11 @@ Always, in this order:
   vendored standards / fixture lattice / the SDK repo) must move, whether an on-disk
   format or schema is involved (that makes it Tier 3 in the review rubric), and the CI
   cost.
+- **The slice's review tier and the Step-1 keyword-scan result** (#254): state the tier
+  with the rule that triggers it, and the keyword scan's result over the expected diff
+  text — keywords and counts, over the whole expected diff, docs and code alike. A
+  multi-slice design states the tier per slice, or the maximum tier across slices and
+  which expected diff each scan covers.
 - **The MEASURABLE proof.** How will we know this worked? Prefer a control that fluff
   cannot pass: a RED check (disable the mechanism, the effect disappears), a matched
   control fixture, or a permutation/shuffle null where correlation is involved.
