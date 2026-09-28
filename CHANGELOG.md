@@ -215,10 +215,17 @@ All notable changes to this project will be documented in this file.
 - Malformed corpus-manifest rows refuse typed (#216 fold wave 2 R6)
 - Drift messages name non-canonical serialization (#216 fold wave 2 R11)
 - Bounded note, single descriptor read, row batching; digest-scope comment (#216 fold wave 2 R15 + R12)
-- Corpus-keyed adapter cache, acked-aware warning, bounded classify cache (#217 review fold R3/R4/R5)
-- The devices read path degrades, never 500s (#217 review fold R10)
 - Structural infrastructure marker replaces message-based retry matcher (#159)
 - Block-ness from the monitor's latch; dispatched envelopes never retry (#159)
+- Classify priming signal-starvation as retryable infrastructure (#241 slice 1)
+- Nest python-version under with: in the timing job's setup-uv step
+- Classify the priming block-refusal as retryable infrastructure
+- Guard the priming classification against the divergent wall
+- Close what a failed rig construction built
+- Correct the trial-line key dropped in the sites fold
+- One shared probe-wall predicate at all three classification sites
+- Corpus-keyed adapter cache, acked-aware warning, bounded classify cache (#217 review fold R3/R4/R5)
+- The devices read path degrades, never 500s (#217 review fold R10)
 
 ### Documentation
 
@@ -410,11 +417,16 @@ All notable changes to this project will be documented in this file.
 - Issue #216 slice-2 resolver design — BUILD verdict record
 - The slice-2 invariant, governance and obligations text (#216)
 - G-4 numbered; the duplicate obligations 19 renumbered (#216 fold wave 2 R16)
+- Deferral rows D7/D8 for the retry-policy residuals (#159)
+- Issue #241 slice 1 design — timing lane + priming-starvation classification
+- The timing lane in the CI map and the prose surfaces (#241 slice 1)
+- The review-fold amendment and the intra-lane ordering disclosure
+- Correct the observed-run attribution and the two CI-comment overclaims (#241 slice 1, fold wave 2)
+- Wording drift fixes and the wave-3 amendment (#241 slice 1, fold wave 3)
 - CON-1/CON-10 slice-3 landing notes; census and cross-constraint rows (#217)
 - Per-pin admission across the developer and operator guides (#217 review fold)
 - D12 — the API-view wire field deferral gets its §6 row (#217 review fold)
 - Classify_descriptor_pin's totality is over pin values, not governance bytes (#217 review fold R8)
-- Deferral rows D7/D8 for the retry-policy residuals (#159)
 
 ### Features
 
@@ -582,6 +594,7 @@ All notable changes to this project will be documented in this file.
 - The resolver and the lock v2 writer; DPS-150 relocked (#216)
 - The version-normalized comparator (#216)
 - Pin --locked and check's plugin dependency lane (#216)
+- Record each failed attempt's retry site
 - Per-pin descriptor admission — the Q6 classification table (#217)
 - Pairwise cross-constraint admission check (#217)
 - Run-evidence and API-view surfaces for the pin facts (#217)
@@ -834,12 +847,13 @@ All notable changes to this project will be documented in this file.
 - R15a unbounded cross-constraints note, RED (#216 fold wave 2)
 - R7 prior-yanked retention + the R8 refusal corners (#216 fold wave 2)
 - R4 masking XOR arms, R9 caret precedent, R10 table rows (#216 fold wave 2)
+- Pin retry discrimination — legacy wording must not retry (#159)
+- RED — pin that block-ness, not cause-adjacency, gates the retry (#159)
+- Pin priming starvation as retryable infrastructure (#241 slice 1)
 - Census extends across the served set (#217)
 - The dialect triangle goes within-range — VR-45 (#217)
 - Pin the carriage, the full VR-37 field set, and the classification edges (#217 review fold R1/R2/R9/R11a-b)
 - #172 continuity instrument tolerates CI-runner contention (#217 unblock)
-- Pin retry discrimination — legacy wording must not retry (#159)
-- RED — pin that block-ness, not cause-adjacency, gates the retry (#159)
 
 ### Build
 
@@ -858,6 +872,7 @@ All notable changes to this project will be documented in this file.
 - Add manual trigger
 - Consistent action pinning, locked syncs, honest workflow behaviour
 - Clean-venv ADC conformance control + the slice measurement postscript
+- Dedicated timing lane for the real-paced set (#241 slice 1)
 
 ### Ci+docs
 
