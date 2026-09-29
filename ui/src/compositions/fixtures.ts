@@ -18,6 +18,14 @@ export interface WorkbenchReading {
   stale?: boolean;
 }
 
+/** §E.2.6 composition-layer provenance the DAQ proof fixture carries: a
+ *  display-processed trace with its source still declared, and a derived
+ *  trace. The map keys are trace ids into `traces`. */
+export interface FixturePlotProvenance {
+  processed: { id: string; kind: "display-processed"; detail: string; sourceId: string };
+  derived: { id: string; kind: "derived"; detail: string };
+}
+
 export interface DeviceWorkbenchFixture {
   simulation: boolean;
   device: { id: string; title: string; connected: boolean };
@@ -30,7 +38,10 @@ export interface DeviceWorkbenchFixture {
    *  energy-sourcing actions with reason `protection-active` (R-PROTECT-1);
    *  `energised` makes a set-point change energy-sourcing (R-ENERGISE-1). */
   output: { energised: boolean; trip: boolean };
+  /** §E.2.6 proof-fixture provenance (the DAQ page). */
+  plotProvenance?: FixturePlotProvenance;
 }
+
 
 const voltageTrend = Array.from({ length: 60 }, (_, index) => [index - 59, 12 + Math.sin(index / 7) * 0.06 + index * 0.001] as const);
 const currentTrend = Array.from({ length: 60 }, (_, index) => [index - 59, 1.7 + Math.sin(index / 8) * 0.08 + index * 0.004] as const);
@@ -51,6 +62,14 @@ export const warningWorkbench: DeviceWorkbenchFixture = {
     { id: "current", label: "Current", unit: "A", values: currentTrend },
   ],
   output: { energised: true, trip: false },
+  // S2-A5's provenance properties ride the DAQ fixture's declared traces:
+  // a display-processed trace (median) WITH its source still present in the
+  // same plot, and a derived power trace whose displayed precision never
+  // exceeds its sources'.
+  plotProvenance: {
+    processed: { id: "ch1", kind: "display-processed" as const, detail: "median 100 ms", sourceId: "ch5" },
+    derived: { id: "power", kind: "derived" as const, detail: "P = V × I" },
+  },
 };
 
 const severityFor = (severity: PreviewSeverity): Severity => severity === "trip" ? "critical" : severity;
@@ -114,6 +133,14 @@ export const psuProofFixture: DeviceWorkbenchFixture = {
     { id: "current", label: "Current", unit: "A", values: currentTrend },
   ],
   output: { energised: true, trip: false },
+  // S2-A5's provenance properties ride the DAQ fixture's declared traces:
+  // a display-processed trace (median) WITH its source still present in the
+  // same plot, and a derived power trace whose displayed precision never
+  // exceeds its sources'.
+  plotProvenance: {
+    processed: { id: "ch1", kind: "display-processed" as const, detail: "median 100 ms", sourceId: "ch5" },
+    derived: { id: "power", kind: "derived" as const, detail: "P = V × I" },
+  },
 };
 
 export const daqProofFixture: DeviceWorkbenchFixture = {
@@ -138,8 +165,17 @@ export const daqProofFixture: DeviceWorkbenchFixture = {
     { id: "ch4", label: "Channel 4", unit: "V", values: [[-1, -0.11], [0, -0.11]] },
     { id: "ch5", label: "Channel 5", unit: "V", values: [[-1, 3.3], [0, 3.3]] },
     { id: "ch6", label: "Channel 6", unit: "V", values: [[-1, 0.5], [0, 0.5]] },
+    { id: "power", label: "Power", unit: "W", values: [[-1, 1.2], [0, 1.2]] },
   ],
   output: { energised: true, trip: false },
+  // S2-A5's provenance properties ride the DAQ fixture's declared traces:
+  // a display-processed trace (median) WITH its source still present in the
+  // same plot, and a derived power trace whose displayed precision never
+  // exceeds its sources'.
+  plotProvenance: {
+    processed: { id: "ch1", kind: "display-processed" as const, detail: "median 100 ms", sourceId: "ch5" },
+    derived: { id: "power", kind: "derived" as const, detail: "P = V × I" },
+  },
 };
 
 export interface AdminFixture {

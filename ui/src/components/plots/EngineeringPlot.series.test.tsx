@@ -153,13 +153,14 @@ describe("S3-A5: severity-hue discipline on the DAQ example fixture", () => {
     // The DAQ page's own six declared channels (the example fixture this
     // proof is about — S3-A2's vacuous-pass control enumerated in the
     // fixture), rendered with a threshold.
-    expect(daqProofFixture.traces).toHaveLength(6);
+    expect(daqProofFixture.traces.filter((t) => t.id.startsWith("ch"))).toHaveLength(6);
+    const channels = daqProofFixture.traces.filter((t) => t.id.startsWith("ch"));
     render(
       <EngineeringPlot
         kind="time_series"
         title="DAQ channels"
         x={{ label: "Time", unit: "s" }}
-        traces={daqProofFixture.traces}
+        traces={channels}
         threshold={{ value: 5.5, label: "Over-range limit", severity: "warning" }}
       />,
     );

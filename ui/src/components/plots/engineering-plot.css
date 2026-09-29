@@ -84,3 +84,31 @@
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
+/* §E.2.3: the >2-unit refusal note. */
+.bw-plot__refusal {
+  margin: 0;
+  padding: var(--bw-space-3);
+  border: 1px solid var(--bw-warning);
+  border-radius: var(--bw-radius-control);
+  color: var(--bw-text);
+  font-family: var(--bw-font-data);
+  font-size: 0.8rem;
+}
+
+/* §E.2.5: the acquisition disclosure renders OUTSIDE the canvas. */
+.bw-plot__acquisition {
+  margin: var(--bw-space-2) 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--bw-text-muted);
+  font-family: var(--bw-font-data);
+  font-size: 0.75rem;
+}
+
+/* §E.2.6: the provenance marker — legend text, not tooltip-only. */
+.bw-plot__legend-provenance {
+  margin-left: var(--bw-space-2);
+  color: var(--bw-text-muted);
+  font-size: 0.7rem;
+}
