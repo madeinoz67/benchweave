@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from assembly_shapes import BATTERY_MODULE, SHAPE_NAMES, shape_lines
 
 from benchweave.standards.manifest import (
     StandardsError,
@@ -636,6 +637,55 @@ class TestSchemaConstDerivations:
         from benchweave.vendoring import active_contract_family
 
         assert active_contract_family("interface").name == VENDORED_INTERFACE_VERSION
+
+
+class TestAssemblyShapesBattery:
+    """H1 (issue #269 §7): the twelve-shape battery, committed as the spec.
+
+    The battery module is written into a scratch gateway tree and the
+    counter must refuse EVERY shape: each shape's assignment line
+    contributes at least one violation row (the folded ``ASM-*`` site, the
+    textual ``A``/``BARE`` site, or both). RED at the battery's base: the
+    pre-fold counter caught exactly 3 of 12 (the shapes leaving a complete
+    string ``Constant`` in the AST) and 9 passed — the recorded arithmetic.
+    KILL: any shape passing under the folded counter.
+    """
+
+    def _scratch_battery_repo(self, tmp_path: Path) -> Path:
+        import shutil
+
+        scratch = tmp_path / "scratch-repo"
+        (scratch / "scripts/standards").mkdir(parents=True)
+        (scratch / "standards").mkdir()
+        shutil.copy(
+            ROOT / "scripts/standards/count_version_literals.py",
+            scratch / "scripts/standards/count_version_literals.py",
+        )
+        shutil.copy(
+            ROOT / "standards/standards-manifest.json",
+            scratch / "standards/standards-manifest.json",
+        )
+        (scratch / "src/benchweave").mkdir(parents=True)
+        (scratch / "src/benchweave/assembly_shapes.py").write_text(
+            BATTERY_MODULE, encoding="utf-8"
+        )
+        return scratch
+
+    def test_every_shape_is_refused_by_the_gate(self, tmp_path: Path) -> None:
+        scratch = self._scratch_battery_repo(tmp_path)
+        result = _scratch_run(scratch, "--scope", "gateway", "--json")
+        assert result.returncode == 1, result.stdout + result.stderr
+        sites = json.loads(result.stdout)["scopes"]["gateway"]["sites"]
+        caught = {
+            row["line"] for row in sites if row["file"].endswith("assembly_shapes.py")
+        }
+        lines = shape_lines(BATTERY_MODULE)
+        assert len(lines) == len(SHAPE_NAMES), "the battery map lost a shape"
+        missing = sorted(name for name in SHAPE_NAMES if lines[name] not in caught)
+        assert not missing, (
+            f"{len(missing)} of {len(SHAPE_NAMES)} battery shapes pass the "
+            f"gate (uncaught): {missing}"
+        )
 
 
 class TestRegisteredDisposition:
