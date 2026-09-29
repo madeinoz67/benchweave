@@ -194,7 +194,6 @@ describe("DigitalLanesPlot real rendering (§E.4, A2.1)", () => {
       />,
     );
     const groupRow = container.querySelector('[data-bw-lane-kind="group"]')!;
-    const cells = groupRow.querySelectorAll("[data-bw-column], .bw-lanes__group");
     // The bus row's own geometry: 4 cells — hatched carry data-bw-state="x".
     const hatched = groupRow.querySelectorAll('rect[data-bw-state="x"]');
     expect(hatched.length, "the two transition columns hatch").toBe(2);
