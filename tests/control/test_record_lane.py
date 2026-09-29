@@ -400,6 +400,68 @@ class TestFoldRow1SeamClassificationRefuses:
         assert "move-to:" in message, message
 
 
+class TestFoldUnstoredDescriptorSkip:
+    """Fold addendum (adv260b part 2, Risk 2's other half): the pre-check's
+    UNSTORED-DESCRIPTOR skip is pinned as the disclosed residual — a stored
+    bench whose descriptor digest does not resolve skips the pre-check
+    silently and the start 202-accepts (the worker's poison guard owns it:
+    the run dies at admission as ``outcome_unknown``). The skip is a
+    pass-through, never an admission."""
+
+    def test_unstored_descriptor_skips_the_pre_check_and_202s(
+        self, tmp_path: Path
+    ) -> None:
+        import json as _json
+
+        from benchweave.interfaces.bootstrap import content_sha
+        from benchweave.interfaces.identity import Identity
+        from benchweave.interfaces.operations import Operations
+        from benchweave.interfaces.validation import SeamValidator
+        from benchweave.interfaces.worker import RunWorker
+        from benchweave.vendoring import active_contract_family
+
+        lattice = tmp_path / "lattice"
+        shutil.copytree(LATTICE_010, lattice)
+        store = Store.open(tmp_path / "state.db")
+        try:
+            content = ContentStore(store)
+            admit_startup_bench(store, content, lattice, now=NOW_WALL)
+            bench = _json.loads((lattice / "bench.json").read_bytes())
+            # The descriptor digest names NOTHING in the content store:
+            bench["devices"][0]["descriptor"]["sha256"] = "f" * 64
+            bench_bytes = _json.dumps(bench).encode()
+            bench_sha = content_sha(content, bench_bytes, bench, NOW_WALL)
+            binding = _json.loads((lattice / "run-binding.json").read_bytes())
+            binding["bench"] = {"sha256": bench_sha}
+            binding_bytes = _json.dumps(binding).encode()
+            binding_sha = content_sha(content, binding_bytes, binding, NOW_WALL)
+            ref = {
+                "id": str(binding["request_id"]),
+                "version": str(binding["contract_version"]),
+                "sha256": binding_sha,
+            }
+            worker = RunWorker(
+                store, content, build_run=lambda *a: None, now_iso=lambda: NOW_WALL
+            )
+            ops = Operations(
+                store,
+                content,
+                validator=SeamValidator(active_contract_family("interface")),
+                gateway_id="gw-skip",
+                limits=QUOTA_LIMITS,
+                worker=worker,
+                now_iso=lambda: NOW_WALL,
+            )
+            ident = Identity("p1", "stg", frozenset({"stg:control"}), 2**31)
+            result = ops.run_start(ident, "sim-bench", str(ref["id"]), ref, 1, None)
+            # The 202 posture: accepted at the seam (the pre-check skipped),
+            # the refusal class deferred to the worker.
+            assert result.get("run_id"), result
+            assert result.get("state") == "accepted", result
+        finally:
+            store.close()
+
+
 class TestFoldRow2FloorBoundaryTable:
     """Fold row 2: the floor's comparator is total — every raw pin value
     yields a TYPED refusal or a pass across both row shapes, never an
