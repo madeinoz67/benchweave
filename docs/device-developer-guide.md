@@ -209,7 +209,16 @@ acknowledgement path). Running is an implemented-dialect fact (issue
 terminal record carries the LATTICE's own version — while every run's
 device pins must satisfy the gateway composition's cross-constraint row
 (the same `cross_constraint_violation:` refusal, subject "this gateway
-runs", refused synchronously at run start and at the worker).
+runs", refused synchronously at run start — best-effort over stored
+documents; an unstored document skips to the worker's 202/
+`outcome_unknown` class — and authoritatively at the worker). Recovery
+terminalizes era runs against their own version doc-first; the contained
+class (doc/echo disagreement, unjudgeable or const-less doc const, an
+echo the corpus does not carry) logs
+`recovery_execution_version_unresolved:` with no record. RETIRED
+vocabulary from before this lane: `execution_version_not_runnable:` (the
+superseded run guard) and `recovery_execution_version_not_runnable:`
+(the superseded era skip).
 
 ### Named settings as presets
 

@@ -22,6 +22,7 @@ from benchweave.control.documents import (
     _check_run_floor,
     _classify_execution_pin,
     _corpus_root_of,
+    _refuse_execution_pin,
     classify_descriptor_pin,
 )
 from benchweave.control.documents import (
@@ -1743,10 +1744,16 @@ class Operations:
         if bench_document is None:
             return
         try:
-            _classify_execution_pin(
+            bench_record = _classify_execution_pin(
                 str(bench_document["content"].get("contract_version", "")),
                 corpus=_corpus_root_of(self._contracts),
             )
+            # Fold row 1 (issue #260): the classification is DECIDED, not
+            # decorative — the routing decision's refusal fires here with
+            # its VR-37 fields verbatim (retired/unknown/nonconforming
+            # stored benches refuse at the POST instead of 202-then-
+            # outcome_unknown).
+            _refuse_execution_pin(bench_record, noun="bench document contract_version")
             pins: dict[str, Any] = {}
             for device in bench_document["content"].get("devices", []):
                 descriptor_ref = device.get("descriptor") if isinstance(device, dict) else None
@@ -1761,8 +1768,12 @@ class Operations:
                 if descriptor_document is None:
                     return
                 descriptor = descriptor_document["content"]
-                pins[str(descriptor.get("id", device.get("id", "")))] = (
-                    classify_descriptor_pin(descriptor.get("otdp_version"))
+                # Fold row 10: keyed by the BENCH's device id — the same
+                # keying AdmittedDocuments.pins carries at the worker, so
+                # the seam and worker refusals are byte-identical for one
+                # lattice (Risk 4's machine check pins it).
+                pins[str(device.get("id", ""))] = classify_descriptor_pin(
+                    descriptor.get("otdp_version")
                 )
             _check_run_floor(pins, self._contracts)
         except DocumentAdmissionRejected as rejected:

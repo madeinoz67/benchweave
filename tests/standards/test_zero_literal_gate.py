@@ -599,23 +599,26 @@ class TestSchemaConstDerivations:
                 re_pinned = True
         assert re_pinned, "the corpus row the probe re-pins must exist"
         manifest_path.write_text(json.dumps(manifest_doc, indent=2))
-        corrupted_record = build_terminal_record(
-            run_id="run-arbiter-2",
-            binding_pin=binding,
-            principal_id="p1",
-            started_at="2026-09-29T00:00:00Z",
-            ended_at="2026-09-29T00:00:00Z",
-            body_outcome="completed",
-            safe_state="verified",
-            reasons=["arbiter teeth"],
-            evidence_refs=[binding],
-            contracts=corrupt_corpus / "execution/0.2.0",
-        )
-        # The stamp follows the validating schema (row 3's rule)...
-        assert corrupted_record["contract_version"] == "9.9.9"
-        # ...and the manifest REFUTES it — this assertion is the arbiter
-        # that the pre-fold test lacked.
-        assert corrupted_record["contract_version"] != manifest_version
+        with pytest.raises(ValueError) as raised:
+            build_terminal_record(
+                run_id="run-arbiter-2",
+                binding_pin=binding,
+                principal_id="p1",
+                started_at="2026-09-29T00:00:00Z",
+                ended_at="2026-09-29T00:00:00Z",
+                body_outcome="completed",
+                safe_state="verified",
+                reasons=["arbiter teeth"],
+                evidence_refs=[binding],
+                contracts=corrupt_corpus / "execution/0.2.0",
+            )
+        # Fold row 11 (issue #260): the RUNTIME arbiter refuses the
+        # swept-wrong const at the record build — the schema's const
+        # disagrees with the version directory it resolved from — and the
+        # MANIFEST is the independent second layer (the const the schema
+        # claims cannot be the manifest's active version).
+        assert "swept-wrong const" in str(raised.value), raised.value
+        assert manifest_version != "9.9.9"
 
     def test_lock_version_equals_the_schema_const(self) -> None:
         from benchweave.registry.schemas import lock_version

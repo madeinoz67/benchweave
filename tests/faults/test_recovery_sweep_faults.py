@@ -324,11 +324,16 @@ def test_era_ghost_run_terminalizes_against_its_own_version(
 def test_era_lying_echo_doc_first_composition_terminalization(
     tmp_path: Path,
 ) -> None:
-    """G5a (the D4 upgrade): a stored binding doc whose const says
-    ``0.2.0`` (the composition) beside a lying ``0.1.0`` echo — the DOC is
-    the stronger evidence (digest-pinned bytes, never the caller's echo):
-    the NORMAL composition terminalization fires. RED at the fold base:
-    the base classified the ECHO and skipped."""
+    """G5a (the D4 upgrade), re-armed by fold row 3: a stored binding doc
+    whose const says ``0.2.0`` (the composition) beside a lying ``0.1.0``
+    carried echo — the DOC is the stronger evidence (digest-pinned bytes,
+    never the caller's echo): the record stamps the DOCUMENT's binding
+    block (contract_version AND binding.version name one artifact — the
+    machine self-consistency check), the disagreeing carried echo rides as
+    an ``implementation_disclosure:`` reason, never a silent
+    contradiction. RED at the fold base: the base classified the ECHO and
+    skipped; at the slice head the record persisted 0.2.0 beside the
+    0.1.0 echo with zero disclosure (adv2's machine check)."""
     store = Store.open(tmp_path / "era-lying.db")
     try:
         content = ContentStore(store)
@@ -352,10 +357,24 @@ def test_era_lying_echo_doc_first_composition_terminalization(
         run = store.get_run("run-era-3")
         assert run is not None
         assert run["terminal"] is not None, "the doc-first record lands"
-        assert run["terminal"]["contract_version"] == "0.2.0", (
+        record = run["terminal"]
+        assert record["contract_version"] == "0.2.0", (
             "the doc names THIS composition — the normal record, the lying "
             "echo ignored"
         )
+        # Fold row 3 (case E): the record's binding block stamps FROM THE
+        # DOCUMENT, and the disagreeing carried echo rides as a disclosure.
+        assert record["binding"]["version"] == "0.2.0", record["binding"]
+        assert any(
+            reason.startswith("implementation_disclosure:")
+            and "execution@0.1.0" in reason
+            and "the digest-pinned document governs" in reason
+            for reason in record["reasons"]
+        ), record["reasons"]
+        # adv2's machine check: record self-consistency — the record's
+        # contract_version equals its binding.version (the echo IS
+        # carried, so the first disjunct must hold).
+        assert record["contract_version"] == record["binding"]["version"]
         assert recovered == ["run-era-3"]
     finally:
         store.close()
@@ -407,6 +426,14 @@ def test_era_doc_echo_disagreement_is_contained(
             UNSOLVED_LOG in record.message and "run-era-4" in record.message
             for record in caplog.records
         ), f"the narrowed containment prefix must be logged: {[r.message for r in caplog.records]}"
+        # Fold row 8: the reason names the CONSTS, not a digest fragment —
+        # an operator reads what disagreed, not where.
+        assert any(
+            UNSOLVED_LOG in record.message
+            and "0.1.0" in record.message
+            and "0.2.0" in record.message
+            for record in caplog.records
+        ), "the containment must name both consts (row 8)"
         assert not any(
             SKIP_LOG in record.message for record in caplog.records
         ), "the old prefix is retired — it names no run anymore"
@@ -414,32 +441,160 @@ def test_era_doc_echo_disagreement_is_contained(
         store.close()
 
 
-def test_caller_data_ref_version_terminalizes_as_before(tmp_path: Path) -> None:
-    """Fold row 1's boundary, the other side: the stored binding version is
-    the §5 ref's caller-supplied echo (D4 — the frozen contract types it as
-    any non-empty string), so it is JUDGED, never trusted. A version the
-    corpus never carried as a served dialect ("1.0.0" is RETIRED — no
-    gateway ever ran it) is caller data, not an era fact: the sweep
-    terminalises exactly as before the fold, and the record's
-    contract_version literal beside it faithfully records the ref. (The
-    real-path twin: the child-process kill-mid-run suite posts exactly such
-    a ref and must keep recovering.)"""
+def test_caller_data_ref_version_is_contained(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Fold rows 3+4 (adv2-F3): the stored binding version is the §5 ref's
+    caller-supplied echo (D4 — the frozen contract types it as any
+    non-empty string), so it is JUDGED, never trusted. A version the corpus
+    does NOT carry ("1.0.0" is RETIRED — no gateway ever ran it) is
+    contained under the narrowed prefix: recovery must never FLIP an
+    uncarried echo to a composition stamp (a future retirement of a
+    carried version would otherwise silently rewrite the cohort — the G4
+    kill shape). RED at the fold base: the arm asserted the composition
+    terminalization ("terminalizes as before") — today's composition-flip
+    is exactly what the containment replaced. The doc-first note: a REAL
+    run stores its binding document (the child-process kill-mid-run suite
+    posts such refs and keeps recovering through the doc — case E)."""
+    import logging
+
     store = Store.open(tmp_path / "caller-data.db")
     try:
-        store.create_run("run-cd-1", BINDING, "p1", NOW)
+        stored = dict(BINDING, version="1.0.0")
+        store.create_run("run-cd-1", stored, "p1", NOW)
         store.put_run_state("run-cd-1", BENCH_ID, "running", NOW)
         store.next_lease(
             BENCH_ID, "lease-cd-1", holder="run:run-cd-1", expires_at=NOW
         )
-        recovered = _sweep(store)
-        assert recovered == ["run-cd-1"], f"recovered={recovered}"
+        with caplog.at_level(logging.ERROR, logger="benchweave.control.coordinator"):
+            recovered = _sweep(store)
+        assert recovered == [], f"a contained run is not reported; recovered={recovered}"
         run = store.get_run("run-cd-1")
         assert run is not None
-        assert run["terminal"] is not None, (
-            "a caller-data version is not an era fact — the honest "
-            "interrupted record still lands"
+        assert run["terminal"] is None, (
+            "an uncarried echo is contained — never a composition-flip stamp"
         )
-        assert run["terminal"]["binding"]["version"] == BINDING["version"]
-        assert run["terminal"]["contract_version"] == "0.2.0"
+        assert any(
+            UNSOLVED_LOG in record.message and "run-cd-1" in record.message
+            and "1.0.0" in record.message
+            for record in caplog.records
+        ), f"the containment must name the echo: {[r.message for r in caplog.records]}"
+    finally:
+        store.close()
+
+
+def test_era_echo_retired_by_a_later_policy_is_contained(tmp_path: Path) -> None:
+    """Fold row 4 (policy relativity, the G4 kill shape): an echo that WAS
+    carried when the run ran must never flip to a composition stamp after a
+    future retirement. Probe: a COPIED corpus whose policy block retires
+    ``0.1.0`` — the same echo, judged against that policy, is contained
+    (today's policy decides; the doc-first path stays era-stable).
+    RED at the fold base: the uncarried echo fell to the composition
+    record (the flip)."""
+    import shutil as _shutil
+
+    from benchweave.control.coordinator import _recovery_record_version
+
+    corpus = tmp_path / "standards"
+    _shutil.copytree(ROOT / "standards", corpus)
+    manifest_path = corpus / "standards-manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    execution = manifest["dependency_policy"]["standards"]["execution"]
+    retired = execution.setdefault("retired", [])
+    if "0.1.0" not in retired:
+        retired.append("0.1.0")
+    manifest_path.write_text(json.dumps(manifest, indent=2))
+
+    run = {"binding": dict(ERA_BINDING)}  # echo 0.1.0, digest 0*64 (no doc)
+
+    class _NoContent:
+        def get_document(self, sha256: str) -> None:
+            return None
+
+    contracts = corpus / "execution" / "0.2.0"
+    decision = _recovery_record_version(run, contracts, _NoContent())
+    assert decision.containment is not None, (
+        "an echo the (copied) corpus retired is contained, never a "
+        "composition stamp"
+    )
+    assert "0.1.0" in decision.containment
+    # The same echo against the REAL corpus (still carried) stays an era
+    # thread — policy relativity is the point, era-stamp is the honest
+    # outcome while carried.
+    from benchweave.vendoring import active_contract_family
+
+    real = _recovery_record_version(
+        run, active_contract_family("execution"), _NoContent()
+    )
+    assert real.record_version == "0.1.0", real
+    assert real.containment is None
+
+
+def test_unrowed_run_record_schema_is_contained_per_run(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Fold row 7: recovery has per-run containment — a judgeable run whose
+    version's run-record schema lost its corpus row (a partially-rowed
+    version dir) is contained under the narrowed prefix and the SWEEP
+    SURVIVES (today: AdmissionRejected propagated out of
+    recover_interrupted and the gateway failed to start)."""
+    import logging
+    import shutil as _shutil
+
+    corpus = tmp_path / "standards"
+    _shutil.copytree(ROOT / "standards", corpus)
+    manifest_path = corpus / "corpus-manifest.json"
+    manifest_doc = json.loads(manifest_path.read_text(encoding="utf-8"))
+    before = len(manifest_doc.get("files", []))
+    manifest_doc["files"] = [
+        row
+        for row in manifest_doc.get("files", [])
+        if str(row.get("path")) != "execution/0.1.0/run-record.schema.json"
+    ]
+    assert len(manifest_doc["files"]) == before - 1, "the probe row must exist"
+    manifest_path.write_text(json.dumps(manifest_doc, indent=2))
+
+    # The sweep runs against the copied corpus family: a RunCoordinator
+    # whose contracts point at the copy.
+    from benchweave.control.clocking import SystemClock
+    from benchweave.control.coordinator import RunCoordinator
+    from benchweave.control.documents import AdmittedDocuments, DescriptorPin
+
+    docs = AdmittedDocuments(
+        procedure={"max_body_ms": 1, "max_protection_ms": 1},
+        policy={},
+        bench={"id": BENCH_ID},
+        binding=BINDING,
+        commissioning={},
+        descriptors={},
+        digests={"binding": "0" * 64},
+        pins={},
+        execution_version="0.2.0",
+        execution_pin=DescriptorPin(
+            otdp_version="0.2.2", status="served", conformance="conforming"
+        ),
+    )
+    store = Store.open(tmp_path / "unrowed.db")
+    try:
+        store.create_run("run-era-5", ERA_BINDING, "p1", NOW)
+        store.put_run_state("run-era-5", BENCH_ID, "running", NOW)
+        store.next_lease(
+            BENCH_ID, "lease-era-5", holder="run:run-era-5", expires_at=NOW
+        )
+        coordinator = RunCoordinator(
+            store, {}, SystemClock(), SystemClock(), docs, contracts=corpus / "execution" / "0.2.0"
+        )
+        with caplog.at_level(logging.ERROR, logger="benchweave.control.coordinator"):
+            recovered = coordinator.recover_interrupted()
+        assert recovered == [], f"a contained run is not reported; recovered={recovered}"
+        run = store.get_run("run-era-5")
+        assert run is not None
+        assert run["terminal"] is None, "no record without its schema"
+        assert any(
+            UNSOLVED_LOG in record.message
+            and "run-era-5" in record.message
+            and "corpus" in record.message
+            for record in caplog.records
+        ), f"the containment names the unrowed schema: {[r.message for r in caplog.records]}"
     finally:
         store.close()

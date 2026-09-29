@@ -195,8 +195,14 @@ class TestG2SynchronousFloorRefusal:
             assert "otdp@0.1.2" in failure.message, failure
             assert "execution@0.2.0" in failure.message, failure
             assert "PR #201" in failure.message, failure
-            # D9 discipline: nothing persisted for the refused start.
-            assert store.find_request(f"p1|run_start|{ref['id']}") is None
+            # D9 discipline: nothing persisted for the refused start — the
+            # SCOPED key the requests table actually keys on (fold row 6:
+            # the pre-fold arm queried the raw request id against
+            # sha256-keyed storage — always None, vacuous).
+            from benchweave.interfaces.operations import scoped_request_key
+
+            scoped = scoped_request_key("p1", "run_start", str(ref["id"]))
+            assert store.find_request(scoped) is None
             assert not [
                 row for row in store.list_run_states("sim-bench")
                 if row["state"] != "terminal"
@@ -280,3 +286,284 @@ class TestG7SpliceRider:
         message = str(raised.value)
         assert message.startswith("retired_identifier: "), message
         assert "::" not in message, message
+
+
+class TestFoldRow1SeamClassificationRefuses:
+    """Fold row 1 (the triplicated HIGH): the seam's classification step
+    DECIDES — a stored bench whose contract_version is a refused class
+    refuses typed at the POST with the VR-37 fields, instead of the
+    pre-fold 202-then-outcome_unknown. RED at the fold base: every cell
+    below 202-accepted (the record was computed and discarded)."""
+
+    def _start_with_stored_bench(
+        self,
+        tmp_path: Path,
+        contract_version: str,
+        *,
+        contracts_override: Path | None = None,
+    ) -> tuple[str, str]:
+        """Admit the 0.1.0 lattice, store a bench document whose
+        contract_version is ``contract_version`` under a fresh digest, and
+        run_start against it. Returns (code, message)."""
+        import json as _json
+
+        from benchweave.interfaces import errors
+        from benchweave.interfaces.bootstrap import content_sha
+        from benchweave.interfaces.identity import Identity
+        from benchweave.interfaces.operations import Operations
+        from benchweave.interfaces.validation import SeamValidator
+        from benchweave.interfaces.worker import RunWorker
+        from benchweave.vendoring import active_contract_family
+
+        lattice = tmp_path / "lattice"
+        shutil.copytree(LATTICE_010, lattice)
+        store = Store.open(tmp_path / "state.db")
+        try:
+            content = ContentStore(store)
+            admit_startup_bench(store, content, lattice, now=NOW_WALL)
+            bench = _json.loads((lattice / "bench.json").read_bytes())
+            bench["contract_version"] = contract_version
+            bench_bytes = _json.dumps(bench).encode()
+            bench_sha = content_sha(content, bench_bytes, bench, NOW_WALL)
+            binding = _json.loads((lattice / "run-binding.json").read_bytes())
+            binding["bench"] = {"sha256": bench_sha}
+            binding_bytes = _json.dumps(binding).encode()
+            binding_sha = content_sha(content, binding_bytes, binding, NOW_WALL)
+            ref = {
+                "id": str(binding["request_id"]),
+                "version": str(binding["contract_version"]),
+                "sha256": binding_sha,
+            }
+            worker = RunWorker(
+                store, content, build_run=lambda *a: None, now_iso=lambda: NOW_WALL
+            )
+            ops = Operations(
+                store,
+                content,
+                validator=SeamValidator(active_contract_family("interface")),
+                gateway_id="gw-row1",
+                limits=QUOTA_LIMITS,
+                worker=worker,
+                now_iso=lambda: NOW_WALL,
+                contracts=contracts_override
+                if contracts_override is not None
+                else active_contract_family("execution"),
+            )
+            ident = Identity("p1", "stg", frozenset({"stg:control"}), 2**31)
+            try:
+                ops.run_start(ident, "sim-bench", str(ref["id"]), ref, 1, None)
+            except errors.OperationFailure as failure:
+                return failure.failure.code, failure.failure.message
+            return "accepted", ""
+        finally:
+            store.close()
+
+    def test_never_carried_bench_refuses_at_the_post(self, tmp_path: Path) -> None:
+        """9.9.9 (never carried) — version_unknown with the five VR-37
+        fields inline; typed, not 202."""
+        code, message = self._start_with_stored_bench(tmp_path, "9.9.9")
+        assert code == "policy_denied", (code, message)
+        assert message.startswith("version_unknown:"), message
+        for field in ("standard: execution", "supported:", "move-to:"):
+            assert field in message, message
+
+    def test_retired_bench_refuses_at_the_post(self, tmp_path: Path) -> None:
+        """execution 1.0.0 is RETIRED (the R4 classifier's own fixture) —
+        retired_identifier: at the POST."""
+        code, message = self._start_with_stored_bench(tmp_path, "1.0.0")
+        assert code == "policy_denied", (code, message)
+        assert message.startswith("retired_identifier:"), message
+
+    def test_nonconforming_bench_refuses_at_the_post(self, tmp_path: Path) -> None:
+        """A retained out-of-range execution pin — standard_nonconforming:
+        with the VR-37 fields (no ack path for the execution family). The
+        REAL corpus carries no nonconforming execution version (0.1.0 and
+        0.2.0 are both served in-range), so the probe narrows a COPIED
+        corpus's policy range — the honest way to make the cell reachable —
+        and points the seam's contracts at the copy."""
+        import json as _json
+
+        corpus = tmp_path / "narrowed-standards"
+        shutil.copytree(ROOT / "standards", corpus)
+        manifest_path = corpus / "standards-manifest.json"
+        manifest = _json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["dependency_policy"]["standards"]["execution"]["range"] = (
+            ">=0.2.0,<0.3.0"
+        )
+        manifest_path.write_text(_json.dumps(manifest, indent=2))
+        narrowed = corpus / "execution" / "0.2.0"
+        code, message = self._start_with_stored_bench(
+            tmp_path, "0.1.0", contracts_override=narrowed
+        )
+        assert code == "policy_denied", (code, message)
+        assert message.startswith("standard_nonconforming:"), message
+        assert "move-to:" in message, message
+
+
+class TestFoldRow2FloorBoundaryTable:
+    """Fold row 2: the floor's comparator is total — every raw pin value
+    yields a TYPED refusal or a pass across both row shapes, never an
+    untyped ValueError at the wire. RED at the fold base: the malformed
+    cells raised ValueError out of Interval.contains."""
+
+    VALUES = ("", "garbage", "0.2.0-dev", "1.2.3", "0.2.2", "0.1.2", "9.9.9")
+
+    def _corpus_copy(self, tmp_path: Path, *, drop_otdp_leg: bool) -> Path:
+        corpus = tmp_path / ("adapter-only" if drop_otdp_leg else "otdp-leg")
+        shutil.copytree(ROOT / "standards", corpus)
+        if drop_otdp_leg:
+            import json as _json
+
+            row_path = corpus / "cross-constraints.json"
+            document = _json.loads(row_path.read_text(encoding="utf-8"))
+            for row in document.get("rows", []):
+                if row.get("standard") == "execution" and row.get("version") == "0.2.0":
+                    row.get("requires", {}).pop("otdp", None)
+            row_path.write_text(_json.dumps(document, indent=2))
+        return corpus / "execution" / "0.2.0"
+
+    def _pins(self, version: str) -> dict[str, Any]:
+        from benchweave.control.documents import DescriptorPin
+
+        return {
+            "psu": DescriptorPin(
+                otdp_version=version, status="served", conformance="conforming"
+            )
+        }
+
+    def _assert_typed_or_pass(
+        self,
+        tmp_path: Path,
+        *,
+        drop_otdp_leg: bool,
+    ) -> None:
+        """The row-2 table body: every value × every row shape × both
+        helpers yields TYPED (AdmissionRejected) or a pass — never an
+        untyped ValueError out of the interval comparator."""
+        from functools import partial
+
+        from benchweave.control.documents import _check_cross_constraints, _check_run_floor
+
+        contracts = self._corpus_copy(tmp_path, drop_otdp_leg=drop_otdp_leg)
+        for value in self.VALUES:
+            pins = self._pins(value)
+            for name, call in (
+                (
+                    "admission rows",
+                    partial(_check_cross_constraints, "0.2.0", pins),
+                ),
+                ("run floor", partial(_check_run_floor, pins, contracts)),
+            ):
+                try:
+                    call()
+                except AdmissionRejected:
+                    pass  # typed
+                except ValueError as exc:
+                    raise AssertionError(
+                        f"{name} raised UNTYPED ValueError for {value!r}: {exc}"
+                    ) from exc
+
+    def test_otdp_leg_row_is_typed_or_pass(self, tmp_path: Path) -> None:
+        self._assert_typed_or_pass(tmp_path, drop_otdp_leg=False)
+
+    def test_adapter_only_row_is_typed_or_pass(self, tmp_path: Path) -> None:
+        self._assert_typed_or_pass(tmp_path, drop_otdp_leg=True)
+
+
+class TestFoldRow9DisclosureRenderer:
+    """Fold row 9: the ONE renderer's full text, pinned verbatim."""
+
+    def test_full_text(self) -> None:
+        from benchweave.control.coordinator import _implementation_disclosure
+
+        assert (
+            _implementation_disclosure("0.2.0", "0.1.0", "executed")
+            == "implementation_disclosure: gateway composition execution@0.2.0 "
+            "executed lattice execution@0.1.0"
+        )
+        assert (
+            _implementation_disclosure("0.2.0", "0.1.0", "recovered")
+            == "implementation_disclosure: gateway composition execution@0.2.0 "
+            "recovered lattice execution@0.1.0"
+        )
+
+
+class TestFoldRow10SeamWorkerByteIdentity:
+    """Fold row 10 / Risk 4's machine check: for ONE below-floor fixture the
+    seam's refusal message and the worker's refusal message are
+    BYTE-IDENTICAL (both key by the bench's device id, one helper, one
+    vocabulary). RED at the fold base: the two strings differed (the seam
+    keyed by descriptor id)."""
+
+    def test_refusal_strings_match(self, tmp_path: Path) -> None:
+        import json as _json
+
+        from benchweave.interfaces import errors
+        from benchweave.interfaces.bootstrap import content_sha
+        from benchweave.interfaces.identity import Identity
+        from benchweave.interfaces.operations import Operations
+        from benchweave.interfaces.validation import SeamValidator
+        from benchweave.interfaces.worker import RunWorker
+        from benchweave.vendoring import active_contract_family
+
+        lattice = _below_floor_lattice(tmp_path)
+        store = Store.open(tmp_path / "state.db")
+        try:
+            content = ContentStore(store)
+            admit_startup_bench(store, content, lattice, now=NOW_WALL)
+            # Worker leg: the factory's floor refusal.
+            ref, _raw = _binding_ref(lattice)
+            factory = _build_run_factory(
+                lattice, SystemClock().now_iso, limits=QUOTA_LIMITS
+            )
+            with pytest.raises(AdmissionRejected) as worker_raised:
+                factory("run-identity-1", "p1", ref, store)
+            worker_message = str(worker_raised.value)
+
+            # Seam leg: the same fixture through run_start.
+            content_sha(content, _raw, _json.loads(_raw), NOW_WALL)
+            worker2 = RunWorker(
+                store, content, build_run=lambda *a: None, now_iso=lambda: NOW_WALL
+            )
+            ops = Operations(
+                store,
+                content,
+                validator=SeamValidator(active_contract_family("interface")),
+                gateway_id="gw-identity",
+                limits=QUOTA_LIMITS,
+                worker=worker2,
+                now_iso=lambda: NOW_WALL,
+            )
+            ident = Identity("p1", "stg", frozenset({"stg:control"}), 2**31)
+            with pytest.raises(errors.OperationFailure) as seam_raised:
+                ops.run_start(ident, "sim-bench", str(ref["id"]), ref, 1, None)
+            assert seam_raised.value.failure.message == worker_message, (
+                f"seam:   {seam_raised.value.failure.message!r}\n"
+                f"worker: {worker_message!r}"
+            )
+        finally:
+            store.close()
+
+
+class TestFoldRow6D9SubArmIsReal:
+    """Fold row 6: G2's D9 sub-arm queries the SCOPED key (the old arm
+    queried the raw request id against sha256-keyed storage — always None,
+    vacuous). The positive control proves the query CAN find a filed key."""
+
+    def test_absent_key_is_a_real_query(self, tmp_path: Path) -> None:
+        from benchweave.state.store import Store as _Store
+
+        store = _Store.open(tmp_path / "d9.db")
+        try:
+            key = __import__(
+                "benchweave.interfaces.operations", fromlist=["scoped_request_key"]
+            ).scoped_request_key("p1", "run_start", "req-d9-1")
+            # The honest absence for the refused start:
+            assert store.find_request(key) is None
+            # Positive control: the SAME query finds a filed key.
+            accepted = store.accept_request(key, "a" * 64, "run-d9-control", NOW_WALL)
+            assert accepted.outcome != "duplicate"
+            filed = store.find_request(key)
+            assert filed is not None and filed["run_id"] == "run-d9-control"
+        finally:
+            store.close()

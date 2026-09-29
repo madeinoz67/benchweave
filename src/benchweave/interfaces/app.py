@@ -218,12 +218,17 @@ def _spool_documents(
     (spool / "package-lock.json").write_bytes((fixtures_dir / "package-lock.json").read_bytes())
     settings_path = fixtures_dir / TRANSPORT_SETTINGS_FILENAME
     # Issue #260: the operator-acknowledgement lane threads the run path
-    # exactly as bootstrap and recovery thread it — an optional
-    # ``operator-acknowledgements.json`` beside the lattice documents loads
-    # to admission's ``operator_acknowledgements`` parameter, so a
-    # retained-but-out-of-range pin that loaded at startup behind its
-    # recorded acknowledgement admits at the run path the same way (and
-    # meets the floor check with its pins classified).
+    # — an optional ``operator-acknowledgements.json`` beside the lattice
+    # documents loads to admission's ``operator_acknowledgements``
+    # parameter, so a retained-but-out-of-range pin that loaded at startup
+    # behind its recorded acknowledgement admits at the run path the same
+    # way (and meets the floor check with its pins classified). TRUE
+    # POSTURE (fold row 5): this re-reads the FILE per run start — it is
+    # not digest-pinned to the startup admission the way bootstrap's load
+    # is — and a malformed file fails HERE (inside the worker's build),
+    # surfacing as 202 → outcome_unknown under the poison guard, never a
+    # POST refusal. The startup lane's loader failure is the startup
+    # refusal; the two lanes' failure shapes are disclosed, not shared.
     ack_path = fixtures_dir / "operator-acknowledgements.json"
     acknowledgements = (
         load_operator_acknowledgements(ack_path) if ack_path.is_file() else None

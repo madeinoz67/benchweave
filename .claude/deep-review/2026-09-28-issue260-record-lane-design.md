@@ -486,3 +486,51 @@ RED before building. No statistical arms exist; nothing here depends on sample s
 bytes move under the recommended Fork 1(a). The four issue constraints are elaborated into
 the pre-committed arms G1–G7, never rewritten. Deferral table §3 follows the
 `.claude/deep-review/README.md` contract.*
+
+---
+
+## ADDENDUM — the fold wave (2026-09-29, issue #260's refute slate)
+
+Corrections and rider rows the four-lane fold added to this record. Each
+names its row; nothing above is rewritten (append-only).
+
+- **Row 5 (gov-M1) — the ack-threading rider, declared.** The run path
+  threads an optional ``operator-acknowledgements.json`` beside the
+  lattice documents into admission (``_spool_documents``, the
+  transport-settings precedent). WHY: G2's below-floor fixture (and any
+  real below-floor lattice) carries a retained-out-of-range pin that only
+  admits behind its recorded acknowledgement — without the threading the
+  worker admission refuses ``operator_ack_required:`` before the floor can
+  run, and the slice's own G-arms are unrunnable. RUN-PATH AUTHORITY
+  EXPANSION, disclosed: the run path now honors operator acknowledgements
+  the same way startup and recovery already did. TRUE POSTURE (the
+  built comment): the file is RE-READ per run start — not digest-pinned to
+  the startup admission — and a malformed file fails inside the worker's
+  build (202 → ``outcome_unknown`` under the poison guard), never as a
+  POST refusal; the startup lane's loader failure remains the startup
+  refusal. The two failure shapes are disclosed, not shared.
+- **Row 4 correction — the §1.3 sentence "the skip's reason evaporates for
+  the judgeable cohort" is overstated and is superseded by policy
+  relativity:** an echo is judged against TODAY's policy, and an echo the
+  corpus no longer carries (a later retirement) is CONTAINMENT, never a
+  composition-flip stamp. Doc-first stays era-stable; the judgeable cohort
+  that evaporates is the doc-resolved one.
+- **NIT-2:** §1.3's "The counter reads 11 ≤ 12" predates #221's landing —
+  the counter is ZERO-MODE (0 outside the register); this slice's
+  threading moves no literal and the reading is unchanged.
+- **NIT-3:** §1.3's "a dev composition's dev rows cover its directory" is
+  conditional on the dev head's corpus rows being repin-current — a
+  partially-rowed dev directory refuses ``corpus_file_unpinned:`` (row 7's
+  containment class).
+- **NIT-5:** §5 G1's "the test RE-VALIDATES the persisted record bytes
+  against the digest-verified schema" overclaimed nothing; but the
+  arbiter arm's "the manifest is the independent arbiter" comment is
+  superseded by row 11's runtime swept-const arbiter (the record build
+  itself refuses; the manifest remains the independent second layer).
+- **DEFERRED (homes and reopen triggers per the README contract):**
+  (a) the content-store corruption crash class in recovery's doc-first
+  read (pre-existing store posture; trigger: the first direct-SQLite
+  writer or a corrupt-row incident); (b) the $id-conventions corpus fact
+  (execution 0.1.0's run-record ``$id`` says 1.0.0 — inert, out of scope,
+  ledgered here); (c) the seam pre-check's read-cost measurement (§8's
+  disclosed-unmeasured; trigger: a review that wants the number).

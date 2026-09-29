@@ -289,6 +289,18 @@ rather than rewriting the history — that is how this file earns trust.
   that emitted it. CTL-9 unchanged: era records are
   `interrupted`/`unknown`; recovery never resumes bodies, never
   dispatches.
+  Fold clarification (2026-09-29, issue #260 fold): the containment
+  denominator is {doc/echo disagreement, an unjudgeable OR const-less doc
+  const, an echo the corpus does not carry (retired/never-carried/
+  unclassifiable — never a composition-flip stamp under a future policy
+  change), or a terminalization failure (per-run, never startup)}. The
+  doc-resolved path stamps the record's binding block FROM THE DOCUMENT,
+  so a record self-consistently names one artifact and a disagreeing
+  carried echo rides as `implementation_disclosure:`, not as a silent
+  contradiction. The seam's classification refusal (step 2) is DECIDED —
+  `_refuse_execution_pin` fires it at the POST — and the floor shape-gates
+  every raw pin before the interval comparator (typed-or-pass, never
+  ValueError).
 - **[CON-2]** The digest pin lattice between the execution-contract documents is verified
   at admission; the fixture lattice moves in lockstep (`fixtures/registry/` ↔
   `scripts/registry/build_fixtures.py` ↔ `catalogue.json` ↔ the digest-pinning tests),
