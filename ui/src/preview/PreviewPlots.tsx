@@ -128,7 +128,22 @@ export function PreviewPlots({ views, scenario }: PreviewPlotsProps) {
                     : {}),
                 }),
               )}
-              decoderLanes={view.decoder_lanes ?? []}
+              decoderLanes={(view.decoder_lanes ?? []).map((lane, laneIndex) => ({
+                id: lane.id,
+                ...(lane.label !== undefined ? { label: lane.label } : {}),
+                decoder: lane.decoder,
+                ...(lane.settings !== undefined ? { settings: lane.settings } : {}),
+                source_channel_ids: lane.source_channel_ids,
+                binding_id: lane.binding_id,
+                // §E.4.6 preview honesty: lane ACTIVITY is synthetic (the
+                // standing disclosure line), so each declared decoder lane
+                // renders two deterministic synthetic events — declared
+                // structure real, event data simulated.
+                events: [
+                  { start_s: 24e-6 * laneIndex, end_s: 24e-6 * laneIndex + 12e-6, payload_hex: "55", status: "ok" },
+                  { start_s: 96e-6, end_s: 108e-6, payload_hex: "AA", status: "ok" },
+                ],
+              }))}
               // The analog path maps channel visible; the lanes path maps it
               // the same way — one host, one hint seam (fold R2).
               hints={

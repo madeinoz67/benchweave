@@ -388,3 +388,84 @@ describe("DigitalLanesPlot real rendering (§E.4, A2.1)", () => {
     glitches.forEach((mark) => expect(mark.classList.contains("bw-lanes__glitch")).toBe(true));
   });
 });
+
+describe("decoder-lane rendering (§E.4.6, A3.1 — slice 3)", () => {
+  const DECODER_AXIS = { start: 0, step: 1e-6 };
+  const SAMPLES = 1200;
+  const sourceLane: Lane = {
+    id: "ch1",
+    label: "CH1",
+    axis: DECODER_AXIS,
+    states: states(["1", SAMPLES]),
+  };
+  /** The pre-committed A3.1 fixture: two UART-REF events at [0, 0.0001]
+   *  and [0.001, 0.0011] seconds — sample boundaries 0, 100, 1000, 1100. */
+  const decoderLane = {
+    id: "uart-lane",
+    decoder: "UART-REF",
+    settings: { baud: 115200, frame: "8N1" },
+    source_channel_ids: ["ch1"],
+    binding_id: "logic",
+    events: [
+      { start_s: 0, end_s: 0.0001, payload_hex: "55", status: "ok" },
+      { start_s: 0.001, end_s: 0.0011, payload_hex: "AA", status: "ok" },
+    ],
+  };
+  const xAt = (sample: number) => 96 + (sample / (SAMPLES - 1)) * 544;
+
+  function renderDecoder(hints?: ReadonlyMap<string, { visible?: boolean }>) {
+    return render(
+      <DigitalLanesPlot
+        title="Decoded"
+        x={{ label: "Time", unit: "s" }}
+        lanes={[sourceLane]}
+        columns={8}
+        decoderLanes={[decoderLane]}
+        hints={hints}
+      />,
+    );
+  }
+
+  it("renders annotation spans beneath the source lane at the EXACT sample extents", () => {
+    const { container } = renderDecoder();
+    const decoderRow = container.querySelector('[data-bw-lane-kind="decoder"]');
+    expect(decoderRow, "the decoder row renders").toBeTruthy();
+    const sourceRow = container.querySelector('[data-bw-lane-kind="channel"]')!;
+    const decoderY = Number(decoderRow!.querySelector("rect, line, text")!.getAttribute("y") ?? decoderRow!.querySelector("[data-bw-span]")!.getAttribute("y"));
+    expect(
+      Number(sourceRow.querySelector("rect")!.getAttribute("y")) < decoderY,
+      "the decoder row sits beneath its source channel",
+    ).toBe(true);
+    const spans = [...decoderRow!.querySelectorAll("[data-bw-span]")].map(
+      (span) => span.querySelector("rect")!,
+    );
+    expect(spans).toHaveLength(2);
+    expect(Number(spans[0]!.getAttribute("x"))).toBeCloseTo(xAt(0), 2);
+    expect(Number(spans[0]!.getAttribute("width"))).toBeCloseTo(xAt(100) - xAt(0), 2);
+    expect(Number(spans[1]!.getAttribute("x"))).toBeCloseTo(xAt(1000), 2);
+    expect(Number(spans[1]!.getAttribute("width"))).toBeCloseTo(xAt(1100) - xAt(1000), 2);
+  });
+
+  it("carries the payload text on the span (the wire's hex encoding, verbatim)", () => {
+    const { container } = renderDecoder();
+    const spans = container.querySelectorAll("[data-bw-span]");
+    expect(spans[0]!.textContent).toContain("55");
+    expect(spans[1]!.textContent).toContain("AA");
+  });
+
+  it("renders the disclosure line naming the decoder and its settings verbatim", () => {
+    const { container } = renderDecoder();
+    expect(container.textContent).toContain("UART-REF · 115200 8N1");
+  });
+
+  it("waits visibly when the source channel is hidden — the span does NOT render, no orphan", () => {
+    const { container } = renderDecoder(new Map([["ch1", { visible: false }]]));
+    expect(container.querySelectorAll("[data-bw-span]")).toHaveLength(0);
+    expect(container.textContent).not.toContain("55");
+    expect(container.textContent).not.toContain("AA");
+    const waiting = container.querySelector("[data-bw-waiting]");
+    expect(waiting, "the waiting disclosure renders").toBeTruthy();
+    expect(waiting!.textContent).toContain("waiting");
+    expect(waiting!.textContent).toContain("hidden");
+  });
+});

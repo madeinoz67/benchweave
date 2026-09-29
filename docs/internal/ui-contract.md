@@ -514,6 +514,17 @@ Schema: `Property | Requirement` — 4 rows.
 | Trigger | The trigger marker renders from a non-null trigger time, at its time, labelled `trigger`; a null trigger renders no marker and no position is fabricated |
 | Cursors | ≥2 cursors are supported with a Δt readout in the view's axis mode — seconds mode scales the unit (`Δt = 7 µs`), sample-index mode reads the raw difference in the host's unit (`Δt = 7 samples`), never both (presentation-only: cursor positions are host-supplied; the interactive drag model is deferred) |
 
+#### §E.4.6 Decoder lanes
+
+Schema: `Property | Requirement` — 4 rows.
+
+| Property | Requirement |
+| --- | --- |
+| Span rendering | A decoder lane renders as an annotation row BENEATH the channel and bus rows, declaration order — each event a span from its `[start_s, end_s)` extent mapped through the capture axis to exact sample positions |
+| Payload | The span carries the event's payload verbatim (the wire's hex encoding) — no re-encoded, derived or truncated value |
+| Disclosure | The row's label names the decoder and its settings verbatim: `{decoder} · {settings values}` (canonical fixture: `UART-REF · 115200 8N1`) |
+| Never orphan | An event whose source channel is hidden does NOT render and does NOT orphan onto a neighbour — the row discloses the wait visibly; a declared lane with NO events keeps the awaiting-render note (never a silent blank) |
+
 ## §F Icon set
 
 Framework-neutral icon keys keyed by severity or state. Any icon set can bind from the

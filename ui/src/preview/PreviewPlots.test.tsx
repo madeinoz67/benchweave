@@ -255,7 +255,10 @@ describe("digital_lanes capture views (S2: the whole-preview refusal is retired)
     expect(container.querySelectorAll("[data-bw-lane]")).toHaveLength(3); // 2 channels + the declared bus lane
   });
 
-  it("renders the decoder-lane interim note when decoder lanes are declared (fold P2 preview side)", () => {
+  it("retires the interim note in preview: a declared decoder lane RENDERS (S3 evolution of the P2 arm)", () => {
+    // The P2 interim note fired for any declaration; S3 synthesizes events
+    // per declared lane, so the note (event-less lanes only) is gone and
+    // the real annotation surface carries the disclosure instead.
     const withDecoder: PlotView = {
       ...lanesView,
       decoder_lanes: [
@@ -265,9 +268,31 @@ describe("digital_lanes capture views (S2: the whole-preview refusal is retired)
     const { container } = render(
       <PreviewPlots views={[withDecoder]} scenario={{ id: "normal", observations: [], permissions: [], lease_state: "none", approval_state: "not_required", unavailable_panels: [], expected_severity: "neutral", request_outcomes: [], timestamp_strategy: "relative", title: "Normal", description: "Nominal" } as never} />,
     );
-    const note = container.querySelector(".bw-lanes__decoder-note");
-    expect(note).toBeTruthy();
-    expect(note!.textContent).toContain("UART-REF");
+    expect(container.querySelector(".bw-lanes__decoder-note")).toBeNull();
+    expect(container.querySelector('[data-bw-lane-kind="decoder"]')).toBeTruthy();
+    expect(container.textContent).toContain("UART-REF");
+  });
+
+  it("renders decoder-lane annotation spans and the disclosure in preview (S3)", () => {
+    const withDecoder: PlotView = {
+      ...lanesView,
+      decoder_lanes: [
+        {
+          id: "uart-lane",
+          decoder: "UART-REF",
+          settings: { baud: 115200, frame: "8N1" },
+          source_channel_ids: ["ch1"],
+          binding_id: "voltage",
+        },
+      ],
+    };
+    const { container } = render(
+      <PreviewPlots views={[withDecoder]} scenario={{ id: "normal", observations: [], permissions: [], lease_state: "none", approval_state: "not_required", unavailable_panels: [], expected_severity: "neutral", request_outcomes: [], timestamp_strategy: "relative", title: "Normal", description: "Nominal" } as never} />,
+    );
+    const decoderRow = container.querySelector('[data-bw-lane-kind="decoder"]');
+    expect(decoderRow, "the decoder annotation row renders").toBeTruthy();
+    expect(decoderRow!.querySelectorAll("[data-bw-span]").length).toBe(2);
+    expect(container.textContent).toContain("UART-REF · 115200 8N1");
   });
 
   it("carries the lane-activity disclosure beside the synthetic pattern (all four states present)", () => {

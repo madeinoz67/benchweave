@@ -494,7 +494,7 @@ describe("contract L1: fixture rows present and parsable", () => {
     for (const row of rows) for (const column of [1, 2, 3]) expect(contractCell([row], 0, column), literal(row[0]!)).not.toBe("");
   });
 
-  it("§E.4.1-4.5 pin each section's row KEYS exactly (fold P5: aggregate-only counts pass a delete-and-pad)", () => {
+  it("§E.4.1-4.6 pin each section's row KEYS exactly (fold P5: aggregate-only counts pass a delete-and-pad)", () => {
     const layout = parseTable("#### §E.4.1 Lane layout", ["Property", "Requirement"]).map((row) => literal(row[0]!));
     expect(layout).toEqual(["Uniform bands", "Pinned labels", "Hidden lanes", "Hiding is disclosure"]);
     const stateRows = parseTable("#### §E.4.2 State rendering", ["Property", "Requirement"]).map((row) => literal(row[0]!));
@@ -505,9 +505,11 @@ describe("contract L1: fixture rows present and parsable", () => {
     expect(decimation).toEqual(["Every transition survives", "Glitch mark", "No sample dropping"]);
     const axis = parseTable("#### §E.4.5 Time axis", ["Property", "Requirement"]).map((row) => literal(row[0]!));
     expect(axis).toEqual(["Axis label", "Sample rate", "Trigger", "Cursors"]);
+    const decoders = parseTable("#### §E.4.6 Decoder lanes", ["Property", "Requirement"]).map((row) => literal(row[0]!));
+    expect(decoders).toEqual(["Span rendering", "Payload", "Disclosure", "Never orphan"]);
   });
 
-  it("covers the §6 enumeration arithmetic (88 definition rows)", () => {
+  it("covers the §6 enumeration arithmetic (92 definition rows)", () => {
     const disabled = parseTable("### §C.2 Disabled-reason enum", ["Key", "Required label text", "Parameter"]).length;
     const refusal = parseTable("### §C.3 Refusal mapping", ["Code", "Severity", "What happened", "Sent status", "Operator action"]).length;
     const modes = parseTable("### §D.1 Modes", ["Mode", "Fixed wording", "Fires when"]).length;
@@ -527,9 +529,10 @@ describe("contract L1: fixture rows present and parsable", () => {
     const lanesBuses = parseTable("#### §E.4.3 Groups and buses", ["Property", "Requirement"]).length;
     const lanesDecimation = parseTable("#### §E.4.4 Edge-preserving decimation (NORMATIVE)", ["Property", "Requirement"]).length;
     const lanesAxis = parseTable("#### §E.4.5 Time axis", ["Property", "Requirement"]).length;
+    const lanesDecoders = parseTable("#### §E.4.6 Decoder lanes", ["Property", "Requirement"]).length;
     // 5+15+4+3+3+6+10+1+4+3 = 54 (slice 1) + 4+4+3+4 = 15 (slice 2) = 69
-    // (#243); + 4+4+4+3+4 = 19 (#244 S2 §E.4.1-4.5) = 88.
-    expect(disabled + refusal + modes + safety + stateRules + severities + icons + readingStates + stalenessRules + triad + axes + refLines + acquisition + provenance + lanesLayout + lanesStates + lanesBuses + lanesDecimation + lanesAxis).toBe(88);
+    // (#243); + 4+4+4+3+4 = 19 (#244 S2 §E.4.1-4.5) + 4 (S3 §E.4.6) = 92.
+    expect(disabled + refusal + modes + safety + stateRules + severities + icons + readingStates + stalenessRules + triad + axes + refLines + acquisition + provenance + lanesLayout + lanesStates + lanesBuses + lanesDecimation + lanesAxis + lanesDecoders).toBe(92);
   });
 });
 
