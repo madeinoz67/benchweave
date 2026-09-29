@@ -86,12 +86,20 @@ from benchweave.host.types import (
     OperationStatus,
 )
 from benchweave.state.store import Store
-from benchweave.vendoring import contract_family
+from benchweave.vendoring import active_contract_family
 
 #: The vendored execution contracts (packaged in the wheel, repo-relative
-#: in a dev checkout — :mod:`benchweave.vendoring`).
-_CONTRACTS = contract_family("execution/0.2.0")
-_RUN_RECORD_VALIDATORS: dict[Path, Any] = {}
+#: in a dev checkout — :mod:`benchweave.vendoring`), resolved at the
+#: manifest's active version (issue #221: derived, not stated; a separate
+#: constant from documents.py's by address, identical by value — both
+#: derive independently, no cross-module ordering).
+_CONTRACTS = active_contract_family("execution")
+#: Per resolved contracts directory: (validator, contract_version const).
+#: The const is read from the SAME schema bytes the validator is built
+#: from, once per directory — ``build_terminal_record`` stamps the cached
+#: const, so the record lane can never disagree with the schema that
+#: validates it (issue #221, site 3; the A06 window closes mechanically).
+_RUN_RECORD_VALIDATORS: dict[Path, tuple[Any, str]] = {}
 
 #: Body outcomes that pass through unchanged when the safe state is verified.
 _OUTCOME_BY_BODY = {
@@ -193,16 +201,29 @@ def _pin_evidence(pin: Any) -> dict[str, Any]:
     return view
 
 
-def _record_validator(contracts: Path = _CONTRACTS) -> Any:
+def _record_validator(contracts: Path = _CONTRACTS) -> tuple[Any, str]:
+    """The (validator, contract_version const) pair for one contracts
+    directory, cached per resolved path (issue #221: the const rides the
+    same schema load the validator is built from). A schema without the
+    const refuses loudly — a stamp that cannot be derived is a refusal,
+    never a guess."""
     key = contracts.resolve()
-    validator = _RUN_RECORD_VALIDATORS.get(key)
-    if validator is None:
+    cached = _RUN_RECORD_VALIDATORS.get(key)
+    if cached is None:
         schema = json.loads(
             (contracts / "run-record.schema.json").read_text(encoding="utf-8")
         )
         validator = Draft202012Validator(schema)
-    _RUN_RECORD_VALIDATORS[key] = validator
-    return validator
+        const = schema.get("properties", {}).get("contract_version", {}).get("const")
+        if not isinstance(const, str) or not const:
+            raise ValueError(
+                f"run-record schema at {contracts} carries no contract_version "
+                "const — the terminal record's stamp derives from it and "
+                "cannot be computed"
+            )
+        cached = (validator, const)
+        _RUN_RECORD_VALIDATORS[key] = cached
+    return cached
 
 
 def build_terminal_record(
@@ -229,7 +250,12 @@ def build_terminal_record(
     exactly one place.
     """
     record = {
-        "contract_version": "0.2.0",
+        # The validating schema's own const (derived, issue #221): stamps
+        # exactly what the schema demands in every composition. NOT derived
+        # from ``contracts.name`` — a dev composition's directory is
+        # ``<target>-dev`` while its schema consts hold the active version,
+        # so the directory name would stamp a label the schema refuses.
+        "contract_version": _record_validator(contracts)[1],
         "run_id": run_id,
         "binding": {
             "id": str(binding_pin["id"]),
@@ -252,8 +278,9 @@ def build_terminal_record(
             for ref in evidence_refs
         ],
     }
+    validator, _const = _record_validator(contracts)
     errors = sorted(
-        _record_validator(contracts).iter_errors(record), key=lambda error: error.json_path
+        validator.iter_errors(record), key=lambda error: error.json_path
     )
     if errors:
         raise ValueError(

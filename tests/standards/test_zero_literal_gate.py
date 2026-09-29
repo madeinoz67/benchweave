@@ -10,6 +10,8 @@ committed counter refuses anything else (SM-2 = 0 outside the register).
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -95,3 +97,236 @@ class TestVendoringHelpers:
     def test_active_contract_family_refuses_an_unknown_standard(self) -> None:
         with pytest.raises(StandardsError, match="standards_entry_absent: nosuch"):
             active_contract_family("nosuch")
+
+
+def _counter_run(*argv: str, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
+    """Run the REAL counter (the scratch arms below copy it and invoke the
+    copy's own path — the script anchors its roots on __file__, never cwd)."""
+    return subprocess.run(
+        [sys.executable, str(ROOT / "scripts/standards/count_version_literals.py"), *argv],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=cwd,
+    )
+
+
+def _scratch_run(scratch: Path, *argv: str) -> subprocess.CompletedProcess[str]:
+    """Run the SCRATCH COPY of the counter (its __file__ anchors its roots
+    inside the scratch tree — that is the whole point of a scratch copy)."""
+    return subprocess.run(
+        [sys.executable, str(scratch / "scripts/standards/count_version_literals.py"), *argv],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+class TestZeroModeOverRealTrees:
+    """G1a's SHIP state, asserted by the committed gate (issue #221 §5)."""
+
+    def test_every_available_scope_counts_zero_outside_the_register(self) -> None:
+        result = _counter_run("--scope", "gateway,plugins,docs", "--json")
+        assert result.returncode == 0, result.stdout + result.stderr
+        payload = json.loads(result.stdout)
+        assert payload["mode"] == "zero"
+        for scope in ("gateway", "plugins", "docs"):
+            report = payload["scopes"][scope]
+            assert report["outside"] == 0, f"{scope}: {report['violations']}"
+            assert report["ok"] is True
+
+    def test_registered_sites_are_marked_exempt_with_the_reason(self) -> None:
+        """The display never hides what the gate forgives: the registered
+        file's sites carry exempt: true and the register reason."""
+        result = _counter_run("--scope", "gateway", "--json")
+        assert result.returncode == 0
+        payload = json.loads(result.stdout)
+        sites = payload["scopes"]["gateway"]["sites"]
+        exempt = [row for row in sites if row["file"].endswith("presentation/contracts.py")]
+        assert len(exempt) == 3
+        assert all(row["exempt"] is True for row in exempt)
+        assert all("D2" in row["reason"] for row in exempt)
+
+    def test_sdk_scope_joins_when_the_tree_is_present(self) -> None:
+        """The sdk scope rides the submodule (CI: recursive checkout). An
+        absent tree is a refusal (sdk_tree_absent:), never a silent skip —
+        asserted by the absent-scratch arm below."""
+        if not (ROOT / "packages/sdk/src/benchweave_sdk").is_dir():
+            pytest.skip("submodule not checked out in this environment")
+        result = _counter_run("--scope", "sdk")
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "sdk: 0 outside register" in result.stdout
+
+    def test_every_scope_is_reproducible_twice_byte_identical(self) -> None:
+        """The A4 discipline extended to every scope, docs included (the
+        KILL arm: any two consecutive runs differing)."""
+        for scope in ("gateway", "plugins", "sdk", "docs"):
+            if scope == "sdk" and not (ROOT / "packages/sdk/src/benchweave_sdk").is_dir():
+                continue
+            first = _counter_run("--scope", scope, "--json")
+            second = _counter_run("--scope", scope, "--json")
+            assert first.returncode == 0, first.stdout + first.stderr
+            assert first.stdout == second.stdout, f"{scope}: nondeterministic"
+
+    def test_census_pins_the_class_set_per_scope(self) -> None:
+        """Design risk 4: silent scope shrinkage fails. plugins and docs
+        carry exclusion constants, so their census is pinned EXACTLY; the
+        gateway/sdk scopes have no exclusions (their glob change would be a
+        review-visible script edit and the plant arms catch a broken walk),
+        so they pin a floor only."""
+        result = _counter_run("--scope", "gateway,plugins,docs", "--json")
+        assert result.returncode == 0
+        payload = json.loads(result.stdout)
+        assert payload["scopes"]["plugins"]["scanned"] == 13, (
+            "the plugins class set moved — update this pin in the same "
+            "commit as the tree change (the ratchet discipline)"
+        )
+        assert payload["scopes"]["docs"]["scanned"] == 19, (
+            "the docs class set moved — update this pin in the same commit "
+            "as the tree change, or refresh the snapshot deliberately"
+        )
+        assert payload["scopes"]["gateway"]["scanned"] >= 93
+
+    def test_absent_sdk_tree_refuses_loudly_in_a_scratch_copy(self, tmp_path: Path) -> None:
+        import shutil
+
+        scratch = tmp_path / "scratch-repo"
+        (scratch / "scripts/standards").mkdir(parents=True)
+        shutil.copy(
+            ROOT / "scripts/standards/count_version_literals.py",
+            scratch / "scripts/standards/count_version_literals.py",
+        )
+        result = _scratch_run(scratch, "--scope", "sdk")
+        assert result.returncode == 1
+        assert "sdk_tree_absent:" in result.stderr
+
+
+class TestRegisterTeeth:
+    """G2b: the register cannot become a laundering list (design risk 1)."""
+
+    def test_a_plant_inside_a_registered_file_fails_via_expected_sites(
+        self, tmp_path: Path
+    ) -> None:
+        import shutil
+
+        scratch = tmp_path / "scratch-repo"
+        (scratch / "scripts/standards").mkdir(parents=True)
+        shutil.copy(
+            ROOT / "scripts/standards/count_version_literals.py",
+            scratch / "scripts/standards/count_version_literals.py",
+        )
+        shutil.copytree(ROOT / "src/benchweave", scratch / "src/benchweave")
+        contracts_py = scratch / "src/benchweave/presentation/contracts.py"
+        contracts_py.write_bytes(contracts_py.read_bytes() + b'\n_PLANT = "9.9.9"\n')
+        result = _scratch_run(scratch, "--scope", "gateway")
+        assert result.returncode == 1, result.stdout + result.stderr
+        assert "register expectation failed:" in result.stdout
+        assert "expects 3 literals, found 4" in result.stdout
+
+
+class TestDocsRatchet:
+    """The docs scope's snapshot ratchet (VR-24, design §1.3)."""
+
+    def _scratch_docs_repo(self, tmp_path: Path) -> Path:
+        import shutil
+
+        scratch = tmp_path / "scratch-repo"
+        (scratch / "scripts/standards").mkdir(parents=True)
+        shutil.copy(
+            ROOT / "scripts/standards/count_version_literals.py",
+            scratch / "scripts/standards/count_version_literals.py",
+        )
+        shutil.copy(
+            ROOT / "scripts/standards/docs-literal-baseline.json",
+            scratch / "scripts/standards/docs-literal-baseline.json",
+        )
+        shutil.copytree(ROOT / "docs", scratch / "docs")
+        return scratch
+
+    def test_a_planted_prose_literal_fails_the_ratchet(self, tmp_path: Path) -> None:
+        scratch = self._scratch_docs_repo(tmp_path)
+        target = scratch / "docs/README.md"
+        target.write_text(target.read_text(encoding="utf-8") + "\nNew claim 9.9.9 here.\n")
+        result = _scratch_run(scratch, "--scope", "docs")
+        assert result.returncode == 1, result.stdout + result.stderr
+        assert "docs literal beyond snapshot" in result.stdout
+        assert "9.9.9" in result.stdout
+
+    def test_a_removal_passes_the_ratchet(self, tmp_path: Path) -> None:
+        """Removals only lower the count — deleting a literal never gates."""
+        import re
+
+        scratch = self._scratch_docs_repo(tmp_path)
+        target = scratch / "docs/README.md"
+        text = target.read_text(encoding="utf-8")
+        match = re.search(r"\d+\.\d+\.\d+", text)
+        assert match is not None
+        lines = [
+            line for line in text.splitlines(keepends=True) if match.group(0) not in line
+        ]
+        target.write_text("".join(lines))
+        clean = _scratch_run(scratch, "--scope", "docs")
+        assert clean.returncode == 0, clean.stdout + clean.stderr
+
+    def test_refresh_is_an_explicit_flag_with_a_reviewable_diff(
+        self, tmp_path: Path
+    ) -> None:
+        scratch = self._scratch_docs_repo(tmp_path)
+        target = scratch / "docs/README.md"
+        target.write_text(target.read_text(encoding="utf-8") + "\nNew claim 9.9.9 here.\n")
+        refused = _scratch_run(scratch, "--scope", "docs")
+        assert refused.returncode == 1
+        refreshed = _scratch_run(scratch, "--refresh-docs-baseline")
+        assert refreshed.returncode == 0, refreshed.stdout + refreshed.stderr
+        assert "docs snapshot refreshed" in refreshed.stdout
+        accepted = _scratch_run(scratch, "--scope", "docs")
+        assert accepted.returncode == 0, accepted.stdout + accepted.stderr
+
+
+class TestSchemaConstDerivations:
+    """The two caches stamp exactly what validates (design §1.2 rows 3/9)."""
+
+    def test_terminal_record_stamps_the_schema_const(self) -> None:
+        from benchweave.control.coordinator import build_terminal_record
+        from benchweave.vendoring import active_contract_family
+
+        binding: dict[str, object] = {
+            "id": "req-const-check",
+            "version": "1",
+            "sha256": "0" * 64,
+        }
+        record = build_terminal_record(
+            run_id="run-const-check",
+            binding_pin=binding,
+            principal_id="p1",
+            started_at="2026-09-29T00:00:00Z",
+            ended_at="2026-09-29T00:00:00Z",
+            body_outcome="completed",
+            safe_state="verified",
+            reasons=["zero-literal gate const check"],
+            evidence_refs=[binding],
+        )
+        schema = json.loads(
+            (active_contract_family("execution") / "run-record.schema.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        const = schema["properties"]["contract_version"]["const"]
+        assert record["contract_version"] == const
+
+    def test_lock_version_equals_the_schema_const(self) -> None:
+        from benchweave.registry.schemas import lock_version
+        from benchweave.vendoring import active_contract_family
+
+        schema = json.loads(
+            (active_contract_family("registry") / "package-lock.schema.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        assert lock_version() == schema["properties"]["lock_version"]["const"]
+
+    def test_derived_interface_version_names_the_active_family(self) -> None:
+        from benchweave.interfaces.validation import VENDORED_INTERFACE_VERSION
+        from benchweave.vendoring import active_contract_family
+
+        assert active_contract_family("interface").name == VENDORED_INTERFACE_VERSION

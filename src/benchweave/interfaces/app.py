@@ -25,6 +25,7 @@ from typing import Any
 
 from fastapi import FastAPI
 
+from benchweave import __version__
 from benchweave.content.capture_services import build_capture_services
 from benchweave.content.capture_store import CaptureStagingStore
 from benchweave.content.dataset_services import build_dataset_services
@@ -1017,7 +1018,7 @@ def create_app(
             if hold is not None:
                 hold.release()
 
-    app = FastAPI(title="BenchWeave gateway", version="0.1.0", lifespan=_lifespan)
+    app = FastAPI(title="BenchWeave gateway", version=__version__, lifespan=_lifespan)
     # Task 9: the REST router is included BEFORE the "/" mount — a mount at
     # "/" swallows every route included after it, so /v1 must land first.
     app.include_router(
