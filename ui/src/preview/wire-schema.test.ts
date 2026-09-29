@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import Ajv2020 from "ajv/dist/2020";
-import schema from "../../../standards/plugin-ui-preview/0.1.1/preview-document.schema.json";
+import schema from "../../../standards/plugin-ui-preview/0.2.0/preview-document.schema.json";
+import manifest from "../../../standards/standards-manifest.json";
 import { decodePreview } from "./api";
 
 // The wire document is contract-first: this schema is the single source both
@@ -124,5 +125,38 @@ describe("preview wire schema conformance", () => {
     poisoned.simulation = false;
     expect(validate(poisoned)).toBe(false);
     expect(() => decodePreview(poisoned)).toThrow(/preview_invalid_document/);
+  });
+});
+
+describe("served-set pin (fork-catcher, #244 wave-2 fold T1c)", () => {
+  it("pins the imported wire schema to the manifest's ACTIVE plugin-ui-preview version", () => {
+    const standards = (manifest as { standards: Array<{ id: string; version: string }> }).standards;
+    const active = standards.find((row) => row.id === "plugin-ui-preview")?.version;
+    expect(active).toBeDefined();
+    expect((schema as { $id?: string }).$id).toBe(
+      `https://benchweave.dev/contracts/plugin-ui-preview/${active}/preview-document.schema.json`,
+    );
+  });
+});
+
+describe("digital_lanes interim (the honest interim until the renderer slice)", () => {
+  it("admits a lanes plot view at the SCHEMA and refuses it WHOLE at the decoder", () => {
+    const validate = compile();
+    const lanes = structuredClone(sample) as { plot_views: Array<Record<string, unknown>> };
+    lanes.plot_views[0] = {
+      page_id: "readings",
+      kind: "digital_lanes",
+      binding_id: "voltage",
+      title: "Capture",
+      x: { label: "time", unit: "s" },
+      channels: [
+        { variable_id: "ch1", label: "CH1", unit: null },
+        { variable_id: "ch2", label: "CH2", unit: null },
+      ],
+    };
+    // The 0.2.0 wire admits the kind — and the decoder refuses the plot view,
+    // failing the ENTIRE preview visibly (never a per-kind note, never silent).
+    expect(validate(lanes)).toBe(true);
+    expect(() => decodePreview(lanes)).toThrow(/preview_invalid_plot_view/);
   });
 });

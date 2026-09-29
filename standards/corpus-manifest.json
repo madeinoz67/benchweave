@@ -1091,6 +1091,36 @@
       "path": "otdp/0.2.2/otdp-transport-provider.schema.json",
       "source": "standards/otdp/0.2.1/otdp-transport-provider.schema.json",
       "sha256": "1e4a50e34e5b996dd6e63d617263e3fae846346155e11c0bd75051fb8d60ef43"
+    },
+    {
+      "path": "plugin-ui/0.3.0/binding-catalogue.schema.json",
+      "source": "standards/plugin-ui/0.2.0/binding-catalogue.schema.json",
+      "sha256": "656539558d7d231aee37384d81d23b98f2ea7163e75e24c140e46e7e8bcafcef"
+    },
+    {
+      "path": "plugin-ui/0.3.0/configuration-preset.schema.json",
+      "source": "standards/plugin-ui/0.2.0/configuration-preset.schema.json",
+      "sha256": "ca130bc28fd8968101001a0948ba0df5eb1900268495b83b9366bd582d3d1118"
+    },
+    {
+      "path": "plugin-ui/0.3.0/presentation-envelope.schema.json",
+      "source": "standards/plugin-ui/0.2.0/presentation-envelope.schema.json",
+      "sha256": "796b8ff203e81c2573c768a36143cecd13817024620cbd3f01215d59c3380e15"
+    },
+    {
+      "path": "plugin-ui/0.3.0/ui-manifest.schema.json",
+      "source": "standards/plugin-ui/0.2.0/ui-manifest.schema.json",
+      "sha256": "2c89b754519bbd38dcecd7a25165ab25aeff0987c4880f090ae3efdafa3d31d4"
+    },
+    {
+      "path": "plugin-ui-preview/0.2.0/fixture.schema.json",
+      "source": "standards/plugin-ui-preview/0.1.1/fixture.schema.json",
+      "sha256": "c782064efddca17f661921212acf0d2bb4bd120a8c4eba0c5c20c18c374714cb"
+    },
+    {
+      "path": "plugin-ui-preview/0.2.0/preview-document.schema.json",
+      "source": "standards/plugin-ui-preview/0.1.1/preview-document.schema.json",
+      "sha256": "f947ff1a96b9324e48387d26a86a92f3067f6c4610be6f6d5a10dd366c7aed02"
     }
   ]
 }

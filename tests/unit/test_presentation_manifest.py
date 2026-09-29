@@ -27,7 +27,7 @@ def digest(raw: bytes) -> str:
 def bundle() -> Bundle:
     descriptor = (ROOT / "standards/otdp/0.2.0/examples/reference-psu.json").read_bytes()
     documents: dict[str, JsonObject] = {}
-    for path in (ROOT / "standards/plugin-ui/0.2.0").glob("*.schema.json"):
+    for path in (ROOT / "standards/plugin-ui/0.3.0").glob("*.schema.json"):
         schema = json.loads(path.read_bytes())
         documents[schema["$id"]] = schema
     target = {
@@ -46,12 +46,12 @@ def bundle() -> Bundle:
         ],
     }
     catalogue = {
-        "contract_version": "0.2.0",
+        "contract_version": "0.3.0",
         "descriptor_sha256": digest(descriptor),
         "targets": [target],
     }
     manifest = {
-        "contract_version": "0.2.0",
+        "contract_version": "0.3.0",
         "plugin_id": json.loads(descriptor)["id"],
         "descriptor_sha256": digest(descriptor),
         "bindings": [{"id": "reading", "kind": "observation", "target_id": "voltage"}],
@@ -82,7 +82,7 @@ def validate(
     descriptor, documents, catalogue, manifest = bundle
     manifest_raw = encode(manifest)
     envelope = {
-        "contract_version": "0.2.0",
+        "contract_version": "0.3.0",
         "descriptor_sha256": digest(descriptor),
         "resource_root": "ui",
         "manifest": {"path": "manifest.json", "sha256": digest(manifest_raw)},

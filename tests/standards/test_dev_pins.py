@@ -349,7 +349,7 @@ def test_vr28_an_opt_in_for_one_standard_affects_only_that_standard(
     root, sha = _git_root(tmp_path)
     package = _package(
         root,
-        constraints={"otdp": ">=0.2.0,<0.3.0", "plugin-ui": ">=0.2.0,<0.3.0"},
+        constraints={"otdp": ">=0.2.0,<0.3.0", "plugin-ui": ">=0.3.0,<0.4.0"},
         opt_in={"otdp": f"{HEAD_LABEL}@{sha}"},
     )
     resolution = resolve_package(root, package)
@@ -357,7 +357,7 @@ def test_vr28_an_opt_in_for_one_standard_affects_only_that_standard(
     assert (rows["otdp"]["stage"], rows["otdp"]["version"]) == ("dev", HEAD_LABEL)
     assert (rows["plugin-ui"]["stage"], rows["plugin-ui"]["version"]) == (
         "released",
-        "0.2.0",
+        "0.3.0",
     )
 
 
@@ -424,7 +424,7 @@ def test_opt_in_for_a_standard_absent_from_standards_refuses(tmp_path: Path) -> 
     root, sha = _git_root(tmp_path)
     package = _package(
         root,
-        constraints={"plugin-ui": ">=0.2.0,<0.3.0"},
+        constraints={"plugin-ui": ">=0.3.0,<0.4.0"},
         opt_in={"otdp": f"{HEAD_LABEL}@{sha}"},
     )
     with pytest.raises(StandardsError, match="constraint_document_invalid"):
