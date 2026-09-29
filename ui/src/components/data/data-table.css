@@ -39,3 +39,9 @@
   font-family: var(--bw-font-data);
   font-variant-numeric: tabular-nums;
 }
+
+/* §B.4 ST-4 at the table surface: a stale row renders dimmed. */
+.bw-table-row--stale td {
+  color: var(--bw-text-muted);
+  opacity: 0.75;
+}

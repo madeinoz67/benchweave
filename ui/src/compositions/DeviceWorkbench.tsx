@@ -113,8 +113,8 @@ export function DeviceWorkbench({
         <DataTable caption="Channel readings" rows={fixture.readings} rowKey={(row) => row.id} columns={[
           { id: "channel", header: "Quantity", cell: (row) => row.label },
           { id: "reading", header: "Reading", cell: (row) => `${row.value}${row.unit ? ` ${row.unit}` : ""}` },
-          { id: "quality", header: "Quality", cell: (row) => `${row.quality} · ${row.freshness}` },
-        ]} />
+          { id: "quality", header: "Quality", cell: (row) => `${row.quality} · ${row.freshness}${row.stale ? " · stale" : ""}` },
+        ]} rowAttributes={(row): Record<string, string> => (row.stale ? { "data-bw-stale": "true", className: "bw-table-row--stale" } : ({} as Record<string, string>))} />
       </Panel>
       <footer className="bw-workbench__footer"><Activity size={15} aria-hidden="true" />Gateway observations only · no independent hardware safety claim</footer>
     </section>

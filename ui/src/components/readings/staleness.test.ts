@@ -2,110 +2,101 @@ import { describe, expect, it } from "vitest";
 
 import { staleness } from "./staleness";
 
-/** S1-A5 (design record §6): the ST-2 property grid with the four pre-committed
- *  predicate mutants. Cadence ∈ {100, 1000} ms × freshness ∈ {0.5×, 1.9×,
- *  2.0×, 2.1×, 10×} plus `null` freshness plus no-cadence. The true predicate:
- *  2.0× NOT stale (strict >); 2.1× and 10× stale; 0.5×/1.9× fresh; null →
- *  no-verdict; no-cadence → no-verdict (ST-3's honest negative — first-class). */
-const CADENCES = [100, 1000] as const;
+/** S1-A5 as folded (#243 S1 review, row 2 — the owner-worded premise): the
+ *  corpus semantics. `max_age_ms` is the polled read-acceptance window —
+ *  stale iff freshness_ms > max_age_ms (1×, STRICT: the descriptor's own
+ *  disavowal boundary). Streaming `min_interval_ms` is a rate CAP (spec
+ *  §158): silence is healthy, so a stream-cadence source renders NO verdict
+ *  at all — the missed-data signal is the gap event, never silence-inference.
+ *  The grid: maxAge ∈ {0, 1, 100, 1000} ms × freshness ∈ {0.5×, 1.9×, 2.0×,
+ *  2.1×, 10×} plus null freshness plus no-cadence. At max_age 0 everything
+ *  ≥ 1 ms is stale — zero-age means fresh-acquisition-only (the 7-of-9
+ *  corpus case). Garbage inputs (non-finite/negative age, negative cadence)
+ *  → no-verdict (row 11): never a fabricated fresh. */
+const AGES = [0, 1, 100, 1000] as const;
 const MULTIPLES = [0.5, 1.9, 2.0, 2.1, 10] as const;
 
-const truePredicate = (freshnessMs: number | null, cadenceMs: number | null | undefined) =>
-  staleness(freshnessMs, cadenceMs);
-
-describe("ST-2 staleness predicate: the property grid", () => {
-  it.each(CADENCES)("cadence %i ms: all 10 cells correct", (cadence) => {
+describe("ST-2 staleness predicate (folded semantics): the property grid", () => {
+  it.each(AGES)("max_age %i ms: all multiple cells correct (1×, strict)", (maxAge) => {
     for (const multiple of MULTIPLES) {
-      const verdict = truePredicate(Math.round(cadence * multiple), cadence);
-      const expected = multiple > 2 ? "stale" : "fresh";
-      expect(verdict, `${cadence}ms cadence × ${multiple}×`).toBe(expected);
+      if (maxAge === 0) break; // at zero age the multiples collapse to 0; the dedicated zero-age `it` below carries those cells
+      const freshness = Math.round(maxAge * multiple);
+      const verdict = staleness(freshness, maxAge);
+      const expected = multiple > 1 ? "stale" : "fresh";
+      expect(verdict, `max_age ${maxAge}ms × ${multiple}× (${freshness}ms)`).toBe(expected);
     }
-    // 2.0× explicitly NOT stale — the strict-inequality boundary cell.
-    expect(truePredicate(2 * cadence, cadence), `equality at ${cadence}ms`).toBe("fresh");
-    expect(truePredicate(2.1 * cadence, cadence), `just-over at ${cadence}ms`).toBe("stale");
-    expect(truePredicate(10 * cadence, cadence), `10× at ${cadence}ms`).toBe("stale");
-    expect(truePredicate(0.5 * cadence, cadence), `half at ${cadence}ms`).toBe("fresh");
-    expect(truePredicate(1.9 * cadence, cadence), `1.9× at ${cadence}ms`).toBe("fresh");
-  });
-
-  it("null freshness ⇒ no verdict (ST-3: not stale; asserts freshness nowhere)", () => {
-    for (const cadence of CADENCES) {
-      expect(truePredicate(null, cadence)).toBe("no-verdict");
+    // The strict-inequality boundary: equality is NOT stale at any positive
+    // age (at 0 the dedicated zero-age `it` carries the cells).
+    if (maxAge > 0) {
+      expect(staleness(maxAge, maxAge), `equality at ${maxAge}ms`).toBe("fresh");
+      // 1.9× is stale under 1× semantics (it was fresh under the dead 2× rule).
+      expect(staleness(Math.round(maxAge * 1.9), maxAge)).toBe("stale");
     }
   });
 
-  it("no cadence ⇒ no verdict (ST-3 honest negative — first-class acceptance row)", () => {
+  it("max_age 0: everything ≥ 1 ms is stale (zero-age = fresh-acquisition-only)", () => {
+    expect(staleness(0, 0)).toBe("fresh");
+    expect(staleness(1, 0)).toBe("stale");
+    expect(staleness(84, 0)).toBe("stale");
+    expect(staleness(10000, 0)).toBe("stale");
+  });
+
+  it("null freshness ⇒ no verdict (asserts freshness nowhere)", () => {
+    for (const maxAge of AGES) expect(staleness(null, maxAge)).toBe("no-verdict");
+  });
+
+  it("no cadence ⇒ no verdict — the honest negative covering ALL stream-cadence sources", () => {
     for (const multiple of MULTIPLES) {
-      expect(truePredicate(Math.round(1000 * multiple), null)).toBe("no-verdict");
-      expect(truePredicate(Math.round(1000 * multiple), undefined)).toBe("no-verdict");
+      expect(staleness(Math.round(1000 * multiple), null)).toBe("no-verdict");
+      expect(staleness(Math.round(1000 * multiple), undefined)).toBe("no-verdict");
     }
-    expect(truePredicate(null, null)).toBe("no-verdict");
+    expect(staleness(null, null)).toBe("no-verdict");
+  });
+
+  it("garbage inputs ⇒ no verdict (row 11: NaN→fresh is the lie class)", () => {
+    expect(staleness(Number.NaN, 100)).toBe("no-verdict");
+    expect(staleness(Number.POSITIVE_INFINITY, 100)).toBe("no-verdict");
+    expect(staleness(-5, 100)).toBe("no-verdict");
+    expect(staleness(100, -1)).toBe("no-verdict");
+    expect(staleness(100, Number.NaN)).toBe("no-verdict");
+    // max_age 0 is VALID semantics, not garbage.
+    expect(staleness(1, 0)).toBe("stale");
   });
 });
 
 describe("ST-2 mutants: every mutant reds ≥ 1 cell the true predicate passes", () => {
-  // The four pre-committed mutants, asserted against the grid they must fail on.
   const cells: Array<[number | null, number | null | undefined]> = [];
-  for (const cadence of CADENCES) {
-    for (const multiple of MULTIPLES) cells.push([Math.round(cadence * multiple), cadence]);
-    cells.push([null, cadence]);
+  for (const maxAge of AGES) {
+    for (const multiple of MULTIPLES) cells.push([Math.round(maxAge * multiple), maxAge]);
+    cells.push([null, maxAge]);
     for (const multiple of MULTIPLES) cells.push([Math.round(1000 * multiple), null]);
   }
+  const clean = (f: number | null, c: number | null | undefined): f is number =>
+    f !== null && Number.isFinite(f) && f >= 0 && c !== null && c !== undefined && Number.isFinite(c) && c >= 0;
 
-  it("mutant >= (non-strict) reds on the 2.0× boundary cells", () => {
-    const mutant = (f: number | null, c: number | null | undefined) => {
-      if (c === null || c === undefined || f === null) return "no-verdict";
-      return f >= 2 * c ? "stale" : "fresh";
-    };
-    let reds = 0;
-    for (const [f, c] of cells) {
-      if (mutant(f, c) !== truePredicate(f, c)) reds += 1;
-    }
-    expect(reds, "the >= mutant must diverge on the 2.0× cells").toBeGreaterThanOrEqual(1);
-    expect(mutant(200, 100), "the exact boundary cell diverges").toBe("stale");
-    expect(truePredicate(200, 100)).toBe("fresh");
-  });
+  const mutants: Record<string, (f: number | null, c: number | null | undefined) => string> = {
+    ">=": (f, c) => (!clean(f, c) || f === null ? "no-verdict" : f >= c! ? "stale" : "fresh"),
+    "2× for 1×": (f, c) => (!clean(f, c) || f === null ? "no-verdict" : f > 2 * c! ? "stale" : "fresh"),
+    swapped: (f, c) => (!clean(f, c) || f === null ? "no-verdict" : c! > f ? "stale" : "fresh"),
+    "no-cadence→fresh": (f, c) => (c === null || c === undefined || !Number.isFinite(c) || c < 0 ? "fresh" : f === null || !Number.isFinite(f) || f < 0 ? "no-verdict" : f > c ? "stale" : "fresh"),
+  };
+  const namedCell: Record<string, [number | null, number | null | undefined, string, string]> = {
+    ">=": [100, 100, "stale", "fresh"],
+    "2× for 1×": [190, 100, "fresh", "stale"],
+    swapped: [50, 100, "stale", "fresh"],
+    "no-cadence→fresh": [10000, null, "fresh", "no-verdict"],
+  };
 
-  it("mutant 3× for 2× reds on the 2.1× cells", () => {
-    const mutant = (f: number | null, c: number | null | undefined) => {
-      if (c === null || c === undefined || f === null) return "no-verdict";
-      return f > 3 * c ? "stale" : "fresh";
-    };
-    let reds = 0;
-    for (const [f, c] of cells) {
-      if (mutant(f, c) !== truePredicate(f, c)) reds += 1;
-    }
-    expect(reds, "the 3× mutant must diverge on the 2.1× cells").toBeGreaterThanOrEqual(1);
-    expect(mutant(210, 100), "2.1× diverges").toBe("fresh");
-    expect(truePredicate(210, 100)).toBe("stale");
-  });
-
-  it("mutant cadence/freshness swapped reds on sub-threshold cells", () => {
-    const mutant = (f: number | null, c: number | null | undefined) => {
-      if (c === null || c === undefined || f === null) return "no-verdict";
-      return c > 2 * f ? "stale" : "fresh";
-    };
-    let reds = 0;
-    for (const [f, c] of cells) {
-      if (mutant(f, c) !== truePredicate(f, c)) reds += 1;
-    }
-    expect(reds, "the swap mutant must diverge (stale cells become fresh)").toBeGreaterThanOrEqual(1);
-    expect(mutant(1000, 100), "10× diverges under the swap").toBe("fresh");
-    expect(truePredicate(1000, 100)).toBe("stale");
-  });
-
-  it("mutant no-cadence→fresh reds on the no-cadence cells (ST-3 negated)", () => {
-    const mutant = (f: number | null, c: number | null | undefined) => {
-      if (c === null || c === undefined) return "fresh";
-      if (f === null) return "no-verdict";
-      return f > 2 * c ? "stale" : "fresh";
-    };
-    let reds = 0;
-    for (const [f, c] of cells) {
-      if (mutant(f, c) !== truePredicate(f, c)) reds += 1;
-    }
-    expect(reds, "fabricating fresh on no-cadence diverges everywhere ST-3 governs").toBeGreaterThanOrEqual(1);
-    expect(mutant(10000, null), "the honest negative becomes a lie").toBe("fresh");
-    expect(truePredicate(10000, null)).toBe("no-verdict");
-  });
+  for (const [name, mutant] of Object.entries(mutants)) {
+    it(`mutant ${name} reds ≥ 1 cell`, () => {
+      let reds = 0;
+      for (const [f, c] of cells) {
+        if (mutant(f, c) !== staleness(f, c)) reds += 1;
+      }
+      expect(reds, `the ${name} mutant must diverge`).toBeGreaterThanOrEqual(1);
+      const [f, c, mutantVerdict, trueVerdict] = namedCell[name]!;
+      expect(mutant(f, c), `named cell ${f}/${c}`).toBe(mutantVerdict);
+      expect(staleness(f, c), `named cell ${f}/${c} true predicate`).toBe(trueVerdict);
+    });
+  }
 });

@@ -514,15 +514,23 @@ describe("S1-A3 (#243): --bw-limiting computed proofs", () => {
   // both themes (4 ratios). T2-limiting: ΔE00 >= 10.0 vs all 6 severity keys
   // (neutral renders as the theme's text colour) x 4 viewing conditions x
   // 2 themes = 48 values, dual CVD models, both arms every pair.
+  // The comparator set (folded row 1): the five severity HUES plus the
+  // neutral severity's actual rendering — --bw-text-muted (alert-bubble.css
+  // resolves neutral through the state default; --bw-text was the wrong
+  // token with a wrong justification) — plus --bw-border (measured safe,
+  // pinned anyway). The pathological byte-identical-to-muted case is caught
+  // BY this census, not by accident.
   const severityAll = (tokens: Map<string, string>): string[] => {
     const hues = ["--bw-advisory", "--bw-warning", "--bw-critical", "--bw-trip", "--bw-success"].map((name) => {
       const value = tokens.get(name);
       if (value === undefined) throw new Error(`${name} missing`);
       return value;
     });
-    const neutral = tokens.get("--bw-text");
-    if (neutral === undefined) throw new Error("--bw-text missing (the neutral severity's hue)");
-    return [...hues, neutral];
+    const neutralMuted = tokens.get("--bw-text-muted");
+    if (neutralMuted === undefined) throw new Error("--bw-text-muted missing (the neutral severity's rendering)");
+    const border = tokens.get("--bw-border");
+    if (border === undefined) throw new Error("--bw-border missing");
+    return [...hues, neutralMuted, border];
   };
 
   for (const [name, tokens] of THEMES) {
@@ -544,9 +552,32 @@ describe("S1-A3 (#243): --bw-limiting computed proofs", () => {
           expect(secondary, `${name} limiting vs ${sev} (${condition}, Viénot/Brettel)`).toBeGreaterThanOrEqual(10.0);
         }
       }
-      console.info(`[limiting-margins] ${name} T2 dual-arm worst ${worst.toFixed(2)} (threshold 10.0)`);
+      console.info(`[limiting-margins] ${name} T2 dual-arm worst ${worst.toFixed(2)} (threshold 10.0, engineering floor 11.0)`);
+      // Row 10: the standing engineering floor (the S3-A2 precedent) — the
+      // search screens (T1 >= 3.3, T2 >= 11) are standing pre-commit doctrine
+      // for every future token slot (design-record fold note).
+      expect(worst, `${name} limiting engineering margin: >= threshold + 1.0`).toBeGreaterThanOrEqual(11.0);
     });
   }
+});
+
+describe("S1 fold rows 5+11: the limiting CSS is pinned (border/label colour, no glow)", () => {
+  const css = readFileSync("src/components/readings/reading-tile.css", "utf8");
+  const blockOf = (selector: string): string => {
+    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const match = css.match(new RegExp(`${escaped}\\s*\\{[^}]*\\}`));
+    if (match === null) throw new Error(`no CSS block for ${selector}`);
+    return match[0]!;
+  };
+  it("the limiting border rule uses the token, and grants no glow (no box-shadow)", () => {
+    const rule = blockOf('.bw-reading[data-bw-reading-state="limiting"]');
+    expect(rule).toContain("border-color: var(--bw-limiting)");
+    expect(rule, "SR-B2: glow is severity-scoped; the limiting state grants none").not.toContain("box-shadow");
+  });
+  it("the limiting label uses the token", () => {
+    const rule = blockOf(".bw-reading__state");
+    expect(rule).toContain("color: var(--bw-limiting)");
+  });
 });
 
 describe("S3-A3: adjacent slots stay ΔE00 ≥ 8.0 apart, both models", () => {

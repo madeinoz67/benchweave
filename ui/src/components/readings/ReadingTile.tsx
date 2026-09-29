@@ -55,7 +55,16 @@ export function ReadingTile({ label, value, unit, freshness, quality, severity, 
         <div className="bw-reading__state">
           <ArrowUpToLine size={16} aria-hidden="true" focusable="false" />
           {stateLabels[state]}
+          {/* §B.3 announcement: entry announces once via a status live region,
+              coalesced; the region mounts WITH the state (the mount is the
+              entry) and unmounts silently on exit. */}
+          <p className="bw-visually-hidden" role="status">{`${label} ${stateLabels[state]}`}</p>
         </div>
+      ) : null}
+      {stale ? (
+        /* §B.4 ST-4 announcement: the fresh→stale transition announces once
+           via a status live region, coalesced; exit is silent. */
+        <p className="bw-visually-hidden" role="status">{`${label} stale`}</p>
       ) : null}
     </section>
   );

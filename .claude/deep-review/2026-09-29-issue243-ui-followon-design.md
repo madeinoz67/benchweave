@@ -464,6 +464,27 @@ All rows use the `.claude/deep-review/README.md` deferral-row contract.
 
 ---
 
+## 11a. Review fold (2026-09-29, slice 1) — the staleness premise amended
+
+The S1 review battery's owner-worded premise row amends §1.3's arithmetic (the
+record's §1.3 text stays frozen above; THIS note governs the landed contract):
+`max_age_ms` is the polled read-acceptance window — stale iff
+`freshness_ms > max_age_ms` (1×, STRICT — the descriptor's own disavowal
+boundary; the 2× rationale dies with the premise). Streaming
+`min_interval_ms` is a rate CAP (spec §158): silence is healthy — a
+stream-cadence source renders NO staleness verdict; the missed-data signal is
+the gap event. The grid gains max_age {0,1} cells (zero-age =
+fresh-acquisition-only, correct semantics per the 7-of-9 corpus case). The
+comparator for the limiting proofs is `--bw-text-muted` (the neutral severity's
+actual rendering), with `--bw-border` pinned alongside; light re-derived to
+`#274076` under the extended census (the shipped `#877085` red it at 5.44).
+The search screens (T1 ≥ 3.3, T2 ≥ 11.0) are STANDING pre-commit doctrine for
+every future token slot.
+
+Deferral row (added by the fold): wire-side staleness spacing bounds — a
+future corpus field bounding acceptable inter-sample spacing above the rate cap
+reopens streaming staleness; its train's PR is the arrival.
+
 ## 12. Tier call and Step-1 keyword scan (the #254 rule)
 
 **Tier: both slices TIER 3 — slice 1 on two triggers, slice 2 on one.**

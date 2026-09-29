@@ -71,7 +71,7 @@ colour in `themes.css` is contract-pinned).
 | `--bw-critical` | `#b63830` | `#ff6d63` | Immediate operator action |
 | `--bw-trip` | `#a92858` | `#ff5d91` | Protective trip and inhibited control |
 | `--bw-success` | `#177158` | `#67d8b2` | Confirmed successful outcome |
-| `--bw-limiting` | `#877085` | `#5f9500` | Limiting reading-state border and label (§B.3) |
+| `--bw-limiting` | `#274076` | `#5f9500` | Limiting reading-state border and label (§B.3); non-confusion proofs vs the six severity hues AND the neutral severity's `--bw-text-muted` rendering, plus `--bw-border` (pinned) |
 | `--bw-series-1` | `#253421` | `#00744a` | Plot series slot 1 (§E.2; set-derived assignment) |
 | `--bw-series-2` | `#8e7588` | `#e3d7ff` | Plot series slot 2 (§E.2; set-derived assignment) |
 | `--bw-series-3` | `#2f3300` | `#567200` | Plot series slot 3 (§E.2; set-derived assignment) |
@@ -158,21 +158,24 @@ Schema: `State key | Meaning | Rendering | Announcement` — 1 row.
 
 `limiting` is NOT a severity key (§B.1 unchanged), NOT a disabled reason (§C.2
 unchanged), and MUST NOT be counted, aggregated or announced as an alert anywhere a
-host summarises alerts. Distinct from `protection-active`: a limiting reading is
+host summarises alerts. Border allocation: when `limiting` composes with a severity,
+the state takes the border (`--bw-limiting`) and the severity keeps its glow rights —
+both render, neither displaces the other. Distinct from `protection-active`: a limiting reading is
 operating normally inside its envelope; `protection-active` is a control-disabled
 reason tied to a protective trip.
 
 ### §B.4 Staleness
 
-Schema: `Rule id | Requirement` — 4 rows. The staleness cadence is the descriptor's own
-committed value: for a streaming observation, `stream_limits.min_interval_ms`; for a
-polled read, the parameter's `max_age_ms` (`otdp-device-descriptor.schema.json` —
-cited from the corpus, not restated).
+Schema: `Rule id | Requirement` — 4 rows. The staleness window is the polled
+parameter's `max_age_ms` (`otdp-device-descriptor.schema.json` — cited from the
+corpus, not restated). Clock anchor (OTDP spec §100): `freshness_ms` is the
+age at assembly on the acquisition stream's monotonic-derived time — wall-clock
+steps must not un-stale a reading.
 
 | Rule id | Requirement |
 | --- | --- |
-| `ST-1` | The staleness cadence is the descriptor's own committed value: for a streaming observation, `stream_limits.min_interval_ms`; for a polled read, the parameter's `max_age_ms`. The cadence is host-supplied configuration from the descriptor/profile — never invented, never a renderer default. |
-| `ST-2` | A reading is stale iff `freshness_ms > 2 × cadence_ms` (strictly greater; equality is not stale). The predicate is a pure function of the wire's `freshness_ms` and the commissioned cadence. |
+| `ST-1` | The staleness cadence is the POLLED parameter's `max_age_ms` — the descriptor's own read-acceptance window, host-supplied configuration from the descriptor/profile, never invented, never a renderer default. For a streaming observation `stream_limits.min_interval_ms` is a rate CAP (OTDP spec §158): silence is healthy, so a stream-cadence source supplies NO cadence and renders NO staleness verdict — the missed-data signal is the gap event, never silence-inference. |
+| `ST-2` | A reading is stale iff `freshness_ms > max_age_ms` (strictly greater; equality is not stale — the boundary is the descriptor's own disavowal line). `max_age_ms: 0` is valid semantics: fresh-acquisition-only, everything ≥ 1 ms is stale. The predicate is a pure function of the wire's `freshness_ms` and the commissioned window; garbage inputs (non-finite or negative age, non-finite or negative window) render no verdict. |
 | `ST-3` | No known cadence (the descriptor/profile supplies none for that binding) ⇒ NO staleness verdict renders — the reading renders without a stale marker, which asserts freshness NOWHERE. `freshness_ms: null` renders `Unavailable` (existing behaviour) and is not stale. A device-declared quality string renders verbatim in the quality slot and is never overwritten or augmented by the computed verdict — two channels, never laundered into one. |
 | `ST-4` | A stale reading renders dimmed (muted text treatment) and carries `data-bw-stale="true"` plus the visible marker `stale` appended to the quality line; it renders at reduced prominence, never at normal reading prominence. The fresh→stale transition announces once via a `status` live region, coalesced. A stale reading never renders without its marker (the OTDP §5 rule that stale readings cannot satisfy verification, at the presentation boundary). |
 
