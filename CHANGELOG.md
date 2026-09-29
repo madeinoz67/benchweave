@@ -242,6 +242,7 @@ All notable changes to this project will be documented in this file.
 - Fold wave — 12 fixed rows, 2 disclosures, #221 refute battery
 - #260 fold wave — the seam decides, the comparator is total, recovery is policy-relative
 - Row 4 corrected to the three-way echo disposition
+- Fold wave — marker truth, region dedupe, regenerable residual, adc vacuity guard
 
 ### Documentation
 
@@ -460,6 +461,8 @@ All notable changes to this project will be documented in this file.
 - Fold the #243 S1 wave-2 reviewer rows (R1-R4)
 - Issue #221 zero-literal end-state design record
 - Issue #260 record-lane design record
+- Add counter-boundaries design record
+- Obligation 20 assembly/scripts/membership clauses; obligation 22 region pin
 
 ### Features
 
@@ -648,6 +651,9 @@ All notable changes to this project will be documented in this file.
 - Active_version_from_corpus loader + corpus_root/active_contract_family helpers
 - The zero-literal end state — nine derivations, register, zero-mode
 - The record lane — runs are an implemented-dialect fact
+- Constant-folding assembly detection in the zero-literal counter
+- The scripts/ scope — three derivations, twenty registrations
+- Flat-plugin scope, marker-based environments, twin region pin
 
 ### Hardware Evidence
 
@@ -928,6 +934,7 @@ All notable changes to this project will be documented in this file.
 - Assert the G3a registered-disposition facts
 - Re-shape the arbiter arm for the digest-verified resolution
 - Pin the unstored-descriptor pre-check skip (Risk 2's other half)
+- The verify_tree fixture tracks the derived runtime-schema path
 
 ### Build
 
