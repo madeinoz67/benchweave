@@ -485,6 +485,20 @@ Deferral row (added by the fold): wire-side staleness spacing bounds — a
 future corpus field bounding acceptable inter-sample spacing above the rate cap
 reopens streaming staleness; its train's PR is the arrival.
 
+## 11b. Wave-2 fold additions (2026-09-29)
+
+Design-record R7 MISSTATATED the mitigation as built ("enforcement pins the
+PRESENCE of the status-region announcement") — at review time neither S1-A4
+nor S1-A6 pinned any announcement. The wave-1 fold's row-3 work (status live
+regions mounted with the limiting state and the stale verdict, presence pinned)
+makes the claim TRUE as landed; the misstatement itself is documented here
+because the record is frozen. Also noted: §3's fixture-location wording
+("proof fixtures grow accordingly") diverged from the landed shape (inline
+proof renders plus composition fixtures); and the wave-1 commit message's
+"the A3 proofs red on the perturbed value" half-claim does not reproduce — a
+±1 channel step cannot cross A3 thresholds; only the L3 equality arm reds
+(the reviewer reproduced exactly that).
+
 ## 12. Tier call and Step-1 keyword scan (the #254 rule)
 
 **Tier: both slices TIER 3 — slice 1 on two triggers, slice 2 on one.**

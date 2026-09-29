@@ -472,7 +472,7 @@ describe("S3-A2: series tokens stay ΔE00 ≥ 10.0 from every severity hue, both
           }
         }
       }
-      console.info(`[series-margins] ${name} T2 dual-arm min ${worst.toFixed(2)} (hard ≥ 10.0, engineering ≥ 11.0)`);
+      process.stdout.write(`[series-margins] ${name} T2 dual-arm min ${worst.toFixed(2)} (hard >= 10.0, engineering >= 11.0)\n`);
       expect(worst, `${name} hard threshold`).toBeGreaterThanOrEqual(10.0);
       expect(worst, `${name} engineering margin: ≥ threshold + 1.0`).toBeGreaterThanOrEqual(11.0);
     }
@@ -501,7 +501,7 @@ describe("S3-D2 census: ALL same-dash pairs stay ΔE00 ≥ 8.0 apart (waveform m
           }
         }
       }
-      console.info(`[series-margins] ${name} census min ${worst.toFixed(2)} (hard ≥ 8.0; engineering floor ≥ 9.0)`);
+      process.stdout.write(`[series-margins] ${name} census min ${worst.toFixed(2)} (hard >= 8.0; engineering floor >= 9.0)\n`);
       if (name === "dark") {
         expect(worst, "dark engineering margin: ≥ threshold + 1.0").toBeGreaterThanOrEqual(9.0);
       }
@@ -540,7 +540,7 @@ describe("S1-A3 (#243): --bw-limiting computed proofs", () => {
       const surface = tokens.get("--bw-surface");
       const recessed = tokens.get("--bw-surface-recessed");
       if (surface === undefined || recessed === undefined) throw new Error("surface tokens missing");
-      console.info(`[limiting-margins] ${name} T1 surface ${contrast(limiting, surface).toFixed(2)} recessed ${contrast(limiting, recessed).toFixed(2)}`);
+      process.stdout.write(`[limiting-margins] ${name} T1 surface ${contrast(limiting, surface).toFixed(2)} recessed ${contrast(limiting, recessed).toFixed(2)}\n`);
       expect(contrast(limiting, surface), `${name} vs surface`).toBeGreaterThanOrEqual(3.0);
       expect(contrast(limiting, recessed), `${name} vs recessed`).toBeGreaterThanOrEqual(3.0);
       let worst = Number.POSITIVE_INFINITY;
@@ -552,7 +552,7 @@ describe("S1-A3 (#243): --bw-limiting computed proofs", () => {
           expect(secondary, `${name} limiting vs ${sev} (${condition}, Viénot/Brettel)`).toBeGreaterThanOrEqual(10.0);
         }
       }
-      console.info(`[limiting-margins] ${name} T2 dual-arm worst ${worst.toFixed(2)} (threshold 10.0, engineering floor 11.0)`);
+      process.stdout.write(`[limiting-margins] ${name} T2 dual-arm worst ${worst.toFixed(2)} (threshold 10.0, engineering floor 11.0)\n`);
       // Row 10: the standing engineering floor (the S3-A2 precedent) — the
       // search screens (T1 >= 3.3, T2 >= 11) are standing pre-commit doctrine
       // for every future token slot (design-record fold note).
@@ -577,6 +577,16 @@ describe("S1 fold rows 5+11: the limiting CSS is pinned (border/label colour, no
   it("the limiting label uses the token", () => {
     const rule = blockOf(".bw-reading__state");
     expect(rule).toContain("color: var(--bw-limiting)");
+  });
+  it("the limiting border rule comes AFTER the severity rules (source order = precedence at equal specificity)", () => {
+    // Equal specificity (0,2,0): whichever block appears LAST in the file
+    // wins the border. The contract's border-allocation sentence (limiting
+    // takes the border; the composed severity keeps its glow rights) is
+    // enforced BY this order — reordering the blocks silently flips
+    // precedence with no other test failing.
+    const limitingIndex = css.indexOf('.bw-reading[data-bw-reading-state="limiting"]');
+    const severityIndices = [...css.matchAll(/\.bw-reading\[data-severity=[^\]]*\]/g)].map((m) => m.index!);
+    expect(limitingIndex).toBeGreaterThan(Math.max(...severityIndices));
   });
 });
 

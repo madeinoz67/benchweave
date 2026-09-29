@@ -146,6 +146,18 @@ Readings report gateway observations. Controls stage intent. Buttons submit expl
 - Do not optimistically copy a requested value into an applied reading.
 - Permission, lease, policy, transport and device rejection remain distinct outcomes — rendered per the refusal mapping (contract §C.3).
 
+**Announcement honest scope (contract §B.3/§B.4):** the reference renderer
+implements the PRESENCE arm of the announcement rules — a `status` live region
+mounts with the limiting state and with the stale verdict (the mount is the
+coalesced entry announcement; unmount is the silent exit), and the pins assert
+presence-with / absence-without. What stays unimplemented, disclosed: the
+once-and-coalesced TIMING across repeated entries (a re-entry within the same
+mount does not re-announce in every host — the mount/unmount lifecycle is the
+reference's coalescing approximation) and per-tile announcement ordering
+between sibling tiles. Those timing behaviours stay story + browser-review
+(the jsdom boundary), the same disclosed class as the CSS-hidden-label
+residual in §C.2's enforcement.
+
 **Reading states, the setpoint triad, staleness (contract §B.3/§B.4/§E.3):** a
 limiting reading (a limit, not the set-point, constrains the value) renders the
 state icon and its `Limiting` label in `--bw-limiting` — never a severity, never
