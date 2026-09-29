@@ -9,6 +9,7 @@ committed counter refuses anything else (SM-2 = 0 outside the register).
 
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 import subprocess
@@ -241,9 +242,11 @@ class TestZeroModeOverRealTrees:
         result = _counter_run("--scope", "gateway,plugins,docs,scripts", "--json")
         assert result.returncode == 0
         payload = json.loads(result.stdout)
-        assert payload["scopes"]["plugins"]["scanned"] == 13, (
-            "the plugins class set moved — update this pin in the same "
-            "commit as the tree change (the ratchet discipline)"
+        assert payload["scopes"]["plugins"]["scanned"] == 15, (
+            "the plugins class set moved (issue #269 widened the rule to "
+            "flat plugins: 13 + the two dps150 script files) — update this "
+            "pin in the same commit as the tree change (the ratchet "
+            "discipline)"
         )
         assert payload["scopes"]["docs"]["scanned"] == 30, (
             "the docs class set moved — update this pin in the same commit "
@@ -643,6 +646,136 @@ class TestSchemaConstDerivations:
         from benchweave.vendoring import active_contract_family
 
         assert active_contract_family("interface").name == VENDORED_INTERFACE_VERSION
+
+
+class TestScopeMembershipRules:
+    """H4 (issue #269 §7): the flat-plugin rule and marker-based
+    environments. RED at the rules' base: the src/-required rule could not
+    see a flat plugin, and the name-set filter silently excluded a
+    venv-NAMED code tree (both arms pass-as-invisible there)."""
+
+    def _scratch_plugins_repo(self, tmp_path: Path) -> Path:
+        import shutil
+
+        scratch = tmp_path / "scratch-repo"
+        (scratch / "scripts/standards").mkdir(parents=True)
+        (scratch / "standards").mkdir()
+        shutil.copy(
+            ROOT / "scripts/standards/count_version_literals.py",
+            scratch / "scripts/standards/count_version_literals.py",
+        )
+        shutil.copy(
+            ROOT / "standards/standards-manifest.json",
+            scratch / "standards/standards-manifest.json",
+        )
+        # The registered dps150 rows must hold in the scratch too — the
+        # arms below isolate the membership rule, not the register.
+        shutil.copytree(
+            ROOT / "plugins/fnirsi/dps150/src",
+            scratch / "plugins/fnirsi/dps150/src",
+        )
+        return scratch
+
+    def test_plugins_census_pins_fifteen_with_the_flat_scripts_inside(self) -> None:
+        """Census 13 -> 15: the two dps150 script files (zero literals in
+        either) joined the denominator. The pin moves in the same commit
+        as the rule (the ratchet discipline the message instructs)."""
+        result = _counter_run("--scope", "plugins", "--json")
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert json.loads(result.stdout)["scopes"]["plugins"]["scanned"] == 15, (
+            "the plugins class set moved — update this pin in the same "
+            "commit as the tree change (the ratchet discipline)"
+        )
+
+    def test_a_literal_in_a_flat_plugin_refuses(self, tmp_path: Path) -> None:
+        """A plugin module with NO src/ component is gated — the plant
+        refuses. RED at base: the src/-required rule never scanned it."""
+        scratch = self._scratch_plugins_repo(tmp_path)
+        flat = scratch / "plugins/acme_instruments/mod.py"
+        flat.parent.mkdir(parents=True)
+        flat.write_text('_PLANT = "9.9.9"\n', encoding="utf-8")
+        result = _scratch_run(scratch, "--scope", "plugins")
+        assert result.returncode == 1, result.stdout + result.stderr
+        assert "unregistered literal: plugins/acme_instruments/mod.py" in result.stdout
+
+    def test_a_venv_named_directory_without_marker_is_scanned(self, tmp_path: Path) -> None:
+        """A directory merely NAMED ``venv`` carries project code until it
+        carries ``pyvenv.cfg`` — its literals refuse. RED at base: the
+        name-set filter silently excluded the same tree (exit 0)."""
+        scratch = self._scratch_plugins_repo(tmp_path)
+        nested = scratch / "plugins/acme_instruments/venv/lib/mod.py"
+        nested.parent.mkdir(parents=True)
+        nested.write_text('_PLANT = "9.9.9"\n', encoding="utf-8")
+        result = _scratch_run(scratch, "--scope", "plugins")
+        assert result.returncode == 1, result.stdout + result.stderr
+        assert "unregistered literal" in result.stdout
+        assert "venv/lib/mod.py" in result.stdout
+
+    def test_a_marker_carrying_environment_is_excluded(self, tmp_path: Path) -> None:
+        """The same plant inside a marker-carrying directory is excluded
+        and the census is unchanged (a no-regression arm: it held at base
+        under the NAME rule and holds here for the MARKER's sake)."""
+        scratch = self._scratch_plugins_repo(tmp_path)
+        env_dir = scratch / "plugins/acme_instruments/venv"
+        (env_dir / "lib").mkdir(parents=True)
+        (env_dir / "pyvenv.cfg").write_text("home = /usr/bin\n", encoding="utf-8")
+        (env_dir / "lib/mod.py").write_text('_PLANT = "9.9.9"\n', encoding="utf-8")
+        result = _scratch_run(scratch, "--scope", "plugins")
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "9.9.9" not in result.stdout
+
+
+class TestSharedRegionParity:
+    """H5 (issue #269 §4): the two counters' shared regions are
+    byte-identical — the structural twin pin, extending the proven
+    digest-identity shape (tests/sdk/test_presentation_packaging.py).
+    Skips when the submodule is absent (the sdk scope's own condition).
+    RED at base: the markers do not exist in the pinned twin — that is
+    this test's RED."""
+
+    REGION_BEGIN = "# >>> BEGIN SHARED COUNTER REGION"
+    REGION_END = "# <<< END SHARED COUNTER REGION <<<"
+
+    def _twin_path(self) -> Path:
+        return ROOT / "packages/sdk/scripts/count_version_literals.py"
+
+    def _region(self, path: Path) -> str:
+        text = path.read_text(encoding="utf-8")
+        if self.REGION_BEGIN not in text or self.REGION_END not in text:
+            raise AssertionError(f"shared-region markers absent from {path}")
+        return text[text.index(self.REGION_BEGIN) : text.index(self.REGION_END)]
+
+    def test_shared_regions_are_byte_identical(self) -> None:
+        if not self._twin_path().is_file():
+            pytest.skip("submodule not checked out in this environment")
+        gateway = self._region(ROOT / "scripts/standards/count_version_literals.py")
+        twin = self._region(self._twin_path())
+        assert (
+            hashlib.sha256(gateway.encode("utf-8")).hexdigest()
+            == hashlib.sha256(twin.encode("utf-8")).hexdigest()
+        ), (
+            "the shared counter regions drifted — the twin's definition "
+            "block must be byte-identical to the gateway's (issue #269 §4); "
+            "re-sync the twin in the same work (obligation 22)"
+        )
+
+    def test_a_one_character_region_mutation_is_detected(self, tmp_path: Path) -> None:
+        """The pin's teeth: one character changed inside the twin's region
+        changes the digest — the parity check cannot pass a drifted copy."""
+        if not self._twin_path().is_file():
+            pytest.skip("submodule not checked out in this environment")
+        scratch = tmp_path / "twin-mutated.py"
+        text = self._twin_path().read_text(encoding="utf-8")
+        mutated = text.replace(
+            'ENVIRONMENT_MARKER = "pyvenv.cfg"',
+            'ENVIRONMENT_MARKER = "pyvenv.cfg"  # touched',
+            1,
+        )
+        assert mutated != text, "the mutation arm's needle vanished from the twin"
+        scratch.write_text(mutated, encoding="utf-8")
+        gateway = self._region(ROOT / "scripts/standards/count_version_literals.py")
+        with pytest.raises(AssertionError):
+            assert gateway == self._region(scratch)
 
 
 class TestScriptsScope:

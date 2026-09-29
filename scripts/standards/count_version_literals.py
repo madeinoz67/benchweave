@@ -36,12 +36,22 @@ silently):
 SCOPES (#221 §1.3):
 
 - ``gateway``: ``src/benchweave/`` — the slice-1 scope, unchanged.
-- ``plugins``: every ``*.py`` under a ``plugins/**/src/**`` path, ignoring
-  any path carrying a ``venv``/``.venv``/``node_modules``/``site-packages``
-  component (defense in depth: a venv created inside ``src/`` makes
-  zero-mode FAIL loudly, never silently pass). The dps150 test-tree
-  literals and the stray venv bytes are outside the scope BY THIS NAMED
-  RULE, never by silence.
+- ``plugins``: every ``*.py`` under ``plugins/`` with no ``tests``
+  component and no environment component (issue #269 3.1: a plugin's
+  code is gated wherever it lays out its package — the ``src/``
+  requirement is gone; the fold row 8 ``tests/`` rule is unchanged, and
+  a plugin shipping a ``tests`` subpackage inside its distributed tree
+  stays excluded — the named residual). Census 15 (the two dps150 script
+  files joined: zero literals in either).
+- Environments are detected BY MARKER, not by name (issue #269 3.2): a
+  directory is a Python environment iff it carries ``pyvenv.cfg``;
+  ``node_modules``/``site-packages`` stay name-based (no marker exists —
+  a named residual). A directory merely NAMED ``venv``/``.venv`` now
+  SCANS; an environment whose marker was deleted scans as third-party
+  bytes and FAILS the gate loudly (disposition = a named path exclusion)
+  — never a silent pass. The former name-set filter is superseded by the
+  marker rule (measured zero census change today: no environment
+  directory exists in any gated tree).
 - ``sdk``: ``packages/sdk/src/benchweave_sdk/`` (paths relativize to
   ``packages/sdk/`` so register rows are checkout-independent). An absent
   tree for a REQUESTED scope is a refusal (``sdk_tree_absent:``, exit 1),
@@ -133,150 +143,49 @@ import warnings
 from pathlib import Path
 from typing import Any
 
+# >>> BEGIN SHARED COUNTER REGION (digest-pinned against the twin; issue #269 #4) >>>
 STANDARD_IDS = ("otdp", "registry", "execution", "interface", "plugin-ui", "plugin-ui-preview")
 PATTERN_A = re.compile(r"\b(?:" + "|".join(STANDARD_IDS) + r")/\d+\.\d+\.\d+")
 PATTERN_BARE = re.compile(r"^\d+\.\d+\.\d+$")
-# The PROSE matcher (docs scope): three-component versions with the cheap
-# widenings (fold row 7b) — an optional v/V prefix and a -dev/-rc/-alpha/
-# -beta prerelease suffix — anchored so dotted quads stop counting: an IP
-# fragment like ``127.0.0`` inside ``127.0.0.1`` is preceded by or followed
-# by another dotted component and matches neither boundary rule. A
-# sentence-final period survives (``(?!\.\d)`` only excludes a FOLLOWING
-# dotted component).
-PATTERN_DOCS = re.compile(r"(?<![\w.])(?:[vV])?\d+\.\d+\.\d+(?:-(?:dev|rc|alpha|beta)\d*)?(?!\.\d)")
 
-# The docs scope's exclusion set — named constants with their reasons, so
-# the scope cannot quietly shrink (#221 design risk 4):
-#   internal/history trees: frozen version citations ARE their content;
-#   compatibility-matrix: machine-rendered, CON-12's gate owns it.
-DOCS_EXCLUDED_DIRS = ("docs/internal", "docs/implementation-planning", "docs/superpowers")
-DOCS_EXCLUDED_FILES = ("docs/compatibility-matrix.md",)
-DOCS_SNAPSHOT = Path(__file__).resolve().parent / "docs-literal-baseline.json"
+# Environments are detected BY MARKER, not by name (issue #269 3.2): a
+# directory is a Python environment iff it carries ``pyvenv.cfg`` — the
+# marker every ``venv``/``virtualenv``/``uv venv`` writes. Project code in
+# a directory merely NAMED ``venv`` or ``.venv`` is SCANNED — the
+# collision case closed. ``node_modules``/``site-packages`` stay
+# name-based: no marker file exists for either and the names are
+# convention-owned by npm and pip's layout — a real package so named is
+# unrepresentable in practice (NAMED RESIDUAL, not a silent one).
+# Direction of failure stays loud: an environment whose marker was
+# deleted scans as third-party bytes and its literals FAIL the gate
+# (disposition = a named path exclusion) — never a silent pass.
+ENVIRONMENT_MARKER = "pyvenv.cfg"
+ENVIRONMENT_NAMED_COMPONENTS = frozenset({"node_modules", "site-packages"})
 
-# Environment components ignored in the plugins and docs scopes (§0.3 of
-# the design: a stray environment inside a scanned tree must make zero-mode
-# fail loudly if it ever lands in scope — the ignore exists so third-party
-# bytes already in the tree do not gate the lane).
-ENVIRONMENT_COMPONENTS = frozenset({"venv", ".venv", "node_modules", "site-packages"})
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
-SDK_ROOT = REPO_ROOT / "packages" / "sdk"
-
-# The scripts scope's self-exemption (issue #269 §2.3): the counter
-# exempts ITSELF — the register's ``expected_values`` tuples ARE the
-# gate's own data and are literals by construction (the same class as the
-# docs snapshot JSON, which no AST scope scans). Whole-file, by the #269
-# design's Fork-3 call; line-scoped exemption was rejected as new
-# machinery for a file whose every edit is already an editorial
-# re-baseline by this docstring's own rule. RESIDUAL (named, #269 risk 2):
-# a plant in this file's NON-shared region is self-exempt and
-# parity-invisible — the review lane carries it, the same posture the
-# definition-change rule already takes.
-SCRIPTS_EXCLUDED_FILES = ("scripts/standards/count_version_literals.py",)
-
-# The registered-exception register (VR-25 branch 2; #221 §1.3): scope ->
-# display-relative path -> (reason, expected_sites, expected_values).
-# expected_sites is the EXACT literal count the file may carry; a registered
-# file's count must EQUAL it — a fourth site in presentation/contracts.py
-# fails until D2's trigger is honestly met. expected_values (fold row 6)
-# additionally pins the sorted BARE-literal VALUES for authored-data rows,
-# so a semantics-changing substitution fails at unchanged cardinality; the
-# corpus-owned contracts.py rows carry None there because the copies are
-# digest-pinned whole by tests/sdk/test_presentation_packaging.py.
-REGISTER: dict[str, dict[str, tuple[str, int, tuple[str, ...] | None]]] = {
-    "gateway": {
-        "src/benchweave/presentation/contracts.py": (
-            "VR-25 branch 2 / D2: plugin-ui corpus-owned code, byte-identical "
-            "to its SDK twin (tests/sdk/test_presentation_packaging.py pins "
-            "the identity — digest-pinned, so no value pin here); motion = "
-            "the D2 reopen trigger (the first plugin-ui bump after the arc, "
-            "or the owner's F1 call)",
-            3,
-            None,
-        ),
-    },
-    "sdk": {
-        "src/benchweave_sdk/standards/plugin-ui/contracts.py": (
-            "D2 twin of the gateway's registered copy — the same corpus-owned "
-            "code at plugin-ui 0.2.0 bytes (digest-pinned whole, so no value "
-            "pin here); same reopen trigger",
-            3,
-            None,
-        ),
-        "src/benchweave_sdk/scaffold.py": (
-            "authored example-template fields that are not standards "
-            "references (descriptor_version, firmware version, adapter "
-            "version, provenance revision); the otdp_version example IS "
-            "derived (served.active_version) and stays outside this row",
-            4,
-            ("0.1.0", "0.1.0", "0.1.0", "1.0.0"),
-        ),
-    },
-    "plugins": {
-        "plugins/fnirsi/dps150/src/benchweave_fnirsi_dps150/descriptor.py": (
-            "a plugin's own pin declaration is data, not a literal (VR-21's "
-            "own sentence) — deriving dps150's pin from any served set would "
-            "let gateway state rewrite the plugin's declaration",
-            3,
-            ("0.1.0", "0.2.0", "0.2.2"),
-        ),
-    },
-    "docs": {},
-    "scripts": {
-        "scripts/architecture/check_closure.py": (
-            "authored synthetic-fixture versions — the closure graph's "
-            "invented module versions are test data, not standards "
-            "references (issue #269 §2.2; the SDK scaffold row's register "
-            "semantics)",
-            4,
-            ("1.0.0", "1.0.0", "1.0.0", "1.0.0"),
-        ),
-        "scripts/architecture/check_devices.py": (
-            "authored synthetic probe — the identity-disagreement fixture's "
-            "invented version is test data",
-            1,
-            ("2.0.0",),
-        ),
-        "scripts/architecture/check_interface.py": (
-            "authored self-test payload — a synthetic clientInfo version in "
-            "the interface self-test",
-            1,
-            ("0.1.0",),
-        ),
-        "scripts/registry/build_fixtures.py": (
-            "authored fixture-package versions — the fixture packages' "
-            "release version and directory names (deriving these from the "
-            "schema consts is deferral D-2: it changes emitted fixture "
-            "bytes on every bump; the lattice's motion is governed by its "
-            "rebuild flow)",
-            4,
-            ("1.0.0", "1.0.0", "1.0.0", "1.0.0"),
-        ),
-        "scripts/registry/publish_dev.py": (
-            "authored dev-iteration default sentinel (0.0.0 = no dev head)",
-            1,
-            ("0.0.0",),
-        ),
-        "scripts/registry/registry_common.py": (
-            "authored fixture document data — the registry fixtures' "
-            "document formats, compat lists and package versions",
-            7,
-            ("0.1.0", "0.1.0", "0.1.1", "0.1.1", "1.0.0", "1.0.0", "1.0.0"),
-        ),
-        "scripts/sdk_smoke.py": (
-            "authored synthetic descriptor firmware — the scaffold row's "
-            "own class: example-template fields, not standards references",
-            2,
-            ("1.0.0", "1.0.0"),
-        ),
-    },
-}
-
-ALL_SCOPES = ("gateway", "plugins", "sdk", "docs", "scripts")
+_is_environment_dir_cache: dict[Path, bool] = {}
 
 
-class ScopeAbsent(Exception):
-    """A requested scope's tree does not exist in this checkout."""
+def _is_environment_dir(directory: Path) -> bool:
+    """True iff the directory carries the environment marker (memoized:
+    one stat per directory under a scan root, cached)."""
+    cached = _is_environment_dir_cache.get(directory)
+    if cached is None:
+        cached = (directory / ENVIRONMENT_MARKER).exists()
+        _is_environment_dir_cache[directory] = cached
+    return cached
+
+
+def _outside_environment(scan_root: Path, relative_parts: tuple[str, ...]) -> bool:
+    """True when no directory on the relative path is a Python environment
+    (by the ``pyvenv.cfg`` marker) and no component is a named environment
+    component. The parts are relative to ``scan_root`` — absolute parts
+    would stat every ancestor directory of the checkout."""
+    if any(component in ENVIRONMENT_NAMED_COMPONENTS for component in relative_parts):
+        return False
+    return not any(
+        _is_environment_dir(scan_root.joinpath(*relative_parts[: index + 1]))
+        for index in range(len(relative_parts) - 1)
+    )
 
 
 def _docstring_ids(tree: ast.Module) -> set[int]:
@@ -293,6 +202,17 @@ def _docstring_ids(tree: ast.Module) -> set[int]:
             ):
                 skip.add(id(body[0].value))
     return skip
+
+
+# --- constant-folding assembly detection (issue #269, design §1.1) ---------
+# Bounds: a fold attempt exceeding either is UNFOLDABLE (an honest miss,
+# never an error).
+FOLD_MAX_DEPTH = 24
+FOLD_MAX_LENGTH = 4096
+
+
+class _Unfoldable(Exception):
+    """The evaluator's universal miss: this expression is not constant-only."""
 
 
 # --- constant-folding assembly detection (issue #269, design §1.1) ---------
@@ -517,6 +437,145 @@ def _fold_sites(tree: ast.Module, relative: str) -> list[dict[str, Any]]:
         del row["_box"]
     return kept
 
+# <<< END SHARED COUNTER REGION <<<
+
+
+# The PROSE matcher (docs scope): three-component versions with the cheap
+# widenings (fold row 7b) — an optional v/V prefix and a -dev/-rc/-alpha/
+# -beta prerelease suffix — anchored so dotted quads stop counting: an IP
+# fragment like ``127.0.0`` inside ``127.0.0.1`` is preceded by or followed
+# by another dotted component and matches neither boundary rule. A
+# sentence-final period survives (``(?!\.\d)`` only excludes a FOLLOWING
+# dotted component).
+PATTERN_DOCS = re.compile(r"(?<![\w.])(?:[vV])?\d+\.\d+\.\d+(?:-(?:dev|rc|alpha|beta)\d*)?(?!\.\d)")
+
+# The docs scope's exclusion set — named constants with their reasons, so
+# the scope cannot quietly shrink (#221 design risk 4):
+#   internal/history trees: frozen version citations ARE their content;
+#   compatibility-matrix: machine-rendered, CON-12's gate owns it.
+DOCS_EXCLUDED_DIRS = ("docs/internal", "docs/implementation-planning", "docs/superpowers")
+DOCS_EXCLUDED_FILES = ("docs/compatibility-matrix.md",)
+DOCS_SNAPSHOT = Path(__file__).resolve().parent / "docs-literal-baseline.json"
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+SDK_ROOT = REPO_ROOT / "packages" / "sdk"
+
+# The scripts scope's self-exemption (issue #269 §2.3): the counter
+# exempts ITSELF — the register's ``expected_values`` tuples ARE the
+# gate's own data and are literals by construction (the same class as the
+# docs snapshot JSON, which no AST scope scans). Whole-file, by the #269
+# design's Fork-3 call; line-scoped exemption was rejected as new
+# machinery for a file whose every edit is already an editorial
+# re-baseline by this docstring's own rule. RESIDUAL (named, #269 risk 2):
+# a plant in this file's NON-shared region is self-exempt and
+# parity-invisible — the review lane carries it, the same posture the
+# definition-change rule already takes.
+SCRIPTS_EXCLUDED_FILES = ("scripts/standards/count_version_literals.py",)
+
+# The registered-exception register (VR-25 branch 2; #221 §1.3): scope ->
+# display-relative path -> (reason, expected_sites, expected_values).
+# expected_sites is the EXACT literal count the file may carry; a registered
+# file's count must EQUAL it — a fourth site in presentation/contracts.py
+# fails until D2's trigger is honestly met. expected_values (fold row 6)
+# additionally pins the sorted BARE-literal VALUES for authored-data rows,
+# so a semantics-changing substitution fails at unchanged cardinality; the
+# corpus-owned contracts.py rows carry None there because the copies are
+# digest-pinned whole by tests/sdk/test_presentation_packaging.py.
+REGISTER: dict[str, dict[str, tuple[str, int, tuple[str, ...] | None]]] = {
+    "gateway": {
+        "src/benchweave/presentation/contracts.py": (
+            "VR-25 branch 2 / D2: plugin-ui corpus-owned code, byte-identical "
+            "to its SDK twin (tests/sdk/test_presentation_packaging.py pins "
+            "the identity — digest-pinned, so no value pin here); motion = "
+            "the D2 reopen trigger (the first plugin-ui bump after the arc, "
+            "or the owner's F1 call)",
+            3,
+            None,
+        ),
+    },
+    "sdk": {
+        "src/benchweave_sdk/standards/plugin-ui/contracts.py": (
+            "D2 twin of the gateway's registered copy — the same corpus-owned "
+            "code at plugin-ui 0.2.0 bytes (digest-pinned whole, so no value "
+            "pin here); same reopen trigger",
+            3,
+            None,
+        ),
+        "src/benchweave_sdk/scaffold.py": (
+            "authored example-template fields that are not standards "
+            "references (descriptor_version, firmware version, adapter "
+            "version, provenance revision); the otdp_version example IS "
+            "derived (served.active_version) and stays outside this row",
+            4,
+            ("0.1.0", "0.1.0", "0.1.0", "1.0.0"),
+        ),
+    },
+    "plugins": {
+        "plugins/fnirsi/dps150/src/benchweave_fnirsi_dps150/descriptor.py": (
+            "a plugin's own pin declaration is data, not a literal (VR-21's "
+            "own sentence) — deriving dps150's pin from any served set would "
+            "let gateway state rewrite the plugin's declaration",
+            3,
+            ("0.1.0", "0.2.0", "0.2.2"),
+        ),
+    },
+    "docs": {},
+    "scripts": {
+        "scripts/architecture/check_closure.py": (
+            "authored synthetic-fixture versions — the closure graph's "
+            "invented module versions are test data, not standards "
+            "references (issue #269 §2.2; the SDK scaffold row's register "
+            "semantics)",
+            4,
+            ("1.0.0", "1.0.0", "1.0.0", "1.0.0"),
+        ),
+        "scripts/architecture/check_devices.py": (
+            "authored synthetic probe — the identity-disagreement fixture's "
+            "invented version is test data",
+            1,
+            ("2.0.0",),
+        ),
+        "scripts/architecture/check_interface.py": (
+            "authored self-test payload — a synthetic clientInfo version in "
+            "the interface self-test",
+            1,
+            ("0.1.0",),
+        ),
+        "scripts/registry/build_fixtures.py": (
+            "authored fixture-package versions — the fixture packages' "
+            "release version and directory names (deriving these from the "
+            "schema consts is deferral D-2: it changes emitted fixture "
+            "bytes on every bump; the lattice's motion is governed by its "
+            "rebuild flow)",
+            4,
+            ("1.0.0", "1.0.0", "1.0.0", "1.0.0"),
+        ),
+        "scripts/registry/publish_dev.py": (
+            "authored dev-iteration default sentinel (0.0.0 = no dev head)",
+            1,
+            ("0.0.0",),
+        ),
+        "scripts/registry/registry_common.py": (
+            "authored fixture document data — the registry fixtures' "
+            "document formats, compat lists and package versions",
+            7,
+            ("0.1.0", "0.1.0", "0.1.1", "0.1.1", "1.0.0", "1.0.0", "1.0.0"),
+        ),
+        "scripts/sdk_smoke.py": (
+            "authored synthetic descriptor firmware — the scaffold row's "
+            "own class: example-template fields, not standards references",
+            2,
+            ("1.0.0", "1.0.0"),
+        ),
+    },
+}
+
+ALL_SCOPES = ("gateway", "plugins", "sdk", "docs", "scripts")
+
+
+class ScopeAbsent(Exception):
+    """A requested scope's tree does not exist in this checkout."""
+
 
 def scope_tree(scope: str) -> tuple[Path, Path, str]:
     """(scan_root, display_root, glob) for one scope.
@@ -545,12 +604,7 @@ def scope_tree(scope: str) -> tuple[Path, Path, str]:
     raise ValueError(f"unknown scope: {scope}")
 
 
-def _outside_environment(relative_parts: tuple[str, ...]) -> bool:
-    """True when the relative path carries no environment component."""
-    return not any(component in ENVIRONMENT_COMPONENTS for component in relative_parts)
-
-
-def _in_scope(scope: str, relative_parts: tuple[str, ...]) -> bool:
+def _in_scope(scope: str, scan_root: Path, relative_parts: tuple[str, ...]) -> bool:
     """The per-scope membership rule beyond the glob (named, never silent).
 
     Membership is judged on the parts of the path RELATIVE TO ITS SCAN
@@ -559,14 +613,18 @@ def _in_scope(scope: str, relative_parts: tuple[str, ...]) -> bool:
     common developer layout — would admit every file into the plugins
     scope and silently grow the denominator).
     """
-    if not _outside_environment(relative_parts):
+    if not _outside_environment(scan_root, relative_parts):
         return False
     if scope == "plugins":
-        # Path-shape rule (fold row 8): the file lives under a src/ component
-        # AND no tests/ component — a ``tests/src/`` path shape is a test
-        # tree however it is laid out, and ``"src" in parts`` alone would
-        # count it.
-        return "src" in relative_parts and "tests" not in relative_parts
+        # Flat-plugin rule (issue #269 3.1): a plugin's code is gated
+        # WHEREVER it lays out its package — the ``src/`` requirement is
+        # gone (census 13 -> 15: the two dps150 script files, zero
+        # literals in either). The ``tests/`` exclusion is the fold row 8
+        # rule, unchanged (a ``tests/src/`` path shape is a test tree
+        # however it is laid out). RESIDUAL, named: a plugin shipping a
+        # ``tests`` subpackage inside its distributed package tree is
+        # excluded — the same residual as before this row.
+        return "tests" not in relative_parts
     return True
 
 
@@ -590,7 +648,7 @@ def _docs_files() -> list[Path]:
         # A README is docs regardless of where the plugin keeps its code —
         # the environment filter is the only membership rule here (the
         # plugins scope's src-only rule governs *.py, not prose).
-        if not _outside_environment(path.relative_to(REPO_ROOT).parts):
+        if not _outside_environment(REPO_ROOT, path.relative_to(REPO_ROOT).parts):
             continue
         files.append(path)
     user_guide = REPO_ROOT / "user_guide"
@@ -616,7 +674,7 @@ def count_sites(source_root: Path, scope: str) -> tuple[list[dict[str, Any]], in
     scanned = 0
     for path in sorted(source_root.glob(pattern)) if scope != "docs" else _docs_files():
         relative_parts = path.relative_to(display_root).parts
-        if not _in_scope(scope, relative_parts):
+        if not _in_scope(scope, display_root, relative_parts):
             continue
         relative = path.relative_to(display_root).as_posix()
         if relative in SCRIPTS_EXCLUDED_FILES:
