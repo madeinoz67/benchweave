@@ -112,7 +112,12 @@ describe("PreviewPlots panel", () => {
   it("renders the standing snapshot disclosure beside every panel", () => {
     render(<PreviewPlots views={[view([channel()])]} scenario={scenario} />);
     expect(
-      screen.getByText("Preview scenarios carry one simulated value per observed target — not observation history."),
+      screen.getByText(/Preview scenarios carry one simulated value per observed target — not observation history\./),
+    ).toBeVisible();
+    // S2: the standing disclosure extends to capture views' synthetic lane
+    // activity (design §1.4 — the mode-banner honesty posture).
+    expect(
+      screen.getByText(/Lane activity in capture views is a labelled synthetic pattern, not acquired data\./),
     ).toBeVisible();
   });
 
@@ -205,5 +210,41 @@ describe("PreviewPlots panel", () => {
       scenario,
     );
     expect(join.traces.map((trace) => trace.label)).toEqual(["Line voltage", "Ripple"]);
+  });
+});
+
+describe("digital_lanes capture views (S2: the whole-preview refusal is retired)", () => {
+  const lanesView: PlotView = {
+    page_id: "capture",
+    kind: "digital_lanes",
+    binding_id: "voltage",
+    title: "Logic capture",
+    x: { label: "time", unit: "s" },
+    channels: [
+      { variable_id: "ch1", label: "CH1", unit: null },
+      { variable_id: "ch2", label: "CH2", unit: null },
+    ],
+    lane_groups: [{ id: "bus-a", label: "Bus A", member_ids: ["ch1", "ch2"] }],
+  };
+
+  it("RENDERS a lanes view through the preview pipeline (recovery: renders, not throws)", () => {
+    const { container } = render(
+      <PreviewPlots views={[lanesView]} scenario={{ id: "normal", observations: [], permissions: [], lease_state: "none", approval_state: "not_required", unavailable_panels: [], expected_severity: "neutral", request_outcomes: [], timestamp_strategy: "relative", title: "Normal", description: "Nominal" } as never} />,
+    );
+    const lanes = container.querySelector(".bw-lanes");
+    expect(lanes, "the DigitalLanesPlot renders").toBeTruthy();
+    expect(container.textContent).toContain("CH1");
+    expect(container.textContent).toContain("CH2");
+    expect(container.querySelector('[data-bw-lane-kind="group"]'), "the declared bus lane renders").toBeTruthy();
+  });
+
+  it("carries the lane-activity disclosure beside the synthetic pattern (all four states present)", () => {
+    const { container, getByText } = render(
+      <PreviewPlots views={[lanesView]} scenario={{ id: "normal", observations: [], permissions: [], lease_state: "none", approval_state: "not_required", unavailable_panels: [], expected_severity: "neutral", request_outcomes: [], timestamp_strategy: "relative", title: "Normal", description: "Nominal" } as never} />,
+    );
+    expect(() => getByText(/Lane activity in capture views is a labelled synthetic pattern/)).not.toThrow();
+    for (const state of ["0", "1", "x", "z"]) {
+      expect(container.querySelector(`[data-bw-state="${state}"]`), `synthetic pattern carries state ${state}`).toBeTruthy();
+    }
   });
 });

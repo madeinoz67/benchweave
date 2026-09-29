@@ -1,0 +1,58 @@
+/* §E.4 digital lanes — identity is lane position; colour carries nothing. */
+.bw-lanes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--bw-space-2, 4px);
+  margin: 0;
+}
+
+.bw-lanes__title {
+  font: var(--bw-font-body, inherit);
+  font-weight: 600;
+}
+
+.bw-lanes__canvas {
+  background: var(--bw-color-surface-recessed, #14171c);
+  border-radius: var(--bw-radius-2, 4px);
+  padding: var(--bw-space-1, 2px);
+}
+
+.bw-lanes__label {
+  fill: var(--bw-color-content-primary, #d0d6e0);
+  font: var(--bw-font-mono, monospace);
+  font-size: 11px;
+}
+
+.bw-lanes__bus-value {
+  fill: var(--bw-color-content-primary, #d0d6e0);
+  font: var(--bw-font-mono, monospace);
+  font-size: 11px;
+}
+
+.bw-lanes__trigger-label {
+  fill: var(--bw-color-content-secondary, #8a8f98);
+  font: var(--bw-font-mono, monospace);
+  font-size: 10px;
+}
+
+.bw-lanes__cursors-delta {
+  font: var(--bw-font-mono, monospace);
+  font-size: 11px;
+  margin: 0;
+}
+
+.bw-plot__acquisition {
+  font: var(--bw-font-mono, monospace);
+  font-size: 11px;
+  color: var(--bw-color-content-secondary, #8a8f98);
+  margin: 0;
+}
+
+.bw-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

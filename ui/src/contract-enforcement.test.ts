@@ -11,6 +11,8 @@ import { ModeBanner } from "./components/feedback/ModeBanner";
 import { RefusalMessage, type RefusalCode } from "./components/feedback/refusals";
 import { NumericInput } from "./components/inputs/NumericInput";
 import { RotaryControl } from "./components/instruments/RotaryControl";
+import { DigitalLanesPlot, type Lane } from "./components/plots/DigitalLanesPlot";
+import type { LaneState } from "./components/plots/lane-reduction";
 import { EngineeringPlot, type PlotTrace, type TraceHint } from "./components/plots/EngineeringPlot";
 import { ReadingTile } from "./components/readings/ReadingTile";
 import { Panel } from "./components/surfaces/Panel";
@@ -115,8 +117,30 @@ const tableColumns: DataColumn<TableRow>[] = [
  *  component, as a RenderResult so a fixture can include its arming
  *  interaction (the confirm-action row's required text lives in the ARMED
  *  step). Slice 2 adds mode-banner and confirm-action. */
-const element = (component: typeof Button | typeof AlertBubble | typeof DataTable | typeof ModeBanner | typeof NumericInput | typeof RotaryControl | typeof EngineeringPlot | typeof ReadingTile | typeof Panel | typeof ConfirmAction | typeof RefusalMessage | "p", props: Record<string, unknown>, ...children: unknown[]): ReactElement =>
+const element = (component: typeof Button | typeof AlertBubble | typeof DataTable | typeof ModeBanner | typeof NumericInput | typeof RotaryControl | typeof EngineeringPlot | typeof DigitalLanesPlot | typeof ReadingTile | typeof Panel | typeof ConfirmAction | typeof RefusalMessage | "p", props: Record<string, unknown>, ...children: unknown[]): ReactElement =>
   createElement(component as never, props as never, ...((children ?? []) as never[]));
+
+const lanesFixture: Lane[] = [
+  {
+    id: "ch1",
+    label: "CH1",
+    axis: { start: 0, step: 1e-6 },
+    states: [
+      ...Array.from({ length: 300 }, () => "0" as LaneState),
+      ...Array.from({ length: 200 }, () => "1" as LaneState),
+      ...Array.from({ length: 250 }, () => "x" as LaneState),
+      ...Array.from({ length: 250 }, () => "z" as LaneState),
+    ],
+  },
+  { id: "ch2", label: "CH2", axis: { start: 0, step: 1e-6 }, states: Array.from({ length: 1000 }, () => "1" as LaneState) },
+  { id: "ch3", label: "CH3", axis: { start: 0, step: 1e-6 }, states: Array.from({ length: 1000 }, () => "0" as LaneState) },
+  {
+    id: "dense",
+    label: "DENSE",
+    axis: { start: 0, step: 1e-6 },
+    states: Array.from({ length: 257 }, (_, i) => (i % 2 === 0 ? "0" : "1") as LaneState),
+  },
+];
 
 const fixtures: Record<string, () => RenderResult> = {
   button: () => render(element(Button, { variant: "secondary" }, "Apply staged set-point")),
@@ -126,6 +150,23 @@ const fixtures: Record<string, () => RenderResult> = {
   "alert-bubble": () => render(element(AlertBubble, { severity: "advisory", title: "Operating margin", message: "Approaching the configured limit.", source: "PSU-01", onDismiss: () => undefined })),
   "engineering-plot": () => render(element(EngineeringPlot, { kind: "time_series", title: "Output activity", x: { label: "Receipt time", unit: "s" }, traces: plotTraces, hints: plotHints, acquisition: new Map([["voltage", { acquired: 100 }]]) })),
   "data-table": () => render(element(DataTable, { caption: "Channel readings", rows: tableRows, columns: tableColumns, rowKey: (row: TableRow) => row.id })),
+  // §E.4 canonical fixture (the mode-banner all-modes precedent): one render
+  // exercising every required surface — all four states, a glitch column, a
+  // hidden lane, a bus group, the trigger, cursors, and the §E.2.5
+  // acquisition line's exact numbers.
+  "digital-lanes": () =>
+    render(
+      element(DigitalLanesPlot, {
+        title: "Logic capture",
+        x: { label: "Time", unit: "s" },
+        columns: 12,
+        lanes: lanesFixture,
+        groups: [{ id: "bus-a", label: "Bus A", member_ids: ["ch3", "ch2", "ch1"] }],
+        triggerTime: 5e-6,
+        cursors: [{ sample: 3 }, { sample: 10 }],
+        hints: new Map([["ch2", { visible: false }]]),
+      }),
+    ),
   panel: () => render(element(Panel, { title: "Output set-point", eyebrow: "Staged configuration" }, element("p", {}, "Staged configuration content."))),
   // §D: the enforcement fixture renders ALL FOUR modes so every fixed wording
   // is pinned; a page renders only its active modes.
@@ -158,6 +199,7 @@ describe("contract L2: the reference renderer enforces every component row", () 
       "reading-tile",
       "alert-bubble",
       "engineering-plot",
+      "digital-lanes",
       "data-table",
       "panel",
       "mode-banner",

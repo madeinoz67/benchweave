@@ -1,5 +1,11 @@
 import { useMemo } from "react";
 import {
+  DigitalLanesPlot,
+  type Lane,
+  type LaneGroup,
+} from "../components/plots/DigitalLanesPlot";
+import type { LaneState } from "../components/plots/lane-reduction";
+import {
   EngineeringPlot,
   type PlotTrace,
   type TraceHint,
@@ -50,6 +56,22 @@ export function plotTraces(view: PlotView, scenario: PreviewScenario): PlotJoin 
   return { traces, hints: hints.size > 0 ? hints : undefined, feedable };
 }
 
+/** §E.4 preview honesty (design §1.4): a capture view renders its DECLARED
+ *  STRUCTURE with a deterministic synthetic state pattern exercising all
+ *  four wire states — never observation history, and the standing
+ *  disclosure line names the simulation. The pattern is phase-shifted per
+ *  channel so lanes are visibly distinct without any colour meaning. */
+function syntheticLaneStates(channelIndex: number, length = 240): LaneState[] {
+  const pattern: LaneState[] = [
+    ...Array.from({ length: 90 }, () => "0" as LaneState),
+    ...Array.from({ length: 60 }, () => "1" as LaneState),
+    ...Array.from({ length: 45 }, () => "x" as LaneState),
+    ...Array.from({ length: 45 }, () => "z" as LaneState),
+  ];
+  const phase = channelIndex * 17;
+  return Array.from({ length }, (_, index) => pattern[(index + phase) % pattern.length]!);
+}
+
 export interface PreviewPlotsProps {
   views: readonly PlotView[];
   scenario: PreviewScenario;
@@ -75,20 +97,45 @@ export function PreviewPlots({ views, scenario }: PreviewPlotsProps) {
       <h2 className="bw-preview__plots-heading">Declared plots</h2>
       <p className="bw-preview__plots-note">
         Preview scenarios carry one simulated value per observed target — not observation history.
+        Lane activity in capture views is a labelled synthetic pattern, not acquired data.
       </p>
       {plotted.map(({ view, join, x }, index) => (
         // Manifest ids may contain ':' (the schema id pattern allows it),
         // so `${page_id}:${title}` is separator-collidable; the list
         // position is the collision-free key for a fixed decoded array.
         <div className="bw-preview__plot" key={index}>
-          <EngineeringPlot
-            kind={view.kind}
-            title={view.title}
-            x={x}
-            traces={join.traces}
-            hints={join.hints}
-          />
-          {join.feedable ? null : (
+          {view.kind === "digital_lanes" ? (
+            <DigitalLanesPlot
+              title={view.title}
+              x={x}
+              columns={24}
+              lanes={view.channels.map(
+                (channel, channelIndex): Lane => ({
+                  id: channel.variable_id,
+                  label: channel.label || titleFor(channel.variable_id),
+                  states: syntheticLaneStates(channelIndex),
+                  axis: { start: 0, step: 1e-6 },
+                }),
+              )}
+              groups={(view.lane_groups ?? []).map(
+                (group): LaneGroup => ({
+                  id: group.id,
+                  ...(group.label !== undefined ? { label: group.label } : {}),
+                  member_ids: group.member_ids,
+                  ...(group.radix !== undefined ? { radix: group.radix } : {}),
+                }),
+              )}
+            />
+          ) : (
+            <EngineeringPlot
+              kind={view.kind}
+              title={view.title}
+              x={x}
+              traces={join.traces}
+              hints={join.hints}
+            />
+          )}
+          {join.feedable || view.kind === "digital_lanes" ? null : (
             <p role="status" className="bw-preview__no-data">
               No preview data for this scenario
             </p>

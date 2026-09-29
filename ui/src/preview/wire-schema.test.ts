@@ -139,8 +139,8 @@ describe("served-set pin (fork-catcher, #244 wave-2 fold T1c)", () => {
   });
 });
 
-describe("digital_lanes interim (the honest interim until the renderer slice)", () => {
-  it("admits a lanes plot view at the SCHEMA and refuses it WHOLE at the decoder", () => {
+describe("digital_lanes on the preview wire (the S2 evolution of the interim arm)", () => {
+  const lanesDocument = () => {
     const validate = compile();
     const lanes = structuredClone(sample) as { plot_views: Array<Record<string, unknown>> };
     lanes.plot_views[0] = {
@@ -153,10 +153,26 @@ describe("digital_lanes interim (the honest interim until the renderer slice)", 
         { variable_id: "ch1", label: "CH1", unit: null },
         { variable_id: "ch2", label: "CH2", unit: null },
       ],
+      lane_groups: [{ id: "bus-a", member_ids: ["ch1", "ch2"] }],
+      decoder_lanes: [
+        { id: "uart-lane", decoder: "UART-REF", source_channel_ids: ["ch1"], binding_id: "voltage" },
+      ],
     };
-    // The 0.2.0 wire admits the kind — and the decoder refuses the plot view,
-    // failing the ENTIRE preview visibly (never a per-kind note, never silent).
+    return { validate, lanes };
+  };
+
+  it("admits a lanes plot view at the SCHEMA and DECODES it with its lane fields (S2: the whole-preview refusal is retired)", () => {
+    const { validate, lanes } = lanesDocument();
     expect(validate(lanes)).toBe(true);
+    const decoded = decodePreview(lanes);
+    expect(decoded.plot_views).toHaveLength(1);
+    expect(decoded.plot_views[0]!.kind).toBe("digital_lanes");
+    expect(decoded.plot_views[0]!.channels).toHaveLength(2);
+  });
+
+  it("still refuses a CLOSED-SET violation on a lanes view (an unknown key)", () => {
+    const { lanes } = lanesDocument();
+    (lanes.plot_views[0] as Record<string, unknown>).surprise = true;
     expect(() => decodePreview(lanes)).toThrow(/preview_invalid_plot_view/);
   });
 });

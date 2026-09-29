@@ -521,3 +521,70 @@ def test_author_fixture_referencing_dataset_binding_still_refuses(tmp_path: Path
     (tmp_path / "high-load.json").write_text(json.dumps(fixture), encoding="utf-8")
     with pytest.raises(ValueError, match="preview_unsupported_shape"):
         fixtures.load_author_fixtures(tmp_path, {"targets": [waveform_target(["signal"])]})
+
+
+# --- digital_lanes capture views (issue #244 S2) --------------------------------
+
+
+def logic_capture_target() -> dict[str, object]:
+    """A fetch dataset target whose y variables carry the logic alphabet."""
+    return {
+        "id": "logic",
+        "kind": "dataset",
+        "action_id": "otdp.logic_analyser.fetch/1.0.0",
+        "profile_ids": ["otdp.logic_analyser/1.0.0"],
+        "measurement_schema_id": "urn:otdp:measurement:0.2.0",
+        "variables": [
+            {"id": "time", "type": "number", "unit": "s", "shape": "vector", "axis_role": "x"},
+            {"id": "ch1", "type": "string", "unit": None, "shape": "vector"},
+            {"id": "ch2", "type": "string", "unit": None, "shape": "vector"},
+        ],
+    }
+
+
+def lanes_page() -> list[dict[str, object]]:
+    return [
+        {
+            "id": "capture",
+            "title": "Logic capture",
+            "kind": "dataset",
+            "bindings": ["logic-capture"],
+            "required": True,
+            "plots": [
+                {
+                    "kind": "digital_lanes",
+                    "binding_id": "logic-capture",
+                    "x": "time",
+                    "y": ["ch1", "ch2"],
+                    "lane_groups": [{"id": "bus-a", "member_ids": ["ch1", "ch2"]}],
+                }
+            ],
+        }
+    ]
+
+
+def test_lanes_view_projects_and_validates_against_the_wire() -> None:
+    """A2.4 (Python side): the emitter projects a lanes view — kind, channels
+    and the declared lane_groups ride the served document, which validates
+    against the ACTIVE plugin-ui-preview wire schema."""
+    fixtures = fixtures_module()
+    candidate = preview_candidate(
+        lanes_page(),
+        [logic_capture_target()],
+        bindings=[{"id": "logic-capture", "kind": "dataset", "target_id": "logic"}],
+    )
+    views = fixtures.project_plot_views(candidate)
+    assert [view.kind for view in views] == ["digital_lanes"]
+    document = fixtures.build_preview_model(candidate).to_document()
+    served = next(row for row in document["plot_views"] if row["kind"] == "digital_lanes")
+    assert served["binding_id"] == "logic"
+    assert [channel["variable_id"] for channel in served["channels"]] == ["ch1", "ch2"]
+    assert served["lane_groups"] == [{"id": "bus-a", "member_ids": ["ch1", "ch2"]}]
+
+    import json as _json
+
+    from jsonschema import Draft202012Validator as _Validator
+
+    schema = _json.loads(DOCUMENT_SCHEMA.read_bytes())
+    errors = list(_Validator(schema).iter_errors(document))
+    assert not errors, [error.message for error in errors]

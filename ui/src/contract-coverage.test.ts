@@ -16,7 +16,7 @@ import { describe, expect, it } from "vitest";
  *
  * The enumeration this fixture covers (design record §6, pre-committed):
  * definition rows 5+15+4+3+3+6+10+1+4+3 = 54 (slice 1) + 4+4+3+4 = 15
- * (slice 2) = 69, 10 component rows, 25 colour tokens × 2 themes + 6
+ * (slice 2) = 69 (#243) + 4+4+4+3+4 = 19 (#244 S2) = 88, 11 component rows, 25 colour tokens × 2 themes + 6
  * spacing + 2 radius + 2 fonts, 10 icon rows.
  * The two --bw-shadow-* rows are a pinned superset closing the
  * "extra unpinned token" finding: every theme-varying colour in themes.css
@@ -252,14 +252,14 @@ describe("contract L1: fixture rows present and parsable", () => {
     }
   });
 
-  it("§E.1 pins the 10 component rows and their full cell content", () => {
+  it("§E.1 pins the 11 component rows and their full cell content", () => {
     const rows = parseTable(
       "### §E.1 Components",
       ["Component", "Root element", "Required attributes", "Required roles", "Required class hooks", "Required text", "Notes"],
     );
     // Exact arity: a truncated collection (e.g. an interleaved non-pipe line
     // mid-table) reds here, not only downstream on id loss.
-    expect(rows.length, "§E.1 exact row count").toBe(10);
+    expect(rows.length, "§E.1 exact row count").toBe(11);
     const ids = rows.map((row) => literal(row[0]!));
     for (const component of [
       "button",
@@ -268,6 +268,7 @@ describe("contract L1: fixture rows present and parsable", () => {
       "reading-tile",
       "alert-bubble",
       "engineering-plot",
+      "digital-lanes",
       "data-table",
       "panel",
       "mode-banner",
@@ -352,6 +353,12 @@ describe("contract L1: fixture rows present and parsable", () => {
         roles: [],
         classHooks: ["bw-confirm", "bw-confirm__step", "bw-confirm__text"],
         requiredText: ["the output will be energised", "12.5 V", "PSU-07 output", "Confirm to proceed.", "Confirm: Energise output", "Cancel"],
+      },
+      "digital-lanes": {
+        attributes: ["role=img", "aria-label", "aria-describedby", "data-bw-lane", "data-bw-lane-kind", "data-bw-state", "data-bw-glitch", "data-bw-trigger", "data-bw-cursor", "data-hidden"],
+        roles: ["img"],
+        classHooks: ["bw-lanes", "bw-lanes__canvas", "bw-lanes__lane", "bw-lanes__label", "bw-lanes__group", "bw-lanes__glitch", "bw-plot__acquisition"],
+        requiredText: ["hidden", "Acquired 1000 samples · plotted 12 at 1 MHz"],
       },
     };
     // Same item split as the L2 parser: spaced " ~ " separator, "—" is empty.
@@ -487,7 +494,7 @@ describe("contract L1: fixture rows present and parsable", () => {
     for (const row of rows) for (const column of [1, 2, 3]) expect(contractCell([row], 0, column), literal(row[0]!)).not.toBe("");
   });
 
-  it("covers the §6 enumeration arithmetic (69 definition rows)", () => {
+  it("covers the §6 enumeration arithmetic (88 definition rows)", () => {
     const disabled = parseTable("### §C.2 Disabled-reason enum", ["Key", "Required label text", "Parameter"]).length;
     const refusal = parseTable("### §C.3 Refusal mapping", ["Code", "Severity", "What happened", "Sent status", "Operator action"]).length;
     const modes = parseTable("### §D.1 Modes", ["Mode", "Fixed wording", "Fires when"]).length;
@@ -502,8 +509,14 @@ describe("contract L1: fixture rows present and parsable", () => {
     const refLines = parseTable("#### §E.2.4 Reference lines", ["Property", "Requirement"]).length;
     const acquisition = parseTable("#### §E.2.5 Acquisition disclosure", ["Property", "Requirement"]).length;
     const provenance = parseTable("#### §E.2.6 Trace provenance", ["Provenance", "Required marker", "Disclosure", "Constraint"]).length;
-    // 5+15+4+3+3+6+10+1+4+3 = 54 (slice 1) + 4+4+3+4 = 15 (slice 2) = 69.
-    expect(disabled + refusal + modes + safety + stateRules + severities + icons + readingStates + stalenessRules + triad + axes + refLines + acquisition + provenance).toBe(69);
+    const lanesLayout = parseTable("#### §E.4.1 Lane layout", ["Property", "Requirement"]).length;
+    const lanesStates = parseTable("#### §E.4.2 State rendering", ["Property", "Requirement"]).length;
+    const lanesBuses = parseTable("#### §E.4.3 Groups and buses", ["Property", "Requirement"]).length;
+    const lanesDecimation = parseTable("#### §E.4.4 Edge-preserving decimation (NORMATIVE)", ["Property", "Requirement"]).length;
+    const lanesAxis = parseTable("#### §E.4.5 Time axis", ["Property", "Requirement"]).length;
+    // 5+15+4+3+3+6+10+1+4+3 = 54 (slice 1) + 4+4+3+4 = 15 (slice 2) = 69
+    // (#243); + 4+4+4+3+4 = 19 (#244 S2 §E.4.1-4.5) = 88.
+    expect(disabled + refusal + modes + safety + stateRules + severities + icons + readingStates + stalenessRules + triad + axes + refLines + acquisition + provenance + lanesLayout + lanesStates + lanesBuses + lanesDecimation + lanesAxis).toBe(88);
   });
 });
 
