@@ -520,7 +520,7 @@ Schema: `Property | Requirement` — 4 rows.
 
 | Property | Requirement |
 | --- | --- |
-| Span rendering | A decoder lane renders as an annotation row BENEATH the channel and bus rows, declaration order — each event a span from its `[start_s, end_s)` extent mapped through the capture axis to exact sample positions |
+| Span rendering | A decoder lane renders as an annotation row BENEATH the channel and bus rows, declaration order — each event a span from its `[start_s, end_s)` extent mapped through the capture axis to exact sample positions; extents CLIP to the capture window (an event fully outside it does not render), the drawn width clamps at a 1-px minimum, and a zero-width `[t,t)` event renders that minimum mark — never invisible |
 | Payload | The span carries the event's payload verbatim (the wire's hex encoding) — no re-encoded, derived or truncated value |
 | Disclosure | The row's label names the decoder and its settings verbatim: `{decoder} · {settings values}` (canonical fixture: `UART-REF · 115200 8N1`) |
 | Never orphan | An event whose source channel is hidden does NOT render and does NOT orphan onto a neighbour — the row discloses the wait visibly; a declared lane with NO events keeps the awaiting-render note (never a silent blank) |

@@ -125,6 +125,11 @@ export function DigitalLanesPlot({
   const hatchId = useId();
   const columnBudget = Math.max(1, columns);
 
+  // Fold M1: the bus-collapse set is computed ONCE outside the row memo —
+  // the row renderer and the decoder waiting predicate share this predicate.
+  const collapsedInto = new Set(
+    groups.flatMap((group) => (group.default_collapsed ? group.member_ids : [])),
+  );
   const rows = useMemo(() => {
     // §E.4.1: a hidden lane's band renders COLLAPSED with its label
     // retained — hiding is a disclosure, never a removal.
@@ -132,9 +137,6 @@ export function DigitalLanesPlot({
     // its members into the bus lane on first render — the hidden-lane
     // treatment (collapsed band, label retained), driven by the declaration
     // the wire has carried since 0.3.0/0.2.0.
-    const collapsedInto = new Set(
-      groups.flatMap((group) => (group.default_collapsed ? group.member_ids : [])),
-    );
     const laneRows = lanes.map((lane) => {
       const isHidden = hints?.get(lane.id)?.visible === false || collapsedInto.has(lane.id);
       const reduced = isHidden ? [] : reduceLane(lane.states, columnBudget);
@@ -201,20 +203,29 @@ export function DigitalLanesPlot({
   // its events do not render and do not orphan onto a neighbour — and a
   // lane with no events at all keeps the slice-2 awaiting note.
   const decoderRows = decoderLanes.map((lane) => {
+    // Fold M1: ONE hidden predicate — the same seam the row renderer
+    // honours (hint-visible:false OR bus-collapsed member), so a decoder on
+    // a collapsed member waits exactly like one on an explicitly hidden
+    // lane.
     const sourceHidden = lane.source_channel_ids.some(
-      (id) => hints?.get(id)?.visible === false,
+      (id) => hints?.get(id)?.visible === false || collapsedInto.has(id),
     );
     const hasEvents = (lane.events?.length ?? 0) > 0;
     const events =
       lane.events === undefined || sourceHidden
         ? []
-        : lane.events.map((event) => {
+        : lane.events.flatMap((event) => {
             const axis = firstAxis ?? { start: 0, step: 1 };
-            const startSample = (event.start_s - axis.start) / axis.step;
-            const endSample = (event.end_s - axis.start) / axis.step;
+            // Fold L2: extents clip to the capture window; an event fully
+            // outside it does not render; a zero-width [t,t) event renders
+            // the minimum-width mark (never invisible); the drawn width
+            // clamps at 1px.
+            const startSample = Math.max((event.start_s - axis.start) / axis.step, 0);
+            const endSample = Math.min((event.end_s - axis.start) / axis.step, acquired - 1);
+            if (startSample >= acquired - 1) return [];
             const x = sampleToX(startSample);
-            const end = sampleToX(endSample);
-            return { ...event, x, width: Math.max(end - x, 1) };
+            const end = sampleToX(Math.max(endSample, startSample));
+            return [{ ...event, x, width: Math.max(end - x, 1) }];
           });
     return { kind: "decoder" as const, lane, events, sourceHidden, hasEvents };
   });
@@ -227,8 +238,18 @@ export function DigitalLanesPlot({
     topCursor += height;
   });
   const canvasHeight = topCursor + 8;
+  // §E.4.6 Disclosure (fold M2): settings render VERBATIM as they are on
+  // the wire — scalars as their string form, nested values as their compact
+  // JSON, nulls skipped; never "[object Object]" on a contract surface.
   const decoderDisclosure = (lane: { decoder: string; settings?: Record<string, unknown> }) =>
-    `${lane.decoder}${lane.settings ? ` · ${Object.values(lane.settings).join(" ")}` : ""}`;
+    `${lane.decoder}${
+      lane.settings
+        ? ` · ${Object.values(lane.settings)
+            .filter((value) => value !== null && value !== undefined)
+            .map((value) => (typeof value === "object" ? JSON.stringify(value) : String(value)))
+            .join(" ")}`
+        : ""
+    }`;
   // §E.4.5 row 4 (fold F2): the Δt readout speaks the view's axis mode —
   // seconds mode scales the unit (7 µs), sample-index mode reads the raw
   // difference in the host's unit (7 samples) — never both.
@@ -410,9 +431,14 @@ export function DigitalLanesPlot({
                         </g>
                       ))
                     : null}
-              {row.kind === "decoder" ? (
-                <text className="bw-lanes__label" x={4} y={top + height / 2 + 4}>
-                  {`${decoderDisclosure(row.lane)}${row.sourceHidden ? " — waiting (source hidden)" : ""}`}
+              {row.kind === "decoder" && row.lane.label !== undefined ? (
+                <text
+                  className="bw-lanes__label"
+                  x={CANVAS_WIDTH - 4}
+                  y={top + height / 2 + 4}
+                  textAnchor="end"
+                >
+                  {decoderDisclosure(row.lane)}
                 </text>
               ) : null}
               {row.kind === "decoder" && row.sourceHidden ? (
