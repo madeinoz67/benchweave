@@ -47,6 +47,25 @@ export const HiddenLane: Story = {
   args: { hints: new Map([["ch4", { visible: false }]]) },
 };
 
+export const Decoded: Story = {
+  args: {
+    decoderLanes: [
+      {
+        id: "uart-lane",
+        decoder: "UART-REF",
+        settings: { baud: 115200, frame: "8N1" },
+        source_channel_ids: ["ch2"],
+        binding_id: "logic",
+        events: [
+          { start_s: 0.0002, end_s: 0.0003, payload_hex: "55", status: "ok" },
+          { start_s: 0.0006, end_s: 0.00065, payload_hex: "AA", status: "ok" },
+        ],
+      },
+      { id: "i2c-lane", decoder: "I2C-REF", source_channel_ids: ["ch3"], binding_id: "logic" },
+    ],
+  },
+};
+
 export const GlitchBurst: Story = {
   args: {
     lanes: [

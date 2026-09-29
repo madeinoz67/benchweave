@@ -355,7 +355,7 @@ describe("contract L1: fixture rows present and parsable", () => {
         requiredText: ["the output will be energised", "12.5 V", "PSU-07 output", "Confirm to proceed.", "Confirm: Energise output", "Cancel"],
       },
       "digital-lanes": {
-        attributes: ["role=img", "aria-label", "aria-describedby", "data-bw-lane", "data-bw-lane-kind", "data-bw-state", "data-bw-glitch", "data-bw-trigger", "data-bw-cursor", "data-hidden"],
+        attributes: ["role=img", "aria-label", "aria-describedby", "data-bw-lane", "data-bw-lane-kind", "data-bw-state", "data-bw-glitch", "data-bw-trigger", "data-bw-cursor", "data-hidden", "data-bw-span", "data-bw-waiting"],
         roles: ["img"],
         classHooks: ["bw-lanes", "bw-lanes__canvas", "bw-lanes__lane", "bw-lanes__label", "bw-lanes__group", "bw-lanes__glitch", "bw-plot__acquisition"],
         requiredText: ["hidden", "Acquired 1000 samples · plotted 12 at 1 MHz"],

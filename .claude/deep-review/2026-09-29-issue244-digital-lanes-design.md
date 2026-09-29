@@ -764,6 +764,9 @@ frozen, THIS note governs the landed contract (#243's §11a precedent):
    landed contract renders the payload VERBATIM (the wire's hex) and the
    §E.4.6 row says so; a per-decoder radix would be new grammar
    (bumps-ONCE violated for a version already released in this stack).
+   The same fold narrows §1.5's "renders beneath its source channel
+   lane(s)": the landed rows render beneath the channel and bus rows in
+   declaration order (adjacency to the specific source is not claimed).
 
 Slice-2 constraint (fold row A8, watch item): the design's bumps-ONCE
 claim (headline 7) rides on slice 2 NOT needing fixture-side lanes

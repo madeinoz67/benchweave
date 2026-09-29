@@ -446,6 +446,16 @@ export function DigitalLanesPlot({
                   {`events waiting — source channel hidden`}
                 </text>
               ) : null}
+              {row.kind === "decoder" && !row.sourceHidden && !row.hasEvents ? (
+                <text
+                  role="status"
+                  className="bw-lanes__decoder-note bw-lanes__bus-value"
+                  x={LABEL_WIDTH + 4}
+                  y={top + height / 2 + 4}
+                >
+                  {`${decoderDisclosure(row.lane)} — awaiting decoder rendering`}
+                </text>
+              ) : null}
               </g>
             );
           })}
@@ -466,11 +476,7 @@ export function DigitalLanesPlot({
         </svg>
       </div>
       {cursorReadout !== null ? <p className="bw-lanes__cursors-delta">{cursorReadout}</p> : null}
-      {decoderLanes.length > 0 && decoderLanes.every((lane) => (lane.events?.length ?? 0) === 0) ? (
-        <p role="status" className="bw-lanes__decoder-note">
-          {`Decoder lanes declared (${[...new Set(decoderLanes.map((lane) => lane.decoder))].join(", ")}) — awaiting decoder rendering`}
-        </p>
-      ) : null}
+
       <p className="bw-lanes__axis">{`${x.label} (${x.unit})`}</p>
       <p className="bw-plot__acquisition" data-bw-acquisition="true">
         {`Acquired ${acquired} samples · plotted ${drawnColumns}${firstAxis ? ` at ${formatRate(firstAxis.step)}` : ""}`}

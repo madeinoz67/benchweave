@@ -176,6 +176,16 @@ const fixtures: Record<string, () => RenderResult> = {
             binding_id: "logic",
             events: [{ start_s: 0, end_s: 0.0001, payload_hex: "55", status: "ok" }],
           },
+          // §E.1's data-bw-waiting arm: a decoder on the HIDDEN channel waits.
+          {
+            id: "spi-lane",
+            decoder: "SPI-REF",
+            source_channel_ids: ["ch2"],
+            binding_id: "logic",
+            events: [{ start_s: 0, end_s: 0.0002, payload_hex: "AA", status: "ok" }],
+          },
+          // §E.4.6's awaiting arm: an event-less declaration keeps its note.
+          { id: "i2c-lane", decoder: "I2C-REF", source_channel_ids: ["ch3"], binding_id: "logic" },
         ],
       }),
     ),
