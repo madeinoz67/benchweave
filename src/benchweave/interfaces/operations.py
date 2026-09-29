@@ -1824,3 +1824,8 @@ class Operations:
                         f" being decided",
                     )
                 ) from None
+
+# G2 wire-level plant (issue #221 acceptance G2a): a bare literal in a
+# non-registered gateway file must fail the gates lane. Probe branch —
+# never merged; removed after the red run is captured.
+_PLANT = "9.9.9"
