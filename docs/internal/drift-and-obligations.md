@@ -330,16 +330,35 @@ and remain the reviewer's job.
     12-site ceiling at merge base `403c061`); slice 7 flipped it to
     ZERO-MODE: per scope (gateway / plugins / sdk / docs-ratchet), the
     count of literals OUTSIDE the register is 0 and every register row's
-    `expected_sites` holds exactly. It runs in `make check-sdk-standards`
-    (all four scopes; CI checks out submodules recursive so the sdk scope
-    resolves) and in the device-plugins lane (`--scope plugins,docs`); the
-    SDK repo carries the twin counter and its own CI step. A planted
-    literal in any registered scope fails CI (the G2 plant branches carry
-    the wire-level proof); a literal inside a REGISTERED file fails the
-    row's expectation until the register is edited — a visible editorial
-    diff. The docs scope ratchets against the committed snapshot
-    (`scripts/standards/docs-literal-baseline.json`, regenerated only by
-    `--refresh-docs-baseline` whose diff is the review surface).
+    `expected_sites` holds exactly (authored-data rows pin the literal
+    VALUES too — a semantics-changing substitution fails at unchanged
+    cardinality; the contracts.py twins stay digest-pinned whole). The
+    docs scope is an EXACT-CONTENT bound against the committed snapshot
+    (`scripts/standards/docs-literal-baseline.json`): growth AND shrinkage
+    refuse, the scanned-file census is checked in-gate, and only an
+    explicit `--refresh-docs-baseline` (its diff the review surface) moves
+    the bound. It runs in the device-plugins lane (`--scope plugins,docs`)
+    and through the pytest suite over the real trees (`test_zero_literal_gate`
+    — every scope, plus the sdk scope whenever the submodule is present);
+    `make check-sdk-standards` carries the SDK-SYNC lane's own sdk-scope
+    gate at the submodule pin (scope-explicit since the #221 fold — a bare
+    default-scope invocation refuses `sdk_tree_absent:` in submodule-absent
+    worktrees); the SDK repo carries the twin counter and its own CI step.
+    A planted literal in any registered scope fails CI (the G2 plant
+    branches carry the wire-level proof); a literal inside a REGISTERED
+    file fails the row's expectation until the register is edited — a
+    visible editorial diff.
+    **Denominator boundary (fold row 13):** the gated trees are gateway
+    `src/benchweave/`, the SDK's `src/benchweave_sdk/`, in-tree plugins'
+    `src/`, and `docs/` (ratchet). `scripts/`, `tests/` and `.github/` are
+    OUTSIDE the gates — `scripts/adc_conformance_control.py` carries live
+    OTDP literals today (`YANKED_PIN`/`MOVE_TO`, the A1 anti-gaming arm;
+    motion = the yank policy block, recorded in the slice-1 definition) —
+    named so the denominators cannot silently move; a scripts/ scope
+    extension is the named follow-on (trigger: the next scripts/ addition
+    or the owner's call). The matcher does NOT catch syntactically
+    assembled versions (concat/f-string/bytes/`%`) — review-lane duty
+    until an AST-level row lands.
 
 22. **The counter twins** (issue #221, obligation-19 shape): the gateway's
     `scripts/standards/count_version_literals.py` and the SDK repo's

@@ -33,7 +33,8 @@ from benchweave.vendoring import active_contract_family
 #: dev checkout — :mod:`benchweave.vendoring`), resolved at the manifest's
 #: active version (issue #221: one bump = one manifest edit; the literal
 #: this constant once carried is derived, not stated). The 1.1.0 corpus
-#: stays vendored, frozen, at ``contracts/interface/0.1.0/``.
+#: stays vendored, frozen, at ``standards/interface/0.1.0/`` (copy-never-
+#: move keeps it resolving).
 VENDORED_CORPUS_ROOT = active_contract_family("interface")
 #: The derived active interface version — the family dir's name IS the
 #: version (one derivation site per family). ``gateway_info`` emits it

@@ -142,7 +142,19 @@ decision) adds:
   COVER the trees, and VR-24 carries no zero clause. The zero end-state for prose rides the
   render-from-the-lock work D4/18(m) already own (deferral table).
 
-### 1.4 The literal-by-literal ledger (every site, every tree — none silently vanishes)
+#**Fold-wave wording note (2026-09-29, the #221 fold):** the built register
+is named `REGISTER` in the script — this record's "DECLARED_FILES" name was
+the slice-1 register's spelling; the rename is the zero-mode's own (the
+slice-1 `DECLARED_FILES` tuple became the register with teeth). Row 10-12's
+disposition text above reads unchanged with `REGISTER` substituted.
+
+**Test-count correction (fold row 14):** the new-test counts this slice
+adds are 22 in `tests/standards/test_zero_literal_gate.py` (gateway) and 10
+in the SDK's `tests/test_zero_literal_gate.py` — an earlier draft of this
+record's PR-body summary said "44-test module", which was the combined
+zero-literal + dependency-policy focused run, not the new-module count.
+
+## 1.4 The literal-by-literal ledger (every site, every tree — none silently vanishes)
 
 Gateway 12: nine derived (§1.2 rows 1–9), three registered (rows 10–12). SDK 12:
 `presentation.py:515` preview fixture → **DERIVE** `served.active_version("plugin-ui-preview")`
@@ -309,6 +321,12 @@ The arc record's G1/G2/G3 and KILL are quoted verbatim and elaborated with named
   3 plugins) with reasons and expectations; `--json` reproducible twice byte-identical per scope.
   KILL: any scope > 0 outside the registers (a derivation missed a site — the site table §1.4 is the
   checklist); any two consecutive runs differing (the A4 discipline — fix the script before trusting it).
+  **G1's denominator boundary (fold row 13, 2026-09-29):** the gated trees are gateway `src/benchweave/`,
+  the SDK's `src/benchweave_sdk/`, in-tree plugins' `src/`, and `docs/` (exact-content ratchet).
+  `scripts/`, `tests/` and `.github/` are OUTSIDE the gates — `scripts/adc_conformance_control.py`
+  carries live OTDP literals today (`YANKED_PIN` "0.2.1" / `MOVE_TO` "0.2.2", the A1 anti-gaming arm,
+  motion = the yank policy block, recorded in the slice-1 definition); a scripts/ scope extension is the
+  named follow-on (trigger: the next scripts/ addition or the owner's call).
 - **G2a (the three plants).** Gateway: a bare literal planted in a non-registered gateway file (e.g.
   `src/benchweave/interfaces/operations.py` gains `_PLANT = "9.9.9"`) fails `make check-sdk-standards`
   in ci.yml. SDK: `src/benchweave_sdk/packaging.py` gains `_PLANT = "9.9.9"` — fails the SDK lane.

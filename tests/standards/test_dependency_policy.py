@@ -303,9 +303,14 @@ def test_a_planted_literal_fails_the_zero_gate_in_a_scratch_copy(tmp_path: Path)
 
     scratch = tmp_path / "scratch-repo"
     (scratch / "scripts/standards").mkdir(parents=True)
+    (scratch / "standards").mkdir()
     shutil.copy(
         ROOT / "scripts/standards/count_version_literals.py",
         scratch / "scripts/standards/count_version_literals.py",
+    )
+    shutil.copy(
+        ROOT / "standards/standards-manifest.json",
+        scratch / "standards/standards-manifest.json",
     )
     shutil.copytree(ROOT / "src/benchweave", scratch / "src/benchweave")
     (scratch / "src/benchweave" / "planted_literal.py").write_text(

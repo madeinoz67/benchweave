@@ -49,18 +49,20 @@ SCOPES (#221 §1.3):
   deinitialized by convention; local runs use
   ``--scope gateway,plugins,docs``; every CI lane that runs the default
   checks out submodules recursively.
-- ``docs`` (VR-24, RATCHET mode): a prose scan over ``docs/*.md`` at the
-  repo root, the plugin READMEs, and ``user_guide/**`` the day that tree
+- ``docs`` (VR-24, EXACT-CONTENT RATCHET): a prose scan over every
+  ``.md`` under ``docs/`` (subtrees included — acceptance, devices,
+  evidence), the plugin READMEs, and ``user_guide/**`` the day that tree
   appears — EXCLUDING, by the named constants below (never silently):
   ``docs/internal/``, ``docs/implementation-planning/`` and
   ``docs/superpowers/`` (internal and historical records whose frozen
   version citations are the point) and ``docs/compatibility-matrix.md``
   (machine-rendered; CON-12's own gate owns it). The gate refuses any
-  three-component literal NOT in the committed snapshot
-  (``scripts/standards/docs-literal-baseline.json``); removals only lower
-  the count. Regenerate ONLY with ``--refresh-docs-baseline`` (the diff is
-  the review surface). The zero end-state for prose rides the
-  render-from-the-lock work D4/18(m) already own (deferral Z2).
+  scanned literal whose per-file count DIFFERS from the committed snapshot
+  (``scripts/standards/docs-literal-baseline.json``) in EITHER direction —
+  growth AND shrinkage refuse; only an explicit ``--refresh-docs-baseline``
+  (whose diff is the review surface) moves the bound, and the scanned-file
+  census is checked in-gate the same way. The zero end-state for prose
+  rides the render-from-the-lock work D4/18(m) already own (deferral Z2).
 - ``all``: the four scopes (the default).
 
 THE REGISTER — the exemption list with teeth (#221 §1.3): each entry names
@@ -69,11 +71,33 @@ the EXACT number of literals it may carry. A new literal inside a
 registered file fails the gate until the register row is edited — a
 visible editorial diff. This is the register's anti-laundering defense
 (design risk 1): the register cannot become a laundering list without a
-reviewable register edit.
+reviewable register edit. Authored-data rows additionally pin the literal
+VALUES (``expected_values``): a semantics-changing substitution inside a
+registered file fails even at unchanged cardinality. The corpus-owned
+``contracts.py`` rows carry no value pin because the copies are
+digest-pinned whole (``tests/sdk/test_presentation_packaging.py``).
+
+DENOMINATOR BOUNDARY (G1's honest scope, fold row 13): the gated trees are
+gateway ``src/benchweave/``, the SDK's ``src/benchweave_sdk/``, in-tree
+plugins' ``src/``, and ``docs/`` (ratchet). ``scripts/``, ``tests/`` and
+``.github/`` are OUTSIDE the gates (scripts carry registered
+non-standards references; tests carry legitimate fixture literals) —
+``scripts/adc_conformance_control.py`` carries live OTDP literals today
+(``YANKED_PIN``/``MOVE_TO``, the A1 anti-gaming arm); its motion is the
+yank policy block, recorded in the slice-1 definition above, and a
+scripts/ scope extension is the named follow-on.
+
+WHAT THE MATCHER DOES NOT CATCH (G4, fold row 7d): this is a SYNTACTIC
+text scan. A version assembled at runtime is invisible to it — string
+concatenation, f-strings, ``bytes`` literals, ``%``/``.format``/``str.join``
+composition, and values read from data files all escape. Catching those
+needs AST-level taint tracking, deliberately NOT attempted in this fold
+(deferred with the follow-on row); the review lanes carry that duty until
+then.
 
 Exit status: 0 when every requested scope holds (zero outside the
-register, every register expectation true, the docs scope adds no literal
-beyond the snapshot), 1 otherwise (or on any parse failure — a count that
+register, every register expectation true, the docs scope matches the
+snapshot exactly), 1 otherwise (or on any parse failure — a count that
 cannot be computed is a refusal, never a guess). ``--json`` prints per-site
 rows for review — registered-file sites carry ``exempt: true`` and the
 register reason; the display never hides what the gate forgives.
@@ -93,7 +117,14 @@ from typing import Any
 STANDARD_IDS = ("otdp", "registry", "execution", "interface", "plugin-ui", "plugin-ui-preview")
 PATTERN_A = re.compile(r"\b(?:" + "|".join(STANDARD_IDS) + r")/\d+\.\d+\.\d+")
 PATTERN_BARE = re.compile(r"^\d+\.\d+\.\d+$")
-PATTERN_DOCS = re.compile(r"\d+\.\d+\.\d+")
+# The PROSE matcher (docs scope): three-component versions with the cheap
+# widenings (fold row 7b) — an optional v/V prefix and a -dev/-rc/-alpha/
+# -beta prerelease suffix — anchored so dotted quads stop counting: an IP
+# fragment like ``127.0.0`` inside ``127.0.0.1`` is preceded by or followed
+# by another dotted component and matches neither boundary rule. A
+# sentence-final period survives (``(?!\.\d)`` only excludes a FOLLOWING
+# dotted component).
+PATTERN_DOCS = re.compile(r"(?<![\w.])(?:[vV])?\d+\.\d+\.\d+(?:-(?:dev|rc|alpha|beta)\d*)?(?!\.\d)")
 
 # The docs scope's exclusion set — named constants with their reasons, so
 # the scope cannot quietly shrink (#221 design risk 4):
@@ -113,24 +144,33 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 SDK_ROOT = REPO_ROOT / "packages" / "sdk"
 
 # The registered-exception register (VR-25 branch 2; #221 §1.3): scope ->
-# display-relative path -> (reason, expected_sites). A registered file's
-# literal count must EQUAL expected_sites — a fourth site in
-# presentation/contracts.py fails until D2's trigger is honestly met.
-REGISTER: dict[str, dict[str, tuple[str, int]]] = {
+# display-relative path -> (reason, expected_sites, expected_values).
+# expected_sites is the EXACT literal count the file may carry; a registered
+# file's count must EQUAL it — a fourth site in presentation/contracts.py
+# fails until D2's trigger is honestly met. expected_values (fold row 6)
+# additionally pins the sorted BARE-literal VALUES for authored-data rows,
+# so a semantics-changing substitution fails at unchanged cardinality; the
+# corpus-owned contracts.py rows carry None there because the copies are
+# digest-pinned whole by tests/sdk/test_presentation_packaging.py.
+REGISTER: dict[str, dict[str, tuple[str, int, tuple[str, ...] | None]]] = {
     "gateway": {
         "src/benchweave/presentation/contracts.py": (
             "VR-25 branch 2 / D2: plugin-ui corpus-owned code, byte-identical "
             "to its SDK twin (tests/sdk/test_presentation_packaging.py pins "
-            "the identity); motion = the D2 reopen trigger (the first "
-            "plugin-ui bump after the arc, or the owner's F1 call)",
+            "the identity — digest-pinned, so no value pin here); motion = "
+            "the D2 reopen trigger (the first plugin-ui bump after the arc, "
+            "or the owner's F1 call)",
             3,
+            None,
         ),
     },
     "sdk": {
         "src/benchweave_sdk/standards/plugin-ui/contracts.py": (
             "D2 twin of the gateway's registered copy — the same corpus-owned "
-            "code at plugin-ui 0.2.0 bytes; same reopen trigger",
+            "code at plugin-ui 0.2.0 bytes (digest-pinned whole, so no value "
+            "pin here); same reopen trigger",
             3,
+            None,
         ),
         "src/benchweave_sdk/scaffold.py": (
             "authored example-template fields that are not standards "
@@ -138,6 +178,7 @@ REGISTER: dict[str, dict[str, tuple[str, int]]] = {
             "version, provenance revision); the otdp_version example IS "
             "derived (served.active_version) and stays outside this row",
             4,
+            ("0.1.0", "0.1.0", "0.1.0", "1.0.0"),
         ),
     },
     "plugins": {
@@ -146,6 +187,7 @@ REGISTER: dict[str, dict[str, tuple[str, int]]] = {
             "own sentence) — deriving dps150's pin from any served set would "
             "let gateway state rewrite the plugin's declaration",
             3,
+            ("0.1.0", "0.2.0", "0.2.2"),
         ),
     },
     "docs": {},
@@ -209,26 +251,33 @@ def _in_scope(scope: str, relative_parts: tuple[str, ...]) -> bool:
 
     Membership is judged on the parts of the path RELATIVE TO ITS SCAN
     ROOT — an absolute path's parts carry every ancestor directory of the
-    checkout (this repo lives under ``~/Documents/src/``), which would
-    admit every file into the plugins scope and silently grow the
-    denominator.
+    checkout (a repo checked out under any ``.../src/`` directory — a
+    common developer layout — would admit every file into the plugins
+    scope and silently grow the denominator).
     """
     if not _outside_environment(relative_parts):
         return False
     if scope == "plugins":
-        return "src" in relative_parts  # plugins/**/src/** only: tests are out
+        # Path-shape rule (fold row 8): the file lives under a src/ component
+        # AND no tests/ component — a ``tests/src/`` path shape is a test
+        # tree however it is laid out, and ``"src" in parts`` alone would
+        # count it.
+        return "src" in relative_parts and "tests" not in relative_parts
     return True
 
 
 def _docs_files() -> list[Path]:
-    """The VR-24 class set: root docs, plugin READMEs, user_guide if present.
+    """The VR-24 class set: every .md under docs/ (subtrees included), the
+    plugin READMEs, and user_guide if present.
 
     Exclusions are the named constants above — each carries its reason
     beside its definition, and the census test pins the resulting file set
-    so a silently widened exclusion is a visible diff.
+    so a silently widened exclusion is a visible diff. The subtree walk
+    (fold row 3) brings docs/acceptance, docs/devices and docs/evidence
+    into the ratchet alongside the root files.
     """
     files: list[Path] = []
-    for path in sorted((REPO_ROOT / "docs").glob("*.md")):
+    for path in sorted((REPO_ROOT / "docs").rglob("*.md")):
         rel = path.relative_to(REPO_ROOT).as_posix()
         if rel in DOCS_EXCLUDED_FILES:
             continue
@@ -311,6 +360,14 @@ def _snapshot_counts() -> dict[str, dict[str, int]]:
     return document["files"]
 
 
+def _snapshot_file_count() -> int | None:
+    """The snapshot's recorded scanned-file census (absent in hand-made
+    snapshots; the census check skips when the key is missing)."""
+    document = json.loads(DOCS_SNAPSHOT.read_text(encoding="utf-8"))
+    value = document.get("file_count")
+    return value if isinstance(value, int) else None
+
+
 def _refresh_snapshot() -> dict[str, dict[str, int]]:
     scan_root, _display_root, _pattern = scope_tree("docs")
     sites, scanned = count_sites(scan_root, "docs")
@@ -331,13 +388,16 @@ def _refresh_snapshot() -> dict[str, dict[str, int]]:
     return document
 
 
-def _check_docs_ratchet(sites: list[dict[str, Any]]) -> list[str]:
-    """Refuse any (file, literal) occurrence beyond the committed snapshot.
-
-    A literal the snapshot does not know refuses; a HIGHER count of a known
-    literal refuses; removals only lower the count and pass. Keyed by
-    (file, literal) counts, not lines, so unrelated edits do not churn the
-    snapshot (the refresh diff stays a review surface, not noise).
+def _check_docs_ratchet(
+    sites: list[dict[str, Any]], scanned: int
+) -> list[str]:
+    """Refuse any (file, literal) count that DIFFERS from the committed
+    snapshot, in either direction (fold row 4): growth refuses because a new
+    claim must be reviewed; SHRINKAGE refuses too — the snapshot is an
+    exact-content bound, so deleting a literal is a content change that
+    only an explicit ``--refresh-docs-baseline`` may bless (its diff is the
+    review surface). The scanned-file census is checked in-gate the same
+    way: a silently added or removed file refuses.
     """
     snapshot = _snapshot_counts()
     observed: dict[str, dict[str, int]] = {}
@@ -349,11 +409,30 @@ def _check_docs_ratchet(sites: list[dict[str, Any]]) -> list[str]:
         for literal in sorted(observed[file_name]):
             have = observed[file_name][literal]
             allowed = snapshot.get(file_name, {}).get(literal, 0)
-            if have > allowed:
+            if have != allowed:
+                direction = "beyond" if have > allowed else "removed from"
                 violations.append(
-                    f"docs literal beyond snapshot: {file_name}: {literal} "
-                    f"(snapshot allows {allowed}, found {have})"
+                    f"docs literal {direction} snapshot: {file_name}: {literal} "
+                    f"(snapshot records {allowed}, found {have}) — refresh "
+                    "with --refresh-docs-baseline if this change is intended"
                 )
+    for file_name in sorted(snapshot):
+        if file_name not in observed:
+            for literal in sorted(snapshot[file_name]):
+                if snapshot[file_name][literal] > 0:
+                    violations.append(
+                        f"docs literal removed from snapshot: {file_name}: "
+                        f"{literal} (snapshot records "
+                        f"{snapshot[file_name][literal]}, found 0) — refresh "
+                        "with --refresh-docs-baseline if this change is intended"
+                    )
+    expected_files = _snapshot_file_count()
+    if expected_files is not None and scanned != expected_files:
+        violations.append(
+            f"docs census changed: snapshot records {expected_files} scanned "
+            f"files, found {scanned} — refresh with --refresh-docs-baseline "
+            "if this change is intended"
+        )
     return violations
 
 
@@ -382,15 +461,25 @@ def _check_scope(scope: str) -> tuple[bool, dict[str, Any]]:
                 "it with reason and expected_sites"
             )
     for file_name in sorted(register):
-        reason, expected = register[file_name]
-        found = len(by_file.get(file_name, []))
+        reason, expected, expected_values = register[file_name]
+        found_rows = by_file.get(file_name, [])
+        found = len(found_rows)
         if found != expected:
             violations.append(
                 f"register expectation failed: {file_name} expects {expected} "
                 f"literals, found {found} ({reason})"
             )
+        if expected_values is not None:
+            # Fold row 6: pin the VALUES for authored-data rows — a
+            # semantics-changing substitution fails at unchanged cardinality.
+            found_values = sorted(row["text"] for row in found_rows)
+            if found_values != sorted(expected_values):
+                violations.append(
+                    f"register value pin failed: {file_name} expects "
+                    f"{sorted(expected_values)}, found {found_values} ({reason})"
+                )
     if scope == "docs":
-        violations.extend(_check_docs_ratchet(sites))
+        violations.extend(_check_docs_ratchet(sites, scanned))
 
     for row in sites:
         entry = register.get(row["file"])
@@ -407,6 +496,29 @@ def _check_scope(scope: str) -> tuple[bool, dict[str, Any]]:
         "sites": sites,
     }
     return not violations, report
+
+
+def _pin_standard_ids() -> None:
+    """The committed standard-id set is the matcher's authority (fold row 5):
+    ``STANDARD_IDS`` must equal the standards manifest's entry ids. A
+    seventh standard (or a rename) would otherwise silently narrow Pattern
+    A's coverage — the script refuses instead, and adding the id becomes a
+    deliberate, reviewable edit to this file.
+    """
+    manifest = json.loads(
+        (REPO_ROOT / "standards" / "standards-manifest.json").read_text(encoding="utf-8")
+    )
+    manifest_ids = sorted(str(entry.get("id")) for entry in manifest.get("standards", []))
+    if manifest_ids != sorted(STANDARD_IDS):
+        raise StandardsDrift(
+            f"standard_set_drift: the manifest declares {manifest_ids} but the "
+            f"matcher pins {sorted(STANDARD_IDS)} — update STANDARD_IDS in this "
+            "script in the same work as the manifest change"
+        )
+
+
+class StandardsDrift(Exception):
+    """A committed authority disagrees with the matcher's pinned sets."""
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -444,6 +556,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     try:
+        _pin_standard_ids()
         reports: dict[str, dict[str, Any]] = {}
         ok = True
         for scope in scopes:
@@ -452,6 +565,9 @@ def main(argv: list[str] | None = None) -> int:
             ok = ok and scope_ok
     except ScopeAbsent as exc:
         print(f"sdk_tree_absent: {exc}", file=sys.stderr)
+        return 1
+    except StandardsDrift as exc:
+        print(str(exc), file=sys.stderr)
         return 1
     except (OSError, SyntaxError) as exc:
         print(f"version_literal_count_failed: {exc}", file=sys.stderr)
