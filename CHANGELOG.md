@@ -243,6 +243,8 @@ All notable changes to this project will be documented in this file.
 - #260 fold wave — the seam decides, the comparator is total, recovery is policy-relative
 - Row 4 corrected to the three-way echo disposition
 - Fold wave — marker truth, region dedupe, regenerable residual, adc vacuity guard
+- Fold wave 1 — governor + grammar-lane rows (8 rows, one batch)
+- Fold wave 2 — the honest interim + the pin fork closed (T1/T2)
 
 ### Documentation
 
@@ -463,6 +465,8 @@ All notable changes to this project will be documented in this file.
 - Issue #260 record-lane design record
 - Add counter-boundaries design record
 - Obligation 20 assembly/scripts/membership clauses; obligation 22 region pin
+- Issue #244 digital_lanes design of record
+- 18(n) carries the widened-staleness framing (wave-2 T2 add)
 
 ### Features
 
@@ -654,6 +658,7 @@ All notable changes to this project will be documented in this file.
 - Constant-folding assembly detection in the zero-literal counter
 - The scripts/ scope — three derivations, twenty registrations
 - Flat-plugin scope, marker-based environments, twin region pin
+- Digital_lanes grammar + validator — plugin-ui 0.3.0 + plugin-ui-preview 0.2.0 (#244 S1)
 
 ### Hardware Evidence
 
@@ -761,6 +766,7 @@ All notable changes to this project will be documented in this file.
 - Advance packages/sdk to the SDK branch head (G3a test)
 - Advance packages/sdk to the fold commit
 - Advance packages/sdk to the twin-fixture fix
+- Regenerate the compatibility matrix for the digital_lanes train (#244 S1)
 
 ### Performance
 
