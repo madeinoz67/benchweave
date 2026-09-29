@@ -34,6 +34,12 @@ interface Survival {
   total: number;
   missing: number[];
   unmarkedMultiEdge: number[];
+  /** Fold F3a: glitch is EXACTLY (interior transitions > 1) — a marked
+   * single-edge column destroys the edge information the mark replaces. */
+  overmarkedSingleEdge: number[];
+  /** Fold F3b: a single-edge column's from/to are the ACTUAL neighbouring
+   * states — a swap time-reverses the drawn edge. */
+  reversedEdges: number[];
 }
 
 function checkSurvival(states: readonly LaneState[], out: ReturnType<typeof reduceLane>): Survival {
@@ -61,7 +67,32 @@ function checkSurvival(states: readonly LaneState[], out: ReturnType<typeof redu
     .map((column, index) => ({ column, index }))
     .filter(({ column }) => interiorTransitions(states, column) > 1 && !column.glitch)
     .map(({ index }) => index);
-  return { survived, total: transitions(states), missing, unmarkedMultiEdge };
+  const overmarkedSingleEdge = out
+    .map((column, index) => ({ column, index }))
+    .filter(({ column }) => column.glitch && interiorTransitions(states, column) <= 1)
+    .map(({ index }) => index);
+  const reversedEdges: number[] = [];
+  out.forEach((column, index) => {
+    const interior = interiorTransitions(states, column);
+    if (interior === 1 && column.edge) {
+      for (let s = column.first; s + 1 < column.last; s += 1) {
+        if (states[s] !== states[s + 1]) {
+          if (column.edge.from !== states[s] || column.edge.to !== states[s + 1]) {
+            reversedEdges.push(index);
+          }
+          break;
+        }
+      }
+    }
+  });
+  return {
+    survived,
+    total: transitions(states),
+    missing,
+    unmarkedMultiEdge,
+    overmarkedSingleEdge,
+    reversedEdges,
+  };
 }
 
 function interiorTransitions(
@@ -100,6 +131,14 @@ describe("lane reduction — the §E.4.4 normative property", () => {
       expect(
         survival.unmarkedMultiEdge,
         `run ${run}: multi-transition columns without the glitch mark`,
+      ).toEqual([]);
+      expect(
+        survival.overmarkedSingleEdge,
+        `run ${run}: single-edge columns carrying the glitch mark`,
+      ).toEqual([]);
+      expect(
+        survival.reversedEdges,
+        `run ${run}: single-edge columns whose from/to are reversed`,
       ).toEqual([]);
       expect(survival.survived).toBe(survival.total);
       checked += 1;

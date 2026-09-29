@@ -103,8 +103,15 @@ export function DigitalLanesPlot({
   const rows = useMemo(() => {
     // §E.4.1: a hidden lane's band renders COLLAPSED with its label
     // retained — hiding is a disclosure, never a removal.
+    // §E.4.1 + §E.4.3 (fold F4): a group declared default_collapsed folds
+    // its members into the bus lane on first render — the hidden-lane
+    // treatment (collapsed band, label retained), driven by the declaration
+    // the wire has carried since 0.3.0/0.2.0.
+    const collapsedInto = new Set(
+      groups.flatMap((group) => (group.default_collapsed ? group.member_ids : [])),
+    );
     const laneRows = lanes.map((lane) => {
-      const isHidden = hints?.get(lane.id)?.visible === false;
+      const isHidden = hints?.get(lane.id)?.visible === false || collapsedInto.has(lane.id);
       const reduced = isHidden ? [] : reduceLane(lane.states, columnBudget);
       const drawn: DrawnColumn[] = reduced.map((column, index) => ({
         column,
@@ -126,9 +133,16 @@ export function DigitalLanesPlot({
         let resolved = true;
         reduced.forEach((columns_, memberIndex) => {
           const column = columns_[Math.min(index, columns_.length - 1)]!;
-          const state = column.edge ? column.edge.to : column.state;
-          if (state === "1") bits += 1 << memberIndex;
-          else if (state !== "0") resolved = false; // x/z member: unknown bus
+          // §E.4.3 row 4 + §E.4.4 row 1 (fold F1): a member column that
+          // CHANGED mid-column (an interior edge or a glitch mark) is as
+          // unstable as x/z — the bus cell hatches, never a fabricated
+          // stable value over the transition.
+          if (column.glitch || column.edge) {
+            resolved = false;
+            return;
+          }
+          if (column.state === "1") bits += 1 << memberIndex;
+          else if (column.state !== "0") resolved = false; // x/z member: unknown bus
         });
         if (!resolved) bus.push({ value: null, hatch: true });
         else if ((group.radix ?? "hex") === "decimal") {
@@ -157,13 +171,24 @@ export function DigitalLanesPlot({
     const span = Math.max(1, acquired - 1);
     return LABEL_WIDTH + (sample / span) * (CANVAS_WIDTH - LABEL_WIDTH);
   };
+  // §E.4.5 row 4 (fold F2): the Δt readout speaks the view's axis mode —
+  // seconds mode scales the unit (7 µs), sample-index mode reads the raw
+  // difference in the host's unit (7 samples) — never both.
   const cursorDelta =
     cursors.length >= 2 && firstAxis
-      ? Math.abs(
-          (firstAxis.start + cursors[cursors.length - 1]!.sample * firstAxis.step) -
-            (firstAxis.start + cursors[0]!.sample * firstAxis.step),
-        )
+      ? x.unit === "s"
+        ? Math.abs(
+            (firstAxis.start + cursors[cursors.length - 1]!.sample * firstAxis.step) -
+              (firstAxis.start + cursors[0]!.sample * firstAxis.step),
+          )
+        : Math.abs(cursors[cursors.length - 1]!.sample - cursors[0]!.sample)
       : null;
+  const cursorReadout =
+    cursorDelta === null
+      ? null
+      : x.unit === "s"
+        ? `Δt = ${formatDeltaSeconds(cursorDelta)}`
+        : `Δt = ${trim(cursorDelta)} ${x.unit}`;
   const triggerX =
     triggerTime !== null && firstAxis
       ? sampleToX((triggerTime - firstAxis.start) / firstAxis.step)
@@ -317,9 +342,7 @@ export function DigitalLanesPlot({
           })}
         </svg>
       </div>
-      {cursorDelta !== null ? (
-        <p className="bw-lanes__cursors-delta">{`Δt = ${formatDeltaSeconds(cursorDelta)} ${x.unit === "s" ? "" : x.unit}`.trim()}</p>
-      ) : null}
+      {cursorReadout !== null ? <p className="bw-lanes__cursors-delta">{cursorReadout}</p> : null}
       <p className="bw-plot__acquisition" data-bw-acquisition="true">
         {`Acquired ${acquired} samples · plotted ${drawnColumns}${firstAxis ? ` at ${formatRate(firstAxis.step)}` : ""}`}
       </p>

@@ -491,7 +491,7 @@ Schema: `Property | Requirement` — 4 rows.
 | Bus lane | A declared group may render collapsed as ONE bus lane — a bus lane's identity is its label and position, colour carries nothing |
 | Radix | The bus value renders in the group's radix: hex default (width = the group's bit width in nibbles, zero-padded), decimal per-group opt-in |
 | Member order | DECLARATION ORDER with the first declared member the LSB — bus values are a pure function of (member states, member order) |
-| Unknown bus | A member column not resolving to `0`/`1` (`x`/`z`) renders the bus column hatched — the unknown bus is disclosed, never a fabricated number |
+| Unknown bus | A member column not resolving STABLY to `0`/`1` for the whole column (`x`/`z`, or an interior edge/glitch — a column where a member changed is as unstable as an unknown, mirroring §E.4.4) renders the bus cell hatched — never a fabricated number over a transition |
 
 #### §E.4.4 Edge-preserving decimation (NORMATIVE)
 

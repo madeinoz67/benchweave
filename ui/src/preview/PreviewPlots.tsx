@@ -123,6 +123,9 @@ export function PreviewPlots({ views, scenario }: PreviewPlotsProps) {
                   ...(group.label !== undefined ? { label: group.label } : {}),
                   member_ids: group.member_ids,
                   ...(group.radix !== undefined ? { radix: group.radix } : {}),
+                  ...(group.default_collapsed !== undefined
+                    ? { default_collapsed: group.default_collapsed }
+                    : {}),
                 }),
               )}
             />

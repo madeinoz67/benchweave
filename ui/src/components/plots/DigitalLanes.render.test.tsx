@@ -135,6 +135,20 @@ describe("DigitalLanesPlot real rendering (§E.4, A2.1)", () => {
     expect(container.textContent).toContain("Δt = 7 µs");
   });
 
+  it("renders Δt in the view's axis mode — sample-index mode reads in samples, no double unit (fold F2)", () => {
+    const { container } = render(
+      <DigitalLanesPlot
+        title="Indexed"
+        x={{ label: "Sample index", unit: "samples" }}
+        lanes={capture}
+        columns={4}
+        cursors={[{ sample: 3 }, { sample: 10 }]}
+      />,
+    );
+    expect(container.textContent).toContain("Δt = 7 samples");
+    expect(container.textContent).not.toContain("µs");
+  });
+
   it("renders the §E.2.5 acquisition line outside the canvas with the pre-committed numbers", () => {
     const { container } = render(<DigitalLanesPlot {...baseProps()} columns={12} />);
     const line = container.querySelector(".bw-plot__acquisition");
@@ -158,6 +172,96 @@ describe("DigitalLanesPlot real rendering (§E.4, A2.1)", () => {
     expect(hiddenRow!.getAttribute("aria-label")).toBe("CH2 (hidden by presentation preference)");
     expect(hiddenRow!.textContent).toContain("CH2");
     expect(container.textContent).toContain("hidden");
+  });
+
+  it("hatches a bus cell whose member CHANGED mid-column (fold F1: no fabricated stable value)", () => {
+    // One member, 260x1 / 260x0 / 260x1, columns=4 → boundaries 195/390/585:
+    // the transitions at 260 and 520 are INTERIOR to columns [195,390) and
+    // [390,585) — those bus cells must hatch; the stable cells show 0x1.
+    const member: Lane = {
+      id: "m",
+      label: "M",
+      axis: AXIS,
+      states: states(["1", 260], ["0", 260], ["1", 260]),
+    };
+    const { container } = render(
+      <DigitalLanesPlot
+        title="Bus transition"
+        x={{ label: "Time", unit: "s" }}
+        lanes={[member]}
+        columns={4}
+        groups={[{ id: "bus-t", label: "Bus T", member_ids: ["m"] }]}
+      />,
+    );
+    const groupRow = container.querySelector('[data-bw-lane-kind="group"]')!;
+    const cells = groupRow.querySelectorAll("[data-bw-column], .bw-lanes__group");
+    // The bus row's own geometry: 4 cells — hatched carry data-bw-state="x".
+    const hatched = groupRow.querySelectorAll('rect[data-bw-state="x"]');
+    expect(hatched.length, "the two transition columns hatch").toBe(2);
+    expect(groupRow.textContent).not.toContain("0x0");
+    expect(groupRow.textContent).toContain("0x1");
+  });
+
+  it("hatches EVERY bus cell over a noisy member (fold F1: multi-edge member)", () => {
+    const noisy: Lane = {
+      id: "n",
+      label: "N",
+      axis: AXIS,
+      states: states(...Array.from({ length: 257 }, (_, i): [LaneState, number] => [i % 2 === 0 ? "0" : "1", 1])),
+    };
+    const steady: Lane = { id: "s", label: "S", axis: AXIS, states: states(["1", 100]) };
+    const { container } = render(
+      <DigitalLanesPlot
+        title="Noisy bus"
+        x={{ label: "Time", unit: "s" }}
+        lanes={[noisy, steady]}
+        columns={8}
+        groups={[{ id: "bus-n", label: "Bus N", member_ids: ["n", "s"] }]}
+      />,
+    );
+    const groupRow = container.querySelector('[data-bw-lane-kind="group"]')!;
+    const busCells = groupRow.querySelectorAll("g.bw-lanes__group, rect[data-bw-state]");
+    // The noisy member makes every column unstable: the whole bus hatches.
+    expect(groupRow.querySelectorAll('rect[data-bw-state="x"]').length).toBe(8);
+    expect(busCells.length).toBeGreaterThan(0);
+  });
+
+  it("consumes default_collapsed: the declared members render collapsed into the bus (fold F4)", () => {
+    const { container } = render(
+      <DigitalLanesPlot
+        {...busProps}
+        columns={4}
+        groups={[{ ...busGroup, default_collapsed: true }]}
+      />,
+    );
+    // The bus lane renders beside the members, and every declared member
+    // renders with the hidden-lane treatment (collapsed band, label retained).
+    expect(container.querySelector('[data-bw-lane-kind="group"]')).toBeTruthy();
+    const hiddenRows = container.querySelectorAll("[data-hidden]");
+    expect(hiddenRows).toHaveLength(3);
+    hiddenRows.forEach((row) => expect(row.getAttribute("data-bw-lane-kind")).toBe("channel"));
+    expect(container.textContent).toContain("A");
+  });
+
+  it("pins DECLARATION order with non-sorted ids (fold F5: a sort-by-id renderer reds)", () => {
+    // The other fixtures are accidentally id-sorted, so declared order was
+    // unpinned — this trio is deliberately unordered.
+    const unordered: Lane[] = [
+      { id: "ch3", label: "C3", axis: AXIS, states: states(["1", 60]) },
+      { id: "ch1", label: "C1", axis: AXIS, states: states(["0", 60]) },
+      { id: "ch2", label: "C2", axis: AXIS, states: states(["z", 60]) },
+    ];
+    const { container } = render(
+      <DigitalLanesPlot title="Unordered" x={{ label: "Time", unit: "s" }} lanes={unordered} columns={4} />,
+    );
+    const rows = container.querySelectorAll("[data-bw-lane]");
+    expect(rows).toHaveLength(3);
+    expect(rows[0]!.getAttribute("data-bw-lane")).toBe("0");
+    expect(rows[0]!.textContent).toContain("C3");
+    expect(rows[1]!.getAttribute("data-bw-lane")).toBe("1");
+    expect(rows[1]!.textContent).toContain("C1");
+    expect(rows[2]!.getAttribute("data-bw-lane")).toBe("2");
+    expect(rows[2]!.textContent).toContain("C2");
   });
 
   it("carries the glitch mark on multi-transition columns", () => {

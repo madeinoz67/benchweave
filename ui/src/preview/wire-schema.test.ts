@@ -170,6 +170,13 @@ describe("digital_lanes on the preview wire (the S2 evolution of the interim arm
     expect(decoded.plot_views[0]!.channels).toHaveLength(2);
   });
 
+  it("refuses a poisoned default_collapsed the schema refuses (fold F4: the decoder never coerces)", () => {
+    const { lanes } = lanesDocument();
+    const group = lanes.plot_views[0] as { lane_groups: Array<{ default_collapsed: unknown }> };
+    group.lane_groups[0]!.default_collapsed = "yes";
+    expect(() => decodePreview(lanes)).toThrow(/preview_invalid_plot_lane_group/);
+  });
+
   it("still refuses a CLOSED-SET violation on a lanes view (an unknown key)", () => {
     const { lanes } = lanesDocument();
     (lanes.plot_views[0] as Record<string, unknown>).surprise = true;
