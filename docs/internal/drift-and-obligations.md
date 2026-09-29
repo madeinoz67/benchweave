@@ -348,17 +348,42 @@ and remain the reviewer's job.
     branches carry the wire-level proof); a literal inside a REGISTERED
     file fails the row's expectation until the register is edited — a
     visible editorial diff.
-    **Denominator boundary (fold row 13):** the gated trees are gateway
-    `src/benchweave/`, the SDK's `src/benchweave_sdk/`, in-tree plugins'
-    `src/`, and `docs/` (ratchet). `scripts/`, `tests/` and `.github/` are
-    OUTSIDE the gates — `scripts/adc_conformance_control.py` carries live
-    OTDP literals today (`YANKED_PIN`/`MOVE_TO`, the A1 anti-gaming arm;
-    motion = the yank policy block, recorded in the slice-1 definition) —
-    named so the denominators cannot silently move; a scripts/ scope
-    extension is the named follow-on (trigger: the next scripts/ addition
-    or the owner's call). The matcher does NOT catch syntactically
-    assembled versions (concat/f-string/bytes/`%`) — review-lane duty
-    until an AST-level row lands.
+    **Assembly clause (issue #269, row 1):** the matcher folds
+    CONSTANT-ONLY assembly — concatenation, f-strings, `%`-formatting,
+    `.format`, `str.join` over literal sequences, `chr`/`str` over
+    literals, `bytes.decode`, string repetition — and refuses the folded
+    result under `ASM-A`/`ASM-BARE` (bounds: fold depth ≤ 24, folded
+    length ≤ 4096; a module shadowing `chr`/`str` never folds them as the
+    builtins; every fold failure is an honest miss, never a gate
+    failure). The does-not-catch class is DYNAMIC-only now: assembly with
+    any non-literal input (variable, parameter, function result,
+    comprehension, data/env/config reads) stays invisible — taint
+    tracking is still deliberately not attempted (deferral D-1), and
+    `os.path.join`/other stdlib string constructors are outside the fold
+    allowlist (D-3). The twelve-shape battery
+    (`tests/standards/assembly_shapes.py`) is the committed spec for the
+    class — the next evasion probe extends the file. **Scripts scope
+    (row 2):** `scripts/` is a fifth gated tree — the adc control's two
+    pins DERIVED from the committed policy block
+    (`adc_policy_absent:`/`adc_yank_not_unique:` refusals; move-to ==
+    active is a stated theorem whose failure mode is a loud control
+    failure), the docs site's runtime-schema path DERIVED from the active
+    otdp family, and twenty authored fixture/self-test values REGISTERED
+    with value pins across seven rows; the counter self-exempts
+    (`SCRIPTS_EXCLUDED_FILES`, whole-file — a plant in its non-shared
+    region is review-lane-borne, named residual). **Membership rules
+    (row 3):** plugins gate any `.py` under `plugins/` with no `tests/`
+    component (flat plugins; census 15; a distributed
+    `tests`-subpackage stays excluded — named residual), and environments
+    are detected BY MARKER — a directory is a Python environment iff it
+    carries `pyvenv.cfg` (`node_modules`/`site-packages` stay name-based:
+    no marker exists, named residual; a deleted marker fails the gate
+    loudly, never silently). **Denominator boundary (fold row 13, as
+    shrunk):** the gated trees are gateway `src/benchweave/`, the SDK's
+    `src/benchweave_sdk/`, in-tree plugins, `docs/` (ratchet), and
+    `scripts/`. `tests/` and `.github/` are OUTSIDE the gates (tests
+    carry legitimate fixture literals; assembly there equally so) —
+    named so the denominators cannot silently move.
 
 22. **The counter twins** (issue #221, obligation-19 shape): the gateway's
     `scripts/standards/count_version_literals.py` and the SDK repo's
@@ -370,13 +395,19 @@ and remain the reviewer's job.
     data and move independently); the SDK PR body notes the sync when it
     rides a definition change. The pairing is the A6 two-sided gate: an
     SDK-only literal fails the SDK lane immediately and the gateway lane
-    at the next pointer bump.
+    at the next pointer bump. The shared DEFINITION block is marked in
+    both counters (`>>> BEGIN/END SHARED COUNTER REGION`) and pinned
+    BYTE-IDENTICAL by the gateway's parity test (issue #269 §4 — the
+    digest-identity shape of the contracts.py pin; a one-character
+    mutation arm proves detection): SDK-side definition drift fails
+    gateway CI at the next pointer bump, with this row remaining the
+    human-level sync duty.
 
 ## CI map
 
 | Job | What it catches |
 |---|---|
-| `gates` | submodules recursive; fixture keys materialised from secrets; `ruff check .`; config-driven `mypy` (bare — explicit path args drop `packages/sdk/src` from the build); `pytest -q -n auto -m "not timing"` (including the adapter agreement test, which pins the SDK↔gateway protocol mirror and the version triplet — see obligation 8); `make check-sdk-standards` (main standards ↔ SDK lock ↔ vendored tree, plus the identity `adapter_api` derivation check, plus the served-set/policy-mirror lanes and the version-literal ZERO gate over all four scopes — issue #203 slices 1+7) |
+| `gates` | submodules recursive; fixture keys materialised from secrets; `ruff check .`; config-driven `mypy` (bare — explicit path args drop `packages/sdk/src` from the build); `pytest -q -n auto -m "not timing"` (including the adapter agreement test, which pins the SDK↔gateway protocol mirror and the version triplet — see obligation 8); `make check-sdk-standards` (main standards ↔ SDK lock ↔ vendored tree, plus the identity `adapter_api` derivation check, plus the served-set/policy-mirror lanes and the version-literal ZERO gate over all five scopes (gateway, plugins, sdk, docs, scripts) — issue #203 slices 1+7, issue #269) |
 | `timing` | the real-paced set (`-m timing`: the two integration rig files whole, plus the contention and clamp cells in `tests/unit/test_otdp_bridge.py`), serialized on its own fresh VM within ~2 min of boot so its wall-clock bands are measured before any bulk-suite residue (page cache, draining threads, WAL checkpoints); complementary partition with `gates` — union = the full collection, structural by construction from the complementary markers, with the proof at PR time (the builder's collected-id set diff recorded in the PR body per the design's AR-1 — not an automated gate), and serial forever (xdist would reintroduce exactly the competition the split removes; issue #241 slice 1). Does NOT catch: a guarantee of a quiet host — a noisy neighbor can still stretch a band; slice 2's evidence-backed re-bands resolved as HOLD/document-only in that slice (2026-09-28); intra-lane ordering residue — review-fold disclosure: collection order runs the sequential-model battery before the continuity rig, so the rig measures after the lane's own earlier real-paced battery; the fresh-VM claim removes bulk-suite residue from other jobs, not ordering within this one; red-attribution is scoped — a red in the real-paced subset reads as a timing question, but the continuity file's ride-along logic tests can red as logic (the fold disclosure) |
 | `ui` | `npm ci` + typecheck + lint + unit tests + Storybook build; the renderer freshness gate (see obligation 7); `npm audit --audit-level=high` |
 | `systemd` | unit-template render + `systemd-analyze verify` with rehearsed deployment preconditions (see obligation 9) |
