@@ -88,9 +88,9 @@ function cssBlock(source: string, selector: string): Map<string, string> {
 }
 
 describe("contract L1: fixture rows present and parsable", () => {
-  it("§A.1 pins the colour palette (14 enumerated + 8 series slots + 2 shadow inputs)", () => {
+  it("§A.1 pins the colour palette (14 enumerated + --bw-limiting + 8 series slots + 2 shadow inputs)", () => {
     const rows = parseTable("### §A.1 Colour palette", ["Token", "Light", "Dark", "Use"]);
-    expect(rows.length).toBe(24);
+    expect(rows.length).toBe(25);
     const tokens = rows.map((row) => literal(row[0]!));
     // The 14 enumerated rows (moved verbatim from the guide).
     for (const token of [
@@ -116,6 +116,9 @@ describe("contract L1: fixture rows present and parsable", () => {
     for (const token of ["--bw-series-1", "--bw-series-2", "--bw-series-3", "--bw-series-4", "--bw-series-5", "--bw-series-6", "--bw-series-7", "--bw-series-8"]) {
       expect(tokens).toContain(token);
     }
+    // The limiting reading-state token (§B.3; computed proofs in
+    // series-colors.test.ts).
+    expect(tokens).toContain("--bw-limiting");
     // The pinned superset: the two elevation-shadow colour inputs.
     expect(tokens).toContain("--bw-shadow-dark");
     expect(tokens).toContain("--bw-shadow-light");
@@ -293,9 +296,9 @@ describe("contract L1: fixture rows present and parsable", () => {
         requiredText: ["Staged"],
       },
       "reading-tile": {
-        attributes: ["data-severity", "aria-label"],
+        attributes: ["data-severity", "aria-label", "data-bw-reading-state"],
         roles: ["region"],
-        classHooks: ["bw-reading", "bw-reading__header", "bw-reading__severity", "bw-reading__value", "bw-reading__quality"],
+        classHooks: ["bw-reading", "bw-reading__header", "bw-reading__severity", "bw-reading__value", "bw-reading__set", "bw-reading__state", "bw-reading__quality"],
         requiredText: ["steady · 2 s"],
       },
       "alert-bubble": {
@@ -389,7 +392,8 @@ describe("contract L1: fixture rows present and parsable", () => {
       hidden: ["state", "none today"],
       staged: ["state", "none today"],
     };
-    expect(rows.length).toBe(9);
+    expect(rows.length).toBe(10);
+    expected.limiting = ["state", "ArrowUpToLine"];
     for (const row of rows) {
       const key = literal(row[0]!);
       const pair = expected[key];
@@ -434,7 +438,26 @@ describe("contract L1: fixture rows present and parsable", () => {
     }
   });
 
-  it("covers the §6 enumeration arithmetic (45 definition rows)", () => {
+  it("§B.3 pins the reading-states table (1 row)", () => {
+    const rows = parseTable("### §B.3 Reading states", ["State key", "Meaning", "Rendering", "Announcement"]);
+    expect(rows.length).toBe(1);
+    expect(literal(rows[0]![0]!)).toBe("limiting");
+    for (const column of [1, 2, 3]) expect(contractCell([rows[0]!], 0, column), "limiting row").not.toBe("");
+  });
+
+  it("§B.4 pins the staleness rules (ST-1..4)", () => {
+    const rows = parseTable("### §B.4 Staleness", ["Rule id", "Requirement"]);
+    expect(rows.map((row) => literal(row[0]!))).toEqual(["ST-1", "ST-2", "ST-3", "ST-4"]);
+    for (const row of rows) expect(contractCell([row], 0, 1), literal(row[0]!)).not.toBe("");
+  });
+
+  it("§E.3 pins the setpoint triad (measured/set/staged)", () => {
+    const rows = parseTable("### §E.3 Setpoint presentation (reading-tile sub-rows)", ["Role", "Placement", "Required labelling", "Never"]);
+    expect(rows.map((row) => literal(row[0]!))).toEqual(["measured", "set", "staged"]);
+    for (const row of rows) for (const column of [1, 2, 3]) expect(contractCell([row], 0, column), literal(row[0]!)).not.toBe("");
+  });
+
+  it("covers the §6 enumeration arithmetic (54 definition rows)", () => {
     const disabled = parseTable("### §C.2 Disabled-reason enum", ["Key", "Required label text", "Parameter"]).length;
     const refusal = parseTable("### §C.3 Refusal mapping", ["Code", "Severity", "What happened", "Sent status", "Operator action"]).length;
     const modes = parseTable("### §D.1 Modes", ["Mode", "Fixed wording", "Fires when"]).length;
@@ -442,9 +465,13 @@ describe("contract L1: fixture rows present and parsable", () => {
     const stateRules = parseTable("### §B.2 State rules", ["Rule id", "Requirement"]).length;
     const severities = parseTable("### §B.1 Severities", ["Severity key", "Meaning", "Dismissal class", "Live region"]).length;
     const icons = parseTable("### §F.1 Icons", ["Icon key", "Class", "Shape description", "Reference binding"]).length;
-    // 5+15+4+3+3+6+9 = 45 (design record §6). Icons are counted once here and
-    // pinned as their own family above.
-    expect(disabled + refusal + modes + safety + stateRules + severities + icons).toBe(45);
+    const readingStates = parseTable("### §B.3 Reading states", ["State key", "Meaning", "Rendering", "Announcement"]).length;
+    const stalenessRules = parseTable("### §B.4 Staleness", ["Rule id", "Requirement"]).length;
+    const triad = parseTable("### §E.3 Setpoint presentation (reading-tile sub-rows)", ["Role", "Placement", "Required labelling", "Never"]).length;
+    // 5+15+4+3+3+6+10+1+4+3 = 54 (#243 design record §6): the #242 45 plus
+    // the limiting state (1), staleness rules (4), the triad (3), and the
+    // tenth icon.
+    expect(disabled + refusal + modes + safety + stateRules + severities + icons + readingStates + stalenessRules + triad).toBe(54);
   });
 });
 

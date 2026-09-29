@@ -472,7 +472,7 @@ describe("S3-A2: series tokens stay ΔE00 ≥ 10.0 from every severity hue, both
           }
         }
       }
-      console.info(`[series-margins] ${name} T2 dual-arm min ${worst.toFixed(2)} (hard ≥ 10.0, engineering ≥ 11.0)`);
+      process.stdout.write(`[series-margins] ${name} T2 dual-arm min ${worst.toFixed(2)} (hard >= 10.0, engineering >= 11.0)\n`);
       expect(worst, `${name} hard threshold`).toBeGreaterThanOrEqual(10.0);
       expect(worst, `${name} engineering margin: ≥ threshold + 1.0`).toBeGreaterThanOrEqual(11.0);
     }
@@ -501,12 +501,93 @@ describe("S3-D2 census: ALL same-dash pairs stay ΔE00 ≥ 8.0 apart (waveform m
           }
         }
       }
-      console.info(`[series-margins] ${name} census min ${worst.toFixed(2)} (hard ≥ 8.0; engineering floor ≥ 9.0)`);
+      process.stdout.write(`[series-margins] ${name} census min ${worst.toFixed(2)} (hard >= 8.0; engineering floor >= 9.0)\n`);
       if (name === "dark") {
         expect(worst, "dark engineering margin: ≥ threshold + 1.0").toBeGreaterThanOrEqual(9.0);
       }
     });
   }
+});
+
+describe("S1-A3 (#243): --bw-limiting computed proofs", () => {
+  // T1: contrast >= 3.0:1 vs BOTH --bw-surface AND --bw-surface-recessed,
+  // both themes (4 ratios). T2-limiting: ΔE00 >= 10.0 vs all 6 severity keys
+  // (neutral renders as the theme's text colour) x 4 viewing conditions x
+  // 2 themes = 48 values, dual CVD models, both arms every pair.
+  // The comparator set (folded row 1): the five severity HUES plus the
+  // neutral severity's actual rendering — --bw-text-muted (alert-bubble.css
+  // resolves neutral through the state default; --bw-text was the wrong
+  // token with a wrong justification) — plus --bw-border (measured safe,
+  // pinned anyway). The pathological byte-identical-to-muted case is caught
+  // BY this census, not by accident.
+  const severityAll = (tokens: Map<string, string>): string[] => {
+    const hues = ["--bw-advisory", "--bw-warning", "--bw-critical", "--bw-trip", "--bw-success"].map((name) => {
+      const value = tokens.get(name);
+      if (value === undefined) throw new Error(`${name} missing`);
+      return value;
+    });
+    const neutralMuted = tokens.get("--bw-text-muted");
+    if (neutralMuted === undefined) throw new Error("--bw-text-muted missing (the neutral severity's rendering)");
+    const border = tokens.get("--bw-border");
+    if (border === undefined) throw new Error("--bw-border missing");
+    return [...hues, neutralMuted, border];
+  };
+
+  for (const [name, tokens] of THEMES) {
+    it(`${name}: T1 vs both surfaces (2 ratios) and T2 vs all 6 severity keys (24 pairs x both arms)`, () => {
+      const limiting = tokens.get("--bw-limiting");
+      if (limiting === undefined) throw new Error("--bw-limiting missing from themes.css");
+      const surface = tokens.get("--bw-surface");
+      const recessed = tokens.get("--bw-surface-recessed");
+      if (surface === undefined || recessed === undefined) throw new Error("surface tokens missing");
+      process.stdout.write(`[limiting-margins] ${name} T1 surface ${contrast(limiting, surface).toFixed(2)} recessed ${contrast(limiting, recessed).toFixed(2)}\n`);
+      expect(contrast(limiting, surface), `${name} vs surface`).toBeGreaterThanOrEqual(3.0);
+      expect(contrast(limiting, recessed), `${name} vs recessed`).toBeGreaterThanOrEqual(3.0);
+      let worst = Number.POSITIVE_INFINITY;
+      for (const sev of severityAll(tokens)) {
+        for (const condition of CONDITIONS) {
+          const [primary, secondary] = de2000(limiting, sev, condition);
+          worst = Math.min(worst, primary, secondary);
+          expect(primary, `${name} limiting vs ${sev} (${condition}, Machado)`).toBeGreaterThanOrEqual(10.0);
+          expect(secondary, `${name} limiting vs ${sev} (${condition}, Viénot/Brettel)`).toBeGreaterThanOrEqual(10.0);
+        }
+      }
+      process.stdout.write(`[limiting-margins] ${name} T2 dual-arm worst ${worst.toFixed(2)} (threshold 10.0, engineering floor 11.0)\n`);
+      // Row 10: the standing engineering floor (the S3-A2 precedent) — the
+      // search screens (T1 >= 3.3, T2 >= 11) are standing pre-commit doctrine
+      // for every future token slot (design-record fold note).
+      expect(worst, `${name} limiting engineering margin: >= threshold + 1.0`).toBeGreaterThanOrEqual(11.0);
+    });
+  }
+});
+
+describe("S1 fold rows 5+11: the limiting CSS is pinned (border/label colour, no glow)", () => {
+  const css = readFileSync("src/components/readings/reading-tile.css", "utf8");
+  const blockOf = (selector: string): string => {
+    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const match = css.match(new RegExp(`${escaped}\\s*\\{[^}]*\\}`));
+    if (match === null) throw new Error(`no CSS block for ${selector}`);
+    return match[0]!;
+  };
+  it("the limiting border rule uses the token, and grants no glow (no box-shadow)", () => {
+    const rule = blockOf('.bw-reading[data-bw-reading-state="limiting"]');
+    expect(rule).toContain("border-color: var(--bw-limiting)");
+    expect(rule, "SR-B2: glow is severity-scoped; the limiting state grants none").not.toContain("box-shadow");
+  });
+  it("the limiting label uses the token", () => {
+    const rule = blockOf(".bw-reading__state");
+    expect(rule).toContain("color: var(--bw-limiting)");
+  });
+  it("the limiting border rule comes AFTER the severity rules (source order = precedence at equal specificity)", () => {
+    // Equal specificity (0,2,0): whichever block appears LAST in the file
+    // wins the border. The contract's border-allocation sentence (limiting
+    // takes the border; the composed severity keeps its glow rights) is
+    // enforced BY this order — reordering the blocks silently flips
+    // precedence with no other test failing.
+    const limitingIndex = css.indexOf('.bw-reading[data-bw-reading-state="limiting"]');
+    const severityIndices = [...css.matchAll(/\.bw-reading\[data-severity=[^\]]*\]/g)].map((m) => m.index!);
+    expect(limitingIndex).toBeGreaterThan(Math.max(...severityIndices));
+  });
 });
 
 describe("S3-A3: adjacent slots stay ΔE00 ≥ 8.0 apart, both models", () => {

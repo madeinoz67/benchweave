@@ -11,3 +11,8 @@ export const Advisory: Story = { args: { severity: "advisory", quality: "Synthet
 export const Warning: Story = { args: { severity: "warning", value: "12.42", quality: "Near limit" } };
 export const Critical: Story = { args: { severity: "critical", value: "13.21", quality: "Limit exceeded" } };
 export const ProtectiveTrip: Story = { args: { severity: "trip", value: "Unknown", unit: null, quality: "Output inhibited" } };
+export const LimitingState: Story = { args: { quality: "Near limit", state: "limiting" } };
+/** The limiting state composing with a severity: both render; the severity keeps its glow rights. */
+export const LimitingWithWarning: Story = { args: { quality: "Near limit", severity: "warning", state: "limiting" } };
+export const WithSetpoint: Story = { args: { set: { value: "12.5", unit: "V" } } };
+export const Stale: Story = { args: { freshness: "301 ms", stale: true } };
