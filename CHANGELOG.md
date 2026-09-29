@@ -240,6 +240,8 @@ All notable changes to this project will be documented in this file.
 - Fold the #243 S2 review battery — 9 rows (real-render arms)
 - Fold the #243 S2 addendum — lane-2 part 2 (4 rows)
 - Fold wave — 12 fixed rows, 2 disclosures, #221 refute battery
+- #260 fold wave — the seam decides, the comparator is total, recovery is policy-relative
+- Row 4 corrected to the three-way echo disposition
 
 ### Documentation
 
@@ -457,6 +459,7 @@ All notable changes to this project will be documented in this file.
 - Issue #243 UI follow-on design of record
 - Fold the #243 S1 wave-2 reviewer rows (R1-R4)
 - Issue #221 zero-literal end-state design record
+- Issue #260 record-lane design record
 
 ### Features
 
@@ -644,6 +647,7 @@ All notable changes to this project will be documented in this file.
 - Plot axes, reference lines, decimation, provenance (#243 slice 2)
 - Active_version_from_corpus loader + corpus_root/active_contract_family helpers
 - The zero-literal end state — nine derivations, register, zero-mode
+- The record lane — runs are an implemented-dialect fact
 
 ### Hardware Evidence
 
@@ -922,6 +926,8 @@ All notable changes to this project will be documented in this file.
 - L2 generated renderer pins for the 8 contract components
 - Fold review rows 1-7 on the contract pins (#242 slice 1)
 - Assert the G3a registered-disposition facts
+- Re-shape the arbiter arm for the digest-verified resolution
+- Pin the unstored-descriptor pre-check skip (Risk 2's other half)
 
 ### Build
 
