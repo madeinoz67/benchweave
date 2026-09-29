@@ -305,7 +305,7 @@ def test_e3_one_row_per_retained_version_at_the_seed() -> None:
     expected = sum(
         len(retained_versions(ROOT, entry.id)) for entry in load_manifest(ROOT).standards
     )
-    assert expected == 16, f"the seed retained-set denominator moved: {expected}"
+    assert expected == 18, f"the seed retained-set denominator moved: {expected}"
     assert len(rows) == expected, (
         f"the matrix rendered {len(rows)} per-version rows, expected {expected} "
         "(one row per retained version)"

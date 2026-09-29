@@ -13,8 +13,8 @@ from jsonschema import Draft202012Validator
 
 ROOT = Path(__file__).resolve().parents[2]
 SDK = ROOT / "packages/sdk/src"
-FIXTURE_SCHEMA = ROOT / "standards/plugin-ui-preview/0.1.1/fixture.schema.json"
-DOCUMENT_SCHEMA = ROOT / "standards/plugin-ui-preview/0.1.1/preview-document.schema.json"
+FIXTURE_SCHEMA = ROOT / "standards/plugin-ui-preview/0.2.0/fixture.schema.json"
+DOCUMENT_SCHEMA = ROOT / "standards/plugin-ui-preview/0.2.0/preview-document.schema.json"
 sys.path.insert(0, str(SDK))
 
 
@@ -50,7 +50,7 @@ def catalogue() -> dict[str, object]:
 
 def author_fixture(binding_id: str = "voltage", unit: str | None = "V") -> dict[str, object]:
     return {
-        "contract_version": "0.1.1",
+        "contract_version": "0.2.0",
         "id": "high-load",
         "title": "High load",
         "description": "Synthetic high-load state",
@@ -79,7 +79,7 @@ def test_fixture_schema_is_closed_and_versioned() -> None:
 
     Draft202012Validator.check_schema(schema)
     assert schema["$id"] == (
-        "https://benchweave.dev/contracts/plugin-ui-preview/0.1.1/fixture.schema.json"
+        "https://benchweave.dev/contracts/plugin-ui-preview/0.2.0/fixture.schema.json"
     )
     assert schema["additionalProperties"] is False
 
@@ -264,14 +264,14 @@ def preview_candidate(
         for row in targets
     ]
     return presentation.ValidatedPreviewInputs(
-        envelope={"contract_version": "0.2.0"},
+        envelope={"contract_version": "0.3.0"},
         manifest={
-            "contract_version": "0.2.0",
+            "contract_version": "0.3.0",
             "plugin_id": "dev.example.plugin",
             "bindings": bindings if bindings is not None else derived,
             "pages": pages,
         },
-        binding_catalogue={"contract_version": "0.2.0", "targets": targets},
+        binding_catalogue={"contract_version": "0.3.0", "targets": targets},
         resource_root=Path("."),
     )
 
@@ -516,7 +516,7 @@ def test_author_fixture_referencing_dataset_binding_still_refuses(tmp_path: Path
     """Metric E(iii): the snapshot data model cannot express dataset bindings."""
     fixtures = fixtures_module()
     fixture = author_fixture()
-    fixture["contract_version"] = "0.1.1"
+    fixture["contract_version"] = "0.2.0"
     fixture["bindings"] = [dict(fixture["bindings"][0], id="waveform")]  # type: ignore[index]
     (tmp_path / "high-load.json").write_text(json.dumps(fixture), encoding="utf-8")
     with pytest.raises(ValueError, match="preview_unsupported_shape"):

@@ -355,7 +355,7 @@ def test_list_renders_every_standard_deterministically(tmp_path: Path) -> None:
 
 _SYNTHETIC_CONSTRAINTS = {
     "otdp": ">=0.2.0,<0.3.0",
-    "plugin-ui": ">=0.2.0,<0.3.0",
+    "plugin-ui": ">=0.3.0,<0.4.0",
     "registry": ">=0.1.0,<0.2.0",
 }
 
@@ -433,7 +433,7 @@ def test_b1_synthetic_pin_is_deterministic_and_minimal(tmp_path: Path) -> None:
     rows = _rows(raw)
     assert [row["version"] for row in (rows["otdp"], rows["plugin-ui"], rows["registry"])] == [
         "0.2.0",
-        "0.2.0",
+        "0.3.0",
         "0.1.1",
     ]
     again = _run(root, "pin", "--package", "plugins/acme/widget")
@@ -575,8 +575,8 @@ def test_b2_upgrade_registry_moves_only_the_registry_row(tmp_path: Path) -> None
 
 
 def test_b2_upgrade_plugin_ui_to_its_only_served_version_is_a_no_op(tmp_path: Path) -> None:
-    """plugin-ui's served set is {0.2.0} (the F1 narrow range): the design's
-    `upgrade plugin-ui --precise 0.2.0` control is the no-op arm — the lock
+    """plugin-ui's served set is {0.3.0} (the F1 narrow range): the design's
+    `upgrade plugin-ui --precise 0.3.0` control is the no-op arm — the lock
     stays byte-identical (the DPS-150 0.2.2->0.2.2 pin is the same shape)."""
     root = _copy_standards(tmp_path)
     package = _package(root, constraints=_SYNTHETIC_CONSTRAINTS, otdp_version="0.2.0")
@@ -587,7 +587,7 @@ def test_b2_upgrade_plugin_ui_to_its_only_served_version_is_a_no_op(tmp_path: Pa
         "upgrade",
         "plugin-ui",
         "--precise",
-        "0.2.0",
+        "0.3.0",
         "--package",
         "plugins/acme/widget",
     )

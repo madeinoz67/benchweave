@@ -504,9 +504,16 @@ REGISTER: dict[str, dict[str, tuple[str, int, tuple[str, ...] | None]]] = {
         "src/benchweave/presentation/contracts.py": (
             "VR-25 branch 2 / D2: plugin-ui corpus-owned code, byte-identical "
             "to its SDK twin (tests/sdk/test_presentation_packaging.py pins "
-            "the identity — digest-pinned, so no value pin here); motion = "
-            "the D2 reopen trigger (the first plugin-ui bump after the arc, "
-            "or the owner's F1 call)",
+            "the identity — digest-pinned, so no value pin here); motion: all "
+            "THREE version-literal sites (the path-shaped SCHEMA_ROOT literal "
+            "and the two bare contract_version consts) moved 0.2.0→0.3.0 with "
+            "the digital_lanes bump (issue #244; three sites move, count "
+            "unchanged) under the sanctioned narrow-range crossing — the "
+            "bundle lists this live code row in every carried version's row, "
+            "so single-serving is the only honest posture. The D2 reopen "
+            "trigger this row named (the first plugin-ui bump after the arc) "
+            "FIRED with this motion; D2 stays OPEN — narrower reopen "
+            "conditions re-record in the #244 design record (D-1)",
             3,
             None,
         ),

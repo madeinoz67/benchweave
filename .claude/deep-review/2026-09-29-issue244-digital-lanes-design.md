@@ -697,3 +697,42 @@ lane.
    `trigger.time_relative_s`, and the decode action's `event_log` shape
    (start/end/payload per event with `channel_ids`) — so the lanes contract
    invents nothing. (design-record §2 is the citation home)
+
+---
+
+## 13. Build fold (2026-09-29, slice 1) — the ≥2-member floor and the per-kind caps
+
+Three build-time findings from the RED runs; the record's text above stays
+frozen, THIS note governs the landed contract (#243's §11a precedent):
+
+1. **The ≥2-member floor is a SCHEMA rule, not a semantic one.** §1.2's
+   semantic bullet and A1.1's "1-member group (`invalid_plot`)" contradict
+   §1.1's grammar (`member_ids` `minItems: 2`): `_checked_document` fails
+   closed on schema findings, so the schema refuses a one-member group with
+   `invalid_document` BEFORE `_plot_findings` runs — §1.2's semantic `<2`
+   check would be unreachable dead code. Resolution: the schema owns item
+   counts (the channel_hints house rule: "shape, enum, booleans and item
+   counts are the schema's job in the corpus"; §1.2's own taxonomy puts
+   per-kind shape rules on the `invalid_document` side), the semantic `<2`
+   check is NOT implemented, and A1.1's vector names `invalid_document`.
+   Prose defers to the machine source — the schema keeps `minItems: 2`.
+   The cross-group double-claim rule stays semantic (`invalid_plot`).
+2. **Per-kind caps cannot ride a base cap.** §1.1's "per-kind constraints
+   via allOf/if-then" requires the base `y`/`channel_hints` (and the
+   preview wire's `channels`) to DROP their `maxItems: 16` — JSON Schema
+   intersects a branch cap with a base cap instead of relaxing it, so the
+   first draft's shape would have refused every 17+-lane plot. The caps
+   live ONLY in the kind branches (64 for `digital_lanes`, 16 for the
+   analog kinds); the A1.1 64-lane boundary vector caught this.
+3. **An injected `not: {required: [variables]}` in the 0.3.0 copy's
+   dataset-target clause** (absent from 0.2.0's frozen def) made every
+   dataset target unsatisfiable — every vector refused at the catalogue
+   before the plot walk. Removed; the 0.3.0 dataset clause is again
+   byte-equivalent to 0.2.0's.
+
+Slice-1 landing note: the plugin-ui-preview 0.2.0 bump (wire grammar +
+range motion + migration note) rides THIS slice per the governor ruling
+("the preview range … changes your S1 diff"; the S1 PR body carries both
+SM-5 rows), superseding §3's slice-2 line "the wire grammar (§1.4)" — a
+released version dir cannot be edited after landing, so the wire grammar
+ships complete with its bump; slice 2 renders it.

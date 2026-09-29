@@ -29,12 +29,12 @@ from benchweave_sdk.standards_sync import SyncReport, sync  # noqa: E402
 ROOT = Path(__file__).resolve().parents[2]
 
 STANDARD = "plugin-ui"
-OLD_VERSION = "0.2.0"
-NEW_VERSION = "0.3.0"
+OLD_VERSION = "0.3.0"
+NEW_VERSION = "0.4.0"
 # The scenario victim: normative and standards-pinned (docs/ holds no corpus).
-NORMATIVE = "standards/plugin-ui/0.2.0/ui-manifest.schema.json"
-PIN_KEY = "plugin-ui/0.2.0/ui-manifest.schema.json"
-DOC_README = "standards/plugin-ui/0.2.0/README.md"
+NORMATIVE = "standards/plugin-ui/0.3.0/ui-manifest.schema.json"
+PIN_KEY = "plugin-ui/0.3.0/ui-manifest.schema.json"
+DOC_README = "standards/plugin-ui/0.3.0/README.md"
 PARITY = "src/benchweave/presentation/contracts.py"
 ALL_IDS = {"otdp", "registry", "execution", "interface", "plugin-ui", "plugin-ui-preview"}
 
@@ -205,7 +205,7 @@ def test_spec10_versioned_breaking_change_updates_the_lock(tmp_path: Path) -> No
     repo = _repo_copy(tmp_path)
     bundle, sdk = _first_cycle(tmp_path, repo)
     # Copy-then-edit-the-copy: a real breaking bump never touches the
-    # retained version's bytes (#203 slice 1 — the carried set keeps 0.2.0
+    # retained version's bytes (#203 slice 1 — the carried set keeps 0.3.0
     # beside the new version, byte-frozen).
     _bump_version(repo)
     _break_normative(repo)
@@ -214,11 +214,11 @@ def test_spec10_versioned_breaking_change_updates_the_lock(tmp_path: Path) -> No
     # SDK root's version moves with it or the sync refuses
     # sdk_bump_class_invalid — one SDK version never covers two served sets.
     pyproject = sdk / "pyproject.toml"
-    pyproject.write_text(pyproject.read_text().replace('version = "0.3.1"', 'version = "0.4.0"'))
+    pyproject.write_text(pyproject.read_text().replace('version = "0.4.0"', 'version = "0.5.0"'))
     # The mirror follows the SDK version (CON-12's authority chain).
     manifest_path = repo / "standards/standards-manifest.json"
     manifest_document = json.loads(manifest_path.read_bytes())
-    manifest_document["sdk_compatibility"]["sdk"] = "0.4.0"
+    manifest_document["sdk_compatibility"]["sdk"] = "0.5.0"
     manifest_path.write_text(json.dumps(manifest_document, indent=2) + "\n")
     export_bundle(repo, bundle)
     report = sync(bundle, sdk)

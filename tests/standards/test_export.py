@@ -55,9 +55,9 @@ def test_bundle_carries_one_entry_per_carried_version(tmp_path: Path) -> None:
         ("execution", "0.1.0"),
         ("execution", "0.2.0"),
         ("interface", "0.1.0"),
-        ("plugin-ui", "0.2.0"),
-        ("plugin-ui-preview", "0.1.0"),
+        ("plugin-ui", "0.3.0"),
         ("plugin-ui-preview", "0.1.1"),
+        ("plugin-ui-preview", "0.2.0"),
     }
     assert served[("otdp", "0.2.1")]["yanked"] is True
     assert served[("otdp", "0.2.0")]["yanked"] is False
@@ -418,8 +418,8 @@ def test_two_carried_plugin_ui_versions_dedupe_the_parity_code_row(
     tmp_path: Path,
 ) -> None:
     """Fold row 24 (#215): the same-source dedupe branch under the narrow
-    plugin-ui range. A synthetic second in-range carried version (0.2.1,
-    bytes copied from 0.2.0) makes BOTH carried rows list the parity code
+    plugin-ui range. A synthetic second in-range carried version (0.3.1,
+    bytes copied from 0.3.0) makes BOTH carried rows list the parity code
     row (``src/benchweave/presentation/contracts.py`` → one bundle path) —
     a dedupe, not a collision: the export succeeds, each row's file set
     stays complete across the active transition, and the bundle carries
@@ -435,11 +435,11 @@ def test_two_carried_plugin_ui_versions_dedupe_the_parity_code_row(
     )
     corpus = json.loads((root / "standards/corpus-manifest.json").read_bytes())
     template_rows = [
-        row for row in corpus["files"] if row["path"].startswith("plugin-ui/0.2.0/")
+        row for row in corpus["files"] if row["path"].startswith("plugin-ui/0.3.0/")
     ]
-    assert template_rows, "the seed corpus carries plugin-ui/0.2.0 rows"
+    assert template_rows, "the seed corpus carries plugin-ui/0.3.0 rows"
     for row in template_rows:
-        relative = row["path"].replace("plugin-ui/0.2.0/", "plugin-ui/0.2.1/")
+        relative = row["path"].replace("plugin-ui/0.3.0/", "plugin-ui/0.3.1/")
         source = root / "standards" / row["path"]
         target = root / "standards" / relative
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -460,9 +460,9 @@ def test_two_carried_plugin_ui_versions_dedupe_the_parity_code_row(
     plugin_rows = {
         row["version"]: row for row in document["standards"] if row["id"] == "plugin-ui"
     }
-    assert set(plugin_rows) == {"0.2.0", "0.2.1"}  # both carried versions ride
+    assert set(plugin_rows) == {"0.3.0", "0.3.1"}  # both carried versions ride
     for version, row in plugin_rows.items():
-        assert row["active"] is (version == "0.2.0")
+        assert row["active"] is (version == "0.3.0")
         paths = {file["path"] for file in row["files"]}
         assert "plugin-ui/contracts.py" in paths, f"the {version} row's set is complete"
     code = out / "files/plugin-ui/contracts.py"

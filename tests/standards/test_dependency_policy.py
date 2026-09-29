@@ -48,8 +48,8 @@ def _edit_policy(root: Path, mutate: Callable[[dict[str, Any]], dict[str, Any]])
 def test_policy_block_loads_and_derives_the_served_set() -> None:
     """Design §3.2's seed served set, per-id: otdp {0.2.0, 0.2.2} (0.2.1
     yanked-in-interval), registry {0.1.0, 0.1.1}, execution {0.1.0, 0.2.0},
-    interface {0.1.0}, plugin-ui {0.2.0} (F1 narrow range),
-    plugin-ui-preview {0.1.0, 0.1.1}. The design record says "9 served
+    interface {0.1.0}, plugin-ui {0.3.0} (F1 narrow range),
+    plugin-ui-preview {0.1.1, 0.2.0}. The design record says "9 served
     versions" but its own enumeration sums to 10 — the per-id sets are the
     load-bearing rules (each traced to retained directories and declared
     ranges); the total is their consequence. Recorded as a design arithmetic
@@ -65,8 +65,8 @@ def test_policy_block_loads_and_derives_the_served_set() -> None:
         "registry": ("0.1.0", "0.1.1"),
         "execution": ("0.1.0", "0.2.0"),
         "interface": ("0.1.0",),
-        "plugin-ui": ("0.2.0",),
-        "plugin-ui-preview": ("0.1.0", "0.1.1"),
+        "plugin-ui": ("0.3.0",),
+        "plugin-ui-preview": ("0.1.1", "0.2.0"),
     }
     assert sum(len(versions) for versions in served.values()) == 10
 
