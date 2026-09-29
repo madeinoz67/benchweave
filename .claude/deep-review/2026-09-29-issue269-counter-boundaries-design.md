@@ -24,7 +24,10 @@
    (written by the fold) names only `adc_conformance_control.py`'s `YANKED_PIN`/`MOVE_TO`
    because obligation 20 names only those as live OTDP literals. Measured with the
    counter's own committed definition over `scripts/**/*.py` (minus the counter itself) at
-   `8a2cca1`: **23 sites across 8 files** — the two adc pins, one Pattern-A active-corpus
+   `8a2cca1`: **23 sites across 8 files** [FOLD-WAVE CORRECTION (row 8): the file count is 9, not 8 —
+   this sentence's own enumeration is 9 files (the two adc pins, assemble_docs_site, and
+   seven authored files); the builder's measurement at 779bfa1 confirms 23 sites / 9 files
+   / 16 scanned. The per-file table in §2.2 was and is exact.] — the two adc pins, one Pattern-A active-corpus
    path in `assemble_docs_site.py:527`, and 20 authored fixture/self-test values
    (`architecture/check_closure.py` ×4, `check_devices.py` ×1, `check_interface.py` ×1,
    `registry/build_fixtures.py` ×4, `registry/publish_dev.py` ×1,
@@ -44,7 +47,16 @@
 5. **MOVE_TO is structurally the manifest's active entry.** The warning's move-to is
    `_move_to` = "highest served (¬yanked) version ≥ the pin" (`served.py:144-160`), and a
    yanked pin is by design in-interval and ≤ active (`manifest.py:56-67`, YankRecord's own
-   docstring) — so move-to == the active version whenever the policy shape holds. This
+   docstring) — so move-to == the active version whenever the policy shape holds.
+   [FOLD-WAVE CORRECTION (row 4, adv-lane1): all three citations in that sentence are
+   wrong. The actual rule is `dependency.py::_move_to` (lines 386-395): the move-to is
+   `max(served, key=version_tuple)` over the SERVED set — version-tuple-ordered, with NO
+   "≥ the pin" filter — falling back to `row.lower` (the range's lower bound) when nothing
+   is served; the fallback was undisclosed. The equivalence still holds in the current
+   policy shape (the active entry is the highest served version), but it is a shape-
+   contingent fact, not a citation-backed theorem — which is why the derivation now
+   REFUSES the yanked == active shape outright (`adc_yank_is_active:`) instead of relying
+   on the equivalence.] This
    lets the adc control DERIVE both pins as direct policy reads (the unique yanked entry;
    the active entry) with no re-implementation of the served-set rule. The theorem's
    failure mode is a loud control failure (§2.1), which is the redesign trigger, not a
@@ -229,7 +241,10 @@ by its rebuild flow; registering with value pins makes drift loud today at minim
   `SCRIPTS_EXCLUDED_FILES = ("scripts/standards/count_version_literals.py",)` with the
   reason beside it: the register's `expected_values` tuples ARE the gate's own data and
   are literals by construction (the same class as the docs snapshot JSON, which no AST
-  scope scans). The twin's file is likewise self-exempted in the SDK repo. Line-scoped
+  scope scans). The twin's file is likewise self-exempted in the SDK repo. [FOLD-WAVE CORRECTION (row 8):
+  this sentence is FALSE as written — the twin has no scripts scope (deferral D-4), so it
+  self-exempts nothing; the twin's own file is outside its single src/ scope by the
+  denominator boundary, not by an exclusion constant.] Line-scoped
   exemption was rejected — new machinery for a file whose every edit is already an
   editorial re-baseline by the docstring's own rule.
 - Census: **16 files scanned** (17 `.py` minus the self-exempted counter), pinned exactly

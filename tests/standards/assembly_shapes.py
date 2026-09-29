@@ -34,6 +34,69 @@ S11_FORMAT = "{}/{}.{}.{}".format("execution", 0, 2, 0)
 S12_PLAIN_CONSTANT = "0.2.0"
 '''
 
+
+def _chain(fragments: tuple[str, ...]) -> str:
+    """A left-nested concat chain over the given literal fragments —
+    len(fragments) - 1 BinOps deep."""
+    text = repr(fragments[0])
+    for fragment in fragments[1:]:
+        text = f"({text} + {fragment!r})"
+    return text
+
+
+# 24 chained BinOps folding to exactly "0.2.0" (caught, at the measured
+# depth boundary); 25 chained BinOps whose OUTERMOST node would complete
+# "0.2.0" — bounded out, and no inner node folds past "0.2." so no site
+# exists anywhere (documented miss). 25 fragments = 24 ops; 26 fragments
+# = 25 ops (the completing "0" rides the OUTERMOST op; the constants sit
+# at fold depth 25 > the cap).
+_DEPTH24: tuple[str, ...] = ("0", ".", "2", ".", *(("",) * 20), "0")
+_DEPTH25: tuple[str, ...] = ("0", ".", "2", ".", *(("",) * 21), "0")
+
+# The DOCUMENTED-MISS shapes (fold wave row 3): one arm per named miss
+# class in the counter docstring's residual list. Every shape here MUST
+# pass the gate — a documented miss, never a silent catch-side change —
+# and every FRAGMENT is chosen so the textual walk cannot catch it either
+# (no fragment is a complete version, no sub-expression folds to one), so
+# the arm truly isolates its miss class.
+MISS_MODULE = (
+    '"""The documented-miss shapes (issue #269 fold wave row 3)."""\n'
+    "\n"
+    "import os\n"
+    "\n"
+    'M1_FORMAT_SPEC = "{:.1f}".format(2.0) + "0"\n'
+    'M2_KWARG_FORMAT = "{v}.{w}".format(v="0", w="2.0")\n'
+    'M3_PERCENT_DICT = "%(v)s.%(w)s" % {"v": "0", "w": "2.0"}\n'
+    'M4_DECODE_WITH_ARGS = b"execution/0.2.0".decode("utf-8")\n'
+    'M5_CONDITIONAL_ARM = ("0" if True else "x") + ".2.0"\n'
+    'M6_STARRED_FORMAT = "{}".format(*["execution/0.", "2.0"])\n'
+    'M7_OS_PATH_JOIN = os.path.join("execution/", "0", ".2", ".0")\n'
+)
+
+# The BOUNDARY-TABLE shapes (fold wave row 5), at the MEASURED boundary:
+# a 24-BinOp chain folds (caught); a 25-chain is bounded out (documented
+# miss — indistinguishable from dynamic, same disclosure class); a
+# 4096-char folded string folds (caught); 4097 is bounded out. The
+# bounded-out shapes carry no fragment or sub-fold that matches (B3's
+# inner nodes stop at "0.2."; B4's tail is prose), so the miss file is
+# truly invisible.
+BOUNDARY_CAUGHT_MODULE = (
+    '"""The fold-cap boundary, caught side (issue #269 fold wave row 5)."""\n'
+    "\n"
+    f"B1_DEPTH_24_FOLDS = {_chain(_DEPTH24)}\n"
+    # 4096 folded chars matching Pattern A: the pad rides BEFORE the id
+    # and is non-word ("."), so the \b before "execution" survives.
+    'B2_LENGTH_4096_FOLDS = ("." * 4081) + "execution/" + "0.2.0"\n'
+)
+
+BOUNDARY_MISS_MODULE = (
+    '"""The fold-cap boundary, bounded-out side (issue #269 fold wave row 5)."""\n'
+    "\n"
+    f"B3_DEPTH_25_BOUNDED_OUT = {_chain(_DEPTH25)}\n"
+    # 4097 folded chars — bounded out; no fragment or sub-fold matches.
+    'B4_LENGTH_4097_BOUNDED_OUT = ("." * 4082) + "execution/" + "tail"\n'
+)
+
 SHAPE_NAMES = (
     "S1_CONCAT",
     "S2_CONCAT_CHAIN",
@@ -49,12 +112,27 @@ SHAPE_NAMES = (
     "S12_PLAIN_CONSTANT",
 )
 
+MISS_SHAPE_NAMES = (
+    "M1_FORMAT_SPEC",
+    "M2_KWARG_FORMAT",
+    "M3_PERCENT_DICT",
+    "M4_DECODE_WITH_ARGS",
+    "M5_CONDITIONAL_ARM",
+    "M6_STARRED_FORMAT",
+    "M7_OS_PATH_JOIN",
+)
 
-def shape_lines(module_text: str) -> dict[str, int]:
+BOUNDARY_CAUGHT_NAMES = ("B1_DEPTH_24_FOLDS", "B2_LENGTH_4096_FOLDS")
+BOUNDARY_MISS_NAMES = ("B3_DEPTH_25_BOUNDED_OUT", "B4_LENGTH_4097_BOUNDED_OUT")
+
+
+def shape_lines(
+    module_text: str, names: tuple[str, ...] = SHAPE_NAMES
+) -> dict[str, int]:
     """The line number of each shape's assignment in the written module."""
     lines: dict[str, int] = {}
     for number, line in enumerate(module_text.splitlines(), start=1):
         name = line.split(" = ", 1)[0] if " = " in line else None
-        if name in SHAPE_NAMES:
+        if name in names:
             lines[name] = number
     return lines

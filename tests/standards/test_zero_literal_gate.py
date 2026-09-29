@@ -17,7 +17,17 @@ import sys
 from pathlib import Path
 
 import pytest
-from assembly_shapes import BATTERY_MODULE, SHAPE_NAMES, shape_lines
+from assembly_shapes import (
+    BATTERY_MODULE,
+    BOUNDARY_CAUGHT_MODULE,
+    BOUNDARY_CAUGHT_NAMES,
+    BOUNDARY_MISS_MODULE,
+    BOUNDARY_MISS_NAMES,
+    MISS_MODULE,
+    MISS_SHAPE_NAMES,
+    SHAPE_NAMES,
+    shape_lines,
+)
 
 from benchweave.standards.manifest import (
     StandardsError,
@@ -235,11 +245,16 @@ class TestZeroModeOverRealTrees:
     def test_census_pins_the_class_set_per_scope(self) -> None:
         """Design risk 4: silent scope shrinkage fails. plugins, docs and
         scripts carry exclusion constants (scripts also self-exempts the
-        counter), so their census is pinned EXACTLY; the gateway/sdk scopes
-        have no exclusions (their glob change would be a review-visible
-        script edit and the plant arms catch a broken walk), so they pin a
+        counter), so their census is pinned EXACTLY; the sdk census is
+        pinned too (fold wave row 1's observability half — the
+        marker-truth hole was half an unobserved census). The gateway
+        scope has no exclusions (its glob change would be a review-visible
+        script edit and the plant arms catch a broken walk), so it pins a
         floor only."""
-        result = _counter_run("--scope", "gateway,plugins,docs,scripts", "--json")
+        scopes = "gateway,plugins,docs,scripts"
+        if (ROOT / "packages/sdk/src/benchweave_sdk").is_dir():
+            scopes += ",sdk"
+        result = _counter_run("--scope", scopes, "--json")
         assert result.returncode == 0
         payload = json.loads(result.stdout)
         assert payload["scopes"]["plugins"]["scanned"] == 15, (
@@ -257,6 +272,12 @@ class TestZeroModeOverRealTrees:
             "counter) — update this pin in the same commit as the tree "
             "change (the ratchet discipline)"
         )
+        if "sdk" in payload["scopes"]:
+            assert payload["scopes"]["sdk"]["scanned"] == 18, (
+                "the sdk class set moved — update this pin in the same "
+                "commit as the submodule tree change (the ratchet "
+                "discipline)"
+            )
         assert payload["scopes"]["gateway"]["scanned"] >= 93
 
     def test_standard_id_set_is_pinned_to_the_manifest(self) -> None:
@@ -718,6 +739,77 @@ class TestScopeMembershipRules:
         scratch = self._scratch_plugins_repo(tmp_path)
         env_dir = scratch / "plugins/acme_instruments/venv"
         (env_dir / "lib").mkdir(parents=True)
+        (env_dir / "bin").mkdir()
+        (env_dir / "pyvenv.cfg").write_text("home = /usr/bin\n", encoding="utf-8")
+        (env_dir / "lib/mod.py").write_text('_PLANT = "9.9.9"\n', encoding="utf-8")
+        result = _scratch_run(scratch, "--scope", "plugins")
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "9.9.9" not in result.stdout
+
+
+class TestEnvironmentMarkerTruth:
+    """Fold wave row 1 (critic Q3 + adv-lane2 M1, BREAK-class): the marker
+    alone is gameable — a PLANTED pyvenv.cfg (even a directory so named)
+    silently exempts a tree from every scope. Truth re-check: an
+    environment directory carries the marker AND environment layout
+    (``bin/`` or ``lib/python*/``); a marker without layout is code and is
+    SCANNED. RED at the fold-wave base: both plant shapes exited 0."""
+
+    def _scratch_with(self, tmp_path: Path, marker: str) -> Path:
+        import shutil
+
+        scratch = tmp_path / f"scratch-repo-{marker}"
+        (scratch / "scripts/standards").mkdir(parents=True)
+        (scratch / "standards").mkdir()
+        shutil.copy(
+            ROOT / "scripts/standards/count_version_literals.py",
+            scratch / "scripts/standards/count_version_literals.py",
+        )
+        shutil.copy(
+            ROOT / "standards/standards-manifest.json",
+            scratch / "standards/standards-manifest.json",
+        )
+        shutil.copytree(
+            ROOT / "plugins/fnirsi/dps150/src",
+            scratch / "plugins/fnirsi/dps150/src",
+        )
+        return scratch
+
+    def test_a_marker_without_environment_layout_is_scanned(self, tmp_path: Path) -> None:
+        """A planted bare pyvenv.cfg file beside new code does NOT exempt
+        it — the tree scans and the literal refuses. RED at base: the
+        marker alone exempted the tree (exit 0)."""
+        scratch = self._scratch_with(tmp_path, "bare")
+        planted = scratch / "plugins/acme/venvish/mod.py"
+        planted.parent.mkdir(parents=True)
+        planted.write_text('_PLANT = "9.9.9"\n', encoding="utf-8")
+        (scratch / "plugins/acme/venvish/pyvenv.cfg").write_text("", encoding="utf-8")
+        result = _scratch_run(scratch, "--scope", "plugins")
+        assert result.returncode == 1, result.stdout + result.stderr
+        assert "unregistered literal: plugins/acme/venvish/mod.py" in result.stdout
+
+    def test_a_directory_named_pyvenv_cfg_is_not_a_marker(self, tmp_path: Path) -> None:
+        """A DIRECTORY named pyvenv.cfg (with bin/ layout beside it) is not
+        an environment — the tree scans. RED at base: .exists() is True for
+        a directory, so the plant exempted the tree (exit 0)."""
+        scratch = self._scratch_with(tmp_path, "dir")
+        planted = scratch / "plugins/acme/venvish/mod.py"
+        planted.parent.mkdir(parents=True)
+        planted.write_text('_PLANT = "9.9.9"\n', encoding="utf-8")
+        (scratch / "plugins/acme/venvish/pyvenv.cfg").mkdir()
+        (scratch / "plugins/acme/venvish/bin").mkdir()
+        result = _scratch_run(scratch, "--scope", "plugins")
+        assert result.returncode == 1, result.stdout + result.stderr
+        assert "unregistered literal: plugins/acme/venvish/mod.py" in result.stdout
+
+    def test_a_real_environment_is_still_excluded(self, tmp_path: Path) -> None:
+        """No-regression: marker FILE + bin/ layout (a real venv shape) is
+        excluded, census unchanged. Held at base under the marker-only
+        rule; holds here for marker-AND-layout."""
+        scratch = self._scratch_with(tmp_path, "real")
+        env_dir = scratch / "plugins/acme/venvish"
+        (env_dir / "lib").mkdir(parents=True)
+        (env_dir / "bin").mkdir()
         (env_dir / "pyvenv.cfg").write_text("home = /usr/bin\n", encoding="utf-8")
         (env_dir / "lib/mod.py").write_text('_PLANT = "9.9.9"\n', encoding="utf-8")
         result = _scratch_run(scratch, "--scope", "plugins")
@@ -777,6 +869,37 @@ class TestSharedRegionParity:
         with pytest.raises(AssertionError):
             assert gateway == self._region(scratch)
 
+    def test_the_shared_region_defines_each_name_exactly_once(self) -> None:
+        """Fold wave row 2 (three lanes corroborated): the fold-block
+        header/constants/_Unfoldable were duplicated INSIDE the pinned
+        region on both sides — identical duplication, so parity stayed
+        green while the file defined the same names twice. Each shared
+        name must appear exactly once in the region (RED at base: the
+        header trio counted 2)."""
+        gateway = self._region(ROOT / "scripts/standards/count_version_literals.py")
+        for name in (
+            "FOLD_MAX_DEPTH =",  # definitions, not usages
+            "FOLD_MAX_LENGTH =",
+            "class _Unfoldable",
+            "def _shadowed_builtin_names",
+            "def _folded_string",
+            "def _stringify",
+            "def _fold_expression",
+            "def _fold_sites",
+            "def _docstring_ids",
+            "def _is_environment_dir",
+            "def _outside_environment",
+            "ENVIRONMENT_MARKER =",
+            "ENVIRONMENT_NAMED_COMPONENTS =",
+            "PATTERN_A =",
+            "PATTERN_BARE =",
+            "STANDARD_IDS =",
+        ):
+            assert gateway.count(name) == 1, (
+                f"the shared region defines {name!r} "
+                f"{gateway.count(name)} times — dedupe in lockstep with the twin"
+            )
+
 
 class TestScriptsScope:
     """H3 (issue #269 §7): the scripts ledger — three derivations, twenty
@@ -822,6 +945,15 @@ class TestScriptsScope:
             manifest["standards"] = [
                 s for s in manifest["standards"] if s.get("id") != "otdp"
             ]
+        elif mutate == "yanked-is-active":
+            active = next(
+                s["version"] for s in manifest["standards"] if s.get("id") == "otdp"
+            )
+            manifest["dependency_policy"]["standards"]["otdp"]["yanked"] = {
+                active: {"reason": "fold-wave probe", "since": "2026-09-29"}
+            }
+        # unreadable-* variants leave the manifest intact — the arm
+        # corrupts it after the copy (directory / invalid JSON).
         (scratch / "standards/standards-manifest.json").write_text(json.dumps(manifest))
         return scratch
 
@@ -882,6 +1014,82 @@ class TestScriptsScope:
         assert result.returncode != 0, result.stdout + result.stderr
         assert "adc_yank_not_unique:" in result.stderr
 
+    def test_a_yanked_entry_equal_to_active_refuses_the_control(
+        self, tmp_path: Path
+    ) -> None:
+        """Fold wave row 4 (adv-lane1 F1): under yanked == active the
+        derivation returns (active, active) and the substring checks pass
+        against ANY output naming the active version — the anti-gaming arm
+        goes vacuous. The derivation refuses the shape instead. RED at
+        base: the same scratch policy let the control proceed (exit 0)."""
+        scratch = self._scratch_control_repo(tmp_path, "yanked-is-active")
+        result = subprocess.run(
+            [sys.executable, str(scratch / "scripts/adc_conformance_control.py"), "--help"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert result.returncode != 0, result.stdout + result.stderr
+        assert "adc_yank_is_active:" in result.stderr
+
+    def test_a_malformed_authority_refuses_with_the_adc_prefix(
+        self, tmp_path: Path
+    ) -> None:
+        """Fold wave row 8 tail: a manifest that cannot be read or parsed
+        (IsADirectoryError / JSONDecodeError / FileNotFoundError) exits
+        with an ``adc_policy_unreadable:`` prefix, never a raw traceback.
+        RED at base: the raw exception escaped."""
+        for mutate, corrupt in (
+            ("dir", "mkdir"),
+            ("json", "text"),
+        ):
+            scratch = self._scratch_control_repo(tmp_path, f"unreadable-{mutate}")
+            manifest = scratch / "standards/standards-manifest.json"
+            if corrupt == "mkdir":
+                manifest.unlink()
+                manifest.mkdir()
+            else:
+                manifest.write_text("{not json", encoding="utf-8")
+            result = subprocess.run(
+                [sys.executable, str(scratch / "scripts/adc_conformance_control.py"), "--help"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            assert result.returncode != 0, result.stdout + result.stderr
+            assert "adc_policy_unreadable:" in result.stderr, (
+                f"mutate={mutate}: {result.stderr[-200:]}"
+            )
+
+    def test_an_assembled_plant_in_a_registered_scripts_file_counts_both_sites(
+        self, tmp_path: Path
+    ) -> None:
+        """Fold wave row 8 tail: the register arithmetic pins the +2 — an
+        S6-class shape in a registered file contributes the folded ASM site
+        AND the inner textual BARE site, and the expectation names both
+        (found 4 = 2 registered + 2 planted)."""
+        scratch = self._scratch_scripts_repo(tmp_path)
+        target = scratch / "scripts/sdk_smoke.py"
+        plant_line = len(target.read_text(encoding="utf-8").splitlines()) + 1
+        target.write_bytes(
+            target.read_bytes() + b'_PLANT_S6 = "execution/%s" % "9.9.9"\n'
+        )
+        result = _scratch_run(scratch, "--scope", "scripts", "--json")
+        assert result.returncode == 1, result.stdout + result.stderr
+        payload = json.loads(result.stdout)
+        report = payload["scopes"]["scripts"]
+        assert (
+            "register expectation failed: scripts/sdk_smoke.py expects 2 literals, found 4"
+            in "\n".join(report["violations"])
+        )
+        plant_rows = [
+            row
+            for row in report["sites"]
+            if row["file"] == "scripts/sdk_smoke.py" and row["line"] == plant_line
+        ]
+        patterns = sorted(row["pattern"] for row in plant_rows)
+        assert "ASM-A" in patterns and "BARE" in patterns, plant_rows
+
     def test_an_absent_otdp_entry_refuses_the_control(self, tmp_path: Path) -> None:
         """A scratch authority without the otdp entry ⇒
         ``adc_policy_absent:`` non-zero exit."""
@@ -931,6 +1139,32 @@ class TestAssemblyShapesBattery:
     KILL: any shape passing under the folded counter.
     """
 
+    def _scratch_minimal_repo(self, tmp_path: Path, name: str) -> Path:
+        """Counter + manifest + an empty gateway tree — for scratch arms
+        that plant their own files (the battery arm's own scratch carries
+        the (refused) twelve-shape file and would fail every run)."""
+        import shutil
+
+        scratch = tmp_path / f"scratch-repo-{name}"
+        (scratch / "scripts/standards").mkdir(parents=True)
+        (scratch / "standards").mkdir()
+        shutil.copy(
+            ROOT / "scripts/standards/count_version_literals.py",
+            scratch / "scripts/standards/count_version_literals.py",
+        )
+        shutil.copy(
+            ROOT / "standards/standards-manifest.json",
+            scratch / "standards/standards-manifest.json",
+        )
+        (scratch / "src/benchweave/presentation").mkdir(parents=True)
+        # The registered gateway row must hold in the scratch too — the
+        # arms below isolate the assembly boundary, not the register.
+        shutil.copy(
+            ROOT / "src/benchweave/presentation/contracts.py",
+            scratch / "src/benchweave/presentation/contracts.py",
+        )
+        return scratch
+
     def _scratch_battery_repo(self, tmp_path: Path) -> Path:
         import shutil
 
@@ -966,6 +1200,90 @@ class TestAssemblyShapesBattery:
             f"{len(missing)} of {len(SHAPE_NAMES)} battery shapes pass the "
             f"gate (uncaught): {missing}"
         )
+
+    def test_every_documented_miss_shape_passes_the_gate(self, tmp_path: Path) -> None:
+        """Fold wave row 3, the miss side: each M-shape exercises a named
+        miss class and MUST pass — no fragment matches textually and no
+        sub-expression folds to a version, so a refusal here means the
+        residual list and the mechanism disagree."""
+        scratch = self._scratch_minimal_repo(tmp_path, "miss")
+        target = scratch / "src/benchweave/miss_shapes.py"
+        target.write_text(MISS_MODULE, encoding="utf-8")
+        result = _scratch_run(scratch, "--scope", "gateway", "--json")
+        assert result.returncode == 0, result.stdout + result.stderr
+        sites = json.loads(result.stdout)["scopes"]["gateway"]["sites"]
+        offenders = [
+            row for row in sites if row["file"].endswith("miss_shapes.py")
+        ]
+        assert not offenders, (
+            f"{len(offenders)} documented-miss shapes were REFUSED (the "
+            f"residual list is stale or the allowlist narrowed): {offenders}"
+        )
+        assert (
+            len(shape_lines(MISS_MODULE, MISS_SHAPE_NAMES)) == len(MISS_SHAPE_NAMES)
+        )
+
+    def test_the_boundary_table_pins_both_caps(self, tmp_path: Path) -> None:
+        """Fold wave row 5, at the MEASURED boundary: 24 chained BinOps
+        fold (caught), 25 are bounded out (documented miss — no site);
+        a 4096-char fold is caught, 4097 bounded out. The caught file
+        refuses with an ASM row at each shape's line; the miss file is
+        invisible."""
+        scratch = self._scratch_minimal_repo(tmp_path, "boundary")
+        (scratch / "src/benchweave/boundary_caught.py").write_text(
+            BOUNDARY_CAUGHT_MODULE, encoding="utf-8"
+        )
+        (scratch / "src/benchweave/boundary_miss.py").write_text(
+            BOUNDARY_MISS_MODULE, encoding="utf-8"
+        )
+        result = _scratch_run(scratch, "--scope", "gateway", "--json")
+        assert result.returncode == 1, result.stdout + result.stderr
+        sites = json.loads(result.stdout)["scopes"]["gateway"]["sites"]
+        patterns_by_file_line: dict[str, dict[int, set[str]]] = {}
+        for row in sites:
+            file_map = patterns_by_file_line.setdefault(row["file"], {})
+            file_map.setdefault(row["line"], set()).add(row["pattern"])
+        caught_lines = shape_lines(BOUNDARY_CAUGHT_MODULE, BOUNDARY_CAUGHT_NAMES)
+        for name in BOUNDARY_CAUGHT_NAMES:
+            line = caught_lines[name]
+            file_sites = patterns_by_file_line.get("src/benchweave/boundary_caught.py", {})
+            assert line in file_sites, f"{name} (line {line}) was not caught"
+            assert any(
+                pattern.startswith("ASM-") for pattern in file_sites[line]
+            ), f"{name} caught only textually"
+        miss_lines = shape_lines(BOUNDARY_MISS_MODULE, BOUNDARY_MISS_NAMES)
+        for name in BOUNDARY_MISS_NAMES:
+            line = miss_lines[name]
+            file_sites = patterns_by_file_line.get("src/benchweave/boundary_miss.py", {})
+            assert line not in file_sites, (
+                f"{name} (line {line}) produced a site — the bounded-out "
+                "disclosure is stale"
+            )
+
+    def test_the_counter_docstring_names_every_documented_miss_class(self) -> None:
+        """Fold wave rows 3+5, the honesty layer: the residual list in the
+        counter's own docstring must name every miss class the mechanism
+        actually has, so the prose is regenerable from the allowlist. RED
+        at the fold-wave base: the classes were unnamed (the old sentence
+        claimed only 'dynamic' and os.path.join)."""
+        text = (ROOT / "scripts/standards/count_version_literals.py").read_text(
+            encoding="utf-8"
+        )
+        for token in (
+            "format-spec",  # M1
+            "kwargs",  # M2
+            "%-with-dict",  # M3
+            'decode with argument',  # M4
+            "conditional-expression",  # M5
+            "starred",  # M6
+            "os.path.join",  # M7
+            "non-literal",  # the dynamic class
+            "depth > 24",  # the depth cap, as a disclosure
+            "length > 4096",  # the length cap, as a disclosure
+            "indistinguishable from dynamic",  # the bounded-out disclosure
+            "module-level",  # the shadow-prepass scope residual
+        ):
+            assert token in text, f"the residual list does not name: {token!r}"
 
 
 class TestRegisteredDisposition:
