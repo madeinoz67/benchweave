@@ -69,7 +69,11 @@ from benchweave.registry.authenticity import (
 )
 from benchweave.registry.manifests import Key, check_payload_path
 from benchweave.registry.resolver import ResolvedClosure, ResolvedRelease
-from benchweave.registry.schemas import RegistryRejected, load_lock_document
+from benchweave.registry.schemas import (
+    RegistryRejected,
+    load_lock_document,
+    lock_version,
+)
 
 #: Document budget for the generated package lock (bytes).
 _LOCK_MAX_BYTES = 1_000_000
@@ -339,7 +343,10 @@ def _lock_document(closure: ResolvedClosure, approval: Approval) -> bytes:
     roots = _root_releases(closure)
     packages = sorted(closure.releases, key=_release_key)
     lock = {
-        "lock_version": "0.1.1",
+        # The lock schema's own const (derived, issue #221): the emitter
+        # stamps the version it is validated by — the 88b64f1 sweep-miss
+        # class (the hand sweep missing this very site) cannot recur.
+        "lock_version": lock_version(),
         "created_at": roots[0].status["updated_at"],
         "roots": [_release_row(r) for r in roots],
         "packages": [_release_row(r) for r in packages],

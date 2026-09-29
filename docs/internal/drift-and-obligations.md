@@ -205,6 +205,10 @@ and remain the reviewer's job.
     map coverage, never a literal (CON-13; two-component prose claims remain
     outside the pattern — issue #188 design deferral 5);
     (e) the adapter-identity touch-set — hand-carried, in-arc (obligation 8);
+    the gateway-side members of this set are inside the gated gateway scope
+    and the SDK-side members inside the sdk scope, so a literal ADDED in
+    either fails the zero gate in CI (#221) — the in-arc sweep remains the
+    motion mechanism for the surviving declaration rows;
     (f) `verify_tree`'s frozen-version corpus probe
     (`standards/otdp/0.2.0/otdp-runtime.schema.json`) — copy-never-move keeps
     it permanently resolvable and it claims nothing about "active" (issue
@@ -219,17 +223,23 @@ and remain the reviewer's job.
     (#216 fold F4): same-version digest-value motion in the map requires
     `pin --revision <sha>` — the recorded revision must carry the bytes the
     map digests (the revision-scissors invariant; the map itself is an
-    allowlist — corpus-rowed ∪ prior-mapped, fold F3);
+    allowlist — corpus-rowed ∪ prior-mapped, fold F3). The lock is JSON
+    data outside the counter's executable scopes (#221), but the plugin's
+    DESCRIPTOR declarations are inside the gated plugins scope as
+    registered authored data (the register row names them);
     (h) live authority pointers that name one versioned path as THE
     authority — obligations 1-2 above (`standards/interface/0.1.0/…`) and
     the `drift-guard.mjs` hook advice text that repeats them; motion: those
-    obligations' in-arc sweeps (an interface bump re-points them);
+    obligations' in-arc sweeps (an interface bump re-points them); these
+    are PROSE pointers in this doc, inside the docs scope's excluded
+    internal set (#221) — their motion stays the in-arc sweep;
     (i) the additional frozen corpus probes — invariants CON-5's
     `interface/0.1.0/interface-contract.md` pin, the parity-tests bullet in
     this file's testing-conventions section, and CLAUDE.md's core-principle
     reference to the same contract; motion: copy-never-move keeps them
     resolving, and they claim nothing about "active" — the same class as
-    (f), not swept;
+    (f), not swept; this doc's own probe text sits inside the docs scope's
+    excluded internal set (#221);
     (j) `index.qmd` prose — three-component literals are refused by the
     hygiene pin (see (d)); the residual two-component claim (`Architecture
     v1.5` link text) moves by in-arc sweep (design deferral 5);
@@ -249,11 +259,20 @@ and remain the reviewer's job.
     prose version claims naming OTDP/registry/execution/interface versions;
     motion: in-arc sweep at the bump of ANY standard a line names (the #176
     final fold swept all four to execution 0.2.0 / OTDP 0.2.2 after the
-    promotion left them stale); no mechanical gate covers them today — the
-    hygiene pin's class-11 source set does not include `docs/` (deferral 5's
-    shape).
+    promotion left them stale); mechanically these lines now sit inside the
+    docs scope's committed snapshot ratchet (#221 — a NEW literal refuses;
+    an edit to an EXISTING literal's count refreshes only via the explicit
+    `--refresh-docs-baseline`, whose diff is the review surface — the
+    in-arc sweep is still the motion, the ratchet is its tripwire).
     Closing clause: a new version-bearing literal anywhere is a defect —
     make it a derived surface or register it here with its motion mechanism.
+    Enforcement (issue #221, #203 slice 7): "here" is mechanically the
+    counting script's REGISTER (`scripts/standards/count_version_literals.py`,
+    zero-mode) — each entry carries a reason and an `expected_sites` count,
+    and a new literal inside a registered file fails the gate until the row
+    is edited (a visible editorial diff). A literal registered anywhere
+    OTHER than that register is an off-register defect, review-visible by
+    this clause.
 19. **Skills shared with the SDK repo** (`.claude/skills/increment/`,
     `panel/` — the intersection of the two repos' skill dirs) → a change to
     a shared skill's clauses re-syncs the SDK copy's shared clauses in the
@@ -304,24 +323,64 @@ and remain the reviewer's job.
     `policy_status_conflict:`) — retired means "used and dead", so a retired
     identifier naming no retained directory is the CORRECT seed state, not a
     refusal (the earlier inversion here is corrected by #215 fold row 10).
-20. **The executable-version-literal ratchet** (issue #203 slice 1, A4):
+20. **The executable-version-literal zero gate** (issue #203 slice 1, A4;
+    zero-mode since slice 7, issue #221):
     `scripts/standards/count_version_literals.py` is the gate's counter —
-    AST-based, reproducible, baseline committed in the script (12 sites at
-    merge base `403c061`). It runs in `make check-sdk-standards`; the count
-    cannot rise (a planted literal fails CI — proven in the slice record).
-    Removing a literal lowers the count and may re-baseline DOWN by editorial
-    decision recorded in the script; the register (`DECLARED_FILES`) names the
-    D2 exception (plugin-ui corpus-owned code) that slice 7's zero-mode
-    consumes.
+    AST-based, reproducible. Slice 1 ran it in ratchet mode (a committed
+    12-site ceiling at merge base `403c061`); slice 7 flipped it to
+    ZERO-MODE: per scope (gateway / plugins / sdk / docs-ratchet), the
+    count of literals OUTSIDE the register is 0 and every register row's
+    `expected_sites` holds exactly (authored-data rows pin the literal
+    VALUES too — a semantics-changing substitution fails at unchanged
+    cardinality; the contracts.py twins stay digest-pinned whole). The
+    docs scope is an EXACT-CONTENT bound against the committed snapshot
+    (`scripts/standards/docs-literal-baseline.json`): growth AND shrinkage
+    refuse, the scanned-file census is checked in-gate, and only an
+    explicit `--refresh-docs-baseline` (its diff the review surface) moves
+    the bound. It runs in the device-plugins lane (`--scope plugins,docs`)
+    and through the pytest suite over the real trees (`test_zero_literal_gate`
+    — every scope, plus the sdk scope whenever the submodule is present);
+    `make check-sdk-standards` carries the SDK-SYNC lane's own sdk-scope
+    gate at the submodule pin (scope-explicit since the #221 fold — a bare
+    default-scope invocation refuses `sdk_tree_absent:` in submodule-absent
+    worktrees); the SDK repo carries the twin counter and its own CI step.
+    A planted literal in any registered scope fails CI (the G2 plant
+    branches carry the wire-level proof); a literal inside a REGISTERED
+    file fails the row's expectation until the register is edited — a
+    visible editorial diff.
+    **Denominator boundary (fold row 13):** the gated trees are gateway
+    `src/benchweave/`, the SDK's `src/benchweave_sdk/`, in-tree plugins'
+    `src/`, and `docs/` (ratchet). `scripts/`, `tests/` and `.github/` are
+    OUTSIDE the gates — `scripts/adc_conformance_control.py` carries live
+    OTDP literals today (`YANKED_PIN`/`MOVE_TO`, the A1 anti-gaming arm;
+    motion = the yank policy block, recorded in the slice-1 definition) —
+    named so the denominators cannot silently move; a scripts/ scope
+    extension is the named follow-on (trigger: the next scripts/ addition
+    or the owner's call). The matcher does NOT catch syntactically
+    assembled versions (concat/f-string/bytes/`%`) — review-lane duty
+    until an AST-level row lands.
+
+22. **The counter twins** (issue #221, obligation-19 shape): the gateway's
+    `scripts/standards/count_version_literals.py` and the SDK repo's
+    `scripts/count_version_literals.py` are one definition in two
+    repositories — the gateway copy is the authority, the SDK twin scopes
+    it to `src/benchweave_sdk/` with the SDK register rows. A change to
+    EITHER copy's definition block or register SEMANTICS re-syncs the
+    other in the same work (the register ROWS themselves are per-repo
+    data and move independently); the SDK PR body notes the sync when it
+    rides a definition change. The pairing is the A6 two-sided gate: an
+    SDK-only literal fails the SDK lane immediately and the gateway lane
+    at the next pointer bump.
 
 ## CI map
 
 | Job | What it catches |
 |---|---|
-| `gates` | submodules recursive; fixture keys materialised from secrets; `ruff check .`; config-driven `mypy` (bare — explicit path args drop `packages/sdk/src` from the build); `pytest -q -n auto -m "not timing"` (including the adapter agreement test, which pins the SDK↔gateway protocol mirror and the version triplet — see obligation 8); `make check-sdk-standards` (main standards ↔ SDK lock ↔ vendored tree, plus the identity `adapter_api` derivation check, plus the served-set/policy-mirror lanes and the executable-version-literal ratchet — issue #203 slice 1) |
+| `gates` | submodules recursive; fixture keys materialised from secrets; `ruff check .`; config-driven `mypy` (bare — explicit path args drop `packages/sdk/src` from the build); `pytest -q -n auto -m "not timing"` (including the adapter agreement test, which pins the SDK↔gateway protocol mirror and the version triplet — see obligation 8); `make check-sdk-standards` (main standards ↔ SDK lock ↔ vendored tree, plus the identity `adapter_api` derivation check, plus the served-set/policy-mirror lanes and the version-literal ZERO gate over all four scopes — issue #203 slices 1+7) |
 | `timing` | the real-paced set (`-m timing`: the two integration rig files whole, plus the contention and clamp cells in `tests/unit/test_otdp_bridge.py`), serialized on its own fresh VM within ~2 min of boot so its wall-clock bands are measured before any bulk-suite residue (page cache, draining threads, WAL checkpoints); complementary partition with `gates` — union = the full collection, structural by construction from the complementary markers, with the proof at PR time (the builder's collected-id set diff recorded in the PR body per the design's AR-1 — not an automated gate), and serial forever (xdist would reintroduce exactly the competition the split removes; issue #241 slice 1). Does NOT catch: a guarantee of a quiet host — a noisy neighbor can still stretch a band; slice 2's evidence-backed re-bands resolved as HOLD/document-only in that slice (2026-09-28); intra-lane ordering residue — review-fold disclosure: collection order runs the sequential-model battery before the continuity rig, so the rig measures after the lane's own earlier real-paced battery; the fresh-VM claim removes bulk-suite residue from other jobs, not ordering within this one; red-attribution is scoped — a red in the real-paced subset reads as a timing question, but the continuity file's ride-along logic tests can red as logic (the fold disclosure) |
 | `ui` | `npm ci` + typecheck + lint + unit tests + Storybook build; the renderer freshness gate (see obligation 7); `npm audit --audit-level=high` |
 | `systemd` | unit-template render + `systemd-analyze verify` with rehearsed deployment preconditions (see obligation 9) |
+| `device-plugins` (`dps150-independent`) | the version-literal zero gate over the plugins + docs scopes BEFORE the plugin project is isolated (obligation 20; completing D8/#233's plugin lane), then the plugin's own offline conformance, quality checks and build from its isolated copy |
 | `package` (OS matrix: ubuntu + macos) | installed-wheel/SDK smoke against the built packages; `make check-sdk-standards`; the clean-venv ADC conformance control (issue #203 slice 1: the out-of-tree ADC plugin at its pre-restamp commit, `git archive`-installed, the built SDK wheel forced over the checkout pin, network blocked — 26/26 or red); and the derived-variable census selection (`tests/unit/test_derivation.py` + `tests/faults/test_derivation_faults.py`) — the lane where cross-platform binary64 agreement is actually measured (no Windows lane; the design record's risk 4 states the coverage) |
 
 What CI does **not** catch: every numbered obligation above that names a doc, a guide, or

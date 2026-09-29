@@ -331,19 +331,28 @@ def declared_dev_head(corpus: Path, standard_id: str) -> DevHead | None:
 
     The corpus-shaped twin of ``load_manifest``'s dev-block parsing (the
     ``load_dependency_policy_from_corpus`` pattern, #217): the manifest is
-    read directly from ``<corpus>/standards-manifest.json`` and the entry's
-    optional block through the SAME ``_load_dev_head`` shape vetting, so a
-    malformed block refuses identically on both surfaces. ``None`` when the
-    standard carries no entry or no head — the caller owns the wording of
-    "nothing declared" (``dev_head_unresolvable:`` in the resolver and
-    admission lanes; never a silent active-family substitution).
+    read directly from ``<corpus>/standards-manifest.json`` (the corruption
+    wrap of ``_read_corpus_manifest`` applies) and the entry's optional
+    block through the SAME ``_load_dev_head`` shape vetting, so a malformed
+    block refuses identically on both surfaces. Duplicate ids refuse
+    (``standards_entry_duplicate``, fold row 9 — the twins match
+    ``load_manifest``). ``None`` when the standard carries no entry or no
+    head — the caller owns the wording of "nothing declared"
+    (``dev_head_unresolvable:`` in the resolver and admission lanes; never
+    a silent active-family substitution).
     """
-    document = json.loads((corpus / "standards-manifest.json").read_bytes())
+    document = _read_corpus_manifest(corpus)
     if document.get("manifest_version") != 1:
         raise StandardsError("standards_manifest_version_unsupported")
-    for raw in document.get("standards", []):
-        if str(raw.get("id")) != standard_id:
-            continue
+    matches = [
+        raw for raw in document.get("standards", []) if str(raw.get("id")) == standard_id
+    ]
+    if len(matches) > 1:
+        raise StandardsError(
+            f"standards_entry_duplicate: {standard_id} appears "
+            f"{len(matches)} times in {corpus}/standards-manifest.json"
+        )
+    for raw in matches:
         version = str(raw["version"])
         if ACTIVE_VERSION_PATTERN.fullmatch(version) is None:
             # The active-semver guard precedes dev parsing exactly as in
@@ -358,6 +367,77 @@ def declared_dev_head(corpus: Path, standard_id: str) -> DevHead | None:
             raw.get("dev"), standard_id, version, _retired_for(document, standard_id)
         )
     return None
+
+
+def _read_corpus_manifest(corpus: Path) -> dict[str, Any]:
+    """One corpus manifest read, with the corruption wrap (fold row 10).
+
+    A missing or unparseable manifest refuses as :class:`StandardsError`
+    with a machine-matchable prefix — the derivation sites call this at
+    import time, and a raw ``FileNotFoundError``/``JSONDecodeError`` there
+    would make the vendoring docstring's "loud on corruption" claim name
+    classes no caller can grep for.
+    """
+    path = corpus / "standards-manifest.json"
+    try:
+        document: dict[str, Any] = json.loads(path.read_bytes())
+    except FileNotFoundError as exc:
+        raise StandardsError(f"standards_manifest_absent: {path} ({exc})") from exc
+    except json.JSONDecodeError as exc:
+        raise StandardsError(f"standards_manifest_invalid_json: {path} ({exc})") from exc
+    return document
+
+
+def active_version_from_corpus(corpus: Path, standard_id: str) -> str:
+    """The active version one standard's entry declares, over a CORPUS directory.
+
+    The fourth corpus-shaped twin of the family slice 1/#217 established
+    (``declared_dev_head``, ``load_dependency_policy_from_corpus``,
+    ``retained_versions_from_corpus``, ``served_versions_from_corpus``):
+    the manifest is read from ``<corpus>/standards-manifest.json`` and the
+    entry's version passes the SAME ``ACTIVE_VERSION_PATTERN`` guard
+    ``declared_dev_head`` applies. Refusals: ``standards_manifest_absent``
+    and ``standards_manifest_invalid_json`` when the manifest cannot be
+    read or parsed (wrapped as :class:`StandardsError` so import-time
+    degradation is machine-matchable, fold row 10), the loader's
+    ``standards_manifest_version_unsupported``, ``standards_entry_duplicate``
+    when the id appears more than once (fold row 9 — the twins match
+    ``load_manifest``'s refusal instead of silently taking the first), the
+    same ``standards_entry_version_invalid`` (a non-semver active entry),
+    and a loud ``standards_entry_absent: <id>`` when no entry matches — a
+    countable-standards manifest always carries all six, so absence is
+    corruption, refused, never defaulted. The identity block IS the active
+    authority (CON-8); this twin is the read every version-literal
+    derivation consumes (issue #221).
+    """
+    document = _read_corpus_manifest(corpus)
+    if document.get("manifest_version") != 1:
+        raise StandardsError("standards_manifest_version_unsupported")
+    matches = [
+        raw for raw in document.get("standards", []) if str(raw.get("id")) == standard_id
+    ]
+    if len(matches) > 1:
+        # Fold row 9: the corpus twins refuse duplicates the way
+        # load_manifest does — first-match-wins would let a spliced second
+        # entry silently override the real one.
+        raise StandardsError(
+            f"standards_entry_duplicate: {standard_id} appears "
+            f"{len(matches)} times in {corpus}/standards-manifest.json"
+        )
+    for raw in matches:
+        version = str(raw["version"])
+        if ACTIVE_VERSION_PATTERN.fullmatch(version) is None:
+            raise StandardsError(
+                f"standards_entry_version_invalid: {standard_id}: {version} "
+                "(the active version must be pure semver; a -dev suffix is "
+                "legal only in a dev head)"
+            )
+        return version
+    raise StandardsError(
+        f"standards_entry_absent: {standard_id} (the manifest carries no entry "
+        "for this standard — a countable-standards manifest always does; "
+        "absence is corruption, not an empty answer)"
+    )
 
 
 def load_sdk_compatibility(root: Path) -> SdkCompatibility:

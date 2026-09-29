@@ -84,11 +84,13 @@ from benchweave.standards.manifest import (
     served_versions_from_corpus,
     version_tuple,
 )
-from benchweave.vendoring import contract_family
+from benchweave.vendoring import active_contract_family, contract_family
 
 #: The vendored execution contracts (packaged in the wheel, repo-relative
-#: in a dev checkout — :mod:`benchweave.vendoring`).
-_CONTRACTS = contract_family("execution/0.2.0")
+#: in a dev checkout — :mod:`benchweave.vendoring`), resolved at the
+#: manifest's active version (issue #221: one bump = one manifest edit;
+#: the literal this constant once carried is derived, not stated).
+_CONTRACTS = active_contract_family("execution")
 _PACKAGE_LOCK_FILENAME = "package-lock.json"
 _MAX_DOCUMENT_BYTES = 1_048_576
 
