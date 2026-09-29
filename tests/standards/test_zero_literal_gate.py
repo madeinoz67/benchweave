@@ -330,3 +330,33 @@ class TestSchemaConstDerivations:
         from benchweave.vendoring import active_contract_family
 
         assert active_contract_family("interface").name == VENDORED_INTERFACE_VERSION
+
+
+class TestRegisteredDisposition:
+    """G3a's four facts, asserted (design §5; the byte-identity of the two
+    contracts.py copies stays pinned by tests/sdk/test_presentation_packaging.py
+    — cited there, not re-built here)."""
+
+    def test_the_policy_note_names_the_registered_file(self) -> None:
+        """Fact 2: the dependency-policy block's plugin-ui note names the
+        registered file — the VR-25 branch-2 pointer is present where the
+        design says it lives."""
+        manifest = json.loads(
+            (ROOT / "standards/standards-manifest.json").read_text(encoding="utf-8")
+        )
+        note = manifest["dependency_policy"]["standards"]["plugin-ui"]["note"]
+        assert "src/benchweave/presentation/contracts.py" in note
+        assert "D2" in note
+
+    def test_the_register_reason_cites_the_d2_trigger(self) -> None:
+        """Facts 1+4 (gateway copy): the register entry cites VR-25/D2 and
+        carries the exact expectation — asserted against the counter's own
+        output, so the citation cannot silently rot."""
+        result = _counter_run("--scope", "gateway", "--json")
+        assert result.returncode == 0
+        sites = json.loads(result.stdout)["scopes"]["gateway"]["sites"]
+        reasons = {row["reason"] for row in sites if row.get("exempt")}
+        assert len(reasons) == 1
+        reason = reasons.pop()
+        assert "VR-25" in reason and "D2" in reason
+        assert len([row for row in sites if row.get("exempt")]) == 3
