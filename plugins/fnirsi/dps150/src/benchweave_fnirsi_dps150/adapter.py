@@ -553,3 +553,8 @@ class DevicePlugin:
 def create_plugin() -> DevicePlugin:
     """Construct a fresh instance without importing or opening a serial backend."""
     return DevicePlugin()
+
+# G2 wire-level plant (issue #221 acceptance G2a): a bare literal in a
+# non-registered plugin file must fail the device-plugins lane. Probe
+# branch — never merged; removed after the red run is captured.
+_PLANT = "9.9.9"
