@@ -119,7 +119,12 @@ type AxisAssignment = { axes: string[]; binding: Map<string, number> } | typeof 
 function assignAxes(traces: readonly PlotTrace[]): AxisAssignment {
   const units: string[] = [];
   for (const trace of traces) {
-    if (!units.includes(trace.unit)) units.push(trace.unit);
+    // §E.2.3: distinctness is exact, case-sensitive, on the TRIMMED unit —
+    // " V" groups with "V" (a whitespace variant can never spawn a second
+    // axis); an empty-after-trim unit is the legal unitless group (the
+    // pinned unitless-trace behaviour: the axis renders unnamed).
+    const unit = trace.unit.trim();
+    if (!units.includes(unit)) units.push(unit);
     if (units.length > 2) return AXIS_REFUSAL;
   }
   const binding = new Map<string, number>();

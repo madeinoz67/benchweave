@@ -221,9 +221,12 @@ describe("S2-A2 acquisition disclosure + provenance markers", () => {
     const measured = [...container.querySelectorAll("li")].find((li) => li.textContent?.startsWith("MEAS"));
     expect(measured!.getAttribute("data-bw-trace-provenance")).toBeNull();
     expect(measured!.querySelector(".bw-plot__legend-provenance")).toBeNull();
-    // data-bw-trace-provenance carries the kind on marked traces.
-    const derived = [...container.querySelectorAll("li")].find((li) => li.textContent?.startsWith("DER"))!;
-    expect(derived.getAttribute("data-bw-trace-provenance")).toBe("derived");
+    // A4: ALL four kinds' attribute values pinned, measured's absence pinned.
+    const item = (prefix: string) => [...container.querySelectorAll("li")].find((li) => li.textContent?.startsWith(prefix))!;
+    expect(item("DER").getAttribute("data-bw-trace-provenance")).toBe("derived");
+    expect(item("AVG").getAttribute("data-bw-trace-provenance")).toBe("device-averaged");
+    expect(item("DSP").getAttribute("data-bw-trace-provenance")).toBe("display-processed");
+    expect(item("MEAS").getAttribute("data-bw-trace-provenance"), "measured carries NO attribute").toBeNull();
   });
 
   it("no two kinds share marker vocabulary (device averaging ≠ display processing prefixes)", () => {

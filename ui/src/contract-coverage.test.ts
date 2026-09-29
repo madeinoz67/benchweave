@@ -15,9 +15,9 @@ import { describe, expect, it } from "vitest";
  * in both directions. The "executable mirror" rule made mechanical.
  *
  * The enumeration this fixture covers (design record §6, pre-committed):
- * definition rows 5+15+4+3+3+6+9 = 45 (disabled-reason, refusal, mode,
- * safety rules, state rules, severities, icons), 8 component rows,
- * 14 colour tokens × 2 themes + 6 spacing + 2 radius + 2 fonts, 9 icon rows.
+ * definition rows 5+15+4+3+3+6+10+1+4+3 = 54 (slice 1) + 4+4+3+4 = 15
+ * (slice 2) = 69, 10 component rows, 25 colour tokens × 2 themes + 6
+ * spacing + 2 radius + 2 fonts, 10 icon rows.
  * The two --bw-shadow-* rows are a pinned superset closing the
  * "extra unpinned token" finding: every theme-varying colour in themes.css
  * is contract-pinned.
@@ -381,7 +381,7 @@ describe("contract L1: fixture rows present and parsable", () => {
     }
   });
 
-  it("§F.1 pins the 9 icon rows (6 severity + 3 state)", () => {
+  it("§F.1 pins the 10 icon rows (6 severity + 4 state)", () => {
     const rows = parseTable("### §F.1 Icons", ["Icon key", "Class", "Shape description", "Reference binding"]);
     const expected: Record<string, [string, string]> = {
       neutral: ["severity", "CircleHelp"],

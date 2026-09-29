@@ -215,3 +215,27 @@ describe("EngineeringPlot real rendering — slice 2 refusal + disclosure", () =
     expect(disclosure!.textContent).toContain("Acquired 100 samples · plotted 2");
   });
 });
+
+describe("EngineeringPlot real rendering — A1(i) distinctness and the nameless axis", () => {
+  it("a whitespace-variant unit groups with its trimmed form (one axis, not a broken second)", () => {
+    const padded: PlotTrace = { id: "p", label: "PADDED", unit: " V", values: [[0, 0.2], [1, 0.4]] };
+    const { container } = render(
+      <EngineeringPlot kind="time_series" title="Padded unit" x={{ label: "Time", unit: "s" }} traces={[volt, padded]} />,
+    );
+    const svg = canvasSvg(container);
+    const vNames = [...svg.querySelectorAll("text")].map((t) => t.textContent).filter((t) => t === "V");
+    expect(vNames, "the padded unit joins the V group — exactly one V axis").toHaveLength(1);
+    expect(svg.textContent, "both traces drew on the one axis").toContain("0.6");
+  });
+
+  it("the unitless group renders one unnamed axis (no empty-parenthesis name) — the R2 behaviour at the axis level", () => {
+    const unitless: PlotTrace = { id: "u", label: "STATE", unit: "", values: [[0, 1], [1, 0]] };
+    const { container } = render(
+      <EngineeringPlot kind="time_series" title="Unitless" x={{ label: "State", unit: "" }} traces={[unitless]} />,
+    );
+    const svg = canvasSvg(container);
+    expect(svg.textContent).not.toContain("()");
+    const emptyNames = [...svg.querySelectorAll("text")].filter((t) => t.textContent?.trim() === "");
+    expect(emptyNames, "no empty axis-name text node renders").toHaveLength(0);
+  });
+});
