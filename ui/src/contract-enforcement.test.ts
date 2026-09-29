@@ -90,7 +90,9 @@ function satisfiesAttribute(container: HTMLElement, item: string): boolean {
 
 const plotTraces: PlotTrace[] = [
   { id: "voltage", label: "Output voltage", unit: "V", values: [[0, 0], [1, 1]] },
-  { id: "current", label: "Output current", unit: "A", values: [[0, 0], [1, 0.5]] },
+  // Slice 2: one marked trace carries the provenance attribute (measured
+  // traces render unmarked — the control is the S2-A2 pin's own test).
+  { id: "current", label: "Output current", unit: "A", values: [[0, 0], [1, 0.5]], provenance: { kind: "device-averaged", detail: "8" } },
 ];
 const plotHints: ReadonlyMap<string, TraceHint> = new Map([["current", { visible: false }]]);
 
@@ -122,7 +124,7 @@ const fixtures: Record<string, () => RenderResult> = {
   "rotary-control": () => render(element(RotaryControl, { label: "Voltage set-point", value: 1.5, unit: "V", min: 0, max: 15, step: 0.1, onStage: () => undefined })),
   "reading-tile": () => render(element(ReadingTile, { label: "Output voltage", value: 12.1, unit: "V", freshness: "2 s", quality: "steady", severity: "warning", set: { value: 12.5, unit: "V" }, state: "limiting" })),
   "alert-bubble": () => render(element(AlertBubble, { severity: "advisory", title: "Operating margin", message: "Approaching the configured limit.", source: "PSU-01", onDismiss: () => undefined })),
-  "engineering-plot": () => render(element(EngineeringPlot, { kind: "time_series", title: "Output activity", x: { label: "Receipt time", unit: "s" }, traces: plotTraces, hints: plotHints })),
+  "engineering-plot": () => render(element(EngineeringPlot, { kind: "time_series", title: "Output activity", x: { label: "Receipt time", unit: "s" }, traces: plotTraces, hints: plotHints, acquisition: new Map([["voltage", { acquired: 100, plotted: 40 }]]) })),
   "data-table": () => render(element(DataTable, { caption: "Channel readings", rows: tableRows, columns: tableColumns, rowKey: (row: TableRow) => row.id })),
   panel: () => render(element(Panel, { title: "Output set-point", eyebrow: "Staged configuration" }, element("p", {}, "Staged configuration content."))),
   // §D: the enforcement fixture renders ALL FOUR modes so every fixed wording

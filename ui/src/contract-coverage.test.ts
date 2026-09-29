@@ -316,11 +316,13 @@ describe("contract L1: fixture rows present and parsable", () => {
           "aria-label~=(hidden by presentation preference)",
           "data-line",
           "data-bw-series-slot",
+          "data-bw-trace-provenance",
+          "data-bw-acquisition",
           "data-hidden",
         ],
         roles: ["img"],
-        classHooks: ["bw-plot", "bw-plot__canvas", "bw-plot__legend", "bw-visually-hidden"],
-        requiredText: ["hidden"],
+        classHooks: ["bw-plot", "bw-plot__canvas", "bw-plot__legend", "bw-visually-hidden", "bw-plot__acquisition"],
+        requiredText: ["hidden", "Acquired 100 samples · plotted 40"],
       },
       "data-table": {
         attributes: ["scope=col"],
@@ -457,7 +459,35 @@ describe("contract L1: fixture rows present and parsable", () => {
     for (const row of rows) for (const column of [1, 2, 3]) expect(contractCell([row], 0, column), literal(row[0]!)).not.toBe("");
   });
 
-  it("covers the §6 enumeration arithmetic (54 definition rows)", () => {
+  it("§E.2.3 pins the y-axis assignment rows (4)", () => {
+    const rows = parseTable("#### §E.2.3 Y-axis assignment", ["Condition", "Rendering"]);
+    expect(rows.length).toBe(4);
+    for (const row of rows) {
+      expect(contractCell([row], 0, 0), "condition").not.toBe("");
+      expect(contractCell([row], 0, 1), "rendering").not.toBe("");
+    }
+    expect(literal(rows[2]![0]!).startsWith("More than two")).toBe(true);
+  });
+
+  it("§E.2.4 pins the reference-line rows (4)", () => {
+    const rows = parseTable("#### §E.2.4 Reference lines", ["Property", "Requirement"]);
+    expect(rows.map((row) => literal(row[0]!))).toEqual(["Labelling", "Neutrality", "Distinctness", "Carrier"]);
+    for (const row of rows) expect(contractCell([row], 0, 1), literal(row[0]!)).not.toBe("");
+  });
+
+  it("§E.2.5 pins the acquisition-disclosure rows (3)", () => {
+    const rows = parseTable("#### §E.2.5 Acquisition disclosure", ["Property", "Requirement"]);
+    expect(rows.map((row) => literal(row[0]!))).toEqual(["When required", "Placement", "Wording"]);
+    for (const row of rows) expect(contractCell([row], 0, 1), literal(row[0]!)).not.toBe("");
+  });
+
+  it("§E.2.6 pins the four provenance kinds", () => {
+    const rows = parseTable("#### §E.2.6 Trace provenance", ["Provenance", "Required marker", "Disclosure", "Constraint"]);
+    expect(rows.map((row) => literal(row[0]!))).toEqual(["measured", "derived", "device-averaged", "display-processed"]);
+    for (const row of rows) for (const column of [1, 2, 3]) expect(contractCell([row], 0, column), literal(row[0]!)).not.toBe("");
+  });
+
+  it("covers the §6 enumeration arithmetic (69 definition rows)", () => {
     const disabled = parseTable("### §C.2 Disabled-reason enum", ["Key", "Required label text", "Parameter"]).length;
     const refusal = parseTable("### §C.3 Refusal mapping", ["Code", "Severity", "What happened", "Sent status", "Operator action"]).length;
     const modes = parseTable("### §D.1 Modes", ["Mode", "Fixed wording", "Fires when"]).length;
@@ -468,10 +498,12 @@ describe("contract L1: fixture rows present and parsable", () => {
     const readingStates = parseTable("### §B.3 Reading states", ["State key", "Meaning", "Rendering", "Announcement"]).length;
     const stalenessRules = parseTable("### §B.4 Staleness", ["Rule id", "Requirement"]).length;
     const triad = parseTable("### §E.3 Setpoint presentation (reading-tile sub-rows)", ["Role", "Placement", "Required labelling", "Never"]).length;
-    // 5+15+4+3+3+6+10+1+4+3 = 54 (#243 design record §6): the #242 45 plus
-    // the limiting state (1), staleness rules (4), the triad (3), and the
-    // tenth icon.
-    expect(disabled + refusal + modes + safety + stateRules + severities + icons + readingStates + stalenessRules + triad).toBe(54);
+    const axes = parseTable("#### §E.2.3 Y-axis assignment", ["Condition", "Rendering"]).length;
+    const refLines = parseTable("#### §E.2.4 Reference lines", ["Property", "Requirement"]).length;
+    const acquisition = parseTable("#### §E.2.5 Acquisition disclosure", ["Property", "Requirement"]).length;
+    const provenance = parseTable("#### §E.2.6 Trace provenance", ["Provenance", "Required marker", "Disclosure", "Constraint"]).length;
+    // 5+15+4+3+3+6+10+1+4+3 = 54 (slice 1) + 4+4+3+4 = 15 (slice 2) = 69.
+    expect(disabled + refusal + modes + safety + stateRules + severities + icons + readingStates + stalenessRules + triad + axes + refLines + acquisition + provenance).toBe(69);
   });
 });
 

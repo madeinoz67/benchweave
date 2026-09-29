@@ -291,7 +291,7 @@ Schema: `Component | Root element | Required attributes | Required roles | Requi
 | `rotary-control` | `div` | `type=button ~ aria-label ~ aria-valuemin ~ aria-valuemax ~ aria-valuenow ~ aria-valuetext~=staged` | `slider` | `bw-rotary ~ bw-rotary__knob ~ bw-rotary__value ~ bw-rotary__state` | `Staged` | A rotary control is always paired with a precise numeric field and an explicit Apply action; it stages intent and emits no device command while dragged. `aria-valuetext` reads "`{value} {unit}`, staged". |
 | `reading-tile` | `section` | `data-severity ~ aria-label ~ data-bw-reading-state` | `region` | `bw-reading ~ bw-reading__header ~ bw-reading__severity ~ bw-reading__value ~ bw-reading__set ~ bw-reading__state ~ bw-reading__quality` | `steady · 2 s` | The tile renders the severity icon and its label, the value with adjacent unit, and a quality line "`{quality} · {freshness}`" (canonical fixture values: quality `steady`, freshness `2 s` — the required-text literal is the canonical line, so it discriminates a renderer that drops or misjoins either side). A reading does not become verified merely because it rendered; do not optimistically copy a requested value into an applied reading. With a reading state (§B.3): `data-bw-reading-state="<key>"` on the section, the state icon and its visible label in `bw-reading__state`. With gateway-observed set evidence (§E.3): `Set {value} {unit}` adjacent in `bw-reading__set` with `data-bw-reading-role="set"`. When stale (§B.4): dimmed with `data-bw-stale="true"` and the `stale` marker appended to the quality line — the enforcement fixture renders the canonical tile WITH the state and set evidence (the mode-banner all-modes precedent). |
 | `alert-bubble` | `aside` | `data-severity ~ aria-label=Dismiss` | `status` | `bw-alert-bubble ~ bw-alert-bubble__content` | — | Title renders in a strong element, message in a paragraph, optional source in small. Critical and trip use live region `alert` (§B.1); the dismiss affordance renders only for dismissible severities (§B.1) and carries `aria-label="Dismiss"`. |
-| `engineering-plot` | `figure` | `role=img ~ aria-label ~ aria-describedby ~ aria-label=Traces ~ aria-label~=(hidden by presentation preference) ~ data-line ~ data-bw-series-slot ~ data-hidden` | `img` | `bw-plot ~ bw-plot__canvas ~ bw-plot__legend ~ bw-visually-hidden` | `hidden` | The canvas carries `role="img"` with the plot title and a described-by textual chart description. Every trace is listed in a visible legend labelled "Traces"; legend items expose their line form via `data-line` (`solid`/`dashed` — the resolved dash, not a display position), their series slot via `data-bw-series-slot` (§E.2.1: `((i mod 8) + 1)`, wrapping at 8), and hidden channels via `data-hidden`, the hidden marker text, and an aria-label ending "(hidden by presentation preference)". Series assignment: §E.2. |
+| `engineering-plot` | `figure` | `role=img ~ aria-label ~ aria-describedby ~ aria-label=Traces ~ aria-label~=(hidden by presentation preference) ~ data-line ~ data-bw-series-slot ~ data-bw-trace-provenance ~ data-bw-acquisition ~ data-hidden` | `img` | `bw-plot ~ bw-plot__canvas ~ bw-plot__legend ~ bw-visually-hidden ~ bw-plot__acquisition` | `hidden ~ Acquired 100 samples · plotted 40` | The canvas carries `role="img"` with the plot title and a described-by textual chart description. Every trace is listed in a visible legend labelled "Traces"; legend items expose their line form via `data-line` (`solid`/`dashed` — the resolved dash, not a display position), their series slot via `data-bw-series-slot` (§E.2.1: `((i mod 8) + 1)`, wrapping at 8), and hidden channels via `data-hidden`, the hidden marker text, and an aria-label ending "(hidden by presentation preference)". Series assignment: §E.2. The >2-unit refusal (§E.2.3) renders its note conditionally (class hook `bw-plot__refusal`, `role="status"` — fires only when the declared set carries more than two distinct units); the acquisition disclosure (§E.2.5) renders on the canonical fixture (voltage decimated 100→40). |
 | `data-table` | `div` | `scope=col` | `table` | `bw-table-wrap ~ bw-data-table` | — | The table carries a caption naming the data; column headers are `th[scope=col]`; rows keep a stable key. Dense data sits on a recessed surface. |
 | `panel` | `section` | `data-surface ~ aria-label` | `region` | `bw-panel ~ bw-panel__header ~ bw-panel__title ~ bw-panel__body` | — | `data-surface` is `raised` for actionable groups and bounded modules, `recessed` for plots, tables, logs and dense data. An optional eyebrow span (`bw-panel__eyebrow`) precedes the title. Structural narrative and example HTML are renderer guidance. |
 | `mode-banner` | `section` | `data-bw-mode-banner ~ data-bw-mode ~ aria-label=Presentation mode` | `region` | `bw-mode-banner ~ bw-mode-banner__entry` | `SIMULATED PRESENTATION DATA ~ NO GATEWAY · LOCAL PRESENTATION ONLY ~ NO CONTROLLER LEASE · ACTIONS CANNOT BE AUTHORISED ~ NO POLICY ENGINE · POLICY CHECKS UNAVAILABLE` | Contract §D: persistent, non-dismissible, first element of the page's main region; one entry per active mode in the fixed order of §D.1; absence asserts full-authority presentation. The required-text literals are the four fixed wordings (the enforcement fixture renders all four modes; a page renders only its active modes). |
@@ -384,6 +384,57 @@ Schema: `Key | Shape description | Reference binding` — 10 rows (2 dash, 8 sym
 The reference binding is implementation guidance (the ECharts marker names the
 reference renderer uses; where the chart library lacks a shape the binding is a custom
 SVG path). Any icon set can bind from the shape descriptions.
+
+#### §E.2.3 Y-axis assignment
+
+Schema: `Condition | Rendering` — 4 rows. Assignment is a pure function of the
+declared trace set's units, computed over the FULL declared set; visibility
+filters after (the §E.2 styling discipline applied to axes).
+
+| Condition | Rendering |
+| --- | --- |
+| One distinct unit among the declared traces | One y-axis, named with the unit |
+| Two distinct units among the declared traces | Two y-axes, first-declaration order (axis 1 = the earliest declared trace's unit, axis 2 = the other); every trace binds to its own unit's axis; each axis is named with its unit |
+| More than two distinct units among the declared traces | The plot draws NO traces and renders a visible refusal note naming the condition (the manifest admits the declaration; the renderer refuses to conflate incommensurable units on shared axes) |
+| Every trace bound to an axis is presentation-hidden | That axis does not render — but axis assignment never reshuffles: assignment is computed over the declared set, visibility filters after (the §E.2 styling discipline applied to axes) |
+
+#### §E.2.4 Reference lines
+
+Schema: `Property | Requirement` — 4 rows.
+
+| Property | Requirement |
+| --- | --- |
+| Labelling | Every reference line is labelled with its meaning and value (e.g. `Current limit · 2 A`); the label renders in the plot |
+| Neutrality | Reference lines render in the border token (`--bw-border`), dotted — never a severity hue, never a series token |
+| Distinctness | A reference line is a distinct kind from a severity threshold (§E.1 `engineering-plot` threshold: severity hue, dashed): an applied or configured limit is a reference line, not a threshold; the two never share colour or dash |
+| Carrier | A reference line whose target traces are all hidden still renders (the threshold-carrier rule applied: hiding data must not launder away a configured limit) |
+
+#### §E.2.5 Acquisition disclosure
+
+Schema: `Property | Requirement` — 3 rows.
+
+| Property | Requirement |
+| --- | --- |
+| When required | Whenever the host draws fewer points than it acquired for a trace (decimation, downsampling, windowing-in), the plot MUST disclose it |
+| Placement | Outside the canvas element, visible text (class hook `bw-plot__acquisition`, attribute `data-bw-acquisition`) — never inside the chart image, never tooltip-only |
+| Wording | `Acquired {n} samples · plotted {m}` — counts from the host's own acquisition pipeline; an acquisition rate may be appended when known (`at {rate}`) |
+
+#### §E.2.6 Trace provenance
+
+Schema: `Provenance | Required marker | Disclosure | Constraint` — 4 rows. The
+classification is host-supplied at the composition layer (a `provenance` field on
+the trace prop — the same host-knowledge seam as `channel_hints`); the preview
+wire carries no provenance field and no standards byte moves.
+
+| Provenance | Required marker | Disclosure | Constraint |
+| --- | --- | --- | --- |
+| `measured` | none (default) | — | Never marked; a trace with no host knowledge renders as measured and asserts nothing more |
+| `derived` | `derived` | The derivation expression (from the dataset's `derivation` marker, OTDP measurement-model §8) and `uncertainty unknown` — the §8 structural unknown rendered, never hidden | A derived trace always carries the uncertainty-unknown marker; its displayed precision never exceeds its sources' |
+| `device-averaged` | `device averaging {n}` | The applied device averaging depth `{n}` (the descriptor configure `averaging_count`, oscilloscope profile) | The depth is the applied configured value from the observed echo — never a default; marker text never uses the display-processing vocabulary |
+| `display-processed` | `display processing: {name} {window}` | The processing name and window | Never silently replaces the source: the source trace (or its min/max envelope) remains rendered or revealable in the same plot; marker text never uses the device-averaging vocabulary |
+
+Legend items carry `data-bw-trace-provenance="<kind>"`. OUT OF SCOPE per the
+issue: which processing functions a host offers and how it computes them.
 
 ### §E.3 Setpoint presentation (reading-tile sub-rows)
 

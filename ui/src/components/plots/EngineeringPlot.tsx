@@ -13,11 +13,45 @@ export interface PlotAxis {
   unit: string;
 }
 
+/** §E.2.6: the host-supplied provenance classification (the same
+ *  host-knowledge seam as channel_hints). `measured` is the default and
+ *  renders unmarked. */
+export type TraceProvenance = "measured" | "derived" | "device-averaged" | "display-processed";
+
 export interface PlotTrace {
   id: string;
   label: string;
   unit: string;
   values: readonly (readonly [number, number])[];
+  provenance?: {
+    kind: TraceProvenance;
+    /** derived: the derivation expression; device-averaged: the depth;
+     *  display-processed: name + window (as "{name} {window}"). */
+    detail: string;
+  };
+}
+
+/** §E.2.4: a neutral, labelled reference line — structurally distinct from
+ *  the severity threshold (border token, dotted; never a severity hue). */
+export interface ReferenceLine {
+  value: number;
+  /** The meaning + value label, e.g. "Current limit · 2 A". */
+  label: string;
+}
+
+export interface EngineeringPlotProps {
+  kind: "time_series" | "waveform";
+  title: string;
+  x: PlotAxis;
+  traces: readonly PlotTrace[];
+  threshold?: { value: number; label: string; severity: "warning" | "critical" };
+  hints?: ReadonlyMap<string, TraceHint>;
+  /** §E.2.4: applied/configured limits — reference lines, not thresholds. */
+  referenceLines?: readonly ReferenceLine[];
+  /** §E.2.5: acquired vs plotted counts per trace id — the decimation
+   *  disclosure renders only when a trace draws fewer points than
+   *  acquired. */
+  acquisition?: ReadonlyMap<string, { acquired: number; plotted: number; rate?: string }>;
 }
 
 /** Per-channel presentation preference keyed by trace id. A bias, never a
@@ -28,14 +62,7 @@ export interface TraceHint {
   visible?: boolean;
 }
 
-export interface EngineeringPlotProps {
-  kind: "time_series" | "waveform";
-  title: string;
-  x: PlotAxis;
-  traces: readonly PlotTrace[];
-  threshold?: { value: number; label: string; severity: "warning" | "critical" };
-  hints?: ReadonlyMap<string, TraceHint>;
-}
+
 
 interface TraceStyle {
   color: string;
@@ -72,6 +99,40 @@ const bytewiseLess = (a: string, b: string): boolean => {
   }
   return left.length < right.length;
 };
+
+/** §E.2.3: y-axis assignment as a pure function of the declared trace
+ *  set's units, computed over the FULL declared set in first-declaration
+ *  order. Returns the axis list (index = echarts yAxisIndex, name = the
+ *  unit) and the per-trace axis binding. >2 distinct units returns the
+ *  refusal marker — the renderer refuses to conflate incommensurable units
+ *  on shared axes. */
+const AXIS_REFUSAL = Symbol("axis-refusal");
+type AxisAssignment = { axes: string[]; binding: Map<string, number> } | typeof AXIS_REFUSAL;
+function assignAxes(traces: readonly PlotTrace[]): AxisAssignment {
+  const units: string[] = [];
+  for (const trace of traces) {
+    if (!units.includes(trace.unit)) units.push(trace.unit);
+    if (units.length > 2) return AXIS_REFUSAL;
+  }
+  const binding = new Map<string, number>();
+  for (const trace of traces) binding.set(trace.id, units.indexOf(trace.unit));
+  return { axes: units, binding };
+}
+
+/** §E.2.6 required marker text per provenance kind — the closed vocabulary.
+ *  `measured` renders unmarked (the default asserts nothing more). */
+function provenanceMarker(provenance: NonNullable<PlotTrace["provenance"]>): string {
+  switch (provenance.kind) {
+    case "derived":
+      return `derived · ${provenance.detail} · uncertainty unknown`;
+    case "device-averaged":
+      return `device averaging ${provenance.detail}`;
+    case "display-processed":
+      return `display processing: ${provenance.detail}`;
+    default:
+      return "";
+  }
+}
 
 /** The trace-id -> slot map (pass 1's assignment), used by the legend's
  *  data-bw-series-slot disclosure. */
@@ -170,14 +231,28 @@ function readTokens(
 const labelled = (label: string, unit: string): string => (unit ? `${label} · ${unit}` : label);
 const inUnit = (label: string, unit: string): string => (unit ? `${label} in ${unit}` : label);
 
-export function EngineeringPlot({ kind, title, x, traces, threshold, hints }: EngineeringPlotProps) {
+export function EngineeringPlot({ kind, title, x, traces, threshold, hints, referenceLines, acquisition }: EngineeringPlotProps) {
   const figureElement = useRef<HTMLElement>(null);
   const chartElement = useRef<HTMLDivElement>(null);
   const descriptionId = useId();
   const [themeVersion, setThemeVersion] = useState(0);
   const [legendStyles, setLegendStyles] = useState<TraceStyle[]>([]);
   const slots = useMemo(() => slotMap(traces), [traces]);
+  const axisAssignment: AxisAssignment = useMemo(() => assignAxes(traces), [traces]);
+  const refused = typeof axisAssignment === "symbol";
   const visible = (trace: PlotTrace) => hints?.get(trace.id)?.visible !== false;
+  // §E.2.5: the disclosure renders only when a VISIBLE trace draws fewer
+  // points than acquired (per-trace rows; decimation on a hidden trace is
+  // not a drawing claim).
+  const acquisitionRows = useMemo(() => {
+    if (acquisition === undefined) return [];
+    return traces
+      .filter((trace) => visible(trace) && acquisition.has(trace.id) && acquisition.get(trace.id)!.plotted < acquisition.get(trace.id)!.acquired)
+      .map((trace) => {
+        const counts = acquisition.get(trace.id)!;
+        return { id: trace.id, acquired: counts.acquired, plotted: counts.plotted, rate: counts.rate };
+      });
+  }, [traces, acquisition, hints]);
   const description = `${inUnit(x.label, x.unit)}; ${traces.filter(visible).map((trace) => inUnit(trace.label, trace.unit)).join("; ")}`;
 
   // FC6: a theme switch mutates an ancestor's data-theme attribute — no data
@@ -213,7 +288,7 @@ export function EngineeringPlot({ kind, title, x, traces, threshold, hints }: En
 
   useEffect(() => {
     const element = chartElement.current;
-    if (element === null) return;
+    if (element === null || refused) return;
     const chart = echarts.init(element, undefined, {
       renderer: "svg",
       width: element.clientWidth || 640,
@@ -229,12 +304,41 @@ export function EngineeringPlot({ kind, title, x, traces, threshold, hints }: En
     const markLine = threshold
       ? { symbol: "none", label: { formatter: threshold.label, color: tokens.alert }, lineStyle: { color: tokens.alert, type: "dashed" as const }, data: [{ yAxis: threshold.value }] }
       : undefined;
-    const series = visibleTraces.map((trace, position) => {
+    // §E.2.4: reference lines are a distinct kind — the border token,
+    // dotted, labelled; NEVER a severity hue (the threshold keeps its own
+    // dashed severity-coloured line). markLine data carries the yAxisIndex
+    // of its target axis so a limit lands on the unit it constrains.
+    // §E.2.4: per-item styling — every reference-line data entry carries
+    // its OWN lineStyle (border token, dotted) and label, so a shared
+    // carrier can never overwrite the threshold's severity style, and vice
+    // versa: the two kinds never share colour or dash BY CONSTRUCTION.
+    const referenceData = (referenceLines ?? []).map((line) => ({
+      yAxis: line.value,
+      lineStyle: { color: tokens.border, type: "dotted" as const },
+      label: { formatter: line.label, color: tokens.border },
+    }));
+    const binding = typeof axisAssignment === "symbol" ? new Map<string, number>() : axisAssignment.binding;
+    // echarts option payloads are structural; a local spec type keeps the
+    // carrier pushes assignable without widening the map's inference.
+    interface SeriesSpec {
+      id: string;
+      name: string;
+      type: string;
+      yAxisIndex: number;
+      showSymbol: boolean;
+      symbol: string;
+      lineStyle: { color: string; type: string; width: number };
+      itemStyle: { color: string };
+      data: readonly (readonly [number, number])[];
+      markLine?: Record<string, unknown>;
+    }
+    const series: SeriesSpec[] = visibleTraces.map((trace, position) => {
       const style = resolved[traces.indexOf(trace)];
       return {
         id: trace.id,
         name: labelled(trace.label, trace.unit),
         type: "line",
+        yAxisIndex: binding.get(trace.id) ?? 0,
         showSymbol: kind === "time_series",
         symbol: style.symbol,
         lineStyle: { color: style.color, type: style.lineType, width: 2 },
@@ -243,6 +347,34 @@ export function EngineeringPlot({ kind, title, x, traces, threshold, hints }: En
         markLine: markLine !== undefined && position === 0 ? markLine : undefined,
       };
     });
+    if (referenceData.length > 0) {
+      // §E.2.4 carrier rule: a reference line whose target traces are all
+      // hidden still renders. The first visible series carries them; when
+      // none is visible, a transparent carrier renders them and nothing
+      // else (the threshold-carrier rule applied to limits).
+      if (visibleTraces.length > 0) {
+        const first = series[0]!;
+        const existingData = (first.markLine?.data as unknown[] | undefined) ?? [];
+        first.markLine = {
+          symbol: "none",
+          ...first.markLine,
+          data: [...existingData, ...referenceData],
+        };
+      } else {
+        series.push({
+          id: "__reference",
+          name: "limits",
+          type: "line",
+          yAxisIndex: 0,
+          showSymbol: false,
+          symbol: "circle",
+          lineStyle: { color: "transparent", type: "solid", width: 0 },
+          itemStyle: { color: "transparent" },
+          data: [[0, referenceLines![0]!.value], [1, referenceLines![0]!.value]],
+          markLine: { symbol: "none", data: referenceData },
+        });
+      }
+    }
     if (markLine !== undefined && visibleTraces.length === 0) {
       // Every channel presentation-hidden still owes the viewer the limit:
       // echarts attaches mark lines to a series, so a carrier renders the
@@ -254,6 +386,7 @@ export function EngineeringPlot({ kind, title, x, traces, threshold, hints }: En
       // the repo's own echarts via SSR render).
       series.push({
         id: "__threshold",
+        yAxisIndex: 0,
         name: threshold!.label,
         type: "line",
         showSymbol: false,
@@ -269,7 +402,15 @@ export function EngineeringPlot({ kind, title, x, traces, threshold, hints }: En
       grid: { left: 58, right: 24, top: 24, bottom: 44 },
       tooltip: { trigger: "axis" },
       xAxis: { type: "value", name: x.unit ? `${x.label} (${x.unit})` : x.label, nameLocation: "middle", nameGap: 28, axisLabel: { color: tokens.text }, axisLine: { lineStyle: { color: tokens.border } }, splitLine: { lineStyle: { color: tokens.border, opacity: 0.45 } } },
-      yAxis: { type: "value", axisLabel: { color: tokens.text }, axisLine: { lineStyle: { color: tokens.border } }, splitLine: { lineStyle: { color: tokens.border, opacity: 0.45 } } },
+      yAxis: (typeof axisAssignment === "symbol" ? [""] : axisAssignment.axes).map((unit, index) => ({
+        type: "value" as const,
+        name: unit || undefined,
+        position: index === 0 ? ("left" as const) : ("right" as const),
+        offset: index * 0,
+        axisLabel: { color: tokens.text },
+        axisLine: { lineStyle: { color: tokens.border } },
+        splitLine: { show: index === 0, lineStyle: { color: tokens.border, opacity: 0.45 } },
+      })),
       // Visibility filters AFTER style resolution (indices never shift); the
       // threshold mark line rides the first visible series, or the carrier
       // above when none is visible.
@@ -281,13 +422,27 @@ export function EngineeringPlot({ kind, title, x, traces, threshold, hints }: En
       window.removeEventListener("resize", resize);
       chart.dispose();
     };
-  }, [kind, threshold, traces, x, hints, themeVersion]);
+  }, [kind, threshold, traces, x, hints, themeVersion, referenceLines, refused, axisAssignment]);
 
   return (
     <figure className="bw-plot" ref={figureElement}>
       <figcaption>{title}</figcaption>
       <div ref={chartElement} className="bw-plot__canvas" role="img" aria-label={title} aria-describedby={descriptionId} />
       <p className="bw-visually-hidden" id={descriptionId}>{description}</p>
+      {refused ? (
+        <p className="bw-plot__refusal" role="status">
+          Plot not drawn: more than two distinct units among the declared channels ({[...new Set(traces.map((trace) => trace.unit))].join(", ")}). Refusing to conflate incommensurable units on shared axes.
+        </p>
+      ) : null}
+      {acquisitionRows.length > 0 ? (
+        <ul className="bw-plot__acquisition" data-bw-acquisition="">
+          {acquisitionRows.map((row) => (
+            <li key={row.id} data-bw-trace={row.id}>
+              {labelled(traces.find((trace) => trace.id === row.id)!.label, traces.find((trace) => trace.id === row.id)!.unit)}: Acquired {row.acquired} samples · plotted {row.plotted}{row.rate ? ` at ${row.rate}` : ""}
+            </li>
+          ))}
+        </ul>
+      ) : null}
       <ul className="bw-plot__legend" aria-label="Traces">
         {traces.map((trace, index) => {
           const isHidden = hints?.get(trace.id)?.visible === false;
@@ -296,11 +451,13 @@ export function EngineeringPlot({ kind, title, x, traces, threshold, hints }: En
               key={trace.id}
               data-line={legendStyles[index]?.lineType ?? "solid"}
               data-bw-series-slot={String((slots.get(trace.id) ?? 0) % 8 + 1)}
+              data-bw-trace-provenance={trace.provenance?.kind}
               data-hidden={isHidden ? "true" : undefined}
               aria-label={isHidden ? `${labelled(trace.label, trace.unit)} (hidden by presentation preference)` : undefined}
               style={{ "--legend-swatch": legendStyles[index]?.color ?? "" } as CSSProperties}
             >
               {labelled(trace.label, trace.unit)}
+              {trace.provenance ? <span className="bw-plot__legend-provenance">{provenanceMarker(trace.provenance)}</span> : null}
               {isHidden ? <span className="bw-plot__legend-hidden">hidden</span> : null}
             </li>
           );
