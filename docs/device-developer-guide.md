@@ -204,9 +204,12 @@ document's own `contract_version` selects the vendored execution corpus
 version the whole lattice validates against, refusing with
 `version_unknown:`, `retired_identifier:`, or `standard_nonconforming:`
 (the same five inline fields; a non-conforming execution pin has no
-acknowledgement path), and a run request over a lattice pinned to a
-non-active execution version refuses `execution_version_not_runnable:`
-naming both versions and the move-to.
+acknowledgement path). Running is an implemented-dialect fact (issue
+#260): a lattice pinned to a non-active execution version runs — and its
+terminal record carries the LATTICE's own version — while every run's
+device pins must satisfy the gateway composition's cross-constraint row
+(the same `cross_constraint_violation:` refusal, subject "this gateway
+runs", refused synchronously at run start and at the worker).
 
 ### Named settings as presets
 

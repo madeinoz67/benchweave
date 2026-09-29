@@ -262,6 +262,33 @@ rather than rewriting the history — that is how this file earns trust.
   pinned-old lattice still validates and loads at startup (the
   procedure-author story). Exact-byte decode, digest pins, and every
   existing prefix unchanged.
+  Amendment (2026-09-29, issue #260, the record lane — superseding the
+  #220 amendment's "Running is a composition-version fact" sentence
+  in-place above; append-only history): Running is an
+  IMPLEMENTED-DIALECT fact, not a composition-VERSION fact — the
+  composition's cross-constraint row governs every run's device pins
+  whatever the lattice pins (`_check_run_floor`, two layers one rule one
+  vocabulary: the §5 seam pre-check is the wire-visible early refusal,
+  best-effort over stored documents, the worker check over the full
+  admission result is authoritative; both call the one helper; a
+  rowless composition asserts no floor — the honest negative per-version,
+  admission's own doctrine extended to running). Terminal records carry
+  the run's own validated execution version, stamped from and validated
+  against the PINNED version's digest-verified run-record schema
+  (`_versioned_schema_path` — the corpus row exists for both served
+  versions; the const-stamp derivation generalizes from the composition's
+  schema to the version's schema, and a differing lattice version rides
+  the record's reasons as `implementation_disclosure:`). Recovery
+  terminalizes era runs against their own version — doc-first (the stored
+  binding document's const, digest-pinned bytes), echo-judged fallback
+  when the doc is absent (carried dialects thread, caller data does not),
+  disagreement and unjudgeable doc const contained under
+  `recovery_execution_version_unresolved:` with NO record;
+  `recovery_execution_version_not_runnable:` retires with the skip that
+  emitted it and `execution_version_not_runnable:` retires with the guard
+  that emitted it. CTL-9 unchanged: era records are
+  `interrupted`/`unknown`; recovery never resumes bodies, never
+  dispatches.
 - **[CON-2]** The digest pin lattice between the execution-contract documents is verified
   at admission; the fixture lattice moves in lockstep (`fixtures/registry/` ↔
   `scripts/registry/build_fixtures.py` ↔ `catalogue.json` ↔ the digest-pinning tests),
