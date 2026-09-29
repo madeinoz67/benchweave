@@ -32,5 +32,8 @@ plot_views motion), whose from-predecessor note governs it.
 
 ## Interim renderer state
 
-The preview renderer refuses the lanes kind visibly (a status note naming the
-condition) until the renderer slice lands — the wire grammar is final in 0.2.0.
+Until the renderer slice, the preview refuses a lanes-kind plot view WHOLE:
+the 0.2.0 wire schema admits the document and the TypeScript decoder throws
+`preview_invalid_plot_view` — a visible, never-silent failure of the entire
+preview (every page lost), not a per-kind status note; that note arrives
+with the renderer slice. The wire grammar is final in 0.2.0.

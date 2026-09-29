@@ -95,7 +95,10 @@ with narrower reopen conditions (the design record's D-1).
 
 ## Honest interim
 
-Slice 1 admits the kind; the renderer does not draw it until slice 2 —
-compositions render the visible unsupported-kind refusal note (§E.2.3
-precedent), never a silent blank. The wire grammar is final in 0.3.0 /
-0.2.0: no second bump results from this issue.
+Slice 1 admits the kind; nothing renders it until slice 2 — and the
+interim refusal is WHOLE-PREVIEW, not per-kind: a schema-valid lanes
+document passes the Python preview side and the TypeScript decoder refuses
+its plot view (`preview_invalid_plot_view`), failing the entire preview
+visibly (every page lost), never a silent blank. The per-kind
+unsupported-kind note arrives with slice 2's renderer. The wire grammar is
+final in 0.3.0 / 0.2.0: no second bump results from this issue.

@@ -329,7 +329,11 @@ declared plot: `preview-ui` projects each one into the served document
 (resolved axis units and hint fields included) and the bundled renderer
 draws it, with hints applied as preferences under the host theme — a hint
 can bias a trace colour to `accent`/`muted` or hide a channel from the
-drawing, and can never carry severity semantics or a threshold.
+drawing, and can never carry severity semantics or a threshold. The
+`digital_lanes` capture kind is the declared exception until its renderer
+slice lands: the wire admits such a plot but the preview decoder refuses
+the document whole (a visible failure of the entire preview, never a
+silent blank) — the per-kind note arrives with the renderer slice.
 
 Preview plot values are **per-scenario snapshots**: the preview data model
 carries one simulated value per observation target per scenario, so a feedable plot

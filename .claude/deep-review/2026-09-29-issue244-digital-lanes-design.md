@@ -730,6 +730,22 @@ frozen, THIS note governs the landed contract (#243's §11a precedent):
    before the plot walk. Removed; the 0.3.0 dataset clause is again
    byte-equivalent to 0.2.0's.
 
+4. **The interim refusal claim was false as landed (wave-2 fold T1).**
+   Headline 7 and §3's slice-1 line say the interim renders "a visible
+   unsupported-kind refusal note"; no ui/ bytes moved, and the preview
+   stack refuses a lanes plot view WHOLE — the wire schema admits, the
+   TypeScript decoder throws `preview_invalid_plot_view`, the entire
+   preview fails (every page lost). The claim surfaces are corrected to
+   the whole-refusal truth (both MIGRATIONs, the validation report, the
+   developer guide's preview section); the per-kind note arrives with
+   slice 2's renderer as designed. The pin fork the lane exposed (Python
+   tests at preview 0.2.0, the TS wire-schema test still at 0.1.1, both
+   suites green through the fork) is closed in S1: the TS pin moves to
+   0.2.0 with a derived served-set assertion (the imported schema's `$id`
+   must name the manifest's ACTIVE plugin-ui-preview version) so a future
+   fork fails mechanically, plus an interim arm pinning the
+   schema-admits/decoder-refuses split itself.
+
 Slice-2 constraint (fold row A8, watch item): the design's bumps-ONCE
 claim (headline 7) rides on slice 2 NOT needing fixture-side lanes
 fields — the 0.2.0 preview dir is released with this train, so any

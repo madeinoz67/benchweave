@@ -37,7 +37,11 @@ document becomes invalid under its own frozen schema.
 
 ## Interim renderer state
 
-The reference renderer does NOT draw `digital_lanes` in this train's first
-slice: it renders a visible unsupported-kind refusal note (never a silent
-blank) until the renderer slice lands. The wire grammar is final in 0.3.0 — no
-second plugin-ui bump results from this issue.
+The renderer does NOT draw `digital_lanes` in this train's first slice, and
+the interim refusal is WHOLE-PREVIEW, not a per-kind note: a schema-valid
+document carrying a lanes plot passes the Python preview side and the
+TypeScript decoder refuses its plot view (`preview_invalid_plot_view`) — a
+visible, never-silent failure of the entire preview (every page lost) until
+the renderer slice lands. The per-kind unsupported-kind note arrives with
+slice 2. The wire grammar is final in 0.3.0 — no second plugin-ui bump
+results from this issue.
