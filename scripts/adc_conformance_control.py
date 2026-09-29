@@ -52,8 +52,66 @@ ADC_REPO = "https://github.com/parkview/benchweave.git"
 ADC_COMMIT = "de132a292040415f9935b93b424ce15b9980843d"
 ADC_CONFORMANCE_LANE = "tests/adc/test_adapter_conformance.py"
 EXPECTED_TESTS = 26
-YANKED_PIN = "0.2.1"
-MOVE_TO = "0.2.2"
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _otdp_policy_facts() -> tuple[str, str]:
+    """(yanked_pin, move_to) derived from the committed policy block — the
+    authority the built wheel's lock mirrors (``make check-sdk-standards``
+    refuses drift between them). Deriving replaces the hand-swept literals
+    the zero-literal gate exists to remove (issue #269 §2.1): the
+    anti-gaming arm then always plants the CURRENT yanked version, and the
+    recorded motion mechanism ("both flip with the yank policy block")
+    becomes mechanical instead of remembered. Tautology boundary: the
+    control asserts OBSERVED warning content (from the built wheel + the
+    external plugin) against this AUTHORITY read (the checkout manifest) —
+    different objects; the residual is consistent corruption of manifest
+    AND lock together, which ``make check-sdk-standards``'s sync lane
+    owns. The move-to == active equivalence is a theorem of the policy
+    shape (the served rule's move-to is the version-tuple-max of the SERVED
+    set, else the range's lower bound — ``dependency.py::_move_to``, with
+    no >=pin filter and a real lower-bound fallback; while the active
+    entry is the highest served version, move-to IS the active entry);
+    its failure mode is this control failing loudly below — the redesign
+    trigger, never a silent wrong assertion. The yanked == active shape
+    is REFUSED outright (``adc_yank_is_active:`` — fold wave row 4): it
+    would make the warning checks vacuous.
+    """
+    manifest_path = REPO_ROOT / "standards" / "standards-manifest.json"
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        # Unreadable/unparsable authority exits with the adc_ prefix (fold
+        # wave row 8) — never a raw traceback.
+        raise SystemExit(f"adc_policy_unreadable: {manifest_path}: {exc}") from exc
+    entry = next((s for s in manifest["standards"] if s.get("id") == "otdp"), None)
+    if entry is None:
+        raise SystemExit("adc_policy_absent: no otdp entry in the standards manifest")
+    policy = manifest["dependency_policy"]["standards"].get("otdp", {})
+    yanked = sorted(policy.get("yanked", {}))
+    if len(yanked) != 1:
+        raise SystemExit(
+            "adc_yank_not_unique: the control's anti-gaming arm needs exactly "
+            f"one yanked otdp version, found {yanked}"
+        )
+    active = str(entry["version"])
+    if yanked[0] == active:
+        # Fold wave row 4 (adv-lane1 F1): under yanked == active the
+        # derivation would return (active, active) and the warning
+        # substring checks would pass against ANY output naming the active
+        # version — the anti-gaming arm would go vacuous. The shape is
+        # refused; re-rolling a yank ONTO the active version is a policy
+        # redesign the control must not silently absorb.
+        raise SystemExit(
+            f"adc_yank_is_active: the only yanked otdp version ({yanked[0]}) "
+            "equals the active entry — the anti-gaming arm's warning checks "
+            "would be vacuous; redesign the policy shape first"
+        )
+    return yanked[0], active
+
+
+YANKED_PIN, MOVE_TO = _otdp_policy_facts()
 
 SOCKET_GUARD = '''"""Network guard (macOS has no unshare): outbound sockets raise."""
 import socket
@@ -230,7 +288,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--workspace", type=Path, default=None)
     arguments = parser.parse_args()
-    checkout = Path(__file__).resolve().parents[1]
+    checkout = REPO_ROOT
     workspace = arguments.workspace or Path(tempfile.mkdtemp(prefix="adc-control-"))
     workspace.mkdir(parents=True, exist_ok=True)
     try:
