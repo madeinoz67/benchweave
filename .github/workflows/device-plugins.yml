@@ -18,6 +18,14 @@ jobs:
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           python-version: "3.13"
+      - name: Version-literal zero gate (plugins + docs scopes)
+        # Issue #221 (#203 slice 7, completing D8/#233's plugin lane): the
+        # in-tree plugin source and the operator docs are gated trees. The
+        # counter is stdlib-only and the checkout is present at job start;
+        # the plugin's own isolated test run below is untouched. The sdk
+        # scope is deliberately NOT here — the SDK lane (the SDK repo's ci)
+        # and the gates job's sdk scope own it.
+        run: python3 scripts/standards/count_version_literals.py --scope plugins,docs
       - name: Isolate the device project from the core checkout
         run: cp -R plugins/fnirsi/dps150 "$RUNNER_TEMP/dps150"
       - name: Install the plugin development environment
