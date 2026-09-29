@@ -66,9 +66,23 @@ import subprocess
 import sys
 from pathlib import Path
 
-from benchweave.standards.manifest import load_manifest, load_sdk_compatibility
+from benchweave.standards.manifest import (
+    active_version_from_corpus,
+    load_manifest,
+    load_sdk_compatibility,
+)
+from benchweave.vendoring import corpus_root
 
 REPO = Path(__file__).resolve().parent.parent
+# The runtime schema the built site must carry is the ACTIVE otdp family's
+# (issue #269 §2.1): derived from the committed manifest so a future otdp
+# bump moves the verified path with it — no sweep. copy_standards_resources
+# copies every non-dev corpus family beside the prose, so the derived path
+# exists in the built tree by construction.
+ACTIVE_OTDP_RUNTIME_SCHEMA = (
+    f"standards/otdp/{active_version_from_corpus(corpus_root(), 'otdp')}"
+    "/otdp-runtime.schema.json"
+)
 GITHUB_BLOB = "https://github.com/madeinoz67/benchweave/blob/main/"
 GITHUB_TREE = "https://github.com/madeinoz67/benchweave/tree/main/"
 
@@ -524,7 +538,7 @@ def verify_tree(dest: Path, paths: dict[str, str]) -> None:
     for rel in (
         "reference/cli/index.html",
         "standards/index.html",
-        "standards/otdp/0.2.0/otdp-runtime.schema.json",  # corpus copied beside the prose
+        ACTIVE_OTDP_RUNTIME_SCHEMA,  # corpus copied beside the prose
         "user-guide/changelog.html",
         "llms.txt",
         "llms-full.txt",

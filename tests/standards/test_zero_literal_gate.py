@@ -189,11 +189,11 @@ class TestZeroModeOverRealTrees:
     """G1a's SHIP state, asserted by the committed gate (issue #221 §5)."""
 
     def test_every_available_scope_counts_zero_outside_the_register(self) -> None:
-        result = _counter_run("--scope", "gateway,plugins,docs", "--json")
+        result = _counter_run("--scope", "gateway,plugins,docs,scripts", "--json")
         assert result.returncode == 0, result.stdout + result.stderr
         payload = json.loads(result.stdout)
         assert payload["mode"] == "zero"
-        for scope in ("gateway", "plugins", "docs"):
+        for scope in ("gateway", "plugins", "docs", "scripts"):
             report = payload["scopes"][scope]
             assert report["outside"] == 0, f"{scope}: {report['violations']}"
             assert report["ok"] is True
@@ -223,7 +223,7 @@ class TestZeroModeOverRealTrees:
     def test_every_scope_is_reproducible_twice_byte_identical(self) -> None:
         """The A4 discipline extended to every scope, docs included (the
         KILL arm: any two consecutive runs differing)."""
-        for scope in ("gateway", "plugins", "sdk", "docs"):
+        for scope in ("gateway", "plugins", "sdk", "docs", "scripts"):
             if scope == "sdk" and not (ROOT / "packages/sdk/src/benchweave_sdk").is_dir():
                 continue
             first = _counter_run("--scope", scope, "--json")
@@ -232,12 +232,13 @@ class TestZeroModeOverRealTrees:
             assert first.stdout == second.stdout, f"{scope}: nondeterministic"
 
     def test_census_pins_the_class_set_per_scope(self) -> None:
-        """Design risk 4: silent scope shrinkage fails. plugins and docs
-        carry exclusion constants, so their census is pinned EXACTLY; the
-        gateway/sdk scopes have no exclusions (their glob change would be a
-        review-visible script edit and the plant arms catch a broken walk),
-        so they pin a floor only."""
-        result = _counter_run("--scope", "gateway,plugins,docs", "--json")
+        """Design risk 4: silent scope shrinkage fails. plugins, docs and
+        scripts carry exclusion constants (scripts also self-exempts the
+        counter), so their census is pinned EXACTLY; the gateway/sdk scopes
+        have no exclusions (their glob change would be a review-visible
+        script edit and the plant arms catch a broken walk), so they pin a
+        floor only."""
+        result = _counter_run("--scope", "gateway,plugins,docs,scripts", "--json")
         assert result.returncode == 0
         payload = json.loads(result.stdout)
         assert payload["scopes"]["plugins"]["scanned"] == 13, (
@@ -247,6 +248,11 @@ class TestZeroModeOverRealTrees:
         assert payload["scopes"]["docs"]["scanned"] == 30, (
             "the docs class set moved — update this pin in the same commit "
             "as the tree change, or refresh the snapshot deliberately"
+        )
+        assert payload["scopes"]["scripts"]["scanned"] == 16, (
+            "the scripts class set moved (17 .py minus the self-exempted "
+            "counter) — update this pin in the same commit as the tree "
+            "change (the ratchet discipline)"
         )
         assert payload["scopes"]["gateway"]["scanned"] >= 93
 
@@ -637,6 +643,147 @@ class TestSchemaConstDerivations:
         from benchweave.vendoring import active_contract_family
 
         assert active_contract_family("interface").name == VENDORED_INTERFACE_VERSION
+
+
+class TestScriptsScope:
+    """H3 (issue #269 §7): the scripts ledger — three derivations, twenty
+    registrations with value pins, the counter's self-exemption.
+
+    RED at the scope's base: ``scripts`` was not a scope (unknown-scope
+    refusal), the adc pins were hand-swept literals blind to a corrupted
+    manifest, and the docs site pinned the retained OLD otdp family.
+    """
+
+    def _scratch_scripts_repo(self, tmp_path: Path) -> Path:
+        import shutil
+
+        scratch = tmp_path / "scratch-repo"
+        shutil.copytree(
+            ROOT / "scripts",
+            scratch / "scripts",
+            ignore=shutil.ignore_patterns("__pycache__"),
+        )
+        (scratch / "standards").mkdir()
+        shutil.copy(
+            ROOT / "standards/standards-manifest.json",
+            scratch / "standards/standards-manifest.json",
+        )
+        return scratch
+
+    def _scratch_control_repo(self, tmp_path: Path, mutate: str) -> Path:
+        """A scratch checkout for the adc control's derivation arms: the
+        control anchors REPO_ROOT on its own location, so a copied tree
+        with a mutated manifest exercises the authority read."""
+        import shutil
+
+        scratch = tmp_path / f"scratch-control-{mutate}"
+        (scratch / "scripts").mkdir(parents=True)
+        (scratch / "standards").mkdir()
+        shutil.copy(ROOT / "scripts/adc_conformance_control.py", scratch / "scripts/")
+        manifest = json.loads(
+            (ROOT / "standards/standards-manifest.json").read_text(encoding="utf-8")
+        )
+        if mutate == "zero-yanked":
+            manifest["dependency_policy"]["standards"]["otdp"]["yanked"] = {}
+        elif mutate == "otdp-absent":
+            manifest["standards"] = [
+                s for s in manifest["standards"] if s.get("id") != "otdp"
+            ]
+        (scratch / "standards/standards-manifest.json").write_text(json.dumps(manifest))
+        return scratch
+
+    def test_the_scripts_ledger_holds_over_the_real_tree(self) -> None:
+        """The 23 sites are accounted: 20 registered across the 7 authored
+        rows holding exactly, the 3 former literals DERIVED (no site —
+        textual or assembled — in the adc control or the docs site), the
+        counter self-exempted (census 16, not 17)."""
+        result = _counter_run("--scope", "scripts", "--json")
+        assert result.returncode == 0, result.stdout + result.stderr
+        report = json.loads(result.stdout)["scopes"]["scripts"]
+        assert report["outside"] == 0, report["violations"]
+        assert report["scanned"] == 16
+        assert report["count"] == 20
+        carried = {row["file"] for row in report["sites"]}
+        assert carried == {
+            "scripts/architecture/check_closure.py",
+            "scripts/architecture/check_devices.py",
+            "scripts/architecture/check_interface.py",
+            "scripts/registry/build_fixtures.py",
+            "scripts/registry/publish_dev.py",
+            "scripts/registry/registry_common.py",
+            "scripts/sdk_smoke.py",
+        }, carried
+
+    def test_a_plant_in_a_registered_scripts_file_fails(self, tmp_path: Path) -> None:
+        scratch = self._scratch_scripts_repo(tmp_path)
+        target = scratch / "scripts/sdk_smoke.py"
+        target.write_bytes(target.read_bytes() + b'\n_PLANT = "9.9.9"\n')
+        result = _scratch_run(scratch, "--scope", "scripts")
+        assert result.returncode == 1, result.stdout + result.stderr
+        assert (
+            "register expectation failed: scripts/sdk_smoke.py expects 2 literals, found 3"
+            in result.stdout
+        )
+
+    def test_a_plant_in_an_unregistered_scripts_file_fails(self, tmp_path: Path) -> None:
+        scratch = self._scratch_scripts_repo(tmp_path)
+        target = scratch / "scripts/adc_conformance_control.py"
+        target.write_bytes(target.read_bytes() + b'\n_PLANT = "9.9.9"\n')
+        result = _scratch_run(scratch, "--scope", "scripts")
+        assert result.returncode == 1, result.stdout + result.stderr
+        assert "unregistered literal: scripts/adc_conformance_control.py" in result.stdout
+
+    def test_a_non_unique_yank_block_refuses_the_control(self, tmp_path: Path) -> None:
+        """A scratch authority with ZERO yanked entries ⇒
+        ``adc_yank_not_unique:`` non-zero exit — the derivation reads the
+        committed policy block, never guesses. RED at base: the hand-swept
+        literals never read the manifest, so the same corrupted authority
+        let the control proceed to argparse (exit 0)."""
+        scratch = self._scratch_control_repo(tmp_path, "zero-yanked")
+        result = subprocess.run(
+            [sys.executable, str(scratch / "scripts/adc_conformance_control.py"), "--help"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert result.returncode != 0, result.stdout + result.stderr
+        assert "adc_yank_not_unique:" in result.stderr
+
+    def test_an_absent_otdp_entry_refuses_the_control(self, tmp_path: Path) -> None:
+        """A scratch authority without the otdp entry ⇒
+        ``adc_policy_absent:`` non-zero exit."""
+        scratch = self._scratch_control_repo(tmp_path, "otdp-absent")
+        result = subprocess.run(
+            [sys.executable, str(scratch / "scripts/adc_conformance_control.py"), "--help"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert result.returncode != 0, result.stdout + result.stderr
+        assert "adc_policy_absent:" in result.stderr
+
+    def test_the_docs_site_runtime_schema_path_is_the_active_family(self) -> None:
+        """H3's docs-site arm: the site's verified runtime-schema path is
+        DERIVED from the committed manifest's ACTIVE otdp family, replacing
+        the stale retained-old-version pin. RED at base: the module had no
+        such constant and the pin named 0.2.0 while the active family is
+        0.2.2."""
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location(
+            "assemble_docs_site_under_test", ROOT / "scripts/assemble_docs_site.py"
+        )
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        derived = module.ACTIVE_OTDP_RUNTIME_SCHEMA
+        assert derived == "standards/otdp/0.2.2/otdp-runtime.schema.json", derived
+        assert active_version_from_corpus(ROOT / "standards", "otdp") == "0.2.2"
+        # The derived path exists in the real corpus at the same
+        # repo-relative path (and copy_standards_resources ships every
+        # non-dev family beside the prose, so the built tree carries it by
+        # construction).
+        assert (ROOT / derived).is_file()
 
 
 class TestAssemblyShapesBattery:

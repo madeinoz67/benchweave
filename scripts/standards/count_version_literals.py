@@ -63,7 +63,17 @@ SCOPES (#221 §1.3):
   (whose diff is the review surface) moves the bound, and the scanned-file
   census is checked in-gate the same way. The zero end-state for prose
   rides the render-from-the-lock work D4/18(m) already own (deferral Z2).
-- ``all``: the four scopes (the default).
+- ``scripts`` (issue #269 §2): every ``*.py`` under ``scripts/`` with the
+  environment filter applied — EXCLUDING the counter ITSELF by the named
+  constant below (the register's ``expected_values`` tuples ARE the
+  gate's own data and are literals by construction — the same class as
+  the docs snapshot JSON, which no AST scope scans). The three policy
+  facts are DERIVED (the adc control's two pins from the committed
+  manifest; the docs site's corpus path from the active family); the
+  twenty authored fixture/self-test values are REGISTERED with value
+  pins. Census pinned at 16 files (17 ``.py`` minus the self-exempted
+  counter).
+- ``all``: the five scopes (the default).
 
 THE REGISTER — the exemption list with teeth (#221 §1.3): each entry names
 a file, the reason it is authored data rather than a derivation site, and
@@ -77,15 +87,17 @@ registered file fails even at unchanged cardinality. The corpus-owned
 ``contracts.py`` rows carry no value pin because the copies are
 digest-pinned whole (``tests/sdk/test_presentation_packaging.py``).
 
-DENOMINATOR BOUNDARY (G1's honest scope, fold row 13): the gated trees are
-gateway ``src/benchweave/``, the SDK's ``src/benchweave_sdk/``, in-tree
-plugins' ``src/``, and ``docs/`` (ratchet). ``scripts/``, ``tests/`` and
-``.github/`` are OUTSIDE the gates (scripts carry registered
-non-standards references; tests carry legitimate fixture literals) —
-``scripts/adc_conformance_control.py`` carries live OTDP literals today
-(``YANKED_PIN``/``MOVE_TO``, the A1 anti-gaming arm); its motion is the
-yank policy block, recorded in the slice-1 definition above, and a
-scripts/ scope extension is the named follow-on.
+DENOMINATOR BOUNDARY (G1's honest scope, fold row 13; issue #269 §2
+shrinks it): the gated trees are gateway ``src/benchweave/``, the SDK's
+``src/benchweave_sdk/``, in-tree plugins' ``src/``, ``docs/`` (ratchet),
+and ``scripts/`` (the adc control's two policy pins DERIVED from the
+committed manifest — the move-to-equals-active equivalence is a theorem
+of the policy shape whose failure mode is a loud control failure — and
+the docs site's corpus path DERIVED from the active family; twenty
+authored fixture/self-test values REGISTERED with value pins).
+``tests/`` and ``.github/`` are OUTSIDE the gates (tests carry
+legitimate fixture literals; assembly there equally so) — named so the
+denominators cannot silently move.
 
 WHAT THE MATCHER DOES NOT CATCH (G4, fold row 7d; issue #269 rewrite): the
 matcher folds CONSTANT-ONLY assembly — concatenation, f-strings,
@@ -150,6 +162,18 @@ ENVIRONMENT_COMPONENTS = frozenset({"venv", ".venv", "node_modules", "site-packa
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SDK_ROOT = REPO_ROOT / "packages" / "sdk"
 
+# The scripts scope's self-exemption (issue #269 §2.3): the counter
+# exempts ITSELF — the register's ``expected_values`` tuples ARE the
+# gate's own data and are literals by construction (the same class as the
+# docs snapshot JSON, which no AST scope scans). Whole-file, by the #269
+# design's Fork-3 call; line-scoped exemption was rejected as new
+# machinery for a file whose every edit is already an editorial
+# re-baseline by this docstring's own rule. RESIDUAL (named, #269 risk 2):
+# a plant in this file's NON-shared region is self-exempt and
+# parity-invisible — the review lane carries it, the same posture the
+# definition-change rule already takes.
+SCRIPTS_EXCLUDED_FILES = ("scripts/standards/count_version_literals.py",)
+
 # The registered-exception register (VR-25 branch 2; #221 §1.3): scope ->
 # display-relative path -> (reason, expected_sites, expected_values).
 # expected_sites is the EXACT literal count the file may carry; a registered
@@ -198,9 +222,57 @@ REGISTER: dict[str, dict[str, tuple[str, int, tuple[str, ...] | None]]] = {
         ),
     },
     "docs": {},
+    "scripts": {
+        "scripts/architecture/check_closure.py": (
+            "authored synthetic-fixture versions — the closure graph's "
+            "invented module versions are test data, not standards "
+            "references (issue #269 §2.2; the SDK scaffold row's register "
+            "semantics)",
+            4,
+            ("1.0.0", "1.0.0", "1.0.0", "1.0.0"),
+        ),
+        "scripts/architecture/check_devices.py": (
+            "authored synthetic probe — the identity-disagreement fixture's "
+            "invented version is test data",
+            1,
+            ("2.0.0",),
+        ),
+        "scripts/architecture/check_interface.py": (
+            "authored self-test payload — a synthetic clientInfo version in "
+            "the interface self-test",
+            1,
+            ("0.1.0",),
+        ),
+        "scripts/registry/build_fixtures.py": (
+            "authored fixture-package versions — the fixture packages' "
+            "release version and directory names (deriving these from the "
+            "schema consts is deferral D-2: it changes emitted fixture "
+            "bytes on every bump; the lattice's motion is governed by its "
+            "rebuild flow)",
+            4,
+            ("1.0.0", "1.0.0", "1.0.0", "1.0.0"),
+        ),
+        "scripts/registry/publish_dev.py": (
+            "authored dev-iteration default sentinel (0.0.0 = no dev head)",
+            1,
+            ("0.0.0",),
+        ),
+        "scripts/registry/registry_common.py": (
+            "authored fixture document data — the registry fixtures' "
+            "document formats, compat lists and package versions",
+            7,
+            ("0.1.0", "0.1.0", "0.1.1", "0.1.1", "1.0.0", "1.0.0", "1.0.0"),
+        ),
+        "scripts/sdk_smoke.py": (
+            "authored synthetic descriptor firmware — the scaffold row's "
+            "own class: example-template fields, not standards references",
+            2,
+            ("1.0.0", "1.0.0"),
+        ),
+    },
 }
 
-ALL_SCOPES = ("gateway", "plugins", "sdk", "docs")
+ALL_SCOPES = ("gateway", "plugins", "sdk", "docs", "scripts")
 
 
 class ScopeAbsent(Exception):
@@ -463,11 +535,13 @@ def scope_tree(scope: str) -> tuple[Path, Path, str]:
         if not (root / "src/benchweave_sdk").is_dir():
             raise ScopeAbsent(
                 "packages/sdk/src/benchweave_sdk (the submodule is absent — "
-                "check it out, or pass --scope gateway,plugins,docs)"
+                "check it out, or pass --scope gateway,plugins,docs,scripts)"
             )
         return root, root, "src/benchweave_sdk/**/*.py"
     if scope == "docs":
         return REPO_ROOT, REPO_ROOT, "docs/*.md"
+    if scope == "scripts":
+        return REPO_ROOT, REPO_ROOT, "scripts/**/*.py"
     raise ValueError(f"unknown scope: {scope}")
 
 
@@ -544,8 +618,13 @@ def count_sites(source_root: Path, scope: str) -> tuple[list[dict[str, Any]], in
         relative_parts = path.relative_to(display_root).parts
         if not _in_scope(scope, relative_parts):
             continue
-        scanned += 1
         relative = path.relative_to(display_root).as_posix()
+        if relative in SCRIPTS_EXCLUDED_FILES:
+            # The counter exempts ITSELF (the constant's comment carries
+            # the reason and the named residual) — not scanned, not
+            # counted: the census is 16, not 17.
+            continue
+        scanned += 1
         if scope == "docs":
             text = path.read_text(encoding="utf-8")
             for line_number, line in enumerate(text.splitlines(), start=1):
@@ -758,7 +837,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--scope",
         default="all",
-        help="comma-separated scopes: gateway,plugins,sdk,docs (or all)",
+        help="comma-separated scopes: gateway,plugins,sdk,docs,scripts (or all)",
     )
     parser.add_argument(
         "--refresh-docs-baseline",
