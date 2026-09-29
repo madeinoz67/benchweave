@@ -248,17 +248,39 @@ machine-matchable vocabulary and the five inline fields:
 acknowledgement authorises it (an acknowledgement covers an otdp window,
 never the execution runtime interface). A lattice that pins a non-active
 execution version still validates and loads at startup — the
-procedure-author story — but a run request over it refuses
-`execution_version_not_runnable:` naming both versions and the move-to;
-the run never starts. A stored run whose binding names a carried
-execution dialect other than the active one (an era run — recorded under
-a retained version the gateway no longer serves) is left non-terminal at
-restart recovery, logged as
-`recovery_execution_version_not_runnable:` — its honest end cannot be
-written in the active record dialect until the record lane is
-version-threaded. (A binding ref carrying a version the corpus never
-served is caller data, recorded verbatim; recovery judges the stored
-version against the corpus, never trusting the echo.)
+procedure-author story — and a run request over it is legal (issue #260,
+the record lane): the run's terminal record carries and validates at the
+LATTICE's own execution version, with an
+`implementation_disclosure:` reason naming both versions whenever they
+differ. RUNNING is an implemented-dialect fact: every run's device pins
+must satisfy the COMPOSITION's cross-constraint row — the same
+`cross_constraint_violation:` refusal admission raises, subject rewritten
+to "this gateway runs", refused synchronously at run start (typed
+`policy_denied`, before any lease is consumed) and authoritatively at the
+worker. The synchronous refusal is BEST-EFFORT: it reads the binding,
+bench and descriptor documents from the content store, and an UNSTORED
+document skips it — that class of start stays asynchronous (202, then
+`outcome_unknown` under the worker's poison guard); the worker's floor
+over the full admission result is the authority. A composition version
+whose standard declares no row asserts no floor — the same per-version
+honest negative admission has. A stored run whose binding names a carried
+execution dialect other than the active one (an era run) is terminalized
+at restart recovery against its OWN version: doc-first (the stored binding
+document's const), echo-judged when the doc is absent,
+`interrupted`/`unknown` as recovery always prescribed. The echo is judged
+three ways: carried → the era record; retired-but-RETAINED → the era
+record stamped from the retained bytes (a later retirement never flips an
+era run to a composition stamp and never wedges it); everything with no
+retained bytes (never carried, a retired identifier, unclassifiable) is
+caller data and terminalizes exactly as before. The containment
+class is an unresolvable record — a doc/echo
+disagreement or an unjudgeable or const-less doc const — left
+non-terminal and logged `recovery_execution_version_unresolved:`. RETIRED
+vocabulary (an old log
+grep finds it here): `execution_version_not_runnable:` was the pre-record-
+lane run guard (superseded by the floor + threading above) and
+`recovery_execution_version_not_runnable:` was the pre-record-lane era
+skip (superseded by era terminalization).
 
 **Adapter-bridge runs and the quota seam.** A run constructs a real OTDP
 bridge for a bench device only when the device's descriptor declares

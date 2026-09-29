@@ -53,12 +53,14 @@ from typing import Any
 
 from jsonschema import Draft202012Validator
 
+from benchweave.content.store import ContentStore
 from benchweave.control.binding import Reservation, release, reserve, resolve_binding
 from benchweave.control.clocking import MonotonicClock, WallClock
 from benchweave.control.documents import (
     AdmittedDocuments,
     _classify_execution_pin,
     _corpus_root_of,
+    _versioned_schema_path,
 )
 from benchweave.control.executor import (
     BODY_EXECUTION_ERROR,
@@ -85,6 +87,7 @@ from benchweave.host.types import (
     OperationResult,
     OperationStatus,
 )
+from benchweave.standards.manifest import VERSION_PATTERN
 from benchweave.state.store import Store
 from benchweave.vendoring import active_contract_family
 
@@ -132,56 +135,207 @@ def terminal_outcome(body_outcome: str, safe_state: str) -> str:
 _LOG = logging.getLogger(__name__)
 
 
-def _is_other_carried_dialect(stored_version: str, contracts: Path) -> bool:
-    """Fold row 1 (issue #220): whether a stored run's binding version names
-    a CARRIED execution dialect other than this composition's — the era
-    cohort a restart must not terminalise into the active record dialect.
-
-    The stored binding's version is the §5 ref's caller-supplied echo (D4:
-    the seam records it verbatim — the frozen contract types it as any
-    non-empty string), so it is JUDGED, never trusted: only a version the
-    corpus CARRIES (a served/yanked/dev/rc classification — a dialect a
-    gateway could really have run) that differs from the composition's is
-    an era fact. Anything else (retired, never carried, unclassifiable) is
-    caller data; the record lane's literal beside it faithfully records the
-    ref, it does not claim a dialect. Classification failure is containment:
-    an unjudgeable version refuses the record too (fail-closed — ambiguity
-    never becomes a clean terminal record), logged as the same wedge.
-    """
-    if stored_version == contracts.name:
-        return False
+def _is_carried_execution_dialect(version: str, contracts: Path) -> bool:
+    """Whether one execution version names a CARRIED dialect (served, yanked,
+    dev or rc — a dialect a gateway could really have run). The stored
+    binding's version is the §5 ref's caller-supplied echo (D4: the seam
+    records it verbatim — the frozen contract types it as any non-empty
+    string), so it is JUDGED, never trusted. Classification failure is
+    ``False`` (caller data, not an era fact); the composition's own version
+    is carried by definition."""
+    if version == contracts.name:
+        return True
     try:
         record = _classify_execution_pin(
-            stored_version, corpus=_corpus_root_of(contracts)
+            version, corpus=_corpus_root_of(contracts)
         )
     except Exception:
         # Recovery containment, never a startup crash: an unjudgeable
-        # version refuses the record too (the honest wedge above).
-        return True
+        # version is caller data, never an era fact.
+        return False
     return record.status in ("served", "yanked", "dev", "rc")
 
 
-def _log_era_run_skip(run_id: str, stored_version: str, active_version: str) -> None:
-    """The typed containment reason for an era run (fold row 1, issue #220).
+@dataclass(frozen=True)
+class _RecoveryDecision:
+    """What one recovered run's terminalization does (issue #260 fold).
 
-    A stored non-terminal run whose binding names a carried execution
-    dialect other than this composition's must NOT be terminalised:
-    ``build_terminal_record`` stamps the record lane's literal
-    ``contract_version`` beside the binding's own, the internally
-    contradictory evidence record (A06). The honest wedge — matching
-    pre-slice behavior, where the era lattice refused startup outright — is
-    to write NOTHING and leave the run non-terminal, logged under a
-    recovery-family prefix that embeds the guard's class vocabulary so the
-    CON-1-named grep finds every instance. The record lane (E1) lifts this.
+    ``record_version`` None is the composition path (stamp the composition
+    schema's const); a version threads into ``build_terminal_record``.
+    ``binding_pin`` is the record's binding-block source — doc-resolved
+    runs stamp id/version/sha256 FROM THE DOCUMENT (the normal path's
+    ``_binding_pin`` posture, so the record self-consistently names one
+    artifact), echo-path runs keep the stored row. ``reasons`` are
+    disclosures that ride the record; ``containment`` non-None means NO
+    record (the run stays non-terminal; the caller logs it)."""
+
+    record_version: str | None
+    binding_pin: dict[str, Any]
+    reasons: tuple[str, ...]
+    containment: str | None
+
+
+def _implementation_disclosure(gateway_version: str, run_version: str, verb: str) -> str:
+    """The ONE implementation-disclosure renderer (issue #260 fold row 9)
+    shared by every site where a record's execution version differs from
+    the gateway composition's — ``verb`` is the one variable word
+    (``executed`` on the normal path, ``recovered`` in recovery). Full text
+    pinned by ``tests/control/test_record_lane.py``."""
+    return (
+        "implementation_disclosure: gateway composition "
+        f"execution@{gateway_version} {verb} lattice execution@{run_version}"
+    )
+
+
+def _recovery_record_version(
+    run: dict[str, Any], contracts: Path, content: Any
+) -> _RecoveryDecision:
+    """The version, binding pin and reasons a recovered run's terminal
+    record carries — or containment.
+
+    Issue #260's record lane, replacing the #220 fold's skip (the skip's
+    stated cause — the record builder's composition-schema validation —
+    evaporates once the record threads the run's own version; the
+    judgeable cohort terminalizes). Resolution order:
+
+    1. **Doc first:** ``run["binding"]["sha256"]`` → the content store's
+       binding document → its ``contract_version`` — the validated
+       artifact's own const, the strongest surviving evidence of the run's
+       admitted dialect (D4 never trusted the echo; neither does this — it
+       reads the digest-pinned bytes). A doc-resolved run stamps its
+       binding block FROM THE DOCUMENT (fold row 3, case E: the record
+       self-consistently names one artifact even when a carried echo
+       disagrees — the disagreement rides as an ``implementation_disclosure``
+       reason, never as a silent contradiction). A doc const that is
+       EMPTY or does not classify as a carried dialect is containment
+       (unjudgeable = containment).
+    2. **Echo fallback (doc absent — pre-D4 rows, disposed content; the
+       era fixtures carry zero digests): the THREE-WAY disposition (the
+       fold's correction of row 4's over-broad containment):**
+       - the composition's version → the composition record;
+       - a CARRIED dialect → the era record;
+       - a NOT-carried version whose bytes the corpus still RETAINS (a
+         later retirement — retirement ≠ removal, copy-never-move keeps
+         the directory) → the era record STAMPED FROM THE RETAINED BYTES
+         (digest-verified resolution): a future retirement never flips an
+         era run to a composition stamp AND never wedges it — this is
+         what makes doc-first era-stability true;
+       - anything with NO retained bytes (never carried, a retired
+         identifier whose directory is gone, unclassifiable) → CALLER
+         DATA: the composition record exactly as before the fold (the
+         honest-ref class; the integration harnesses post exactly these
+         and must keep recovering).
+       The composition-flip of a WAS-carried echo never happens in any
+       branch — that kill shape stays dead.
+    3. **Disagreement containment:** a doc-resolved carried era version
+       beside a DIFFERENT carried echo — no record is safe (the two
+       surviving artifacts contradict each other about what ran).
+
+    Containment is ``decision.containment`` set; the caller logs
+    ``recovery_execution_version_unresolved:`` (the #220 skip's prefix
+    retires with the class it named) and writes NOTHING.
     """
+    echo = str(run["binding"].get("version", ""))
+    digest = str(run["binding"].get("sha256", ""))
+    stored_pin = dict(run["binding"])
+    doc = content.get_document(digest) if digest else None
+    doc_version: str | None = None
+    doc_pin: dict[str, Any] | None = None
+    if doc is not None:
+        candidate = str(doc["content"].get("contract_version", ""))
+        if not candidate:
+            return _RecoveryDecision(
+                None,
+                stored_pin,
+                (),
+                f"binding document digest {digest[:12]}… carries no "
+                "contract_version (an unjudgeable doc const — the design's "
+                "own containment rule)",
+            )
+        if candidate == contracts.name or _is_carried_execution_dialect(
+            candidate, contracts
+        ):
+            doc_version = candidate
+            doc_pin = {
+                "id": str(doc["content"].get("request_id", stored_pin.get("id", ""))),
+                "version": candidate,
+                "sha256": digest,
+            }
+        else:
+            return _RecoveryDecision(
+                None,
+                stored_pin,
+                (),
+                f"binding document digest {digest[:12]}… carries "
+                f"contract_version {candidate!r}, which does not classify "
+                "as a carried execution dialect",
+            )
+    if doc_version is not None and doc_pin is not None:
+        if doc_version != contracts.name:
+            if echo and echo != doc_version and _is_carried_execution_dialect(
+                echo, contracts
+            ):
+                return _RecoveryDecision(
+                    None,
+                    doc_pin,
+                    (),
+                    f"binding document const {doc_version!r} disagrees with the "
+                    f"stored echo {echo!r} — no record can honestly carry both",
+                )
+            return _RecoveryDecision(doc_version, doc_pin, (), None)
+        # The doc names THIS composition (case E, fold row 3): the record
+        # stamps the DOCUMENT's binding block — and a disagreeing carried
+        # echo rides as a disclosure, never as a silent contradiction.
+        if echo and echo != doc_version and _is_carried_execution_dialect(echo, contracts):
+            return _RecoveryDecision(
+                None,
+                doc_pin,
+                (
+                    "implementation_disclosure: the stored binding echo pinned "
+                    f"execution@{echo} but the binding document names "
+                    f"execution@{doc_version} — the digest-pinned document "
+                    "governs",
+                ),
+                None,
+            )
+        return _RecoveryDecision(None, doc_pin, (), None)
+    # Doc absent: the echo, judged (the fold's THREE-WAY disposition).
+    if echo == contracts.name:
+        return _RecoveryDecision(None, stored_pin, (), None)
+    if echo and _is_carried_execution_dialect(echo, contracts):
+        return _RecoveryDecision(echo, stored_pin, (), None)
+    # NOT carried: retained bytes? (retirement ≠ removal — copy-never-move
+    # keeps the directory; a later retirement must neither flip the run to
+    # the composition stamp nor wedge it). Digest-verified resolution of
+    # the echo's own run-record schema: success → era-stamp from the
+    # retained bytes; refusal → no retained bytes → caller data, the
+    # composition record exactly as before the fold (the honest-ref class;
+    # the integration harnesses post these and keep recovering).
+    if echo:
+        try:
+            _versioned_schema_path(
+                _corpus_root_of(contracts), "execution", echo, "run-record.schema.json"
+            )
+        except Exception:
+            return _RecoveryDecision(None, stored_pin, (), None)
+        return _RecoveryDecision(echo, stored_pin, (), None)
+    return _RecoveryDecision(None, stored_pin, (), None)
+
+
+def _log_recovery_unresolved(run_id: str, reason: str, echo: str) -> None:
+    """The typed containment reason for an unresolvable era record
+    (issue #260). The #220 skip's ``recovery_execution_version_not_runnable:``
+    RETIRES with the class it named — those runs are now terminalized; the
+    containment class that remains is "unresolvable", not "not runnable".
+    The reason string carries every artifact field (fold row 8 dropped the
+    duplicate digest/const fields from here). No record is written; the run
+    stays non-terminal; the lease is still released by the caller."""
     _LOG.error(
-        "recovery_execution_version_not_runnable: run %s binding pins "
-        "execution@%s but this gateway runs execution@%s; no terminal record "
-        "is written and the run stays non-terminal (the honest wedge — the "
-        "record lane, E1, lifts this)",
+        "recovery_execution_version_unresolved: run %s stays non-terminal — "
+        "%s (echo %r)",
         run_id,
-        stored_version,
-        active_version,
+        reason,
+        echo,
     )
 
 
@@ -203,21 +357,60 @@ def _pin_evidence(pin: Any) -> dict[str, Any]:
 
 def _record_validator(contracts: Path = _CONTRACTS) -> tuple[Any, str]:
     """The (validator, contract_version const) pair for one contracts
-    directory, cached per resolved path (issue #221: the const rides the
-    same schema load the validator is built from). A schema without the
-    const refuses loudly — a stamp that cannot be derived is a refusal,
-    never a guess."""
+    directory's run-record schema, resolved DIGEST-VERIFIED and cached per
+    resolved path.
+
+    Issue #260 generalizes #221's composition-schema load to the uniform
+    per-version mechanism: the schema path resolves through
+    ``_versioned_schema_path`` (file-exists, corpus row, digest — the
+    corpus row exists for both served versions), so a dev composition's
+    dev rows cover its directory and a tampered or unrowed schema refuses
+    by name, never silently substitutes. A schema without the const
+    refuses loudly — a stamp that cannot be derived is a refusal, never a
+    guess."""
     key = contracts.resolve()
     cached = _RUN_RECORD_VALIDATORS.get(key)
     if cached is None:
-        schema = json.loads(
-            (contracts / "run-record.schema.json").read_text(encoding="utf-8")
+        schema_path = _versioned_schema_path(
+            _corpus_root_of(contracts), "execution", contracts.name, "run-record.schema.json"
         )
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
         validator = Draft202012Validator(schema)
         const = schema.get("properties", {}).get("contract_version", {}).get("const")
         if not isinstance(const, str) or not const:
             raise ValueError(
-                f"run-record schema at {contracts} carries no contract_version "
+                f"run-record schema at {schema_path} carries no contract_version "
+                "const — the terminal record's stamp derives from it and "
+                "cannot be computed"
+            )
+        cached = (validator, const)
+        _RUN_RECORD_VALIDATORS[key] = cached
+    return cached
+
+
+def _record_validator_for_version(
+    contracts: Path, execution_version: str
+) -> tuple[Any, str]:
+    """The (validator, const) pair for ONE execution version's run-record
+    schema, digest-verified through the same mechanism as the composition
+    path (issue #260: the threaded record validates against the PINNED
+    version's own schema). The cache is keyed by the resolved path, so
+    per-version keys fall out."""
+    schema_path = _versioned_schema_path(
+        _corpus_root_of(contracts),
+        "execution",
+        execution_version,
+        "run-record.schema.json",
+    )
+    key = schema_path.resolve()
+    cached = _RUN_RECORD_VALIDATORS.get(key)
+    if cached is None:
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        validator = Draft202012Validator(schema)
+        const = schema.get("properties", {}).get("contract_version", {}).get("const")
+        if not isinstance(const, str) or not const:
+            raise ValueError(
+                f"run-record schema at {schema_path} carries no contract_version "
                 "const — the terminal record's stamp derives from it and "
                 "cannot be computed"
             )
@@ -238,24 +431,53 @@ def build_terminal_record(
     reasons: list[str],
     evidence_refs: list[dict[str, Any]],
     contracts: Path = _CONTRACTS,
+    execution_version: str | None = None,
 ) -> dict[str, Any]:
     """Build one terminal run record and validate it against the schema.
 
     A record claimed to exist must validate: the vendored run-record
     schema is checked here, on every record, before it is returned or
-    persisted (validated against ``contracts`` — the composition-resolved
-    corpus directory; the module default is the frozen ``execution/0.2.0``
-    literal). The ``outcome`` field is NOT an input — it is
-    derived by :func:`terminal_outcome` so the §5 truth table lives in
-    exactly one place.
+    persisted. ``execution_version`` threads the RUN's OWN execution
+    version (issue #260, the record lane): the record is stamped from and
+    validated against the PINNED version's digest-verified
+    ``run-record.schema.json`` — the corpus row exists for both served
+    versions, and the two documents differ only in ``$id`` and the
+    ``contract_version`` const. ``None`` keeps the composition path
+    (uniform mechanism — the composition resolution is digest-verified
+    too). Stamping from the schema's const — never from the threaded
+    label, never from ``contracts.name`` — keeps the dev-composition
+    hazard #221's record documented: the record always claims exactly
+    what its validating schema demands. The ``outcome`` field is NOT an
+    input — it is derived by :func:`terminal_outcome` so the §5 truth
+    table lives in exactly one place.
     """
+    if execution_version is None:
+        validator, const = _record_validator(contracts)
+    else:
+        validator, const = _record_validator_for_version(contracts, execution_version)
+    # Fold row 11 (issue #260): the runtime swept-const arbiter — a RELEASED
+    # version directory whose schema const disagrees with the label it
+    # resolved from is a mislabeled corpus (the sweep-miss class), refused
+    # loudly at the record build, not merely asserted by a test. Dev
+    # labels are exempt BY NAME: a ``<target>-dev`` directory's schema
+    # consts hold the active value (the #221-documented dev posture), so
+    # equality there would refuse a legal dev run.
+    label = contracts.name if execution_version is None else execution_version
+    if VERSION_PATTERN.fullmatch(label) is not None and const != label:
+        raise ValueError(
+            f"run-record schema const {const!r} disagrees with the version "
+            f"directory {label!r} it resolved from — a swept-wrong const; "
+            "the record would claim a dialect its schema does not demand"
+        )
     record = {
-        # The validating schema's own const (derived, issue #221): stamps
-        # exactly what the schema demands in every composition. NOT derived
-        # from ``contracts.name`` — a dev composition's directory is
-        # ``<target>-dev`` while its schema consts hold the active version,
-        # so the directory name would stamp a label the schema refuses.
-        "contract_version": _record_validator(contracts)[1],
+        # The validating schema's own const (derived, #221's derivation
+        # generalized to the version's schema, issue #260): stamps exactly
+        # what the schema demands in every composition. NOT derived from
+        # ``contracts.name`` or the threaded label — a dev composition's
+        # directory is ``<target>-dev`` while its schema consts hold the
+        # active version, so a directory-name stamp would claim a label
+        # the schema refuses.
+        "contract_version": const,
         "run_id": run_id,
         "binding": {
             "id": str(binding_pin["id"]),
@@ -278,7 +500,6 @@ def build_terminal_record(
             for ref in evidence_refs
         ],
     }
-    validator, _const = _record_validator(contracts)
     errors = sorted(
         validator.iter_errors(record), key=lambda error: error.json_path
     )
@@ -633,32 +854,65 @@ class RunCoordinator:
                 self._store.release_lease(bench_id, lease.sequence, now)
                 continue
             if run["terminal"] is None:
-                stored_version = str(run["binding"].get("version", ""))
-                if _is_other_carried_dialect(stored_version, self._contracts):
-                    # Fold row 1 (issue #220): the era cohort — terminalising
-                    # would persist the binding's carried-dialect version
-                    # beside this composition's record literal. The honest
-                    # wedge; the lease is still released below.
-                    _log_era_run_skip(run_id, stored_version, self._contracts.name)
-                else:
-                    record = build_terminal_record(
-                        run_id=run_id,
-                        binding_pin=run["binding"],
-                        principal_id=run["principal_id"],
-                        started_at=run["started_at"],
-                        ended_at=now,
-                        body_outcome="interrupted",
-                        safe_state="unknown",
-                        reasons=[
-                            "gateway restart: run was not terminalised; body execution "
-                            "never resumes automatically"
-                        ],
-                        evidence_refs=self._recovery_evidence_refs(run_id, run["binding"]),
-                        contracts=self._contracts,
+                decision = _recovery_record_version(
+                    run, self._contracts, ContentStore(self._store)
+                )
+                if decision.containment is not None:
+                    # Issue #260: the narrowed containment class — doc/echo
+                    # disagreement, an unjudgeable doc const, or an echo the
+                    # corpus disowns. No record is safe; the run stays
+                    # non-terminal; the lease is still released below.
+                    _log_recovery_unresolved(
+                        run_id,
+                        decision.containment,
+                        str(run["binding"].get("version", "")),
                     )
-                    self._store.finalize_run(run_id, record)
-                    self._rebuild_ledger_from_events(run_id)
-                    recovered.append(run_id)
+                else:
+                    # Fold row 7: per-run containment around the
+                    # terminalization — a judgeable-but-unrowed schema (or
+                    # any build/finalize failure) must never kill gateway
+                    # STARTUP; this run is contained and the sweep moves on.
+                    try:
+                        era_reasons = [
+                            "gateway restart: run was not terminalised; body "
+                            "execution never resumes automatically",
+                            *decision.reasons,
+                        ]
+                        if (
+                            decision.record_version is not None
+                            and decision.record_version != self._contracts.name
+                        ):
+                            era_reasons.append(
+                                _implementation_disclosure(
+                                    self._contracts.name,
+                                    decision.record_version,
+                                    "recovered",
+                                )
+                            )
+                        record = build_terminal_record(
+                            run_id=run_id,
+                            binding_pin=decision.binding_pin,
+                            principal_id=run["principal_id"],
+                            started_at=run["started_at"],
+                            ended_at=now,
+                            body_outcome="interrupted",
+                            safe_state="unknown",
+                            reasons=era_reasons,
+                            evidence_refs=self._recovery_evidence_refs(
+                                run_id, decision.binding_pin
+                            ),
+                            contracts=self._contracts,
+                            execution_version=decision.record_version,
+                        )
+                        self._store.finalize_run(run_id, record)
+                        self._rebuild_ledger_from_events(run_id)
+                        recovered.append(run_id)
+                    except Exception as exc:  # recovery never dies at startup
+                        _log_recovery_unresolved(
+                            run_id,
+                            f"terminalization failed: {type(exc).__name__}: {exc}",
+                            str(run["binding"].get("version", "")),
+                        )
             self._store.release_lease(bench_id, lease.sequence, now)
         # Run-state-aware leg (issue #156 fix wave). The lease leg above has
         # by now released every active ``run:`` lease it saw, so a crash
@@ -686,37 +940,69 @@ class RunCoordinator:
                 # run's end is owned by its tombstone, not the sweep.
                 continue
             if run["terminal"] is None:
-                stored_version = str(run["binding"].get("version", ""))
-                if _is_other_carried_dialect(stored_version, self._contracts):
-                    # Fold row 1 (issue #220), second leg: the same era
-                    # cohort through the ghost leg — skipped, never
-                    # terminalised, never reported for projection close (the
-                    # caller marks reported ids terminal, which would
-                    # launder the same way).
-                    _log_era_run_skip(run_id, stored_version, self._contracts.name)
+                decision = _recovery_record_version(
+                    run, self._contracts, ContentStore(self._store)
+                )
+                if decision.containment is not None:
+                    # Issue #260, second leg: the same containment class
+                    # through the ghost leg — no record, stays non-terminal,
+                    # never reported for projection close (the caller marks
+                    # reported ids terminal, which would launder the same
+                    # way).
+                    _log_recovery_unresolved(
+                        run_id,
+                        decision.containment,
+                        str(run["binding"].get("version", "")),
+                    )
                     continue
                 # Queued ghost: same interrupted record, same evidence and
                 # ledger semantics as the lease-held leg (a never-started
                 # run rebuilds zero occurrence identities — nothing
-                # dispatched, nothing to suppress).
-                now = self._wall.now_iso()
-                record = build_terminal_record(
-                    run_id=run_id,
-                    binding_pin=run["binding"],
-                    principal_id=run["principal_id"],
-                    started_at=run["started_at"],
-                    ended_at=now,
-                    body_outcome="interrupted",
-                    safe_state="unknown",
-                    reasons=[
-                        "gateway restart: run was not terminalised; body execution "
-                        "never resumes automatically"
-                    ],
-                    evidence_refs=self._recovery_evidence_refs(run_id, run["binding"]),
-                    contracts=self._contracts,
-                )
-                self._store.finalize_run(run_id, record)
-                self._rebuild_ledger_from_events(run_id)
+                # dispatched, nothing to suppress). Fold row 7: per-run
+                # containment — a terminalization failure contains THIS run,
+                # never the gateway's start.
+                try:
+                    now = self._wall.now_iso()
+                    era_reasons = [
+                        "gateway restart: run was not terminalised; body "
+                        "execution never resumes automatically",
+                        *decision.reasons,
+                    ]
+                    if (
+                        decision.record_version is not None
+                        and decision.record_version != self._contracts.name
+                    ):
+                        era_reasons.append(
+                            _implementation_disclosure(
+                                self._contracts.name,
+                                decision.record_version,
+                                "recovered",
+                            )
+                        )
+                    record = build_terminal_record(
+                        run_id=run_id,
+                        binding_pin=decision.binding_pin,
+                        principal_id=run["principal_id"],
+                        started_at=run["started_at"],
+                        ended_at=now,
+                        body_outcome="interrupted",
+                        safe_state="unknown",
+                        reasons=era_reasons,
+                        evidence_refs=self._recovery_evidence_refs(
+                            run_id, decision.binding_pin
+                        ),
+                        contracts=self._contracts,
+                        execution_version=decision.record_version,
+                    )
+                    self._store.finalize_run(run_id, record)
+                    self._rebuild_ledger_from_events(run_id)
+                except Exception as exc:  # recovery never dies at startup
+                    _log_recovery_unresolved(
+                        run_id,
+                        f"terminalization failed: {type(exc).__name__}: {exc}",
+                        str(run["binding"].get("version", "")),
+                    )
+                    continue
             # Stale projection over a durable terminal: report it for
             # projection close only — the durable record is the truth and
             # is never rewritten.
@@ -905,6 +1191,17 @@ class RunCoordinator:
         for reason in [*body_reasons, *result.reasons]:
             if reason not in reasons:
                 reasons.append(reason)
+        # Issue #260 (the record lane): the record threads the run's OWN
+        # execution version — a pinned-old lattice's record carries and
+        # validates at ITS version. When the lattice's version differs from
+        # the composition's, the composition fact rides the record's open
+        # reasons list (the _body_truth disclosure precedent) — no schema
+        # motion; the reasons strings are not schema-closed.
+        run_version = self._docs.execution_version
+        if run_version != self._contracts.name:
+            reasons.append(
+                _implementation_disclosure(self._contracts.name, run_version, "executed")
+            )
         record = build_terminal_record(
             run_id=prepared.run_id,
             binding_pin=self._binding_pin(),
@@ -916,6 +1213,7 @@ class RunCoordinator:
             reasons=reasons,
             evidence_refs=self._evidence_refs(prepared.run_id),
             contracts=self._contracts,
+            execution_version=run_version,
         )
         self._store.finalize_run(prepared.run_id, record)
         release(self._store, prepared.reservation, self._wall.now_iso())

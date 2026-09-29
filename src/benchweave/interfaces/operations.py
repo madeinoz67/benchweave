@@ -11,12 +11,23 @@ import time
 import uuid
 from collections.abc import Callable
 from dataclasses import replace
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from benchweave.content.store import ContentStore
 from benchweave.control.clocking import SystemClock
 from benchweave.control.coordinator import _iso_plus_ms, _parse_utc
-from benchweave.control.documents import classify_descriptor_pin
+from benchweave.control.documents import (
+    _CONTRACTS,
+    _check_run_floor,
+    _classify_execution_pin,
+    _corpus_root_of,
+    _refuse_execution_pin,
+    classify_descriptor_pin,
+)
+from benchweave.control.documents import (
+    AdmissionRejected as DocumentAdmissionRejected,
+)
 from benchweave.interfaces import errors
 from benchweave.interfaces.bootstrap import RegistrySession
 from benchweave.interfaces.identity import Identity, IdentityRejected, validate
@@ -296,6 +307,7 @@ class Operations:
         issuer_secret: bytes | None = None,
         now_epoch: Callable[[], int] | None = None,
         registry_session: RegistrySession | None = None,
+        contracts: Path = _CONTRACTS,
     ) -> None:
         self._store = store
         self._content = content
@@ -318,6 +330,12 @@ class Operations:
         # WP07 fail-closed posture — both kinds record ``failed``/
         # ``not_ready`` instead of fabricating registry work.
         self._registry_session = registry_session
+        #: The composition-resolved execution corpus directory (issue #260):
+        #: ``create_app`` passes the directory it resolved ONCE (the
+        #: compose-once, thread-everywhere rule — the seam never re-resolves).
+        #: The runnability pre-check classifies against it and floors runs
+        #: with its cross-constraint row.
+        self._contracts = contracts
 
     # --- observe -------------------------------------------------------------
 
@@ -1691,6 +1709,81 @@ class Operations:
                 return found
             offset += len(rows)
 
+    def _assert_run_runnable(self, binding_document: Any) -> None:
+        """The synchronous §5 runnability pre-check (issue #260): a run whose
+        device pins sit outside the COMPOSITION's implemented-dialect row is
+        refused HERE — at the POST, typed, before the request key is written
+        and before any lease is consumed — instead of 202-then-``outcome_
+        unknown`` under the worker's poison guard.
+
+        Resolution is digest-addressed end to end: the binding document (the
+        caller's already-fetched read) names the bench document by digest,
+        the bench document names each descriptor by digest, and the bytes
+        read here are the exact bytes the worker will admit (same digests —
+        no TOCTOU). The inverted-guard doctrine of the surrounding pre-check
+        carries over VERBATIM: an UNSTORED bench or descriptor document is
+        NOT decided here — that run stays asynchronous under the worker's
+        authority (the pre-check is a best-effort early refusal, never an
+        admission; the worker-side floor over the full admission result is
+        the authoritative layer of the same one rule).
+
+        The bench's execution pin classifies against the composition corpus:
+        the same retired/unknown/nonconforming refusals the run-path
+        admission raises, surfaced at the POST with their VR-37 vocabulary
+        verbatim. The floor refuses ``cross_constraint_violation:`` typed
+        ``policy_denied`` — the 14-code set's declared-policy-refusal
+        vehicle (the tripped-bench precedent: a declared policy fact
+        refusing an operation, not contention, not capability-absence)."""
+        bench_ref = binding_document["content"].get("bench")
+        if not isinstance(bench_ref, dict):
+            return
+        bench_sha = str(bench_ref.get("sha256", ""))
+        if not bench_sha:
+            return
+        bench_document = self._content.get_document(bench_sha)
+        if bench_document is None:
+            return
+        try:
+            bench_record = _classify_execution_pin(
+                str(bench_document["content"].get("contract_version", "")),
+                corpus=_corpus_root_of(self._contracts),
+            )
+            # Fold row 1 (issue #260): the classification is DECIDED, not
+            # decorative — the routing decision's refusal fires here with
+            # its VR-37 fields verbatim (retired/unknown/nonconforming
+            # stored benches refuse at the POST instead of 202-then-
+            # outcome_unknown).
+            _refuse_execution_pin(bench_record, noun="bench document contract_version")
+            pins: dict[str, Any] = {}
+            for device in bench_document["content"].get("devices", []):
+                descriptor_ref = device.get("descriptor") if isinstance(device, dict) else None
+                descriptor_sha = (
+                    str(descriptor_ref.get("sha256", ""))
+                    if isinstance(descriptor_ref, dict)
+                    else ""
+                )
+                if not descriptor_sha:
+                    return
+                descriptor_document = self._content.get_document(descriptor_sha)
+                if descriptor_document is None:
+                    return
+                descriptor = descriptor_document["content"]
+                # Fold row 10: keyed by the BENCH's device id — the same
+                # keying AdmittedDocuments.pins carries at the worker, so
+                # the seam and worker refusals are byte-identical for one
+                # lattice (Risk 4's machine check pins it).
+                pins[str(device.get("id", ""))] = classify_descriptor_pin(
+                    descriptor.get("otdp_version")
+                )
+            _check_run_floor(pins, self._contracts)
+        except DocumentAdmissionRejected as rejected:
+            # The typed vocabulary rides inside the existing failure
+            # envelope — policy_denied is already in the catalog's map; no
+            # wire-schema bytes move.
+            raise errors.OperationFailure(
+                errors.failure("policy_denied", str(rejected))
+            ) from None
+
     def _assert_bench_acceptable(
         self,
         bench_id: str,
@@ -1807,6 +1900,7 @@ class Operations:
                         f" not {request_id!r}",
                     )
                 )
+            self._assert_run_runnable(document)
         if lease is not None:
             # Consume LAST: every refusal above leaves the holder's lease
             # untouched, and consumption still precedes the request key —

@@ -10,6 +10,7 @@ committed counter refuses anything else (SM-2 = 0 outside the register).
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -552,7 +553,6 @@ class TestSchemaConstDerivations:
         row 3: stamp what validates); the manifest is the independent
         arbiter that catches a swept-wrong const."""
         from benchweave.control.coordinator import build_terminal_record
-        from benchweave.vendoring import active_contract_family
 
         binding: dict[str, object] = {
             "id": "req-arbiter",
@@ -573,29 +573,52 @@ class TestSchemaConstDerivations:
         manifest_version = active_version_from_corpus(ROOT / "standards", "execution")
         assert record["contract_version"] == manifest_version
 
-        corrupt_dir = tmp_path / "execution-corrupt"
-        corrupt_dir.mkdir()
-        schema_path = active_contract_family("execution") / "run-record.schema.json"
-        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        # The teeth, shaped for the digest-verified resolution (issue #260):
+        # the realistic swept-wrong-const scenario is a corpus whose schema
+        # bytes changed and whose corpus row was RE-PINNED to them — the
+        # digest check passes, the stamp follows the corrupted const, and
+        # the MANIFEST is the independent authority that refutes it. (The
+        # pre-#260 shape — a bare tmp schema copy — now refuses
+        # version_unknown:, the digest-verified mechanism working as
+        # designed.)
+        import hashlib
+
+        corrupt_corpus = tmp_path / "standards"
+        shutil.copytree(ROOT / "standards", corrupt_corpus)
+        corrupt_schema_path = corrupt_corpus / "execution/0.2.0/run-record.schema.json"
+        schema = json.loads(corrupt_schema_path.read_text(encoding="utf-8"))
         schema["properties"]["contract_version"]["const"] = "9.9.9"
-        (corrupt_dir / "run-record.schema.json").write_text(json.dumps(schema))
-        corrupted_record = build_terminal_record(
-            run_id="run-arbiter-2",
-            binding_pin=binding,
-            principal_id="p1",
-            started_at="2026-09-29T00:00:00Z",
-            ended_at="2026-09-29T00:00:00Z",
-            body_outcome="completed",
-            safe_state="verified",
-            reasons=["arbiter teeth"],
-            evidence_refs=[binding],
-            contracts=corrupt_dir,
-        )
-        # The stamp follows the validating schema (row 3's rule)...
-        assert corrupted_record["contract_version"] == "9.9.9"
-        # ...and the manifest REFUTES it — this assertion is the arbiter
-        # that the pre-fold test lacked.
-        assert corrupted_record["contract_version"] != manifest_version
+        corrupt_schema_path.write_text(json.dumps(schema, indent=2))
+        manifest_path = corrupt_corpus / "corpus-manifest.json"
+        manifest_doc = json.loads(manifest_path.read_text(encoding="utf-8"))
+        new_digest = hashlib.sha256(corrupt_schema_path.read_bytes()).hexdigest()
+        re_pinned = False
+        for row in manifest_doc.get("files", []):
+            if str(row.get("path")) == "execution/0.2.0/run-record.schema.json":
+                row["sha256"] = new_digest
+                re_pinned = True
+        assert re_pinned, "the corpus row the probe re-pins must exist"
+        manifest_path.write_text(json.dumps(manifest_doc, indent=2))
+        with pytest.raises(ValueError) as raised:
+            build_terminal_record(
+                run_id="run-arbiter-2",
+                binding_pin=binding,
+                principal_id="p1",
+                started_at="2026-09-29T00:00:00Z",
+                ended_at="2026-09-29T00:00:00Z",
+                body_outcome="completed",
+                safe_state="verified",
+                reasons=["arbiter teeth"],
+                evidence_refs=[binding],
+                contracts=corrupt_corpus / "execution/0.2.0",
+            )
+        # Fold row 11 (issue #260): the RUNTIME arbiter refuses the
+        # swept-wrong const at the record build — the schema's const
+        # disagrees with the version directory it resolved from — and the
+        # MANIFEST is the independent second layer (the const the schema
+        # claims cannot be the manifest's active version).
+        assert "swept-wrong const" in str(raised.value), raised.value
+        assert manifest_version != "9.9.9"
 
     def test_lock_version_equals_the_schema_const(self) -> None:
         from benchweave.registry.schemas import lock_version

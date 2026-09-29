@@ -35,10 +35,11 @@ from benchweave.control.clocking import MonotonicClock, SystemClock, WallClock
 from benchweave.control.coordinator import RunCoordinator, _PreparedRun, _RunMonitor
 from benchweave.control.documents import (
     _CONTRACTS,
-    AdmissionRejected,
     AdmittedDocuments,
+    _check_run_floor,
     admit_documents,
 )
+from benchweave.control.operator_acknowledgements import load_operator_acknowledgements
 from benchweave.control.provider_settings import TRANSPORT_SETTINGS_FILENAME
 from benchweave.control.stream_host import RunStreamHost
 from benchweave.host.plugin import DevicePlugin, SimulationInfo
@@ -216,6 +217,22 @@ def _spool_documents(
         )
     (spool / "package-lock.json").write_bytes((fixtures_dir / "package-lock.json").read_bytes())
     settings_path = fixtures_dir / TRANSPORT_SETTINGS_FILENAME
+    # Issue #260: the operator-acknowledgement lane threads the run path
+    # — an optional ``operator-acknowledgements.json`` beside the lattice
+    # documents loads to admission's ``operator_acknowledgements``
+    # parameter, so a retained-but-out-of-range pin that loaded at startup
+    # behind its recorded acknowledgement admits at the run path the same
+    # way (and meets the floor check with its pins classified). TRUE
+    # POSTURE (fold row 5): this re-reads the FILE per run start — it is
+    # not digest-pinned to the startup admission the way bootstrap's load
+    # is — and a malformed file fails HERE (inside the worker's build),
+    # surfacing as 202 → outcome_unknown under the poison guard, never a
+    # POST refusal. The startup lane's loader failure is the startup
+    # refusal; the two lanes' failure shapes are disclosed, not shared.
+    ack_path = fixtures_dir / "operator-acknowledgements.json"
+    acknowledgements = (
+        load_operator_acknowledgements(ack_path) if ack_path.is_file() else None
+    )
     return {
         "procedure_path": spool_one(str(binding["procedure"]["sha256"]), "procedure.json"),
         "policy_path": spool_one(str(binding["policy"]["sha256"]), "policy.json"),
@@ -226,6 +243,7 @@ def _spool_documents(
         ),
         "descriptor_paths": descriptor_paths,
         "provider_settings": settings_path if settings_path.is_file() else None,
+        "operator_acknowledgements": acknowledgements,
     }
 
 
@@ -702,27 +720,24 @@ def _build_run_factory(
             now_wall=now_iso(),
             contracts=contracts,
         )
-        # The run guard (issue #220, design §1.2): validated admission is the
-        # PIN's fact; RUNNING is a composition-version fact. The terminal
-        # record is built and validated against THIS composition's run-record
-        # schema and its literal contract_version (coordinator
-        # build_terminal_record), so a run on a pinned-old lattice would
-        # carry binding.version <pin> beside contract_version <composition> —
-        # the internally contradictory evidence record (A06's laundering
-        # class). Refusal lands here, BEFORE any device plan or bridge is
-        # constructed, loudly, with the move-to. Recovery cannot bypass it:
-        # no pinned-old run can exist in any store (pre-slice such a lattice
-        # refused at startup; post-slice, starts are guarded). Startup
-        # deliberately does NOT guard — holding and validating the old
-        # lattice is F1's surface. The record lane (E1) is what lifts this.
-        if docs.execution_version != contracts.name:
-            raise AdmissionRejected(
-                f"execution_version_not_runnable: this gateway runs "
-                f"execution@{contracts.name}; the lattice pins "
-                f"execution@{docs.execution_version} — validation and "
-                "inventory load (the procedure-author story); running needs "
-                f"the record lane (follow-on); move-to: {contracts.name}"
-            )
+        # The run-side implemented-dialect floor (issue #260, replacing
+        # #220's version-inequality guard): validated admission is the PIN's
+        # fact; RUNNING is an IMPLEMENTED-DIALECT fact. The composition's
+        # cross-constraint row governs every run's device pins whatever the
+        # lattice pins — the gateway's adapter implementation is bound to
+        # the ACTIVE corpus by REG-4's three-way pin, so a device dialect
+        # outside the composition's row is one this gateway has no
+        # implementation agreement for. Refusal lands here, BEFORE any
+        # device plan or bridge is constructed, over the ALREADY-CLASSIFIED
+        # pins (admission produced AdmittedDocuments.pins — zero extra
+        # reads at the worker). This is the AUTHORITATIVE layer of the two-
+        # layer rule; the seam's runnability pre-check is the wire-visible
+        # early refusal over the same helper (one rule, one vocabulary).
+        # Recovery no longer routes around version facts at all: era runs
+        # terminalize against their OWN version (the record lane). Startup
+        # deliberately does NOT floor — holding and validating a pinned-old
+        # lattice is F1's surface.
+        _check_run_floor(docs.pins, contracts)
         clock = SystemClock()
         bench_id = str(docs.bench["id"])
         plans = _device_plans(content, docs, bench_id, run_id, registry_session)
@@ -961,6 +976,10 @@ def create_app(
         # bootstrap.build_registry_session); ``None`` keeps the fail-closed
         # WP07 posture for the registry change kinds.
         registry_session=registry_session,
+        # Issue #260: the seam's runnability pre-check classifies against
+        # the same composition-resolved directory the worker's admission
+        # and floor use — resolved once here, threaded everywhere.
+        contracts=contracts,
     )
 
     mcp_server = build_mcp(

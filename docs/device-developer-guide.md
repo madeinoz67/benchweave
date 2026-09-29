@@ -204,9 +204,23 @@ document's own `contract_version` selects the vendored execution corpus
 version the whole lattice validates against, refusing with
 `version_unknown:`, `retired_identifier:`, or `standard_nonconforming:`
 (the same five inline fields; a non-conforming execution pin has no
-acknowledgement path), and a run request over a lattice pinned to a
-non-active execution version refuses `execution_version_not_runnable:`
-naming both versions and the move-to.
+acknowledgement path). Running is an implemented-dialect fact (issue
+#260): a lattice pinned to a non-active execution version runs — and its
+terminal record carries the LATTICE's own version — while every run's
+device pins must satisfy the gateway composition's cross-constraint row
+(the same `cross_constraint_violation:` refusal, subject "this gateway
+runs", refused synchronously at run start — best-effort over stored
+documents; an unstored document skips to the worker's 202/
+`outcome_unknown` class — and authoritatively at the worker). Recovery
+terminalizes era runs against their own version doc-first; the echo is
+judged three ways (carried → era record; retired-but-retained → era
+record from the retained bytes; no retained bytes → caller data,
+terminalized as before), and the contained class (doc/echo disagreement,
+unjudgeable or const-less doc const) logs
+`recovery_execution_version_unresolved:` with no record. RETIRED
+vocabulary from before this lane: `execution_version_not_runnable:` (the
+superseded run guard) and `recovery_execution_version_not_runnable:`
+(the superseded era skip).
 
 ### Named settings as presets
 

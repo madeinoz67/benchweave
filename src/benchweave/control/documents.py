@@ -539,7 +539,10 @@ def _authorise_pin(
             "retired_identifier:" if record.status == "retired" else "version_unknown:"
         )
         rest = (record.note or "").partition(":")[2].strip()
-        raise AdmissionRejected(f"{prefix}: {logical} {rest}")
+        # Single colon: the prefix constant already ends in one (issue #260's
+        # rider — the execution lane's single-colon shape; the doubled
+        # ``retired_identifier::`` rendering was a splice artifact).
+        raise AdmissionRejected(f"{prefix} {logical} {rest}")
     if record.status != "nonconforming":
         return None
     note = record.note or ""
@@ -1375,6 +1378,17 @@ def _check_cross_constraints(execution_version: str, pins: dict[str, DescriptorP
                 # classifier — a dev label that does not name the declared
                 # head classifies unknown and refuses above.
                 continue
+            # Fold row 2 (issue #260): shape-gate the raw pin before the
+            # comparator — Interval.contains parses, and a malformed value
+            # would raise an UNTYPED ValueError at the wire. A value the
+            # interval vocabulary cannot hold is refused typed here,
+            # identically across every row shape.
+            if VERSION_PATTERN.fullmatch(str(record.otdp_version)) is None:
+                raise AdmissionRejected(
+                    f"version_unknown: descriptor[{device_id}] pins "
+                    f"{record.otdp_version!r} — not a three-component "
+                    "version; the cross-constraint row cannot judge it"
+                )
             if otdp_requirement is not None and not parse_interval(
                 otdp_requirement
             ).contains(record.otdp_version):
@@ -1394,6 +1408,70 @@ def _check_cross_constraints(execution_version: str, pins: dict[str, DescriptorP
                     f"{_adapter_api_const(record.otdp_version)}, but this bench "
                     f"validates against execution@{execution_version}, whose "
                     f"cross-constraint row requires adapter_api "
+                    f"{adapter_requirement} ({row.evidence})"
+                )
+
+
+def _check_run_floor(pins: dict[str, DescriptorPin], contracts: Path) -> None:
+    """The run-side implemented-dialect floor (issue #260, Fork 1a).
+
+    Every RUN's device pins must satisfy the COMPOSITION's cross-constraint
+    row — the same building blocks as :func:`_check_cross_constraints`
+    (interval, ``adapter_api`` const, the dev/rc skip), called with the
+    composition's version instead of a bench's own pin. The subject line
+    says "this gateway runs", not "this bench validates against": for a
+    pinned-old bench the bench's own row is a different (here absent) row,
+    and the floor is the GATEWAY's to assert — its adapter implementation is
+    bound to the ACTIVE corpus by REG-4's three-way pin, so a device dialect
+    outside the composition's row is one this gateway has no implementation
+    agreement for; running it would produce checks whose results mean
+    different things on hosts implementing different compositions. A
+    composition version carrying no row asserts no floor (the honest
+    negative, per-version, disclosed in CON-1's amendment) — including a
+    DEV_HEAD composition, whose dev label matches no released row by
+    construction. The row's evidence rides the refusal, one vocabulary
+    entry reused from admission."""
+    for row in load_cross_constraints_from_corpus(_corpus_root_of(contracts)):
+        if row.standard != "execution" or row.version != contracts.name:
+            continue
+        otdp_requirement = row.requires.get(_OTDP)
+        adapter_requirement = row.requires.get("adapter_api")
+        for device_id, record in sorted(pins.items()):
+            if record.status in ("dev", "rc"):
+                # The admission-side skip's reasoning holds verbatim: rows
+                # are RELEASED-interface facts; a dev-staged pin sits
+                # outside them by construction and its own gates govern it.
+                continue
+            # Fold row 2 (issue #260): the same shape gate as the admission
+            # side — the comparator parses, and a malformed value would
+            # raise an UNTYPED ValueError at the wire (or kill recovery if
+            # the row helper runs there). Same prefix, same rule, every row
+            # shape: a value the interval vocabulary cannot hold is refused
+            # typed.
+            if VERSION_PATTERN.fullmatch(str(record.otdp_version)) is None:
+                raise AdmissionRejected(
+                    f"version_unknown: descriptor[{device_id}] pins "
+                    f"{record.otdp_version!r} — not a three-component "
+                    "version; the implemented-dialect floor cannot judge it"
+                )
+            if otdp_requirement is not None and not parse_interval(
+                otdp_requirement
+            ).contains(record.otdp_version):
+                raise AdmissionRejected(
+                    f"cross_constraint_violation: descriptor[{device_id}] pins "
+                    f"{_OTDP}@{record.otdp_version} but this gateway runs "
+                    f"execution@{contracts.name}, whose implemented-dialect "
+                    f"row requires {_OTDP} {otdp_requirement} ({row.evidence})"
+                )
+            if adapter_requirement is not None and _adapter_api_const(
+                record.otdp_version
+            ) != adapter_requirement:
+                raise AdmissionRejected(
+                    f"cross_constraint_violation: descriptor[{device_id}] pins "
+                    f"{_OTDP}@{record.otdp_version} whose adapter API is "
+                    f"{_adapter_api_const(record.otdp_version)}, but this "
+                    f"gateway runs execution@{contracts.name}, whose "
+                    f"implemented-dialect row requires adapter_api "
                     f"{adapter_requirement} ({row.evidence})"
                 )
 
@@ -1592,6 +1670,39 @@ def _check_allow_rule_constraints(logical: str, policy: dict[str, Any]) -> None:
                 ) from exc
 
 
+def _refuse_execution_pin(record: DescriptorPin, *, noun: str) -> None:
+    """The ONE execution-pin refusal decision (issue #260 fold row 1).
+
+    The routing decision's retired/unknown/nonconforming branch, extracted
+    so the §5 seam's runnability pre-check raises the SAME typed refusal
+    with its VR-37 fields verbatim — before the fold the seam's
+    classification was decorative (the record was computed and discarded,
+    so a 9.9.9-pinned stored bench 202-accepted at the POST). ``noun``
+    names the subject in prose: routing passes ``bench`` (byte-identical
+    messages, pinned by the F-series); the seam passes
+    ``bench document contract_version``. Raises for exactly
+    ``retired``/``unknown``/``nonconforming``; other statuses return so
+    the caller's own fallthrough decides (totality preserved)."""
+    if record.status not in ("retired", "unknown", "nonconforming"):
+        return
+    prefix = {
+        "retired": "retired_identifier:",
+        "unknown": "version_unknown:",
+        "nonconforming": "standard_nonconforming:",
+    }[record.status]
+    rest = (record.note or "").partition(":")[2].strip()
+    if record.status == "nonconforming":
+        # The non-conforming note carries no prose head — just the VR-37
+        # fields, whose first field is ``standard: execution`` — so name
+        # the subject's own pin in prose instead of splicing a second bare
+        # ``standard`` after the logical name (the routing fold's row 5,
+        # generalized over the noun).
+        raise AdmissionRejected(
+            f"{prefix} {noun} contract_version {record.otdp_version}; {rest}"
+        )
+    raise AdmissionRejected(f"{prefix} {noun} {rest}")
+
+
 def _route_execution_contracts(
     bench_path: Path, contracts: Path
 ) -> tuple[str, Path, str | None, DescriptorPin]:
@@ -1642,22 +1753,7 @@ def _route_execution_contracts(
         pin = record.otdp_version
         return pin, contracts.parent / pin, pin, record
     if record.status in ("retired", "unknown", "nonconforming"):
-        prefix = {
-            "retired": "retired_identifier:",
-            "unknown": "version_unknown:",
-            "nonconforming": "standard_nonconforming:",
-        }[record.status]
-        rest = (record.note or "").partition(":")[2].strip()
-        if record.status == "nonconforming":
-            # Fold row 5: the non-conforming note carries no prose head —
-            # just the VR-37 fields, whose first field is
-            # ``standard: execution`` — so name the bench's own pin in
-            # prose instead of splicing a second bare ``standard`` after
-            # the logical name.
-            raise AdmissionRejected(
-                f"{prefix} bench contract_version {record.otdp_version}; {rest}"
-            )
-        raise AdmissionRejected(f"{prefix} bench {rest}")
+        _refuse_execution_pin(record, noun="bench")
     return contracts.name, contracts, None, record
 
 

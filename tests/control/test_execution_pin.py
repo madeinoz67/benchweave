@@ -567,16 +567,19 @@ def test_r4_execution_dev_label_without_a_head_is_never_carried() -> None:
 # --- F3: the run guard — running is a composition-version fact -------------------
 
 
-def test_f3_run_start_on_pinned_old_lattice_refuses(tmp_path: Path) -> None:
-    """F3: startup may HOLD and validate a pinned-old lattice (F1a's
-    surface — the procedure-author story), but a RUN start over it refuses
-    ``execution_version_not_runnable:`` naming both versions and the
-    move-to, BEFORE any device plan or bridge is constructed. KILL: a
-    0.1.0-lattice run producing a terminal record — build_terminal_record
-    hardcodes the 0.2.0 contract_version beside the binding's 0.1.0
-    identity, the internally-contradictory evidence record (A06). RED
-    within the slice: at the routing-landed/guard-absent posture the run
-    path ADMITTED the lattice and built the coordinator (DID NOT RAISE)."""
+def test_f3_run_on_pinned_old_lattice_is_legal_and_floored(tmp_path: Path) -> None:
+    """F3, flipped by the record lane (issue #260): startup may HOLD and
+    validate a pinned-old lattice (F1a's surface), and a RUN over it is now
+    LEGAL — the terminal record carries the LATTICE's own version (the
+    record lane threaded it; `tests/control/test_record_lane.py` pins the
+    full run). The floor that REPLACED the #220 version-inequality guard is
+    what still refuses here: the below-floor shape (F1b's acked otdp-0.1.2
+    device on this lattice) refuses `cross_constraint_violation:` at the
+    worker, BEFORE any device plan or bridge is constructed — subject
+    "this gateway runs", the row's own evidence riding the message.
+    RED within the slice: at the guard-present posture the run path
+    refused `execution_version_not_runnable:` for the in-floor lattice
+    (the guard refused exactly the runs this slice legalizes)."""
     from benchweave.content.store import ContentStore
     from benchweave.control.clocking import SystemClock
     from benchweave.interfaces.app import _build_run_factory
@@ -585,10 +588,13 @@ def test_f3_run_start_on_pinned_old_lattice_refuses(tmp_path: Path) -> None:
 
     lattice = tmp_path / "lattice"
     shutil.copytree(LATTICE_010, lattice)
+    psu = json.loads((LATTICE_010 / "descriptor-sim-psu.json").read_bytes())
+    psu["otdp_version"] = "0.1.2"
+    below_floor = _mutated_010(tmp_path / "below-floor", psu=psu)
     store = Store.open(tmp_path / "state.db")
     try:
         content = ContentStore(store)
-        # Startup admits the lattice (that IS F1a at the gateway surface).
+        # Startup admits BOTH lattices (F1a + the below-floor acked shape).
         admit_startup_bench(store, content, lattice, now=NOW_WALL)
         binding_bytes = (lattice / "run-binding.json").read_bytes()
         binding = json.loads(binding_bytes)
@@ -597,16 +603,58 @@ def test_f3_run_start_on_pinned_old_lattice_refuses(tmp_path: Path) -> None:
             "version": str(binding["contract_version"]),
             "sha256": hashlib.sha256(binding_bytes).hexdigest(),
         }
+        # The in-floor lattice's run is legal (the guard retired); the
+        # record thread is test_record_lane's G1 — here the FACTORY simply
+        # builds (no version refusal).
         factory = _build_run_factory(
             lattice, SystemClock().now_iso, limits=QUOTA_LIMITS
         )
+        coordinator = factory("run-pin-floor-1", "principal-pin", binding_ref, store)
+        assert coordinator is not None
+
+        # The below-floor shape refuses at the worker floor: the F1b
+        # admitting cell's run-side companion (design §1.6). The mutated
+        # lattice re-pins via _spool_and_repin; its files carry the spool
+        # helper's names.
+        below_dir = below_floor["binding"].parent
+        below_ref = {
+            "id": "req-below-floor-1",
+            "version": "0.1.0",
+            "sha256": hashlib.sha256(
+                (below_dir / "run-binding.json").read_bytes()
+            ).hexdigest(),
+        }
+        # The spool path resolves every document from the content store:
+        # store the mutated lattice's documents under their digests, and
+        # thread the ack file the run-path admission now loads (issue #260).
+        from benchweave.interfaces.bootstrap import content_sha
+
+        for name in (
+            "run-binding.json",
+            "bench.json",
+            "safety-policy.json",
+            "procedure.json",
+            "commissioning.json",
+            "descriptor-psu.json",
+            "descriptor-controller.json",
+        ):
+            raw = (below_dir / name).read_bytes()
+            content_sha(content, raw, json.loads(raw), NOW_WALL)
+        (below_dir / "operator-acknowledgements.json").write_text(
+            json.dumps({"acknowledgements": {"psu": "0.1.2"}})
+        )
+        below_factory = _build_run_factory(
+            below_dir,
+            SystemClock().now_iso,
+            limits=QUOTA_LIMITS,
+        )
         with pytest.raises(AdmissionRejected) as raised:
-            factory("run-pin-guard-1", "principal-pin", binding_ref, store)
+            below_factory("run-pin-floor-2", "principal-pin", below_ref, store)
         message = str(raised.value)
-        assert message.startswith("execution_version_not_runnable:"), message
-        assert "execution@0.2.0" in message, message
-        assert "execution@0.1.0" in message, message
-        assert "move-to: 0.2.0" in message, message
+        assert message.startswith("cross_constraint_violation:"), message
+        assert "otdp@0.1.2" in message, message
+        assert "this gateway runs" in message, message
+        assert "PR #201" in message, message
     finally:
         store.close()
 
