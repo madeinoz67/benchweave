@@ -210,14 +210,23 @@ def _recovery_record_version(
        EMPTY or does not classify as a carried dialect is containment
        (unjudgeable = containment).
     2. **Echo fallback (doc absent — pre-D4 rows, disposed content; the
-       era fixtures carry zero digests):** the stored echo, judged:
-       the composition's version → the composition record; a carried
-       dialect → the era record; ANY OTHER ECHO — retired, never carried,
-       empty, unclassifiable — is CONTAINMENT (fold row 4): an echo judged
-       by today's policy must never FLIP to a composition stamp after a
-       future retirement (that is the kill shape — the corpus disowns the
-       version the row claims ran). ``doc-first stays era-stable``: the
-       doc path above does not depend on the echo at all.
+       era fixtures carry zero digests): the THREE-WAY disposition (the
+       fold's correction of row 4's over-broad containment):**
+       - the composition's version → the composition record;
+       - a CARRIED dialect → the era record;
+       - a NOT-carried version whose bytes the corpus still RETAINS (a
+         later retirement — retirement ≠ removal, copy-never-move keeps
+         the directory) → the era record STAMPED FROM THE RETAINED BYTES
+         (digest-verified resolution): a future retirement never flips an
+         era run to a composition stamp AND never wedges it — this is
+         what makes doc-first era-stability true;
+       - anything with NO retained bytes (never carried, a retired
+         identifier whose directory is gone, unclassifiable) → CALLER
+         DATA: the composition record exactly as before the fold (the
+         honest-ref class; the integration harnesses post exactly these
+         and must keep recovering).
+       The composition-flip of a WAS-carried echo never happens in any
+       branch — that kill shape stays dead.
     3. **Disagreement containment:** a doc-resolved carried era version
        beside a DIFFERENT carried echo — no record is safe (the two
        surviving artifacts contradict each other about what ran).
@@ -290,20 +299,27 @@ def _recovery_record_version(
                 None,
             )
         return _RecoveryDecision(None, doc_pin, (), None)
-    # Doc absent: the echo, judged (fold row 4's table).
+    # Doc absent: the echo, judged (the fold's THREE-WAY disposition).
     if echo == contracts.name:
         return _RecoveryDecision(None, stored_pin, (), None)
     if echo and _is_carried_execution_dialect(echo, contracts):
         return _RecoveryDecision(echo, stored_pin, (), None)
-    return _RecoveryDecision(
-        None,
-        stored_pin,
-        (),
-        f"the stored binding echo {echo!r} is not carried by this corpus "
-        "(retired, never carried, or unclassifiable — the corpus disowns the "
-        "version the row claims ran; a future policy change must never flip "
-        "this to a composition stamp)",
-    )
+    # NOT carried: retained bytes? (retirement ≠ removal — copy-never-move
+    # keeps the directory; a later retirement must neither flip the run to
+    # the composition stamp nor wedge it). Digest-verified resolution of
+    # the echo's own run-record schema: success → era-stamp from the
+    # retained bytes; refusal → no retained bytes → caller data, the
+    # composition record exactly as before the fold (the honest-ref class;
+    # the integration harnesses post these and keep recovering).
+    if echo:
+        try:
+            _versioned_schema_path(
+                _corpus_root_of(contracts), "execution", echo, "run-record.schema.json"
+            )
+        except Exception:
+            return _RecoveryDecision(None, stored_pin, (), None)
+        return _RecoveryDecision(echo, stored_pin, (), None)
+    return _RecoveryDecision(None, stored_pin, (), None)
 
 
 def _log_recovery_unresolved(run_id: str, reason: str, echo: str) -> None:

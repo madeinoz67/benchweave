@@ -267,12 +267,16 @@ honest negative admission has. A stored run whose binding names a carried
 execution dialect other than the active one (an era run) is terminalized
 at restart recovery against its OWN version: doc-first (the stored binding
 document's const), echo-judged when the doc is absent,
-`interrupted`/`unknown` as recovery always prescribed. The containment
-class is an unresolvable record — a doc/echo disagreement, an unjudgeable
-or const-less doc const, or an echo the corpus does not carry (retired,
-never carried, or unclassifiable — never flipped to a composition stamp by
-a later policy change) — left non-terminal and logged
-`recovery_execution_version_unresolved:`. RETIRED vocabulary (an old log
+`interrupted`/`unknown` as recovery always prescribed. The echo is judged
+three ways: carried → the era record; retired-but-RETAINED → the era
+record stamped from the retained bytes (a later retirement never flips an
+era run to a composition stamp and never wedges it); everything with no
+retained bytes (never carried, a retired identifier, unclassifiable) is
+caller data and terminalizes exactly as before. The containment
+class is an unresolvable record — a doc/echo
+disagreement or an unjudgeable or const-less doc const — left
+non-terminal and logged `recovery_execution_version_unresolved:`. RETIRED
+vocabulary (an old log
 grep finds it here): `execution_version_not_runnable:` was the pre-record-
 lane run guard (superseded by the floor + threading above) and
 `recovery_execution_version_not_runnable:` was the pre-record-lane era

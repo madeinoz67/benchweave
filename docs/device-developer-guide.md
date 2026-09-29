@@ -212,9 +212,11 @@ device pins must satisfy the gateway composition's cross-constraint row
 runs", refused synchronously at run start — best-effort over stored
 documents; an unstored document skips to the worker's 202/
 `outcome_unknown` class — and authoritatively at the worker). Recovery
-terminalizes era runs against their own version doc-first; the contained
-class (doc/echo disagreement, unjudgeable or const-less doc const, an
-echo the corpus does not carry) logs
+terminalizes era runs against their own version doc-first; the echo is
+judged three ways (carried → era record; retired-but-retained → era
+record from the retained bytes; no retained bytes → caller data,
+terminalized as before), and the contained class (doc/echo disagreement,
+unjudgeable or const-less doc const) logs
 `recovery_execution_version_unresolved:` with no record. RETIRED
 vocabulary from before this lane: `execution_version_not_runnable:` (the
 superseded run guard) and `recovery_execution_version_not_runnable:`

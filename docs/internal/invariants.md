@@ -291,9 +291,12 @@ rather than rewriting the history — that is how this file earns trust.
   dispatches.
   Fold clarification (2026-09-29, issue #260 fold): the containment
   denominator is {doc/echo disagreement, an unjudgeable OR const-less doc
-  const, an echo the corpus does not carry (retired/never-carried/
-  unclassifiable — never a composition-flip stamp under a future policy
-  change), or a terminalization failure (per-run, never startup)}. The
+  const, or a terminalization failure (per-run, never startup)}. The
+  doc-absent echo is judged THREE ways: carried → the era record;
+  retired-but-RETAINED → the era record stamped from the retained bytes
+  (a later retirement neither flips an era run to a composition stamp nor
+  wedges it — copy-never-move keeps the directory); no retained bytes →
+  caller data, the composition record exactly as before. The
   doc-resolved path stamps the record's binding block FROM THE DOCUMENT,
   so a record self-consistently names one artifact and a disagreeing
   carried echo rides as `implementation_disclosure:`, not as a silent

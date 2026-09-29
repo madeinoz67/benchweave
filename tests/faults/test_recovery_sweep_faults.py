@@ -441,23 +441,18 @@ def test_era_doc_echo_disagreement_is_contained(
         store.close()
 
 
-def test_caller_data_ref_version_is_contained(
-    tmp_path: Path, caplog: pytest.LogCaptureFixture
-) -> None:
-    """Fold rows 3+4 (adv2-F3): the stored binding version is the §5 ref's
-    caller-supplied echo (D4 — the frozen contract types it as any
-    non-empty string), so it is JUDGED, never trusted. A version the corpus
-    does NOT carry ("1.0.0" is RETIRED — no gateway ever ran it) is
-    contained under the narrowed prefix: recovery must never FLIP an
-    uncarried echo to a composition stamp (a future retirement of a
-    carried version would otherwise silently rewrite the cohort — the G4
-    kill shape). RED at the fold base: the arm asserted the composition
-    terminalization ("terminalizes as before") — today's composition-flip
-    is exactly what the containment replaced. The doc-first note: a REAL
-    run stores its binding document (the child-process kill-mid-run suite
-    posts such refs and keeps recovering through the doc — case E)."""
-    import logging
-
+def test_caller_data_ref_version_terminalizes_as_before(tmp_path: Path) -> None:
+    """The caller-data boundary (fold-corrected to the THREE-WAY echo
+    disposition): the stored binding version is the §5 ref's caller-supplied
+    echo (D4 — the frozen contract types it as any non-empty string), judged
+    never trusted. An echo with NO retained bytes ("1.0.0" is a RETIRED
+    identifier — its directory is gone from the corpus) is caller data: the
+    sweep terminalizes exactly as before the fold (the honest-ref class;
+    the integration harnesses post exactly these refs and must keep
+    recovering — the supervised battery caught the over-broad containment
+    wedging them). The three-way's other legs: a carried echo era-stamps;
+    a retired-but-RETAINED echo era-stamps FROM THE RETAINED BYTES
+    (the policy-relativity arm)."""
     store = Store.open(tmp_path / "caller-data.db")
     try:
         stored = dict(BINDING, version="1.0.0")
@@ -466,31 +461,30 @@ def test_caller_data_ref_version_is_contained(
         store.next_lease(
             BENCH_ID, "lease-cd-1", holder="run:run-cd-1", expires_at=NOW
         )
-        with caplog.at_level(logging.ERROR, logger="benchweave.control.coordinator"):
-            recovered = _sweep(store)
-        assert recovered == [], f"a contained run is not reported; recovered={recovered}"
+        recovered = _sweep(store)
+        assert recovered == ["run-cd-1"], f"recovered={recovered}"
         run = store.get_run("run-cd-1")
         assert run is not None
-        assert run["terminal"] is None, (
-            "an uncarried echo is contained — never a composition-flip stamp"
+        assert run["terminal"] is not None, (
+            "a caller-data version is not an era fact — the honest "
+            "interrupted record still lands"
         )
-        assert any(
-            UNSOLVED_LOG in record.message and "run-cd-1" in record.message
-            and "1.0.0" in record.message
-            for record in caplog.records
-        ), f"the containment must name the echo: {[r.message for r in caplog.records]}"
+        assert run["terminal"]["binding"]["version"] == "1.0.0"
+        assert run["terminal"]["contract_version"] == "0.2.0"
     finally:
         store.close()
 
 
-def test_era_echo_retired_by_a_later_policy_is_contained(tmp_path: Path) -> None:
-    """Fold row 4 (policy relativity, the G4 kill shape): an echo that WAS
-    carried when the run ran must never flip to a composition stamp after a
-    future retirement. Probe: a COPIED corpus whose policy block retires
-    ``0.1.0`` — the same echo, judged against that policy, is contained
-    (today's policy decides; the doc-first path stays era-stable).
-    RED at the fold base: the uncarried echo fell to the composition
-    record (the flip)."""
+def test_era_echo_retired_by_a_later_policy_era_stamps_from_retained_bytes(
+    tmp_path: Path,
+) -> None:
+    """Fold row 4, corrected to the THREE-WAY disposition (policy
+    relativity, the G4 kill shape): an echo that WAS carried when the run
+    ran, later RETIRED in a copied policy block — retirement ≠ removal
+    (copy-never-move keeps the directory) — era-STAMPS FROM THE RETAINED
+    BYTES: the record carries 0.1.0, never a composition-flip stamp AND
+    never a wedge. RED against the fold's first cut: the over-broad
+    containment wedged this run (containment non-None)."""
     import shutil as _shutil
 
     from benchweave.control.coordinator import _recovery_record_version
@@ -513,14 +507,14 @@ def test_era_echo_retired_by_a_later_policy_is_contained(tmp_path: Path) -> None
 
     contracts = corpus / "execution" / "0.2.0"
     decision = _recovery_record_version(run, contracts, _NoContent())
-    assert decision.containment is not None, (
-        "an echo the (copied) corpus retired is contained, never a "
-        "composition stamp"
+    assert decision.record_version == "0.1.0", decision
+    assert decision.containment is None, (
+        "a retired-but-retained echo era-stamps from the retained bytes — "
+        "never a composition flip, never a wedge"
     )
-    assert "0.1.0" in decision.containment
     # The same echo against the REAL corpus (still carried) stays an era
     # thread — policy relativity is the point, era-stamp is the honest
-    # outcome while carried.
+    # outcome while carried AND after retirement.
     from benchweave.vendoring import active_contract_family
 
     real = _recovery_record_version(
