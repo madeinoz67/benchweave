@@ -273,7 +273,10 @@ def _minimal_dest(tmp_path: Path, index_html: str) -> Path:
         "index.html",
         "reference/cli/index.html",
         "standards/index.html",
-        "standards/otdp/0.2.0/otdp-runtime.schema.json",  # verify_tree's frozen probe
+        # verify_tree's runtime-schema probe — the ACTIVE otdp family,
+        # derived (issue #269): the stub tracks the derivation so a bump
+        # moves this fixture with it, never a re-pin.
+        assembler.ACTIVE_OTDP_RUNTIME_SCHEMA,
         "user-guide/changelog.html",
         "llms.txt",
         "llms-full.txt",
