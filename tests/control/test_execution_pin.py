@@ -615,11 +615,20 @@ def test_f3_run_start_on_pinned_old_lattice_refuses(tmp_path: Path) -> None:
 
 
 def test_f4_version_literal_ratchet_holds() -> None:
-    """F4 (standing): ``scripts/standards/count_version_literals.py`` reports
-    at most the committed baseline (12 at this slice's base) — the slice
-    adds routing, not literals."""
+    """F4 (standing): ``scripts/standards/count_version_literals.py`` holds
+    on THIS tree — the gateway scope, which is what this pin has governed
+    since slice 1 (12 sites then, zero-mode since #221 with three
+    registered). Scope-explicit since the #221 fold (row 1): a bare
+    invocation now requests ALL scopes and refuses ``sdk_tree_absent:`` in
+    submodule-absent worktrees — a checkout shape this standing pin must
+    keep working in."""
     result = subprocess.run(
-        [sys.executable, str(ROOT / "scripts" / "standards" / "count_version_literals.py")],
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "standards" / "count_version_literals.py"),
+            "--scope",
+            "gateway",
+        ],
         capture_output=True,
         text=True,
         cwd=ROOT,

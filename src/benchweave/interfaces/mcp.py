@@ -44,12 +44,13 @@ from benchweave.interfaces.errors import (
 )
 from benchweave.interfaces.identity import Identity, IdentityRejected, validate
 from benchweave.interfaces.operations import Operations
-from benchweave.vendoring import contract_family
+from benchweave.vendoring import active_contract_family
 
 # The vendored corpus (packaged in the wheel, repo-relative in a dev
 # checkout — benchweave/vendoring.py; the corpus bytes stay pinned at the
-# repository root beside the tests that pin them).
-_VENDORED_PATH = contract_family("interface/0.1.0") / "mcp-tools.json"
+# repository root beside the tests that pin them), resolved at the
+# manifest's active version (issue #221: derived, not stated).
+_VENDORED_PATH = active_contract_family("interface") / "mcp-tools.json"
 _vendored_cache: dict[str, dict[str, Any]] | None = None
 
 

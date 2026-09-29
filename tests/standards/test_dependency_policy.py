@@ -256,15 +256,20 @@ def test_served_set_excludes_yanked_in_interval_versions() -> None:
     assert "0.2.1" not in served_versions(policy, ROOT, "otdp")
 
 
-def test_version_literal_ratchet_holds_at_the_baseline() -> None:
-    """A4: the committed counter runs clean on the real tree and is
-    reproducible (two runs, byte-identical output). The planted-literal
-    refusal is pinned beside this test (fold row 13) — the teeth are
-    committed, not cited."""
+def test_zero_literal_gate_holds_at_the_head() -> None:
+    """Issue #221 (slice 7): the committed counter runs ZERO-MODE clean on
+    the real trees and is reproducible (two runs, byte-identical output).
+    Named for checkout independence: the sdk scope rides the submodule, so
+    the always-available scopes gate here and the sdk scope joins whenever
+    the tree is present (CI checks out submodules recursively; the
+    slice-1 ratchet this test previously pinned — a 12-site ceiling — is
+    the zero gate's own history). The planted-literal refusal is pinned
+    beside this test — the teeth are committed, not cited."""
     import subprocess
 
+    script = ROOT / "scripts/standards/count_version_literals.py"
     result = subprocess.run(
-        [sys.executable, str(ROOT / "scripts/standards/count_version_literals.py")],
+        [sys.executable, str(script), "--scope", "gateway,plugins,docs"],
         capture_output=True,
         text=True,
         check=False,
@@ -272,48 +277,67 @@ def test_version_literal_ratchet_holds_at_the_baseline() -> None:
     assert result.returncode == 0, result.stdout + result.stderr
     first = result.stdout
     second = subprocess.run(
-        [sys.executable, str(ROOT / "scripts/standards/count_version_literals.py")],
+        [sys.executable, str(script), "--scope", "gateway,plugins,docs"],
         capture_output=True,
         text=True,
         check=True,
     ).stdout
     assert first == second
+    if (ROOT / "packages/sdk/src/benchweave_sdk").is_dir():
+        sdk = subprocess.run(
+            [sys.executable, str(script), "--scope", "sdk"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert sdk.returncode == 0, sdk.stdout + sdk.stderr
 
 
-def test_a_planted_literal_fails_the_ratchet_in_a_scratch_copy(tmp_path: Path) -> None:
-    """Fold row 13 (#215): the A4 ratchet's refusal is demonstrated by the
-    committed test the slice record cites. A scratch copy of the repo's
-    source tree plus ONE planted version literal makes the committed counter
-    report the risen count and exit 1 — ratchet mode refuses, never warns."""
+def test_a_planted_literal_fails_the_zero_gate_in_a_scratch_copy(tmp_path: Path) -> None:
+    """The zero gate's refusal is demonstrated by the committed test the
+    slice record cites (fold row 13's arm, re-keyed to zero-mode by #221).
+    A scratch copy of the repo's source tree plus ONE planted version
+    literal makes the committed counter report the unregistered site and
+    exit 1 — zero-mode refuses, never warns."""
     import subprocess
 
     scratch = tmp_path / "scratch-repo"
     (scratch / "scripts/standards").mkdir(parents=True)
+    (scratch / "standards").mkdir()
     shutil.copy(
         ROOT / "scripts/standards/count_version_literals.py",
         scratch / "scripts/standards/count_version_literals.py",
+    )
+    shutil.copy(
+        ROOT / "standards/standards-manifest.json",
+        scratch / "standards/standards-manifest.json",
     )
     shutil.copytree(ROOT / "src/benchweave", scratch / "src/benchweave")
     (scratch / "src/benchweave" / "planted_literal.py").write_text(
         'OTDP_PIN = "0.2.2"\n', encoding="utf-8"
     )
     script = scratch / "scripts/standards/count_version_literals.py"
-    risen = subprocess.run(
-        [sys.executable, str(script)], capture_output=True, text=True, check=False
+    refused = subprocess.run(
+        [sys.executable, str(script), "--scope", "gateway"],
+        capture_output=True,
+        text=True,
+        check=False,
     )
-    assert risen.returncode == 1, risen.stdout + risen.stderr
-    assert "(baseline 12, EXCEEDED)" in risen.stdout
+    assert refused.returncode == 1, refused.stdout + refused.stderr
+    assert "1 outside register" in refused.stdout
+    assert "src/benchweave/planted_literal.py" in refused.stdout
     detail = subprocess.run(
-        [sys.executable, str(script), "--json"],
+        [sys.executable, str(script), "--scope", "gateway", "--json"],
         capture_output=True,
         text=True,
         check=False,
     )
     assert detail.returncode == 1
     payload = json.loads(detail.stdout)
-    assert payload["count"] == payload["baseline"] + 1
+    gateway = payload["scopes"]["gateway"]
+    assert gateway["outside"] == 1
     assert any(
-        row["file"] == "src/benchweave/planted_literal.py" for row in payload["sites"]
+        row["file"] == "src/benchweave/planted_literal.py" for row in gateway["sites"]
     )
 
 

@@ -236,6 +236,8 @@ All notable changes to this project will be documented in this file.
 - Fold the #257 review battery — 12 rows, one batch
 - Fold wave — recovery era-skip, carried pin record, typed seam refusal, splice, boundary arms (#220 refute)
 - Fold the #258 review battery — proof instrument + re-searched palette
+- Fold wave — 12 fixed rows, 2 disclosures, #221 refute battery
+- Fold the #243 S1 review battery — 12 rows (comparator, premise, pins)
 
 ### Documentation
 
@@ -450,6 +452,9 @@ All notable changes to this project will be documented in this file.
 - Fold the #254 review battery — 19 rows, one batch
 - Slice-6 design record — contract_version is the pin carrier
 - CON-1 amendment — the execution per-document pin (#220, #203 slice 6)
+- Issue #221 zero-literal end-state design record
+- Issue #243 UI follow-on design of record
+- Fold the #243 S1 wave-2 reviewer rows (R1-R4)
 
 ### Features
 
@@ -633,6 +638,9 @@ All notable changes to this project will be documented in this file.
 - The execution per-document pin — the bench's contract_version routes the lattice (#220, #203 slice 6)
 - The run guard — execution_version_not_runnable (#220, #203 slice 6)
 - Plot-series tokens, set-derived assignment, sequences (#242 slice 3)
+- Active_version_from_corpus loader + corpus_root/active_contract_family helpers
+- The zero-literal end state — nine derivations, register, zero-mode
+- Limiting state, setpoint triad, staleness (#243 slice 1)
 
 ### Hardware Evidence
 
@@ -730,6 +738,12 @@ All notable changes to this project will be documented in this file.
 - Advance packages/sdk to the review-fold renderer (#242 slice 2)
 - Advance packages/sdk to the series-tokens renderer (#242 slice 3)
 - Advance packages/sdk to the folded-instrument renderer (#242 slice 3)
+- Advance packages/sdk to the zero-literal derivations
+- Advance packages/sdk to the SDK branch head (G3a test)
+- Advance packages/sdk to the fold commit
+- Advance packages/sdk to the twin-fixture fix
+- Advance packages/sdk to the slice-1 renderer (#243 slice 1)
+- Advance packages/sdk to the S1-fold renderer (#243 slice 1)
 
 ### Performance
 
@@ -900,6 +914,7 @@ All notable changes to this project will be documented in this file.
 - L1 fixture pins and L3 contract-CSS value equality
 - L2 generated renderer pins for the 8 contract components
 - Fold review rows 1-7 on the contract pins (#242 slice 1)
+- Assert the G3a registered-disposition facts
 
 ### Build
 
@@ -920,6 +935,7 @@ All notable changes to this project will be documented in this file.
 - Clean-venv ADC conformance control + the slice measurement postscript
 - Dedicated timing lane for the real-paced set (#241 slice 1)
 - Run the suite in parallel with pytest-xdist (#247)
+- Device-plugins zero-gate lane + obligations enforcement pointers
 
 ### Ci+docs
 
@@ -932,6 +948,10 @@ All notable changes to this project will be documented in this file.
 ### Faults
 
 - SIGKILL mid-disposition leaves neither audit nor deletion (#194)
+
+### Merge
+
+- Integrate main (#243 UI lane + pointer) — all 21 main-changed paths carried, gitlink resolved to SDK main
 
 ### Review
 

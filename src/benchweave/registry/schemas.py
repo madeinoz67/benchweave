@@ -12,14 +12,15 @@ from functools import cache
 from jsonschema import Draft202012Validator, FormatChecker
 
 from benchweave.content.json_document import JsonDocument, load_document
-from benchweave.vendoring import contract_family
+from benchweave.vendoring import active_contract_family
 
 #: Vendored registry schemas, resolved exactly as ``control/documents.py``
-#: resolves its vendored execution/0.2.0 schemas (packaged in the wheel,
-#: repo-relative in a dev checkout — :mod:`benchweave.vendoring`). The
+#: resolves its vendored execution schemas (packaged in the wheel,
+#: repo-relative in a dev checkout — :mod:`benchweave.vendoring`), at the
+#: manifest's active version (issue #221: derived, not stated). The
 #: schema bytes are pinned in ``contracts/manifest.json`` and verified by
 #: ``tests/contract/test_baseline.py``.
-_CONTRACTS = contract_family("registry/0.1.1")
+_CONTRACTS = active_contract_family("registry")
 
 
 class RegistryRejected(ValueError):
@@ -37,6 +38,26 @@ class RegistryRejected(ValueError):
 
 def _load_schema_bytes(schema_filename: str) -> bytes:
     return (_CONTRACTS / schema_filename).read_bytes()
+
+
+@cache
+def lock_version() -> str:
+    """The lock schema's own ``lock_version`` const (issue #221, site 9).
+
+    ``_lock_document`` stamps the version it is validated by: the emitter
+    can then never disagree with the validator — closing the ``88b64f1``
+    sweep-miss class mechanically. A schema without the const refuses
+    loudly (a stamp that cannot be derived is a refusal, never a guess).
+    """
+    schema = json.loads(_load_schema_bytes("package-lock.schema.json"))
+    const = schema.get("properties", {}).get("lock_version", {}).get("const")
+    if not isinstance(const, str) or not const:
+        raise RegistryRejected(
+            "lock_version_unresolvable",
+            "package-lock.schema.json carries no lock_version const — "
+            "the lock document's stamp derives from it and cannot be computed",
+        )
+    return const
 
 
 @cache

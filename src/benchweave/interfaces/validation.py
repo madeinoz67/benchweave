@@ -27,14 +27,20 @@ from referencing import Registry, Resource
 from referencing.jsonschema import DRAFT202012
 
 from benchweave.interfaces import errors
-from benchweave.vendoring import contract_family
+from benchweave.vendoring import active_contract_family
 
 #: The vendored interface corpus (packaged in the wheel, repo-relative in a
-#: dev checkout — :mod:`benchweave.vendoring`). interface/0.1.0 is the D2
-#: errata revision: change_apply's REST body admits the optional
-#: ``approver_token`` the adapter forwards. The 1.1.0 corpus stays vendored,
-#: frozen, at ``contracts/interface/0.1.0/``.
-VENDORED_CORPUS_ROOT = contract_family("interface/0.1.0")
+#: dev checkout — :mod:`benchweave.vendoring`), resolved at the manifest's
+#: active version (issue #221: one bump = one manifest edit; the literal
+#: this constant once carried is derived, not stated). The 1.1.0 corpus
+#: stays vendored, frozen, at ``standards/interface/0.1.0/`` (copy-never-
+#: move keeps it resolving).
+VENDORED_CORPUS_ROOT = active_contract_family("interface")
+#: The derived active interface version — the family dir's name IS the
+#: version (one derivation site per family). ``gateway_info`` emits it
+#: (issue #221 site 7), so the wire field moves with the interface bump
+#: exactly as the sweep moved it.
+VENDORED_INTERFACE_VERSION = VENDORED_CORPUS_ROOT.name
 
 _TOOL_PREFIX = "stg_v1_"
 _PATH_TEMPLATE = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")

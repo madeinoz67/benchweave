@@ -20,7 +20,10 @@ from benchweave.control.documents import classify_descriptor_pin
 from benchweave.interfaces import errors
 from benchweave.interfaces.bootstrap import RegistrySession
 from benchweave.interfaces.identity import Identity, IdentityRejected, validate
-from benchweave.interfaces.validation import SeamValidator
+from benchweave.interfaces.validation import (
+    VENDORED_INTERFACE_VERSION,
+    SeamValidator,
+)
 from benchweave.registry.activation import ActivationRejected, activate
 from benchweave.registry.admission import AdmissionRejected, Admitted, Approval, admit
 from benchweave.registry.authenticity import AuthenticityRejected
@@ -323,7 +326,10 @@ class Operations:
         self._validator.validate("gateway_info", {})
         return {
             "gateway_id": self._gateway_id,
-            "interface_version": "0.1.0",
+            # The derived active interface version (issue #221): the same
+            # corpus directory the seam validator builds from names the
+            # version — one bump, one manifest edit, both surfaces together.
+            "interface_version": VENDORED_INTERFACE_VERSION,
             "mcp_version": "2026-07-28",
             "limits": dict(self._limits),
         }
