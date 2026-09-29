@@ -293,7 +293,13 @@ unknown whether anything was sent, do not retry blindly. Since the
 plot-series slice, trace colours and symbols derive from the declared
 channel id SET: adding or removing a declared channel re-derives every
 slot in that plot, so an operator's learned colour-to-channel mapping
-goes stale the moment the declaration changes.
+goes stale the moment the declaration changes. The presentation-contract
+additions (limiting reading state, the measured/set/staged setpoint triad,
+computed staleness against the descriptor's own
+`stream_limits.min_interval_ms`/`max_age_ms` cadence) are renderer-neutral
+rows in the same contract (§B.3/§B.4/§E.3): a host renders them from
+descriptor-derived configuration — a binding with no commissioned cadence
+renders no staleness verdict at all.
 
 A manifest page of kind `readings` or `dataset` may declare `plots`
 (`time_series` over an observation binding, `waveform` over a dataset

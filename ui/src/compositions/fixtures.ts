@@ -10,6 +10,12 @@ export interface WorkbenchReading {
   severity: Severity;
   freshness: string;
   quality: string;
+  /** §E.3 set evidence (gateway-observed) — optional per tile. */
+  set?: { value: string | number; unit: string | null };
+  /** §B.3 reading state — optional per tile. */
+  state?: "limiting";
+  /** §B.4 ST-4 computed staleness verdict — optional per tile. */
+  stale?: boolean;
 }
 
 export interface DeviceWorkbenchFixture {
@@ -97,8 +103,8 @@ export const psuProofFixture: DeviceWorkbenchFixture = {
   device: { id: "psu-07", title: "Bench supply", connected: true },
   lease: { owner: "bench-operator@example.invalid", expiresInSeconds: 120 },
   readings: [
-    { id: "voltage", label: "Voltage", value: "12.04", unit: "V", severity: "success", freshness: "120 ms", quality: "Verified" },
-    { id: "current", label: "Current", value: "1.92", unit: "A", severity: "success", freshness: "120 ms", quality: "Verified" },
+    { id: "voltage", label: "Voltage", value: "12.04", unit: "V", severity: "success", freshness: "120 ms", quality: "Verified", set: { value: "12.5", unit: "V" } },
+    { id: "current", label: "Current", value: "1.92", unit: "A", severity: "success", freshness: "120 ms", quality: "Near limit", state: "limiting" },
     { id: "power", label: "Power", value: "23.1", unit: "W", severity: "success", freshness: "120 ms", quality: "Verified" },
   ],
   stagedVoltage: 12.5,

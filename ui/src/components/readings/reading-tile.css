@@ -55,3 +55,40 @@
   margin-top: var(--bw-space-1);
   font-family: var(--bw-font-data);
 }
+
+/* §E.3: the gateway-observed set value renders adjacent, data font. */
+.bw-reading__set {
+  display: block;
+  margin-top: var(--bw-space-1);
+  font-family: var(--bw-font-data);
+  font-size: 0.75rem;
+  color: var(--bw-text-muted);
+}
+
+/* §B.3: the limiting state — icon + label + border in --bw-limiting; no glow
+   (SR-B2 reserves glow for severities). */
+.bw-reading[data-bw-reading-state="limiting"] {
+  border-color: var(--bw-limiting);
+}
+
+.bw-reading__state {
+  display: flex;
+  align-items: center;
+  gap: var(--bw-space-1);
+  margin-top: var(--bw-space-1);
+  color: var(--bw-limiting);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+/* §B.4 ST-4: a stale reading renders dimmed, never at normal prominence. */
+.bw-reading[data-bw-stale="true"] .bw-reading__value,
+.bw-reading[data-bw-stale="true"] .bw-reading__quality {
+  color: var(--bw-text-muted);
+  opacity: 0.75;
+}
+
+.bw-reading__stale-marker {
+  color: var(--bw-text-muted);
+  font-weight: 700;
+}
