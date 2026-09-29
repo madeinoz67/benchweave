@@ -238,6 +238,38 @@ describe("digital_lanes capture views (S2: the whole-preview refusal is retired)
     expect(container.querySelector('[data-bw-lane-kind="group"]'), "the declared bus lane renders").toBeTruthy();
   });
 
+  it("maps a lanes channel's visible:false to the hidden-lane treatment (fold R2)", () => {
+    const hinted: PlotView = {
+      ...lanesView,
+      channels: [
+        { variable_id: "ch1", label: "CH1", unit: null, visible: false },
+        { variable_id: "ch2", label: "CH2", unit: null },
+      ],
+    };
+    const { container } = render(
+      <PreviewPlots views={[hinted]} scenario={{ id: "normal", observations: [], permissions: [], lease_state: "none", approval_state: "not_required", unavailable_panels: [], expected_severity: "neutral", request_outcomes: [], timestamp_strategy: "relative", title: "Normal", description: "Nominal" } as never} />,
+    );
+    const hidden = container.querySelector("[data-hidden]");
+    expect(hidden, "the hinted lane renders hidden").toBeTruthy();
+    expect(hidden!.getAttribute("aria-label")).toBe("CH1 (hidden by presentation preference)");
+    expect(container.querySelectorAll("[data-bw-lane]")).toHaveLength(3); // 2 channels + the declared bus lane
+  });
+
+  it("renders the decoder-lane interim note when decoder lanes are declared (fold P2 preview side)", () => {
+    const withDecoder: PlotView = {
+      ...lanesView,
+      decoder_lanes: [
+        { id: "uart-lane", decoder: "UART-REF", source_channel_ids: ["ch1"], binding_id: "voltage" },
+      ],
+    };
+    const { container } = render(
+      <PreviewPlots views={[withDecoder]} scenario={{ id: "normal", observations: [], permissions: [], lease_state: "none", approval_state: "not_required", unavailable_panels: [], expected_severity: "neutral", request_outcomes: [], timestamp_strategy: "relative", title: "Normal", description: "Nominal" } as never} />,
+    );
+    const note = container.querySelector(".bw-lanes__decoder-note");
+    expect(note).toBeTruthy();
+    expect(note!.textContent).toContain("UART-REF");
+  });
+
   it("carries the lane-activity disclosure beside the synthetic pattern (all four states present)", () => {
     const { container, getByText } = render(
       <PreviewPlots views={[lanesView]} scenario={{ id: "normal", observations: [], permissions: [], lease_state: "none", approval_state: "not_required", unavailable_panels: [], expected_severity: "neutral", request_outcomes: [], timestamp_strategy: "relative", title: "Normal", description: "Nominal" } as never} />,

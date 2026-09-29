@@ -41,13 +41,6 @@
   margin: 0;
 }
 
-.bw-plot__acquisition {
-  font: var(--bw-font-mono, monospace);
-  font-size: 11px;
-  color: var(--bw-color-content-secondary, #8a8f98);
-  margin: 0;
-}
-
 .bw-visually-hidden {
   position: absolute;
   width: 1px;

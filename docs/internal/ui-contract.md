@@ -512,7 +512,7 @@ Schema: `Property | Requirement` — 4 rows.
 | Axis label | The axis renders the host-supplied label and unit — sample-index or seconds mode is the host's choice, disclosed BY the label |
 | Sample rate | The rate discloses via §E.2.5's `at {rate}` suffix (rate = 1/axis step) |
 | Trigger | The trigger marker renders from a non-null trigger time, at its time, labelled `trigger`; a null trigger renders no marker and no position is fabricated |
-| Cursors | ≥2 cursors are supported with a Δt readout — `Δt = {value} {unit}`, the value is the absolute difference between the two cursor positions in the view's axis mode (presentation-only: cursor positions are host-supplied; the interactive drag model is deferred) |
+| Cursors | ≥2 cursors are supported with a Δt readout in the view's axis mode — seconds mode scales the unit (`Δt = 7 µs`), sample-index mode reads the raw difference in the host's unit (`Δt = 7 samples`), never both (presentation-only: cursor positions are host-supplied; the interactive drag model is deferred) |
 
 ## §F Icon set
 

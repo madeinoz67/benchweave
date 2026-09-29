@@ -264,6 +264,120 @@ describe("DigitalLanesPlot real rendering (§E.4, A2.1)", () => {
     expect(rows[2]!.textContent).toContain("C2");
   });
 
+  it("renders a VISIBLE awaiting-render note for declared decoder lanes (fold P2: never a silent blank)", () => {
+    const { container } = render(
+      <DigitalLanesPlot
+        {...busProps}
+        columns={4}
+        groups={[busGroup]}
+        decoderLanes={[
+          { id: "uart-lane", decoder: "UART-REF", source_channel_ids: ["a"], binding_id: "logic" },
+        ]}
+      />,
+    );
+    const note = container.querySelector(".bw-lanes__decoder-note");
+    expect(note, "the placeholder renders").toBeTruthy();
+    expect(note!.getAttribute("role")).toBe("status");
+    expect(note!.textContent).toContain("UART-REF");
+    expect(note!.textContent).toContain("awaiting decoder rendering");
+  });
+
+  it("renders the axis label and unit VISIBLY beneath the canvas (fold P3)", () => {
+    const { container } = render(<DigitalLanesPlot {...baseProps()} columns={4} />);
+    const axis = container.querySelector(".bw-lanes__axis");
+    expect(axis, "the visible axis label renders").toBeTruthy();
+    expect(axis!.textContent).toContain("Time");
+    expect(axis!.textContent).toContain("s");
+    expect(container.querySelector(".bw-lanes__canvas")!.contains(axis!)).toBe(false);
+  });
+
+  it("hatches the unknown bus on the PATTERN geometry with NO numeric text in the row (fold P4)", () => {
+    // Every member x/z: the bus row carries hatched cells (pattern-filled
+    // rects) and NOT ONE numeric bus value.
+    const unknown: Lane[] = [
+      { id: "u1", label: "U1", axis: AXIS, states: states(["x", 100]) },
+      { id: "u2", label: "U2", axis: AXIS, states: states(["z", 100]) },
+    ];
+    const { container } = render(
+      <DigitalLanesPlot
+        title="Unknown bus"
+        x={{ label: "Time", unit: "s" }}
+        lanes={unknown}
+        columns={4}
+        groups={[{ id: "bus-u", label: "Bus U", member_ids: ["u1", "u2"] }]}
+      />,
+    );
+    const groupRow = container.querySelector('[data-bw-lane-kind="group"]')!;
+    const hatched = groupRow.querySelectorAll('rect[data-bw-state="x"]');
+    expect(hatched.length).toBe(4);
+    hatched.forEach((cell) => expect(cell.getAttribute("fill")).toContain("url(#"));
+    expect(groupRow.textContent).not.toContain("0x");
+  });
+
+  it("pins the OPPOSITE-half geometry of states 0 and 1 (fold addendum a)", () => {
+    const mixed: Lane[] = [
+      { id: "m", label: "M", axis: AXIS, states: states(["1", 50], ["0", 50]) },
+    ];
+    const { container } = render(
+      <DigitalLanesPlot title="Halves" x={{ label: "Time", unit: "s" }} lanes={mixed} columns={2} />,
+    );
+    const high = container.querySelector('rect[data-bw-state="1"]')!;
+    const low = container.querySelector('rect[data-bw-state="0"]')!;
+    expect(high).toBeTruthy();
+    expect(low).toBeTruthy();
+    const highY = Number(high.getAttribute("y"));
+    const lowY = Number(low.getAttribute("y"));
+    const highH = Number(high.getAttribute("height"));
+    expect(highY, "state 1 occupies the upper half").toBeLessThan(lowY);
+    expect(lowY - highY, "the halves are structurally opposite and equal").toBe(highH);
+  });
+
+  it("zero-pads the bus width to the member bit-width in nibbles (addendum b: 2 and 4 nibbles)", () => {
+    const five = Array.from({ length: 5 }, (_, i): Lane => ({
+      id: `b${i}`,
+      label: `B${i}`,
+      axis: AXIS,
+      states: states(["1", 100]),
+    }));
+    const thirteen = Array.from({ length: 13 }, (_, i): Lane => ({
+      id: `c${i}`,
+      label: `C${i}`,
+      axis: AXIS,
+      states: states(["1", 100]),
+    }));
+    const fiveBus = render(
+      <DigitalLanesPlot
+        title="Five"
+        x={{ label: "Time", unit: "s" }}
+        lanes={five}
+        columns={2}
+        groups={[{ id: "bus5", member_ids: five.map((lane) => lane.id) }]}
+      />,
+    );
+    expect(fiveBus.container.querySelector('[data-bw-lane-kind="group"]')!.textContent).toContain("0x1f");
+    const thirteenBus = render(
+      <DigitalLanesPlot
+        title="Thirteen"
+        x={{ label: "Time", unit: "s" }}
+        lanes={thirteen}
+        columns={2}
+        groups={[{ id: "bus13", member_ids: thirteen.map((lane) => lane.id) }]}
+      />,
+    );
+    expect(thirteenBus.container.querySelector('[data-bw-lane-kind="group"]')!.textContent).toContain("0x1fff");
+  });
+
+  it("maps the trigger marker's x position from the trigger time (addendum c)", () => {
+    const indexed: Lane[] = [{ id: "t", label: "T", axis: { start: 0, step: 1 }, states: states(["1", 100]) }];
+    const { container } = render(
+      <DigitalLanesPlot title="Trigger" x={{ label: "Sample index", unit: "samples" }} lanes={indexed} columns={4} triggerTime={50} />,
+    );
+    const trigger = container.querySelector("[data-bw-trigger] line")!;
+    const x = Number(trigger.getAttribute("x1"));
+    // 96 + (50/99) * 544 = 370.7474… — the marker sits at its sample.
+    expect(x).toBeCloseTo(370.747, 2);
+  });
+
   it("carries the glitch mark on multi-transition columns", () => {
     // 0101 at sub-column spacing: every column covers more than one transition.
     const dense: Lane[] = [

@@ -170,6 +170,14 @@ describe("digital_lanes on the preview wire (the S2 evolution of the interim arm
     expect(decoded.plot_views[0]!.channels).toHaveLength(2);
   });
 
+  it("refuses lanes fields on an ANALOG kind — the decoder mirrors the schema's if/then (fold NIT-2)", () => {
+    const { lanes } = lanesDocument();
+    const view = lanes.plot_views[0] as Record<string, unknown>;
+    view.kind = "time_series";
+    view.channels = [{ variable_id: "value", label: "value", unit: "V", color_role: "muted" }];
+    expect(() => decodePreview(lanes)).toThrow(/preview_invalid_plot_view/);
+  });
+
   it("refuses a poisoned default_collapsed the schema refuses (fold F4: the decoder never coerces)", () => {
     const { lanes } = lanesDocument();
     const group = lanes.plot_views[0] as { lane_groups: Array<{ default_collapsed: unknown }> };

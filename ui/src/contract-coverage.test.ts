@@ -494,6 +494,19 @@ describe("contract L1: fixture rows present and parsable", () => {
     for (const row of rows) for (const column of [1, 2, 3]) expect(contractCell([row], 0, column), literal(row[0]!)).not.toBe("");
   });
 
+  it("§E.4.1-4.5 pin each section's row KEYS exactly (fold P5: aggregate-only counts pass a delete-and-pad)", () => {
+    const layout = parseTable("#### §E.4.1 Lane layout", ["Property", "Requirement"]).map((row) => literal(row[0]!));
+    expect(layout).toEqual(["Uniform bands", "Pinned labels", "Hidden lanes", "Hiding is disclosure"]);
+    const stateRows = parseTable("#### §E.4.2 State rendering", ["Property", "Requirement"]).map((row) => literal(row[0]!));
+    expect(stateRows).toEqual(["1", "0", "x` and `z", "Monochrome discriminability"]);
+    const buses = parseTable("#### §E.4.3 Groups and buses", ["Property", "Requirement"]).map((row) => literal(row[0]!));
+    expect(buses).toEqual(["Bus lane", "Radix", "Member order", "Unknown bus"]);
+    const decimation = parseTable("#### §E.4.4 Edge-preserving decimation (NORMATIVE)", ["Property", "Requirement"]).map((row) => literal(row[0]!));
+    expect(decimation).toEqual(["Every transition survives", "Glitch mark", "No sample dropping"]);
+    const axis = parseTable("#### §E.4.5 Time axis", ["Property", "Requirement"]).map((row) => literal(row[0]!));
+    expect(axis).toEqual(["Axis label", "Sample rate", "Trigger", "Cursors"]);
+  });
+
   it("covers the §6 enumeration arithmetic (88 definition rows)", () => {
     const disabled = parseTable("### §C.2 Disabled-reason enum", ["Key", "Required label text", "Parameter"]).length;
     const refusal = parseTable("### §C.3 Refusal mapping", ["Code", "Severity", "What happened", "Sent status", "Operator action"]).length;

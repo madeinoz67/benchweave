@@ -128,6 +128,18 @@ export function PreviewPlots({ views, scenario }: PreviewPlotsProps) {
                     : {}),
                 }),
               )}
+              decoderLanes={view.decoder_lanes ?? []}
+              // The analog path maps channel visible; the lanes path maps it
+              // the same way — one host, one hint seam (fold R2).
+              hints={
+                view.channels.some((channel) => channel.visible === false)
+                  ? new Map(
+                      view.channels
+                        .filter((channel) => channel.visible === false)
+                        .map((channel) => [channel.variable_id, { visible: false }]),
+                    )
+                  : undefined
+              }
             />
           ) : (
             <EngineeringPlot

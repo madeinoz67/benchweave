@@ -35,6 +35,18 @@ export interface LaneCursor {
   sample: number;
 }
 
+/** §E.4.6 (slice 3 renders the spans): the decoder-lane DECLARATION as the
+ * wire carries it. Slice 2's interim renders a visible awaiting-render note
+ * naming the decoders — never a silent blank. */
+export interface DecoderLaneDeclaration {
+  id: string;
+  label?: string;
+  decoder: string;
+  settings?: Record<string, unknown>;
+  source_channel_ids: readonly string[];
+  binding_id: string;
+}
+
 export interface DigitalLanesPlotProps {
   title: string;
   x: { label: string; unit: string };
@@ -44,6 +56,7 @@ export interface DigitalLanesPlotProps {
    * position is fabricated. */
   triggerTime?: number | null;
   cursors?: readonly LaneCursor[];
+  decoderLanes?: readonly DecoderLaneDeclaration[];
   hints?: ReadonlyMap<string, LaneHint>;
   /** Drawn column budget (§E.4.4); the reduction keeps every transition. */
   columns?: number;
@@ -53,10 +66,11 @@ const CANVAS_WIDTH = 640;
 const BAND_HEIGHT = 28;
 const HIDDEN_BAND_HEIGHT = 14;
 const LABEL_WIDTH = 96;
-const STATE_COLORS: Record<LaneState, string> = {
+// x has no fill colour BY DESIGN: it renders the cross-hatch pattern
+// geometry (§E.4.2), never a colour value.
+const STATE_COLORS: Record<Exclude<LaneState, "x">, string> = {
   "0": "var(--bw-plot-lane-low, #8a8f98)",
   "1": "var(--bw-plot-lane-high, #d0d6e0)",
-  x: "var(--bw-plot-lane-unknown, transparent)",
   z: "var(--bw-plot-lane-float, #8a8f98)",
 };
 
@@ -94,6 +108,7 @@ export function DigitalLanesPlot({
   groups = [],
   triggerTime = null,
   cursors = [],
+  decoderLanes = [],
   hints,
   columns = 64,
 }: DigitalLanesPlotProps) {
@@ -123,6 +138,11 @@ export function DigitalLanesPlot({
     const byId = new Map(lanes.map((lane) => [lane.id, lane]));
     const groupRows = groups.flatMap((group) => {
       const lookedUp: (Lane | undefined)[] = group.member_ids.map((id) => byId.get(id));
+      // A group naming an unknown lane drops SILENTLY here — unreachable
+      // through validated paths (the manifest validator refuses a
+      // member outside y as unresolved_reference), so this is
+      // defense-in-depth trust, not a second validation layer; slice 3's
+      // renderer arms own the never-silent posture for real inputs.
       if (lookedUp.some((member) => member === undefined)) return [];
       const members = lookedUp as Lane[];
       const reduced = members.map((member) => reduceLane(member.states, columnBudget));
@@ -343,6 +363,12 @@ export function DigitalLanesPlot({
         </svg>
       </div>
       {cursorReadout !== null ? <p className="bw-lanes__cursors-delta">{cursorReadout}</p> : null}
+      {decoderLanes.length > 0 ? (
+        <p role="status" className="bw-lanes__decoder-note">
+          {`Decoder lanes declared (${[...new Set(decoderLanes.map((lane) => lane.decoder))].join(", ")}) — awaiting decoder rendering`}
+        </p>
+      ) : null}
+      <p className="bw-lanes__axis">{`${x.label} (${x.unit})`}</p>
       <p className="bw-plot__acquisition" data-bw-acquisition="true">
         {`Acquired ${acquired} samples · plotted ${drawnColumns}${firstAxis ? ` at ${formatRate(firstAxis.step)}` : ""}`}
       </p>
