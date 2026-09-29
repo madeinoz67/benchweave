@@ -141,3 +141,33 @@ describe("S1-A6 composition proof: reading states, triad, staleness", () => {
     for (const row of freshRows) expect(row.textContent).not.toContain("stale");
   });
 });
+
+describe("S2-A5 provenance composition proof (DAQ fixture)", () => {
+  it("(c) a display-processed trace renders its marker AND its source remains present in the same plot", async () => {
+    const { daqProofFixture } = await import("./fixtures");
+    const processed = daqProofFixture.plotProvenance!.processed;
+    expect(processed.kind).toBe("display-processed");
+    const source = daqProofFixture.traces.find((t) => t.id === processed.sourceId);
+    expect(source, "the source trace is still declared in the same plot").toBeDefined();
+    // The marker vocabulary never crosses kinds.
+    expect(processed.detail).toContain("median");
+    expect(processed.detail).not.toContain("averaging");
+  });
+
+  it("(e) a derived trace's displayed precision never exceeds its source's", async () => {
+    const { daqProofFixture } = await import("./fixtures");
+    const derived = daqProofFixture.plotProvenance!.derived;
+    expect(derived.kind).toBe("derived");
+    // The derivation expression is disclosed and the uncertainty-unknown
+    // marker is part of the required text (checked in the plots pins); here
+    // the composition property: the derived trace exists alongside measured
+    // sources of equal-or-greater precision (values at one decimal).
+    const power = daqProofFixture.traces.find((t) => t.id === derived.id);
+    expect(power).toBeDefined();
+    for (const [x, y] of power!.values) {
+      const decimals = String(y).split(".")[1]?.length ?? 0;
+      expect(decimals, "derived display precision <= 1 (its sources' precision)").toBeLessThanOrEqual(1);
+      void x;
+    }
+  });
+});

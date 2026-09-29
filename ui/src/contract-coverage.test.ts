@@ -322,7 +322,7 @@ describe("contract L1: fixture rows present and parsable", () => {
         ],
         roles: ["img"],
         classHooks: ["bw-plot", "bw-plot__canvas", "bw-plot__legend", "bw-visually-hidden", "bw-plot__acquisition"],
-        requiredText: ["hidden", "Acquired 100 samples · plotted 40"],
+        requiredText: ["hidden", "Acquired 100 samples · plotted 2"],
       },
       "data-table": {
         attributes: ["scope=col"],

@@ -32,11 +32,17 @@ export interface PlotTrace {
 }
 
 /** §E.2.4: a neutral, labelled reference line — structurally distinct from
- *  the severity threshold (border token, dotted; never a severity hue). */
+ *  the severity threshold (border token, dotted; never a severity hue). The
+ *  target unit BINDS the line to its axis: on a multi-unit plot the limit
+ *  draws on the axis of the unit it constrains, and its value participates
+ *  in THAT axis's extent (a limit outside the data extent still draws — the
+ *  unexceeded limit is the common case, never invisible). */
 export interface ReferenceLine {
   value: number;
   /** The meaning + value label, e.g. "Current limit · 2 A". */
   label: string;
+  /** The unit whose axis the line constrains; omit on single-unit plots. */
+  unit?: string;
 }
 
 export interface EngineeringPlotProps {
@@ -51,7 +57,9 @@ export interface EngineeringPlotProps {
   /** §E.2.5: acquired vs plotted counts per trace id — the decimation
    *  disclosure renders only when a trace draws fewer points than
    *  acquired. */
-  acquisition?: ReadonlyMap<string, { acquired: number; plotted: number; rate?: string }>;
+  /** `plotted` is accepted for interface symmetry but NEVER trusted: the
+   *  renderer derives the drawn count from `values.length` (§E.2.5). */
+  acquisition?: ReadonlyMap<string, { acquired: number; plotted?: number; rate?: string }>;
 }
 
 /** Per-channel presentation preference keyed by trace id. A bias, never a
@@ -244,13 +252,23 @@ export function EngineeringPlot({ kind, title, x, traces, threshold, hints, refe
   // §E.2.5: the disclosure renders only when a VISIBLE trace draws fewer
   // points than acquired (per-trace rows; decimation on a hidden trace is
   // not a drawing claim).
+  // §E.2.5 (folded row 6): the DRAWN count is what the renderer drew —
+  // values.length — never the caller-supplied `plotted` (a caller claiming
+  // plotted == acquired on a decimated values array would launder the
+  // disclosure away). Negative/non-finite counts render nothing.
   const acquisitionRows = useMemo(() => {
     if (acquisition === undefined) return [];
     return traces
-      .filter((trace) => visible(trace) && acquisition.has(trace.id) && acquisition.get(trace.id)!.plotted < acquisition.get(trace.id)!.acquired)
+      .filter((trace) => {
+        if (!visible(trace)) return false;
+        const counts = acquisition.get(trace.id);
+        if (counts === undefined) return false;
+        if (!Number.isFinite(counts.acquired) || counts.acquired < 0) return false;
+        return trace.values.length < counts.acquired;
+      })
       .map((trace) => {
         const counts = acquisition.get(trace.id)!;
-        return { id: trace.id, acquired: counts.acquired, plotted: counts.plotted, rate: counts.rate };
+        return { id: trace.id, acquired: counts.acquired, plotted: trace.values.length, rate: counts.rate };
       });
   }, [traces, acquisition, hints]);
   const description = `${inUnit(x.label, x.unit)}; ${traces.filter(visible).map((trace) => inUnit(trace.label, trace.unit)).join("; ")}`;
@@ -304,6 +322,28 @@ export function EngineeringPlot({ kind, title, x, traces, threshold, hints, refe
     const markLine = threshold
       ? { symbol: "none", label: { formatter: threshold.label, color: tokens.alert }, lineStyle: { color: tokens.alert, type: "dashed" as const }, data: [{ yAxis: threshold.value }] }
       : undefined;
+    // §E.2.3 row 4: an axis with NO visible bound trace does not render.
+    // Visibility filters AFTER assignment (never reshuffles the declared-set
+    // order); surviving axes keep their declared order and the per-trace
+    // bindings are REMAPPED onto the surviving axis list.
+    const declaredUnits = typeof axisAssignment === "symbol" ? [] : axisAssignment.axes;
+    const declaredBinding = typeof axisAssignment === "symbol" ? new Map<string, number>() : axisAssignment.binding;
+    const visibleUnits = declaredUnits.filter((unit) => visibleTraces.some((trace) => trace.unit === unit));
+    // Carriers (threshold, reference lines) still need an axis when every
+    // trace is hidden — an EMPTY yAxis array makes echarts throw ("yAxis 0
+    // not found"). The render axes are the visible units, falling back to
+    // the declared set when none is visible (the carriers' extent work is
+    // the only drawing left, and it draws on the declared axes).
+    const renderUnits = visibleUnits.length > 0 ? visibleUnits : declaredUnits;
+    const unitRemap = new Map(declaredUnits.map((unit) => [unit, renderUnits.indexOf(unit)]));
+    const binding = new Map<string, number>();
+    for (const trace of traces) {
+      const declaredIndex = declaredBinding.get(trace.id) ?? 0;
+      const unit = declaredUnits[declaredIndex] ?? "";
+      const remapped = unitRemap.get(unit);
+      if (remapped !== undefined && remapped >= 0) binding.set(trace.id, remapped);
+    }
+
     // §E.2.4: reference lines are a distinct kind — the border token,
     // dotted, labelled; NEVER a severity hue (the threshold keeps its own
     // dashed severity-coloured line). markLine data carries the yAxisIndex
@@ -311,13 +351,22 @@ export function EngineeringPlot({ kind, title, x, traces, threshold, hints, refe
     // §E.2.4: per-item styling — every reference-line data entry carries
     // its OWN lineStyle (border token, dotted) and label, so a shared
     // carrier can never overwrite the threshold's severity style, and vice
-    // versa: the two kinds never share colour or dash BY CONSTRUCTION.
+    // versa: the two kinds never share colour or dash BY CONSTRUCTION. Each
+    // entry binds to its TARGET axis (the unit it constrains) — and every
+    // line's value participates in that axis's extent via the carrier data
+    // below, so an unexceeded limit still draws.
+    const axisIndexOf = (unit: string | undefined): number => {
+      if (unit === undefined) return 0;
+      const remapped = unitRemap.get(unit);
+      return remapped !== undefined && remapped >= 0 ? remapped : 0;
+    };
     const referenceData = (referenceLines ?? []).map((line) => ({
       yAxis: line.value,
+      yAxisIndex: axisIndexOf(line.unit ?? declaredUnits[0]),
       lineStyle: { color: tokens.border, type: "dotted" as const },
       label: { formatter: line.label, color: tokens.border },
     }));
-    const binding = typeof axisAssignment === "symbol" ? new Map<string, number>() : axisAssignment.binding;
+    // §E.2.3 row 4 continues in the yAxis payload below.
     // echarts option payloads are structural; a local spec type keeps the
     // carrier pushes assignable without widening the map's inference.
     interface SeriesSpec {
@@ -349,30 +398,47 @@ export function EngineeringPlot({ kind, title, x, traces, threshold, hints, refe
     });
     if (referenceData.length > 0) {
       // §E.2.4 carrier rule: a reference line whose target traces are all
-      // hidden still renders. The first visible series carries them; when
-      // none is visible, a transparent carrier renders them and nothing
-      // else (the threshold-carrier rule applied to limits).
-      if (visibleTraces.length > 0) {
-        const first = series[0]!;
-        const existingData = (first.markLine?.data as unknown[] | undefined) ?? [];
-        first.markLine = {
-          symbol: "none",
-          ...first.markLine,
-          data: [...existingData, ...referenceData],
-        };
-      } else {
+      // hidden still renders — and EVERY line's value participates in its
+      // target axis's extent (per-axis carriers span ALL that axis's line
+      // values; echarts does not expand extents for markLine values, so the
+      // carrier's own data must). One carrier per TARGET AXIS, transparent.
+      const byAxis = new Map<number, { value: number; label: string }[]>();
+      for (const line of referenceLines ?? []) {
+        const axis = axisIndexOf(line.unit ?? declaredUnits[0]);
+        const bucket = byAxis.get(axis) ?? [];
+        bucket.push({ value: line.value, label: line.label });
+        byAxis.set(axis, bucket);
+      }
+      for (const [axis, lines] of byAxis) {
+        const min = Math.min(...lines.map((l) => l.value));
+        const max = Math.max(...lines.map((l) => l.value));
         series.push({
-          id: "__reference",
-          name: "limits",
+          id: `__reference-${axis}`,
+          name: lines.map((l) => l.label).join("; "),
           type: "line",
-          yAxisIndex: 0,
+          yAxisIndex: axis,
           showSymbol: false,
           symbol: "circle",
           lineStyle: { color: "transparent", type: "solid", width: 0 },
           itemStyle: { color: "transparent" },
-          data: [[0, referenceLines![0]!.value], [1, referenceLines![0]!.value]],
-          markLine: { symbol: "none", data: referenceData },
+          data: [[0, min], [1, max]],
+          markLine: { symbol: "none", data: referenceData.filter((d) => d.yAxisIndex === axis) },
         });
+      }
+      if (visibleTraces.length > 0) {
+        // A visible series on the target axis already carries its extent; the
+        // mark lines attach there too (echarts draws markLine per series).
+        for (const [axis] of byAxis) {
+          const host = series.find((s) => s.yAxisIndex === axis && !s.id.startsWith("__"));
+          if (host !== undefined) {
+            const existingData = (host.markLine?.data as unknown[] | undefined) ?? [];
+            host.markLine = {
+              symbol: "none",
+              ...host.markLine,
+              data: [...existingData, ...referenceData.filter((d) => d.yAxisIndex === axis)],
+            };
+          }
+        }
       }
     }
     if (markLine !== undefined && visibleTraces.length === 0) {
@@ -402,11 +468,10 @@ export function EngineeringPlot({ kind, title, x, traces, threshold, hints, refe
       grid: { left: 58, right: 24, top: 24, bottom: 44 },
       tooltip: { trigger: "axis" },
       xAxis: { type: "value", name: x.unit ? `${x.label} (${x.unit})` : x.label, nameLocation: "middle", nameGap: 28, axisLabel: { color: tokens.text }, axisLine: { lineStyle: { color: tokens.border } }, splitLine: { lineStyle: { color: tokens.border, opacity: 0.45 } } },
-      yAxis: (typeof axisAssignment === "symbol" ? [""] : axisAssignment.axes).map((unit, index) => ({
+      yAxis: (refused ? [""] : renderUnits).map((unit, index) => ({
         type: "value" as const,
         name: unit || undefined,
         position: index === 0 ? ("left" as const) : ("right" as const),
-        offset: index * 0,
         axisLabel: { color: tokens.text },
         axisLine: { lineStyle: { color: tokens.border } },
         splitLine: { show: index === 0, lineStyle: { color: tokens.border, opacity: 0.45 } },
@@ -457,7 +522,7 @@ export function EngineeringPlot({ kind, title, x, traces, threshold, hints, refe
               style={{ "--legend-swatch": legendStyles[index]?.color ?? "" } as CSSProperties}
             >
               {labelled(trace.label, trace.unit)}
-              {trace.provenance ? <span className="bw-plot__legend-provenance">{provenanceMarker(trace.provenance)}</span> : null}
+              {trace.provenance && trace.provenance.kind !== "measured" ? <span className="bw-plot__legend-provenance">{provenanceMarker(trace.provenance)}</span> : null}
               {isHidden ? <span className="bw-plot__legend-hidden">hidden</span> : null}
             </li>
           );

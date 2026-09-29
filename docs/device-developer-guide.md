@@ -299,7 +299,12 @@ computed staleness against the descriptor's own
 `stream_limits.min_interval_ms`/`max_age_ms` cadence) are renderer-neutral
 rows in the same contract (§B.3/§B.4/§E.3): a host renders them from
 descriptor-derived configuration — a binding with no commissioned cadence
-renders no staleness verdict at all.
+renders no staleness verdict at all. Since the plot-rules slice,
+multi-unit plots draw one y-axis per unit (≤2, first-declaration order) and
+REFUSE to draw at more than two distinct units (the note names them);
+declared limits render as neutral reference lines on their unit's axis, and
+decimation is disclosed beside the canvas with the renderer's own drawn
+count.
 
 A manifest page of kind `readings` or `dataset` may declare `plots`
 (`time_series` over an observation binding, `waveform` over a dataset

@@ -1,11 +1,15 @@
 import { render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// S2-A1..A5 (#243 design record §6 slice 2): axes, reference lines, the
-// refusal, the acquisition disclosure, and provenance. REAL-RENDER companions
-// (the G-render rule): draw-visibility claims are proven on the echarts SVG
-// SSR output, never on payload mocks alone — the setOption mock exists only
-// for the binding/refusal-unit assertions the SVG cannot carry.
+// S2 (#243 design record §6 slice 2) — PAYLOAD-ASSEMBLY pins. This file
+// MOCKS echarts: the ssr-* spans below are this mock's own echo of the
+// option object, NOT draw evidence. The G-render rule's draw claims live in
+// EngineeringPlot.render.test.tsx (real echarts) — axes drawn, reference
+// lines drawn inside and outside extent, the hidden-axis case, the carrier,
+// the refusal, the disclosure DOM. What this file pins is what the payload
+// ASSERTS: axis bindings, per-item styles, the refusal unit list, the marker
+// vocabulary — claims a real renderer could draw wrongly but not claims
+// about drawing itself.
 const setOption = vi.fn();
 const charts: Array<{ getOption: () => Record<string, unknown>; setOption: (o: Record<string, unknown>) => void; dispose: () => void }> = [];
 vi.mock("echarts/core", () => ({
@@ -169,20 +173,31 @@ describe("S2-A4 reference lines (real-render)", () => {
 });
 
 describe("S2-A2 acquisition disclosure + provenance markers", () => {
-  it("discloses decimation outside the canvas with the fixed wording; absent when not decimated (control)", () => {
+  it("discloses decimation outside the canvas; the drawn count is the renderer's own (values.length), never the caller's claim", () => {
     const { container, unmount } = renderPlot({
       traces: [trace("volt", "V", [[0, 1], [1, 2], [2, 3], [3, 4]])],
-      acquisition: new Map([["volt", { acquired: 1000, plotted: 25 }]]),
+      acquisition: new Map([["volt", { acquired: 1000 }]]),
     });
     const disclosure = container.querySelector(".bw-plot__acquisition");
     expect(disclosure).not.toBeNull();
     expect(disclosure!.getAttribute("data-bw-acquisition")).toBe("");
-    expect(disclosure!.textContent).toContain("Acquired 1000 samples · plotted 25");
+    expect(disclosure!.textContent).toContain("Acquired 1000 samples · plotted 4");
     expect(disclosure!.textContent).not.toContain("at ");
     unmount();
+    // Folded row 6 RED seed (probe A5): a caller claiming plotted == acquired
+    // on a DECIMATED values array — the disclosure MUST still render, because
+    // the renderer counts what it drew.
+    const liar = renderPlot({
+      traces: [trace("volt", "V", [[0, 1], [1, 2]])],
+      acquisition: new Map([["volt", { acquired: 100, plotted: 100 }]]),
+    });
+    expect(liar.container.querySelector(".bw-plot__acquisition"), "the supplied plotted is not trusted").not.toBeNull();
+    expect(liar.container.querySelector(".bw-plot__acquisition")!.textContent).toContain("plotted 2");
+    unmount();
+    liar.unmount();
     const control = renderPlot({
       traces: [trace("volt", "V", [[0, 1], [1, 2]])],
-      acquisition: new Map([["volt", { acquired: 2, plotted: 2 }]]),
+      acquisition: new Map([["volt", { acquired: 2 }]]),
     });
     expect(control.container.querySelector(".bw-plot__acquisition")).toBeNull();
   });

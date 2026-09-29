@@ -6,8 +6,7 @@ const meta = { title: "Plots and datasets/EngineeringPlot Palette", component: E
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-const trace = (id: string): PlotTrace => ({ id, label: id.toUpperCase(), unit: "V", values: [[0, 0], [1, 1]] });
-import type { PlotTrace } from "./EngineeringPlot";
+const trace = (id: string): Trace => ({ id, label: id.toUpperCase(), unit: "V", values: [[0, 0], [1, 1]] });
 
 /** The whole series palette with the >8 dash-wrap visible: 16 declared
  *  channels — slots 1-8 dash-1, slots 9-16 dash-2 reusing the colours and
@@ -50,5 +49,19 @@ export const UnitRefusal: Story = {
       { id: "id02", label: "AMP", unit: "A", values: [[0, 1], [1, 2]] },
       { id: "id03", label: "WATT", unit: "W", values: [[0, 1], [1, 2]] },
     ] as Trace[],
+  },
+};
+
+/** The dual-axis composition: one y-axis per unit, first-declaration order. */
+export const DualUnitAxes: Story = {
+  args: {
+    kind: "time_series",
+    title: "Dual-unit axes with a limit",
+    x: { label: "Time", unit: "s" },
+    traces: [
+      { id: "id01", label: "VOLT", unit: "V", values: [[0, 0.1], [1, 0.6]] },
+      { id: "id02", label: "AMP", unit: "A", values: [[0, 0.2], [1, 0.8]] },
+    ] as Trace[],
+    referenceLines: [{ value: 8, label: "Amp clamp · 8 A", unit: "A" }],
   },
 };

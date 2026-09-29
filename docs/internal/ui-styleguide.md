@@ -205,6 +205,18 @@ The severity model — meanings, dismissal classes and live regions — is norma
 
 The initial plot supports time series and waveforms. Spectrum, digital traces, sweeps and polar/Smith charts belong to the complete-catalogue follow-on and must retain these same rules. Series tokens and their assignment are normative in the contract ([§E.2](ui-contract.md#e2-series-assignment-engineering-plot-sub-rows)): slots derive from the bytewise-sorted declared id set — the emphasis (accent) hint binds to `--bw-series-1`, and `ui/src/series-colors.test.ts` carries the computed colour proofs (contrast, severity non-confusion under dual CVD models, adjacency) on the actual token values.
 
+**Plot axes, reference lines, disclosure, provenance (contract
+[§E.2.3–§E.2.6](ui-contract.md#e23-y-axis-assignment)):** one y-axis per
+distinct unit (≤2) in first-declaration order; more than two units refuses to
+draw and names the condition — the renderer never conflates incommensurable
+units on shared axes. A reference line (an applied or configured limit) is a
+distinct kind from a severity threshold: the border token, dotted, labelled
+with meaning and value, bound to the unit's axis, extent-participating (an
+unexceeded limit still draws) — while the threshold keeps its severity hue,
+dashed. Decimation discloses outside the canvas ("Acquired {n} samples ·
+plotted {m}", the drawn count from `values.length`). Provenance renders its
+closed marker vocabulary per kind (§E.2.6); `measured` is unmarked.
+
 **Thresholds as convention (disclosed):** the series thresholds (T1 contrast ≥ 3:1, T2 severity non-confusion ΔE00 ≥ 10, T3/census pair separation ≥ 8) are pre-committed conventions in the design record §6, chosen in the conservative direction — a proxy for "distinguishable as trace identity at plot line width", not a perceptual guarantee at every size. **The dual-model residual:** requiring BOTH CVD models to pass catches model-specific errors, but cannot catch defects shared by the whole pipeline — a bug in the shared CIEDE2000 implementation moves both arms identically, and a constant typo in the permissive direction can pass both arms. The countermeasures are the Sharma reference table, the constant-identity pins (row sums, anchor fixed points, the arms-differ reference vector); the residual counter-class is a same-direction error in a shared constant.
 
 ## Administrative consistency

@@ -124,7 +124,7 @@ const fixtures: Record<string, () => RenderResult> = {
   "rotary-control": () => render(element(RotaryControl, { label: "Voltage set-point", value: 1.5, unit: "V", min: 0, max: 15, step: 0.1, onStage: () => undefined })),
   "reading-tile": () => render(element(ReadingTile, { label: "Output voltage", value: 12.1, unit: "V", freshness: "2 s", quality: "steady", severity: "warning", set: { value: 12.5, unit: "V" }, state: "limiting" })),
   "alert-bubble": () => render(element(AlertBubble, { severity: "advisory", title: "Operating margin", message: "Approaching the configured limit.", source: "PSU-01", onDismiss: () => undefined })),
-  "engineering-plot": () => render(element(EngineeringPlot, { kind: "time_series", title: "Output activity", x: { label: "Receipt time", unit: "s" }, traces: plotTraces, hints: plotHints, acquisition: new Map([["voltage", { acquired: 100, plotted: 40 }]]) })),
+  "engineering-plot": () => render(element(EngineeringPlot, { kind: "time_series", title: "Output activity", x: { label: "Receipt time", unit: "s" }, traces: plotTraces, hints: plotHints, acquisition: new Map([["voltage", { acquired: 100 }]]) })),
   "data-table": () => render(element(DataTable, { caption: "Channel readings", rows: tableRows, columns: tableColumns, rowKey: (row: TableRow) => row.id })),
   panel: () => render(element(Panel, { title: "Output set-point", eyebrow: "Staged configuration" }, element("p", {}, "Staged configuration content."))),
   // §D: the enforcement fixture renders ALL FOUR modes so every fixed wording
