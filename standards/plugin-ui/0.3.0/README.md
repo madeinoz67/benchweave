@@ -77,16 +77,21 @@ no marker renders and no position is fabricated).
   bus lane; member order is declaration order with the first declared member the
   LSB (bus values are a pure function of (member states, member order)).
 - `decoder_lanes` (≤8): `{id, label?, decoder, settings?, source_channel_ids
-  (1..4), binding_id}` — `binding_id` names a manifest binding whose target is
-  the decode action's `event_log` dataset target.
+  (1..4), binding_id}` — `binding_id` names a manifest binding on this page
+  whose target is a dataset on ANOTHER action than the plot's capture (the
+  decode event_log target; OTDP classes separate fetch from decode). That
+  other-action rule is what the validator enforces (`unresolved_reference`
+  otherwise); the target being the decode action's `event_log` shape itself
+  is authoring intent verified at rendering, not a validation-layer check.
 - The analog kinds (`time_series`, `waveform`) cannot declare `lane_groups` or
-  `decoder_lanes` (schema `if/then`); their 16-channel cap is unchanged.
+  `decoder_lanes` (schema `if/then`); their per-kind cap is 16 channels and
+  hints, while `digital_lanes` admits 64 of each.
 
 ## Optional plotting and panels
 
 A readings page may have no plots. Time-series plots require numeric scalar variables and a receipt-time axis measured in seconds. Waveform plots require numeric vector axes. Plot bindings must belong to their page and resolve to observation or dataset targets. String or boolean values remain suitable for readings tables but cannot become numeric plots.
 
-A plot may carry `channel_hints`, an optional array of per-channel presentation preferences keyed by `variable_id` — each entry naming a colour role (`accent` or `muted`) and/or a `visible` flag, at least one of the two, at most 16 entries matching the `y` array's own ceiling. Hints are preferences, not commands: a host composites them under its own theme authority and remains free to disregard them, and a hint can never supply a literal colour, reassign severity colouring, alter axis or tooltip theming, or introduce a channel the plot does not declare. Every `variable_id` must be a member of that plot's `y` array (a variable of the bound target that the plot does not plot is refused as `unresolved_reference`, and a duplicate entry as `invalid_document`). Hosts MUST NOT declare or require a UI feature for consuming hints: a host with no hint-aware rendering validates and serves a hint-bearing document identically to one without hints, and omitting hints entirely changes no validation result. Superseded- and hidden-channel disclosure is a rendering concern; validation only checks shape, membership and duplicates.
+A plot may carry `channel_hints`, an optional array of per-channel presentation preferences keyed by `variable_id` — each entry naming a colour role (`accent` or `muted`) and/or a `visible` flag, at least one of the two; the count ceiling is per-kind (16 for `time_series` and `waveform`, matching those kinds' `y` ceiling, 64 for `digital_lanes`). Hints are preferences, not commands: a host composites them under its own theme authority and remains free to disregard them, and a hint can never supply a literal colour, reassign severity colouring, alter axis or tooltip theming, or introduce a channel the plot does not declare. Every `variable_id` must be a member of that plot's `y` array (a variable of the bound target that the plot does not plot is refused as `unresolved_reference`, and a duplicate entry as `invalid_document`). Hosts MUST NOT declare or require a UI feature for consuming hints: a host with no hint-aware rendering validates and serves a hint-bearing document identically to one without hints, and omitting hints entirely changes no validation result. Superseded- and hidden-channel disclosure is a rendering concern; validation only checks shape, membership and duplicates.
 
 Class and custom panels name an exact versioned host panel, such as `vendor-panel/1.0.0`. The validator never imports or executes that panel. An unavailable optional panel is returned in `unavailable_pages`; an unavailable required panel produces `panel_unavailable` and fails validation. Missing required UI features fail with `unsupported_feature`.
 

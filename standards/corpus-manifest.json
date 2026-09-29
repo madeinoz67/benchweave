@@ -1120,7 +1120,7 @@
     {
       "path": "plugin-ui-preview/0.2.0/preview-document.schema.json",
       "source": "standards/plugin-ui-preview/0.1.1/preview-document.schema.json",
-      "sha256": "7d3029482a7b330715420f3ce97974a7c137bc3e2742af465922cede0292eab4"
+      "sha256": "f947ff1a96b9324e48387d26a86a92f3067f6c4610be6f6d5a10dd366c7aed02"
     }
   ]
 }

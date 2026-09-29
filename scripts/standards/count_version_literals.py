@@ -521,7 +521,7 @@ REGISTER: dict[str, dict[str, tuple[str, int, tuple[str, ...] | None]]] = {
     "sdk": {
         "src/benchweave_sdk/standards/plugin-ui/contracts.py": (
             "D2 twin of the gateway's registered copy — the same corpus-owned "
-            "code at plugin-ui 0.2.0 bytes (digest-pinned whole, so no value "
+            "code at plugin-ui 0.3.0 bytes (digest-pinned whole, so no value "
             "pin here); same reopen trigger",
             3,
             None,

@@ -29,6 +29,7 @@ type Specimen = tuple[JsonObject, dict[str, JsonObject], list[JsonObject], JsonO
 ROOT = Path(__file__).resolve().parents[2]
 PREDECESSOR = ROOT / "standards/plugin-ui/0.2.0"
 CURRENT = ROOT / "standards/plugin-ui/0.3.0"
+PREVIEW_WIRE = ROOT / "standards/plugin-ui-preview/0.2.0/preview-document.schema.json"
 
 
 def encode(value: object) -> bytes:
@@ -287,6 +288,54 @@ def _retyped(identifier: str, **fields: str) -> Callable[[Specimen], None]:
     return change
 
 
+def _analog_specimen(lane_groups: bool = False) -> Specimen:
+    """A time_series plot on numeric-scalar axes — a clean analog base, so
+    the analog vector's ONLY defect is the lane_groups carry (repairing it
+    turns the specimen green; fold row A2)."""
+    descriptor = load("examples/class-logic_analyser.json")
+    documents = schema_documents(CURRENT)
+    readings: JsonObject = {
+        "id": "readings",
+        "kind": "dataset",
+        "action_id": "otdp.logic_analyser.fetch/1.0.0",
+        "profile_ids": descriptor["profiles"],
+        "measurement_schema_id": "urn:otdp:measurement:0.2.0",
+        "variables": [
+            {
+                "id": "time",
+                "type": "number",
+                "unit": "s",
+                "shape": "scalar",
+                "axis_role": "receipt_time",
+            },
+            {"id": "value", "type": "number", "unit": "V", "shape": "scalar", "axis_role": "value"},
+        ],
+    }
+    plot: JsonObject = {"kind": "time_series", "binding_id": "logic", "x": "time", "y": ["value"]}
+    if lane_groups:
+        # Two member ids keep the group schema-valid on its own — the ONLY
+        # defect is the analog kind carrying it (the semantic layer never
+        # runs: the schema refuses first).
+        plot["lane_groups"] = [{"id": "bus-a", "member_ids": ["time", "value"]}]
+    manifest: JsonObject = {
+        "contract_version": "0.3.0",
+        "plugin_id": descriptor["id"],
+        "descriptor_sha256": digest(encode(descriptor)),
+        "bindings": [{"id": "logic", "kind": "dataset", "target_id": "readings"}],
+        "pages": [
+            {
+                "id": "readings",
+                "kind": "dataset",
+                "title": "Readings",
+                "bindings": ["logic"],
+                "required": True,
+                "plots": [plot],
+            }
+        ],
+    }
+    return descriptor, documents, [readings], manifest
+
+
 def _observation_bound() -> Callable[[Specimen], None]:
     def change(bundle: Specimen) -> None:
         manifest = bundle[3]
@@ -318,13 +367,7 @@ INVALID: tuple[tuple[str, Callable[[], Specimen], str], ...] = (
     ),
     (
         "analog_plot_carrying_lane_groups",
-        lambda: specimen(
-            y_ids=("ch1", "ch2"),
-            plot_extra={
-                "kind": "time_series",
-                "lane_groups": [{"id": "bus-a", "member_ids": ["ch1", "ch2"]}],
-            },
-        ),
+        lambda: _analog_specimen(lane_groups=True),
         "invalid_document",
     ),
     (
@@ -372,6 +415,11 @@ INVALID: tuple[tuple[str, Callable[[], Specimen], str], ...] = (
     (
         "decoder_binding_non_dataset",
         _mutate(_decoder_on_observation()),
+        "unresolved_reference",
+    ),
+    (
+        "decoder_binding_on_capture_action",
+        lambda: specimen(y_ids=("ch1", "ch2"), plot_extra=_decoder(binding="logic")),
         "unresolved_reference",
     ),
     (
@@ -463,3 +511,43 @@ def test_refusal_delta_predecessor_refuses_the_new_kind() -> None:
     assert not _ui_validator(PREDECESSOR, "0.2.0").is_valid(manifest)
     manifest["contract_version"] = "0.3.0"
     assert _ui_validator(CURRENT, "0.3.0").is_valid(manifest)
+
+
+def test_analog_vector_repairs_green() -> None:
+    """Fold A2: the analog vector's base specimen is valid — the vector's
+    single defect is the lane_groups carry, so repairing it turns green."""
+    assert validate(_analog_specimen(lane_groups=False)).valid
+
+
+def test_preview_wire_refuses_empty_lane_labels() -> None:
+    """Fold A6: lane_group and decoder_lane labels carry minLength 1 — the
+    channel-label precedent in the same wire; an empty string is refused."""
+    schema = json.loads(PREVIEW_WIRE.read_bytes())
+    validator = Draft202012Validator({"$defs": schema["$defs"], "$ref": "#/$defs/plot_view"})
+    base: JsonObject = {
+        "page_id": "lanes",
+        "kind": "digital_lanes",
+        "binding_id": "logic",
+        "title": "Lanes",
+        "x": {"label": "t", "unit": "s"},
+        "channels": [
+            {"variable_id": "ch1", "label": "CH1", "unit": None},
+            {"variable_id": "ch2", "label": "CH2", "unit": None},
+        ],
+    }
+    group = dict(base, lane_groups=[{"id": "bus-a", "label": "", "member_ids": ["ch1", "ch2"]}])
+    decoder = dict(
+        base,
+        decoder_lanes=[
+            {
+                "id": "uart-lane",
+                "label": "",
+                "decoder": "UART-REF",
+                "source_channel_ids": ["ch1"],
+                "binding_id": "logic",
+            }
+        ],
+    )
+    assert validator.is_valid(base)
+    assert not validator.is_valid(group), "an empty lane_group label is refused"
+    assert not validator.is_valid(decoder), "an empty decoder_lane label is refused"

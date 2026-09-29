@@ -263,7 +263,13 @@ and remain the reviewer's job.
     docs scope's committed snapshot ratchet (#221 — a NEW literal refuses;
     an edit to an EXISTING literal's count refreshes only via the explicit
     `--refresh-docs-baseline`, whose diff is the review surface — the
-    in-arc sweep is still the motion, the ratchet is its tripwire).
+    in-arc sweep is still the motion, the ratchet is its tripwire);
+    (n) `docs/project-index.md` — the standards-links block names each
+    standard's versioned path (found stale at plugin-ui 0.2.0 in the #244
+    governor review); motion: in-arc sweep at the named standard's bump,
+    with the #221 snapshot refresh (`--refresh-docs-baseline`, diff = the
+    review surface) — the ratchet pins per-value counts, so an in-place
+    version swap is still a visible refresh, never silent.
     Closing clause: a new version-bearing literal anywhere is a defect —
     make it a derived surface or register it here with its motion mechanism.
     Enforcement (issue #221, #203 slice 7): "here" is mechanically the

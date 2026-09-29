@@ -730,6 +730,13 @@ frozen, THIS note governs the landed contract (#243's §11a precedent):
    before the plot walk. Removed; the 0.3.0 dataset clause is again
    byte-equivalent to 0.2.0's.
 
+Slice-2 constraint (fold row A8, watch item): the design's bumps-ONCE
+claim (headline 7) rides on slice 2 NOT needing fixture-side lanes
+fields — the 0.2.0 preview dir is released with this train, so any
+fixture-schema change slice 2 discovers it needs forces ANOTHER
+plugin-ui-preview bump. Slice 2's lanes activity must live in fixture
+DATA the existing wire admits, not new schema fields.
+
 Slice-1 landing note: the plugin-ui-preview 0.2.0 bump (wire grammar +
 range motion + migration note) rides THIS slice per the governor ruling
 ("the preview range … changes your S1 diff"; the S1 PR body carries both

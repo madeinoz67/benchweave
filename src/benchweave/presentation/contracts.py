@@ -566,15 +566,22 @@ def _plot_findings(
                         )
                 decoder_binding = bindings.get(decoder["binding_id"], {})
                 decoder_target = targets.get(decoder_binding.get("target_id", ""), {})
+                # The decode event_log target is necessarily a DIFFERENT
+                # action than the plot's capture (OTDP classes separate
+                # fetch from decode); the catalogue cannot express the
+                # event_log kind itself, so that identity is the renderer's
+                # slice-3 check — this seam refuses the same-action shape.
                 if (
                     decoder["binding_id"] not in page["bindings"]
                     or decoder_target.get("kind") != "dataset"
+                    or decoder_target.get("action_id") == target.get("action_id")
                 ):
                     findings.append(
                         Finding(
                             "unresolved_reference",
                             path + ".decoder_lanes",
-                            "Decoder lane binding must name a dataset binding on this page",
+                            "Decoder lane binding must name a dataset binding on "
+                            "another action than the plot's capture",
                         )
                     )
         # channel_hints (introduced 0.1.1): membership in THIS plot's y and

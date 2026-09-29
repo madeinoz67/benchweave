@@ -26,7 +26,9 @@ versions, and after this bump those are 0.1.1 and 0.2.0. **0.1.1 pins stay
 served** (multi-serving is this wire's established shape; there is no live
 code row to protect). 0.1.0 drops out of the window as the older-than-floor
 release — 0.1.0 pins re-stamp to 0.1.1 or 0.2.0; no previously-valid document
-becomes invalid under its own frozen schema.
+becomes invalid under its own frozen schema. A pin re-stamped 0.1.0 → 0.1.1
+crosses that bump's own migration too (the 0.1.0 → 0.1.1 channel_hints /
+plot_views motion), whose from-predecessor note governs it.
 
 ## Interim renderer state
 
