@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   DigitalLanesPlot,
+  type DecoderLaneDeclaration,
   type Lane,
   type LaneGroup,
 } from "./DigitalLanesPlot";
@@ -386,5 +387,208 @@ describe("DigitalLanesPlot real rendering (§E.4, A2.1)", () => {
     const glitches = container.querySelectorAll("[data-bw-glitch]");
     expect(glitches.length).toBeGreaterThan(0);
     glitches.forEach((mark) => expect(mark.classList.contains("bw-lanes__glitch")).toBe(true));
+  });
+});
+
+describe("decoder-lane rendering (§E.4.6, A3.1 — slice 3)", () => {
+  const DECODER_AXIS = { start: 0, step: 1e-6 };
+  const SAMPLES = 1200;
+  const sourceLane: Lane = {
+    id: "ch1",
+    label: "CH1",
+    axis: DECODER_AXIS,
+    states: states(["1", SAMPLES]),
+  };
+  /** The pre-committed A3.1 fixture: two UART-REF events at [0, 0.0001]
+   *  and [0.001, 0.0011] seconds — sample boundaries 0, 100, 1000, 1100. */
+  const decoderLane = {
+    id: "uart-lane",
+    decoder: "UART-REF",
+    settings: { baud: 115200, frame: "8N1" },
+    source_channel_ids: ["ch1"],
+    binding_id: "logic",
+    events: [
+      { start_s: 0, end_s: 0.0001, payload_hex: "55", status: "ok" },
+      { start_s: 0.001, end_s: 0.0011, payload_hex: "AA", status: "ok" },
+    ],
+  };
+  const xAt = (sample: number) => 96 + (sample / (SAMPLES - 1)) * 544;
+
+  function renderDecoder(hints?: ReadonlyMap<string, { visible?: boolean }>) {
+    return render(
+      <DigitalLanesPlot
+        title="Decoded"
+        x={{ label: "Time", unit: "s" }}
+        lanes={[sourceLane]}
+        columns={8}
+        decoderLanes={[decoderLane]}
+        hints={hints}
+      />,
+    );
+  }
+
+  it("renders annotation spans beneath the source lane at the EXACT sample extents", () => {
+    const { container } = renderDecoder();
+    const decoderRow = container.querySelector('[data-bw-lane-kind="decoder"]');
+    expect(decoderRow, "the decoder row renders").toBeTruthy();
+    const sourceRow = container.querySelector('[data-bw-lane-kind="channel"]')!;
+    const decoderY = Number(decoderRow!.querySelector("rect, line, text")!.getAttribute("y") ?? decoderRow!.querySelector("[data-bw-span]")!.getAttribute("y"));
+    expect(
+      Number(sourceRow.querySelector("rect")!.getAttribute("y")) < decoderY,
+      "the decoder row sits beneath its source channel",
+    ).toBe(true);
+    const spans = [...decoderRow!.querySelectorAll("[data-bw-span]")].map(
+      (span) => span.querySelector("rect")!,
+    );
+    expect(spans).toHaveLength(2);
+    expect(Number(spans[0]!.getAttribute("x"))).toBeCloseTo(xAt(0), 2);
+    expect(Number(spans[0]!.getAttribute("width"))).toBeCloseTo(xAt(100) - xAt(0), 2);
+    expect(Number(spans[1]!.getAttribute("x"))).toBeCloseTo(xAt(1000), 2);
+    expect(Number(spans[1]!.getAttribute("width"))).toBeCloseTo(xAt(1100) - xAt(1000), 2);
+  });
+
+  it("carries the payload text on the span (the wire's hex encoding, verbatim)", () => {
+    const { container } = renderDecoder();
+    const spans = container.querySelectorAll("[data-bw-span]");
+    expect(spans[0]!.textContent).toContain("55");
+    expect(spans[1]!.textContent).toContain("AA");
+  });
+
+  it("renders the disclosure line naming the decoder and its settings verbatim", () => {
+    const { container } = renderDecoder();
+    expect(container.textContent).toContain("UART-REF · 115200 8N1");
+  });
+
+  it("waits visibly when the source channel is hidden — the span does NOT render, no orphan", () => {
+    const { container } = renderDecoder(new Map([["ch1", { visible: false }]]));
+    expect(container.querySelectorAll("[data-bw-span]")).toHaveLength(0);
+    expect(container.textContent).not.toContain("55");
+    expect(container.textContent).not.toContain("AA");
+    const waiting = container.querySelector("[data-bw-waiting]");
+    expect(waiting, "the waiting disclosure renders").toBeTruthy();
+    expect(waiting!.textContent).toContain("waiting");
+    expect(waiting!.textContent).toContain("hidden");
+  });
+});
+
+const BASE_DECODER: DecoderLaneDeclaration = {
+  id: "uart-lane",
+  decoder: "UART-REF",
+  settings: { baud: 115200, frame: "8N1" },
+  source_channel_ids: ["rx"],
+  binding_id: "logic",
+  events: [{ start_s: 0, end_s: 50e-6, payload_hex: "55", status: "ok" }],
+};
+
+describe("S3 adversary fold (M1/M2/L1/L2)", () => {
+  const member: Lane = {
+    id: "rx",
+    label: "RX",
+    axis: { start: 0, step: 1e-6 },
+    states: states(["1", 400]),
+  };
+  const decoderOn = (overrides: Partial<typeof BASE_DECODER> = {}) => ({
+    ...BASE_DECODER,
+    ...overrides,
+  });
+
+  it("M1: a decoder on a bus-COLLAPSED member WAITS (one hidden predicate, both seams)", () => {
+    const { container } = render(
+      <DigitalLanesPlot
+        title="Collapsed source"
+        x={{ label: "Time", unit: "s" }}
+        lanes={[member]}
+        columns={4}
+        groups={[{ id: "bus", label: "Bus", member_ids: ["rx"], default_collapsed: true }]}
+        decoderLanes={[decoderOn()]}
+      />,
+    );
+    expect(container.querySelectorAll("[data-bw-span]")).toHaveLength(0);
+    const waiting = container.querySelector("[data-bw-waiting]");
+    expect(waiting, "the collapsed source waits visibly").toBeTruthy();
+  });
+
+  it("M2: non-scalar settings render as their wire JSON, never [object Object]", () => {
+    const { container } = render(
+      <DigitalLanesPlot
+        title="Nested settings"
+        x={{ label: "Time", unit: "s" }}
+        lanes={[member]}
+        columns={4}
+        decoderLanes={[decoderOn({ settings: { baud: 115200, filters: { channel: 1 } } })]}
+      />,
+    );
+    expect(container.textContent).not.toContain("[object Object]");
+    expect(container.textContent).toContain('{"channel":1}');
+  });
+
+  it("L1: label present → label LEFT, disclosure RIGHT, no overprint; label absent → exactly one disclosure", () => {
+    const labelled = render(
+      <DigitalLanesPlot
+        title="Labelled"
+        x={{ label: "Time", unit: "s" }}
+        lanes={[member]}
+        columns={4}
+        decoderLanes={[decoderOn({ label: "UART trace" })]}
+      />,
+    );
+    const row = labelled.container.querySelector('[data-bw-lane-kind="decoder"]')!;
+    const texts = [...row.querySelectorAll("text")];
+    const disclosureTexts = texts.filter((text) => (text.textContent ?? "").includes("115200"));
+    expect(disclosureTexts, "exactly ONE disclosure text").toHaveLength(1);
+    expect(Number(disclosureTexts[0]!.getAttribute("x"))).toBeGreaterThan(400);
+    const leftLabel = texts.find((text) => (text.textContent ?? "").includes("UART trace"));
+    expect(leftLabel, "the declared label keeps the left slot").toBeTruthy();
+    expect(Number(leftLabel!.getAttribute("x"))).toBeLessThan(100);
+    expect((leftLabel!.textContent ?? "")).not.toContain("115200");
+
+    const unlabelled = render(
+      <DigitalLanesPlot
+        title="Unlabelled"
+        x={{ label: "Time", unit: "s" }}
+        lanes={[member]}
+        columns={4}
+        decoderLanes={[decoderOn()]}
+      />,
+    );
+    const row2 = unlabelled.container.querySelector('[data-bw-lane-kind="decoder"]')!;
+    const disclosures2 = [...row2.querySelectorAll("text")].filter((text) =>
+      (text.textContent ?? "").includes("115200"),
+    );
+    expect(disclosures2, "no label → exactly one disclosure, no duplicate").toHaveLength(1);
+  });
+
+  it("L2: out-of-capture extents clip to the window; zero-width renders the minimum mark", () => {
+    const clipped = render(
+      <DigitalLanesPlot
+        title="Clipped"
+        x={{ label: "Time", unit: "s" }}
+        lanes={[member]}
+        columns={4}
+        decoderLanes={[
+          decoderOn({
+            events: [
+              { start_s: -50e-6, end_s: 50e-6, payload_hex: "EARLY", status: "ok" },
+              { start_s: 380e-6, end_s: 900e-6, payload_hex: "LATE", status: "ok" },
+              { start_s: 100e-6, end_s: 100e-6, payload_hex: "ZERO", status: "ok" },
+              { start_s: 500e-6, end_s: 600e-6, payload_hex: "OUTSIDE", status: "ok" },
+            ],
+          }),
+        ]}
+      />,
+    );
+    const spans = [...clipped.container.querySelectorAll("[data-bw-span]")].map(
+      (span) => span.querySelector("rect")!,
+    );
+    expect(spans, "EARLY, LATE and ZERO render; fully-OUTSIDE does not").toHaveLength(3);
+    expect(clipped.container.textContent).toContain("EARLY");
+    expect(clipped.container.textContent).toContain("LATE");
+    expect(clipped.container.textContent).toContain("ZERO");
+    expect(clipped.container.textContent).not.toContain("OUTSIDE");
+    const xAt0 = 96;
+    expect(Number(spans[0]!.getAttribute("x"))).toBeCloseTo(xAt0, 1);
+    const xAt399 = 96 + (399 / 399) * 544;
+    expect(Number(spans[1]!.getAttribute("x")) + Number(spans[1]!.getAttribute("width"))).toBeCloseTo(xAt399, 1);
+    expect(Number(spans[2]!.getAttribute("width"))).toBeGreaterThanOrEqual(1);
   });
 });

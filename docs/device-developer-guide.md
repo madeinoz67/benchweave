@@ -337,10 +337,12 @@ declared plot: `preview-ui` projects each one into the served document
 draws it, with hints applied as preferences under the host theme — a hint
 can bias a trace colour to `accent`/`muted` or hide a channel from the
 drawing, and can never carry severity semantics or a threshold. The
-`digital_lanes` capture kind renders (the renderer slice): the preview
-draws the declared structure over a labelled synthetic pattern; decoder-lane
-annotations await the decoder slice and render a visible awaiting-render
-note, never a silent blank.
+`digital_lanes` capture kind renders, decoder lanes included: each
+declared decoder lane draws its events as annotation spans at their exact
+sample extents, the payload verbatim, and the disclosure line naming the
+decoder and its settings; a source channel hidden (or collapsed into a bus)
+waits visibly, and an event-less declaration keeps the awaiting-render
+note — never a silent blank.
 
 Preview plot values are **per-scenario snapshots**: the preview data model
 carries one simulated value per observation target per scenario, so a feedable plot

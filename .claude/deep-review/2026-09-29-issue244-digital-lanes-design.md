@@ -756,6 +756,18 @@ frozen, THIS note governs the landed contract (#243's §11a precedent):
    necessary, not cosmetic; the ordering-independence INTENT is preserved
    by holding the property on every ordering of the same multiset.
 
+6. **The "payload in the declared radix" clause is unbuildable as
+   written (S3 fold).** §1.5's §E.4.6 and A3.1 say the span carries
+   the payload "in the declared radix" — but decoder lanes carry NO radix
+   declaration anywhere in the grammar (only lane_groups do), and the
+   payload arrives on the wire as payload_hex (hex IS its encoding). The
+   landed contract renders the payload VERBATIM (the wire's hex) and the
+   §E.4.6 row says so; a per-decoder radix would be new grammar
+   (bumps-ONCE violated for a version already released in this stack).
+   The same fold narrows §1.5's "renders beneath its source channel
+   lane(s)": the landed rows render beneath the channel and bus rows in
+   declaration order (adjacency to the specific source is not claimed).
+
 Slice-2 constraint (fold row A8, watch item): the design's bumps-ONCE
 claim (headline 7) rides on slice 2 NOT needing fixture-side lanes
 fields — the 0.2.0 preview dir is released with this train, so any

@@ -165,6 +165,28 @@ const fixtures: Record<string, () => RenderResult> = {
         triggerTime: 5e-6,
         cursors: [{ sample: 3 }, { sample: 10 }],
         hints: new Map([["ch2", { visible: false }]]),
+        // §E.4.6: a decoder lane WITH events renders its annotation row and
+        // the disclosure line (the canonical all-surfaces shape).
+        decoderLanes: [
+          {
+            id: "uart-lane",
+            decoder: "UART-REF",
+            settings: { baud: 115200, frame: "8N1" },
+            source_channel_ids: ["ch1"],
+            binding_id: "logic",
+            events: [{ start_s: 0, end_s: 0.0001, payload_hex: "55", status: "ok" }],
+          },
+          // §E.1's data-bw-waiting arm: a decoder on the HIDDEN channel waits.
+          {
+            id: "spi-lane",
+            decoder: "SPI-REF",
+            source_channel_ids: ["ch2"],
+            binding_id: "logic",
+            events: [{ start_s: 0, end_s: 0.0002, payload_hex: "AA", status: "ok" }],
+          },
+          // §E.4.6's awaiting arm: an event-less declaration keeps its note.
+          { id: "i2c-lane", decoder: "I2C-REF", source_channel_ids: ["ch3"], binding_id: "logic" },
+        ],
       }),
     ),
   panel: () => render(element(Panel, { title: "Output set-point", eyebrow: "Staged configuration" }, element("p", {}, "Staged configuration content."))),

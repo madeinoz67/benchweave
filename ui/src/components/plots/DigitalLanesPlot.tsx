@@ -35,9 +35,18 @@ export interface LaneCursor {
   sample: number;
 }
 
-/** §E.4.6 (slice 3 renders the spans): the decoder-lane DECLARATION as the
- * wire carries it. Slice 2's interim renders a visible awaiting-render note
- * naming the decoders — never a silent blank. */
+/** The decode action's event_log row, wire-shaped: [start_s, end_s) seconds,
+ * the payload in the wire's hex encoding, and the decode status. */
+export interface DecoderEvent {
+  start_s: number;
+  end_s: number;
+  payload_hex: string;
+  status: string;
+}
+
+/** §E.4.6: the decoder-lane declaration as the wire carries it, with the
+ * host-resolved events. A lane with NO events renders the slice-2 interim
+ * note (awaiting decoder rendering) — never a silent blank. */
 export interface DecoderLaneDeclaration {
   id: string;
   label?: string;
@@ -45,6 +54,7 @@ export interface DecoderLaneDeclaration {
   settings?: Record<string, unknown>;
   source_channel_ids: readonly string[];
   binding_id: string;
+  events?: readonly DecoderEvent[];
 }
 
 export interface DigitalLanesPlotProps {
@@ -115,6 +125,11 @@ export function DigitalLanesPlot({
   const hatchId = useId();
   const columnBudget = Math.max(1, columns);
 
+  // Fold M1: the bus-collapse set is computed ONCE outside the row memo —
+  // the row renderer and the decoder waiting predicate share this predicate.
+  const collapsedInto = new Set(
+    groups.flatMap((group) => (group.default_collapsed ? group.member_ids : [])),
+  );
   const rows = useMemo(() => {
     // §E.4.1: a hidden lane's band renders COLLAPSED with its label
     // retained — hiding is a disclosure, never a removal.
@@ -122,9 +137,6 @@ export function DigitalLanesPlot({
     // its members into the bus lane on first render — the hidden-lane
     // treatment (collapsed band, label retained), driven by the declaration
     // the wire has carried since 0.3.0/0.2.0.
-    const collapsedInto = new Set(
-      groups.flatMap((group) => (group.default_collapsed ? group.member_ids : [])),
-    );
     const laneRows = lanes.map((lane) => {
       const isHidden = hints?.get(lane.id)?.visible === false || collapsedInto.has(lane.id);
       const reduced = isHidden ? [] : reduceLane(lane.states, columnBudget);
@@ -176,14 +188,7 @@ export function DigitalLanesPlot({
     return [...laneRows, ...groupRows];
   }, [hints, groups, columnBudget, lanes]);
 
-  const rowHeights = rows.map((row) => (row.kind === "channel" && row.isHidden ? HIDDEN_BAND_HEIGHT : BAND_HEIGHT));
-  const rowTops: number[] = [];
-  let topCursor = 16;
-  rowHeights.forEach((height) => {
-    rowTops.push(topCursor);
-    topCursor += height;
-  });
-  const canvasHeight = topCursor + 8;
+
   const firstAxis = lanes[0]?.axis;
   const acquired = Math.max(0, ...lanes.map((lane) => lane.states.length));
   const drawnColumns = Math.max(0, ...rows.map((row) => (row.kind === "channel" ? row.drawn.length : row.bus.length)));
@@ -191,6 +196,60 @@ export function DigitalLanesPlot({
     const span = Math.max(1, acquired - 1);
     return LABEL_WIDTH + (sample / span) * (CANVAS_WIDTH - LABEL_WIDTH);
   };
+  // §E.4.6: decoder annotation rows render BENEATH the channel and bus rows,
+  // declaration order, their spans at the event's exact sample extent
+  // (sample = (seconds − axis.start) / axis.step — the event_log's own time
+  // base is the capture axis). A row whose source channel is hidden WAITS —
+  // its events do not render and do not orphan onto a neighbour — and a
+  // lane with no events at all keeps the slice-2 awaiting note.
+  const decoderRows = decoderLanes.map((lane) => {
+    // Fold M1: ONE hidden predicate — the same seam the row renderer
+    // honours (hint-visible:false OR bus-collapsed member), so a decoder on
+    // a collapsed member waits exactly like one on an explicitly hidden
+    // lane.
+    const sourceHidden = lane.source_channel_ids.some(
+      (id) => hints?.get(id)?.visible === false || collapsedInto.has(id),
+    );
+    const hasEvents = (lane.events?.length ?? 0) > 0;
+    const events =
+      lane.events === undefined || sourceHidden
+        ? []
+        : lane.events.flatMap((event) => {
+            const axis = firstAxis ?? { start: 0, step: 1 };
+            // Fold L2: extents clip to the capture window; an event fully
+            // outside it does not render; a zero-width [t,t) event renders
+            // the minimum-width mark (never invisible); the drawn width
+            // clamps at 1px.
+            const startSample = Math.max((event.start_s - axis.start) / axis.step, 0);
+            const endSample = Math.min((event.end_s - axis.start) / axis.step, acquired - 1);
+            if (startSample >= acquired - 1) return [];
+            const x = sampleToX(startSample);
+            const end = sampleToX(Math.max(endSample, startSample));
+            return [{ ...event, x, width: Math.max(end - x, 1) }];
+          });
+    return { kind: "decoder" as const, lane, events, sourceHidden, hasEvents };
+  });
+  const allRows = [...rows, ...decoderRows];
+  const rowHeights = allRows.map((row) => (row.kind === "channel" && row.isHidden ? HIDDEN_BAND_HEIGHT : BAND_HEIGHT));
+  const rowTops: number[] = [];
+  let topCursor = 16;
+  rowHeights.forEach((height) => {
+    rowTops.push(topCursor);
+    topCursor += height;
+  });
+  const canvasHeight = topCursor + 8;
+  // §E.4.6 Disclosure (fold M2): settings render VERBATIM as they are on
+  // the wire — scalars as their string form, nested values as their compact
+  // JSON, nulls skipped; never "[object Object]" on a contract surface.
+  const decoderDisclosure = (lane: { decoder: string; settings?: Record<string, unknown> }) =>
+    `${lane.decoder}${
+      lane.settings
+        ? ` · ${Object.values(lane.settings)
+            .filter((value) => value !== null && value !== undefined)
+            .map((value) => (typeof value === "object" ? JSON.stringify(value) : String(value)))
+            .join(" ")}`
+        : ""
+    }`;
   // §E.4.5 row 4 (fold F2): the Δt readout speaks the view's axis mode —
   // seconds mode scales the unit (7 µs), sample-index mode reads the raw
   // difference in the host's unit (7 samples) — never both.
@@ -233,11 +292,17 @@ export function DigitalLanesPlot({
             </pattern>
             <desc id={`${hatchId}-desc`}>{description}</desc>
           </defs>
-          {rows.map((row, rowIndex) => {
+          {allRows.map((row, rowIndex) => {
             const top = rowTops[rowIndex]!;
             const height = rowHeights[rowIndex]!;
-            const identifier = row.kind === "channel" ? row.lane.id : row.group.id;
-            const label = row.kind === "channel" ? row.lane.label : (row.group.label ?? row.group.id);
+            const identifier =
+              row.kind === "group" ? row.group.id : row.kind === "decoder" ? row.lane.id : row.lane.id;
+            const label =
+              row.kind === "group"
+                ? (row.group.label ?? row.group.id)
+                : row.kind === "decoder"
+                  ? (row.lane.label ?? decoderDisclosure(row.lane))
+                  : row.lane.label;
             const isHidden = row.kind === "channel" && row.isHidden;
             return (
               <g
@@ -320,7 +385,8 @@ export function DigitalLanesPlot({
                         </g>
                       );
                     })
-                  : row.bus.map((cell, cellIndex) => {
+                  : row.kind === "group"
+                    ? row.bus.map((cell, cellIndex) => {
                       const width = (CANVAS_WIDTH - LABEL_WIDTH) / row.bus.length;
                       const cx = LABEL_WIDTH + cellIndex * width;
                       return cell.hatch ? (
@@ -342,7 +408,54 @@ export function DigitalLanesPlot({
                           </text>
                         </g>
                       );
-                    })}
+                    })
+                  : row.kind === "decoder"
+                    ? row.events.map((event, eventIndex) => (
+                        <g key={eventIndex} data-bw-span={eventIndex}>
+                          <rect
+                            x={event.x}
+                            y={top}
+                            width={event.width}
+                            height={height}
+                            fill="var(--bw-plot-lane-bus, #3a3f4a)"
+                            stroke="var(--bw-plot-lane-hatch, #8a8f98)"
+                          />
+                          <text
+                            x={event.x + Math.max(event.width / 2, 8)}
+                            y={top + height / 2 + 4}
+                            textAnchor="middle"
+                            className="bw-lanes__bus-value"
+                          >
+                            {event.payload_hex}
+                          </text>
+                        </g>
+                      ))
+                    : null}
+              {row.kind === "decoder" && row.lane.label !== undefined ? (
+                <text
+                  className="bw-lanes__label"
+                  x={CANVAS_WIDTH - 4}
+                  y={top + height / 2 + 4}
+                  textAnchor="end"
+                >
+                  {decoderDisclosure(row.lane)}
+                </text>
+              ) : null}
+              {row.kind === "decoder" && row.sourceHidden ? (
+                <text data-bw-waiting="true" x={LABEL_WIDTH + 4} y={top + height / 2 + 4} className="bw-lanes__bus-value">
+                  {`events waiting — source channel hidden`}
+                </text>
+              ) : null}
+              {row.kind === "decoder" && !row.sourceHidden && !row.hasEvents ? (
+                <text
+                  role="status"
+                  className="bw-lanes__decoder-note bw-lanes__bus-value"
+                  x={LABEL_WIDTH + 4}
+                  y={top + height / 2 + 4}
+                >
+                  {`${decoderDisclosure(row.lane)} — awaiting decoder rendering`}
+                </text>
+              ) : null}
               </g>
             );
           })}
@@ -363,11 +476,7 @@ export function DigitalLanesPlot({
         </svg>
       </div>
       {cursorReadout !== null ? <p className="bw-lanes__cursors-delta">{cursorReadout}</p> : null}
-      {decoderLanes.length > 0 ? (
-        <p role="status" className="bw-lanes__decoder-note">
-          {`Decoder lanes declared (${[...new Set(decoderLanes.map((lane) => lane.decoder))].join(", ")}) — awaiting decoder rendering`}
-        </p>
-      ) : null}
+
       <p className="bw-lanes__axis">{`${x.label} (${x.unit})`}</p>
       <p className="bw-plot__acquisition" data-bw-acquisition="true">
         {`Acquired ${acquired} samples · plotted ${drawnColumns}${firstAxis ? ` at ${formatRate(firstAxis.step)}` : ""}`}
