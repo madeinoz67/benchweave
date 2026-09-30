@@ -247,6 +247,8 @@ All notable changes to this project will be documented in this file.
 - Fold wave 2 — the honest interim + the pin fork closed (T1/T2)
 - S2 fold wave 1 — the bus hatch, Δt axis mode, property pins, default_collapsed (5 rows)
 - S2 fold waves 2+addendum+3 — interim truth, pins with teeth, decoder closed-set (12 rows)
+- S3 adversary fold — one hidden predicate, verbatim settings, no overprint, window clipping (4 rows)
+- S3 resident-review fold — guide truth, per-lane awaiting, hook pins, story (6 rows)
 
 ### Documentation
 
@@ -663,6 +665,7 @@ All notable changes to this project will be documented in this file.
 - Flat-plugin scope, marker-based environments, twin region pin
 - Digital_lanes grammar + validator — plugin-ui 0.3.0 + plugin-ui-preview 0.2.0 (#244 S1)
 - DigitalLanesPlot renderer + contract rows + the decimation proof (S2)
+- Decoder-lane rendering — annotation spans, disclosure, waiting (S3)
 
 ### Hardware Evidence
 
@@ -947,6 +950,7 @@ All notable changes to this project will be documented in this file.
 - The verify_tree fixture tracks the derived runtime-schema path
 - Remove the dead 'cells' binding (the vet's lint catch)
 - Make the not_ready lease pin self-sufficient (order-independent)
+- Make the not_ready lease pin self-sufficient (order-independent)
 
 ### Build
 
@@ -986,6 +990,7 @@ All notable changes to this project will be documented in this file.
 - Integrate main (#243 UI lane + pointer) — all 21 main-changed paths carried, gitlink resolved to SDK main
 - Integrate main (#221 zero-literal lane) — gitlink resolved to SDK main d698b44 (contains both #63 and #65 lines)
 - Main (#275's S1 landing) into feat/issue244-s2-renderer
+- Main (#277's renderer landing) into feat/issue244-s3-decoders
 
 ### Review
 
