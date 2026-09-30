@@ -243,6 +243,10 @@ All notable changes to this project will be documented in this file.
 - #260 fold wave — the seam decides, the comparator is total, recovery is policy-relative
 - Row 4 corrected to the three-way echo disposition
 - Fold wave — marker truth, region dedupe, regenerable residual, adc vacuity guard
+- Fold wave 1 — governor + grammar-lane rows (8 rows, one batch)
+- Fold wave 2 — the honest interim + the pin fork closed (T1/T2)
+- S2 fold wave 1 — the bus hatch, Δt axis mode, property pins, default_collapsed (5 rows)
+- S2 fold waves 2+addendum+3 — interim truth, pins with teeth, decoder closed-set (12 rows)
 
 ### Documentation
 
@@ -463,6 +467,9 @@ All notable changes to this project will be documented in this file.
 - Issue #260 record-lane design record
 - Add counter-boundaries design record
 - Obligation 20 assembly/scripts/membership clauses; obligation 22 region pin
+- Issue #244 digital_lanes design of record
+- 18(n) carries the widened-staleness framing (wave-2 T2 add)
+- 18(n) carries the widened-staleness framing (wave-2 T2 add)
 
 ### Features
 
@@ -654,6 +661,8 @@ All notable changes to this project will be documented in this file.
 - Constant-folding assembly detection in the zero-literal counter
 - The scripts/ scope — three derivations, twenty registrations
 - Flat-plugin scope, marker-based environments, twin region pin
+- Digital_lanes grammar + validator — plugin-ui 0.3.0 + plugin-ui-preview 0.2.0 (#244 S1)
+- DigitalLanesPlot renderer + contract rows + the decimation proof (S2)
 
 ### Hardware Evidence
 
@@ -761,6 +770,7 @@ All notable changes to this project will be documented in this file.
 - Advance packages/sdk to the SDK branch head (G3a test)
 - Advance packages/sdk to the fold commit
 - Advance packages/sdk to the twin-fixture fix
+- Regenerate the compatibility matrix for the digital_lanes train (#244 S1)
 
 ### Performance
 
@@ -935,6 +945,8 @@ All notable changes to this project will be documented in this file.
 - Re-shape the arbiter arm for the digest-verified resolution
 - Pin the unstored-descriptor pre-check skip (Risk 2's other half)
 - The verify_tree fixture tracks the derived runtime-schema path
+- Remove the dead 'cells' binding (the vet's lint catch)
+- Make the not_ready lease pin self-sufficient (order-independent)
 
 ### Build
 
@@ -973,6 +985,7 @@ All notable changes to this project will be documented in this file.
 
 - Integrate main (#243 UI lane + pointer) — all 21 main-changed paths carried, gitlink resolved to SDK main
 - Integrate main (#221 zero-literal lane) — gitlink resolved to SDK main d698b44 (contains both #63 and #65 lines)
+- Main (#275's S1 landing) into feat/issue244-s2-renderer
 
 ### Review
 
