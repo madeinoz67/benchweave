@@ -249,6 +249,7 @@ All notable changes to this project will be documented in this file.
 - S2 fold waves 2+addendum+3 — interim truth, pins with teeth, decoder closed-set (12 rows)
 - S3 adversary fold — one hidden predicate, verbatim settings, no overprint, window clipping (4 rows)
 - S3 resident-review fold — guide truth, per-lane awaiting, hook pins, story (6 rows)
+- Fold the why-slice adversary wave — 3 LOW + 3 NIT, one commit
 
 ### Documentation
 
@@ -472,6 +473,7 @@ All notable changes to this project will be documented in this file.
 - Issue #244 digital_lanes design of record
 - 18(n) carries the widened-staleness framing (wave-2 T2 add)
 - 18(n) carries the widened-staleness framing (wave-2 T2 add)
+- #233 register pass — six dormant rows, D5 why-query slice design
 
 ### Features
 
@@ -666,6 +668,7 @@ All notable changes to this project will be documented in this file.
 - Digital_lanes grammar + validator — plugin-ui 0.3.0 + plugin-ui-preview 0.2.0 (#244 S1)
 - DigitalLanesPlot renderer + contract rows + the decimation proof (S2)
 - Decoder-lane rendering — annotation spans, disclosure, waiting (S3)
+- The why query — VR-40's constraint -> locked-version explanation
 
 ### Hardware Evidence
 
