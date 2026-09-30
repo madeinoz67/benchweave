@@ -746,6 +746,16 @@ frozen, THIS note governs the landed contract (#243's §11a precedent):
    fork fails mechanically, plus an interim arm pinning the
    schema-admits/decoder-refuses split itself.
 
+5. **The §6 A2.2 permutation-null form was wrong as pre-committed (S2
+   fold F5).** §6 says "the permuted runs' survive-counts equal the
+   unpermuted run's" — a permutation changes the transition COUNT itself,
+   so the pre-committed equality fails 50/50 under the exact seed (first
+   run: expected 127 to be 256). The landed invariant is per-ordering
+   completeness: every transition of EACH permuted array survives
+   (survived == total per run, missing == []). The correction is
+   necessary, not cosmetic; the ordering-independence INTENT is preserved
+   by holding the property on every ordering of the same multiset.
+
 Slice-2 constraint (fold row A8, watch item): the design's bumps-ONCE
 claim (headline 7) rides on slice 2 NOT needing fixture-side lanes
 fields — the 0.2.0 preview dir is released with this train, so any

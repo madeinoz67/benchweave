@@ -284,7 +284,7 @@ enforcement fixture fails that test (rows cannot appear without implementations)
 
 ### §E.1 Components
 
-Schema: `Component | Root element | Required attributes | Required roles | Required class hooks | Required text | Notes` — 10 rows.
+Schema: `Component | Root element | Required attributes | Required roles | Required class hooks | Required text | Notes` — 11 rows.
 
 | Component | Root element | Required attributes | Required roles | Required class hooks | Required text | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -294,6 +294,7 @@ Schema: `Component | Root element | Required attributes | Required roles | Requi
 | `reading-tile` | `section` | `data-severity ~ aria-label ~ data-bw-reading-state` | `region` | `bw-reading ~ bw-reading__header ~ bw-reading__severity ~ bw-reading__value ~ bw-reading__set ~ bw-reading__state ~ bw-reading__quality` | `steady · 2 s` | The tile renders the severity icon and its label, the value with adjacent unit, and a quality line "`{quality} · {freshness}`" (canonical fixture values: quality `steady`, freshness `2 s` — the required-text literal is the canonical line, so it discriminates a renderer that drops or misjoins either side). A reading does not become verified merely because it rendered; do not optimistically copy a requested value into an applied reading. With a reading state (§B.3): `data-bw-reading-state="<key>"` on the section, the state icon and its visible label in `bw-reading__state`. With gateway-observed set evidence (§E.3): `Set {value} {unit}` adjacent in `bw-reading__set` with `data-bw-reading-role="set"`. When stale (§B.4): dimmed with `data-bw-stale="true"` and the `stale` marker appended to the quality line — the enforcement fixture renders the canonical tile WITH the state and set evidence (the mode-banner all-modes precedent). |
 | `alert-bubble` | `aside` | `data-severity ~ aria-label=Dismiss` | `status` | `bw-alert-bubble ~ bw-alert-bubble__content` | — | Title renders in a strong element, message in a paragraph, optional source in small. Critical and trip use live region `alert` (§B.1); the dismiss affordance renders only for dismissible severities (§B.1) and carries `aria-label="Dismiss"`. |
 | `engineering-plot` | `figure` | `role=img ~ aria-label ~ aria-describedby ~ aria-label=Traces ~ aria-label~=(hidden by presentation preference) ~ data-line ~ data-bw-series-slot ~ data-bw-trace-provenance ~ data-bw-acquisition ~ data-hidden` | `img` | `bw-plot ~ bw-plot__canvas ~ bw-plot__legend ~ bw-visually-hidden ~ bw-plot__acquisition` | `hidden ~ Acquired 100 samples · plotted 2` | The canvas carries `role="img"` with the plot title and a described-by textual chart description. Every trace is listed in a visible legend labelled "Traces"; legend items expose their line form via `data-line` (`solid`/`dashed` — the resolved dash, not a display position), their series slot via `data-bw-series-slot` (§E.2.1: `((i mod 8) + 1)`, wrapping at 8), and hidden channels via `data-hidden`, the hidden marker text, and an aria-label ending "(hidden by presentation preference)". Series assignment: §E.2. The >2-unit refusal (§E.2.3) renders its note conditionally (class hook `bw-plot__refusal`, `role="status"` — fires only when the declared set carries more than two distinct units); the acquisition disclosure (§E.2.5) renders on the canonical fixture (voltage decimated 100→2). |
+| `digital-lanes` | `figure` | `role=img ~ aria-label ~ aria-describedby ~ data-bw-lane ~ data-bw-lane-kind ~ data-bw-state ~ data-bw-glitch ~ data-bw-trigger ~ data-bw-cursor ~ data-hidden` | `img` | `bw-lanes ~ bw-lanes__canvas ~ bw-lanes__lane ~ bw-lanes__label ~ bw-lanes__group ~ bw-lanes__glitch ~ bw-plot__acquisition` | `hidden ~ Acquired 1000 samples · plotted 12 at 1 MHz` | Lane identity is position: uniform lane height, labels pinned left, always visible. `data-bw-lane` is the lane's declared index; `data-bw-lane-kind` is `channel` / `group` / `decoder`; state segments carry `data-bw-state` (`0`/`1`/`x`/`z`); multi-edge columns carry `data-bw-glitch`; the trigger marker `data-bw-trigger` renders only from a non-null trigger time. Lanes rules: §E.4. |
 | `data-table` | `div` | `scope=col` | `table` | `bw-table-wrap ~ bw-data-table` | — | The table carries a caption naming the data; column headers are `th[scope=col]`; rows keep a stable key. Dense data sits on a recessed surface. |
 | `panel` | `section` | `data-surface ~ aria-label` | `region` | `bw-panel ~ bw-panel__header ~ bw-panel__title ~ bw-panel__body` | — | `data-surface` is `raised` for actionable groups and bounded modules, `recessed` for plots, tables, logs and dense data. An optional eyebrow span (`bw-panel__eyebrow`) precedes the title. Structural narrative and example HTML are renderer guidance. |
 | `mode-banner` | `section` | `data-bw-mode-banner ~ data-bw-mode ~ aria-label=Presentation mode` | `region` | `bw-mode-banner ~ bw-mode-banner__entry` | `SIMULATED PRESENTATION DATA ~ NO GATEWAY · LOCAL PRESENTATION ONLY ~ NO CONTROLLER LEASE · ACTIONS CANNOT BE AUTHORISED ~ NO POLICY ENGINE · POLICY CHECKS UNAVAILABLE` | Contract §D: persistent, non-dismissible, first element of the page's main region; one entry per active mode in the fixed order of §D.1; absence asserts full-authority presentation. The required-text literals are the four fixed wordings (the enforcement fixture renders all four modes; a page renders only its active modes). |
@@ -454,6 +455,64 @@ role; a `measurement`-role parameter supplies `measured`.
 | `measured` | The tile's primary value position (`bw-reading__value`) | — | Never sourced from a requested or staged value; a reading does not become verified because it rendered |
 | `set` | Adjacent to the measured value, in the same tile (`bw-reading__set`), carrying `data-bw-reading-role="set"` | `Set {value} {unit}` — visible text, data font | Never derived from a staged input; renders only from gateway-observed device state (a setpoint-parameter read or a verified write's reported effective value) |
 | `staged` | Only in the staging input (`numeric-input` / `rotary-control` rows already carry the `Staged` required text) | `Staged` (existing pins) | Never rendered inside a reading tile; never copied into the `measured` or `set` role |
+
+### §E.4 Digital lanes (`digital-lanes` sub-rows)
+
+The capture-view kind (plugin-ui 0.3.0): identity is lane POSITION — colour carries nothing.
+
+#### §E.4.1 Lane layout
+
+Schema: `Property | Requirement` — 4 rows.
+
+| Property | Requirement |
+| --- | --- |
+| Uniform bands | Every drawn channel band carries the same height — identity is position, never size |
+| Pinned labels | The label column is pinned left and always visible — labels never scroll or clip out of view |
+| Hidden lanes | Hosts may hide lanes: the band renders collapsed with its label retained, `data-hidden`, the hidden marker text, and an aria-label ending "(hidden by presentation preference)" (the engineering-plot row's wording, reused) |
+| Hiding is disclosure | A hidden lane's row stays in declaration order — hiding is never a removal and the hidden marker names the lane |
+
+#### §E.4.2 State rendering
+
+Schema: `Property | Requirement` — 4 rows.
+
+| Property | Requirement |
+| --- | --- |
+| `1` | A high level within the lane band (upper half) |
+| `0` | A low level within the lane band (lower half) |
+| `x` and `z` | `x` renders a HATCH fill (a diagonal cross-hatch pattern, described shape-neutral); `z` renders a MID-LEVEL line at half the band height — distinct from both levels and from the hatch |
+| Monochrome discriminability | The four states are mutually discriminable WITHOUT colour — distinct geometries (band halves, pattern fill, mid-line), the §E.2.2 monochrome-reproduction discipline applied to states |
+
+#### §E.4.3 Groups and buses
+
+Schema: `Property | Requirement` — 4 rows.
+
+| Property | Requirement |
+| --- | --- |
+| Bus lane | A declared group may render collapsed as ONE bus lane — a bus lane's identity is its label and position, colour carries nothing |
+| Radix | The bus value renders in the group's radix: hex default (width = the group's bit width in nibbles, zero-padded), decimal per-group opt-in |
+| Member order | DECLARATION ORDER with the first declared member the LSB — bus values are a pure function of (member states, member order) |
+| Unknown bus | A member column not resolving STABLY to `0`/`1` for the whole column (`x`/`z`, or an interior edge/glitch — a column where a member changed is as unstable as an unknown, mirroring §E.4.4) renders the bus cell hatched — never a fabricated number over a transition |
+
+#### §E.4.4 Edge-preserving decimation (NORMATIVE)
+
+Schema: `Property | Requirement` — 3 rows.
+
+| Property | Requirement |
+| --- | --- |
+| Every transition survives | A drawn column always contains every state change of the acquired states it covers, as an edge or a glitch mark |
+| Glitch mark | Any column covering more than one transition renders a multi-edge/glitch mark (`data-bw-glitch`) |
+| No sample dropping | Sample-dropping reduction (LTTB-style point selection) is NON-CONFORMING for this kind |
+
+#### §E.4.5 Time axis
+
+Schema: `Property | Requirement` — 4 rows.
+
+| Property | Requirement |
+| --- | --- |
+| Axis label | The axis renders the host-supplied label and unit — sample-index or seconds mode is the host's choice, disclosed BY the label |
+| Sample rate | The rate discloses via §E.2.5's `at {rate}` suffix (rate = 1/axis step) |
+| Trigger | The trigger marker renders from a non-null trigger time, at its time, labelled `trigger`; a null trigger renders no marker and no position is fabricated |
+| Cursors | ≥2 cursors are supported with a Δt readout in the view's axis mode — seconds mode scales the unit (`Δt = 7 µs`), sample-index mode reads the raw difference in the host's unit (`Δt = 7 samples`), never both (presentation-only: cursor positions are host-supplied; the interactive drag model is deferred) |
 
 ## §F Icon set
 

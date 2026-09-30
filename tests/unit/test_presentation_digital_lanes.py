@@ -29,7 +29,19 @@ type Specimen = tuple[JsonObject, dict[str, JsonObject], list[JsonObject], JsonO
 ROOT = Path(__file__).resolve().parents[2]
 PREDECESSOR = ROOT / "standards/plugin-ui/0.2.0"
 CURRENT = ROOT / "standards/plugin-ui/0.3.0"
-PREVIEW_WIRE = ROOT / "standards/plugin-ui-preview/0.2.0/preview-document.schema.json"
+
+
+def _active_preview_wire() -> Path:
+    """The served wire schema, DERIVED from the manifest's active row (the
+    TS fork-catcher's mirror): the path can never lag a bump again."""
+    manifest = json.loads((ROOT / "standards/standards-manifest.json").read_bytes())
+    active = str(
+        next(row["version"] for row in manifest["standards"] if row["id"] == "plugin-ui-preview")
+    )
+    return ROOT / f"standards/plugin-ui-preview/{active}/preview-document.schema.json"
+
+
+PREVIEW_WIRE = _active_preview_wire()
 
 
 def encode(value: object) -> bytes:

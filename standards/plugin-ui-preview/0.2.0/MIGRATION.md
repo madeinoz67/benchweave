@@ -32,8 +32,9 @@ plot_views motion), whose from-predecessor note governs it.
 
 ## Interim renderer state
 
-Until the renderer slice, the preview refuses a lanes-kind plot view WHOLE:
-the 0.2.0 wire schema admits the document and the TypeScript decoder throws
-`preview_invalid_plot_view` — a visible, never-silent failure of the entire
-preview (every page lost), not a per-kind status note; that note arrives
-with the renderer slice. The wire grammar is final in 0.2.0.
+As of the renderer slice the preview DRAWS lanes views: the declared
+structure renders over a deterministic synthetic four-state pattern with
+the standing disclosure line naming the simulation (lane activity is never
+laundered as acquired data). Decoder-lane annotations await the decoder
+slice and render a visible awaiting-render note, never a silent blank. The
+wire grammar is final in 0.2.0.

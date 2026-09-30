@@ -324,16 +324,23 @@ A manifest page of kind `readings` or `dataset` may declare `plots`
 (`time_series` over an observation binding, `waveform` over a dataset
 binding; axis ids resolve against the binding catalogue's variables, and
 `channel_hints` carry the plugin's `color_role`/`visible` presentation
-preferences). Since plugin-ui-preview 0.1.1 the SDK preview renders every
+preferences). A logic capture declares `digital_lanes` over a dataset
+binding: `y` names the fetch variables carrying the four-state logic
+alphabet (up to 64 channels), `lane_groups` declare collapsed bus lanes
+(`member_ids` 2..64, radix hex default / decimal opt-in — the first
+declared member is the LSB), `decoder_lanes` declare decode-annotation
+bindings on another action than the capture, and hints carry `visible`
+only — colour carries nothing in a lanes view; the renderer contract is
+ui-contract §E.4. Since plugin-ui-preview 0.1.1 the SDK preview renders every
 declared plot: `preview-ui` projects each one into the served document
 (resolved axis units and hint fields included) and the bundled renderer
 draws it, with hints applied as preferences under the host theme — a hint
 can bias a trace colour to `accent`/`muted` or hide a channel from the
 drawing, and can never carry severity semantics or a threshold. The
-`digital_lanes` capture kind is the declared exception until its renderer
-slice lands: the wire admits such a plot but the preview decoder refuses
-the document whole (a visible failure of the entire preview, never a
-silent blank) — the per-kind note arrives with the renderer slice.
+`digital_lanes` capture kind renders (the renderer slice): the preview
+draws the declared structure over a labelled synthetic pattern; decoder-lane
+annotations await the decoder slice and render a visible awaiting-render
+note, never a silent blank.
 
 Preview plot values are **per-scenario snapshots**: the preview data model
 carries one simulated value per observation target per scenario, so a feedable plot

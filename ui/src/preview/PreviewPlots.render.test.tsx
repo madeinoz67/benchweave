@@ -94,7 +94,7 @@ describe("PreviewPlots real rendering (metric B)", () => {
     expect(container.querySelectorAll("figure.bw-plot")).toHaveLength(1);
     expect(container.querySelector(".bw-plot__canvas svg")).toBeTruthy();
     expect(
-      screen.getByText("Preview scenarios carry one simulated value per observed target — not observation history."),
+      screen.getByText(/Preview scenarios carry one simulated value per observed target — not observation history\./),
     ).toBeVisible();
     expect(screen.getByText("No preview data for this scenario")).toBeVisible();
     expect(screen.getByText("signal · V")).toBeVisible();

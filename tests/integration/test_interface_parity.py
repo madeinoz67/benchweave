@@ -1744,7 +1744,15 @@ def test_not_ready_configuration_activation_under_live_lease(
     gateway: SimpleNamespace,
 ) -> None:
     """not_ready pin (REST-only admin surface): the idle boundary refuses a
-    configuration_activation while the renew-parity lease is still live."""
+    configuration_activation while the renew-parity lease is still live.
+
+    Self-sufficient (order-independent under xdist sharding): the bench
+    generation is READ live rather than assumed — an earlier test's apply may
+    or may not have advanced it before this test runs on any worker."""
+    gen = int(
+        gateway.client.get(f"/v1/benches/{BENCH}", headers=_bearer(ADMIN))
+        .json()["data"]["generation"]
+    )
     submitted = gateway.client.post(
         "/v1/admin/changes",
         headers=_bearer(ADMIN),
@@ -1753,7 +1761,7 @@ def test_not_ready_configuration_activation_under_live_lease(
             "bench_id": BENCH,
             "kind": "configuration_activation",
             "target_ref": TARGET_REF,
-            "expected_generation": 2,
+            "expected_generation": gen,
             "reason": "pin: activation under live lease",
         },
     )
@@ -1764,8 +1772,8 @@ def test_not_ready_configuration_activation_under_live_lease(
         headers=_bearer(ADMIN),
         json={
             "request_id": "req-pin-notready-apply",
-            "expected_generation": 2,
-            "approval_ref": _store_approval(gateway.content, change_id, 2),
+            "expected_generation": gen,
+            "approval_ref": _store_approval(gateway.content, change_id, gen),
             "approver_token": APPROVER_TOKEN,
         },
     )

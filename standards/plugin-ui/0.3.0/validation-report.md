@@ -95,10 +95,10 @@ with narrower reopen conditions (the design record's D-1).
 
 ## Honest interim
 
-Slice 1 admits the kind; nothing renders it until slice 2 — and the
-interim refusal is WHOLE-PREVIEW, not per-kind: a schema-valid lanes
-document passes the Python preview side and the TypeScript decoder refuses
-its plot view (`preview_invalid_plot_view`), failing the entire preview
-visibly (every page lost), never a silent blank. The per-kind
-unsupported-kind note arrives with slice 2's renderer. The wire grammar is
-final in 0.3.0 / 0.2.0: no second bump results from this issue.
+Slice 2 landed the renderer: DigitalLanesPlot draws the kind (identity is
+lane position; the four states are structurally distinct geometry), and the
+preview serves and draws lanes views over a labelled synthetic pattern.
+The remaining interim is decoder-lane annotations (slice 3) — declared
+decoder lanes render a visible awaiting-render note naming the decoders,
+never a silent blank. The wire grammar is final in 0.3.0 / 0.2.0: no
+second bump results from this issue.

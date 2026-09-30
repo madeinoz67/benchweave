@@ -97,6 +97,9 @@
 }
 
 /* §E.2.5: the acquisition disclosure renders OUTSIDE the canvas. */
+/* §E.2.5 shared across the plot family (engineering-plot AND digital-lanes
+ * render this line — one rule, this file owns it; digital-lanes.css does
+ * not redefine it). */
 .bw-plot__acquisition {
   margin: var(--bw-space-2) 0 0;
   padding: 0;
