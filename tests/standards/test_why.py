@@ -9,19 +9,20 @@ record's pre-committed §3.7:
 - **M1** rung discrimination — 8 planted fixtures, 2 per rung; any
   misnamed rung kills the slice.
 - **M2** no-lie equality — why's rendered version map equals
-  ``resolve_package``'s resolved map across the dependency corpus's lock
-  fixtures. Pre-committed underpowered rule: the precise-override rung is
-  a call-time input, so no on-disk lock fixture can produce it; if fewer
-  than four distinct rungs occur across the sweep, M2 is recorded
-  underpowered and M1 is the operative proof.
+  ``resolve_package``'s resolved map across five hand-built fixture shapes
+  (each mirroring a named corpus test) plus the real shipped package.
+  Recorded UNDERPOWERED by the pre-committed rule: three distinct rungs
+  occur across on-disk fixtures — the precise-override rung is a call-time
+  input no lock fixture can produce — so M1 is the operative proof, never
+  counted as a pass.
 - **M3** read-only — ``why`` on a clean tree leaves ``git status
   --porcelain`` empty, before and after, pinned by test.
 - **RED control** — neutralizing the in-loop provenance recording must
   fail M1 (and M2 with it); the tests test the mechanism, not the fixture.
 
 The fixtures reuse the dependency corpus's own builders (``test_dependency``,
-``test_dev_pins``) — no second fixture lattice, and the sweep enumerates the
-corpus's lock-fixture shapes, each named with the corpus test it mirrors.
+``test_dev_pins``) — no second fixture lattice; every sweep shape names the
+corpus test it mirrors.
 """
 
 from __future__ import annotations
@@ -404,3 +405,84 @@ def test_why_cli_refuses_styled(tmp_path: Path) -> None:
     assert result.returncode == 1
     assert "standards why error: lock_otdp_absent" in result.stderr
     assert "Traceback" not in result.stderr
+
+
+# --- the fold wave (adversary lane: 3 LOW + 3 NIT, one commit) ---------------------
+
+
+def test_f1_a_cross_violation_surfaces_as_the_typed_cli_error(tmp_path: Path) -> None:
+    """F1: ``resolve_package`` raises on cross-constraint violations before
+    the render can render a verdict, so a violated row reaches the operator
+    as the family's typed CLI error — never as a rendered why row. Pins the
+    exact styled output. GREEN-AT-HEAD: the row's fix is the text surfaces
+    (docstring, docs bullet); this test pins the behavior they must tell
+    the truth about, no RED expected."""
+    root = _copy_standards(tmp_path)
+    cross = root / "standards" / "cross-constraints.json"
+    document = json.loads(cross.read_bytes())
+    document["rows"][0]["requires"]["otdp"] = ">=0.2.2,<0.3.0"
+    cross.write_bytes(canonical_json(document))
+    _plain_package(
+        root,
+        constraints={"execution": ">=0.1.0,<0.3.0", "otdp": ">=0.2.0,<0.3.0"},
+        otdp_version="0.2.0",
+    )
+    result = _run(root, "why", "--package", "plugins/acme/widget")
+    assert result.returncode == 1
+    assert "standards why error: cross_constraint_violation" in result.stderr
+    assert "PR #201" in result.stderr  # the row's evidence rides the refusal
+    assert "Traceback" not in result.stderr
+
+
+def test_f2_the_render_reads_the_resolutions_single_load(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F2: ``why_lines`` threads the resolution's own prior and policy —
+    ONE load each per why call. The double-read seam (re-loading after
+    ``resolve_package`` judged) opened a window in which a concurrent lock
+    writer could make the render describe a lock the mechanism never
+    judged."""
+    import benchweave.standards.dependency as dep
+    from benchweave.standards.manifest import load_dependency_policy as real_policy
+
+    root = _copy_standards(tmp_path)
+    package = _plain_package(root, constraints=_SYNTHETIC_CONSTRAINTS, otdp_version="0.2.0")
+    calls = {"prior": 0, "policy": 0}
+    real_prior = dep.load_prior_lock
+
+    def counting_prior(package_path: Path) -> Any:
+        calls["prior"] += 1
+        return real_prior(package_path)
+
+    def counting_policy(root_path: Path) -> Any:
+        calls["policy"] += 1
+        return real_policy(root_path)
+
+    monkeypatch.setattr(dep, "load_prior_lock", counting_prior)
+    monkeypatch.setattr(dep, "load_dependency_policy", counting_policy)
+    lines = why_lines(root, package)
+    assert lines
+    assert calls == {"prior": 1, "policy": 1}, calls
+
+
+def test_f3_the_exclusion_sweep_lines_are_pinned(tmp_path: Path) -> None:
+    """F3 pins for the auto-rung exclusion sweep (GREEN-AT-HEAD: the lane
+    verified both lines correct by probe — these are pinning assertions,
+    no RED expected, per the boundary-arm convention). The yanked arm
+    names the carried-but-unservable 0.2.1; the out-of-range arm names the
+    served versions the authored interval excludes."""
+    (tmp_path / "yanked-arm").mkdir()
+    (tmp_path / "range-arm").mkdir()
+    root, package, _kwargs, _expected, _cli = _arm_auto_version_ordered(
+        tmp_path / "yanked-arm"
+    )
+    lines = why_lines(root, package)
+    assert "  excluded 0.2.1 (yanked)" in lines
+    root2 = _copy_standards(tmp_path / "range-arm")
+    _add_otdp_version(root2, "0.2.10")
+    package2 = _plain_package(
+        root2, constraints={"otdp": ">=0.2.10,<0.3.0"}, otdp_version="9.9.9"
+    )
+    lines2 = why_lines(root2, package2)
+    assert "  excluded 0.2.0 (out-of-range)" in lines2
+    assert "  excluded 0.2.2 (out-of-range)" in lines2

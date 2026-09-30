@@ -75,6 +75,7 @@ from .manifest import (
     DESCRIPTOR_SCHEMA_NAME,
     RANGE_PATTERN,
     VERSION_PATTERN,
+    DependencyPolicy,
     StandardPolicy,
     StandardsError,
     carried_versions,
@@ -990,12 +991,21 @@ class SelectionProvenance:
 
 @dataclass(frozen=True)
 class Resolution:
-    """A resolved lock document with its canonical bytes and warnings."""
+    """A resolved lock document with its canonical bytes and warnings.
+
+    ``prior`` and ``policy`` are the very objects the resolution judged —
+    threaded through so a renderer can describe the SAME lock the
+    mechanism judged, with no re-read window in between (the F2 seam: a
+    second ``load_prior_lock`` after resolution could observe a concurrent
+    writer and describe drift that never happened).
+    """
 
     document: dict[str, Any]
     raw: bytes
     warnings: tuple[str, ...]
     provenance: dict[str, SelectionProvenance]
+    prior: PriorLock
+    policy: DependencyPolicy
 
 
 def _corpus_rows(root: Path) -> list[tuple[str, str]]:
@@ -1579,6 +1589,8 @@ def resolve_package(
         raw=canonical_json(document),
         warnings=tuple(warnings),
         provenance=provenance,
+        prior=prior,
+        policy=policy,
     )
 
 
@@ -1683,24 +1695,31 @@ def why_lines(root: Path, package: Path) -> list[str]:
     authored interval, the prior locked row, the rung that fired and the
     selected version; then the drift section (prior lock vs resolution,
     naming each diverging row — the per-row story ``plugin_lock_drift``
-    cannot produce) and the cross-constraint verdict.
+    cannot produce) and the cross-constraint verdict line.
+
+    The verdict is rendered ONLY WHEN CLEAR: ``resolve_package`` raises
+    ``cross_constraint_violation`` before returning, so a violated row can
+    never reach this render — a violation surfaces to the operator as the
+    family's typed CLI error, never as a rendered why row. The render
+    re-derives the verdict from the same committed inputs purely to show
+    the check ran.
 
     The render reads the loop's recorded provenance and never re-derives a
-    rung (the design-level kill: a second ladder in the renderer). Refusals
-    propagate verbatim — a dev head the object store cannot resolve raises
-    the resolver's own ``dev_head_unresolvable:`` here; the why surface
-    reuses the mechanism's refusals, never a softer paraphrase. The render
-    prints no digests (the lock carries them; why explains selection, not
+    rung (the design-level kill: a second ladder in the renderer), and it
+    reads the resolution's OWN prior/policy — the objects the mechanism
+    judged — with no re-read window (F2). Refusals propagate verbatim — a
+    dev head the object store cannot resolve raises the resolver's own
+    ``dev_head_unresolvable:`` here; the why surface reuses the
+    mechanism's refusals, never a softer paraphrase. The render prints no
+    digests (the lock carries them; why explains selection, not
     integrity). What the drift section does NOT catch: a values-identical
     reflow of the lock (byte-form drift — ``plugin_lock_drift``'s fourth
     hypothesis) shows no row divergence here; value drift and byte-form
     drift are different surfaces by design.
     """
     resolution = resolve_package(root, package)
-    prior = load_prior_lock(package)
-    if prior is None:  # unreachable: resolve_package refused on the absent lock
-        raise StandardsError("plugin_lock_absent: the prior lock vanished mid-why")
-    policy = load_dependency_policy(root)
+    prior = resolution.prior
+    policy = resolution.policy
     lines: list[str] = []
     for row in resolution.document["standards"]:
         standard_id = str(row["id"])
@@ -1766,10 +1785,14 @@ def why_lines(root: Path, package: Path) -> list[str]:
         str(resolution.document["adapter_api_version"]),
         dev_ids,
     )
-    for violation in violations:
-        lines.append(f"cross-constraint violation {violation}")
-    if not violations:
-        lines.append("cross-constraints clear")
+    if violations:
+        # Unreachable while resolve_package enforces the rows (it raises
+        # before returning) — a guard, not a render: if enforcement ever
+        # changed shape, this fails loud instead of printing a clear line.
+        for violation in violations:
+            lines.append(f"cross-constraint violation {violation}")
+        return lines
+    lines.append("cross-constraints clear")
     return lines
 
 

@@ -103,10 +103,13 @@ in-tree example is `plugins/fnirsi/dps150/contracts/`. The command family
   exactly one standard's row; every other row stays byte-identical.
 - `why [--package <dir>]` — explain the current resolution: per standard,
   the authored interval, the prior locked row, the rung that fired
-  (dev-opt-in / precise-override / prior-retained / auto-highest-served)
-  and the selected version, then the drift section naming each row that
-  moved since the prior lock and the cross-constraint verdict. Read-only;
-  reuses the resolver's refusals verbatim.
+  (dev-opt-in / prior-retained / auto-highest-served) and the selected
+  version, then the drift section naming each row that moved since the
+  prior lock and the cross-constraint verdict (rendered only when clear —
+  a violation surfaces as the family's typed error, never a rendered row).
+  A precise override is a call-time arm of `pin`/`upgrade`; once the
+  upgraded lock is committed, why honestly names the row prior-retained.
+  Read-only; reuses the resolver's refusals verbatim.
 - `check` — the SDK-pairing lanes plus the dependency lane: every in-tree
   package's constraints are re-resolved and byte-compared against its
   committed lock.
