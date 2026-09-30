@@ -1,6 +1,6 @@
 """Command line: python -m benchweave.standards.
 
-Subcommands: export | check | matrix | versions | repin | list | pin | upgrade.
+Subcommands: export | check | matrix | versions | repin | list | pin | upgrade | why.
 """
 
 from __future__ import annotations
@@ -76,6 +76,16 @@ def main() -> int:
         "--precise", required=True, help="the exact target version (served or yanked)"
     )
     upgrade.add_argument(
+        "--package",
+        type=Path,
+        default=None,
+        help="the package directory (default: the single in-tree package)",
+    )
+    why = sub.add_parser(
+        "why",
+        help="explain the current resolution: per standard, the rung that fired",
+    )
+    why.add_argument(
         "--package",
         type=Path,
         default=None,
@@ -175,6 +185,26 @@ def main() -> int:
             lines = list_lines(root)
         except ValueError as exc:
             print(f"standards list error: {exc}", file=sys.stderr)
+            return 1
+        for line in lines:
+            print(line)
+        return 0
+    if arguments.command == "why":
+        from .dependency import default_package, why_lines
+
+        try:
+            package = (
+                arguments.package
+                if arguments.package is not None
+                else default_package(root)
+            )
+            lines = why_lines(root, package)
+        except (ValueError, OSError) as exc:
+            # The typed-refusal family carries the mechanism's refusals
+            # verbatim (dev_head_unresolvable, cross_constraint_violation,
+            # the plugin_* family); OSError (a vanished path mid-command)
+            # fails styled like the family, never as a traceback.
+            print(f"standards why error: {exc}", file=sys.stderr)
             return 1
         for line in lines:
             print(line)
