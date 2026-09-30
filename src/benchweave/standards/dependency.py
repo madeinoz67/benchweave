@@ -958,6 +958,36 @@ def _load_cross(corpus: Path, named: str) -> tuple[CrossConstraintRow, ...]:
 # --- resolution and the lock writer -----------------------------------------------
 
 
+#: The four ladder rungs — the why surface's vocabulary. Their ONLY
+#: derivation is ``resolve_package``'s loop, where each rung name is
+#: recorded at the branch that fires it; no re-derivation exists anywhere
+#: (a second ladder would be the migration-notes drift-bait defect —
+#: design record §3.7's design-level kill).
+RUNG_DEV_OPT_IN = "dev-opt-in"
+RUNG_PRECISE_OVERRIDE = "precise-override"
+RUNG_PRIOR_RETAINED = "prior-retained"
+RUNG_AUTO_HIGHEST_SERVED = "auto-highest-served"
+
+
+@dataclass(frozen=True)
+class SelectionProvenance:
+    """Which ladder rung fired for one standard, with the inputs it judged.
+
+    Recorded where the decision is made — inside ``resolve_package``'s
+    loop, at each branch that sets ``resolved[standard_id]`` — so the why
+    surface cannot diverge from the selection it explains. The migration-
+    notes module's own drift-bait lesson ("two parsers for one format
+    would be drift bait") is the design rule: an explainer implemented
+    outside the loop would be a second ladder that can diverge; recording
+    in-loop makes divergence unrepresentable by construction.
+    """
+
+    rung: str
+    interval: str
+    prior_version: str | None = None
+    candidates: tuple[str, ...] = ()
+
+
 @dataclass(frozen=True)
 class Resolution:
     """A resolved lock document with its canonical bytes and warnings."""
@@ -965,6 +995,7 @@ class Resolution:
     document: dict[str, Any]
     raw: bytes
     warnings: tuple[str, ...]
+    provenance: dict[str, SelectionProvenance]
 
 
 def _corpus_rows(root: Path) -> list[tuple[str, str]]:
@@ -1376,6 +1407,7 @@ def resolve_package(
     stages: dict[str, str] = {}
     dev_resolutions: dict[str, DevResolution] = {}
     warnings: list[str] = []
+    provenance: dict[str, SelectionProvenance] = {}
     for standard_id in sorted(constraints.standards):
         interval = constraints.standards[standard_id]
         if standard_id not in policy.standards:
@@ -1399,6 +1431,9 @@ def resolve_package(
             )
             resolved[standard_id] = label
             stages[standard_id] = "dev"
+            provenance[standard_id] = SelectionProvenance(
+                rung=RUNG_DEV_OPT_IN, interval=interval.text()
+            )
             continue
         classification: PinClassification | None = None
         target = overrides.get(standard_id)
@@ -1414,9 +1449,14 @@ def resolve_package(
                 warnings.append(classification.warning)
             resolved[standard_id] = target
             stages[standard_id] = "released"
+            provenance[standard_id] = SelectionProvenance(
+                rung=RUNG_PRECISE_OVERRIDE, interval=interval.text()
+            )
             continue
         candidate: str | None = None
         prior_version = prior.rows.get(standard_id)
+        rung = RUNG_AUTO_HIGHEST_SERVED
+        candidates: tuple[str, ...] = ()
         # A prior DEV row never feeds the released ladder: its label does not
         # order against released versions, and its pin's authority (the sha)
         # died with the opt-in that recorded it — fall through to auto-select.
@@ -1432,6 +1472,7 @@ def resolve_package(
                 classification = None
             if classification is not None:
                 candidate = prior_version
+                rung = RUNG_PRIOR_RETAINED
                 if classification.warning is not None:
                     warnings.append(classification.warning)
         if candidate is None:
@@ -1448,8 +1489,15 @@ def resolve_package(
                     "into the interval or widen the constraint"
                 )
             candidate = max(served, key=version_tuple)
+            candidates = tuple(served)
         resolved[standard_id] = candidate
         stages[standard_id] = "released"
+        provenance[standard_id] = SelectionProvenance(
+            rung=rung,
+            interval=interval.text(),
+            prior_version=prior_version if rung == RUNG_PRIOR_RETAINED else None,
+            candidates=candidates,
+        )
     otdp_version = resolved.get("otdp")
     if otdp_version is None:
         raise StandardsError(
@@ -1526,7 +1574,12 @@ def resolve_package(
         raise StandardsError(
             f"lock_document_invalid: {error.json_path}: {error.message}"
         )
-    return Resolution(document=document, raw=canonical_json(document), warnings=tuple(warnings))
+    return Resolution(
+        document=document,
+        raw=canonical_json(document),
+        warnings=tuple(warnings),
+        provenance=provenance,
+    )
 
 
 def write_lock(package: Path, raw: bytes) -> bool:
@@ -1622,6 +1675,101 @@ def list_lines(root: Path) -> list[str]:
             )
         if row.retired:
             lines.append(f"  retired {', '.join(row.retired)}")
+    return lines
+
+
+def why_lines(root: Path, package: Path) -> list[str]:
+    """The ``standards why`` render (VR-40): per constrained standard, the
+    authored interval, the prior locked row, the rung that fired and the
+    selected version; then the drift section (prior lock vs resolution,
+    naming each diverging row — the per-row story ``plugin_lock_drift``
+    cannot produce) and the cross-constraint verdict.
+
+    The render reads the loop's recorded provenance and never re-derives a
+    rung (the design-level kill: a second ladder in the renderer). Refusals
+    propagate verbatim — a dev head the object store cannot resolve raises
+    the resolver's own ``dev_head_unresolvable:`` here; the why surface
+    reuses the mechanism's refusals, never a softer paraphrase. The render
+    prints no digests (the lock carries them; why explains selection, not
+    integrity). What the drift section does NOT catch: a values-identical
+    reflow of the lock (byte-form drift — ``plugin_lock_drift``'s fourth
+    hypothesis) shows no row divergence here; value drift and byte-form
+    drift are different surfaces by design.
+    """
+    resolution = resolve_package(root, package)
+    prior = load_prior_lock(package)
+    if prior is None:  # unreachable: resolve_package refused on the absent lock
+        raise StandardsError("plugin_lock_absent: the prior lock vanished mid-why")
+    policy = load_dependency_policy(root)
+    lines: list[str] = []
+    for row in resolution.document["standards"]:
+        standard_id = str(row["id"])
+        version = str(row["version"])
+        prov = resolution.provenance[standard_id]
+        marker = " (dev)" if row.get("stage") == "dev" else ""
+        lines.append(f"{standard_id}@{version}{marker} — {prov.rung}")
+        lines.append(f"  interval {prov.interval}")
+        lines.append(f"  prior {prior.rows.get(standard_id) or 'absent'}")
+        if prov.rung == RUNG_PRIOR_RETAINED:
+            lines.append(
+                f"  retained: {prov.prior_version} still satisfies the interval "
+                "and classifies"
+            )
+        elif prov.rung == RUNG_PRECISE_OVERRIDE:
+            lines.append("  precise override: the upgrade --precise target, classified")
+        elif prov.rung == RUNG_AUTO_HIGHEST_SERVED:
+            lines.append(f"  candidates {', '.join(prov.candidates)}")
+            interval = parse_interval(prov.interval)
+            taken = set(prov.candidates)
+            # The exclusion sweep names every carried or served version the
+            # selection passed over: yanked-in-interval (a carried version
+            # the 0.2.1 rule keeps out of the candidate set) and served-but-
+            # out-of-interval. Pre-release shapes never enter the retained
+            # set, so no pre-release exclusion can exist to name — the sweep
+            # is complete over the sets that exist.
+            for excluded in carried_versions(policy, root, standard_id):
+                if interval.contains(excluded) and excluded not in taken:
+                    lines.append(f"  excluded {excluded} (yanked)")
+            for excluded in served_versions(policy, root, standard_id):
+                if not interval.contains(excluded):
+                    lines.append(f"  excluded {excluded} (out-of-range)")
+        else:
+            lines.append(
+                f"  opt-in {version}@{row.get('git_sha', '')} "
+                "(content-addressed; never auto-selected)"
+            )
+    for warning in resolution.warnings:
+        lines.append(f"warning {warning}")
+    resolved_map = {
+        str(row["id"]): str(row["version"]) for row in resolution.document["standards"]
+    }
+    diverged = sorted(
+        standard_id
+        for standard_id in set(prior.rows) | set(resolved_map)
+        if prior.rows.get(standard_id) != resolved_map.get(standard_id)
+    )
+    if diverged:
+        for standard_id in diverged:
+            lines.append(
+                f"drift {standard_id}: "
+                f"{prior.rows.get(standard_id) or 'absent'} -> "
+                f"{resolved_map.get(standard_id) or 'absent'}"
+            )
+    else:
+        lines.append("drift none — the prior lock matches the resolution row-for-row")
+    dev_ids = frozenset(
+        str(row["id"]) for row in resolution.document["standards"] if row.get("stage") == "dev"
+    )
+    violations = _cross_violations(
+        root,
+        resolved_map,
+        str(resolution.document["adapter_api_version"]),
+        dev_ids,
+    )
+    for violation in violations:
+        lines.append(f"cross-constraint violation {violation}")
+    if not violations:
+        lines.append("cross-constraints clear")
     return lines
 
 
