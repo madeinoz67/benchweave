@@ -354,3 +354,13 @@ single lane — same shape as the SDK's existing gates job, est. 1–2 min cold.
 Q1's formal ruling (placement is provisional by design), Q4's final namespace call (owner confirm), Q5/Q6/Q9
 (D7/D8), and every I2–I4 scope line (D1–D4, D6). Nothing in this record moves standards bytes, the SDK wheel,
 or the submodule pointer.
+
+## 12. Review dispositions (owner, 2026-10-01)
+
+Tier-3 review = two independent adversary lanes + one cross-vendor (Forge) audit. All MEDIUMs fixed RED-first and re-probed null: reconnect liveness + rendered connect refusal; construction-time asset verification; descriptor-layer mutant kill.
+
+**Accepted-risk (LOW, owner's call — not fixed):** clickjacking via missing `frame-ancestors 'none'` in the CSP (carries to I3, where the fix is mandatory before real device control); body cap Content-Length-only with chunked reflection; non-constant-time token compares; asset route dropped the NUL-byte `ValueError` arm; timeout computes `max` where "strictest" is claimed; `standalone.yml` path filter skips gates for SDK-src-only PRs; wheel `Requires-Dist` lacks an SDK floor and `fastmcp[server]` names a non-existent extra.
+
+**Claim corrections accepted as-is (LOW):** "seam is the only mutation path" (authoring writes also mutate); "SameSite=Strict cookie" (never set — the header token suffices); §5 gate-F "equals the 14-code list" (the shipped subset reading is correct).
+
+**Deferred to next pass (NIT, carrier = standalone hardening pass):** per-request asset re-verify; self-defeating non-JS form fallback; vectors.json errors bypassing the prefixed-refusal discipline; missing `--allow-network` positive arm; `--transport` validated-but-unread; unanchored `dist/` ignore pattern; dead-path `suppress` on the disconnect route; startup refusal surfacing as a raw traceback; `.reports/` unignored at the repo root. Trigger: a dedicated standalone hardening increment, before I3's real-device surface.
