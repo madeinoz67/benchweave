@@ -1247,9 +1247,11 @@ def _dir_fsync_available(tmp_path: Path) -> bool:
     predicate the Windows-shape simulation falsifies — so POSIX executes
     the Windows branch through the probe's own False path (issue #207).
 
-    Narrow claim: measures the OPEN-permission predicate only. A host that
-    opens directories but cannot fsync them would probe True and take the
-    typed-refusal path in ``_fsync_dir`` — not this probe's to decide."""
+    Narrow claim: measures the OPEN-permission predicate only — shaped
+    refusals (PermissionError) take the False path; a directory open that
+    fails any OTHER way propagates loudly (``_fsync_dir``'s typed refusal),
+    and a host that opens directories but cannot fsync them would probe
+    True and take the typed-refusal path — not this probe's to decide."""
     import os as os_module
 
     probe_dir = tmp_path / ".dir-fsync-probe"
@@ -1326,7 +1328,7 @@ def test_fold1_fsync_chain_covers_the_target_and_its_parent(
         )
         manifest_syncs = [
             p for p in fsynced
-            if "/manifests/" in p and Path(p).is_file()
+            if Path(p).is_file() and Path(p).parent.name == "manifests"
         ]
         assert manifest_syncs, "the manifest FILE is still fsynced"
 
@@ -1401,7 +1403,7 @@ def test_fold2_durability_errors_refuse_typed_never_laundered(
             return fd
 
         def eio_on_objects_dir(fd: int) -> None:
-            if opened.get(fd, "").endswith("/objects"):
+            if Path(opened.get(fd, "")).name == "objects":
                 raise OSError(errno.EIO, "injected I/O error")
             real_fsync(fd)
 
@@ -1484,7 +1486,7 @@ def test_dispose_windows_shape_simulated_noop_still_archives_and_fsyncs_manifest
         "no directory fd was opened or fsynced under the simulation"
     )
     manifest_syncs = [
-        p for p in fsynced if "/manifests/" in p and Path(p).is_file()
+        p for p in fsynced if Path(p).is_file() and Path(p).parent.name == "manifests"
     ]
     assert manifest_syncs, "the manifest FILE is still fsynced"
 

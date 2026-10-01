@@ -859,7 +859,7 @@ def test_fw5_no_tzset_platform_takes_the_guard_and_keeps_the_property(
     the naive-stamp property still holds on the single report."""
     import time
 
-    monkeypatch.delattr(time, "tzset")
+    monkeypatch.delattr(time, "tzset", raising=False)
     payload, rows, flip_ran = _fw5_report_bytes(tmp_path)
     assert flip_ran is False, "the guard must bypass the flip arm"
     _assert_fw5_property(rows)
@@ -871,8 +871,12 @@ def test_fw5_parse_utc_sabotage_reds_in_both_tzset_modes(
     """Committed sabotage arm (the slice-3 classifier-arm precedent): the
     tzset guard must not buy platform coverage by losing the regression
     teeth. Patching ``_parse_utc`` back to the pre-fix localized guess
-    (naive stamps resolved to host-local) must make the property
-    assertions FAIL in both tzset modes."""
+    (naive stamps resolved to host-local) must RED each mode through its
+    own leg — the teeth are COMPLEMENTARY per leg, not one assert firing
+    twice: the tzset leg reds at the flip arm's byte-identity assert
+    (a host-localized render is TZ-dependent), the no-tzset leg reds at
+    the property assert (the naive stamp resolves and stops being
+    anchor_unresolved)."""
     from benchweave.cli import retention as retention_module
 
     real_parse_utc = retention_module._parse_utc

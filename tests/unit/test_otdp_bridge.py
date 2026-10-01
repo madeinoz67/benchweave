@@ -2702,6 +2702,7 @@ def test_row_b_clamp_is_entry_time_remaining_disclosed_overshoot(
         floor = min(
             CAPTURE_EPILOGUE_FLOOR_MS, harness.store.open_busy_timeout_ms
         )
+        assert floor == 5000, floor
         assert windows[1:] == [floor], windows
 
         dispatch_start = outcome["start"]

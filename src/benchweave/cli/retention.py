@@ -870,6 +870,9 @@ def build_retention_report(
                 # still raises OverflowError past year 9999 — the belt
                 # below keeps the beyond-domain posture.
                 exhaustion_at = _iso(now_dt + timedelta(seconds=tte))
+            # The OSError arm is belt-symmetry only — unreachable by
+            # construction (pure datetime arithmetic touches no OS
+            # machinery); OverflowError carries the true domain overflow.
             except (OverflowError, OSError, ValueError):
                 exhaustion_beyond_domain += 1
         wedge_contexts.append(

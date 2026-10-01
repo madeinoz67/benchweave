@@ -517,3 +517,41 @@ No `standards/` bytes. No workflow bytes. No dependency bytes. One numeric
 bound moves — the row-B ceiling — and it moves exactly as the pre-committed
 #241 D-rowB row specified, before any Windows number was seen by this
 author.
+
+## Erratum (2026-10-02, post-refute)
+
+Appended after the refute battery (critic + two adversary lanes);
+findings folded in the branch's fold commit. The record above is frozen
+history — this section supersedes it where the two disagree.
+
+- **[A-MED-3] §1.4's "exactly ONE window entered" is false as landed.**
+  The contended-refusal dispatch enters a SECOND, documented window:
+  the classified-failure epilogue's floor,
+  `min(CAPTURE_EPILOGUE_FLOOR_MS=5000, open default) = 5000`
+  (`content/capture_store.py` `epilogue_floor_window`; the constant at
+  `control/semantics.py:42`). The landed row-B test therefore keys on
+  `windows[0]` as the clamp (`1300 <= clamp <= 1500`) and pins
+  `windows[1:] == [floor]` instead of a one-window assertion; the
+  builder's first one-window pin REDed on the fixture
+  (`AssertionError: [1499, 5000]`, `assert 2 == 1`) before the
+  correction. The D-rowB intent is unaffected — `windows[0]` IS the
+  value the relativized ceiling keys on.
+- **[B-F3] The AR-5 deviation narrative's "content-derived ev- ids"
+  label is wrong.** The evidence-row ids are store-ASSIGNMENT-derived,
+  not content-derived: the same row content yields different ids across
+  runs (observed directly). The churn itself is proven run-noise — the
+  fields differ at identical src run-to-run — so the AR-5 conclusion
+  (normalized-identical pre/post; exhaustion_at byte-identical) stands.
+- **[C-premise] POSIX byte-identity (AR-5) is structural, not offset
+  luck.** `_parse_utc` admits only `datetime.fromisoformat` output,
+  whose `tzinfo` is always a fixed-offset timezone; the old
+  tz-carrying `fromtimestamp` and the new wall-clock arithmetic render
+  the SAME wall clock for any offset. The zero-µs observed drift is a
+  consequence of that structure, not a coincidence of UTC.
+- **[B-F2] §4's design-time keyword-scan statement is imprecise against
+  the real diff.** The per-slice counts and the scan self-reference do
+  not exactly match the landed hunks (the pre-existing `import hashlib`
+  CONTEXT line is pulled into the tzinfo-import hunk; text-based scan
+  counts it once in the hunks partition, 0 in the record partition
+  beyond its self-carries). MAX tier 3 unchanged — this erratum is the
+  correction of record, per the rubric's re-derivation provision.
