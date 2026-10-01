@@ -260,6 +260,7 @@ All notable changes to this project will be documented in this file.
 - The promotion fixtures carry their own committer identity (CI has none)
 - Fold F1 — the pin layer pins identity, not just structure (issue #297)
 - Fold F3-F6 - unreadable Schema red, TS literal semantics, separator arity (issue #297)
+- The two-lane refute fold — repair the stale authority at the source
 
 ### Documentation
 
@@ -508,6 +509,9 @@ All notable changes to this project will be documented in this file.
 - Issue #302 design record — ui-html release pipeline and versioning machinery
 - The release-and-pin process page (#302)
 - Fold F1/F2/F3 review rows into the release-and-pin page (#302)
+- The website deferrals fold record — #319 + #321 + #291 + the #320 ruling
+- #319 claim-reconciliation sweep — 4 stale sites + 1 tense disclosure
+- #321 obligation row 23 — verb/command-set prose drifts with its mechanism
 
 ### Features
 
@@ -706,6 +710,7 @@ All notable changes to this project will be documented in this file.
 - Contract grammar, corrected 28-table manifest, registry, roles, tokens (issue #297)
 - The pytest contract harness - collection is the parse (issue #297)
 - Host-side lane decimator + the §E.4.4 property proofs (issue #299 G1c)
+- #291 the standards-CLI page, generated from --help at build
 
 ### Hardware Evidence
 
@@ -1001,6 +1006,7 @@ All notable changes to this project will be documented in this file.
 - Meta-acceptance suite - the pre-committed RED proof (issue #297)
 - The computed colour proofs port - instrument, ledger, verbatim arms (issue #299 G1c)
 - Tighten I5/I6/I8 pin tolerance to toBeCloseTo(1,5) exactly (issue #299 G1c refute fold 3)
+- The refute fold's cheap closes — bidirectional pin + hardened capture
 
 ### Build
 
