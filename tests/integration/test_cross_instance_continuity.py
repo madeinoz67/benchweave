@@ -41,6 +41,7 @@ import json
 import statistics
 import threading
 import time
+from collections.abc import Callable
 from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
@@ -1810,6 +1811,133 @@ def _median(values: list[float]) -> float:
     return statistics.median(values)
 
 
+def _axis_upper_band_breaches(trials: list[dict[str, Any]], arm: str) -> list[str]:
+    """The two observed-red per-trial UPPER bands of the axis-trials test,
+    re-homed behind the one-shot cell belt (issue #241 slice 3, design
+    §1.2): the dispatch duration and X1 both sit in ``[0, dispatch + 150]``
+    — the breach values are byte-identical to the inline asserts they
+    replace (breach iff NOT ``value <= bound``). Every FLOOR stays inline
+    in the test: host load inflates, it does not deflate, so lower bounds
+    are not the flake class and never gain a re-roll."""
+    dispatch_ms = _ARM_DISPATCH_MS[arm]
+    breaches: list[str] = []
+    for trial in trials:
+        if trial["dispatch_duration_ms"] > dispatch_ms + 150:
+            breaches.append(
+                f"dispatch_duration_ms {trial['dispatch_duration_ms']:.1f} exceeds "
+                f"the {dispatch_ms:.0f} + 150 ms band: {trial}"
+            )
+        if trial["x1_ms"] > dispatch_ms + 150:
+            breaches.append(
+                f"x1_ms {trial['x1_ms']:.1f} exceeds the "
+                f"{dispatch_ms:.0f} + 150 ms band: {trial}"
+            )
+    return breaches
+
+
+#: The one-shot cell belt's fresh generations (issue #241 slice 3, design
+#: §1.2): ONE re-run per (arm, device_class) key, shared by every belt
+#: reader — whichever reader breaches first certifies the generation, and
+#: later readers evaluate the certified cell, so reader verdicts are
+#: order-independent (each reader evaluates gen-1, then the certified
+#: generation, in that order whatever the test order). The raw gen-1 cache
+#: (``_TRIAL_CELLS``) is never rewritten: what was measured stays what the
+#: trial log records; the belt's generations are printed, never
+#: substituted into the log's gen-1.
+_BELT_FRESH_GENERATIONS: dict[tuple[str, str], list[dict[str, Any]]] = {}
+#: Generation count per key, asserted ``<= 1`` at every certification: the
+#: bound is structural (the memo guard admits one generation per key) and
+#: the assert pins it in code, so a future widening of the guard trips the
+#: assert instead of silently re-rolling.
+_BELT_GENERATION_RUNS: dict[tuple[str, str], int] = {}
+
+
+def _belt_fresh_generation(
+    tmp_path: Path, arm: str, device_class: str
+) -> list[dict[str, Any]]:
+    """The belt's re-measure: five fresh ``run_trial`` invocations,
+    ``trial_index`` 51–55 — indexes no other caller uses (the cached cells
+    1–5, the retry pins 3–9, the census 6, the F1 lanes 44–45), so the
+    fresh stores never collide with the cached cell's."""
+    return [
+        run_trial(tmp_path, arm=arm, device_class=device_class, trial_index=index)
+        for index in range(51, 56)
+    ]
+
+
+def _render_belt_trial(trial: dict[str, Any]) -> str:
+    """One trial line for the belt's both-generations failure render."""
+    return (
+        f"trial {trial['trial']}: X1={trial['x1_ms']:.1f} X2={trial['x2_ms']:.1f} "
+        f"X3={trial['x3_ms']:.1f} X4={trial['x4_ms']:.1f} "
+        f"(dur {trial['dispatch_duration_ms']:.1f}, retries {trial['retries']})"
+    )
+
+
+def _certified_cell(
+    tmp_path: Path,
+    arm: str,
+    device_class: str,
+    evaluate: Callable[[list[dict[str, Any]]], list[str]],
+) -> list[dict[str, Any]]:
+    """The frozen #159 §6 arm 4 mechanized, bounded at ONE re-run (issue
+    #241 slice 3, design §1.2): evaluate the shared cached cell; a
+    non-empty breach list certifies ONE fresh generation for the key; a
+    fresh breach FAILS rendering BOTH generations' breaches and values —
+    the kill direction: a systematically-loose fixture is caught twice and
+    the red is §5's honest "underpowered, decide nothing". Only band
+    breaches re-measure: ``evaluate`` returns a breach list and the belt
+    never inspects exception types, so a structural failure raised inside
+    an evaluator propagates immediately with zero fresh generations
+    (pinned below). The disclosed price (design §1.2): for a fixture loose
+    enough to pass any single 5-trial draw with per-generation probability
+    p, the belt raises the per-execution pass probability to 1-(1-p)^2 —
+    immaterial for looseness that matters against an 8.3x quiet margin
+    (trimmed spread 6.0 ms vs the 50 ms bound, 384 readings, slice-2
+    Evidence C.4) and proven toothy by the forced-loose pin."""
+    key = (arm, device_class)
+    trials = _cell(tmp_path, arm, device_class)
+    breaches = evaluate(trials)
+    if not breaches:
+        return trials
+    if key not in _BELT_FRESH_GENERATIONS:
+        _BELT_FRESH_GENERATIONS[key] = _belt_fresh_generation(
+            tmp_path, arm, device_class
+        )
+        _BELT_GENERATION_RUNS[key] = _BELT_GENERATION_RUNS.get(key, 0) + 1
+        assert _BELT_GENERATION_RUNS[key] <= 1, (
+            f"the belt re-ran more than one fresh generation for "
+            f"{arm}/{device_class} — the bound is one re-run per cell"
+        )
+        print(
+            f"\n{arm}/{device_class} belt: gen-1 breached a re-measurable "
+            "band — certifying the one fresh generation (trials 51-55)"
+        )
+    fresh = _BELT_FRESH_GENERATIONS[key]
+    fresh_breaches = evaluate(fresh)
+    if fresh_breaches:
+        raise AssertionError(
+            f"{arm}/{device_class}: the one-shot cell belt re-measured "
+            "(trials 51-55) and the breach held on BOTH generations — a "
+            "systematically-loose fixture, not a transient host stall; "
+            "§5's honest verdict is this red (underpowered, decide "
+            "nothing).\n"
+            "gen-1 breaches:\n  " + "\n  ".join(breaches) + "\n"
+            "fresh-generation breaches:\n  " + "\n  ".join(fresh_breaches) + "\n"
+            "gen-1 trials:\n  "
+            + "\n  ".join(_render_belt_trial(trial) for trial in trials)
+            + "\n"
+            "fresh-generation trials:\n  "
+            + "\n  ".join(_render_belt_trial(trial) for trial in fresh)
+        )
+    print(
+        f"\n{arm}/{device_class} belt: the fresh generation cleared the "
+        f"breach (generations re-run for this key: "
+        f"{_BELT_GENERATION_RUNS[key]})"
+    )
+    return fresh
+
+
 @pytest.mark.parametrize(
     ("arm", "device_class"),
     [("capture", "buffered"), ("capture", "unbuffered"),
@@ -1830,15 +1958,24 @@ def test_axis_trials_complete_all_four_axes(
     rigs, pinned ``len(rigs) == 3``), and a chronically starved host must
     not ship all-green on the retry crutch —
     the assert trips if the retry loop is ever widened without amending
-    the acceptance rule."""
-    trials = _cell(tmp_path, arm, device_class)
+    the acceptance rule.
+
+    The two per-trial UPPER bands — the dispatch duration and X1 against
+    ``dispatch + 150`` — read through the one-shot cell belt (issue #241
+    slice 3, design §1.2): a gen-1 breach re-measures the cell once, so
+    the multi-stall host shape among tight trials is absorbed without
+    touching the reading, and a fresh breach reds with both generations
+    rendered. The floors and every structural assert stay inline and hard
+    — host load inflates, it does not deflate."""
+    trials = _certified_cell(
+        tmp_path, arm, device_class, lambda cell: _axis_upper_band_breaches(cell, arm)
+    )
     assert len(trials) == 5
     dispatch_ms = _ARM_DISPATCH_MS[arm]
     for trial in trials:
         for axis in ("x1_ms", "x2_ms", "x3_ms", "x4_ms"):
             assert trial[axis] is not None, (arm, device_class, trial["trial"], axis)
-        assert trial["dispatch_duration_ms"] <= dispatch_ms + 150, trial
-        assert dispatch_ms - 50 <= trial["x1_ms"] <= dispatch_ms + 150, trial
+        assert dispatch_ms - 50 <= trial["x1_ms"], trial
         assert trial["in_window_frames"] >= 1, trial
         assert trial["retries"] <= 2, (
             f"trial retried {trial['retries']} times (max 2): {trial}"
@@ -1943,6 +2080,41 @@ def _underpowered_range_ms(values: list[float]) -> float:
     return max(trimmed) - min(trimmed)
 
 
+def _range_gate_evaluation(
+    arm: str, device_class: str
+) -> Callable[[list[dict[str, Any]]], list[str]]:
+    """The belt's evaluate closure for the spread loop, built by factory so
+    the loop's variables bind at construction (a loop-body lambda with
+    parameter defaults late-binds through mypy's inference floor)."""
+    return lambda cell: _range_gate_breaches(cell, arm, device_class)
+
+
+def _range_gate_breaches(
+    trials: list[dict[str, Any]], arm: str, device_class: str
+) -> list[str]:
+    """The §5 spread loop of the range-gate test, re-homed behind the
+    one-shot cell belt (issue #241 slice 3, design §1.2): the READING is
+    untouched — ``_underpowered_range_ms`` over each axis's five values
+    against 25% of the dispatch duration — and a breach carries the exact
+    message the inline assert carried (trimmed and raw range, values)."""
+    breaches: list[str] = []
+    for axis_key in ("x1_ms", "x2_ms", "x3_ms", "x4_ms"):
+        values = [trial[axis_key] for trial in trials]
+        spread = _underpowered_range_ms(values)
+        if spread > 0.25 * _RANGE_GATE_DENOMINATOR_MS:
+            breaches.append(
+                f"{arm}/{device_class} {axis_key.upper()}: trial range "
+                f"{spread:.1f} ms (raw {max(values) - min(values):.1f}) "
+                f"over {len(values)} trials exceeds 25% of "
+                f"the {_RANGE_GATE_DENOMINATOR_MS:.0f} ms dispatch "
+                "duration — §5's UNDERPOWERED reading (fix fixture "
+                "pacing, decide nothing; the reading is trimmed of the "
+                "single most extreme trial, one host stall tolerated); "
+                f"values: {[round(v, 1) for v in values]}"
+            )
+    return breaches
+
+
 def test_instrument_range_gate_per_axis_per_cell(tmp_path: Path) -> None:
     """§5's instrument-level UNDERPOWERED clause, machine-checked: any
     axis's trial range > 25% of the DISPATCH DURATION reads UNDERPOWERED —
@@ -1954,23 +2126,151 @@ def test_instrument_range_gate_per_axis_per_cell(tmp_path: Path) -> None:
     multiples, the protection shape), and a 25%-of-20-ms range gate on
     them would demand 5 ms stability of latencies §5.2 itself allows to
     reach 150 ms — a scale mismatch the clause never committed to, and a
-    flake generator rather than a quality gate."""
+    flake generator rather than a quality gate.
+
+    The spread loop reads through the one-shot cell belt (issue #241
+    slice 3, design §1.2): the READING is untouched — 25% of the dispatch
+    duration, trimmed of one trial — a gen-1 breach re-measures the cell
+    ONCE (a 2–3-stall host shape among tight trials is the runner, not
+    the fixture; every in-lane range-gate red since slice 2 was that
+    shape), and a fresh breach reds with both generations rendered — a
+    systematically-loose fixture is still caught, twice."""
     for arm in ("capture", "non_capture"):
         for device_class in ("buffered", "unbuffered"):
-            trials = _cell(tmp_path, arm, device_class)
-            for axis_key in ("x1_ms", "x2_ms", "x3_ms", "x4_ms"):
-                values = [trial[axis_key] for trial in trials]
-                spread = _underpowered_range_ms(values)
-                assert spread <= 0.25 * _RANGE_GATE_DENOMINATOR_MS, (
-                    f"{arm}/{device_class} {axis_key.upper()}: trial range "
-                    f"{spread:.1f} ms (raw {max(values) - min(values):.1f}) "
-                    f"over {len(values)} trials exceeds 25% of "
-                    f"the {_RANGE_GATE_DENOMINATOR_MS:.0f} ms dispatch "
-                    "duration — §5's UNDERPOWERED reading (fix fixture "
-                    "pacing, decide nothing; the reading is trimmed of the "
-                    "single most extreme trial, one host stall tolerated); "
-                    f"values: {[round(v, 1) for v in values]}"
-                )
+            trials = _certified_cell(
+                tmp_path,
+                arm,
+                device_class,
+                _range_gate_evaluation(arm, device_class),
+            )
+            assert len(trials) == 5, (
+                "the certified cell carries five trials — an empty cell "
+                "would evaluate clean without measuring anything"
+            )
+
+
+# --- the one-shot cell belt's own pins (#241 slice 3, design §5.1 AR-1) --------------
+
+
+def test_belt_forced_loose_fixture_reds_on_both_generations(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AR-1.1, the kill direction for "re-roll until green": a
+    systematically-loose fixture — ``_pace`` re-scaled per rig by a
+    deterministic factor ladder, so every trial scatters — breaches gen-1
+    AND the belt's one fresh generation, and the belt FAILS rendering
+    BOTH generations. RED on the pre-belt line is the standing behavior
+    (the same scattered fixture reds today's gate on gen-1 alone; shown
+    at build with the belt neutralized to the pre-belt shape — fail on
+    first breach, no re-run). The ladder keeps every trial INSIDE the
+    inline floors (X1 in [160, 280] ms against the 150 ms floor on the
+    200 ms class), so the red is the range gate's spread reading, on both
+    generations of it. The module caches are snapshotted and restored
+    around the arm: the scattered cell must never leak into the
+    measurement tests' gen-1 cache."""
+    ladder = (0.8, 1.0, 1.2, 0.9, 1.4)
+    adapters: list[ARigAdapter] = []
+    original_init = ARigAdapter.__init__
+
+    def counting_init(self: ARigAdapter) -> None:
+        original_init(self)
+        adapters.append(self)
+
+    monkeypatch.setattr(ARigAdapter, "__init__", counting_init)
+    original_pace = ARigAdapter._pace
+
+    async def scattered_pace(self: ARigAdapter, total_ms: float) -> None:
+        # Systematic looseness: each rig's acquisition paces to a
+        # different duration (±40%), so every trial in the cell scatters —
+        # no single outlier for the one-trial trim to absorb.
+        await original_pace(
+            self, total_ms * ladder[adapters.index(self) % len(ladder)]
+        )
+
+    monkeypatch.setattr(ARigAdapter, "_pace", scattered_pace)
+    saved_cells = dict(_TRIAL_CELLS)
+    saved_fresh = dict(_BELT_FRESH_GENERATIONS)
+    saved_runs = dict(_BELT_GENERATION_RUNS)
+    _TRIAL_CELLS.clear()
+    _BELT_FRESH_GENERATIONS.clear()
+    _BELT_GENERATION_RUNS.clear()
+    try:
+        with pytest.raises(AssertionError, match="BOTH generations") as raised:
+            _certified_cell(
+                tmp_path,
+                "non_capture",
+                "buffered",
+                lambda cell: _range_gate_breaches(cell, "non_capture", "buffered"),
+            )
+        assert _BELT_GENERATION_RUNS[("non_capture", "buffered")] == 1, (
+            "the belt must have re-measured exactly once before redding"
+        )
+        assert "fresh-generation breaches" in str(raised.value), str(raised.value)
+    finally:
+        _TRIAL_CELLS.clear()
+        _TRIAL_CELLS.update(saved_cells)
+        _BELT_FRESH_GENERATIONS.clear()
+        _BELT_FRESH_GENERATIONS.update(saved_fresh)
+        _BELT_GENERATION_RUNS.clear()
+        _BELT_GENERATION_RUNS.update(saved_runs)
+
+
+def test_belt_absorbs_a_single_stall_with_one_fresh_generation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AR-1.2, the absorption direction: gen-1's evaluation returns one
+    breach (the transient single-stall shape among tight trials), the
+    belt's ONE fresh generation evaluates clean, and the helper hands
+    back the certified cell with generation-re-runs 1 recorded. Synthetic
+    evaluators and a monkeypatched fresh-generation seam: this pin
+    exercises the BELT's decision logic only — the real fixture paths are
+    AR-1.1's (both generations, real trials, real breach) and the
+    axis/range-gate tests' own reads."""
+    key = ("capture", "belt-pin-single-stall")
+    gen1 = [{"trial": index} for index in range(1, 6)]
+    gen2 = [{"trial": index} for index in range(51, 56)]
+    evaluations: list[int] = []
+
+    def single_stall_then_clean(cell: list[dict[str, Any]]) -> list[str]:
+        evaluations.append(len(cell))
+        if len(evaluations) == 1:
+            return ["synthetic single-stall breach (one trial stretched)"]
+        return []
+
+    monkeypatch.setitem(globals(), "_cell", lambda *args: gen1)
+    monkeypatch.setitem(globals(), "_belt_fresh_generation", lambda *args: gen2)
+    certified = _certified_cell(tmp_path, key[0], key[1], single_stall_then_clean)
+    assert certified is gen2, "the belt must hand back the certified generation"
+    assert _BELT_FRESH_GENERATIONS[key] is gen2, "the memo holds the certification"
+    assert _BELT_GENERATION_RUNS[key] == 1, _BELT_GENERATION_RUNS[key]
+    assert len(evaluations) == 2, evaluations
+
+
+def test_belt_never_re_runs_a_structural_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AR-1.3, the scope pin: the belt re-rolls the two band families
+    ONLY. A structural failure — a plain ``AssertionError`` raised by the
+    evaluator itself, not a band breach — propagates immediately, with
+    ZERO fresh generations run (pinned via the memo: no certified cell,
+    no recorded run). The non-interception is structural, not
+    policy-checked: the belt never inspects exception types, and an
+    exception from ``evaluate`` never reaches the generation branch."""
+    key = ("capture", "belt-pin-structural")
+    monkeypatch.setitem(
+        globals(), "_cell", lambda *args: [{"trial": index} for index in range(1, 6)]
+    )
+
+    def structural(cell: list[dict[str, Any]]) -> list[str]:
+        raise AssertionError("structural: an axis failed to record")
+
+    with pytest.raises(AssertionError, match="structural") as raised:
+        _certified_cell(tmp_path, key[0], key[1], structural)
+    assert type(raised.value) is AssertionError
+    assert key not in _BELT_FRESH_GENERATIONS, (
+        "a structural failure must not certify a fresh generation"
+    )
+    assert _BELT_GENERATION_RUNS.get(key, 0) == 0, _BELT_GENERATION_RUNS
 
 
 def test_trial_log_written_with_provenance(tmp_path: Path) -> None:
