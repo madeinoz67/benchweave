@@ -9,6 +9,7 @@ post-review change anywhere refuses. The happy path signs with a scratch key
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import sys
 from pathlib import Path
@@ -21,10 +22,24 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PublicKey,
 )
 
-from scripts.registry import sign_release
-
 REPO = Path(__file__).resolve().parents[2]
 SDK_SRC = REPO / "packages" / "sdk" / "src"
+SIGN_RELEASE = REPO / "scripts" / "registry" / "sign_release.py"
+
+
+def _load_sign_release() -> Any:
+    """Explicit-path module loader (mypy maps a package-style import of this
+    script twice — once per module name — and the source tree has no
+    ``scripts`` package)."""
+    spec = importlib.util.spec_from_file_location("sign_release_test", SIGN_RELEASE)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+sign_release = _load_sign_release()
 
 pytestmark = pytest.mark.skipif(
     not (SDK_SRC / "benchweave_sdk" / "publishing.py").is_file(),

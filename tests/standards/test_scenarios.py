@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -214,7 +215,9 @@ def test_spec10_versioned_breaking_change_updates_the_lock(tmp_path: Path) -> No
     # SDK root's version moves with it or the sync refuses
     # sdk_bump_class_invalid — one SDK version never covers two served sets.
     pyproject = sdk / "pyproject.toml"
-    pyproject.write_text(pyproject.read_text().replace('version = "0.4.0"', 'version = "0.5.0"'))
+    pyproject.write_text(
+        re.sub(r'version = "0\.4\.\d+"', 'version = "0.5.0"', pyproject.read_text())
+    )
     # The mirror follows the SDK version (CON-12's authority chain).
     manifest_path = repo / "standards/standards-manifest.json"
     manifest_document = json.loads(manifest_path.read_bytes())
