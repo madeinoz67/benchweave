@@ -1238,6 +1238,30 @@ def test_ar7_cli_exit_codes_and_mode_refusals(tmp_path: Path) -> None:
 # --- the review-wave fold (six findings, RED-first) -----------------------------------
 
 
+def _dir_fsync_available(tmp_path: Path) -> bool:
+    """probe, don't guess: try to open a directory for fsync and let the
+    platform answer. This is the exact predicate ``_fsync_dir`` no-ops on
+    (a PermissionError on the open). Deliberately NOT ``sys.platform``:
+    the probe measures the platform's actual capability, stays truthful on
+    exotic filesystems that refuse directory opens, and is the same
+    predicate the Windows-shape simulation falsifies — so POSIX executes
+    the Windows branch through the probe's own False path (issue #207).
+
+    Narrow claim: measures the OPEN-permission predicate only. A host that
+    opens directories but cannot fsync them would probe True and take the
+    typed-refusal path in ``_fsync_dir`` — not this probe's to decide."""
+    import os as os_module
+
+    probe_dir = tmp_path / ".dir-fsync-probe"
+    probe_dir.mkdir(exist_ok=True)
+    try:
+        fd = os_module.open(probe_dir, os_module.O_RDONLY)
+    except PermissionError:
+        return False
+    os_module.close(fd)
+    return True
+
+
 def test_fold1_fsync_chain_covers_the_target_and_its_parent(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1249,7 +1273,11 @@ def test_fold1_fsync_chain_covers_the_target_and_its_parent(
     fsyncs the whole new-directory chain: ``objects``, ``manifests``,
     the target itself, and its parent (the entry naming the target
     lives there). Pinned by spying on ``os.fsync``/``os.open`` over a
-    real first-invocation ``--execute`` against a fresh target."""
+    real first-invocation ``--execute`` against a fresh target.
+    Platform-aware (issue #207): on a platform that cannot open a
+    directory for fsync, ``_fsync_dir`` is a documented clean no-op —
+    the no-op branch asserts the invocation still completes, fsyncs no
+    directory, and still fsyncs the manifest FILE."""
     import os as os_module
 
     opened: dict[int, str] = {}
@@ -1277,60 +1305,188 @@ def test_fold1_fsync_chain_covers_the_target_and_its_parent(
 
     resolved_target = str(target.resolve())
     resolved_parent = str(target.resolve().parent)
-    assert resolved_target in fsynced, (
-        "the target directory itself must be fsynced — an unfsynced new "
-        "directory entry can vanish with its subtree on power loss"
-    )
-    assert resolved_parent in fsynced, (
-        "the parent must be fsynced — the directory entry naming the "
-        "target is written into it"
-    )
-    for sub in ("objects", "manifests"):
-        assert str((target / sub).resolve()) in fsynced
+    if _dir_fsync_available(tmp_path):
+        assert resolved_target in fsynced, (
+            "the target directory itself must be fsynced — an unfsynced new "
+            "directory entry can vanish with its subtree on power loss"
+        )
+        assert resolved_parent in fsynced, (
+            "the parent must be fsynced — the directory entry naming the "
+            "target is written into it"
+        )
+        for sub in ("objects", "manifests"):
+            assert str((target / sub).resolve()) in fsynced
+    else:
+        # The Windows shape (issue #207): _fsync_dir is a clean no-op —
+        # the invocation still completes, refuses nothing, and the
+        # FILE-level durability discipline is unchanged. Asserting the
+        # actual shape, never a skip.
+        assert not any(Path(p).is_dir() for p in fsynced), (
+            "no directory fd was opened or fsynced on the no-op platform"
+        )
+        manifest_syncs = [
+            p for p in fsynced
+            if "/manifests/" in p and Path(p).is_file()
+        ]
+        assert manifest_syncs, "the manifest FILE is still fsynced"
 
 
-def test_fold2_durability_errors_refuse_typed_never_laundered(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+def _open_side_eio_refusal_arm(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Review wave finding 2 (critic#2): ``_fsync_dir`` swallowed every
-    OSError on open AND fsync — an EIO on the durability path committed
-    anyway, laundering a failed fsync into a committed trail that
-    asserts preservation. An injected EIO at the objects-directory fsync
-    must refuse typed in the ``archive_target:`` family with the store
-    untouched (Phase A: no transaction was open)."""
+    """The every-platform open-side arm (issue #207): an EIO on the
+    objects-directory OPEN itself -- matched by is_dir() and name, not a
+    '/' literal (the #237 lesson) -- reaches _fsync_dir's except-OSError
+    -> typed archive_target: refusal with the store untouched. Reachable
+    on Windows because _fsync_dir swallows ONLY PermissionError; the
+    typed-refusal property's primary carrier."""
     import errno
     import os as os_module
 
     from benchweave.cli.dispose import ArchiveTargetRefused
 
-    opened: dict[int, str] = {}
     real_open = os_module.open
-    real_fsync = os_module.fsync
 
-    def spy_open(path: object, flags: int, *args: object, **kwargs: object) -> int:
-        fd = real_open(path, flags, *args, **kwargs)  # type: ignore[arg-type]
-        opened[fd] = str(Path(str(path)).resolve())
-        return fd
+    def eio_open(path: object, flags: int, *args: object, **kwargs: object) -> int:
+        read_open = not (flags & os_module.O_WRONLY) and not (
+            flags & os_module.O_RDWR
+        )
+        target_dir = Path(str(path))
+        if read_open and target_dir.is_dir() and target_dir.name == "objects":
+            raise OSError(errno.EIO, "injected I/O error on the objects-dir open")
+        return real_open(path, flags, *args, **kwargs)  # type: ignore[arg-type]
 
-    def eio_on_objects_dir(fd: int) -> None:
-        if opened.get(fd, "").endswith("/objects"):
-            raise OSError(errno.EIO, "injected I/O error")
-        real_fsync(fd)
-
-    monkeypatch.setattr(os_module, "open", spy_open)
-    monkeypatch.setattr(os_module, "fsync", eio_on_objects_dir)
+    monkeypatch.setattr(os_module, "open", eio_open)
 
     data_dir = _seed(tmp_path)
     _write_policy(data_dir / "retention-policy.json")
     before = _snapshot_all(data_dir)
     with pytest.raises(ArchiveTargetRefused, match="archive_target:"):
         _dispose(data_dir, now=NOW, execute=True,
-                 archive_target=tmp_path / "offline-eio")
+                 archive_target=tmp_path / "offline-eio-open")
     assert _snapshot_all(data_dir) == before, (
         "a durability refusal must leave the store untouched"
     )
     assert int(_rows(data_dir, "SELECT COUNT(*) FROM"
                         " disposition_invocations")[0][0]) == 0
+
+
+def test_fold2_durability_errors_refuse_typed_never_laundered(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Review wave finding 2 (critic#2): ``_fsync_dir`` swallowed every
+    OSError on open AND fsync -- an EIO on the durability path committed
+    anyway, laundering a failed fsync into a committed trail that
+    asserts preservation. An injected EIO at the objects-directory fsync
+    must refuse typed in the ``archive_target:`` family with the store
+    untouched (Phase A: no transaction was open).
+    Platform-aware (issue #207): the fsync-side injection point needs a
+    directory fd -- structurally unreachable where the platform refuses
+    directory opens. There the open-side arm carries the typed-refusal
+    property in-body, so the id is never a silent skip; it runs on EVERY
+    platform in the adjacent every-platform test."""
+    if _dir_fsync_available(tmp_path):
+        import errno
+        import os as os_module
+
+        from benchweave.cli.dispose import ArchiveTargetRefused
+
+        opened: dict[int, str] = {}
+        real_open = os_module.open
+        real_fsync = os_module.fsync
+
+        def spy_open(path: object, flags: int, *args: object, **kwargs: object) -> int:
+            fd = real_open(path, flags, *args, **kwargs)  # type: ignore[arg-type]
+            opened[fd] = str(Path(str(path)).resolve())
+            return fd
+
+        def eio_on_objects_dir(fd: int) -> None:
+            if opened.get(fd, "").endswith("/objects"):
+                raise OSError(errno.EIO, "injected I/O error")
+            real_fsync(fd)
+
+        monkeypatch.setattr(os_module, "open", spy_open)
+        monkeypatch.setattr(os_module, "fsync", eio_on_objects_dir)
+
+        data_dir = _seed(tmp_path)
+        _write_policy(data_dir / "retention-policy.json")
+        before = _snapshot_all(data_dir)
+        with pytest.raises(ArchiveTargetRefused, match="archive_target:"):
+            _dispose(data_dir, now=NOW, execute=True,
+                     archive_target=tmp_path / "offline-eio")
+        assert _snapshot_all(data_dir) == before, (
+            "a durability refusal must leave the store untouched"
+        )
+        assert int(_rows(data_dir, "SELECT COUNT(*) FROM"
+                            " disposition_invocations")[0][0]) == 0
+        return
+    # The Windows shape: no directory fd can exist -- the open-side arm
+    # carries the typed-refusal property in-body (never a silent skip).
+    _open_side_eio_refusal_arm(tmp_path, monkeypatch)
+
+
+def test_fold2b_objects_dir_open_eio_refuses_typed_on_every_platform(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Issue #207: the every-platform typed-refusal arm -- an EIO on the
+    objects-directory OPEN (not the fsync) is NOT the swallowed
+    PermissionError, so the typed refusal fires on every platform,
+    Windows included. The property's primary carrier; fold2's fsync-side
+    arm rides it only where a directory fd can exist."""
+    _open_side_eio_refusal_arm(tmp_path, monkeypatch)
+
+
+def test_dispose_windows_shape_simulated_noop_still_archives_and_fsyncs_manifest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Issue #207: the Windows-shape simulation -- read-opens of
+    directories raise PermissionError (the exact predicate _fsync_dir
+    branches on); everything else passes through (files, the hold
+    marker, sqlite's C-level opens are untouched). The full --execute
+    with an archive target still completes: archives 4, raises nothing,
+    fsyncs no directory, and still fsyncs the manifest FILE. This arm
+    would catch a future "no-op that isn't clean" regression (a
+    PermissionError swallow that also swallowed the follow-up failure,
+    or a refactor that starts refusing on the no-op platform)."""
+    import os as os_module
+
+    opened: dict[int, str] = {}
+    fsynced: list[str] = []
+    real_open = os_module.open
+    real_fsync = os_module.fsync
+
+    def sim_open(path: object, flags: int, *args: object, **kwargs: object) -> int:
+        read_open = not (flags & os_module.O_WRONLY) and not (
+            flags & os_module.O_RDWR
+        )
+        p = Path(str(path))
+        if read_open and p.is_dir():
+            raise PermissionError(13, "simulated Windows directory-open refusal")
+        fd = real_open(path, flags, *args, **kwargs)  # type: ignore[arg-type]
+        opened[fd] = str(Path(str(path)).resolve())
+        return fd
+
+    def spy_fsync(fd: int) -> None:
+        fsynced.append(opened.get(fd, f"fd:{fd}"))
+        real_fsync(fd)
+
+    monkeypatch.setattr(os_module, "open", sim_open)
+    monkeypatch.setattr(os_module, "fsync", spy_fsync)
+
+    data_dir = _seed(tmp_path)
+    _write_policy(data_dir / "retention-policy.json")
+    model = _dispose(data_dir, now=NOW, execute=True,
+                     archive_target=tmp_path / "offline-win-shape")
+    assert model["counts"]["archived"] == 4, (
+        "the no-op platform still archives (the invocation completes)"
+    )
+    assert not any(Path(p).is_dir() for p in fsynced), (
+        "no directory fd was opened or fsynced under the simulation"
+    )
+    manifest_syncs = [
+        p for p in fsynced if "/manifests/" in p and Path(p).is_file()
+    ]
+    assert manifest_syncs, "the manifest FILE is still fsynced"
 
 
 def test_fold3_verify_reads_each_rows_recorded_destination(tmp_path: Path) -> None:
