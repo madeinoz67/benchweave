@@ -532,3 +532,28 @@ fold commit's ancestor message, not a committed test. The same fold adds:
 the X1-floor both-generations fix with its pin (adv-F1/mech-F3), the
 AR-2a site-membership form (mech-F1), and claim corrections C1–C5 at
 their sites above.
+
+## D4' folded by trigger (2026-10-01, post-refute)
+
+The deferral table's D4' reopen trigger — "any second red of ANY
+sequential-model band in-lane" — FIRED: PR #324's timing lane redded
+`test_monitor_gap_during_a_deadline_max_capture` at gap 354.6 vs the
+absolute 200 ms ceiling (`assert gap_ms <= BUDGET_MS + TOLERANCE_MS`),
+on top of the census's prior sequential reds (Evidence A: monitor-gap
+206.4 on run 36395616332; queued 484.9 on 36490822976 and 371.8 on
+36818395071) and issue #207's row-B corroboration. The pre-specified
+payload executed verbatim on this branch:
+
+- monitor-gap ceiling: `gap <= realized-dispatch-duration +
+  TOLERANCE_MS`, both measured in-run; the UNKNOWN-status assert and the
+  `>= BUDGET_MS - 40` floor unchanged — the reverted-`bounded()` arm
+  (the timeout disabled; the run then completes past the budget, natural
+  or quota-terminated — observed ~330 ms at fold) is still caught by the
+  status assert (verified at fold: the deadline-relaxed shape reds on
+  the status assert, not on any band).
+- queued-run ceiling: `delay <= measured-run-1-start-to-end + 300` —
+  run-1's init is measured, not guessed; a synthetic worst-case pin
+  (`test_queued_delay_band_refuses_a_delay_past_run1_plus_slop`) holds
+  the form's teeth, the family having no planted arm.
+- `test_second_dispatch_lock_block` keeps its absolute band (D4's own
+  letter: the family's one real-clock representative).
