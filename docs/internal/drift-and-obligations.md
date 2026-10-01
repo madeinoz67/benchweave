@@ -481,7 +481,14 @@ a cross-repo push — those are the reviewer's, which is why G5 exists in the ru
   `timing` marker and runs serialized in the dedicated CI lane — or the quantity
   moves to an injected clock. `gates` runs `-n auto -m "not timing"`; an unmarked
   real-clock bound will flake in `gates` exactly the way issue #241's sweep
-  rows did (marker-rot guard is the deferred D5).
+  rows did (marker-rot guard is the deferred D5). Timing-lane band readings that
+  can absorb a transient host stall re-measure once through the one-shot cell
+  belt (issue #241 slice 3): the reading is untouched, a gen-1 breach re-runs
+  the cell once, and a fresh breach reds with both generations rendered —
+  systematic looseness still reds; structural asserts and floors never trigger
+  a re-roll themselves, but they evaluate whichever generation the belt returns
+  — an absorbed gen-1 band breach skips gen-1's floor/structural verdicts,
+  except the load-safe x1 floor, which asserts on both generations.
 - **`tests/faults/`** runs for any change touching `state/`, `control/`, or anything
   concurrency-shaped — it is the fault-injection arm of the suite.
 - **One RED→GREEN slice per commit** — the discipline that keeps every fix provable.

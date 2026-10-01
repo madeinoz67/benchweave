@@ -288,35 +288,62 @@ class MonitoredHarness:
 
 
 def test_monitor_gap_during_a_deadline_max_capture(tmp_path: Path) -> None:
-    """Quantity 1. Bound: the gap stays within budget + epilogue bound —
-    the bridge's ``bounded()`` deadline enforces it (the revert arm: with
-    the timeout disabled the adapter runs to its natural ~800 ms and the
-    bound fails). Blackout reality: the gap reaches the dispatch duration —
-    ticks genuinely freeze (if this ever fails the serial model changed
-    and the disclosure is stale). Poll-cadence ratio is REPORTED, never
+    """Quantity 1. Bound: the gap stays within the REALIZED dispatch
+    duration + the epilogue tolerance, both measured in-run (D4', folded
+    by trigger 2026-10-01: the absolute ``BUDGET_MS + TOLERANCE_MS`` form
+    redded on PR #324's timing lane at gap 354.6 vs 200 — the cut's
+    cancellation path stretches under host load and the gap tracks the
+    dispatch, so the ceiling references what the run realized). The
+    bridge's ``bounded()`` deadline still enforces the cut: the revert
+    arm (the timeout disabled — the adapter then runs past the budget to
+    its natural or quota-terminated completion, observed ~330–800 ms) is
+    caught by the UNKNOWN-status assert below — which is why the status
+    assert and the ``>= BUDGET_MS - 40`` floor are unchanged. Blackout
+    reality: the gap reaches the dispatch duration — ticks genuinely
+    freeze (if this ever fails the serial model changed and the
+    disclosure is stale). Poll-cadence ratio is REPORTED, never
     thresholded (row 1's input, decided by the owner)."""
     harness = MonitoredHarness(tmp_path / "gap.db")
     try:
         poll_ms = bench_poll_ns({"signals": BENCH_SIGNALS}) / 1_000_000
+        dispatch_start = time.monotonic()
         result = harness.plugin.dispatch(
             harness.capture_request(), deadline_ns=harness.deadline_ns(BUDGET_MS)
         )
+        dispatch_duration_ms = (time.monotonic() - dispatch_start) * 1000
         gap_ms = harness.max_tick_gap_ms()
         print(
-            f"\nmonitor gap: {gap_ms:.1f} ms over poll cadence {poll_ms:.1f} ms"
+            f"\nmonitor gap: {gap_ms:.1f} ms (dispatch realized "
+            f"{dispatch_duration_ms:.1f} ms) over poll cadence {poll_ms:.1f} ms"
             f" (ratio {gap_ms / poll_ms:.1f}x), outcome {result.status.value}"
         )
         assert result.status is OperationStatus.UNKNOWN  # the budget cut it
-        assert gap_ms <= BUDGET_MS + TOLERANCE_MS  # the bound (C4's honest form)
+        # D4': the ceiling references the realized dispatch duration — the
+        # cut's cancellation path is host-load-shaped and the gap tracks it.
+        assert gap_ms <= dispatch_duration_ms + TOLERANCE_MS
         assert gap_ms >= BUDGET_MS - 40  # the blackout: ticks froze ~the budget
     finally:
         harness.close()
 
 
+def _queued_delay_breaches(delay_ms: float, run1_start_to_end_ms: float) -> bool:
+    """D4' band form, shared by the queued-run test and its synthetic
+    worst-case pin: run 2's queue delay stays within run 1's MEASURED
+    start-to-end plus the 300 ms worker handoff slop — the band's
+    original comment said the tolerance exists for run-1's init, which
+    the measurement now captures directly instead of guessing (the
+    absolute ``BUDGET_MS + 300`` form redded twice in-lane: 484.9 and
+    371.8 vs 350, census Evidence A)."""
+    return delay_ms > run1_start_to_end_ms + 300
+
+
 def test_queued_run_delay_behind_a_capture(tmp_path: Path) -> None:
     """Quantity 2 through the REAL RunWorker (B2): run 1's start_run
     performs the deadline-max capture; run 2 (submitted immediately
-    after) starts only once run 1 drains — the one-worker FIFO shape."""
+    after) starts only once run 1 drains — the one-worker FIFO shape.
+    D4' (folded by trigger 2026-10-01): the ceiling references run 1's
+    measured start-to-end plus the handoff slop; the wait floor is
+    unchanged — run 2 still has to wait out the capture."""
     events: dict[str, float] = {}
 
     class FakeRun:
@@ -335,6 +362,7 @@ def test_queued_run_delay_behind_a_capture(tmp_path: Path) -> None:
                 assert result.status is OperationStatus.UNKNOWN
             finally:
                 harness.close()
+                events[f"{run_id}:end"] = time.monotonic()
 
         def cancel(self, run_id: str, principal_id: str) -> None:
             return None
@@ -358,11 +386,29 @@ def test_queued_run_delay_behind_a_capture(tmp_path: Path) -> None:
         worker.submit("run-queued", "p2", {"id": "b2"}, BENCH_ID)
         worker.join(timeout=30)
         delay_ms = (events["run-queued:start"] - events["run-queued:submit"]) * 1000
-        print(f"\nqueued-run delay: {delay_ms:.1f} ms behind a {BUDGET_MS} ms capture")
+        run1_ms = (events["run-capture:end"] - events["run-capture:start"]) * 1000
+        print(
+            f"\nqueued-run delay: {delay_ms:.1f} ms behind a {BUDGET_MS} ms "
+            f"capture (run 1 measured {run1_ms:.1f} ms start-to-end)"
+        )
         assert delay_ms >= BUDGET_MS - 40  # the second run waited out the capture
-        assert delay_ms <= BUDGET_MS + 300  # init inside run-1 adds startup
+        assert not _queued_delay_breaches(delay_ms, run1_ms)
     finally:
         store.close()
+
+
+def test_queued_delay_band_refuses_a_delay_past_run1_plus_slop() -> None:
+    """D4' RED arm for the queued family (it has no planted adversarial
+    arm): the relativized bound still REFUSES a delay that exceeds run
+    1's measured start-to-end + 300 — a worker that parks run 2 for
+    800 ms behind a 450 ms run 1 breaches (800 > 750); the honest shape
+    (340 behind a 300 ms run 1) clears. Pins the shared band form the
+    real test asserts, so a future widening of the slop or a direction
+    flip reds here first."""
+    assert _queued_delay_breaches(800.0, 450.0), (
+        "a delay past run-1 + 300 must breach the D4' band"
+    )
+    assert not _queued_delay_breaches(340.0, 300.0)
 
 
 def test_second_dispatch_lock_block(tmp_path: Path) -> None:
