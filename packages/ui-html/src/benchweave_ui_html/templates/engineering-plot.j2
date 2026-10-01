@@ -19,8 +19,8 @@
     </div>
     {%- endfor %}
   </div>
-  {%- if plot.acquisition_text %}
-  <p class="bw-plot__acquisition" data-bw-acquisition data-bw-acquired="{{ plot.acquired }}" data-bw-plotted="{{ plot.plotted }}">{{ plot.acquisition_text }}</p>
-  {%- endif %}
+  {%- for row in plot.acquisition %}
+  <p class="bw-plot__acquisition" data-bw-acquisition data-bw-channel-id="{{ row.channel_id }}" data-bw-acquired="{{ row.acquired }}" data-bw-plotted="{{ row.drawn }}">{{ row.text }}</p>
+  {%- endfor %}
   <p class="bw-visually-hidden" id="bw-plot-desc-{{ plot.title | replace(' ', '-') }}">{{ plot.description }}</p>
 </figure>

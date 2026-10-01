@@ -411,7 +411,8 @@ def test_mechanism_toggle_flipping_the_constant_makes_the_red_run_green(tmp_path
 def test_runtime_namespace_imports_without_pytest() -> None:
     """UR-11: the renderer namespace never pulls pytest. G1b extends the
     imported set to the artifact/rendering modules AND renders one partial
-    per family — jinja2 must land in sys.modules, pytest must not."""
+    per family (the lane-A fold's widened probe — matching the
+    pre-committed text) — jinja2 must land in sys.modules, pytest must not."""
     code = (
         "import sys\n"
         "import benchweave_ui_html\n"
@@ -426,9 +427,29 @@ def test_runtime_namespace_imports_without_pytest() -> None:
         "import benchweave_ui_html.data\n"
         "import benchweave_ui_html.partials\n"
         "import benchweave_ui_html.fixtures\n"
+        "import benchweave_ui_html.plot\n"
+        "import benchweave_ui_html.lanes\n"
         "import benchweave_ui_html.artifacts\n"
-        "from benchweave_ui_html.partials import render_button\n"
-        "render_button(__import__('benchweave_ui_html.fixtures', fromlist=['x']).button())\n"
+        "import benchweave_ui_html.decimate\n"
+        "from benchweave_ui_html import fixtures, partials\n"
+        "partials.render_button(fixtures.button())\n"
+        "partials.render_numeric_input(fixtures.numeric_input())\n"
+        "partials.render_rotary_control(fixtures.rotary_control())\n"
+        "partials.render_reading(fixtures.reading())\n"
+        "partials.render_alert_bubble(fixtures.alert_bubble())\n"
+        "partials.render_panel(fixtures.panel())\n"
+        "partials.render_data_table(fixtures.data_table())\n"
+        "partials.render_mode_banner(fixtures.mode_banner())\n"
+        "partials.render_confirm_action(fixtures.confirm_action())\n"
+        "partials.render_plot(fixtures.engineering_plot())\n"
+        "partials.render_lanes(fixtures.digital_lanes())\n"
+        "partials.render_icon('limiting')\n"
+        "partials.render_sequence('dash-2')\n"
+        "from benchweave_ui_html.data import RefusalData, DisabledLabelData\n"
+        "partials.render_refusal(RefusalData(code='not_found', severity='advisory', "
+        "what_happened='x', sent_status='NO', operator_action='y'))\n"
+        "partials.render_disabled_label(DisabledLabelData(reason='no-authority', "
+        "label='No lease or policy authority'))\n"
         "assert 'jinja2' in sys.modules, 'rendering must have pulled jinja2'\n"
         "sys.exit(0 if 'pytest' not in sys.modules else 1)\n"
     )
@@ -593,14 +614,16 @@ def test_mixed_invocation_collects_the_gate(tmp_path: Path) -> None:
     collects BOTH the ordinary suite and the 196 contract items. The refuter's
     PYTEST_ADDOPTS="-m 'not contract'" attack deselects the contract items on
     exactly this shape — the residual class, disclosed in the design record;
-    this arm goes red under that attack."""
+    this arm goes red under that attack. The registered-state run stays red
+    through the ten G1d-deferred rows (the lane-A fold's comment fix: no
+    longer described as the empty-registry red)."""
     junit = tmp_path / "mixed.xml"
     exit_code = _run(
         CONTRACT,
         junit,
         extra_args=["tests/ui_html/test_grammar.py"],
     )
-    assert exit_code != 0  # the row layer is red at the empty registry
+    assert exit_code != 0  # the ten G1d-deferred rows keep the registered run red
     _attrib, buckets = _suite(junit)
     assert _stats(buckets["pin"])["collected"] == PIN_ITEMS
     assert _stats(buckets["row"])["collected"] == ROW_ITEMS

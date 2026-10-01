@@ -181,13 +181,13 @@ def engineering_plot() -> ComposedPlot:
                 "voltage",
                 "V",
                 samples=(0.0, 12.5),
+                acquired=100,
                 provenance="derived",
                 derivation="rail ÷ divider ratio",
             ),
-            TraceSpec("voltage-ref", "V", samples=(0.0, 0.0)),
+            TraceSpec("voltage-ref", "V", samples=(0.0, 0.0), acquired=2),
         ),
         hints={"voltage-ref": ChannelHint(visible=False)},
-        acquired=100,
     )
 
 
@@ -198,10 +198,10 @@ def slots16_plot() -> ComposedPlot:
         title="Sixteen channels",
         description="Sixteen declared channels, all visible.",
         traces=tuple(
-            TraceSpec(f"ch-{index:02d}", "V", samples=(0.0, 1.0)) for index in range(16)
+            TraceSpec(f"ch-{index:02d}", "V", samples=(0.0, 1.0), acquired=2)
+            for index in range(16)
         ),
         hints={},
-        acquired=2,
     )
 
 
@@ -230,6 +230,21 @@ def hint_accent_wins_plot() -> ComposedPlot:
             "beta": ChannelHint(color_role="accent"),
             "gamma": ChannelHint(color_role="accent"),
         },
+    )
+
+
+def hint_accent_before_slot1_plot() -> ComposedPlot:
+    """§E.2.0 accent, the M2 corner: the accent-hinted channel is DECLARED
+    BEFORE the slot-1 channel. Slots come from the bytewise sort, not the
+    declaration order, so slot 1 still claims the emphasis and the accent
+    reverts to its slot colour — declaration order cannot mint a second
+    emphasis. (The TS reference has an order-dependent double-emphasis bug
+    here — a known React defect dying at G1e, per the fold note.)"""
+    return compose_plot(
+        title="Accent declared first",
+        description="The accent-hinted channel is declared before the slot-1 channel.",
+        traces=(TraceSpec("beta", "V"), TraceSpec("alpha", "V")),
+        hints={"beta": ChannelHint(color_role="accent")},
     )
 
 
@@ -369,9 +384,23 @@ def acquisition_decimated_plot() -> ComposedPlot:
     return compose_plot(
         title="Decimated",
         description="A visible trace decimated 100 to 2.",
-        traces=(TraceSpec("voltage", "V", samples=(0.0, 12.5)),),
+        traces=(TraceSpec("voltage", "V", samples=(0.0, 12.5), acquired=100),),
         hints={},
-        acquired=100,
+    )
+
+
+def acquisition_multi_trace_plot() -> ComposedPlot:
+    """§E.2.5, the M1 fold's multi-trace canonical: BOTH visible traces
+    decimated (100→2 and 200→4) — one acquisition row PER TRACE with that
+    trace's own drawn count, never a summed scalar."""
+    return compose_plot(
+        title="Two decimations",
+        description="Two visible traces, each decimated.",
+        traces=(
+            TraceSpec("voltage", "V", samples=(0.0, 12.5), acquired=100),
+            TraceSpec("current", "A", samples=(0.0, 1.0, 2.0, 4.0), acquired=200),
+        ),
+        hints={},
     )
 
 
@@ -383,11 +412,10 @@ def acquisition_not_required_plot() -> ComposedPlot:
         title="Nothing to disclose",
         description="The visible trace is undecimated; the hidden one drew 2 of 3.",
         traces=(
-            TraceSpec("voltage", "V", samples=(0.0, 1.0, 2.0)),
-            TraceSpec("reference", "V", samples=(0.0, 1.0)),
+            TraceSpec("voltage", "V", samples=(0.0, 1.0, 2.0), acquired=3),
+            TraceSpec("reference", "V", samples=(0.0, 1.0), acquired=3),
         ),
         hints={"reference": ChannelHint(visible=False)},
-        acquired=3,
     )
 
 
@@ -479,6 +507,7 @@ def digital_lanes() -> ComposedLanes:
                     "UART-REF · 115200 8N1",
                     source_channel="data",
                     events=(
+                        DecoderEvent(0.0, 0.0, "0x77"),  # zero-width AT t=0 (L1)
                         DecoderEvent(0.0001, 0.0002, "0x55"),
                         DecoderEvent(0.0004, 0.0005, "0xAA"),
                         DecoderEvent(0.0030, 0.0031, "0xFF"),  # fully outside

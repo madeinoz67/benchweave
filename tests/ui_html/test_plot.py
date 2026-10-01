@@ -113,21 +113,23 @@ def test_hidden_axes_drop_and_survivors_renumber() -> None:
 
 
 def test_acquisition_m_is_computed_never_supplied() -> None:
-    required, drawn, text = plot.acquisition_disclosure(
-        [plot.TraceSpec("v", "V", samples=(0.0, 1.0))], 100, None
+    """The M1 fold: per-trace acquisition rows — ``m`` is each trace's own
+    drawn count, never a caller-supplied scalar or a cross-trace sum."""
+    rows = plot.acquisition_rows(
+        [plot.TraceSpec("v", "V", samples=(0.0, 1.0), acquired=100)], None
     )
-    assert (required, drawn, text) == (True, 2, "Acquired 100 samples · plotted 2")
-    _required, drawn, text = plot.acquisition_disclosure(
-        [plot.TraceSpec("v", "V", samples=(0.0, 1.0))], 100, "1 kHz"
+    assert [row.text for row in rows] == ["Acquired 100 samples · plotted 2"]
+    rows = plot.acquisition_rows(
+        [plot.TraceSpec("v", "V", samples=(0.0, 1.0), acquired=100)], "1 kHz"
     )
-    assert text == "Acquired 100 samples · plotted 2 at 1 kHz"
+    assert rows[0].text == "Acquired 100 samples · plotted 2 at 1 kHz"
 
 
 def test_no_visible_decimation_no_disclosure() -> None:
-    required, _drawn, _text = plot.acquisition_disclosure(
-        [plot.TraceSpec("v", "V", samples=(1.0, 2.0, 3.0))], 3, None
+    rows = plot.acquisition_rows(
+        [plot.TraceSpec("v", "V", samples=(1.0, 2.0, 3.0), acquired=3)], None
     )
-    assert required is False
+    assert rows == ()
 
 
 # --- the contract rows --------------------------------------------------------------

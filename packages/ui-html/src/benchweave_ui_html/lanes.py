@@ -90,7 +90,10 @@ class LanesDeclaration:
 class LaneSegment:
     """One drawn column of a channel lane — the ``reduce_lane`` column with
     its §E.4.2 state kind attached. A single-interior-transition column
-    carries the pre/post edge; more than one carries the glitch mark."""
+    renders as TWO half-width single-value segments (the L3 fold: the TS's
+    shape — ``data-bw-state`` is always a single value; ``half`` names the
+    pre/post halves); more than one interior transition carries the glitch
+    mark."""
 
     first: int
     last: int
@@ -99,6 +102,7 @@ class LaneSegment:
     glitch: bool
     edge_from: LaneState | None = None
     edge_to: LaneState | None = None
+    half: Literal["first", "second"] | None = None
 
 
 @dataclass(frozen=True)
@@ -116,13 +120,17 @@ class BusCell:
 
 @dataclass(frozen=True)
 class ComposedSpan:
-    """One rendered decoder span: the event's extent mapped through the
-    capture axis to sample positions, clipped to the window, the width
-    clamped at the one-column minimum (a zero-width event renders that
-    minimum mark, never invisible)."""
+    """One rendered decoder span: the event's extent in SECONDS — exact,
+    never quantized to sample integers (the L2 fold: "exact sample
+    positions" dissolve into float extents) — clipped to the capture
+    window ``[0, window_s)`` under the aligned convention (start clamped up
+    to 0, end clamped down to the window, a zero-or-negative width clamped
+    up to one sample period — the 1-px minimum's time-space form — so a
+    zero-width ``[t, t)`` event renders that minimum mark, never
+    invisible)."""
 
-    start_sample: int
-    end_sample: int
+    start_s: float
+    end_s: float
     payload: str
 
 
@@ -156,7 +164,36 @@ def _state_segments(
 ) -> list[LaneSegment]:
     segments: list[LaneSegment] = []
     for column in reduce_lane(states, columns):
-        edge_from, edge_to = (column.edge.from_, column.edge.to) if column.edge else (None, None)
+        if column.edge is not None:
+            # The L3 fold: a single-interior-transition column renders as
+            # TWO half-width single-value segments (the TS's shape) — every
+            # emitted data-bw-state is a single value, the edge kind
+            # resolved per half.
+            segments.append(
+                LaneSegment(
+                    first=column.first,
+                    last=column.last,
+                    state=column.edge.from_,
+                    state_kind=_STATE_KIND[column.edge.from_],
+                    glitch=False,
+                    edge_from=column.edge.from_,
+                    edge_to=column.edge.to,
+                    half="first",
+                )
+            )
+            segments.append(
+                LaneSegment(
+                    first=column.first,
+                    last=column.last,
+                    state=column.edge.to,
+                    state_kind=_STATE_KIND[column.edge.to],
+                    glitch=False,
+                    edge_from=column.edge.from_,
+                    edge_to=column.edge.to,
+                    half="second",
+                )
+            )
+            continue
         segments.append(
             LaneSegment(
                 first=column.first,
@@ -164,8 +201,6 @@ def _state_segments(
                 state=column.state,
                 state_kind=_STATE_KIND[column.state],
                 glitch=column.glitch,
-                edge_from=edge_from,
-                edge_to=edge_to,
             )
         )
     return segments
@@ -224,26 +259,35 @@ def _spans(
     rate_hz: float | None,
     hidden_channels: set[str],
 ) -> tuple[list[ComposedSpan], bool]:
-    """Map the decoder's events through the capture axis to sample
-    positions; clip to the window; clamp the width at the one-column
-    minimum. An event whose source channel is hidden renders NOTHING and
-    orphans onto no neighbour (the lane keeps its awaiting-render note);
-    a declared lane with no renderable events waits visibly."""
+    """Map the decoder's events onto the capture window in SECONDS (the L2
+    fold: float extents, never sample quantization). An event whose source
+    channel is hidden renders NOTHING and orphans onto no neighbour (the
+    lane keeps its awaiting-render note); a declared lane with no
+    renderable events waits visibly.
+
+    Gating (the L1 fold): a zero-width ``[t, t)`` event renders its minimum
+    mark whenever the point lies IN the window — including ``t = 0``, which
+    the old ``end <= 0`` gate wrongly dropped; a non-zero-width event
+    renders only when it overlaps the window (fully outside ⇒ nothing)."""
     if rate_hz is None or (
         spec.source_channel is not None and spec.source_channel in hidden_channels
     ):
         return [], True
+    window_s = acquired / rate_hz
+    sample_period = 1.0 / rate_hz
     spans: list[ComposedSpan] = []
     for event in spec.events:
-        start = round(event.start_s * rate_hz)
-        end = round(event.end_s * rate_hz)
-        if end <= 0 or start >= acquired:  # fully outside the window
+        start, end = event.start_s, event.end_s
+        if start == end:
+            if not 0.0 <= start < window_s:  # a zero-width point must be IN the window
+                continue
+        elif end <= 0.0 or start >= window_s:  # fully outside
             continue
-        start = max(0, start)
-        end = min(acquired, end)
-        if end <= start:  # zero-width [t, t): the minimum mark, never invisible
-            end = start + 1
-        spans.append(ComposedSpan(start, end, event.payload))
+        start = max(0.0, start)
+        end = min(window_s, end)
+        if end <= start:  # the minimum mark: one sample period, never invisible
+            end = start + sample_period
+        spans.append(ComposedSpan(start_s=start, end_s=end, payload=event.payload))
     return spans, not spans
 
 
@@ -288,9 +332,25 @@ def compose_lanes(
     if declaration.sample_rate_hz is not None:
         if declaration.sample_rate_hz >= 1e6:
             rate_suffix = f"at {declaration.sample_rate_hz / 1e6:g} MHz"
-        else:
+        elif declaration.sample_rate_hz >= 1e3:
             rate_suffix = f"at {declaration.sample_rate_hz / 1e3:g} kHz"
-    acquisition = f"Acquired {declaration.acquired} samples · plotted {declaration.columns}"
+        else:
+            rate_suffix = f"at {declaration.sample_rate_hz:g} Hz"
+    # The M1 fold: the plotted count is COMPUTED from what the reduction
+    # actually drew — never the requested column count (a 24-sample capture
+    # asked to draw 100 columns drew 24). Channel lanes share the uniform
+    # grid, so the first channel lane's segment count is the drawn-column
+    # count; a capture with no channel lanes falls back to its bus cells.
+    drawn_columns = next(
+        (len(lane.segments) for lane in composed if lane.spec.kind == "channel"),
+        None,
+    )
+    if drawn_columns is None:
+        drawn_columns = next(
+            (len(lane.bus_cells) for lane in composed if lane.spec.kind == "group"),
+            declaration.columns,
+        )
+    acquisition = f"Acquired {declaration.acquired} samples · plotted {drawn_columns}"
     if rate_suffix:
         acquisition = f"{acquisition} {rate_suffix}"
     trigger_sample = (
@@ -304,10 +364,14 @@ def compose_lanes(
     )
     delta_text = ""
     if len(declaration.cursors) >= 2:
+        # Cursor positions are host-supplied and may arrive in either order —
+        # the Δt readout is the magnitude (the fold's abs arm).
         if declaration.axis_unit == "samples":
-            delta_text = f"Δt = {cursor_samples[1] - cursor_samples[0]} samples"
+            delta_text = f"Δt = {abs(cursor_samples[1] - cursor_samples[0])} samples"
         else:
-            delta_seconds = declaration.cursors[1].position_s - declaration.cursors[0].position_s
+            delta_seconds = abs(
+                declaration.cursors[1].position_s - declaration.cursors[0].position_s
+            )
             micro = delta_seconds * 1e6
             delta_text = f"Δt = {micro:g} µs"
     # §E.4.6: decoder lanes are annotation rows BENEATH the channel and bus

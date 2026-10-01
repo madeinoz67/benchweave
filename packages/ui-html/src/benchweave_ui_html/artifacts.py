@@ -80,6 +80,13 @@ _GEOMETRY_TAGS = frozenset(
 
 _KEYS_BY_SLUG: dict[str, tuple[str, ...]] = {table.slug: table.keys for table in MANIFEST}
 
+#: The M3 fold: closed-enum memberships the row-as-data echo cannot detect
+#: on its own (a drifted scratch row would render-and-pass); each artifact
+#: reds a key outside its enum.
+_SEVERITY_KEYS = frozenset(_KEYS_BY_SLUG["b-1-severities"])
+_DISABLED_REASON_KEYS = frozenset(_KEYS_BY_SLUG["c-2-disabled-reason-enum"])
+_MODE_KEYS = frozenset(_KEYS_BY_SLUG["d-1-modes"])
+
 #: The §E.1 column indexes (Component | Root | attrs | roles | hooks | text | Notes).
 _E1_ROOT, _E1_ATTRS, _E1_ROLES, _E1_HOOKS, _E1_TEXT = 1, 2, 3, 4, 5
 
@@ -184,6 +191,13 @@ class RefusalRenderArtifact:
             return [failure] if failure else ["render produced nothing"]
         rendered = RenderedComponent(html)
         messages: list[str] = []
+        # The M3 fold: the severity cell must be a §B.1 key — the row-as-data
+        # echo alone cannot detect enum drift (a scratch row would
+        # render-and-pass).
+        if data.severity not in _SEVERITY_KEYS:
+            messages.append(
+                f"severity {data.severity!r} is not a §B.1 severity key"
+            )
         if rendered.root_tag != "aside":
             messages.append(f"root element: expected <aside>, got <{rendered.root_tag}>")
         if not any(
@@ -243,6 +257,9 @@ class LabelRenderArtifact:
             return [failure] if failure else ["render produced nothing"]
         rendered = RenderedComponent(html)
         messages: list[str] = []
+        # The M3 fold: the reason key must be a §C.2 enum key.
+        if data.reason not in _DISABLED_REASON_KEYS:
+            messages.append(f"disabled reason {data.reason!r} is not a §C.2 enum key")
         if not any(
             element.attrs.get("data-bw-disabled-reason") == data.reason
             for element in rendered.elements
@@ -339,6 +356,9 @@ class ModeRowArtifact:
             return [failure] if failure else ["render produced nothing"]
         rendered = RenderedComponent(html)
         messages: list[str] = []
+        # The M3 fold: the mode key must be a §D.1 key.
+        if mode not in _MODE_KEYS:
+            messages.append(f"mode {mode!r} is not a §D.1 mode key")
         if rendered.root_tag != "section":
             messages.append(f"root element: expected <section>, got <{rendered.root_tag}>")
         entries = rendered.texts_of_elements(attribute=("data-bw-mode", mode))
@@ -766,6 +786,28 @@ class HintRowArtifact:
                 messages.append(
                     "a later accent hint must revert to its slot colour"
                 )
+            # The M2 corner: the accent-hinted channel DECLARED BEFORE the
+            # slot-1 channel — slots come from the bytewise sort, so slot 1
+            # still claims and the accent reverts (declaration order cannot
+            # mint a second emphasis; the TS's order-dependent double-emphasis
+            # bug is the reference's, dying at G1e — fold note).
+            corner = RenderedComponent(
+                partials.render_plot(fixtures.hint_accent_before_slot1_plot())
+            )
+            alpha_c, beta_c = (_legend_row_for(corner, c) for c in ("alpha", "beta"))
+            if alpha_c is None or beta_c is None:
+                messages.append("the M2 corner fixture did not render its legend rows")
+            else:
+                if alpha_c.attrs.get("data-bw-resolved-series") != EMPHASIS_SERIES:
+                    messages.append(
+                        "the bytewise slot-1 trace keeps series-1 regardless of "
+                        "declaration order"
+                    )
+                if beta_c.attrs.get("data-bw-resolved-series") != "--bw-series-2":
+                    messages.append(
+                        "an accent hint on a later slot declared FIRST still loses "
+                        "to the slot-1 claim (no double emphasis)"
+                    )
         elif hint == 'color_role: "muted"':
             muted = RenderedComponent(partials.render_plot(fixtures.hint_muted_plot()))
             alpha, beta = (_legend_row_for(muted, c) for c in ("alpha", "beta"))
@@ -1024,14 +1066,27 @@ def _check_acquisition_placement(row: Row) -> list[str]:
 
 
 def _check_acquisition_wording(row: Row) -> list[str]:
+    messages: list[str] = []
     rendered = RenderedComponent(partials.render_plot(fixtures.acquisition_decimated_plot()))
     texts = rendered.texts_of_elements(class_hook="bw-plot__acquisition")
     if texts != ["Acquired 100 samples · plotted 2"]:
-        return [f"wording must be 'Acquired 100 samples · plotted 2'; got {texts!r}"]
+        messages.append(f"wording must be 'Acquired 100 samples · plotted 2'; got {texts!r}")
     line = next(e for e in rendered.elements if "bw-plot__acquisition" in e.class_tokens)
     if line.attrs.get("data-bw-plotted") != "2":
-        return ["m is the drawn count (values.length), never caller-supplied"]
-    return []
+        messages.append("m is the drawn count (values.length), never caller-supplied")
+    # The M1 fold's multi-trace arm: one row PER TRACE with that trace's own
+    # drawn count — a summed scalar across traces reds here.
+    multi = RenderedComponent(partials.render_plot(fixtures.acquisition_multi_trace_plot()))
+    multi_texts = sorted(multi.texts_of_elements(class_hook="bw-plot__acquisition"))
+    if multi_texts != [
+        "Acquired 100 samples · plotted 2",
+        "Acquired 200 samples · plotted 4",
+    ]:
+        messages.append(
+            "the acquisition rows are PER TRACE (each trace's own acquired and "
+            f"drawn counts, never a summed scalar); got {multi_texts!r}"
+        )
+    return messages
 
 
 _PROVENANCE_CHANNEL = {
@@ -1109,8 +1164,13 @@ def _plot_rule_factory(key: str) -> RuleProofArtifact:
 
 
 def _lane_rows(rendered: RenderedComponent) -> list[Element]:
+    """The LANE ROW elements — those carrying both ``data-bw-lane`` and
+    ``data-bw-lane-kind``. Segments and bus cells also carry ``data-bw-lane``
+    (the L6 scoping attribute) but must never read as lane rows."""
     return [
-        element for element in rendered.elements if "data-bw-lane" in element.attrs
+        element
+        for element in rendered.elements
+        if "data-bw-lane" in element.attrs and "data-bw-lane-kind" in element.attrs
     ]
 
 
@@ -1196,10 +1256,41 @@ def _check_lane_layout(key: str) -> Callable[[Row], list[str]]:
     return check
 
 
+def _lane_kind_by_index(rendered: RenderedComponent) -> dict[str, str]:
+    return {
+        str(lane.attrs.get("data-bw-lane") or ""): str(lane.attrs.get("data-bw-lane-kind") or "")
+        for lane in _lane_rows(rendered)
+    }
+
+
+def _channel_segments(rendered: RenderedComponent) -> list[Element]:
+    """The L6 fold: §E.4.2's evidence set is the CHANNEL lanes' segments —
+    a bus cell's hatch attribute can never satisfy a state-rendering arm."""
+    kinds = _lane_kind_by_index(rendered)
+    return [
+        element
+        for element in _segments(rendered)
+        if kinds.get(str(element.attrs.get("data-bw-lane") or "")) == "channel"
+    ]
+
+
+def _bus_cells_of(rendered: RenderedComponent) -> list[Element]:
+    """The L6 fold: §E.4.3's evidence set is the bus lanes' cells (both the
+    valued form and the hatched unknown form) — a channel lane's x-hatch
+    segment can never satisfy an unknown-bus arm."""
+    kinds = _lane_kind_by_index(rendered)
+    return [
+        element
+        for element in rendered.elements
+        if "data-bw-first" in element.attrs
+        and kinds.get(str(element.attrs.get("data-bw-lane") or "")) == "group"
+    ]
+
+
 def _check_state_rendering(key: str) -> Callable[[Row], list[str]]:
     def check(row: Row) -> list[str]:
         rendered = RenderedComponent(partials.render_lanes(fixtures.digital_lanes()))
-        segments = _segments(rendered)
+        segments = _channel_segments(rendered)
         messages: list[str] = []
         state_kind = {
             "1": "high",
@@ -1221,6 +1312,24 @@ def _check_state_rendering(key: str) -> Callable[[Row], list[str]]:
                     messages.append(
                         f"state {state!r} must render as {state_kind[state]!r}; got {kinds}"
                     )
+            # The L3 fold: every emitted data-bw-state is a single value — the
+            # old "pre→post" composite is gone, and each edge half carries its
+            # own resolved kind.
+            composite = [
+                e
+                for e in segments
+                if "→" in str(e.attrs.get("data-bw-state") or "")
+            ]
+            if composite:
+                messages.append(
+                    "an edge column renders two half-width single-value segments, "
+                    "never a composite data-bw-state"
+                )
+            halves = [
+                e for e in segments if e.attrs.get("data-bw-half") in ("first", "second")
+            ]
+            if not halves:
+                messages.append("the four-state fixture must exercise an edge column")
         elif key == "Monochrome discriminability":
             mapping: dict[str, str] = {}
             for element in segments:
@@ -1309,11 +1418,13 @@ def _check_groups_buses(key: str) -> Callable[[Row], list[str]]:
                     f"got {forward_value}/{swapped_value}"
                 )
         elif key == "Unknown bus":
+            # The L6 fold: the evidence set is the BUS lanes' cells — a
+            # channel lane's x-hatch segment can never satisfy this arm.
+            bus_cells = _bus_cells_of(rendered)
             unknown = [
                 e
-                for e in rendered.elements
+                for e in bus_cells
                 if e.attrs.get("data-bw-state-kind") == "hatch"
-                and "data-bw-first" in e.attrs
                 and "data-bw-bus-value" not in e.attrs
             ]
             if not unknown:
@@ -1323,7 +1434,7 @@ def _check_groups_buses(key: str) -> Callable[[Row], list[str]]:
             if any(
                 e.attrs.get("data-bw-state-kind") == "hatch"
                 and "data-bw-bus-value" in e.attrs
-                for e in rendered.elements
+                for e in bus_cells
             ):
                 messages.append("never a fabricated number over a transition")
         return messages
@@ -1444,19 +1555,26 @@ def _check_decoder(key: str) -> Callable[[Row], list[str]]:
         ]
         if key == "Span rendering":
             spans = [e for e in rendered.elements if "data-bw-span" in e.attrs]
-            if len(spans) != 3:
+            if len(spans) != 4:
                 messages.append(
                     "extents clip to the capture window (the fully-outside event "
                     f"does not render); got {len(spans)} spans"
                 )
             for span in spans:
-                start = int(span.attrs.get("data-bw-span-start") or "0")
-                end = int(span.attrs.get("data-bw-span-end") or "0")
+                # The L2 fold: float second-extents, never sample ints.
+                start = float(span.attrs.get("data-bw-span-start") or "0")
+                end = float(span.attrs.get("data-bw-span-end") or "0")
                 if end <= start:
                     messages.append("the drawn width clamps at the minimum mark")
-            zero_width = [e for e in spans if e.attrs.get("data-bw-span-start") == "600"]
-            if not zero_width:
-                messages.append("a zero-width [t, t) event renders the minimum mark")
+            zero_width_starts = {"0.0", "0.0006"}
+            rendered_starts = {
+                str(span.attrs.get("data-bw-span-start")) for span in spans
+            }
+            if not zero_width_starts <= rendered_starts:
+                messages.append(
+                    "a zero-width [t, t) event renders the minimum mark — including "
+                    "the t=0 event (the L1 fold)"
+                )
             decoder_rows = [
                 e for e in _lane_rows(rendered) if e.attrs.get("data-bw-lane-kind") == "decoder"
             ]

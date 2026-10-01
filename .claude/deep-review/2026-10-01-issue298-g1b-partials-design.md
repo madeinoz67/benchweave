@@ -303,3 +303,31 @@ localization blocks `read(operation:"file")` for some files
 via the hook-sanctioned `editing_context` route and file reads that succeeded. Native
 Read of indexed `.py` source is hook-blocked in this checkout — expected posture, not
 worked around. No gortex discovery ops were run, per the dispatch discipline.
+
+## 10. Fold note — the consolidated Tier-3 refute fold (2026-10-02)
+
+Both adversary lanes ran; the machinery was DEFENDED (lane A: zero HIGH/MEDIUM,
+all claims reproduced) and lane B's findings were semantics defects — green-but-
+wrong models, not harness failures. Dispositions, one landing commit:
+
+| Row | Disposition |
+| --- | --- |
+| M1 acquisition model | FIXED — per-trace `TraceSpec.acquired` + one `AcquisitionRow` per visible decimated trace (`m` per row, never a summed scalar; `_check_acquisition_wording` carries the multi-trace arm); lanes `plotted` is COMPUTED from the drawn segment count, never `declaration.columns` (a 24-sample capture asked for 100 columns reports 24). RED: 12/16 then 13/16 pre-fold failures incl. `plotted 100` vs 24. |
+| M2 accent-before-slot-1 corner | PINNED — fixture declares the accent-hinted trace FIRST; slots come from the bytewise sort, so slot 1 still claims and the accent reverts (no double emphasis). The TS reference's order-dependent double-emphasis bug is the reference's defect — known-React-bug-dying-at-G1e. |
+| M3 enum memberships ×3 | FIXED — §C.3 severity ∈ §B.1 keys, §C.2 reason ∈ the §C.2 enum, §D.1 mode ∈ §D.1's set; each arm reds on a scratch-row drift (RED: empty messages pre-fold). The row-as-data echo alone cannot detect enum drift. |
+| L1 zero-width t=0 | FIXED — gating on `start >= window` for zero-width points (a `[0,0)` event renders its minimum mark); fully-outside intervals still drop. |
+| L2 span quantization | FIXED — `ComposedSpan` carries float second-extents (never sample ints); clip convention aligned and documented in the dataclass. |
+| L3 composite data-bw-state | FIXED — an edge column emits two half-width single-value segments (`data-bw-half` first/second), the kind resolved per half; composites are gone. |
+| L5 averaging depth | FIXED — device-averaged without an explicit `averaging_depth` raises (unrepresentable, never a 0 default). |
+| L6 checker scoping | FIXED — §E.4.2's evidence from channel lanes, §E.4.3's from bus cells (segments/cells carry `data-bw-lane`); both arms' discriminations RED-proven via monkeypatched probes. |
+| L4 + NIT tail (except two) | NO CODE by ruling — documented here: L4's prose-shape guard gap is accepted (the §E.4/§E.2 prose rows are pinned by their structural arms; a prose-shape guard would be prose-laundering); the unspecified-composition divergences are the chosen readings recorded in the code docstrings. The two cheap ones LANDED: the Hz rate branch and `abs(Δt)`. |
+| Lane A UR-11 arm | WIDENED — the subprocess renders one partial per family (15 renders incl. plot/lanes/icon/sequence/refusal/label), matching the pre-committed text. |
+| Lane A row-as-data asymmetry | DISCLOSED — blanked/deleted contract CELLS pass by design (the gate polices implementation-vs-contract, not contract self-consistency; the pin layer's key-list identity catches row additions/removals and the release census catches byte motion). |
+| Lane A stale comment + backtick item names | COMMENT FIXED. The backtick finding INVESTIGATED, NOT REPRODUCED on this harness: the junit name for `e-4-2-state-rendering`'s third row round-trips exactly (`name='x\` and \`z'`, classname intact, `_row_id_of` reconstructs the true row-id) — if lane A's repro is console-summary- or `-k`-shaped it needs their detail; no parser-local defect found. |
+| M4 >2-unit legend fork | HELD for the owner's ruling — no legend behavior or checker changed; lands as a follow-up commit on his word. |
+
+TS-side defects lane B found, both known-React-bugs-dying-at-G1e (recorded, not
+ported): untrimmed-unit axis binding (the reference binds reference lines on the
+UNtrimmed unit, so `" V"` and `"V"` bind differently) and `data-bw-lane` renumbering
+(the reference renumbers rendered lane indices after hiding instead of keeping the
+declared identity).

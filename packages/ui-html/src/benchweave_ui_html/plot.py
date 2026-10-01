@@ -178,13 +178,15 @@ def resolve_hints(
 @dataclass(frozen=True)
 class TraceSpec:
     """One declared trace: channel id, unit (trimmed before grouping),
-    the samples the renderer DREW (``values.length`` semantics — the
-    acquisition ``m`` is computed from these, never caller-supplied), and
-    the host-supplied provenance classification (§E.2.6)."""
+    the samples the renderer DREW (``values.length`` semantics), the
+    trace's OWN acquired count (§E.2.5's ``{n}`` is per-trace — the M1
+    fold: one acquisition row per visible decimated trace, never a summed
+    scalar), and the host-supplied provenance classification (§E.2.6)."""
 
     channel_id: str
     unit: str
     samples: tuple[float, ...] = ()
+    acquired: int | None = None
     provenance: ProvenanceKind = "measured"
     derivation: str | None = None
     averaging_depth: int | None = None
@@ -300,8 +302,15 @@ def provenance_marker(trace: TraceSpec) -> tuple[str | None, str | None]:
         derivation = trace.derivation or ""
         return "derived", f"{derivation} · uncertainty unknown"
     if trace.provenance == "device-averaged":
-        depth = trace.averaging_depth if trace.averaging_depth is not None else 0
-        return f"device averaging {depth}", None
+        # The L5 fold: the depth is the applied configured value from the
+        # observed echo — a trace classified device-averaged WITHOUT a depth
+        # is unrepresentable, not zero (never a default).
+        if trace.averaging_depth is None:
+            raise ValueError(
+                "device-averaged requires the applied averaging_depth from the "
+                "observed echo — never a default (§E.2.6)"
+            )
+        return f"device averaging {trace.averaging_depth}", None
     name = trace.processing_name or ""
     window = trace.processing_window or ""
     return f"display processing: {name} {window}".rstrip(), None
@@ -333,30 +342,45 @@ class ComposedPlot:
     legend: tuple[LegendRow, ...]
     ref_lines: tuple[EmittedRefLine, ...]
     thresholds: tuple[EmittedThreshold, ...]
+    acquisition: tuple[AcquisitionRow, ...]
+
+
+@dataclass(frozen=True)
+class AcquisitionRow:
+    """§E.2.5, per trace (the M1 fold): one disclosure row per VISIBLE
+    trace that drew fewer points than it acquired — ``m`` is that trace's
+    own drawn count, never a summed scalar across traces."""
+
+    channel_id: str
     acquired: int
-    plotted: int
-    acquisition_text: str
+    drawn: int
+    text: str
 
 
-def acquisition_disclosure(
-    visible_traces: Sequence[TraceSpec], acquired: int, rate: str | None
-) -> tuple[bool, int, str]:
-    """§E.2.5: the disclosure is required exactly when a VISIBLE trace draws
-    fewer points than were acquired for it (hidden traces draw nothing, so
-    they disclose nothing); ``m`` is computed from the drawn sample counts,
-    never caller-supplied; an acquisition rate may append when known."""
-    drawn = sum(len(trace.samples) for trace in visible_traces)
-    required = (
-        any(len(trace.samples) < acquired for trace in visible_traces)
-        if visible_traces
-        else False
-    )
-    if not required:
-        return False, drawn, ""
-    text = f"Acquired {acquired} samples · plotted {drawn}"
-    if rate is not None:
-        text = f"{text} at {rate}"
-    return True, drawn, text
+def acquisition_rows(
+    visible_traces: Sequence[TraceSpec], rate: str | None
+) -> tuple[AcquisitionRow, ...]:
+    """§E.2.5: the disclosure is required exactly when a VISIBLE trace
+    draws fewer points than it acquired (hidden traces draw nothing, so
+    they disclose nothing); each row's ``m`` is computed from that trace's
+    drawn sample count, never caller-supplied; an acquisition rate may
+    append when known."""
+    rows: list[AcquisitionRow] = []
+    for trace in visible_traces:
+        if trace.acquired is None:
+            continue
+        drawn = len(trace.samples)
+        if drawn >= trace.acquired:
+            continue
+        text = f"Acquired {trace.acquired} samples · plotted {drawn}"
+        if rate is not None:
+            text = f"{text} at {rate}"
+        rows.append(
+            AcquisitionRow(
+                channel_id=trace.channel_id, acquired=trace.acquired, drawn=drawn, text=text
+            )
+        )
+    return tuple(rows)
 
 
 def compose_plot(
@@ -366,14 +390,13 @@ def compose_plot(
     hints: Mapping[str, ChannelHint],
     ref_lines: Sequence[ReferenceLine] = (),
     thresholds: Sequence[ThresholdLine] = (),
-    acquired: int = 0,
     rate: str | None = None,
     *,
     theme_resolves_muted: bool = True,
 ) -> ComposedPlot:
     """Compose the full emit model: pass-1 slots, pass-2 hints, axis
     assignment with the visibility filter, reference-line binding, and the
-    acquisition disclosure. The >2-unit refusal renders NO traces."""
+    per-trace acquisition rows. The >2-unit refusal renders NO traces."""
     declaration_order = [trace.channel_id for trace in traces]
     assignments = assign_slots(declaration_order)
     axes = assign_axes(traces)
@@ -409,7 +432,7 @@ def compose_plot(
                 )
             )
     visible_traces = [t for t in traces if t.channel_id not in hidden]
-    _required, plotted, acquisition_text = acquisition_disclosure(visible_traces, acquired, rate)
+    acquisition = acquisition_rows(visible_traces, rate)
     emitted_refs = tuple(
         EmittedRefLine(
             label=f"{line.meaning} · {line.value} {line.unit}",
@@ -438,7 +461,5 @@ def compose_plot(
         legend=tuple(legend),
         ref_lines=emitted_refs,
         thresholds=emitted_thresholds,
-        acquired=acquired,
-        plotted=plotted,
-        acquisition_text=acquisition_text,
+        acquisition=acquisition,
     )

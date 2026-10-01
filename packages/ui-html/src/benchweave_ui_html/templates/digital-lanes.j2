@@ -6,19 +6,19 @@
       {%- if lane.spec.kind == "channel" %}
       <div class="bw-lanes__channel">
         {%- for segment in lane.segments %}
-        <span class="bw-lanes__segment{% if segment.glitch %} bw-lanes__glitch{% endif %}" data-bw-first="{{ segment.first }}" data-bw-last="{{ segment.last }}"{% if segment.edge_from %} data-bw-state="{{ segment.edge_from }}→{{ segment.edge_to }}"{% else %} data-bw-state="{{ segment.state }}"{% endif %} data-bw-state-kind="{{ segment.state_kind }}"{% if segment.glitch %} data-bw-glitch{% endif %}></span>
+        <span class="bw-lanes__segment{% if segment.glitch %} bw-lanes__glitch{% endif %}" data-bw-lane="{{ lane.spec.index }}" data-bw-first="{{ segment.first }}" data-bw-last="{{ segment.last }}" data-bw-state="{{ segment.state }}" data-bw-state-kind="{{ segment.state_kind }}"{% if segment.half %} data-bw-half="{{ segment.half }}"{% endif %}{% if segment.glitch %} data-bw-glitch{% endif %}></span>
         {%- endfor %}
       </div>
       {%- elif lane.spec.kind == "group" %}
       <div class="bw-lanes__group" data-bw-radix="{{ lane.spec.radix }}">
         {%- for cell in lane.bus_cells %}
-        <span class="bw-lanes__bus-cell" data-bw-first="{{ cell.first }}" data-bw-last="{{ cell.last }}"{% if cell.unknown %} data-bw-state="x" data-bw-state-kind="hatch"{% else %} data-bw-bus-value="{{ cell.value }}"{% endif %}></span>
+        <span class="bw-lanes__bus-cell" data-bw-lane="{{ lane.spec.index }}" data-bw-first="{{ cell.first }}" data-bw-last="{{ cell.last }}"{% if cell.unknown %} data-bw-state="x" data-bw-state-kind="hatch"{% else %} data-bw-bus-value="{{ cell.value }}"{% endif %}></span>
         {%- endfor %}
       </div>
       {%- else %}
       <div class="bw-lanes__decoder">
         {%- for span in lane.spans %}
-        <span class="bw-lanes__span" data-bw-span data-bw-span-start="{{ span.start_sample }}" data-bw-span-end="{{ span.end_sample }}"><code class="bw-lanes__payload">{{ span.payload }}</code></span>
+        <span class="bw-lanes__span" data-bw-span data-bw-span-start="{{ span.start_s }}" data-bw-span-end="{{ span.end_s }}"><code class="bw-lanes__payload">{{ span.payload }}</code></span>
         {%- endfor %}
         {%- if lane.waiting %}
         <span class="bw-lanes__waiting" data-bw-waiting>awaiting decode</span>
