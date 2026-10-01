@@ -154,6 +154,7 @@ def _rederive(
             version=str(submission["version"]),
             capability_declaration=submission["capability_declaration"],
             dependencies=list(submission.get("dependencies", [])),
+            licence_spdx=str(submission.get("licence_spdx", "MIT")),
         )
     except Exception as exc:
         raise SignError(f"rederivation_failed: {exc}") from exc
@@ -184,6 +185,7 @@ def sign(
             **submission,
             "source_url": manifest["source"]["url"],
             "dependencies": manifest.get("dependencies", []),
+            "licence_spdx": manifest.get("licence", {}).get("spdx_expression", "MIT"),
         }
         derived = _rederive(plugin_tree, registry_clone, rederive_inputs)
         if derived != manifest_raw:
