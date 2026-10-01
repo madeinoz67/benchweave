@@ -151,6 +151,31 @@ const RULES = [
       'ignore this.',
     ],
   },
+  {
+    // Obligation 23 — verb/command-set prose drifts with the mechanism that defines the set.
+    id: 'verb-set-docs-drift',
+    triggers: (p) =>
+      p === 'src/benchweave/host/otdp_bridge.py' ||
+      p.startsWith('src/benchweave/cli/') ||
+      p === 'src/benchweave/standards/__main__.py',
+    satisfies: (p) =>
+      p === 'docs/device-developer-guide.md' ||
+      p === 'docs/operator-guide.md' ||
+      p === 'website/index.html' ||
+      p.startsWith('tests/contract/'),
+    message: [
+      '**[Drift 23] A verb/command-set mechanism was edited — does every prose surface that names the set still match?**',
+      '',
+      'The bridge dispatch table (`otdp_bridge.py`) and both CLI trees (`src/benchweave/cli/`,',
+      '`src/benchweave/standards/__main__.py`) are the authorities for sets that prose names on',
+      'the website home page, the device-developer guide, operator-guide §10, and the generated',
+      'standards-CLI page. Bridge-status prose states remaining scope only (re-derived from the',
+      'mechanism: dispatch table, wired services, open tracker — the docstring is a derived',
+      'surface this rule also sweeps) — never a verb enumeration. The site page regenerates; the',
+      'tables and the verb pin (`tests/contract/test_docs_site_standards_cli.py`) sweep in the',
+      'same change.',
+    ],
+  },
 ]
 
 // A broken guard must never break the session: everything below is best-effort and always

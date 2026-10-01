@@ -447,6 +447,26 @@ and remain the reviewer's job.
     mutation arm proves detection): SDK-side definition drift fails
     gateway CI at the next pointer bump, with this row remaining the
     human-level sync duty.
+23. **The bridge verb set and the CLI command surfaces** (the `supported` dispatch table and
+    module docstring in `src/benchweave/host/otdp_bridge.py`; the Click tree under
+    `src/benchweave/cli/`; the argparse family in `src/benchweave/standards/__main__.py`) 🪝 →
+    a change to any of those sets sweeps every prose surface that names them, in the same
+    change. Bridge-status sentences state **remaining scope only, never a verb enumeration**
+    — the #317 doctrine (refute F1/F2): a verb list in prose is a set claim with no
+    mechanical pin, and a "remaining scope is" sentence is a set claim by complement that
+    must be re-derived from the mechanism — the bridge's dispatch table, the services the
+    host wires into it, and the open tracker items. The docstring's gap list is a derived
+    surface this row also sweeps: it went stale once (#146's dataset-services landing, left
+    unmirrored) and its false sentence shipped to two prose mirrors — the #319 refute.
+    The surfaces: `website/index.html`'s home-page sentence and `docs/device-developer-guide.md`'s
+    status/simulator paragraphs (kept byte-mirrored where both carry the same claim); the CLI
+    command sets in `docs/operator-guide.md` §10 (BOTH tables), the website's CLI-reference
+    card, and the docs site's generated standards-CLI page — that page regenerates at build
+    from `python -m benchweave.standards --help` (`scripts/assemble_docs_site.py`;
+    `verify_tree` pins its presence) and `tests/contract/test_docs_site_standards_cli.py`
+    pins its verb set, so a verb add/remove reddens the pin: that red is the tripwire doing
+    its job, not noise. The dispatch-table/CLI diff is the trigger; docs-only refactors of
+    these sentences are not.
 
 ## CI map
 

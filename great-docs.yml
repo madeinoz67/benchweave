@@ -45,6 +45,7 @@ user_guide:
       - ai-device-reviewer.md
       - plugin-sdk.md
       - development.md
+      - standards-cli.md
   - section: "Architecture"
     contents:
       - architecture.md

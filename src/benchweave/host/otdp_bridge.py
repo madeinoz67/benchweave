@@ -13,11 +13,13 @@ measurement schema resolve at load, the dispatch gates run before the
 device, results validate against the action's pinned output schema, and
 a dataset-shaped result that was not admitted through the dataset
 services is a protocol lie from day one).
-Dataset publishing/lookup and the payload services still need the
-dataset-services slice; profile scheduling still needs a native async
-host — for poll multiplexing across devices on one thread (subscriptions
-on ONE bridge multiplex synchronously through the poll engine),
-explicitly NOT for capture/stream correctness.
+Dataset publishing/lookup and the payload services ship as the
+dataset-services slice (issue #146: ``content/dataset_services.py``,
+composed into the caller-supplied services at ``app.py`` load time);
+profile scheduling still needs a native async host (issue #159) — for
+poll multiplexing across devices on one thread (subscriptions on ONE
+bridge multiplex synchronously through the poll engine), explicitly NOT
+for capture/stream correctness.
 Services are
 caller-supplied, including the SAME monotonic timebase used for host
 deadlines (seconds versus nanoseconds). No transport provider is created.
