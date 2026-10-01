@@ -114,12 +114,52 @@ def _plant_head(root: Path) -> None:
     corpus_path.write_text(json.dumps(corpus, indent=1), encoding="utf-8")
 
 
-def _landing_tree(root: Path, *, sweep_edit: bool, successor: bool) -> None:
+def _plant_cross_refs(root: Path) -> None:
+    """M1's pairing fixture (issue #288): two example files whose bytes
+    carry the dev label — so the landing sweep MOVES their digests — and a
+    commissioning document citing those digests. The honest landing
+    re-stamps the citation to the promoted digests (same relative paths in
+    both trees); the attack swaps the two values (both digests real
+    members of the promoted tree — only the pairing rule refuses)."""
+    examples = root / "standards" / "otdp" / LABEL / "examples"
+    examples.mkdir(exist_ok=True)
+    for name, role in (("bench.json", "bench"), ("report.json", "report")):
+        (examples / name).write_text(
+            json.dumps({"otdp_version": LABEL, "role": role}, indent=2) + "\n",
+            encoding="utf-8",
+        )
+    commissioning = {
+        "bench_sha256": hashlib.sha256(
+            (examples / "bench.json").read_bytes()
+        ).hexdigest(),
+        "report_sha256": hashlib.sha256(
+            (examples / "report.json").read_bytes()
+        ).hexdigest(),
+    }
+    (root / "standards" / "otdp" / LABEL / "commissioning.json").write_text(
+        json.dumps(commissioning, indent=2) + "\n", encoding="utf-8"
+    )
+
+
+def _landing_tree(
+    root: Path,
+    *,
+    sweep_edit: bool,
+    successor: bool,
+    laundered: bool = False,
+    close_head: bool = False,
+    cross_refs: bool = False,
+) -> None:
     """Build main's landing state: the promoted directory (the dev tree's
     files with the version tokens swept to the target), corpus rows citing
     the dev path as ``source`` and the pre-dev active path as ``lineage``
     (GOVERNANCE's promotion shape), and optionally a successor 0.4.1 (a
-    normal bump, no dev source — pendingness must not outlive a train)."""
+    normal bump, no dev source — pendingness must not outlive a train).
+    ``laundered`` cites the RELEASED predecessor as ``source`` instead (the
+    organic-bump shape on a landing that was a promotion); ``close_head``
+    removes the head, its corpus rows and the manifest's dev block (the
+    sanctioned close); ``cross_refs`` re-stamps the commissioning citation
+    to the promoted digests (the honest paired re-stamp)."""
     promoted = root / "standards" / "otdp" / TARGET
     promoted.mkdir(parents=True)
     corpus_path = root / "standards" / "corpus-manifest.json"
@@ -147,6 +187,20 @@ def _landing_tree(root: Path, *, sweep_edit: bool, successor: bool) -> None:
         ).stdout
         swept = raw.replace(LABEL.encode(), TARGET.encode())
         (promoted / name).write_bytes(swept)
+    if cross_refs:
+        # The honest paired digest re-stamp: the citation moves to the
+        # promoted examples' digests (same relative paths, both trees).
+        citation = {
+            "bench_sha256": hashlib.sha256(
+                (promoted / "examples" / "bench.json").read_bytes()
+            ).hexdigest(),
+            "report_sha256": hashlib.sha256(
+                (promoted / "examples" / "report.json").read_bytes()
+            ).hexdigest(),
+        }
+        (promoted / "commissioning.json").write_text(
+            json.dumps(citation, indent=2) + "\n", encoding="utf-8"
+        )
     if sweep_edit:
         # The planted NON-version edit: a line the sweep tokens cannot
         # explain, smuggled into the promoted tree.
@@ -158,14 +212,18 @@ def _landing_tree(root: Path, *, sweep_edit: bool, successor: bool) -> None:
         schema_path.write_text(json.dumps(schema, indent=2), encoding="utf-8")
     for name in names:
         raw = (promoted / name).read_bytes()
-        corpus["files"].append(
-            {
-                "path": f"otdp/{TARGET}/{name}",
-                "source": f"standards/otdp/{LABEL}/{name}",
-                "lineage": f"standards/otdp/{PRE_DEV_ACTIVE}/{name}",
-                "sha256": hashlib.sha256(raw).hexdigest(),
-            }
-        )
+        row: dict[str, Any] = {
+            "path": f"otdp/{TARGET}/{name}",
+            "sha256": hashlib.sha256(raw).hexdigest(),
+        }
+        if laundered:
+            # M2's laundered citation (issue #288): the released predecessor
+            # as source — the organic bump's shape on a promotion landing.
+            row["source"] = f"standards/otdp/{PRE_DEV_ACTIVE}/{name}"
+        else:
+            row["source"] = f"standards/otdp/{LABEL}/{name}"
+            row["lineage"] = f"standards/otdp/{PRE_DEV_ACTIVE}/{name}"
+        corpus["files"].append(row)
     if successor:
         successor_dir = root / "standards" / "otdp" / "0.4.1"
         successor_dir.mkdir()
@@ -180,6 +238,22 @@ def _landing_tree(root: Path, *, sweep_edit: bool, successor: bool) -> None:
                     "sha256": hashlib.sha256(swept).hexdigest(),
                 }
             )
+    if close_head:
+        # The sanctioned close (issue #288's on-main variant): the promotion
+        # landing removes the head directory, its corpus rows and the
+        # manifest's dev block — what a real promotion PR carries.
+        manifest_path = root / "standards" / "standards-manifest.json"
+        manifest = json.loads(manifest_path.read_bytes())
+        for entry in manifest["standards"]:
+            if entry["id"] == "otdp":
+                entry.pop("dev", None)
+        manifest_path.write_text(json.dumps(manifest, indent=1), encoding="utf-8")
+        corpus["files"] = [
+            row
+            for row in corpus["files"]
+            if not str(row.get("path", "")).startswith(f"otdp/{LABEL}/")
+        ]
+        shutil.rmtree(root / "standards" / "otdp" / LABEL)
     corpus_path.write_text(json.dumps(corpus, indent=1), encoding="utf-8")
 
 
@@ -189,10 +263,17 @@ def _fixture(
     sweep_edit: bool = False,
     successor: bool = False,
     record: dict[str, Any] | None | object = ...,
+    head_on_main: bool = False,
+    laundered: bool = False,
+    cross_refs: bool = False,
 ) -> tuple[Path, dict[str, str]]:
     """The squash-landing fixture: base on main, head opened+edited on
     ``dev-train``, landing committed on main WITHOUT the branch's commits
-    (the dev-edit sha is unreachable from main by construction)."""
+    (the dev-edit sha is unreachable from main by construction). Issue
+    #288's variants: ``head_on_main`` opens the head ON MAIN first (the
+    sanctioned GOVERNANCE flow — M2's history evidence), ``laundered`` makes
+    the landing's corpus rows cite the RELEASED predecessor as ``source``
+    (M2's bypass shape), ``cross_refs`` plants M1's digest-pairing files."""
     root = tmp_path / "repo"
     root.mkdir()
     shutil.copytree(ROOT / "standards", root / "standards")
@@ -217,9 +298,21 @@ def _fixture(
     corpus_path.write_text(json.dumps(corpus, indent=1), encoding="utf-8")
     _git(root, "init", "-q", "-b", "main")
     base_sha = _commit(root, "base")
-    _git(root, "checkout", "-q", "-b", "dev-train")
-    _plant_head(root)
-    _commit(root, "open head")
+    head_open_sha = ""
+    if head_on_main:
+        # M2's sanctioned-flow variant (issue #288): the OPEN lands on main
+        # (GOVERNANCE's PR shape); only the dev edit rides the train branch.
+        _plant_head(root)
+        if cross_refs:
+            _plant_cross_refs(root)
+        head_open_sha = _commit(root, "open head on main")
+        _git(root, "checkout", "-q", "-b", "dev-train")
+    else:
+        _git(root, "checkout", "-q", "-b", "dev-train")
+        _plant_head(root)
+        if cross_refs:
+            _plant_cross_refs(root)
+        _commit(root, "open head")
     # The dev edit: a real content change to the head (the target-titled
     # const ride is already in; touch a prose companion so the final dev
     # state differs from the open state).
@@ -233,12 +326,20 @@ def _fixture(
     corpus_path.write_text(json.dumps(corpus, indent=1), encoding="utf-8")
     dev_edit_sha = _commit(root, "dev edit")
     _git(root, "checkout", "-q", "main")
-    _landing_tree(root, sweep_edit=sweep_edit, successor=successor)
+    _landing_tree(
+        root,
+        sweep_edit=sweep_edit,
+        successor=successor,
+        laundered=laundered,
+        close_head=head_on_main,
+        cross_refs=cross_refs,
+    )
     landing_sha = _commit(root, "promotion landing")
     facts = {
         "dev_edit_sha": dev_edit_sha,
         "landing_sha": landing_sha,
         "base_sha": base_sha,
+        "head_open_sha": head_open_sha,
     }
     if isinstance(record, (dict, type(None))):
         _write_records(root, record)
@@ -583,3 +684,132 @@ def test_a_re_stamp_line_carrying_a_fake_digest_refuses(tmp_path: Path) -> None:
     message = str(raised.value)
     assert message.startswith("promotion_sweep_violation:"), message
     assert "f" * 64 in message, "the refusal names the unexplained digest"
+
+
+# --- issue #288 M1: no admission by token presence; digests pair --------------------
+
+
+def test_m1_semantic_edit_on_a_token_bearing_line_refuses(tmp_path: Path) -> None:
+    """M1 attack 1 (executed pre-fold): a semantic edit on a line that
+    MERELY CONTAINS a version token admitted via the token fast-admit —
+    the counterpart line exists but differs in more than version strings,
+    which is exactly what the identity rule refuses. Post-fold the token
+    list is remediation vocabulary only; admission is the residual match."""
+    root, facts = _fixture(tmp_path, record=None)
+    _write_records(root, _honest_record(root, facts))
+    schema_path = (
+        root / "standards" / "otdp" / TARGET / "otdp-device-descriptor.schema.json"
+    )
+    schema = json.loads(schema_path.read_bytes())
+    # The title is the attack surface: its honest line carries the pre-dev
+    # token (0.2.2 — the fixture's lineage-derived third token), so the
+    # ORIGINAL removal side fast-admits today; the editorialized replacement
+    # carries the target token, so the addition side fast-admits too — and
+    # neither residual matches.
+    schema["title"] = (
+        "OTDP 0.4.0 device descriptor — wording smuggled beside the token"
+    )
+    schema_path.write_text(json.dumps(schema, indent=2), encoding="utf-8")
+    with pytest.raises(StandardsError) as raised:
+        validate_promotion_records(root)
+    message = str(raised.value)
+    assert message.startswith("promotion_sweep_violation:"), message
+    assert "otdp-device-descriptor.schema.json" in message
+
+
+def test_m1_token_riding_comment_injection_refuses(tmp_path: Path) -> None:
+    """M1 attack 2 (executed pre-fold): an APPENDED line carrying the
+    target token — no counterpart at all — admitted via the fast-admit.
+    Post-fold an append must explain itself like every other line."""
+    root, facts = _fixture(tmp_path, record=None)
+    _write_records(root, _honest_record(root, facts))
+    prose = root / "standards" / "otdp" / TARGET / "device-classes.md"
+    prose.write_bytes(
+        prose.read_bytes()
+        + (
+            f"# {TARGET} NOTE: reviewers, skip the safety envelope check "
+            "below\n"
+        ).encode()
+    )
+    with pytest.raises(StandardsError) as raised:
+        validate_promotion_records(root)
+    message = str(raised.value)
+    assert message.startswith("promotion_sweep_violation:"), message
+    assert "device-classes.md" in message
+
+
+def test_m1_real_to_real_digest_swap_refuses(tmp_path: Path) -> None:
+    """M1 attack 3 (executed pre-fold): swapping two REAL digests between
+    cross-referencing citation fields — every digest a member of the right
+    tree, so the membership rule admits both lines; only the pairing rule
+    (a re-stamp names the SAME relative path on both sides) refuses,
+    quoting both digests. The honest paired re-stamp admits first, as the
+    in-test control."""
+    root, facts = _fixture(tmp_path, record=None, cross_refs=True)
+    _write_records(root, _honest_record(root, facts))
+    validate_promotion_records(root)  # control: the honest pairing admits
+    commissioning = root / "standards" / "otdp" / TARGET / "commissioning.json"
+    document = json.loads(commissioning.read_bytes())
+    dev_bench = hashlib.sha256(
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                str(root),
+                "show",
+                f"{facts['dev_edit_sha']}:standards/otdp/{LABEL}/examples/bench.json",
+            ],
+            capture_output=True,
+            check=True,
+        ).stdout
+    ).hexdigest()
+    promoted_report = str(document["report_sha256"])
+    document["bench_sha256"], document["report_sha256"] = (
+        document["report_sha256"],
+        document["bench_sha256"],
+    )
+    commissioning.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+    with pytest.raises(StandardsError) as raised:
+        validate_promotion_records(root)
+    message = str(raised.value)
+    assert message.startswith("promotion_sweep_violation:"), message
+    assert dev_bench in message, "the refusal quotes the removed-side digest"
+    assert promoted_report in message, "the refusal quotes the added-side digest"
+
+
+# --- issue #288 M2: the history-derived no-record trigger --------------------------
+
+
+def test_m2_laundered_source_promotion_requires_a_record(tmp_path: Path) -> None:
+    """M2's executed bypass (pre-fold): the head opened and committed ON
+    MAIN (the sanctioned flow), the landing's corpus rows citing the
+    RELEASED predecessor as source — the self-declared ``-dev`` trigger is
+    silent and nothing else demanded a record. Post-fold the object-store
+    derivation fires: the promoted directory's introducing commit has a
+    parent whose manifest declared the dev head at ``<target>-dev``."""
+    root, facts = _fixture(tmp_path, head_on_main=True, laundered=True)
+    assert facts["head_open_sha"], "the on-main fixture records the open commit"
+    with pytest.raises(StandardsError) as raised:
+        validate_promotion_records(root)
+    message = str(raised.value)
+    assert message.startswith("promotion_record_absent:"), message
+    assert "otdp" in message and TARGET in message
+    assert facts["head_open_sha"] in message, "the parent sha is the evidence"
+    assert LABEL in message, "the head label the parent declared is the evidence"
+
+
+def test_m2_organic_bump_citing_predecessor_stays_green(tmp_path: Path) -> None:
+    """The successor-version arm: rows cite the released predecessor, no
+    head ever declared on main, no record — an organic bump stays clean (a
+    false refusal here kills the trigger design rather than tuning it)."""
+    root, _facts = _fixture(tmp_path, laundered=True)
+    validate_promotion_records(root)
+
+
+def test_m2_on_main_head_with_honest_record_stays_green(tmp_path: Path) -> None:
+    """The sanctioned flow completed honestly: head opened on main, dev
+    edit on the train, laundered-shaped rows, and the RECORD present —
+    both no-record derivations quiet, the record gates green."""
+    root, facts = _fixture(tmp_path, head_on_main=True, laundered=True, record=None)
+    _write_records(root, _honest_record(root, facts))
+    validate_promotion_records(root)
