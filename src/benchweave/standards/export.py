@@ -11,8 +11,8 @@ from typing import Any
 from .manifest import (
     StandardEntry,
     StandardsError,
+    _dependency_policy_from_bytes,
     carried_versions,
-    load_dependency_policy,
     load_manifest,
     validate_carried_corpus_pins,
     validate_dependency_policy,
@@ -43,7 +43,11 @@ def export_bundle(root: Path, out: Path) -> Path:
     manifest = load_manifest(root)
     validate_manifest(manifest, root)
     validate_identity(manifest, root)
-    policy = load_dependency_policy(root)
+    # Issue #288 LOW 6: the policy block's bytes are read ONCE — the loader
+    # below validates these bytes and the verbatim embed consumes the same
+    # ones (no re-read window between validate and embed).
+    manifest_bytes = (root / "standards/standards-manifest.json").read_bytes()
+    policy = _dependency_policy_from_bytes(manifest_bytes)
     validate_dependency_policy(policy, manifest, root)
     # Every carried version's corpus rows against their pins — the frozen-
     # superseded gate (#215 fold-wave F-B): without it a tampered non-active
@@ -59,7 +63,7 @@ def export_bundle(root: Path, out: Path) -> Path:
     document = {
         "bundle_version": 1,
         "exported_from": "benchweave",
-        "dependency_policy": _policy_document(root),
+        "dependency_policy": _policy_document(manifest_bytes),
         "standards": rows,
     }
     staged = out.parent / (out.name + ".staging")
@@ -77,9 +81,12 @@ def export_bundle(root: Path, out: Path) -> Path:
     return out / "bundle-manifest.json"
 
 
-def _policy_document(root: Path) -> dict[str, Any]:
-    """The dependency-policy block, carried verbatim from the manifest."""
-    document = json.loads((root / "standards/standards-manifest.json").read_bytes())
+def _policy_document(manifest_bytes: bytes) -> dict[str, Any]:
+    """The dependency-policy block, carried verbatim from the SAME bytes the
+    loader validated (issue #288 LOW 6) — never a second read of the file,
+    so no window exists in which the embedded bytes are not the validated
+    bytes."""
+    document = json.loads(manifest_bytes)
     block = document.get("dependency_policy")
     if not isinstance(block, dict):
         raise StandardsError("dependency_policy_invalid: block absent at export time")

@@ -30,6 +30,7 @@ import pytest
 from benchweave.standards.dependency import (
     load_constraints,
     resolve_package,
+    upgrade_lock,
 )
 from benchweave.standards.export import canonical_json
 from benchweave.standards.manifest import StandardsError
@@ -282,6 +283,29 @@ def test_d2_pre_edit_lock_validates_then_the_edit_refuses_naming_the_digest(
     )
     moved_digest = hashlib.sha256(schema_path.read_bytes()).hexdigest()
     assert moved_digest in moved.stderr, "the refusal must name the head's current digest"
+
+
+def test_low5_upgrade_lock_runs_the_dev_head_state_check(tmp_path: Path) -> None:
+    """LOW 5 (issue #288): ``upgrade_lock`` skipped ``_dev_head_state`` —
+    a package carrying a dev row whose head MOVED under the pin re-locked
+    green on an upgrade of a DIFFERENT standard, because only ``pin_lock``
+    and the check lane ran the drift check. The upgrade path now mirrors
+    ``pin_lock``: the moved head refuses ``dev_pin_drift:`` there too."""
+    root, sha = _git_root(tmp_path)
+    package = _package(
+        root,
+        opt_in={"otdp": f"{HEAD_LABEL}@{sha}"},
+        constraints={"otdp": ">=0.2.0,<0.3.0", "registry": ">=0.1.0,<0.2.0"},
+    )
+    written = _run(root, "pin", "--package", "plugins/acme/widget")
+    assert written.returncode == 0, written.stderr
+    prose = root / "standards" / "otdp" / HEAD_LABEL / "device-classes.md"
+    prose.write_bytes(prose.read_bytes() + b"\nA moved-head edit the upgrade must see.\n")
+    with pytest.raises(StandardsError) as raised:
+        upgrade_lock(root, package, "registry", "0.1.1")
+    message = str(raised.value)
+    assert message.startswith("dev_pin_drift:"), message
+    assert "device-classes.md" in message
 
 
 def test_d2_repinning_at_the_moved_sha_heals_the_drift(tmp_path: Path) -> None:

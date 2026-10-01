@@ -367,7 +367,16 @@ def parse_interval(value: object) -> Interval:
             f"constraint_document_invalid: {value!r} is not an explicit half-open "
             "interval (>=X.Y.Z,<X.Y.Z — inclusive lower, exclusive upper)"
         )
-    return Interval(lower=match.group(1), upper=match.group(2))
+    lower, upper = match.group(1), match.group(2)
+    if version_tuple(lower) >= version_tuple(upper):
+        # Issue #288 LOW 7: an equal or inverted pair parsed clean and
+        # failed far downstream ("no served version inside"); the typo
+        # refuses at the parse boundary where it lives.
+        raise StandardsError(
+            f"constraint_bounds_reversed: {value!r} — the lower bound must "
+            "order strictly below the exclusive upper bound"
+        )
+    return Interval(lower=lower, upper=upper)
 
 
 # --- classification ---------------------------------------------------------------
@@ -2085,6 +2094,10 @@ def upgrade_lock(root: Path, package: Path, standard_id: str, precise: str) -> l
             "then pin; fresh-lock creation is deferral D9"
         )
     resolution = resolve_package(root, package, precise={standard_id: precise})
+    # Issue #288 LOW 5: the upgrade path runs the same dev-head-state check
+    # as pin_lock (VR-29) — a dev row whose head moved under the pin never
+    # re-locks green on a different standard's upgrade.
+    _dev_head_state(root, resolution)
     write_lock(package, resolution.raw)
     before = prior.rows.get(standard_id)
     lines = [*resolution.warnings, *_scissors(prior, resolution, None)]

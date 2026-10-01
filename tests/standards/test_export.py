@@ -21,6 +21,47 @@ from benchweave.standards.manifest import (
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def test_low6_the_embedded_policy_block_is_the_validated_bytes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """LOW 6 (issue #288): ``export_bundle`` read the manifest twice — once
+    to validate the policy block, once to embed it verbatim — leaving a
+    window in which the embedded bytes were not the validated bytes. The
+    policy bytes are now read ONCE and the embedder consumes exactly those
+    (the ``Resolution`` threading precedent). The arm interposes on the
+    embed step and tampers the on-disk manifest mid-export: the tampered
+    bytes must NOT reach the bundle."""
+    import benchweave.standards.export as export_module
+
+    root = tmp_path / "root"
+    root.mkdir()
+    shutil.copytree(ROOT / "standards", root / "standards")
+    # The one non-standards normative path (plugin-ui's parity live source)
+    # must exist for validate_manifest — the same repo shape every export
+    # test's ROOT carries.
+    parity = root / "src" / "benchweave" / "presentation" / "contracts.py"
+    parity.parent.mkdir(parents=True)
+    shutil.copy2(ROOT / "src/benchweave/presentation/contracts.py", parity)
+    out = tmp_path / "out"
+    real_embed = export_module._policy_document
+
+    def tampering_embed(*args: bytes) -> dict[str, object]:
+        path = root / "standards" / "standards-manifest.json"
+        document = json.loads(path.read_bytes())
+        document["dependency_policy"]["standards"]["otdp"]["note"] = (
+            "tampered between validate and embed"
+        )
+        path.write_bytes(canonical_json(document))
+        return real_embed(*args)
+
+    monkeypatch.setattr(export_module, "_policy_document", tampering_embed)
+    manifest_path = export_bundle(root, out)
+    embedded = json.loads(manifest_path.read_bytes())["dependency_policy"]
+    assert (
+        embedded["standards"]["otdp"].get("note") != "tampered between validate and embed"
+    ), "the bundle embedded bytes the loader never validated"
+
+
 def test_canonical_json_is_sorted_compact_and_lf_terminated() -> None:
     assert canonical_json({"b": 1, "a": [2, 3]}) == b'{"a":[2,3],"b":1}\n'
 

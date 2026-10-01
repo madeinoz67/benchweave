@@ -562,7 +562,8 @@ def _authorise_pin(
             "is recorded"
         )
     # recorded_at stays None when no now_wall was supplied — the seam never
-    # fabricates a clock (A04); persistence and stamping land with slice 5.
+    # fabricates a clock (A04); persistence and stamping landed with slice 5
+    # (#219).
     return {"otdp_version": record.otdp_version, "recorded_at": now_wall}
 
 

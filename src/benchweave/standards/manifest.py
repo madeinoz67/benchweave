@@ -51,6 +51,15 @@ RANGE_PATTERN = re.compile(
     r"<((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))"
 )
 VERSION_PATTERN = re.compile(r"\d+\.\d+\.\d+")
+#: A canonical-numeral version — the ``RANGE_PATTERN`` segment grammar alone
+#: (issue #288 LOW 4): the dependency-policy STATUS keys (yanked / retired /
+#: per-version note rows) refuse a leading zero — ``"0.02.1"`` is hand-typed
+#: drift that would otherwise load and then match no real version, silently
+#: un-yanking the pin it meant to yank; the load-time refusal agrees with the
+#: export-time validator.
+CANONICAL_VERSION_PATTERN = re.compile(
+    r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)"
+)
 
 
 @dataclass(frozen=True)
@@ -498,7 +507,15 @@ def load_dependency_policy_from_corpus(corpus: Path) -> DependencyPolicy:
 
 
 def _dependency_policy_from(path: Path) -> DependencyPolicy:
-    document = json.loads(path.read_bytes())
+    """The path wrapper over the bytes-accepting internal."""
+    return _dependency_policy_from_bytes(path.read_bytes())
+
+
+def _dependency_policy_from_bytes(raw: bytes) -> DependencyPolicy:
+    """The policy block from BYTES already read by the caller (issue #288
+    LOW 6): the export reads the manifest once and both validates and
+    embeds from these bytes — no re-read window between the two."""
+    document = json.loads(raw)
     block = document.get("dependency_policy")
     if not isinstance(block, dict) or block.get("policy_version") != 1:
         raise StandardsError(
@@ -530,14 +547,15 @@ def _dependency_policy_from(path: Path) -> DependencyPolicy:
         yanked: list[YankRecord] = []
         for version, record in sorted(yanked_raw.items()):
             if (
-                VERSION_PATTERN.fullmatch(str(version)) is None
+                CANONICAL_VERSION_PATTERN.fullmatch(str(version)) is None
                 or not isinstance(record, dict)
                 or not isinstance(record.get("reason"), str)
                 or not isinstance(record.get("since"), str)
             ):
                 raise StandardsError(
-                    f"{where}: yanked entry {version!r} needs a pure-semver key with "
-                    "reason and since strings"
+                    f"{where}: yanked entry {version!r} needs a canonical-"
+                    "numeral version key (leading zeros are hand-typed drift) "
+                    "with reason and since strings"
                 )
             since = record["since"]
             if DEV_OPENED_PATTERN.fullmatch(since) is None:
@@ -564,9 +582,10 @@ def _dependency_policy_from(path: Path) -> DependencyPolicy:
         ):
             raise StandardsError(f"{where}: retired must be a list of version strings")
         for version in retired_raw:
-            if VERSION_PATTERN.fullmatch(version) is None:
+            if CANONICAL_VERSION_PATTERN.fullmatch(version) is None:
                 raise StandardsError(
-                    f"{where}: retired entry {version!r} is not a pure semver version"
+                    f"{where}: retired entry {version!r} is not a canonical-"
+                    "numeral version (leading zeros are hand-typed drift)"
                 )
         note = raw.get("note")
         if note is not None and not isinstance(note, str):
@@ -584,13 +603,14 @@ def _dependency_policy_from(path: Path) -> DependencyPolicy:
                 # refused fail-closed like the yanked record's shape.
                 note_pointer = record.get("migration_note") if isinstance(record, dict) else None
                 if (
-                    VERSION_PATTERN.fullmatch(str(version)) is None
+                    CANONICAL_VERSION_PATTERN.fullmatch(str(version)) is None
                     or not isinstance(note_pointer, str)
                     or not note_pointer
                 ):
                     raise StandardsError(
-                        f"{where}: versions entry {version!r} needs a pure-semver "
-                        "key and a non-empty migration_note string"
+                        f"{where}: versions entry {version!r} needs a canonical-"
+                        "numeral version key (leading zeros are hand-typed "
+                        "drift) and a non-empty migration_note string"
                     )
                 versions[str(version)] = note_pointer
         policies[identifier] = StandardPolicy(
@@ -617,7 +637,16 @@ def _parse_range(value: object) -> tuple[str | None, str | None, str | None]:
             f"range {value!r} is not an explicit half-open interval "
             "(>=X.Y.Z,<X.Y.Z — inclusive lower, exclusive upper)"
         )
-    return match.group(1), match.group(2), None
+    lower, upper = match.group(1), match.group(2)
+    if version_tuple(lower) >= version_tuple(upper):
+        # Issue #288 LOW 7: an equal or inverted pair parsed clean and
+        # failed far downstream (an empty served set, "no served version
+        # inside"); the typo refuses at the parse boundary where it lives.
+        return None, None, (
+            f"constraint_bounds_reversed: range {value!r} — the lower bound "
+            "must order strictly below the exclusive upper bound"
+        )
+    return lower, upper, None
 
 
 def retained_versions(root: Path, standard_id: str) -> tuple[str, ...]:
