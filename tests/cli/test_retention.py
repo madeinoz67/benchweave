@@ -14,7 +14,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
-from datetime import datetime
+from datetime import datetime, tzinfo
 from pathlib import Path
 from typing import Any
 
@@ -1650,6 +1650,81 @@ def test_fold2_wedge_exhaustion_beyond_domain_renders_decidable_output(
     trickle_line = next(ln for ln in md.splitlines() if ln.startswith("- run:run-trickle"))
     assert "beyond the datetime domain" in trickle_line
     assert fatpipe["exhaustion_at"][:4] in md
+
+
+def test_fold2_wedge_exhaustion_instant_is_conversion_independent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Issue #207: the rendered exhaustion instant is pure datetime
+    arithmetic — the platform's timestamp-conversion machinery is never on
+    the path. Windows' ``fromtimestamp`` refuses instants beyond the C
+    runtime's range (roughly year 3001), so an in-domain year-~5200
+    forecast rendered absent there with a FALSE beyond-domain disclosure.
+    Refusing every ``fromtimestamp`` call must change nothing: the
+    in-domain instant still renders, and only the true domain-overflow key
+    (trickle) keeps the absent instant + disclosure."""
+    from benchweave.cli import retention as retention_module
+    from benchweave.cli.retention import render_markdown
+
+    class _RefusingDatetime(datetime):
+        @classmethod
+        def fromtimestamp(
+            cls, ts: float, tz: tzinfo | None = None
+        ) -> _RefusingDatetime:
+            raise OSError("simulated conversion-machinery refusal")
+
+    monkeypatch.setattr(retention_module, "datetime", _RefusingDatetime)
+
+    data_dir = _seed(tmp_path)
+    store = Store.open(db_path(data_dir))
+    try:
+        store.create_run("run-trickle", {"procedure_id": "demo"}, "op", T0)
+        store.put_run_state("run-trickle", BENCH, "running", T1)
+        writer = CaptureStagingStore(
+            store, max_capture_bytes=10_000_000, max_dataset_bytes=10**13
+        )
+        for cid, opened, closed in (
+            ("cap-tr1", T0, "2026-09-20T00:00:01Z"),
+            ("cap-tr2", "2026-09-20T00:00:01Z", "2026-09-20T00:00:02Z"),
+        ):
+            writer.open_capture(
+                capture_id=cid, context_key="run:run-trickle", fmt="raw_binary",
+                sample_count=None, max_bytes=1000, now=opened)
+            writer.append(cid, b"\x0b" * 2, "run:run-trickle")
+            writer.finalise(cid, closed, "run:run-trickle")
+        store.create_run("run-fatpipe", {"procedure_id": "demo"}, "op", T0)
+        store.put_run_state("run-fatpipe", BENCH, "running", T1)
+        for cid, opened, closed in (
+            ("cap-fat1", T0, "2026-09-20T00:00:01Z"),
+            ("cap-fat2", "2026-09-20T00:00:01Z", "2026-09-20T00:00:02Z"),
+        ):
+            writer.open_capture(
+                capture_id=cid, context_key="run:run-fatpipe", fmt="raw_binary",
+                sample_count=None, max_bytes=1000, now=opened)
+            writer.append(cid, b"\x0c" * 100, "run:run-fatpipe")
+            writer.finalise(cid, closed, "run:run-fatpipe")
+    finally:
+        store.close()
+
+    model = _model(data_dir, now=NOW, max_dataset_bytes=10**13)
+    wedge = {c["context_key"]: c for c in model["quota_wedge"]["contexts"]}
+    fatpipe = wedge["run:run-fatpipe"]
+    assert fatpipe["state"] == "forecast"
+    assert fatpipe["exhaustion_at"] is not None, (
+        "the in-domain instant renders WITHOUT timestamp conversion"
+    )
+    assert fatpipe["exhaustion_at"].startswith("5")  # a rendered year ~52xx
+    trickle = wedge["run:run-trickle"]
+    assert trickle["time_to_exhaustion_s"] is not None, "the honest figure"
+    assert trickle["exhaustion_at"] is None, "true domain overflow"
+    assert any(
+        "beyond the datetime domain" in d for d in model["disclosures"]
+    ), model["disclosures"]
+    md = render_markdown(model)
+    trickle_line = next(
+        ln for ln in md.splitlines() if ln.startswith("- run:run-trickle")
+    )
+    assert "beyond the datetime domain" in trickle_line
 
 
 def test_fold3_markdown_escapes_store_sourced_identifiers(tmp_path: Path) -> None:
