@@ -172,7 +172,7 @@ Next (N):
 |---|---|---|
 | N1 | Registry gateway side done (signed catalogue, content-addressed cache admission, activation, unsigned dev loop) | `src/benchweave/registry/{authenticity,admission,activation,resolver}.py`; `dev-unsigned` signature policy (`resolver.py:125-144`); corroborated by `docs/device-developer-guide.md:15` |
 | N2 | "the registry service and a device-install command do not exist" — **kept verbatim**; load-bearing citation | TRUE (no service; no install command in the CLI tree); cited by `docs/implementation-planning/10-contributor-publishing-design.md:19`; the publishing path is tracked as #209 → #223–#228 |
-| N3 | Bridge remaining scope: dataset publishing and lookup | `otdp_bridge.py:340-353` dispatch table has no dataset verbs; docstring "Dataset publishing/lookup … still need the dataset-services slice" |
+| N3 | Bridge remaining scope: dataset publishing and lookup | `otdp_bridge.py:340-353` dispatch table has no dataset verbs; docstring "Dataset publishing/lookup … still need the dataset-services slice" **[Refute-corrected 2026-10-01: this citation elided the docstring's "and the payload services" — §12, F1.]** |
 | N4 | …and profile scheduling on a native async host | Docstring "profile scheduling still needs a native async host"; #159 open |
 | N5 | First operator web UI will be server-rendered | PRD 12 (#295), ruled 2026-10-01: "server-rendered HTMX renderer"; G-slices #297–#305 open |
 | N6 | React reference renderer retired in a gated cutover | PRD 12: "retires React as the reference renderer in one gated cutover"; G1e #301 |
@@ -436,3 +436,34 @@ the prose edit as commit 2 with the fast lane per commit and the full battery be
 the three deferral sub-issues of §9.1–9.3 filed on this tracker, and the §4.3 forks surfaced
 to the owner before or at review — the §4.3 default (keep the capability clause) applies
 unless the owner says otherwise.
+
+---
+
+## 12. REFUTE CORRECTION — 2026-10-01 (folded on this branch after the build)
+
+The refute pass returned two MEDIUM findings against this record's shipped line and its §8
+cross-surface claim; both folded in the fold commit on `feat/issue317-website-status`.
+Frozen-record discipline (#288 precedent): every original sentence above stands as written —
+this appended block is the correction of record.
+
+**F2 — §8's no-contradiction claim is FALSE (and §1's closing line with it).** §8 states the
+site "does **not** contradict the two still-stale surfaces (§1's table) — deliberately", on
+the theory that dropping the verb enumeration leaves the site asserting no verb set. Wrong:
+the shipped remaining-scope sentence names what is LEFT, which entails the complement —
+capture, streaming and invoke work today — while `docs/device-developer-guide.md:17`, staged
+into the SAME assembled site (the Docs panel serves it at
+`docs/user-guide/device-developer-guide.html`), still says "Profile actions, capture/streaming
+and automatic activation through a live gateway are not provided by this bridge." That is a
+same-deployment contradiction newly created by this increment, not one avoided by it. It is
+real and transient: it dies when the §9.1 sub-issue corrects the guide, which is where the
+contradiction is carried.
+
+**F1 — the shipped line elided the docstring's third gap.** §3.5's N3 row cited the bridge
+docstring for "Dataset publishing/lookup" but elided "and the payload services" — the
+docstring reads "Dataset publishing/lookup **and the payload services** still need the
+dataset-services slice" (`otdp_bridge.py:16-18`). Under §3.3's definite-article exhaustive
+("The OTDP bridge's remaining scope is …"), naming 2 of 3 gaps shipped a false claim on the
+public site. Corrected in the fold commit to: "The OTDP bridge's remaining scope is dataset
+publishing and lookup with its payload services, and profile scheduling on a native async
+host." — all three gaps named, still one line (the line-count constraint holds at 471), still
+no verb enumeration.
