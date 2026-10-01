@@ -2335,7 +2335,17 @@ def test_belt_swap_still_audits_gen1_x1_floor(
     floor while the belt's fresh generation is clean — and the floor must
     RED on gen-1 through the swapped verdict. RED-shown at build against
     the pre-fix shape (the gen-1 floor call neutralized out of the axis
-    test): the poisoned cell then passes — the exact defect."""
+    test): the poisoned cell then passes — the exact defect.
+
+    Slice 4 (run 36867869659): the ladder indexes by PACED order — an
+    infrastructure retry's rig is discarded before its acquisition (never
+    paces), so construction-order indexing shifted the ladder under load:
+    the discarded rig consumed a poisoning slot, gen-1 drew floor-only,
+    the belt correctly certified nothing (the observed empty map), and
+    the floor audit reded through the pin's own swap post-condition — or
+    the mirrored shift silently vacated the pin. The pace hook appends an
+    adapter on its first pace call; the counting __init__ stays as the
+    construction registry."""
     ladder = (0.55, 1.0, 1.9, 0.75, 1.45)
     adapters: list[ARigAdapter] = []
     original_init = ARigAdapter.__init__
@@ -2347,8 +2357,19 @@ def test_belt_swap_still_audits_gen1_x1_floor(
     monkeypatch.setattr(ARigAdapter, "__init__", counting_init)
     original_pace = ARigAdapter._pace
 
+    paced: list[ARigAdapter] = []
+
     async def first_five_scattered_pace(self: ARigAdapter, total_ms: float) -> None:
-        index = adapters.index(self)
+        # Slice 4: indexed by PACED order — append on FIRST pace; a rig
+        # discarded before its acquisition never paces and consumes no
+        # ladder slot (an infrastructure retry under load shifted a
+        # construction-indexed ladder: run 36867869659 reded the pin's own
+        # swap post-condition on an empty belt map; the mirrored shift
+        # silently vacates the pin). The counting __init__ stays as the
+        # construction registry.
+        if self not in paced:
+            paced.append(self)
+        index = paced.index(self)
         if index < len(ladder):
             await original_pace(self, total_ms * ladder[index])
         else:
@@ -2373,6 +2394,102 @@ def test_belt_swap_still_audits_gen1_x1_floor(
         # The belt really swapped: the fresh generation was certified for
         # the key (a band breach was absorbed), so the red came through
         # the swapped verdict, not from a gen-1-only read.
+        assert _BELT_GENERATION_RUNS.get(("non_capture", "buffered"), 0) == 1, (
+            _BELT_GENERATION_RUNS
+        )
+    finally:
+        _TRIAL_CELLS.clear()
+        _TRIAL_CELLS.update(saved_cells)
+        _BELT_FRESH_GENERATIONS.clear()
+        _BELT_FRESH_GENERATIONS.update(saved_fresh)
+        _BELT_GENERATION_RUNS.clear()
+        _BELT_GENERATION_RUNS.update(saved_runs)
+
+
+def test_belt_swap_pace_allocation_survives_a_pre_acquisition_discard(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Issue #241 slice 4, AR-1's green arm: the belt-swap pin's designed
+    ladder allocation must survive one infrastructure retry that discards
+    its rig BEFORE the acquisition — the merge-run red (run 36867869659)
+    was this shape: the discarded rig consumed a poisoning slot, gen-1
+    drew floor-only, the belt correctly certified nothing, and the floor
+    audit reded through the pin's own swap post-condition on an empty
+    map. With the pace hook indexing by PACED order, the same injected
+    discard changes nothing: a pre-acquisition discard never paces, so
+    gen-1's measured five draw the designed ladder, the 1.9-paced trial
+    breaches the upper band, the belt certifies exactly one fresh
+    generation, and gen-1's floor red lands through the swapped verdict.
+
+    Mutation-RED at build (AR-1): with the hook reverted to
+    construction-order indexing under the same injected discard, the 0.55
+    slot burns on the discarded rig, gen-1 draws floor-only, no designed
+    floor red lands, and this arm reds (DID NOT RAISE) — the pin
+    silently exercising nothing, the vacuous twin of the observed red.
+    The injection is a first-call drain_until_quiet refusal — the trial
+    rhythm's first post-construction step, before any pacing."""
+    ladder = (0.55, 1.0, 1.9, 0.75, 1.45)
+    constructions: list[ARigAdapter] = []
+    paced: list[ARigAdapter] = []
+    discarded: list[ARigAdapter] = []
+    original_init = ARigAdapter.__init__
+
+    def counting_init(self: ARigAdapter) -> None:
+        original_init(self)
+        constructions.append(self)
+
+    monkeypatch.setattr(ARigAdapter, "__init__", counting_init)
+    original_pace = ARigAdapter._pace
+
+    async def pace_ordered_scatter(self: ARigAdapter, total_ms: float) -> None:
+        if self not in paced:
+            paced.append(self)
+        index = paced.index(self)
+        if index < len(ladder):
+            await original_pace(self, total_ms * ladder[index])
+        else:
+            await original_pace(self, total_ms)
+
+    monkeypatch.setattr(ARigAdapter, "_pace", pace_ordered_scatter)
+    original_drain = ContinuityRig.drain_until_quiet
+
+    def discard_first_drain(self: ContinuityRig, **kwargs: Any) -> None:
+        if not discarded:
+            discarded.append(self.adapter_a)
+            raise TrialInfrastructureError(
+                "injected pre-acquisition discard (AR-1 arm)",
+                site="pre-flight-staleness",
+            )
+        return original_drain(self, **kwargs)
+
+    monkeypatch.setattr(ContinuityRig, "drain_until_quiet", discard_first_drain)
+    saved_cells = dict(_TRIAL_CELLS)
+    saved_fresh = dict(_BELT_FRESH_GENERATIONS)
+    saved_runs = dict(_BELT_GENERATION_RUNS)
+    _TRIAL_CELLS.clear()
+    _BELT_FRESH_GENERATIONS.clear()
+    _BELT_GENERATION_RUNS.clear()
+    try:
+        with pytest.raises(AssertionError, match="X1 floor") as raises:
+            test_axis_trials_complete_all_four_axes(
+                tmp_path, "non_capture", "buffered"
+            )
+        assert "x1_ms" in str(raises.value), str(raises.value)
+        # The discard fired exactly once and consumed a construction...
+        assert len(discarded) == 1, (len(discarded), len(constructions), len(paced))
+        # ...PRE-acquisition: it never paced, so it consumed no ladder slot.
+        assert all(a not in paced for a in discarded), (
+            len(paced),
+            len(constructions),
+        )
+        # The measured five drew the full designed ladder: every
+        # construction except the discard paced exactly once.
+        assert len(paced) == len(constructions) - 1, (
+            len(paced),
+            len(constructions),
+        )
+        # The belt really swapped: a band breach was absorbed for the key,
+        # so the floor red came through the swapped verdict.
         assert _BELT_GENERATION_RUNS.get(("non_capture", "buffered"), 0) == 1, (
             _BELT_GENERATION_RUNS
         )
