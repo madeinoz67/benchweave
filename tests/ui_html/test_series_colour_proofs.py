@@ -189,17 +189,18 @@ def test_i4_anchor_constant_last_digit_sensitivity() -> None:
 
 
 def test_i5_machado_rows_sum_to_one() -> None:
-    # Linear-RGB mass conservation; 6-decimal published rounding.
+    # Linear-RGB mass conservation; 6-decimal published rounding. Tolerance
+    # 5e-6 = vitest toBeCloseTo(1, 5) exactly (the TS pin's own bound).
     for rows in MACHADO.values():
         for row in rows:
-            assert sum(row) == pytest.approx(1.0, abs=1e-5)
+            assert sum(row) == pytest.approx(1.0, abs=5e-6)
 
 
 def test_i6_vienot_third_row_exact_and_rows_sum_to_one() -> None:
     for name, rows in VIENOT.items():
         assert rows[2] == (0.0, 0.0, 1.0), f"{name} third row preserves B"
         for row in rows:
-            assert sum(row) == pytest.approx(1.0, abs=1e-5)
+            assert sum(row) == pytest.approx(1.0, abs=5e-6)
 
 
 def test_i7_dual_arms_measure_different_distances() -> None:
@@ -217,9 +218,9 @@ def test_i8_white_round_trips_under_every_model() -> None:
     # is ill-conditioned at the constants' 6-digit precision, ~1e-6 linear).
     for matrix in (*MACHADO.values(), *VIENOT.values()):
         for channel in simulate_linear((1.0, 1.0, 1.0), matrix):
-            assert channel == pytest.approx(1.0, abs=1e-5)
+            assert channel == pytest.approx(1.0, abs=5e-6)
     for channel in brettel_tritan((1.0, 1.0, 1.0)):
-        assert channel == pytest.approx(1.0, abs=1e-5)
+        assert channel == pytest.approx(1.0, abs=5e-6)
 
 
 # --- S3-A1: series tokens hold T1 contrast on the recessed surface ---
