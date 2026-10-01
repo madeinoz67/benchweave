@@ -476,6 +476,7 @@ All notable changes to this project will be documented in this file.
 - 18(n) carries the widened-staleness framing (wave-2 T2 add)
 - #233 register pass — six dormant rows, D5 why-query slice design
 - Standalone web UI PRD (#282)
+- Run close stops dispatched agent lanes too
 
 ### Features
 
