@@ -1074,14 +1074,25 @@ def test_b1_prior_yanked_retention(tmp_path: Path) -> None:
 # --- issue #288 LOW 7: reversed or equal interval bounds refuse at parse ------------
 
 
-@pytest.mark.parametrize("value", [">=0.3.0,<0.3.0", ">=0.4.0,<0.3.0"])
-def test_low7_reversed_or_equal_interval_bounds_refuse(value: str) -> None:
+@pytest.mark.parametrize(
+    ("value", "phrase"),
+    [
+        (">=0.3.0,<0.3.0", "form an empty interval"),
+        (">=0.4.0,<0.3.0", "are reversed"),
+    ],
+)
+def test_low7_reversed_or_equal_interval_bounds_refuse(value: str, phrase: str) -> None:
     """LOW 7 (issue #288): an equal or inverted bound pair parsed clean —
     the failure surfaced far downstream as 'no served version inside' (or
     an empty served set) instead of at the parse boundary where the typo
-    lives. Refused named, at parse time."""
-    with pytest.raises(StandardsError, match="constraint_bounds_reversed:"):
+    lives. Refused named, at parse time; the refute slate's mech-F7 split:
+    an EQUAL pair is an empty interval, not a reversal — one prefix, honest
+    remediation text for each shape."""
+    with pytest.raises(StandardsError) as raised:
         parse_interval(value)
+    message = str(raised.value)
+    assert message.startswith("constraint_bounds_reversed:"), message
+    assert phrase in message, (value, message)
 
 
 # --- issue #288 M4: one derivation, labeled degenerate states -----------------------

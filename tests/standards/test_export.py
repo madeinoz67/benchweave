@@ -24,13 +24,18 @@ ROOT = Path(__file__).resolve().parents[2]
 def test_low6_the_embedded_policy_block_is_the_validated_bytes(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """LOW 6 (issue #288): ``export_bundle`` read the manifest twice — once
-    to validate the policy block, once to embed it verbatim — leaving a
-    window in which the embedded bytes were not the validated bytes. The
-    policy bytes are now read ONCE and the embedder consumes exactly those
-    (the ``Resolution`` threading precedent). The arm interposes on the
-    embed step and tampers the on-disk manifest mid-export: the tampered
-    bytes must NOT reach the bundle."""
+    """LOW 6 (issue #288): ``export_bundle`` read the POLICY block's bytes
+    twice — once to validate, once to embed verbatim — leaving a window in
+    which the embedded bytes were not the validated bytes. The policy
+    block's bytes are now read ONCE and the embedder consumes exactly
+    those (the ``Resolution`` threading precedent). Accurate scope (the
+    refute slate's mech-F8 correction): the FILE is still read twice in
+    total — the manifest lane's own load, then this policy read; the
+    torn-window residual between those two reads is caught downstream by
+    the SDK-side marker mirror (M5) and the gateway's served_set_drift
+    lane, not here. The arm interposes on the embed step and tampers the
+    on-disk manifest mid-export: the tampered bytes must NOT reach the
+    bundle's embedded policy block."""
     import benchweave.standards.export as export_module
 
     root = tmp_path / "root"

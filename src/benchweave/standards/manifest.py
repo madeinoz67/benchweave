@@ -638,13 +638,23 @@ def _parse_range(value: object) -> tuple[str | None, str | None, str | None]:
             "(>=X.Y.Z,<X.Y.Z — inclusive lower, exclusive upper)"
         )
     lower, upper = match.group(1), match.group(2)
-    if version_tuple(lower) >= version_tuple(upper):
-        # Issue #288 LOW 7: an equal or inverted pair parsed clean and
-        # failed far downstream (an empty served set, "no served version
-        # inside"); the typo refuses at the parse boundary where it lives.
+    lower_order, upper_order = version_tuple(lower), version_tuple(upper)
+    if lower_order == upper_order:
+        # Issue #288 LOW 7 + refute slate mech-F7: an equal pair forms an
+        # EMPTY interval — not a reversal. Same prefix, honest remediation.
         return None, None, (
-            f"constraint_bounds_reversed: range {value!r} — the lower bound "
-            "must order strictly below the exclusive upper bound"
+            f"constraint_bounds_reversed: range {value!r} — the bounds are "
+            "equal and form an empty interval; nothing can be inside it "
+            "(widen the upper bound or raise the lower)"
+        )
+    if lower_order > upper_order:
+        # Issue #288 LOW 7: an inverted pair parsed clean and failed far
+        # downstream (an empty served set, "no served version inside");
+        # the typo refuses at the parse boundary where it lives.
+        return None, None, (
+            f"constraint_bounds_reversed: range {value!r} — the bounds are "
+            "reversed (the lower bound orders above the exclusive upper); "
+            "correct the pair"
         )
     return lower, upper, None
 

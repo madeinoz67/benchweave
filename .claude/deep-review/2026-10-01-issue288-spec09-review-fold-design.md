@@ -88,6 +88,14 @@ founding record already proved:
    a *new* line whose only payload is one real digest still admits; it is visible as an
    added line in the promotion PR, which is the review surface, and cannot launder an
    *edit* of an existing line (those always pair).
+   **REFUTE-SLATE DISCLOSURE (2026-10-01, mech-F9, folded with the slate's
+   digest-lane overhaul):** the digest→path map is one-to-many when two
+   files in one tree have IDENTICAL content — the path-set then names both
+   and a re-stamp between same-content files admits. Measured at fold
+   time: zero duplicate-content files within any single one of the 18
+   retained version directories (the corpus's 254 duplicate-content
+   groups are CROSS-version copies under copy-never-move — different
+   trees, never one tree's map); unreachable today, disclosed.
 
 **Precedent.** The identity re-stamp rule (`_VERSIONISH` residual equality) and the F6
 digest-membership fold (`test_a_re_stamp_line_carrying_a_fake_digest_refuses`) are the
@@ -294,7 +302,7 @@ this slice beyond the pointer). **Kill:** either repo green with a marker plant.
 | 3 | GOVERNANCE promotion step-list omits record-append + landing_sha-fill | **BUILD (GOVERNANCE, the flagged standards-path commit G5)** — two clauses appended to the promotion paragraph (`standards/GOVERNANCE.md:197-210`): "append the promotion record (dev_edit_sha, dev_tree_digest via `dev_tree_digest_at`) in the promotion PR; fill `landing_sha` by the immediate post-landing append". Veto fallback: #288 sub-issue (§9). |
 | 4 | Canonical numerals on policy status keys | **BUILD** — `_dependency_policy_from`'s key checks (`manifest.py:533/:567/:587`) move from `VERSION_PATTERN` (`\d+.\d+.\d+`, leading zeros pass) to a canonical-numeral pattern sharing `RANGE_PATTERN`'s segment grammar; `"0.02.1"` then refuses `dependency_policy_invalid:` at LOAD on the admission path too, agreeing with `validate_dependency_policy`'s export-time refusal. RED: plant a leading-zero yanked key in a temp corpus → admission path refuses (today it silently un-yanks). |
 | 5 | `upgrade_lock` skips `_dev_head_state` | **BUILD** — one line: call `_dev_head_state(root, resolution)` in `upgrade_lock` after `resolve_package`, mirroring `pin_lock` (`dependency.py:1971`) and the check lane (`check.py:155`). RED: a dev-row package whose head moved, upgraded on a different standard — today re-locks green; after, refuses `dev_pin_drift:`. |
-| 6 | `export_bundle` read-once | **BUILD** — thread the validated document: `export_bundle` reads `standards-manifest.json` bytes ONCE; `load_dependency_policy` gains a bytes-accepting internal (the root/corpus wrappers keep their signatures) and the verbatim block handed to `_policy_document` comes from those same bytes (the `Resolution` threading precedent at `dependency.py:992-1001` — no re-read window between validate and embed). RED: monkeypatched second read returning different bytes → detected/refused rather than silently embedded (assert the embedded block equals the validated one). |
+| 6 | `export_bundle` read-once | **BUILD** — thread the validated document: `export_bundle` reads `standards-manifest.json` bytes ONCE; `load_dependency_policy` gains a bytes-accepting internal (the root/corpus wrappers keep their signatures) and the verbatim block handed to `_policy_document` comes from those same bytes (the `Resolution` threading precedent at `dependency.py:992-1001` — no re-read window between validate and embed). RED: monkeypatched second read returning different bytes → detected/refused rather than silently embedded (assert the embedded block equals the validated one). **REFUTE-SLATE CORRECTION (2026-10-01, mech-F8/adv1-F6): the "bytes ONCE" claim overstated — the POLICY lane reads once (the embedded block comes from the validated bytes), but the FILE is read twice in total (the manifest lane's own load, then the policy read). The torn-window residual this leaves is disclosed: a concurrent write between those two reads is NOT caught at export — it is caught downstream by the SDK-side marker mirror (M5) and the gateway's `served_set_drift:` lane.** |
 | 7 | Reversed/equal interval bounds parse clean | **BUILD** — `parse_interval` (`dependency.py:347-368`) refuses `constraint_bounds_reversed:` (equal or lower ≥ upper) at parse time, both in the constraints loader and `_parse_range` (manifest-side keys share the check via the loader family). RED: `">=0.3.0,<0.3.0"` and `">=0.4.0,<0.3.0"` refuse named (today: parse, then "no served version inside"). |
 | 8 | validation-report regeneration content-unverified | **DON'T-BUILD (covered)** — the sweep sanctions the file's ADDITION; its CONTENT is verified by the existing family pin (`test_validation_report_matches_live_run` + tamper arms, obligation 13): a promotion landing makes its target the active version, whose committed report is byte-compared to a fresh live render in every CI run. A content-wrong regeneration reds the landing PR's own gates. Residual: none reachable (a promoted-but-never-active version is not the promotion flow — promotion IS the active bump, GOVERNANCE :197). |
 
@@ -455,7 +463,12 @@ junitxml, never a filtered summary).
 ## 6. CI cost
 
 No new lanes. ~20 new gateway tests + ~10 SDK tests, seconds-scale; the M2 history walk
-adds ~17 fast git-log subprocess calls inside existing suite tests; the docs-baseline
+adds ~17 fast git-log subprocess calls inside existing suite tests (DESIGN
+estimate; MEASURED at fold time: ~34 history-walk subprocesses per
+real-tree validate — 1 rev-parse, 17 introducing-commit logs, 16
+parent-manifest reads, plus the shallow probe the refute slate added —
+inside ~75 total subprocess calls and ~0.8s wall for the whole
+validate including the founding-record sweep); the docs-baseline
 refresh is a generated artifact regenerated in G6.
 
 ## 7. What this fold defers (sub-issue payloads — the owner's no-silent-deferral rule)
