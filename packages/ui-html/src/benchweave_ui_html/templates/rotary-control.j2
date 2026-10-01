@@ -4,5 +4,5 @@
           aria-valuenow="{{ data.now }}"
           aria-valuetext="{{ data.now }} {{ data.unit }}, staged"></button>
   <output class="bw-rotary__value">{{ data.now }} {{ data.unit }}</output>
-  <span class="bw-rotary__state">Staged</span>
+  <span class="bw-rotary__state">{% include "icon/staged.j2" %}Staged</span>
 </div>

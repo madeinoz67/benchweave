@@ -1,8 +1,11 @@
 <div class="bw-confirm" data-bw-confirm="{{ 'armed' if data.armed else 'idle' }}">
-  <button type="button" class="bw-confirm__initial" aria-expanded="{{ 'true' if data.armed else 'false' }}">{{ data.initial_label }}</button>
+  <button type="button" class="bw-confirm__initial" aria-expanded="{{ 'true' if data.armed else 'false' }}"{% if data.guard_reason %} disabled data-bw-disabled-reason="{{ data.guard_reason }}"{% endif %}>{{ data.initial_label }}</button>
   <div class="bw-confirm__step">
     <p class="bw-confirm__text">{{ data.armed_text }}</p>
-    <button type="button" class="bw-confirm__go">Confirm: {{ data.confirm_label }}</button>
+    <button type="button" class="bw-confirm__go"{% if data.guard_reason %} disabled data-bw-disabled-reason="{{ data.guard_reason }}"{% endif %}>Confirm: {{ data.confirm_label }}</button>
     <button type="button" class="bw-confirm__cancel">Cancel</button>
+    {%- if data.guard_reason %}
+    <span class="bw-button__reason" data-bw-disabled-reason="{{ data.guard_reason }}"><span data-bw-disabled-label>{{ data.guard_label }}</span></span>
+    {%- endif %}
   </div>
 </div>

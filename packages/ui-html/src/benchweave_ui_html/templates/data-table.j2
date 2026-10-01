@@ -10,7 +10,7 @@
     </thead>
     <tbody>
       {%- for row in data.rows %}
-      <tr data-row-key="{{ row.key }}">
+      <tr data-row-key="{{ row.key }}"{% if row.stale %} data-bw-stale="true" class="bw-table-row--stale"{% endif %}>
         {%- for cell in row.cells %}
         <td>{{ cell }}</td>
         {%- endfor %}

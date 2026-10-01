@@ -14,7 +14,7 @@
     <div class="bw-plot__legend-row" data-bw-channel-id="{{ row.channel_id }}" data-bw-series-slot="{{ row.slot }}" data-bw-resolved-series="{{ row.resolved_series }}" data-line="{{ row.data_line }}" data-bw-symbol="{{ row.symbol }}"{% if row.axis %} data-bw-axis="{{ row.axis }}"{% endif %}{% if row.provenance_kind %} data-bw-trace-provenance="{{ row.provenance_kind }}"{% endif %}{% if row.hidden %} data-hidden aria-label="{{ row.channel_id }} (hidden by presentation preference)"{% endif %}>
       <span class="bw-plot__legend-swatch"></span>
       <span class="bw-plot__legend-label">{{ row.channel_id }}</span>
-      {%- if row.hidden %}<span class="bw-plot__hidden-marker">hidden</span>{% endif %}
+      {%- if row.hidden %}<span class="bw-plot__hidden-marker">{% include "icon/hidden.j2" %}hidden</span>{% endif %}
       {%- if row.provenance_marker %}<span class="bw-plot__provenance">{{ row.provenance_marker }}{% if row.provenance_disclosure %} — {{ row.provenance_disclosure }}{% endif %}</span>{% endif %}
     </div>
     {%- endfor %}

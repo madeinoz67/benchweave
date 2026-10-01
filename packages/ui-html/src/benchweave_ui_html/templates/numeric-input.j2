@@ -4,5 +4,5 @@
          min="{{ data.minimum }}" max="{{ data.maximum }}" step="{{ data.step }}"
          aria-describedby="{{ data.help_id }}">
   <span class="bw-numeric__unit">{{ data.unit }}</span>
-  <p class="bw-numeric__help" id="{{ data.help_id }}">{{ data.help_text }}</p>
+  <p class="bw-numeric__help" id="{{ data.help_id }}">{% include "icon/staged.j2" %}{{ data.help_text }}</p>
 </div>

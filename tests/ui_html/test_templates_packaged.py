@@ -28,6 +28,8 @@ COMPONENT_TEMPLATES = frozenset(
         "reading-tile.j2",
         "refusal.j2",
         "rotary-control.j2",
+        "toast.j2",
+        "workbench.j2",
     }
 )
 ICON_TEMPLATES = frozenset(
