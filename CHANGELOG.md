@@ -491,6 +491,8 @@ All notable changes to this project will be documented in this file.
 - The promotion flow names its record steps (LOW 3)
 - Issue #288 G6 — dev-head pinning how-to, stale-version guidance, invariants/obligations amendments, CLI table
 - Register constraint_bounds_reversed and the marker_mirror_drift posture (F1+F2)
+- Revise PRD 11 for the PRD 12 rulings (issue #312)
+- Sweep remaining ECharts references to uPlot (issue #312)
 
 ### Features
 
