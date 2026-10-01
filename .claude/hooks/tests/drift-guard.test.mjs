@@ -125,4 +125,14 @@ test('verb-set drift: all three trigger shapes fire Drift 23; a pre-touched surf
     'satisfaction recorded first must quiet the verb-set trigger'
   )
   cleanup(quietSession)
+
+  // A NON-trigger path stays silent (refute fold F7): the rule must not
+  // over-fire on source outside its three trigger shapes.
+  const silentSession = 'drift-guard-test-verbset-silent-' + process.pid
+  assert.equal(
+    call(silentSession, 'src/benchweave/content/store.py'),
+    null,
+    'no rule may fire for a path outside every trigger set'
+  )
+  cleanup(silentSession)
 })

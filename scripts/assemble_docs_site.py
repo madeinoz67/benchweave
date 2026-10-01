@@ -298,13 +298,16 @@ def capture_standards_help() -> str:
     """Capture ``python -m benchweave.standards --help`` — the page's authority.
 
     COLUMNS is pinned so argparse wrapping is deterministic: a width-varying
-    capture would make the verb pin flaky. The captured text is the honest
+    capture would make the verb pin flaky. The env is CONSTRUCTED, not
+    inherited-with-overrides: an inherited env can forward a PYTHONPATH that
+    shadows the real package (refute fold F3) — the capture must see THIS
+    tree's module and nothing else. The captured text is the honest
     artifact — what the shipped page shows is what this tree runs.
     """
     text = run(
         [sys.executable, "-m", "benchweave.standards", "--help"],
         cwd=REPO,
-        env={**os.environ, "COLUMNS": "100"},
+        env={"PATH": os.environ.get("PATH", ""), "COLUMNS": "100"},
     )
     if not text.strip():
         raise SystemExit("standards_cli_capture_failed: empty --help output")
@@ -724,10 +727,15 @@ def main() -> None:
     paths = site_paths()
     staging = REPO / "user_guide"
     standards_staging = REPO / "standards_pages"
-    stage_pages(USER_GUIDE, staging, paths)
-    write_standards_cli_page(staging)
-    stage_pages(standards_manifest(), standards_staging, paths, keep_relative=True)
+    # All staging runs INSIDE the try/finally whose finally removes the
+    # staged trees: an abort anywhere between the first stage and the build
+    # otherwise leaves gitignored staging residue in the working tree —
+    # residue the version-literal docs gate then scans and reddens on
+    # (observed in the #291 build; refute fold F4).
     try:
+        stage_pages(USER_GUIDE, staging, paths)
+        write_standards_cli_page(staging)
+        stage_pages(standards_manifest(), standards_staging, paths, keep_relative=True)
         cache = REPO / ".great-docs-cache"
         if cache.exists():
             shutil.rmtree(cache)
