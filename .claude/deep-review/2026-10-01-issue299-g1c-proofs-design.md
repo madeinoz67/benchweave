@@ -215,3 +215,44 @@ A reviewer runs: `UV_PROJECT_ENVIRONMENT=venv uv run pytest packages/ui-html/tes
 — end of record —
 
 > Post-assembly note (controller, 2026-10-01): the maintainer rulings resolve §9 — fork 1 → G1b owns the reading-tile pins; fork 2 → S1-A3 stays IN; forks 3–4 → documented-as-found stands. G1a's layout is confirmed (`packages/ui-html`, distribution `benchweave-ui-html`, `contract_harness/`, import root `benchweave_ui_html`), making §1.1's "a rename, no logic" clause moot. The rulings live on the tracker (#299); §9's text is the pre-commitment artefact and is not edited.
+
+---
+
+## Erratum (2026-10-01, post-refute fold — verdict DEFENDED, three adopt-with-recs rows)
+
+The refute battery defended every line of this slice: its independent
+re-derivation of CIEDE2000 from the paper agrees with the port to a max
+difference of 1.8e-14 over the reference rows, and its two independent
+mulberry32 ports reproduce all 24 golden vectors. Three corrections are
+adopted per the owner's standing disposition; the sections above stay frozen
+and THIS erratum governs where they disagree:
+
+1. **§7's reviewer command is wrong for the landed layout.** §7 reads
+   `UV_PROJECT_ENVIRONMENT=venv uv run pytest packages/ui-html/tests -q`; the
+   proofs landed at `tests/ui_html/` (§1.1's "a rename, no logic" clause +
+   G1a's landed wiring — the build's disclosed reconciliation), and the
+   committed path exits 4 (pytest usage error: no such directory). The
+   correct command is `UV_PROJECT_ENVIRONMENT=venv uv run pytest
+   tests/ui_html -q` — exit 0, 117 passed / 0 failed / 0 errors (junitxml) at
+   5fec47c.
+2. **§3 deferral 3's G1e checklist gains a row: arm (b)'s TS regeneration
+   retires or re-points WITH arm (c).** Verbatim arm (b) regenerates the
+   7-comparator set by parsing `ui/src/series-colors.test.ts`'s
+   `severityAll` loop; when G1e deletes the TS suite, that parse fails
+   closed (verified against a tree without the file: the arm errors, never
+   skips). The G1e deletion change must therefore retire arm (b)'s
+   TS-regeneration half or re-point it at the ported comparator constant, as
+   deliberately as it already rows for arm (c) and the token path.
+3. **Observation F4, recorded for G1e (not acted on here): the published
+   34th Sharma row is externally confirmable now.** The refute battery's
+   independent implementation returns 0.9082 for the 34th pair
+   (2.0776, 0.0795, -1.1350) / (0.9033, -0.0636, -0.5514), so the I1 pin's
+   in-file reason ("could not independently confirm its coordinate tuple
+   against a second reproduction") no longer holds. Adding the row
+   strengthens the pin; it lands with G1e's pass over the TS suite's own
+   copy, not smuggled into this slice.
+
+Fold (3) of the same disposition — the I5/I6/I8 pin tolerance tightened from
+abs=1e-5 to abs=5e-6, matching vitest `toBeCloseTo(1, 5)` (= 0.5e-5) exactly —
+lands in the test module, not this record; its rerun evidence (3/3 pins green
+at 5e-6, junitxml) rides that commit.
