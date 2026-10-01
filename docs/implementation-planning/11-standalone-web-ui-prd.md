@@ -52,7 +52,7 @@ Evidence baseline: upstream `madeinoz67/benchweave` main, `benchweave-sdk` 0.3.1
 | Fork migration | `adc_6ch_12bit` runs under the standalone host with its own `host.py`, `app.py`, `app.js` and `mcp_server.py` deleted |
 | Second adapter | One non-ADC adapter (DPS-150 or a mock-transport reference) runs unmodified |
 | Renderer parity | All nine baseline preview scenarios render with matching page, binding, severity and state structure in both renderers |
-| Client weight | No build step; shipped JS limited to htmx, its SSE extension, ECharts and a small host script (size budget set in §8 Q6) |
+| Client weight | No build step; shipped JS limited to htmx, its SSE extension, uPlot and a small host script (size budget set in §8 Q6) |
 | Accessibility | WCAG 2.2 AA on implemented flows, axe clean in CI |
 | MCP parity | Every UI action that changes state has an MCP tool or a documented reason it does not |
 
@@ -254,8 +254,8 @@ Authoring (NFR-S8, NFR-S9). An agent that can rewrite and reload adapter code ho
 **Packaging (NFR-P).**
 
 - NFR-P1. The SDK wheel's dependency set and contents are unchanged (PKG-1, PKG-2). Web, MCP and serial dependencies live in the standalone distribution.
-- NFR-P2. Pinned versions aligned with the gateway where shared: FastAPI, uvicorn, `fastmcp[server]==4.0.3`, ECharts 6.1.0. htmx vendored as a single hashed file with its SSE extension.
-- NFR-P3. Vendored UI assets (tokens, themes, htmx, ECharts) are inventory-hashed and verified at serve time, as `bundled_assets()` does for the preview renderer.
+- NFR-P2. Pinned versions aligned with the gateway where shared: FastAPI, uvicorn, `fastmcp[server]==4.0.3`, uPlot. The digital lane renderer is host-owned (no vendored JS for it). htmx vendored as a single hashed file with its SSE extension.
+- NFR-P3. Vendored UI assets (tokens, themes, htmx, uPlot) are inventory-hashed and verified at serve time, as `bundled_assets()` does for the preview renderer.
 - NFR-P4. Python 3.13, uv, runs on Linux, macOS and Windows (serial on all three).
 
 **Quality (NFR-Q).**
@@ -336,7 +336,7 @@ Each has a recommendation; rulings stay with the owner.
 2. uPlot (MIT, ~50 KB, Canvas 2D) for analog plus a host-owned Canvas 2D lane renderer for digital, both behind the closed plot interface, with host-side decimation. Fastest non-WebGL option; single-maintainer risk, mitigated by vendoring.
 3. WebGL (webgl-plot). Fastest; axes, labels, cursors and accessibility all become ours.
 
-**Recommend host-side decimation regardless of renderer** (min/max per pixel column for analog, transition lists with a multi-edge flag for digital), and **option 2 subject to a spike**: a real 32-channel capture of at least 10 M samples and a 60-minute ADC capture; zoom and pan redraw under 50 ms; live 6-channel stream at 60 fps under 20% CPU; a one-sample glitch visible at every zoom. Rule before I3. SW-25 names ECharts until this is ruled. SciChart.js and LightningChart JS are excluded on licence and telemetry grounds.
+**Recommend host-side decimation regardless of renderer** (min/max per pixel column for analog, transition lists with a multi-edge flag for digital), and **option 2 subject to a spike**: a real 32-channel capture of at least 10 M samples and a 60-minute ADC capture; zoom and pan redraw under 50 ms; live 6-channel stream at 60 fps under 20% CPU; a one-sample glitch visible at every zoom. Rule before I3. Ruled 2026-10-01: Option B — uPlot (analog) + host-owned Canvas 2D lane renderer (digital), host-side min/max decimation, vendored. SciChart.js and LightningChart JS are excluded on licence and telemetry grounds.
 
 **Q13. Default capture retention.**
 
