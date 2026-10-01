@@ -1,0 +1,42 @@
+<figure class="bw-lanes" role="img" aria-label="{{ lanes.title }}" aria-describedby="bw-lanes-desc-{{ lanes.title | replace(' ', '-') }}">
+  <div class="bw-lanes__canvas">
+    {%- for lane in lanes.lanes %}
+    <div class="bw-lanes__lane" data-bw-lane="{{ lane.spec.index }}" data-bw-lane-kind="{{ lane.spec.kind }}" data-bw-band-height="1"{% if lane.spec.hidden %} data-hidden aria-label="{{ lane.spec.label }} (hidden by presentation preference)"{% endif %}>
+      <span class="bw-lanes__label">{{ lane.spec.label }}{% if lane.spec.hidden %} <span class="bw-lanes__hidden-marker">hidden</span>{% endif %}</span>
+      {%- if lane.spec.kind == "channel" %}
+      <div class="bw-lanes__channel">
+        {%- for segment in lane.segments %}
+        <span class="bw-lanes__segment{% if segment.glitch %} bw-lanes__glitch{% endif %}" data-bw-first="{{ segment.first }}" data-bw-last="{{ segment.last }}"{% if segment.edge_from %} data-bw-state="{{ segment.edge_from }}→{{ segment.edge_to }}"{% else %} data-bw-state="{{ segment.state }}"{% endif %} data-bw-state-kind="{{ segment.state_kind }}"{% if segment.glitch %} data-bw-glitch{% endif %}></span>
+        {%- endfor %}
+      </div>
+      {%- elif lane.spec.kind == "group" %}
+      <div class="bw-lanes__group" data-bw-radix="{{ lane.spec.radix }}">
+        {%- for cell in lane.bus_cells %}
+        <span class="bw-lanes__bus-cell" data-bw-first="{{ cell.first }}" data-bw-last="{{ cell.last }}"{% if cell.unknown %} data-bw-state="x" data-bw-state-kind="hatch"{% else %} data-bw-bus-value="{{ cell.value }}"{% endif %}></span>
+        {%- endfor %}
+      </div>
+      {%- else %}
+      <div class="bw-lanes__decoder">
+        {%- for span in lane.spans %}
+        <span class="bw-lanes__span" data-bw-span data-bw-span-start="{{ span.start_sample }}" data-bw-span-end="{{ span.end_sample }}"><code class="bw-lanes__payload">{{ span.payload }}</code></span>
+        {%- endfor %}
+        {%- if lane.waiting %}
+        <span class="bw-lanes__waiting" data-bw-waiting>awaiting decode</span>
+        {%- endif %}
+      </div>
+      {%- endif %}
+    </div>
+    {%- endfor %}
+    {%- if lanes.trigger_sample is not none %}
+    <span class="bw-lanes__trigger" data-bw-trigger data-bw-trigger-sample="{{ lanes.trigger_sample }}">trigger</span>
+    {%- endif %}
+    {%- for position in lanes.cursor_positions_samples %}
+    <span class="bw-lanes__cursor" data-bw-cursor data-bw-cursor-sample="{{ position }}">cursor {{ loop.index }}</span>
+    {%- endfor %}
+    {%- if lanes.delta_t_text %}
+    <span class="bw-lanes__delta-t">{{ lanes.delta_t_text }}</span>
+    {%- endif %}
+  </div>
+  <p class="bw-lanes__axis bw-plot__acquisition" data-bw-acquisition data-bw-acquired="{{ lanes.acquired }}" data-bw-plotted="{{ lanes.plotted }}" data-bw-axis-label="{{ lanes.axis_label }}" data-bw-axis-unit="{{ lanes.axis_unit }}">{{ lanes.acquisition_text }}</p>
+  <p class="bw-visually-hidden" id="bw-lanes-desc-{{ lanes.title | replace(' ', '-') }}">{{ lanes.description }}</p>
+</figure>

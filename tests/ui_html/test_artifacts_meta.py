@@ -39,12 +39,22 @@ def _evaluate(row: Row, artifact: registry.Artifact | None) -> str | None:
 
 def test_registration_completeness_is_set_equality() -> None:
     """After ``ensure_registered()`` the registry holds exactly G1b's declared
-    row-ids — no orphan, no gap (the expectation is the artifacts module's
-    own declared scope; the manifest-derivation equality lands with the
-    full 158)."""
+    row-ids — no orphan, no gap. The expectation is the INDEPENDENT
+    manifest derivation: every manifest key of every table except the three
+    G1d-deferred behaviour tables (the final 158)."""
     registry.REGISTRY.clear()
     artifacts.ensure_registered()
-    assert set(registry.REGISTRY) == set(artifacts.G1B_ROW_IDS)
+    from benchweave_ui_html.manifest import MANIFEST
+
+    expected = {
+        f"{table.slug}::{key}"
+        for table in MANIFEST
+        if table.slug not in artifacts.DEFERRED_SLUGS
+        for key in table.keys
+    }
+    assert len(expected) == 158, len(expected)
+    assert set(registry.REGISTRY) == expected
+    assert set(artifacts.G1B_ROW_IDS) == expected
 
 
 def test_ensure_registered_is_idempotent() -> None:

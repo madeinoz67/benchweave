@@ -12,6 +12,8 @@ authority (design record O3).
 
 from __future__ import annotations
 
+from typing import cast
+
 from benchweave_ui_html.data import (
     AlertBubbleData,
     ButtonData,
@@ -24,6 +26,15 @@ from benchweave_ui_html.data import (
     RotaryControlData,
     TableData,
     TableDataRow,
+)
+from benchweave_ui_html.decimate import LaneState
+from benchweave_ui_html.lanes import (
+    ComposedLanes,
+    Cursor,
+    DecoderEvent,
+    LanesDeclaration,
+    LaneSpec,
+    compose_lanes,
 )
 from benchweave_ui_html.plot import (
     ChannelHint,
@@ -416,4 +427,197 @@ def provenance_plot() -> ComposedPlot:
             TraceSpec("smoothed-rail-source", "V"),
         ),
         hints={},
+    )
+
+
+# --- §E.1 digital-lanes: the canonical 1000→12 capture at 1 MHz -------------------
+
+
+def _clk_states() -> tuple[LaneState, ...]:
+    """1000 samples alternating fast enough that most drawn columns cover
+    more than one transition (the glitch-mark fixture)."""
+    return cast(
+        tuple[LaneState, ...], tuple("10"[index % 2] for index in range(1000))
+    )
+
+
+def _data_states() -> tuple[LaneState, ...]:
+    """1 … x … 0 … z — the four-state fixture (§E.4.2)."""
+    return cast(
+        tuple[LaneState, ...],
+        (("1",) * 300) + (("x",) * 200) + (("0",) * 300) + (("z",) * 200),
+    )
+
+
+def digital_lanes() -> ComposedLanes:
+    """§E.1 ``digital-lanes``: the canonical capture — 1000 samples drawn
+    as 12 columns at 1 MHz (the contract's own canonical literals), with a
+    glitch-bearing clock, the four-state data channel, a bus group, a
+    decoder with in-window / fully-outside / zero-width events, a hidden
+    channel, a no-events decoder lane (the awaiting-render note), a
+    non-null trigger and two cursors 7 µs apart."""
+    return compose_lanes(
+        LanesDeclaration(
+            title="Logic capture",
+            description=(
+                "A 1000-sample capture drawn as 12 columns at 1 MHz; the "
+                "auxiliary channel is hidden by presentation preference."
+            ),
+            lanes=(
+                LaneSpec(0, "channel", "clk", states=_clk_states()),
+                LaneSpec(1, "channel", "data", states=_data_states()),
+                LaneSpec(
+                    2,
+                    "group",
+                    "bus[1:0]",
+                    members=("data", "aux"),
+                    bit_width=2,
+                ),
+                LaneSpec(
+                    3,
+                    "decoder",
+                    "UART-REF · 115200 8N1",
+                    source_channel="data",
+                    events=(
+                        DecoderEvent(0.0001, 0.0002, "0x55"),
+                        DecoderEvent(0.0004, 0.0005, "0xAA"),
+                        DecoderEvent(0.0030, 0.0031, "0xFF"),  # fully outside
+                        DecoderEvent(0.0006, 0.0006, "0x00"),  # zero-width
+                    ),
+                ),
+                LaneSpec(
+                    4,
+                    "channel",
+                    "aux",
+                    states=cast(
+                        tuple[LaneState, ...], tuple("0" for _ in range(1000))
+                    ),
+                    hidden=True,
+                ),
+                LaneSpec(5, "decoder", "CRC · poly 0x31", source_channel="clk"),
+            ),
+            acquired=1000,
+            columns=12,
+            axis_label="Capture time",
+            axis_unit="s",
+            sample_rate_hz=1_000_000.0,
+            trigger_s=0.0005,
+            cursors=(Cursor(0.0002), Cursor(0.000207)),
+        ),
+        member_states={
+            "clk": _clk_states(),
+            "data": _data_states(),
+            "aux": cast(tuple[LaneState, ...], tuple("0" for _ in range(1000))),
+        },
+    )
+
+
+def bus_member_order_lanes(*, swapped: bool = False) -> ComposedLanes:
+    """§E.4.3 Member order: lo stable-1 and hi stable-0, grouped (lo, hi) —
+    the first declared member is the LSB, so (lo, hi) renders 1 and the
+    swapped declaration renders 2 (bus values are a pure function of member
+    states and member order)."""
+    stable_lo = cast(tuple[LaneState, ...], tuple("1" for _ in range(24)))
+    stable_hi = cast(tuple[LaneState, ...], tuple("0" for _ in range(24)))
+    members = ("hi", "lo") if swapped else ("lo", "hi")
+    return compose_lanes(
+        LanesDeclaration(
+            title="Bus order",
+            description="Two stable channels on one bus lane.",
+            lanes=(
+                LaneSpec(0, "channel", "lo", states=stable_lo),
+                LaneSpec(1, "channel", "hi", states=stable_hi),
+                LaneSpec(2, "group", "bus", members=members, bit_width=2),
+            ),
+            acquired=24,
+            columns=4,
+            axis_label="Samples",
+            axis_unit="samples",
+        ),
+        member_states={"lo": stable_lo, "hi": stable_hi},
+    )
+
+
+def bus_decimal_lanes() -> ComposedLanes:
+    """§E.4.3 Radix: the per-group decimal opt-in."""
+    stable = cast(tuple[LaneState, ...], tuple("1" for _ in range(24)))
+    return compose_lanes(
+        LanesDeclaration(
+            title="Bus decimal",
+            description="A decimal bus.",
+            lanes=(
+                LaneSpec(0, "channel", "lo", states=stable),
+                LaneSpec(1, "channel", "hi", states=stable),
+                LaneSpec(2, "group", "bus", members=("lo", "hi"), bit_width=2, radix="decimal"),
+            ),
+            acquired=24,
+            columns=4,
+            axis_label="Samples",
+            axis_unit="samples",
+        ),
+        member_states={"lo": stable, "hi": stable},
+    )
+
+
+def null_trigger_lanes() -> ComposedLanes:
+    """§E.4.5 Trigger, the null arm: a null trigger renders no marker and
+    no position is fabricated."""
+    stable = cast(tuple[LaneState, ...], tuple("1" for _ in range(24)))
+    return compose_lanes(
+        LanesDeclaration(
+            title="No trigger",
+            description="A capture with no trigger.",
+            lanes=(LaneSpec(0, "channel", "clk", states=stable),),
+            acquired=24,
+            columns=4,
+            axis_label="Samples",
+            axis_unit="samples",
+        ),
+    )
+
+
+def sample_mode_cursor_lanes() -> ComposedLanes:
+    """§E.4.5 Cursors, sample-index mode: the raw difference in the host's
+    unit — ``Δt = 7 samples``, never alongside the scaled form."""
+    stable = cast(tuple[LaneState, ...], tuple("1" for _ in range(100)))
+    return compose_lanes(
+        LanesDeclaration(
+            title="Sample cursors",
+            description="Two cursors seven samples apart.",
+            lanes=(LaneSpec(0, "channel", "clk", states=stable),),
+            acquired=100,
+            columns=4,
+            axis_label="Samples",
+            axis_unit="samples",
+            sample_rate_hz=1_000_000.0,
+            cursors=(Cursor(0.000010), Cursor(0.000017)),
+        ),
+    )
+
+
+def hidden_source_decoder_lanes() -> ComposedLanes:
+    """§E.4.6 Never orphan: the decoder's source channel is hidden — the
+    events render nothing, orphan onto no neighbour, and the row discloses
+    the wait visibly."""
+    stable = cast(tuple[LaneState, ...], tuple("1" for _ in range(100)))
+    return compose_lanes(
+        LanesDeclaration(
+            title="Hidden source",
+            description="The decode source is hidden; the row waits.",
+            lanes=(
+                LaneSpec(0, "channel", "data", states=stable, hidden=True),
+                LaneSpec(
+                    1,
+                    "decoder",
+                    "UART-REF · 115200 8N1",
+                    source_channel="data",
+                    events=(DecoderEvent(0.00001, 0.00002, "0x55"),),
+                ),
+            ),
+            acquired=100,
+            columns=4,
+            axis_label="Samples",
+            axis_unit="samples",
+            sample_rate_hz=1_000_000.0,
+        ),
     )

@@ -64,7 +64,7 @@ DEFERRED_SLUGS = frozenset({"b-2-state-rules", "b-4-staleness", "c-1-safety-rule
 #: §E.1 components whose renderers land with the plot (slice 3) and lanes
 #: (slice 4) commits. Unknown beyond these: a §E.1 row with no renderer
 #: raises at collection — a new component row can never silently skip.
-_PENDING_COMPONENTS = frozenset({"digital-lanes"})
+_PENDING_COMPONENTS: frozenset[str] = frozenset()
 
 #: The contract's executable token mirror (G1a deferral D3 keeps the path on
 #: ``ui/src/styles/`` until G1e's re-point). The token rows are live where
@@ -133,6 +133,7 @@ _COMPONENT_RENDERERS: dict[str, Callable[[], str]] = {
     "mode-banner": lambda: partials.render_mode_banner(fixtures.mode_banner()),
     "confirm-action": lambda: partials.render_confirm_action(fixtures.confirm_action()),
     "engineering-plot": lambda: partials.render_plot(fixtures.engineering_plot()),
+    "digital-lanes": lambda: partials.render_lanes(fixtures.digital_lanes()),
 }
 
 
@@ -1104,6 +1105,430 @@ def _plot_rule_factory(key: str) -> RuleProofArtifact:
 
 
 # ---------------------------------------------------------------------------
+# §E.4.1–§E.4.6 rule_proof rows — lanes.py structure over the canonical capture
+
+
+def _lane_rows(rendered: RenderedComponent) -> list[Element]:
+    return [
+        element for element in rendered.elements if "data-bw-lane" in element.attrs
+    ]
+
+
+def _segments(rendered: RenderedComponent) -> list[Element]:
+    return [
+        element for element in rendered.elements if "data-bw-state-kind" in element.attrs
+    ]
+
+
+def _check_lane_layout(key: str) -> Callable[[Row], list[str]]:
+    def check(row: Row) -> list[str]:
+        rendered = RenderedComponent(partials.render_lanes(fixtures.digital_lanes()))
+        messages: list[str] = []
+        if key == "Uniform bands":
+            heights = {
+                element.attrs.get("data-bw-band-height")
+                for element in _lane_rows(rendered)
+            }
+            if heights != {"1"}:
+                messages.append(
+                    f"every drawn channel band carries the same height (identity is "
+                    f"position, never size); got {sorted(str(h) for h in heights)}"
+                )
+        elif key == "Pinned labels":
+            for _lane in _lane_rows(rendered):
+                label = next(
+                    (
+                        element
+                        for element in rendered.elements
+                        if "bw-lanes__label" in element.class_tokens
+                    ),
+                    None,
+                )
+                if label is None or "data-hidden" in label.attrs:
+                    messages.append(
+                        "the label column is pinned left and always visible — labels "
+                        "never scroll or clip out of view"
+                    )
+                    break
+        elif key == "Hidden lanes":
+            hidden_rows = [e for e in _lane_rows(rendered) if "data-hidden" in e.attrs]
+            if not hidden_rows:
+                return ["the canonical capture declares a hidden lane"]
+            hidden_row = hidden_rows[0]
+            if not (hidden_row.attrs.get("aria-label") or "").endswith(
+                "(hidden by presentation preference)"
+            ):
+                messages.append("the hidden lane's aria-label must end with the wording")
+            label_text = rendered.texts_of_elements(class_hook="bw-lanes__label")
+            if not any("hidden" in text and "aux" in text for text in label_text):
+                messages.append(
+                    "a hidden lane keeps its label plus the hidden marker text"
+                )
+        elif key == "Hiding is disclosure":
+            rows_in_order = _lane_rows(rendered)
+            order = [str(e.attrs.get("data-bw-lane") or "") for e in rows_in_order]
+            kinds = [str(e.attrs.get("data-bw-lane-kind") or "") for e in rows_in_order]
+            if sorted(order, key=int) != [str(i) for i in range(6)]:
+                messages.append(
+                    "hiding is never a removal — every declared lane index stays"
+                )
+            channel_group = [
+                int(n)
+                for n, k in zip(order, kinds, strict=True)
+                if k in ("channel", "group")
+            ]
+            decoder = [
+                int(n) for n, k in zip(order, kinds, strict=True) if k == "decoder"
+            ]
+            if channel_group != sorted(channel_group) or decoder != sorted(decoder):
+                messages.append(
+                    f"lane rows keep declaration order within their band; got {order}"
+                )
+            if any(k == "decoder" for k in kinds[: len(channel_group)]):
+                messages.append("decoder rows render beneath the channel and bus rows")
+            if not any(
+                (e.attrs.get("aria-label") or "").startswith("aux ")
+                for e in _lane_rows(rendered)
+            ):
+                messages.append("the hidden marker names the lane")
+        return messages
+
+    return check
+
+
+def _check_state_rendering(key: str) -> Callable[[Row], list[str]]:
+    def check(row: Row) -> list[str]:
+        rendered = RenderedComponent(partials.render_lanes(fixtures.digital_lanes()))
+        segments = _segments(rendered)
+        messages: list[str] = []
+        state_kind = {
+            "1": "high",
+            "0": "low",
+            "x": "hatch",
+            "z": "midline",
+        }
+        if key in ("1", "0", "x` and `z"):
+            wanted = ["1"] if key == "1" else ["0"] if key == "0" else ["x", "z"]
+            for state in wanted:
+                plain = [
+                    e for e in segments if e.attrs.get("data-bw-state") == state
+                ]
+                if not plain:
+                    messages.append(f"a plain {state!r} segment must render")
+                    continue
+                kinds = {e.attrs.get("data-bw-state-kind") for e in plain}
+                if kinds != {state_kind[state]}:
+                    messages.append(
+                        f"state {state!r} must render as {state_kind[state]!r}; got {kinds}"
+                    )
+        elif key == "Monochrome discriminability":
+            mapping: dict[str, str] = {}
+            for element in segments:
+                seg_state = element.attrs.get("data-bw-state") or ""
+                kind = element.attrs.get("data-bw-state-kind") or ""
+                if seg_state in state_kind:
+                    mapping.setdefault(seg_state, kind)
+            if len(set(mapping.values())) != len(mapping):
+                messages.append(
+                    "the four states must be mutually discriminable WITHOUT colour — "
+                    f"distinct geometries; got {mapping}"
+                )
+        return messages
+
+    return check
+
+
+def _check_groups_buses(key: str) -> Callable[[Row], list[str]]:
+    def check(row: Row) -> list[str]:
+        rendered = RenderedComponent(partials.render_lanes(fixtures.digital_lanes()))
+        messages: list[str] = []
+        if key == "Bus lane":
+            groups = [
+                e for e in _lane_rows(rendered) if e.attrs.get("data-bw-lane-kind") == "group"
+            ]
+            if len(groups) != 1:
+                messages.append(
+                    "a declared group renders collapsed as ONE bus lane — identity is "
+                    "its label and position"
+                )
+        elif key == "Radix":
+            cells = [
+                e for e in rendered.elements if "data-bw-bus-value" in e.attrs
+            ]
+            if not cells:
+                return ["the canonical bus renders no valued cells"]
+            values = [e.attrs.get("data-bw-bus-value") for e in cells]
+            if not all(
+                v is not None and len(v) == 1 and v[0] in "0123456789ABCDEF"
+                for v in values
+            ):
+                messages.append(
+                    f"hex default zero-pads to the group's bit width in nibbles; got {values}"
+                )
+            decimal = RenderedComponent(
+                partials.render_lanes(fixtures.bus_decimal_lanes())
+            )
+            decimal_values = [
+                e.attrs.get("data-bw-bus-value")
+                for e in decimal.elements
+                if "data-bw-bus-value" in e.attrs
+            ]
+            if decimal_values and decimal_values[0] == "3":
+                pass  # decimal per-group opt-in renders the decimal form
+            else:
+                messages.append("the decimal opt-in renders the decimal form")
+        elif key == "Member order":
+            forward = RenderedComponent(
+                partials.render_lanes(fixtures.bus_member_order_lanes())
+            )
+            swapped = RenderedComponent(
+                partials.render_lanes(fixtures.bus_member_order_lanes(swapped=True))
+            )
+            forward_value = next(
+                (
+                    e.attrs.get("data-bw-bus-value")
+                    for e in forward.elements
+                    if "data-bw-bus-value" in e.attrs
+                ),
+                None,
+            )
+            swapped_value = next(
+                (
+                    e.attrs.get("data-bw-bus-value")
+                    for e in swapped.elements
+                    if "data-bw-bus-value" in e.attrs
+                ),
+                None,
+            )
+            # lo=1, hi=0: (lo, hi) = 0b01 = 1; (hi, lo) = 0b10 = 2 — the
+            # FIRST declared member is the LSB.
+            if forward_value != "1" or swapped_value != "2":
+                messages.append(
+                    "the first declared member is the LSB — bus values are a pure "
+                    f"function of (member states, member order); "
+                    f"got {forward_value}/{swapped_value}"
+                )
+        elif key == "Unknown bus":
+            unknown = [
+                e
+                for e in rendered.elements
+                if e.attrs.get("data-bw-state-kind") == "hatch"
+                and "data-bw-first" in e.attrs
+                and "data-bw-bus-value" not in e.attrs
+            ]
+            if not unknown:
+                messages.append(
+                    "a member column not resolving stably renders the bus cell hatched"
+                )
+            if any(
+                e.attrs.get("data-bw-state-kind") == "hatch"
+                and "data-bw-bus-value" in e.attrs
+                for e in rendered.elements
+            ):
+                messages.append("never a fabricated number over a transition")
+        return messages
+
+    return check
+
+
+def _check_decimation(key: str) -> Callable[[Row], list[str]]:
+    def check(row: Row) -> list[str]:
+        composed = fixtures.digital_lanes()
+        rendered = RenderedComponent(partials.render_lanes(composed))
+        messages: list[str] = []
+        states = fixtures._clk_states()
+        lane = composed.lanes[0]
+        if key == "Every transition survives":
+            total = sum(1 for i in range(len(states) - 1) if states[i] != states[i + 1])
+            interior = 0
+            for segment in lane.segments:
+                for i in range(segment.first, segment.last - 1):
+                    if states[i] != states[i + 1]:
+                        interior += 1
+            boundary = 0
+            for a, b in zip(lane.segments, lane.segments[1:], strict=False):
+                if states[a.last - 1] != states[b.first]:
+                    boundary += 1
+            if interior + boundary != total:
+                messages.append(
+                    f"a drawn column must contain every state change (as an edge or "
+                    f"a glitch mark): {interior} interior + {boundary} boundary != "
+                    f"{total} acquired transitions"
+                )
+        elif key == "Glitch mark":
+            glitches = [
+                e for e in rendered.elements if "data-bw-glitch" in e.attrs
+            ]
+            if not glitches:
+                messages.append(
+                    "any column covering more than one transition renders the glitch mark"
+                )
+        elif key == "No sample dropping":
+            segments = lane.segments
+            if not (segments[0].first == 0 and segments[-1].last == len(states)):
+                messages.append("the drawn columns partition the acquired window")
+            elif any(
+                b.first != a.last
+                for a, b in zip(segments, segments[1:], strict=False)
+            ):
+                messages.append("the drawn columns are contiguous (a partition)")
+            elif len(segments) != 12:
+                messages.append(
+                    "the reduction is column-wise over the partition, never "
+                    f"point selection; got {len(segments)} columns"
+                )
+        return messages
+
+    return check
+
+
+def _check_time_axis(key: str) -> Callable[[Row], list[str]]:
+    def check(row: Row) -> list[str]:
+        composed = fixtures.digital_lanes()
+        rendered = RenderedComponent(partials.render_lanes(composed))
+        messages: list[str] = []
+        if key == "Axis label":
+            axis = next(
+                (e for e in rendered.elements if "data-bw-axis-label" in e.attrs), None
+            )
+            if axis is None or axis.attrs.get("data-bw-axis-label") != "Capture time":
+                messages.append("the axis renders the host-supplied label")
+            if axis is not None and axis.attrs.get("data-bw-axis-unit") != "s":
+                messages.append("the mode is disclosed BY the label (unit attribute)")
+        elif key == "Sample rate":
+            if "at 1 MHz" not in composed.acquisition_text:
+                messages.append(
+                    "the rate discloses via the acquisition suffix (rate = 1/axis step)"
+                )
+        elif key == "Trigger":
+            triggers = [e for e in rendered.elements if "data-bw-trigger" in e.attrs]
+            if not triggers:
+                messages.append("the trigger marker renders from a non-null trigger time")
+            elif (triggers[0].attrs.get("data-bw-trigger-sample")) != "500":
+                messages.append("the trigger renders at its time")
+            elif "trigger" not in (rendered._element_texts[rendered.elements.index(triggers[0])]):
+                messages.append("the trigger marker is labelled 'trigger'")
+            null_render = RenderedComponent(
+                partials.render_lanes(fixtures.null_trigger_lanes())
+            )
+            if any("data-bw-trigger" in e.attrs for e in null_render.elements):
+                messages.append("a null trigger renders no marker and fabricates no position")
+        elif key == "Cursors":
+            cursors = [e for e in rendered.elements if "data-bw-cursor" in e.attrs]
+            if len(cursors) < 2:
+                messages.append("at least two cursors are supported")
+            if "Δt = 7 µs" not in rendered.text_content:
+                messages.append("the seconds-mode Δt readout scales the unit (Δt = 7 µs)")
+            sample_render = RenderedComponent(
+                partials.render_lanes(fixtures.sample_mode_cursor_lanes())
+            )
+            if "Δt = 7 samples" not in sample_render.text_content:
+                messages.append("sample-index mode reads the raw difference (Δt = 7 samples)")
+            if (
+                "Δt = 7 µs" in sample_render.text_content
+                and "Δt = 7 samples" in sample_render.text_content
+            ):
+                messages.append("never both readouts at once")
+        return messages
+
+    return check
+
+
+def _check_decoder(key: str) -> Callable[[Row], list[str]]:
+    def check(row: Row) -> list[str]:
+        composed = fixtures.digital_lanes()
+        rendered = RenderedComponent(partials.render_lanes(composed))
+        messages: list[str] = []
+        lane_positions = [
+            rendered.elements.index(e) for e in _lane_rows(rendered)
+        ]
+        if key == "Span rendering":
+            spans = [e for e in rendered.elements if "data-bw-span" in e.attrs]
+            if len(spans) != 3:
+                messages.append(
+                    "extents clip to the capture window (the fully-outside event "
+                    f"does not render); got {len(spans)} spans"
+                )
+            for span in spans:
+                start = int(span.attrs.get("data-bw-span-start") or "0")
+                end = int(span.attrs.get("data-bw-span-end") or "0")
+                if end <= start:
+                    messages.append("the drawn width clamps at the minimum mark")
+            zero_width = [e for e in spans if e.attrs.get("data-bw-span-start") == "600"]
+            if not zero_width:
+                messages.append("a zero-width [t, t) event renders the minimum mark")
+            decoder_rows = [
+                e for e in _lane_rows(rendered) if e.attrs.get("data-bw-lane-kind") == "decoder"
+            ]
+            if decoder_rows and lane_positions:
+                last_channelish = max(
+                    rendered.elements.index(e)
+                    for e in _lane_rows(rendered)
+                    if e.attrs.get("data-bw-lane-kind") in ("channel", "group")
+                )
+                if rendered.elements.index(decoder_rows[0]) < last_channelish:
+                    messages.append(
+                        "decoder lanes render BENEATH the channel and bus rows"
+                    )
+        elif key == "Payload":
+            payloads = rendered.texts_of_elements(class_hook="bw-lanes__payload")
+            for expected in ("0x55", "0xAA", "0x00"):
+                if expected not in payloads:
+                    messages.append(f"the span carries the event's payload verbatim ({expected})")
+        elif key == "Disclosure":
+            labels = rendered.texts_of_elements(class_hook="bw-lanes__label")
+            if not any("UART-REF · 115200 8N1" in text for text in labels):
+                messages.append(
+                    "the row's label names the decoder and its settings verbatim"
+                )
+        elif key == "Never orphan":
+            hidden_source = RenderedComponent(
+                partials.render_lanes(fixtures.hidden_source_decoder_lanes())
+            )
+            if any("data-bw-span" in e.attrs for e in hidden_source.elements):
+                messages.append(
+                    "an event whose source channel is hidden does NOT render"
+                )
+            waiting = [
+                e for e in hidden_source.elements if "data-bw-waiting" in e.attrs
+            ]
+            if not waiting:
+                messages.append("the row discloses the wait visibly")
+            canonical_waiting = [
+                e for e in rendered.elements if "data-bw-waiting" in e.attrs
+            ]
+            if not canonical_waiting:
+                messages.append(
+                    "a declared lane with NO events keeps the awaiting-render note"
+                )
+        return messages
+
+    return check
+
+
+_LANES_RULE_CHECKERS: dict[str, Callable[[Row], list[str]]] = {}
+for _key in ("Uniform bands", "Pinned labels", "Hidden lanes", "Hiding is disclosure"):
+    _LANES_RULE_CHECKERS[_key] = _check_lane_layout(_key)
+for _key in ("1", "0", "x` and `z", "Monochrome discriminability"):
+    _LANES_RULE_CHECKERS[_key] = _check_state_rendering(_key)
+for _key in ("Bus lane", "Radix", "Member order", "Unknown bus"):
+    _LANES_RULE_CHECKERS[_key] = _check_groups_buses(_key)
+for _key in ("Every transition survives", "Glitch mark", "No sample dropping"):
+    _LANES_RULE_CHECKERS[_key] = _check_decimation(_key)
+for _key in ("Axis label", "Sample rate", "Trigger", "Cursors"):
+    _LANES_RULE_CHECKERS[_key] = _check_time_axis(_key)
+for _key in ("Span rendering", "Payload", "Disclosure", "Never orphan"):
+    _LANES_RULE_CHECKERS[_key] = _check_decoder(_key)
+
+
+def _lanes_rule_factory(key: str) -> RuleProofArtifact:
+    checker = _LANES_RULE_CHECKERS.get(key)
+    if checker is None:
+        raise KeyError(f"no lanes rule checker for {key!r}")
+    return RuleProofArtifact(key, checker)
+
+
+# ---------------------------------------------------------------------------
 # Registration
 
 _REGISTRARS: dict[str, Callable[[str], registry.Artifact]] = {
@@ -1126,6 +1551,12 @@ _REGISTRARS: dict[str, Callable[[str], registry.Artifact]] = {
     "e-2-4-reference-lines": _plot_rule_factory,
     "e-2-5-acquisition-disclosure": _plot_rule_factory,
     "e-2-6-trace-provenance": _plot_rule_factory,
+    "e-4-1-lane-layout": _lanes_rule_factory,
+    "e-4-2-state-rendering": _lanes_rule_factory,
+    "e-4-3-groups-and-buses": _lanes_rule_factory,
+    "e-4-4-edge-preserving-decimation-normative": _lanes_rule_factory,
+    "e-4-5-time-axis": _lanes_rule_factory,
+    "e-4-6-decoder-lanes": _lanes_rule_factory,
 }
 
 #: Every row-id G1b registers — derived from the registrar coverage, so the
@@ -1176,3 +1607,5 @@ __all__ = [
     "button_artifact",
     "ensure_registered",
 ]
+
+

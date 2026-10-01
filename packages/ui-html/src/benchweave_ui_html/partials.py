@@ -22,6 +22,7 @@ from benchweave_ui_html.data import (
     TableData,
 )
 from benchweave_ui_html.env import ENV
+from benchweave_ui_html.lanes import ComposedLanes
 from benchweave_ui_html.plot import ComposedPlot
 
 
@@ -104,3 +105,11 @@ def render_plot(composed: ComposedPlot) -> str:
     plot.py's emitted computation, reference lines, thresholds and the
     acquisition disclosure. Attributes only; no draw claims (UR-07)."""
     return ENV.get_template("engineering-plot.j2").render(plot=composed)
+
+
+def render_lanes(composed: ComposedLanes) -> str:
+    """§E.1 ``digital-lanes``: the capture view over G1c's reduction — lane
+    rows by declared position, state segments with their monochrome state
+    kinds, bus cells, decoder spans, the time-axis furniture and the
+    acquisition line with the rate suffix."""
+    return ENV.get_template("digital-lanes.j2").render(lanes=composed)
