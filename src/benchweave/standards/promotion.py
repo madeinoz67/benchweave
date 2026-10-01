@@ -17,22 +17,43 @@ The gates (:func:`validate_promotion_records`, run by the standards suite):
     tree at ``dev_edit_sha`` read through the object store;
 (b) SWEEP-AWARE DIFF — the diff between the dev tree at ``dev_edit_sha``
     and the promoted directory on main contains ONLY version-transition
-    lines: the design's tokens (the ``<target>-dev`` string, the target,
-    the pre-dev active version derived from the promoted rows' ``lineage``)
-    plus the three classes the FOUNDING RECORD proved the real sweep
-    mechanically produces — verified digest re-stamps (VR-36a), identity
-    re-stamps (the same line with version numbers moved), and the
+    lines, each admitted by a rule with its own verification: an identity
+    re-stamp (the same line with its version-like substrings moved — the
+    transition vocabulary of the ``<target>-dev`` label, the target and
+    the pre-dev active version is exactly what the strip rule removes;
+    issue #288 M1: NO line admits by token presence alone — the tokens are
+    remediation vocabulary, never admission), a VERIFIED digest re-stamp
+    whose (residual -> digest-path-sequence) binding matches per hunk
+    (every digest names a real file of the right tree, in the same
+    in-line position, under the same field text — the #288 refute-slate
+    overhaul: reordering, intra-line swaps, payload renames, count-changing
+    deletions and ``--``/``++``-initial content lines all refuse), or the
     regenerated ``validation-report.md``; any other changed line refuses
     ``promotion_sweep_violation:`` — the sweep-laundry mitigation (design
-    risk 6);
+    risk 6, tightened by #288 M1 and its refute slate). Disclosed behavior
+    of the binding rule: a legitimate future sweep that MOVES a line to a
+    different hunk rather than re-stamping it in place gets a NAMED
+    refusal (the multiset is order-free within a hunk, but a removed
+    binding without its same-hunk counterpart is an offence) — route the
+    move through the dev head;
 (c) PENDING-SUCCESSOR — a pending record refuses once a SUCCESSOR version
     of the same standard exists on main (pendingness must not outlive a
     train); the drift-check lane (:func:`pending_warning_lines`, wired into
     ``check.run_check``) prints pending records as a warning line on every
     run.
-plus the NO-RECORD gate: a retained version whose corpus rows cite a
-``-dev`` source (the promotion's own signature — GOVERNANCE's "its corpus
-rows cite the dev path as source") must carry a record.
+plus the NO-RECORD gate, with TWO derivations (issue #288 M2 — the first
+    is the landing's own self-declaration, the second is history): a
+    retained version whose corpus rows cite a ``-dev`` source (the
+    promotion's own signature — GOVERNANCE's "its corpus rows cite the dev
+    path as source") must carry a record; AND a retained version whose
+    introducing commit's parent — located through the object store —
+    declared the standard's dev head at ``<version>-dev`` must carry a
+    record even when its rows cite a released predecessor (a laundered
+    source). History that cannot resolve in an existing git root refuses
+    ``promotion_history_unavailable:`` — the gate fails loudly on
+    amputated history, never silently passes; a root that is not a git
+    repository has no history to consult, and the current-tree derivation
+    still governs there.
 
 D4 (VR-8 as amended by owner Q7): NO ``merge-base --is-ancestor``
 requirement on any branch tip — squash landings are the practice, so the
@@ -55,7 +76,8 @@ refuses — the gates stay armed on the real tree, never grandfathered.
 Refusal prefixes: ``promotion_record_invalid:``, ``promotion_record_absent:``,
 ``promotion_dev_edit_unresolved:``, ``promotion_landing_unresolved:``,
 ``promotion_digest_mismatch:``, ``promotion_sweep_violation:`` (design-
-named), ``promotion_pending_stale:``.
+named), ``promotion_pending_stale:``, ``promotion_history_unavailable:``
+(issue #288 M2).
 """
 
 from __future__ import annotations
@@ -65,6 +87,7 @@ import hashlib
 import json
 import re
 import subprocess
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -323,28 +346,126 @@ _VERSIONISH = re.compile(r"\d+\.\d+\.\d+(?:-dev)?")
 _HEXDIGEST = re.compile(r"\b[a-f0-9]{64}\b")
 
 
-def _line_offends(
-    line: str, tokens: list[str], stripped_opposite: set[str], known_digests: set[str]
-) -> str | None:
-    """Whether one changed line is unexplained by the transition rules.
+#: A line whose non-digest payload is nothing but JSON/markdown wrapping
+#: — the disclosed shape of an unpaired digest-bearing APPEND (its only
+#: payload is the digest; it is visible as an added line in the promotion
+#: PR, which is the review surface, and cannot pair with — hence cannot
+#: launder an edit of — any removed line).
+_TRIVIAL_PAYLOAD = re.compile(r"^[\s\"'{}\[\],:]*$")
 
-    ``None`` when the line admits (a version token, an identity re-stamp,
-    or a VERIFIED digest re-stamp); else the detail to quote — the
-    unexplained digest when that rule is what failed (refute fold, lane B
-    F6: every digest-shaped token on a re-stamped line must name a real
-    file of the right tree — one real digest no longer launders fakes
-    beside it)."""
-    if any(token in line for token in tokens):
-        return None
-    if _VERSIONISH.sub("", line) in stripped_opposite:
-        return None
+
+def _line_facts(
+    line: str, digest_names: dict[str, set[str]]
+) -> tuple[str, list[str], tuple[frozenset[str], ...]]:
+    """One changed line's facts for the sweep's binding rule (the issue
+    #288 refute-slate overhaul): the versionish+digest-stripped RESIDUAL
+    (the non-digest payload, constrained like any other text), the
+    line's digest SEQUENCE (order within a line is meaningful — the
+    fields' positions name their files), and the path-set SEQUENCE those
+    digests name in the line's own tree. Admission is the per-hunk
+    multiset equality of (residual -> path-sequence) bindings: order
+    across lines is free (a reordered hunk of honest re-stamps admits),
+    order within a line and the payload text are not (an intra-line swap
+    or a key rename refuses)."""
     digests = _HEXDIGEST.findall(line)
-    if digests:
-        unknown = [digest for digest in digests if digest not in known_digests]
-        if not unknown:
-            return None
-        return f" [unexplained digest: {unknown[0]}]"
-    return ""
+    residual = _VERSIONISH.sub("", _HEXDIGEST.sub("", line))
+    return (
+        residual,
+        digests,
+        tuple(frozenset(digest_names.get(d, set())) for d in digests),
+    )
+
+
+def _hunk_offences(
+    hunk_removed: list[str],
+    hunk_added: list[str],
+    dev_digests: set[str],
+    dev_digest_names: dict[str, set[str]],
+    promoted_digests: set[str],
+    promoted_digest_names: dict[str, set[str]],
+) -> list[str]:
+    """One hunk's offences under the binding rule (the issue #288
+    refute-slate overhaul of the sweep's digest lane).
+
+    The hunk admits when the MULTISET of (residual -> path-sequence)
+    bindings is equal on both sides — order across lines is free, order
+    within a line and the non-digest payload are not. Leftover removed
+    bindings are offences (a re-stamp without its counterpart is a
+    deletion; a plain unmatched removal is an unexplained edit). Leftover
+    added bindings are offences EXCEPT the disclosed residual: a
+    digest-bearing append whose non-digest payload is nothing but
+    wrapping (its only payload is real digests; visible in the promotion
+    PR, the review surface). Within that residual, the contrived
+    digest-as-JSON-KEY append shape (``{"<digest>": ""}``) and
+    digest-only arrays also admit — their non-digest payload is wrapping
+    and every digest is real; no in-tree consumer reads either shape
+    (disclosed by the verification pass, final fold). The F6 membership rule runs first: an
+    invented digest refuses naming it, on either side. When both sides
+    carry leftover digest lines they are paired index-wise as REASSIGNED
+    digests in the detail, quoting one digest from each side. Disclosed
+    residual (mech-F9): two files with IDENTICAL content in one tree
+    share a digest, making the digest->path mapping one-to-many — the
+    binding's path-set then names both files and a re-stamp between them
+    admits; measured zero duplicate-content files within any of the 18
+    retained version directories on today's corpus (the cross-version
+    sharing copy-never-move produces lives in OTHER trees and never
+    enters one tree's map)."""
+    offending: list[str] = []
+    removed_facts = [_line_facts(line, dev_digest_names) for line in hunk_removed]
+    added_facts = [_line_facts(line, promoted_digest_names) for line in hunk_added]
+    for facts, line in zip(removed_facts, hunk_removed, strict=True):
+        unknown = [digest for digest in facts[1] if digest not in dev_digests]
+        if unknown:
+            offending.append(
+                f" [unexplained digest: {unknown[0]}]-" + line.strip()[:100]
+            )
+    for facts, line in zip(added_facts, hunk_added, strict=True):
+        unknown = [digest for digest in facts[1] if digest not in promoted_digests]
+        if unknown:
+            offending.append(
+                f" [unexplained digest: {unknown[0]}]+" + line.strip()[:100]
+            )
+    removed_counts = Counter((facts[0], facts[2]) for facts in removed_facts)
+    added_counts = Counter((facts[0], facts[2]) for facts in added_facts)
+    missing = removed_counts - added_counts
+    extra = added_counts - removed_counts
+    unmatched_removed: list[tuple[tuple[str, list[str], tuple[frozenset[str], ...]], str]] = []
+    for facts, line in zip(removed_facts, hunk_removed, strict=True):
+        binding = (facts[0], facts[2])
+        if missing.get(binding, 0) > 0:
+            missing[binding] -= 1
+            unmatched_removed.append((facts, line))
+    unmatched_added: list[tuple[tuple[str, list[str], tuple[frozenset[str], ...]], str]] = []
+    for facts, line in zip(added_facts, hunk_added, strict=True):
+        binding = (facts[0], facts[2])
+        if extra.get(binding, 0) > 0:
+            extra[binding] -= 1
+            unmatched_added.append((facts, line))
+    leftover_removed_digest = [(facts, line) for facts, line in unmatched_removed if facts[1]]
+    leftover_added_digest = [(facts, line) for facts, line in unmatched_added if facts[1]]
+    paired = min(len(leftover_removed_digest), len(leftover_added_digest))
+    for index in range(paired):
+        removed_facts_pair, removed_line = leftover_removed_digest[index]
+        added_facts_pair, _added_line = leftover_added_digest[index]
+        offending.append(
+            f" [reassigned digest: {removed_facts_pair[1][0]} -> "
+            f"{added_facts_pair[1][0]}]-" + removed_line.strip()[:100]
+        )
+    for facts, line in leftover_removed_digest[paired:]:
+        offending.append(
+            f" [digest re-stamp without its counterpart: {facts[1][0]}]-"
+            + line.strip()[:100]
+        )
+    for facts, line in unmatched_removed:
+        if not facts[1]:
+            offending.append("-" + line.strip()[:100])
+    for facts, line in unmatched_added:
+        if facts[1] and _TRIVIAL_PAYLOAD.fullmatch(facts[0]):
+            # The disclosed append residual: digest-only payload, real
+            # digests (the membership precheck refused unknowns above).
+            continue
+        offending.append("+" + line.strip()[:100])
+    return offending
 
 
 def _sweep_check(
@@ -357,27 +478,39 @@ def _sweep_check(
 
     The design names the version transition tokens (the ``<target>-dev``
     label, the target, the pre-dev active version from the promoted rows'
-    ``lineage``). The FOUNDING RECORD (execution 0.2.0, coordinator
-    directive 2026-09-28) surfaced three further classes the real sweep
-    mechanically produces, each admitted by its own verifiable rule rather
-    than a widened token list:
+    ``lineage``) — the VOCABULARY of a legitimate transition, demoted to
+    remediation text since issue #288 M1: no line admits by containing a
+    token. The ADMISSION RULE (the issue #288 refute-slate overhaul) is
+    the per-hunk multiset equality of (residual -> path-sequence)
+    bindings, computed by ``_line_facts`` and judged by
+    ``_hunk_offences``:
 
+    - IDENTITY RE-STAMP: a changed line admits when the same hunk's
+      opposite side carries a line equal after stripping every version-like
+      substring — the same sentence/URN with its version numbers moved
+      (the founding record's pre-reset ``1.0.0`` URNs and the prose title
+      both ride this rule). Disclosed (the slice-2 comparator's R4 class):
+      a version-string motion in a non-version SEMANTIC field admits; the
+      planted-wording control keeps the teeth.
     - DIGEST RE-STAMP (VR-36a's "URN/digest restamp"): a changed line
-      carrying bare sha256s admits when EVERY digest on the line NAMES A
-      REAL FILE — removed side a file of the dev tree at the sha, added
-      side a file of the promoted tree (bidirectional set membership; an
-      invented digest matches nothing and refuses — refute fold F6: one
-      real digest no longer launders fakes beside it). Verified on the
-      founding record: every one of its 10 changed digest lines maps,
-      10/10, removed→dev-tree and added→promoted-tree.
-    - IDENTITY RE-STAMP: a changed line admits when the OPPOSITE side of
-      the same file's diff carries a line equal after stripping every
-      version-like substring — the same sentence/URN with its version
-      numbers moved (the founding record's pre-reset ``1.0.0`` URNs and the
-      prose title both ride this rule). KNOWN FALSE-ACCEPT CLASS, disclosed
-      (the slice-2 comparator's R4 class): a version-string motion in a
-      non-version SEMANTIC field admits; the planted-wording control keeps
-      the teeth — any non-version text difference still refuses.
+      carrying bare sha256s admits when every digest names a real file of
+      the right tree (bidirectional membership; an invented digest matches
+      nothing and refuses — refute fold F6) AND its binding matches: the
+      same residual, and the same SEQUENCE of digest->path assignments —
+      a re-stamp moves a file's citation to that same file's new digest,
+      never onto a different file's digest, a different position in the
+      line, or a renamed field. Verified on the founding record: every
+      one of its changed digest pairs maps same-relative-path with stable
+      payloads, 9/9 pairs (DESIGN-MEASURED). Disclosed (the R4 class,
+      restated here because a digest line rides the same residual): a
+      version-string motion inside a digest line's residual admits via
+      the ``_VERSIONISH`` strip — "spec 1.2.3" -> "spec 9.9.9", an
+      IP-literal motion — the same false-accept class the identity
+      bullet names.
+    - REMOVED-side bindings without counterparts refuse (a deletion is
+      not a transition); ADDED-side bindings without counterparts refuse
+      unless the line's only payload is real digests (the disclosed
+      visible-append residual).
     - The regenerated ``validation-report.md``, absent from the dev tree,
       is the sanctioned landing artifact (``_LANDING_REGENERATED``).
     """
@@ -424,20 +557,31 @@ def _sweep_check(
         for path in promoted_dir.rglob("*")
         if path.is_file()
     }
-    # The digest re-stamp rule's two name-sets: every file's digest in each
-    # tree, so membership is the whole verification.
+    # The digest re-stamp rule's two name-maps: every file's digest in each
+    # tree, keyed back to the within-directory relative name — membership
+    # AND assignment (issue #288 M1) are the verification.
     dev_digests: set[str] = set()
+    dev_digest_names: dict[str, set[str]] = {}
     for relative in listing.stdout.splitlines():
         if not relative:
             continue
         raw = _git_show(root, f"{record.dev_edit_sha}:{relative}")
         if raw is not None:
-            dev_digests.add(hashlib.sha256(raw).hexdigest())
-    promoted_digests = {
-        hashlib.sha256(path.read_bytes()).hexdigest()
-        for path in promoted_dir.rglob("*")
-        if path.is_file()
-    }
+            digest = hashlib.sha256(raw).hexdigest()
+            dev_digests.add(digest)
+            dev_digest_names.setdefault(digest, set()).add(
+                relative.removeprefix(prefix)
+            )
+    promoted_digests: set[str] = set()
+    promoted_digest_names: dict[str, set[str]] = {}
+    for path in promoted_dir.rglob("*"):
+        if not path.is_file():
+            continue
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        promoted_digests.add(digest)
+        promoted_digest_names.setdefault(digest, set()).add(
+            str(path.relative_to(promoted_dir))
+        )
     for name in sorted(names | on_disk):
         old = _git_show(root, f"{record.dev_edit_sha}:{prefix}{name}")
         path = promoted_dir / name
@@ -450,49 +594,285 @@ def _sweep_check(
             continue
         old_lines = (old or b"").decode("utf-8", "replace").splitlines(keepends=True)
         new_lines = (new or b"").decode("utf-8", "replace").splitlines(keepends=True)
+        hunks: list[tuple[list[str], list[str]]] = []
         removed: list[str] = []
         added: list[str] = []
+        in_hunk = False
         for line in difflib.unified_diff(old_lines, new_lines, n=0):
-            if line.startswith(("+++", "---")):
+            if line.startswith("@@"):
+                in_hunk = True
+                if removed or added:
+                    hunks.append((removed, added))
+                    removed, added = [], []
+                continue
+            if not in_hunk and line.startswith(("+++", "---")):
+                # The file headers precede the first hunk ONLY — inside a
+                # hunk a content line starting with "--"/"++" is content
+                # (the refute slate's shape 5: prefix filtering made such
+                # lines invisible to every rule).
                 continue
             if line.startswith("-"):
                 removed.append(line[1:])
             elif line.startswith("+"):
                 added.append(line[1:])
-        # The identity re-stamp rule's comparison set: the opposite side's
-        # lines with every version-like substring stripped.
-        stripped_added = {_VERSIONISH.sub("", line) for line in added}
-        stripped_removed = {_VERSIONISH.sub("", line) for line in removed}
+        if removed or added:
+            hunks.append((removed, added))
         offending: list[str] = []
-        for line in removed:
-            detail = _line_offends(line, tokens, stripped_added, dev_digests)
-            if detail is not None:
-                offending.append(f"{detail}-" + line.strip()[:100])
-        for line in added:
-            detail = _line_offends(line, tokens, stripped_removed, promoted_digests)
-            if detail is not None:
-                offending.append(f"{detail}+" + line.strip()[:100])
+        for hunk_removed, hunk_added in hunks:
+            # The refute-slate admission rule: the per-hunk multiset of
+            # (residual -> path-sequence) bindings must be equal on both
+            # sides — see _hunk_offences for the offences and residuals.
+            offending.extend(
+                _hunk_offences(
+                    hunk_removed,
+                    hunk_added,
+                    dev_digests,
+                    dev_digest_names,
+                    promoted_digests,
+                    promoted_digest_names,
+                )
+            )
         if offending:
             raise StandardsError(
                 f"promotion_sweep_violation: {record.standard}/{record.target}/"
                 f"{name} differs from the dev tree at {record.dev_edit_sha} on "
                 f"non-transition lines ({len(offending)} line(s), first: "
                 f"{offending[0][:160]!r}) — the promotion sweep may carry only "
-                f"the version transition (tokens {', '.join(tokens)}, verified "
-                "digest re-stamps, identity re-stamps); move the change "
+                f"the version transition (tokens {', '.join(tokens)} are "
+                "remediation vocabulary; the residual/path bindings must "
+                "match per hunk, digest re-stamps must keep their paths "
+                "and payloads); move the change "
                 "through the dev head or a new version, never under cover of "
                 "the sweep"
             )
 
 
+def _git_root(root: Path) -> bool:
+    """Whether ``root`` sits inside a git work tree. The history-derived
+    no-record trigger consults the object store; a root with none has no
+    history to consult and the current-tree derivation governs."""
+    result = subprocess.run(  # noqa: S603 — fixed argv
+        [  # noqa: S607 — PATH git is the supported invocation
+            "git",
+            "-C",
+            str(root),
+            "rev-parse",
+            "--show-toplevel",
+        ],
+        capture_output=True,
+        check=False,
+    )
+    return result.returncode == 0
+
+
+def _is_shallow(root: Path) -> bool:
+    """Whether the repository is depth-limited (a graft boundary — CI
+    checkout shapes default here). A grafted introducing commit answers
+    the parent query with NOTHING, masquerading as a root-commit organic
+    introduction; the gate refuses on shallowness rather than trust it
+    (issue #288 refute slate)."""
+    result = subprocess.run(  # noqa: S603 — fixed argv
+        [  # noqa: S607 — PATH git is the supported invocation
+            "git",
+            "-C",
+            str(root),
+            "rev-parse",
+            "--is-shallow-repository",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return result.returncode == 0 and result.stdout.strip() == "true"
+
+
+def _manifest_listed_at(root: Path, sha: str) -> bool:
+    """Whether ``standards/standards-manifest.json`` has a TREE ENTRY at the
+    commit (``git ls-tree``) — the partial-clone discriminator (issue #288
+    final fold NEW-1): tree objects are present under ``--filter=blob:none``,
+    so a LISTED path whose blob read failed is amputation, not absence."""
+    result = subprocess.run(  # noqa: S603 — fixed argv
+        [  # noqa: S607 — PATH git is the supported invocation
+            "git",
+            "-C",
+            str(root),
+            "ls-tree",
+            sha,
+            "--",
+            "standards/standards-manifest.json",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return result.returncode == 0 and bool(result.stdout.strip())
+
+
+def _introducing_commit(root: Path, git_path: str) -> tuple[str, list[str]] | None:
+    """``(sha, parents)`` of the FIRST commit touching ``git_path`` — ALL
+    parent shas (a merge landing's second parent is where a sanctioned
+    flow declares the head), an empty list for a root-commit introduction
+    (an organic founding). ``None`` when no introduction resolves (a git
+    error, or an empty history for a path that exists on disk) — the
+    caller refuses loudly, never silently passes (issue #288 M2, hardened
+    by its refute slate)."""
+    result = subprocess.run(  # noqa: S603 — fixed argv
+        [  # noqa: S607 — PATH git is the supported invocation
+            "git",
+            "-C",
+            str(root),
+            "log",
+            "--format=%H %P",
+            "--reverse",
+            "--",
+            git_path,
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return None
+    first = next((line for line in result.stdout.splitlines() if line.strip()), "")
+    if not first:
+        return None
+    shas = first.split()
+    return shas[0], shas[1:]
+
+
+def _history_no_record_gate(
+    root: Path,
+    corpus_rows: list[dict[str, Any]],
+    records: dict[tuple[str, str], PromotionRecord],
+) -> None:
+    """Issue #288 M2's derivation of the no-record trigger: the landing's
+    INTRODUCING COMMIT's parent, not the landing's own citation. A
+    promotion's dev head was declared on main before the landing
+    (GOVERNANCE's OPEN is a PR adding the block to main); when the parent
+    of the commit that introduced ``standards/<id>/<version>/`` declared
+    that standard's dev head at exactly ``<version>-dev`` (strict match —
+    an organic bump landing while an unrelated head is open does not
+    fire), the landing was a promotion and needs its record even with
+    laundered row sources.
+
+    Root-commit introductions are organic (no parent, no declaration). A
+    parent whose manifest is absent declares nothing (a history predating
+    the standards system — conservative in the false-refusal direction);
+    a parent whose manifest BYTES do not parse refuses
+    ``promotion_history_unavailable:`` naming the parent (issue #288
+    refute slate: a bare JSONDecodeError is a crash, not a refusal). ALL
+    parents of the introducing commit are consulted (a merge landing's
+    second parent is where the sanctioned flow declares the head). A
+    SHALLOW repository with unrecorded retained versions refuses
+    ``promotion_history_unavailable:`` outright — a graft boundary
+    masquerades as a root-commit organic introduction, and CI checkout
+    shapes default there (issue #288 refute slate). An unresolvable
+    introduction refuses the same prefix. A root that is not a git
+    repository skips the derivation (no object store to consult — the
+    current-tree trigger still governs). Disclosed residual: a dev head
+    that never landed on main leaves no main-history evidence — bytes-wise
+    that landing IS an organic bump; GOVERNANCE's OPEN/EDIT flow plus the
+    mandatory governor lane are the process gate for that shape.
+    """
+    if not _git_root(root):
+        return
+    retained: set[tuple[str, str]] = set()
+    for row in corpus_rows:
+        parts = str(row.get("path", "")).split("/")
+        if len(parts) >= 2 and re.fullmatch(r"\d+\.\d+\.\d+", parts[1]):
+            retained.add((parts[0], parts[1]))
+    pending = [pair for pair in sorted(retained) if pair not in records]
+    if pending and _is_shallow(root):
+        standard_id, version = pending[0]
+        raise StandardsError(
+            f"promotion_history_unavailable: {standard_id}@{version} is "
+            "retained with no record and this repository is SHALLOW (a graft "
+            "boundary — depth-limited history cannot evidence an introducing "
+            "commit's parents, and a grafted landing masquerades as a "
+            "root-commit organic introduction); verify on a full clone or "
+            "fetch unshallow"
+        )
+    parent_manifests: dict[str, dict[str, Any] | None] = {}
+    for standard_id, version in pending:
+        found = _introducing_commit(root, f"standards/{standard_id}/{version}/")
+        if found is None:
+            raise StandardsError(
+                f"promotion_history_unavailable: {standard_id}@{version} is "
+                "retained on this tree but no introducing commit resolves in "
+                "the object store (shallow or amputated history) — the "
+                "history-derived no-record gate fails loudly rather than "
+                "pass silently"
+            )
+        _sha, parents = found
+        if not parents:
+            continue  # a root-commit introduction: organic
+        for parent in parents:
+            # ALL parents, not only the first (issue #288 refute slate): a
+            # merge landing's second parent is exactly where a sanctioned
+            # flow declares the head, and the strict <version>-dev match
+            # guards the false-refusal direction.
+            if parent not in parent_manifests:
+                raw = _git_show(root, f"{parent}:standards/standards-manifest.json")
+                if raw is None:
+                    # Discriminate TRUE absence from a partial-clone or
+                    # amputated read (issue #288 final fold NEW-1): trees
+                    # resolve under --filter=blob:none, so a LISTED path
+                    # whose blob does not read is amputation — refusing
+                    # typed, never silently organic.
+                    if _manifest_listed_at(root, parent):
+                        raise StandardsError(
+                            f"promotion_history_unavailable: the manifest at "
+                            f"parent {parent} of {standard_id}@{version}'s "
+                            "introducing commit is LISTED in the commit's tree "
+                            "but its blob does not read (a partial clone or "
+                            "amputated object store) — the history-derived "
+                            "no-record gate refuses rather than treat "
+                            "amputation as absence"
+                        )
+                    parent_manifests[parent] = None
+                else:
+                    try:
+                        parent_manifests[parent] = json.loads(raw)
+                    except json.JSONDecodeError as exc:
+                        raise StandardsError(
+                            f"promotion_history_unavailable: the manifest at "
+                            f"parent {parent} of {standard_id}@{version}'s "
+                            f"introducing commit is not valid JSON ({exc.msg} "
+                            f"at line {exc.lineno}) — the history-derived "
+                            "no-record gate refuses rather than guess at a "
+                            "malformed parent"
+                        ) from None
+            document = parent_manifests[parent]
+            if document is None:
+                continue  # this parent predates the standards system
+            for entry in document.get("standards", []):
+                if str(entry.get("id")) != standard_id:
+                    continue
+                dev = entry.get("dev")
+                label = dev.get("version") if isinstance(dev, dict) else None
+                if isinstance(label, str) and label == f"{version}-dev":
+                    raise StandardsError(
+                        f"promotion_record_absent: {standard_id}@{version} landed "
+                        f"a promotion whose introducing commit's parent ({parent}) "
+                        f"declared dev head {label} — the landing required a "
+                        "record in standards/promotion-records.json even though "
+                        "its corpus rows cite a released predecessor as source; "
+                        "the promotion's audit trail (dev_edit_sha, "
+                        "dev_tree_digest, landing_sha) is not optional"
+                    )
+                break
+
+
 def validate_promotion_records(root: Path) -> None:
     """Run the promotion gates over the committed tree; refuse on any arm.
 
-    The no-record gate first (a dev-sourced promotion with no record), then
+    The no-record gate first (a dev-sourced promotion with no record — the
+    current-tree citation trigger, then the history-derived trigger), then
     per record: the dev-edit sha resolves, the landing sha resolves when
-    filled, the digest matches the sha's tree, the sweep is token-only, and
-    pendingness has not outlived a successor. Every refusal names the
-    standard, the target and the arm's own evidence.
+    filled, the digest matches the sha's tree, the sweep is transition-
+    only under the paired rules, and pendingness has not outlived a
+    successor. Every refusal names the standard, the target and the arm's
+    own evidence.
     """
     corpus_rows = _corpus_rows(root)
     records = {
@@ -518,6 +898,9 @@ def validate_promotion_records(root: Path) -> None:
             "standards/promotion-records.json — the promotion's audit trail "
             "(dev_edit_sha, dev_tree_digest, landing_sha) is not optional"
         )
+    # The second, non-self-declared derivation of the same trigger (issue
+    # #288 M2): what history says the landing was, regardless of citation.
+    _history_no_record_gate(root, corpus_rows, records)
     for record in sorted(records.values(), key=lambda r: (r.standard, r.target)):
         where = f"{record.standard}@{record.target}"
         computed = dev_tree_digest_at(

@@ -54,7 +54,8 @@ dev pin — VR-29's revalidation refusal), ``retired_identifier:``,
 ``corpus_pin_mismatch:``, ``constraint_set_invalid:``,
 ``plugin_ambiguous:``. Every classification refusal carries the five VR-37
 fields inline: standard, pinned version, supported range, move-to,
-migration-note pointer ("migration guidance pending" until slice 5).
+migration-note pointer ("migration guidance pending" when the policy row
+carries none — #219's per-version carrier landed with slice 5).
 """
 
 from __future__ import annotations
@@ -64,6 +65,7 @@ import json
 import os
 import re
 import subprocess
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -365,7 +367,26 @@ def parse_interval(value: object) -> Interval:
             f"constraint_document_invalid: {value!r} is not an explicit half-open "
             "interval (>=X.Y.Z,<X.Y.Z — inclusive lower, exclusive upper)"
         )
-    return Interval(lower=match.group(1), upper=match.group(2))
+    lower, upper = match.group(1), match.group(2)
+    lower_order, upper_order = version_tuple(lower), version_tuple(upper)
+    if lower_order == upper_order:
+        # Issue #288 LOW 7 + refute slate mech-F7: an equal pair forms an
+        # EMPTY interval — not a reversal. Same prefix, honest remediation.
+        raise StandardsError(
+            f"constraint_bounds_reversed: {value!r} — the bounds are equal "
+            "and form an empty interval; nothing can be inside it (widen "
+            "the upper bound or raise the lower)"
+        )
+    if lower_order > upper_order:
+        # Issue #288 LOW 7: an inverted pair parsed clean and failed far
+        # downstream ("no served version inside"); the typo refuses at
+        # the parse boundary where it lives.
+        raise StandardsError(
+            f"constraint_bounds_reversed: {value!r} — the bounds are "
+            "reversed (the lower bound orders above the exclusive upper); "
+            "correct the pair"
+        )
+    return Interval(lower=lower, upper=upper)
 
 
 # --- classification ---------------------------------------------------------------
@@ -384,16 +405,85 @@ class PinClassification:
     warning: str | None
 
 
-def _move_to(policy: Any, row: StandardPolicy, root: Path, standard_id: str) -> str:
-    """The derived move-to: highest served version, else the range's lower bound.
+@dataclass(frozen=True)
+class MoveTo:
+    """The derived move-to and what it honestly is (issue #288 M4).
 
-    The fold-F-E-10 fallback (nothing served) applies — the message always
-    names a concrete next step.
+    ``version`` is always the highest served version by version order,
+    falling back to the range's lower bound when nothing is served — the
+    message always names a concrete next step (fold F-E-10). ``downgrade``
+    is True iff something is served AND that version orders BELOW the pin
+    (the yanked-pin-above-served state: the newest healthy served version
+    is still the actionable remediation — the pin's bytes are yanked and
+    nothing newer is servable — and the rendering must name it as a
+    downgrade, never dress it as an upgrade path; the refusal side rides
+    the label too, the #288 twin reconciliation). ``guidance_only`` is
+    True iff nothing is served (the fallback names the range's lower
+    bound — guidance, never a servable target), and it forces
+    ``downgrade`` False: the guidance branch's label is guidance (the
+    twin-pinned shape, SDK PR #73).
     """
+
+    version: str
+    downgrade: bool
+    guidance_only: bool
+
+    @property
+    def label(self) -> str:
+        """The honesty label warning formatters append after the version."""
+        if self.guidance_only:
+            return " (guidance only — no version is served)"
+        if self.downgrade:
+            return " (a downgrade — no served version is newer)"
+        return ""
+
+
+def derive_move_to(row: StandardPolicy, served: Iterable[str], pin: str) -> MoveTo:
+    """The ONE canonical move-to derivation every gateway surface consumes
+    (issue #288 M4 — five sites once derived it independently; the copies
+    could drift silently exactly because the degenerate states are
+    unreachable on the real corpus).
+
+    Definition, superseding design §3.3's "highest served non-yanked
+    version >= pin" by the #288 M4 annotation: the >= pin filter is
+    vacuous whenever it is nonempty — max(candidates >= pin) IS
+    max(served) — so move-to is max(served) (version-ordered, never
+    string-ordered: 0.2.10 > 0.2.2 by tuple, below by string — fold F1),
+    with the range's lower bound as the labeled fallback when nothing is
+    served. Served sets are derived per surface (the corpus sources differ
+    by design); only the derivation is shared. The SDK re-implements this
+    ~10-line pure function (two-repo split, no import) and the twin tests
+    pin the same literal expected strings.
+    """
+    served_list = list(served)
+    guidance_only = not served_list
+    version = max(served_list, key=version_tuple) if served_list else row.lower
+    try:
+        pin_order = version_tuple(pin)
+    except ValueError:
+        # An unparsable pin (a dev shape) cannot order against the served
+        # set; the version still names a concrete next step, unlabeled.
+        pin_order = None
+    return MoveTo(
+        version=version,
+        # The guidance branch suppresses the downgrade flag entirely (the
+        # twin-pinned shape): its label is guidance, and a fallback that
+        # names no servable target is not a downgrade claim.
+        downgrade=(
+            not guidance_only
+            and pin_order is not None
+            and version_tuple(version) < pin_order
+        ),
+        guidance_only=guidance_only,
+    )
+
+
+def _move_to(
+    policy: Any, row: StandardPolicy, root: Path, standard_id: str, pin: str
+) -> MoveTo:
+    """The root-shaped wrapper: the repo tree's served set, derived."""
     served = served_versions(policy, root, standard_id)
-    # version-ordered, never string-ordered: 0.2.10 > 0.2.2 by tuple, below by
-    # string (fold F1 — both reproducers picked the string max)
-    return max(served, key=version_tuple) if served else row.lower
+    return derive_move_to(row, served, pin)
 
 
 def _vr37(
@@ -404,15 +494,18 @@ def _vr37(
     ``migration`` is the move-to version's from-predecessor note pointer
     when the policy block carries one (#219's carrier), else the documented
     placeholder — text-identical to ``control/documents._vr37_text``'s
-    derivation, pinned by test either way.
+    derivation, pinned by test either way. The move-to field carries the
+    honesty label (the #288 twin reconciliation, SDK PR #73): a downgrade
+    is named as one on the refusal side too, and the guidance branch's
+    fallback is labeled as guidance.
     """
-    move_to = _move_to(policy, row, root, standard_id)
-    note_pointer = row.versions.get(move_to)
+    move = _move_to(policy, row, root, standard_id, version)
+    note_pointer = row.versions.get(move.version)
     migration = note_pointer if note_pointer is not None else "migration guidance pending"
     return (
         f"standard: {standard_id}; pinned: {version}; "
         f"supported: >={row.lower},<{row.upper}; "
-        f"move-to: {move_to}; "
+        f"move-to: {move.version}{move.label}; "
         f"migration: {migration}"
     )
 
@@ -477,12 +570,13 @@ def classify_pin(
         )
     for record in row.yanked:
         if record.version == version:
+            move = _move_to(policy, row, root, standard_id, version)
             return PinClassification(
                 state="yanked",
                 warning=(
                     f"deprecation warning: {standard_id} {version} is yanked "
                     f"({record.reason}; since {record.since}); "
-                    f"move-to: {_move_to(policy, row, root, standard_id)}"
+                    f"move-to: {move.version}{move.label}"
                 ),
             )
     return PinClassification(state="served", warning=None)
@@ -1998,7 +2092,9 @@ def upgrade_lock(root: Path, package: Path, standard_id: str, precise: str) -> l
     fire inside the resolution before anything is written; a legal target —
     served, or yanked with the deprecation warning — re-locks the package
     with exactly this standard's row moved. The move line carries the
-    migration-note pointer ("migration guidance pending" until slice 5).
+    "migration guidance pending" placeholder (the policy row's per-version
+    pointer reaches the VR-37 fields; slice 5's carrier landed with #219,
+    and this one-line summary keeps the placeholder).
     """
     policy = load_dependency_policy(root)
     constraints = load_constraints(package)
@@ -2021,6 +2117,10 @@ def upgrade_lock(root: Path, package: Path, standard_id: str, precise: str) -> l
             "then pin; fresh-lock creation is deferral D9"
         )
     resolution = resolve_package(root, package, precise={standard_id: precise})
+    # Issue #288 LOW 5: the upgrade path runs the same dev-head-state check
+    # as pin_lock (VR-29) — a dev row whose head moved under the pin never
+    # re-locks green on a different standard's upgrade.
+    _dev_head_state(root, resolution)
     write_lock(package, resolution.raw)
     before = prior.rows.get(standard_id)
     lines = [*resolution.warnings, *_scissors(prior, resolution, None)]

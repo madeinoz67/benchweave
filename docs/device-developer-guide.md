@@ -28,7 +28,7 @@ This guide explains the workflow; it introduces no new protocol requirements. Th
 | Run integrations on a gateway | Host ABI, bench configuration and execution contracts | Scoped host services, admission, ownership, evidence and qualified deployment |
 | Share an integration | Registry contract and compatible existing packages | Immutable package, release metadata, provenance and conformance evidence |
 
-Read the [core specification](../standards/otdp/0.2.0/otdp-specification.md), [profile/adapter extension](../standards/otdp/0.2.0/extension-contract.md), [device classes](../standards/otdp/0.2.0/device-classes.md) and [measurement model](../standards/otdp/0.2.0/measurement-model.md) before writing a class-capable integration. The [documentation index](project-index.md) links the remaining contracts.
+Read the [core specification](../standards/otdp/0.2.2/otdp-specification.md), [profile/adapter extension](../standards/otdp/0.2.2/extension-contract.md), [device classes](../standards/otdp/0.2.2/device-classes.md) and [measurement model](../standards/otdp/0.2.2/measurement-model.md) before writing a class-capable integration. The [documentation index](project-index.md) links the remaining contracts.
 
 ### Repository layout for device plugins
 
@@ -120,7 +120,7 @@ Use the [descriptor schema](../standards/otdp/0.2.2/otdp-device-descriptor.schem
 
 | Field group | Authoring rule |
 |---|---|
-| Versions and identity | Use OTDP 0.2.0, a versioned descriptor and a namespaced model ID. Keep model identity separate from physical instance identity. |
+| Versions and identity | Use a served OTDP version (0.2.2 active; 0.2.0 remains served), a versioned descriptor and a namespaced model ID. Keep model identity separate from physical instance identity. |
 | Integration | Choose declarative or adapter. For an adapter, declare the reviewed factory as `package.module:create_plugin` and API 1.1. |
 | Transport | Supply supported protocol settings and a `connection_key`; the host resolves the actual commissioned connection. |
 | Capabilities and policies | Advertise only implemented verbs, with exactly matching policies. `identify` is mandatory. |
@@ -222,6 +222,31 @@ vocabulary from before this lane: `execution_version_not_runnable:` (the
 superseded run guard) and `recovery_execution_version_not_runnable:`
 (the superseded era skip).
 
+### Dev-head pins: authoring against an open head
+
+A standard with an open dev head (`<target>-dev`, one head per standard —
+GOVERNANCE G-1) can be pinned before promotion, but only content-addressed:
+the pin names the head's exact git state, never a floating label. Author
+the opt-in in the package's `contracts/constraints.json` under `opt_in` as
+`"<label>@<git-sha>"` (e.g. `"0.4.0-dev@<40-hex sha>"`), or let the CLI
+write it:
+
+```sh
+python -m benchweave.standards pin --package plugins/acme/widget \
+  --opt-in otdp=0.4.0-dev@<sha>
+```
+
+The label is mutable; the pin is not. The lock row records `stage: dev`, the
+sha and per-file digests over the head's bytes AT that sha, and every
+re-verification compares the head's CURRENT working-tree bytes against
+them (`pin --locked`, the check lane, and upgrades alike): a head that
+moved under the pin refuses `dev_pin_drift:` naming the file and both
+digests — heal it by moving the opt-in to the new sha, never by ignoring
+the drift. Resolution is repo-checkout only: the head's bytes materialize
+from the object store at the recorded sha, and a wheel or any store-less
+context refuses `dev_head_unresolvable:` by name rather than falling back
+to the active family.
+
 ### Named settings as presets
 
 `plugins/benchweave/sim_scope/` is the reference instance for shipping named,
@@ -230,7 +255,7 @@ configuration binding, settings schema and presets. Its layout:
 
 ```text
 src/benchweave_sim_scope/
-  descriptor.json                                  # full OTDP 0.2.0 form
+  descriptor.json                                  # full OTDP form (0.2.2 active; 0.2.0 remains served)
   presentation.json                                # envelope: resource_root ui, manifest pinned by sha256
   binding-catalogue.json                           # one configuration target
   ui/manifest.json                                 # sha256-pinned assets, binding, configuration page
@@ -356,7 +381,7 @@ no threshold, and the preview adds none.
 
 ## 5. Implement the adapter lifecycle
 
-The normative factory and methods are in [core specification §8](../standards/otdp/0.2.0/otdp-specification.md#8-python-adapter-abi-11). They use structural Python interfaces. The optional [plugin SDK](plugin-sdk.md) supplies typing protocols, offline validation and mocks for development; plugin runtime code need not import it.
+The normative factory and methods are in [core specification §8](../standards/otdp/0.2.2/otdp-specification.md#8-python-adapter-abi-11). They use structural Python interfaces. The optional [plugin SDK](plugin-sdk.md) supplies typing protocols, offline validation and mocks for development; plugin runtime code need not import it.
 
 | Entry point | Required behaviour |
 |---|---|
@@ -486,7 +511,7 @@ Native UART JSON uses strict UTF-8 NDJSON with LF termination, bounded frames an
 
 Advertise only the implemented subset. Document boot/reset/serial-control-line behaviour, watchdog behaviour and loss-of-host behaviour, with qualification evidence where applicable. Firmware flashing is a separate controlled activity, not plugin admission or `open()` behaviour.
 
-Use the [synthetic controller descriptor](../standards/otdp/0.2.0/examples/reference-controller.json), [reference protocol](../standards/otdp/0.2.0/examples/reference-protocols.md) and [runtime schema](../standards/otdp/0.2.0/otdp-runtime.schema.json) for exact examples. They are authoring targets, not ready-to-flash ESP32 firmware.
+Use the [synthetic controller descriptor](../standards/otdp/0.2.2/examples/reference-controller.json), [reference protocol](../standards/otdp/0.2.2/examples/reference-protocols.md) and [runtime schema](../standards/otdp/0.2.2/otdp-runtime.schema.json) for exact examples. They are authoring targets, not ready-to-flash ESP32 firmware.
 
 ## 7. Publish measurements correctly
 
@@ -503,7 +528,7 @@ Select the real dataset meaning: scalar set, waveform, digital trace, spectrum, 
 
 Payload creation/writing requires `artifact_writer`; reading authorised upload inputs requires `artifact_reader`. Finalising bytes does not validate their physical meaning: the manifest must still pass the dataset and class checks. Partial data must not become a complete successful acquisition merely because the file was written. The capture-lane services are for capture dispatches: a capture-stamped resource condition surfacing during an `invoke` dispatch is not yours to satisfy — the host treats it as an uncorrelated failure and poisons the session (the stamp's operation-binding rule).
 
-See the [measurement model](../standards/otdp/0.2.0/measurement-model.md) for all M01–M15 rules and the [extension contract](../standards/otdp/0.2.0/extension-contract.md) for host method signatures.
+See the [measurement model](../standards/otdp/0.2.2/measurement-model.md) for all M01–M15 rules and the [extension contract](../standards/otdp/0.2.2/extension-contract.md) for host method signatures.
 
 ### Declare derived variables (optional)
 
@@ -532,9 +557,9 @@ derived variables — backward-only references; a forward or circular
 reference is an admission failure (measurement-model.md §8.2 is the
 normative home). The full grammar, the
 static checks and the failure semantics are normative in
-[measurement-model.md §8](../standards/otdp/0.2.0/measurement-model.md);
+[measurement-model.md §8](../standards/otdp/0.2.2/measurement-model.md);
 the machine census lives at
-[derivation-vectors.json](../standards/otdp/0.2.0/examples/derivation-vectors.json).
+[derivation-vectors.json](../standards/otdp/0.2.2/examples/derivation-vectors.json).
 A declaration is validated when the descriptor is admitted (malformed
 expressions cannot reach a run) and evaluated by the host after each
 dataset-returning invoke: the derived variable gains computed `values`,
@@ -655,7 +680,7 @@ Firmware: [exact supported versions or explicitly unresolved].
 Connection: [protocol/backend/settings and available evidence].
 Intended operations/channels: [list].
 Evidence: [manual revisions, local files and reference exchanges].
-Target: OTDP 0.2.0, adapter API 1.1, architecture 1.5.
+Target: a served OTDP version (0.2.2 active; 0.2.0 remains served), adapter API 1.1, architecture 1.5.
 Delivery location and packaging: [repository path; local-only or shared release].
 
 Read docs/device-developer-guide.md and the linked normative contracts.

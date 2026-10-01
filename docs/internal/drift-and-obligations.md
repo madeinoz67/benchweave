@@ -292,47 +292,6 @@ and remain the reviewer's job.
     pointer advance rides a train of its own); loop prose that is
     deliberately gateway-specific does not sync (issue #99's design §6).
 
-21. **The dependency-policy block and the carried set** (issue #215, parent
-    #203 slice 1): `standards/standards-manifest.json`'s `dependency_policy`
-    block is the one committed authority for per-standard ranges, yanks and
-    retired identifiers. If a PR touches it, all four surfaces move together
-    in one arc: the manifest block ↔ the exported bundle
-    (`dependency_policy` rides verbatim; one entry per CARRIED (id, version)
-    — yanked versions ride marked) ↔ the SDK lock's carried rows and mirrored
-    block ↔ the SDK's vendored tree (`make sync-sdk-standards`; land lock +
-    pointer together). Drift refuses by name (`served_set_drift:`,
-    `policy_mirror_drift:` in `benchweave.standards check`); the SDK-side
-    load path carries the discipline inward — every served document is
-    digest-checked against its lock row (`vendored_digest_mismatch:`,
-    issue #215 fix F1); and the gateway-side export/check path compares
-    every carried version's corpus rows against their corpus pins
-    (`corpus_pin_mismatch:`, #215 fold-wave F-B — superseded versions are
-    digest-frozen, and a tampered non-active carried version no longer
-    exports clean). Range changes are coordinator decisions (VR-43) and
-    require a linked ruling reference in the PR body
-    (`policy_change_unruled:` is DEFERRED as D10 — no gateway workflow reads
-    PR bodies today, so no check harness can carry it; the governor lane
-    reviews every `standards/` touch meanwhile. This slice's PR amends this
-    row's original "landing with slice 2's agreement lane" sentence — the
-    owner's merge is the blessing). Slice 2 (#216) adds the resolver
-    surface: `standards/cross-constraints.json` (governance data beside the
-    two manifests, no corpus rows, root-scoped exemption in repin and the
-    baseline walks) ↔ its loader in `src/benchweave/standards/dependency.py`
-    ↔ resolve-time pairwise enforcement, with slice 3's bench admission
-    consuming the same loader (LANDED, #217: `control/documents.py`
-    `_check_cross_constraints`, pairwise per device against the bench's
-    execution version, `cross_constraint_violation:`); rows require citable evidence, and the
-    package carriers are `contracts/constraints.json` (authored) ↔
-    `contracts/lock.json` (generated, verified by `pin --locked` and check's
-    `plugin_lock_drift:` lane). The yanked 0.2.1 and the retired identifiers
-    enumerated from `ea70c6a5^` are the founding entries. A YANKED entry must
-    name a retained in-range version — bytes have to exist for a
-    yanked-but-conforming pin to validate against
-    (`policy_entry_unresolved:`); a RETIRED entry must name NO retained
-    directory and never the active version (`policy_retired_active:` /
-    `policy_status_conflict:`) — retired means "used and dead", so a retired
-    identifier naming no retained directory is the CORRECT seed state, not a
-    refusal (the earlier inversion here is corrected by #215 fold row 10).
 20. **The executable-version-literal zero gate** (issue #203 slice 1, A4;
     zero-mode since slice 7, issue #221):
     `scripts/standards/count_version_literals.py` is the gate's counter —
@@ -410,6 +369,66 @@ and remain the reviewer's job.
     named so the denominators cannot silently move. Per-scope scanned
     censuses are pinned (plugins 15, sdk 18, scripts 16, docs 30; the
     gateway floor 93) — a denominator move is a visible same-commit diff.
+
+21. **The dependency-policy block and the carried set** (issue #215, parent
+    #203 slice 1): `standards/standards-manifest.json`'s `dependency_policy`
+    block is the one committed authority for per-standard ranges, yanks and
+    retired identifiers. If a PR touches it, all four surfaces move together
+    in one arc: the manifest block ↔ the exported bundle
+    (`dependency_policy` rides verbatim; one entry per CARRIED (id, version)
+    — yanked versions ride marked) ↔ the SDK lock's carried rows and mirrored
+    block ↔ the SDK's vendored tree (`make sync-sdk-standards`; land lock +
+    pointer together). Drift refuses by name (`served_set_drift:`,
+    `policy_mirror_drift:` in `benchweave.standards check`); the SDK-side
+    load path carries the discipline inward — every served document is
+    digest-checked against its lock row (`vendored_digest_mismatch:`,
+    issue #215 fix F1); and the gateway-side export/check path compares
+    every carried version's corpus rows against their corpus pins
+    (`corpus_pin_mismatch:`, #215 fold-wave F-B — superseded versions are
+    digest-frozen, and a tampered non-active carried version no longer
+    exports clean). The SDK-side check lane additionally cross-checks the
+    lock's OWN rows against the mirrored policy block — a yank-marker flip
+    on a lock row, a retired-but-carried row, an out-of-range row or a
+    yanked active marker refuses `marker_mirror_drift:` (issue #288 M5), so
+    lock-internal drift fails `sync-standards --check` offline, not only at
+    the next gateway-side comparison. Range changes are coordinator
+    decisions (VR-43) and
+    require a linked ruling reference in the PR body
+    (`policy_change_unruled:` is DEFERRED as D10 — no gateway workflow reads
+    PR bodies today, so no check harness can carry it; the governor lane
+    reviews every `standards/` touch meanwhile. This slice's PR amends this
+    row's original "landing with slice 2's agreement lane" sentence — the
+    owner's merge is the blessing). Slice 2 (#216) adds the resolver
+    surface: `standards/cross-constraints.json` (governance data beside the
+    two manifests, no corpus rows, root-scoped exemption in repin and the
+    baseline walks) ↔ its loader in `src/benchweave/standards/dependency.py`
+    ↔ resolve-time pairwise enforcement, with slice 3's bench admission
+    consuming the same loader (LANDED, #217: `control/documents.py`
+    `_check_cross_constraints`, pairwise per device against the bench's
+    execution version, `cross_constraint_violation:`); rows require citable evidence, and the
+    package carriers are `contracts/constraints.json` (authored) ↔
+    `contracts/lock.json` (generated, verified by `pin --locked` and check's
+    `plugin_lock_drift:` lane). The yanked 0.2.1 and the retired identifiers
+    enumerated from `ea70c6a5^` are the founding entries. A YANKED entry must
+    name a retained in-range version — bytes have to exist for a
+    yanked-but-conforming pin to validate against
+    (`policy_entry_unresolved:`); a RETIRED entry must name NO retained
+    directory and never the active version (`policy_retired_active:` /
+    `policy_status_conflict:`) — retired means "used and dead", so a retired
+    identifier naming no retained directory is the CORRECT seed state, not a
+    refusal (the earlier inversion here is corrected by #215 fold row 10).
+    Registration append (issue #288, the fold's own NIT-2 gap class): the
+    loader family's bound-shape refusal `constraint_bounds_reversed:` —
+    `dependency.py` `parse_interval` and `manifest.py` `_parse_range` refuse
+    an equal or inverted bound pair at parse time, naming the pair, in both
+    the constraints loader and the policy loader — is registered here,
+    closing the gap its loader-family siblings (`cross_constraint_violation:`,
+    `policy_entry_unresolved:`, `policy_retired_active:`/`policy_status_conflict:`
+    above) never had; and `marker_mirror_drift:` (the SDK-side sentence
+    above) is registered with CON-4's stability posture — the prefix has NO
+    gateway emitter by design §4's conscious choice (issue #288 M5 is
+    SDK-side only; the gateway lane never synthesizes it), so this doc is
+    its registration home.
 
 22. **The counter twins** (issue #221, obligation-19 shape): the gateway's
     `scripts/standards/count_version_literals.py` and the SDK repo's

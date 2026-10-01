@@ -207,7 +207,12 @@ regenerate the validation report, export and sync — under the change-class
 rules with the batch being everything the head accumulated; the head's
 version names the intended target, the class rule governs the promoted
 version. Immutability starts at release: a version directory with no `-dev`
-suffix is frozen exactly as before.
+suffix is frozen exactly as before. The promotion PR also appends the
+promotion record — `dev_edit_sha` and `dev_tree_digest` (derived with
+`dev_tree_digest_at`) — to `standards/promotion-records.json`; `landing_sha`
+names a commit that does not exist while the PR is authored and is filled
+by the immediate post-landing append on main, until which the record stays
+`pending`.
 
 An emergency patch on a standard with an open head never opens a second
 head. Two sanctioned paths, named by the standards coordinator: strip and

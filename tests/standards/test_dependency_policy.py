@@ -45,6 +45,61 @@ def _edit_policy(root: Path, mutate: Callable[[dict[str, Any]], dict[str, Any]])
     path.write_text(json.dumps(document, indent=2))
 
 
+@pytest.mark.parametrize(
+    ("field", "plant"),
+    [
+        ("yanked", {"0.02.1": {"reason": "hand-typed zero", "since": "2026-10-01"}}),
+        ("retired", ["0.3.0", "00.3.0"]),
+        ("versions", {"0.02.2": {"migration_note": "docs/migration/x.md"}}),
+    ],
+)
+def test_low4_leading_zero_status_keys_refuse_at_load(
+    tmp_path: Path, field: str, plant: object
+) -> None:
+    """LOW 4 (issue #288): the loader's status-key checks used
+    ``VERSION_PATTERN`` (``\\d+.\\d+.\\d+`` — leading zeros pass), so a
+    hand-typed ``"0.02.1"`` yanked key LOADED and then matched no real pin:
+    the intended yank silently never applied. The status keys now demand
+    canonical numerals (the ``RANGE_PATTERN`` segment grammar), agreeing
+    with the export-time validator."""
+    root = _copy_standards(tmp_path)
+
+    def mutate(block: dict[str, Any]) -> dict[str, Any]:
+        row = block["standards"]["otdp"]
+        if field == "yanked":
+            row["yanked"].update(plant)
+        else:
+            row[field] = plant
+        return block
+
+    _edit_policy(root, mutate)
+    with pytest.raises(StandardsError) as raised:
+        load_dependency_policy(root)
+    message = str(raised.value)
+    assert message.startswith("dependency_policy_invalid:"), message
+    assert "canonical" in message or "0.02" in message or "00.3" in message, message
+
+
+def test_low7_reversed_policy_range_refuses_at_load(tmp_path: Path) -> None:
+    """LOW 7's manifest-side half (issue #288): ``_parse_range`` shares the
+    reversed-bounds refusal through the loader family — a policy range whose
+    lower bound does not order strictly below its exclusive upper bound
+    refuses at load, named, instead of yielding an empty served set far
+    downstream."""
+    root = _copy_standards(tmp_path)
+
+    def mutate(block: dict[str, Any]) -> dict[str, Any]:
+        block["standards"]["otdp"]["range"] = ">=0.2.2,<0.2.2"
+        return block
+
+    _edit_policy(root, mutate)
+    with pytest.raises(StandardsError) as raised:
+        load_dependency_policy(root)
+    message = str(raised.value)
+    assert "constraint_bounds_reversed:" in message, message
+    assert ">=0.2.2,<0.2.2" in message
+
+
 def test_policy_block_loads_and_derives_the_served_set() -> None:
     """Design §3.2's seed served set, per-id: otdp {0.2.0, 0.2.2} (0.2.1
     yanked-in-interval), registry {0.1.0, 0.1.1}, execution {0.1.0, 0.2.0},
