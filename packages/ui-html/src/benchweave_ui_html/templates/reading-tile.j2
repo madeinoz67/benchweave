@@ -1,0 +1,12 @@
+<section class="bw-reading" data-severity="{{ data.severity }}" aria-label="{{ data.label }}"{% if data.state %} data-bw-reading-state="{{ data.state }}"{% endif %}>
+  <header class="bw-reading__header">{{ data.label }}</header>
+  <span class="bw-reading__severity">{{ data.severity }}</span>
+  <p class="bw-reading__value">{{ data.value }} <small>{{ data.unit }}</small></p>
+  {%- if data.set_value is not none %}
+  <span class="bw-reading__set" data-bw-reading-role="set">Set {{ data.set_value }} {{ data.set_unit }}</span>
+  {%- endif %}
+  {%- if data.state is not none %}
+  <span class="bw-reading__state">{% include "icon/" ~ data.state ~ ".j2" %}{{ data.state_label }}</span>
+  {%- endif %}
+  <p class="bw-reading__quality">{{ data.quality }} · {{ data.freshness }}</p>
+</section>

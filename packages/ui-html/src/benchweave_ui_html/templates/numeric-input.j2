@@ -1,0 +1,8 @@
+<div class="bw-numeric">
+  <label class="bw-numeric__label" for="{{ data.input_id }}">{{ data.label }}</label>
+  <input class="bw-numeric__field" id="{{ data.input_id }}" type="number" value="{{ data.value }}"
+         min="{{ data.minimum }}" max="{{ data.maximum }}" step="{{ data.step }}"
+         aria-describedby="{{ data.help_id }}">
+  <span class="bw-numeric__unit">{{ data.unit }}</span>
+  <p class="bw-numeric__help" id="{{ data.help_id }}">{{ data.help_text }}</p>
+</div>

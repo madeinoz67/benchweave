@@ -1,0 +1,21 @@
+<div class="bw-table-wrap">
+  <table class="bw-data-table">
+    <caption>{{ data.caption }}</caption>
+    <thead>
+      <tr>
+        {%- for header in data.headers %}
+        <th scope="col">{{ header }}</th>
+        {%- endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {%- for row in data.rows %}
+      <tr data-row-key="{{ row.key }}">
+        {%- for cell in row.cells %}
+        <td>{{ cell }}</td>
+        {%- endfor %}
+      </tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+</div>
