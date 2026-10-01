@@ -940,16 +940,36 @@ def _check_two_units(row: Row) -> list[str]:
 
 
 def _check_refusal(row: Row) -> list[str]:
+    """§E.2.3 row 3 — the M4 owner ruling (2026-10-02, adopt-with-recs):
+    the >2-unit refusal draws NO traces (the axis/canvas drawing surface
+    stays empty; no axis bindings exist), but the LEGEND stays — §E.1's
+    "Every trace is listed in a visible legend" is unqualified, and the
+    legend is listing, not drawing (matching the TS behavior)."""
     messages: list[str] = []
     refusal = RenderedComponent(partials.render_plot(fixtures.three_unit_refusal_plot()))
-    if _legend_rows(refusal):
-        messages.append("the >2-unit refusal must render NO traces")
     if not any(
         "bw-plot__refusal" in element.class_tokens for element in refusal.elements
     ):
         messages.append("the >2-unit refusal must render its refusal note")
     if not refusal.explicit_role("status"):
         messages.append("the refusal note is a role=status live region")
+    rows = _legend_rows(refusal)
+    if len(rows) != 3:
+        messages.append(
+            "every declared trace stays listed in the legend on refusal "
+            "(the legend is listing, not drawing)"
+        )
+    if not all("data-bw-series-slot" in element.attrs for element in rows):
+        messages.append("the listed rows carry their series slot")
+    if any("data-bw-axis" in element.attrs for element in refusal.elements):
+        messages.append("no trace binds to an axis on refusal (nothing is drawn)")
+    canvas = next(
+        (e for e in refusal.elements if "bw-plot__canvas" in e.class_tokens), None
+    )
+    if canvas is None:
+        messages.append("the canvas element must render")
+    elif refusal._element_texts[refusal.elements.index(canvas)].strip():
+        messages.append("the drawing surface stays empty on refusal")
     return messages
 
 

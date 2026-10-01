@@ -410,27 +410,32 @@ def compose_plot(
     unit_of = {trace.channel_id: (trace.unit.strip() or None) for trace in traces}
     axis_by_unit = {unit: str(i + 1) for i, unit in enumerate(axes.units)}
     legend: list[LegendRow] = []
-    if not axes.refusal:
-        for trace_row in resolved:
-            trace = next(t for t in traces if t.channel_id == trace_row.assignment.channel_id)
-            marker, disclosure = provenance_marker(trace)
-            unit = unit_of[trace.channel_id]
-            legend.append(
-                LegendRow(
-                    channel_id=trace.channel_id,
-                    slot=trace_row.assignment.slot,
-                    resolved_series=trace_row.resolved_series,
-                    data_line=trace_row.data_line,
-                    symbol=trace_row.assignment.symbol,
-                    hidden=trace_row.hidden,
-                    axis=axis_by_unit.get(unit, "") if not trace_row.hidden else "",
-                    provenance_kind=(
-                        trace.provenance if trace.provenance != "measured" else None
-                    ),
-                    provenance_marker=marker,
-                    provenance_disclosure=disclosure,
-                )
+    # The M4 owner ruling (2026-10-02, adopt-with-recs): the >2-unit
+    # refusal draws NO traces — the axis/canvas surface stays empty — but
+    # the LEGEND stays: §E.1's "Every trace is listed in a visible legend"
+    # is unqualified, and the legend is listing, not drawing (the TS
+    # behavior). Slot facts are unit-independent, so every declared trace
+    # lists with its slot; no axis binding exists on refusal.
+    for trace_row in resolved:
+        trace = next(t for t in traces if t.channel_id == trace_row.assignment.channel_id)
+        marker, disclosure = provenance_marker(trace)
+        unit = unit_of[trace.channel_id]
+        legend.append(
+            LegendRow(
+                channel_id=trace.channel_id,
+                slot=trace_row.assignment.slot,
+                resolved_series=trace_row.resolved_series,
+                data_line=trace_row.data_line,
+                symbol=trace_row.assignment.symbol,
+                hidden=trace_row.hidden,
+                axis=axis_by_unit.get(unit, "") if not trace_row.hidden else "",
+                provenance_kind=(
+                    trace.provenance if trace.provenance != "measured" else None
+                ),
+                provenance_marker=marker,
+                provenance_disclosure=disclosure,
             )
+        )
     visible_traces = [t for t in traces if t.channel_id not in hidden]
     acquisition = acquisition_rows(visible_traces, rate)
     emitted_refs = tuple(

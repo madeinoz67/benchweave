@@ -282,3 +282,25 @@ def test_reversed_cursors_read_the_magnitude() -> None:
         )
     )
     assert composed.delta_t_text == "Δt = 7 samples"
+
+
+# --- M4 (owner-ruled 2026-10-02): the legend stays on the >2-unit refusal ------
+
+
+def test_refusal_keeps_the_legend_and_empties_the_drawing_surface() -> None:
+    """The M4 ruling (adopt-with-recs): §E.1's "Every trace is listed in a
+    visible legend" is unqualified — the legend is listing, not drawing.
+    Every declared trace stays listed with its slot; the drawing surface
+    (axis bindings, the canvas payload) stays empty."""
+    rendered = RenderedComponent(partials.render_plot(fixtures.three_unit_refusal_plot()))
+    rows = [e for e in rendered.elements if "data-bw-series-slot" in e.attrs]
+    assert len(rows) == 3, "every declared trace stays listed"
+    assert {e.attrs.get("data-bw-channel-id") for e in rows} == {
+        "voltage",
+        "current",
+        "power",
+    }
+    assert not any("data-bw-axis" in e.attrs for e in rendered.elements)
+    canvas = next(e for e in rendered.elements if "bw-plot__canvas" in e.class_tokens)
+    assert not rendered._element_texts[rendered.elements.index(canvas)].strip()
+    assert any("bw-plot__refusal" in e.class_tokens for e in rendered.elements)
