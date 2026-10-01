@@ -114,13 +114,15 @@ def _plant_head(root: Path) -> None:
     corpus_path.write_text(json.dumps(corpus, indent=1), encoding="utf-8")
 
 
-def _plant_cross_refs(root: Path) -> None:
+def _plant_cross_refs(root: Path, *, one_line: bool = False) -> None:
     """M1's pairing fixture (issue #288): two example files whose bytes
     carry the dev label — so the landing sweep MOVES their digests — and a
     commissioning document citing those digests. The honest landing
     re-stamps the citation to the promoted digests (same relative paths in
     both trees); the attack swaps the two values (both digests real
-    members of the promoted tree — only the pairing rule refuses)."""
+    members of the promoted tree — only the pairing rule refuses).
+    ``one_line`` writes the citation as ONE compact line (the refute
+    slate's intra-line swap arm: both digests on a single line)."""
     examples = root / "standards" / "otdp" / LABEL / "examples"
     examples.mkdir(exist_ok=True)
     for name, role in (("bench.json", "bench"), ("report.json", "report")):
@@ -136,8 +138,13 @@ def _plant_cross_refs(root: Path) -> None:
             (examples / "report.json").read_bytes()
         ).hexdigest(),
     }
+    citation = (
+        json.dumps(commissioning, separators=(",", ":")) + "\n"
+        if one_line
+        else json.dumps(commissioning, indent=2) + "\n"
+    )
     (root / "standards" / "otdp" / LABEL / "commissioning.json").write_text(
-        json.dumps(commissioning, indent=2) + "\n", encoding="utf-8"
+        citation, encoding="utf-8"
     )
 
 
@@ -149,6 +156,8 @@ def _landing_tree(
     laundered: bool = False,
     close_head: bool = False,
     cross_refs: bool = False,
+    one_line_commissioning: bool = False,
+    drop_dash_line: bool = False,
 ) -> None:
     """Build main's landing state: the promoted directory (the dev tree's
     files with the version tokens swept to the target), corpus rows citing
@@ -198,9 +207,23 @@ def _landing_tree(
                 (promoted / "examples" / "report.json").read_bytes()
             ).hexdigest(),
         }
-        (promoted / "commissioning.json").write_text(
-            json.dumps(citation, indent=2) + "\n", encoding="utf-8"
+        text = (
+            json.dumps(citation, separators=(",", ":")) + "\n"
+            if one_line_commissioning
+            else json.dumps(citation, indent=2) + "\n"
         )
+        (promoted / "commissioning.json").write_text(text, encoding="utf-8")
+    if drop_dash_line:
+        # The landing DROPS the planted dash-dash line: the diff's removed
+        # content line "-- SAFETY: ..." masquerades as a file header under
+        # prefix filtering (the refute slate's shape 5).
+        safety = promoted / "device-classes.md"
+        kept = [
+            line
+            for line in safety.read_bytes().splitlines(keepends=True)
+            if not line.startswith(b"-- SAFETY: envelope retained")
+        ]
+        safety.write_bytes(b"".join(kept))
     if sweep_edit:
         # The planted NON-version edit: a line the sweep tokens cannot
         # explain, smuggled into the promoted tree.
@@ -266,6 +289,8 @@ def _fixture(
     head_on_main: bool = False,
     laundered: bool = False,
     cross_refs: bool = False,
+    one_line_commissioning: bool = False,
+    drop_dash_line: bool = False,
 ) -> tuple[Path, dict[str, str]]:
     """The squash-landing fixture: base on main, head opened+edited on
     ``dev-train``, landing committed on main WITHOUT the branch's commits
@@ -304,20 +329,24 @@ def _fixture(
         # (GOVERNANCE's PR shape); only the dev edit rides the train branch.
         _plant_head(root)
         if cross_refs:
-            _plant_cross_refs(root)
+            _plant_cross_refs(root, one_line=one_line_commissioning)
         head_open_sha = _commit(root, "open head on main")
         _git(root, "checkout", "-q", "-b", "dev-train")
     else:
         _git(root, "checkout", "-q", "-b", "dev-train")
         _plant_head(root)
         if cross_refs:
-            _plant_cross_refs(root)
+            _plant_cross_refs(root, one_line=one_line_commissioning)
         _commit(root, "open head")
     # The dev edit: a real content change to the head (the target-titled
     # const ride is already in; touch a prose companion so the final dev
-    # state differs from the open state).
+    # state differs from the open state). ``drop_dash_line`` also PLANTS a
+    # "-- "-initial line here that the landing removes — the refute slate's
+    # header-filter arm (a removed dash-dash content line masquerades as a
+    # diff header under prefix filtering).
     prose = root / "standards" / "otdp" / LABEL / "device-classes.md"
-    prose.write_bytes(prose.read_bytes() + b"\nA dev-stage companion edit.\n")
+    prefix = b"-- SAFETY: envelope retained\n" if drop_dash_line else b""
+    prose.write_bytes(prefix + prose.read_bytes() + b"\nA dev-stage companion edit.\n")
     corpus_path = root / "standards" / "corpus-manifest.json"
     corpus = json.loads(corpus_path.read_bytes())
     for row in corpus["files"]:
@@ -333,6 +362,8 @@ def _fixture(
         laundered=laundered,
         close_head=head_on_main,
         cross_refs=cross_refs,
+        one_line_commissioning=one_line_commissioning,
+        drop_dash_line=drop_dash_line,
     )
     landing_sha = _commit(root, "promotion landing")
     facts = {
@@ -775,6 +806,134 @@ def test_m1_real_to_real_digest_swap_refuses(tmp_path: Path) -> None:
     assert message.startswith("promotion_sweep_violation:"), message
     assert dev_bench in message, "the refusal quotes the removed-side digest"
     assert promoted_report in message, "the refusal quotes the added-side digest"
+
+
+# --- issue #288 refute slate: the sweep digest lane's five executed shapes ----------
+
+
+def test_m1_reordered_digest_swap_refuses(tmp_path: Path) -> None:
+    """Slate shape 1 (executed pre-overhaul): the swap REORDERED so every
+    positional pair path-agrees — the bench line carries report's digest
+    and vice versa, each pairing with its same-path counterpart. The
+    per-hunk multiset of (residual -> path-sequence) bindings refuses: the
+    added lines' bindings do not exist on the removed side, whatever the
+    ordering."""
+    root, facts = _fixture(tmp_path, record=None, cross_refs=True)
+    _write_records(root, _honest_record(root, facts))
+    validate_promotion_records(root)  # control: the honest pairing admits
+    commissioning = root / "standards" / "otdp" / TARGET / "commissioning.json"
+    document = json.loads(commissioning.read_bytes())
+    reordered = {
+        "report_sha256": document["bench_sha256"],
+        "bench_sha256": document["report_sha256"],
+    }
+    commissioning.write_text(json.dumps(reordered, indent=2) + "\n", encoding="utf-8")
+    with pytest.raises(StandardsError) as raised:
+        validate_promotion_records(root)
+    message = str(raised.value)
+    assert message.startswith("promotion_sweep_violation:"), message
+    assert "commissioning.json" in message
+
+
+def test_m1_intra_line_digest_swap_refuses(tmp_path: Path) -> None:
+    """Slate shape 2 (executed pre-overhaul): both digests on ONE compact
+    line, swapped in place — the path SET is unchanged so set-based
+    pairing admits; the binding's per-line path SEQUENCE is what refuses
+    (bench's position must still name bench)."""
+    root, facts = _fixture(
+        tmp_path, record=None, cross_refs=True, one_line_commissioning=True
+    )
+    _write_records(root, _honest_record(root, facts))
+    validate_promotion_records(root)  # control: the honest one-line citation admits
+    commissioning = root / "standards" / "otdp" / TARGET / "commissioning.json"
+    document = json.loads(commissioning.read_bytes())
+    document["bench_sha256"], document["report_sha256"] = (
+        document["report_sha256"],
+        document["bench_sha256"],
+    )
+    commissioning.write_text(
+        json.dumps(document, separators=(",", ":")) + "\n", encoding="utf-8"
+    )
+    with pytest.raises(StandardsError) as raised:
+        validate_promotion_records(root)
+    message = str(raised.value)
+    assert message.startswith("promotion_sweep_violation:"), message
+    assert "commissioning.json" in message
+
+
+def test_m1_key_rename_on_a_digest_line_refuses(tmp_path: Path) -> None:
+    """Slate shape 3 (executed pre-overhaul): a non-digest payload edit on
+    a paired digest line — the key renamed ``bench_sha256`` to
+    ``bench_sha256_disabled`` with the honest re-stamped digest. Paths
+    agree positionally; the binding's RESIDUAL equality refuses (the
+    non-digest text of a digest line is constrained like any other)."""
+    root, facts = _fixture(tmp_path, record=None, cross_refs=True)
+    _write_records(root, _honest_record(root, facts))
+    validate_promotion_records(root)  # control: the honest pairing admits
+    commissioning = root / "standards" / "otdp" / TARGET / "commissioning.json"
+    document = json.loads(commissioning.read_bytes())
+    renamed = {
+        "bench_sha256_disabled": document["bench_sha256"],
+        "report_sha256": document["report_sha256"],
+    }
+    commissioning.write_text(json.dumps(renamed, indent=2) + "\n", encoding="utf-8")
+    with pytest.raises(StandardsError) as raised:
+        validate_promotion_records(root)
+    message = str(raised.value)
+    assert message.startswith("promotion_sweep_violation:"), message
+    assert "commissioning.json" in message
+
+
+def test_m1_digest_line_deletion_refuses(tmp_path: Path) -> None:
+    """Slate shape 4 (executed pre-overhaul): DELETING a digest line
+    shifts the positional pairing so the surviving digest line pairs
+    cleanly and the orphaned removed line fell back to membership-only
+    admission. The multiset comparison refuses the uncovered removed
+    binding: a re-stamp without its counterpart is a deletion, and
+    deletions are not transitions."""
+    root, facts = _fixture(tmp_path, record=None, cross_refs=True)
+    _write_records(root, _honest_record(root, facts))
+    validate_promotion_records(root)  # control: the honest pairing admits
+    commissioning = root / "standards" / "otdp" / TARGET / "commissioning.json"
+    document = json.loads(commissioning.read_bytes())
+    del document["report_sha256"]
+    commissioning.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+    with pytest.raises(StandardsError) as raised:
+        validate_promotion_records(root)
+    message = str(raised.value)
+    assert message.startswith("promotion_sweep_violation:"), message
+    assert "commissioning.json" in message
+
+
+def test_m1_plus_plus_content_line_refuses(tmp_path: Path) -> None:
+    """Slate shape 5, added direction (executed pre-overhaul): an appended
+    line starting with ``++`` renders as a ``+++``-prefixed diff line that
+    the header filter swallowed whole — invisible to every rule. The
+    header filter is positional (only lines before the first ``@@``), so
+    hunk content keeps its leading characters."""
+    root, facts = _fixture(tmp_path, record=None)
+    _write_records(root, _honest_record(root, facts))
+    prose = root / "standards" / "otdp" / TARGET / "device-classes.md"
+    prose.write_bytes(prose.read_bytes() + b"++ audit note: envelope check skipped\n")
+    with pytest.raises(StandardsError) as raised:
+        validate_promotion_records(root)
+    message = str(raised.value)
+    assert message.startswith("promotion_sweep_violation:"), message
+    assert "device-classes.md" in message
+
+
+def test_m1_removed_dash_dash_content_line_refuses(tmp_path: Path) -> None:
+    """Slate shape 5, removed direction (executed pre-overhaul): a line
+    starting with ``--`` present in the dev tree and deleted at landing
+    renders as a ``---``-prefixed diff line — byte-identical to a file
+    header under prefix filtering, so the deletion was invisible."""
+    root, facts = _fixture(tmp_path, record=None, drop_dash_line=True)
+    _write_records(root, _honest_record(root, facts))
+    with pytest.raises(StandardsError) as raised:
+        validate_promotion_records(root)
+    message = str(raised.value)
+    assert message.startswith("promotion_sweep_violation:"), message
+    assert "device-classes.md" in message
 
 
 # --- issue #288 M2: the history-derived no-record trigger --------------------------

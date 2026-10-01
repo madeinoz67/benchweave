@@ -22,12 +22,15 @@ The gates (:func:`validate_promotion_records`, run by the standards suite):
     transition vocabulary of the ``<target>-dev`` label, the target and
     the pre-dev active version is exactly what the strip rule removes;
     issue #288 M1: NO line admits by token presence alone — the tokens are
-    remediation vocabulary, never admission), a VERIFIED paired digest
-    re-stamp (every digest on both sides of a pair names a real file of
-    the right tree AND the same relative path), or the regenerated
-    ``validation-report.md``; any other changed line refuses
+    remediation vocabulary, never admission), a VERIFIED digest re-stamp
+    whose (residual -> digest-path-sequence) binding matches per hunk
+    (every digest names a real file of the right tree, in the same
+    in-line position, under the same field text — the #288 refute-slate
+    overhaul: reordering, intra-line swaps, payload renames, count-changing
+    deletions and ``--``/``++``-initial content lines all refuse), or the
+    regenerated ``validation-report.md``; any other changed line refuses
     ``promotion_sweep_violation:`` — the sweep-laundry mitigation (design
-    risk 6, tightened by #288 M1);
+    risk 6, tightened by #288 M1 and its refute slate);
 (c) PENDING-SUCCESSOR — a pending record refuses once a SUCCESSOR version
     of the same standard exists on main (pendingness must not outlive a
     train); the drift-check lane (:func:`pending_warning_lines`, wired into
@@ -79,6 +82,7 @@ import hashlib
 import json
 import re
 import subprocess
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -337,55 +341,122 @@ _VERSIONISH = re.compile(r"\d+\.\d+\.\d+(?:-dev)?")
 _HEXDIGEST = re.compile(r"\b[a-f0-9]{64}\b")
 
 
-def _line_offends(
-    line: str,
-    stripped_opposite: set[str],
-    known_digests: set[str],
-    own_digest_names: dict[str, set[str]],
-    opposite_digest_names: dict[str, set[str]],
-    pair: str | None,
-) -> str | None:
-    """Whether one changed line is unexplained by the transition rules.
+#: A line whose non-digest payload is nothing but JSON/markdown wrapping
+#: — the disclosed shape of an unpaired digest-bearing APPEND (its only
+#: payload is the digest; it is visible as an added line in the promotion
+#: PR, which is the review surface, and cannot pair with — hence cannot
+#: launder an edit of — any removed line).
+_TRIVIAL_PAYLOAD = re.compile(r"^[\s\"'{}\[\],:]*$")
 
-    ``None`` when the line admits (an identity re-stamp, or a VERIFIED
-    digest re-stamp); else the detail to quote. Issue #288 M1 deleted the
-    token fast-admit: a line MERELY CONTAINING a transition token no
-    longer admits — only its version-stripped residual matching the
-    opposite side does (every legitimate transition line has its
-    counterpart; a semantic edit or an injected append riding a token
-    refuses). Digest lines keep the F6 membership rule (every digest on
-    the line names a real file of the right tree — one real digest does
-    not launder fakes beside it) and GAIN pairing: when the line's
-    positional counterpart on the opposite side also carries digests, the
-    two sides must name the SAME relative paths in their trees — a
-    real-to-real swap (bench's digest moved onto report's line) refuses
-    by path mismatch, quoting both digests. Disclosed residual (issue
-    #288 NIT-9): an UNPAIRED digest-bearing append whose only payload is
-    one real digest still admits — it is visible as an added line in the
-    promotion PR, which is the review surface, and cannot launder an
-    EDIT of an existing line (edits always pair)."""
-    if _VERSIONISH.sub("", line) in stripped_opposite:
-        return None
+
+def _line_facts(
+    line: str, digest_names: dict[str, set[str]]
+) -> tuple[str, list[str], tuple[frozenset[str], ...]]:
+    """One changed line's facts for the sweep's binding rule (the issue
+    #288 refute-slate overhaul): the versionish+digest-stripped RESIDUAL
+    (the non-digest payload, constrained like any other text), the
+    line's digest SEQUENCE (order within a line is meaningful — the
+    fields' positions name their files), and the path-set SEQUENCE those
+    digests name in the line's own tree. Admission is the per-hunk
+    multiset equality of (residual -> path-sequence) bindings: order
+    across lines is free (a reordered hunk of honest re-stamps admits),
+    order within a line and the payload text are not (an intra-line swap
+    or a key rename refuses)."""
     digests = _HEXDIGEST.findall(line)
-    if digests:
-        unknown = [digest for digest in digests if digest not in known_digests]
+    residual = _VERSIONISH.sub("", _HEXDIGEST.sub("", line))
+    return (
+        residual,
+        digests,
+        tuple(frozenset(digest_names.get(d, set())) for d in digests),
+    )
+
+
+def _hunk_offences(
+    hunk_removed: list[str],
+    hunk_added: list[str],
+    dev_digests: set[str],
+    dev_digest_names: dict[str, set[str]],
+    promoted_digests: set[str],
+    promoted_digest_names: dict[str, set[str]],
+) -> list[str]:
+    """One hunk's offences under the binding rule (the issue #288
+    refute-slate overhaul of the sweep's digest lane).
+
+    The hunk admits when the MULTISET of (residual -> path-sequence)
+    bindings is equal on both sides — order across lines is free, order
+    within a line and the non-digest payload are not. Leftover removed
+    bindings are offences (a re-stamp without its counterpart is a
+    deletion; a plain unmatched removal is an unexplained edit). Leftover
+    added bindings are offences EXCEPT the disclosed residual: a
+    digest-bearing append whose non-digest payload is nothing but
+    wrapping (its only payload is real digests; visible in the promotion
+    PR, the review surface). The F6 membership rule runs first: an
+    invented digest refuses naming it, on either side. When both sides
+    carry leftover digest lines they are paired index-wise as REASSIGNED
+    digests in the detail, quoting one digest from each side. Disclosed
+    residual (mech-F9): two files with IDENTICAL content in one tree
+    share a digest, making the digest->path mapping one-to-many — the
+    binding's path-set then names both files and a re-stamp between them
+    admits; measured zero duplicate-content files within any of the 18
+    retained version directories on today's corpus (the cross-version
+    sharing copy-never-move produces lives in OTHER trees and never
+    enters one tree's map)."""
+    offending: list[str] = []
+    removed_facts = [_line_facts(line, dev_digest_names) for line in hunk_removed]
+    added_facts = [_line_facts(line, promoted_digest_names) for line in hunk_added]
+    for facts, line in zip(removed_facts, hunk_removed, strict=True):
+        unknown = [digest for digest in facts[1] if digest not in dev_digests]
         if unknown:
-            return f" [unexplained digest: {unknown[0]}]"
-        if pair is not None:
-            pair_digests = _HEXDIGEST.findall(pair)
-            if pair_digests:
-                own_names: set[str] = set()
-                for digest in digests:
-                    own_names |= own_digest_names.get(digest, set())
-                pair_names: set[str] = set()
-                for digest in pair_digests:
-                    pair_names |= opposite_digest_names.get(digest, set())
-                if own_names != pair_names:
-                    return (
-                        f" [reassigned digest: {digests[0]} -> {pair_digests[0]}]"
-                    )
-        return None
-    return ""
+            offending.append(
+                f" [unexplained digest: {unknown[0]}]-" + line.strip()[:100]
+            )
+    for facts, line in zip(added_facts, hunk_added, strict=True):
+        unknown = [digest for digest in facts[1] if digest not in promoted_digests]
+        if unknown:
+            offending.append(
+                f" [unexplained digest: {unknown[0]}]+" + line.strip()[:100]
+            )
+    removed_counts = Counter((facts[0], facts[2]) for facts in removed_facts)
+    added_counts = Counter((facts[0], facts[2]) for facts in added_facts)
+    missing = removed_counts - added_counts
+    extra = added_counts - removed_counts
+    unmatched_removed: list[tuple[tuple[str, list[str], tuple[frozenset[str], ...]], str]] = []
+    for facts, line in zip(removed_facts, hunk_removed, strict=True):
+        binding = (facts[0], facts[2])
+        if missing.get(binding, 0) > 0:
+            missing[binding] -= 1
+            unmatched_removed.append((facts, line))
+    unmatched_added: list[tuple[tuple[str, list[str], tuple[frozenset[str], ...]], str]] = []
+    for facts, line in zip(added_facts, hunk_added, strict=True):
+        binding = (facts[0], facts[2])
+        if extra.get(binding, 0) > 0:
+            extra[binding] -= 1
+            unmatched_added.append((facts, line))
+    leftover_removed_digest = [(facts, line) for facts, line in unmatched_removed if facts[1]]
+    leftover_added_digest = [(facts, line) for facts, line in unmatched_added if facts[1]]
+    paired = min(len(leftover_removed_digest), len(leftover_added_digest))
+    for index in range(paired):
+        removed_facts_pair, removed_line = leftover_removed_digest[index]
+        added_facts_pair, _added_line = leftover_added_digest[index]
+        offending.append(
+            f" [reassigned digest: {removed_facts_pair[1][0]} -> "
+            f"{added_facts_pair[1][0]}]-" + removed_line.strip()[:100]
+        )
+    for facts, line in leftover_removed_digest[paired:]:
+        offending.append(
+            f" [digest re-stamp without its counterpart: {facts[1][0]}]-"
+            + line.strip()[:100]
+        )
+    for facts, line in unmatched_removed:
+        if not facts[1]:
+            offending.append("-" + line.strip()[:100])
+    for facts, line in unmatched_added:
+        if facts[1] and _TRIVIAL_PAYLOAD.fullmatch(facts[0]):
+            # The disclosed append residual: digest-only payload, real
+            # digests (the membership precheck refused unknowns above).
+            continue
+        offending.append("+" + line.strip()[:100])
+    return offending
 
 
 def _sweep_check(
@@ -398,31 +469,34 @@ def _sweep_check(
 
     The design names the version transition tokens (the ``<target>-dev``
     label, the target, the pre-dev active version from the promoted rows'
-    ``lineage``) — the VOCABULARY of a legitimate transition, which issue
-    #288 M1 demoted to remediation text: no line admits by containing a
-    token. The FOUNDING RECORD (execution 0.2.0, coordinator directive
-    2026-09-28) surfaced the classes the real sweep mechanically produces,
-    each admitted by its own verifiable rule:
+    ``lineage``) — the VOCABULARY of a legitimate transition, demoted to
+    remediation text since issue #288 M1: no line admits by containing a
+    token. The ADMISSION RULE (the issue #288 refute-slate overhaul) is
+    the per-hunk multiset equality of (residual -> path-sequence)
+    bindings, computed by ``_line_facts`` and judged by
+    ``_hunk_offences``:
 
-    - IDENTITY RE-STAMP: a changed line admits when the OPPOSITE side of
-      the same file's diff carries a line equal after stripping every
-      version-like substring — the same sentence/URN with its version
-      numbers moved (the founding record's pre-reset ``1.0.0`` URNs and the
-      prose title both ride this rule). KNOWN FALSE-ACCEPT CLASS, disclosed
-      (the slice-2 comparator's R4 class): a version-string motion in a
-      non-version SEMANTIC field admits; the planted-wording control keeps
-      the teeth — any non-version text difference still refuses.
-    - PAIRED DIGEST RE-STAMP (VR-36a's "URN/digest restamp"): a changed
-      line carrying bare sha256s admits when EVERY digest on the line
-      NAMES A REAL FILE — removed side a file of the dev tree at the sha,
-      added side a file of the promoted tree (bidirectional membership; an
-      invented digest matches nothing and refuses — refute fold F6: one
-      real digest no longer launders fakes beside it) — AND, when the
-      positional counterpart line also carries digests (issue #288 M1),
-      the paths they name AGREE on both sides: a digest re-stamp moves a
-      file's citation to that same file's new digest, never onto a
-      different file's digest. Verified on the founding record: every one
-      of its changed digest pairs maps same-relative-path, 9/9 pairs.
+    - IDENTITY RE-STAMP: a changed line admits when the same hunk's
+      opposite side carries a line equal after stripping every version-like
+      substring — the same sentence/URN with its version numbers moved
+      (the founding record's pre-reset ``1.0.0`` URNs and the prose title
+      both ride this rule). Disclosed (the slice-2 comparator's R4 class):
+      a version-string motion in a non-version SEMANTIC field admits; the
+      planted-wording control keeps the teeth.
+    - DIGEST RE-STAMP (VR-36a's "URN/digest restamp"): a changed line
+      carrying bare sha256s admits when every digest names a real file of
+      the right tree (bidirectional membership; an invented digest matches
+      nothing and refuses — refute fold F6) AND its binding matches: the
+      same residual, and the same SEQUENCE of digest->path assignments —
+      a re-stamp moves a file's citation to that same file's new digest,
+      never onto a different file's digest, a different position in the
+      line, or a renamed field. Verified on the founding record: every
+      one of its changed digest pairs maps same-relative-path with stable
+      payloads, 9/9 pairs (DESIGN-MEASURED).
+    - REMOVED-side bindings without counterparts refuse (a deletion is
+      not a transition); ADDED-side bindings without counterparts refuse
+      unless the line's only payload is real digests (the disclosed
+      visible-append residual).
     - The regenerated ``validation-report.md``, absent from the dev tree,
       is the sanctioned landing artifact (``_LANDING_REGENERATED``).
     """
@@ -506,72 +580,54 @@ def _sweep_check(
             continue
         old_lines = (old or b"").decode("utf-8", "replace").splitlines(keepends=True)
         new_lines = (new or b"").decode("utf-8", "replace").splitlines(keepends=True)
-        all_removed: list[str] = []
-        all_added: list[str] = []
         hunks: list[tuple[list[str], list[str]]] = []
         removed: list[str] = []
         added: list[str] = []
+        in_hunk = False
         for line in difflib.unified_diff(old_lines, new_lines, n=0):
             if line.startswith("@@"):
-                # A new hunk bounds the pairing: substitutions pair
-                # positionally WITHIN their hunk, never across hunks.
+                in_hunk = True
                 if removed or added:
                     hunks.append((removed, added))
                     removed, added = [], []
                 continue
-            if line.startswith(("+++", "---")):
+            if not in_hunk and line.startswith(("+++", "---")):
+                # The file headers precede the first hunk ONLY — inside a
+                # hunk a content line starting with "--"/"++" is content
+                # (the refute slate's shape 5: prefix filtering made such
+                # lines invisible to every rule).
                 continue
             if line.startswith("-"):
                 removed.append(line[1:])
-                all_removed.append(line[1:])
             elif line.startswith("+"):
                 added.append(line[1:])
-                all_added.append(line[1:])
         if removed or added:
             hunks.append((removed, added))
-        # The identity re-stamp rule's comparison set: the opposite side's
-        # lines with every version-like substring stripped (whole file — a
-        # line's counterpart may sit in any hunk).
-        stripped_added = {_VERSIONISH.sub("", line) for line in all_added}
-        stripped_removed = {_VERSIONISH.sub("", line) for line in all_removed}
         offending: list[str] = []
         for hunk_removed, hunk_added in hunks:
-            # Issue #288 M1: within one hunk the i-th removed line pairs
-            # with the i-th added line (difflib emits substitutions as
-            # adjacent runs); a paired digest line's re-stamp must name the
-            # SAME relative path on both sides of the pair.
-            for index, line in enumerate(hunk_removed):
-                pair = hunk_added[index] if index < len(hunk_added) else None
-                detail = _line_offends(
-                    line,
-                    stripped_added,
+            # The refute-slate admission rule: the per-hunk multiset of
+            # (residual -> path-sequence) bindings must be equal on both
+            # sides — see _hunk_offences for the offences and residuals.
+            offending.extend(
+                _hunk_offences(
+                    hunk_removed,
+                    hunk_added,
                     dev_digests,
                     dev_digest_names,
-                    promoted_digest_names,
-                    pair,
-                )
-                if detail is not None:
-                    offending.append(f"{detail}-" + line.strip()[:100])
-            for index, line in enumerate(hunk_added):
-                pair = hunk_removed[index] if index < len(hunk_removed) else None
-                detail = _line_offends(
-                    line,
-                    stripped_removed,
                     promoted_digests,
                     promoted_digest_names,
-                    dev_digest_names,
-                    pair,
                 )
-                if detail is not None:
-                    offending.append(f"{detail}+" + line.strip()[:100])
+            )
         if offending:
             raise StandardsError(
                 f"promotion_sweep_violation: {record.standard}/{record.target}/"
                 f"{name} differs from the dev tree at {record.dev_edit_sha} on "
                 f"non-transition lines ({len(offending)} line(s), first: "
                 f"{offending[0][:160]!r}) — the promotion sweep may carry only "
-                f"the version transition (tokens {', '.join(tokens)}, verified "
-                "digest re-stamps, identity re-stamps); move the change "
+                f"the version transition (tokens {', '.join(tokens)} are "
+                "remediation vocabulary; the residual/path bindings must "
+                "match per hunk, digest re-stamps must keep their paths "
+                "and payloads); move the change "
                 "through the dev head or a new version, never under cover of "
                 "the sweep"
             )
