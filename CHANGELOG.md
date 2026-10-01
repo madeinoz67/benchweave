@@ -479,6 +479,7 @@ All notable changes to this project will be documented in this file.
 - Run close stops dispatched agent lanes too
 - #283 I1 skeleton design record
 - #283 review dispositions — LOW accepted-risk, NIT deferred to hardening pass
+- Add PRD 12 gateway web UI (HTMX) and React retirement
 
 ### Features
 
