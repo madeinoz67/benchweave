@@ -372,7 +372,21 @@ def _fixture(
         (root / "NOTES.txt").write_text("an unrelated main-side commit\n")
         _commit(root, "unrelated main commit")
         merged = subprocess.run(
-            ["git", "-C", str(root), "merge", "--no-commit", "--no-ff", "dev-train"],
+            [
+                "git",
+                "-C",
+                str(root),
+                # The fixture carries its own committer identity — CI runners
+                # have none, and git merge wants one even under --no-commit.
+                "-c",
+                "user.name=fixture",
+                "-c",
+                "user.email=fixture@example.invalid",
+                "merge",
+                "--no-commit",
+                "--no-ff",
+                "dev-train",
+            ],
             capture_output=True,
             text=True,
             check=False,
