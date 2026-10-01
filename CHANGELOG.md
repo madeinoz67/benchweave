@@ -258,6 +258,8 @@ All notable changes to this project will be documented in this file.
 - Claim-accuracy — empty vs reversed bounds, the read-once scope, the one-to-many residual, the measured history cost
 - Final fold — the partial-clone masquerade refuses typed; three disclosure clauses
 - The promotion fixtures carry their own committer identity (CI has none)
+- Fold F1 — the pin layer pins identity, not just structure (issue #297)
+- Fold F3-F6 - unreadable Schema red, TS literal semantics, separator arity (issue #297)
 
 ### Documentation
 
@@ -499,6 +501,8 @@ All notable changes to this project will be documented in this file.
 - Complete the Q12 sweep — remaining ECharts refs to uPlot
 - Issue #241 slice 3 — load-honest retry pins and the one-shot cell belt
 - The timing-lane conventions line names the cell belt
+- G1a contract-gate design record (issue #297)
+- Fold note for refute F1/F2 (issue #297)
 
 ### Features
 
@@ -694,6 +698,8 @@ All notable changes to this project will be documented in this file.
 - DigitalLanesPlot renderer + contract rows + the decimation proof (S2)
 - Decoder-lane rendering — annotation spans, disclosure, waiting (S3)
 - The why query — VR-40's constraint -> locked-version explanation
+- Contract grammar, corrected 28-table manifest, registry, roles, tokens (issue #297)
+- The pytest contract harness - collection is the parse (issue #297)
 
 ### Hardware Evidence
 
@@ -986,6 +992,7 @@ All notable changes to this project will be documented in this file.
 - De-clock the retry pins; assert properties, not attempts
 - Fold the refute - gen-1 X1-floor audit, site membership, claim fixes
 - D4' folded by trigger - sequential ceilings relativize in-run
+- Meta-acceptance suite - the pre-committed RED proof (issue #297)
 
 ### Build
 
