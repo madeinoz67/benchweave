@@ -60,6 +60,7 @@ the job. ``verify_tree`` is equally loud. Run from the repository root with
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import shutil
 import subprocess
@@ -119,6 +120,15 @@ USER_GUIDE: dict[str, str] = {
     "CHANGELOG.md": "changelog.md",
 }
 
+# Generated user-guide pages: staged filename → docs-relative rendered path.
+# Unlike USER_GUIDE there is NO repository source — the page is derived at
+# build time from a live capture, so the key here is the staged name alone.
+# Merged into site_paths() below; verify_tree then pins the rendered page's
+# presence, so a listed-but-missing page fails assembly (the wiring hole).
+GENERATED_PAGES: dict[str, str] = {
+    "standards-cli.md": "user-guide/standards-cli.html",
+}
+
 LINK_RE = re.compile(r"(?<!\!)\[([^\]]*)\]\(([^)\s]+)(\s+\"[^\"]*\")?\)")
 H1_RE = re.compile(r"^#\s+(.+?)\s*$", re.MULTILINE)
 
@@ -127,8 +137,8 @@ def log(msg: str) -> None:
     print(f"[assemble] {msg}")
 
 
-def run(cmd: list[str], *, cwd: Path | None = None) -> str:
-    proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
+def run(cmd: list[str], *, cwd: Path | None = None, env: dict[str, str] | None = None) -> str:
+    proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, env=env)
     if proc.returncode != 0:
         sys.stderr.write(proc.stdout + proc.stderr)
         raise SystemExit(f"command failed ({proc.returncode}): {' '.join(cmd)}")
@@ -151,6 +161,7 @@ def site_paths() -> dict[str, str]:
         paths[src] = "user-guide/" + staged[:-3] + ".html"
     for src, staged in standards_manifest().items():
         paths[src] = "standards/" + strip_prefixes(staged)[:-4] + ".html"
+    paths.update(GENERATED_PAGES)
     return paths
 
 
@@ -260,6 +271,110 @@ def stage_pages(
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(f'---\ntitle: "{title}"\nsource: {src_rel}\n---\n\n{body}', encoding="utf-8")
     log(f"staged {len(manifest)} pages -> {dest.relative_to(REPO)}/")
+
+
+# ── generated pages ──────────────────────────────────────────────────────────
+#
+# The standards resolver family is an argparse sibling of the Click CLI, so
+# the site's CLI reference (which introspects the Click tree) cannot see it.
+# Its page is GENERATED at build from the captured `--help` (issue #291):
+# generated beats hand-written — a hand-maintained verb list on the site is
+# exactly the drift class obligation 23 (docs/internal/drift-and-obligations.md)
+# exists to kill. The generator itself names no verb: every literal on the
+# page is parsed out of the capture.
+
+# The subcommand choices metavar line (argparse renders the positional's
+# choices as an indented, braces-wrapped, comma-separated list on its own
+# line): the usage line carries the braces too but never alone on its line,
+# so only the positional-arguments block's copy matches.
+STANDARDS_CHOICES_RE = re.compile(r"^\s*\{([a-z][a-z0-9_,]*)\}\s*$", re.MULTILINE)
+# A subcommand detail row: exactly four spaces, the verb, two-plus spaces,
+# then the one-liner. Deeper-indented non-empty lines are argparse's own
+# wrapping of the current verb's description and append to it.
+STANDARDS_VERB_RE = re.compile(r"^    ([a-z][a-z0-9_]*)\s{2,}(\S.*)$")
+
+
+def capture_standards_help() -> str:
+    """Capture ``python -m benchweave.standards --help`` — the page's authority.
+
+    COLUMNS is pinned so argparse wrapping is deterministic: a width-varying
+    capture would make the verb pin flaky. The captured text is the honest
+    artifact — what the shipped page shows is what this tree runs.
+    """
+    text = run(
+        [sys.executable, "-m", "benchweave.standards", "--help"],
+        cwd=REPO,
+        env={**os.environ, "COLUMNS": "100"},
+    )
+    if not text.strip():
+        raise SystemExit("standards_cli_capture_failed: empty --help output")
+    return text
+
+
+def render_standards_cli_page(help_text: str) -> str:
+    """Render the standards-CLI page from a captured ``--help`` (pure).
+
+    Fail-closed: a capture whose subcommand block cannot be parsed refuses
+    (``standards_cli_help_unparsed:``) — the page can never exist in an empty
+    or silently-degraded state. An internally consistent capture renders
+    even if a verb was lost upstream; the VERB PIN
+    (tests/contract/test_docs_site_standards_cli.py) is what catches that.
+    """
+    choices = STANDARDS_CHOICES_RE.findall(help_text)
+    if not choices:
+        raise SystemExit("standards_cli_help_unparsed: no subcommand choices line")
+    verbs = choices[0].split(",")
+    rows: dict[str, str] = {}
+    current: str | None = None
+    for line in help_text.splitlines():
+        matched = STANDARDS_VERB_RE.match(line)
+        if matched:
+            rows[matched.group(1)] = matched.group(2).strip()
+            current = matched.group(1)
+        elif current is not None and line.startswith("      ") and line.strip():
+            rows[current] += " " + line.strip()
+    if not rows:
+        raise SystemExit("standards_cli_help_unparsed: no subcommand detail rows")
+    if set(rows) != set(verbs):
+        raise SystemExit(
+            "standards_cli_help_unparsed: choices and detail rows disagree (choices "
+            f"only: {sorted(set(verbs) - set(rows))}; details only: "
+            f"{sorted(set(rows) - set(verbs))})"
+        )
+    table = "\n".join(f"| `{verb}` | {rows[verb]} |" for verb in verbs)
+    # No body H1: Great Docs renders the frontmatter title as the page header
+    # AND derives the Markdown twin's `# <title>` from it (the staged pages'
+    # H1-lift, verified on the rendered tree) — a body H1 would duplicate the
+    # title on the rendered page.
+    return (
+        "---\n"
+        'title: "Standards CLI"\n'
+        "source: generated from python -m benchweave.standards --help at build time\n"
+        "---\n"
+        "\n"
+        "The standards resolver family is a separate argparse command tree beside the\n"
+        "Click CLI, so its commands do not appear on the CLI reference pages. This page\n"
+        "is generated at assembly time from `python -m benchweave.standards --help`;\n"
+        "the in-repo quick reference is the operator guide's section 10.\n"
+        "\n"
+        "| Command | What it does |\n"
+        "|---|---|\n"
+        f"{table}\n"
+        "\n"
+        "## The captured `--help` output\n"
+        "\n"
+        "```text\n"
+        f"{help_text.rstrip()}\n"
+        "```\n"
+    )
+
+
+def write_standards_cli_page(dest_dir: Path) -> None:
+    """Stage the generated standards-CLI page into the user-guide staging tree."""
+    (dest_dir / "standards-cli.md").write_text(
+        render_standards_cli_page(capture_standards_help()), encoding="utf-8"
+    )
+    log("staged generated page: standards-cli.md <- benchweave.standards --help")
 
 
 def rename_standards_section(docs_root: Path) -> None:
@@ -610,6 +725,7 @@ def main() -> None:
     staging = REPO / "user_guide"
     standards_staging = REPO / "standards_pages"
     stage_pages(USER_GUIDE, staging, paths)
+    write_standards_cli_page(staging)
     stage_pages(standards_manifest(), standards_staging, paths, keep_relative=True)
     try:
         cache = REPO / ".great-docs-cache"
