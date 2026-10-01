@@ -2642,16 +2642,34 @@ def test_row_b_clamp_is_entry_time_remaining_disclosed_overshoot(
     tmp_path: Path,
 ) -> None:
     """Lane-1 F1's disclosed bound, pinned (final fold): the clamp is
-    computed at bracket ENTRY, so pre-BEGIN time inside the bracket —
-    here the adapter's 1 s idle before the contended append — consumes
+    computed at bracket ENTRY, so pre-BEGIN time inside the bracket --
+    here the adapter's 1 s idle before the contended append -- consumes
     budget the clamp never sees, and the contended busy-wait can END
     past the step budget by that consumed amount. The busy-wait ITSELF
     stays at the entry-time remaining (shortened only relative to the
     open default); the overshoot is the disclosed residual, per-BEGIN
     re-derivation deferred (the record's row 26). The old
-    'a busy-wait can never run past the step budget' claim is dead."""
+    "a busy-wait can never run past the step budget" claim is dead.
+    #241 D-rowB (executed by issue #207): the ceiling is relativized to
+    the RECORDED clamp value -- the busy-wait wall duration is the clamp
+    plus host scheduling slop, so an absolute 1700 ceiling assumed
+    POSIX-class slop (two measured Windows reds: 1724.55 / 1734.19 vs
+    1700). The floor stays absolute (host load inflates waits, never
+    shortens them); the clamp pin keeps the relativized ceiling
+    non-vacuous."""
     harness = CaptureHarness(tmp_path, clock=time.monotonic)
     try:
+        windows: list[int] = []
+        original_window = harness.store.busy_timeout_window
+
+        @contextlib.contextmanager
+        def recording_window(ms: int) -> Any:
+            windows.append(ms)
+            with original_window(ms):
+                yield
+
+        harness.store.busy_timeout_window = recording_window  # type: ignore[method-assign]
+
         holder = _MidCaptureHolder(harness.db_path, hold_s=4.0)
         first_landed = threading.Event()
         proceed = threading.Event()
@@ -2668,6 +2686,24 @@ def test_row_b_clamp_is_entry_time_remaining_disclosed_overshoot(
         assert result.error.code is ErrorCode.RESOURCE_LIMIT
         assert result.error.dispatch_state is DispatchState.DISPATCHED
 
+        assert windows, "the clamp window was entered"
+        clamp = windows[0]
+        assert 1300 <= clamp <= 1500, (
+            f"the entry-time clamp near the deadline was applied, "
+            f"never the 5000 open default; clamp={clamp}"
+        )
+        # The classified-failure epilogue enters its own documented floor
+        # window AFTER the clamp (min(CAPTURE_EPILOGUE_FLOOR_MS, open
+        # default) = 5000 here). The record's "exactly ONE window" premise
+        # does not hold on the contended-refusal path; the pin keys on the
+        # FIRST entry being the entry-time clamp.
+        from benchweave.control.semantics import CAPTURE_EPILOGUE_FLOOR_MS
+
+        floor = min(
+            CAPTURE_EPILOGUE_FLOOR_MS, harness.store.open_busy_timeout_ms
+        )
+        assert windows[1:] == [floor], windows
+
         dispatch_start = outcome["start"]
         assert adapter.append_started_at is not None
         assert adapter.append_failed_at is not None
@@ -2679,12 +2715,17 @@ def test_row_b_clamp_is_entry_time_remaining_disclosed_overshoot(
         # The pre-BEGIN idle really consumed bracket budget.
         assert 900 <= pre_begin_ms <= 1400, pre_begin_ms
         # The disclosed overshoot EXISTS: the busy-wait ends past the
-        # step budget — the corrected claim, not the dead one.
+        # step budget -- the corrected claim, not the dead one.
         assert fail_delta_ms > 1500, fail_delta_ms
         # ... by (approximately) the consumed amount, not unboundedly.
         assert fail_delta_ms <= 1500 + pre_begin_ms + 300, fail_delta_ms
-        # The busy-wait itself stayed at the entry-time remaining.
-        assert 1300 <= busy_wait_ms <= 1700, busy_wait_ms
+        # The busy-wait itself stayed at the entry-time remaining:
+        # floor absolute (load inflates, never shortens), ceiling
+        # relativized to the recorded clamp (D-rowB).
+        assert busy_wait_ms >= 1300, busy_wait_ms
+        assert busy_wait_ms <= clamp + 300, (
+            f"busy_wait_ms={busy_wait_ms:.2f} vs clamp+300={clamp + 300}"
+        )
         plugin.plugin_close()
     finally:
         harness.close()
