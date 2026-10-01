@@ -366,6 +366,22 @@ rather than rewriting the history — that is how this file earns trust.
   active entry's version must be pure semver
   (`standards_entry_version_invalid`) — a `-dev` suffix there would add a
   release directory the train-window collector cannot count.
+  Amendment (2026-10-01, issue #288 M1+M2): the promotion sweep's line
+  rules are RULES, not tokens — admission is identity-residual equality
+  (the same line with its version-like substrings moved), a VERIFIED
+  PAIRED digest re-stamp (every digest on the line names a real file of
+  the right tree AND, when the positional counterpart line also carries
+  digests, the same relative path on both sides of the pair), or the
+  sanctioned `validation-report.md` regeneration; CONTAINING a transition
+  token admits nothing (the tokens are remediation vocabulary only).
+  The no-record trigger gains its object-store derivation alongside the
+  `-dev` citation: a retained version whose introducing commit's parent
+  declared the standard's dev head at exactly `<version>-dev` requires
+  its record even when the corpus rows cite a released predecessor (the
+  laundered source); unresolvable history refuses
+  `promotion_history_unavailable:` rather than silently passing, and a
+  root that is not a git repository has no history to consult (the
+  current-tree derivation governs there).
 - **[CON-8]** The corpus identity block is closed-world and derived-checked against
   its machine authorities at every export/check — an unknown key is refused
   (`identity_key_unknown`; a new key is a standards-governance event, not an
@@ -694,6 +710,30 @@ undisturbed; the equivalence census extends across the served set. CON-1's
 per-plugin exactness relocates one global gate to N per-pin gates;
 out-of-range stays non-conforming, unretained stays refused.
 
+Amendment (2026-10-01, issue #288 M4 + LOWs 1/2, NIT-3): the move-to
+derivation is ONE canonical pure function — `dependency.derive_move_to(row,
+served, pin) -> MoveTo(version, downgrade, guidance_only)` — consumed by
+every gateway surface (the resolver's yank warning and VR-37 field, the
+admission classifier's yank note, the matrix yank cell) and
+re-implemented SDK-side, pinned by twin tests asserting the same literal
+expected strings in both repos. The warning formatters append
+` (a downgrade — no served version is newer)` when the derived version
+orders below the pin, and ` (guidance only — no version is served)` on the
+empty-served fallback — design §3.3's "highest served non-yanked version
+>= pin" rule is vacuous wherever its filter is nonempty (max(candidates
+>= pin) IS max(served)) and is superseded by this annotation. Design
+§3.5's removal-point sentence (deprecation warnings naming the range's
+next lower bound after narrowing) is recorded as DISSOLVED by the landed
+move-to posture (issue #288 LOW 1): naming the concrete move-to version
+is strictly more actionable than naming where the range floor went.
+LOW 2 annotation: the R-1/R-2 rulings above are carried verbatim in
+`standards/GOVERNANCE.md` modulo line rewrapping and one phrase — this
+copy says the dated amendments land "in `docs/internal/invariants.md`"
+where GOVERNANCE's lift phrases the carrier as the invariants path from
+the other side; both texts are frozen history and this note is the
+disclosure, not an edit of either. NIT-3: the original CON-14 row above
+carries no inline date on its face; this amendment carries its own
+(2026-10-01) and names the omission rather than backfilling the row.
 
 
 ## Registry & plugin invariants

@@ -744,6 +744,23 @@ Eleven commands — `benchweave --help` is the full surface:
 | `verify` | Manifest digests + store integrity | `--data-dir` (req), `--json` |
 | `evidence` | Generate/index the retained evidence tree (`runs`/`timing`/`faults`/`index`) | `--dest` (req), `--count`, `--seed`, `--timeout`, `--fixtures`, `--json` |
 
+The standards family is a separate argparse tree rather than a `benchweave`
+subcommand — `python -m benchweave.standards --help` is its authority (the
+operator-facing commands above are the shipped binary; these manage the
+vendored standards corpus a checkout carries):
+
+| Subcommand | One-liner |
+|---|---|
+| `export` | Write the SDK-facing bundle |
+| `check` | Verify the pinned SDK against a fresh export |
+| `matrix` | Write or verify `docs/compatibility-matrix.md` |
+| `versions` | Print main, standard, SDK lock and submodule versions |
+| `repin` | Recompute corpus-manifest sha256 rows from the on-disk corpus |
+| `list` | Print per-standard range, retained/carried/served sets, yanks, retirements |
+| `pin` | Resolve a package's constraints into its `contracts/lock.json` |
+| `upgrade` | Move exactly one standard's lock row to a precise version |
+| `why` | Explain the current resolution: per standard, the rung that fired |
+
 Exit codes: 0 on success; 1 on any handled refusal (bad usage, unreachable
 gateway, rejected token, failed verify); 130 on Ctrl-C.
 
