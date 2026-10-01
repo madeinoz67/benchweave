@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from benchweave_ui_html import registry
 from benchweave_ui_html.grammar import Row
-from benchweave_ui_html.registry import REGISTRY, ArtifactRegistry, evaluate_row
+from benchweave_ui_html.registry import ArtifactRegistry, evaluate_row
 
 
 def row(row_id: str = "x-1-mini::a") -> Row:
@@ -83,8 +83,26 @@ def test_the_constant_is_the_only_switch() -> None:
     )
 
 
-def test_global_registry_starts_empty() -> None:
-    assert len(REGISTRY) == 0
+def test_global_registry_starts_empty_at_import() -> None:
+    """G1b reconciliation (O1): "starts empty" is an IMPORT-time property —
+    nothing registers at import; registration happens only when the harness
+    plugin (or a test) explicitly calls ``ensure_registered()``. In-process
+    sibling tests legitimately register, so the property is proven in a fresh
+    interpreter."""
+    import subprocess
+    import sys
+
+    code = (
+        "from benchweave_ui_html.registry import REGISTRY\n"
+        "raise SystemExit(0 if len(REGISTRY) == 0 else 1)\n"
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert proc.returncode == 0, proc.stderr
 
 
 def test_orphaned_artifacts_name_registered_keys_not_parsed() -> None:

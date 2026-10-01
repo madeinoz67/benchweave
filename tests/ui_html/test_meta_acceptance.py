@@ -10,6 +10,21 @@ Layer scoping (ruled at build time): the primary acceptance numbers are the
 ROW layer (168 collected / 168 failed / 0 passed / 0 skipped at an empty
 registry); the pin layer (28 collected / 28 passed) and the suite totals
 (tests=196 failures=168) are additional evidence from the same junitxml.
+
+G1b reconciliation (design record §1.5, open item O1): the plugin now
+auto-registers the canonical artifacts at collection, so the plain-invocation
+arms assert the REGISTERED state (every unregistered row red with exactly
+the no-canonical-artifact message class) instead of the empty-registry 168.
+The empty-registry control moved to the pure function
+(``tests/ui_html/test_artifacts_meta.py``) with a collection-level variant
+here that explicitly neutralizes the registration hook; the prelude-based
+arms (Metric C, full registration, delete-and-pad, toggle) work unchanged
+because ``ensure_registered`` is sentinel-idempotent — a prelude that
+registered the button row first suppresses auto-registration instead of
+colliding with it. The parser-defect arms (Metric B, the F1 identity
+mutations) neutralize the hook for the same reason: they pin G1a's parser
+mechanism, and with registration live a mutated contract would red via the
+orphan check before any pin item emits.
 """
 
 from __future__ import annotations
@@ -41,6 +56,18 @@ BUTTON_ROW_ID = f"{SLUG_E1}::button"
 
 HEADING_A1 = "### §A.1 Colour palette"
 HEADING_E1 = "### §E.1 Components"
+
+#: G1b: neutralizes the plugin's auto-registration hook in the measured
+#: process, restoring G1a's empty-registry evidence shape for the arms that
+#: pin the parser's own fail-closed defects (Metric B, the F1 identity
+#: mutations) and the collection-level empty-registry control. The parser
+#: mechanisms these arms prove are G1a's; registration-live mutation arms
+#: would red via the orphan check before any pin item emits.
+NEUTRALIZE_REGISTRATION = (
+    "import types\n"
+    "import benchweave_ui_html.contract_harness.plugin as plugin\n"
+    "plugin.artifacts = types.SimpleNamespace(ensure_registered=lambda: None)\n"
+)
 
 
 # --- subprocess harness -------------------------------------------------------
@@ -162,16 +189,68 @@ def _assert_metric_a_shape(attrib: dict[str, str], buckets: dict[str, list[ET.El
     assert attrib.get("skipped") == "0", attrib
 
 
-# --- Metric A: RED against the empty renderer ---------------------------------
+# --- Metric A: the registered state at a plain invocation ---------------------
 
 
-def test_metric_a_red_against_empty_registry(tmp_path: Path) -> None:
+def _assert_registered_state_shape(
+    attrib: dict[str, str], buckets: dict[str, list[ET.Element]]
+) -> None:
+    """The plain-invocation invariants that hold at every G1b slice: 28 green
+    pins, 168 rows split passed+failed with no skips, nothing outside the two
+    layers, and every failed row carrying exactly the missing-artifact message
+    class (a failed row with ``unsatisfied contract items`` there would mean
+    something registered-and-failed — a different defect)."""
+    rows = _stats(buckets["row"])
+    pins = _stats(buckets["pin"])
+    assert rows["collected"] == ROW_ITEMS, rows
+    assert rows["skipped"] == 0, rows
+    assert rows["passed"] + rows["failed"] == ROW_ITEMS, rows
+    assert pins == {"collected": PIN_ITEMS, "failed": 0, "passed": PIN_ITEMS, "skipped": 0}, pins
+    assert buckets["other"] == []
+    assert attrib.get("tests") == str(TOTAL_ITEMS), attrib
+    assert attrib.get("errors") == "0", attrib
+    assert attrib.get("skipped") == "0", attrib
+    texts = _failure_texts(buckets["row"])
+    assert len(texts) == rows["failed"]
+    for row_id, text in texts.items():
+        assert f"no canonical artifact for {row_id}" in text, (row_id, text)
+        assert "unsatisfied contract items" not in text, (row_id, text)
+
+
+def test_plain_invocation_is_the_registered_state(tmp_path: Path) -> None:
+    """The plain invocation auto-registers G1b's artifacts: pins green, the
+    registered rows green, and every OTHER row red with exactly the
+    no-canonical-artifact message (the ten G1d-deferred rows keep this run
+    red until the compositions slice lands). The failed count is exactly the
+    unregistered rows — no more (an over-count would mean a registered row
+    failing its own items), no fewer (an under-count would mean an
+    unregistered row going green)."""
+    from benchweave_ui_html import artifacts, registry
+
+    artifacts.ensure_registered()
+    expected_failed = ROW_ITEMS - len(registry.REGISTRY)
     junit = tmp_path / "metric-a.xml"
     exit_code = _run(CONTRACT, junit)
+    assert exit_code != 0, "unregistered rows must leave the run red (exit non-zero)"
+    attrib, buckets = _suite(junit)
+    _assert_registered_state_shape(attrib, buckets)
+    rows = _stats(buckets["row"])
+    assert rows["failed"] == expected_failed, rows
+    assert rows["passed"] == len(registry.REGISTRY), rows
+
+
+def test_empty_registry_collection_control_registration_neutralized(
+    tmp_path: Path,
+) -> None:
+    """G1a's Metric A, preserved with the registration hook explicitly off in
+    the measured process: the empty registry reds every row with the canonical
+    message. This is the collection-level half of the fail-closed control; the
+    pure-function half lives in test_artifacts_meta.py (design record §1.5)."""
+    junit = tmp_path / "metric-a-empty.xml"
+    exit_code = _run(CONTRACT, junit, prelude=NEUTRALIZE_REGISTRATION)
     assert exit_code != 0, "empty registry must leave the run red (exit non-zero)"
     attrib, buckets = _suite(junit)
     _assert_metric_a_shape(attrib, buckets)
-    # The canonical RED message: every unregistered row names its missing artifact.
     texts = _failure_texts(buckets["row"])
     assert len(texts) == ROW_ITEMS
     for row_id, text in texts.items():
@@ -179,7 +258,9 @@ def test_metric_a_red_against_empty_registry(tmp_path: Path) -> None:
 
 
 def test_no_environment_variable_flips_the_gate(tmp_path: Path) -> None:
-    """The REQUIRE_ARTIFACT constant has no environment surface (design section 2)."""
+    """The REQUIRE_ARTIFACT constant has no environment surface (design section 2).
+    G1b: the expected shape is the registered state — the env vars must not
+    turn the run all-green either (the gate being off would be exactly that)."""
     junit = tmp_path / "env-control.xml"
     exit_code = _run(
         CONTRACT,
@@ -193,7 +274,7 @@ def test_no_environment_variable_flips_the_gate(tmp_path: Path) -> None:
     )
     assert exit_code != 0
     attrib, buckets = _suite(junit)
-    _assert_metric_a_shape(attrib, buckets)
+    _assert_registered_state_shape(attrib, buckets)
 
 
 # --- Metric B: fail-closed mutations ------------------------------------------
@@ -249,7 +330,10 @@ def test_metric_b_fail_closed_mutations(tmp_path: Path) -> None:
         scratch.mkdir()
         (scratch / "ui-contract.md").write_text(mutated, encoding="utf-8")
         junit = tmp_path / f"{arm}.xml"
-        exit_code = _run(scratch / "ui-contract.md", junit)
+        # G1b: registration neutralized — these arms pin the parser's own
+        # defect classes; with registration live a mutated contract reds via
+        # the orphan check before any pin item emits.
+        exit_code = _run(scratch / "ui-contract.md", junit, prelude=NEUTRALIZE_REGISTRATION)
         assert exit_code != 0, f"{arm}: a mutated contract must leave the run red"
         _attrib, buckets = _suite(junit)
         pin_failures = _failure_texts(buckets["pin"])
@@ -322,6 +406,9 @@ def test_mechanism_toggle_flipping_the_constant_makes_the_red_run_green(tmp_path
 
 
 def test_runtime_namespace_imports_without_pytest() -> None:
+    """UR-11: the renderer namespace never pulls pytest. G1b extends the
+    imported set to the artifact/rendering modules AND renders one partial
+    per family — jinja2 must land in sys.modules, pytest must not."""
     code = (
         "import sys\n"
         "import benchweave_ui_html\n"
@@ -330,6 +417,16 @@ def test_runtime_namespace_imports_without_pytest() -> None:
         "import benchweave_ui_html.registry\n"
         "import benchweave_ui_html.roles\n"
         "import benchweave_ui_html.tokens\n"
+        "import benchweave_ui_html.items\n"
+        "import benchweave_ui_html.assertions\n"
+        "import benchweave_ui_html.env\n"
+        "import benchweave_ui_html.data\n"
+        "import benchweave_ui_html.partials\n"
+        "import benchweave_ui_html.fixtures\n"
+        "import benchweave_ui_html.artifacts\n"
+        "from benchweave_ui_html.partials import render_button\n"
+        "render_button(__import__('benchweave_ui_html.fixtures', fromlist=['x']).button())\n"
+        "assert 'jinja2' in sys.modules, 'rendering must have pulled jinja2'\n"
         "sys.exit(0 if 'pytest' not in sys.modules else 1)\n"
     )
     proc = subprocess.run(
@@ -409,7 +506,9 @@ def test_f1_identity_mutations_red_their_pins(arm: str, tmp_path: Path) -> None:
     scratch.mkdir()
     (scratch / "ui-contract.md").write_text(mutated, encoding="utf-8")
     junit = tmp_path / f"{arm}.xml"
-    exit_code = _run(scratch / "ui-contract.md", junit)
+    # G1b: registration neutralized (the arms pin G1a's parser identity
+    # classes; a registration-live mutation reds via the orphan check first).
+    exit_code = _run(scratch / "ui-contract.md", junit, prelude=NEUTRALIZE_REGISTRATION)
     _attrib, buckets = _suite(junit)
     pin_failures = _failure_texts(buckets["pin"])
     for slug, defect_class in expected:
