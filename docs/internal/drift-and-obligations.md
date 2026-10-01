@@ -454,7 +454,10 @@ and remain the reviewer's job.
     change. Bridge-status sentences state **remaining scope only, never a verb enumeration**
     — the #317 doctrine (refute F1/F2): a verb list in prose is a set claim with no
     mechanical pin, and a "remaining scope is" sentence is a set claim by complement that
-    must be checked against the bridge docstring's FULL gap list (`otdp_bridge.py:16-20`).
+    must be re-derived from the mechanism — the bridge's dispatch table, the services the
+    host wires into it, and the open tracker items. The docstring's gap list is a derived
+    surface this row also sweeps: it went stale once (#146's dataset-services landing, left
+    unmirrored) and its false sentence shipped to two prose mirrors — the #319 refute.
     The surfaces: `website/index.html`'s home-page sentence and `docs/device-developer-guide.md`'s
     status/simulator paragraphs (kept byte-mirrored where both carry the same claim); the CLI
     command sets in `docs/operator-guide.md` §10 (BOTH tables), the website's CLI-reference

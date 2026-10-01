@@ -559,3 +559,57 @@ dependencies. The build agent's slices are exactly §1.3's five guide edits, §2
 rule + test, and §3.2-3.3's generator + config + test file, in the commit order of §5, each
 with its fast lane and the full battery before push. The #320 ruling posts to its issue and
 touches nothing.
+
+---
+
+## 12. Dated corrections — 2026-10-01, the two-lane refute fold
+
+Both refute lanes converged on a KILL/HIGH the census could not see: **this record's own
+authority was stale.** Corrections below are dated, not retro-edited; the census re-derives
+from the mechanism where corrected.
+
+- **§0's re-verification proved UNCHANGED, not TRUE.** "`otdp_bridge.py` is unchanged
+  between #317's base and this base, so the … docstring's gap list … are the same
+  authorities" — the docstring was indeed byte-unchanged, but its content had gone stale
+  2026-09-26 13:32–13:55 (issue #146 slice 3 + riders, commits `f2fa4b5`..`1792594`, all
+  ancestors of this base): `src/benchweave/content/dataset_services.py` implements
+  `dataset_publish`/`payload_create`/`dataset_lookup`/`artifact_read`, wired through
+  `app.py`'s `dataset_factory` → `build_dataset_services` into `load_otdp_plugin`
+  (`app.py:806-856`); the bridge's own code carries the landed services
+  (`self._dataset` at the invoke clamp and the dataset-shape cross-check); issue #146 is
+  CLOSED and the E2E is green (36/36, `tests/integration/test_issue146_e2e.py`). An
+  unchanged authority is not thereby a true one — the check needed content re-derivation,
+  not byte comparison.
+- **Census row 15's source claim was FALSE.** "`payload_create`/`dataset_publish` appear
+  only in docs/ (zero hits in `src/`)" — the real count is 38 hits across 7 `src/` files
+  (`dataset_services.py` 29, `otdp_bridge.py` 1, `app.py` 1, `mcp.py` 2, `operations.py` 2,
+  `rest.py` 2, `otdp_contracts.py` 1); REST and MCP carry the services as well. The claim
+  was inherited from the design's census, not re-run at build — the builder's miss, named.
+- **Census row 10's CURRENT verdict was wrong.** `:425` carried "until the dataset publish
+  services ship, and when they do" — a false premise since 2026-09-26 (the services had
+  shipped four days before this record's base). Row 10's source check read the invoke
+  gating's mechanics but not its tense.
+- **§1.3 edit (e) was therefore WRONG and is REVERTED**: the original present-tense §7
+  publish-contract paragraph was true (the services ship); the added "pending
+  dataset-services slice … until it lands" disclosure shipped a false claim. `:425`'s
+  wait-clause is swept the same way.
+- **The truth repair (this fold, one commit set on the same branch):** the bridge
+  docstring's gap list is rewritten FROM the mechanism (dispatch table — still the 7 verbs,
+  the dataset lane rides the composing services, not dispatch; the services wiring above;
+  the open tracker: #159 "native async host" OPEN — nothing else of the old list remains);
+  `website/index.html`'s sentence becomes "The OTDP bridge's remaining scope is profile
+  scheduling on a native async host."; the guide mirrors it byte-identically (the §1.4
+  byte-compare control re-run on the corrected pair); row 23 no longer pins the docstring
+  as authority — the mechanism is the authority and the docstring a derived surface the
+  row also sweeps (it went stale once and its false sentence reached two prose mirrors).
+- **§3.3's RED-sanity wording corrected** (refute lane 2 F3): "the file fails at import" —
+  wrong; the module imports and the failure is at CALL time (AttributeError inside the
+  test body), which is what makes the collected-count requirement meaningful.
+- **Census re-derivation consequence:** rows 3, 10 and 15 change verdict or content (3's
+  mirrored sentence now carries the corrected claim; 10 EDITED — the `:425` sweep; 15
+  REVERTED-to-true); the other 15 rows' verdicts stand re-checked against their named
+  mechanisms. One further site found and left, with its verdict: `otdp_bridge.py:390`'s
+  comment "payload appends once the dataset services land" reads as future tense but sits
+  under the `self._dataset is not None` guard, under which "once … land" can read as "when
+  attached" — ambiguous rather than clearly false; not edited (R1), flagged for the
+  maintainer.
