@@ -30,7 +30,12 @@ The gates (:func:`validate_promotion_records`, run by the standards suite):
     deletions and ``--``/``++``-initial content lines all refuse), or the
     regenerated ``validation-report.md``; any other changed line refuses
     ``promotion_sweep_violation:`` — the sweep-laundry mitigation (design
-    risk 6, tightened by #288 M1 and its refute slate);
+    risk 6, tightened by #288 M1 and its refute slate). Disclosed behavior
+    of the binding rule: a legitimate future sweep that MOVES a line to a
+    different hunk rather than re-stamping it in place gets a NAMED
+    refusal (the multiset is order-free within a hunk, but a removed
+    binding without its same-hunk counterpart is an offence) — route the
+    move through the dev head;
 (c) PENDING-SUCCESSOR — a pending record refuses once a SUCCESSOR version
     of the same standard exists on main (pendingness must not outlive a
     train); the drift-check lane (:func:`pending_warning_lines`, wired into
@@ -390,7 +395,11 @@ def _hunk_offences(
     added bindings are offences EXCEPT the disclosed residual: a
     digest-bearing append whose non-digest payload is nothing but
     wrapping (its only payload is real digests; visible in the promotion
-    PR, the review surface). The F6 membership rule runs first: an
+    PR, the review surface). Within that residual, the contrived
+    digest-as-JSON-KEY append shape (``{"<digest>": ""}``) and
+    digest-only arrays also admit — their non-digest payload is wrapping
+    and every digest is real; no in-tree consumer reads either shape
+    (disclosed by the verification pass, final fold). The F6 membership rule runs first: an
     invented digest refuses naming it, on either side. When both sides
     carry leftover digest lines they are paired index-wise as REASSIGNED
     digests in the detail, quoting one digest from each side. Disclosed
@@ -492,7 +501,12 @@ def _sweep_check(
       never onto a different file's digest, a different position in the
       line, or a renamed field. Verified on the founding record: every
       one of its changed digest pairs maps same-relative-path with stable
-      payloads, 9/9 pairs (DESIGN-MEASURED).
+      payloads, 9/9 pairs (DESIGN-MEASURED). Disclosed (the R4 class,
+      restated here because a digest line rides the same residual): a
+      version-string motion inside a digest line's residual admits via
+      the ``_VERSIONISH`` strip — "spec 1.2.3" -> "spec 9.9.9", an
+      IP-literal motion — the same false-accept class the identity
+      bullet names.
     - REMOVED-side bindings without counterparts refuse (a deletion is
       not a transition); ADDED-side bindings without counterparts refuse
       unless the line's only payload is real digests (the disclosed
@@ -672,6 +686,28 @@ def _is_shallow(root: Path) -> bool:
     return result.returncode == 0 and result.stdout.strip() == "true"
 
 
+def _manifest_listed_at(root: Path, sha: str) -> bool:
+    """Whether ``standards/standards-manifest.json`` has a TREE ENTRY at the
+    commit (``git ls-tree``) — the partial-clone discriminator (issue #288
+    final fold NEW-1): tree objects are present under ``--filter=blob:none``,
+    so a LISTED path whose blob read failed is amputation, not absence."""
+    result = subprocess.run(  # noqa: S603 — fixed argv
+        [  # noqa: S607 — PATH git is the supported invocation
+            "git",
+            "-C",
+            str(root),
+            "ls-tree",
+            sha,
+            "--",
+            "standards/standards-manifest.json",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return result.returncode == 0 and bool(result.stdout.strip())
+
+
 def _introducing_commit(root: Path, git_path: str) -> tuple[str, list[str]] | None:
     """``(sha, parents)`` of the FIRST commit touching ``git_path`` — ALL
     parent shas (a merge landing's second parent is where a sanctioned
@@ -778,6 +814,21 @@ def _history_no_record_gate(
             if parent not in parent_manifests:
                 raw = _git_show(root, f"{parent}:standards/standards-manifest.json")
                 if raw is None:
+                    # Discriminate TRUE absence from a partial-clone or
+                    # amputated read (issue #288 final fold NEW-1): trees
+                    # resolve under --filter=blob:none, so a LISTED path
+                    # whose blob does not read is amputation — refusing
+                    # typed, never silently organic.
+                    if _manifest_listed_at(root, parent):
+                        raise StandardsError(
+                            f"promotion_history_unavailable: the manifest at "
+                            f"parent {parent} of {standard_id}@{version}'s "
+                            "introducing commit is LISTED in the commit's tree "
+                            "but its blob does not read (a partial clone or "
+                            "amputated object store) — the history-derived "
+                            "no-record gate refuses rather than treat "
+                            "amputation as absence"
+                        )
                     parent_manifests[parent] = None
                 else:
                     try:

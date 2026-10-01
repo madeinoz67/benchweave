@@ -1040,6 +1040,37 @@ def test_m2_merge_parent_laundering_refuses(tmp_path: Path) -> None:
     )
 
 
+def test_final_partial_clone_masquerade_refuses_typed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The verification pass's NEW-1 (latent, adv1-executed): in an offline
+    --filter=blob:none clone the parent-manifest BLOB read fails while the
+    commit's TREE objects are present — _git_show returned None and the
+    parent was classified 'predates the standards system' (organic, silent
+    pass; the shallow guard does not fire, filter clones are not shallow).
+    Trees resolve under blob:none, so ls-tree discriminates exactly: a
+    LISTED path whose blob does not read is amputation, and amputation
+    refuses typed. The arm simulates the filter-clone read shape over a
+    real object store."""
+    import benchweave.standards.promotion as promotion_module
+
+    root, facts = _fixture(tmp_path, head_on_main=True, laundered=True)
+    real_show = promotion_module._git_show
+
+    def blob_none_show(root_arg: Path, ref: str) -> bytes | None:
+        if ref == f"{facts['head_open_sha']}:standards/standards-manifest.json":
+            return None  # the partial-clone shape: tree resolves, blob does not
+        return real_show(root_arg, ref)
+
+    monkeypatch.setattr(promotion_module, "_git_show", blob_none_show)
+    with pytest.raises(StandardsError) as raised:
+        validate_promotion_records(root)
+    message = str(raised.value)
+    assert message.startswith("promotion_history_unavailable:"), message
+    assert facts["head_open_sha"] in message
+    assert "partial clone" in message
+
+
 def test_m2_organic_bump_citing_predecessor_stays_green(tmp_path: Path) -> None:
     """The successor-version arm: rows cite the released predecessor, no
     head ever declared on main, no record — an organic bump stays clean (a
