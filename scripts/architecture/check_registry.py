@@ -86,6 +86,25 @@ check("dependency cannot float", not v.is_valid(x))
 x = copy.deepcopy(m)
 x["compatibility"]["runtimes"] = []
 check("implementation requires runtime", not v.is_valid(x))
+# Registry 0.1.2 review-block arms (issue #223 slice 1): the enum admits the
+# 0.1.1 example unchanged, 0.1.2 requires the review block exactly then, and
+# the block is closed over its five fields.
+x = copy.deepcopy(m)
+x["manifest_version"] = "0.1.2"
+check("0.1.2 requires review block", not v.is_valid(x))
+REVIEW_BLOCK = {
+    "checklist_id": "review-checklist",
+    "checklist_version": "1",
+    "reviewer_id": "reviewer-fixture",
+    "outcome": "accepted",
+    "record_sha256": "a" * 64,
+}
+x["review"] = dict(REVIEW_BLOCK)
+check("0.1.2 with review block valid", v.is_valid(x))
+x["review"]["outcome"] = "rubber-stamped"
+check("review outcome enum closed", not v.is_valid(x))
+x["review"] = {**REVIEW_BLOCK, "extra": "refuses"}
+check("review block closed to five fields", not v.is_valid(x))
 
 
 def semantic(x):

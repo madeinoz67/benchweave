@@ -10,8 +10,8 @@
 | File | Purpose |
 |---|---|
 | [Architecture](smart-test-gateway-architecture-v1.5.md) | System responsibilities, protection, ownership, recovery and commissioning |
-| [Central registry](../standards/registry/0.1.1/registry-specification.md) | Shared packages, discovery, publication, metadata, trust and offline adoption |
-| [Registry checks](../standards/registry/0.1.1/validation-report.md) | 64 passing metadata-contract checks |
+| [Central registry](../standards/registry/0.1.2/registry-specification.md) | Shared packages, discovery, publication, metadata, trust and offline adoption |
+| [Registry checks](../standards/registry/0.1.2/validation-report.md) | 68 passing metadata-contract checks |
 | [Procedure and bench contracts](../standards/execution/0.2.0/execution-contract.md) | Bounded execution, wiring/resources, safety policy, commissioning and outcomes |
 | [Execution checks](../standards/execution/0.2.0/validation-report.md) | 151 passing document/schema checks; six linked synthetic examples |
 | [REST/MCP contract](../standards/interface/0.1.0/interface-contract.md) | Twenty REST operations, seventeen MCP tools, authentication and recovery |

@@ -775,6 +775,29 @@ carries no inline date on its face; this amendment carries its own
 
 ---
 
+- **[REG-5]** Publishing-lane records are canonical, schema-validated JSON
+  committed in the registry repository of record (benchweave-registry), the
+  review block rides inside the origin-signed manifest (registry standard
+  0.1.2; one signature attests release and review together), and the gateway
+  never consults it — admission validates structure and verifies the four
+  pillars and nothing else (CR-13 held, Q12); lane gates refuse dev-unsigned
+  lineage (``dev_lineage_refused:``), mutable source refs
+  (``source_ref_mutable:``), declaration-less submissions
+  (``capability_declaration_absent:``) and closure-diff-less publish records
+  (``closure_diff_absent:``) at packaging time, SDK-side; the records-validity
+  gate (registry-repo CI) refuses changes-requested-without-failure (CR-10),
+  findings-less reviews (CR-60), kind-less records (CR-56) and closure-digest
+  disagreement (CR-38); every publish record's sign-off names the closure
+  digest the release actually carries, and the signed manifest's review block
+  pins the review record's own digest (the review-to-sign swap defense,
+  CR-11/CR-14) — `benchweave-registry/scripts/validate_records.py` +
+  `scripts/registry/sign_release.py`, pinned by the registry repo's validity
+  suite and `tests/contract/test_sign_release.py`. *Disclosure clause (Q16):
+  per-plugin isolation, the evidence MAC and the plugin-independent safe state
+  are recorded residuals — the lane never claims them (NFR-S1); kind tags are
+  machine-checked at write time from slice 1, with `community-shared` records
+  activating in slice 5.*
+
 ## Known open wounds
 
 Some invariants sit next to known-imperfect code. Track the individual issue in the repo

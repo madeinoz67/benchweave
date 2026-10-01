@@ -566,6 +566,13 @@ REGISTER: dict[str, dict[str, tuple[str, int, tuple[str, ...] | None]]] = {
             1,
             ("0.1.0",),
         ),
+        "scripts/architecture/check_registry.py": (
+            "authored self-test payload — the review-block arm's 0.1.2 "
+            "manifest-version mutation (issue #223 slice 1); the suite's "
+            "corpus directory is manifest-derived, never a literal",
+            1,
+            ("0.1.2",),
+        ),
         "scripts/registry/build_fixtures.py": (
             "authored fixture-package versions — the fixture packages' "
             "release version and directory names (deriving these from the "
