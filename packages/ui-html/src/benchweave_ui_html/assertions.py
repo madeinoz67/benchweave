@@ -81,8 +81,11 @@ class _Collector(HTMLParser):
 
     def handle_data(self, data: str) -> None:
         self.text_parts.append(data)
-        if self._open:
-            self.texts[self._open[-1]].append(data)
+        # Text is attributed to EVERY open element (subtree text), so a
+        # container's text includes its children's — the row-level checks
+        # match markers that render in child spans.
+        for index in self._open:
+            self.texts[index].append(data)
 
 
 class RenderedComponent:

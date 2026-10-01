@@ -37,7 +37,7 @@ from pathlib import Path
 from typing import cast
 
 from benchweave_ui_html import fixtures, partials, registry
-from benchweave_ui_html.assertions import RenderedComponent
+from benchweave_ui_html.assertions import Element, RenderedComponent
 from benchweave_ui_html.data import (
     AlertBubbleData,
     DisabledLabelData,
@@ -52,6 +52,7 @@ from benchweave_ui_html.items import (
     split_items,
 )
 from benchweave_ui_html.manifest import MANIFEST
+from benchweave_ui_html.plot import DASH_TO_DATA_LINE, EMPHASIS_SERIES, MUTED_SERIES
 from benchweave_ui_html.tokens import css_block, theme_colour_mismatches, token_value_mismatches
 
 #: The idempotence sentinel: the first row the §E.1 family registers.
@@ -63,7 +64,7 @@ DEFERRED_SLUGS = frozenset({"b-2-state-rules", "b-4-staleness", "c-1-safety-rule
 #: §E.1 components whose renderers land with the plot (slice 3) and lanes
 #: (slice 4) commits. Unknown beyond these: a §E.1 row with no renderer
 #: raises at collection — a new component row can never silently skip.
-_PENDING_COMPONENTS = frozenset({"engineering-plot", "digital-lanes"})
+_PENDING_COMPONENTS = frozenset({"digital-lanes"})
 
 #: The contract's executable token mirror (G1a deferral D3 keeps the path on
 #: ``ui/src/styles/`` until G1e's re-point). The token rows are live where
@@ -131,6 +132,7 @@ _COMPONENT_RENDERERS: dict[str, Callable[[], str]] = {
     "panel": lambda: partials.render_panel(fixtures.panel()),
     "mode-banner": lambda: partials.render_mode_banner(fixtures.mode_banner()),
     "confirm-action": lambda: partials.render_confirm_action(fixtures.confirm_action()),
+    "engineering-plot": lambda: partials.render_plot(fixtures.engineering_plot()),
 }
 
 
@@ -661,6 +663,447 @@ class TokenValueArtifact:
 
 
 # ---------------------------------------------------------------------------
+# §E.2.1 slot_value / §E.2.0 hint_row — over plot.py's emit model
+
+
+def _legend_rows(rendered: RenderedComponent) -> list[Element]:
+    """The legend rows: elements carrying ``data-bw-series-slot``."""
+    return [
+        element for element in rendered.elements if "data-bw-series-slot" in element.attrs
+    ]
+
+
+def _legend_row_for(rendered: RenderedComponent, channel: str) -> Element | None:
+    return next(
+        (
+            element
+            for element in _legend_rows(rendered)
+            if element.attrs.get("data-bw-channel-id") == channel
+        ),
+        None,
+    )
+
+
+class SlotValueArtifact:
+    """§E.2.1: the slot-i row's Colour/Dash/Symbol cells against the 16-id
+    canonical fixture's emitted legend triple — ``data-bw-series-slot`` =
+    ``((i mod 8)+1)``, ``data-bw-resolved-series`` = the colour cell,
+    ``data-line`` = the RESOLVED dash form (solid/dashed, per §E.1 — the
+    cell names the §E.2.2 key), ``data-bw-symbol`` = the symbol cell. Two
+    legend rows share a slot number; the dash disambiguates (the wrap at
+    8 is what the mutation control breaks)."""
+
+    kind = "slot_value"
+
+    def __init__(self, key: str) -> None:
+        self.key = key
+
+    def satisfies(self, row: Row) -> list[str]:
+        index = int(literal(row.cells[0]))
+        colour = literal(row.cells[1])
+        dash = literal(row.cells[2])
+        symbol = literal(row.cells[3])
+        expected_line = DASH_TO_DATA_LINE[dash]
+        rendered = RenderedComponent(partials.render_plot(fixtures.slots16_plot()))
+        matching = [
+            element
+            for element in _legend_rows(rendered)
+            if element.attrs.get("data-bw-series-slot") == str((index % 8) + 1)
+            and element.attrs.get("data-bw-resolved-series") == colour
+            and element.attrs.get("data-line") == expected_line
+            and element.attrs.get("data-bw-symbol") == symbol
+        ]
+        if not matching:
+            return [
+                f"no legend row carries the slot-{(index % 8) + 1} triple "
+                f"({colour} / {dash} → {expected_line} / {symbol})"
+            ]
+        return []
+
+
+class HintRowArtifact:
+    """§E.2.0: each hint row's Effect, asserted on the canonical hinted sets
+    — accent loses to a visible slot-1 claim / wins by trace order when the
+    claim is released, muted repaints and releases (with the token-less
+    fallback keeping the slot colour), ``visible: false`` never moves a
+    slot or restyles siblings, no hint keeps every §E.2.1 slot fact."""
+
+    kind = "hint_row"
+
+    def __init__(self, key: str) -> None:
+        self.key = key
+
+    def satisfies(self, row: Row) -> list[str]:
+        hint = literal(row.cells[0])
+        messages: list[str] = []
+        if hint == 'color_role: "accent"':
+            loses = RenderedComponent(
+                partials.render_plot(fixtures.hint_accent_loses_plot())
+            )
+            alpha, beta = (_legend_row_for(loses, c) for c in ("alpha", "beta"))
+            if alpha is None or beta is None:
+                return ["the accent fixture did not render its legend rows"]
+            if alpha.attrs.get("data-bw-resolved-series") != EMPHASIS_SERIES:
+                messages.append(
+                    f"pass-1 slot 1 must keep the emphasis default {EMPHASIS_SERIES}"
+                )
+            if beta.attrs.get("data-bw-resolved-series") != "--bw-series-2":
+                messages.append(
+                    "an accent hint on a non-slot-1 trace must lose silently to "
+                    "the visible slot-1 claim (revert to its slot colour)"
+                )
+            wins = RenderedComponent(partials.render_plot(fixtures.hint_accent_wins_plot()))
+            beta_w, gamma_w = (_legend_row_for(wins, c) for c in ("beta", "gamma"))
+            if beta_w is None or gamma_w is None:
+                return ["the accent-winner fixture did not render its legend rows"]
+            if beta_w.attrs.get("data-bw-resolved-series") != EMPHASIS_SERIES:
+                messages.append(
+                    "with the slot-1 claim released, the earliest visible accent "
+                    "hint in trace order must win the emphasis colour"
+                )
+            if gamma_w.attrs.get("data-bw-resolved-series") != "--bw-series-3":
+                messages.append(
+                    "a later accent hint must revert to its slot colour"
+                )
+        elif hint == 'color_role: "muted"':
+            muted = RenderedComponent(partials.render_plot(fixtures.hint_muted_plot()))
+            alpha, beta = (_legend_row_for(muted, c) for c in ("alpha", "beta"))
+            if alpha is None or beta is None:
+                return ["the muted fixture did not render its legend rows"]
+            if alpha.attrs.get("data-bw-resolved-series") != MUTED_SERIES:
+                messages.append(f"a muted hint must repaint {MUTED_SERIES}")
+            if beta.attrs.get("data-bw-resolved-series") != "--bw-series-2":
+                messages.append(
+                    "releasing the muted trace's claim must not cascade (the "
+                    "sibling keeps its slot colour, never promoted)"
+                )
+            fallback = RenderedComponent(
+                partials.render_plot(fixtures.hint_muted_plot(theme_resolves_muted=False))
+            )
+            alpha_f = _legend_row_for(fallback, "alpha")
+            if alpha_f is None:
+                return ["the token-less muted fixture did not render its legend rows"]
+            if alpha_f.attrs.get("data-bw-resolved-series") != "--bw-series-1":
+                messages.append(
+                    "a token-less muted hint falls back to its slot colour "
+                    "(which still claims if it is slot 1)"
+                )
+        elif hint == "visible: false":
+            hidden_plot = RenderedComponent(partials.render_plot(fixtures.hint_hidden_plot()))
+            alpha, beta, gamma = (
+                _legend_row_for(hidden_plot, c) for c in ("alpha", "beta", "gamma")
+            )
+            if alpha is None or beta is None or gamma is None:
+                return ["the hidden fixture did not render its legend rows"]
+            if "data-hidden" not in beta.attrs:
+                messages.append("the hidden channel's legend row must carry data-hidden")
+            if beta.attrs.get("data-bw-series-slot") != "2":
+                messages.append("a hidden channel's SLOT never moves")
+            if alpha.attrs.get("data-bw-series-slot") != "1" or gamma.attrs.get(
+                "data-bw-series-slot"
+            ) != "3":
+                messages.append("hiding a channel must not restyle its siblings")
+            if gamma.attrs.get("data-bw-resolved-series") != "--bw-series-3":
+                messages.append("sibling colours resolve over the full declared set")
+        elif hint == "(no hint)":
+            plain = RenderedComponent(partials.render_plot(fixtures.no_hint_plot()))
+            alpha, beta = (_legend_row_for(plain, c) for c in ("alpha", "beta"))
+            if alpha is None or beta is None:
+                return ["the no-hint fixture did not render its legend rows"]
+            expected = {
+                "alpha": ("1", "--bw-series-1", "solid", "symbol-1"),
+                "beta": ("2", "--bw-series-2", "solid", "symbol-2"),
+            }
+            for channel, (slot, series, line, symbol) in expected.items():
+                element = alpha if channel == "alpha" else beta
+                got = (
+                    element.attrs.get("data-bw-series-slot"),
+                    element.attrs.get("data-bw-resolved-series"),
+                    element.attrs.get("data-line"),
+                    element.attrs.get("data-bw-symbol"),
+                )
+                if got != (slot, series, line, symbol):
+                    messages.append(
+                        f"{channel} must keep its §E.2.1 slot facts "
+                        f"{(slot, series, line, symbol)}, got {got}"
+                    )
+        else:
+            messages.append(f"unknown §E.2.0 hint row {hint!r}")
+        return messages
+
+
+# ---------------------------------------------------------------------------
+# §E.2.3–§E.2.6 rule_proof rows — pure plot.py functions asserted through
+# the emitted vocabulary (the record's §1.2 in-scope rule rows)
+
+
+class RuleProofArtifact:
+    """A ``rule_proof`` row proven on a canonical fixture — the checker
+    receives the row and returns the unsatisfied item messages. Behaviour
+    rules across components and time stay G1d's (the named deferral)."""
+
+    kind = "rule_proof"
+
+    def __init__(self, key: str, checker: Callable[[Row], list[str]]) -> None:
+        self.key = key
+        self._checker = checker
+
+    def satisfies(self, row: Row) -> list[str]:
+        return self._checker(row)
+
+
+def _axes_attr(rendered: RenderedComponent) -> str:
+    return next(
+        (
+            element.attrs.get("data-bw-axes") or ""
+            for element in rendered.elements
+            if "data-bw-axes" in element.attrs
+        ),
+        "",
+    )
+
+
+def _check_one_unit(row: Row) -> list[str]:
+    messages: list[str] = []
+    one = RenderedComponent(partials.render_plot(fixtures.one_unit_plot()))
+    if _axes_attr(one) != "V":
+        messages.append(f"one distinct unit must yield one y-axis named V; got {_axes_attr(one)!r}")
+    for channel in ("v1", "v2", "v3"):
+        element = _legend_row_for(one, channel)
+        if element is None or element.attrs.get("data-bw-axis") != "1":
+            messages.append(f"every trace binds to its own unit's axis (1): {channel}")
+    unitless = RenderedComponent(partials.render_plot(fixtures.unitless_plot()))
+    if _axes_attr(unitless) != "":
+        messages.append(
+            "a unit empty after trimming is the unitless group — a legal single "
+            "group whose axis renders unnamed"
+        )
+    return messages
+
+
+def _check_two_units(row: Row) -> list[str]:
+    messages: list[str] = []
+    two = RenderedComponent(partials.render_plot(fixtures.two_unit_plot()))
+    if _axes_attr(two) != "V;A":
+        messages.append(
+            f"two units must yield axes V;A in first-declaration order; got {_axes_attr(two)!r}"
+        )
+    voltage, current = (_legend_row_for(two, c) for c in ("voltage", "current"))
+    if voltage is None or voltage.attrs.get("data-bw-axis") != "1":
+        messages.append("axis 1 = the earliest declared trace's unit (V)")
+    if current is None or current.attrs.get("data-bw-axis") != "2":
+        messages.append("axis 2 = the other unit (A)")
+    return messages
+
+
+def _check_refusal(row: Row) -> list[str]:
+    messages: list[str] = []
+    refusal = RenderedComponent(partials.render_plot(fixtures.three_unit_refusal_plot()))
+    if _legend_rows(refusal):
+        messages.append("the >2-unit refusal must render NO traces")
+    if not any(
+        "bw-plot__refusal" in element.class_tokens for element in refusal.elements
+    ):
+        messages.append("the >2-unit refusal must render its refusal note")
+    if not refusal.explicit_role("status"):
+        messages.append("the refusal note is a role=status live region")
+    return messages
+
+
+def _check_hidden_axis(row: Row) -> list[str]:
+    messages: list[str] = []
+    hidden = RenderedComponent(partials.render_plot(fixtures.hidden_axis_plot()))
+    if _axes_attr(hidden) != "A":
+        messages.append(
+            "an axis whose traces are all hidden must not render; the survivor "
+            f"list is just A — got {_axes_attr(hidden)!r}"
+        )
+    current = _legend_row_for(hidden, "current")
+    if current is None or current.attrs.get("data-bw-axis") != "1":
+        messages.append("surviving traces' bindings remap onto the surviving axis (renumbered 1)")
+    return messages
+
+
+def _check_ref_labelling(row: Row) -> list[str]:
+    rendered = RenderedComponent(partials.render_plot(fixtures.reference_line_plot()))
+    labels = rendered.texts_of_elements(class_hook="bw-plot__ref-label")
+    if "Current limit · 2 A" not in labels:
+        return ["every reference line is labelled with its meaning and value in the plot"]
+    return []
+
+
+def _check_ref_neutrality(row: Row) -> list[str]:
+    rendered = RenderedComponent(partials.render_plot(fixtures.reference_line_plot()))
+    for element in rendered.elements:
+        if "data-bw-ref-line" in element.attrs:
+            if element.attrs.get("data-bw-ref-colour") != "--bw-border":
+                return ["reference lines render in the border token, never a severity hue"]
+            if element.attrs.get("data-line") != "dotted":
+                return ["reference lines render dotted, never a series dash"]
+            return []
+    return ["the fixture renders no reference line"]
+
+
+def _check_ref_distinctness(row: Row) -> list[str]:
+    rendered = RenderedComponent(partials.render_plot(fixtures.reference_line_plot()))
+    ref = next(
+        (e for e in rendered.elements if "data-bw-ref-line" in e.attrs), None
+    )
+    threshold = next(
+        (e for e in rendered.elements if "data-bw-threshold" in e.attrs), None
+    )
+    if ref is None or threshold is None:
+        return ["the distinctness fixture needs both a reference line and a threshold"]
+    if ref.attrs.get("data-bw-ref-colour") == threshold.attrs.get("data-bw-ref-colour"):
+        return ["a reference line and a severity threshold never share colour"]
+    if ref.attrs.get("data-line") == threshold.attrs.get("data-line"):
+        return ["a reference line and a severity threshold never share dash"]
+    return []
+
+
+def _check_ref_carrier(row: Row) -> list[str]:
+    messages: list[str] = []
+    rendered = RenderedComponent(
+        partials.render_plot(fixtures.reference_line_hidden_target_plot())
+    )
+    ref = next((e for e in rendered.elements if "data-bw-ref-line" in e.attrs), None)
+    if ref is None:
+        return ["a reference line whose targets are all hidden must still render"]
+    if "data-hidden" in ref.attrs:
+        messages.append("the carrier itself is never hidden by its targets' visibility")
+    if ref.attrs.get("data-bw-ref-unit") != "A":
+        messages.append("each line names the unit it constrains (data-bw-ref-unit)")
+    if ref.attrs.get("data-bw-carrier") != "extent":
+        messages.append("one extent-spanning carrier per target axis")
+    return messages
+
+
+def _check_acquisition_when(row: Row) -> list[str]:
+    messages: list[str] = []
+    required = RenderedComponent(
+        partials.render_plot(fixtures.acquisition_decimated_plot())
+    )
+    if not any(
+        "bw-plot__acquisition" in element.class_tokens for element in required.elements
+    ):
+        messages.append("a visible decimated trace MUST disclose")
+    not_required = RenderedComponent(
+        partials.render_plot(fixtures.acquisition_not_required_plot())
+    )
+    if any(
+        "bw-plot__acquisition" in element.class_tokens
+        for element in not_required.elements
+    ):
+        messages.append(
+            "presentation-hidden traces draw nothing, so they disclose nothing"
+        )
+    return messages
+
+
+def _check_acquisition_placement(row: Row) -> list[str]:
+    rendered = RenderedComponent(partials.render_plot(fixtures.acquisition_decimated_plot()))
+    lines = [e for e in rendered.elements if "bw-plot__acquisition" in e.class_tokens]
+    if not lines:
+        return ["the disclosure renders as visible text"]
+    if not all("data-bw-acquisition" in e.attrs for e in lines):
+        return ["the disclosure carries the data-bw-acquisition attribute"]
+    canvas = next(
+        (e for e in rendered.elements if "bw-plot__canvas" in e.class_tokens), None
+    )
+    if canvas is None:
+        return ["the canvas element must render"]
+    # The canvas is the EMPTY hydrate target — nothing renders inside it, so
+    # the disclosure is necessarily outside the chart image (never
+    # tooltip-only). Assert the emptiness that makes "outside" structural.
+    canvas_index = rendered.elements.index(canvas)
+    canvas_text = rendered._element_texts[canvas_index]
+    if canvas_text.strip():
+        return ["the hydrate-target canvas carries no payload text"]
+    return []
+
+
+def _check_acquisition_wording(row: Row) -> list[str]:
+    rendered = RenderedComponent(partials.render_plot(fixtures.acquisition_decimated_plot()))
+    texts = rendered.texts_of_elements(class_hook="bw-plot__acquisition")
+    if texts != ["Acquired 100 samples · plotted 2"]:
+        return [f"wording must be 'Acquired 100 samples · plotted 2'; got {texts!r}"]
+    line = next(e for e in rendered.elements if "bw-plot__acquisition" in e.class_tokens)
+    if line.attrs.get("data-bw-plotted") != "2":
+        return ["m is the drawn count (values.length), never caller-supplied"]
+    return []
+
+
+_PROVENANCE_CHANNEL = {
+    "measured": "measured-rail",
+    "derived": "derived-rail",
+    "device-averaged": "averaged-rail",
+    "display-processed": "smoothed-rail",
+}
+
+
+def _check_provenance(row: Row) -> list[str]:
+    provenance = literal(row.cells[0])
+    channel = _PROVENANCE_CHANNEL[provenance]
+    rendered = RenderedComponent(partials.render_plot(fixtures.provenance_plot()))
+    element = _legend_row_for(rendered, channel)
+    if element is None:
+        return [f"the {provenance} fixture row did not render"]
+    if provenance == "measured":
+        if "data-bw-trace-provenance" in element.attrs:
+            return ["a measured trace carries NEITHER the attribute"]
+        if "device averaging" in rendered._element_texts[rendered.elements.index(element)]:
+            return ["a measured trace carries no marker text"]
+        return []
+    if element.attrs.get("data-bw-trace-provenance") != provenance:
+        return [f"a marked trace carries data-bw-trace-provenance={provenance}"]
+    text = rendered._element_texts[rendered.elements.index(element)]
+    if provenance == "derived":
+        if "derived" not in text:
+            return ["the derived marker text must render"]
+        if "rail ÷ divider ratio" not in text or "uncertainty unknown" not in text:
+            return ["the derivation expression and 'uncertainty unknown' must render"]
+    elif provenance == "device-averaged":
+        if "device averaging 8" not in text:
+            return ["the applied device averaging depth must render in the marker"]
+        if "display processing" in text:
+            return ["marker text never uses the display-processing vocabulary"]
+    elif provenance == "display-processed":
+        if "display processing: moving-average 100 ms" not in text:
+            return ["the processing name and window must render in the marker"]
+        if "device averaging" in text:
+            return ["marker text never uses the device-averaging vocabulary"]
+        if _legend_row_for(rendered, "smoothed-rail-source") is None:
+            return ["the source trace remains rendered in the same plot"]
+    return []
+
+
+_PLOT_RULE_CHECKERS: dict[str, Callable[[Row], list[str]]] = {
+    "One distinct unit among the declared traces": _check_one_unit,
+    "Two distinct units among the declared traces": _check_two_units,
+    "More than two distinct units among the declared traces": _check_refusal,
+    "Every trace bound to an axis is presentation-hidden": _check_hidden_axis,
+    "Labelling": _check_ref_labelling,
+    "Neutrality": _check_ref_neutrality,
+    "Distinctness": _check_ref_distinctness,
+    "Carrier": _check_ref_carrier,
+    "When required": _check_acquisition_when,
+    "Placement": _check_acquisition_placement,
+    "Wording": _check_acquisition_wording,
+    "measured": _check_provenance,
+    "derived": _check_provenance,
+    "device-averaged": _check_provenance,
+    "display-processed": _check_provenance,
+}
+
+
+def _plot_rule_factory(key: str) -> RuleProofArtifact:
+    checker = _PLOT_RULE_CHECKERS.get(key)
+    if checker is None:
+        raise KeyError(f"no plot rule checker for {key!r}")
+    return RuleProofArtifact(key, checker)
+
+
+# ---------------------------------------------------------------------------
 # Registration
 
 _REGISTRARS: dict[str, Callable[[str], registry.Artifact]] = {
@@ -677,6 +1120,12 @@ _REGISTRARS: dict[str, Callable[[str], registry.Artifact]] = {
     "a-2-spacing-and-layout": TokenValueArtifact,
     "a-3-radius": TokenValueArtifact,
     "a-4-typography-fonts": TokenValueArtifact,
+    "e-2-0-pass-2-composition-channel-hints": HintRowArtifact,
+    "e-2-1-slot-mapping": SlotValueArtifact,
+    "e-2-3-y-axis-assignment": _plot_rule_factory,
+    "e-2-4-reference-lines": _plot_rule_factory,
+    "e-2-5-acquisition-disclosure": _plot_rule_factory,
+    "e-2-6-trace-provenance": _plot_rule_factory,
 }
 
 #: Every row-id G1b registers — derived from the registrar coverage, so the

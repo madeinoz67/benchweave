@@ -22,6 +22,7 @@ from benchweave_ui_html.data import (
     TableData,
 )
 from benchweave_ui_html.env import ENV
+from benchweave_ui_html.plot import ComposedPlot
 
 
 def _render(template: str, data: object) -> str:
@@ -95,3 +96,11 @@ def render_icon(key: str) -> str:
 def render_sequence(key: str) -> str:
     """§E.2.2: the dash/symbol SVG fragment for ``key``."""
     return ENV.get_template(f"sequence/{key}.j2").render()
+
+
+def render_plot(composed: ComposedPlot) -> str:
+    """§E.1 ``engineering-plot``: the semantic skeleton — figure[role=img],
+    the empty hydrate-target canvas, the Traces legend whose rows carry
+    plot.py's emitted computation, reference lines, thresholds and the
+    acquisition disclosure. Attributes only; no draw claims (UR-07)."""
+    return ENV.get_template("engineering-plot.j2").render(plot=composed)

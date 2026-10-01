@@ -1,0 +1,26 @@
+<figure class="bw-plot" role="img" aria-label="{{ plot.title }}" aria-describedby="bw-plot-desc-{{ plot.title | replace(' ', '-') }}">
+  <div class="bw-plot__canvas" data-bw-axes="{{ plot.axes_attr }}" data-bw-plot-title="{{ plot.title }}"></div>
+  {%- if plot.refusal %}
+  <p class="bw-plot__refusal" role="status">More than two distinct units among the declared traces — no traces are drawn.</p>
+  {%- endif %}
+  {%- for ref in plot.ref_lines %}
+  <div class="bw-plot__ref-line" data-bw-ref-line data-bw-ref-unit="{{ ref.unit }}" data-bw-ref-colour="{{ ref.colour_token }}" data-line="{{ ref.dash }}" data-bw-axis="{{ ref.axis }}" data-bw-carrier="extent"><span class="bw-plot__ref-label">{{ ref.label }}</span></div>
+  {%- endfor %}
+  {%- for threshold in plot.thresholds %}
+  <div class="bw-plot__threshold" data-bw-threshold data-bw-threshold-severity="{{ threshold.severity }}" data-bw-ref-colour="{{ threshold.colour_token }}" data-line="{{ threshold.dash }}" data-bw-axis="{{ threshold.axis }}"><span class="bw-plot__ref-label">{{ threshold.label }}</span></div>
+  {%- endfor %}
+  <div class="bw-plot__legend" aria-label="Traces">
+    {%- for row in plot.legend %}
+    <div class="bw-plot__legend-row" data-bw-channel-id="{{ row.channel_id }}" data-bw-series-slot="{{ row.slot }}" data-bw-resolved-series="{{ row.resolved_series }}" data-line="{{ row.data_line }}" data-bw-symbol="{{ row.symbol }}"{% if row.axis %} data-bw-axis="{{ row.axis }}"{% endif %}{% if row.provenance_kind %} data-bw-trace-provenance="{{ row.provenance_kind }}"{% endif %}{% if row.hidden %} data-hidden aria-label="{{ row.channel_id }} (hidden by presentation preference)"{% endif %}>
+      <span class="bw-plot__legend-swatch"></span>
+      <span class="bw-plot__legend-label">{{ row.channel_id }}</span>
+      {%- if row.hidden %}<span class="bw-plot__hidden-marker">hidden</span>{% endif %}
+      {%- if row.provenance_marker %}<span class="bw-plot__provenance">{{ row.provenance_marker }}{% if row.provenance_disclosure %} — {{ row.provenance_disclosure }}{% endif %}</span>{% endif %}
+    </div>
+    {%- endfor %}
+  </div>
+  {%- if plot.acquisition_text %}
+  <p class="bw-plot__acquisition" data-bw-acquisition data-bw-acquired="{{ plot.acquired }}" data-bw-plotted="{{ plot.plotted }}">{{ plot.acquisition_text }}</p>
+  {%- endif %}
+  <p class="bw-visually-hidden" id="bw-plot-desc-{{ plot.title | replace(' ', '-') }}">{{ plot.description }}</p>
+</figure>
