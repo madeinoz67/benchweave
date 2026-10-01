@@ -86,3 +86,43 @@ test('a path outside the repo produces no warning', () => {
   const out = run('Write', '/tmp/somewhere-else/entirely.py')
   assert.equal(out, null)
 })
+
+test('verb-set drift: all three trigger shapes fire Drift 23; a pre-touched surface quiets it', () => {
+  const call = (session, rel) => {
+    const r = spawnSync('node', [HOOK], {
+      input: JSON.stringify({
+        session_id: session,
+        cwd: process.cwd(),
+        tool_input: { file_path: join(process.cwd(), rel) },
+      }),
+      encoding: 'utf-8',
+    })
+    assert.equal(r.status, 0)
+    return r.stdout.trim() ? JSON.parse(r.stdout).hookSpecificOutput?.additionalContext : null
+  }
+  const cleanup = (session) =>
+    rmSync(join(tmpdir(), 'benchweave-drift-guard', session), { recursive: true, force: true })
+
+  // Each trigger shape fires Drift 23 in a fresh session (a fired rule stays
+  // quiet for the rest of its session, so the shapes cannot share one).
+  for (const [index, trigger] of [
+    'src/benchweave/host/otdp_bridge.py',
+    'src/benchweave/cli/report.py',
+    'src/benchweave/standards/__main__.py',
+  ].entries()) {
+    const session = `drift-guard-test-verbset-${process.pid}-${index}`
+    const note = call(session, trigger)
+    assert.ok(note?.includes('Drift 23'), `expected the verb-set warning for ${trigger}, got: ${note}`)
+    cleanup(session)
+  }
+
+  // Satisfaction recorded before the trigger keeps the rule quiet (satisfy-first).
+  const quietSession = 'drift-guard-test-verbset-satisfy-' + process.pid
+  assert.equal(call(quietSession, 'docs/operator-guide.md'), null)
+  assert.equal(
+    call(quietSession, 'src/benchweave/standards/__main__.py'),
+    null,
+    'satisfaction recorded first must quiet the verb-set trigger'
+  )
+  cleanup(quietSession)
+})
