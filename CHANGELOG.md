@@ -261,6 +261,8 @@ All notable changes to this project will be documented in this file.
 - Fold F1 — the pin layer pins identity, not just structure (issue #297)
 - Fold F3-F6 - unreadable Schema red, TS literal semantics, separator arity (issue #297)
 - The two-lane refute fold — repair the stale authority at the source
+- Consolidated Tier-3 fold — per-trace acquisition, enum arms, lanes semantics (issue #298)
+- M4 owner ruling — the legend stays on the >2-unit refusal (issue #298)
 
 ### Documentation
 
@@ -512,6 +514,7 @@ All notable changes to this project will be documented in this file.
 - The website deferrals fold record — #319 + #321 + #291 + the #320 ruling
 - #319 claim-reconciliation sweep — 4 stale sites + 1 tense disclosure
 - #321 obligation row 23 — verb/command-set prose drifts with its mechanism
+- G1b partials + canonical artifacts design record (issue #298)
 
 ### Features
 
@@ -711,6 +714,10 @@ All notable changes to this project will be documented in this file.
 - The pytest contract harness - collection is the parse (issue #297)
 - Host-side lane decimator + the §E.4.4 property proofs (issue #299 G1c)
 - #291 the standards-CLI page, generated from --help at build
+- G1b slice 1 — item parser, assertion layer, button artifact, harness wiring (issue #298)
+- G1b slice 2 — structural families, labels, refusals, icons, sequences, tokens, CSS pins (issue #298)
+- G1b slice 3 — plot lane: UR-07 emit model, slots, hints, axes, ref lines, acquisition, provenance (issue #298)
+- G1b slice 4 — lanes lane: §E.4 composition over reduce_lane, end state 158/168 (issue #298)
 
 ### Hardware Evidence
 
@@ -1007,6 +1014,7 @@ All notable changes to this project will be documented in this file.
 - The computed colour proofs port - instrument, ledger, verbatim arms (issue #299 G1c)
 - Tighten I5/I6/I8 pin tolerance to toBeCloseTo(1,5) exactly (issue #299 G1c refute fold 3)
 - The refute fold's cheap closes — bidirectional pin + hardened capture
+- G1b template-packaging guard (O4) — pinned contents + full-environment load
 
 ### Build
 
