@@ -493,6 +493,9 @@ All notable changes to this project will be documented in this file.
 - Register constraint_bounds_reversed and the marker_mirror_drift posture (F1+F2)
 - Revise PRD 11 for the PRD 12 rulings (issue #312)
 - Sweep remaining ECharts references to uPlot (issue #312)
+- Issue #317 website status update design record
+- Bring the "Where it stands" section current (issue #317)
+- Fold refute findings F1+F2 from the issue #317 review
 
 ### Features
 
