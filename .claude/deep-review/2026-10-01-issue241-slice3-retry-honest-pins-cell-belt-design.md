@@ -185,14 +185,21 @@ mechanizes exactly that prescription, bounded and recorded:
   `_certified_cell(tmp_path, arm, device_class, evaluate)`:
   1. evaluate the shared cached cell (the existing `_cell` gen-1);
   2. if the breach list is non-empty, run ONE fresh generation (five fresh
-     `run_trial` invocations, `trial_index` 51–55 — indexes verified unused:
-     cells use 10–14/…, pins 70–92/110–112, census 99, F1 lanes 440/450);
+     `run_trial` invocations, `trial_index` 51–55 — a range no other caller
+     uses: the module's direct `trial_index=` callers, grep-verified at build,
+     are 1, 3, 6, 7, 8, 9, 11, 44, 45, 46, 99. Refute-fold correction C1:
+     the original enumeration here — "cells use 10–14/…, pins 70–92/110–112,
+     census 99, F1 lanes 440/450" — did not regenerate from the file; this
+     set does);
   3. evaluate the fresh cell; if it also breaches, FAIL, rendering BOTH
      generations' values and both breach lists (the §6-arm-1 kill direction —
      a systematically-loose fixture is caught twice);
   4. the belt's generation count is recorded per key and asserted `<= 1`,
      and printed in the trial line (the same lane-health posture as
-     `outcome["retry_sites"]`).
+     `outcome["retry_sites"]`). Refute-fold clarification (mech-F5): the
+     `<= 1` counts CERTIFICATIONS — a key entering the memo — not evaluator
+     executions; a later belt reader re-evaluates the certified generation
+     without any second generation run.
 - Belt discipline, structural not policy-checked:
   - **ONE re-run per (arm, class) key, shared by every belt reader** (a
     module-level memo beside `_TRIAL_CELLS`). Whichever reader breaches first
@@ -205,6 +212,15 @@ mechanizes exactly that prescription, bounded and recorded:
     `retries <= 2`, snapshot brackets) and every FLOOR stay inline and hard:
     host load inflates, it does not deflate, so lower bounds and structural
     wiring are not the flake class and must not gain a re-roll.
+    Refute-fold disclosure (adv-F1/mech-F3): the inline asserts evaluate
+    whichever generation the belt RETURNS — an absorbed gen-1 band breach
+    therefore skips gen-1's floor/structural verdicts — EXCEPT the
+    load-safe X1 floor, which the axis test asserts on BOTH generations
+    (load inflates X1, so its lower bound cannot false-red);
+    `retries <= 2`, `in_window_frames >= 1`, and the write-leg gap band
+    stay return-generation-only: re-asserting gen-1's load-inflated upper
+    quantities would reintroduce the flake class this slice retires, and
+    `in_window_frames` is load-deflatable.
   - **The raw cell cache is never rewritten.** The trial-log test and the
     control/separation test keep reading gen-1 (`_cell`); the belt's fresh
     generation lives in its own memo. What was measured stays what is logged;
@@ -470,9 +486,15 @@ keep-and-document governs either way).
 3. **The belt's interaction with the module cell cache creates
    order-dependence** (the #280 class). Structural answer: readers evaluate
    the newest certified generation; the raw cache is never rewritten; the
-   trial-log test reads gen-1 as today. Falsifier: a belt-reader verdict that
-   differs under `-p no:randomly` order permutations in the AR-4 cold run
-   (collected order is file order; verified once at build).
+   trial-log test reads gen-1 as today. Falsifier (refute-fold correction,
+   mech-F4 — the original text named `-p no:randomly` order permutations,
+   but pytest-randomly is not a dependency of this tree): a belt-reader
+   verdict that differs between the serialized timing-lane run and the
+   cold unfiltered union run — both ran green in file collection order at
+   build (timing lane 70/0/0; union 2722/0/0/11); no order-randomizing
+   plugin exists, so file order is the only order the lane executes in,
+   and order-independence is structural: each reader evaluates gen-1,
+   then the memoized certified generation, at its own runtime.
 4. **Retry-composition visibility gap** (carried from slice 2, unchanged):
    green-path belt usage is print-only. Falsifier/watch: a belt-related
    incident whose log lacks the usage line — then the belt-visibility
@@ -501,3 +523,12 @@ keep-and-document governs either way).
 No `src/` bytes. No `standards/` bytes. No workflow bytes. No numeric bound
 moves anywhere — the reading, the trim depth, the denominator, every ceiling
 and floor in the marked set are byte-identical after this slice.
+
+Refute-fold correction (2026-10-01, mech-F6): the file-level list above
+overcounts the AR-2 arms — ONE committed test shipped (the
+classifier-regression arm, now a two-row table with the displaced-site
+row); AR-2(b) shipped as an in-place RED demonstration recorded in the
+fold commit's ancestor message, not a committed test. The same fold adds:
+the X1-floor both-generations fix with its pin (adv-F1/mech-F3), the
+AR-2a site-membership form (mech-F1), and claim corrections C1–C5 at
+their sites above.

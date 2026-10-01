@@ -1790,7 +1790,11 @@ def test_emit_trial_log_every_numeric_row_carries_command_and_parameterization()
 # One module-level cell cache: the cells are expensive (a fresh rig per
 # trial on a fresh store — the trial IS the unit), and the acceptance
 # assertions in the tests below read the SAME trials rather than
-# re-measuring. A failed cell fails every test that reads it, loudly.
+# re-measuring. A structurally failed cell fails every test that reads
+# it, loudly; a BAND breach no longer does — it is the one-shot cell
+# belt's to absorb (one re-measure) — and this raw cache is never
+# rewritten by the belt (refute fold C5: the pre-belt claim "a failed
+# cell fails every test that reads it" held before the belt existed).
 
 _TRIAL_CELLS: dict[tuple[str, str], list[dict[str, Any]]] = {}
 
@@ -1835,6 +1839,21 @@ def _axis_upper_band_breaches(trials: list[dict[str, Any]], arm: str) -> list[st
     return breaches
 
 
+def _assert_x1_floor(trials: list[dict[str, Any]], arm: str) -> None:
+    """The X1 FLOOR — the serial-model disclosure pin — asserted on BOTH
+    generations (refute fold A, issue #241 slice 3: adv-F1/mech-F3): host
+    load inflates X1, so a lower bound on a load-inflated quantity cannot
+    false-red, and gen-1's violation must red even when the belt absorbed
+    a gen-1 band breach with a clean fresh draw. The floor never triggers
+    a re-roll — it is asserted, never belt-evaluated."""
+    dispatch_ms = _ARM_DISPATCH_MS[arm]
+    for trial in trials:
+        assert dispatch_ms - 50 <= trial["x1_ms"], (
+            f"X1 floor (the serial-model disclosure pin) breached on trial "
+            f"{trial['trial']}: {trial}"
+        )
+
+
 #: The one-shot cell belt's fresh generations (issue #241 slice 3, design
 #: §1.2): ONE re-run per (arm, device_class) key, shared by every belt
 #: reader — whichever reader breaches first certifies the generation, and
@@ -1856,9 +1875,10 @@ def _belt_fresh_generation(
     tmp_path: Path, arm: str, device_class: str
 ) -> list[dict[str, Any]]:
     """The belt's re-measure: five fresh ``run_trial`` invocations,
-    ``trial_index`` 51–55 — indexes no other caller uses (the cached cells
-    1–5, the retry pins 3–9, the census 6, the F1 lanes 44–45), so the
-    fresh stores never collide with the cached cell's."""
+    ``trial_index`` 51–55 — a range no other caller uses: the module's
+    direct ``trial_index=`` callers, grep-verified at build (refute fold
+    C1), are 1, 3, 6, 7, 8, 9, 11, 44, 45, 46, 99 — so the fresh stores
+    never collide with a cached cell's or another test's."""
     return [
         run_trial(tmp_path, arm=arm, device_class=device_class, trial_index=index)
         for index in range(51, 56)
@@ -1966,16 +1986,26 @@ def test_axis_trials_complete_all_four_axes(
     the multi-stall host shape among tight trials is absorbed without
     touching the reading, and a fresh breach reds with both generations
     rendered. The floors and every structural assert stay inline and hard
-    — host load inflates, it does not deflate."""
+    and never trigger a re-roll themselves — but they evaluate whichever
+    generation the belt returns: an absorbed gen-1 band breach skips
+    gen-1's floor/structural verdicts, EXCEPT the load-safe X1 floor,
+    which asserts on BOTH generations (refute fold A; load inflates X1,
+    so its lower bound cannot false-red). The retry cap, in_window_frames,
+    and the write-leg gap band stay return-generation-only — re-asserting
+    gen-1's load-inflated upper quantities would reintroduce the flake
+    class this slice retires."""
     trials = _certified_cell(
         tmp_path, arm, device_class, lambda cell: _axis_upper_band_breaches(cell, arm)
     )
     assert len(trials) == 5
-    dispatch_ms = _ARM_DISPATCH_MS[arm]
+    # gen-1's X1 floor is always audited — a cached read, never a
+    # re-measure — then the certified generation's (identical when the
+    # belt returned gen-1).
+    _assert_x1_floor(_cell(tmp_path, arm, device_class), arm)
+    _assert_x1_floor(trials, arm)
     for trial in trials:
         for axis in ("x1_ms", "x2_ms", "x3_ms", "x4_ms"):
             assert trial[axis] is not None, (arm, device_class, trial["trial"], axis)
-        assert dispatch_ms - 50 <= trial["x1_ms"], trial
         assert trial["in_window_frames"] >= 1, trial
         assert trial["retries"] <= 2, (
             f"trial retried {trial['retries']} times (max 2): {trial}"
@@ -2225,7 +2255,9 @@ def test_belt_absorbs_a_single_stall_with_one_fresh_generation(
     evaluators and a monkeypatched fresh-generation seam: this pin
     exercises the BELT's decision logic only — the real fixture paths are
     AR-1.1's (both generations, real trials, real breach) and the
-    axis/range-gate tests' own reads."""
+    axis/range-gate tests' own reads. The module memos are snapshotted
+    and restored (refute fold C4): the synthetic key must not linger in
+    them after the pin."""
     key = ("capture", "belt-pin-single-stall")
     gen1 = [{"trial": index} for index in range(1, 6)]
     gen2 = [{"trial": index} for index in range(51, 56)]
@@ -2239,11 +2271,25 @@ def test_belt_absorbs_a_single_stall_with_one_fresh_generation(
 
     monkeypatch.setitem(globals(), "_cell", lambda *args: gen1)
     monkeypatch.setitem(globals(), "_belt_fresh_generation", lambda *args: gen2)
-    certified = _certified_cell(tmp_path, key[0], key[1], single_stall_then_clean)
-    assert certified is gen2, "the belt must hand back the certified generation"
-    assert _BELT_FRESH_GENERATIONS[key] is gen2, "the memo holds the certification"
-    assert _BELT_GENERATION_RUNS[key] == 1, _BELT_GENERATION_RUNS[key]
-    assert len(evaluations) == 2, evaluations
+    saved_cells = dict(_TRIAL_CELLS)
+    saved_fresh = dict(_BELT_FRESH_GENERATIONS)
+    saved_runs = dict(_BELT_GENERATION_RUNS)
+    _TRIAL_CELLS.clear()
+    _BELT_FRESH_GENERATIONS.clear()
+    _BELT_GENERATION_RUNS.clear()
+    try:
+        certified = _certified_cell(tmp_path, key[0], key[1], single_stall_then_clean)
+        assert certified is gen2, "the belt must hand back the certified generation"
+        assert _BELT_FRESH_GENERATIONS[key] is gen2, "the memo holds the certification"
+        assert _BELT_GENERATION_RUNS[key] == 1, _BELT_GENERATION_RUNS[key]
+        assert len(evaluations) == 2, evaluations
+    finally:
+        _TRIAL_CELLS.clear()
+        _TRIAL_CELLS.update(saved_cells)
+        _BELT_FRESH_GENERATIONS.clear()
+        _BELT_FRESH_GENERATIONS.update(saved_fresh)
+        _BELT_GENERATION_RUNS.clear()
+        _BELT_GENERATION_RUNS.update(saved_runs)
 
 
 def test_belt_never_re_runs_a_structural_failure(
@@ -2271,6 +2317,72 @@ def test_belt_never_re_runs_a_structural_failure(
         "a structural failure must not certify a fresh generation"
     )
     assert _BELT_GENERATION_RUNS.get(key, 0) == 0, _BELT_GENERATION_RUNS
+
+
+def test_belt_swap_still_audits_gen1_x1_floor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Refute fold A (adv-F1 / mech-F3, MEDIUM): when gen-1 breaches a
+    belt band and the fresh draw is clean, the belt hands back the FRESH
+    cell — and the axis test's inline asserts then evaluated the fresh
+    cell only, so a gen-1 X1-floor violation (the serial-model disclosure
+    pin) shipped green (the adversary's A/B: the poisoned shape passed at
+    the pre-fold tip where origin/main reds). The fix asserts the
+    load-safe X1 floor on BOTH generations; this pin drives the REAL
+    axis test — first five adapters scattered by a factor ladder (one
+    trial below the 150 ms floor, one past the 350 ms upper band), every
+    later adapter healthy, so gen-1 breaches a band AND violates the
+    floor while the belt's fresh generation is clean — and the floor must
+    RED on gen-1 through the swapped verdict. RED-shown at build against
+    the pre-fix shape (the gen-1 floor call neutralized out of the axis
+    test): the poisoned cell then passes — the exact defect."""
+    ladder = (0.55, 1.0, 1.9, 0.75, 1.45)
+    adapters: list[ARigAdapter] = []
+    original_init = ARigAdapter.__init__
+
+    def counting_init(self: ARigAdapter) -> None:
+        original_init(self)
+        adapters.append(self)
+
+    monkeypatch.setattr(ARigAdapter, "__init__", counting_init)
+    original_pace = ARigAdapter._pace
+
+    async def first_five_scattered_pace(self: ARigAdapter, total_ms: float) -> None:
+        index = adapters.index(self)
+        if index < len(ladder):
+            await original_pace(self, total_ms * ladder[index])
+        else:
+            await original_pace(self, total_ms)
+
+    monkeypatch.setattr(ARigAdapter, "_pace", first_five_scattered_pace)
+    saved_cells = dict(_TRIAL_CELLS)
+    saved_fresh = dict(_BELT_FRESH_GENERATIONS)
+    saved_runs = dict(_BELT_GENERATION_RUNS)
+    _TRIAL_CELLS.clear()
+    _BELT_FRESH_GENERATIONS.clear()
+    _BELT_GENERATION_RUNS.clear()
+    try:
+        with pytest.raises(AssertionError, match="X1 floor") as raised:
+            # The REAL axis test, not a reimplementation: its belt read,
+            # its swap, and its both-generations floor are what is under
+            # test. Parametrize args are plain function arguments here.
+            test_axis_trials_complete_all_four_axes(
+                tmp_path, "non_capture", "buffered"
+            )
+        assert "x1_ms" in str(raised.value), str(raised.value)
+        # The belt really swapped: the fresh generation was certified for
+        # the key (a band breach was absorbed), so the red came through
+        # the swapped verdict, not from a gen-1-only read.
+        assert _BELT_GENERATION_RUNS.get(("non_capture", "buffered"), 0) == 1, (
+            _BELT_GENERATION_RUNS
+        )
+    finally:
+        _TRIAL_CELLS.clear()
+        _TRIAL_CELLS.update(saved_cells)
+        _BELT_FRESH_GENERATIONS.clear()
+        _BELT_FRESH_GENERATIONS.update(saved_fresh)
+        _BELT_GENERATION_RUNS.clear()
+        _BELT_GENERATION_RUNS.update(saved_runs)
 
 
 def test_trial_log_written_with_provenance(tmp_path: Path) -> None:
@@ -3605,8 +3717,17 @@ def test_measured_dispatch_device_refusal_with_latched_staleness_never_retries(
     assert type(raised.value) is AssertionError
 
 
+@pytest.mark.parametrize(
+    "displaced_final_site",
+    [
+        pytest.param(False, id="refusal-exhausts-at-dispatch-door"),
+        pytest.param(
+            True, id="real-starvation-displaces-the-final-attempts-site"
+        ),
+    ],
+)
 def test_ar2_classifier_regression_refusal_exhausts_as_infrastructure(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, displaced_final_site: bool
 ) -> None:
     """AR-2(a) (issue #241 slice 3, design §5.1), the planted-regression
     direction that keeps the de-clocked F1 pins' RED: if the dispatch
@@ -3620,11 +3741,15 @@ def test_ar2_classifier_regression_refusal_exhausts_as_infrastructure(
     ``type(raised.value) is AssertionError`` pin — under this bug both
     lanes red (shown RED-first at build: the de-clocked lanes were run
     with the classifier sabotaged in place and both type pins failed).
-    The site membership is asserted, not the exact composition — under
-    load a real starvation site can precede the refusal on an attempt
-    (the slice's own doctrine). On healthy machinery the same refusal
-    stays a plain, unretried ``AssertionError`` — the F1 lanes
-    themselves."""
+    The bug's presence is pinned by MEMBERSHIP — ``"dispatch-door" in
+    str(raised.value)`` — never by the exhausted error's own site
+    (refute fold B, mech-F1): at exhaustion ``run_trial`` bare-raises the
+    LAST attempt's error, so a REAL starvation site on the final attempt
+    displaces the site while the planted bug is present — the exact
+    false-red class this slice retires (the displaced table row builds
+    that shape; the site equality form was shown RED against it at
+    build). On healthy machinery the same refusal stays a plain,
+    unretried ``AssertionError`` — the F1 lanes themselves."""
     original_classifier = _dispatch_failure_is_infrastructure
 
     def cause_adjacency_regression(rig: ContinuityRig, result: OperationResult) -> bool:
@@ -3650,9 +3775,33 @@ def test_ar2_classifier_regression_refusal_exhausts_as_infrastructure(
         return await original_execute(self, request, context)
 
     monkeypatch.setattr(ARigAdapter, "execute", refusing_measured_dispatch)
+    if displaced_final_site:
+        # The critic's probe shape, on the real path: the planted bug
+        # classifies attempts 0-1's refusals (dispatch-door, through the
+        # real classifier sabotage), then a REAL pre-flight-staleness
+        # site consumes the final attempt — the same mixed-site seam the
+        # retry-composition pins use.
+        original_once = _run_trial_once
+        once_calls: list[int] = []
+
+        def displacing_final_site(*args: Any, **kwargs: Any) -> dict[str, Any]:
+            once_calls.append(kwargs["trial_index"])
+            if len(once_calls) == 3:
+                raise TrialInfrastructureError(
+                    "pre-dispatch staleness: synthetic (a real load site "
+                    "consuming the final attempt)",
+                    site="pre-flight-staleness",
+                )
+            return original_once(*args, **kwargs)
+
+        monkeypatch.setitem(globals(), "_run_trial_once", displacing_final_site)
     with pytest.raises(TrialInfrastructureError) as raised:
         run_trial(tmp_path, arm="non_capture", device_class="buffered", trial_index=46)
     assert type(raised.value) is TrialInfrastructureError
     assert isinstance(raised.value, AssertionError)  # still an assertion for pytest
-    assert raised.value.site == "dispatch-door", raised.value.site
     assert "dispatch-door" in str(raised.value), str(raised.value)
+    if displaced_final_site:
+        # The displacement itself is pinned (deterministic by
+        # construction — the synthetic wrapper sets it): the membership
+        # above holds WHILE the site is not the planted bug's.
+        assert raised.value.site == "pre-flight-staleness", raised.value.site
