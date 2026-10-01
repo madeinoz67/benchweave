@@ -81,6 +81,13 @@ def _make_clone(root: Path) -> Path:
                         "max_edit_distance": 2,
                     }
                 },
+                # Fixture state: the parity arm builds the REAL dps150, whose
+                # descriptor carries the scoped_transport permission; the
+                # tier rule (Q15 fold) admits this fixture publisher so the
+                # byte-parity claim keeps exercising the builders. The real
+                # registry's lane rules record NO admission — pinned by the
+                # refusal arm below.
+                "transport_tier_rule": {"admissions": ["madeinoz67"]},
             }
         ).encode()
         + b"\n"
@@ -162,3 +169,31 @@ def test_parity_has_teeth_against_zip_discipline_drift(tmp_path: Path) -> None:
             info.compress_type = zipfile.ZIP_DEFLATED
             drifted.writestr(info, data)
     assert buf.getvalue() != artifacts.payload_bytes  # the discipline detects drift
+
+
+def test_the_real_dps150_descriptor_refuses_without_an_admission(tmp_path: Path) -> None:
+    """The folded tier rule, on the real descriptor: scoped_transport with no
+    recorded admission and no triples refuses (the M3 fold's RED arm, now
+    green; the committed dogfood release predates the fold and is disclosed
+    in the fold's report)."""
+    import sys
+
+    if str(SDK_SRC) not in sys.path:
+        sys.path.insert(0, str(SDK_SRC))
+    from benchweave_sdk.publishing import PublishingError, build_submission
+
+    clone = _make_clone(tmp_path)
+    rules = json.loads((clone / "lane-rules.json").read_bytes())
+    rules.pop("transport_tier_rule", None)
+    (clone / "lane-rules.json").write_bytes(json.dumps(rules).encode() + b"\n")
+    with pytest.raises(PublishingError) as exc:
+        build_submission(
+            DPS150,
+            registry_clone=clone,
+            source_url=SOURCE_URL,
+            revision=REVISION,
+            publisher="madeinoz67",
+            plugin="dps150",
+            capability_declaration=dict(CAPABILITIES_NONE),
+        )
+    assert str(exc.value).startswith("transport_triples_absent:")

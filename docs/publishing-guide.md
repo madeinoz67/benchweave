@@ -79,7 +79,8 @@ Packaging refuses, with a stable machine prefix, when:
 | `transport_triples_absent:` | a descriptor declaring a transport provider must publish its admitted contract triples |
 | `firmware_provenance_absent:` | bundled firmware requires vendor attestation pinned against a vendor manifest |
 | `closure_diff_absent:` | the publish-record draft must carry the dependency closure diff versus the prior release |
-| `namespace_reserved:` / `namespace_collision:` / `namespace_lookalike:` | namespace hygiene under the committed lane rules |
+| `namespace_reserved:` / `namespace_collision:` | namespace hygiene under the committed lane rules (refused) |
+| `namespace_lookalike:` | a name similar to an existing namespace under the committed similarity rule — **flagged for review**, not refused: the finding rides the submission draft (`namespace_lookalikes`) and prints at package time, so the reviewer consults it (CR-39) |
 | `component_absent:<name>` | a required artefact component is missing from the plugin tree |
 
 ## Honest boundaries (read before relying on any of this)

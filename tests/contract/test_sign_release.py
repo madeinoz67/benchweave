@@ -346,3 +346,77 @@ def test_submission_artifacts_are_reproducible(tmp_path: Path) -> None:
     )
     assert first.manifest_bytes == second.manifest_bytes
     assert first.payload_bytes == second.payload_bytes
+
+# --- F4 (fold): a non-MIT licence survives full re-derivation -------------------
+
+
+def test_non_mit_licence_survives_rederivation(tmp_path: Path) -> None:
+    """The licence expression threads through _rederive (the live bug the A1
+    dogfood caught: a submission packaged with anything but the MIT default
+    refused rederivation_mismatch despite nothing changing post-review)."""
+    publishing = _sdk_publishing()
+    plugin = _make_plugin(tmp_path)
+    clone = _make_clone(tmp_path)
+    artifacts = publishing.build_submission(
+        plugin,
+        registry_clone=clone,
+        source_url="https://github.com/example/widget",
+        revision=HEX40,
+        publisher="madeinoz67",
+        capability_declaration=dict(CAPABILITIES_NONE),
+        licence_spdx="LicenseRef-Proprietary AND MIT",
+    )
+    submission_dir = tmp_path / "artifacts-nonmit"
+    artifacts.write(submission_dir)
+    manifest = json.loads(artifacts.manifest_bytes)
+    assert manifest["licence"]["spdx_expression"] == "LicenseRef-Proprietary AND MIT"
+    record = {
+        "record_type": "review",
+        "record_version": "1.0.0",
+        "kind": "admitted-release",
+        "created_at": "2026-10-01T00:00:00Z",
+        "actor": "madeinoz67",
+        "review": {
+            "publisher": "madeinoz67",
+            "plugin": "widget",
+            "version": "0.1.0",
+            "checklist_id": "review-checklist",
+            "checklist_version": "1",
+            "reviewer_id": "madeinoz67",
+            "outcome": "accepted",
+            "submission_manifest_sha256": hashlib.sha256(
+                artifacts.manifest_bytes
+            ).hexdigest(),
+            "source_revision": HEX40,
+            "closure_digest": artifacts.submission["closure_digest"],
+            "capability_declaration": dict(CAPABILITIES_NONE),
+            "platform_findings": [
+                {"source": "code-scanning", "state": "consulted-no-findings"}
+            ],
+            "execution_model_disclosure": (
+                "in-process execution with full gateway authority; no Python sandbox"
+            ),
+        },
+    }
+    record_path = tmp_path / "review-nonmit.json"
+    record_path.write_bytes(sign_release.canonical_bytes(record))
+    key = Ed25519PrivateKey.generate()
+    key_path = tmp_path / "lane-key.pem"
+    key_path.write_bytes(
+        key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption(),
+        )
+    )
+    release_dir = sign_release.sign(
+        submission_dir,
+        record_path,
+        key_path,
+        tmp_path / "releases",
+        plugin_tree=plugin,
+        registry_clone=clone,
+    )
+    signed = json.loads((release_dir / "manifest.json").read_bytes())
+    assert signed["licence"]["spdx_expression"] == "LicenseRef-Proprietary AND MIT"
+
