@@ -651,12 +651,35 @@ def _git_root(root: Path) -> bool:
     return result.returncode == 0
 
 
-def _introducing_commit(root: Path, git_path: str) -> tuple[str, str] | None:
-    """``(sha, parent_sha)`` of the FIRST commit touching ``git_path`` —
-    the parent is the empty string for a root-commit introduction (an
-    organic founding). ``None`` when no introduction resolves (a git
+def _is_shallow(root: Path) -> bool:
+    """Whether the repository is depth-limited (a graft boundary — CI
+    checkout shapes default here). A grafted introducing commit answers
+    the parent query with NOTHING, masquerading as a root-commit organic
+    introduction; the gate refuses on shallowness rather than trust it
+    (issue #288 refute slate)."""
+    result = subprocess.run(  # noqa: S603 — fixed argv
+        [  # noqa: S607 — PATH git is the supported invocation
+            "git",
+            "-C",
+            str(root),
+            "rev-parse",
+            "--is-shallow-repository",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return result.returncode == 0 and result.stdout.strip() == "true"
+
+
+def _introducing_commit(root: Path, git_path: str) -> tuple[str, list[str]] | None:
+    """``(sha, parents)`` of the FIRST commit touching ``git_path`` — ALL
+    parent shas (a merge landing's second parent is where a sanctioned
+    flow declares the head), an empty list for a root-commit introduction
+    (an organic founding). ``None`` when no introduction resolves (a git
     error, or an empty history for a path that exists on disk) — the
-    caller refuses loudly, never silently passes (issue #288 M2)."""
+    caller refuses loudly, never silently passes (issue #288 M2, hardened
+    by its refute slate)."""
     result = subprocess.run(  # noqa: S603 — fixed argv
         [  # noqa: S607 — PATH git is the supported invocation
             "git",
@@ -678,7 +701,7 @@ def _introducing_commit(root: Path, git_path: str) -> tuple[str, str] | None:
     if not first:
         return None
     shas = first.split()
-    return shas[0], shas[1] if len(shas) > 1 else ""
+    return shas[0], shas[1:]
 
 
 def _history_no_record_gate(
@@ -697,10 +720,18 @@ def _history_no_record_gate(
     laundered row sources.
 
     Root-commit introductions are organic (no parent, no declaration). A
-    parent whose manifest cannot be read declares nothing (a history
-    predating the standards system — conservative in the false-refusal
-    direction). An unresolvable introduction refuses
-    ``promotion_history_unavailable:``. A root that is not a git
+    parent whose manifest is absent declares nothing (a history predating
+    the standards system — conservative in the false-refusal direction);
+    a parent whose manifest BYTES do not parse refuses
+    ``promotion_history_unavailable:`` naming the parent (issue #288
+    refute slate: a bare JSONDecodeError is a crash, not a refusal). ALL
+    parents of the introducing commit are consulted (a merge landing's
+    second parent is where the sanctioned flow declares the head). A
+    SHALLOW repository with unrecorded retained versions refuses
+    ``promotion_history_unavailable:`` outright — a graft boundary
+    masquerades as a root-commit organic introduction, and CI checkout
+    shapes default there (issue #288 refute slate). An unresolvable
+    introduction refuses the same prefix. A root that is not a git
     repository skips the derivation (no object store to consult — the
     current-tree trigger still governs). Disclosed residual: a dev head
     that never landed on main leaves no main-history evidence — bytes-wise
@@ -714,10 +745,19 @@ def _history_no_record_gate(
         parts = str(row.get("path", "")).split("/")
         if len(parts) >= 2 and re.fullmatch(r"\d+\.\d+\.\d+", parts[1]):
             retained.add((parts[0], parts[1]))
+    pending = [pair for pair in sorted(retained) if pair not in records]
+    if pending and _is_shallow(root):
+        standard_id, version = pending[0]
+        raise StandardsError(
+            f"promotion_history_unavailable: {standard_id}@{version} is "
+            "retained with no record and this repository is SHALLOW (a graft "
+            "boundary — depth-limited history cannot evidence an introducing "
+            "commit's parents, and a grafted landing masquerades as a "
+            "root-commit organic introduction); verify on a full clone or "
+            "fetch unshallow"
+        )
     parent_manifests: dict[str, dict[str, Any] | None] = {}
-    for standard_id, version in sorted(retained):
-        if (standard_id, version) in records:
-            continue
+    for standard_id, version in pending:
         found = _introducing_commit(root, f"standards/{standard_id}/{version}/")
         if found is None:
             raise StandardsError(
@@ -727,31 +767,49 @@ def _history_no_record_gate(
                 "history-derived no-record gate fails loudly rather than "
                 "pass silently"
             )
-        _sha, parent = found
-        if not parent:
+        _sha, parents = found
+        if not parents:
             continue  # a root-commit introduction: organic
-        if parent not in parent_manifests:
-            raw = _git_show(root, f"{parent}:standards/standards-manifest.json")
-            parent_manifests[parent] = json.loads(raw) if raw is not None else None
-        document = parent_manifests[parent]
-        if document is None:
-            continue  # the parent predates the standards system
-        for entry in document.get("standards", []):
-            if str(entry.get("id")) != standard_id:
-                continue
-            dev = entry.get("dev")
-            label = dev.get("version") if isinstance(dev, dict) else None
-            if isinstance(label, str) and label == f"{version}-dev":
-                raise StandardsError(
-                    f"promotion_record_absent: {standard_id}@{version} landed "
-                    f"a promotion whose introducing commit's parent ({parent}) "
-                    f"declared dev head {label} — the landing required a "
-                    "record in standards/promotion-records.json even though "
-                    "its corpus rows cite a released predecessor as source; "
-                    "the promotion's audit trail (dev_edit_sha, "
-                    "dev_tree_digest, landing_sha) is not optional"
-                )
-            break
+        for parent in parents:
+            # ALL parents, not only the first (issue #288 refute slate): a
+            # merge landing's second parent is exactly where a sanctioned
+            # flow declares the head, and the strict <version>-dev match
+            # guards the false-refusal direction.
+            if parent not in parent_manifests:
+                raw = _git_show(root, f"{parent}:standards/standards-manifest.json")
+                if raw is None:
+                    parent_manifests[parent] = None
+                else:
+                    try:
+                        parent_manifests[parent] = json.loads(raw)
+                    except json.JSONDecodeError as exc:
+                        raise StandardsError(
+                            f"promotion_history_unavailable: the manifest at "
+                            f"parent {parent} of {standard_id}@{version}'s "
+                            f"introducing commit is not valid JSON ({exc.msg} "
+                            f"at line {exc.lineno}) — the history-derived "
+                            "no-record gate refuses rather than guess at a "
+                            "malformed parent"
+                        ) from None
+            document = parent_manifests[parent]
+            if document is None:
+                continue  # this parent predates the standards system
+            for entry in document.get("standards", []):
+                if str(entry.get("id")) != standard_id:
+                    continue
+                dev = entry.get("dev")
+                label = dev.get("version") if isinstance(dev, dict) else None
+                if isinstance(label, str) and label == f"{version}-dev":
+                    raise StandardsError(
+                        f"promotion_record_absent: {standard_id}@{version} landed "
+                        f"a promotion whose introducing commit's parent ({parent}) "
+                        f"declared dev head {label} — the landing required a "
+                        "record in standards/promotion-records.json even though "
+                        "its corpus rows cite a released predecessor as source; "
+                        "the promotion's audit trail (dev_edit_sha, "
+                        "dev_tree_digest, landing_sha) is not optional"
+                    )
+                break
 
 
 def validate_promotion_records(root: Path) -> None:

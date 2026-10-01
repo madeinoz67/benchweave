@@ -291,6 +291,8 @@ def _fixture(
     cross_refs: bool = False,
     one_line_commissioning: bool = False,
     drop_dash_line: bool = False,
+    break_parent_manifest: bool = False,
+    merge_landing: bool = False,
 ) -> tuple[Path, dict[str, str]]:
     """The squash-landing fixture: base on main, head opened+edited on
     ``dev-train``, landing committed on main WITHOUT the branch's commits
@@ -324,6 +326,7 @@ def _fixture(
     _git(root, "init", "-q", "-b", "main")
     base_sha = _commit(root, "base")
     head_open_sha = ""
+    break_sha = ""
     if head_on_main:
         # M2's sanctioned-flow variant (issue #288): the OPEN lands on main
         # (GOVERNANCE's PR shape); only the dev edit rides the train branch.
@@ -331,6 +334,13 @@ def _fixture(
         if cross_refs:
             _plant_cross_refs(root, one_line=one_line_commissioning)
         head_open_sha = _commit(root, "open head on main")
+        if break_parent_manifest:
+            # The slate's malformed-parent arm: the commit the landing will
+            # name as its parent carries a manifest that is not valid JSON.
+            (root / "standards" / "standards-manifest.json").write_bytes(
+                b'{"standards": [broken'
+            )
+            break_sha = _commit(root, "break the parent manifest")
         _git(root, "checkout", "-q", "-b", "dev-train")
     else:
         _git(root, "checkout", "-q", "-b", "dev-train")
@@ -355,22 +365,38 @@ def _fixture(
     corpus_path.write_text(json.dumps(corpus, indent=1), encoding="utf-8")
     dev_edit_sha = _commit(root, "dev edit")
     _git(root, "checkout", "-q", "main")
+    if merge_landing:
+        # The slate's merge-parent arm: main gains an unrelated commit, the
+        # dev train merges in, and the LANDING is that merge — the head is
+        # declared on parent[2] (the dev tip), not parent[1].
+        (root / "NOTES.txt").write_text("an unrelated main-side commit\n")
+        _commit(root, "unrelated main commit")
+        merged = subprocess.run(
+            ["git", "-C", str(root), "merge", "--no-commit", "--no-ff", "dev-train"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert merged.returncode == 0, merged.stderr
     _landing_tree(
         root,
         sweep_edit=sweep_edit,
         successor=successor,
-        laundered=laundered,
-        close_head=head_on_main,
+        laundered=laundered or merge_landing,
+        close_head=(head_on_main and not break_parent_manifest) or merge_landing,
         cross_refs=cross_refs,
         one_line_commissioning=one_line_commissioning,
         drop_dash_line=drop_dash_line,
     )
-    landing_sha = _commit(root, "promotion landing")
+    landing_sha = _commit(
+        root, "promotion landing (merge)" if merge_landing else "promotion landing"
+    )
     facts = {
         "dev_edit_sha": dev_edit_sha,
         "landing_sha": landing_sha,
         "base_sha": base_sha,
         "head_open_sha": head_open_sha,
+        "break_sha": break_sha,
     }
     if isinstance(record, (dict, type(None))):
         _write_records(root, record)
@@ -955,6 +981,63 @@ def test_m2_laundered_source_promotion_requires_a_record(tmp_path: Path) -> None
     assert "otdp" in message and TARGET in message
     assert facts["head_open_sha"] in message, "the parent sha is the evidence"
     assert LABEL in message, "the head label the parent declared is the evidence"
+
+
+def test_m2_shallow_clone_masquerade_refuses(tmp_path: Path) -> None:
+    """The slate's shallow-repo masquerade (executed): at a graft boundary
+    (a depth-1 clone — CI checkout shapes default here) the grafted landing
+    commit answers the introducing-commit query with NO parents, reading
+    exactly like a root-commit organic introduction — so the laundered
+    record-less promotion passes SILENTLY. A shallow repository now
+    refuses promotion_history_unavailable: when any unrecorded retained
+    version needs history the walk cannot trust a graft boundary."""
+    root, _facts = _fixture(tmp_path, head_on_main=True, laundered=True)
+    clone = tmp_path / "shallow"
+    cloned = subprocess.run(
+        ["git", "clone", "-q", "--depth", "1", "--no-local", f"file://{root}", str(clone)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert cloned.returncode == 0, cloned.stderr
+    with pytest.raises(StandardsError) as raised:
+        validate_promotion_records(clone)
+    message = str(raised.value)
+    assert message.startswith("promotion_history_unavailable:"), message
+    assert "shallow" in message
+
+
+def test_m2_malformed_parent_manifest_refuses_typed(tmp_path: Path) -> None:
+    """The slate's malformed-parent arm (executed): bytes that resolve but
+    do not parse raised a bare JSONDecodeError out of the walk — a crash,
+    not a refusal. The gate now refuses promotion_history_unavailable:
+    naming the parent sha whose manifest is unparseable."""
+    root, facts = _fixture(tmp_path, head_on_main=True, laundered=True, break_parent_manifest=True)
+    assert facts["break_sha"], "the break variant records its commit"
+    with pytest.raises(StandardsError) as raised:
+        validate_promotion_records(root)
+    message = str(raised.value)
+    assert message.startswith("promotion_history_unavailable:"), message
+    assert facts["break_sha"] in message, "the refusal names the parent sha"
+    assert "not valid JSON" in message
+
+
+def test_m2_merge_parent_laundering_refuses(tmp_path: Path) -> None:
+    """The slate's merge-parent laundering (executed): a MERGE commit
+    introducing the version, with the head declared on parent[2] (the dev
+    tip), validated clean because only parent[1] was consulted. The walk
+    now consults ALL parents — a merge landing's second parent is exactly
+    where a sanctioned flow declares the head."""
+    root, facts = _fixture(tmp_path, merge_landing=True)
+    with pytest.raises(StandardsError) as raised:
+        validate_promotion_records(root)
+    message = str(raised.value)
+    assert message.startswith("promotion_record_absent:"), message
+    assert "otdp" in message and TARGET in message
+    assert LABEL in message, "the head label the declaring parent carried"
+    assert facts["dev_edit_sha"] in message, (
+        "the refusal names the non-first parent that declared the head"
+    )
 
 
 def test_m2_organic_bump_citing_predecessor_stays_green(tmp_path: Path) -> None:
