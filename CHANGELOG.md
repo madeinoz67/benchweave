@@ -250,6 +250,7 @@ All notable changes to this project will be documented in this file.
 - S3 adversary fold — one hidden predicate, verbatim settings, no overprint, window clipping (4 rows)
 - S3 resident-review fold — guide truth, per-lane awaiting, hook pins, story (6 rows)
 - Fold the why-slice adversary wave — 3 LOW + 3 NIT, one commit
+- Close dependency audit findings (brace-expansion, fast-uri)
 
 ### Documentation
 
