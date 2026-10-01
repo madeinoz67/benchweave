@@ -15,9 +15,11 @@ from benchweave_ui_html.grammar import (
     DEFECT_MISSING_HEADING,
     DEFECT_MISSING_SCHEMA_LINE,
     DEFECT_MISSING_TABLE,
+    DEFECT_TABLE_INTERRUPTED,
     DEFECT_WRONG_ENUMERATION_COUNT,
     DEFECT_WRONG_HEADER_CELLS,
     DEFECT_WRONG_ROW_CELL_COUNT,
+    DEFECT_WRONG_ROW_KEYS,
     DEFECT_WRONG_STATED_ROW_COUNT,
     DEFECT_WRONG_STATED_SCHEMA,
     literal,
@@ -30,7 +32,9 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 CONTRACT_TEXT = (REPO_ROOT / "docs" / "internal" / "ui-contract.md").read_text(encoding="utf-8")
 
 MINI_HEADING = "### §X.1 Mini"
-MINI_SPEC = ManifestTable(MINI_HEADING, ("Key", "Value"), 2, "rule_proof")
+MINI_SPEC = ManifestTable(
+    MINI_HEADING, ("Key", "Value"), 2, "rule_proof", ("a", "b")
+)
 
 
 def mini_contract(
@@ -148,7 +152,7 @@ def test_wrong_stated_row_count_isolated() -> None:
 
 
 def test_wrong_enumeration_count_is_the_independent_second_count() -> None:
-    spec = ManifestTable(MINI_HEADING, ("Key", "Value"), 3, "rule_proof")
+    spec = ManifestTable(MINI_HEADING, ("Key", "Value"), 3, "rule_proof", ("a", "b"))
     table = parse_contract(mini_contract(), (spec,)).tables[0]
     # Stated (2) == body (2); only the committed manifest disagrees.
     assert [d.defect_class for d in table.defects] == [DEFECT_WRONG_ENUMERATION_COUNT]
@@ -162,3 +166,28 @@ def test_wrong_row_cell_count() -> None:
     assert DEFECT_WRONG_STATED_ROW_COUNT not in classes  # 2 rows either way
     detail = next(d.detail for d in table.defects if d.defect_class == DEFECT_WRONG_ROW_CELL_COUNT)
     assert "3 cells" in detail and "header has 2" in detail
+
+
+def test_wrong_row_keys_is_the_identity_pin() -> None:
+    """Same count, same header, different keys: only the identity defect fires
+    (the F1 fold — delete-and-pad and cross-table swaps keep counts green)."""
+    text = mini_contract(body=("| `a` | 1 |", "| `a` | 2 |"))
+    table = parse_contract(text, (MINI_SPEC,)).tables[0]
+    assert [d.defect_class for d in table.defects] == [DEFECT_WRONG_ROW_KEYS]
+    detail = table.defects[0].detail
+    assert "index 1" in detail and "'b'" in detail and "got 'a'" in detail
+
+
+def test_table_interrupted_by_a_non_pipe_line() -> None:
+    """TS parseTable stops at the first non-pipe line; a mid-table interleave
+    truncates the body AND is its own defect class (F1(b) — the L2 semantics
+    skipped non-pipe lines and passed the corruption green)."""
+    lines = mini_contract().split("\n")
+    lines.insert(lines.index("| `a` | 1 |") + 1, "interleaved prose")
+    table = parse_contract("\n".join(lines), (MINI_SPEC,)).tables[0]
+    classes = [d.defect_class for d in table.defects]
+    assert DEFECT_TABLE_INTERRUPTED in classes
+    assert [row.key for row in table.body] == ["a"]  # truncated at the gap
+    # The truncation also reds the count and identity pins.
+    assert DEFECT_WRONG_STATED_ROW_COUNT in classes
+    assert DEFECT_WRONG_ROW_KEYS in classes

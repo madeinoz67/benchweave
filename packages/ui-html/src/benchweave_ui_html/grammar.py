@@ -22,7 +22,9 @@ from typing import Protocol
 
 # Defect classes. The four the design record names (missing heading, missing
 # table, wrong header cells, wrong stated row count) plus the ported L1
-# arity check and the separator/stated-schema checks of grammar rules 3 and 5.
+# arity check, the separator/stated-schema checks of grammar rules 3 and 5,
+# and the F1 fold's identity classes: the ordered key-list pin and the
+# contiguity port of parseTable's stop-at-first-non-pipe semantics.
 DEFECT_MISSING_HEADING = "missing heading"
 DEFECT_MISSING_TABLE = "missing table"
 DEFECT_WRONG_HEADER_CELLS = "wrong header cells"
@@ -32,6 +34,8 @@ DEFECT_WRONG_STATED_SCHEMA = "wrong stated schema"
 DEFECT_WRONG_STATED_ROW_COUNT = "wrong stated row count"
 DEFECT_WRONG_ENUMERATION_COUNT = "wrong enumeration count"
 DEFECT_WRONG_ROW_CELL_COUNT = "wrong row cell count"
+DEFECT_TABLE_INTERRUPTED = "table interrupted"
+DEFECT_WRONG_ROW_KEYS = "wrong row keys"
 
 _SEPARATOR_CELL = re.compile(r"^:?-{1,}:?$")
 _STATED_COUNT = re.compile(r"—\s*(\d+)\s+rows?\b")
@@ -69,6 +73,9 @@ class TableSpec(Protocol):
 
     @property
     def row_count(self) -> int: ...
+
+    @property
+    def keys(self) -> tuple[str, ...]: ...
 
 
 @dataclass(frozen=True)
@@ -156,6 +163,13 @@ def _parse_schema_line(region: Sequence[str]) -> tuple[int | None, tuple[str, ..
     return None, None
 
 
+def _first_divergence(parsed: list[str], pinned: tuple[str, ...]) -> str:
+    for index, (got, expected) in enumerate(zip(parsed, pinned, strict=False)):
+        if got != expected:
+            return f"first divergence at index {index}: expected {expected!r}, got {got!r}"
+    return f"parsed {len(parsed)} keys, manifest pins {len(pinned)}"
+
+
 def _parse_table(lines: Sequence[str], spec: TableSpec) -> ParsedTable:
     heading_index = next(
         (i for i, line in enumerate(lines) if line.strip() == spec.heading), None
@@ -188,7 +202,30 @@ def _parse_table(lines: Sequence[str], spec: TableSpec) -> ParsedTable:
             defect(DEFECT_MISSING_SCHEMA_LINE, "no `Schema: … — N rows` line under the heading")
         )
 
-    rows = [_split_cells(line) for line in region if line.strip().startswith("|")]
+    # F1 fold — contiguity: the table is the run of CONSECUTIVE pipe lines
+    # from the region's first pipe line, porting the TS parseTable stop
+    # semantics (its scan stops at the first non-pipe line once the table has
+    # started). A non-pipe line mid-table truncates the body — and is its own
+    # defect class, because the old collect-all-pipes shape passed such a
+    # corruption green.
+    pipe_start = next((i for i, line in enumerate(region) if line.strip().startswith("|")), None)
+    if pipe_start is None:
+        rows: list[list[str]] = []
+    else:
+        table_lines: list[str] = []
+        i = pipe_start
+        while i < len(region) and region[i].strip().startswith("|"):
+            table_lines.append(region[i])
+            i += 1
+        if any(line.strip().startswith("|") for line in region[i:]):
+            defects.append(
+                defect(
+                    DEFECT_TABLE_INTERRUPTED,
+                    "a non-pipe line splits the pipe rows; rows after the gap "
+                    "are not part of the table (the body is truncated at the gap)",
+                )
+            )
+        rows = [_split_cells(line) for line in table_lines]
     if len(rows) < 3:
         defects.append(
             defect(
@@ -255,6 +292,15 @@ def _parse_table(lines: Sequence[str], spec: TableSpec) -> ParsedTable:
                 DEFECT_WRONG_ENUMERATION_COUNT,
                 f"manifest pins {spec.row_count} rows, body has {len(body_rows)}",
             )
+        )
+
+    # F1 fold — identity: the parsed body's ordered key list equals the
+    # manifest's, element-for-element. Counts and header cells staying green
+    # is not identity; this is the pin that catches same-shape corruption.
+    parsed_keys = [literal(row[0]) for row in body_rows]
+    if tuple(parsed_keys) != spec.keys:
+        defects.append(
+            defect(DEFECT_WRONG_ROW_KEYS, _first_divergence(parsed_keys, spec.keys))
         )
 
     body = tuple(

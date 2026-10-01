@@ -73,6 +73,13 @@ class ArtifactRegistry:
     def get(self, row_id: str) -> Artifact | None:
         return self._artifacts.get(row_id)
 
+    def orphaned_artifacts(self, row_ids: set[str]) -> list[str]:
+        """F1 fold: registered keys with no row in the parsed contract —
+        sorted, so the defect message is stable. A registered-but-unparsed
+        key means the contract and the registry disagree about what exists;
+        that disagreement must red, never pass silently."""
+        return sorted(key for key in self._artifacts if key not in row_ids)
+
     def clear(self) -> None:
         self._artifacts.clear()
 

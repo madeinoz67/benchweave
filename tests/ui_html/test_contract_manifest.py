@@ -51,3 +51,19 @@ def test_manifest_agrees_with_the_real_contract_parse() -> None:
         assert len(table.body) == entry.row_count, entry.slug
         assert table.header == entry.header_cells, entry.slug
         assert table.stated_count == entry.row_count, entry.slug
+
+
+def test_manifest_carries_the_168_ordered_identity_keys() -> None:
+    """F1 fold: every entry pins its exact ordered key list — the identity
+    pin, same coupling as the TS fold-P5 key arrays."""
+    total = sum(len(table.keys) for table in MANIFEST)
+    assert total == 168
+    for table in MANIFEST:
+        assert len(table.keys) == table.row_count, table.slug
+        assert len(set(table.keys)) == table.row_count, table.slug
+
+
+def test_manifest_keys_equal_the_parsed_key_cells() -> None:
+    contract = parse_contract(CONTRACT_TEXT, MANIFEST)
+    for table, entry in zip(contract.tables, MANIFEST, strict=True):
+        assert tuple(row.key for row in table.body) == entry.keys, entry.slug

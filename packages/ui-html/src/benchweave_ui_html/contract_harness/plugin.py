@@ -44,6 +44,17 @@ class ContractFile(pytest.File):
     def collect(self) -> Iterator[pytest.Item]:
         text = Path(self.path).read_text(encoding="utf-8")
         contract = parse_contract(text, MANIFEST)
+        # F1 fold — orphan check: every registered key must be a row the
+        # contract actually parses. Without this, delete-and-pad with a fully
+        # populated registry runs green while the deleted row's artifact sits
+        # orphaned; with it, the disagreement fails collection loudly.
+        row_ids = {row.row_id for table in contract.tables for row in table.body}
+        orphans = registry.REGISTRY.orphaned_artifacts(row_ids)
+        if orphans:
+            raise pytest.Collector.CollectError(
+                f"orphaned artifact: {', '.join(orphans)} "
+                "(registered for rows this contract does not parse)"
+            )
         for table in contract.tables:
             # The pin layer: one item per pinned table, red on any defect.
             yield PinItem.from_parent(self, name=f"pin::{table.slug}", table=table)

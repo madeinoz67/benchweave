@@ -20,6 +20,8 @@ import xml.etree.ElementTree as ET
 from collections.abc import Callable
 from pathlib import Path
 
+import pytest
+
 # --- pre-committed constants (design record sections 2/5/8, corrected 168) ----
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -57,6 +59,7 @@ def _run(
     *,
     prelude: str = "",
     env_extra: dict[str, str] | None = None,
+    extra_args: list[str] | None = None,
 ) -> int:
     """Run pytest on ``target`` writing junitxml; return the TRUE exit code.
 
@@ -65,8 +68,16 @@ def _run(
     in-process instead: the prelude executes first (artifact registration or
     the REQUIRE_ARTIFACT flip), then ``pytest.main`` with the same arguments —
     the only way a module constant can be flipped inside the measured process.
+    ``extra_args`` adds further collection targets (the F2 mixed invocation).
     """
-    args = [str(target), "-q", f"--junitxml={junit}", "-o", "junit_family=xunit1"]
+    args = [
+        str(target),
+        *(extra_args or []),
+        "-q",
+        f"--junitxml={junit}",
+        "-o",
+        "junit_family=xunit1",
+    ]
     if prelude:
         code = f"{prelude}\nimport pytest\nimport sys\nsys.exit(pytest.main({args!r}))\n"
         cmd: list[str] = ["uv", "run", "python", "-c", code]
@@ -330,3 +341,164 @@ def test_runtime_namespace_imports_without_pytest() -> None:
         timeout=120,
     )
     assert proc.returncode == 0, proc.stderr
+
+
+# --- F1 fold: identity mutations (the refute's corruption classes) -------------
+
+SLUG_E41 = "e-4-1-lane-layout"
+SLUG_E45 = "e-4-5-time-axis"
+DEFECT_WRONG_ROW_KEYS = "wrong row keys"
+DEFECT_TABLE_INTERRUPTED = "table interrupted"
+
+
+def _line_starting_with(lines: list[str], prefix: str) -> int:
+    return next(i for i, line in enumerate(lines) if line.startswith(prefix))
+
+
+def _identity_mutations() -> dict[str, tuple[list[tuple[str, str]], str]]:
+    """The refuter's classes (a)-(d): each must red its pin naming the defect
+    class. All keep counts and header cells intact — they corrupt identity."""
+    text = CONTRACT.read_text(encoding="utf-8")
+
+    # (a) row swap between equal-count same-schema tables (§E.4.1 <-> §E.4.5).
+    lines = text.split("\n")
+    i, j = _line_starting_with(lines, "| Hidden lanes |"), _line_starting_with(lines, "| Cursors |")
+    lines[i], lines[j] = lines[j], lines[i]
+    swap = "\n".join(lines)
+
+    # (b) mid-table interleaved non-pipe line under §E.1.
+    lines = text.split("\n")
+    lines.insert(_line_starting_with(lines, "| `button` |") + 1, "interleaved prose")
+    interleave = "\n".join(lines)
+
+    # (c) §A.1 token delete-and-pad: delete --bw-canvas, duplicate --bw-surface.
+    lines = text.split("\n")
+    del lines[_line_starting_with(lines, "| `--bw-canvas` |")]
+    i = _line_starting_with(lines, "| `--bw-surface` |")
+    lines.insert(i + 1, lines[i])
+    token_pad = "\n".join(lines)
+
+    # (d) §E.4.5 delete-and-pad plus a duplicated whole §A.1 section at EOF.
+    lines = text.split("\n")
+    del lines[_line_starting_with(lines, "| Axis label |")]
+    i = _line_starting_with(lines, "| Cursors |")
+    lines.insert(i + 1, lines[i])
+    start = _line_starting_with(lines, "### §A.1 Colour palette")
+    end = _line_starting_with(lines, "### §A.2 Spacing and layout")
+    section = lines[start:end]
+    section_pad = "\n".join(lines).rstrip("\n") + "\n\n" + "\n".join(section)
+
+    return {
+        "cross-table-row-swap": (
+            [(SLUG_E41, DEFECT_WRONG_ROW_KEYS), (SLUG_E45, DEFECT_WRONG_ROW_KEYS)],
+            swap,
+        ),
+        "mid-table-interleave": ([(SLUG_E1, DEFECT_TABLE_INTERRUPTED)], interleave),
+        "token-delete-and-pad": ([(SLUG_A1, DEFECT_WRONG_ROW_KEYS)], token_pad),
+        "delete-and-pad-plus-duplicate-section": (
+            [(SLUG_E45, DEFECT_WRONG_ROW_KEYS)],
+            section_pad,
+        ),
+    }
+
+
+@pytest.mark.parametrize("arm", sorted(_identity_mutations()))
+def test_f1_identity_mutations_red_their_pins(arm: str, tmp_path: Path) -> None:
+    expected, mutated = _identity_mutations()[arm]
+    scratch = tmp_path / arm
+    scratch.mkdir()
+    (scratch / "ui-contract.md").write_text(mutated, encoding="utf-8")
+    junit = tmp_path / f"{arm}.xml"
+    exit_code = _run(scratch / "ui-contract.md", junit)
+    _attrib, buckets = _suite(junit)
+    pin_failures = _failure_texts(buckets["pin"])
+    for slug, defect_class in expected:
+        assert exit_code != 0, arm
+        assert slug in pin_failures, f"{arm}: {slug} pin must fail: {sorted(pin_failures)}"
+        message = pin_failures[slug]
+        assert defect_class in message, f"{arm}: need {defect_class!r} in: {message}"
+    assert _stats(buckets["row"])["passed"] == 0
+
+
+# --- F1 fold: the orphan check (delete-with-registered-artifact) ---------------
+
+
+FULL_REGISTRATION_PRELUDE = """
+import benchweave_ui_html.manifest as manifest
+import benchweave_ui_html.registry as registry
+
+class _Fake:
+    def __init__(self, kind):
+        self.kind = kind
+
+    def satisfies(self, row):
+        return []
+
+for _table in manifest.MANIFEST:
+    for _key in _table.keys:
+        registry.REGISTRY.register(f"{_table.slug}::{_key}", _Fake(_table.kind))
+"""
+
+
+def test_full_registration_runs_fully_green_on_the_pristine_contract(tmp_path: Path) -> None:
+    """The G1b end-state control: every manifest key registered, no orphans —
+    196 passed, exit 0, and no false positive from the orphan check."""
+    junit = tmp_path / "full-green.xml"
+    exit_code = _run(CONTRACT, junit, prelude=FULL_REGISTRATION_PRELUDE)
+    assert exit_code == 0
+    attrib, buckets = _suite(junit)
+    assert attrib.get("tests") == "196", attrib
+    assert attrib.get("failures") == "0", attrib
+    assert _stats(buckets["row"]) == {
+        "collected": ROW_ITEMS,
+        "failed": 0,
+        "passed": ROW_ITEMS,
+        "skipped": 0,
+    }
+    assert buckets["other"] == []
+
+
+def test_delete_and_pad_with_full_registration_reds_via_orphaned_artifact(
+    tmp_path: Path,
+) -> None:
+    """The forward kill, closed: delete the button row and pad with a
+    duplicate so every PARSED row still has its artifact — the deleted row's
+    registered artifact is orphaned and the run must red naming it."""
+    lines = CONTRACT.read_text(encoding="utf-8").split("\n")
+    del lines[_line_starting_with(lines, "| `button` |")]
+    i = _line_starting_with(lines, "| `panel` |")
+    lines.insert(i + 1, lines[i])
+    scratch = tmp_path / "orphan"
+    scratch.mkdir()
+    (scratch / "ui-contract.md").write_text("\n".join(lines), encoding="utf-8")
+    junit = tmp_path / "orphan.xml"
+    exit_code = _run(
+        scratch / "ui-contract.md", junit, prelude=FULL_REGISTRATION_PRELUDE
+    )
+    assert junit.exists(), "the measured run must have run (RED if the prelude crashed)"
+    assert exit_code != 0, "an orphaned artifact must leave the run red"
+    root = ET.parse(junit).getroot()  # noqa: S314 - our own subprocess's junitxml, not untrusted input
+    everything = " ".join(root.itertext())
+    assert "orphaned artifact" in everything, everything[:400]
+    assert "e-1-components::button" in everything, everything[:400]
+
+
+# --- F2 fold: a mixed invocation carries the gate -------------------------------
+
+
+def test_mixed_invocation_collects_the_gate(tmp_path: Path) -> None:
+    """F2 residual pin: `pytest tests/... docs/internal/ui-contract.md`
+    collects BOTH the ordinary suite and the 196 contract items. The refuter's
+    PYTEST_ADDOPTS="-m 'not contract'" attack deselects the contract items on
+    exactly this shape — the residual class, disclosed in the design record;
+    this arm goes red under that attack."""
+    junit = tmp_path / "mixed.xml"
+    exit_code = _run(
+        CONTRACT,
+        junit,
+        extra_args=["tests/ui_html/test_grammar.py"],
+    )
+    assert exit_code != 0  # the row layer is red at the empty registry
+    _attrib, buckets = _suite(junit)
+    assert _stats(buckets["pin"])["collected"] == PIN_ITEMS
+    assert _stats(buckets["row"])["collected"] == ROW_ITEMS

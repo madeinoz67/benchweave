@@ -85,3 +85,17 @@ def test_the_constant_is_the_only_switch() -> None:
 
 def test_global_registry_starts_empty() -> None:
     assert len(REGISTRY) == 0
+
+
+def test_orphaned_artifacts_name_registered_keys_not_parsed() -> None:
+    """F1 fold: a registered key with no parsed row is an orphan — the
+    delete-with-registered-artifact class reds instead of passing green."""
+    reg = ArtifactRegistry()
+    reg.register("x-1-mini::a", _Fake("rule_proof"))
+    reg.register("x-1-mini::gone", _Fake("rule_proof"))
+    reg.register("x-1-mini::zzz", _Fake("rule_proof"))
+    assert reg.orphaned_artifacts({"x-1-mini::a", "x-1-mini::b"}) == [
+        "x-1-mini::gone",
+        "x-1-mini::zzz",
+    ]
+    assert reg.orphaned_artifacts({"x-1-mini::a", "x-1-mini::gone", "x-1-mini::zzz"}) == []
