@@ -81,9 +81,18 @@ compute fails with `role-unresolvable`. No skip, no xfail, no empty-pass anywher
 row layer. Green-able per row: registering that row's artifact turns exactly that item
 green and nothing else.
 
-**The gate cannot be disabled by configuration.** The fail-closed default is a module
-constant (`REQUIRE_ARTIFACT = True`). No ini option, environment variable or marker flips
-it; a harness unit test pins that.
+**The gate cannot be silenced where it is collected** (reworded at the F2 fold — the
+original wording, "The gate cannot be disabled by configuration", overstated; see §15).
+The fail-closed default is a module constant (`REQUIRE_ARTIFACT = True`); no ini option,
+environment variable or marker flips THE CONSTANT — a harness unit test pins the
+constant and the meta env arm pins the environment surface. What holds for the GATE as
+a whole: a pure contract invocation stays red under a deselect (exit 5, nothing
+collected) and under plugin disable (exit 4, uncollectable target). The residual class,
+disclosed rather than fixed: a MIXED invocation (a tests/ path plus the contract path)
+with `PYTEST_ADDOPTS="-m 'not contract'"` in the ambient environment deselects the
+contract items and runs green — pytest applies `-m` at collection and the plugin cannot
+distinguish that deselect from an operator's explicit one. A meta arm pins the mixed
+invocation carrying all 196 contract items, so the suite itself reds under that attack.
 
 **TOTALS:** 196 collected items = 28 pin-layer + 168 row-layer. At G1a the pin layer is
 green and all 168 row items are red (empty registry).
@@ -378,3 +387,53 @@ The acceptance rule's SHAPE was pre-committed — exact cardinalities, the four
 fail-closed classes, the per-row green-able control, the mechanism toggle, the
 no-external-config pin, and the kill directions. The cardinality constant is
 corrected to 168 before any measurement runs; no measurement was taken against 167.
+
+## 15. Fold note — refute F1/F2 (2026-10-01, appended after the adversarial refute)
+
+**F1 HIGH, ruled FOLD:** the pin layer as first built pinned STRUCTURE (heading present,
+header cells, stated and enumerated counts) — not IDENTITY. Five corruption classes ran
+green while the TS gate reds on them: (a) a row swapped between equal-count same-schema
+tables (§E.4.1 ↔ §E.4.5); (b) a mid-table interleaved non-pipe line under §E.1 (the
+ported L2 grammar collected all pipe rows to the next heading and skipped it); (c) §A.1
+token delete-and-pad; (d) §E.4.5 delete-and-pad plus a duplicated whole §A.1 section;
+and the forward kill — with a satisfying artifact registered for every parsed row (the
+G1b end state), all of it ran 196/196 green exit 0, the deleted row's artifact sitting
+orphaned and a duplicated key binding two row items to one artifact.
+
+Three mechanisms landed (commit `a162273`), each RED-first against the refuter's exact
+classes:
+
+1. **Ordered key lists** — every manifest entry pins its exact ordered key cells (168
+   literal keys; the coupling IS the pin, the same shape as the TS fold-P5 key arrays).
+   Defect class `wrong row keys` names the first divergence: the §E.4.1/§E.4.5 swap
+   reds both tables ("first divergence at index 2: expected 'Hidden lanes', got
+   'Cursors'" and the mirror), delete-and-pad and reorder red on the key list with
+   counts and header cells still green.
+2. **Contiguity** — the table region ends at the first non-pipe line after the header
+   (the TS parseTable stop semantics, closing the TS/Python parity divergence at its
+   root). Defect class `table interrupted`; the body truncates at the gap, so the
+   count and key pins red as well.
+3. **Orphan check** — `ArtifactRegistry.orphaned_artifacts(row_ids)`: every registered
+   key must be a row the contract parses, else collection fails with `orphaned
+   artifact: <ids> (registered for rows this contract does not parse)`. A new control
+   arm registers an artifact for every manifest key against the pristine contract and
+   asserts the run fully green (196 passed, exit 0) — the G1b end state is
+   legitimately green and the orphan check false-positives on nothing.
+
+What the key-list pin still does not catch (the honesty rule): a duplicated PINNED
+SECTION pasted cleanly elsewhere in the file under a repeated heading is invisible to
+this gate AND to the TS gate — both parse the first occurrence of a heading. The
+refuter's class (d) reds here via its §E.4.5 key-list half; a duplicate-heading
+detector (assert each pinned heading occurs exactly once in the file) remains OPEN as
+a named follow-up. Non-key CELL corruption (a mutated non-first cell) is also not the
+pin layer's job — it is the row layer's, once G1b's artifacts assert their items
+against the parsed row; at G1a, with an empty registry, every row is red regardless.
+
+**F2 MEDIUM, ruled FOLD:** "The gate cannot be disabled by configuration" overstated.
+`PYTEST_ADDOPTS="-m 'not contract'"` on a MIXED invocation (a tests/ path plus the
+contract path) deselects the gate and runs green (the refuter's repro: exit 0, 17
+tests, zero contract items). §2's claim is reworded above to what holds — the gate
+cannot be SILENCED where collected; pure invocations red under deselect (exit 5) and
+plugin disable (exit 4) — and the mixed-invocation deselect via ambient env is the
+disclosed residual, pinned by a new meta arm asserting the mixed invocation carries
+all 196 contract items (the arm itself goes red under the attack).
