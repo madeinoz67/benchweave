@@ -505,6 +505,9 @@ All notable changes to this project will be documented in this file.
 - Fold note for refute F1/F2 (issue #297)
 - G1c computed-proofs port + lane decimator design record (issue #299)
 - G1c erratum - reviewer command, G1e arm-(b) row, Sharma F4 (issue #299 G1c refute folds 1+2)
+- Issue #302 design record — ui-html release pipeline and versioning machinery
+- The release-and-pin process page (#302)
+- Fold F1/F2/F3 review rows into the release-and-pin page (#302)
 
 ### Features
 
@@ -1019,6 +1022,7 @@ All notable changes to this project will be documented in this file.
 - Dedicated timing lane for the real-paced set (#241 slice 1)
 - Run the suite in parallel with pytest-xdist (#247)
 - Device-plugins zero-gate lane + obligations enforcement pointers
+- Prove the member wheel standalone in the package job (#302)
 
 ### Ci+docs
 
