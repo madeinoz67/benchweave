@@ -496,6 +496,7 @@ All notable changes to this project will be documented in this file.
 - Issue #317 website status update design record
 - Bring the "Where it stands" section current (issue #317)
 - Fold refute findings F1+F2 from the issue #317 review
+- Complete the Q12 sweep — remaining ECharts refs to uPlot
 
 ### Features
 
