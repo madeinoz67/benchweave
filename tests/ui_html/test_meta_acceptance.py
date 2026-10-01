@@ -92,9 +92,26 @@ def _suite(junit: Path) -> tuple[dict[str, str], dict[str, list[ET.Element]]]:
     assert ts is not None, f"no testsuite element in {junit}"
     buckets: dict[str, list[ET.Element]] = {"pin": [], "row": [], "other": []}
     for case in ts.findall("testcase"):
-        prefix = case.get("name", "").split("::", 1)[0]
-        buckets[prefix if prefix in ("pin", "row") else "other"].append(case)
+        buckets[_layer_of(case)].append(case)
     return ts.attrib, buckets
+
+
+def _layer_of(case: ET.Element) -> str:
+    """The xunit1 family splits the nodeid at the last '::' — the layer prefix
+    and table slug live in the classname (…​.ui-contract.md.pin for pins,
+    …​.ui-contract.md.row.<slug> for rows), the key cell in the name."""
+    classname = case.get("classname", "")
+    if classname.endswith(".pin"):
+        return "pin"
+    if ".row." in classname:
+        return "row"
+    return "other"
+
+
+def _row_id_of(case: ET.Element) -> str:
+    classname = case.get("classname", "")
+    slug = classname.split(".row.", 1)[1]
+    return f"{slug}::{case.get('name', '')}"
 
 
 def _stats(cases: list[ET.Element]) -> dict[str, int]:
@@ -110,13 +127,14 @@ def _stats(cases: list[ET.Element]) -> dict[str, int]:
 
 
 def _failure_texts(cases: list[ET.Element]) -> dict[str, str]:
-    """Map case name -> concatenated failure message + text for failed cases."""
+    """Map row-id (row layer) / slug (pin layer) -> failure text."""
     out: dict[str, str] = {}
     for case in cases:
         parts = [f.get("message", "") or "" for f in case.findall("failure")]
         parts += [(f.text or "") for f in case.findall("failure")]
         if parts:
-            out[case.get("name", "")] = "\n".join(parts)
+            key = _row_id_of(case) if _layer_of(case) == "row" else case.get("name", "")
+            out[key] = "\n".join(parts)
     return out
 
 
@@ -145,8 +163,8 @@ def test_metric_a_red_against_empty_registry(tmp_path: Path) -> None:
     # The canonical RED message: every unregistered row names its missing artifact.
     texts = _failure_texts(buckets["row"])
     assert len(texts) == ROW_ITEMS
-    for name, text in texts.items():
-        assert f"no canonical artifact for {name.split('::', 1)[1]}" in text, (name, text)
+    for row_id, text in texts.items():
+        assert f"no canonical artifact for {row_id}" in text, (row_id, text)
 
 
 def test_no_environment_variable_flips_the_gate(tmp_path: Path) -> None:
@@ -224,11 +242,10 @@ def test_metric_b_fail_closed_mutations(tmp_path: Path) -> None:
         assert exit_code != 0, f"{arm}: a mutated contract must leave the run red"
         _attrib, buckets = _suite(junit)
         pin_failures = _failure_texts(buckets["pin"])
-        pin_name = f"pin::{slug}"
-        assert pin_name in pin_failures, (
+        assert slug in pin_failures, (
             f"{arm}: the {slug} pin item must fail; pin failures: {sorted(pin_failures)}"
         )
-        message = pin_failures[pin_name]
+        message = pin_failures[slug]
         assert defect_class in message, f"{arm}: need class {defect_class!r} in: {message}"
         assert slug in message, f"{arm}: pin must name the table: {message}"
         # Kill direction: no row is green at an empty registry under any mutation.
@@ -261,9 +278,11 @@ def test_metric_c_registering_one_artifact_greens_exactly_that_row(tmp_path: Pat
         "passed": 1,
         "skipped": 0,
     }, rows
-    assert set(_failure_texts(buckets["row"])) == {
-        case.get("name") for case in buckets["row"] if case.get("name") != f"row::{BUTTON_ROW_ID}"
-    }
+    # The one green row is exactly the button row; the other 167 carry the
+    # canonical missing-artifact message.
+    failed_ids = set(_failure_texts(buckets["row"]))
+    assert BUTTON_ROW_ID not in failed_ids
+    assert len(failed_ids) == ROW_ITEMS - 1
     pins = _stats(buckets["pin"])
     assert pins == {"collected": PIN_ITEMS, "failed": 0, "passed": PIN_ITEMS, "skipped": 0}, pins
 

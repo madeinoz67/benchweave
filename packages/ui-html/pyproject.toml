@@ -16,11 +16,13 @@ dependencies = [
   "markupsafe>=3.0",
 ]
 
-# The pytest11 entry point lands in the same commit as the plugin module it
-# names (an entry point whose target is absent breaks every pytest start).
-# See contract_harness/plugin.py when it lands: collection-time generation
-# over a non-Python target file, which a conftest cannot do (design record
-# §7 — the first pytest11 entry point in this tree).
+# The contract gate: collection-time generation over a non-Python target
+# file, which a conftest cannot do (design record §7 — the first pytest11
+# entry point in this tree). Dormant by default: it only claims files named
+# ui-contract.md. Declared in the same commit as the module it names — an
+# entry point whose target is absent breaks every pytest start.
+[project.entry-points.pytest11]
+benchweave_ui_html = "benchweave_ui_html.contract_harness.plugin"
 
 [dependency-groups]
 test = ["pytest>=8.0"]
