@@ -1,6 +1,6 @@
 # Standalone Web UI (FastAPI + MCP + HTMX): Requirements PRD
 
-**Status:** Draft v0.1, 2026-09-27 · **Owner:** Stephen (madeinoz67) · **Scope:** `benchweave-sdk` standalone mode · **Related:** madeinoz67/benchweave#242, #243, #244
+**Status:** Draft v0.2, revised 2026-10-01 for the PRD 12 rulings · **Owner:** Stephen (madeinoz67) · **Scope:** `benchweave-sdk` standalone mode · **Related:** madeinoz67/benchweave#242, #243, #244
 
 ## Summary
 
@@ -19,7 +19,7 @@ Out of scope for this draft: design, schema bytes and the measurement-profiles c
 
 ## 1. Problem and evidence
 
-1. **Standalone has no operator surface.** `preview-ui` is labelled `SIMULATED PRESENTATION DATA`, never imports plugin Python, never opens a transport and creates only in-memory receipts (SDK README, *Local UI preview*). It is an authoring tool, not a bench tool.
+1. **Standalone has no operator surface, and it is the replacement for `preview-ui`.** `preview-ui` is labelled `SIMULATED PRESENTATION DATA`, never imports plugin Python, never opens a transport and creates only in-memory receipts (SDK README, *Local UI preview*). Under PRD 12 Q4 there is no separate preview tool: the standalone host is the author's preview, and `preview-ui` becomes a shim delegating to it (R-9).
 2. **Decision 9 covers files, not devices.** `StandaloneCaptureWriter` is the standalone leg for capture, but the #147 record (§1.5) scoped "one shape, two backends" to the capture path: nobody supplies device I/O standalone. The reference standalone provider backend is deferral row 7, unbuilt.
 3. **The fork shows what authors do in the gap.** [parkview/benchweave](https://github.com/parkview/benchweave) (`benchweave-adc`) hand-rolled a serial `HostServices`/`CaptureServices` object (`src/benchweave/web/host.py`, 386 lines), a FastAPI + SSE web app (`web/app.py`, 34 routes), a 2,391-line vanilla JS client with Chart.js, a CSV + SQLite capture library and a stdio MCP server (14 tools). It works, and none of it is reusable by the next plugin author.
 4. **Two UI stacks would drift.** The UI standard's executable source of truth is React + Storybook (`ui/`, `docs/internal/ui-styleguide.md`). A second renderer without a parity mechanism breaks SRF-2 (preview ↔ check-ui agreement) by construction.
@@ -52,7 +52,7 @@ Evidence baseline: upstream `madeinoz67/benchweave` main, `benchweave-sdk` 0.3.1
 | Fork migration | `adc_6ch_12bit` runs under the standalone host with its own `host.py`, `app.py`, `app.js` and `mcp_server.py` deleted |
 | Second adapter | One non-ADC adapter (DPS-150 or a mock-transport reference) runs unmodified |
 | Renderer parity | All nine baseline preview scenarios render with matching page, binding, severity and state structure in both renderers |
-| Client weight | No build step; shipped JS limited to htmx, its SSE extension, ECharts and a small host script (size budget set in §8 Q6) |
+| Client weight | No build step; shipped JS limited to htmx, its SSE extension, uPlot and a small host script (size budget set in §8 Q6) |
 | Accessibility | WCAG 2.2 AA on implemented flows, axe clean in CI |
 | MCP parity | Every UI action that changes state has an MCP tool or a documented reason it does not |
 
@@ -62,7 +62,7 @@ Three actors, one process. The plugin author and the bench operator are often th
 
 | Actor | Wants | Story |
 | --- | --- | --- |
-| Plugin author | To exercise a real device through their adapter before any gateway exists | US1. As an author, I run one command against my plugin project and a browser shows my declared pages with live readings from the device. |
+| Plugin author | To visualise their UI as the gateway will render it, with or without a device attached | US1. As an author, I run one command against my plugin project and a browser shows my declared pages with live readings from the device, or simulated readings over mock transport when no device is attached. |
 | Plugin author | Confidence the UI they see is the UI the gateway will render | US2. As an author, a page that fails `check-ui` does not render in standalone either, with the same diagnostic code. |
 | Bench operator | Stage a setting, apply it deliberately, see the device-confirmed value | US3. As an operator, I edit a setpoint, see it marked *staged*, press Apply, and the reading changes only when the device reports it. |
 | Bench operator | Capture and review without losing data | US4. As an operator, I start a bounded capture, close the browser, reopen it, and the capture is still running or finished and listed. |
@@ -160,11 +160,11 @@ The seam is the only place state changes. SSE events are published from the seam
 ### (c) HTMX UI and alignment to the UI standard
 
 - SW-20. Server-rendered HTML with Jinja2 templates; HTMX for partial swaps; the htmx SSE extension for live readings and capture progress. No client build step, no npm at runtime.
-- SW-21. Styles consume `tokens.css` and `themes.css` byte-for-byte from the canonical UI corpus, vendored with a digest check the same way standards are (sync, never hand-edit). Light and dark follow `prefers-color-scheme` with a manual override.
-- SW-22. Component parity by contract, not by code: each server-rendered component used (reading tile, staged input, apply button, alert, table, plot frame) implements the matching Storybook story's states — default, hover, focus, active, disabled, busy, empty, stale, partial, error, warning, critical, trip.
+- SW-21. Styles consume `tokens.css` and `themes.css` byte-for-byte from the shared `benchweave-ui-html` package (consumed as a published wheel at a pinned version), vendored with a digest check the same way standards are (sync, never hand-edit). Light and dark follow `prefers-color-scheme` with a manual override.
+- SW-22. Component parity by contract, not by code: each server-rendered component used (reading tile, staged input, apply button, alert, table, plot frame) comes from the shared `benchweave-ui-html` package (consumed as a published wheel at a pinned version), and implements the matching pattern-library fixture's states — default, hover, focus, active, disabled, busy, empty, stale, partial, error, warning, critical, trip.
 - SW-23. Staged values are labelled *staged*; Apply is an explicit POST; the applied reading updates only from a device read-back, never from the request. The page states that standalone has no gateway lease, policy or approval behind the apply.
 - SW-24. Severity is always icon + label + border + text; warning, critical and trip messages persist in context; toasts only for neutral, success and advisory.
-- SW-25. Plots use ECharts 6.1.0 behind a host-owned wrapper with the same closed interface as `EngineeringPlot`: labelled axes with units, visible legend, line form or markers as well as colour, stated time basis, freshness outside the canvas, textual description, reduced motion. No plugin-supplied ECharts options.
+- SW-25. Plots use uPlot (analog) and a host-owned Canvas 2D lane renderer (digital) behind the shared `benchweave-ui-html` package's plot wrapper (consumed as a published wheel at a pinned version), with the same closed interface as `EngineeringPlot`: labelled axes with units, visible legend, line form or markers as well as colour, stated time basis, freshness outside the canvas, textual description, reduced motion. Decimation is host-side (min/max per pixel column for analog, transition lists for digital); the plot library is vendored. No plugin-supplied plot options.
 - SW-26. Live sample updates are coalesced; ARIA live regions announce state changes, not samples.
 - SW-27. A persistent banner reads **STANDALONE — no gateway** on every page, distinct from preview's `SIMULATED PRESENTATION DATA`.
 
@@ -219,6 +219,15 @@ Captures are working data the operator keeps and reuses, not a scratch buffer. R
 - SW-61. The backend is validated against the OTDP transport-provider `transaction_grammar`; the same conformance cells that exercise `MockHost` run against it with a loopback serial fixture.
 - SW-62. Discovery filters ports by the descriptor's declared USB identity and confirms with the adapter's `identify` before any write.
 
+### (h) Mock transport and the author's preview
+
+The standalone host is the author's preview (PRD 12 Q4, dependency 4a): there is no separate preview tool. With a device attached the host runs the real transport; without one it runs mock transport. The difference is the transport, not the server.
+
+- SW-70. Mock transport is selectable without hardware: the host runs the SDK's `MockHost` scripted transfers when no device is attached, which also drives states a working bench rarely shows (stale, critical, trip).
+- SW-71. The nine baseline preview scenarios are re-expressed as `MockHost` transfer scripts shipped with the host, exercising the same page, binding, severity and state structure the parity suite (NFR-Q2) checks.
+- SW-72. The mode banner follows the data: a `simulated` banner renders on mock transport only, never on real hardware (PRD 12 §D.1). The persistent `STANDALONE — no gateway` banner (SW-27) renders on both transports.
+- SW-73. When the presentation validates but the adapter fails to import or load, pages still render their layout with device operations `not_ready` and the load diagnostic shown, so an author sees a UI before the adapter works.
+
 ## 7. Non-functional requirements
 
 **Security (NFR-S).** The fork's "single operator on localhost" posture is the right threat model but leaves browser-origin attacks open: a malicious page in the same browser can POST to `127.0.0.1` or rebind DNS onto it, and here that means driving a bench PSU.
@@ -240,13 +249,13 @@ Authoring (NFR-S8, NFR-S9). An agent that can rewrite and reload adapter code ho
 
 - NFR-O1. Process shutdown (SIGINT, SIGTERM, lifespan exit) runs the adapter's quiet/disconnect path and finalises or aborts in-flight captures cleanly. No half-written primary artifact.
 - NFR-O2. Transport loss surfaces as a persistent critical state on the device page and a `not_ready` on every device operation until reconnect. No silent retry loops that write.
-- NFR-O3. No write to the device happens on page load, reconnect or preset selection.
+- NFR-O3. No write to the device happens on page load, reconnect or preset selection, on either transport (mock or real).
 
 **Packaging (NFR-P).**
 
 - NFR-P1. The SDK wheel's dependency set and contents are unchanged (PKG-1, PKG-2). Web, MCP and serial dependencies live in the standalone distribution.
-- NFR-P2. Pinned versions aligned with the gateway where shared: FastAPI, uvicorn, `fastmcp[server]==4.0.3`, ECharts 6.1.0. htmx vendored as a single hashed file with its SSE extension.
-- NFR-P3. Vendored UI assets (tokens, themes, htmx, ECharts) are inventory-hashed and verified at serve time, as `bundled_assets()` does for the preview renderer.
+- NFR-P2. Pinned versions aligned with the gateway where shared: FastAPI, uvicorn, `fastmcp[server]==4.0.3`, uPlot. The digital lane renderer is host-owned (no vendored JS for it). htmx vendored as a single hashed file with its SSE extension.
+- NFR-P3. Vendored UI assets (tokens, themes, htmx, uPlot) are inventory-hashed and verified at serve time, as `bundled_assets()` does for the preview renderer.
 - NFR-P4. Python 3.13, uv, runs on Linux, macOS and Windows (serial on all three).
 
 **Quality (NFR-Q).**
@@ -266,7 +275,7 @@ Each has a recommendation; rulings stay with the owner.
 2. Sibling distribution in the SDK repo (`benchweave-standalone`, own wheel) — shares CI and standards sync; needs a second build target and its own PKG rules.
 3. Separate repository under `madeinoz67` — cleanest boundary, own release cycle; one more repo to keep in lockstep with the SDK.
 
-**Recommend 2.** It keeps the SDK wheel untouched, keeps the standards lock and validator bytes in one place, and avoids a third repo in the submodule chain. Revisit 3 if release cadence diverges.
+**Recommend 2.** It keeps the SDK wheel untouched, keeps the standards lock and validator bytes in one place, and avoids a third repo in the submodule chain. Revisit 3 if release cadence diverges. Q1 now also decides where the SDK's `preview-ui` shim delegates (PRD 12 R-9): the shim points at the standalone host's `serve` in whichever distribution Q1 picks.
 
 **Q2. How is UI-standard conformance proven without React?**
 
@@ -327,7 +336,7 @@ Each has a recommendation; rulings stay with the owner.
 2. uPlot (MIT, ~50 KB, Canvas 2D) for analog plus a host-owned Canvas 2D lane renderer for digital, both behind the closed plot interface, with host-side decimation. Fastest non-WebGL option; single-maintainer risk, mitigated by vendoring.
 3. WebGL (webgl-plot). Fastest; axes, labels, cursors and accessibility all become ours.
 
-**Recommend host-side decimation regardless of renderer** (min/max per pixel column for analog, transition lists with a multi-edge flag for digital), and **option 2 subject to a spike**: a real 32-channel capture of at least 10 M samples and a 60-minute ADC capture; zoom and pan redraw under 50 ms; live 6-channel stream at 60 fps under 20% CPU; a one-sample glitch visible at every zoom. Rule before I3. SW-25 names ECharts until this is ruled. SciChart.js and LightningChart JS are excluded on licence and telemetry grounds.
+**Recommend host-side decimation regardless of renderer** (min/max per pixel column for analog, transition lists with a multi-edge flag for digital), and **option 2 subject to a spike**: a real 32-channel capture of at least 10 M samples and a 60-minute ADC capture; zoom and pan redraw under 50 ms; live 6-channel stream at 60 fps under 20% CPU; a one-sample glitch visible at every zoom. Rule before I3. Ruled 2026-10-01: Option B — uPlot (analog) + host-owned Canvas 2D lane renderer (digital), host-side min/max decimation, vendored. SciChart.js and LightningChart JS are excluded on licence and telemetry grounds.
 
 **Q13. Default capture retention.**
 
