@@ -49,6 +49,64 @@ jobs:
         run: >-
           uv run --no-project --python 3.13 scripts/sdk_smoke.py
           --out-dir dist/packages
+      - name: Build and prove the ui-html member wheel
+        # Issue #302 REL, design §2.1: the renderer package is proven
+        # standalone — buildable as a wheel (uv's default builds the wheel
+        # from the sdist, proving both), installable alone with only its two
+        # declared runtime deps, carrying the pytest11 contract gate, version
+        # equal to packages/ui-html/pyproject.toml (single source). Same job,
+        # same matrix, same grant as the sdk_smoke step above: contents: read,
+        # nothing else — the job gains no upload capability of any kind
+        # (acceptance A3 checks exactly this). Bash and python -I one-liners
+        # only — a helper script would re-tier the slice (design §6).
+        run: |
+          set -euo pipefail
+          uv build --out-dir dist/packages/ui-html packages/ui-html
+          wheels=(dist/packages/ui-html/benchweave_ui_html-*.whl)
+          if [ "${#wheels[@]}" -ne 1 ] || [ ! -e "${wheels[0]}" ]; then
+            echo "expected exactly one ui-html wheel in dist/packages/ui-html, found:" "${wheels[@]}" >&2
+            exit 1
+          fi
+          workspace="$(mktemp -d)"
+          python_bin="$workspace/venv/bin/python"
+          uv venv --python 3.13 "$workspace/venv"
+          uv pip install --python "$python_bin" "${wheels[0]}"
+          echo "ui-html: import from the isolated venv (no checkout on sys.path)"
+          "$python_bin" -I -c 'import pathlib, sys, benchweave_ui_html
+          module = pathlib.Path(benchweave_ui_html.__file__).resolve()
+          venv = pathlib.Path(sys.argv[1]).resolve()
+          assert module.is_relative_to(venv), f"imported from outside the venv: {module}"
+          print("imported:", module)' "$workspace/venv"
+          expected_version="$("$python_bin" -I -c 'import sys, tomllib
+          print(tomllib.load(open(sys.argv[1], "rb"))["project"]["version"])' \
+            "$PWD/packages/ui-html/pyproject.toml")"
+          "$python_bin" -I -c 'import sys
+          from importlib.metadata import version
+          installed = version("benchweave-ui-html")
+          assert installed == sys.argv[1], f"wheel version {installed} != pyproject {sys.argv[1]}"
+          print(f"ui-html: installed version {installed} equals pyproject (single source)")' \
+            "$expected_version"
+          "$python_bin" -I -c 'from importlib.metadata import distribution
+          entry_points = {
+              entry.name: entry.value
+              for entry in distribution("benchweave-ui-html").entry_points
+              if entry.group == "pytest11"
+          }
+          assert entry_points.get("benchweave_ui_html") == (
+              "benchweave_ui_html.contract_harness.plugin"
+          ), entry_points
+          print("ui-html: pytest11 entry point present:", entry_points)'
+          installed="$(uv pip list --python "$python_bin" --format freeze)"
+          echo "$installed"
+          names="$(printf '%s\n' "$installed" | cut -d= -f1 | sort)"
+          expected_names="$(printf '%s\n' benchweave-ui-html jinja2 markupsafe | sort)"
+          if [ "$names" != "$expected_names" ]; then
+            echo "installed set is not exactly {benchweave-ui-html, jinja2, markupsafe}:" >&2
+            echo "$installed" >&2
+            exit 1
+          fi
+          echo "ui-html: installed set is exactly benchweave-ui-html, jinja2, markupsafe"
+          rm -rf "$workspace"
       - name: Clean-venv ADC conformance control
         # Issue #203 slice 1, acceptance A1: the out-of-tree ADC plugin at its
         # pre-restamp commit passes its SDK conformance suite UNMODIFIED

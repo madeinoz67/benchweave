@@ -147,7 +147,11 @@ Change propagation, end to end:
 - **Package** builds sdists and wheels for the gateway and SDK, installs them
   into isolated environments on Linux and macOS, and runs the installed-wheel
   smoke (`scripts/sdk_smoke.py`), including an external example plugin built
-  and tested outside the checkout.
+  and tested outside the checkout. The same job also builds the
+  `benchweave-ui-html` workspace member's wheel and proves it standalone in a
+  fresh venv outside the checkout: import, version equality with its
+  `pyproject.toml`, the `pytest11` contract-gate entry point, and an installed
+  set of exactly the package plus its two declared runtime dependencies.
 
 The workflows run on pushes and pull requests. They use
 read-only repository permissions, pinned action versions, timeouts and
