@@ -497,6 +497,8 @@ All notable changes to this project will be documented in this file.
 - Bring the "Where it stands" section current (issue #317)
 - Fold refute findings F1+F2 from the issue #317 review
 - Complete the Q12 sweep — remaining ECharts refs to uPlot
+- Issue #241 slice 3 — load-honest retry pins and the one-shot cell belt
+- The timing-lane conventions line names the cell belt
 
 ### Features
 
@@ -980,6 +982,10 @@ All notable changes to this project will be documented in this file.
 - Remove the dead 'cells' binding (the vet's lint catch)
 - Make the not_ready lease pin self-sufficient (order-independent)
 - Make the not_ready lease pin self-sufficient (order-independent)
+- The one-shot cell belt absorbs host-stall band breaches
+- De-clock the retry pins; assert properties, not attempts
+- Fold the refute - gen-1 X1-floor audit, site membership, claim fixes
+- D4' folded by trigger - sequential ceilings relativize in-run
 
 ### Build
 
