@@ -503,6 +503,8 @@ All notable changes to this project will be documented in this file.
 - The timing-lane conventions line names the cell belt
 - G1a contract-gate design record (issue #297)
 - Fold note for refute F1/F2 (issue #297)
+- G1c computed-proofs port + lane decimator design record (issue #299)
+- G1c erratum - reviewer command, G1e arm-(b) row, Sharma F4 (issue #299 G1c refute folds 1+2)
 
 ### Features
 
@@ -700,6 +702,7 @@ All notable changes to this project will be documented in this file.
 - The why query — VR-40's constraint -> locked-version explanation
 - Contract grammar, corrected 28-table manifest, registry, roles, tokens (issue #297)
 - The pytest contract harness - collection is the parse (issue #297)
+- Host-side lane decimator + the §E.4.4 property proofs (issue #299 G1c)
 
 ### Hardware Evidence
 
@@ -993,6 +996,8 @@ All notable changes to this project will be documented in this file.
 - Fold the refute - gen-1 X1-floor audit, site membership, claim fixes
 - D4' folded by trigger - sequential ceilings relativize in-run
 - Meta-acceptance suite - the pre-committed RED proof (issue #297)
+- The computed colour proofs port - instrument, ledger, verbatim arms (issue #299 G1c)
+- Tighten I5/I6/I8 pin tolerance to toBeCloseTo(1,5) exactly (issue #299 G1c refute fold 3)
 
 ### Build
 
