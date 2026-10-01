@@ -30,6 +30,7 @@ DEFECT_MISSING_TABLE = "missing table"
 DEFECT_WRONG_HEADER_CELLS = "wrong header cells"
 DEFECT_MALFORMED_SEPARATOR = "malformed separator"
 DEFECT_MISSING_SCHEMA_LINE = "missing Schema line"
+DEFECT_UNREADABLE_SCHEMA_LINE = "unreadable Schema line"
 DEFECT_WRONG_STATED_SCHEMA = "wrong stated schema"
 DEFECT_WRONG_STATED_ROW_COUNT = "wrong stated row count"
 DEFECT_WRONG_ENUMERATION_COUNT = "wrong enumeration count"
@@ -43,9 +44,14 @@ _STATED_CELLS = re.compile(r"^Schema:\s*`([^`]*)`")
 
 
 def literal(cell: str) -> str:
-    """Strip one pair of surrounding backticks (the TS ``literal`` helper)."""
-    if len(cell) >= 2 and cell.startswith("`") and cell.endswith("`"):
-        return cell[1:-1]
+    """Strip one leading and one trailing backtick, INDEPENDENTLY — the exact
+    TS ``literal`` semantics (``replace(/^`/, "").replace(/`$/, "")``). An
+    unbalanced tick must not survive into a row-id: it would re-key the row
+    for the registry binding (F4 fold)."""
+    if cell.startswith("`"):
+        cell = cell[1:]
+    if cell.endswith("`"):
+        cell = cell[:-1]
     return cell
 
 
@@ -146,9 +152,19 @@ def _split_cells(line: str) -> list[str]:
     return [cell.strip() for cell in text.split("|")]
 
 
-def _parse_schema_line(region: Sequence[str]) -> tuple[int | None, tuple[str, ...] | None]:
-    """Extract (stated count, stated header cells) from the region's first
-    ``Schema:`` line. Returns (None, None) when the region has none."""
+@dataclass(frozen=True)
+class StatedSchema:
+    """The parsed ``Schema:`` line. ``unreadable`` names the parts that failed
+    to parse (F3 fold): a PRESENT line that cannot be parsed is a defect, not
+    a silently skipped check."""
+
+    present: bool
+    stated_count: int | None
+    stated_cells: tuple[str, ...] | None
+    unreadable: str | None
+
+
+def _parse_schema_line(region: Sequence[str]) -> StatedSchema:
     for line in region:
         stripped = line.strip()
         if not stripped.startswith("Schema:"):
@@ -159,8 +175,18 @@ def _parse_schema_line(region: Sequence[str]) -> tuple[int | None, tuple[str, ..
         stated_cells: tuple[str, ...] | None = None
         if cells_match:
             stated_cells = tuple(cell.strip() for cell in cells_match.group(1).split("|"))
-        return stated_count, stated_cells
-    return None, None
+        unreadable_parts = []
+        if stated_count is None:
+            unreadable_parts.append("row count")
+        if stated_cells is None:
+            unreadable_parts.append("backticked cells")
+        return StatedSchema(
+            present=True,
+            stated_count=stated_count,
+            stated_cells=stated_cells,
+            unreadable=", ".join(unreadable_parts) if unreadable_parts else None,
+        )
+    return StatedSchema(present=False, stated_count=None, stated_cells=None, unreadable=None)
 
 
 def _first_divergence(parsed: list[str], pinned: tuple[str, ...]) -> str:
@@ -196,10 +222,20 @@ def _parse_table(lines: Sequence[str], spec: TableSpec) -> ParsedTable:
             break
         region.append(line)
 
-    stated_count, stated_cells = _parse_schema_line(region)
-    if stated_count is None and stated_cells is None:
+    schema = _parse_schema_line(region)
+    stated_count = schema.stated_count
+    stated_cells = schema.stated_cells
+    if not schema.present:
         defects.append(
             defect(DEFECT_MISSING_SCHEMA_LINE, "no `Schema: … — N rows` line under the heading")
+        )
+    elif schema.unreadable is not None:
+        defects.append(
+            defect(
+                DEFECT_UNREADABLE_SCHEMA_LINE,
+                f"present but unparsable: {schema.unreadable} — an unreadable "
+                "stated schema is a defect, not a skipped check",
+            )
         )
 
     # F1 fold — contiguity: the table is the run of CONSECUTIVE pipe lines
@@ -248,6 +284,13 @@ def _parse_table(lines: Sequence[str], spec: TableSpec) -> ParsedTable:
     body_rows = rows[2:]
 
     separator = rows[1]
+    if len(separator) != len(header):
+        defects.append(
+            defect(
+                DEFECT_MALFORMED_SEPARATOR,
+                f"separator has {len(separator)} cells, header has {len(header)}",
+            )
+        )
     if not all(_SEPARATOR_CELL.match(cell or "") for cell in separator):
         defects.append(
             defect(

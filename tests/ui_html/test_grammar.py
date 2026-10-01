@@ -16,6 +16,7 @@ from benchweave_ui_html.grammar import (
     DEFECT_MISSING_SCHEMA_LINE,
     DEFECT_MISSING_TABLE,
     DEFECT_TABLE_INTERRUPTED,
+    DEFECT_UNREADABLE_SCHEMA_LINE,
     DEFECT_WRONG_ENUMERATION_COUNT,
     DEFECT_WRONG_HEADER_CELLS,
     DEFECT_WRONG_ROW_CELL_COUNT,
@@ -191,3 +192,49 @@ def test_table_interrupted_by_a_non_pipe_line() -> None:
     # The truncation also reds the count and identity pins.
     assert DEFECT_WRONG_STATED_ROW_COUNT in classes
     assert DEFECT_WRONG_ROW_KEYS in classes
+
+
+def test_schema_line_with_stripped_backticks_is_unreadable() -> None:
+    """F3: a PRESENT Schema line whose cells fail to parse must red — the
+    old code silently skipped the stated-schema check (stated_cells=None)."""
+    text = mini_contract(schema="Schema: Key | Value — 2 rows. Note.")
+    table = parse_contract(text, (MINI_SPEC,)).tables[0]
+    assert [d.defect_class for d in table.defects] == [DEFECT_UNREADABLE_SCHEMA_LINE]
+    assert "backticked cells" in table.defects[0].detail
+
+
+def test_schema_line_with_worded_count_is_unreadable() -> None:
+    """F3: '— twenty-five rows' skips the stated-count check today; unreadable
+    is a defect, not a skip."""
+    text = mini_contract(schema="Schema: `Key | Value` — twenty-five rows.")
+    table = parse_contract(text, (MINI_SPEC,)).tables[0]
+    assert [d.defect_class for d in table.defects] == [DEFECT_UNREADABLE_SCHEMA_LINE]
+    assert "row count" in table.defects[0].detail
+
+
+def test_literal_strips_leading_and_trailing_ticks_independently() -> None:
+    """F4: the exact TS literal() semantics — one leading and one trailing
+    backtick stripped INDEPENDENTLY. An unbalanced tick surviving into a
+    row-id would re-key the row for the G1b registry binding."""
+    assert literal("`unbalanced") == "unbalanced"
+    assert literal("trailing`") == "trailing"
+    assert literal("`both`") == "both"
+    assert literal("``") == ""
+    assert literal("`") == ""
+
+
+def test_unbalanced_backtick_key_lands_in_the_row_id_cleanly() -> None:
+    text = mini_contract(body=("| `onlyleading | 1 |", "| `b` | 2 |"))
+    table = parse_contract(text, (MINI_SPEC,)).tables[0]
+    assert table.body[0].row_id == "x-1-mini::onlyleading"
+    assert table.body[0].cells[0] == "`onlyleading"  # the cell text is untouched
+
+
+def test_separator_arity_must_match_the_header() -> None:
+    """F5: a separator row with the wrong cell count is malformed even when
+    every cell matches the pipe-dash pattern."""
+    text = mini_contract(separator="| --- |")
+    table = parse_contract(text, (MINI_SPEC,)).tables[0]
+    malformed = [d for d in table.defects if d.defect_class == DEFECT_MALFORMED_SEPARATOR]
+    assert malformed
+    assert "separator has 1 cells, header has 2" in malformed[0].detail

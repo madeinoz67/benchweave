@@ -437,3 +437,29 @@ cannot be SILENCED where collected; pure invocations red under deselect (exit 5)
 plugin disable (exit 4) — and the mixed-invocation deselect via ambient env is the
 disclosed residual, pinned by a new meta arm asserting the mixed invocation carries
 all 196 contract items (the arm itself goes red under the attack).
+
+**F3–F6, ruled FOLD (same landing, 2026-10-01):** the refute's LOW/NIT tail.
+
+- **F3** — a PRESENT `Schema:` line whose backticked cells or count wording fail to
+  parse is now the defect class `unreadable Schema line` (naming the failed parts).
+  Previously `stated_cells=None` / `stated_count=None` silently SKIPPED the
+  corresponding checks: stripped backticks and "— twenty-five rows" both passed green.
+  Unreadable is red, never a skip.
+- **F4** — `literal()` now strips one leading and one trailing backtick INDEPENDENTLY
+  (the exact TS `replace(/^`/, "").replace(/`$/, "")` semantics). The pair-required
+  shape let an unbalanced tick survive into a row-id, re-keying the row for the G1b
+  registry binding. No real contract cell is unbalanced (the manifest-keys-equal-parse
+  pin confirms no row-id moved).
+- **F5** — the separator row's cell count must equal the header's (one assert under
+  the existing `malformed separator` class; the class name already implied it).
+- **F6** — the harness subpackage docstring's stale test filename corrected
+  (test_package → test_package_boundary). Comment-only.
+
+Mutation-routing note (owner directive, this wave): every edited file is branch-new
+(absent from the primary checkout), so the gortex pre-edit gate fails structurally —
+repo-prefixed reads stat against the primary (`no such file or directory`, no freshness
+object) — and native Edit is the sanctioned fallback for each: grammar.py,
+contract_harness/__init__.py, tests/ui_html/test_grammar.py, and this record. The
+original build's edits to pre-existing files (root pyproject.toml, uv.lock) also went
+through native Edit under the build brief then in force (gortex reads resolve to the
+primary; no freshness gate existed in that brief).
