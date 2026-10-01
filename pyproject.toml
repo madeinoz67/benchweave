@@ -54,7 +54,18 @@ dev = [
   "types-jsonschema>=4.26.0.20260518",
   "httpx>=0.28.1",
   "pytest-xdist>=3.8.0",
+  # The renderer package + contract harness (PRD 12 §9 Q5: a plain directory
+  # and uv workspace member, not a submodule). Dev dependency so the pytest11
+  # entry point is installed in the repo venv; packages/sdk stays a submodule
+  # and is NOT a workspace member (two-repo discipline).
+  "benchweave-ui-html",
 ]
+
+[tool.uv.sources]
+benchweave-ui-html = { workspace = true }
+
+[tool.uv.workspace]
+members = ["packages/ui-html"]
 
 [project.scripts]
 benchweave = "benchweave.__main__:main"
@@ -135,6 +146,7 @@ files = [
     "tests",
     "scripts/registry",
     "packages/sdk/src",
+    "packages/ui-html/src",
     "scripts/sdk_smoke.py",
     "scripts/gate.py",
     "scripts/architecture/_validation_report.py",

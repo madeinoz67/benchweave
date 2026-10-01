@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[project]
+name = "benchweave-ui-html"
+version = "0.1.0"
+description = "Renderer-neutral HTML renderer for the BenchWeave presentation contract and its pytest contract gate."
+requires-python = ">=3.13"
+license = "MIT"
+# UR-11: the runtime dependency set is Jinja2 and MarkupSafe ONLY — pytest is a
+# test-only concern (the [dependency-groups] test extra), and the pytest11
+# entry point below is inert unless pytest is the running process.
+dependencies = [
+  "jinja2>=3.1",
+  "markupsafe>=3.0",
+]
+
+# The pytest11 entry point lands in the same commit as the plugin module it
+# names (an entry point whose target is absent breaks every pytest start).
+# See contract_harness/plugin.py when it lands: collection-time generation
+# over a non-Python target file, which a conftest cannot do (design record
+# §7 — the first pytest11 entry point in this tree).
+
+[dependency-groups]
+test = ["pytest>=8.0"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/benchweave_ui_html"]
