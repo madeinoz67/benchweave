@@ -477,6 +477,8 @@ All notable changes to this project will be documented in this file.
 - #233 register pass — six dormant rows, D5 why-query slice design
 - Standalone web UI PRD (#282)
 - Run close stops dispatched agent lanes too
+- #283 I1 skeleton design record
+- #283 review dispositions — LOW accepted-risk, NIT deferred to hardening pass
 
 ### Features
 
