@@ -417,6 +417,18 @@ and remain the reviewer's job.
     `policy_status_conflict:`) — retired means "used and dead", so a retired
     identifier naming no retained directory is the CORRECT seed state, not a
     refusal (the earlier inversion here is corrected by #215 fold row 10).
+    Registration append (issue #288, the fold's own NIT-2 gap class): the
+    loader family's bound-shape refusal `constraint_bounds_reversed:` —
+    `dependency.py` `parse_interval` and `manifest.py` `_parse_range` refuse
+    an equal or inverted bound pair at parse time, naming the pair, in both
+    the constraints loader and the policy loader — is registered here,
+    closing the gap its loader-family siblings (`cross_constraint_violation:`,
+    `policy_entry_unresolved:`, `policy_retired_active:`/`policy_status_conflict:`
+    above) never had; and `marker_mirror_drift:` (the SDK-side sentence
+    above) is registered with CON-4's stability posture — the prefix has NO
+    gateway emitter by design §4's conscious choice (issue #288 M5 is
+    SDK-side only; the gateway lane never synthesizes it), so this doc is
+    its registration home.
 
 22. **The counter twins** (issue #221, obligation-19 shape): the gateway's
     `scripts/standards/count_version_literals.py` and the SDK repo's
