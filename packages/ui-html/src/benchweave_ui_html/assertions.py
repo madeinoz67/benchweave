@@ -45,23 +45,44 @@ class Element:
 
 
 class _Collector(HTMLParser):
-    """Collects start tags (tag + attrs) and decoded text, in document order."""
+    """Collects start tags (tag + attrs) and decoded text, in document order.
+
+    Per-element text is tracked with an open-element stack (a text run is
+    attributed to its innermost open element); void elements never open a
+    frame. ``texts[i]`` aligns with ``elements[i]``."""
+
+    _VOID = frozenset(
+        {"area", "base", "br", "col", "embed", "hr", "img", "input", "link",
+         "meta", "param", "source", "track", "wbr"}
+    )
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self.elements: list[Element] = []
+        self.texts: list[list[str]] = []
         self.text_parts: list[str] = []
+        self._open: list[int] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         # First occurrence wins for a duplicated attribute (invalid HTML and
         # never emitted by our templates); a bare attribute parses as None.
         self.elements.append(Element(tag, dict(attrs)))
+        self.texts.append([])
+        if tag not in self._VOID:
+            self._open.append(len(self.elements) - 1)
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         self.elements.append(Element(tag, dict(attrs)))
+        self.texts.append([])
+
+    def handle_endtag(self, tag: str) -> None:
+        if self._open:
+            self._open.pop()
 
     def handle_data(self, data: str) -> None:
         self.text_parts.append(data)
+        if self._open:
+            self.texts[self._open[-1]].append(data)
 
 
 class RenderedComponent:
@@ -74,6 +95,34 @@ class RenderedComponent:
         self.html = html
         self.elements: list[Element] = collector.elements
         self.text_parts: list[str] = collector.text_parts
+        self._element_texts = ["".join(parts) for parts in collector.texts]
+
+    def texts_of_elements(
+        self,
+        *,
+        class_hook: str | None = None,
+        attribute: tuple[str, str] | None = None,
+    ) -> list[str]:
+        """The decoded text of every element carrying the given class hook
+        and/or the given ``name=value`` attribute (either filter optional)."""
+        out: list[str] = []
+        for element, text in zip(self.elements, self._element_texts, strict=True):
+            if class_hook is not None and class_hook not in element.class_tokens:
+                continue
+            if attribute is not None and element.attrs.get(attribute[0]) != attribute[1]:
+                continue
+            out.append(text)
+        return out
+
+    def texts_of_elements_with_attribute(self, name: str) -> list[str]:
+        """The decoded text of every element carrying ``name`` (any value) —
+        the §C.2 visible-label check (the label is element text in a
+        ``data-bw-disabled-label`` element, never an aria-only attribute)."""
+        return [
+            text
+            for element, text in zip(self.elements, self._element_texts, strict=True)
+            if name in element.attrs
+        ]
 
     @property
     def root_tag(self) -> str | None:

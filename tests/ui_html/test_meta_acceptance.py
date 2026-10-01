@@ -227,6 +227,9 @@ def test_plain_invocation_is_the_registered_state(tmp_path: Path) -> None:
     unregistered row going green)."""
     from benchweave_ui_html import artifacts, registry
 
+    # Clear first: earlier in-process arms legitimately leave partial
+    # registrations, and the plain invocation starts from an empty registry.
+    registry.REGISTRY.clear()
     artifacts.ensure_registered()
     expected_failed = ROW_ITEMS - len(registry.REGISTRY)
     junit = tmp_path / "metric-a.xml"

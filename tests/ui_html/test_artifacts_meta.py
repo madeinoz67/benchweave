@@ -97,3 +97,44 @@ def test_one_artifact_control_greens_exactly_its_own_row() -> None:
         if _evaluate(row, registry.REGISTRY.get(row.row_id)) is None
     ]
     assert green == [artifacts.SENTINEL_ROW_ID]
+
+
+def test_mutation_control_a_reading_state_drop_reds_naming_the_item() -> None:
+    """Mutation control (a), design record §6: drop ``data-bw-reading-state``
+    from the fixture → the reading-tile rows red NAMING that item (an
+    assertion that cannot name its item cannot discriminate)."""
+    from benchweave_ui_html import fixtures, partials
+    from benchweave_ui_html.data import ReadingData
+
+    row_e1 = next(r for r in _contract_rows() if r.row_id == "e-1-components::reading-tile")
+    row_b3 = next(r for r in _contract_rows() if r.row_id == "b-3-reading-states::limiting")
+
+    dropped = ReadingData(
+        label="Supply voltage",
+        severity="neutral",
+        value="12.5",
+        unit="V",
+        state=None,
+        state_label=None,
+        set_value="12.0",
+        set_unit="V",
+    )
+    assert dropped != fixtures.reading()  # the mutation must bite
+    rendered_without_state = partials.render_reading(dropped)
+
+    from benchweave_ui_html.artifacts import ComponentRenderArtifact, StateRowArtifact
+
+    e1_messages = ComponentRenderArtifact(
+        "reading-tile", lambda: rendered_without_state
+    ).satisfies(row_e1)
+    assert any("data-bw-reading-state" in message for message in e1_messages), e1_messages
+
+    # The B.3 artifact renders the canonical fixture internally; sabotage it
+    # through the fixture itself (same mechanism the record names).
+    original = fixtures.reading
+    try:
+        fixtures.reading = lambda: dropped
+        b3_messages = StateRowArtifact("limiting").satisfies(row_b3)
+    finally:
+        fixtures.reading = original
+    assert any("data-bw-reading-state" in message for message in b3_messages), b3_messages

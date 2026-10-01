@@ -21,7 +21,9 @@ CONTRACT = REPO_ROOT / "docs" / "internal" / "ui-contract.md"
 
 def _expected_row_failures() -> int:
     """Rows red at a plain invocation = 168 minus the auto-registered set
-    (the G1d-deferred rows stay red until the compositions slice)."""
+    (the G1d-deferred rows stay red until the compositions slice). Clears
+    first: earlier in-process arms legitimately leave partial registrations."""
+    registry.REGISTRY.clear()
     artifacts.ensure_registered()
     return 168 - len(registry.REGISTRY)
 
