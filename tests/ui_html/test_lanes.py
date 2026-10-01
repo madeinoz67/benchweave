@@ -56,10 +56,14 @@ def test_canonical_capture_carries_the_contract_literals() -> None:
     assert "hidden" in html
 
 
-def test_the_ten_behaviour_rows_stay_red_with_the_honest_message() -> None:
-    """The G1d deferral, asserted at the ship state: the ten behaviour
-    rule_proof rows are exactly the ones without artifacts, and a satisfied-
-    but-failed message there would be a cheap-satisfaction attempt."""
+def test_the_ten_behaviour_rows_are_registered_and_green() -> None:
+    """The G1d discharge, asserted at the ship state: the ten behaviour
+    rule_proof rows (§B.2 SR-B1..B3, §B.4 ST-1..4, §C.1 R-ENERGISE-1/
+    R-DEENERGISE-1/R-PROTECT-1) register through the composition checkers
+    and evaluate green against the real contract — and no table stays
+    deferred (a satisfied-but-failed message there would be a
+    cheap-satisfaction attempt, which the mutation arms in
+    test_compositions_mutations.py kill)."""
     from benchweave_ui_html import registry
 
     registry.REGISTRY.clear()
@@ -67,15 +71,16 @@ def test_the_ten_behaviour_rows_stay_red_with_the_honest_message() -> None:
     rows = {row.row_id: row for table in
             parse_contract(CONTRACT.read_text(encoding="utf-8"), MANIFEST).tables
             for row in table.body}
-    deferred_slugs = artifacts.DEFERRED_SLUGS
-    deferred = {row_id for row_id in rows if row_id.split("::")[0] in deferred_slugs}
-    assert len(deferred) == 10, sorted(deferred)
-    assert set(registry.REGISTRY) == set(rows) - deferred
-    for row_id in deferred:
+    behaviour_slugs = {"b-2-state-rules", "b-4-staleness", "c-1-safety-rules"}
+    behaviour = {row_id for row_id in rows if row_id.split("::")[0] in behaviour_slugs}
+    assert len(behaviour) == 10, sorted(behaviour)
+    assert not artifacts.DEFERRED_SLUGS
+    assert set(registry.REGISTRY) == set(rows)
+    for row_id in behaviour:
         message = registry.evaluate_row(
             rows[row_id],
             registry.REGISTRY.get(row_id),
             require_artifact=True,
             expected_kind="rule_proof",
         )
-        assert message == f"no canonical artifact for {row_id}", (row_id, message)
+        assert message is None, (row_id, message)

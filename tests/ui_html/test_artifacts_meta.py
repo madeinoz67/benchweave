@@ -38,10 +38,11 @@ def _evaluate(row: Row, artifact: registry.Artifact | None) -> str | None:
 
 
 def test_registration_completeness_is_set_equality() -> None:
-    """After ``ensure_registered()`` the registry holds exactly G1b's declared
-    row-ids — no orphan, no gap. The expectation is the INDEPENDENT
-    manifest derivation: every manifest key of every table except the three
-    G1d-deferred behaviour tables (the final 158)."""
+    """After ``ensure_registered()`` the registry holds exactly the declared
+    row-ids — no orphan, no gap. The expectation is the INDEPENDENT manifest
+    derivation: every manifest key of every table (G1d slice 2 filled the
+    three behaviour tables — the full 168, registrar-derived, never a hand
+    count)."""
     registry.REGISTRY.clear()
     artifacts.ensure_registered()
     from benchweave_ui_html.manifest import MANIFEST
@@ -52,8 +53,9 @@ def test_registration_completeness_is_set_equality() -> None:
         if table.slug not in artifacts.DEFERRED_SLUGS
         for key in table.keys
     }
-    assert len(expected) == 158, len(expected)
+    assert len(expected) == 168, len(expected)
     assert set(registry.REGISTRY) == expected
+    assert set(artifacts.REGISTERED_ROW_IDS) == expected
     assert set(artifacts.G1B_ROW_IDS) == expected
 
 
@@ -78,22 +80,16 @@ def test_empty_registry_fail_closed_pure_function() -> None:
 
 
 def test_ship_state_green_red_split_over_the_real_contract() -> None:
-    """Every G1b-registered row is green against the real contract; every
-    other row reds with exactly the no-canonical-artifact message class (a
-    red from ``unsatisfied contract items`` there would mean something
-    registered-and-failed — a different defect)."""
+    """Every registered row is green against the real contract — the full
+    168 (G1d slice 2 registered the ten behaviour rows) — and the registered
+    set is exactly the contract's row set (no orphan, no unregistered row)."""
     registry.REGISTRY.clear()
     artifacts.ensure_registered()
     rows = {row.row_id: row for row in _contract_rows()}
     assert set(rows)  # the contract parsed
-    for row_id in artifacts.G1B_ROW_IDS:
-        assert row_id in rows, f"registered row-id absent from the contract: {row_id}"
+    assert set(artifacts.REGISTERED_ROW_IDS) == set(rows)
+    for row_id in artifacts.REGISTERED_ROW_IDS:
         assert _evaluate(rows[row_id], registry.REGISTRY.get(row_id)) is None, row_id
-    for row_id, row in rows.items():
-        if row_id in artifacts.G1B_ROW_IDS:
-            continue
-        message = _evaluate(row, registry.REGISTRY.get(row_id))
-        assert message == f"no canonical artifact for {row_id}", (row_id, message)
 
 
 def test_one_artifact_control_greens_exactly_its_own_row() -> None:

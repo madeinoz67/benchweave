@@ -218,10 +218,11 @@ def _assert_registered_state_shape(
 
 
 def test_plain_invocation_is_the_registered_state(tmp_path: Path) -> None:
-    """The plain invocation auto-registers G1b's artifacts: pins green, the
-    registered rows green, and every OTHER row red with exactly the
-    no-canonical-artifact message (the ten G1d-deferred rows keep this run
-    red until the compositions slice lands). The failed count is exactly the
+    """The plain invocation auto-registers the artifacts: pins green, the
+    registered rows green. Since G1d slice 2 the registration is the FULL
+    168 (the ten behaviour rows included), so the plain invocation is fully
+    green — the pre-G1d run's ten no-canonical-artifact reds are the slice's
+    RED half, recorded in its commit. The failed count is exactly the
     unregistered rows — no more (an over-count would mean a registered row
     failing its own items), no fewer (an under-count would mean an
     unregistered row going green)."""
@@ -234,7 +235,10 @@ def test_plain_invocation_is_the_registered_state(tmp_path: Path) -> None:
     expected_failed = ROW_ITEMS - len(registry.REGISTRY)
     junit = tmp_path / "metric-a.xml"
     exit_code = _run(CONTRACT, junit)
-    assert exit_code != 0, "unregistered rows must leave the run red (exit non-zero)"
+    if expected_failed:
+        assert exit_code != 0, "unregistered rows must leave the run red (exit non-zero)"
+    else:
+        assert exit_code == 0, "a fully registered green population must exit 0"
     attrib, buckets = _suite(junit)
     _assert_registered_state_shape(attrib, buckets)
     rows = _stats(buckets["row"])
@@ -262,8 +266,9 @@ def test_empty_registry_collection_control_registration_neutralized(
 
 def test_no_environment_variable_flips_the_gate(tmp_path: Path) -> None:
     """The REQUIRE_ARTIFACT constant has no environment surface (design section 2).
-    G1b: the expected shape is the registered state — the env vars must not
-    turn the run all-green either (the gate being off would be exactly that)."""
+    Since G1d the registered state is fully green, so the env vars must not
+    change the verdict in either direction (an off gate would look the same
+    green; the mechanism-toggle control in-process is the discrimination)."""
     junit = tmp_path / "env-control.xml"
     exit_code = _run(
         CONTRACT,
@@ -275,7 +280,7 @@ def test_no_environment_variable_flips_the_gate(tmp_path: Path) -> None:
             "BENCHWEAVE_UI_HTML_REQUIRE_ARTIFACT": "no",
         },
     )
-    assert exit_code != 0
+    assert exit_code == 0, "the fully-registered population must stay green under env noise"
     attrib, buckets = _suite(junit)
     _assert_registered_state_shape(attrib, buckets)
 
@@ -614,16 +619,16 @@ def test_mixed_invocation_collects_the_gate(tmp_path: Path) -> None:
     collects BOTH the ordinary suite and the 196 contract items. The refuter's
     PYTEST_ADDOPTS="-m 'not contract'" attack deselects the contract items on
     exactly this shape — the residual class, disclosed in the design record;
-    this arm goes red under that attack. The registered-state run stays red
-    through the ten G1d-deferred rows (the lane-A fold's comment fix: no
-    longer described as the empty-registry red)."""
+    this arm goes red under that attack (a shrunk collection fails the
+    counts below, and since G1d the full registration means the mixed run is
+    green — a deselection would be the only way to lose items)."""
     junit = tmp_path / "mixed.xml"
     exit_code = _run(
         CONTRACT,
         junit,
         extra_args=["tests/ui_html/test_grammar.py"],
     )
-    assert exit_code != 0  # the ten G1d-deferred rows keep the registered run red
+    assert exit_code == 0  # the fully-registered population is green
     _attrib, buckets = _suite(junit)
     assert _stats(buckets["pin"])["collected"] == PIN_ITEMS
     assert _stats(buckets["row"])["collected"] == ROW_ITEMS
