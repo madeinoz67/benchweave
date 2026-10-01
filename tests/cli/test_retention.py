@@ -750,13 +750,33 @@ def test_fw1_run_end_anchors_on_the_terminal_record_not_the_projection(
     assert after == first, "run_end disposal moved with a later put_run_state"
 
 
-def test_fw5_naive_stamps_anchor_unresolved_and_never_host_local(
-    tmp_path: Path,
-) -> None:
-    """Finding 5 (MED): naive (no offset) stamps yield ``anchor_unresolved``
-    with ``disposal_date: null`` — never a host-TZ-localized guess; the
-    rendered report is byte-identical under different host timezones."""
+def _fw5_report_bytes(
+    tmp_path: Path, *, tzset: bool = True
+) -> tuple[str, dict[str, dict[str, Any]], bool]:
+    """The fw5 scenario, guarded for platforms without ``time.tzset``
+    (issue #207: the Unix-only stressor must not crash the platform; the
+    property still holds everywhere).
+
+    Returns ``(report_bytes, rows_by_id, flip_arm_ran)``.
+
+    - ``tzset=True`` (default) and the platform provides ``time.tzset``:
+      the TZ-flip byte-identity arm runs (Australia/Perth vs UTC, reports
+      byte-equal — asserted here; flipping the process-local timezone
+      in-process is structurally impossible on Windows, and pretending
+      otherwise would be a fake stressor). ``flip_arm_ran`` is True.
+    - ``tzset=False`` or no ``time.tzset`` attribute (the Windows shape,
+      or the POSIX simulation via ``monkeypatch.delattr(time, "tzset")``):
+      the flip arm is BYPASSED by the guard and ``flip_arm_ran`` is False
+      — the sentinel the no-``tzset`` test asserts, so the bypass is
+      pinned rather than silent.
+
+    The property arm itself (naive → ``anchor_unresolved`` with
+    ``disposal_date: None``) lives in ``_assert_fw5_property`` with the
+    callers: it is platform-independent string handling and runs in EVERY
+    mode."""
     import time
+
+    real_tzset = getattr(time, "tzset", None)
 
     data_dir = _seed(tmp_path)
     _write_policy(data_dir / "retention-policy.json", run_end=True)
@@ -782,23 +802,106 @@ def test_fw5_naive_stamps_anchor_unresolved_and_never_host_local(
         rows = {r["id"]: r for r in model["rows"]}
         return payload, rows
 
+    flip_ran = False
+    rows: dict[str, dict[str, Any]] = {}
+    chosen_payload = ""
     monkey = pytest.MonkeyPatch()
     try:
-        monkey.setenv("TZ", "Australia/Perth")
-        time.tzset()
-        perth, perth_rows = report_bytes()
-        monkey.setenv("TZ", "UTC")
-        time.tzset()
-        utc, utc_rows = report_bytes()
+        if tzset and real_tzset is not None:
+            monkey.setenv("TZ", "Australia/Perth")
+            real_tzset()
+            perth, _ = report_bytes()
+            monkey.setenv("TZ", "UTC")
+            real_tzset()
+            utc, rows = report_bytes()
+            flip_ran = True
+            assert perth == utc, "report is host-timezone dependent"
+            chosen_payload = utc
+        else:
+            # The guard's bypass: one report under the ambient TZ. The
+            # caller pins the sentinel via flip_arm_ran.
+            chosen_payload, rows = report_bytes()
     finally:
         monkey.undo()
-        time.tzset()
+        if real_tzset is not None:
+            real_tzset()
 
-    assert perth == utc, "report is host-timezone dependent"
-    for rows in (perth_rows, utc_rows):
-        naive_row = rows["cap-naive"]
-        assert naive_row["status"] == "anchor_unresolved"
-        assert naive_row["disposal_date"] is None
+    return chosen_payload, rows, flip_ran
+
+
+def _assert_fw5_property(rows_by_id: dict[str, dict[str, Any]]) -> None:
+    """The fw5 property: the naive stamp stays anchor_unresolved with
+    disposal_date None — never a host-TZ-localized guess. Runs in EVERY
+    tzset mode; the committed sabotage arm asserts this function RAISES
+    under the pre-fix localized guess in both modes."""
+    naive_row = rows_by_id["cap-naive"]
+    assert naive_row["status"] == "anchor_unresolved"
+    assert naive_row["disposal_date"] is None
+
+
+def test_fw5_naive_stamps_anchor_unresolved_and_never_host_local(
+    tmp_path: Path,
+) -> None:
+    """Finding 5 (MED): naive (no offset) stamps yield ``anchor_unresolved``
+    with ``disposal_date: null`` — never a host-TZ-localized guess; the
+    rendered report is byte-identical under different host timezones
+    (the TZ-flip arm runs where the platform can flip; issue #207)."""
+    payload, rows, _flip_ran = _fw5_report_bytes(tmp_path)
+    _assert_fw5_property(rows)
+
+
+def test_fw5_no_tzset_platform_takes_the_guard_and_keeps_the_property(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Issue #207: with ``time.tzset`` absent (the Windows shape — or the
+    POSIX simulation deleting it), the guard takes the bypass: no
+    AttributeError, the flip arm is skipped with the sentinel False, and
+    the naive-stamp property still holds on the single report."""
+    import time
+
+    monkeypatch.delattr(time, "tzset")
+    payload, rows, flip_ran = _fw5_report_bytes(tmp_path)
+    assert flip_ran is False, "the guard must bypass the flip arm"
+    _assert_fw5_property(rows)
+
+
+def test_fw5_parse_utc_sabotage_reds_in_both_tzset_modes(
+    tmp_path: Path,
+) -> None:
+    """Committed sabotage arm (the slice-3 classifier-arm precedent): the
+    tzset guard must not buy platform coverage by losing the regression
+    teeth. Patching ``_parse_utc`` back to the pre-fix localized guess
+    (naive stamps resolved to host-local) must make the property
+    assertions FAIL in both tzset modes."""
+    from benchweave.cli import retention as retention_module
+
+    real_parse_utc = retention_module._parse_utc
+
+    def _localized_guess(value: Any) -> datetime | None:
+        # the pre-fix shape: a naive stamp resolved to host-local time
+        if not isinstance(value, str):
+            return None
+        try:
+            moment = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except (ValueError, OverflowError):
+            return None
+        if moment.tzinfo is None:
+            return moment.astimezone()
+        return moment
+
+    for tzset_mode in (True, False):
+        retention_module._parse_utc = _localized_guess
+        try:
+            _payload, rows, _ = _fw5_report_bytes(tmp_path, tzset=tzset_mode)
+            _assert_fw5_property(rows)
+        except AssertionError:
+            continue
+        finally:
+            retention_module._parse_utc = real_parse_utc
+        pytest.fail(
+            f"fw5 property did NOT red under the _parse_utc sabotage "
+            f"(tzset={tzset_mode}) — the arm has no teeth"
+        )
 
 
 def test_fw5_unparseable_and_naive_terminal_records_stay_unresolved(
