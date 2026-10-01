@@ -1148,14 +1148,26 @@ def test_move_to_one_derivation_five_surfaces(tmp_path: Path) -> None:
     real = {"0.2.1": {"reason": "descriptor dialect drift", "since": "2026-09-24"}}
     synthetic = {"reason": "synthetic yank", "since": "2026-10-01"}
     table = [
-        # (name, yanked map, pin, expected version, expected label)
-        ("pin below all served", {**real, "0.2.0": synthetic}, "0.2.0", "0.2.2", ""),
+        # (name, yanked map, pin, version, label, downgrade, guidance_only)
+        # — the flag tuples are the twin-pinned shapes (SDK PR #73): the
+        # guidance branch carries downgrade False (its label is guidance).
+        (
+            "pin below all served",
+            {**real, "0.2.0": synthetic},
+            "0.2.0",
+            "0.2.2",
+            "",
+            False,
+            False,
+        ),
         (
             "yanked pin above all served",
             {**real, "0.2.2": synthetic},
             "0.2.1",
             "0.2.0",
             " (a downgrade — no served version is newer)",
+            True,
+            False,
         ),
         (
             "served empty",
@@ -1163,10 +1175,12 @@ def test_move_to_one_derivation_five_surfaces(tmp_path: Path) -> None:
             "0.2.1",
             "0.2.0",
             " (guidance only — no version is served)",
+            False,
+            True,
         ),
-        ("yanked pin mid-set", dict(real), "0.2.1", "0.2.2", ""),
+        ("yanked pin mid-set", dict(real), "0.2.1", "0.2.2", "", False, False),
     ]
-    for name, yanked, pin, version, label in table:
+    for name, yanked, pin, version, label, downgrade, guidance_only in table:
         base = tmp_path / name.replace(" ", "-")
         base.mkdir()
         root = _copy_standards(base)
@@ -1176,16 +1190,23 @@ def test_move_to_one_derivation_five_surfaces(tmp_path: Path) -> None:
         policy = load_dependency_policy(root)
         row = policy.standards["otdp"]
         move = derive_move_to(row, served_versions(policy, root, "otdp"), pin)
-        assert (move.version, move.label) == (version, label), (name, move)
+        assert (move.version, move.downgrade, move.guidance_only) == (
+            version,
+            downgrade,
+            guidance_only,
+        ), (name, move)
+        assert move.label == label, (name, move.label)
         warning = classify_pin(policy, root, "otdp", pin).warning
         assert warning is not None and f"move-to: {version}{label}" in warning, (
             name,
             warning,
         )
-        # The VR-37 field carries the version bare (its five-field format
-        # is pinned text-equal across the resolver and the classifier).
+        # The VR-37 field's move-to carries the label too — the twin
+        # reconciliation: the refusal side names a downgrade as one, and
+        # the guidance branch suppresses the downgrade label by carrying
+        # downgrade False.
         vr37 = _vr37(policy, "otdp", pin, row, root)
-        assert f"move-to: {version};" in vr37, (name, vr37)
+        assert f"move-to: {version}{label};" in vr37, (name, vr37)
         note = str(classify_descriptor_pin(pin, corpus=root / "standards").note)
         assert f"move-to: {version}{label}" in note, (name, note)
         matrix_line = next(
@@ -1194,6 +1215,34 @@ def test_move_to_one_derivation_five_surfaces(tmp_path: Path) -> None:
             if line.startswith(f"| otdp | {pin} |")
         )
         assert f"move-to {version}{label}" in matrix_line, (name, matrix_line)
+
+
+# --- issue #288 M4 twin reconciliation: the label rides the refusal side ------------
+
+
+def test_m4_twin_reconciliation_the_downgrade_label_rides_the_refusal_too(
+    tmp_path: Path,
+) -> None:
+    """The twin reconciliation (SDK PR #73, commit 0a69fe9): the downgrade
+    label rides the REFUSAL's move-to too, not only the yank warning — on
+    the real corpus the retired 0.3.0 pin (above every served version)
+    names 0.2.2 as its re-target and must SAY it is a downgrade, on both
+    the resolver's refusal and the gateway classifier's note. Supersedes
+    the design's 'warning formatters only' wording and its 'no existing
+    text changes' kill line for exactly this text (the controller's
+    ruling, disclosed in the PR body)."""
+    from benchweave.control.documents import classify_descriptor_pin
+
+    root = _copy_standards(tmp_path)
+    policy = load_dependency_policy(root)
+    with pytest.raises(StandardsError, match="retired_identifier") as raised:
+        classify_pin(policy, root, "otdp", "0.3.0")
+    message = str(raised.value)
+    assert "move-to: 0.2.2 (a downgrade — no served version is newer)" in message, (
+        message
+    )
+    note = str(classify_descriptor_pin("0.3.0", corpus=root / "standards").note)
+    assert "move-to: 0.2.2 (a downgrade — no served version is newer)" in note, note
 
 
 # --- fold wave 2, R8: the refusal corners ------------------------------------------

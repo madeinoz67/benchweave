@@ -402,14 +402,16 @@ class MoveTo:
     ``version`` is always the highest served version by version order,
     falling back to the range's lower bound when nothing is served — the
     message always names a concrete next step (fold F-E-10). ``downgrade``
-    is True iff that version orders BELOW the pin (the yanked-pin-above-
-    served state: the newest healthy served version is still the actionable
-    remediation — the pin's bytes are yanked and nothing newer is
-    servable — and the warning must name it as a downgrade, never dress it
-    as an upgrade path). ``guidance_only`` is True iff nothing is served
-    (the fallback names the range's lower bound — guidance, never a
-    servable target; when both flags apply the guidance label wins, because
-    the fallback names no servable target at all).
+    is True iff something is served AND that version orders BELOW the pin
+    (the yanked-pin-above-served state: the newest healthy served version
+    is still the actionable remediation — the pin's bytes are yanked and
+    nothing newer is servable — and the rendering must name it as a
+    downgrade, never dress it as an upgrade path; the refusal side rides
+    the label too, the #288 twin reconciliation). ``guidance_only`` is
+    True iff nothing is served (the fallback names the range's lower
+    bound — guidance, never a servable target), and it forces
+    ``downgrade`` False: the guidance branch's label is guidance (the
+    twin-pinned shape, SDK PR #73).
     """
 
     version: str
@@ -444,6 +446,7 @@ def derive_move_to(row: StandardPolicy, served: Iterable[str], pin: str) -> Move
     pin the same literal expected strings.
     """
     served_list = list(served)
+    guidance_only = not served_list
     version = max(served_list, key=version_tuple) if served_list else row.lower
     try:
         pin_order = version_tuple(pin)
@@ -453,8 +456,15 @@ def derive_move_to(row: StandardPolicy, served: Iterable[str], pin: str) -> Move
         pin_order = None
     return MoveTo(
         version=version,
-        downgrade=pin_order is not None and version_tuple(version) < pin_order,
-        guidance_only=not served_list,
+        # The guidance branch suppresses the downgrade flag entirely (the
+        # twin-pinned shape): its label is guidance, and a fallback that
+        # names no servable target is not a downgrade claim.
+        downgrade=(
+            not guidance_only
+            and pin_order is not None
+            and version_tuple(version) < pin_order
+        ),
+        guidance_only=guidance_only,
     )
 
 
@@ -474,15 +484,18 @@ def _vr37(
     ``migration`` is the move-to version's from-predecessor note pointer
     when the policy block carries one (#219's carrier), else the documented
     placeholder — text-identical to ``control/documents._vr37_text``'s
-    derivation, pinned by test either way.
+    derivation, pinned by test either way. The move-to field carries the
+    honesty label (the #288 twin reconciliation, SDK PR #73): a downgrade
+    is named as one on the refusal side too, and the guidance branch's
+    fallback is labeled as guidance.
     """
-    move_to = _move_to(policy, row, root, standard_id, version).version
-    note_pointer = row.versions.get(move_to)
+    move = _move_to(policy, row, root, standard_id, version)
+    note_pointer = row.versions.get(move.version)
     migration = note_pointer if note_pointer is not None else "migration guidance pending"
     return (
         f"standard: {standard_id}; pinned: {version}; "
         f"supported: >={row.lower},<{row.upper}; "
-        f"move-to: {move_to}; "
+        f"move-to: {move.version}{move.label}; "
         f"migration: {migration}"
     )
 

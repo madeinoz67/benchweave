@@ -278,10 +278,11 @@ def _vr37_text(row: Any, pin: str, corpus: Path, policy: Any, standard: str) -> 
     are pinned text-equal by test). Move-to: the canonical ``derive_move_to``
     definition (issue #288 M4) — the highest served version, else the
     range's lower bound as labeled guidance. DISCLOSED DEGENERATE CASE: a
-    pin above every served version names a version BELOW the pin, and the
-    warning formatters label exactly that state as a downgrade; this
-    five-field text carries the version bare (its format is the pinned
-    vocabulary). The design §3.3 "highest served non-yanked version >= pin"
+    pin above every served version names a version BELOW the pin; the
+    move-to field carries the honesty label (the #288 twin reconciliation,
+    SDK PR #73) so a downgrade is named as one on the refusal side too,
+    while the guidance branch's fallback is labeled as guidance and never
+    as a downgrade. The design §3.3 "highest served non-yanked version >= pin"
     rule is vacuous wherever its filter is nonempty — max(candidates >=
     pin) IS max(served) — and is superseded by the #288 M4 annotation.
     Migration: the move-to version's from-predecessor note pointer when
@@ -291,13 +292,13 @@ def _vr37_text(row: Any, pin: str, corpus: Path, policy: Any, standard: str) -> 
     names the policy row's standard id (issue #220: the execution
     classification reuses the derivation verbatim)."""
     served = served_versions_from_corpus(policy, corpus, standard)
-    move_to = derive_move_to(row, served, pin).version
-    note_pointer = row.versions.get(move_to)
+    move = derive_move_to(row, served, pin)
+    note_pointer = row.versions.get(move.version)
     migration = note_pointer if note_pointer is not None else "migration guidance pending"
     return (
         f"standard: {standard}; pinned: {pin}; "
         f"supported: >={row.lower},<{row.upper}; "
-        f"move-to: {move_to}; "
+        f"move-to: {move.version}{move.label}; "
         f"migration: {migration}"
     )
 
