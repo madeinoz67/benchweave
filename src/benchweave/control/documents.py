@@ -71,6 +71,7 @@ from benchweave.control.provider_settings import (
 )
 from benchweave.measurement.derivation import DerivationRejected, check_derived_variables
 from benchweave.standards.dependency import (
+    derive_move_to,
     load_cross_constraints_from_corpus,
     parse_interval,
 )
@@ -274,18 +275,23 @@ def _otdp_corpus() -> Path:
 def _vr37_text(row: Any, pin: str, corpus: Path, policy: Any, standard: str) -> str:
     """The five VR-37 fields inline, in the resolver's format (dependency.py
     ``_vr37`` — the deliberate vocabulary convergence; the two derivations
-    are pinned text-equal by test). Move-to: the highest served version —
-    identical under the ≥-pin filter and its fallback (proof: when the
-    served max is ≥ the pin it is itself a candidate; when it is not, the
-    candidate set is empty and both rules fall back to it). Migration: the
-    move-to version's from-predecessor note pointer when the policy block
-    carries one (#219's carrier), else the documented placeholder — the
-    seed carries no note rows (SM-5 from adoption, D6), so a real pointer
-    appears exactly when a release has one. ``standard`` names the policy
-    row's standard id (issue #220: the execution classification reuses the
-    derivation verbatim)."""
+    are pinned text-equal by test). Move-to: the canonical ``derive_move_to``
+    definition (issue #288 M4) — the highest served version, else the
+    range's lower bound as labeled guidance. DISCLOSED DEGENERATE CASE: a
+    pin above every served version names a version BELOW the pin, and the
+    warning formatters label exactly that state as a downgrade; this
+    five-field text carries the version bare (its format is the pinned
+    vocabulary). The design §3.3 "highest served non-yanked version >= pin"
+    rule is vacuous wherever its filter is nonempty — max(candidates >=
+    pin) IS max(served) — and is superseded by the #288 M4 annotation.
+    Migration: the move-to version's from-predecessor note pointer when
+    the policy block carries one (#219's carrier), else the documented
+    placeholder — the seed carries no note rows (SM-5 from adoption, D6),
+    so a real pointer appears exactly when a release has one. ``standard``
+    names the policy row's standard id (issue #220: the execution
+    classification reuses the derivation verbatim)."""
     served = served_versions_from_corpus(policy, corpus, standard)
-    move_to = max(served, key=version_tuple) if served else row.lower
+    move_to = derive_move_to(row, served, pin).version
     note_pointer = row.versions.get(move_to)
     migration = note_pointer if note_pointer is not None else "migration guidance pending"
     return (
@@ -416,7 +422,7 @@ def _classify_cached(
     for record in row.yanked:
         if record.version == pin:
             served = served_versions_from_corpus(policy, corpus, standard)
-            move_to = max(served, key=version_tuple) if served else row.lower
+            move = derive_move_to(row, served, pin)
             return DescriptorPin(
                 otdp_version=pin,
                 status="yanked",
@@ -425,7 +431,7 @@ def _classify_cached(
                 note=(
                     f"deprecation warning: {standard} {pin} is yanked "
                     f"({record.reason}; since {record.since}); "
-                    f"move-to: {move_to}"
+                    f"move-to: {move.version}{move.label}"
                 ),
             )
     return DescriptorPin(otdp_version=pin, status="served", conformance="conforming")

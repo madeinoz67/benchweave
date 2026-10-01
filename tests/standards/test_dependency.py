@@ -1071,6 +1071,118 @@ def test_b1_prior_yanked_retention(tmp_path: Path) -> None:
     assert "move-to: 0.2.2" in result.stdout
 
 
+# --- issue #288 M4: one derivation, labeled degenerate states -----------------------
+
+
+def _set_policy(root: Path, **fields: object) -> None:
+    """Rewrite the policy block's otdp row (merge over the committed row)."""
+    manifest = json.loads((root / "standards/standards-manifest.json").read_bytes())
+    manifest["dependency_policy"]["standards"]["otdp"].update(fields)
+    (root / "standards/standards-manifest.json").write_bytes(canonical_json(manifest))
+
+
+def test_yanked_pin_above_served_set_warns_of_downgrade(tmp_path: Path) -> None:
+    """The named behavior arm (issue #288 M4): a yanked pin ABOVE every
+    served version still names the newest healthy served version as the
+    move-to — the actionable remediation (the pin's bytes are yanked;
+    nothing newer is servable) — but the warning SAYS it is a downgrade,
+    on every gateway surface, with the exact pinned label text."""
+    from benchweave.control.documents import classify_descriptor_pin
+    from benchweave.standards.matrix import render_matrix
+
+    root = _copy_standards(tmp_path)
+    # The matrix surface renders committed repo state: pyproject.toml and
+    # .gitmodules ride along (test_matrix._repo_copy's shape).
+    shutil.copy2(ROOT / "pyproject.toml", root / "pyproject.toml")
+    shutil.copy2(ROOT / ".gitmodules", root / ".gitmodules")
+    _set_policy(
+        root,
+        yanked={
+            "0.2.1": {"reason": "descriptor dialect drift", "since": "2026-09-24"},
+            "0.2.2": {"reason": "synthetic sweep", "since": "2026-10-01"},
+        },
+    )
+    policy = load_dependency_policy(root)
+    classification = classify_pin(policy, root, "otdp", "0.2.1")
+    assert classification.state == "yanked"
+    assert classification.warning is not None
+    assert (
+        "move-to: 0.2.0 (a downgrade — no served version is newer)"
+        in classification.warning
+    ), classification.warning
+    note = str(classify_descriptor_pin("0.2.1", corpus=root / "standards").note)
+    assert "move-to: 0.2.0 (a downgrade — no served version is newer)" in note, note
+    cell = next(
+        line
+        for line in render_matrix(root).splitlines()
+        if line.startswith("| otdp | 0.2.1 |")
+    )
+    assert "move-to 0.2.0 (a downgrade — no served version is newer)" in cell, cell
+
+
+def test_move_to_one_derivation_five_surfaces(tmp_path: Path) -> None:
+    """M4's consolidation table (issue #288): four corpus states, five
+    in-process surfaces — the pure derivation, the resolver's yank
+    warning, the resolver's VR-37 field, the gateway classifier's yank
+    note, and the matrix yank cell — agree on the version AND the label,
+    pinned as literal expected strings (the SDK twin test pins the same
+    literals cross-repo; the downgrade label is the pinned contract)."""
+    from benchweave.control.documents import classify_descriptor_pin
+    from benchweave.standards.dependency import _vr37, derive_move_to
+    from benchweave.standards.manifest import served_versions
+    from benchweave.standards.matrix import render_matrix
+
+    real = {"0.2.1": {"reason": "descriptor dialect drift", "since": "2026-09-24"}}
+    synthetic = {"reason": "synthetic yank", "since": "2026-10-01"}
+    table = [
+        # (name, yanked map, pin, expected version, expected label)
+        ("pin below all served", {**real, "0.2.0": synthetic}, "0.2.0", "0.2.2", ""),
+        (
+            "yanked pin above all served",
+            {**real, "0.2.2": synthetic},
+            "0.2.1",
+            "0.2.0",
+            " (a downgrade — no served version is newer)",
+        ),
+        (
+            "served empty",
+            {**real, "0.2.0": synthetic, "0.2.2": synthetic},
+            "0.2.1",
+            "0.2.0",
+            " (guidance only — no version is served)",
+        ),
+        ("yanked pin mid-set", dict(real), "0.2.1", "0.2.2", ""),
+    ]
+    for name, yanked, pin, version, label in table:
+        base = tmp_path / name.replace(" ", "-")
+        base.mkdir()
+        root = _copy_standards(base)
+        shutil.copy2(ROOT / "pyproject.toml", root / "pyproject.toml")
+        shutil.copy2(ROOT / ".gitmodules", root / ".gitmodules")
+        _set_policy(root, yanked=yanked)
+        policy = load_dependency_policy(root)
+        row = policy.standards["otdp"]
+        move = derive_move_to(row, served_versions(policy, root, "otdp"), pin)
+        assert (move.version, move.label) == (version, label), (name, move)
+        warning = classify_pin(policy, root, "otdp", pin).warning
+        assert warning is not None and f"move-to: {version}{label}" in warning, (
+            name,
+            warning,
+        )
+        # The VR-37 field carries the version bare (its five-field format
+        # is pinned text-equal across the resolver and the classifier).
+        vr37 = _vr37(policy, "otdp", pin, row, root)
+        assert f"move-to: {version};" in vr37, (name, vr37)
+        note = str(classify_descriptor_pin(pin, corpus=root / "standards").note)
+        assert f"move-to: {version}{label}" in note, (name, note)
+        matrix_line = next(
+            line
+            for line in render_matrix(root).splitlines()
+            if line.startswith(f"| otdp | {pin} |")
+        )
+        assert f"move-to {version}{label}" in matrix_line, (name, matrix_line)
+
+
 # --- fold wave 2, R8: the refusal corners ------------------------------------------
 
 

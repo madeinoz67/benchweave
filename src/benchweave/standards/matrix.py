@@ -36,6 +36,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
+from .dependency import derive_move_to
 from .manifest import (
     StandardEntry,
     StandardsError,
@@ -272,7 +273,6 @@ def _render(view: Path) -> str:
             )
         yanked = {record.version: record for record in row.yanked}
         served = served_versions(policy, view, entry.id)
-        move_to = max(served, key=version_tuple) if served else row.lower
         for version in sorted(retained, key=version_tuple):
             stage = promoted.get((entry.id, version))
             stage_cell = f"released (promoted from {stage})" if stage else "released"
@@ -281,8 +281,13 @@ def _render(view: Path) -> str:
             if record is None:
                 yank_cell = "—"
             else:
+                # The row's version is the pin the cell moves FROM (issue
+                # #288 M4): the canonical derivation decides whether the
+                # move-to is an upgrade or a labeled downgrade/guidance.
+                move = derive_move_to(row, served, version)
                 yank_cell = (
-                    f"yanked (since {record.since}) — {record.reason}; move-to {move_to}"
+                    f"yanked (since {record.since}) — {record.reason}; "
+                    f"move-to {move.version}{move.label}"
                 )
             note_cell = row.versions.get(version, "—")
             lines.append(
