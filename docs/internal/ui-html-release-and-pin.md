@@ -33,12 +33,14 @@ the version to carry "the contract moved", and reserving the minor position
 for exactly that makes a pin bump decidable from the version alone.
 
 **Contract change defined:** ANY byte motion in `docs/internal/ui-contract.md`,
-or in the vendored token assets the contract's pins assert against
-(`tokens.css`, `themes.css`), is a contract change. This is flat by design:
-the harness fail-closes on heading/table structure, so "this prose edit changed
-nothing the harness sees" is expensive to prove and cheap to skip. Accepted
-cost: prose-only contract edits burn a minor bump — noise-level pre-1.0,
-revisit at 1.0.
+or in the token assets the contract's pins assert against
+(`ui/src/styles/tokens.css`, `ui/src/styles/themes.css`), is a contract
+change. This is flat by design: the harness fail-closes on heading/table
+structure, so "this prose edit changed nothing the harness sees" is expensive
+to prove and cheap to skip. Accepted cost: prose-only contract edits burn a
+minor bump — noise-level pre-1.0, revisit at 1.0. These two asset paths
+re-point to the package's vendored assets at G1e, with the asset-vendoring
+slice (consistent with the existing G1e checklist rows).
 
 **Implementation change:** everything else in the package (partial internals,
 harness mechanics, fixtures) with those two surfaces byte-identical.
@@ -70,12 +72,14 @@ pin bump in the SDK repository, never a copied template).
 1. **Change lands in this repository** — conventional commit; `ui-html` scope
    where relevant.
 2. **Version decision** per the policy above: minor if and only if the contract
-   surface moved (`docs/internal/ui-contract.md` or the vendored token assets).
+   surface moved (the single list defined above: `docs/internal/ui-contract.md`
+   plus the two token assets).
 3. **Bump** `packages/ui-html/pyproject.toml`, run `uv lock`, commit as
    `chore(release): prepare for ui-html vX.Y.Z`.
 4. **Tag** `ui-html-vX.Y.Z` on the bump commit; GitHub release with
-   cliff-generated notes; the publish workflow fires on release published;
-   verify PyPI by direct read.
+   cliff-generated notes (the exact cliff command that generates them is
+   pinned at G1e, riding the OPEN-2 tag-isolation dry run); the publish
+   workflow fires on release published; verify PyPI by direct read.
 5. **Pin-bump pull request in the SDK repository:** raise
    `benchweave-ui-html==X.Y.Z` in the standalone distribution manifest (exact
    pin). Never a copied template.
@@ -83,11 +87,17 @@ pin bump in the SDK repository, never a copied template).
    SDK standalone CI against the **published** wheel — never a local path
    override in CI.
 7. **Guard (designed; lands with the consuming slice):** the SDK repository
-   vendors the contract census — table count, row count, and the digest of
-   `docs/internal/ui-contract.md` at the pinned release's tag — and standalone
-   CI runs the pinned wheel's own harness against that vendored copy. Interim,
-   until the guard lands: the pin-bump pull request body records the contract
-   digest at the release tag (one command, checkable by any reviewer).
+   vendors the contract census — table count, row count, and the sha256 digest
+   of every file in the contract-surface list at the pinned release's tag — and
+   standalone CI runs the pinned wheel's own harness against that vendored
+   copy. The guard's file set derives from the SAME single-constant list as the
+   contract-change definition above — one list, three paths
+   (`docs/internal/ui-contract.md`, `ui/src/styles/tokens.css`,
+   `ui/src/styles/themes.css`) — so the definition and the census cannot
+   diverge. Interim, until the guard lands: the pin-bump pull request body
+   records the sha256 digest of each file in that list at the release tag (one
+   command per path — `git show ui-html-vX.Y.Z:<path> | shasum -a 256` —
+   checkable by any reviewer).
 
 The census guard (step 7) is the mechanically checkable core of "both hosts
 move together": the same contract bytes enforced by both hosts, or the pin
