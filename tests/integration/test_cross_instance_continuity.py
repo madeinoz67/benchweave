@@ -2934,14 +2934,19 @@ def test_priming_signal_starvation_is_infrastructure_and_retries(
     own docstring names it — so sig-rig-b's first read can arrive aged past
     ``max_age_ms`` on a loaded host, the observed CI failure): the first
     construction's starved priming read must retry, not fail the trial, and
-    the second, unpatched construction must complete it."""
+    the second, unpatched construction must complete it. De-clocked by
+    slice 3 (design §1.1): the pin asserts the classification fact —
+    ``retries >= 1`` and ``"priming-validity" in retry_sites`` — not the
+    exact attempt count, which host load legitimately moves (an unpatched
+    attempt can hit its own real starvation site and the budget absorbs
+    it; the drain-cap pin's three CI reds were this exact shape)."""
     rigs = _install_priming_starvation(monkeypatch, every_construction=False)
     try:
         outcome = run_trial(
             tmp_path, arm="non_capture", device_class="buffered", trial_index=7
         )
-        assert outcome["retries"] == 1, outcome["retries"]
-        assert outcome["retry_sites"] == ["priming-validity"], outcome["retry_sites"]
+        assert outcome["retries"] >= 1, outcome["retries"]
+        assert "priming-validity" in outcome["retry_sites"], outcome["retry_sites"]
     finally:
         _close_partially_constructed(rigs)
 
@@ -2979,7 +2984,10 @@ def test_priming_read1_starvation_routes_the_block_refusal_to_retry(
     plus the freshness kind (``_freshness_trip_block``) — so it must retry
     on a fresh rig, not die on the degenerate-wiring assert: the first
     construction's starved reads retry, the second, unpatched construction
-    completes."""
+    completes. De-clocked by slice 3 (design §1.1): the pin asserts
+    ``retries >= 1`` plus the SITE membership —
+    ``"priming-block-refusal" in retry_sites`` — the classification fact,
+    not the attempt bookkeeping host load moves."""
     rigs = _install_priming_starvation(
         monkeypatch, every_construction=False, starve_from_read=1
     )
@@ -2987,7 +2995,10 @@ def test_priming_read1_starvation_routes_the_block_refusal_to_retry(
         outcome = run_trial(
             tmp_path, arm="non_capture", device_class="buffered", trial_index=8
         )
-        assert outcome["retries"] == 1, outcome["retries"]
+        assert outcome["retries"] >= 1, outcome["retries"]
+        assert "priming-block-refusal" in outcome["retry_sites"], (
+            outcome["retry_sites"]
+        )
     finally:
         _close_partially_constructed(rigs)
 
@@ -3184,27 +3195,33 @@ def test_drain_cap_hit_is_infrastructure_at_the_drain_cap_site(
 def test_drain_cap_starvation_retries_on_a_fresh_rig(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Issue #241 slice 2, the INTEGRATION arm (AR-1): the trial path's
-    first drain hits the default 2000 ms cap on the patched construction,
-    the raise rides ``run_trial``'s fresh-rig retry, and the unpatched
-    second construction completes the trial — the outcome carries
-    ``retries == 1`` and ``retry_sites == ["drain-cap"]``. Runs the
-    production policy (the real cap-hits were real-policy trials); if the
-    aged signal latches the monitor mid-spin the drain simply switches to
-    its post-trip direct-poll branch — either branch reaches the cap
-    raise, which is branch-independent by construction. Burns one real
-    cap spin (~2 s; design §7 risk 6 — accepted, disclosed). Site-level
-    exhaustion is pinned next door (wave-1 fold, adversary F2:
-    ``test_drain_cap_starvation_exhausts_at_the_drain_cap_site``); the
-    site-agnostic machinery stays pinned at
-    ``test_infrastructure_marker_exhausts_at_two_retries``."""
+    """Issue #241 slice 2, the INTEGRATION arm (AR-1), de-clocked by slice
+    3 (design §1.1): the trial path's first drain hits the default
+    2000 ms cap on the patched construction, the raise rides
+    ``run_trial``'s fresh-rig retry, and the unpatched second construction
+    completes the trial. The pin asserts the PROPERTY, not the attempt
+    bookkeeping — ``retries >= 1`` and ``"drain-cap" in retry_sites`` —
+    because under load the UNPATCHED attempt can itself hit a real
+    starvation site (pre-flight staleness, a real drain-cap, priming) that
+    the retry budget legitimately absorbs (three CI reds, runs
+    36452983841/36817483120/36852240046, all ``retries`` 2≠1 with the
+    property holding); the machinery's ``retries <= 2`` cap stays pinned
+    where it always was, on the axis trials. The membership form is
+    airtight unless attempt 0's own construction starves at priming first
+    — the residual §7 risk 2 names. Runs the production policy; burns one
+    real cap spin (~2 s, disclosed). Site-level exhaustion is pinned next
+    door; the site-agnostic machinery at
+    ``test_infrastructure_marker_exhausts_at_two_retries``. RED direction
+    (AR-2b, shown at build): with the drain-cap raise reverted to a plain
+    ``assert`` in place, the refusal propagates out of ``run_trial`` and
+    THIS pin reds — the classification is what the membership rides on."""
     rigs = _install_drain_cap_starvation(monkeypatch)
     try:
         outcome = run_trial(
             tmp_path, arm="non_capture", device_class="buffered", trial_index=7
         )
-        assert outcome["retries"] == 1, outcome["retries"]
-        assert outcome["retry_sites"] == ["drain-cap"], outcome["retry_sites"]
+        assert outcome["retries"] >= 1, outcome["retries"]
+        assert "drain-cap" in outcome["retry_sites"], outcome["retry_sites"]
     finally:
         _close_partially_constructed(rigs)
 
@@ -3521,28 +3538,38 @@ def test_transient_device_write_refusal_cannot_launder_into_clean_verdict(
 ) -> None:
     """F1 lane 1, end to end: with the freshness cause latched (the
     protective transition is done — phase idle, so no block is possible),
-    device A refuses the write leg ONCE — first rig only — with a plain
-    device-side ``DEVICE_REJECTED`` envelope. The cause-adjacency
-    classifier retried it and the fresh rig measured clean, returning a
-    CLEAN verdict with the device's refusal swallowed (adversarial probe:
-    2 rigs, no raise). Pin: attempt 0, ONE rig, loud plain AssertionError."""
-    rigs = _starved_trip_rig_counter(monkeypatch)
+    device A refuses the write leg with a plain device-side
+    ``DEVICE_REJECTED`` envelope. The cause-adjacency classifier retried
+    it and the fresh rig measured clean, returning a CLEAN verdict with
+    the device's refusal swallowed (adversarial probe: 2 rigs, no raise).
+    De-clocked by slice 3 (design §1.1): the injection refuses the write
+    leg on EVERY rig — an infrastructure retry can no longer dodge it by
+    landing on a later construction (the load shape that produced the
+    ``DID NOT RAISE`` red, run 36817483120, where an infra retry moved
+    the write leg to an unpatched rig and the refusal never fired —
+    indistinguishable in the old shape from real laundering). The pin is
+    the TYPE: ``type(raised.value) is AssertionError`` — the device
+    refusal itself was never classified. ``TrialInfrastructureError``
+    SUBCLASSES ``AssertionError``, so the type pin discriminates the
+    laundering regression (a classified refusal retries, exhausts, and
+    re-raises as ``TrialInfrastructureError`` — this pin reds, pinned by
+    the AR-2a planted-bug arm next door) while remaining indifferent to
+    however many infrastructure retries preceded the refusal. The
+    ``len(rigs)`` count assert is deleted, not re-banded: which rig the
+    refusal fired on is exactly what load moves."""
+    _starved_trip_rig_counter(monkeypatch)
     original_execute = ARigAdapter.execute
 
-    async def rejecting_first_write(
+    async def rejecting_every_write(
         self: ARigAdapter, request: dict[str, Any], context: Any
     ) -> dict[str, Any]:
-        if request["verb"] == "write" and len(rigs) == 1:
+        if request["verb"] == "write":
             return _device_rejection_envelope(request)
         return await original_execute(self, request, context)
 
-    monkeypatch.setattr(ARigAdapter, "execute", rejecting_first_write)
+    monkeypatch.setattr(ARigAdapter, "execute", rejecting_every_write)
     with pytest.raises(AssertionError) as raised:
         run_trial(tmp_path, arm="non_capture", device_class="buffered", trial_index=44)
-    assert len(rigs) == 1, (
-        f"a transient first-rig device refusal ran {len(rigs)} rigs — the "
-        "retrial was laundering it toward a clean verdict"
-    )
     assert type(raised.value) is AssertionError
 
 
@@ -3553,9 +3580,15 @@ def test_measured_dispatch_device_refusal_with_latched_staleness_never_retries(
     (a 220 ms paced read against the tightened 150 ms freshness bound) and
     then refuses the MEASURED dispatch device-side; the wrapper's
     post-dispatch tick latches ``signal_invalid`` BEFORE the site
-    classifies — cause-adjacent, never a block. Pin: attempt 0, ONE rig,
-    plain AssertionError."""
-    rigs = _starved_trip_rig_counter(monkeypatch)
+    classifies — cause-adjacent, never a block. De-clocked by slice 3
+    (design §1.1): the pin is the TYPE — ``type(raised.value) is
+    AssertionError``, the refusal itself was never classified —
+    indifferent to how many infrastructure retries preceded it (the two
+    ``len(rigs) != 1`` reds, runs 36395616332/36818395071, were an
+    earlier site legitimately consuming attempt 0; the no-retry property
+    held in both). The count assert is deleted, not re-banded; the
+    injection already refuses on every rig."""
+    _starved_trip_rig_counter(monkeypatch)
     original_execute = ARigAdapter.execute
 
     async def window_consuming_refusal(
@@ -3569,8 +3602,57 @@ def test_measured_dispatch_device_refusal_with_latched_staleness_never_retries(
     monkeypatch.setattr(ARigAdapter, "execute", window_consuming_refusal)
     with pytest.raises(AssertionError) as raised:
         run_trial(tmp_path, arm="non_capture", device_class="buffered", trial_index=45)
-    assert len(rigs) == 1, (
-        f"a device-side measured-dispatch refusal was retried across "
-        f"{len(rigs)} rigs — cause-adjacency classified it as a block"
-    )
     assert type(raised.value) is AssertionError
+
+
+def test_ar2_classifier_regression_refusal_exhausts_as_infrastructure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AR-2(a) (issue #241 slice 3, design §5.1), the planted-regression
+    direction that keeps the de-clocked F1 pins' RED: if the dispatch
+    classifier ever again classifies a device-side
+    ``DEVICE_REJECTED``+``NOT_DISPATCHED`` refusal as infrastructure (the
+    cause-adjacency bug F1 fixed), the refusal no longer raises plain —
+    it retries on fresh rigs, exhausts the budget, and re-raises as
+    ``TrialInfrastructureError``. This arm plants exactly that bug and
+    pins the exhausted TYPE: ``type(raised.value) is
+    TrialInfrastructureError`` is the precise negation of the F1 lanes'
+    ``type(raised.value) is AssertionError`` pin — under this bug both
+    lanes red (shown RED-first at build: the de-clocked lanes were run
+    with the classifier sabotaged in place and both type pins failed).
+    The site membership is asserted, not the exact composition — under
+    load a real starvation site can precede the refusal on an attempt
+    (the slice's own doctrine). On healthy machinery the same refusal
+    stays a plain, unretried ``AssertionError`` — the F1 lanes
+    themselves."""
+    original_classifier = _dispatch_failure_is_infrastructure
+
+    def cause_adjacency_regression(rig: ContinuityRig, result: OperationResult) -> bool:
+        error = result.error
+        if (
+            error is not None
+            and error.code is ErrorCode.DEVICE_REJECTED
+            and error.dispatch_state is DispatchState.NOT_DISPATCHED
+        ):
+            return True
+        return original_classifier(rig, result)
+
+    monkeypatch.setitem(
+        globals(), "_dispatch_failure_is_infrastructure", cause_adjacency_regression
+    )
+    original_execute = ARigAdapter.execute
+
+    async def refusing_measured_dispatch(
+        self: ARigAdapter, request: dict[str, Any], context: Any
+    ) -> dict[str, Any]:
+        if request["verb"] == "read" and request["operation_id"] == "op-acq":
+            return _device_rejection_envelope(request)
+        return await original_execute(self, request, context)
+
+    monkeypatch.setattr(ARigAdapter, "execute", refusing_measured_dispatch)
+    with pytest.raises(TrialInfrastructureError) as raised:
+        run_trial(tmp_path, arm="non_capture", device_class="buffered", trial_index=46)
+    assert type(raised.value) is TrialInfrastructureError
+    assert isinstance(raised.value, AssertionError)  # still an assertion for pytest
+    assert raised.value.site == "dispatch-door", raised.value.site
+    assert "dispatch-door" in str(raised.value), str(raised.value)
