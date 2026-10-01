@@ -9,7 +9,7 @@ Standalone mode needs a real operator surface: one FastAPI process that serves a
 Headline positions this PRD takes (each is a requirement below, with the alternatives in §8):
 
 1. **Same shape as the gateway.** One ASGI app, FastMCP mounted in-process, one operations seam behind REST, MCP and UI — the pattern already in `src/benchweave/interfaces/app.py` upstream.
-2. **HTMX + Jinja partials, no SPA framework.** Alignment to the UI standard is by tokens, rules and states, not by React. `tokens.css`/`themes.css` are framework-neutral and are consumed byte-for-byte; `EngineeringPlot`'s closed interface is re-implemented as a thin ECharts wrapper.
+2. **HTMX + Jinja partials, no SPA framework.** Alignment to the UI standard is by tokens, rules and states, not by React. `tokens.css`/`themes.css` are framework-neutral and are consumed byte-for-byte; `EngineeringPlot`'s closed interface is re-implemented as a thin uPlot wrapper.
 3. **Plugin UI is rendered from the plugin-ui 0.2.0 manifest**, validated by the same validator bytes `check-ui` uses (SRF-2). No plugin-supplied JS or CSS.
 4. **Not in the SDK wheel.** Shipping device I/O and a web stack inside `benchweave-sdk` breaks PKG-1/PKG-2 and reverses the #147 ruling that standalone provider backends are author/harness-side. Recommended home: a sibling distribution that depends on the SDK (§8 Q1).
 5. **Fold in the fork's proven parts, not its shortcuts.** Take the serial host-services pattern, SSE streaming, bounded captures, HTML report and MCP capture tools; leave the Chart.js SPA, the CSV-plus-private-SQLite capture format and the no-auth/no-CSRF posture.
@@ -102,7 +102,7 @@ Take the fork's runtime patterns, generalise them off the ADC, and leave anythin
 | Serial host services (`web/host.py`): reader thread into a 256 KiB ring, 64 KiB transfer ceiling, 100 ms quiet-line receive, OTDP 8.1 stream transactions | **Take, generalise** | Becomes the reference standalone provider backend (#147 deferral row 7) for serial. Constants become config. Validated against the transport-provider `transaction_grammar`, same as `MockHost` scripts. |
 | Board picker probing ports with IDENTIFY | **Take, generalise** | Discovery calls the adapter's `identify` against candidate ports filtered by the descriptor's USB VID/PID; never writes before identify succeeds. |
 | FastAPI app + SSE live stream | **Take the pattern** | Same framework and SSE; routes rebuilt over the operations seam and returning HTML fragments for HTMX alongside JSON. |
-| `app.js` (2,391 lines) + Chart.js | **Leave** | Replaced by HTMX partials and the ECharts plot wrapper. Chart.js conflicts with the standard's ECharts-only plot rule. |
+| `app.js` (2,391 lines) + Chart.js | **Leave** | Replaced by HTMX partials and the uPlot plot wrapper. Chart.js conflicts with the standard's plot rule. |
 | Capture library: CSV captures + SQLite overlay (projects, retention, annotations, power settings) | **Adapt** | Artifacts are written by `StandaloneCaptureWriter` (canonical, manifested). SQLite is an index and annotation overlay only, rebuildable from the capture root. CSV becomes an export rendering under `renderings/`. |
 | Retention by source tag (MCP captures tagged) | **Take** | Capture metadata records the originating surface (ui, rest, mcp); retention policy keys on it. |
 | Analyse tab: brush stats, rise/fall/settling, power modes with V/I pairing, A–Z markers, zoom region, min/max assertions | **Take, phase 2** | Generic over any numeric capture dataset. Power V/I pairing keys on descriptor quantities (V, A) rather than channel names. |
@@ -306,7 +306,7 @@ Each has a recommendation; rulings stay with the owner.
 
 **Recommend 2 as default, 1 as fallback** when no host is running. The fork's two-process SQLite sharing is the thing to avoid; one session owner per device is the safety property.
 
-**Q6. Client JS budget.** Proposed: htmx + SSE extension + ECharts (tree-shaken custom build) + host script ≤ 60 KiB gzip excluding ECharts. Confirm or set another figure.
+**Q6. Client JS budget.** Proposed: htmx + SSE extension + uPlot (single ~50 KB file, no build step / no tree-shake) + host script ≤ 60 KiB gzip. Confirm or set another figure.
 
 **Q7. Capture export format.** CSV (fork) vs the manifest's primary artifact plus a CSV rendering. Recommend the latter; CSV is a view, not the record.
 
