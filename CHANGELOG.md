@@ -251,6 +251,13 @@ All notable changes to this project will be documented in this file.
 - S3 resident-review fold — guide truth, per-lane awaiting, hook pins, story (6 rows)
 - Fold the why-slice adversary wave — 3 LOW + 3 NIT, one commit
 - Close dependency audit findings (brace-expansion, fast-uri)
+- M1+M2 — promotion sweep admits by rule, not token; history-derived no-record trigger
+- Fold LOW 4/5/6/7 — the review batch, one commit, per-row RED
+- Sweep digest-lane overhaul — binding multisets, not positional pairs
+- History-gate hardening — shallow refusal, typed malformed parents, all merge parents
+- Claim-accuracy — empty vs reversed bounds, the read-once scope, the one-to-many residual, the measured history cost
+- Final fold — the partial-clone masquerade refuses typed; three disclosure clauses
+- The promotion fixtures carry their own committer identity (CI has none)
 
 ### Documentation
 
@@ -480,6 +487,10 @@ All notable changes to this project will be documented in this file.
 - #283 I1 skeleton design record
 - #283 review dispositions — LOW accepted-risk, NIT deferred to hardening pass
 - Add PRD 12 gateway web UI (HTMX) and React retirement
+- Issue #288 spec-09 review fold design record
+- The promotion flow names its record steps (LOW 3)
+- Issue #288 G6 — dev-head pinning how-to, stale-version guidance, invariants/obligations amendments, CLI table
+- Register constraint_bounds_reversed and the marker_mirror_drift posture (F1+F2)
 
 ### Features
 
@@ -783,6 +794,7 @@ All notable changes to this project will be documented in this file.
 - Advance packages/sdk to the fold commit
 - Advance packages/sdk to the twin-fixture fix
 - Regenerate the compatibility matrix for the digital_lanes train (#244 S1)
+- Advance packages/sdk to the PR #73 merge — SDK half of #288
 
 ### Performance
 
@@ -802,6 +814,8 @@ All notable changes to this project will be documented in this file.
 - Single-source the family marker; refusal-family honesty (#102 D1, review R-F5 + A-F3)
 - One canonical-bytes helper behind the agreement pin (#176)
 - Authorisation reads the classification's status; the pin record threads through (#217 review fold R6/R7/R11c)
+- M4 — one canonical derive_move_to, labeled degenerate states
+- M4 twin reconciliation — the downgrade label rides the refusal side
 
 ### Style
 
