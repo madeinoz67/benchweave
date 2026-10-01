@@ -9,6 +9,11 @@ no service is required at any point.
 manifest). The tools: `benchweave-sdk package` and `benchweave-sdk submit`
 (SDK 0.4.0+), review and signing maintainer-side.
 
+**Admission posture:** the registry repository **states and advertises** —
+each publish record carries the pinned gateway version the release targets
+(`gateway_ref`, advertised in the index) — and the **client enforces at
+import time**; nothing gates admission at publish.
+
 ## The path
 
 1. **Package** — one command, offline, keyless:
@@ -77,9 +82,9 @@ Packaging refuses, with a stable machine prefix, when:
 | `source_ref_mutable:` | the source linkage must be a commit digest, never a branch or tag name |
 | `capability_declaration_absent:` | the closed three-way capability declaration is required; all-false is an explicit none |
 | `transport_triples_absent:` | a descriptor declaring a transport provider must publish its admitted contract triples |
-| `firmware_provenance_absent:` | bundled firmware requires vendor attestation pinned against a vendor manifest |
+| `firmware_provenance_absent:` | firmware in the tree requires a vendor attestation — without it, packaging refuses. WITH an attestation the release publishes with the bytes **vendor-distributed** (never bundled; the payload-role enum carries no firmware role) and the attestation recorded in the submission draft and the publish record, advertised in the index — enforcement is the client's decision |
 | `closure_diff_absent:` | the publish-record draft must carry the dependency closure diff versus the prior release |
-| `namespace_reserved:` / `namespace_collision:` | namespace hygiene under the committed lane rules (refused) |
+| `namespace_reserved:` / `namespace_collision:` | namespace hygiene under the committed lane rules (refused). Collisions are per-author: your own next version of an existing package routes to the closure diff, never a collision; another author's claim to an existing package id collides; the same device name under a different author's namespace is allowed |
 | `namespace_lookalike:` | a name similar to an existing namespace under the committed similarity rule — **flagged for review**, not refused: the finding rides the submission draft (`namespace_lookalikes`) and prints at package time, so the reviewer consults it (CR-39) |
 | `component_absent:<name>` | a required artefact component is missing from the plugin tree |
 
