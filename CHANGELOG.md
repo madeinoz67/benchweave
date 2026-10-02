@@ -536,6 +536,10 @@ All notable changes to this project will be documented in this file.
 - The R-5/R-6/R-7 rewrites — freeze record, obligation rows, styleguide
 - The intro CI-filter line matches the real gates invocation
 - The review rubric's tier-scope and G2 lane follow the cutover
+- Issue #224 slice 2 catalogue+search design record
+- #224 slice-2 amendments — CON-13, REG-5, taxonomy, obligation 18(o), styleguide shapes
+- Issue #224 slice-2 pivot — registry-hosted catalogue, all lane findings folded
+- #224 s2 pivot amendments to the built truth (CON-13, REG-5, taxonomy, obligations 18/20)
 
 ### Features
 
@@ -745,6 +749,10 @@ All notable changes to this project will be documented in this file.
 - G1d slice 4 — the browser lane, CI partition, and the docs export (issue #300)
 - Vendor the style assets with an inventory + verify (G1e UR-10)
 - The React cutover — delete ui/, wire the contract gate into the default run (the atomic swap) [**BREAKING**]
+- Plugin catalogue — mirror, pin, generated panel block (issue #224 slice 2)
+- Catalogue search — pure predicate + DOM wiring (issue #224 slice 2)
+- Plugins panel becomes a static teaser to the registry-served catalogue (#224 s2 pivot)
+- Teaser links the catalogue's canonical domain — registry.benchweave.dev (owner cutover 2026-10-02); byte-pin regenerated AST-verified
 
 ### Hardware Evidence
 
@@ -869,6 +877,8 @@ All notable changes to this project will be documented in this file.
 - Bump actions/setup-python from 6.3.0 to 7.0.0 (#340)
 - Bump fastmcp from 4.0.3 to 4.0.10
 - Regenerate uv.lock for the fastmcp 4.0.10 bump
+- Delete the gateway-side search/panel/authority proof fleet (#224 s2 pivot)
+- Delete the mirror machinery; restore the literal gate to its pre-slice shape (#224 s2 pivot)
 
 ### Performance
 
@@ -1066,6 +1076,7 @@ All notable changes to this project will be documented in this file.
 - Post-sync sweep — the 0.1.2 active row's motion through the pins
 - Re-seed the drain-cap starvation pins under the no-trip policy
 - Refute fold — the poison path is DISPATCH-path, not poll-path
+- Catalogue search fixture + hand-derived truth table (C1 discipline)
 
 ### Build
 
@@ -1089,6 +1100,7 @@ All notable changes to this project will be documented in this file.
 - Device-plugins zero-gate lane + obligations enforcement pointers
 - Prove the member wheel standalone in the package job (#302)
 - Timeout-minutes 15 on the timing job
+- Catalogue authority pin + browser wiring proof (issue #224 slice 2)
 
 ### Ci+docs
 
@@ -1105,6 +1117,7 @@ All notable changes to this project will be documented in this file.
 ### Fold
 
 - The two-lane refute wave — 11 findings, all dispositioned (verdict DEFENDED)
+- Teaser byte-pins (G2) + parent-design supersession (G1)
 
 ### Merge
 
