@@ -417,7 +417,9 @@ def test_runtime_namespace_imports_without_pytest() -> None:
     """UR-11: the renderer namespace never pulls pytest. G1b extends the
     imported set to the artifact/rendering modules AND renders one partial
     per family (the lane-A fold's widened probe — matching the
-    pre-committed text) — jinja2 must land in sys.modules, pytest must not."""
+    pre-committed text); G1d adds the composition scene render, the toast,
+    and one full pattern-library export — jinja2 must land in sys.modules,
+    pytest must not."""
     code = (
         "import sys\n"
         "import benchweave_ui_html\n"
@@ -436,6 +438,9 @@ def test_runtime_namespace_imports_without_pytest() -> None:
         "import benchweave_ui_html.lanes\n"
         "import benchweave_ui_html.artifacts\n"
         "import benchweave_ui_html.decimate\n"
+        "import benchweave_ui_html.staleness\n"
+        "import benchweave_ui_html.compositions\n"
+        "import benchweave_ui_html.patterns\n"
         "from benchweave_ui_html import fixtures, partials\n"
         "partials.render_button(fixtures.button())\n"
         "partials.render_numeric_input(fixtures.numeric_input())\n"
@@ -450,6 +455,11 @@ def test_runtime_namespace_imports_without_pytest() -> None:
         "partials.render_lanes(fixtures.digital_lanes())\n"
         "partials.render_icon('limiting')\n"
         "partials.render_sequence('dash-2')\n"
+        "from benchweave_ui_html import compositions, patterns\n"
+        "compositions.render_workbench(compositions.psu_scene())\n"
+        "compositions.render_toast(compositions.ToastData(severity='advisory', text='ok'))\n"
+        "import tempfile, pathlib\n"
+        "patterns.export(pathlib.Path(tempfile.mkdtemp()))\n"
         "from benchweave_ui_html.data import RefusalData, DisabledLabelData\n"
         "partials.render_refusal(RefusalData(code='not_found', severity='advisory', "
         "what_happened='x', sent_status='NO', operator_action='y'))\n"
