@@ -271,6 +271,7 @@ All notable changes to this project will be documented in this file.
 - Lane A fold — A1 ST-3 laundering equality, A2 ledger clearing, A3 toggle discrimination, 3 NITs (issue #300)
 - Lane B fold — F1 themed renders, F2 layered target-size, F4 negative disagreement, F6 axe scope (issue #300)
 - Correct the browser job's actions/cache pin to the API-resolved v4.3.0 SHA (issue #300)
+- #207 the wedge exhaustion instant renders by pure datetime arithmetic
 
 ### Documentation
 
@@ -527,6 +528,8 @@ All notable changes to this project will be documented in this file.
 - Conventions sentences — named residuals, TestClock standing policy, no-local-only ruling
 - Design record — re-sync the post-dispatch fold, re-apply the D-rowB pointer amendment
 - G1d pattern library + ten behaviour compositions — design record (issue #300)
+- #207 Windows deterministic platform expectations record
+- #207 testing-conventions sentence — capability probes over platform strings
 
 ### Features
 
@@ -1033,6 +1036,10 @@ All notable changes to this project will be documented in this file.
 - G1b template-packaging guard (O4) — pinned contents + full-environment load
 - G1d — the UR-11 boundary probe covers compositions and the export (issue #300)
 - G1d — move the two pins the browser partition touches (issue #300)
+- #207 fw5 guards the Unix-only tzset stressor, keeps the property everywhere
+- #207 dispose fsync expectations become capability-probed, with the every-platform typed-refusal arm
+- #207 row-B ceiling relativized to the recorded clamp (the #241 D-rowB payload)
+- #207 the refute fold — 7 code rows + the record erratum
 
 ### Build
 
