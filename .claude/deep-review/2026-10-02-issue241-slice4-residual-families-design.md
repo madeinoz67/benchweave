@@ -359,6 +359,39 @@ the actual red set. The evidence forks the recommendation's first clause:
 - **Accepting both belt-swap outcomes (swap or no-swap)** — would make the
   pin vacuous; the fix is the allocation (§1.1), not the post-condition.
 
+### 1.7 The hosting constraint and the external-research mapping (folded mid-design, 2026-10-02)
+
+Owner constraint, recorded: **no self-hosted runners at this point.** The
+external consensus shape for timing-critical suites (per-PR deterministic
+gates + evidence-grade timing on quieter hardware — the CPython
+speed.python.org / rustc-perf pattern) loses its hardware leg on the hosted
+pool: a dedicated or scheduled lane on the same pool inherits the pool's
+variance, so a nightly/evidence lane is NOT proposed and would have to beat
+the same variance to justify itself. The levers the constraint leaves
+standing are the three this design already runs on: (1) determinize what is
+only incidentally time-dependent — this slice moves cut/order proofs onto
+deterministic asserts (§1.2), the state-machine half of every band; (2)
+load-honest bands — the in-run-relative form, strictly stronger than a
+constant re-derived from ANY distribution because the reference is measured
+in the same execution; (3) sampling discipline for the real-clock remainder
+(the §5.2 window). Where does evidence-grade pacing proof live, then? Where
+the #247 gate line already enforces it: the pre-push LOCAL full battery —
+the quiet-host distributions, the census's 3x proofs, and this slice's AR-5
+cold union run. Local carries the quiet evidence, CI carries the load-honest
+forms, and neither cites the other's denominator — which is finding 1's
+point, adopted.
+
+The owner's research pass surfaced five findings (externally sourced and
+verified by that pass; mapped here against this slice's mechanisms):
+
+| # | finding | disposition |
+|---|---|---|
+| 1 | A/A calibration — a bound tighter than the platform's same-code-vs-same-code discrimination floor is a coin-flip gate; derive bands from the runner's OWN distribution, never quiet-machine medians | **ADOPTED as AR-7** (§5.1): an A/A pass on the hosted lane — ≥8 same-tree re-executions of the PR's ci timing job — measures the same-code spread of the in-run quantities. This design introduces NO new constant derived from quiet data; the two inherited slops (+150/+300) are re-validated against the OBSERVED hosted red-census shapes (258.7 and 354.6 inside realized+150; 1724.55/1734.19 inside clamp+300 — §6 Evidence), and AR-7's report becomes the denominator-of-record for every REMAINING constant band (the floors, the out-of-scope control-arm ceilings). Any remaining constant whose A/A spread crosses its margin is named to the register as a coin-flip gate. The post-merge rule itself stays the outcome-rate rule — keying it to A/A would couple two measurements the rule does not need coupled; A/A feeds the CONSTANTS and the telemetry row, not the kill count |
+| 2 | best-of-N with MIN; for counts, membership-with-headroom — never exact counts on a starvable host; a same-run ratio is only stable if the design makes it so | **ALREADY SHIPPED, recorded as alignment.** Slices 2–3 de-clocked the retry pins to membership+property; §1.1 removes the last construction-order coupling; the belt and the #172 one-trial trim are the in-tree robust-statistic forms at cell/trial level. Literal min-of-3-per-variant would move the §5 reading (trim depth is pinned by the both-directions tolerance test — a slice-3 owner fork, refused there and here). The ratio caution is answered structurally: every same-run reference in §1.2 is a CONTAINMENT, not a hoped-for correlation — the helper's wait is bounded by the lock-holder's realized dispatch; the queued delay by run-1's measured span; the busy wait by the clamp value the bracket itself computed |
+| 3 | determinize the incidental: clock injection, synchronize on events/ordering not elapsed, never lengthen sleeps | **ADOPTED as this slice's own criterion, restated in the finding's vocabulary:** per test, is the asserted property state-machine (move to the injected clock) or stopwatch (keep real, calibrate the band)? §1.5's ruling holds — the red set's bands are stopwatch disclosure quantities; their state-machine halves (cut/order status) already assert deterministically and gain asserts here. The in-tree TestClock is the injection vehicle — no new dependency is added for determinization (principle 9). No sleep is lengthened anywhere in this slice |
+| 4 | retry telemetry: per-site aggregate rates escalating to a visible quarantine-with-expiry + owner; never a silent skip, never warn-only | **DEFERRAL ROW (D-telemetry).** The per-trial records exist (`retry_sites`, compositions rendered at exhaustion); the missing piece is the session AGGREGATE with a ceiling. Its data source is AR-7 — a ceiling derived before that report exists would be a quiet-median constant, finding 1's own error. Payload: the trial-log provenance test (which already enumerates the session's cells) gains the per-site aggregate read plus a disclosed ceiling derived from AR-7. The repo's existing analog of quarantine-with-expiry is the KILL clause — visible, owner-actioned, reopens with the log; this project does not skip tests, so no separate quarantine mechanism is built |
+| 5 | bound runaway timing tests both ways: job-level timeout + per-test timeout | **PARTIAL THIS SLICE.** `timeout-minutes: 15` lands on the `timing` job (~3x its observed wall incl. setup) — one workflow line, obligations-5 walked, a timeout kill categorized as a lane-infra event in §5.2 (never silently counted; and itself a signal — a hung marked test is exactly the runaway the finding names). Per-test timeouts require a new dependency (a Tier-3 shape under the rubric's dependency rule) — D-pytest-timeout deferral row; the same row carries extending `timeout-minutes` to the other jobs |
+
 ## 2. Minimal increment scope
 
 Build order (RED-first where behavior changes, one slice per commit):
@@ -376,12 +409,16 @@ Build order (RED-first where behavior changes, one slice per commit):
 5. The drain-poll-timeout classification + its two pins + classifier-table
    row + docstring row (OWNER FORK §1.3 — build last so a maintainer "keep
    the row" call drops exactly this commit without touching the rest).
-6. Docs sweep: drift-and-obligations conventions line (named residuals, the
-   TestClock standing policy, the no-local-only ruling); the module
-   docstrings touched above say what they still prove.
-7. Issue #241 outcome comment: the count table (§0.1), the belt diagnosis
+6. The workflow line: `timeout-minutes: 15` on the `timing` job (§1.7
+   finding 5) — one line, its categorization clause in §5.2.
+7. Docs sweep: drift-and-obligations conventions line (named residuals, the
+   TestClock standing policy, the no-local-only ruling, the hosting
+   constraint); the module docstrings touched above say what they still
+   prove.
+8. Issue #241 outcome comment: the count table (§0.1), the belt diagnosis
    (§0.2), per-family verdicts, the forks (§1.3, D-gates trigger), the new
-   pre-committed rule (§5.2), and the #329 landing note (§8).
+   pre-committed rule (§5.2), the hosting constraint + research mapping
+   (§1.7), and the #329 landing note (§8).
 
 ### Deferral table (the register after this slice)
 
@@ -396,13 +433,15 @@ Build order (RED-first where behavior changes, one slice per commit):
 | belt-visibility | print-only belt usage | unchanged (slice-3 row) | a belt incident whose log lacks the usage line |
 | mid-pace discard | a belt-swap ladder slot consumed by an attempt discarded AFTER pacing began (§1.1 residual) | this record | a belt-swap red whose log shows a dispatch-door composition mid-acquisition |
 | entry-timeout at the dispatch door | the other named non-retryable starvation residual (§1.3) | the disclosed owner row | a first live observation |
+| D-telemetry | per-site retry-rate aggregate over the session's trial records, ceiling derived from AR-7's A/A report; the trial-log provenance test is the reader (§1.7 finding 4) | issue #241 (next slice or closure pass) | AR-7's report landing (its own data source), or a belt-visibility incident |
+| D-pytest-timeout | per-test timeouts (a new dependency — Tier-3 by the rubric's dependency rule) + `timeout-minutes` on the non-timing jobs | issue #241 closure pass | a runaway/hang the job-level bound cannot localize (a timing-job timeout kill whose log shows no single hung test) |
 
-Riding this slice (executed, not deferred): the belt-swap pin fix, the
-sequential family's last absolute ceiling (D4' completion), the drain-poll
-residual (§1.3 fork), the residual register naming, the placement-fork
-ruling and its conventions sentence. D-rowB is NOT riding this slice:
-D-rowB is executed by PR #329 (commit e96e08b, refute-folded there); it
-lands ahead of this slice; this slice carries no row-B change.
+Riding this slice (executed, not deferred): the belt-swap pin fix, the sequential family's last
+absolute ceiling (D4' completion), the drain-poll residual (§1.3 fork), the
+residual register naming, the placement-fork ruling and its conventions
+sentence. D-rowB is NOT riding this slice: D-rowB is executed by PR #329
+(commit e96e08b, refute-folded there); it lands ahead of this slice; this
+slice carries no row-B change.
 
 ## 3. Precedent (all in-tree, extended not invented)
 
@@ -448,10 +487,12 @@ lands ahead of this slice; this slice carries no row-B change.
   behavior is unchanged). No `standards/` byte, no schema, no workflow, no
   dependency. No on-disk format.
 - **Obligations walked:** 4 (no CI-map row change — no job shape moves; the
-  conventions section gains the residual/policy sentences), 5 (no workflow
-  change; a cold unfiltered union run rides §5.1 anyway), 10 (no dependency
-  change). The marked set GROWS by the new pins (~3–4 ids); the slice-1
-  AR-1 collect-diff is re-recorded in the PR body (T ∪ G == U, T ∩ G == ∅).
+  conventions section gains the residual/policy sentences and the hosting
+  constraint), 5 (ONE workflow line moves — `timeout-minutes: 15` on the
+  `timing` job, §1.7 finding 5; the cold unfiltered union run rides §5.1),
+  10 (no dependency change). The marked set GROWS by the new pins (~3–4
+  ids); the slice-1 AR-1 collect-diff is re-recorded in the PR body
+  (T ∪ G == U, T ∩ G == ∅).
 - **Tier and the Step-1 keyword scan (#254).** Expected diff: this record,
   `tests/integration/test_cross_instance_continuity.py` (pace-allocation +
   its arm; the poll classification + two pins + classifier row + docstring
@@ -500,6 +541,10 @@ lands ahead of this slice; this slice carries no row-B change.
   lands ahead of this slice; this slice carries no row-B change, so AR-3b
   is not an acceptance rule of this slice. (a) is proven RED-first where
   the arm can run.
+  recorded window per dispatch (asserted), and the band-form pin refuses a
+  busy-wait past clamp + 300 while a shortened recorded clamp (e.g. 500)
+  reds the 1300 floor. (row-B half retired by the pointer amendment; (a)
+  stands.)
 - **AR-4 (partition integrity):** the slice-1 AR-1 collect diff re-recorded
   (T grows by the new pins; T ∪ G == U, T ∩ G == ∅, membership unchanged
   otherwise).
@@ -511,12 +556,26 @@ lands ahead of this slice; this slice carries no row-B change.
 - **AR-6 (evidence discipline):** gate numbers from junitxml attributes or
   true exit codes; the 40-window table (§0.1) re-verified from `gh run
   list` at PR time in the PR body.
+- **AR-7 (A/A calibration, the hosted-runner discrimination floor — §1.7
+  finding 1):** ≥8 same-tree re-executions of the PR's ci `timing` job
+  (`gh run rerun --job`, or run-rerun-all with only the timing log read —
+  builder's call, disclosed in the PR body); collect each execution's
+  printed in-run quantities (realized dispatch, helper wait, monitor gap,
+  the axis cells' x1/duration medians). The report states N, per-quantity
+  same-code spread, and names ANY remaining constant band whose observed
+  A/A spread crosses its margin (a coin-flip gate) to the register. It is
+  the denominator-of-record for future band calls and the D-telemetry
+  ceiling's data source. These PR-time attempts are pre-merge and do NOT
+  enter the §5.2 window. Cost: ~8 × ~2 min of hosted timing-lane time,
+  disclosed.
 
 ### 5.2 Post-merge acceptance — pre-committed BEFORE any post-slice-4 number exists
 
 Unit of observation: one `timing` job execution (main pushes and PR runs
 both count; a re-run attempt is its own execution; runner-level startup
-failures categorized separately, never silently counted). The window opens
+failures AND the new job-level `timeout-minutes` kill are categorized
+separately as lane-infra events, never silently counted — a timeout kill is
+itself a signal, the runaway shape §1.7 finding 5 names). The window opens
 at slice 4's own merge run. Red: a failing test id inside the marked set.
 
 - **SHIP (the fixed classes are dead; the lane's residual budget is named):
@@ -586,6 +645,18 @@ through 2026-10-01T22:52Z, none later at design time; 11 post-merge timing
 executions by the rule's unit; the pre-merge runs (10:56 back) belong to
 slice 3's census.
 
+### Evidence E — the A/A calibration (method pre-committed; numbers land at build, AR-7)
+
+Same tree, same lane, ≥8 executions of the PR's ci `timing` job before
+merge; per-quantity same-code spread of the in-run printed quantities; the
+hosted reds already in Evidence A are the first three calibration points
+(258.7 wait; 354.6 gap — slice 3's fold; 1724.55/1734.19 busy — #207's
+corroboration). No number from this pass existed when any mechanism in
+§1 was chosen — the collection METHOD is what is pre-committed here, per
+the §-header protocol. The quiet-machine census distributions are
+explicitly NOT a CI denominator (§1.7 finding 1); they remain the local
+pre-push battery's evidence.
+
 ## 7. Top risks and their falsifiers
 
 1. **The pace-allocation fix hides a real belt gap** (the adversary's first
@@ -619,6 +690,14 @@ slice 3's census.
 6. **The owner forks are decided wrong** (§1.3 widen-vs-row; D-gates
    trigger). Both carry payloads and are cheap to reverse; not design
    risks, sequencing calls.
+7. **The A/A pass is underpowered** (N=8 may not resolve a discrimination
+   floor for tight quantities — CPython's own calibration needed more).
+   Disclosed: AR-7's report states its N and is DIRECTIONAL for any
+   quantity whose spread it cannot resolve; it gates nothing by itself, and
+   the register entry for a coin-flip suspect requires the spread to
+   actually cross, not merely approach. If N=8 is inconclusive for a
+   specific bound, that bound keeps its current disposition and the A/A
+   finding says so honestly rather than licensing a re-band.
 
 ## 8. File-level change list and the landing sequence
 
@@ -627,13 +706,16 @@ slice 3's census.
 | `tests/integration/test_cross_instance_continuity.py` | the belt-swap pin's pace-order allocation + AR-1 arm; the drain-poll TIMEOUT classification (`_poll_found_dead_session` + the raise site) + the `drain-poll-timeout` carrying-site rows (docstring + classifier table) + the two pins; residual-register naming in the axis docstring |
 | `tests/integration/test_capture_sequential_model.py` | lock-block: the UNKNOWN cut assert, in-run dispatch stamps, `wait <= realized + TOLERANCE_MS` via a shared helper + synthetic worst-case pin; floor and ordering asserts verbatim; docstring |
 | `tests/unit/test_otdp_bridge.py` | POINTER: no change in this slice — D-rowB is executed by PR #329 (commit e96e08b, refute-folded there); it lands ahead of this slice |
-| `docs/internal/drift-and-obligations.md` | conventions sentences: the named residuals, the TestClock standing policy, the no-local-only ruling |
+| `.github/workflows/ci.yml` | ONE line: `timeout-minutes: 15` on the `timing` job (§1.7 finding 5) |
+| `docs/internal/drift-and-obligations.md` | conventions sentences: the named residuals, the TestClock standing policy, the no-local-only ruling, the hosting constraint |
 | `.claude/deep-review/2026-10-02-issue241-slice4-residual-families-design.md` | this record, commit 1 |
 | issue #241 | outcome comment per §2 step 7 |
 
-No `src/` bytes. No `standards/` bytes. No workflow bytes. No dependency
-change. The two ceiling CONSTANTS replaced by in-run references are the only
-bound-shaped edits, and each names its cut-proof and its synthetic pin.
+No `src/` bytes. No `standards/` bytes. ONE workflow line (the job
+timeout). No dependency change. The two ceiling CONSTANTS replaced by
+in-run references are the only bound-shaped edits, and each names its
+cut-proof and its synthetic pin. No self-hosted runner, scheduled lane, or
+new job is proposed anywhere in this slice (§1.7).
 
 **Landing sequence with PR #329** (branch pushed, rollup shows timing
 FAILURE from §0.1 reds #8/#9; its diff has zero timing-path overlap —
