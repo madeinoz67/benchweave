@@ -3395,14 +3395,20 @@ def _install_drain_cap_starvation(
     (wave-1 fold, adversary F2): all three attempts die at their first
     drain, so the trial exhausts its budget entirely at the drain-cap
     site. The death SITE is the caller's policy's, not the injection's:
-    under a condition-free policy (``no_trip``) the spin stays on the
-    pre-trip ``poll_slice`` branch — which never raises — and the cap is
-    the only exit; under the production policy the starved read ages past
-    ``max_age_ms``, the freshness fail-safe latches the cause, and the
-    drain flips to its post-trip poll branch where a load-stretched poll
-    can deaden the session before the cap (``drain-poll-door`` /
-    ``drain-poll-timeout`` — the 2026-10-02 reds' shape). Returns the
-    rigs (the slice-1 counter shape) for the caller's failure belt."""
+    under a condition-free policy (``no_trip``) no CONDITION cause can
+    latch, the spin stays on the pre-trip ``poll_slice`` branch — which
+    never raises — and the cap is the only exit; under the production
+    policy a load-stretched tick read that times out is poisoned at
+    DISPATCH (``_failed`` set, the read failed, the freshness fail-safe
+    trips on the same event), the drain flips to its post-trip poll
+    branch, and the first poll there finds the door shut
+    (``drain-poll-door``) or its own deadline outrun
+    (``drain-poll-timeout``) — the 2026-10-02 reds' shape. A POLL-path
+    poison cannot flip the branch (refute fold F1): it latches
+    ``session_failed``, the engine's rounds — and the ticks inside them
+    — stop, and the drain dies at ``drain-cap`` with the cause unset.
+    Returns the rigs (the slice-1 counter shape) for the caller's
+    failure belt."""
     rigs: list[ContinuityRig] = []
     adapters: list[BRigAdapter] = []
     original_init = ContinuityRig.__init__
@@ -3487,28 +3493,47 @@ def test_drain_cap_starvation_retries_on_a_fresh_rig(
     The starvation is seeded under the NO-TRIP probe policy
     (``_run_trial_once``'s own ``no_trip`` wiring — the TYPE arm's seam,
     extended here). Slice 3 §1.1's premise "attempt 0 deterministically
-    dies at ``drain-cap``" was falsified under the production policy: the
-    starved delivery ages the buffered read past ``MAX_AGE_MS`` at ~300 ms
-    into the drain, the freshness fail-safe latches ``monitor.cause``, and
-    the drain flips to its post-trip direct-poll branch — where a
-    load-stretched poll has already poisoned the bridge (``_failed``, the
-    ``except (Exception...)`` path of ``poll_event``) and the next poll
-    dies at ``drain-poll-door`` instead (2026-10-02 timing-lane reds:
+    dies at ``drain-cap``" was falsified under the production policy:
+    a load-stretched monitor-tick read that times out is poisoned at
+    DISPATCH (``OTDPBridge``'s execute catch-all → ``poison()``) —
+    ``_failed`` set AND the read failed, so the freshness fail-safe trips
+    on the same event — and the drain, flipped to its post-trip
+    direct-poll branch by the latched cause, finds the door shut at its
+    first poll: ``drain-poll-door`` (2026-10-02 timing-lane reds:
     ``retry_sites`` ``['drain-poll-door']``, and composition ``drain-cap
-    -> drain-poll-door -> drain-cap``). A condition-free monitor cannot
-    latch mid-spin, so the spin stays on the pre-trip polling branch —
-    which never raises (``poll_round`` latches ``session_failed`` and
-    returns) — and the cap is the drain's only exit whatever the host
-    does. §7 risk 2's priming residual is structural-null under this
-    seeding too: both priming classifications guard on
-    ``_probe_wall_injection``, and with no continuous condition there is
-    no fail-safe to block the priming dispatch. Burns one real cap spin
-    (~2 s, disclosed). Site-level exhaustion is pinned next door; the
-    site-agnostic machinery at
+    -> drain-poll-door -> drain-cap``). The poison cannot come from the
+    poll path (refute fold F1, probe-verified): a poll-path poison
+    latches ``session_failed``, ``poll_slice`` then skips ``poll_round``,
+    the ticks that run inside ``poll_round`` stop, the freshness
+    condition is never evaluated again — the drain dies at ``drain-cap``
+    with the cause unset. Under the no-trip policy no CONDITION cause can
+    latch mid-spin (there are no continuous conditions to violate; the
+    body-phase cancellation/lease latches — ``_check_body_phase`` — are
+    a separate mechanism that cannot fire in this rig: the lease runs to
+    2030 and nothing requests cancellation), so the spin stays on the
+    pre-trip polling branch — which never raises (``poll_round`` latches
+    ``session_failed`` and returns) — and the cap is the drain's only
+    exit whatever the host does. §7 risk 2's priming residual is
+    structural-null under this seeding too: both priming classifications
+    guard on ``_probe_wall_injection``, and with no continuous condition
+    there is no fail-safe to block the priming dispatch. Burns one real
+    cap spin (~2 s, disclosed). Site-level exhaustion is pinned next
+    door; the site-agnostic machinery at
     ``test_infrastructure_marker_exhausts_at_two_retries``. RED direction
     (AR-2b, shown at build): with the drain-cap raise reverted to a plain
     ``assert`` in place, the refusal propagates out of ``run_trial`` and
-    THIS pin reds — the classification is what the membership rides on."""
+    THIS pin reds — the classification is what the membership rides on.
+
+    Coverage after this flip (refute fold F2): the ``drain-cap``
+    classification carries ZERO production-policy coverage once these two
+    pins run no-trip — they were its only production-policy arms (the
+    type arm was already no-trip). Consciously surrendered: the morph is
+    the production policy's own behavior under load, so a
+    production-policy site pin is a coin flip — the kill rule caught it.
+    ``drain-poll-timeout`` keeps its production-policy end-to-end pins
+    (slice 4); the classifier tables are policy-free pure functions;
+    ``drain-poll-door``'s raise site has no end-to-end arm under any
+    policy (a pre-existing gap). The map lives on issue #241."""
     rigs = _install_drain_cap_starvation(monkeypatch)
     try:
         outcome = run_trial(
@@ -3549,16 +3574,20 @@ def test_drain_cap_starvation_exhausts_at_the_drain_cap_site(
 
     Seeded under the NO-TRIP probe policy (the TYPE arm's seam, extended
     here; the sibling arm names the mechanism): under the production
-    policy the freshness fail-safe latches ``monitor.cause`` mid-spin (the
-    starved read ages past ``MAX_AGE_MS``), the drain flips to its
-    post-trip poll branch, and a load-stretched poll can deaden the
-    session there before the cap — the composition ran ``drain-cap ->
-    drain-poll-door -> drain-cap`` (run 36966606745) or terminated at
-    ``drain-poll-door`` (run 36971094749). The "entirely at the drain-cap
-    site" claim is load-coupled under that policy; under a condition-free
-    monitor the pre-trip branch never raises and every attempt's only
-    exit is the cap, so the homogeneous composition and the terminal
-    site are structural.
+    policy a load-stretched monitor-tick read that times out is poisoned
+    at DISPATCH (``_failed`` set AND the read failed, so the freshness
+    fail-safe trips on the same event), the drain flips to its post-trip
+    poll branch, and the first poll there finds the door shut — the
+    composition ran ``drain-cap -> drain-poll-door -> drain-cap`` (run
+    36966606745) or terminated at ``drain-poll-door`` (run 36971094749).
+    A poll-path poison cannot flip the branch (refute fold F1,
+    probe-verified): it latches ``session_failed``, the engine's rounds —
+    and the ticks inside them — stop, and the drain dies at ``drain-cap``
+    with the cause unset. The "entirely at the drain-cap site" claim is
+    load-coupled under that policy; under the no-trip policy no CONDITION
+    cause can latch mid-spin, the pre-trip branch never raises, and every
+    attempt's only exit is the cap — the homogeneous composition and the
+    terminal site are structural.
 
     The cap-semantics arm (the frames-due accounting) reads the raise's
     own clause: ``drain_until_quiet`` reports the adapter's real
@@ -3566,11 +3595,12 @@ def test_drain_cap_starvation_exhausts_at_the_drain_cap_site(
     starved its whole cap owes at least the cap's own frame arithmetic
     (``cap_ms / FRAME_PERIOD_MS``) and never more than the adapter still
     owes (the counter is monotone post-raise — ``delivered`` is frozen by
-    the injection). Catches an early raise, a fabricated or dropped
-    count, and a silent truncation; it does NOT pin the count to the
-    backlog at the exact raise instant (the counter moves on before the
-    assert runs). Burns three real cap spins (~7 s; design §7 risk 6's
-    per-attempt arithmetic, ×3)."""
+    the injection). Catches an early raise and a fabricated or dropped
+    count; a silent truncation never reaches this arm at all — the
+    ``pytest.raises`` pin catches it (no message survives to parse). It
+    does NOT pin the count to the backlog at the exact raise instant
+    (the counter moves on before the assert runs). Burns three real cap
+    spins (~7 s; design §7 risk 6's per-attempt arithmetic, ×3)."""
     rigs = _install_drain_cap_starvation(monkeypatch, every_construction=True)
     try:
         with pytest.raises(TrialInfrastructureError) as raised:
