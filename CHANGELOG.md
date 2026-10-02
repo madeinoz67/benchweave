@@ -263,6 +263,10 @@ All notable changes to this project will be documented in this file.
 - The two-lane refute fold — repair the stale authority at the source
 - Consolidated Tier-3 fold — per-trace acquisition, enum arms, lanes semantics (issue #298)
 - M4 owner ruling — the legend stays on the >2-unit refusal (issue #298)
+- Belt-swap pin pace ladder indexes by PACED order, not construction order
+- Lock-block D4' completion — UNKNOWN cut-proof, in-run-relative ceiling
+- Drain-poll TIMEOUT-flavor poison joins the carrying sites
+- Refute fold — 4 code rows + record erratum
 
 ### Documentation
 
@@ -515,6 +519,9 @@ All notable changes to this project will be documented in this file.
 - #319 claim-reconciliation sweep — 4 stale sites + 1 tense disclosure
 - #321 obligation row 23 — verb/command-set prose drifts with its mechanism
 - G1b partials + canonical artifacts design record (issue #298)
+- Design record — residual flake families
+- Conventions sentences — named residuals, TestClock standing policy, no-local-only ruling
+- Design record — re-sync the post-dispatch fold, re-apply the D-rowB pointer amendment
 
 ### Features
 
@@ -1037,6 +1044,7 @@ All notable changes to this project will be documented in this file.
 - Run the suite in parallel with pytest-xdist (#247)
 - Device-plugins zero-gate lane + obligations enforcement pointers
 - Prove the member wheel standalone in the package job (#302)
+- Timeout-minutes 15 on the timing job
 
 ### Ci+docs
 
