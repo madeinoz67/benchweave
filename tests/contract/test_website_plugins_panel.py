@@ -231,6 +231,16 @@ def test_no_registry_service_language_on_the_panel() -> None:
         assert "registry service" not in sentence.lower()
 
 
+def test_marker_display_map_twins_agree() -> None:
+    """The unverified-marker display map has two carriers (Python at
+    generation, JS for cloned rows); the twins must stay equal in their
+    mapping or a marker would render two ways on one page."""
+    js = (ROOT / "website" / "assets" / "plugins.js").read_text(encoding="utf-8")
+    pattern = re.compile(r"'([a-z0-9-]+)':\s*'([^']*)'")
+    js_map = dict(pattern.findall(js.split("MARKER_DISPLAY", 1)[1].split("}", 1)[0]))
+    assert js_map == _module().MARKER_DISPLAY, (js_map, _module().MARKER_DISPLAY)
+
+
 def test_renderer_refuses_unknown_kind() -> None:
     """Fail-closed: an unknown kind in the mirror refuses at generation."""
     bad = json.dumps(

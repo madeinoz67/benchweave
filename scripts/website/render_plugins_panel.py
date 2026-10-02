@@ -145,10 +145,6 @@ def _evidence_html(row: dict[str, Any]) -> str:
             parts.append(f"<code>{_esc(str(path))}</code>")
     if not parts:
         parts.append(f'<span class="text-muted">{EMPTY_EVIDENCE}</span>')
-    parts.append(
-        f'<a class="spec-link" data-bw-slot="evidence-link" '
-        f'href="{_esc(_release_dir_url(row))}">release files →</a>'
-    )
     return " ".join(parts)
 
 
@@ -223,6 +219,10 @@ def _card(row: dict[str, Any], *, blank: bool = False) -> str:
         f'<span class="mono" data-bw-slot="source-revision"{source_title}>'
         f"{_esc(source_text)}</span></p>"
     )
+    evidence_link = (
+        '<a class="spec-link" data-bw-slot="evidence-link" '
+        f'href="{_esc(_release_dir_url(row))}">release files →</a>'
+    )
     return "\n".join(
         [
             f'<div class="spec-card"{attrs}',
@@ -231,9 +231,12 @@ def _card(row: dict[str, Any], *, blank: bool = False) -> str:
             meta_identity,
             meta_release,
             '<p class="catalogue-meta" data-bw-slot="compat" hidden></p>',
-            f'<p class="catalogue-meta">evidence: {evidence}</p>',
-            f'<p class="catalogue-meta">advisories: {advisories}</p>',
-            f'<p class="catalogue-meta">unverified: {markers}</p>',
+            f'<p class="catalogue-meta">evidence: <span data-bw-slot="evidence">'
+            f"{evidence}</span> {evidence_link}</p>",
+            f'<p class="catalogue-meta">advisories: '
+            f'<span data-bw-slot="advisories">{advisories}</span></p>',
+            f'<p class="catalogue-meta">unverified: '
+            f'<span data-bw-slot="markers">{markers}</span></p>',
             meta_source,
             "</div>",
         ]
