@@ -346,6 +346,39 @@
       <p class="catalogue-meta">northwind-instruments · MIT · <span class="badge badge-success">maintained</span></p>
     </div>
     <p class="note" style="margin-top:10px;">The registry-served catalogue's per-card identity run (issue #224): publisher · licence · maintenance in mono 13px. Values are always machine-rendered from the served index — never hand-typed — and absent values render as an explicit "none", never as a guess.</p>
+
+    <h3>Records table <span class="badge badge-version">v0.2</span></h3>
+    <div class="table-scroll" style="max-width:880px;">
+      <table class="bw-records">
+        <thead><tr>
+          <th scope="col">Signature</th><th scope="col">Release</th><th scope="col">Publisher</th><th scope="col">Evidence</th><th scope="col">Declared capabilities</th><th scope="col">Maintenance</th><th scope="col">Advisories</th><th scope="col">Compatibility</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td><span class="sig-cell">✍ Signed</span></td>
+            <td><strong>Northwind PSU driver</strong><br><span class="mono" style="font-size:12px;color:var(--text-muted)">northwind-psu · 0.1.0 · admitted release</span></td>
+            <td class="mono" style="font-size:12.5px">northwind-instruments</td>
+            <td><span class="badge">simulated · passed</span></td>
+            <td><span class="mono" style="font-size:12px;color:var(--text-muted)">globe network egress</span></td>
+            <td><span class="badge badge-success">maintained</span></td>
+            <td><span class="mono" style="font-size:12px;color:var(--text-muted)">none</span></td>
+            <td class="mono" style="font-size:12px;color:var(--text-muted)">OTDP 0.2.2 · adapter 1.1 · STG 1.5</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note" style="margin-top:10px;">The registry-served catalogue's records view (issue #224 follow-on): mono 12px muted column labels, one <code>&lt;tr&gt;</code> per release, sentence-case values. The Signature cell is icon plus visible text, never icon-only, with a provenance-not-quality <code>title</code>; the kind badge renders in the Release cell; version and compatibility stamp statically from the served index. Wraps in an <code>overflow-x</code> scroll wrapper on narrow viewports.</p>
+
+    <h3>Record page <span class="badge badge-version">v0.2</span></h3>
+    <div class="spec-card" style="max-width:880px;">
+      <div class="spec-card-head">
+        <h4>Northwind PSU driver <span class="mono" style="font-size:12px;color:var(--text-muted)">northwind-psu@0.1.0</span></h4>
+        <span class="badge badge-version">0.1.0</span> <span class="badge">admitted release</span> <span class="badge badge-success">Signed by northwind-instruments</span>
+      </div>
+      <p>Bench power supply driver with scalar reads and a snapshot profile.</p>
+      <p class="catalogue-meta">vetted 2026-10-01 · key validity 2026-01-01 to 2030-01-01 · <span class="mono">sha256 e81ef419…</span></p>
+    </div>
+    <p class="note" style="margin-top:10px;">The registry-served record detail (issue #224 follow-on): breadcrumb, badge row, two-column grid of sections (Provenance, Evidence, Compatibility, Declared capabilities, Unverified markers) with an aside of cards (Admission, Open release files, Status, Publisher repository). Full digests render untruncated in mono with copy buttons; absent values render as an explicit "none". The admission notice is fixed prose: publication is not authorization.</p>
   </section>
 
   <section id="ambient">
