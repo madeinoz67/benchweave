@@ -267,6 +267,10 @@ All notable changes to this project will be documented in this file.
 - Lock-block D4' completion — UNKNOWN cut-proof, in-run-relative ceiling
 - Drain-poll TIMEOUT-flavor poison joins the carrying sites
 - Refute fold — 4 code rows + record erratum
+- F3 — the fast lane never runs the browser marker (issue #300 fold)
+- Lane A fold — A1 ST-3 laundering equality, A2 ledger clearing, A3 toggle discrimination, 3 NITs (issue #300)
+- Lane B fold — F1 themed renders, F2 layered target-size, F4 negative disagreement, F6 axe scope (issue #300)
+- Correct the browser job's actions/cache pin to the API-resolved v4.3.0 SHA (issue #300)
 
 ### Documentation
 
@@ -522,6 +526,7 @@ All notable changes to this project will be documented in this file.
 - Design record — residual flake families
 - Conventions sentences — named residuals, TestClock standing policy, no-local-only ruling
 - Design record — re-sync the post-dispatch fold, re-apply the D-rowB pointer amendment
+- G1d pattern library + ten behaviour compositions — design record (issue #300)
 
 ### Features
 
@@ -725,6 +730,10 @@ All notable changes to this project will be documented in this file.
 - G1b slice 2 — structural families, labels, refusals, icons, sequences, tokens, CSS pins (issue #298)
 - G1b slice 3 — plot lane: UR-07 emit model, slots, hints, axes, ref lines, acquisition, provenance (issue #298)
 - G1b slice 4 — lanes lane: §E.4 composition over reduce_lane, end state 158/168 (issue #298)
+- G1d slice 1 — staleness predicate + the composition state machine (issue #300)
+- G1d slice 2 — the ten behaviour checkers; the registry at 168/168 (issue #300)
+- G1d slice 3 — the PATTERNS registry + the static export (issue #300)
+- G1d slice 4 — the browser lane, CI partition, and the docs export (issue #300)
 
 ### Hardware Evidence
 
@@ -1022,6 +1031,8 @@ All notable changes to this project will be documented in this file.
 - Tighten I5/I6/I8 pin tolerance to toBeCloseTo(1,5) exactly (issue #299 G1c refute fold 3)
 - The refute fold's cheap closes — bidirectional pin + hardened capture
 - G1b template-packaging guard (O4) — pinned contents + full-environment load
+- G1d — the UR-11 boundary probe covers compositions and the export (issue #300)
+- G1d — move the two pins the browser partition touches (issue #300)
 
 ### Build
 
