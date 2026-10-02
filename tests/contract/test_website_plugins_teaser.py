@@ -5,7 +5,10 @@ The registry repository generates and serves the catalogue itself
 teaser — timeless prose plus ONE outbound link — and carries zero
 catalogue-derived bytes (no counts, no names, no versions: a count is a
 mini-mirror with its own staleness clock and no gate). This suite
-string-pins the teaser prose with the honesty-sentence discipline, pins
+byte-pins the ENTIRE teaser section and the home honesty paragraph (the
+strongest guard: any change to those bytes reddens, so a planted count,
+name, or link cannot pass), string-pins the teaser prose with the
+honesty-sentence discipline, pins
 the single outbound link, pins the no-registry-derived-bytes property over
 the whole ``website/`` tree (invariants CON-13, pivot amendment), and keeps
 the home panel's honesty sentence (CR-23) pinned with its scan scope on
@@ -57,7 +60,53 @@ HONESTY_SENTENCE = (
 )
 HONESTY_NO_SERVICE = "no hosted registry front end and no device-install command exist"
 
-
+# The whole-section byte pins (fold G2, lane B F1): the exact bytes of the
+# teaser section and of the home honesty paragraph, generated from the file
+# bytes — never hand-typed. A substring pin cannot see a planted count, name,
+# or link appended around the pinned prose (proven: "Currently 3 published
+# releases." passed every prior guard); byte equality makes ANY change to
+# these bytes redden, so updating the pin is part of any intentional edit.
+TEASER_SECTION_BYTES = (
+    "<section class=\"panel\" id=\"panel-plugins\">\n"
+    "    <div class=\"page-head\">\n"
+    "      <h1>Plugins</h1>\n"
+    "      <p>Plugin releases are published and signed in a git-native registry repository "
+    "of record — not a hosted front end. The catalogue is generated from that repository's "
+    "records and served from its own site; this page carries no copy of it, so what you "
+    "reach is always the published state. Installation is local admission: publication never "
+    "authorizes control.</p>\n"
+    "    </div>\n"
+    "    <div class=\"ai-callout\">\n"
+    "      <div>\n"
+    "        <h2>The plugin catalogue</h2>\n"
+    "        <p>Every published release with its version, digest, compatibility and "
+    "advisories — searchable, kind-tagged, and stamped with the commit it was generated "
+    "from.</p>\n"
+    "      </div>\n"
+    "      <a class=\"btn btn-secondary\" href=\"https://madeinoz67.github.io/benchweave-regi"
+    "stry/\" target=\"_blank\" rel=\"noopener\">Browse the catalogue →</a>\n"
+    "    </div>\n"
+    "    <p class=\"note\">What the catalogue offers is generated from published releases "
+    "only: a yanked or revoked release drops out at the next regeneration — what is absent "
+    "there is absent everywhere.</p>\n"
+    "  "
+)# CR-23's honesty paragraph on the home panel (the <p> whose bytes carry
+# HONESTY_SENTENCE and HONESTY_NO_SERVICE), pinned the same way: the words of
+# an honesty claim are reviewable state, and drift in either direction —
+# over-claiming or under-claiming around the pinned sentences — is a visible
+# same-commit diff.
+HONESTY_PARAGRAPH_BYTES = (
+    "<p><strong>Next.</strong> Gateway and devices talking through the registry: the gateway "
+    "side of the registry contract is done (signed catalogue, admission with a "
+    "content-addressed cache, activation, an unsigned dev loop), and a catalogue of "
+    "published, signed releases now exists as a git-native registry repository of record "
+    "with its own catalogue site — but no hosted registry front end and no device-install "
+    "command exist, so installation stays local admission. The OTDP bridge's remaining scope "
+    "is profile scheduling on a native async host. The gateway's first operator web UI will "
+    "be server-rendered, with the React reference renderer retired in a gated cutover. "
+    "Hardware qualification and unattended bench operation remain separate, commissioned "
+    "work.</p>"
+)
 def _html() -> str:
     return INDEX.read_text(encoding="utf-8")
 
@@ -81,6 +130,20 @@ def test_teaser_prose_is_string_pinned() -> None:
     teaser = _section(_html(), "plugins")
     for pin in (TEASER_NO_COPY, TEASER_LOCAL_ADMISSION, TEASER_YANK):
         assert pin in teaser, f"teaser prose drifted: {pin!r}"
+
+
+def test_teaser_section_bytes_are_pinned() -> None:
+    """Fold G2 (lane B F1): the ENTIRE teaser section is byte-pinned. The
+    substring pins and shape bans below cannot see a count, name, or link
+    appended around the pinned prose (proven: "Currently 3 published
+    releases." passed every prior guard 7/7); byte equality makes any such
+    plant redden. What this does not catch: nothing about the catalogue
+    itself — the teaser's honesty is that it carries no catalogue data at
+    all, and these bytes are the proof."""
+    assert _section(_html(), "plugins") == TEASER_SECTION_BYTES, (
+        "panel-plugins bytes drifted — if the change is intentional, update "
+        "TEASER_SECTION_BYTES in the same commit"
+    )
 
 
 def test_teaser_link_is_the_one_outbound_link() -> None:
@@ -141,6 +204,19 @@ def test_home_honesty_sentence_is_string_pinned() -> None:
     home = _section(_html(), "home")
     assert HONESTY_SENTENCE in home, "the honesty sentence drifted (home panel)"
     assert HONESTY_NO_SERVICE in home, "the honesty sentence's no-service clause drifted"
+
+
+def test_home_honesty_paragraph_bytes_are_pinned() -> None:
+    """Fold G2's home arm: the whole paragraph carrying CR-23's honesty
+    sentence is byte-pinned, not just the sentence — a claim appended or
+    reworded AROUND the pinned sentences (the same plant class the teaser
+    arm closes) reddens here too."""
+    match = re.search(r"<p><strong>Next\.</strong>.*?</p>", _html())
+    assert match is not None, "honesty paragraph (the Next. <p>) missing — scanner blind"
+    assert match.group(0) == HONESTY_PARAGRAPH_BYTES, (
+        "home honesty paragraph bytes drifted — if the change is intentional, "
+        "update HONESTY_PARAGRAPH_BYTES in the same commit"
+    )
 
 
 def test_no_registry_service_language_where_claims_live() -> None:
