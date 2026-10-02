@@ -379,3 +379,62 @@ bytes; D2 is the SDK-touching event).
 
 No on-disk schema or format version changes; no new invariants required — CON/REG untouched;
 the drift rows carry the new obligations (the default-run pin's home is row 12's rewrite).
+
+---
+
+## Fold (2026-10-02, post-refute — verdict DEFENDED; two lanes, 11 findings, all folded)
+
+The two adversary lanes defended the swap on every line (the 7-commit invariant walk,
+the pin's five-route fail-closed proof, the byte-frozen tables). The sections above
+stay frozen; THIS fold note governs where they disagree, per the G1c erratum's shape:
+
+1. **A-F3 (the record's own §2 blocker rule — the §C.2 inline-style visibility gap):
+   given a Python home.** `artifacts._inline_hiding_violations` — a static-parseable
+   guard asserting no rendered element of the §C.2 label or §C.3 refusal carries a
+   hiding inline style (`display:none` / `visibility:hidden` in the `style`
+   attribute) — wired into `LabelRenderArtifact` and `RefusalRenderArtifact`. RED
+   (row layer, run at the fold): `style="display:none"` planted on
+   `disabled-label.j2`'s label element → all five §C.2 rows red naming
+   `element <span> is hidden by inline style (style='display:none')`; restored →
+   196/0. In-process mutation arms in `tests/ui_html/test_families.py` (label +
+   refusal). Residual, named: CSS-class hiding still needs the browser lane —
+   statics compute no stylesheets, the same disclosed class the TS gates carried.
+2. **B-F3/B-F4 — the inventory verifier's two holes.** `api_version != 1` now
+   refuses (`vendored_inventory_api_version:<v>`; RED: api_version 99 greened
+   pre-fold, the arm red `assert [] == ['vendored_inventory_api_version:99']`), and
+   the census refuses ANY un-inventoried directory entry, directories included
+   (`vendor/evil.css` greened pre-fold → `vendored_asset_unlisted:vendor`).
+3. **A-F2 + A-F5 — the record's own citation errors, corrected here (frozen above):
+   §2's KNOWN-REACT-BUGS bug-map cites the Python proofs imprecisely.** The
+   order-dependent double-emphasis proofs live at `tests/ui_html/test_plot.py:54-90`
+   (the three emphasis-state arms — slot-one-beats-hint, released-claim-to-earliest,
+   muted-repaint-no-cascade), NOT at the renumber test; and the axis-vs-lane
+   distinction: the UNTRIMMED-UNIT bug is pinned by the §E.2.3 trimmed-unit EXACT
+   grouping (`test_plot.py:92` + `plot.py:210-217`), a Y-AXIS-ASSIGNMENT policy —
+   distinct from the §E.4 `data-bw-lane` renumbering pin (`test_plot.py:104`), a
+   LANE-LAYOUT policy; the frozen text's "plot.py:201-232 axis remap" conflated the
+   two families. **§1.3's parse description:** the bare default invocation's
+   `--collect-only -q` resolves to `-qq` (the repo addopts already carry `-q`), so
+   pytest prints per-file count lines, not nodeids — the shipped pin parses
+   `docs/internal/ui-contract.md: 196` (the nodeid-per-line reading in §1.3 above
+   was the design-time assumption; the mechanism held, the format reading did not —
+   the landing commit's UNDERPOWERED branch, resolved on evidence).
+4. **B-F1 — styleguide §Controls:** "the icon keys and reference bindings are
+   normative" overstated §F; the KEYS are normative, the reference bindings name the
+   frozen React reference (E2). Corrected.
+5. **B-F2 — obligation 12** now names the composition state-machine proofs
+   (`test_compositions.py` + `test_compositions_mutations.py`).
+6. **A-F1 — plugin.py's DORMANT-BY-DEFAULT docstring** stated the pre-cutover
+   wiring; rewritten to the live truth (default run carries the contract via
+   testpaths; foreign environments still claimed-nothing).
+7. **A-F4 — .gitignore's** dead `node_modules/`/`storybook-static/`/`*.tsbuildinfo`
+   rows removed (the fold's disposition supersedes the landing commit's
+   retained-generic rationale).
+8. **A-F6 + B-F5 — two present-tense citations of deleted TS:** grammar.py's
+   docstring now cites the contract's authoring rule as the norm (the TS ports are
+   historical provenance); ui-contract.md's authority chain names the Jinja/HTMX
+   renderer, not "React/Storybook".
+9. **B-F6 — SDK-side, PRE-EXISTING, NOT touched here:** the SDK `hatch_build`'s
+   npm-rebuild advice text predates the freeze and now advises a deleted toolchain —
+   routed to the NEXT SDK train (the SDK tree is out of this slice's grant; the
+   freeze changes no SDK bytes by design §10).

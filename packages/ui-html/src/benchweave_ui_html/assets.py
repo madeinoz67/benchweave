@@ -13,10 +13,10 @@ with the hosts (G2's gateway host; PRD 11's standalone), the same
 enforcement-by-host shape as obligation 25: the function and its tests
 ship now, the wiring rides the host designs that inherit it.
 
-The census is exhaustive, not a sample: every regular file in the assets
-directory must be inventoried and every inventoried path must exist,
-so a hand-edited asset, a dropped asset, or a smuggled extra file all
-refuse by name.
+The census is exhaustive, not a sample: every entry in the assets
+directory — files AND directories — must be inventoried and every
+inventoried path must exist, so a hand-edited asset, a dropped asset, a
+smuggled extra file, or a nested un-pinned tree all refuse by name.
 """
 
 from __future__ import annotations
@@ -44,6 +44,11 @@ def _refusals_for(assets_dir: Path) -> list[str]:
         return [f"vendored_inventory_unreadable:{INVENTORY_NAME} ({exc})"]
     if not isinstance(inventory, dict) or not isinstance(inventory.get("assets"), list):
         return [f"vendored_inventory_malformed:{INVENTORY_NAME} (assets list missing)"]
+    if inventory.get("api_version") != 1:
+        # B-F3 fold: an api_version this verifier does not implement is not
+        # a shape it can verify — refuse rather than best-effort-parse rows
+        # it may be misreading.
+        return [f"vendored_inventory_api_version:{inventory.get('api_version')!s}"]
 
     listed: set[str] = set()
     refusals: list[str] = []
@@ -74,10 +79,12 @@ def _refusals_for(assets_dir: Path) -> list[str]:
         if expected_sha != actual_sha:
             refusals.append(f"vendored_asset_mismatch:{rel} (sha256)")
 
-    # The exhaustive-census arm: an un-inventoried file in the directory is
-    # a disagreement — the inventory names everything or it is wrong.
+    # The exhaustive-census arm: an un-inventoried entry in the directory is
+    # a disagreement — the inventory names everything or it is wrong. ANY
+    # entry refuses (B-F4 fold: directories included — a nested tree is
+    # smuggling surface the byte-pin never covered, not packaging noise).
     for extra in sorted(p.name for p in assets_dir.iterdir() if p.name != INVENTORY_NAME):
-        if extra not in listed and (assets_dir / extra).is_file():
+        if extra not in listed:
             refusals.append(f"vendored_asset_unlisted:{extra}")
     return refusals
 

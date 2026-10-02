@@ -91,7 +91,7 @@ Do not use more than three text sizes in one compact panel. Uppercase is limited
 - touch-first or safety-significant action minimum target: `2.75rem` square;
 - button horizontal padding: `0.9rem`; vertical padding: `0.55rem`;
 - standard icon: 16–18 px; status icon: 16 px; empty-state illustration maximum: 48 px;
-- use Lucide icons with `1.75px`–`2px` stroke and `aria-hidden="true"` when adjacent text supplies the name; the icon keys and reference bindings are normative in the contract ([§F](ui-contract.md#f-icon-set));
+- use Lucide icons with `1.75px`–`2px` stroke and `aria-hidden="true"` when adjacent text supplies the name; the icon KEYS are normative in the contract ([§F](ui-contract.md#f-icon-set)) — the reference bindings name the frozen React reference (exception E2), and a host binds from the shape descriptions;
 - destructive and protective actions always include a text label; icon-only is not allowed;
 - a rotary control is paired with a precise numeric field and explicit Apply action.
 

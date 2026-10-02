@@ -129,7 +129,11 @@ and remain the reviewer's job.
     browser lane's axe/screenshot set) carries component behaviour beside
     the harness rows; the ported proofs live in `tests/ui_html/` (the
     series-colour proofs, token/CSS pins, threshold constants, lane
-    reduction, the staleness predicate). Plugin-visible rendering behavior →
+    reduction, the staleness predicate) and the composition state-machine
+    proofs (`tests/ui_html/test_compositions.py` +
+    `test_compositions_mutations.py` — the §B/§C rule rows' transition,
+    fire-attempt and refusal drivers) pin the behavioural rules the same
+    way. Plugin-visible rendering behavior →
     `docs/device-developer-guide.md` (presentation section, unchanged);
     component behavior → the harness rows + the pattern-library pages (the
     Storybook reference is gone). The wire shape:

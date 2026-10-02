@@ -98,3 +98,27 @@ def test_a_missing_inventory_reds_fail_closed(tmp_path: Path) -> None:
     assert assets.verify_vendored_assets(root) == [
         f"vendored_inventory_absent:{assets.INVENTORY_NAME}"
     ]
+
+
+def test_a_foreign_api_version_refuses(tmp_path: Path) -> None:
+    """B-F3 fold: the inventory declares its shape — an api_version the
+    verifier does not implement is not a shape it can verify, so it refuses
+    rather than best-effort-parsing rows it may be misreading."""
+    root = _copy_tree(tmp_path)
+    inventory_path = root / assets.INVENTORY_NAME
+    inventory = json.loads(inventory_path.read_text(encoding="utf-8"))
+    inventory["api_version"] = 99
+    inventory_path.write_text(json.dumps(inventory, indent=2) + "\n", encoding="utf-8")
+    assert assets.verify_vendored_assets(root) == [
+        "vendored_inventory_api_version:99"
+    ]
+
+
+def test_a_directory_entry_under_assets_refuses(tmp_path: Path) -> None:
+    """B-F4 fold: the census refuses ANY un-inventoried directory entry,
+    directories included — a nested tree (vendor/, node-style or otherwise)
+    is smuggling surface the byte-pin never covered, not packaging noise."""
+    root = _copy_tree(tmp_path)
+    (root / "vendor").mkdir()
+    (root / "vendor" / "evil.css").write_text("/* smuggled */\n", encoding="utf-8")
+    assert assets.verify_vendored_assets(root) == ["vendored_asset_unlisted:vendor"]

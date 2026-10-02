@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from benchweave_ui_html import artifacts, fixtures, partials
 from benchweave_ui_html.data import DisabledLabelData, RefusalData
 from benchweave_ui_html.grammar import Row, parse_contract
@@ -153,6 +154,55 @@ def test_no_response_renders_unknown_sent_status() -> None:
         )
     )
     assert 'data-bw-sent-status="UNKNOWN"' in html
+
+
+# --- A-F3 fold: the §C.2/§C.3 inline-style visibility home ----------------------
+
+
+def test_a_hiding_inline_style_reds_the_label_row(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A doctored render whose label element carries style="display:none"
+    reds the row NAMING the hidden element — the static-parseable half of
+    the deleted TS gates' toBeVisible assertion (CSS-class hiding stays the
+    browser lane's residual: statics compute no stylesheets)."""
+    real = partials.render_disabled_label
+
+    def doctored(data: DisabledLabelData) -> str:
+        html = real(data)
+        needle = "<span data-bw-disabled-label>"
+        assert needle in html
+        return html.replace(needle, '<span data-bw-disabled-label style="display:none">', 1)
+
+    monkeypatch.setattr(partials, "render_disabled_label", doctored)
+    row = _row("c-2-disabled-reason-enum", "no-authority")
+    messages = artifacts.LabelRenderArtifact("no-authority").satisfies(row)
+    assert any(
+        "display:none" in message and "inline style" in message for message in messages
+    ), messages
+
+
+def test_a_hiding_inline_style_reds_the_refusal_row(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The same guard over the refusal bubble: a doctored root aside hidden
+    by visibility:hidden reds the row naming it."""
+    real = partials.render_refusal
+
+    def doctored(data: RefusalData) -> str:
+        html = real(data)
+        needle = "<aside"
+        assert needle in html
+        return html.replace(
+            needle, '<aside style="visibility:hidden"', 1
+        )
+
+    monkeypatch.setattr(partials, "render_refusal", doctored)
+    row = _row("c-3-refusal-mapping", "not_found")
+    messages = artifacts.RefusalRenderArtifact("not_found").satisfies(row)
+    assert any(
+        "visibility:hidden" in message and "inline style" in message for message in messages
+    ), messages
 
 
 # --- §B.3 state + §E.3 triad ---------------------------------------------------

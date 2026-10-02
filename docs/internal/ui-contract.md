@@ -4,7 +4,8 @@
 
 **Authority chain:** this contract is the normative, renderer-neutral definition of
 BenchWeave presentation behaviour. [`ui-styleguide.md`](ui-styleguide.md) is
-implementation guidance — how the reference React/Storybook renderer implements this
+implementation guidance — how the Jinja/HTMX renderer (the
+`benchweave-ui-html` package) implements this
 contract. [`ui-styleguide-workbench-design.md`](ui-styleguide-workbench-design.md) is the
 historical design rationale. Where the three disagree, this contract wins.
 

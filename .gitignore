@@ -16,9 +16,6 @@ __pycache__/
 # Build and test output
 build/
 dist/
-node_modules/
-storybook-static/
-*.tsbuildinfo
 .coverage
 .coverage.*
 htmlcov/

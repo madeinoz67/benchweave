@@ -100,6 +100,27 @@ _MODE_KEYS = frozenset(_KEYS_BY_SLUG["d-1-modes"])
 #: The §E.1 column indexes (Component | Root | attrs | roles | hooks | text | Notes).
 _E1_ROOT, _E1_ATTRS, _E1_ROLES, _E1_HOOKS, _E1_TEXT = 1, 2, 3, 4, 5
 
+#: A-F3 fold: inline styles that hide an element — the statically
+#: parseable half of the deleted TS gates' ``toBeVisible`` assertion. A
+#: required-visible element carrying one of these in its ``style``
+#: attribute is a renderer defect, named per element.
+_HIDING_INLINE_STYLE = re.compile(r"display\s*:\s*none|visibility\s*:\s*hidden")
+
+
+def _inline_hiding_violations(rendered: RenderedComponent) -> list[str]:
+    """Elements hidden by inline style (``display:none`` /
+    ``visibility:hidden`` in the ``style`` attribute). Does NOT catch
+    CSS-class hiding — statics compute no stylesheets; that residual stays
+    the browser lane's, the same disclosed class the TS gates carried
+    (jsdom applied no stylesheets either)."""
+    return [
+        f"element <{element.tag}> is hidden by inline style "
+        f"(style={element.attrs.get('style')!r}) — required-visible output "
+        "must not be inline-hidden"
+        for element in rendered.elements
+        if _HIDING_INLINE_STYLE.search(element.attrs.get("style") or "")
+    ]
+
 
 def _cell(row: Row, index: int) -> str:
     return row.cells[index] if index < len(row.cells) else "—"
@@ -233,6 +254,10 @@ class RefusalRenderArtifact:
             class_hook="bw-refusal__action"
         ):
             messages.append("operator-action text not rendered in its element")
+        # A-F3 fold: the same inline-style visibility guard over the
+        # refusal bubble — a hidden bubble with all fields present is
+        # still hidden.
+        messages.extend(_inline_hiding_violations(rendered))
         return messages
 
 
@@ -281,6 +306,9 @@ class LabelRenderArtifact:
                 f"required label text {data.label!r} not visible beside the control "
                 "(data-bw-disabled-label element text)"
             )
+        # A-F3 fold: the inline-style half of visibility — a hidden label
+        # with matching text is still hidden.
+        messages.extend(_inline_hiding_violations(rendered))
         return messages
 
 
