@@ -21,6 +21,9 @@ Quantities (record item 10, amended by B2/C4/C5/C14):
 3. Second-dispatch lock-block — a helper-thread ``write`` dispatch during
    the capture blocks on the bridge ``RLock`` (reentrant per thread; the
    helper cannot deadlock); measured wait ≈ remaining capture duration.
+   Its ceiling is the D4' in-run-relative form (realized dispatch +
+   TOLERANCE_MS; slice 4 finished the family) and the cut asserts
+   ``UNKNOWN`` directly.
 4. Store contention (C5): the holder acquires the write lock MID-capture
    (between appends — hold-from-start only stresses the gate region); the
    asserted signal is the classification outcome (writer-originated
@@ -411,11 +414,53 @@ def test_queued_delay_band_refuses_a_delay_past_run1_plus_slop() -> None:
     assert not _queued_delay_breaches(340.0, 300.0)
 
 
+def _lock_block_breaches(wait_ms: float, realized_dispatch_ms: float) -> bool:
+    """D4' band form, shared by the lock-block test and its synthetic
+    worst-case pin: the helper's lock wait stays within the capture's
+    realized dispatch duration plus TOLERANCE_MS. The absolute
+    ``BUDGET_MS + TOLERANCE_MS`` form redded twice in-lane since slice 3
+    kept it (302.4 and 258.7 vs 200, census row 3): the helper waits out
+    the capture's cancellation path, which is host-load-shaped, so the
+    ceiling references what the run realized."""
+    return wait_ms > realized_dispatch_ms + TOLERANCE_MS
+
+
+def test_lock_block_band_refuses_a_wait_past_realized_plus_tolerance() -> None:
+    """D4' RED arm for the lock-block family (no planted adversarial arm,
+    the ``_queued_delay_breaches`` precedent): the relativized bound still
+    REFUSES a helper wait past the realized dispatch + TOLERANCE_MS — a
+    302.4 ms wait beside a 150 ms realized dispatch breaches (302.4 >
+    300); the honest shapes clear (the observed stretched presentation,
+    258.7 beside a 258 realized dispatch, and the quiet 56.2 beside 60).
+    Pins the shared band form, so a future widening of the tolerance or a
+    direction flip reds here first."""
+    assert _lock_block_breaches(302.4, 150.0), (
+        "a wait past realized + TOLERANCE_MS must breach the D4' band"
+    )
+    assert not _lock_block_breaches(258.7, 258.0)
+    assert not _lock_block_breaches(56.2, 60.0)
+
+
 def test_second_dispatch_lock_block(tmp_path: Path) -> None:
     """Quantity 3 (B2's relabel: bridge-level second-dispatch lock-block).
     A helper-thread write dispatch issued mid-capture blocks on the bridge
     RLock — the RLock is reentrant per thread, so the helper cannot
-    deadlock; its measured wait ≈ the remaining capture duration."""
+    deadlock; its measured wait ≈ the remaining capture duration.
+
+    D4' completion (issue #241 slice 4, folded by trigger — the absolute
+    ``BUDGET_MS + TOLERANCE_MS`` ceiling redded twice in-lane since slice
+    3 kept it: 302.4 then 258.7 vs 200, census row 3): the ceiling
+    references the capture thread's realized dispatch duration, stamped
+    in-run around the real dispatch, and the cut gains its own
+    deterministic assert — ``status is UNKNOWN`` on the capture result.
+    The helper blocks on a lock the capture holds, so its wait cannot
+    exceed the realized dispatch plus its own refusal path; under load
+    both stretch together and the ratio holds. The floor (>= 20) and the
+    ordering asserts are unchanged. Disclosed interaction, unchanged: the
+    helper's own dispatch deadline stays ``BUDGET_MS + TOLERANCE_MS``;
+    both observed red presentations (258.7 and 302.4 ms waits) still
+    returned the "fresh opened bridge" refusal, because the door's
+    latched-failure check is evaluated before the deadline branch."""
     harness = MonitoredHarness(tmp_path / "lock-block.db")
     try:
         first_append = threading.Event()
@@ -438,12 +483,14 @@ def test_second_dispatch_lock_block(tmp_path: Path) -> None:
 
         helper = threading.Thread(target=blocked_write)
         request = harness.capture_request()
-        capture_result: dict[str, OperationResult] = {}
+        capture_result: dict[str, Any] = {}
 
         def run_capture() -> None:
+            capture_result["start"] = time.monotonic()
             capture_result["result"] = harness.plugin.dispatch(
                 request, deadline_ns=harness.deadline_ns(BUDGET_MS)
             )
+            capture_result["end"] = time.monotonic()
 
         capture_thread = threading.Thread(target=run_capture)
         capture_thread.start()
@@ -452,7 +499,22 @@ def test_second_dispatch_lock_block(tmp_path: Path) -> None:
         capture_thread.join(timeout=30)
         helper.join(timeout=30)
         wait_ms = (outcome["end"] - outcome["start"]) * 1000
-        print(f"\nsecond-dispatch lock-block: helper waited {wait_ms:.1f} ms")
+        realized_dispatch_ms = (
+            (capture_result["end"] - capture_result["start"]) * 1000
+        )
+        print(
+            f"\nsecond-dispatch lock-block: helper waited {wait_ms:.1f} ms"
+            f" (capture realized {realized_dispatch_ms:.1f} ms)"
+        )
+        # The cut-proof, deterministic and load-immune: the bridge's
+        # bounded() deadline cut the capture at budget — UNKNOWN, never an
+        # OK that merely completed late. (AR-3a, B-B2: with the cut
+        # disabled the capture lands ERROR at its natural completion — the
+        # quota reservation exceeds at the final append, the AR-3a build
+        # measurement — and THIS assert reds first: the relativized
+        # ceiling alone admits a late cut; the floor family's monitor-gap
+        # floor is the systemic counterweight, disclosed.)
+        assert capture_result["result"].status is OperationStatus.UNKNOWN
         # The capture's budget expiry poisons the session, so the helper's
         # dispatch REFUSES once the lock releases ("A fresh opened bridge is
         # required") — the measured quantity is the WAIT, and that a result
@@ -461,7 +523,9 @@ def test_second_dispatch_lock_block(tmp_path: Path) -> None:
         helper_error = outcome["result"].error
         assert helper_error is not None and "fresh opened bridge" in helper_error.message
         assert wait_ms >= 20  # it waited out a real slice of the capture
-        assert wait_ms <= BUDGET_MS + TOLERANCE_MS
+        # D4': the ceiling references the realized dispatch — the same
+        # in-run-relative form monitor-gap and queued-run already use.
+        assert not _lock_block_breaches(wait_ms, realized_dispatch_ms)
     finally:
         harness.close()
 

@@ -509,6 +509,22 @@ a cross-repo push — those are the reviewer's, which is why G5 exists in the ru
   a re-roll themselves, but they evaluate whichever generation the belt returns
   — an absorbed gen-1 band breach skips gen-1's floor/structural verdicts,
   except the load-safe x1 floor, which asserts on both generations.
+  Issue #241 slice 4's placement ruling adds three standing sentences
+  (its design §1.5): a NEW test whose asserted property is purely
+  order/budget semantics defaults to the injected clock (TestClock); a
+  wall-measured disclosure quantity defaults to the timing lane with an
+  in-run-relative ceiling (the D4' pattern — the ceiling references a
+  quantity the same run stamped, the deterministic cut/status assert
+  beside it, a synthetic band pin on the form); and the sentinel set is
+  never skipped or made local-only — the timing lane stays the only
+  enforced execution surface for the serialized model's disclosure, and
+  the rule the #240 red-lane class was judged by only worked because the
+  lane executed. The lane's residual budget is named, not open-ended:
+  chronic-starvation exhaustion (a trial's fixed attempt budget exhausts
+  on infrastructure sites, the composition rendered in the red) and
+  sustained-stretch (three distinct band families breaching in one
+  execution) are the tolerated-by-name families — a red without the
+  family's signature is not in one.
 - **`tests/faults/`** runs for any change touching `state/`, `control/`, or anything
   concurrency-shaped — it is the fault-injection arm of the suite.
 - **One RED→GREEN slice per commit** — the discipline that keeps every fix provable.

@@ -867,6 +867,29 @@ class ContinuityRig:
                         f"rig-b session already dead at the poll door: {outcome.refusal}",
                         site="drain-poll-door",
                     )
+                if (
+                    outcome.session_failed
+                    and outcome.refusal is not None
+                    and outcome.refusal.code is ErrorCode.TIMEOUT
+                    and outcome.refusal.dispatch_state is DispatchState.UNKNOWN
+                ):
+                    # Slice 4 (design §1.3): the TIMEOUT-flavor poison — a
+                    # poll whose event delivery outran the poll's own 50 ms
+                    # deadline under host stall — is starvation-shaped, so
+                    # the F4 charter retries it on a fresh rig. Every
+                    # deterministic (protocol-lie) flavor stays
+                    # non-retryable exactly as now: the door reject above
+                    # keeps its site, and any other session-failed refusal
+                    # still reds on the plain assert below. The UNKNOWN
+                    # dispatch_state is required so a CLEAN poll-deadline
+                    # TIMEOUT refusal (session alive, the bridge's own
+                    # early return) can never misclassify as poison.
+                    raise TrialInfrastructureError(
+                        f"rig-b drain poll poisoned its session (TIMEOUT "
+                        f"flavor: delivery outran the poll's 50 ms "
+                        f"deadline): {outcome.refusal}",
+                        site="drain-poll-timeout",
+                    )
                 assert not outcome.session_failed, outcome.refusal
                 if outcome.event is not None:
                     self.stream_host._contained_on_event(
@@ -1007,15 +1030,17 @@ def _dispatch_failure_is_infrastructure(
 def _poll_found_dead_session(outcome: PollOutcome) -> bool:
     """A drain poll that found the session already dead (the door reject —
     ``INTERNAL_ERROR`` with ``session_failed``). NOT classified: a session
-    the poll itself poisoned — the protocol-lie flavors are deterministic
-    rig defects, but the TIMEOUT flavor (a poll whose event delivery
-    outran the poll's own 50 ms deadline under host stall) is
-    starvation-shaped and still non-retryable. Known NON-retryable
-    starvation residuals, disclosed as an owner row rather than widened
-    here: TIMEOUT-flavor poll poison and entry-timeout at the dispatch
-    door. (Wave-1 fold, adversary F1: drain-cap starvation was listed
-    here before #241 slice 2 classified it — it is now the retryable
-    ``drain-cap`` site in ``run_trial``'s carrying list, not a
+    the poll itself poisoned via a protocol-lie refusal (a deterministic
+    rig defect). The TIMEOUT flavor (a poll whose event delivery outran
+    the poll's own 50 ms deadline under host stall) is classified beside
+    this check (issue #241 slice 4, design §1.3): the F4 charter's own
+    rule applied to a site its disclosure already admitted was
+    starvation-shaped — it is the retryable ``drain-poll-timeout`` site
+    in ``run_trial``'s carrying list. The remaining known non-retryable
+    starvation residual, disclosed as an owner row: entry-timeout at the
+    dispatch door. (Wave-1 fold, adversary F1: drain-cap starvation was
+    listed here before #241 slice 2 classified it — it is now the
+    retryable ``drain-cap`` site in ``run_trial``'s carrying list, not a
     residual.)"""
     refusal = outcome.refusal
     return (
@@ -1107,9 +1132,12 @@ def run_trial(
     own ``blocked``-latched freshness (``signal_invalid``) door-refusal —
     block-ness read from the monitor's latch, never inferred from a
     latched cause — a post-trip drain poll that found the session
-    already dead at the door, and the delivery-drain cap — frames still
-    due at the 2000 ms cap, the sweep's 39-frames-due gates failure
-    (issue #241 slice 2). Everything else — a wrong status for any
+    already dead at the door, a drain poll that poisoned its session
+    with the TIMEOUT-flavor refusal (delivery outran the poll's own
+    50 ms deadline under host stall; issue #241 slice 4), and the
+    delivery-drain cap — frames still due at the 2000 ms cap, the
+    sweep's 39-frames-due gates failure (issue #241 slice 2).
+    Everything else — a wrong status for any
     other reason, a real (non-freshness) trip, a device-side rejection
     whatever cause is latched (F1's two lanes), an error envelope claiming
     the work was dispatched, a session the poll itself poisoned — keeps
@@ -1117,8 +1145,10 @@ def run_trial(
     ``AssertionError`` that merely quotes the historical retryable wording
     (pinned by test). Starvation-shaped NON-retryables that remain — the
     drain-cap starvation this row once pointed at is now the classified
-    ``drain-cap`` carrying site above (wave-1 fold, adversary F1) — are
-    disclosed at ``_poll_found_dead_session`` as an owner row."""
+    ``drain-cap`` carrying site above (wave-1 fold, adversary F1), and
+    the poll's TIMEOUT-flavor poison is now the classified
+    ``drain-poll-timeout`` site (slice 4) — reduce to entry-timeout at
+    the dispatch door, disclosed as an owner row."""
     retry_sites: list[str] = []
     for attempt in range(3):
         try:
@@ -1877,7 +1907,8 @@ def _belt_fresh_generation(
     """The belt's re-measure: five fresh ``run_trial`` invocations,
     ``trial_index`` 51–55 — a range no other caller uses: the module's
     direct ``trial_index=`` callers, grep-verified at build (refute fold
-    C1), are 1, 3, 6, 7, 8, 9, 11, 44, 45, 46, 99 — so the fresh stores
+    C1) and re-verified at the slice-4 refute fold (pins 9 and 10 added),
+    are 1, 3, 6, 7, 8, 9, 10, 11, 44, 45, 46, 99 — so the fresh stores
     never collide with a cached cell's or another test's."""
     return [
         run_trial(tmp_path, arm=arm, device_class=device_class, trial_index=index)
@@ -1993,7 +2024,16 @@ def test_axis_trials_complete_all_four_axes(
     so its lower bound cannot false-red). The retry cap, in_window_frames,
     and the write-leg gap band stay return-generation-only — re-asserting
     gen-1's load-inflated upper quantities would reintroduce the flake
-    class this slice retires."""
+    class this slice retires.
+
+    The named residual families (issue #241 slice 4's register — the
+    §5.2 accounting tolerates these BY NAME, and a red without the
+    family's signature is NOT in one): chronic-starvation exhaustion —
+    a trial's fixed three-attempt budget exhausts on infrastructure
+    sites, the composition rendered in the red; sustained-stretch —
+    three distinct band families breaching in one execution, the belt
+    reding on both generations by design (underpowered, decide
+    nothing)."""
     trials = _certified_cell(
         tmp_path, arm, device_class, lambda cell: _axis_upper_band_breaches(cell, arm)
     )
@@ -2335,7 +2375,17 @@ def test_belt_swap_still_audits_gen1_x1_floor(
     floor while the belt's fresh generation is clean — and the floor must
     RED on gen-1 through the swapped verdict. RED-shown at build against
     the pre-fix shape (the gen-1 floor call neutralized out of the axis
-    test): the poisoned cell then passes — the exact defect."""
+    test): the poisoned cell then passes — the exact defect.
+
+    Slice 4 (run 36867869659): the ladder indexes by PACED order — an
+    infrastructure retry's rig is discarded before its acquisition (never
+    paces), so construction-order indexing shifted the ladder under load:
+    the discarded rig consumed a poisoning slot, gen-1 drew floor-only,
+    the belt correctly certified nothing (the observed empty map), and
+    the floor audit reded through the pin's own swap post-condition — or
+    the mirrored shift silently vacated the pin. The pace hook appends an
+    adapter on its first pace call; the counting __init__ stays as the
+    construction registry."""
     ladder = (0.55, 1.0, 1.9, 0.75, 1.45)
     adapters: list[ARigAdapter] = []
     original_init = ARigAdapter.__init__
@@ -2347,8 +2397,19 @@ def test_belt_swap_still_audits_gen1_x1_floor(
     monkeypatch.setattr(ARigAdapter, "__init__", counting_init)
     original_pace = ARigAdapter._pace
 
+    paced: list[ARigAdapter] = []
+
     async def first_five_scattered_pace(self: ARigAdapter, total_ms: float) -> None:
-        index = adapters.index(self)
+        # Slice 4: indexed by PACED order — append on FIRST pace; a rig
+        # discarded before its acquisition never paces and consumes no
+        # ladder slot (an infrastructure retry under load shifted a
+        # construction-indexed ladder: run 36867869659 reded the pin's own
+        # swap post-condition on an empty belt map; the mirrored shift
+        # silently vacates the pin). The counting __init__ stays as the
+        # construction registry.
+        if self not in paced:
+            paced.append(self)
+        index = paced.index(self)
         if index < len(ladder):
             await original_pace(self, total_ms * ladder[index])
         else:
@@ -2373,6 +2434,102 @@ def test_belt_swap_still_audits_gen1_x1_floor(
         # The belt really swapped: the fresh generation was certified for
         # the key (a band breach was absorbed), so the red came through
         # the swapped verdict, not from a gen-1-only read.
+        assert _BELT_GENERATION_RUNS.get(("non_capture", "buffered"), 0) == 1, (
+            _BELT_GENERATION_RUNS
+        )
+    finally:
+        _TRIAL_CELLS.clear()
+        _TRIAL_CELLS.update(saved_cells)
+        _BELT_FRESH_GENERATIONS.clear()
+        _BELT_FRESH_GENERATIONS.update(saved_fresh)
+        _BELT_GENERATION_RUNS.clear()
+        _BELT_GENERATION_RUNS.update(saved_runs)
+
+
+def test_belt_swap_pace_allocation_survives_a_pre_acquisition_discard(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Issue #241 slice 4, AR-1's green arm: the belt-swap pin's designed
+    ladder allocation must survive one infrastructure retry that discards
+    its rig BEFORE the acquisition — the merge-run red (run 36867869659)
+    was this shape: the discarded rig consumed a poisoning slot, gen-1
+    drew floor-only, the belt correctly certified nothing, and the floor
+    audit reded through the pin's own swap post-condition on an empty
+    map. With the pace hook indexing by PACED order, the same injected
+    discard changes nothing: a pre-acquisition discard never paces, so
+    gen-1's measured five draw the designed ladder, the 1.9-paced trial
+    breaches the upper band, the belt certifies exactly one fresh
+    generation, and gen-1's floor red lands through the swapped verdict.
+
+    Mutation-RED at build (AR-1): with the hook reverted to
+    construction-order indexing under the same injected discard, the 0.55
+    slot burns on the discarded rig, gen-1 draws floor-only, no designed
+    floor red lands, and this arm reds (DID NOT RAISE) — the pin
+    silently exercising nothing, the vacuous twin of the observed red.
+    The injection is a first-call drain_until_quiet refusal — the trial
+    rhythm's first post-construction step, before any pacing."""
+    ladder = (0.55, 1.0, 1.9, 0.75, 1.45)
+    constructions: list[ARigAdapter] = []
+    paced: list[ARigAdapter] = []
+    discarded: list[ARigAdapter] = []
+    original_init = ARigAdapter.__init__
+
+    def counting_init(self: ARigAdapter) -> None:
+        original_init(self)
+        constructions.append(self)
+
+    monkeypatch.setattr(ARigAdapter, "__init__", counting_init)
+    original_pace = ARigAdapter._pace
+
+    async def pace_ordered_scatter(self: ARigAdapter, total_ms: float) -> None:
+        if self not in paced:
+            paced.append(self)
+        index = paced.index(self)
+        if index < len(ladder):
+            await original_pace(self, total_ms * ladder[index])
+        else:
+            await original_pace(self, total_ms)
+
+    monkeypatch.setattr(ARigAdapter, "_pace", pace_ordered_scatter)
+    original_drain = ContinuityRig.drain_until_quiet
+
+    def discard_first_drain(self: ContinuityRig, **kwargs: Any) -> None:
+        if not discarded:
+            discarded.append(self.adapter_a)
+            raise TrialInfrastructureError(
+                "injected pre-acquisition discard (AR-1 arm)",
+                site="pre-flight-staleness",
+            )
+        return original_drain(self, **kwargs)
+
+    monkeypatch.setattr(ContinuityRig, "drain_until_quiet", discard_first_drain)
+    saved_cells = dict(_TRIAL_CELLS)
+    saved_fresh = dict(_BELT_FRESH_GENERATIONS)
+    saved_runs = dict(_BELT_GENERATION_RUNS)
+    _TRIAL_CELLS.clear()
+    _BELT_FRESH_GENERATIONS.clear()
+    _BELT_GENERATION_RUNS.clear()
+    try:
+        with pytest.raises(AssertionError, match="X1 floor") as raises:
+            test_axis_trials_complete_all_four_axes(
+                tmp_path, "non_capture", "buffered"
+            )
+        assert "x1_ms" in str(raises.value), str(raises.value)
+        # The discard fired exactly once and consumed a construction...
+        assert len(discarded) == 1, (len(discarded), len(constructions), len(paced))
+        # ...PRE-acquisition: it never paced, so it consumed no ladder slot.
+        assert all(a not in paced for a in discarded), (
+            len(paced),
+            len(constructions),
+        )
+        # (A count guard here false-reds on a NATURAL pre-acquisition
+        # discard: constructions=12, paced=10, recorded=1 reds 10==11
+        # with the mechanism all-green — refute A-F1/C-F1 dropped the
+        # bare-arithmetic form; a derived never-paced count is a
+        # tautology, so the kept guards are the membership, the
+        # recorded-discard count, and the belt-map post-condition.)
+        # The belt really swapped: a band breach was absorbed for the key,
+        # so the floor red came through the swapped verdict.
         assert _BELT_GENERATION_RUNS.get(("non_capture", "buffered"), 0) == 1, (
             _BELT_GENERATION_RUNS
         )
@@ -3365,6 +3522,171 @@ def test_drain_cap_starvation_exhausts_at_the_drain_cap_site(
         assert "drain-cap -> drain-cap -> drain-cap" in str(raised.value), (
             str(raised.value)
         )
+    finally:
+        _close_partially_constructed(rigs)
+
+
+# --- the drain-poll TIMEOUT-flavor poison (issue #241 slice 4) ---------------------
+
+#: The trial machinery's known infrastructure site labels — the membership
+#: set the refute folds (A-F2/A-F3) pin compositions against. Grep-verified
+#: against ``site="`` in this module; 'synthetic' is excluded — the
+#: synthetic-marker machinery pin's own label, never a real trial's site.
+_INFRASTRUCTURE_SITES = frozenset(
+    {
+        "dispatch-door",
+        "drain-cap",
+        "drain-poll-door",
+        "drain-poll-timeout",
+        "pre-flight-staleness",
+        "priming-block-refusal",
+        "priming-validity",
+        "write-leg-door",
+    }
+)
+
+def _install_drain_poll_timeout_poison(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    every_construction: bool = False,
+) -> tuple[list[ContinuityRig], list[OTDPBridge]]:
+    """Force the TIMEOUT-flavor poison presentation (issue #241 slice 4,
+    design §1.3): the poisoned rig's bridge returns the TIMEOUT-flavor
+    session poison on its first poll — a poll whose event delivery
+    outran the poll's own 50 ms deadline under host stall, the exact
+    presentation ``_poll_found_dead_session``'s own disclosure named
+    (one live observation logged at the slice-3 outcome comment). The
+    poison fires at the rig's first post-trip drain poll — gated on the
+    owning rig's monitor having latched its cause, the same post-trip
+    for-branch context the sibling ``drain-poll-door`` site raises in —
+    so the trial still reaches its measured dispatch and each attempt
+    burns the real trial rhythm (~2-3 s, disclosed).
+    ``every_construction=True`` poisons every rig (the exhaustion arm):
+    all three attempts die at their first post-trip drain poll. Returns
+    (rigs, poison_served) — the rigs (the slice-1 counter shape) for the
+    caller's failure belt, and the bridges the poison actually SERVED at
+    their post-trip poll (A-F2: empty means the poisoned rig's attempt
+    never reached post-trip — a natural infrastructure site preempted it —
+    and the membership pin tolerates the substitution).
+    The poison mirrors the bridge's real adapter-TimeoutError
+    presentation: TIMEOUT + UNKNOWN, not the clean poll-deadline
+    refusal's NOT_DISPATCHED. (Why the post-trip gate: a pre-trip poison
+    rides ``poll_slice`` — the engine's ``poll_round`` latches
+    ``session_failed`` and STOPS silently, delivery stalls, and the
+    trial dies at the ``drain-cap`` site without ever reaching this
+    classification — measured in this session's build.)"""
+    rigs: list[ContinuityRig] = []
+    bridges: list[OTDPBridge] = []
+    original_init = ContinuityRig.__init__
+
+    def counting_init(self: ContinuityRig, db_path: Path, **kwargs: Any) -> None:
+        rigs.append(self)
+        original_init(self, db_path, **kwargs)
+        bridges.append(self.bridge_b)
+
+    monkeypatch.setattr(ContinuityRig, "__init__", counting_init)
+    original_poll_event = OTDPBridge.poll_event
+
+    poison_served: list[OTDPBridge] = []
+
+    def poisoned_poll_event(
+        self: OTDPBridge, subscription_id: str, *, deadline_ns: int
+    ) -> PollOutcome:
+        poisoned = bridges if every_construction else bridges[:1]
+        if any(self is bridge for bridge in poisoned):
+            rig = next(rig for rig in rigs if rig.bridge_b is self)
+            if rig.monitor.cause is not None:
+                poison_served.append(self)
+                return PollOutcome(
+                    refusal=OperationError(
+                        ErrorCode.TIMEOUT,
+                        "poisoned poll: delivery outran the poll's own 50 ms deadline",
+                        DispatchState.UNKNOWN,
+                    ),
+                    session_failed=True,
+                )
+        return original_poll_event(self, subscription_id, deadline_ns=deadline_ns)
+
+    monkeypatch.setattr(OTDPBridge, "poll_event", poisoned_poll_event)
+    return rigs, poison_served
+
+
+def test_drain_poll_timeout_poison_retries_on_a_fresh_rig(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Issue #241 slice 4 (design §1.3), the membership pin (the
+    de-clock doctrine's form, the drain-cap pin precedent): the poisoned
+    rig's first post-trip drain poll raises at the ``drain-poll-timeout``
+    site, the raise rides ``run_trial``'s fresh-rig retry, and the
+    unpoisoned second construction completes the trial. Asserts the
+    PROPERTY, not the attempt bookkeeping — ``retries >= 1`` and
+    ``"drain-poll-timeout" in retry_sites`` — because under load the
+    UNPOISONED attempt can itself hit a real starvation site the retry
+    budget legitimately absorbs. Runs the production policy; burns the
+    real trial rhythm per attempt (~2-3 s, disclosed)."""
+    rigs, poison_served = _install_drain_poll_timeout_poison(monkeypatch)
+    try:
+        outcome = run_trial(
+            tmp_path, arm="non_capture", device_class="buffered", trial_index=9
+        )
+        assert outcome["retries"] >= 1, outcome["retries"]
+        sites = outcome["retry_sites"]
+        assert sites, sites
+        # A-F2 (refute fold): every rendered site is a known infrastructure
+        # site, and the poison's own site is present whenever the poison
+        # actually SERVED — a natural pre-trip site on the poisoned rig's
+        # attempt preempts the post-trip poll entirely, so the composition
+        # may legitimately substitute (this pin's property is the retry
+        # machinery itself; the classification is pinned next door at
+        # exhaustion, where every rig is poisoned).
+        assert all(site in _INFRASTRUCTURE_SITES for site in sites), sites
+        assert "drain-poll-timeout" in sites or not poison_served, (
+            sites,
+            len(poison_served),
+        )
+    finally:
+        _close_partially_constructed(rigs)
+
+
+def test_drain_poll_timeout_poison_exhausts_at_the_site(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AR-2b, the kill direction: a DETERMINISTIC TIMEOUT poison on
+    every construction must still red — through exhaustion, with the
+    composition rendered. The widening cannot launder a rig defect: a
+    poisoned poll on every rig burns exactly three attempts and fails as
+    a normal assertion (TrialInfrastructureError is an AssertionError
+    subclass). A-F3 (refute fold): the rendered composition's sites are
+    asserted by MEMBERSHIP in the infrastructure-site set, not as an
+    exact homogeneous triple — a natural infrastructure site may
+    substitute on any attempt; the render itself is still required.
+    Three real trial rhythms (~7-9 s, disclosed; no cap spins — the
+    poison fires at the first post-trip poll)."""
+    rigs, poison_served = _install_drain_poll_timeout_poison(
+        monkeypatch, every_construction=True
+    )
+    try:
+        with pytest.raises(TrialInfrastructureError) as raised:
+            run_trial(
+                tmp_path, arm="non_capture", device_class="buffered", trial_index=10
+            )
+        assert len(rigs) == 3, len(rigs)
+        assert type(raised.value) is TrialInfrastructureError
+        assert isinstance(raised.value, AssertionError)
+        rendered = str(raised.value)
+        # A-F3 (refute fold): the composition must still RENDER — the §5.2
+        # family requires it — but the exact homogeneous triple is not
+        # asserted: a natural infrastructure site may substitute on any
+        # attempt, so every rendered site must be a known infrastructure
+        # site. The error's own site is the composition's LAST element
+        # (run_trial appends it before re-raising) — consistency, not a
+        # fixed label.
+        marker = "[retry composition exhausted after 3 attempts: "
+        assert marker in rendered, rendered
+        composition = rendered.rsplit(marker, 1)[1].rstrip("]")
+        sites = composition.split(" -> ")
+        assert sites and all(s in _INFRASTRUCTURE_SITES for s in sites), composition
+        assert raised.value.site == sites[-1], (raised.value.site, composition)
     finally:
         _close_partially_constructed(rigs)
 
