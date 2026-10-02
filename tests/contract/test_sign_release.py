@@ -244,7 +244,7 @@ def _fresh_key() -> Ed25519PrivateKey:
 def test_publisher_signed_submission_records_signed_valid(tmp_path: Path) -> None:
     key = _fresh_key()
     submission_dir, record_path, _record = _submission(tmp_path, key=key)
-    release_dir, state, timestamp = sign_release.validate_and_record(
+    release_dir, state, timestamp, recommended = sign_release.validate_and_record(
         submission_dir, record_path, tmp_path / "releases",
         registry_clone=tmp_path / "registry-clone",
     )
@@ -297,7 +297,7 @@ def test_signature_without_recorded_key_is_rejected(tmp_path: Path) -> None:
 def test_unsigned_submission_publishes_labeled(tmp_path: Path) -> None:
     """RED arm (b): unsigned is ACCEPTED, labeled in the record fields."""
     submission_dir, record_path, _record = _submission(tmp_path)
-    release_dir, state, timestamp = sign_release.validate_and_record(
+    release_dir, state, timestamp, recommended = sign_release.validate_and_record(
         submission_dir, record_path, tmp_path / "releases",
         registry_clone=tmp_path / "registry-clone",
     )
@@ -324,19 +324,58 @@ def test_timestamped_signature_survives_expired_key(tmp_path: Path) -> None:
     (submission_dir / "timestamp.json").write_bytes(sign_release.canonical_bytes(record))
     # The clone's publisher records the EXPIRED window.
     clone = _make_clone(tmp_path / "expired", key=key, window=KEY_WINDOW)
-    release_dir, state, timestamp = sign_release.validate_and_record(
+    release_dir, state, timestamp, recommended = sign_release.validate_and_record(
         submission_dir, record_path, tmp_path / "releases", registry_clone=clone,
     )
     assert state == "signed-valid"
     assert timestamp is not None and timestamp["signed_at"] == "260101120000Z"
+    assert recommended is False
     assert (release_dir / "timestamp.token").is_file()
 
 
-def test_untimestamped_signature_fails_the_expired_window(tmp_path: Path) -> None:
-    """The control for (c): without a timestamp the expired window refuses."""
+def test_untimestamped_expired_window_is_accepted_with_advisory(
+    tmp_path: Path,
+) -> None:
+    """Owner refinement (2026-10-02): timestamping is optional but
+    recommended — an un-timestamped signed release NEVER refuses; the
+    advisory records the honest horizon (valid until key expiry). RED
+    baseline (quoted from the pre-refinement run): this exact fixture
+    refused with 'signature_invalid: the signing key was not valid at the
+    signing time (2026-10-01 ...) outside [2020-01-01, 2026-06-01]'."""
     key = _fresh_key()
     submission_dir, record_path, _record = _submission(tmp_path, key=key)
     clone = _make_clone(tmp_path / "expired2", key=key, window=KEY_WINDOW)
+    _release_dir, state, timestamp, recommended = sign_release.validate_and_record(
+        submission_dir,
+        record_path,
+        tmp_path / "releases",
+        registry_clone=clone,
+    )
+    assert state == "signed-valid"
+    assert timestamp is None
+    assert recommended is True
+
+
+def test_timestamped_time_outside_window_still_refuses(tmp_path: Path) -> None:
+    """The genuine-invalid case that survives the refinement: a TSA-attested
+    signing time OUTSIDE the key window means the key was not valid when the
+    signing happened — that refuses."""
+    import hashlib
+
+    key = _fresh_key()
+    submission_dir, record_path, _record = _submission(tmp_path, key=key)
+    token = bytes([0x18, 19]) + b"20180101120000.000Z"  # GeneralizedTime, 2018 (19 chars)
+    record = {
+        "signature_sha256": hashlib.sha256(
+            (submission_dir / "manifest.sig").read_bytes()
+        ).hexdigest(),
+        "signed_at": "20180101120000.000Z",
+        "token_sha256": hashlib.sha256(token).hexdigest(),
+        "tsa": "https://tsa.example",
+    }
+    (submission_dir / "timestamp.token").write_bytes(token)
+    (submission_dir / "timestamp.json").write_bytes(sign_release.canonical_bytes(record))
+    clone = _make_clone(tmp_path / "outside", key=key, window=KEY_WINDOW)
     with pytest.raises(sign_release.ValidationError) as exc:
         sign_release.validate_and_record(
             submission_dir, record_path, tmp_path / "releases", registry_clone=clone,
@@ -394,7 +433,7 @@ def test_rederivation_agreement_records(tmp_path: Path) -> None:
     submission_dir, record_path, _record = _submission(tmp_path, key=key)
     plugin = tmp_path / "wgt_widget"
     clone = _make_clone(tmp_path, key=key)
-    _release_dir, state, _timestamp = sign_release.validate_and_record(
+    _release_dir, state, _timestamp, _recommended = sign_release.validate_and_record(
         submission_dir, record_path, tmp_path / "releases",
         plugin_tree=plugin, registry_clone=clone,
     )
@@ -440,7 +479,7 @@ def test_non_mit_licence_survives_rederivation(tmp_path: Path) -> None:
         },
     }
     record_path.write_bytes(sign_release.canonical_bytes(_full_record))
-    release_dir, _state, _ts = sign_release.validate_and_record(
+    release_dir, _state, _ts, _rec = sign_release.validate_and_record(
         submission_dir, record_path, tmp_path / "releases",
         plugin_tree=plugin, registry_clone=clone,
     )

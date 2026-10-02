@@ -164,19 +164,29 @@ def _parse_signing_time(value: str) -> datetime:
     UTCTime's two-digit year is not what fromisoformat reads (26 parses as
     2601, not 2026); the RFC 5280 50-year window applies.
     """
-    if len(value) == 13 and value.endswith("Z"):
-        two_digit = int(value[:2])
+    basic = value.rstrip("Z")
+    fractional = basic.find(".")
+    if fractional != -1:
+        basic = basic[:fractional]
+    if len(basic) == 12:  # UTCTime YYMMDDHHMMSS
+        two_digit = int(basic[:2])
         century = 2000 if two_digit < 50 else 1900
-        return datetime(
-            century + two_digit,
-            int(value[2:4]),
-            int(value[4:6]),
-            int(value[6:8]),
-            int(value[8:10]),
-            int(value[10:12]),
-            tzinfo=UTC,
-        )
-    return _parse_time(value)
+        year = century + two_digit
+        rest = basic[2:]
+    elif len(basic) == 14:  # GeneralizedTime YYYYMMDDHHMMSS
+        year = int(basic[:4])
+        rest = basic[4:]
+    else:
+        return _parse_time(value)
+    return datetime(
+        year,
+        int(rest[0:2]),
+        int(rest[2:4]),
+        int(rest[4:6]),
+        int(rest[6:8]),
+        int(rest[8:10]),
+        tzinfo=UTC,
+    )
 
 
 def _verify_signature(
@@ -185,17 +195,23 @@ def _verify_signature(
     publisher: str,
     registry_clone: Path,
     released_at: str,
-) -> tuple[str, dict[str, Any] | None]:
-    """Verify the publisher signature and timestamp; return the label.
+) -> tuple[str, dict[str, Any] | None, bool]:
+    """Verify the publisher signature and timestamp; (label, timestamp, advisory).
 
-    ``signed-valid`` / ``unsigned`` — anything else refuses. With a trusted
-    timestamp, key validity is judged at the TSA-attested signing time (a
-    signature survives key expiry/revocation); without one, at the release's
-    own recorded date.
+    ``signed-valid`` / ``unsigned`` — anything else refuses. Timestamping is
+    OPTIONAL but recommended (owner refinement, 2026-10-02): a signed release
+    WITHOUT one is accepted — no refusal — and carries
+    ``timestamp_recommended`` so the record and index state the honest
+    validity horizon (an un-timestamped signature is valid until the key
+    expires; a timestamped one stays valid past expiry or revocation). With
+    a timestamp, key validity is judged at the TSA-attested signing time,
+    and a TSA-attested time OUTSIDE the window is a genuine invalid
+    signature (the key was not valid when the signing happened) — that
+    still refuses.
     """
     sig_path = submission_dir / "manifest.sig"
     if not sig_path.is_file():
-        return "unsigned", None
+        return "unsigned", None, False
 
     key, window = _publisher_key(registry_clone, publisher)
     if key is None:
@@ -217,7 +233,6 @@ def _verify_signature(
     timestamp: dict[str, Any] | None = None
     token_path = submission_dir / "timestamp.token"
     record_path = submission_dir / "timestamp.json"
-    signing_time: datetime = _parse_time(released_at)
     if token_path.is_file() and record_path.is_file():
         token = token_path.read_bytes()
         recorded: dict[str, Any] = json.loads(record_path.read_bytes())
@@ -233,18 +248,25 @@ def _verify_signature(
                 "timestamp_invalid: the token's own time disagrees with the record"
             )
         timestamp = recorded
+        # Timestamped: validity judged at the TSA-attested time — a timestamp
+        # OUTSIDE the window is a genuine invalid signature (refuses); one
+        # inside stays valid past expiry/revocation.
         signing_time = _parse_signing_time(extracted)
+        if window is not None:
+            not_before = _parse_time(window["not_before"])
+            not_after = _parse_time(window["not_after"])
+            if not (not_before <= signing_time <= not_after):
+                raise ValidationError(
+                    "signature_invalid: the TSA-attested signing time falls "
+                    f"outside the key validity window ({signing_time.isoformat()} "
+                    f"outside [{window['not_before']}, {window['not_after']}]) — "
+                    "the key was not valid when the signing happened"
+                )
+        return "signed-valid", timestamp, False
 
-    if window is not None:
-        not_before = _parse_time(window["not_before"])
-        not_after = _parse_time(window["not_after"])
-        if not (not_before <= signing_time <= not_after):
-            raise ValidationError(
-                "signature_invalid: the signing key was not valid at the signing "
-                f"time ({signing_time.isoformat()} outside "
-                f"[{window['not_before']}, {window['not_after']}])"
-            )
-    return "signed-valid", timestamp
+    # Un-timestamped (optional but recommended): accepted, no refusal — the
+    # advisory records the honest validity horizon (valid until key expiry).
+    return "signed-valid", None, True
 
 
 def _der_first_time(token: bytes) -> str | None:
@@ -303,12 +325,12 @@ def validate_and_record(
     *,
     plugin_tree: Path | None = None,
     registry_clone: Path | None = None,
-) -> tuple[Path, str, dict[str, Any] | None]:
+) -> tuple[Path, str, dict[str, Any] | None, bool]:
     """Validate the chain, label the signature state, and write the release.
 
-    Returns (release_dir, signature_state, timestamp_record). No key is
-    taken and no signature is made here — the registry validates, publishes
-    and labels.
+    Returns (release_dir, signature_state, timestamp_record,
+    timestamp_recommended). No key is taken and no signature is made here —
+    the registry validates, publishes and labels.
     """
     manifest_raw = (submission_dir / "manifest.json").read_bytes()
     manifest = json.loads(manifest_raw)
@@ -336,7 +358,7 @@ def validate_and_record(
 
     publisher = str(manifest.get("publisher_id", ""))
     clone = registry_clone if registry_clone is not None else out_root.parent
-    signature_state, timestamp = _verify_signature(
+    signature_state, timestamp, timestamp_recommended = _verify_signature(
         submission_dir, manifest_raw, publisher, clone, str(manifest.get("released_at", ""))
     )
 
@@ -375,7 +397,7 @@ def validate_and_record(
         source = submission_dir / name
         if source.is_file():
             (release_dir / name).write_bytes(source.read_bytes())
-    return release_dir, signature_state, timestamp
+    return release_dir, signature_state, timestamp, timestamp_recommended
 
 
 def main() -> int:
@@ -387,7 +409,7 @@ def main() -> int:
     parser.add_argument("--registry-clone", type=Path, default=None)
     args = parser.parse_args()
     try:
-        release_dir, state, timestamp = validate_and_record(
+        release_dir, state, timestamp, recommended = validate_and_record(
             args.submission,
             args.record,
             args.out,
@@ -400,9 +422,19 @@ def main() -> int:
     print(f"recorded {release_dir} (signature_state={state})")
     if timestamp is not None:
         print(f"  timestamp: {timestamp['tsa']} at {timestamp['signed_at']}")
+    if recommended:
+        print("  timestamp_recommended: true (an un-timestamped signature is "
+              "valid until key expiry; timestamping keeps it valid past expiry)")
     print(
         "publish record fields: "
-        + json.dumps({"signature_state": state, "timestamp": timestamp}, sort_keys=True)
+        + json.dumps(
+            {
+                "signature_state": state,
+                "timestamp": timestamp,
+                "timestamp_recommended": recommended,
+            },
+            sort_keys=True,
+        )
     )
     return 0
 
