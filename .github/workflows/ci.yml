@@ -217,3 +217,94 @@ jobs:
               -e 's|{{ENV_FILE}}|/etc/benchweave/benchweave.env|g' \
               deploy/systemd/benchweave.service.template > /tmp/benchweave.service
           systemd-analyze verify /tmp/benchweave.service
+
+  windows:
+    # The Windows evidence lane (issue #207; #329 deferral D2 arriving by
+    # owner directive 2026-10-02). Runs the SAME selection as the gates
+    # job on windows-latest, so contributor-attested Windows findings
+    # become CI-proven evidence and the intermittent sqlite disk-I/O
+    # census items have a reproduction surface. EVIDENCE POSTURE (slice
+    # 1): continue-on-error on the test step only — a test red does not
+    # block merges (merge-verified.sh reads the job conclusion; its
+    # zero-red rollup rule is unchanged) and is carried instead by the
+    # warning annotation, the job summary, and the junitxml artifact.
+    # Setup failures have NO continue-on-error: a broken lane blocks
+    # like any broken CI. Graduation (slice 2) deletes one line.
+    runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+          fetch-depth: 0 # train_window reads version-dir history (#97)
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          python-version: "3.13"
+
+      - name: Materialise fixture signing keys from repo secrets
+        env:
+          BENCHWEAVE_FIXTURE_KEY_MAIN: ${{ secrets.BENCHWEAVE_FIXTURE_KEY_MAIN }}
+          BENCHWEAVE_FIXTURE_KEY_ORIGINB: ${{ secrets.BENCHWEAVE_FIXTURE_KEY_ORIGINB }}
+        run: |
+          if [ -n "$BENCHWEAVE_FIXTURE_KEY_MAIN" ]; then
+            printf '%s' "$BENCHWEAVE_FIXTURE_KEY_MAIN" > fixtures/registry/keys/main.pem
+          else
+            echo "::notice::BENCHWEAVE_FIXTURE_KEY_MAIN unavailable (fork PR?); signing tests will skip"
+          fi
+          if [ -n "$BENCHWEAVE_FIXTURE_KEY_ORIGINB" ]; then
+            printf '%s' "$BENCHWEAVE_FIXTURE_KEY_ORIGINB" > fixtures/registry/keys/originb.pem
+          else
+            echo "::notice::BENCHWEAVE_FIXTURE_KEY_ORIGINB unavailable (fork PR?); signing tests will skip"
+          fi
+
+      - name: Sync environment
+        run: uv sync --locked
+
+      # Byte-exactness: checkout relies on the committed .gitattributes
+      # (`* text=auto eol=lf`) in this repo AND in packages/sdk — eol=lf
+      # overrides the Windows runner's default core.autocrlf, so worktree
+      # bytes equal the committed LF bytes and every digest reads the same
+      # input as on Linux. No git-config step is wanted; a digest-mismatch
+      # red here is the canary for that posture regressing, on the OS
+      # where it would regress.
+      - name: Test (windows evidence lane)
+        continue-on-error: true
+        run: >-
+          uv run pytest -q -n auto -m "not timing and not browser"
+          --junitxml=windows-evidence.xml
+
+      - name: Evidence summary
+        if: always()
+        run: |
+          uv run python - <<'PY'
+          import os, xml.etree.ElementTree as ET
+          root = ET.parse("windows-evidence.xml").getroot()
+          counts = {k: int(root.get(k, "0")) for k in
+                    ("tests", "failures", "errors", "skipped")}
+          failed = [tc.get("name") for tc in root.iter("testcase")
+                    if tc.find("failure") is not None or tc.find("error") is not None]
+          lines = [f"### Windows evidence lane",
+                   f"- tests {counts['tests']} · failures {counts['failures']} "
+                   f"· errors {counts['errors']} · skipped {counts['skipped']}"]
+          if failed:
+              lines.append("- failing ids (evidence for #207 — non-blocking by design, slice 1):")
+              lines += [f"  - `{n}`" for n in failed]
+              print(f"::warning::windows evidence lane: {len(failed)} failing id(s) — "
+                    f"see summary; census discipline: record on #207")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as fh:
+              fh.write("\n".join(lines) + "\n")
+          PY
+
+      - name: Upload junitxml evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-evidence-junit
+          path: windows-evidence.xml

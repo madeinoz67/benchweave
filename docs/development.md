@@ -135,11 +135,16 @@ Change propagation, end to end:
 ## GitHub workflows
 
 - **CI** runs the Python gates (sync, ruff check, config-driven mypy,
-  `pytest -q -n auto -m "not timing"`) and the standards sync check
-  (`make check-sdk-standards`), plus a **timing** job that runs the
+  `pytest -q -n auto -m "not timing and not browser"`) and the standards sync
+  check (`make check-sdk-standards`), plus a **timing** job that runs the
   real-paced, marker-selected set (`pytest -q -m timing`) serialized on its
-  own fresh VM — the two filters are complementary, so their union is the
-  full collection and no test loses CI execution — plus a **systemd**
+  own fresh VM — the three filters are complementary, so their union is the
+  full collection and no test loses CI execution — a **browser** job that
+  runs the Playwright-driven pattern-library set (`pytest -q -m browser`) on
+  Linux, a **windows** job that runs the gates selection on windows-latest
+  as an evidence lane (issue #207: a test red is carried by the warning
+  annotation, the job summary and the junitxml artifact, and does not block
+  merges in slice 1; setup reds block), plus a **systemd**
   template-verification job and a **ui** job (typecheck, lint, unit tests,
   Storybook build, renderer freshness gate, `npm audit`) on Linux.
 - **Device plugins** checks independent manufacturer/model plugin projects in
