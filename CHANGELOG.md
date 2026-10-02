@@ -1058,6 +1058,8 @@ All notable changes to this project will be documented in this file.
 - #207 row-B ceiling relativized to the recorded clamp (the #241 D-rowB payload)
 - #207 the refute fold — 7 code rows + the record erratum
 - Post-sync sweep — the 0.1.2 active row's motion through the pins
+- Re-seed the drain-cap starvation pins under the no-trip policy
+- Refute fold — the poison path is DISPATCH-path, not poll-path
 
 ### Build
 
