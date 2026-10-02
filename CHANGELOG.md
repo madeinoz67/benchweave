@@ -861,6 +861,8 @@ All notable changes to this project will be documented in this file.
 - Bump actions/cache from 4.3.0 to 6.1.0 (#337)
 - Bump astral-sh/setup-uv from 9.0.0 to 10.2.0 (#338)
 - Bump actions/setup-python from 6.3.0 to 7.0.0 (#340)
+- Bump fastmcp from 4.0.3 to 4.0.10
+- Regenerate uv.lock for the fastmcp 4.0.10 bump
 
 ### Performance
 
