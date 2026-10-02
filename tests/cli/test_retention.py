@@ -14,7 +14,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
-from datetime import datetime
+from datetime import datetime, tzinfo
 from pathlib import Path
 from typing import Any
 
@@ -750,13 +750,33 @@ def test_fw1_run_end_anchors_on_the_terminal_record_not_the_projection(
     assert after == first, "run_end disposal moved with a later put_run_state"
 
 
-def test_fw5_naive_stamps_anchor_unresolved_and_never_host_local(
-    tmp_path: Path,
-) -> None:
-    """Finding 5 (MED): naive (no offset) stamps yield ``anchor_unresolved``
-    with ``disposal_date: null`` — never a host-TZ-localized guess; the
-    rendered report is byte-identical under different host timezones."""
+def _fw5_report_bytes(
+    tmp_path: Path, *, tzset: bool = True
+) -> tuple[str, dict[str, dict[str, Any]], bool]:
+    """The fw5 scenario, guarded for platforms without ``time.tzset``
+    (issue #207: the Unix-only stressor must not crash the platform; the
+    property still holds everywhere).
+
+    Returns ``(report_bytes, rows_by_id, flip_arm_ran)``.
+
+    - ``tzset=True`` (default) and the platform provides ``time.tzset``:
+      the TZ-flip byte-identity arm runs (Australia/Perth vs UTC, reports
+      byte-equal — asserted here; flipping the process-local timezone
+      in-process is structurally impossible on Windows, and pretending
+      otherwise would be a fake stressor). ``flip_arm_ran`` is True.
+    - ``tzset=False`` or no ``time.tzset`` attribute (the Windows shape,
+      or the POSIX simulation via ``monkeypatch.delattr(time, "tzset")``):
+      the flip arm is BYPASSED by the guard and ``flip_arm_ran`` is False
+      — the sentinel the no-``tzset`` test asserts, so the bypass is
+      pinned rather than silent.
+
+    The property arm itself (naive → ``anchor_unresolved`` with
+    ``disposal_date: None``) lives in ``_assert_fw5_property`` with the
+    callers: it is platform-independent string handling and runs in EVERY
+    mode."""
     import time
+
+    real_tzset = getattr(time, "tzset", None)
 
     data_dir = _seed(tmp_path)
     _write_policy(data_dir / "retention-policy.json", run_end=True)
@@ -782,23 +802,110 @@ def test_fw5_naive_stamps_anchor_unresolved_and_never_host_local(
         rows = {r["id"]: r for r in model["rows"]}
         return payload, rows
 
+    flip_ran = False
+    rows: dict[str, dict[str, Any]] = {}
+    chosen_payload = ""
     monkey = pytest.MonkeyPatch()
     try:
-        monkey.setenv("TZ", "Australia/Perth")
-        time.tzset()
-        perth, perth_rows = report_bytes()
-        monkey.setenv("TZ", "UTC")
-        time.tzset()
-        utc, utc_rows = report_bytes()
+        if tzset and real_tzset is not None:
+            monkey.setenv("TZ", "Australia/Perth")
+            real_tzset()
+            perth, _ = report_bytes()
+            monkey.setenv("TZ", "UTC")
+            real_tzset()
+            utc, rows = report_bytes()
+            flip_ran = True
+            assert perth == utc, "report is host-timezone dependent"
+            chosen_payload = utc
+        else:
+            # The guard's bypass: one report under the ambient TZ. The
+            # caller pins the sentinel via flip_arm_ran.
+            chosen_payload, rows = report_bytes()
     finally:
         monkey.undo()
-        time.tzset()
+        if real_tzset is not None:
+            real_tzset()
 
-    assert perth == utc, "report is host-timezone dependent"
-    for rows in (perth_rows, utc_rows):
-        naive_row = rows["cap-naive"]
-        assert naive_row["status"] == "anchor_unresolved"
-        assert naive_row["disposal_date"] is None
+    return chosen_payload, rows, flip_ran
+
+
+def _assert_fw5_property(rows_by_id: dict[str, dict[str, Any]]) -> None:
+    """The fw5 property: the naive stamp stays anchor_unresolved with
+    disposal_date None — never a host-TZ-localized guess. Runs in EVERY
+    tzset mode; the committed sabotage arm asserts this function RAISES
+    under the pre-fix localized guess in both modes."""
+    naive_row = rows_by_id["cap-naive"]
+    assert naive_row["status"] == "anchor_unresolved"
+    assert naive_row["disposal_date"] is None
+
+
+def test_fw5_naive_stamps_anchor_unresolved_and_never_host_local(
+    tmp_path: Path,
+) -> None:
+    """Finding 5 (MED): naive (no offset) stamps yield ``anchor_unresolved``
+    with ``disposal_date: null`` — never a host-TZ-localized guess; the
+    rendered report is byte-identical under different host timezones
+    (the TZ-flip arm runs where the platform can flip; issue #207)."""
+    payload, rows, _flip_ran = _fw5_report_bytes(tmp_path)
+    _assert_fw5_property(rows)
+
+
+def test_fw5_no_tzset_platform_takes_the_guard_and_keeps_the_property(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Issue #207: with ``time.tzset`` absent (the Windows shape — or the
+    POSIX simulation deleting it), the guard takes the bypass: no
+    AttributeError, the flip arm is skipped with the sentinel False, and
+    the naive-stamp property still holds on the single report."""
+    import time
+
+    monkeypatch.delattr(time, "tzset", raising=False)
+    payload, rows, flip_ran = _fw5_report_bytes(tmp_path)
+    assert flip_ran is False, "the guard must bypass the flip arm"
+    _assert_fw5_property(rows)
+
+
+def test_fw5_parse_utc_sabotage_reds_in_both_tzset_modes(
+    tmp_path: Path,
+) -> None:
+    """Committed sabotage arm (the slice-3 classifier-arm precedent): the
+    tzset guard must not buy platform coverage by losing the regression
+    teeth. Patching ``_parse_utc`` back to the pre-fix localized guess
+    (naive stamps resolved to host-local) must RED each mode through its
+    own leg — the teeth are COMPLEMENTARY per leg, not one assert firing
+    twice: the tzset leg reds at the flip arm's byte-identity assert
+    (a host-localized render is TZ-dependent), the no-tzset leg reds at
+    the property assert (the naive stamp resolves and stops being
+    anchor_unresolved)."""
+    from benchweave.cli import retention as retention_module
+
+    real_parse_utc = retention_module._parse_utc
+
+    def _localized_guess(value: Any) -> datetime | None:
+        # the pre-fix shape: a naive stamp resolved to host-local time
+        if not isinstance(value, str):
+            return None
+        try:
+            moment = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except (ValueError, OverflowError):
+            return None
+        if moment.tzinfo is None:
+            return moment.astimezone()
+        return moment
+
+    for tzset_mode in (True, False):
+        retention_module._parse_utc = _localized_guess
+        try:
+            _payload, rows, _ = _fw5_report_bytes(tmp_path, tzset=tzset_mode)
+            _assert_fw5_property(rows)
+        except AssertionError:
+            continue
+        finally:
+            retention_module._parse_utc = real_parse_utc
+        pytest.fail(
+            f"fw5 property did NOT red under the _parse_utc sabotage "
+            f"(tzset={tzset_mode}) — the arm has no teeth"
+        )
 
 
 def test_fw5_unparseable_and_naive_terminal_records_stay_unresolved(
@@ -1650,6 +1757,81 @@ def test_fold2_wedge_exhaustion_beyond_domain_renders_decidable_output(
     trickle_line = next(ln for ln in md.splitlines() if ln.startswith("- run:run-trickle"))
     assert "beyond the datetime domain" in trickle_line
     assert fatpipe["exhaustion_at"][:4] in md
+
+
+def test_fold2_wedge_exhaustion_instant_is_conversion_independent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Issue #207: the rendered exhaustion instant is pure datetime
+    arithmetic — the platform's timestamp-conversion machinery is never on
+    the path. Windows' ``fromtimestamp`` refuses instants beyond the C
+    runtime's range (roughly year 3001), so an in-domain year-~5200
+    forecast rendered absent there with a FALSE beyond-domain disclosure.
+    Refusing every ``fromtimestamp`` call must change nothing: the
+    in-domain instant still renders, and only the true domain-overflow key
+    (trickle) keeps the absent instant + disclosure."""
+    from benchweave.cli import retention as retention_module
+    from benchweave.cli.retention import render_markdown
+
+    class _RefusingDatetime(datetime):
+        @classmethod
+        def fromtimestamp(
+            cls, ts: float, tz: tzinfo | None = None
+        ) -> _RefusingDatetime:
+            raise OSError("simulated conversion-machinery refusal")
+
+    monkeypatch.setattr(retention_module, "datetime", _RefusingDatetime)
+
+    data_dir = _seed(tmp_path)
+    store = Store.open(db_path(data_dir))
+    try:
+        store.create_run("run-trickle", {"procedure_id": "demo"}, "op", T0)
+        store.put_run_state("run-trickle", BENCH, "running", T1)
+        writer = CaptureStagingStore(
+            store, max_capture_bytes=10_000_000, max_dataset_bytes=10**13
+        )
+        for cid, opened, closed in (
+            ("cap-tr1", T0, "2026-09-20T00:00:01Z"),
+            ("cap-tr2", "2026-09-20T00:00:01Z", "2026-09-20T00:00:02Z"),
+        ):
+            writer.open_capture(
+                capture_id=cid, context_key="run:run-trickle", fmt="raw_binary",
+                sample_count=None, max_bytes=1000, now=opened)
+            writer.append(cid, b"\x0b" * 2, "run:run-trickle")
+            writer.finalise(cid, closed, "run:run-trickle")
+        store.create_run("run-fatpipe", {"procedure_id": "demo"}, "op", T0)
+        store.put_run_state("run-fatpipe", BENCH, "running", T1)
+        for cid, opened, closed in (
+            ("cap-fat1", T0, "2026-09-20T00:00:01Z"),
+            ("cap-fat2", "2026-09-20T00:00:01Z", "2026-09-20T00:00:02Z"),
+        ):
+            writer.open_capture(
+                capture_id=cid, context_key="run:run-fatpipe", fmt="raw_binary",
+                sample_count=None, max_bytes=1000, now=opened)
+            writer.append(cid, b"\x0c" * 100, "run:run-fatpipe")
+            writer.finalise(cid, closed, "run:run-fatpipe")
+    finally:
+        store.close()
+
+    model = _model(data_dir, now=NOW, max_dataset_bytes=10**13)
+    wedge = {c["context_key"]: c for c in model["quota_wedge"]["contexts"]}
+    fatpipe = wedge["run:run-fatpipe"]
+    assert fatpipe["state"] == "forecast"
+    assert fatpipe["exhaustion_at"] is not None, (
+        "the in-domain instant renders WITHOUT timestamp conversion"
+    )
+    assert fatpipe["exhaustion_at"].startswith("5")  # a rendered year ~52xx
+    trickle = wedge["run:run-trickle"]
+    assert trickle["time_to_exhaustion_s"] is not None, "the honest figure"
+    assert trickle["exhaustion_at"] is None, "true domain overflow"
+    assert any(
+        "beyond the datetime domain" in d for d in model["disclosures"]
+    ), model["disclosures"]
+    md = render_markdown(model)
+    trickle_line = next(
+        ln for ln in md.splitlines() if ln.startswith("- run:run-trickle")
+    )
+    assert "beyond the datetime domain" in trickle_line
 
 
 def test_fold3_markdown_escapes_store_sourced_identifiers(tmp_path: Path) -> None:

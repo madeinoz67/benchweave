@@ -572,4 +572,9 @@ a cross-repo push — those are the reviewer's, which is why G5 exists in the ru
   family's signature is not in one.
 - **`tests/faults/`** runs for any change touching `state/`, `control/`, or anything
   concurrency-shaped — it is the fault-injection arm of the suite.
+- **Platform-conditional expectations key on a runtime capability probe**: probe the
+  predicate the src branch actually keys on, assert the property in every branch (never
+  a skip), and pin the other platform's shape on POSIX by simulating the primitive's
+  absence — never static reasoning alone (issue #207: the dispose directory-fsync probe,
+  the fw5 `time.tzset` guard, the Windows-shape simulations).
 - **One RED→GREEN slice per commit** — the discipline that keeps every fix provable.

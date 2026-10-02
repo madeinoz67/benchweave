@@ -862,11 +862,17 @@ def build_retention_report(
         exhaustion_at: str | None = None
         if tte is not None:
             try:
-                exhaustion_at = _iso(
-                    datetime.fromtimestamp(
-                        now_dt.timestamp() + tte, tz=now_dt.tzinfo
-                    )
-                )
+                # Pure datetime arithmetic: the rendered instant must not
+                # depend on the platform's timestamp-conversion machinery
+                # (Windows' fromtimestamp refuses instants beyond the CRT
+                # range, so an in-domain forecast rendered absent there
+                # with a false beyond-domain disclosure). The addition
+                # still raises OverflowError past year 9999 — the belt
+                # below keeps the beyond-domain posture.
+                exhaustion_at = _iso(now_dt + timedelta(seconds=tte))
+            # The OSError arm is belt-symmetry only — unreachable by
+            # construction (pure datetime arithmetic touches no OS
+            # machinery); OverflowError carries the true domain overflow.
             except (OverflowError, OSError, ValueError):
                 exhaustion_beyond_domain += 1
         wedge_contexts.append(
