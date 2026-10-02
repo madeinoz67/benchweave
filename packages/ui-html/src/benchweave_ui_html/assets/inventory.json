@@ -1,0 +1,20 @@
+{
+  "api_version": 1,
+  "assets": [
+    {
+      "path": "tokens.css",
+      "sha256": "76353723fd3e12653c154c6bf3d0cfd967545dbcd1ede49ab89b90f30747468a",
+      "size": 766
+    },
+    {
+      "path": "themes.css",
+      "sha256": "197eda5ad9d8bcf8c827599589afaa229928096508608862da249628623a317f",
+      "size": 1410
+    },
+    {
+      "path": "globals.css",
+      "sha256": "3666401981bf801c14eefa89313841a617fd09941f43d1a005d885ae49a319e6",
+      "size": 867
+    }
+  ]
+}

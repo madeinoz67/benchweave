@@ -532,6 +532,10 @@ All notable changes to this project will be documented in this file.
 - G1d pattern library + ten behaviour compositions — design record (issue #300)
 - #207 Windows deterministic platform expectations record
 - #207 testing-conventions sentence — capability probes over platform strings
+- Commit the issue #301 React-cutover design of record verbatim
+- The R-5/R-6/R-7 rewrites — freeze record, obligation rows, styleguide
+- The intro CI-filter line matches the real gates invocation
+- The review rubric's tier-scope and G2 lane follow the cutover
 
 ### Features
 
@@ -739,6 +743,8 @@ All notable changes to this project will be documented in this file.
 - G1d slice 2 — the ten behaviour checkers; the registry at 168/168 (issue #300)
 - G1d slice 3 — the PATTERNS registry + the static export (issue #300)
 - G1d slice 4 — the browser lane, CI partition, and the docs export (issue #300)
+- Vendor the style assets with an inventory + verify (G1e UR-10)
+- The React cutover — delete ui/, wire the contract gate into the default run (the atomic swap) [**BREAKING**]
 
 ### Hardware Evidence
 
@@ -1058,6 +1064,8 @@ All notable changes to this project will be documented in this file.
 - #207 row-B ceiling relativized to the recorded clamp (the #241 D-rowB payload)
 - #207 the refute fold — 7 code rows + the record erratum
 - Post-sync sweep — the 0.1.2 active row's motion through the pins
+- Re-seed the drain-cap starvation pins under the no-trip policy
+- Refute fold — the poison path is DISPATCH-path, not poll-path
 
 ### Build
 
@@ -1094,12 +1102,17 @@ All notable changes to this project will be documented in this file.
 
 - SIGKILL mid-disposition leaves neither audit nor deletion (#194)
 
+### Fold
+
+- The two-lane refute wave — 11 findings, all dispositioned (verdict DEFENDED)
+
 ### Merge
 
 - Integrate main (#243 UI lane + pointer) — all 21 main-changed paths carried, gitlink resolved to SDK main
 - Integrate main (#221 zero-literal lane) — gitlink resolved to SDK main d698b44 (contains both #63 and #65 lines)
 - Main (#275's S1 landing) into feat/issue244-s2-renderer
 - Main (#277's renderer landing) into feat/issue244-s3-decoders
+- Fold origin/main (the #223 publishing train) into the G1e cutover branch
 
 ### Refine
 

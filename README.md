@@ -56,14 +56,13 @@ uv run pytest tests/contracts -s
 
 ## UI development
 
-The UI foundation and executable component workbench live under `ui/`. See the [renderer-neutral component contract](docs/internal/ui-contract.md) (normative), the [approved UI design](docs/internal/ui-styleguide-workbench-design.md), [implementation style guide](docs/internal/ui-styleguide.md), and [portable light/dark mock-up](docs/internal/ui-styleguide-mockup.html).
+The renderer lives in `packages/ui-html` (the Jinja/HTMX `benchweave-ui-html` package). See the [renderer-neutral component contract](docs/internal/ui-contract.md) (normative), the [approved UI design](docs/internal/ui-styleguide-workbench-design.md), [implementation style guide](docs/internal/ui-styleguide.md), and [portable light/dark mock-up](docs/internal/ui-styleguide-mockup.html).
 
 ```sh
-cd ui
-npm install
-npm run storybook
+uv run pytest docs/internal/ui-contract.md   # the contract gate (also in the default run)
+uv run pytest -m browser                     # the pattern library's axe + screenshot lane
 ```
 
-The workbench stories use simulated presentation data; they do not establish runtime support or hardware qualification.
+The pattern library renders simulated presentation data; it does not establish runtime support or hardware qualification.
 
 GitHub CI checks architecture contracts, rejection cases, lint, formatting, types, tests and package builds. Architectural validation does not establish runtime conformance or physical safety qualification.

@@ -2,10 +2,13 @@
 
 Collection is the parse: this collector claims files named ``ui-contract.md``
 and emits two item families and no test file — a pin item per manifest table
-(parse integrity) and a row item per parsed body row (implementation). It is
-DORMANT BY DEFAULT: the repo's default pytest runs (``testpaths = ["tests"]``)
-never walk the contract, and any file not named ``ui-contract.md`` is ignored;
-the gate is live exactly where a ui-contract.md is invoked.
+(parse integrity) and a row item per parsed body row (implementation). Since
+the G1e cutover the gate is LIVE in this repository's default pytest run
+(``testpaths`` carries the contract beside ``tests/``, fail-closed by the
+default-run pin in ``tests/ui_html/test_harness.py``); any file not named
+``ui-contract.md`` is still ignored — in OTHER pytest environments sharing a
+venv with this wheel the plugin claims nothing, so foreign suites are never
+hijacked (UR-11's published-wheel posture).
 
 The pytest11 entry point is inert unless pytest is the running process, so a
 host that installs the wheel for rendering never pulls pytest (UR-11).
