@@ -2229,8 +2229,9 @@ def _check_st_2(row: Row) -> list[str]:
                 f"garbage inputs ({freshness!r},{window!r}) must render no verdict "
                 "(a fabricated verdict is the lie class)"
             )
-        if "fresh" in rendered.texts_of_elements(class_hook="bw-reading__quality")[0]:
-            messages.append("no-verdict must assert freshness nowhere")
+        quality_text = rendered.texts_of_elements(class_hook="bw-reading__quality")[0]
+        if "fresh" in quality_text.lower():
+            messages.append("no-verdict must assert freshness nowhere (case-insensitive)")
     # The predicate itself, once, at the exact arms.
     if staleness.staleness(150, 150) != "fresh" or staleness.staleness(151, 150) != "stale":
         messages.append("the predicate boundary must be strictly greater")
@@ -2272,23 +2273,41 @@ def _check_st_3(row: Row) -> list[str]:
         messages.append("a null freshness is not stale")
     # A device quality string renders verbatim in the quality slot and is
     # never overwritten or augmented by the computed verdict — two channels,
-    # never laundered into one. ST-3 owns the NO-LAUNDERING claim: if the
-    # verdict's `stale` text appears in the quality line, the second channel
-    # (the separate bw-reading__stale-marker element) must exist to carry
-    # it. The marker's PRESENCE-while-stale is ST-4's own claim (m6).
-    narrow = scene_with(301.0, 150.0, quality="device-good")
-    quality_texts = narrow.texts_of_elements(class_hook="bw-reading__quality")
-    device_quality = [text for text in quality_texts if "device-good" in text]
-    if not device_quality:
+    # never laundered into one (fold A1's stronger form): the quality
+    # element's own text MINUS the marker span equals exactly
+    # "{quality} · {freshness}". A renderer appending the verdict's text
+    # into the quality line (the s7 sabotage keeps the marker span AND
+    # inlines the text) reds here and only here; the marker's
+    # PRESENCE-while-stale stays ST-4's own claim (m6 drops the marker).
+    narrow_state = dataclasses.replace(
+        psu,
+        readings=(
+            dataclasses.replace(
+                psu.readings[0], freshness_ms=301.0, max_age_ms=150.0, quality="device-good"
+            ),
+            *psu.readings[1:],
+        ),
+    )
+    html = compositions.render_workbench(narrow_state)
+    reading = narrow_state.readings[0]
+    expected_line = f"{reading.quality} · {reading.freshness_text}"
+    quality_blocks = re.findall(
+        r'<p class="bw-reading__quality">(.*?)</p>', html, re.DOTALL
+    )
+    device_blocks = [block for block in quality_blocks if "device-good" in block]
+    if not device_blocks:
         messages.append("the device quality string must render verbatim in the quality slot")
-    markers = narrow.texts_of_elements(class_hook="bw-reading__stale-marker")
-    if any("stale" in text for text in device_quality) and not any(
-        "stale" in marker for marker in markers
-    ):
-        messages.append(
-            "the computed verdict must never launder into the quality string — "
-            "the stale marker is a separate channel"
-        )
+        return messages
+    for block in device_blocks:
+        without_marker_spans = re.sub(r"<span[^>]*>.*?</span>", "", block, flags=re.DOTALL)
+        direct_text = re.sub(r"<[^>]+>", "", without_marker_spans)
+        direct_text = re.sub(r"\s+", " ", direct_text).strip()
+        if direct_text != expected_line:
+            messages.append(
+                "the quality element's text minus the marker span must equal "
+                f"exactly {expected_line!r} — the computed verdict never "
+                f"launders into the quality string; got {direct_text!r}"
+            )
     return messages
 
 

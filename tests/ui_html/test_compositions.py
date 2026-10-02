@@ -144,6 +144,22 @@ def test_unrelated_rerender_persists_messages_and_clears_announcements() -> None
     assert steady.last_transition == ()
 
 
+def test_every_non_crossing_event_clears_the_announcement_ledger() -> None:
+    """The reduce docstring's contract (fold A2): the crossing render
+    announces ONCE — every other event renders the ledger empty, so the
+    announcement cannot re-fire on a later interaction."""
+    crossed = reduce(psu(), ReadingWentStale("voltage"))
+    assert crossed.last_transition == ("voltage",)
+    assert reduce(crossed, compositions.Arm("energise")).last_transition == ()
+    assert reduce(crossed, Cancel()).last_transition == ()
+    no_auth = reduce(psu(), AuthorityLost())
+    crossed_no_auth = reduce(no_auth, ReadingWentStale("voltage"))
+    assert crossed_no_auth.last_transition == ("voltage",)
+    refused = reduce(crossed_no_auth, AcknowledgeAttempt("margin"))
+    assert refused.authority is False
+    assert refused.last_transition == ()
+
+
 # --- attempt_fire: R-ENERGISE-1 / R-DEENERGISE-1 / R-PROTECT-1 ----------------
 
 

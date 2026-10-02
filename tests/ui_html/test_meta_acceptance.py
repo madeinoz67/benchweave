@@ -394,20 +394,36 @@ def test_metric_c_registering_one_artifact_greens_exactly_that_row(tmp_path: Pat
 
 
 def test_mechanism_toggle_flipping_the_constant_makes_the_red_run_green(tmp_path: Path) -> None:
-    junit = tmp_path / "toggle.xml"
-    prelude = (
-        "import benchweave_ui_html.registry as registry\n"
+    """Fold A3: composed with NEUTRALIZE_REGISTRATION so the arm
+    discriminates again. Since G1d registered the full population the bare
+    toggle was vacuous (auto-registration made both states green); with the
+    registry held empty the pair discriminates the constant's effect —
+    toggle-off runs fully green (196/0) while the un-flipped neutralized
+    run reds its 168 rows. A dead constant (never read) fails the green
+    half exactly like the sabotage arm proved."""
+    junit_green = tmp_path / "toggle-green.xml"
+    prelude_green = (
+        NEUTRALIZE_REGISTRATION
+        + "import benchweave_ui_html.registry as registry\n"
         "registry.REQUIRE_ARTIFACT = False\n"
     )
-    exit_code = _run(CONTRACT, junit, prelude=prelude)
-    assert exit_code == 0, "REQUIRE_ARTIFACT=False must make the RED run fully green"
-    attrib, buckets = _suite(junit)
+    exit_green = _run(CONTRACT, junit_green, prelude=prelude_green)
+    assert exit_green == 0, "neutralized + REQUIRE_ARTIFACT=False must run fully green"
+    attrib, buckets = _suite(junit_green)
     rows = _stats(buckets["row"])
     pins = _stats(buckets["pin"])
     assert rows == {"collected": ROW_ITEMS, "failed": 0, "passed": ROW_ITEMS, "skipped": 0}, rows
     assert pins == {"collected": PIN_ITEMS, "failed": 0, "passed": PIN_ITEMS, "skipped": 0}, pins
     assert attrib.get("tests") == str(TOTAL_ITEMS), attrib
     assert attrib.get("failures") == "0", attrib
+    # The contrast half: the SAME neutralization without the flip reds the
+    # 168 rows — the green above is the toggle's effect, not the
+    # registration's absence alone.
+    junit_red = tmp_path / "toggle-red.xml"
+    exit_red = _run(CONTRACT, junit_red, prelude=NEUTRALIZE_REGISTRATION)
+    assert exit_red != 0
+    _attrib_red, buckets_red = _suite(junit_red)
+    assert _stats(buckets_red["row"])["failed"] == ROW_ITEMS
 
 
 # --- UR-11: the renderer namespace never pulls pytest ---------------------------

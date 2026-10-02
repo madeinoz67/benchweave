@@ -62,9 +62,6 @@ jobs:
         # the unfiltered collection (union equal, pairwise intersections
         # empty) and records it in the PR body (design §5 AR-1; not an
         # automated gate), so no test loses CI execution. The
-        # collected-id lists against the unfiltered collection (union equal,
-        # intersection empty) and records it in the PR body (design §5 AR-1;
-        # not an automated gate), so no test loses CI execution. The
         # real-paced set runs on its own fresh VM in the timing lane instead
         # of behind this job's bulk-suite residue. Parallel via pytest-xdist
         # (issue #247 increment 2): the timing lane stays serialized — xdist

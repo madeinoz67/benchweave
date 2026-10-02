@@ -24,7 +24,7 @@ StalenessVerdict = Literal["stale", "fresh", "no-verdict"]
 
 
 def staleness(freshness_ms: float | None, max_age_ms: float | None) -> StalenessVerdict:
-    """The §B.2 boundary predicate: stale iff ``freshness_ms > max_age_ms``
+    """The §B.4 ST-2 boundary predicate: stale iff ``freshness_ms > max_age_ms``
     (strictly greater; equality is not stale — the boundary IS the
     descriptor's own disavowal line)."""
     if max_age_ms is None:

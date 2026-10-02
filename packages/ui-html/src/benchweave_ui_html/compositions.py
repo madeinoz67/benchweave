@@ -249,9 +249,11 @@ def reduce(state: WorkbenchState, event: WorkbenchEvent) -> WorkbenchState:
     by a re-render. Every event other than the crossing itself renders the
     announcement ledger empty (the crossing render announces, once)."""
     if isinstance(event, Arm):
-        return replace(state, confirm="armed", armed_action=event.action)
+        return replace(
+            state, confirm="armed", armed_action=event.action, last_transition=()
+        )
     if isinstance(event, Cancel):
-        return replace(state, confirm="idle", armed_action=None)
+        return replace(state, confirm="idle", armed_action=None, last_transition=())
     if isinstance(event, TripArrives):
         return replace(
             state,
@@ -299,8 +301,10 @@ def reduce(state: WorkbenchState, event: WorkbenchEvent) -> WorkbenchState:
     if isinstance(event, AcknowledgeAttempt):
         if not state.authority:
             # Refused: acknowledgement is an authorised act, never a side
-            # effect of anything else — the state is returned unchanged.
-            return state
+            # effect of anything else — the bits are returned unchanged and
+            # only the announcement ledger clears (the refusal is still a
+            # render: the crossing render announced once, already).
+            return replace(state, last_transition=())
         return replace(
             state,
             messages=tuple(
