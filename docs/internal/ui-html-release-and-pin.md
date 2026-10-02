@@ -34,13 +34,13 @@ for exactly that makes a pin bump decidable from the version alone.
 
 **Contract change defined:** ANY byte motion in `docs/internal/ui-contract.md`,
 or in the token assets the contract's pins assert against
-(`ui/src/styles/tokens.css`, `ui/src/styles/themes.css`), is a contract
+(the package's vendored `assets/tokens.css` and `assets/themes.css` —
+re-pointed from `ui/src/styles/` at G1e, per this page's own pre-committed
+re-point note), is a contract
 change. This is flat by design: the harness fail-closes on heading/table
 structure, so "this prose edit changed nothing the harness sees" is expensive
 to prove and cheap to skip. Accepted cost: prose-only contract edits burn a
-minor bump — noise-level pre-1.0, revisit at 1.0. These two asset paths
-re-point to the package's vendored assets at G1e, with the asset-vendoring
-slice (consistent with the existing G1e checklist rows).
+minor bump — noise-level pre-1.0, revisit at 1.0.
 
 **Implementation change:** everything else in the package (partial internals,
 harness mechanics, fixtures) with those two surfaces byte-identical.
@@ -92,8 +92,8 @@ pin bump in the SDK repository, never a copied template).
    standalone CI runs the pinned wheel's own harness against that vendored
    copy. The guard's file set derives from the SAME single-constant list as the
    contract-change definition above — one list, three paths
-   (`docs/internal/ui-contract.md`, `ui/src/styles/tokens.css`,
-   `ui/src/styles/themes.css`) — so the definition and the census cannot
+   (`docs/internal/ui-contract.md`, the package's vendored
+   `assets/tokens.css`, `assets/themes.css`) — so the definition and the census cannot
    diverge. Interim, until the guard lands: the pin-bump pull request body
    records the sha256 digest of each file in that list at the release tag (one
    command per path — `git show ui-html-vX.Y.Z:<path> | shasum -a 256` —

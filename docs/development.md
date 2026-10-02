@@ -35,22 +35,18 @@ locally or in CI.
 
 ## UI toolchain
 
-The `ui/` directory holds the Layered Precision workbench style guide and the
-renderer bundled into the SDK wheel. It uses Node 22 (engines pin `>=22 <23`)
-with a committed `package-lock.json`; run everything from `ui/`:
+The renderer is the `benchweave-ui-html` workspace member
+(`packages/ui-html/`) — Jinja partials, the pytest11 contract gate, and the
+vendored style assets pinned by the assets inventory. There is no Node
+toolchain: the React reference renderer and its build lane were deleted at
+the G1e cutover, and the SDK's committed `preview_assets` bundle is FROZEN
+at its last build (see drift-and-obligations row 7). The working commands:
 
 ```sh
-npm ci
-npm run typecheck
-npm run lint
-npm test
-npm run build-storybook
-npm run build:preview   # rebuilds packages/sdk/src/benchweave_sdk/preview_assets
+uv run pytest docs/internal/ui-contract.md   # the contract gate (also rides the default run)
+uv run pytest tests/ui_html -q               # the ported proofs and harness arms
+uv run pytest -m browser                     # the pattern-library axe + screenshot lane
 ```
-
-`build:preview` regenerates the vendored renderer the SDK wheel ships; commit
-the rebuilt `preview_assets/` together with the `ui/` source change. CI's
-**ui** job runs the same commands and fails if the committed renderer is stale.
 
 ## Standards synchronisation
 
@@ -135,13 +131,14 @@ Change propagation, end to end:
 ## GitHub workflows
 
 - **CI** runs the Python gates (sync, ruff check, config-driven mypy,
-  `pytest -q -n auto -m "not timing"`) and the standards sync check
+  `pytest -q -n auto -m "not timing and not browser"` — including the 196
+  contract-gate items collected from `docs/internal/ui-contract.md` via
+  `testpaths` since the G1e cutover) and the standards sync check
   (`make check-sdk-standards`), plus a **timing** job that runs the
   real-paced, marker-selected set (`pytest -q -m timing`) serialized on its
-  own fresh VM — the two filters are complementary, so their union is the
-  full collection and no test loses CI execution — plus a **systemd**
-  template-verification job and a **ui** job (typecheck, lint, unit tests,
-  Storybook build, renderer freshness gate, `npm audit`) on Linux.
+  own fresh VM, a **browser** lane over the pattern library, and a
+  **systemd** template-verification job on Linux. The former **ui** Node
+  job was deleted at the G1e cutover with the React renderer it gated.
 - **Device plugins** checks independent manufacturer/model plugin projects in
   their own locked environments.
 - **Package** builds sdists and wheels for the gateway and SDK, installs them

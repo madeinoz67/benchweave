@@ -14,8 +14,10 @@ gateway state such that checks and controls mean the same thing on every host.
 ## Authoring rule (normative)
 
 Every machine-pinned table below is a pipe table with a fixed column schema. The
-enforcement tests (`ui/src/contract-coverage.test.ts`, `ui/src/contract-enforcement.test.ts`)
-parse these tables; a table that does not parse — missing heading, missing table, wrong
+enforcement gate is the `benchweave-ui-html` contract harness (the pytest11 collector:
+pin layer = parse integrity per pinned table, row layer = canonical-artifact requirement
+per parsed row), live in the default root-suite run (`testpaths`, since G1e); a table
+that does not parse — missing heading, missing table, wrong
 header cells, wrong row count where stated — is a **pin failure, not a silent skip**.
 Editing this document means editing its pins in the same change.
 
@@ -35,7 +37,9 @@ value enumerations live in the Notes column, which is prose.
 
 ## §A Tokens
 
-Tokens are CSS custom properties. `ui/src/styles/tokens.css` and `ui/src/styles/themes.css`
+Tokens are CSS custom properties. The package's vendored assets
+(`packages/ui-html/src/benchweave_ui_html/assets/tokens.css` and `themes.css` — the last
+React build's bytes, moved verbatim at G1e and pinned by the assets inventory)
 are their executable mirror: every value pinned here must equal the value parsed from
 those files, in both themes, in both directions (a change to either requires the other
 to change in the same commit). Components must not hard-code a colour or shadow that
@@ -43,7 +47,7 @@ conveys product meaning; theme changes luminance and contrast, not meaning.
 
 The plot-series tokens (`--bw-series-1…8`), the dash sequence and the symbol sequence
 land with the plot-series slice (issue #242 slice 3); their values carry the computed
-proofs in `ui/src/series-colors.test.ts` (contrast, severity non-confusion under dual
+proofs in `tests/ui_html/test_series_colour_proofs.py` (contrast, severity non-confusion under dual
 CVD models, adjacency — thresholds pre-committed in the design record §6).
 
 ### §A.1 Colour palette
@@ -276,9 +280,10 @@ stays a device badge; unification is deferred (design record row D4).
 
 ## §E Per-component contracts
 
-One row per component. Enforced rows are pinned by `ui/src/contract-enforcement.test.ts`
-against the reference renderer's canonical rendering; a row whose component has no
-enforcement fixture fails that test (rows cannot appear without implementations).
+One row per component. Enforced rows are pinned by the contract harness's component
+rows (canonical partial renders, the row layer) against the package's canonical
+fixtures; a row whose component has no
+enforcement fixture fails the row (rows cannot appear without implementations).
 `engineering-plot` gains its series-assignment sub-rows with the plot-series slice
 (issue #242 slice 3).
 
@@ -365,7 +370,7 @@ schema, not the renderer; the formula would map it (i=16) onto the same
 | 15 | `--bw-series-8` | `dash-2` | `symbol-8` |
 
 The colour values are the §A.1 series tokens (`--bw-series-1…8`, per theme), carrying
-the computed proofs of `ui/src/series-colors.test.ts`.
+the computed proofs of `tests/ui_html/test_series_colour_proofs.py`.
 
 #### §E.2.2 Sequences
 
@@ -528,8 +533,9 @@ Schema: `Property | Requirement` — 4 rows.
 ## §F Icon set
 
 Framework-neutral icon keys keyed by severity or state. Any icon set can bind from the
-shape descriptions; the reference binding names the lucide icons the reference renderer
-uses today (`ui/src/components/feedback/severity.tsx`). State keys have no icon in the
+shape descriptions; the reference binding names the lucide icons the deleted React
+reference renderer used (`ui/src/components/feedback/severity.tsx`, removed at G1e) —
+the shape descriptions remain the normative binding surface. State keys have no icon in the
 reference renderer today — they render as text ("Staged", "hidden") or an attribute
 (`aria-busy`) — so their binding is open and lands with the safety-behaviours slice's
 stories.
