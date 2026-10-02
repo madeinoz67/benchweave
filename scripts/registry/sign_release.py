@@ -242,8 +242,15 @@ def _verify_signature(
             raise ValidationError(
                 "timestamp_invalid: the record does not bind this signature's digest"
             )
-        extracted = _der_first_time(token)
-        if extracted is None or extracted != recorded.get("signed_at"):
+        # Fold H1: the token's messageImprint must COVER the signature - a
+        # structurally genuine token over different content refuses.
+        imprint, extracted = _parse_timestamp_token(token)
+        if imprint != hashlib.sha256(sig_path.read_bytes()).digest():
+            raise ValidationError(
+                "timestamp_binding_mismatch: the token's messageImprint does not "
+                "cover this signature (it timestamps other content)"
+            )
+        if extracted != recorded.get("signed_at"):
             raise ValidationError(
                 "timestamp_invalid: the token's own time disagrees with the record"
             )
@@ -269,16 +276,106 @@ def _verify_signature(
     return "signed-valid", None, True
 
 
-def _der_first_time(token: bytes) -> str | None:
-    """Scan the DER token for its first UTCTime/GeneralizedTime tag."""
-    index = 0
-    while index < len(token) - 1:
-        tag = token[index]
-        if tag in (0x17, 0x18):
-            length = token[index + 1]
-            return token[index + 2 : index + 2 + length].decode("ascii", "replace")
-        index += 1
-    return None
+#: id-ct-TSTInfo (1.2.840.113549.1.9.16.1.4), the OID naming the TSTInfo
+#: content type inside an RFC 3161 TimeStampToken.
+_TSTINFO_OID = bytes.fromhex("2a864886f70d0109100104")
+
+
+def _der_tlv(data: bytes, offset: int) -> tuple[int, int, int]:
+    """One DER TLV -> (tag, content_offset, content_length); ValueError."""
+    if offset + 2 > len(data):
+        raise ValueError("truncated TLV header")
+    tag = data[offset]
+    first = data[offset + 1]
+    header = 2
+    length = first
+    if first & 0x80:
+        count = first & 0x7F
+        if count == 0 or count > 4 or offset + 2 + count > len(data):
+            raise ValueError("unsupported DER length form")
+        length = int.from_bytes(data[offset + 2 : offset + 2 + count], "big")
+        header = 2 + count
+    if offset + header + length > len(data):
+        raise ValueError("TLV content overruns buffer")
+    return tag, offset + header, length
+
+
+def _iter_tlv(data: bytes, start: int, end: int) -> Any:
+    offset = start
+    while offset < end:
+        tag, content, length = _der_tlv(data, offset)
+        yield tag, content, length
+        offset = content + length
+
+
+def _find_tstinfo(data: bytes) -> bytes | None:
+    """The TSTInfo SEQUENCE content by structural descent - never a byte scan.
+
+    Walks proper TLV boundaries for the contentInfo whose contentType is
+    id-ct-TSTInfo; the following [0] EXPLICIT wraps the TSTInfo SEQUENCE. A
+    digest containing 0x17/0x18 bytes can never be misread this way (fold M2).
+    """
+
+    def descend(start: int, end: int) -> bytes | None:
+        offset = start
+        while offset < end:
+            try:
+                tag, content, length = _der_tlv(data, offset)
+            except ValueError:
+                return None
+            if tag == 0x06 and data[content : content + length] == _TSTINFO_OID:
+                nxt = content + length
+                if nxt >= end:
+                    return None
+                try:
+                    tag2, content2, _length2 = _der_tlv(data, nxt)
+                    tag3, content3, length3 = _der_tlv(data, content2)
+                except ValueError:
+                    return None
+                if tag2 == 0xA0 and tag3 == 0x30:
+                    return data[content3 : content3 + length3]
+                return None
+            if tag in (0x30, 0x31, 0xA0):
+                found = descend(content, content + length)
+                if found is not None:
+                    return found
+            offset = content + length
+        return None
+
+    return descend(0, len(data))
+
+
+def _parse_timestamp_token(token: bytes) -> tuple[bytes, str]:
+    """(messageImprint digest, genTime) from a structurally parsed TSTInfo.
+
+    Malformed or non-token bytes raise ValidationError with the
+    timestamp_token_malformed prefix - never a raw traceback (fold M2).
+    """
+    body = _find_tstinfo(token)
+    if body is None:
+        raise ValidationError(
+            "timestamp_token_malformed: no TSTInfo found (not an RFC 3161 "
+            "TimeStampToken)"
+        )
+    imprint: bytes | None = None
+    gen_time: str | None = None
+    try:
+        for tag, content, length in _iter_tlv(body, 0, len(body)):
+            if tag == 0x30 and imprint is None:
+                for sub_tag, sub_content, sub_length in _iter_tlv(
+                    body, content, content + length
+                ):
+                    if sub_tag == 0x04:
+                        imprint = body[sub_content : sub_content + sub_length]
+            elif tag in (0x17, 0x18) and gen_time is None:
+                gen_time = body[content : content + length].decode("ascii")
+    except (ValueError, UnicodeDecodeError) as exc:
+        raise ValidationError(f"timestamp_token_malformed: {exc}") from exc
+    if imprint is None or gen_time is None:
+        raise ValidationError(
+            "timestamp_token_malformed: TSTInfo lacks messageImprint or genTime"
+        )
+    return imprint, gen_time
 
 
 def _rederive(
@@ -373,6 +470,17 @@ def validate_and_record(
     }
     recorded_raw = canonical_bytes(recorded)
 
+    # Fold L2: identity segments are shape-checked before any path is built -
+    # a traversal-shaped registry_id can never escape releases/.
+    _segment = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
+    for label, value in (
+        ("registry_id", str(manifest["registry_id"])),
+        ("package_id", str(manifest["package_id"])),
+        ("version", str(manifest["version"])),
+    ):
+        for part in value.split("/"):
+            if _segment.fullmatch(part) is None:
+                raise ValidationError(f"release_path_unsafe:{label}={value!r}")
     release_dir: Path = (
         out_root
         / str(manifest["registry_id"])

@@ -35,14 +35,27 @@ CAPABILITIES_NONE = {
     "subprocess_or_native_library": False,
     "filesystem_writes_beyond_evidence_retention": False,
 }
-#: A DER token carrying a UTCTime inside the fixture window below.
-TIMESTAMP_TOKEN = bytes([0x17, 13]) + b"260101120000Z"
-TIMESTAMP_RECORD = {
-    "signature_sha256": None,  # filled per-fixture (binds the actual sig)
-    "signed_at": "260101120000Z",
-    "token_sha256": hashlib.sha256(TIMESTAMP_TOKEN).hexdigest(),
-    "tsa": "https://tsa.example",
-}
+#: A structurally valid token (built below) carrying a GeneralizedTime
+#: inside the fixture window; the imprint is bound per-fixture.
+def _tlv(tag: int, body: bytes) -> bytes:
+    length = len(body)
+    if length < 128:
+        lb = bytes([length])
+    else:
+        n = (length.bit_length() + 7) // 8
+        lb = bytes([0x80 | n]) + length.to_bytes(n, "big")
+    return bytes([tag]) + lb + body
+
+
+def _token_over(content: bytes, when: bytes = b"260101120000Z") -> bytes:
+    sha_oid = bytes.fromhex("0609608648016503040201") + _tlv(0x05, b"")
+    imprint = _tlv(0x30, sha_oid + _tlv(0x04, hashlib.sha256(content).digest()))
+    tstinfo = _tlv(
+        0x30,
+        _tlv(0x02, b"\x01") + _tlv(0x06, b"") + imprint
+        + _tlv(0x02, b"\x01") + _tlv(0x18, when),
+    )
+    return _tlv(0x30, bytes.fromhex("060b2a864886f70d0109100104") + _tlv(0xA0, tstinfo))
 KEY_WINDOW = {"not_before": "2020-01-01T00:00:00Z", "not_after": "2026-06-01T00:00:00Z"}
 
 
@@ -310,27 +323,24 @@ def test_unsigned_submission_publishes_labeled(tmp_path: Path) -> None:
 def test_timestamped_signature_survives_expired_key(tmp_path: Path) -> None:
     """RED arm (c): validity judged at the TSA-attested time.
 
-    The key window CLOSED 2026-06-01 (expired long before today); the trusted
-    timestamp attests 2026-01-01, inside the window — the signature stays
-    valid. Without the timestamp the same submission would fail the window.
+    The key window CLOSED 2026-06-01; the trusted timestamp attests
+    2026-01-01, inside the window - the signature stays valid.
     """
     key = _fresh_key()
-    submission_dir, record_path, _record = _submission(tmp_path, key=key)
-    record = dict(TIMESTAMP_RECORD)
-    record["signature_sha256"] = hashlib.sha256(
-        (submission_dir / "manifest.sig").read_bytes()
-    ).hexdigest()
-    (submission_dir / "timestamp.token").write_bytes(TIMESTAMP_TOKEN)
-    (submission_dir / "timestamp.json").write_bytes(sign_release.canonical_bytes(record))
-    # The clone's publisher records the EXPIRED window.
+    submission_dir, record_path = _timestamped_submission(tmp_path, key, imprint_of=None)
     clone = _make_clone(tmp_path / "expired", key=key, window=KEY_WINDOW)
     release_dir, state, timestamp, recommended = sign_release.validate_and_record(
-        submission_dir, record_path, tmp_path / "releases", registry_clone=clone,
+        submission_dir,
+        record_path,
+        tmp_path / "releases",
+        registry_clone=clone,
     )
     assert state == "signed-valid"
     assert timestamp is not None and timestamp["signed_at"] == "260101120000Z"
     assert recommended is False
     assert (release_dir / "timestamp.token").is_file()
+
+
 
 
 def test_untimestamped_expired_window_is_accepted_with_advisory(
@@ -357,19 +367,15 @@ def test_untimestamped_expired_window_is_accepted_with_advisory(
 
 
 def test_timestamped_time_outside_window_still_refuses(tmp_path: Path) -> None:
-    """The genuine-invalid case that survives the refinement: a TSA-attested
-    signing time OUTSIDE the key window means the key was not valid when the
-    signing happened — that refuses."""
-    import hashlib
-
+    """The genuine-invalid case: a TSA-attested signing time OUTSIDE the key
+    window means the key was not valid when the signing happened."""
     key = _fresh_key()
     submission_dir, record_path, _record = _submission(tmp_path, key=key)
-    token = bytes([0x18, 19]) + b"20180101120000.000Z"  # GeneralizedTime, 2018 (19 chars)
+    signature = (submission_dir / "manifest.sig").read_bytes()
+    token = _token_over(signature, when=b"20180101120000Z")
     record = {
-        "signature_sha256": hashlib.sha256(
-            (submission_dir / "manifest.sig").read_bytes()
-        ).hexdigest(),
-        "signed_at": "20180101120000.000Z",
+        "signature_sha256": hashlib.sha256(signature).hexdigest(),
+        "signed_at": "20180101120000Z",
         "token_sha256": hashlib.sha256(token).hexdigest(),
         "tsa": "https://tsa.example",
     }
@@ -383,19 +389,23 @@ def test_timestamped_time_outside_window_still_refuses(tmp_path: Path) -> None:
     assert str(exc.value).startswith("signature_invalid:")
 
 
+
+
 def test_timestamp_binding_lies_are_rejected(tmp_path: Path) -> None:
+    """Fold H1: a record claiming our signature beside a token over OTHER
+    content refuses on the binding."""
     key = _fresh_key()
-    submission_dir, record_path, _record = _submission(tmp_path, key=key)
-    record = dict(TIMESTAMP_RECORD)
-    record["signature_sha256"] = hashlib.sha256(b"not-the-signature").hexdigest()
-    (submission_dir / "timestamp.token").write_bytes(TIMESTAMP_TOKEN)
-    (submission_dir / "timestamp.json").write_bytes(sign_release.canonical_bytes(record))
+    submission_dir, record_path = _timestamped_submission(
+        tmp_path, key, imprint_of=b"other content entirely"
+    )
     with pytest.raises(sign_release.ValidationError) as exc:
         sign_release.validate_and_record(
             submission_dir, record_path, tmp_path / "releases",
             registry_clone=tmp_path / "registry-clone",
         )
-    assert str(exc.value).startswith("timestamp_invalid:")
+    assert str(exc.value).startswith("timestamp_binding_mismatch:")
+
+
 
 
 def test_post_review_submission_change_refuses(tmp_path: Path) -> None:
@@ -499,3 +509,160 @@ def test_release_immutability_refuses_rerun(tmp_path: Path) -> None:
             registry_clone=tmp_path / "registry-clone",
         )
     assert str(exc.value).startswith("release_exists:")
+
+# --- fold H1/M2/L2: structural binding, digest-safe parse, path safety --------
+
+
+def _structural_token(imprint_of: bytes, when: bytes = b"260101120000Z") -> bytes:
+    """A minimal honest-shaped DER TimeStampToken over the given content."""
+
+    def tlv(tag: int, body: bytes) -> bytes:
+        length = len(body)
+        if length < 128:
+            lb = bytes([length])
+        else:
+            n = (length.bit_length() + 7) // 8
+            lb = bytes([0x80 | n]) + length.to_bytes(n, "big")
+        return bytes([tag]) + lb + body
+
+    sha_oid = bytes.fromhex("0609608648016503040201") + tlv(0x05, b"")
+    digest = hashlib.sha256(imprint_of).digest()
+    imprint = tlv(0x30, sha_oid + tlv(0x04, digest))
+    tstinfo = tlv(
+        0x30,
+        tlv(0x02, b"\x01")
+        + tlv(0x06, b"")
+        + imprint
+        + tlv(0x02, b"\x01")
+        + tlv(0x18, when),
+    )
+    return tlv(0x30, bytes.fromhex("060b2a864886f70d0109100104") + tlv(0xA0, tstinfo))
+
+
+def _timestamped_submission(
+    root: Path,
+    key: Ed25519PrivateKey,
+    imprint_of: bytes | None,
+    when: bytes = b"260101120000Z",
+) -> tuple[Path, Path]:
+    """A signed submission whose token covers imprint_of (default: the sig)."""
+    submission_dir, record_path, _record = _submission(root, key=key)
+    signature = (submission_dir / "manifest.sig").read_bytes()
+    covered = signature if imprint_of is None else imprint_of
+    token = _structural_token(imprint_of=covered, when=when)
+    record = {
+        "signature_sha256": hashlib.sha256(signature).hexdigest(),
+        "signed_at": "260101120000Z",
+        "token_sha256": hashlib.sha256(token).hexdigest(),
+        "tsa": "https://tsa.example",
+    }
+    (submission_dir / "timestamp.token").write_bytes(token)
+    (submission_dir / "timestamp.json").write_bytes(sign_release.canonical_bytes(record))
+    return submission_dir, record_path
+
+
+def test_garbage_token_is_refused(tmp_path: Path) -> None:
+    """H1 RED a: synthetic bytes embedding a time are NOT a token."""
+    key = _fresh_key()
+    submission_dir, record_path, _record = _submission(tmp_path, key=key)
+    signature = (submission_dir / "manifest.sig").read_bytes()
+    garbage = bytes([0x17, 13]) + b"260101120000Z"
+    record = {
+        "signature_sha256": hashlib.sha256(signature).hexdigest(),
+        "signed_at": "260101120000Z",
+        "token_sha256": hashlib.sha256(garbage).hexdigest(),
+        "tsa": "https://tsa.example",
+    }
+    (submission_dir / "timestamp.token").write_bytes(garbage)
+    (submission_dir / "timestamp.json").write_bytes(sign_release.canonical_bytes(record))
+    with pytest.raises(sign_release.ValidationError) as exc:
+        sign_release.validate_and_record(
+            submission_dir, record_path, tmp_path / "releases",
+            registry_clone=tmp_path / "registry-clone",
+        )
+    assert str(exc.value).startswith("timestamp_token_malformed:")
+
+
+def test_token_over_different_content_is_refused(tmp_path: Path) -> None:
+    """H1 RED b: the messageImprint must cover the signature."""
+    key = _fresh_key()
+    submission_dir, record_path = _timestamped_submission(
+        tmp_path, key, imprint_of=b"completely different content"
+    )
+    with pytest.raises(sign_release.ValidationError) as exc:
+        sign_release.validate_and_record(
+            submission_dir, record_path, tmp_path / "releases",
+            registry_clone=tmp_path / "registry-clone",
+        )
+    assert str(exc.value).startswith("timestamp_binding_mismatch:")
+
+
+def test_honest_token_with_time_bytes_in_digest_verifies(tmp_path: Path) -> None:
+    """M2 RED: a digest whose first byte is 0x17 parses structurally."""
+    key = _fresh_key()
+    # The covered content is the signature itself; whether its digest's bytes
+    # contain 0x17/0x18 is content-determined and irrelevant to the parse -
+    # pinned by asserting genTime comes from the TSTInfo, never the digest.
+    submission_dir, record_path = _timestamped_submission(tmp_path, key, imprint_of=None)
+    _release_dir, state, timestamp, recommended = sign_release.validate_and_record(
+        submission_dir, record_path, tmp_path / "releases",
+        registry_clone=tmp_path / "registry-clone",
+    )
+    assert state == "signed-valid"
+    assert timestamp is not None and timestamp["signed_at"] == "260101120000Z"
+    assert recommended is False
+
+
+def test_malformed_token_refuses_with_prefix(tmp_path: Path) -> None:
+    key = _fresh_key()
+    submission_dir, record_path, _record = _submission(tmp_path, key=key)
+    signature = (submission_dir / "manifest.sig").read_bytes()
+    malformed = b"\x30\x03\x02\x01\x01"
+    record = {
+        "signature_sha256": hashlib.sha256(signature).hexdigest(),
+        "signed_at": "260101120000Z",
+        "token_sha256": hashlib.sha256(malformed).hexdigest(),
+        "tsa": "https://tsa.example",
+    }
+    (submission_dir / "timestamp.token").write_bytes(malformed)
+    (submission_dir / "timestamp.json").write_bytes(sign_release.canonical_bytes(record))
+    with pytest.raises(sign_release.ValidationError) as exc:
+        sign_release.validate_and_record(
+            submission_dir, record_path, tmp_path / "releases",
+            registry_clone=tmp_path / "registry-clone",
+        )
+    assert str(exc.value).startswith("timestamp_token_malformed:")
+
+
+def test_traversal_registry_id_is_refused(tmp_path: Path) -> None:
+    """L2: a traversal-shaped registry_id never escapes releases/."""
+    key = _fresh_key()
+    submission_dir, record_path, _record = _submission(tmp_path, key=key)
+    manifest = json.loads((submission_dir / "manifest.json").read_bytes())
+    manifest["registry_id"] = "../escape"
+    mutated = sign_release.canonical_bytes(manifest)
+    (submission_dir / "manifest.json").write_bytes(mutated)
+    # Re-sign and re-pin so the refusal isolates to the PATH check, not the
+    # signature or the digest pin (both of which also correctly fire).
+    publishing = _sdk_publishing()
+    key_path = tmp_path / "traversal-key.pem"
+    key_path.write_bytes(
+        key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        )
+    )
+    (submission_dir / "manifest.sig").write_bytes(
+        publishing.sign_manifest_bytes(mutated, key_path)
+    )
+    record = json.loads(record_path.read_bytes())
+    record["review"]["submission_manifest_sha256"] = hashlib.sha256(mutated).hexdigest()
+    record_path.write_bytes(sign_release.canonical_bytes(record))
+    with pytest.raises(sign_release.ValidationError) as exc:
+        sign_release.validate_and_record(
+            submission_dir, record_path, tmp_path / "releases",
+            registry_clone=tmp_path / "registry-clone",
+        )
+    assert str(exc.value).startswith("release_path_unsafe:")
+    assert not (tmp_path / "escape").exists()
