@@ -139,6 +139,10 @@ def test_fast_mode_pins_the_three_doctrine_commands(tmp_path: Path) -> None:
     assert any(arg.startswith("--junitxml=") for arg in pytest_cmd.args)
     assert "tests/unit" in pytest_cmd.args
     assert pytest_cmd.junit is not None
+    # The browser marker never runs in the fast lane (issue #300 fold F3):
+    # chromium is the browser job's install; a chromium-less fast lane
+    # errored 27 before the exclusion.
+    assert pytest_cmd.args[-2:] == ["-m", "not browser"]
 
 
 # --- (a) a planted failing gate reads FAIL with the true counts ----------------

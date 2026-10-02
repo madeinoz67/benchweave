@@ -144,7 +144,11 @@ def build_commands(
     junit = log_dir / "pytest-junit.xml"
     pytest_cmd = [UV, "run", "pytest", f"--junitxml={junit}"]
     if mode == "fast":
-        pytest_cmd.extend(pytest_args)
+        # The browser marker never runs in the fast lane: chromium is the
+        # browser job's own install, and a chromium-less machine errored
+        # the whole fast lane here (27 errors, issue #300 fold F3) — the
+        # marker exclusion is part of the fast lane's definition now.
+        pytest_cmd.extend([*pytest_args, "-m", "not browser"])
     elif xdist_available:
         pytest_cmd.extend(XDIST_FLAGS)
     return [
