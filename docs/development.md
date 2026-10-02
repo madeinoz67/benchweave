@@ -16,7 +16,8 @@ uv build
 ```
 
 The lint/type/test trio mirrors CI's main gate, which runs `uv sync`,
-`uv run ruff check .`, `uv run mypy`, `uv run pytest -q -n auto -m "not timing"` and
+`uv run ruff check .`, `uv run mypy`,
+`uv run pytest -q -n auto -m "not timing and not browser"` and
 `make check-sdk-standards`. `ruff format` is available
 locally but is not part of that main gate; the one place CI enforces it is
 `device-plugins.yml`, which runs `ruff format --check` inside the DPS-150
