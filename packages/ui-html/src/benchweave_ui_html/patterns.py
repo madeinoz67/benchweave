@@ -45,6 +45,7 @@ from benchweave_ui_html.grammar import Row, literal, parse_contract
 from benchweave_ui_html.manifest import MANIFEST
 
 if TYPE_CHECKING:
+    from playwright.sync_api import Browser as PlaywrightBrowser
     from playwright.sync_api import Page as PlaywrightPage
     from playwright.sync_api import ViewportSize
 
@@ -378,6 +379,17 @@ def _read_css(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def _css_bundle() -> str:
+    """tokens + themes + globals (fold F1): globals APPLIES the theme tokens
+    to the html element, so the two themes actually render differently —
+    the token definitions alone left every page pixel-identical across
+    themes (lane B's refuter measured it)."""
+    return "\n".join(
+        _read_css(path)
+        for path in (artifacts.TOKENS_CSS, artifacts.THEMES_CSS, artifacts.GLOBALS_CSS)
+    )
+
+
 @dataclass(frozen=True)
 class ExportResult:
     """What the export wrote: the page paths (relative to the export root)
@@ -392,8 +404,7 @@ def export(dest: Path) -> ExportResult:
     """Write the static tree under ``dest``: ``patterns/<theme>/<page>.html``
     for both themes plus ``patterns/index.html``. Plain rendered HTML files
     — no server; the browser lane navigates file:// URLs."""
-    tokens = _read_css(artifacts.TOKENS_CSS)
-    themes_css = _read_css(artifacts.THEMES_CSS)
+    css = _css_bundle()
     written: list[str] = []
     root = dest / "patterns"
     for theme in THEMES:
@@ -402,7 +413,7 @@ def export(dest: Path) -> ExportResult:
                 title=_PAGE_TITLES[page],
                 page=page,
                 theme=theme,
-                css=tokens + "\n" + themes_css,
+                css=css,
                 entries=entries_for_page(page),
             )
             target = root / theme / f"{page}.html"
@@ -429,53 +440,75 @@ def export(dest: Path) -> ExportResult:
 VIEWPORT: ViewportSize = {"width": 1280, "height": 1024}
 
 
-def capture_screenshots(dest: Path, page: PlaywrightPage | None = None) -> int:
+def capture_screenshots(dest: Path, browser: PlaywrightBrowser | None = None) -> int:
     """Capture one PNG per ``PATTERNS`` entry per theme into
     ``patterns/screenshots/<theme>/<row-id>__<fixture-id>.png`` — keyed by
     contract row + fixture so guide links survive re-export. Requires the
     ``browser`` extra (Playwright; lazily imported — the runtime dep set is
     untouched) and an installed chromium; pass an existing Playwright
-    ``page`` when one is already live (the browser lane), or the function
-    opens its own browser (the docs build's standalone invocation — the two
-    Sync APIs cannot nest in one process). Returns the number of
+    ``browser`` when one is already live (the browser lane), or the
+    function opens its own (the docs build's standalone invocation — the
+    two Sync APIs cannot nest in one process). Returns the number of
     screenshots; the caller asserts the count equals
     ``len(PATTERNS) * len(THEMES)``.
+
+    Determinism (fold F1): every entry shoots on its OWN fresh page after a
+    fonts-ready + double-rAF settle. Page reuse flapped the armed scene's
+    full-page height by 1px (1209 first render vs 1208 warmed) — hidden
+    warm-up state is exactly the nondeterminism class a baseline must not
+    carry.
     """
-    if page is None:
+    if browser is None:
         from playwright.sync_api import sync_playwright
 
         with sync_playwright() as playwright:
-            browser = playwright.chromium.launch()
+            chromium = playwright.chromium.launch()
             try:
-                return _capture_with(browser.new_page(viewport=VIEWPORT), dest)
+                return _capture_with(chromium, dest)
             finally:
-                browser.close()
-    return _capture_with(page, dest)
+                chromium.close()
+    return _capture_with(browser, dest)
 
 
-def _capture_with(page: PlaywrightPage, dest: Path) -> int:
+def _settle(page: PlaywrightPage) -> None:
+    """Wait for fonts plus two animation frames — the deterministic-render
+    settle (fold F1)."""
+    page.evaluate(
+        "() => document.fonts.ready.then(() => new Promise(r => "
+        "requestAnimationFrame(() => requestAnimationFrame(r))))"
+    )
+
+
+def _capture_with(browser: PlaywrightBrowser, dest: Path) -> int:
     written = 0
+    css = _css_bundle()
     for theme in THEMES:
         shots = dest / "patterns" / "screenshots" / theme
         shots.mkdir(parents=True, exist_ok=True)
         for entry in PATTERNS:
-            # Each entry screenshots on its own scratch page: the entry's
-            # fragment wrapped in the themed root, so the PNG is exactly
-            # the fixture (not a whole library page).
+            # Each entry screenshots on its own FRESH themed page carrying
+            # the same CSS bundle as the library pages (fold F1: the
+            # scratch render is themed, not bare), settled before the shot.
             scratch = (
                 "<!doctype html><html data-theme="
-                f'"{theme}"><head><meta charset="utf-8"></head>'
+                f'"{theme}"><head><meta charset="utf-8">'
+                f"<style>{css}</style></head>"
                 '<body data-bw-pattern-library>'
                 f"{entry.render()}</body></html>"
             )
-            page.set_content(scratch)
-            # The record's `<row-id>__<fixture-id>.png` key with the
-            # row-id's `::` flattened to `__` (a portable filename —
-            # `:` is not legal in filenames on every host the lane
-            # runs on).
-            filename = f"{entry.row_id.replace('::', '__')}__{entry.fixture_id}.png"
-            page.screenshot(path=str(shots / filename), full_page=True)
-            written += 1
+            page = browser.new_page(viewport=VIEWPORT)
+            try:
+                page.set_content(scratch)
+                _settle(page)
+                # The record's `<row-id>__<fixture-id>.png` key with the
+                # row-id's `::` flattened to `__` (a portable filename —
+                # `:` is not legal in filenames on every host the lane
+                # runs on).
+                filename = f"{entry.row_id.replace('::', '__')}__{entry.fixture_id}.png"
+                page.screenshot(path=str(shots / filename), full_page=True)
+                written += 1
+            finally:
+                page.close()
     return written
 
 

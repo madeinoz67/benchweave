@@ -76,6 +76,10 @@ _PENDING_COMPONENTS: frozenset[str] = frozenset()
 _STYLES_DIR = Path("ui") / "src" / "styles"
 THEMES_CSS = _STYLES_DIR / "themes.css"
 TOKENS_CSS = _STYLES_DIR / "tokens.css"
+#: Fold F1 (issue #300 two-lane refute): globals.css APPLIES the theme
+#: tokens (html background/colour) — without it the two themes render
+#: pixel-identical. Inlined last, after the token definitions it reads.
+GLOBALS_CSS = _STYLES_DIR / "globals.css"
 
 #: Geometry element names for icon/sequence structure assertions.
 _GEOMETRY_TAGS = frozenset(
@@ -2487,6 +2491,7 @@ __all__ = [
     "ComponentRenderArtifact",
     "DEFERRED_SLUGS",
     "G1B_ROW_IDS",
+    "GLOBALS_CSS",
     "IconPartialArtifact",
     "LabelRenderArtifact",
     "ModeRowArtifact",

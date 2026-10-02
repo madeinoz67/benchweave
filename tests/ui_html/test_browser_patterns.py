@@ -123,13 +123,30 @@ def test_axe_wcag22aa_zero_violations(
     assert results.violations_count == 0, results.generate_snapshot()
 
 
+def test_axe_covers_the_index_too(page: Page, export_root: Path) -> None:
+    """Fold F6: the library index joins the axe pass (it was the one
+    unchecked page in the original 24-render claim)."""
+    target = export_root / "patterns" / "index.html"
+    page.goto(target.as_uri())
+    from axe_playwright_python.sync_playwright import Axe
+
+    results = Axe().run(
+        page,
+        options={
+            "runOnly": {"type": "tag", "values": WCAG_22_AA_TAGS},
+            "resultTypes": ["violations"],
+        },
+    )
+    assert results.violations_count == 0, results.generate_snapshot()
+
+
 def test_planted_violation_must_red(page: Page) -> None:
     """The axe RED control: a button stripped of its accessible name on a
     scratch page MUST produce a violation — proving the measurement detects
     in this file:// setup (a clean run here means axe measured nothing)."""
     page.set_content(
         '<!doctype html><html><head><meta charset="utf-8"></head>'
-        "<body><button></button></body></html>"
+        "<body><button></button><a href=\"#target\"></a></body></html>"
     )
     from axe_playwright_python.sync_playwright import Axe
 
@@ -141,7 +158,10 @@ def test_planted_violation_must_red(page: Page) -> None:
         },
     )
     violation_ids = {violation["id"] for violation in results.response["violations"]}
+    # Fold F6: two detector classes pinned — button-name AND link-name (the
+    # empty anchor) — so the multi-detector claim is not one rule's word.
     assert "button-name" in violation_ids, violation_ids
+    assert "link-name" in violation_ids, violation_ids
     assert results.violations_count > 0
 
 
@@ -149,11 +169,13 @@ def test_planted_violation_must_red(page: Page) -> None:
 
 
 def test_screenshot_count_is_patterns_times_themes(
-    page: Page, tmp_path: Path
+    browser: Browser, tmp_path: Path
 ) -> None:
     """One screenshot per PATTERNS entry per theme, keyed by contract row +
-    fixture (guide links survive re-export)."""
-    written = patterns.capture_screenshots(tmp_path, page=page)
+    fixture (guide links survive re-export); each entry on its own fresh
+    settled page (fold F1's determinism — the armed scene flapped 1px under
+    page reuse)."""
+    written = patterns.capture_screenshots(tmp_path, browser=browser)
     assert written == len(patterns.PATTERNS) * len(patterns.THEMES)
     for theme in patterns.THEMES:
         shots = sorted(
@@ -168,7 +190,106 @@ def test_screenshot_count_is_patterns_times_themes(
         assert set(shots) == expected, sorted(set(shots) ^ expected)[:5]
 
 
+def test_the_two_themes_pixel_differ_in_every_screenshot(
+    browser: Browser, tmp_path: Path
+) -> None:
+    """Fold F1's control: every entry's light and dark PNGs must differ in
+    bytes — a themed render that renders identically in both themes means
+    the theme tokens are not APPLIED (lane B's refuter proved the
+    token-CSS-only pages did not differ until globals.css was inlined)."""
+    patterns.capture_screenshots(tmp_path, browser=browser)
+    same = []
+    for entry in patterns.PATTERNS:
+        name = f"{entry.row_id.replace('::', '__')}__{entry.fixture_id}.png"
+        light = (tmp_path / "patterns" / "screenshots" / "light" / name).read_bytes()
+        dark = (tmp_path / "patterns" / "screenshots" / "dark" / name).read_bytes()
+        if light == dark:
+            same.append(name)
+    assert not same, f"{len(same)} entries render identically in both themes: {same[:3]}"
+
+
 # --- the RoleResolver disagreement check (G1a risk 4) --------------------------
+
+
+def test_the_target_size_minimum_is_carried_by_the_inlined_css(
+    page: Page, export_root: Path
+) -> None:
+    """Fold F2's machine check, in the shape that survived contact with F1:
+    the export's 24px target-size minimum is carried by a LAYERED pair of
+    the page's own inlined CSS — globals.css's ``button { font: inherit }`
+    at the 16px root (buttons land at 24px) and the page-chrome
+    ``min-height`` rule as the second layer. Stripping ONE layer stays
+    clean (the other carries it); stripping BOTH reds target-size — the
+    minimum is a mechanism, not luck. (Pre-fold, with the token CSS alone
+    and no globals.css, the chrome rule was the ONLY layer — lane B's
+    original measurement.)"""
+    from axe_playwright_python.sync_playwright import Axe
+
+    def violations_of(path: Path) -> set[str]:
+        page.goto(path.as_uri())
+        results = Axe().run(
+            page,
+            options={
+                "runOnly": {"type": "tag", "values": WCAG_22_AA_TAGS},
+                "resultTypes": ["violations"],
+            },
+        )
+        return {violation["id"] for violation in results.response["violations"]}
+
+    source = export_root / "patterns" / "light" / "confirm-action.html"
+    html = source.read_text(encoding="utf-8")
+    chrome_rule = (
+        ".bw-pattern button, .bw-pattern input, .bw-pattern [role=slider] { min-height: 24px; }"
+    )
+    font_inherit = "button,\ninput,\nselect,\ntextarea {\n  font: inherit;\n}"
+    assert chrome_rule in html, "the chrome rule must be present to strip"
+    assert font_inherit in html, "globals' font: inherit must be present to strip"
+
+    chrome_stripped = export_root / "patterns" / "light" / "-f2-chrome.html"
+    chrome_stripped.write_text(html.replace(chrome_rule, "", 1), encoding="utf-8")
+    both_stripped = export_root / "patterns" / "light" / "-f2-both.html"
+    both_stripped.write_text(
+        html.replace(chrome_rule, "", 1).replace(font_inherit, "", 1), encoding="utf-8"
+    )
+    try:
+        # Either layer alone stays clean.
+        assert "target-size" not in violations_of(chrome_stripped)
+        # Both stripped: the unstyled-default controls fall below 24px and
+        # axe MUST report it.
+        assert "target-size" in violations_of(both_stripped)
+    finally:
+        chrome_stripped.unlink()
+        both_stripped.unlink()
+
+
+def test_negative_disagreement_role_absent_in_both_lanes(
+    page: Page, export_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Fold F4: the disagreement check must be able to say NO — a role that
+    must NOT be present (table on the button page) is absent in BOTH lanes,
+    and a resolver stubbed to always-True REDS the comparison (a lying
+    resolver cannot hide behind presence-only checks)."""
+    path = export_root / "patterns" / "light" / "button.html"
+    html = path.read_text(encoding="utf-8")
+    page.goto(path.as_uri())
+    snapshot = page.locator("body").aria_snapshot()
+    import re
+
+    tree_roles = {
+        match.group(1)
+        for match in re.finditer(r"^\s*-?\s*'?([a-z]+)", snapshot, re.MULTILINE)
+    }
+    resolver = ImplicitRoleResolver()
+    absent_role = "table"  # in the resolver's pinned set; not on the button page
+    assert resolver.has_role(html, absent_role) is False
+    assert absent_role not in tree_roles
+    # The lying-resolver control: always-True must disagree with the tree.
+    class AlwaysTrue:
+        def has_role(self, html: str, role: str) -> bool:
+            return True
+
+    stub = AlwaysTrue()
+    assert stub.has_role(html, absent_role) != (absent_role in tree_roles)
 
 
 def _e1_role_cells() -> list[tuple[str, list[str]]]:

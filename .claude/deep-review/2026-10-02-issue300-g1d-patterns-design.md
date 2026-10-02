@@ -380,3 +380,72 @@ those reads went through direct gortex `read` (file bodies) and
 `read(operation:"editing_context")` per the hook's own remediation text — the
 G1b record §9 posture. No gortex explore/localize/discovery ops were run, per
 the dispatch discipline. Markdown and workflow files read natively.
+
+## Fold — two-lane refute (2026-10-02)
+
+Both refute lanes defended the ten rows, the census, the CI partition, and
+the export mechanics (lane A: real-file sabotage; lane B: a real assembly
+run + the wheel proof). Ten findings folded RED-first, one wave; every
+disposition:
+
+- **A1 (MEDIUM), ST-3's never-augmented clause.** The checker now asserts
+  the quality element's text MINUS the marker span equals exactly
+  `"{quality} · {freshness}"` (child spans stripped wholesale from the
+  rendered HTML). RED: the s7 sabotage (verdict text inlined in the quality
+  line, marker kept) reds ST-3 and only ST-3 — measured 196/1 pre-fold.
+- **A2 (LOW-MED), the announcement ledger.** `reduce` clears
+  `last_transition` on Arm, Cancel and the REFUSED AcknowledgeAttempt too,
+  so the docstring's "every event other than the crossing renders the
+  ledger empty" holds. RED: `reduce(crossed, Arm(...)).last_transition
+  == ()` failed pre-fix; Cancel and the refused-acknowledge path joined
+  Unrelated as pinned paths.
+- **A3 (LOW), the mechanism-toggle arm.** Composed with
+  `NEUTRALIZE_REGISTRATION`: neutralized+flipped runs 196/0 green while
+  neutralized-unflipped reds its 168 — the discrimination the full
+  registration had made vacuous. RED: a dead-constant plugin sabotage
+  fails the green half.
+- **NITs (3).** The ci.yml Test-step comment's duplicated fragment
+  removed; `staleness()`'s docstring names §B.4 (was §B.2); ST-2's
+  freshness-nowhere arm is case-insensitive.
+- **F1 (MEDIUM-HIGH), the themes did not render differently.** globals.css
+  (the file that APPLIES the theme tokens to the html element) is now
+  inlined into BOTH the pattern pages and the screenshot scratch pages
+  (`artifacts.GLOBALS_CSS`; bundle order tokens → themes → globals). RED:
+  the new lane assertion (every entry's light/dark PNGs differ in bytes)
+  reds on the token-CSS-only tree — 4 entries byte-identical, measured.
+  The 1209-vs-1208 screenshot nondeterminism (lane B's measurement) is
+  page-reuse warm-up state: every entry now shoots on its OWN fresh page
+  after a fonts-ready + double-rAF settle — two full captures verified
+  byte-identical (100/100).
+- **F2 (MEDIUM), the 24px page prop.** The machine check added, in the
+  shape that survived contact with F1: the minimum is carried by a LAYERED
+  pair of the page's own inlined CSS — globals' `button { font: inherit }`
+  at the 16px root (measured 24px buttons) and the chrome `min-height`
+  rule as the second layer. Stripping either layer alone stays clean;
+  stripping BOTH reds `target-size` (measured 21px buttons pre-inline —
+  the chrome rule was the only layer before F1 landed). Drift-and-
+  obligations row 26 names the G2/G3 handoff — the real UI's target sizes
+  ride `ui/src/components/**/*.css`, which G1e deletes.
+- **F3, the fast lane ran the browser marker.** `gate.py --fast`'s pytest
+  leg appends `-m "not browser"` (a chromium-less machine errored 27 over
+  353 collected — measured); the gate-wrapper pin asserts it.
+- **F4, the disagreement check could not say no.** The negative arm added:
+  a role that must NOT be present (table on the button page) is absent in
+  both lanes, and an always-True resolver stub REDS the comparison — a
+  lying resolver cannot hide behind presence-only agreement.
+- **F6, the axe scope is disclosed, not silently narrower.** The planted
+  control now pins TWO detector classes (button-name AND link-name); the
+  library index joins the axe pass (the one unchecked page in the original
+  24-render claim). Scope disclosure: the WCAG 2.2 AA tag set does not
+  include best-practice rules — heading-order is the notable neighbour NOT
+  checked (the pages' h1→h2 order is incidentally correct but unpinned by
+  axe here).
+- **Routed to G2/G3 (lane A's observation, no fold).** A set-point change
+  on a de-energised output under trip is REFUSED by `attempt_fire` (the
+  guard applies to the plain apply button, mirroring the TS reference) —
+  yet R-ENERGISE-1 names that action not-energy-sourcing, and R-PROTECT-1
+  says only "energy-sourcing actions are disabled". Nothing in §C.1
+  forbids or pins gating the de-energised set-point apply; the TS does it
+  and this port follows the TS. The G2/G3 design must decide whether the
+  host keeps the TS behaviour or the contract grows a row; named here so
+  the decision is designed, not inherited by accident.

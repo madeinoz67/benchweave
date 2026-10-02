@@ -497,6 +497,22 @@ and remain the reviewer's job.
     inherits — a gateway routing test added at G2 must carry that pin or
     this row stays open.
 
+26. **The export's 24px target-size guarantee is page chrome, not component
+    styling** (issue #300 G1d, fold F2 of the two-lane refute) → the
+    pattern pages inline only the token CSS, so interactive controls render
+    at browser-default metrics — some below WCAG 2.2's 24px target-size
+    minimum; the PAGE's own inlined CSS carries the minimum as a layered
+    pair (globals.css's `button { font: inherit }` at the 16px root —
+    measured 24px buttons — plus the chrome rule `.bw-pattern button, …
+    { min-height: 24px }` in `pattern-page.j2`), and the browser lane's
+    strip machine check proves the pair: one layer stripped stays clean,
+    both stripped reds `target-size`. The REAL UI's
+    target sizes ride `ui/src/components/**/*.css` today — which G1e
+    DELETES: the G2/G3 host design inherits the obligation that its
+    component CSS (or the host's own chrome) provides the minimum, or the
+    real UI regresses what the export proves. Named here so the deletion
+    cannot lose it silently.
+
 ## CI map
 
 | Job | What it catches |
