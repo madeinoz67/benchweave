@@ -867,6 +867,29 @@ class ContinuityRig:
                         f"rig-b session already dead at the poll door: {outcome.refusal}",
                         site="drain-poll-door",
                     )
+                if (
+                    outcome.session_failed
+                    and outcome.refusal is not None
+                    and outcome.refusal.code is ErrorCode.TIMEOUT
+                    and outcome.refusal.dispatch_state is DispatchState.UNKNOWN
+                ):
+                    # Slice 4 (design §1.3): the TIMEOUT-flavor poison — a
+                    # poll whose event delivery outran the poll's own 50 ms
+                    # deadline under host stall — is starvation-shaped, so
+                    # the F4 charter retries it on a fresh rig. Every
+                    # deterministic (protocol-lie) flavor stays
+                    # non-retryable exactly as now: the door reject above
+                    # keeps its site, and any other session-failed refusal
+                    # still reds on the plain assert below. The UNKNOWN
+                    # dispatch_state is required so a CLEAN poll-deadline
+                    # TIMEOUT refusal (session alive, the bridge's own
+                    # early return) can never misclassify as poison.
+                    raise TrialInfrastructureError(
+                        f"rig-b drain poll poisoned its session (TIMEOUT "
+                        f"flavor: delivery outran the poll's 50 ms "
+                        f"deadline): {outcome.refusal}",
+                        site="drain-poll-timeout",
+                    )
                 assert not outcome.session_failed, outcome.refusal
                 if outcome.event is not None:
                     self.stream_host._contained_on_event(
@@ -1007,15 +1030,17 @@ def _dispatch_failure_is_infrastructure(
 def _poll_found_dead_session(outcome: PollOutcome) -> bool:
     """A drain poll that found the session already dead (the door reject —
     ``INTERNAL_ERROR`` with ``session_failed``). NOT classified: a session
-    the poll itself poisoned — the protocol-lie flavors are deterministic
-    rig defects, but the TIMEOUT flavor (a poll whose event delivery
-    outran the poll's own 50 ms deadline under host stall) is
-    starvation-shaped and still non-retryable. Known NON-retryable
-    starvation residuals, disclosed as an owner row rather than widened
-    here: TIMEOUT-flavor poll poison and entry-timeout at the dispatch
-    door. (Wave-1 fold, adversary F1: drain-cap starvation was listed
-    here before #241 slice 2 classified it — it is now the retryable
-    ``drain-cap`` site in ``run_trial``'s carrying list, not a
+    the poll itself poisoned via a protocol-lie refusal (a deterministic
+    rig defect). The TIMEOUT flavor (a poll whose event delivery outran
+    the poll's own 50 ms deadline under host stall) is classified beside
+    this check (issue #241 slice 4, design §1.3): the F4 charter's own
+    rule applied to a site its disclosure already admitted was
+    starvation-shaped — it is the retryable ``drain-poll-timeout`` site
+    in ``run_trial``'s carrying list. The remaining known non-retryable
+    starvation residual, disclosed as an owner row: entry-timeout at the
+    dispatch door. (Wave-1 fold, adversary F1: drain-cap starvation was
+    listed here before #241 slice 2 classified it — it is now the
+    retryable ``drain-cap`` site in ``run_trial``'s carrying list, not a
     residual.)"""
     refusal = outcome.refusal
     return (
@@ -1107,9 +1132,12 @@ def run_trial(
     own ``blocked``-latched freshness (``signal_invalid``) door-refusal —
     block-ness read from the monitor's latch, never inferred from a
     latched cause — a post-trip drain poll that found the session
-    already dead at the door, and the delivery-drain cap — frames still
-    due at the 2000 ms cap, the sweep's 39-frames-due gates failure
-    (issue #241 slice 2). Everything else — a wrong status for any
+    already dead at the door, a drain poll that poisoned its session
+    with the TIMEOUT-flavor refusal (delivery outran the poll's own
+    50 ms deadline under host stall; issue #241 slice 4), and the
+    delivery-drain cap — frames still due at the 2000 ms cap, the
+    sweep's 39-frames-due gates failure (issue #241 slice 2).
+    Everything else — a wrong status for any
     other reason, a real (non-freshness) trip, a device-side rejection
     whatever cause is latched (F1's two lanes), an error envelope claiming
     the work was dispatched, a session the poll itself poisoned — keeps
@@ -1117,8 +1145,10 @@ def run_trial(
     ``AssertionError`` that merely quotes the historical retryable wording
     (pinned by test). Starvation-shaped NON-retryables that remain — the
     drain-cap starvation this row once pointed at is now the classified
-    ``drain-cap`` carrying site above (wave-1 fold, adversary F1) — are
-    disclosed at ``_poll_found_dead_session`` as an owner row."""
+    ``drain-cap`` carrying site above (wave-1 fold, adversary F1), and
+    the poll's TIMEOUT-flavor poison is now the classified
+    ``drain-poll-timeout`` site (slice 4) — reduce to entry-timeout at
+    the dispatch door, disclosed as an owner row."""
     retry_sites: list[str] = []
     for attempt in range(3):
         try:
@@ -1993,7 +2023,16 @@ def test_axis_trials_complete_all_four_axes(
     so its lower bound cannot false-red). The retry cap, in_window_frames,
     and the write-leg gap band stay return-generation-only — re-asserting
     gen-1's load-inflated upper quantities would reintroduce the flake
-    class this slice retires."""
+    class this slice retires.
+
+    The named residual families (issue #241 slice 4's register — the
+    §5.2 accounting tolerates these BY NAME, and a red without the
+    family's signature is NOT in one): chronic-starvation exhaustion —
+    a trial's fixed three-attempt budget exhausts on infrastructure
+    sites, the composition rendered in the red; sustained-stretch —
+    three distinct band families breaching in one execution, the belt
+    reding on both generations by design (underpowered, decide
+    nothing)."""
     trials = _certified_cell(
         tmp_path, arm, device_class, lambda cell: _axis_upper_band_breaches(cell, arm)
     )
@@ -3482,6 +3521,121 @@ def test_drain_cap_starvation_exhausts_at_the_drain_cap_site(
         assert "drain-cap -> drain-cap -> drain-cap" in str(raised.value), (
             str(raised.value)
         )
+    finally:
+        _close_partially_constructed(rigs)
+
+
+# --- the drain-poll TIMEOUT-flavor poison (issue #241 slice 4) ---------------------
+
+def _install_drain_poll_timeout_poison(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    every_construction: bool = False,
+) -> list[ContinuityRig]:
+    """Force the TIMEOUT-flavor poison presentation (issue #241 slice 4,
+    design §1.3): the poisoned rig's bridge returns the TIMEOUT-flavor
+    session poison on its first poll — a poll whose event delivery
+    outran the poll's own 50 ms deadline under host stall, the exact
+    presentation ``_poll_found_dead_session``'s own disclosure named
+    (one live observation logged at the slice-3 outcome comment). The
+    poison fires at the rig's first post-trip drain poll — gated on the
+    owning rig's monitor having latched its cause, the same post-trip
+    for-branch context the sibling ``drain-poll-door`` site raises in —
+    so the trial still reaches its measured dispatch and each attempt
+    burns the real trial rhythm (~2-3 s, disclosed).
+    ``every_construction=True`` poisons every rig (the exhaustion arm):
+    all three attempts die at their first post-trip drain poll. Returns
+    the rigs (the slice-1 counter shape) for the caller's failure belt.
+    The poison mirrors the bridge's real adapter-TimeoutError
+    presentation: TIMEOUT + UNKNOWN, not the clean poll-deadline
+    refusal's NOT_DISPATCHED. (Why the post-trip gate: a pre-trip poison
+    rides ``poll_slice`` — the engine's ``poll_round`` latches
+    ``session_failed`` and STOPS silently, delivery stalls, and the
+    trial dies at the ``drain-cap`` site without ever reaching this
+    classification — measured in this session's build.)"""
+    rigs: list[ContinuityRig] = []
+    bridges: list[OTDPBridge] = []
+    original_init = ContinuityRig.__init__
+
+    def counting_init(self: ContinuityRig, db_path: Path, **kwargs: Any) -> None:
+        rigs.append(self)
+        original_init(self, db_path, **kwargs)
+        bridges.append(self.bridge_b)
+
+    monkeypatch.setattr(ContinuityRig, "__init__", counting_init)
+    original_poll_event = OTDPBridge.poll_event
+
+    def poisoned_poll_event(
+        self: OTDPBridge, subscription_id: str, *, deadline_ns: int
+    ) -> PollOutcome:
+        poisoned = bridges if every_construction else bridges[:1]
+        if any(self is bridge for bridge in poisoned):
+            rig = next(rig for rig in rigs if rig.bridge_b is self)
+            if rig.monitor.cause is not None:
+                return PollOutcome(
+                    refusal=OperationError(
+                        ErrorCode.TIMEOUT,
+                        "poisoned poll: delivery outran the poll's own 50 ms deadline",
+                        DispatchState.UNKNOWN,
+                    ),
+                    session_failed=True,
+                )
+        return original_poll_event(self, subscription_id, deadline_ns=deadline_ns)
+
+    monkeypatch.setattr(OTDPBridge, "poll_event", poisoned_poll_event)
+    return rigs
+
+
+def test_drain_poll_timeout_poison_retries_on_a_fresh_rig(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Issue #241 slice 4 (design §1.3), the membership pin (the
+    de-clock doctrine's form, the drain-cap pin precedent): the poisoned
+    rig's first post-trip drain poll raises at the ``drain-poll-timeout``
+    site, the raise rides ``run_trial``'s fresh-rig retry, and the
+    unpoisoned second construction completes the trial. Asserts the
+    PROPERTY, not the attempt bookkeeping — ``retries >= 1`` and
+    ``"drain-poll-timeout" in retry_sites`` — because under load the
+    UNPOISONED attempt can itself hit a real starvation site the retry
+    budget legitimately absorbs. Runs the production policy; burns the
+    real trial rhythm per attempt (~2-3 s, disclosed)."""
+    rigs = _install_drain_poll_timeout_poison(monkeypatch)
+    try:
+        outcome = run_trial(
+            tmp_path, arm="non_capture", device_class="buffered", trial_index=9
+        )
+        assert outcome["retries"] >= 1, outcome["retries"]
+        assert "drain-poll-timeout" in outcome["retry_sites"], outcome["retry_sites"]
+    finally:
+        _close_partially_constructed(rigs)
+
+
+def test_drain_poll_timeout_poison_exhausts_at_the_site(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AR-2b, the kill direction: a DETERMINISTIC TIMEOUT poison on
+    every construction must still red — through exhaustion, with the
+    composition rendered. The widening cannot launder a rig defect: a
+    poisoned poll on every rig burns exactly three attempts and fails as
+    a normal assertion (TrialInfrastructureError is an AssertionError
+    subclass), the red carrying
+    ``drain-poll-timeout -> drain-poll-timeout -> drain-poll-timeout``.
+    Three real trial rhythms (~7-9 s, disclosed; no cap spins — the
+    poison fires at the first post-trip poll)."""
+    rigs = _install_drain_poll_timeout_poison(monkeypatch, every_construction=True)
+    try:
+        with pytest.raises(TrialInfrastructureError) as raised:
+            run_trial(
+                tmp_path, arm="non_capture", device_class="buffered", trial_index=10
+            )
+        assert len(rigs) == 3, len(rigs)
+        assert type(raised.value) is TrialInfrastructureError
+        assert raised.value.site == "drain-poll-timeout", raised.value.site
+        assert isinstance(raised.value, AssertionError)
+        assert (
+            "drain-poll-timeout -> drain-poll-timeout -> drain-poll-timeout"
+            in str(raised.value)
+        ), str(raised.value)
     finally:
         _close_partially_constructed(rigs)
 
