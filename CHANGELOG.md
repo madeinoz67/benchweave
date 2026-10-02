@@ -856,6 +856,13 @@ All notable changes to this project will be documented in this file.
 - Advance packages/sdk to the lockfile-regen tip
 - Advance packages/sdk to the base-derivation tip (1c62bba)
 - Advance packages/sdk to the identity-fallback tip (7d9a8ba)
+- Bump actions/download-artifact from 7.0.0 to 8.0.1 (#335)
+- Bump orhun/git-cliff-action from 4.9.0 to 4.9.1 (#336)
+- Bump actions/cache from 4.3.0 to 6.1.0 (#337)
+- Bump astral-sh/setup-uv from 9.0.0 to 10.2.0 (#338)
+- Bump actions/setup-python from 6.3.0 to 7.0.0 (#340)
+- Bump fastmcp from 4.0.3 to 4.0.10
+- Regenerate uv.lock for the fastmcp 4.0.10 bump
 
 ### Performance
 
@@ -1051,6 +1058,8 @@ All notable changes to this project will be documented in this file.
 - #207 row-B ceiling relativized to the recorded clamp (the #241 D-rowB payload)
 - #207 the refute fold — 7 code rows + the record erratum
 - Post-sync sweep — the 0.1.2 active row's motion through the pins
+- Re-seed the drain-cap starvation pins under the no-trip policy
+- Refute fold — the poison path is DISPATCH-path, not poll-path
 
 ### Build
 
