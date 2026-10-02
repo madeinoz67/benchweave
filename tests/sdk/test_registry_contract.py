@@ -59,9 +59,11 @@ def _manifest(role: str) -> dict[str, Any]:
     literal), so the document is always valid-for-version and only the role
     enum can reject it. Kind stays ``profile`` deliberately: the skill role
     is kind-agnostic by design (explicit non-change; risk R6), and a profile
-    manifest carrying it pins that reading.
+    manifest carrying it pins that reading. From registry 0.1.2 the review
+    block is required exactly when the version is 0.1.2 (the lane's signed
+    form), so the derived version carries one.
     """
-    return {
+    manifest: dict[str, Any] = {
         "manifest_version": _registry_standard()["version"],
         "registry_id": "origin-main",
         "package_id": "benchweave/dc-psu-profile",
@@ -111,6 +113,17 @@ def _manifest(role: str) -> dict[str, Any]:
         "migration_notes_path": "MIGRATION.md",
         "limitations": [],
     }
+    if manifest["manifest_version"] == "0.1.2":
+        # The lane's signed form: the review block is required exactly when
+        # the version is 0.1.2 (registry standard 0.1.2's conditional).
+        manifest["review"] = {
+            "checklist_id": "review-checklist",
+            "checklist_version": "1",
+            "reviewer_id": "sdk-contract-fixture",
+            "outcome": "accepted",
+            "record_sha256": "a" * 64,
+        }
+    return manifest
 
 
 def test_registry_manifest_skill_role_validates() -> None:
@@ -127,7 +140,9 @@ def test_registry_manifest_unknown_role_refused() -> None:
     assert "workbench_guide" in message
 
 
-def test_registry_standard_version_is_0_1_1() -> None:
-    """Sweep sentinel: the committed lock's ACTIVE registry row is 0.1.1
-    post-sync (0.1.0 rides beside it, carried and served)."""
-    assert _registry_standard()["version"] == "0.1.1"
+def test_registry_standard_version_tracks_the_bump() -> None:
+    """Sweep sentinel: the committed lock's ACTIVE registry row is the
+    current version post-sync (predecessors ride beside it, carried). The
+    0.1.2 active row is the publishing lane's review-block bump (issue #223
+    slice 1)."""
+    assert _registry_standard()["version"] == "0.1.2"

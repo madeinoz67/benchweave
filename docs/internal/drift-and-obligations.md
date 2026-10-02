@@ -539,6 +539,22 @@ and remain the reviewer's job.
     shape of the reading tile stays enforced by the §E.1/§B.3 harness rows.
     Named here so the deletion cannot lose them silently.
 
+27. **The publishing-lane surfaces** (issue #223 slice 1, design
+    `docs/implementation-planning/10-contributor-publishing-design.md`): the
+    registry repository of record (`benchweave-registry`) owns the records
+    tree, its schema, the lane rules, the checklist and the signed releases —
+    its own CI runs the records-validity gate and the admission replay at the
+    committed `gateway-ref` pin (the pin advances deliberately per train; the
+    drift job warns when gateway main passes it). Cross-repo sync obligations:
+    a registry-standard bump repins here then syncs the SDK lock and vendored
+    tree via `make sync-sdk-standards` (obligation 6's loop); the artefact
+    enumeration is three-way pinned (publishing guide ↔ SDK
+    `REQUIRED_COMPONENTS` ↔ records-schema enum) by the registry repo's
+    `check_enumeration.py` over the gateway checkout at the pin; the DPS-150
+    dogfooded release's records live in the registry repository, never in this
+    tree. `scripts/registry/sign_release.py` here is the only lane signer, and
+    the lane key never enters any CI (CR-12).
+
 ## CI map
 
 | Job | What it catches |

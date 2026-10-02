@@ -272,6 +272,8 @@ All notable changes to this project will be documented in this file.
 - Lane B fold — F1 themed renders, F2 layered target-size, F4 negative disagreement, F6 axe scope (issue #300)
 - Correct the browser job's actions/cache pin to the API-resolved v4.3.0 SHA (issue #300)
 - #207 the wedge exhaustion instant renders by pure datetime arithmetic
+- Thread the licence expression through the re-derivation
+- Resolve the dangling gitlink; pin the licence threading (folds F3+F4, gateway issue #223)
 
 ### Documentation
 
@@ -846,6 +848,14 @@ All notable changes to this project will be documented in this file.
 - Advance packages/sdk to the twin-fixture fix
 - Regenerate the compatibility matrix for the digital_lanes train (#244 S1)
 - Advance packages/sdk to the PR #73 merge — SDK half of #288
+- Advance packages/sdk to the registry 0.1.2 sync (issue #223 slice 1)
+- CodeQL + dependabot baseline (issue #223 slice 1, CR-59)
+- The sign_release register row follows the retired status literal
+- Advance packages/sdk to the fold tip (issue #223 signing-surface folds)
+- Advance packages/sdk to the SDK CI-fix tip (7936296)
+- Advance packages/sdk to the lockfile-regen tip
+- Advance packages/sdk to the base-derivation tip (1c62bba)
+- Advance packages/sdk to the identity-fallback tip (7d9a8ba)
 
 ### Performance
 
@@ -1040,6 +1050,7 @@ All notable changes to this project will be documented in this file.
 - #207 dispose fsync expectations become capability-probed, with the every-platform typed-refusal arm
 - #207 row-B ceiling relativized to the recorded clamp (the #241 D-rowB payload)
 - #207 the refute fold — 7 code rows + the record erratum
+- Post-sync sweep — the 0.1.2 active row's motion through the pins
 
 ### Build
 
@@ -1083,9 +1094,18 @@ All notable changes to this project will be documented in this file.
 - Main (#275's S1 landing) into feat/issue244-s2-renderer
 - Main (#277's renderer landing) into feat/issue244-s3-decoders
 
+### Refine
+
+- Timestamping optional-but-recommended — the advisory (issue #223)
+
 ### Review
 
 - WP11 whole-branch fix wave — both verdicts clean, findings landed
+
+### Rework
+
+- The states-and-advertises posture in the guide; pointer to the rework SDK tip (issue #223)
+- Validate-and-record + the publisher-signature model (issue #223)
 
 ### Standards
 

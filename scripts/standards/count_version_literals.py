@@ -534,6 +534,14 @@ REGISTER: dict[str, dict[str, tuple[str, int, tuple[str, ...] | None]]] = {
             4,
             ("0.1.0", "0.1.0", "0.1.0", "1.0.0"),
         ),
+        "src/benchweave_sdk/publishing.py": (
+            "authored lane constants — the submission-manifest schema version "
+            "stamped by the packager (MANIFEST_SCHEMA_VERSION), the fallback "
+            "release version, and the descriptor-derived default otdp pin "
+            "(issue #223 slice 1); mirrors the SDK twin's own register row",
+            3,
+            ("0.1.1", "0.0.0", "0.1.0"),
+        ),
     },
     "plugins": {
         "plugins/fnirsi/dps150/src/benchweave_fnirsi_dps150/descriptor.py": (
@@ -565,6 +573,22 @@ REGISTER: dict[str, dict[str, tuple[str, int, tuple[str, ...] | None]]] = {
             "the interface self-test",
             1,
             ("0.1.0",),
+        ),
+        "scripts/architecture/check_registry.py": (
+            "authored self-test payload — the review-block arm's 0.1.2 "
+            "manifest-version mutation (issue #223 slice 1); the suite's "
+            "corpus directory is manifest-derived, never a literal",
+            1,
+            ("0.1.2",),
+        ),
+        "scripts/registry/sign_release.py": (
+            "authored lane constant — the recorded form's manifest version "
+            "(0.1.2; the submission is the 0.1.1 shape), fixed by the "
+            "publishing lane's corpus (issue #223; the status-document "
+            "literal left with the lane-key signing it labeled, retired by "
+            "the 2026-10-02 ruling)",
+            1,
+            ("0.1.2",),
         ),
         "scripts/registry/build_fixtures.py": (
             "authored fixture-package versions — the fixture packages' "
