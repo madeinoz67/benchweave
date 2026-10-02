@@ -120,7 +120,7 @@ def test_full_mode_adds_parallel_flags_only_when_xdist_available(
     without_xdist = gate.build_commands("full", [], False, tmp_path)
     pytest_with = next(c for c in with_xdist if c.name == "pytest")
     pytest_without = next(c for c in without_xdist if c.name == "pytest")
-    assert pytest_with.args[-4:] == ["-n", "auto", "-m", "not timing"]
+    assert pytest_with.args[-4:] == ["-n", "auto", "-m", "not timing and not browser"]
     assert "-n" not in pytest_without.args
     assert "-m" not in pytest_without.args
 
@@ -139,6 +139,10 @@ def test_fast_mode_pins_the_three_doctrine_commands(tmp_path: Path) -> None:
     assert any(arg.startswith("--junitxml=") for arg in pytest_cmd.args)
     assert "tests/unit" in pytest_cmd.args
     assert pytest_cmd.junit is not None
+    # The browser marker never runs in the fast lane (issue #300 fold F3):
+    # chromium is the browser job's install; a chromium-less fast lane
+    # errored 27 before the exclusion.
+    assert pytest_cmd.args[-2:] == ["-m", "not browser"]
 
 
 # --- (a) a planted failing gate reads FAIL with the true counts ----------------

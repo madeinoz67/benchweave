@@ -53,19 +53,21 @@ jobs:
           uv run mypy
 
       - name: Test
-        # Complementary partition with the timing job (issue #241 slice 1):
-        # `-m "not timing"` here + `-m timing` there = the full collection —
-        # structural by construction (the complementary markers admit no
-        # third state), with the proof at PR time: the builder diffs the two
-        # collected-id lists against the unfiltered collection (union equal,
-        # intersection empty) and records it in the PR body (design §5 AR-1;
-        # not an automated gate), so no test loses CI execution. The
+        # Complementary partition with the timing and browser jobs (issue
+        # #241 slice 1; #300 G1d slice 4): `-m "not timing and not
+        # browser"` here + `-m timing` there + `-m browser` in the browser
+        # job = the full collection — structural by construction (the
+        # complementary markers admit no fourth state), with the proof at
+        # PR time: the builder diffs the three collected-id lists against
+        # the unfiltered collection (union equal, pairwise intersections
+        # empty) and records it in the PR body (design §5 AR-1; not an
+        # automated gate), so no test loses CI execution. The
         # real-paced set runs on its own fresh VM in the timing lane instead
         # of behind this job's bulk-suite residue. Parallel via pytest-xdist
         # (issue #247 increment 2): the timing lane stays serialized — xdist
         # there would reintroduce the competition the lane removes (issue #241
         # slice 1).
-        run: uv run pytest -q -n auto -m "not timing"
+        run: uv run pytest -q -n auto -m "not timing and not browser"
 
       - name: Standards sync check
         # Re-export the corpus to a temp dir and refuse any drift between
@@ -105,6 +107,41 @@ jobs:
       # to that, not parallelism.
       - name: Test (timing lane)
         run: uv run pytest -q -m timing
+
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          python-version: "3.13"
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('uv.lock') }}
+
+      - name: Sync environment
+        run: uv sync --locked
+
+      - name: Install chromium
+        run: uv run playwright install chromium
+
+      # The browser lane (issue #300 G1d slice 4; UR-09/Q6 — G1a deferral
+      # D2 landing): the Playwright-driven set over the file:// pattern
+      # library — axe at WCAG 2.2 AA on every page x both themes (with the
+      # planted-violation control proving the measurement detects), one
+      # screenshot per PATTERNS entry per theme, the export census, and the
+      # RoleResolver disagreement check (G1a risk 4). Serialized: the
+      # browsers are a shared resource and the lane owns them (#241's lane
+      # shape — no xdist here, ever).
+      - name: Test (browser lane)
+        run: uv run pytest -q -m browser
 
   ui:
     runs-on: ubuntu-latest

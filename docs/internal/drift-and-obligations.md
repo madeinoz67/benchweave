@@ -468,6 +468,51 @@ and remain the reviewer's job.
     its job, not noise. The dispatch-table/CLI diff is the trigger; docs-only refactors of
     these sentences are not.
 
+24. **The pattern library's repo-relative assets** (issue #300 G1d; UR-06/UR-13) →
+    the export reads THREE repo-relative inputs that all die or move at G1e's
+    `ui/` deletion: the token CSS (`ui/src/styles/tokens.css` and
+    `themes.css` via `artifacts.TOKENS_CSS`/`THEMES_CSS`), the contract
+    itself (`docs/internal/ui-contract.md` — the library pages derive their
+    §B.1/§C.2/§C.3/§D.1 content from its parsed cells, row-as-data), and
+    the staleness predicate's semantic reference (`ui/src/components/
+    readings/staleness.ts` — documentation-level only). At G1e the CSS
+    re-points at the vendored asset (this is the G1e checklist row the G1d
+    design record §1.3 names, beside the token-path and CSS-pin re-points
+    G1b/G1c already recorded); the export refuses loudly when any input is
+    absent (`PatternExportRefused`, pinned by
+    `tests/ui_html/test_patterns.py`), so the deletion cannot lose the
+    library silently — it reds. The generated tree is NEVER committed: a
+    tracked `patterns/` dir at the repository root refuses (the repo-side
+    guard in the same test file), and the docs site stages the export at
+    build time.
+
+25. **The pattern library is never served by production** (issue #300 G1d;
+    the G2 half the G1d design record §1.3 discloses) → the package ships
+    render functions and a static-file writer ONLY — there is no app/ASGI/
+    route object to mount, so a production mount is not a code path away.
+    Honest limit: this cannot STOP a future host from choosing to serve the
+    generated HTML; the enforcement is G2's GW-04 routing test, which must
+    pin that no `/ui` path serves the pattern library (the dev posture is
+    loopback file:// browsing). This row is the obligation the G2 design
+    inherits — a gateway routing test added at G2 must carry that pin or
+    this row stays open.
+
+26. **The export's 24px target-size guarantee is page chrome, not component
+    styling** (issue #300 G1d, fold F2 of the two-lane refute) → the
+    pattern pages inline only the token CSS, so interactive controls render
+    at browser-default metrics — some below WCAG 2.2's 24px target-size
+    minimum; the PAGE's own inlined CSS carries the minimum as a layered
+    pair (globals.css's `button { font: inherit }` at the 16px root —
+    measured 24px buttons — plus the chrome rule `.bw-pattern button, …
+    { min-height: 24px }` in `pattern-page.j2`), and the browser lane's
+    strip machine check proves the pair: one layer stripped stays clean,
+    both stripped reds `target-size`. The REAL UI's
+    target sizes ride `ui/src/components/**/*.css` today — which G1e
+    DELETES: the G2/G3 host design inherits the obligation that its
+    component CSS (or the host's own chrome) provides the minimum, or the
+    real UI regresses what the export proves. Named here so the deletion
+    cannot lose it silently.
+
 ## CI map
 
 | Job | What it catches |

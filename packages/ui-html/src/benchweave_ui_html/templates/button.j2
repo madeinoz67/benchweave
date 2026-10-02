@@ -1,1 +1,4 @@
-<button type="button" class="bw-button" data-variant="{{ data.variant }}" aria-busy="{{ 'true' if data.busy else 'false' }}"{% if data.disabled_reason %} data-bw-disabled-reason="{{ data.disabled_reason }}"{% endif %}>{{ data.label }}</button>
+<button type="button" class="bw-button" data-variant="{{ data.variant }}" aria-busy="{{ 'true' if data.busy else 'false' }}"{% if data.disabled_reason %} disabled data-bw-disabled-reason="{{ data.disabled_reason }}"{% endif %}>{% if data.busy %}{% include "icon/busy.j2" %}{% endif %}{{ data.label }}</button>
+{%- if data.disabled_reason %}
+<span class="bw-button__reason" data-bw-disabled-reason="{{ data.disabled_reason }}"><span data-bw-disabled-label>{{ data.disabled_label }}</span></span>
+{%- endif %}

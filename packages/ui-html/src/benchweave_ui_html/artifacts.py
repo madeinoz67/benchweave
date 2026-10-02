@@ -21,22 +21,23 @@ Import direction keeps UR-11: this module imports ``fixtures`` →
 ``partials`` → ``env`` → jinja2 (declared runtime deps) and NEVER pytest —
 only the pytest11 plugin imports this module.
 
-Scope (G1b design record §1.2): 158 of the 168 rows. The ten ``rule_proof``
-behaviour rows — §B.2 SR-B1/B2/B3, §B.4 ST-1..ST-4, §C.1 R-ENERGISE-1/
-R-DEENERGISE-1/R-PROTECT-1 — are named deferrals to the G1d compositions
-slice; they stay red with the honest ``no canonical artifact`` message
-(satisfying them here with single-fixture structure checks would be
-prose-laundering, which the acceptance rule kills).
+Scope (G1b design record §1.2 + G1d record §1.2): the full 168 rows. The
+ten ``rule_proof`` behaviour rows — §B.2 SR-B1/B2/B3, §B.4 ST-1..ST-4,
+§C.1 R-ENERGISE-1/R-DEENERGISE-1/R-PROTECT-1 — were G1b's named deferrals
+and are discharged by G1d's composition checkers: state-machine drivers
+(transitions, fire attempts, refusals), never single-fixture structure
+checks (the G1b kill rule — prose-laundering).
 """
 
 from __future__ import annotations
 
+import dataclasses
 import re
 from collections.abc import Callable
 from pathlib import Path
-from typing import cast
+from typing import cast, get_args, get_type_hints
 
-from benchweave_ui_html import fixtures, partials, registry
+from benchweave_ui_html import compositions, fixtures, partials, registry, staleness
 from benchweave_ui_html.assertions import Element, RenderedComponent
 from benchweave_ui_html.data import (
     AlertBubbleData,
@@ -58,8 +59,11 @@ from benchweave_ui_html.tokens import css_block, theme_colour_mismatches, token_
 #: The idempotence sentinel: the first row the §E.1 family registers.
 SENTINEL_ROW_ID = "e-1-components::button"
 
-#: The three behaviour-rule tables whose rows are G1d deferrals (record §1.2).
-DEFERRED_SLUGS = frozenset({"b-2-state-rules", "b-4-staleness", "c-1-safety-rules"})
+#: The behaviour-rule tables G1b deferred to G1d (record §1.2). EMPTY since
+#: G1d slice 2: the ten rows register through the composition checkers, and
+#: the constant stays as the declaration that no table is deferred — a
+#: future deferral names its slugs here or the completeness arm reds.
+DEFERRED_SLUGS: frozenset[str] = frozenset()
 
 #: §E.1 components whose renderers land with the plot (slice 3) and lanes
 #: (slice 4) commits. Unknown beyond these: a §E.1 row with no renderer
@@ -72,6 +76,10 @@ _PENDING_COMPONENTS: frozenset[str] = frozenset()
 _STYLES_DIR = Path("ui") / "src" / "styles"
 THEMES_CSS = _STYLES_DIR / "themes.css"
 TOKENS_CSS = _STYLES_DIR / "tokens.css"
+#: Fold F1 (issue #300 two-lane refute): globals.css APPLIES the theme
+#: tokens (html background/colour) — without it the two themes render
+#: pixel-identical. Inlined last, after the token definitions it reads.
+GLOBALS_CSS = _STYLES_DIR / "globals.css"
 
 #: Geometry element names for icon/sequence structure assertions.
 _GEOMETRY_TAGS = frozenset(
@@ -1667,6 +1675,753 @@ def _lanes_rule_factory(key: str) -> RuleProofArtifact:
 
 
 # ---------------------------------------------------------------------------
+# §B.2 / §B.4 / §C.1 — the ten behaviour rows (G1d design record §1.2),
+# proven by DRIVING the composition state machine: transitions, fire
+# attempts, refusals — never render-only structure checks (the G1b kill
+# rule). Each checker ports its TS assertion body (safety-proof.test.tsx,
+# reading-states-proof.test.tsx, DeviceWorkbench.test.tsx); the machinery
+# itself is pinned by tests/ui_html/test_compositions.py.
+
+
+def _button_texts(rendered: RenderedComponent) -> list[str]:
+    """The button elements' subtree texts — paired by position (identity),
+    never ``index()``: twin controls share tag+attrs, so dataclass equality
+    would resolve to the wrong sibling's text."""
+    return [
+        text
+        for element, text in zip(rendered.elements, rendered._element_texts, strict=True)
+        if element.tag == "button"
+    ]
+
+
+def _own_text_of(rendered: RenderedComponent, element: Element) -> str:
+    for candidate, text in zip(rendered.elements, rendered._element_texts, strict=True):
+        if candidate is element:
+            return text
+    raise AssertionError("element not in render")
+
+
+def _de_energised(scene: compositions.WorkbenchState) -> compositions.WorkbenchState:
+    return dataclasses.replace(
+        scene,
+        output=compositions.OutputState(energised=False, trip=scene.output.trip),
+    )
+
+
+_SCENES: tuple[tuple[str, Callable[[], compositions.WorkbenchState]], ...] = (
+    ("psu-07", compositions.psu_scene),
+    ("daq-47", compositions.daq_scene),
+)
+
+
+def _check_r_energise(row: Row) -> list[str]:
+    messages: list[str] = []
+    for name, scene_factory in _SCENES:
+        scene = scene_factory()
+        # The vacuous-pass control: both scenes must contain an
+        # energy-sourcing and an energy-removing action.
+        rendered = RenderedComponent(compositions.render_workbench(scene))
+        texts = _button_texts(rendered)
+        if not any("Energise output" in text for text in texts):
+            messages.append(f"{name}: no energy-sourcing action renders (the vacuous-pass control)")
+        if not any("De-energise output" in text for text in texts):
+            messages.append(f"{name}: no energy-removing action renders (the vacuous-pass control)")
+        # Arm the energise control ⇒ no dispatch; the confirm text carries
+        # the effect, the exact value+unit, and the target; the second
+        # explicit action dispatches with the staged value.
+        unarmed = _de_energised(scene)
+        if not isinstance(compositions.attempt_fire(unarmed, "energise"), compositions.Refused):
+            messages.append(f"{name}: firing an un-armed energise must never dispatch")
+        armed = compositions.reduce(unarmed, compositions.Arm("energise"))
+        armed_render = RenderedComponent(compositions.render_workbench(armed))
+        confirm_text = armed_render.texts_of_elements(class_hook="bw-confirm__text")
+        if not any(
+            "the output will be energised" in text
+            and f"{scene.staged_value:g} V" in text
+            and f"{scene.device_id.upper()} output" in text
+            for text in confirm_text
+        ):
+            messages.append(
+                f"{name}: the confirm text must state the effect, the exact "
+                f"value with unit ({scene.staged_value:g} V) and the target"
+            )
+        fired = compositions.attempt_fire(armed, "energise")
+        if fired != compositions.Dispatched("energise", scene.staged_value):
+            messages.append(f"{name}: the second explicit action must dispatch the staged value")
+        # A set-point change on an ENERGISED output is energy-sourcing.
+        if not isinstance(compositions.attempt_fire(scene, "set-point"), compositions.Refused):
+            messages.append(
+                f"{name}: applying a set-point on an energised output must stage, not dispatch"
+            )
+        armed_set = compositions.reduce(scene, compositions.Arm("set-point"))
+        set_render = RenderedComponent(compositions.render_workbench(armed_set))
+        if not any(
+            "the set-point of the energised output will change" in text
+            for text in set_render.texts_of_elements(class_hook="bw-confirm__text")
+        ):
+            messages.append(f"{name}: the set-point confirm must state the set-point effect")
+        if compositions.attempt_fire(armed_set, "set-point") != compositions.Dispatched(
+            "set-point", scene.staged_value
+        ):
+            messages.append(f"{name}: the set-point confirm must dispatch the staged value")
+        # On a de-energised output the apply is one action with no confirm
+        # subtree.
+        if compositions.attempt_fire(unarmed, "set-point") != compositions.Dispatched(
+            "set-point", scene.staged_value
+        ):
+            messages.append(
+                f"{name}: a set-point on a de-energised output applies in one action"
+            )
+        if "Confirm: Apply staged set-point" in RenderedComponent(
+            compositions.render_workbench(unarmed)
+        ).text_content:
+            messages.append(
+                f"{name}: no confirm subtree renders for the de-energised set-point apply"
+            )
+    # The laundering witness (the m4 mutation's target): the staged value
+    # 13.0 while the tile's set line still reads the gateway-observed 12.5 —
+    # a renderer deriving the set line from the staged input reds here.
+    scene = dataclasses.replace(compositions.psu_scene(), staged_value=13.0)
+    set_lines = RenderedComponent(compositions.render_workbench(scene)).texts_of_elements(
+        class_hook="bw-reading__set"
+    )
+    if "Set 12.5 V" not in set_lines or "Set 13.0 V" in set_lines:
+        messages.append(
+            "the tile's set line must read the gateway-observed set, never the staged input"
+        )
+    return messages
+
+
+def _check_r_deenergise(row: Row) -> list[str]:
+    messages: list[str] = []
+    for name, scene_factory in _SCENES:
+        for guard_state in ("healthy", "trip", "no-authority", "both"):
+            scene = dataclasses.replace(
+                scene_factory(),
+                output=compositions.OutputState(
+                    energised=False,
+                    trip=guard_state in ("trip", "both"),
+                ),
+                authority=guard_state not in ("no-authority", "both"),
+            )
+            if compositions.attempt_fire(scene, "de-energise") != compositions.Dispatched(
+                "de-energise", None
+            ):
+                messages.append(
+                    f"{name}/{guard_state}: the off action must dispatch in one action"
+                )
+            rendered = RenderedComponent(compositions.render_workbench(scene))
+            if "Confirm: De-energise" in rendered.text_content:
+                messages.append(f"{name}/{guard_state}: the off action must never carry a confirm")
+            if "will be de-energised" in rendered.text_content:
+                messages.append(f"{name}/{guard_state}: no de-energise confirm text may render")
+            # The control is never disabled by any guard reason.
+            off_buttons = [
+                element
+                for element in rendered.elements
+                if element.tag == "button"
+                and "De-energise output" in _own_text_of(rendered, element)
+            ]
+            if not off_buttons:
+                messages.append(f"{name}/{guard_state}: the off control does not render")
+                continue
+            off = off_buttons[0]
+            if "disabled" in off.attrs or "data-bw-disabled-reason" in off.attrs:
+                messages.append(
+                    f"{name}/{guard_state}: nothing may stand between the operator "
+                    "and de-energising"
+                )
+    return messages
+
+
+def _check_r_protect(row: Row) -> list[str]:
+    messages: list[str] = []
+    scene = compositions.psu_scene()
+    # Trip ⇒ the energise control renders disabled with protection-active
+    # and its §C.2 visible label; de-energise stays enabled.
+    tripped = compositions.reduce(scene, compositions.TripArrives())
+    rendered = RenderedComponent(compositions.render_workbench(tripped))
+    energise = next(
+        (
+            element
+            for element in rendered.elements
+            if element.tag == "button"
+            and "Energise output" in _own_text_of(rendered, element)
+        ),
+        None,
+    )
+    if energise is None:
+        return ["the trip render lost the energise control"]
+    if "disabled" not in energise.attrs:
+        messages.append("the energise control must render disabled while a trip is active")
+    if energise.attrs.get("data-bw-disabled-reason") != "protection-active":
+        messages.append("the energise control must carry data-bw-disabled-reason=protection-active")
+    labels = rendered.texts_of_elements_with_attribute("data-bw-disabled-label")
+    if "Protection trip active" not in labels:
+        messages.append("the trip's §C.2 visible label must render beside the control")
+    off = next(
+        (
+            element
+            for element in rendered.elements
+            if element.tag == "button"
+            and "De-energise output" in _own_text_of(rendered, element)
+        ),
+        None,
+    )
+    if off is None or "disabled" in off.attrs:
+        messages.append("the trip guard never reaches the energy-removing action")
+    # Guard-while-armed (the fire-time rule): arm, the trip arrives ⇒ the
+    # ARMED confirm button itself is disabled, the fire REFUSES without
+    # dispatch; no auto-disarm, Cancel stays enabled, the departing guard
+    # re-enables and the fire then dispatches.
+    armed = compositions.reduce(_de_energised(scene), compositions.Arm("energise"))
+    guarded = compositions.reduce(armed, compositions.TripArrives())
+    if guarded.confirm != "armed":
+        messages.append("no auto-disarm: the armed state must survive the guard")
+    guarded_render = RenderedComponent(compositions.render_workbench(guarded))
+    confirm = next(
+        (
+            element
+            for element in guarded_render.elements
+            if element.tag == "button"
+            and "Confirm: Energise output" in _own_text_of(guarded_render, element)
+        ),
+        None,
+    )
+    if confirm is None:
+        messages.append("the armed confirm button does not render under the guard")
+    else:
+        if "disabled" not in confirm.attrs:
+            messages.append("the ARMED confirm button itself must render disabled under the guard")
+        if confirm.attrs.get("data-bw-disabled-reason") != "protection-active":
+            messages.append("the armed confirm must carry protection-active")
+    if compositions.attempt_fire(guarded, "energise") != compositions.Refused(
+        "protection-active"
+    ):
+        messages.append("the fire path must re-check the guard and refuse without dispatch")
+    cancel = next(
+        (
+            element
+            for element in guarded_render.elements
+            if element.tag == "button"
+            and "Cancel" in _own_text_of(guarded_render, element)
+        ),
+        None,
+    )
+    if cancel is None or "disabled" in cancel.attrs:
+        messages.append("Cancel stays enabled while armed and guarded")
+    cleared = compositions.reduce(guarded, compositions.TripClears())
+    if compositions.attempt_fire(cleared, "energise") != compositions.Dispatched(
+        "energise", scene.staged_value
+    ):
+        messages.append("the departing guard re-enables and the fire then dispatches")
+    # Combined trip+authority-lost presents protection-active, NOT the
+    # no-authority label (the trip is the present blocker).
+    combined = compositions.reduce(
+        compositions.reduce(armed, compositions.TripArrives()), compositions.AuthorityLost()
+    )
+    combined_render = RenderedComponent(compositions.render_workbench(combined))
+    combined_confirm = next(
+        (
+            element
+            for element in combined_render.elements
+            if element.tag == "button"
+            and "Confirm: Energise output" in _own_text_of(combined_render, element)
+        ),
+        None,
+    )
+    if combined_confirm is None or combined_confirm.attrs.get(
+        "data-bw-disabled-reason"
+    ) != "protection-active":
+        messages.append("the combined state must present protection-active")
+    if "No lease or policy authority" in combined_render.texts_of_elements_with_attribute(
+        "data-bw-disabled-label"
+    ):
+        messages.append("the no-authority label must not present under an active trip")
+    # Property (e): every [data-bw-disabled-reason] element in the trip
+    # render and in the no-authority render carries its key's visible label.
+    for guard_name, guard_state in (
+        ("trip", compositions.reduce(scene, compositions.TripArrives())),
+        ("no-authority", compositions.reduce(scene, compositions.AuthorityLost())),
+    ):
+        guard_render = RenderedComponent(compositions.render_workbench(guard_state))
+        keys = {
+            str(element.attrs["data-bw-disabled-reason"])
+            for element in guard_render.elements
+            if "data-bw-disabled-reason" in element.attrs
+        }
+        if not keys:
+            messages.append(f"the {guard_name} render must carry disabled controls")
+            continue
+        guard_labels = guard_render.texts_of_elements_with_attribute("data-bw-disabled-label")
+        for key in keys:
+            if compositions.GUARD_LABELS.get(key) not in guard_labels:
+                messages.append(
+                    f"the {guard_name} render must carry the visible label for {key}"
+                )
+    return messages
+
+
+def _check_sr_b1(row: Row) -> list[str]:
+    messages: list[str] = []
+    scene = compositions.psu_scene()
+    # The warning message renders anchored in its affected context (panel)
+    # across an unrelated re-render (persistence).
+    warning = next(m for m in scene.messages if m.severity == "warning")
+    for state_name, state in (
+        ("initial", scene),
+        ("after an unrelated re-render", compositions.reduce(scene, compositions.Unrelated())),
+    ):
+        rendered = RenderedComponent(compositions.render_workbench(state))
+        panel_texts = rendered.texts_of_elements(class_hook="bw-panel__body")
+        if not any(warning.text in text for text in panel_texts):
+            messages.append(
+                f"the warning message must stay anchored in its panel {state_name}"
+            )
+    # The toast channel accepts only neutral/success/advisory severities —
+    # typed shut; the m7 mutation loosens the Literal and this reflection
+    # reds (unrepresentable-bad-state, not policy-checked).
+    hints = get_type_hints(compositions.ToastData)
+    if set(get_args(hints["severity"])) != {"neutral", "success", "advisory"}:
+        messages.append(
+            "the transient toast channel's severity type must admit exactly "
+            "neutral, success and advisory"
+        )
+    for severity in ("neutral", "success", "advisory"):
+        html = compositions.render_toast(compositions.ToastData(severity=severity, text="ok"))
+        if f'data-severity="{severity}"' not in html:
+            messages.append(f"a {severity} toast must render through the transient channel")
+    # warning/critical/trip never route to the transient channel: they
+    # render anchored, and no toast element carries them.
+    for severity in ("warning", "critical", "trip"):
+        variant = dataclasses.replace(
+            scene,
+            messages=(dataclasses.replace(scene.messages[0], severity=severity),),  # type: ignore[arg-type]
+        )
+        rendered = RenderedComponent(compositions.render_workbench(variant))
+        if any("data-bw-toast" in element.attrs for element in rendered.elements):
+            messages.append(f"a {severity} message must never route to the transient channel")
+        if not any(
+            scene.messages[0].text in text
+            for text in rendered.texts_of_elements(class_hook="bw-panel__body")
+        ):
+            messages.append(f"a {severity} message must remain present in the affected context")
+    return messages
+
+
+def _single_reading_scene(severity: str) -> compositions.WorkbenchState:
+    scene = compositions.psu_scene()
+    return dataclasses.replace(
+        scene,
+        readings=(
+            compositions.ReadingSlot(
+                id="voltage",
+                label="Supply voltage",
+                value="12.04",
+                unit="V",
+                severity=severity,  # type: ignore[arg-type]
+                quality="Verified",
+                freshness_ms=120.0,
+                max_age_ms=150.0,
+            ),
+        ),
+    )
+
+
+def _check_sr_b2(row: Row) -> list[str]:
+    messages: list[str] = []
+    # The warning/critical/trip composition states each carry icon +
+    # explicit label + border hook + text on the affected reading.
+    for severity in ("warning", "critical", "trip"):
+        rendered = RenderedComponent(
+            compositions.render_workbench(_single_reading_scene(severity))
+        )
+        tile = next(
+            (
+                element
+                for element in rendered.elements
+                if "bw-reading" in element.class_tokens
+                and element.attrs.get("data-severity") == severity
+            ),
+            None,
+        )
+        if tile is None:
+            messages.append(f"a {severity} reading tile does not render")
+            continue
+        # border hook: data-severity on the tile (the CSS border/glow hook).
+        severity_span = next(
+            (
+                element
+                for element in rendered.elements
+                if "bw-reading__severity" in element.class_tokens
+            ),
+            None,
+        )
+        if severity_span is None:
+            messages.append(f"the {severity} reading must carry its severity span")
+            continue
+        if severity not in _own_text_of(rendered, severity_span):
+            messages.append(f"the {severity} reading must carry its explicit label")
+        span_index = next(
+            index
+            for index, element in enumerate(rendered.elements)
+            if element is severity_span
+        )
+        if not any(
+            element.tag == "svg"
+            for element in rendered.elements[span_index : span_index + 3]
+        ):
+            messages.append(f"the {severity} reading must carry an icon")
+        if "Supply voltage" not in _own_text_of(rendered, tile):
+            messages.append(f"the {severity} reading must carry text on the affected reading")
+    # normal/success render no glow-carrying vocabulary (the structural half
+    # is the CSS pin, test_reading_tile_css_pins.py fold-row 11).
+    for severity in ("neutral", "success"):
+        rendered = RenderedComponent(
+            compositions.render_workbench(_single_reading_scene(severity))
+        )
+        if any("data-bw-glow" in element.attrs for element in rendered.elements) or any(
+            "glow" in token
+            for element in rendered.elements
+            for token in element.class_tokens
+        ):
+            messages.append(f"a {severity} reading must not render glow vocabulary")
+    return messages
+
+
+def _check_sr_b3(row: Row) -> list[str]:
+    messages: list[str] = []
+    scene = compositions.psu_scene()
+    advisory = next(m for m in scene.messages if m.severity == "advisory")
+    # dismiss-message removes the bubble while the condition bit stays set…
+    fired = compositions.reduce(scene, compositions.AuthorityLost())
+    dismissed = compositions.reduce(fired, compositions.DismissMessage(advisory.id))
+    stored = next(m for m in dismissed.messages if m.id == advisory.id)
+    if not stored.active:
+        messages.append("dismissal must not clear the underlying condition bit")
+    if stored.acknowledged:
+        messages.append("dismissal must not acknowledge the condition (m5's mutant)")
+    rendered = RenderedComponent(compositions.render_workbench(dismissed))
+    bubbles = rendered.texts_of_elements(class_hook="bw-alert-bubble__content")
+    if any(advisory.text in text for text in bubbles):
+        messages.append("a dismissed message must not render its bubble")
+    # …and re-renders on the next transition of its condition.
+    refired = compositions.reduce(
+        compositions.reduce(dismissed, compositions.AuthorityRegained()),
+        compositions.AuthorityLost(),
+    )
+    refired_render = RenderedComponent(compositions.render_workbench(refired))
+    if not any(
+        advisory.text in text
+        for text in refired_render.texts_of_elements(class_hook="bw-alert-bubble__content")
+    ):
+        messages.append("the dismissed message must re-render on the next transition")
+    # acknowledge-attempt without authority refuses.
+    no_auth = compositions.reduce(scene, compositions.AuthorityLost())
+    attempted = compositions.reduce(no_auth, compositions.AcknowledgeAttempt(advisory.id))
+    if next(m for m in attempted.messages if m.id == advisory.id).acknowledged:
+        messages.append("acknowledgement without authority must be refused")
+    # With authority the separately-labelled act succeeds.
+    authorised = compositions.reduce(scene, compositions.AcknowledgeAttempt(advisory.id))
+    if not next(m for m in authorised.messages if m.id == advisory.id).acknowledged:
+        messages.append("an authorised acknowledgement must set the bit")
+    # Acknowledgement is separately labelled from dismissal — never the same
+    # control.
+    base_render = RenderedComponent(compositions.render_workbench(scene))
+    button_texts = _button_texts(base_render)
+    if not any("Acknowledge" in text for text in button_texts):
+        messages.append("the acknowledge control must render with its own label")
+    for text in button_texts:
+        if "Acknowledge" in text and "Dismiss" in text:
+            messages.append("dismissal and acknowledgement must be separate controls")
+    return messages
+
+
+def _check_st_1(row: Row) -> list[str]:
+    messages: list[str] = []
+    scene = compositions.daq_scene()
+    excitation = next(r for r in scene.readings if r.max_age_ms is None)
+    # A stream-cadence source (no window supplied) renders NO staleness
+    # verdict in any render — steady state or after transitions — and
+    # asserts freshness nowhere (no silence-inference).
+    for state_name, state in (
+        ("steady state", scene),
+        (
+            "after the source goes quiet",
+            compositions.reduce(scene, compositions.ReadingWentStale(excitation.id)),
+        ),
+    ):
+        rendered = RenderedComponent(compositions.render_workbench(state))
+        if any("data-bw-stale" in element.attrs for element in rendered.elements):
+            messages.append(
+                f"a stream-cadence source must render no staleness verdict ({state_name})"
+            )
+        if excitation.id in state.last_transition:
+            messages.append(
+                "a source with no commissioned window can never cross (no silence-inference)"
+            )
+    # The verdict's cadence input is the polled max_age_ms only: the psu
+    # voltage well INSIDE the window renders fresh, and crossing past the
+    # window (the transition) turns it stale — the verdict tracks the
+    # window, never a renderer default. (The boundary value itself is ST-2's
+    # own arm, so this checker keeps off the equality case.)
+    psu = compositions.psu_scene()
+    inside = dataclasses.replace(
+        psu,
+        readings=(
+            dataclasses.replace(psu.readings[0], freshness_ms=100.0, max_age_ms=150.0),
+            *psu.readings[1:],
+        ),
+    )
+    inside_render = RenderedComponent(compositions.render_workbench(inside))
+    if any(
+        "data-bw-stale" in element.attrs
+        for element in inside_render.elements
+        if "bw-reading" in element.class_tokens
+    ):
+        messages.append("freshness inside the commissioned window is fresh, not stale")
+    crossed = compositions.reduce(inside, compositions.ReadingWentStale("voltage"))
+    crossed_render = RenderedComponent(compositions.render_workbench(crossed))
+    if not any(
+        element.attrs.get("data-bw-stale") == "true"
+        for element in crossed_render.elements
+        if "bw-reading" in element.class_tokens
+    ):
+        messages.append("crossing past the commissioned window must turn the verdict stale")
+    return messages
+
+
+def _check_st_2(row: Row) -> list[str]:
+    messages: list[str] = []
+    psu = compositions.psu_scene()
+
+    def voltage(freshness: float | None, window: float | None) -> RenderedComponent:
+        scene = dataclasses.replace(
+            psu,
+            readings=(
+                dataclasses.replace(
+                    psu.readings[0], freshness_ms=freshness, max_age_ms=window
+                ),
+                *psu.readings[1:],
+            ),
+        )
+        return RenderedComponent(compositions.render_workbench(scene))
+
+    def stale_marker_present(rendered: RenderedComponent) -> bool:
+        return any(
+            element.attrs.get("data-bw-stale") == "true"
+            for element in rendered.elements
+            if "bw-reading" in element.class_tokens
+        )
+
+    # The boundary arms, each asserted through the rendered tile (no marker
+    # for fresh/no-verdict, marker for stale).
+    if stale_marker_present(voltage(150, 150)):
+        messages.append(
+            "staleness(150,150) must be fresh (strictly greater; equality is not stale)"
+        )
+    if not stale_marker_present(voltage(151, 150)):
+        messages.append("staleness(151,150) must be stale (the boundary is the disavowal line)")
+    if not stale_marker_present(voltage(1, 0)):
+        messages.append(
+            "max_age_ms=0 is valid fresh-acquisition-only semantics: staleness(1,0) is stale"
+        )
+    for freshness, window in ((float("nan"), 150.0), (120.0, -5.0)):
+        rendered = voltage(freshness, window)
+        if stale_marker_present(rendered):
+            messages.append(
+                f"garbage inputs ({freshness!r},{window!r}) must render no verdict "
+                "(a fabricated verdict is the lie class)"
+            )
+        quality_text = rendered.texts_of_elements(class_hook="bw-reading__quality")[0]
+        if "fresh" in quality_text.lower():
+            messages.append("no-verdict must assert freshness nowhere (case-insensitive)")
+    # The predicate itself, once, at the exact arms.
+    if staleness.staleness(150, 150) != "fresh" or staleness.staleness(151, 150) != "stale":
+        messages.append("the predicate boundary must be strictly greater")
+    return messages
+
+
+def _check_st_3(row: Row) -> list[str]:
+    messages: list[str] = []
+    psu = compositions.psu_scene()
+
+    def scene_with(
+        freshness: float | None, window: float | None, quality: str = "Verified"
+    ) -> RenderedComponent:
+        scene = dataclasses.replace(
+            psu,
+            readings=(
+                dataclasses.replace(
+                    psu.readings[0],
+                    freshness_ms=freshness,
+                    max_age_ms=window,
+                    quality=quality,
+                ),
+                *psu.readings[1:],
+            ),
+        )
+        return RenderedComponent(compositions.render_workbench(scene))
+
+    # No known cadence ⇒ no verdict and no freshness claim anywhere.
+    no_cadence = scene_with(120.0, None)
+    if any("data-bw-stale" in element.attrs for element in no_cadence.elements):
+        messages.append("no known cadence must render no staleness verdict")
+    if "stale" in no_cadence.text_content.lower().replace("staged", ""):
+        messages.append("no known cadence must not claim staleness anywhere")
+    # freshness_ms is None renders Unavailable and is not stale.
+    null_freshness = scene_with(None, 150.0)
+    if "Unavailable" not in null_freshness.text_content:
+        messages.append("a null freshness must render Unavailable")
+    if any("data-bw-stale" in element.attrs for element in null_freshness.elements):
+        messages.append("a null freshness is not stale")
+    # A device quality string renders verbatim in the quality slot and is
+    # never overwritten or augmented by the computed verdict — two channels,
+    # never laundered into one (fold A1's stronger form): the quality
+    # element's own text MINUS the marker span equals exactly
+    # "{quality} · {freshness}". A renderer appending the verdict's text
+    # into the quality line (the s7 sabotage keeps the marker span AND
+    # inlines the text) reds here and only here; the marker's
+    # PRESENCE-while-stale stays ST-4's own claim (m6 drops the marker).
+    narrow_state = dataclasses.replace(
+        psu,
+        readings=(
+            dataclasses.replace(
+                psu.readings[0], freshness_ms=301.0, max_age_ms=150.0, quality="device-good"
+            ),
+            *psu.readings[1:],
+        ),
+    )
+    html = compositions.render_workbench(narrow_state)
+    reading = narrow_state.readings[0]
+    expected_line = f"{reading.quality} · {reading.freshness_text}"
+    quality_blocks = re.findall(
+        r'<p class="bw-reading__quality">(.*?)</p>', html, re.DOTALL
+    )
+    device_blocks = [block for block in quality_blocks if "device-good" in block]
+    if not device_blocks:
+        messages.append("the device quality string must render verbatim in the quality slot")
+        return messages
+    for block in device_blocks:
+        without_marker_spans = re.sub(r"<span[^>]*>.*?</span>", "", block, flags=re.DOTALL)
+        direct_text = re.sub(r"<[^>]+>", "", without_marker_spans)
+        direct_text = re.sub(r"\s+", " ", direct_text).strip()
+        if direct_text != expected_line:
+            messages.append(
+                "the quality element's text minus the marker span must equal "
+                f"exactly {expected_line!r} — the computed verdict never "
+                f"launders into the quality string; got {direct_text!r}"
+            )
+    return messages
+
+
+def _check_st_4(row: Row) -> list[str]:
+    messages: list[str] = []
+    psu = compositions.psu_scene()
+    stale_scene = dataclasses.replace(
+        psu,
+        readings=(
+            dataclasses.replace(psu.readings[0], freshness_ms=301.0, max_age_ms=150.0),
+            *psu.readings[1:],
+        ),
+    )
+    rendered = RenderedComponent(compositions.render_workbench(stale_scene))
+    # A stale tile carries the dimming class hook + data-bw-stale="true" +
+    # the visible `stale` marker appended to the quality line; the marker is
+    # never missing while the attribute renders (m6's mutant drops the
+    # marker and keeps the attribute).
+    tile = next(
+        (
+            element
+            for element in rendered.elements
+            if "bw-reading" in element.class_tokens
+            and element.attrs.get("data-bw-stale") == "true"
+        ),
+        None,
+    )
+    if tile is None:
+        return ["a stale reading must carry data-bw-stale=true"]
+    if "bw-reading--stale" not in tile.class_tokens:
+        messages.append("a stale tile must carry the dimming class hook")
+    markers = rendered.texts_of_elements(class_hook="bw-reading__stale-marker")
+    if not markers or not any("stale" in marker for marker in markers):
+        messages.append(
+            "a stale reading never renders without its marker (the OTDP §5 rule, "
+            "at the presentation boundary)"
+        )
+    # The fresh→stale transition carries exactly ONE status live-region
+    # announcement (the last_transition ledger): on the crossing render,
+    # absent on the steady stale re-render and on a duplicate no-change
+    # event — coalesced, once.
+    fresh_scene = dataclasses.replace(
+        psu,
+        readings=(
+            dataclasses.replace(psu.readings[0], freshness_ms=120.0, max_age_ms=150.0),
+            *psu.readings[1:],
+        ),
+    )
+    crossed = compositions.reduce(fresh_scene, compositions.ReadingWentStale("voltage"))
+    crossing = RenderedComponent(compositions.render_workbench(crossed))
+    announcements = crossing.texts_of_elements(class_hook="bw-workbench__announcements")
+    if len(announcements) != 1 or "stale" not in announcements[0]:
+        messages.append("the fresh→stale crossing render must carry exactly one announcement")
+    for state_name, state in (
+        ("the steady stale re-render", compositions.reduce(crossed, compositions.Unrelated())),
+        (
+            "a duplicate no-change event",
+            compositions.reduce(crossed, compositions.ReadingWentStale("voltage")),
+        ),
+    ):
+        steady = RenderedComponent(compositions.render_workbench(state))
+        if steady.texts_of_elements(class_hook="bw-workbench__announcements"):
+            messages.append(f"the announcement must be absent on {state_name} (coalesced, once)")
+    # The data-table row arm: tr[data-bw-stale] + row dimming + marker;
+    # fresh rows unmarked.
+    stale_rows = [
+        element
+        for element in rendered.elements
+        if element.tag == "tr" and element.attrs.get("data-bw-stale") == "true"
+    ]
+    if not stale_rows:
+        messages.append("the stale reading's table row must carry data-bw-stale")
+    for element in stale_rows:
+        if "bw-table-row--stale" not in element.class_tokens:
+            messages.append("the stale table row must carry the row dimming class")
+        if "stale" not in _own_text_of(rendered, element):
+            messages.append("the stale table row must carry the visible marker")
+    for element in rendered.elements:
+        if (
+            element.tag == "tr"
+            and "data-bw-stale" not in element.attrs
+            and "stale" in _own_text_of(rendered, element)
+        ):
+            messages.append("a fresh table row must not carry the marker")
+    return messages
+
+
+_COMPOSITION_RULE_CHECKERS: dict[str, Callable[[Row], list[str]]] = {
+    "R-ENERGISE-1": _check_r_energise,
+    "R-DEENERGISE-1": _check_r_deenergise,
+    "R-PROTECT-1": _check_r_protect,
+    "SR-B1": _check_sr_b1,
+    "SR-B2": _check_sr_b2,
+    "SR-B3": _check_sr_b3,
+    "ST-1": _check_st_1,
+    "ST-2": _check_st_2,
+    "ST-3": _check_st_3,
+    "ST-4": _check_st_4,
+}
+
+
+def _composition_rule_factory(key: str) -> RuleProofArtifact:
+    checker = _COMPOSITION_RULE_CHECKERS.get(key)
+    if checker is None:
+        raise KeyError(f"no composition rule checker for {key!r}")
+    return RuleProofArtifact(key, checker)
+
+
+
+# ---------------------------------------------------------------------------
 # Registration
 
 _REGISTRARS: dict[str, Callable[[str], registry.Artifact]] = {
@@ -1695,12 +2450,15 @@ _REGISTRARS: dict[str, Callable[[str], registry.Artifact]] = {
     "e-4-4-edge-preserving-decimation-normative": _lanes_rule_factory,
     "e-4-5-time-axis": _lanes_rule_factory,
     "e-4-6-decoder-lanes": _lanes_rule_factory,
+    "b-2-state-rules": _composition_rule_factory,
+    "b-4-staleness": _composition_rule_factory,
+    "c-1-safety-rules": _composition_rule_factory,
 }
 
-#: Every row-id G1b registers — derived from the registrar coverage, so the
+#: Every row-id the registrars register (158 of G1b + the ten G1d behaviour
+#: rows = the full 168) — derived from the registrar coverage, so the
 #: completeness meta arm (set equality against the registry) and the
-#: registration share one mechanism; the independent manifest-derivation
-#: equality lands with the final slice's coverage arm.
+#: registration share one mechanism.
 def _registered_row_ids() -> frozenset[str]:
     ids: set[str] = set()
     for slug in _REGISTRARS:
@@ -1711,7 +2469,11 @@ def _registered_row_ids() -> frozenset[str]:
     return frozenset(ids)
 
 
-G1B_ROW_IDS: frozenset[str] = _registered_row_ids()
+REGISTERED_ROW_IDS: frozenset[str] = _registered_row_ids()
+
+#: Historical alias for the G1b-era name; the derivation is the same
+#: mechanism, now covering the full population.
+G1B_ROW_IDS: frozenset[str] = REGISTERED_ROW_IDS
 
 
 def ensure_registered() -> None:
@@ -1729,9 +2491,11 @@ __all__ = [
     "ComponentRenderArtifact",
     "DEFERRED_SLUGS",
     "G1B_ROW_IDS",
+    "GLOBALS_CSS",
     "IconPartialArtifact",
     "LabelRenderArtifact",
     "ModeRowArtifact",
+    "REGISTERED_ROW_IDS",
     "RefusalRenderArtifact",
     "SENTINEL_ROW_ID",
     "SequencePartialArtifact",

@@ -1,6 +1,6 @@
-<section class="bw-reading" data-severity="{{ data.severity }}" aria-label="{{ data.label }}"{% if data.state %} data-bw-reading-state="{{ data.state }}"{% endif %}>
+<section class="bw-reading{% if data.stale_verdict == 'stale' %} bw-reading--stale{% endif %}" data-severity="{{ data.severity }}" aria-label="{{ data.label }}"{% if data.state %} data-bw-reading-state="{{ data.state }}"{% endif %}{% if data.stale_verdict == 'stale' %} data-bw-stale="true"{% endif %}>
   <header class="bw-reading__header">{{ data.label }}</header>
-  <span class="bw-reading__severity">{{ data.severity }}</span>
+  <span class="bw-reading__severity">{% include "icon/" ~ data.severity ~ ".j2" %}{{ data.severity }}</span>
   <p class="bw-reading__value">{{ data.value }} <small>{{ data.unit }}</small></p>
   {%- if data.set_value is not none %}
   <span class="bw-reading__set" data-bw-reading-role="set">Set {{ data.set_value }} {{ data.set_unit }}</span>
@@ -8,5 +8,5 @@
   {%- if data.state is not none %}
   <span class="bw-reading__state">{% include "icon/" ~ data.state ~ ".j2" %}{{ data.state_label }}</span>
   {%- endif %}
-  <p class="bw-reading__quality">{{ data.quality }} · {{ data.freshness }}</p>
+  <p class="bw-reading__quality">{{ data.quality }} · {{ data.freshness }}{%- if data.stale_verdict == 'stale' %} <span class="bw-reading__stale-marker">stale</span>{% endif %}</p>
 </section>

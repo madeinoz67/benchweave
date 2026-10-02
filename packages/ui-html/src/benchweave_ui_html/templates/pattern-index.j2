@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Pattern library</title>
+</head>
+<body data-bw-pattern-library data-bw-pattern-index>
+  <h1>Pattern library</h1>
+  <p class="bw-pattern-library__note">{{ count }} fixtures · {{ themes | length }} themes · one page per §E.1 component plus the refusal page</p>
+  <ul>
+    {%- for page in pages %}
+    <li><a href="light/{{ page.slug }}.html">{{ page.title }}</a> · <a href="dark/{{ page.slug }}.html">dark</a></li>
+    {%- endfor %}
+  </ul>
+</body>
+</html>

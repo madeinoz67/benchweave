@@ -91,6 +91,10 @@ class ReadingData:
     state_label: str | None = None
     set_value: str | None = None
     set_unit: str | None = None
+    #: §B.4 ST-4, the computed verdict: the tile renders its stale arm from
+    #: THIS (the composition computes it via ``staleness.staleness``) — never
+    #: a caller-supplied boolean alone.
+    stale_verdict: Literal["stale", "fresh", "no-verdict"] | None = None
 
 
 @dataclass(frozen=True)
@@ -121,6 +125,10 @@ class PanelData:
 class TableDataRow:
     key: str
     cells: tuple[str, ...]
+    #: §B.4 ST-4, the table arm: the row's stale flag — the composition
+    #: derives it from the computed verdict, never a caller-supplied
+    #: boolean alone.
+    stale: bool = False
 
 
 @dataclass(frozen=True)
@@ -152,12 +160,19 @@ class ModeBannerData:
 class ConfirmActionData:
     """§E.1 ``confirm-action``: the armed confirm-step pattern (§C.1
     R-ENERGISE-1's presentation shape; the guard-at-fire-time behaviour is
-    G1d's, this is the structural row)."""
+    G1d's, this is the structural row).
+
+    ``guard_reason``/``guard_label`` carry the §E.1 Notes' fire-time rule:
+    the guard applies to the armed Confirm button as well as the initial
+    control (both ``None`` for the unguarded canonical fixture).
+    """
 
     initial_label: str
     armed: bool
     armed_text: str
     confirm_label: str
+    guard_reason: str | None = None
+    guard_label: str | None = None
 
 
 @dataclass(frozen=True)

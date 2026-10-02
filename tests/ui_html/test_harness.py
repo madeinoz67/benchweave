@@ -20,9 +20,9 @@ CONTRACT = REPO_ROOT / "docs" / "internal" / "ui-contract.md"
 
 
 def _expected_row_failures() -> int:
-    """Rows red at a plain invocation = 168 minus the auto-registered set
-    (the G1d-deferred rows stay red until the compositions slice). Clears
-    first: earlier in-process arms legitimately leave partial registrations."""
+    """Rows red at a plain invocation = 168 minus the auto-registered set —
+    0 since G1d slice 2 registered the ten behaviour rows. Clears first:
+    earlier in-process arms legitimately leave partial registrations."""
     registry.REGISTRY.clear()
     artifacts.ensure_registered()
     return 168 - len(registry.REGISTRY)
@@ -61,10 +61,11 @@ def test_only_files_named_ui_contract_md_are_claimed(tmp_path: Path) -> None:
     named = tmp_path / "ui-contract.md"
     named.write_text(CONTRACT.read_text(encoding="utf-8"), encoding="utf-8")
     code, attrib = _run_pytest(str(named), "-q", junit=tmp_path / "named.xml")
-    assert code != 0
+    # Since G1d slice 2 the full population registers and the run is green
+    # (failures == the unregistered rows == 0; the mechanism is derived, so
+    # a future deferral would show here as its red count).
+    assert code == 0
     assert attrib.get("tests") == "196"
-    # G1b: the plain invocation auto-registers — failures = the unregistered
-    # rows (the G1d deferrals), not the G1a empty-registry 168.
     assert attrib.get("failures") == str(_expected_row_failures())
 
 
@@ -75,7 +76,7 @@ def test_every_generated_item_carries_the_contract_marker(tmp_path: Path) -> Non
     code, attrib = _run_pytest(
         str(CONTRACT), "-q", "-m", "contract", junit=junit_all
     )
-    assert code != 0
+    assert code == 0  # the fully-registered population is green
     assert attrib.get("tests") == "196"
 
     junit_none = tmp_path / "none.xml"

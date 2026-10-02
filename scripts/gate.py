@@ -25,8 +25,10 @@ Usage:
 --fast is the per-commit lane: ruff + fresh-cache mypy + focused pytest over
 the paths given. --full is the per-push battery: ruff + mypy + the full
 suite — when pytest-xdist is importable in the project environment the suite
-runs `-n auto -m "not timing"` (the timing marker stays serialized per
-#241/#246); until xdist lands on main this is the plain serial suite.
+runs `-n auto -m "not timing and not browser"` (the timing marker stays
+serialized per #241/#246; the browser marker runs in its own lane with
+chromium installed, per #300); until xdist lands on main this is the plain
+serial suite.
 
 The pytest leg of --fast with no paths prints an explicit SKIP rather than
 silently running nothing — the fast lane has no exemptions, and a hidden
@@ -69,8 +71,10 @@ MAX_RETAINED_RUNS = 20
 COLLECT_ONLY_FLAGS = ("--collect-only", "--co")
 
 #: The pytest-xdist parallel flags (design §2): full suite, excluding the
-#: `timing` marker, which stays serialized in its own lane.
-XDIST_FLAGS = ["-n", "auto", "-m", "not timing"]
+#: `timing` marker (serialized in its own lane) and the `browser` marker
+#: (issue #300 G1d: serialized in its own lane with chromium installed —
+#: the batteries never assume the browsers are present).
+XDIST_FLAGS = ["-n", "auto", "-m", "not timing and not browser"]
 
 
 class GateCmd(NamedTuple):
@@ -140,7 +144,11 @@ def build_commands(
     junit = log_dir / "pytest-junit.xml"
     pytest_cmd = [UV, "run", "pytest", f"--junitxml={junit}"]
     if mode == "fast":
-        pytest_cmd.extend(pytest_args)
+        # The browser marker never runs in the fast lane: chromium is the
+        # browser job's own install, and a chromium-less machine errored
+        # the whole fast lane here (27 errors, issue #300 fold F3) — the
+        # marker exclusion is part of the fast lane's definition now.
+        pytest_cmd.extend([*pytest_args, "-m", "not browser"])
     elif xdist_available:
         pytest_cmd.extend(XDIST_FLAGS)
     return [
@@ -256,7 +264,10 @@ def main(argv: list[str] | None = None) -> int:
         action="store_const",
         const="full",
         dest="mode",
-        help="per-push battery: ruff + mypy + full suite (-n auto -m 'not timing' under xdist)",
+        help=(
+            "per-push battery: ruff + mypy + full suite "
+            "(-n auto -m 'not timing and not browser' under xdist)"
+        ),
     )
     parser.add_argument(
         "--only",

@@ -277,6 +277,11 @@ def _minimal_dest(tmp_path: Path, index_html: str) -> Path:
         # derived (issue #269): the stub tracks the derivation so a bump
         # moves this fixture with it, never a re-pin.
         assembler.ACTIVE_OTDP_RUNTIME_SCHEMA,
+        # verify_tree's pattern-library probes (issue #300 G1d): the staged
+        # tree's index plus one page per theme.
+        "user-guide/patterns/index.html",
+        "user-guide/patterns/light/button.html",
+        "user-guide/patterns/dark/refusals.html",
         "user-guide/changelog.html",
         "llms.txt",
         "llms-full.txt",

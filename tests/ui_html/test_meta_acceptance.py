@@ -218,10 +218,11 @@ def _assert_registered_state_shape(
 
 
 def test_plain_invocation_is_the_registered_state(tmp_path: Path) -> None:
-    """The plain invocation auto-registers G1b's artifacts: pins green, the
-    registered rows green, and every OTHER row red with exactly the
-    no-canonical-artifact message (the ten G1d-deferred rows keep this run
-    red until the compositions slice lands). The failed count is exactly the
+    """The plain invocation auto-registers the artifacts: pins green, the
+    registered rows green. Since G1d slice 2 the registration is the FULL
+    168 (the ten behaviour rows included), so the plain invocation is fully
+    green — the pre-G1d run's ten no-canonical-artifact reds are the slice's
+    RED half, recorded in its commit. The failed count is exactly the
     unregistered rows — no more (an over-count would mean a registered row
     failing its own items), no fewer (an under-count would mean an
     unregistered row going green)."""
@@ -234,7 +235,10 @@ def test_plain_invocation_is_the_registered_state(tmp_path: Path) -> None:
     expected_failed = ROW_ITEMS - len(registry.REGISTRY)
     junit = tmp_path / "metric-a.xml"
     exit_code = _run(CONTRACT, junit)
-    assert exit_code != 0, "unregistered rows must leave the run red (exit non-zero)"
+    if expected_failed:
+        assert exit_code != 0, "unregistered rows must leave the run red (exit non-zero)"
+    else:
+        assert exit_code == 0, "a fully registered green population must exit 0"
     attrib, buckets = _suite(junit)
     _assert_registered_state_shape(attrib, buckets)
     rows = _stats(buckets["row"])
@@ -262,8 +266,9 @@ def test_empty_registry_collection_control_registration_neutralized(
 
 def test_no_environment_variable_flips_the_gate(tmp_path: Path) -> None:
     """The REQUIRE_ARTIFACT constant has no environment surface (design section 2).
-    G1b: the expected shape is the registered state — the env vars must not
-    turn the run all-green either (the gate being off would be exactly that)."""
+    Since G1d the registered state is fully green, so the env vars must not
+    change the verdict in either direction (an off gate would look the same
+    green; the mechanism-toggle control in-process is the discrimination)."""
     junit = tmp_path / "env-control.xml"
     exit_code = _run(
         CONTRACT,
@@ -275,7 +280,7 @@ def test_no_environment_variable_flips_the_gate(tmp_path: Path) -> None:
             "BENCHWEAVE_UI_HTML_REQUIRE_ARTIFACT": "no",
         },
     )
-    assert exit_code != 0
+    assert exit_code == 0, "the fully-registered population must stay green under env noise"
     attrib, buckets = _suite(junit)
     _assert_registered_state_shape(attrib, buckets)
 
@@ -389,20 +394,36 @@ def test_metric_c_registering_one_artifact_greens_exactly_that_row(tmp_path: Pat
 
 
 def test_mechanism_toggle_flipping_the_constant_makes_the_red_run_green(tmp_path: Path) -> None:
-    junit = tmp_path / "toggle.xml"
-    prelude = (
-        "import benchweave_ui_html.registry as registry\n"
+    """Fold A3: composed with NEUTRALIZE_REGISTRATION so the arm
+    discriminates again. Since G1d registered the full population the bare
+    toggle was vacuous (auto-registration made both states green); with the
+    registry held empty the pair discriminates the constant's effect —
+    toggle-off runs fully green (196/0) while the un-flipped neutralized
+    run reds its 168 rows. A dead constant (never read) fails the green
+    half exactly like the sabotage arm proved."""
+    junit_green = tmp_path / "toggle-green.xml"
+    prelude_green = (
+        NEUTRALIZE_REGISTRATION
+        + "import benchweave_ui_html.registry as registry\n"
         "registry.REQUIRE_ARTIFACT = False\n"
     )
-    exit_code = _run(CONTRACT, junit, prelude=prelude)
-    assert exit_code == 0, "REQUIRE_ARTIFACT=False must make the RED run fully green"
-    attrib, buckets = _suite(junit)
+    exit_green = _run(CONTRACT, junit_green, prelude=prelude_green)
+    assert exit_green == 0, "neutralized + REQUIRE_ARTIFACT=False must run fully green"
+    attrib, buckets = _suite(junit_green)
     rows = _stats(buckets["row"])
     pins = _stats(buckets["pin"])
     assert rows == {"collected": ROW_ITEMS, "failed": 0, "passed": ROW_ITEMS, "skipped": 0}, rows
     assert pins == {"collected": PIN_ITEMS, "failed": 0, "passed": PIN_ITEMS, "skipped": 0}, pins
     assert attrib.get("tests") == str(TOTAL_ITEMS), attrib
     assert attrib.get("failures") == "0", attrib
+    # The contrast half: the SAME neutralization without the flip reds the
+    # 168 rows — the green above is the toggle's effect, not the
+    # registration's absence alone.
+    junit_red = tmp_path / "toggle-red.xml"
+    exit_red = _run(CONTRACT, junit_red, prelude=NEUTRALIZE_REGISTRATION)
+    assert exit_red != 0
+    _attrib_red, buckets_red = _suite(junit_red)
+    assert _stats(buckets_red["row"])["failed"] == ROW_ITEMS
 
 
 # --- UR-11: the renderer namespace never pulls pytest ---------------------------
@@ -412,7 +433,9 @@ def test_runtime_namespace_imports_without_pytest() -> None:
     """UR-11: the renderer namespace never pulls pytest. G1b extends the
     imported set to the artifact/rendering modules AND renders one partial
     per family (the lane-A fold's widened probe — matching the
-    pre-committed text) — jinja2 must land in sys.modules, pytest must not."""
+    pre-committed text); G1d adds the composition scene render, the toast,
+    and one full pattern-library export — jinja2 must land in sys.modules,
+    pytest must not."""
     code = (
         "import sys\n"
         "import benchweave_ui_html\n"
@@ -431,6 +454,9 @@ def test_runtime_namespace_imports_without_pytest() -> None:
         "import benchweave_ui_html.lanes\n"
         "import benchweave_ui_html.artifacts\n"
         "import benchweave_ui_html.decimate\n"
+        "import benchweave_ui_html.staleness\n"
+        "import benchweave_ui_html.compositions\n"
+        "import benchweave_ui_html.patterns\n"
         "from benchweave_ui_html import fixtures, partials\n"
         "partials.render_button(fixtures.button())\n"
         "partials.render_numeric_input(fixtures.numeric_input())\n"
@@ -445,6 +471,11 @@ def test_runtime_namespace_imports_without_pytest() -> None:
         "partials.render_lanes(fixtures.digital_lanes())\n"
         "partials.render_icon('limiting')\n"
         "partials.render_sequence('dash-2')\n"
+        "from benchweave_ui_html import compositions, patterns\n"
+        "compositions.render_workbench(compositions.psu_scene())\n"
+        "compositions.render_toast(compositions.ToastData(severity='advisory', text='ok'))\n"
+        "import tempfile, pathlib\n"
+        "patterns.export(pathlib.Path(tempfile.mkdtemp()))\n"
         "from benchweave_ui_html.data import RefusalData, DisabledLabelData\n"
         "partials.render_refusal(RefusalData(code='not_found', severity='advisory', "
         "what_happened='x', sent_status='NO', operator_action='y'))\n"
@@ -614,16 +645,16 @@ def test_mixed_invocation_collects_the_gate(tmp_path: Path) -> None:
     collects BOTH the ordinary suite and the 196 contract items. The refuter's
     PYTEST_ADDOPTS="-m 'not contract'" attack deselects the contract items on
     exactly this shape — the residual class, disclosed in the design record;
-    this arm goes red under that attack. The registered-state run stays red
-    through the ten G1d-deferred rows (the lane-A fold's comment fix: no
-    longer described as the empty-registry red)."""
+    this arm goes red under that attack (a shrunk collection fails the
+    counts below, and since G1d the full registration means the mixed run is
+    green — a deselection would be the only way to lose items)."""
     junit = tmp_path / "mixed.xml"
     exit_code = _run(
         CONTRACT,
         junit,
         extra_args=["tests/ui_html/test_grammar.py"],
     )
-    assert exit_code != 0  # the ten G1d-deferred rows keep the registered run red
+    assert exit_code == 0  # the fully-registered population is green
     _attrib, buckets = _suite(junit)
     assert _stats(buckets["pin"])["collected"] == PIN_ITEMS
     assert _stats(buckets["row"])["collected"] == ROW_ITEMS

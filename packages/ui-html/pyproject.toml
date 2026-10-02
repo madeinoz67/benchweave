@@ -16,6 +16,21 @@ dependencies = [
   "markupsafe>=3.0",
 ]
 
+# The browser lane (UR-09/Q6, G1a deferral D2 landing; F-D1 ruled: the pip
+# wrapper, NOT vendored axe.min.js bytes). A TEST extra only — the default
+# install set stays {benchweave-ui-html, jinja2, markupsafe} so the
+# package.yml installed-set proof is untouched. The root dev group carries
+# the same pins so `uv sync --locked` resolves them (uv.lock moves with
+# this change — dependency motion, disclosed in the tier call).
+# DEVIATION from the G1a sketch's named floors: axe-playwright-python has
+# no 4.x line (0.1.8 is the newest at design time); the floor is the real
+# one below.
+[project.optional-dependencies]
+browser = [
+  "playwright>=1.49",
+  "axe-playwright-python>=0.1.7",
+]
+
 # The contract gate: collection-time generation over a non-Python target
 # file, which a conftest cannot do (design record §7 — the first pytest11
 # entry point in this tree). Dormant by default: it only claims files named

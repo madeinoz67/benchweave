@@ -1,0 +1,64 @@
+<section class="bw-workbench" aria-labelledby="bw-workbench-title">
+  <header class="bw-workbench__header">
+    <div><span class="bw-eyebrow">Device overview</span><h2 id="bw-workbench-title">{{ view.device_title }} · {{ view.device_id }}</h2></div>
+    <div class="bw-status-cluster">
+      <span class="bw-badge" data-tone="{{ 'success' if view.connected else 'advisory' }}">{{ 'Connected' if view.connected else 'Disconnected' }}</span>
+    </div>
+  </header>
+  <div class="bw-authority-strip">
+    <span>Controller lease</span>
+    <strong>{{ view.lease_owner }}</strong>
+    <span>Renews in {{ view.lease_expires_s }} s</span>
+  </div>
+  {% with data = view.mode_banner %}{% include "mode-banner.j2" %}{% endwith %}
+  {%- if view.announcements %}
+  <div class="bw-workbench__announcements" role="status">
+    {%- for announcement in view.announcements %}
+    <span data-bw-announcement="{{ announcement.reading_id }}">{{ announcement.text }}</span>
+    {%- endfor %}
+  </div>
+  {%- endif %}
+  <div class="bw-readings-grid">
+    {%- for tile in view.tiles %}
+    {% with data = tile %}{% include "reading-tile.j2" %}{% endwith %}
+    {%- endfor %}
+  </div>
+  <section class="bw-panel" data-surface="raised" aria-label="Device messages">
+    <header class="bw-panel__header"><span class="bw-panel__eyebrow">Gateway observations</span><span class="bw-panel__title">Messages</span></header>
+    <div class="bw-panel__body">
+      {%- for bubble in view.bubbles %}
+      {% with data = bubble.data %}{% include "alert-bubble.j2" %}{% endwith %}
+      {%- if bubble.acknowledge %}
+      <button type="button" class="bw-acknowledge">Acknowledge: {{ bubble.title }}</button>
+      {%- endif %}
+      {%- endfor %}
+    </div>
+  </section>
+  <section class="bw-panel" data-surface="raised" aria-label="Output control">
+    <header class="bw-panel__header"><span class="bw-panel__eyebrow">Staged configuration</span><span class="bw-panel__title">Output control</span></header>
+    <div class="bw-panel__body">
+      <div class="bw-setpoint">
+        {% with data = view.rotary %}{% include "rotary-control.j2" %}{% endwith %}
+        <div class="bw-setpoint__entry">
+          {% with data = view.numeric %}{% include "numeric-input.j2" %}{% endwith %}
+          {%- if view.setpoint_confirm is not none %}
+          {% with data = view.setpoint_confirm %}{% include "confirm-action.j2" %}{% endwith %}
+          {%- else %}
+          {% with data = view.setpoint_button %}{% include "button.j2" %}{% endwith %}
+          {%- endif %}
+          <small>Request remains subject to authority, policy and device verification.</small>
+        </div>
+        <div class="bw-output-actions">
+          {% with data = view.energise %}{% include "confirm-action.j2" %}{% endwith %}
+          {% with data = view.deenergise %}{% include "button.j2" %}{% endwith %}
+        </div>
+      </div>
+    </div>
+  </section>
+  <section class="bw-panel" data-surface="recessed" aria-label="Channels">
+    <header class="bw-panel__header"><span class="bw-panel__eyebrow">Current gateway observations</span><span class="bw-panel__title">Channels</span></header>
+    <div class="bw-panel__body">
+      {% with data = view.table %}{% include "data-table.j2" %}{% endwith %}
+    </div>
+  </section>
+</section>

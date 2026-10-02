@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en" data-theme="{{ theme }}">
+<head>
+  <meta charset="utf-8">
+  <title>Pattern library — {{ title }}</title>
+  <style>{{ css }}
+  /* Page chrome, not component styling: the export inlines only the token
+     CSS (one mirror), so interactive controls render at browser-default
+     metrics — some below WCAG 2.2's 24px target-size minimum. The minimum
+     is the PAGE's presentation guarantee here; the real UI's component CSS
+     owns it in the app. */
+  .bw-pattern button, .bw-pattern input, .bw-pattern [role=slider] { min-height: 24px; }</style>
+</head>
+<body data-bw-pattern-library data-bw-pattern-page="{{ page }}" data-bw-pattern-theme="{{ theme }}">
+  <h1>{{ title }}</h1>
+  <p class="bw-pattern-library__note">Static pattern-library page · theme {{ theme }} · renderer-neutral contract fixtures</p>
+  {%- for entry in entries %}
+  <section class="bw-pattern" data-bw-pattern-fixture="{{ entry.fixture_id }}" data-bw-pattern-row="{{ entry.row_id }}" data-bw-pattern-kind="{{ entry.kind }}">
+    <h2>{{ entry.row_id }} · {{ entry.fixture_id }}</h2>
+    {{ entry.render() | safe }}
+  </section>
+  {%- endfor %}
+</body>
+</html>
