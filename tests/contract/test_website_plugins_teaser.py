@@ -32,11 +32,11 @@ SITE_JS = ROOT / "website" / "assets" / "site.js"
 
 SEMVER_RE = re.compile(r"\d+\.\d+\.\d+")
 
-#: The catalogue's home: the registry repository's GitHub Pages URL (project
-#: pages of madeinoz67/benchweave-registry; no custom domain is declared —
-#: the domain cutover is the styleguide's gated future event, and the
-#: registry Pages URL in plain language is not).
-CATALOGUE_URL = "https://madeinoz67.github.io/benchweave-registry/"
+#: The catalogue's canonical home: the registry repository's own domain
+#: (owner cutover 2026-10-02, ahead of the hosted service — the domain
+#: names the property; the words still claim no hosted service, per the
+#: styleguide's two-clause gate: the mark glyph remains gated).
+CATALOGUE_URL = "https://registry.benchweave.dev/"
 
 # The teaser prose, string-pinned (design §5 B3′: the teaser carries zero
 # catalogue-derived data and its text is string-pinned).
@@ -67,29 +67,19 @@ HONESTY_NO_SERVICE = "no hosted registry front end and no device-install command
 # releases." passed every prior guard); byte equality makes ANY change to
 # these bytes redden, so updating the pin is part of any intentional edit.
 TEASER_SECTION_BYTES = (
-    "<section class=\"panel\" id=\"panel-plugins\">\n"
-    "    <div class=\"page-head\">\n"
-    "      <h1>Plugins</h1>\n"
-    "      <p>Plugin releases are published and signed in a git-native registry repository "
-    "of record — not a hosted front end. The catalogue is generated from that repository's "
-    "records and served from its own site; this page carries no copy of it, so what you "
-    "reach is always the published state. Installation is local admission: publication never "
-    "authorizes control.</p>\n"
-    "    </div>\n"
-    "    <div class=\"ai-callout\">\n"
-    "      <div>\n"
-    "        <h2>The plugin catalogue</h2>\n"
-    "        <p>Every published release with its version, digest, compatibility and "
-    "advisories — searchable, kind-tagged, and stamped with the commit it was generated "
-    "from.</p>\n"
-    "      </div>\n"
-    "      <a class=\"btn btn-secondary\" href=\"https://madeinoz67.github.io/benchweave-regi"
-    "stry/\" target=\"_blank\" rel=\"noopener\">Browse the catalogue →</a>\n"
-    "    </div>\n"
-    "    <p class=\"note\">What the catalogue offers is generated from published releases "
-    "only: a yanked or revoked release drops out at the next regeneration — what is absent "
-    "there is absent everywhere.</p>\n"
-    "  "
+    "<section class=\"panel\" id=\"panel-plugins\">\n    <div class=\"page-head\">\n      <h1>Pl"
+    "ugins</h1>\n      <p>Plugin releases are published and signed in a git-native registry repo"
+    "sitory of record — not a hosted front end. The catalogue is generated from that repository'"
+    "s records and served from its own site; this page carries no copy of it, so what you reach "
+    "is always the published state. Installation is local admission: publication never authorize"
+    "s control.</p>\n    </div>\n    <div class=\"ai-callout\">\n      <div>\n        <h2>The pl"
+    "ugin catalogue</h2>\n        <p>Every published release with its version, digest, compatibi"
+    "lity and advisories — searchable, kind-tagged, and stamped with the commit it was generated"
+    " from.</p>\n      </div>\n      <a class=\"btn btn-secondary\" href=\"https://registry.benc"
+    "hweave.dev/\" target=\"_blank\" rel=\"noopener\">Browse the catalogue →</a>\n    </div>\n  "
+    "  <p class=\"note\">What the catalogue offers is generated from published releases only: a "
+    "yanked or revoked release drops out at the next regeneration — what is absent there is abse"
+    "nt everywhere.</p>\n  "
 )# CR-23's honesty paragraph on the home panel (the <p> whose bytes carry
 # HONESTY_SENTENCE and HONESTY_NO_SERVICE), pinned the same way: the words of
 # an honesty claim are reviewable state, and drift in either direction —
