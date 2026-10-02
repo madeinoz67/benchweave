@@ -52,8 +52,29 @@ jobs:
       - name: Set up Quarto
         uses: quarto-dev/quarto-actions/setup@8a96df13519ee81fd526f2dfca5962811136661b # v2.2.0
 
+      - name: Install Playwright chromium
+        # The pattern-library screenshots (issue #300 G1d / UR-13): the
+        # browser pins ride the root dev group (uv sync above resolves
+        # them); only the browser binary is missing until this step.
+        run: uv run playwright install chromium
+
       - name: Assemble the site
         run: uv run python scripts/assemble_docs_site.py
+
+      - name: Capture pattern-library screenshots
+        # UR-13's second half: the staged pattern library ships with one PNG
+        # per PATTERNS entry per theme (fixed viewport, filenames keyed by
+        # contract row + fixture). The count assertion is the mechanism's
+        # own (a short capture fails the step loudly).
+        run: |
+          uv run python - <<'PY'
+          from pathlib import Path
+          from benchweave_ui_html import patterns
+          written = patterns.capture_screenshots(Path("site/docs/user-guide"))
+          expected = len(patterns.PATTERNS) * len(patterns.THEMES)
+          assert written == expected, (written, expected)
+          print(f"pattern-library screenshots: {written}")
+          PY
 
       - name: Save site artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

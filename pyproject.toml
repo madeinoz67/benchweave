@@ -59,6 +59,14 @@ dev = [
   # entry point is installed in the repo venv; packages/sdk stays a submodule
   # and is NOT a workspace member (two-repo discipline).
   "benchweave-ui-html",
+  # The browser lane's pins (issue #300 G1d; F-D1 ruled the pip wrapper over
+  # vendored axe.min.js bytes — dependency motion, uv.lock moves in the same
+  # commit). The ui-html `browser` extra carries the same floors; the dev
+  # group makes `uv sync --locked` resolve them everywhere the lane's code
+  # imports them. CI's gates/timing jobs run `-m "not ... browser"` so the
+  # browsers themselves are only installed in the browser job.
+  "playwright>=1.49",
+  "axe-playwright-python>=0.1.7",
 ]
 
 [tool.uv.sources]
@@ -99,6 +107,7 @@ junit_family = "xunit1"
 markers = [
   "slow: real child-process orchestration (kill-mid-run); CI runs these — deselect locally for quick iteration with -m 'not slow'",
   "timing: real-paced wall-clock measurements (pacing bands, precision gates, busy-retry windows); CI runs these serialized in the dedicated timing lane — deselect locally with -m 'not timing'",
+  "browser: Playwright-driven checks over the file:// pattern library (axe WCAG 2.2 AA, screenshots, the role-resolver disagreement check); CI runs these serialized in the dedicated browser lane with chromium installed — deselect locally with -m 'not browser'",
 ]
 
 # Report-only coverage: `uv run pytest --cov` prints the table; no gate or

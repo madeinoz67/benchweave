@@ -658,6 +658,9 @@ def verify_tree(dest: Path, paths: dict[str, str]) -> None:
         "standards/index.html",
         ACTIVE_OTDP_RUNTIME_SCHEMA,  # corpus copied beside the prose
         "user-guide/changelog.html",
+        "user-guide/patterns/index.html",  # the staged pattern library (#300)
+        "user-guide/patterns/light/button.html",
+        "user-guide/patterns/dark/refusals.html",
         "llms.txt",
         "llms-full.txt",
     ):
@@ -708,6 +711,24 @@ def guard_dest(dest: Path) -> None:
             )
 
 
+def stage_pattern_library(docs_root: Path) -> None:
+    """Stage the ui-html pattern library under the user guides (issue #300
+    G1d / UR-06+UR-13): ``docs/user-guide/patterns/`` — plain rendered HTML
+    pages over file:// URLs, one per §E.1 component plus the refusal page,
+    both themes. The tree is GENERATED at assembly (never committed; the
+    repo-side guard in tests/ui_html/test_patterns.py refuses a tracked
+    ``patterns/`` dir); screenshots are captured into the same tree by the
+    docs workflow's post-assembly step (the browser extra is a test-only
+    dependency, so assembly itself writes the HTML only)."""
+    from benchweave_ui_html import patterns as bw_patterns
+
+    try:
+        result = bw_patterns.export(docs_root / "user-guide")
+    except bw_patterns.PatternExportRefused as exc:
+        raise SystemExit(f"pattern-library export refused: {exc}") from exc
+    log(f"pattern library staged: {len(result.pages)} pages under docs/user-guide/patterns/")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Assemble the public site (see module docstring)")
     ap.add_argument("--dest", default="site")
@@ -752,6 +773,7 @@ def main() -> None:
     copy_website(dest)
     rename_standards_section(docs_root)
     copy_standards_resources(docs_root)
+    stage_pattern_library(docs_root)
     complete_favicons(docs_root, REPO / "website" / "assets" / "logo.svg")
     write_llms_txt(docs_root)
     fix_root_doc_links(docs_root)

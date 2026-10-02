@@ -27,7 +27,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal, cast
+from typing import TYPE_CHECKING, Literal, cast
 
 from benchweave_ui_html import artifacts, compositions, fixtures, partials
 from benchweave_ui_html.data import (
@@ -43,6 +43,10 @@ from benchweave_ui_html.data import (
 from benchweave_ui_html.env import ENV
 from benchweave_ui_html.grammar import Row, literal, parse_contract
 from benchweave_ui_html.manifest import MANIFEST
+
+if TYPE_CHECKING:
+    from playwright.sync_api import Page as PlaywrightPage
+    from playwright.sync_api import ViewportSize
 
 #: The contract lives at the repository root (the token-CSS posture: live
 #: where the gate runs from the repository root, fail loud otherwise).
@@ -420,6 +424,61 @@ def export(dest: Path) -> ExportResult:
     )
 
 
+#: The screenshot viewport (PRD §5 UR-05's browser Direction, non-binding:
+#: a fixed viewport so re-exports are comparable).
+VIEWPORT: ViewportSize = {"width": 1280, "height": 1024}
+
+
+def capture_screenshots(dest: Path, page: PlaywrightPage | None = None) -> int:
+    """Capture one PNG per ``PATTERNS`` entry per theme into
+    ``patterns/screenshots/<theme>/<row-id>__<fixture-id>.png`` — keyed by
+    contract row + fixture so guide links survive re-export. Requires the
+    ``browser`` extra (Playwright; lazily imported — the runtime dep set is
+    untouched) and an installed chromium; pass an existing Playwright
+    ``page`` when one is already live (the browser lane), or the function
+    opens its own browser (the docs build's standalone invocation — the two
+    Sync APIs cannot nest in one process). Returns the number of
+    screenshots; the caller asserts the count equals
+    ``len(PATTERNS) * len(THEMES)``.
+    """
+    if page is None:
+        from playwright.sync_api import sync_playwright
+
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch()
+            try:
+                return _capture_with(browser.new_page(viewport=VIEWPORT), dest)
+            finally:
+                browser.close()
+    return _capture_with(page, dest)
+
+
+def _capture_with(page: PlaywrightPage, dest: Path) -> int:
+    written = 0
+    for theme in THEMES:
+        shots = dest / "patterns" / "screenshots" / theme
+        shots.mkdir(parents=True, exist_ok=True)
+        for entry in PATTERNS:
+            # Each entry screenshots on its own scratch page: the entry's
+            # fragment wrapped in the themed root, so the PNG is exactly
+            # the fixture (not a whole library page).
+            scratch = (
+                "<!doctype html><html data-theme="
+                f'"{theme}"><head><meta charset="utf-8"></head>'
+                '<body data-bw-pattern-library>'
+                f"{entry.render()}</body></html>"
+            )
+            page.set_content(scratch)
+            # The record's `<row-id>__<fixture-id>.png` key with the
+            # row-id's `::` flattened to `__` (a portable filename —
+            # `:` is not legal in filenames on every host the lane
+            # runs on).
+            filename = f"{entry.row_id.replace('::', '__')}__{entry.fixture_id}.png"
+            page.screenshot(path=str(shots / filename), full_page=True)
+            written += 1
+    return written
+
+
 __all__ = [
     "CONTRACT_MD",
     "ExportResult",
@@ -428,6 +487,8 @@ __all__ = [
     "PatternExportRefused",
     "PatternKind",
     "THEMES",
+    "VIEWPORT",
+    "capture_screenshots",
     "entries_for_page",
     "export",
     "pages",
