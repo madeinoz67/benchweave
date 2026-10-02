@@ -54,7 +54,14 @@ The MCP server is launched by MCP clients as `uv run benchweave-adc-mcp`
 The board's CH32V006 has **no external BOOT0 pin**, so the serial ISP path
 (`wchisp`) **cannot** reflash a chip that is already running firmware — it
 answers the ISP handshake with its own UART traffic instead of entering the
-bootloader. Reflash over the debug interface instead (WCH-Link, 1-wire SDI).
+bootloader. The obvious `wchisp` command below will fail with `invalid serial
+header`:
+
+```sh
+wchisp flash firmware/ch32v006e8r_adc/build/ch32v006e8r_adc.hex
+```
+
+Reflash over the debug interface instead (WCH-Link, 1-wire SDI).
 
 Do this, then do that:
 
