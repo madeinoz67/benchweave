@@ -1,16 +1,18 @@
 # BenchWeave UI style guide
 
-**Status:** Implementation guidance for the reference renderer
+**Status:** Implementation guidance for the Jinja/HTMX renderer
 
 **Normative contract:** [UI renderer-neutral component contract](ui-contract.md) — tokens,
 severity model, safety definitions and component contracts are defined there. This file
-is how the reference React/Storybook renderer implements that contract.
+is how the renderer package (`packages/ui-html`) implements that contract.
 
 **Design history:** [UI style guide and workbench design](ui-styleguide-workbench-design.md)
+— plus the historical React/Storybook reference renderer it was first written against
+(deleted at the G1e cutover; see Exceptions E3).
 
 **Portable visual reference:** [Layered Precision light/dark mock-up](ui-styleguide-mockup.html)
 
-This guide is the implementation reference for humans and AI agents extending the BenchWeave UI. Storybook is the executable source of truth. `ui/src/styles/` owns tokens, `ui/src/components/` owns reusable behaviour, and `ui/src/compositions/` demonstrates supported product use.
+This guide is the implementation reference for humans and AI agents extending the BenchWeave UI. The contract harness (pytest over `docs/internal/ui-contract.md`, live in the default root-suite run) is the executable source of truth, `packages/ui-html/src/benchweave_ui_html/assets/` owns tokens, the `templates/` partials own reusable behaviour, and the pattern library demonstrates supported product use.
 
 The first slice establishes the Layered Precision design language and representative operator and administrative compositions. The approved design contains the full target inventory; absence from this initial slice does not authorise a one-off substitute.
 
@@ -20,36 +22,34 @@ The first slice establishes the Layered Precision design language and representa
 2. Keep observation, staged input and committed action visibly separate.
 3. Use severity names, icons, labels and messages; never encode state with colour or glow alone.
 4. Keep plugin rendering host-owned and declarative.
-5. Add tests and stories for every new component state.
+5. Add tests and pattern-library pages for every new component state.
 6. Label simulation and evidence quality honestly.
 7. Do not infer physical safety, permission or applied state from presentation success.
 
 ## Local commands
 
-Run commands from `ui/`:
+Run commands from the repository root (`UV_PROJECT_ENVIRONMENT=venv`):
 
 ```sh
-npm install
-npm run storybook
-npm test
-npm run typecheck
-npm run lint
-npm run build
-npm run build-storybook
+uv run pytest docs/internal/ui-contract.md   # the contract gate alone (196 items)
+uv run pytest                                # the default root-suite run — the contract gate rides testpaths
+uv run pytest tests/ui_html -q               # the ported proofs and harness arms
+uv run python -m benchweave_ui_html ...      # the pattern-library export (static tree; the docs site stages it at build)
+uv run pytest -m browser                     # the browser lane: axe WCAG 2.2 AA + screenshots over the exported pattern pages
 ```
 
-The supported project runtime is Node.js 22 LTS. Dependency versions are exact in `package.json` and `package-lock.json`.
+There is no Node toolchain: the React reference renderer, its Storybook workbench and the npm build lane were deleted at the G1e cutover, and the style assets ship as vendored package data pinned by the assets inventory.
 
 ## Tokens
 
-The token inventory and every token value are normative in the contract ([§A](ui-contract.md#a-tokens)). Implementation rules for the reference renderer:
+The token inventory and every token value are normative in the contract ([§A](ui-contract.md#a-tokens)). Implementation rules for the renderer:
 
-- consume the CSS custom properties from `ui/src/styles/tokens.css` and `themes.css` — those files are the executable mirror of the contract tables, and the contract↔CSS value-equality pin in `ui/src/contract-coverage.test.ts` refuses drift in either direction;
+- consume the CSS custom properties from the package's vendored `assets/tokens.css` and `themes.css` — those files are the executable mirror of the contract tables (the last React build's bytes, moved verbatim and inventory-pinned), and the contract↔CSS value-equality rows in the harness refuse drift in either direction;
 - components must not hard-code a colour or shadow that conveys product meaning;
 - a new semantic token is added to both themes in the same change, and to the contract table in the same change;
 - hexadecimal values belong only in theme definitions, documentation and visual-test fixtures — never on a component.
 
-Layout constants for the reference renderer:
+Layout constants for the renderer:
 
 - page content maximum width: `90rem`;
 - page gutter: `1.5rem`, reducing to `1rem` below 48rem;
@@ -91,7 +91,7 @@ Do not use more than three text sizes in one compact panel. Uppercase is limited
 - touch-first or safety-significant action minimum target: `2.75rem` square;
 - button horizontal padding: `0.9rem`; vertical padding: `0.55rem`;
 - standard icon: 16–18 px; status icon: 16 px; empty-state illustration maximum: 48 px;
-- use Lucide icons with `1.75px`–`2px` stroke and `aria-hidden="true"` when adjacent text supplies the name; the icon keys and reference bindings are normative in the contract ([§F](ui-contract.md#f-icon-set));
+- use Lucide icons with `1.75px`–`2px` stroke and `aria-hidden="true"` when adjacent text supplies the name; the icon KEYS are normative in the contract ([§F](ui-contract.md#f-icon-set)) — the reference bindings name the frozen React reference (exception E2), and a host binds from the shape descriptions;
 - destructive and protective actions always include a text label; icon-only is not allowed;
 - a rotary control is paired with a precise numeric field and explicit Apply action.
 
@@ -132,7 +132,7 @@ The component inventory and each component's required attributes, roles, class h
 | Actionable group | raised `Panel` |
 | Plot, table or dense result | recessed `Panel` |
 
-If the need is not covered, check the approved component inventory before designing an extension. New components require a concrete user need, accessibility behaviour, light/dark states, tests and stories — and a contract row.
+If the need is not covered, check the approved component inventory before designing an extension. New components require a concrete user need, accessibility behaviour, light/dark states, tests and pattern-library pages — and a contract row.
 
 ## Observation and control
 
@@ -146,17 +146,16 @@ Readings report gateway observations. Controls stage intent. Buttons submit expl
 - Do not optimistically copy a requested value into an applied reading.
 - Permission, lease, policy, transport and device rejection remain distinct outcomes — rendered per the refusal mapping (contract §C.3).
 
-**Announcement honest scope (contract §B.3/§B.4):** the reference renderer
-implements the PRESENCE arm of the announcement rules — a `status` live region
-mounts with the limiting state and with the stale verdict (the mount is the
-coalesced entry announcement; unmount is the silent exit), and the pins assert
-presence-with / absence-without. What stays unimplemented, disclosed: the
-once-and-coalesced TIMING across repeated entries (a re-entry within the same
-mount does not re-announce in every host — the mount/unmount lifecycle is the
-reference's coalescing approximation) and per-tile announcement ordering
-between sibling tiles. Those timing behaviours stay story + browser-review
-(the jsdom boundary), the same disclosed class as the CSS-hidden-label
-residual in §C.2's enforcement.
+**Announcement honest scope (contract §B.3/§B.4):** the renderer implements
+the PRESENCE arm of the announcement rules — the reading partial renders a
+`status` live region with the limiting state and with the stale verdict, and
+the harness rows assert presence-with / absence-without. What stays
+unimplemented, disclosed: the once-and-coalesced TIMING across repeated
+entries (announcement coalescing is a HOST behaviour — a static partial has
+no lifecycle, so the timing rules bind the G2/G3 hosts, not the partials)
+and per-tile announcement ordering between sibling tiles. The timing
+behaviours are host-design obligations; the browser lane's axe checks carry
+the static half.
 
 **Reading states, the setpoint triad, staleness (contract §B.3/§B.4/§E.3):** a
 limiting reading (a limit, not the set-point, constrains the value) renders the
@@ -167,18 +166,27 @@ as `Set {value} {unit}`, and staged lives only in the staging input. Staleness
 is computed arithmetic (ST-2: `freshness_ms > 2 × cadence_ms`, strict), the
 cadence always the descriptor's own committed value; no cadence ⇒ no verdict
 (ST-3's honest negative), and a computed stale marker never touches the
-device-declared quality string. The reference renderer's `ReadingTile` carries
-the `set`/`state`/`stale` props and the pure `staleness.ts` predicate is the
-ST-2 mechanism.
+device-declared quality string. The reading partial carries the
+`set`/`state`/`stale` fields and the pure `staleness.py` predicate (the ported
+module — the semantic reference since the G1e cutover deleted the React
+original) is the ST-2 mechanism.
 - Energy-sourcing actions confirm; energy-removing actions never stand behind a confirmation (contract §C.1).
 
-**The reference renderer's disabled-reason reach (honest scope):** the contract's §C.2 keys are normative for every host, but this reference composition emits only two of the five. `no-authority` fires whenever the simulated authority state blocks energising actions, and `protection-active` while a protective trip is active. `invalid-staged-input` is never emitted here because `NumericInput` clamps staged values to the declared bounds (`bounds.ts`) — a clamped value is always in range, so the reference renderer cannot stage an invalid one; a host whose inputs can be invalid emits the key. `capability-absent` and `device-state` have no emitting mechanism in the reference composition (it renders one device with all capabilities and no state gate) — they exist for hosts that have partial-capability devices or required idle states.
+**The disabled-reason reach (honest scope):** the contract's §C.2 keys are
+normative for every host, and the harness renders ALL FIVE from the contract's
+own rows (one label artifact per key — a key with no row or a row with no key
+reds). The historical note: the React reference composition only ever EMITTED
+two of the five (`no-authority`, `protection-active`) because its simulated
+device had all capabilities, clamped inputs and no state gate — the emission
+reach is a HOST property, and a host whose inputs can be invalid, whose devices
+have partial capabilities, or which enforces required idle states emits the
+other keys.
 
 ## Alerts and message persistence
 
-The severity model — meanings, dismissal classes and live regions — is normative in the contract ([§B](ui-contract.md#b-states-and-severity-model)); the reference implementation lives in `ui/src/components/feedback/severity.tsx`. A transient toast is limited to neutral, success and advisory confirmation; warning, critical and trip information must remain present in the affected context. Dismissal is not acknowledgement.
+The severity model — meanings, dismissal classes and live regions — is normative in the contract ([§B](ui-contract.md#b-states-and-severity-model)); the severity rows of the harness render and pin every severity key. A transient toast is limited to neutral, success and advisory confirmation; warning, critical and trip information must remain present in the affected context. Dismissal is not acknowledgement.
 
-**Label authority (decided with the safety-behaviours slice, issue #242 slice 2):** the contract pins severity KEYS, meanings, dismissal classes and live regions — not display labels. The reference renderer's label map (`severityLabels` in `severity.tsx`) renders the `success` key with the user-facing word "Normal"; that wording is the reference renderer's choice, kept for continuity with its pinned tests, and a host renderer may label severities in its own voice. The key, never the label, is the machine-checkable identity.
+**Label authority (decided with the safety-behaviours slice, issue #242 slice 2; recorded as exception E1 below):** the contract pins severity KEYS, meanings, dismissal classes and live regions — not display labels. The React reference renderer's label map rendered the `success` key with the user-facing word "Normal"; that wording was the reference renderer's choice, and the Jinja renderer keeps the labels it shipped so the G1e cutover was invisible to operators (keys, icons, colours, dismissal classes — all contract — unchanged). A host renderer may label severities in its own voice. The key, never the label, is the machine-checkable identity.
 
 ## Numbers and units
 
@@ -203,7 +211,7 @@ The severity model — meanings, dismissal classes and live regions — is norma
 - Respect reduced motion.
 - Supply a textual chart description for assistive technology.
 
-The catalogue carries time series, waveforms and digital capture lanes ([§E.4](ui-contract.md#e4-digital-lanes-digital-lanes-sub-rows): the `digital-lanes` component — identity is lane position, colour carries nothing; the reference renderer is the hand-drawn-SVG `DigitalLanesPlot`, the §E.2.2 custom-paths precedent for leaving echarts where echarts lacks the shape). Spectrum, sweeps and polar/Smith charts remain with the complete-catalogue follow-on and must retain these same rules. Series tokens and their assignment are normative in the contract ([§E.2](ui-contract.md#e2-series-assignment-engineering-plot-sub-rows)): slots derive from the bytewise-sorted declared id set — the emphasis (accent) hint binds to `--bw-series-1`, and `ui/src/series-colors.test.ts` carries the computed colour proofs (contrast, severity non-confusion under dual CVD models, adjacency) on the actual token values.
+The catalogue carries time series, waveforms and digital capture lanes ([§E.4](ui-contract.md#e4-digital-lanes-digital-lanes-sub-rows): the `digital-lanes` component — identity is lane position, colour carries nothing; the lanes partial renders the hand-drawn-SVG lane columns — the §E.2.2 custom-paths precedent for leaving a charting library where it lacks the shape). Spectrum, sweeps and polar/Smith charts remain with the complete-catalogue follow-on and must retain these same rules. Series tokens and their assignment are normative in the contract ([§E.2](ui-contract.md#e2-series-assignment-engineering-plot-sub-rows)): slots derive from the bytewise-sorted declared id set — the emphasis (accent) hint binds to `--bw-series-1`, and `tests/ui_html/test_series_colour_proofs.py` carries the computed colour proofs (contrast, severity non-confusion under dual CVD models, adjacency) on the actual token values.
 
 **Plot axes, reference lines, disclosure, provenance (contract
 [§E.2.3–§E.2.6](ui-contract.md#e23-y-axis-assignment)):** one y-axis per
@@ -238,29 +246,18 @@ Always show the affected scope of an administrative change. Never imply that a c
 - Do not announce every live sample; coalesce updates and announce actionable state changes.
 - Keep warning, critical and trip text present even when visual effects are unavailable.
 
-## Required stories
+## Required coverage (the successor of "required stories")
 
 Each applicable component must include:
 
-- light and dark theme coverage through the Storybook toolbar;
-- default, hover, focus, active and disabled states;
+- light and dark theme coverage — every pattern-library page renders both themes;
+- default and disabled states (the disabled state presented as the contract's §C.2 disabled reason);
 - loading or busy state;
-- permission-disabled state for controlled actions — presented as the contract's `no-authority` disabled reason once the safety-behaviours slice lands;
 - empty, stale, partial and error states for data components;
 - warning, critical and trip states where relevant;
-- keyboard interaction and accessible-name checks.
+- accessible-name and role checks — asserted by the harness rows (§E.1) and the browser lane's axe pass.
 
-Use these top-level Storybook groups:
-
-1. Foundations
-2. Actions
-3. Inputs
-4. Instrument controls
-5. Readings and state
-6. Plots and datasets
-7. Feedback and recovery
-8. Operator compositions
-9. Administrative compositions
+The coverage census is mechanical: the canonical fixtures (`packages/ui-html/src/benchweave_ui_html/fixtures.py`) drive one harness render per §E.1 component row, the pattern library exports the `PATTERNS` census pages (both themes each), and the browser lane screenshots every page — a component state with no fixture, row or page is the gap this section forbids. The old Storybook groups map to the pattern-library index sections (Foundations → tokens pages; the rest → the component and composition pages).
 
 ## Plugin presentation
 
@@ -270,6 +267,12 @@ Custom devices outside the current OTDP classes will use a separately versioned,
 
 ## Exceptions
 
+Recorded exceptions from the pre-cutover state (the G1e design record §5, R-7/R-8):
+
+- **E1 (R-8) — severity label wording.** The React reference renderer rendered the `success` severity key with the user-facing word "Normal". That wording was the reference renderer's choice, not contract; the Jinja renderer keeps the labels it shipped so the cutover was invisible to operators. Severity keys, icons, colours and dismissal classes — all contract — are unchanged. No code change: this record is the ruling's entire landing.
+- **E2 — lucide/ECharts "reference binding" columns.** The contract's §F icon table and §E.2.2 guidance name the lucide icons and ECharts bindings the deleted React reference used. Those columns name the FROZEN reference, not a live renderer: a host binds icons from the §F shape descriptions (the normative surface) and chooses its own charting library (the contract's §E.2.2 words: implementation guidance).
+- **E3 — React-specific implementation mechanics are historical.** Component-scoped CSS files (`ui/src/components/**/*.css`), the Storybook workflow and the npm build lane are recorded as history, not guidance. Their surviving obligations (target size, no-glow, the limiting border token) transfer to the G2/G3 host design — see `drift-and-obligations.md` row 26.
+
 An exception proposal must record:
 
 - the user need;
@@ -277,7 +280,7 @@ An exception proposal must record:
 - operator, safety and accessibility impact;
 - plugin and panel compatibility scope;
 - light and dark behaviour;
-- tests and Storybook stories;
+- tests and pattern-library coverage;
 - the owner and review decision.
 
 Keep exceptions narrow. A visual preference alone is not a reason to fork state semantics or component behaviour.

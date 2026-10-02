@@ -45,11 +45,14 @@ Run the diff's file list through these rules, top to bottom. First match wins.
 - advances the `packages/sdk` submodule pointer
 
 **TIER 2 — standard.** Any other change to production or test code under `src/`,
-`scripts/`, `tests/`, `ui/` (code, config, and manifests: the TypeScript renderer, its
-tests and styles — including the contract-pin tests — `package.json`, lint and build
-config, `.storybook/`, and scripts), `.github/`, or root config (`pyproject.toml`,
+`scripts/`, `tests/`, `packages/ui-html/` (code, config, and manifests: the renderer
+package, its templates and vendored assets — including the contract-gate harness), or
+`.github/`, or root config (`pyproject.toml`,
 hatchling config). Test-only changes sit here, not in Tier 1 — the CI contract and the
-fixture lockstep live in the test tree, and the ui contract pins live in `ui/src`.
+fixture lockstep live in the test tree, and the ui contract gate lives in the
+`benchweave-ui-html` harness (collected from `docs/internal/ui-contract.md` via
+`testpaths`) with its arms in `tests/ui_html/`. The React `ui/` tree this tier used to
+name was deleted at the G1e cutover.
 
 **TIER 1 — light.** Only docs (`*.md`), comments, or web copy — and nothing that matches
 Tier 3.
@@ -118,9 +121,11 @@ strict-mode: a new `Any` or an untyped def is a finding, not a style note. Any f
 **G2 Tests (Tier 2 and 3; Tier 1 if any test exists).** Run the focused tests for the
 packages the diff touches; run the **full suite** for Tier 3 and for any
 `.github/workflows/` change (cold, not warm-cache). Include `tests/faults/` when the change
-touches `state/`, `control/`, or anything concurrency-shaped. For `ui/` diffs: bare
-`npm --prefix ui` exit codes for test, typecheck, and lint, plus the renderer-freshness
-gate (obligation 7 in `docs/internal/drift-and-obligations.md`). Paste the tail. **Read the
+touches `state/`, `control/`, or anything concurrency-shaped. For `packages/ui-html/`
+diffs: the contract gate (`uv run pytest docs/internal/ui-contract.md`) and
+`tests/ui_html/` — both ride the default root-suite run since the G1e cutover (the
+React `ui/` npm lane this paragraph used to name died with the tree; the renderer
+freshness gate is now the frozen-bundle exception, obligation 7). Paste the tail. **Read the
 counts from `--junitxml` attributes or the exit code, not from an output-filter summary** —
 the rtk filter can print "No tests collected" over a fully green run (observed twice on this
 repo). Any failure → **BLOCK**.

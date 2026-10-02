@@ -1,12 +1,15 @@
 """Fail-closed parser for the renderer-neutral contract (docs/internal/ui-contract.md).
 
-Ported from the two TS gates this harness replaces at the G1 cutover:
+Implements the contract's own authoring rule ("a table that does not parse —
+missing heading, missing table, wrong header cells, wrong row count where
+stated — is a pin failure, not a silent skip"); the two grammar rules were
+ported at the G1 cutover from the TS gates this harness replaced:
 
-- ``ui/src/contract-enforcement.test.ts`` ``contractTable`` — pipe rows are
-  collected until the next heading line (the design record's grammar rule 2);
-- ``ui/src/contract-coverage.test.ts`` ``parseTable`` — ``body = rows[2:]`` and
-  a body row whose cell count differs from the header's is a parse failure,
-  never a silently mis-parsed row.
+- pipe rows are collected until the next heading line (the authoring rule's
+  table shape; originally ``contract-enforcement.test.ts`` ``contractTable``);
+- ``body = rows[2:]`` and a body row whose cell count differs from the
+  header's is a parse failure, never a silently mis-parsed row (originally
+  ``contract-coverage.test.ts`` ``parseTable``).
 
 The parser never raises on contract drift: every defect is captured as a
 ``PinDefect`` naming the table and a defect class, so drift can only present

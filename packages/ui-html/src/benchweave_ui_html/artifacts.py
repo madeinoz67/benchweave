@@ -37,7 +37,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import cast, get_args, get_type_hints
 
-from benchweave_ui_html import compositions, fixtures, partials, registry, staleness
+from benchweave_ui_html import assets, compositions, fixtures, partials, registry, staleness
 from benchweave_ui_html.assertions import Element, RenderedComponent
 from benchweave_ui_html.data import (
     AlertBubbleData,
@@ -70,10 +70,12 @@ DEFERRED_SLUGS: frozenset[str] = frozenset()
 #: raises at collection — a new component row can never silently skip.
 _PENDING_COMPONENTS: frozenset[str] = frozenset()
 
-#: The contract's executable token mirror (G1a deferral D3 keeps the path on
-#: ``ui/src/styles/`` until G1e's re-point). The token rows are live where
-#: the gate runs from the repository root; a missing asset reds loudly.
-_STYLES_DIR = Path("ui") / "src" / "styles"
+#: The contract's executable token mirror — the package's vendored assets
+#: (G1e, UR-10): the last React build's bytes, moved verbatim and pinned by
+#: ``assets/inventory.json`` (verified by ``assets.verify_vendored_assets``).
+#: Anchored to the package, so the paths are CWD-independent; a missing
+#: asset reds loudly.
+_STYLES_DIR = assets.ASSETS_DIR
 THEMES_CSS = _STYLES_DIR / "themes.css"
 TOKENS_CSS = _STYLES_DIR / "tokens.css"
 #: Fold F1 (issue #300 two-lane refute): globals.css APPLIES the theme
@@ -97,6 +99,27 @@ _MODE_KEYS = frozenset(_KEYS_BY_SLUG["d-1-modes"])
 
 #: The §E.1 column indexes (Component | Root | attrs | roles | hooks | text | Notes).
 _E1_ROOT, _E1_ATTRS, _E1_ROLES, _E1_HOOKS, _E1_TEXT = 1, 2, 3, 4, 5
+
+#: A-F3 fold: inline styles that hide an element — the statically
+#: parseable half of the deleted TS gates' ``toBeVisible`` assertion. A
+#: required-visible element carrying one of these in its ``style``
+#: attribute is a renderer defect, named per element.
+_HIDING_INLINE_STYLE = re.compile(r"display\s*:\s*none|visibility\s*:\s*hidden")
+
+
+def _inline_hiding_violations(rendered: RenderedComponent) -> list[str]:
+    """Elements hidden by inline style (``display:none`` /
+    ``visibility:hidden`` in the ``style`` attribute). Does NOT catch
+    CSS-class hiding — statics compute no stylesheets; that residual stays
+    the browser lane's, the same disclosed class the TS gates carried
+    (jsdom applied no stylesheets either)."""
+    return [
+        f"element <{element.tag}> is hidden by inline style "
+        f"(style={element.attrs.get('style')!r}) — required-visible output "
+        "must not be inline-hidden"
+        for element in rendered.elements
+        if _HIDING_INLINE_STYLE.search(element.attrs.get("style") or "")
+    ]
 
 
 def _cell(row: Row, index: int) -> str:
@@ -231,6 +254,10 @@ class RefusalRenderArtifact:
             class_hook="bw-refusal__action"
         ):
             messages.append("operator-action text not rendered in its element")
+        # A-F3 fold: the same inline-style visibility guard over the
+        # refusal bubble — a hidden bubble with all fields present is
+        # still hidden.
+        messages.extend(_inline_hiding_violations(rendered))
         return messages
 
 
@@ -279,6 +306,9 @@ class LabelRenderArtifact:
                 f"required label text {data.label!r} not visible beside the control "
                 "(data-bw-disabled-label element text)"
             )
+        # A-F3 fold: the inline-style half of visibility — a hidden label
+        # with matching text is still hidden.
+        messages.extend(_inline_hiding_violations(rendered))
         return messages
 
 
@@ -2074,8 +2104,10 @@ def _check_sr_b2(row: Row) -> list[str]:
             messages.append(f"the {severity} reading must carry an icon")
         if "Supply voltage" not in _own_text_of(rendered, tile):
             messages.append(f"the {severity} reading must carry text on the affected reading")
-    # normal/success render no glow-carrying vocabulary (the structural half
-    # is the CSS pin, test_reading_tile_css_pins.py fold-row 11).
+    # normal/success render no glow-carrying vocabulary (the CSS-structure
+    # half was test_reading_tile_css_pins.py fold-row 11, retired with ui/
+    # at G1e — the no-glow property itself transfers to the G2/G3 host CSS,
+    # drift-and-obligations row 26).
     for severity in ("neutral", "success"):
         rendered = RenderedComponent(
             compositions.render_workbench(_single_reading_scene(severity))

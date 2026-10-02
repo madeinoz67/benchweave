@@ -66,10 +66,16 @@ and remain the reviewer's job.
    dependents together) — with `make check-sdk-standards` as the mechanical half: it
    anchors the lock's `compatibility.sdk` to the pinned SDK's own pyproject
    (`sdk_version_unanchored`), so a stale lock reds at pointer-advance time.
-   **Renderer freshness**: the `ui`
-   job rebuilds the preview renderer (`npm --prefix ui run build:preview`) and fails on any
-   diff in the SDK's committed `preview_assets` — a UI change that leaves the committed
-   renderer stale ships silently in the wheel.
+   **Frozen preview bundle (G1e, R-5):** the SDK's committed `preview_assets` React
+   bundle is FROZEN at its last build (`renderer_version 0.1.2`, inventory at freeze
+   commit `085b0ff78e126b5b124b95451d2b08114ae78b71` — recorded at landing):
+   shippable, NEVER rebuilt — the toolchain that built it (`ui/`,
+   `write-preview-inventory.mjs`, the Node CI lane) is deleted, so no path exists
+   that regenerates it. The SDK's `hatch_build` inventory-vs-committed-bytes
+   verification REMAINS the integrity check (frozen ≠ rot: byte drift still reds
+   the SDK build). Exit: dependency 4a — the PRD 11 standalone host with mock
+   transport (SA-PREVIEW, #309) — at which point `preview_assets` is deleted from
+   the SDK and `preview-ui` becomes a shim (R-9).
 
 8. **The adapter protocol surface** 🪝 (the SDK protocol
    `packages/sdk/src/benchweave_sdk/interfaces.py` ↔ the gateway mirror
@@ -106,23 +112,38 @@ and remain the reviewer's job.
     secret names (the reviewer's G0 secret scan catches leaks; this catches drift between
     the posture text and the posture).
 
-12. **The UI/preview renderer surface** (ui components + compositions, the SDK
-    preview stack, and the served wire document) → the normative surface for
-    plugin-visible rendering behavior is `docs/internal/ui-contract.md`
-    (issue #242: renderer-neutral contract; tokens, severity model, safety
-    definitions, component rows); its gates are
-    `ui/src/contract-coverage.test.ts` (L1 fixture pins + contract↔CSS token
-    value equality) and `ui/src/contract-enforcement.test.ts` (L2 per-component
-    rendered-attribute pins) — a contract-table edit lands with its pins in
-    the same change. `docs/internal/ui-styleguide.md` is implementation
-    guidance for the reference renderer, not the authority.
-    Plugin-visible rendering behavior → `docs/device-developer-guide.md`
-    (presentation section); component behavior: the ui component tests and
-    Storybook stories; the wire shape:
+12. **The UI/preview renderer surface** (the Python renderer package, the
+    pattern library, the ported proofs, and the served wire document) → the
+    normative surface for plugin-visible rendering behavior is
+    `docs/internal/ui-contract.md` (issue #242: renderer-neutral contract;
+    tokens, severity model, safety definitions, component rows); its gates
+    are the `benchweave-ui-html` contract harness (`packages/ui-html` — the
+    pytest11 collector; pin layer = parse integrity per pinned table, row
+    layer = canonical-artifact requirement per parsed row), LIVE in the
+    default root-suite run since G1e (`testpaths` carries the contract
+    beside `tests/`, enforced by the default-run pin in
+    `tests/ui_html/test_harness.py`) — a contract-table edit lands with its
+    pins in the same change. `docs/internal/ui-styleguide.md` is
+    implementation guidance for the Jinja/HTMX renderer, not the authority.
+    The pattern library (static export, docs-site staging at build, the
+    browser lane's axe/screenshot set) carries component behaviour beside
+    the harness rows; the ported proofs live in `tests/ui_html/` (the
+    series-colour proofs, token/CSS pins, threshold constants, lane
+    reduction, the staleness predicate) and the composition state-machine
+    proofs (`tests/ui_html/test_compositions.py` +
+    `test_compositions_mutations.py` — the §B/§C rule rows' transition,
+    fire-attempt and refusal drivers) pin the behavioural rules the same
+    way. Plugin-visible rendering behavior →
+    `docs/device-developer-guide.md` (presentation section, unchanged);
+    component behavior → the harness rows + the pattern-library pages (the
+    Storybook reference is gone). The wire shape:
     `standards/plugin-ui-preview/<active>/preview-document.schema.json`,
-    conformance-tested from both the Python emitter and the TS decoder. The
-    renderer freshness gate (obligation 7) carries the committed
-    `preview_assets` half.
+    conformance-tested from the **Python emitter only** (the TS decoder
+    half was deleted with `ui/` at G1e). The vendored-asset inventory +
+    serve-time verification (UR-10) is the package's
+    `benchweave_ui_html.assets.verify_vendored_assets()` plus the host-call
+    documentation (a host verifies the inventory before serving the assets;
+    the wiring lands with G2 / PRD 11).
 
 13. **The machine-written validation-report family** → a change to a family suite's
     corpus or checks reruns that suite's writer in the same change:
@@ -468,23 +489,23 @@ and remain the reviewer's job.
     its job, not noise. The dispatch-table/CLI diff is the trigger; docs-only refactors of
     these sentences are not.
 
-24. **The pattern library's repo-relative assets** (issue #300 G1d; UR-06/UR-13) →
-    the export reads THREE repo-relative inputs that all die or move at G1e's
-    `ui/` deletion: the token CSS (`ui/src/styles/tokens.css` and
-    `themes.css` via `artifacts.TOKENS_CSS`/`THEMES_CSS`), the contract
-    itself (`docs/internal/ui-contract.md` — the library pages derive their
-    §B.1/§C.2/§C.3/§D.1 content from its parsed cells, row-as-data), and
-    the staleness predicate's semantic reference (`ui/src/components/
-    readings/staleness.ts` — documentation-level only). At G1e the CSS
-    re-points at the vendored asset (this is the G1e checklist row the G1d
-    design record §1.3 names, beside the token-path and CSS-pin re-points
-    G1b/G1c already recorded); the export refuses loudly when any input is
-    absent (`PatternExportRefused`, pinned by
-    `tests/ui_html/test_patterns.py`), so the deletion cannot lose the
-    library silently — it reds. The generated tree is NEVER committed: a
-    tracked `patterns/` dir at the repository root refuses (the repo-side
-    guard in the same test file), and the docs site stages the export at
-    build time.
+24. **The pattern library's package-relative assets** (issue #300 G1d; UR-06/UR-13;
+    re-pointed at G1e) → the export reads THREE inputs: the token CSS — the
+    package's vendored assets since G1e
+    (`packages/ui-html/src/benchweave_ui_html/assets/`, via
+    `artifacts.TOKENS_CSS`/`THEMES_CSS`/`GLOBALS_CSS`; byte-pinned by the
+    UR-10 inventory, the re-point the G1d design record §1.3 named), the
+    contract itself (`docs/internal/ui-contract.md` — the library pages
+    derive their §B.1/§C.2/§C.3/§D.1 content from its parsed cells,
+    row-as-data), and the staleness predicate — whose semantic reference is
+    `packages/ui-html/.../staleness.py` itself since G1e (the React
+    `staleness.ts` it was ported from is deleted; documentation-level only
+    either way). The export refuses loudly when any input is absent
+    (`PatternExportRefused`, pinned by `tests/ui_html/test_patterns.py`),
+    so a missing input cannot lose the library silently — it reds. The
+    generated tree is NEVER committed: a tracked `patterns/` dir at the
+    repository root refuses (the repo-side guard in the same test file),
+    and the docs site stages the export at build time.
 
 25. **The pattern library is never served by production** (issue #300 G1d;
     the G2 half the G1d design record §1.3 discloses) → the package ships
@@ -497,23 +518,32 @@ and remain the reviewer's job.
     inherits — a gateway routing test added at G2 must carry that pin or
     this row stays open.
 
-26. **The export's 24px target-size guarantee is page chrome, not component
-    styling** (issue #300 G1d, fold F2 of the two-lane refute) → the
-    pattern pages inline only the token CSS, so interactive controls render
-    at browser-default metrics — some below WCAG 2.2's 24px target-size
-    minimum; the PAGE's own inlined CSS carries the minimum as a layered
-    pair (globals.css's `button { font: inherit }` at the 16px root —
-    measured 24px buttons — plus the chrome rule `.bw-pattern button, …
-    { min-height: 24px }` in `pattern-page.j2`), and the browser lane's
-    strip machine check proves the pair: one layer stripped stays clean,
-    both stripped reds `target-size`. The REAL UI's
-    target sizes ride `ui/src/components/**/*.css` today — which G1e
-    DELETES: the G2/G3 host design inherits the obligation that its
-    component CSS (or the host's own chrome) provides the minimum, or the
-    real UI regresses what the export proves. Named here so the deletion
-    cannot lose it silently.
+26. **The real UI's component-CSS obligations died with `ui/` and are
+    inherited by the G2/G3 host design** (issue #300 G1d fold F2, extended
+    at G1e) → the pattern pages inline only the token CSS, so interactive
+    controls render at browser-default metrics — some below WCAG 2.2's 24px
+    target-size minimum; the PAGE's own inlined CSS carries the minimum as
+    a layered pair (globals.css's `button { font: inherit }` at the 16px
+    root — measured 24px buttons — plus the chrome rule `.bw-pattern
+    button, … { min-height: 24px }` in `pattern-page.j2`), and the browser
+    lane's strip machine check proves the pair: one layer stripped stays
+    clean, both stripped reds `target-size`. The REAL UI's target sizes
+    rode `ui/src/components/**/*.css` — which G1e deleted: the G2/G3 host
+    design inherits the obligation that its component CSS (or the host's
+    own chrome) provides the minimum, or the real UI regresses what the
+    export proves. The G1b reading-tile CSS structure pins
+    (`tests/ui_html/test_reading_tile_css_pins.py`, G1b record §1.4) died
+    with the same deletion — retired at G1e, per the G1b record's own
+    "dies with `ui/` unless re-pointed" ruling, because no live renderer
+    consumes that file (the pattern library inlines token CSS only; the
+    hosts design their own component CSS). Their substance transfers here
+    the same way: the G2/G3 host CSS inherits no-glow on normal/limiting
+    readings (§B.2 SR-B2, §B.3 — the limiting block declares no box-shadow)
+    and the limiting border being exactly `var(--bw-limiting)`; the HTML
+    shape of the reading tile stays enforced by the §E.1/§B.3 harness rows.
+    Named here so the deletion cannot lose them silently.
 
-23. **The publishing-lane surfaces** (issue #223 slice 1, design
+27. **The publishing-lane surfaces** (issue #223 slice 1, design
     `docs/implementation-planning/10-contributor-publishing-design.md`): the
     registry repository of record (`benchweave-registry`) owns the records
     tree, its schema, the lane rules, the checklist and the signed releases —
@@ -533,9 +563,8 @@ and remain the reviewer's job.
 
 | Job | What it catches |
 |---|---|
-| `gates` | submodules recursive; fixture keys materialised from secrets; `ruff check .`; config-driven `mypy` (bare — explicit path args drop `packages/sdk/src` from the build); `pytest -q -n auto -m "not timing"` (including the adapter agreement test, which pins the SDK↔gateway protocol mirror and the version triplet — see obligation 8, and the version-literal ZERO gate's pytest module, which runs ALL FIVE scopes (gateway, plugins, sdk, docs, scripts) over the real trees — issue #203 slices 1+7, issue #269); `make check-sdk-standards` (main standards ↔ SDK lock ↔ vendored tree, plus the identity `adapter_api` derivation check, plus the served-set/policy-mirror lanes and the version-literal ZERO gate over the SDK scope only — `--scope sdk`) |
+| `gates` | submodules recursive; fixture keys materialised from secrets; `ruff check .`; config-driven `mypy` (bare — explicit path args drop `packages/sdk/src` from the build); `pytest -q -n auto -m "not timing and not browser"` (including the 196 contract-gate items collected from `docs/internal/ui-contract.md` via `testpaths` — live in the default run since G1e — plus the adapter agreement test, which pins the SDK↔gateway protocol mirror and the version triplet — see obligation 8, and the version-literal ZERO gate's pytest module, which runs ALL FIVE scopes (gateway, plugins, sdk, docs, scripts) over the real trees — issue #203 slices 1+7, issue #269); `make check-sdk-standards` (main standards ↔ SDK lock ↔ vendored tree, plus the identity `adapter_api` derivation check, plus the served-set/policy-mirror lanes and the version-literal ZERO gate over the SDK scope only — `--scope sdk`) |
 | `timing` | the real-paced set (`-m timing`: the two integration rig files whole, plus the contention and clamp cells in `tests/unit/test_otdp_bridge.py`), serialized on its own fresh VM within ~2 min of boot so its wall-clock bands are measured before any bulk-suite residue (page cache, draining threads, WAL checkpoints); complementary partition with `gates` — union = the full collection, structural by construction from the complementary markers, with the proof at PR time (the builder's collected-id set diff recorded in the PR body per the design's AR-1 — not an automated gate), and serial forever (xdist would reintroduce exactly the competition the split removes; issue #241 slice 1). Does NOT catch: a guarantee of a quiet host — a noisy neighbor can still stretch a band; slice 2's evidence-backed re-bands resolved as HOLD/document-only in that slice (2026-09-28); intra-lane ordering residue — review-fold disclosure: collection order runs the sequential-model battery before the continuity rig, so the rig measures after the lane's own earlier real-paced battery; the fresh-VM claim removes bulk-suite residue from other jobs, not ordering within this one; red-attribution is scoped — a red in the real-paced subset reads as a timing question, but the continuity file's ride-along logic tests can red as logic (the fold disclosure) |
-| `ui` | `npm ci` + typecheck + lint + unit tests + Storybook build; the renderer freshness gate (see obligation 7); `npm audit --audit-level=high` |
 | `systemd` | unit-template render + `systemd-analyze verify` with rehearsed deployment preconditions (see obligation 9) |
 | `device-plugins` (`dps150-independent`) | the version-literal zero gate over the plugins + docs scopes BEFORE the plugin project is isolated (obligation 20; completing D8/#233's plugin lane), then the plugin's own offline conformance, quality checks and build from its isolated copy |
 | `package` (OS matrix: ubuntu + macos) | installed-wheel/SDK smoke against the built packages; the ui-html member wheel's standalone install proof (issue #302 REL: build + fresh-venv assertions — import from outside the checkout, version equality with `packages/ui-html/pyproject.toml`, the `pytest11` entry point, installed set exactly the package + its two declared runtime deps); `make check-sdk-standards`; the clean-venv ADC conformance control (issue #203 slice 1: the out-of-tree ADC plugin at its pre-restamp commit, `git archive`-installed, the built SDK wheel forced over the checkout pin, network blocked — 26/26 or red); and the derived-variable census selection (`tests/unit/test_derivation.py` + `tests/faults/test_derivation_faults.py`) — the lane where cross-platform binary64 agreement is actually measured (no Windows lane; the design record's risk 4 states the coverage) |

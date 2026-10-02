@@ -1,8 +1,9 @@
-"""Harness activation-shape tests: dormant by default, live where wired.
+"""Harness activation-shape tests: live in the default run, scoped by name.
 
-The plugin claims ONLY files named ui-contract.md; the repo's default pytest
-run (testpaths = ["tests"]) never walks the contract, so the gate is inert
-there. These arms pin that boundary with real subprocess runs (the same
+The plugin claims ONLY files named ui-contract.md; since G1e the repo's
+default pytest run carries the contract itself as a testpaths entry
+(beside tests/), so the gate is LIVE in exactly the invocation CI's gates
+job uses. These arms pin that wiring with real subprocess runs (the same
 invocation shape as the meta-acceptance) plus the generated-item marker.
 """
 
@@ -90,8 +91,45 @@ def test_every_generated_item_carries_the_contract_marker(tmp_path: Path) -> Non
     assert attrib.get("tests") == "0"
 
 
-def test_default_suite_collection_contains_no_contract_items() -> None:
-    """The repo's own default collection (tests/) never walks the contract."""
+def test_default_invocation_collects_the_contract() -> None:
+    """The G1e fail-closed pin: the BARE default invocation (no path args —
+    exactly CI's gates shape) collects the whole contract gate through the
+    testpaths entry: 196 items (the 28 pin + 168 row decomposition is pinned
+    by the marker and mixed-invocation arms on explicit invocations; this
+    arm proves the DEFAULT run carries the file at all). The repo addopts
+    already carry -q, so the bare `--collect-only -q` is double-quiet and
+    pytest prints per-file counts — the pin parses that format
+    (`docs/internal/ui-contract.md: 196`). Editing testpaths back to
+    ["tests"] reds here (the line vanishes); the pin lives in tests/, inside
+    the very collection it pins, so CI runs it on every push and removal of
+    either half is a visible editorial diff (obligation 12's register class
+    — fail-closed the repo's way: no config edit can be silent, only loud)."""
+    env = dict(os.environ)
+    env["UV_PROJECT_ENVIRONMENT"] = "venv"
+    proc = subprocess.run(
+        ["uv", "run", "pytest", "--collect-only", "-q"],
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
+    assert proc.returncode == 0, proc.stderr
+    contract_lines = [
+        line
+        for line in proc.stdout.splitlines()
+        if line.startswith("docs/internal/ui-contract.md:")
+    ]
+    assert contract_lines == ["docs/internal/ui-contract.md: 196"], (
+        "the default (no-args) collection must carry the contract file via "
+        f"testpaths with exactly 196 items; got: {contract_lines!r}"
+    )
+
+
+def test_explicit_path_collection_stays_path_scoped() -> None:
+    """An explicit path argument overrides testpaths: collecting tests/ui_html
+    alone never walks the contract — the contract items in the default run
+    arrive via the testpaths entry, not via anything under tests/."""
     env = dict(os.environ)
     env["UV_PROJECT_ENVIRONMENT"] = "venv"
     proc = subprocess.run(
