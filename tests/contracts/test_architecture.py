@@ -759,7 +759,7 @@ def _headed_registry_tree(tmp_path: Path) -> Path:
     lane's run must therefore pass every check the active run passes."""
     standards = tmp_path / "standards"
     shutil.copytree(ROOT / "standards", standards)
-    shutil.copytree(standards / "registry" / "0.1.1", standards / "registry" / "0.2.0-dev")
+    shutil.copytree(standards / "registry" / "0.1.2", standards / "registry" / "0.2.0-dev")
     # The committed report is a released-version artifact; a dev-open carries
     # no report, and the lane's no-write assertion below needs it absent
     # from the plant so its absence after the run proves the run wrote
@@ -918,9 +918,9 @@ def test_corpus_refuses_a_stale_equal_head(
     the census at a tree the active spine owns. The canonical loader's
     dev_target_not_greater refusal must reach the lane."""
     standards = _headed_registry_tree(tmp_path)
-    shutil.copytree(standards / "registry" / "0.2.0-dev", standards / "registry" / "0.1.1-dev")
-    _rewrite_registry_head_version(standards, "0.1.1-dev")
-    _corpus_argv(monkeypatch, [f"--corpus={standards / 'registry' / '0.1.1-dev'}"])
+    shutil.copytree(standards / "registry" / "0.2.0-dev", standards / "registry" / "0.1.2-dev")
+    _rewrite_registry_head_version(standards, "0.1.2-dev")
+    _corpus_argv(monkeypatch, [f"--corpus={standards / 'registry' / '0.1.2-dev'}"])
     writer = _load_shared_writer()
     with pytest.raises(SystemExit, match="dev_target_not_greater"):
         writer.corpus_directory(standards, "registry")

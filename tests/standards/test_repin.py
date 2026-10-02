@@ -31,7 +31,7 @@ from benchweave.standards.manifest import (
 ROOT = Path(__file__).resolve().parents[2]
 CORPUS_MANIFEST = "standards/corpus-manifest.json"
 # One regenerable (normative) row and one frozen (superseded otdp/0.1.0) row.
-REGENERABLE = "registry/0.1.1/examples/package-lock.json"
+REGENERABLE = "registry/0.1.2/examples/package-lock.json"
 FROZEN = "otdp/0.1.0/device-profile-catalog.json"
 _HEX64 = re.compile(r"^[0-9a-f]{64}$")
 
@@ -145,12 +145,17 @@ def test_repin_updates_exactly_the_edited_row(tmp_path: Path) -> None:
 def test_repin_matches_the_hand_splice(tmp_path: Path) -> None:
     # The #45 incumbent method, reproduced in-test: recompute the digest and
     # string-replace it in the raw bytes. repin must be byte-identical to it.
+    # The target is the schema row, not the copied example: a copy-never-move
+    # bump legitimately produces byte-identical examples whose digests appear
+    # twice (0.1.2 cites the 0.1.1 source), and the control below assumes
+    # uniqueness.
+    target = "registry/0.1.2/release-manifest.schema.json"
     root = _repo(tmp_path)
     raw = _manifest_bytes(root)
-    _flip(root, REGENERABLE)
-    new_digest = hashlib.sha256((root / "standards" / REGENERABLE).read_bytes()).hexdigest()
+    _flip(root, target)
+    new_digest = hashlib.sha256((root / "standards" / target).read_bytes()).hexdigest()
     old_digest = next(
-        r["sha256"] for r in json.loads(raw)["files"] if r["path"] == REGENERABLE
+        r["sha256"] for r in json.loads(raw)["files"] if r["path"] == target
     )
     assert raw.count(old_digest.encode()) == 1, "control assumes the digest is unique"
     splice = raw.replace(old_digest.encode(), new_digest.encode())
@@ -401,7 +406,7 @@ def _dev_head_repo(tmp_path: Path, *, with_block: bool = True) -> Path:
     block. ``with_block=False`` plants the rows and directory WITHOUT the
     block — the §4.4 orphan state a botched teardown leaves."""
     root = _repo(tmp_path)
-    active = "registry/0.1.1"
+    active = "registry/0.1.2"
     head = "registry/0.2.0-dev"
     for source in sorted((root / "standards" / active).glob("*.json")) + sorted(
         (root / "standards" / active / "examples").glob("*.json")

@@ -16,7 +16,9 @@ This repository carries the BenchWeave implementation (packages WP01–WP07) alo
 ## Contract Sets
 
 - [OTDP 0.2.0](../standards/otdp/0.2.0/otdp-specification.md)
-- [Registry v0.1.1](../standards/registry/0.1.1/registry-specification.md)
+- [Registry v0.1.2](../standards/registry/0.1.2/registry-specification.md)
+- [Contributor publishing design record](implementation-planning/10-contributor-publishing-design.md)
+- [Publishing guide](publishing-guide.md)
 - [Execution v0.2.0](../standards/execution/0.2.0/execution-contract.md)
 - [Interface v0.1.0](../standards/interface/0.1.0/interface-contract.md)
 - [Plugin UI v0.3.0](../standards/plugin-ui/0.3.0/README.md) and [Plugin UI preview v1](../standards/plugin-ui-preview/0.2.0/fixture.schema.json) (fixture and served-document schemas for the simulation-only preview workflow)

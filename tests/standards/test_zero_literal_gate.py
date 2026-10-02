@@ -68,7 +68,7 @@ class TestActiveVersionFromCorpus:
         """The committed manifest's active entries, read back per id."""
         corpus = ROOT / "standards"
         assert active_version_from_corpus(corpus, "otdp") == "0.2.2"
-        assert active_version_from_corpus(corpus, "registry") == "0.1.1"
+        assert active_version_from_corpus(corpus, "registry") == "0.1.2"
         assert active_version_from_corpus(corpus, "execution") == "0.2.0"
         assert active_version_from_corpus(corpus, "interface") == "0.1.0"
         assert active_version_from_corpus(corpus, "plugin-ui") == "0.3.0"
@@ -166,7 +166,7 @@ class TestVendoringHelpers:
         validated, by construction."""
         assert active_contract_family("execution") == contract_family("execution/0.2.0")
         assert active_contract_family("interface") == contract_family("interface/0.1.0")
-        assert active_contract_family("registry") == contract_family("registry/0.1.1")
+        assert active_contract_family("registry") == contract_family("registry/0.1.2")
 
     def test_active_contract_family_refuses_an_unknown_standard(self) -> None:
         with pytest.raises(StandardsError, match="standards_entry_absent: nosuch"):
@@ -263,17 +263,17 @@ class TestZeroModeOverRealTrees:
             "pin in the same commit as the tree change (the ratchet "
             "discipline)"
         )
-        assert payload["scopes"]["docs"]["scanned"] == 30, (
+        assert payload["scopes"]["docs"]["scanned"] == 31, (
             "the docs class set moved — update this pin in the same commit "
             "as the tree change, or refresh the snapshot deliberately"
         )
-        assert payload["scopes"]["scripts"]["scanned"] == 16, (
+        assert payload["scopes"]["scripts"]["scanned"] == 17, (
             "the scripts class set moved (17 .py minus the self-exempted "
             "counter) — update this pin in the same commit as the tree "
             "change (the ratchet discipline)"
         )
         if "sdk" in payload["scopes"]:
-            assert payload["scopes"]["sdk"]["scanned"] == 18, (
+            assert payload["scopes"]["sdk"]["scanned"] == 19, (
                 "the sdk class set moved — update this pin in the same "
                 "commit as the submodule tree change (the ratchet "
                 "discipline)"
@@ -966,16 +966,18 @@ class TestScriptsScope:
         assert result.returncode == 0, result.stdout + result.stderr
         report = json.loads(result.stdout)["scopes"]["scripts"]
         assert report["outside"] == 0, report["violations"]
-        assert report["scanned"] == 16
-        assert report["count"] == 20
+        assert report["scanned"] == 17
+        assert report["count"] == 22
         carried = {row["file"] for row in report["sites"]}
         assert carried == {
             "scripts/architecture/check_closure.py",
             "scripts/architecture/check_devices.py",
             "scripts/architecture/check_interface.py",
+            "scripts/architecture/check_registry.py",
             "scripts/registry/build_fixtures.py",
             "scripts/registry/publish_dev.py",
             "scripts/registry/registry_common.py",
+            "scripts/registry/sign_release.py",
             "scripts/sdk_smoke.py",
         }, carried
 

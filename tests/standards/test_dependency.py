@@ -434,7 +434,7 @@ def test_b1_synthetic_pin_is_deterministic_and_minimal(tmp_path: Path) -> None:
     assert [row["version"] for row in (rows["otdp"], rows["plugin-ui"], rows["registry"])] == [
         "0.2.0",
         "0.3.0",
-        "0.1.1",
+        "0.1.2",
     ]
     again = _run(root, "pin", "--package", "plugins/acme/widget")
     assert again.returncode == 0, again.stderr
