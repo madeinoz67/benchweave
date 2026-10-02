@@ -582,12 +582,13 @@ REGISTER: dict[str, dict[str, tuple[str, int, tuple[str, ...] | None]]] = {
             ("0.1.2",),
         ),
         "scripts/registry/sign_release.py": (
-            "authored lane constants — the signed form's manifest version "
-            "(0.1.2; the submission is the 0.1.1 shape) and the status "
-            "document format version (0.1.1), both fixed by the publishing "
-            "lane's corpus (issue #223 slice 1)",
-            2,
-            ("0.1.1", "0.1.2"),
+            "authored lane constant — the recorded form's manifest version "
+            "(0.1.2; the submission is the 0.1.1 shape), fixed by the "
+            "publishing lane's corpus (issue #223; the status-document "
+            "literal left with the lane-key signing it labeled, retired by "
+            "the 2026-10-02 ruling)",
+            1,
+            ("0.1.2",),
         ),
         "scripts/registry/build_fixtures.py": (
             "authored fixture-package versions — the fixture packages' "

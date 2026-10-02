@@ -967,7 +967,7 @@ class TestScriptsScope:
         report = json.loads(result.stdout)["scopes"]["scripts"]
         assert report["outside"] == 0, report["violations"]
         assert report["scanned"] == 17
-        assert report["count"] == 23
+        assert report["count"] == 22
         carried = {row["file"] for row in report["sites"]}
         assert carried == {
             "scripts/architecture/check_closure.py",
