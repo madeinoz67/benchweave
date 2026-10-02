@@ -25,6 +25,8 @@ COMPONENT_TEMPLATES = frozenset(
         "mode-banner.j2",
         "numeric-input.j2",
         "panel.j2",
+        "pattern-index.j2",
+        "pattern-page.j2",
         "reading-tile.j2",
         "refusal.j2",
         "rotary-control.j2",

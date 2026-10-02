@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en" data-theme="{{ theme }}">
+<head>
+  <meta charset="utf-8">
+  <title>Pattern library — {{ title }}</title>
+  <style>{{ css }}</style>
+</head>
+<body data-bw-pattern-library data-bw-pattern-page="{{ page }}" data-bw-pattern-theme="{{ theme }}">
+  <h1>{{ title }}</h1>
+  <p class="bw-pattern-library__note">Static pattern-library page · theme {{ theme }} · renderer-neutral contract fixtures</p>
+  {%- for entry in entries %}
+  <section class="bw-pattern" data-bw-pattern-fixture="{{ entry.fixture_id }}" data-bw-pattern-row="{{ entry.row_id }}" data-bw-pattern-kind="{{ entry.kind }}">
+    <h2>{{ entry.row_id }} · {{ entry.fixture_id }}</h2>
+    {{ entry.render() | safe }}
+  </section>
+  {%- endfor %}
+</body>
+</html>
