@@ -11,7 +11,7 @@ artifact must be uploaded.
 import sys
 
 
-def test_ar2_plant_canary_deliberate_windows_red():
+def test_ar2_plant_canary_deliberate_windows_red() -> None:
     # Deliberate red on the platform the evidence lane runs; green on POSIX
     # so only the lane under proof fires on the plant PR.
     if sys.platform == "win32":
