@@ -655,29 +655,21 @@ rather than rewriting the history — that is how this file earns trust.
   gate green — the CON-8 defect class on the one un-mechanised version-bearing
   surface; a stamp that read checkout or remote state would red on correct
   committed bytes).*
-  Amendment (2026-10-02, issue #224, parent #209): the plugin catalogue
-  panel is a sixth website panel whose rows are a **committed generated
-  block** in `website/index.html` (machine-delimited, rewritten only by
-  `scripts/website/render_plugins_panel.py`), rendered from the committed
-  mirror `website/plugins-index.json` — a byte-copy of the registry
-  repository's generated `index.json`, whose authority stays with that
-  repository's generator (the CON-4 `sdk_compatibility` derived-copy
-  precedent). The mirror and its pin `website/plugins-index.ref` are class
-  11 with their generator named; the mirror is the **one** file exempt from
-  the class-11 literal scan (a derived surface with a motion mechanism —
-  the registry sync, manual-only per the 2026-10-02 owner ruling), and the
-  exemption is pinned by three gates: the render guard (`panel_drift:` —
-  panel block equals render(mirror)), the authority pin
-  (`mirror_authority_drift:` — mirror equals the registry index at the
-  ref's commit), and the registry-side refusal (`mirror_drift:`). Versions
-  and digests render from the served index client-side — no
-  three-component literal exists in the panel block or in any non-exempt
-  website file, and the panel block carries no `{{` at all (both pinned;
-  the residue and token-grammar guards extend to the block by exactly this
-  means). A records change without regeneration fails CI both sides:
-  registry-side regenerate-and-compare against the committed index and the
-  gateway mirror's main bytes, gateway-side the render guard over the
-  committed mirror.
+  Amendment (2026-10-02, issue #224, parent #209; rewritten to the pivot the
+  same day): the plugin catalogue is generated and served from the registry
+  repository; the gateway website carries no registry-derived bytes. The
+  catalogue page is a deploy-time artifact of the registry repository's own
+  Pages pipeline (a deploy of commit X serves X's catalogue by construction,
+  with the generating commit stamped on the page), so there is no committed
+  page, no gateway mirror, no pin and no generated panel block to drift —
+  the entire cross-repo sync apparatus this amendment first drafted is
+  deleted, not delegated. The gateway's plugins panel is a static teaser —
+  timeless prose plus one outbound link, string-pinned, zero
+  catalogue-derived data (no counts, no names, no versions) — pinned by
+  `tests/contract/test_website_plugins_teaser.py`. With no mirror there is
+  nothing to exempt: the class-11 literal scan returns to zero exemptions
+  (its pre-slice shape), and `tests/standards/test_zero_literal_gate.py`
+  returns to main's bytes.
 
 - **[CON-14]** Dependency resolution is a pure function of committed bytes plus
   authored constraints; locks are canonical-JSON and byte-identical on
@@ -820,16 +812,19 @@ carries no inline date on its face; this amendment carries its own
   are recorded residuals — the lane never claims them (NFR-S1); kind tags are
   machine-checked at write time from slice 1, with `community-shared` records
   activating in slice 5.*
-  Amendment (2026-10-02, issue #224 slice 2): the clause "the generated
-  index is never hand-edited on either side" is mechanically true as of
-  this slice — the gateway's catalogue mirror is pinned to the registry's
-  generated index by three gates (the render guard `panel_drift:`, the
-  authority pin `mirror_authority_drift:`, and the registry-side
-  `mirror_drift:` refusal), and the generator's yank arm makes it the
-  single source of what the catalogue offers: a release whose status
-  document carries `yanked` or `revoked` drops out of the index at
-  regeneration (CR-25's "no stale rows survive a yank"), while the record
-  and git history retain it.
+  Amendment (2026-10-02, issue #224 slice 2; rewritten to the pivot the
+  same day): the clause "the generated index is never hand-edited on
+  either side" now has one side — the registry repository, where the
+  committed index stays pinned to regeneration from records by the
+  `--check` (`index_drift:`) discipline and the catalogue page is a
+  deploy-time artifact of that repository's Pages pipeline. The gateway
+  mirror and its three gates (render guard, authority pin, registry-side
+  `mirror_drift:` refusal) are deleted with the pivot — there is no second
+  copy to keep honest. The generator's yank arm remains the single source
+  of what the catalogue offers: a release whose status document carries
+  `yanked` or `revoked` drops out of the index at regeneration (CR-25's
+  "no stale rows survive a yank"), while the record and git history
+  retain it.
 
 ## Known open wounds
 
