@@ -648,7 +648,16 @@ def fix_root_doc_links(docs_root: Path) -> None:
 def verify_tree(dest: Path, paths: dict[str, str]) -> None:
     docs = dest / "docs"
     failures: list[str] = []
-    for rel in ("index.html", "assets/logo.svg", "assets/styles.css", "assets/site.js"):
+    for rel in (
+        "index.html",
+        "assets/logo.svg",
+        "assets/styles.css",
+        "assets/site.js",
+        # issue #224: the plugin catalogue's mirror and its client script ride
+        # the static site — an assembly missing either is incomplete.
+        "assets/plugins.js",
+        "plugins-index.json",
+    ):
         if not (dest / rel).is_file():
             failures.append(f"static site {rel} missing (website/ incomplete?)")
     if not (docs / "index.html").is_file():
