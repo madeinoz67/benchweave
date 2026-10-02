@@ -16,7 +16,7 @@ import time**; nothing gates admission at publish.
 
 ## The path
 
-1. **Package** — one command, offline, keyless:
+1. **Package** — one command, offline (keyless by default):
 
    ```
    benchweave-sdk package <plugin-dir> \
@@ -32,6 +32,10 @@ import time**; nothing gates admission at publish.
    capabilities with `--capability network-egress` / `--capability
    subprocess-or-native-library` / `--capability filesystem-writes` (repeatable;
    pass none of them for an explicit none — a declaration is always required).
+   **The publisher signs at package time**: `--publisher-key <your-ed25519.pem>`
+   applies your signature over the manifest, and `--timestamp-token` (from
+   `benchweave-sdk timestamp --tsa-url …`) attaches an RFC 3161 trusted
+   timestamp so the signature stays valid after your key expires or is revoked.
 
 2. **Submit** — `benchweave-sdk submit <dir> --registry-clone <working clone>`
    writes the artefact set into the registry repository's submission layout,
@@ -43,10 +47,14 @@ import time**; nothing gates admission at publish.
    plus the machine evidence (platform findings at the pinned revision), and
    records the outcome in the registry repository's `records/` tree.
 
-4. **Sign and publish** — the maintainer signs the accepted release with the
-   maintainer-custodied lane key (`scripts/registry/sign_release.py` here).
-   The review block rides inside the signed manifest: one signature attests
-   release and review together. Contributors never hold signing keys.
+4. **Validate and record** — the registry VALIDATES + PUBLISHES + LABELS,
+   never signs (`scripts/registry/sign_release.py` here is validate-and-record):
+   it re-derives the manifest, verifies YOUR signature against your recorded
+   public key, and labels the release `signed-valid` or `unsigned`. A present
+   signature that does not verify is REJECTED. With a trusted timestamp,
+   validity is judged at the TSA-attested signing time. The review block rides
+   inside the recorded manifest (one record attests release and review
+   together); your signed submission bytes ride beside it.
 
 5. **Verify** — anyone, from a clean clone of the registry repository alone:
    `uv run python scripts/verify.py` validates every record, verifies every
