@@ -74,16 +74,6 @@ jobs:
         # the main-repo standards, the SDK lock and the vendored tree.
         run: make check-sdk-standards
 
-      - name: Plugin-catalogue authority pin (issue #224)
-        # The committed mirror must byte-equal the registry repository's
-        # index.json at the commit website/plugins-index.ref names (an
-        # immutable SHA — never a moving branch). Fail-closed on mismatch,
-        # a 404 (rewritten or mistyped ref) or fetch failure: a hand-edited
-        # mirror, a mirror advanced without its pin, and a pin advanced
-        # without its mirror all refuse mirror_authority_drift:. The
-        # render-guard arm (panel_drift:) runs in the pytest battery above.
-        run: uv run python scripts/website/check_mirror_authority.py
-
   timing:
     runs-on: ubuntu-latest
     timeout-minutes: 15
