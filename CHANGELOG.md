@@ -540,6 +540,7 @@ All notable changes to this project will be documented in this file.
 - #224 slice-2 amendments — CON-13, REG-5, taxonomy, obligation 18(o), styleguide shapes
 - Issue #224 slice-2 pivot — registry-hosted catalogue, all lane findings folded
 - #224 s2 pivot amendments to the built truth (CON-13, REG-5, taxonomy, obligations 18/20)
+- Windows CI evidence lane design record
 
 ### Features
 
@@ -1101,6 +1102,7 @@ All notable changes to this project will be documented in this file.
 - Prove the member wheel standalone in the package job (#302)
 - Timeout-minutes 15 on the timing job
 - Catalogue authority pin + browser wiring proof (issue #224 slice 2)
+- Windows evidence lane over the gates selection (#207, #329 D2)
 
 ### Ci+docs
 
