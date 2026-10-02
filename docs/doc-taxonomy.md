@@ -52,4 +52,15 @@ promotion copies it to the released version and removes it.
    `{{stg-*}}` tokens, and no three-component version literal is allowed anywhere
    in the class-11 source set (`website/` plus `index.qmd`,
    `tests/contract/test_website_stamps.py`); two-component prose claims remain the
-   named residual.
+   named residual. Amendment 2026-10-02 (issue #224, invariants CON-13
+   amendment): the catalogue mirror `website/plugins-index.json`, its pin
+   `website/plugins-index.ref`, and the generated panel block are class 11
+   **generated** artifacts (generators named: the registry repository's
+   `scripts/generate_index.py`; `scripts/website/render_plugins_panel.py`) —
+   derived copies whose authority stays with the registry repository's
+   generator, not a second home for the registry's records (this rule's
+   "renders, does not copy" reads them as presentation inputs, the
+   `sdk_compatibility` shape). The mirror is the one file exempt from the
+   class-11 literal scan; the exemption cannot launder a hand-edit because
+   the render guard, the authority pin and the registry-side `mirror_drift:`
+   refusal pin its bytes to an immutable commit.

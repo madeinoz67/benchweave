@@ -273,7 +273,23 @@ and remain the reviewer's job.
     at EVERY standard the bump touches, with the #221 snapshot refresh
     (`--refresh-docs-baseline`, diff = the review surface) — the ratchet
     pins per-value counts, so an in-place version swap is still a visible
-    refresh, never silent.
+    refresh, never silent;
+    (o) the plugin-catalogue mirror + pin + generated panel block (issue
+    #224 slice 2, CON-13 amendment) — `website/plugins-index.json` (a
+    byte-copy of the registry repository's generated `index.json`, the one
+    class-11 literal-scan exemption, generator named: that repository's
+    `scripts/generate_index.py`), `website/plugins-index.ref` (the registry
+    commit the mirror was synced from), and the generated block in
+    `website/index.html` (rewritten only by
+    `scripts/website/render_plugins_panel.py`); motion mechanism: the
+    registry sync — regenerate the index, copy the mirror, render the
+    block, advance the pin, in lockstep (manual-only per the 2026-10-02
+    owner ruling: the human runs the documented commands and opens the
+    gateway PR; the gates below enforce the lockstep meanwhile); gates:
+    the render guard (`panel_drift:`) and the authority pin
+    (`mirror_authority_drift:`) gateway-side, `mirror_drift:` registry-side.
+    No register rows: the mirror is the named exemption, the pin carries no
+    version values, and the block's generation refuses literals outright.
     Closing clause: a new version-bearing literal anywhere is a defect —
     make it a derived surface or register it here with its motion mechanism.
     Enforcement (issue #221, #203 slice 7): "here" is mechanically the
@@ -367,8 +383,11 @@ and remain the reviewer's job.
     `scripts/`. `tests/` and `.github/` are OUTSIDE the gates (tests
     carry legitimate fixture literals; assembly there equally so) —
     named so the denominators cannot silently move. Per-scope scanned
-    censuses are pinned (plugins 15, sdk 18, scripts 16, docs 30; the
-    gateway floor 93) — a denominator move is a visible same-commit diff.
+    censuses are pinned (plugins 15, sdk 19, scripts 18, docs 31; the
+    gateway floor 93) — a denominator move is a visible same-commit diff
+    (numbers read from the gate's own pins in
+    `tests/standards/test_zero_literal_gate.py`; the scripts census moved
+    17→18 with `scripts/website/render_plugins_panel.py` at issue #224).
 
 21. **The dependency-policy block and the carried set** (issue #215, parent
     #203 slice 1): `standards/standards-manifest.json`'s `dependency_policy`
