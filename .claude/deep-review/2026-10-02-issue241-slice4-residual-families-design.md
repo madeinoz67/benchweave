@@ -729,3 +729,54 @@ rerun executes on a tree whose fixed classes make that green likelier, and
 its merge gate is its own full rollup. Order: whichever is ready; if both
 are green simultaneously, land slice 4 first (it carries the rule the lane
 is judged by).
+
+
+## Erratum (2026-10-02, post-refute)
+
+Per the refute lanes (critic + behavioral + premise/evidence): the
+mechanisms stand; the findings land here and in the fold commit. Frozen
+sections are not edited; this section is the correction of record.
+
+a. **[C-F2] §1.7 finding-5 arithmetic corrected.** Measured hosted
+   timing-job walls: 59–94 s cold. `timeout-minutes: 15` is therefore
+   ~10× the cold wall — a HANG backstop, not a load bound: the observed
+   worst load stretch (~4.6×) cannot reach it, which is why a timeout
+   kill is categorized lane-infra (§5.2) rather than read as a band
+   breach.
+
+b. **[C-F3] §5.2 kill arithmetic.** The window publishes N/R/E/K —
+   executions, red executions, red events, and K timeout kills. A kill
+   consumes an execution slot in N; ≥3 kills in the window takes the
+   same KILL path as ≥3 reds.
+
+c. **[C-F4] Evidence E wording.** The (258.7, 258.0)-style realized-wait
+   pairs are INFERENCE from the lock mechanism (the helper's wait is
+   bounded by the realized dispatch plus its own refusal path), not
+   measurements — the hosted reds printed waits only. AR-7's A/A pass
+   measures the difference-spread directly.
+
+d. **[C-F5] §7.3 counterweight sentence corrected.** Monitor-gap's
+   floor catches EARLY/instant cuts; the axis bands counter global
+   stretch, but as a non-actionable verdict (underpowered, decide
+   nothing). Systematic LATENESS of the cut has no in-lane detector —
+   disclosed as a named gap, to be weighed by the refute's owner rows.
+
+e. **[A-F4] §1.3 buildability amendment.** The payload as written (an
+   ungated raise site) dies at the drain-cap site — the engine's
+   `poll_round` latches `session_failed` and stops silently on a
+   pre-trip poison, so the trial dies at `drain-cap` without reaching
+   the classification. The LANDED mechanism gates the poison post-trip
+   on the owning rig's latched monitor cause (commit a2af05f and the
+   fixture docstring carry the detail).
+
+f. **[B-B1] AR-3's orphaned fragment** (the headless tail after
+   "proven RED-first where the arm can run.") is known-cosmetic; the
+   frozen text stands, this erratum is the correction of record.
+
+g. **[B-B3] Scan counts repaired to the rubric's literal units.** The
+   eight Step-1 keywords as LITERALS on added lines: 0/8 (re-verified at
+   the fold: threading, asyncio, subprocess, sha256, hashlib, migrate,
+   recovery, protection — the "thread 5 / migration 2" substring counts
+   were `helper-thread`/`capture thread` prose and a non-keyword, now
+   superseded). Context lines carry threading=3 per the refute lane's
+   count; Tier 3 stands (the standing adversarial review covers it).

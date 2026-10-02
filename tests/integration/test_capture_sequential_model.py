@@ -508,10 +508,12 @@ def test_second_dispatch_lock_block(tmp_path: Path) -> None:
         )
         # The cut-proof, deterministic and load-immune: the bridge's
         # bounded() deadline cut the capture at budget — UNKNOWN, never an
-        # OK that merely completed late. (AR-3a: with the cut disabled the
-        # capture completes OK and THIS assert reds first — the
-        # relativized ceiling alone admits a late cut; the floor family's
-        # monitor-gap floor is the systemic counterweight, disclosed.)
+        # OK that merely completed late. (AR-3a, B-B2: with the cut
+        # disabled the capture lands ERROR at its natural completion — the
+        # quota reservation exceeds at the final append, the AR-3a build
+        # measurement — and THIS assert reds first: the relativized
+        # ceiling alone admits a late cut; the floor family's monitor-gap
+        # floor is the systemic counterweight, disclosed.)
         assert capture_result["result"].status is OperationStatus.UNKNOWN
         # The capture's budget expiry poisons the session, so the helper's
         # dispatch REFUSES once the lock releases ("A fresh opened bridge is
