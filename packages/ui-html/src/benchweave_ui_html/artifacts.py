@@ -37,7 +37,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import cast, get_args, get_type_hints
 
-from benchweave_ui_html import compositions, fixtures, partials, registry, staleness
+from benchweave_ui_html import assets, compositions, fixtures, partials, registry, staleness
 from benchweave_ui_html.assertions import Element, RenderedComponent
 from benchweave_ui_html.data import (
     AlertBubbleData,
@@ -70,10 +70,12 @@ DEFERRED_SLUGS: frozenset[str] = frozenset()
 #: raises at collection — a new component row can never silently skip.
 _PENDING_COMPONENTS: frozenset[str] = frozenset()
 
-#: The contract's executable token mirror (G1a deferral D3 keeps the path on
-#: ``ui/src/styles/`` until G1e's re-point). The token rows are live where
-#: the gate runs from the repository root; a missing asset reds loudly.
-_STYLES_DIR = Path("ui") / "src" / "styles"
+#: The contract's executable token mirror — the package's vendored assets
+#: (G1e, UR-10): the last React build's bytes, moved verbatim and pinned by
+#: ``assets/inventory.json`` (verified by ``assets.verify_vendored_assets``).
+#: Anchored to the package, so the paths are CWD-independent; a missing
+#: asset reds loudly.
+_STYLES_DIR = assets.ASSETS_DIR
 THEMES_CSS = _STYLES_DIR / "themes.css"
 TOKENS_CSS = _STYLES_DIR / "tokens.css"
 #: Fold F1 (issue #300 two-lane refute): globals.css APPLIES the theme

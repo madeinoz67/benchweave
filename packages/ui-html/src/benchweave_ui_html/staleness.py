@@ -1,6 +1,7 @@
-"""Contract §B.4 staleness — the ST-2 predicate as a pure function, ported
-verbatim from the semantic reference ``ui/src/components/readings/staleness.ts``
-(the §B.4 rows are normative; the TS is the reference).
+"""Contract §B.4 staleness — the ST-2 predicate as a pure function. Ported
+verbatim from the React reference renderer's ``staleness.ts`` (deleted at
+the G1e cutover); since the cutover THIS module is the semantic reference
+(the §B.4 rows are normative either way).
 
 ST-1 (folded semantics, per the corpus): the cadence is the POLLED
 parameter's ``max_age_ms`` — the descriptor's own read-acceptance window

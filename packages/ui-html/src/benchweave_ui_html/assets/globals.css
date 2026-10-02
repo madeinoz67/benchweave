@@ -1,0 +1,53 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--bw-canvas);
+  color: var(--bw-text);
+  font-family: var(--bw-font-ui);
+}
+
+body {
+  margin: 0;
+  min-width: 20rem;
+  min-height: 100vh;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+:focus-visible {
+  outline: 0.125rem solid var(--bw-focus);
+  outline-offset: 0.125rem;
+  box-shadow: var(--bw-focus-ring);
+}
+
+.bw-story-canvas {
+  min-height: 100vh;
+  padding: var(--bw-space-5);
+  background: var(--bw-canvas);
+  color: var(--bw-text);
+}
+
+.bw-data {
+  font-family: var(--bw-font-data);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

@@ -26,15 +26,14 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Final
 
+from benchweave_ui_html import artifacts
 from benchweave_ui_html.tokens import css_block
 
-#: The token source: the file the TS test reads — same bytes. G1e's deletion
-#: change re-points this to the package's vendored themes.css (UR-10's asset
-#: home; record §1.1 coordination point 3) — a named G1e checklist row, never
-#: a silent fallback.
-THEMES_CSS: Final[Path] = (
-    Path(__file__).resolve().parents[2] / "ui" / "src" / "styles" / "themes.css"
-)
+#: The token source: the package's vendored themes.css (G1e, UR-10) — the
+#: file's bytes are the TS test's bytes, moved verbatim at the cutover and
+#: pinned by the assets inventory (artifacts.THEMES_CSS is the one
+#: definition; this module rides it — one path, never two).
+THEMES_CSS: Final[Path] = artifacts.THEMES_CSS
 
 type Rgb = tuple[float, float, float]
 type Lab = tuple[float, float, float]
@@ -329,8 +328,9 @@ def theme_tokens(selector: str) -> dict[str, str]:
     error, never a silent skip."""
     if not THEMES_CSS.is_file():
         raise FileNotFoundError(
-            f"themes.css not found at {THEMES_CSS} (G1e re-points this constant "
-            "to the package's vendored asset)"
+            f"themes.css not found at {THEMES_CSS} (the package's vendored "
+            "asset — G1e's re-point landed; a missing file is a packaging "
+            "defect, never a silent skip)"
         )
     return css_block(THEMES_CSS.read_text(encoding="utf-8"), selector)
 
