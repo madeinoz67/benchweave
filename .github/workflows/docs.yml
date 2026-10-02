@@ -76,6 +76,14 @@ jobs:
           print(f"pattern-library screenshots: {written}")
           PY
 
+      - name: Catalogue wiring proof (issue #224 B4)
+        # Lane 2 of the search proof on the assembled artifact: the static
+        # default rows render without JS, search works over the served
+        # index, and the only network request the catalogue issues is the
+        # same-origin plugins-index.json fetch (a static file server IS the
+        # static deploy — no search backend).
+        run: uv run python scripts/website/check_catalogue_served.py --dest site
+
       - name: Save site artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

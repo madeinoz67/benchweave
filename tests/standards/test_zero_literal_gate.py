@@ -267,11 +267,13 @@ class TestZeroModeOverRealTrees:
             "the docs class set moved — update this pin in the same commit "
             "as the tree change, or refresh the snapshot deliberately"
         )
-        assert payload["scopes"]["scripts"]["scanned"] == 18, (
-            "the scripts class set moved (18 .py minus the self-exempted "
-            "counter; scripts/website/render_plugins_panel.py joined with "
-            "issue #224, zero literals — no register row) — update this pin "
-            "in the same commit as the tree change (the ratchet discipline)"
+        assert payload["scopes"]["scripts"]["scanned"] == 20, (
+            "the scripts class set moved (20 .py minus the self-exempted "
+            "counter; scripts/website/ joined with issue #224 — "
+            "render_plugins_panel.py, check_mirror_authority.py, "
+            "check_catalogue_served.py, all zero literals, no register "
+            "rows) — update this pin in the same commit as the tree change "
+            "(the ratchet discipline)"
         )
         if "sdk" in payload["scopes"]:
             assert payload["scopes"]["sdk"]["scanned"] == 19, (
@@ -962,12 +964,12 @@ class TestScriptsScope:
         """The 23 sites are accounted: 20 registered across the 7 authored
         rows holding exactly, the 3 former literals DERIVED (no site —
         textual or assembled — in the adc control or the docs site), the
-        counter self-exempted (census 18, not 19)."""
+        counter self-exempted (census 20, not 21)."""
         result = _counter_run("--scope", "scripts", "--json")
         assert result.returncode == 0, result.stdout + result.stderr
         report = json.loads(result.stdout)["scopes"]["scripts"]
         assert report["outside"] == 0, report["violations"]
-        assert report["scanned"] == 18
+        assert report["scanned"] == 20
         assert report["count"] == 22
         carried = {row["file"] for row in report["sites"]}
         assert carried == {
