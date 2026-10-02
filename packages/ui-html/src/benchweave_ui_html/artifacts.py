@@ -2076,8 +2076,10 @@ def _check_sr_b2(row: Row) -> list[str]:
             messages.append(f"the {severity} reading must carry an icon")
         if "Supply voltage" not in _own_text_of(rendered, tile):
             messages.append(f"the {severity} reading must carry text on the affected reading")
-    # normal/success render no glow-carrying vocabulary (the structural half
-    # is the CSS pin, test_reading_tile_css_pins.py fold-row 11).
+    # normal/success render no glow-carrying vocabulary (the CSS-structure
+    # half was test_reading_tile_css_pins.py fold-row 11, retired with ui/
+    # at G1e — the no-glow property itself transfers to the G2/G3 host CSS,
+    # drift-and-obligations row 26).
     for severity in ("neutral", "success"):
         rendered = RenderedComponent(
             compositions.render_workbench(_single_reading_scene(severity))

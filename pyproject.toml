@@ -98,7 +98,13 @@ packages = ["src/benchweave"]
 
 [tool.pytest.ini_options]
 addopts = "-q -p no:cacheprovider"
-testpaths = ["tests"]
+# The contract FILE is a second testpath entry (G1e, design §1.1): the
+# pytest11 collector claims files named ui-contract.md, so the no-args
+# default run — exactly CI's gates invocation — collects the 196-item
+# contract gate beside tests/. Fail-closed: the default-run pin in
+# tests/ui_html/test_harness.py reds if this entry is removed (obligation
+# 12; the removal is necessarily a visible editorial diff).
+testpaths = ["tests", "docs/internal/ui-contract.md"]
 # xunit1 is the repo default so any --junitxml run agrees with the evidence
 # faults harvest (which pins the same family explicitly): xunit2 rejects
 # <properties> inside <testcase> — the recorded measurements the fault-leg

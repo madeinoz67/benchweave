@@ -1,16 +1,21 @@
 """The threshold-verbatim check (G1c design record §1.5): the UR-02
-fail-closed-parsing mechanism applied to the frozen records and the TS
-source. Three arms:
+fail-closed-parsing mechanism applied to the frozen records. Two arms
+durable; one retired at G1e with its TS source:
 
 - (a) durable: the #242 record's §6 threshold sentence + S3-A1/A2/A3 rows
   equal ``thresholds.py``;
 - (b) durable: the #243 record's S1-A3 limiting VALUES (never its stale
   "48 values" count — asserting it would assert a known defect), plus the
-  comparator SET regenerated from the TS source and asserted exactly;
-- (c) port-time: the TS file's ``toBeGreaterThanOrEqual`` threshold literals
-  equal the carried constants — the machine proof that "unchanged" means
-  unchanged. Retires in G1e's deletion change, its evidence transcribed into
-  the design record's §2 ledger with line citations.
+  comparator SET asserted exactly against the instrument's token
+  decomposition (the TS-regeneration half — re-deriving the set by parsing
+  ``series-colors.test.ts``'s ``severityAll`` loop — retired at G1e with
+  the deleted TS file, per the G1c erratum's row; the cross-language pin
+  it carried is closed by the deletion itself: the Python constants are
+  the only home left);
+- (c) retired at G1e: the TS literal-set arm ported the TS file's
+  ``toBeGreaterThanOrEqual`` thresholds as the two-home window's drift
+  guard — its evidence is transcribed in the G1c record's §2 ledger with
+  line citations, and the two-home window closed when ``ui/`` died.
 
 Every parse miss REDS (fail-closed), never skips. A relaxed constant (8.0
 copied as 0.8) passes the value census silently — these arms are the
@@ -35,7 +40,6 @@ RECORD_242: Final[Path] = (
 RECORD_243: Final[Path] = (
     _REPO_ROOT / ".claude" / "deep-review" / "2026-09-29-issue243-ui-followon-design.md"
 )
-SERIES_COLORS_TS: Final[Path] = _REPO_ROOT / "ui" / "src" / "series-colors.test.ts"
 
 
 def test_ledger_census_is_exactly_22_rows() -> None:
@@ -104,9 +108,11 @@ def test_arm_a_record_242_thresholds_match_the_ledger() -> None:
 
 def test_arm_b_record_243_limiting_values_and_comparator_set() -> None:
     """Arm (b): parse the #243 record's S1-A3 row for the limiting VALUES
-    only; separately assert the comparator SET equals the code's exact
-    7 comparators — the pinned-set guard against silently dropping the
-    fold-added border comparator (record §8 risk 4)."""
+    only; separately assert the comparator SET equals the instrument's
+    exact 7 comparators — the pinned-set guard against silently dropping the
+    fold-added border comparator (record §8 risk 4). The TS-regeneration
+    half is retired (module docstring): the Python decomposition is the
+    live pin, and the set equality below is what it proves."""
     text = RECORD_243.read_text(encoding="utf-8")
     row = re.search(r"^\| S1-A3 \|.*$", text, re.MULTILINE)
     assert row is not None, "the #243 S1-A3 row did not parse (fail-closed)"
@@ -117,34 +123,9 @@ def test_arm_b_record_243_limiting_values_and_comparator_set() -> None:
     assert t2 is not None, "the S1-A3 T2-limiting value did not parse (fail-closed)"
     assert float(t1.group(1)) == thresholds.LIM_T1_CONTRAST
     assert float(t2.group(1)) == thresholds.LIM_T2_SEVERITY
-    # The comparator set, regenerated from the TS source's severityAll loop:
-    # the five severity hues + --bw-text-muted + --bw-border, exactly.
-    ts = SERIES_COLORS_TS.read_text(encoding="utf-8")
-    start = ts.index("const severityAll")
-    end = ts.index("for (const [name, tokens] of THEMES)", start)
-    parsed = set(re.findall(r'"(--bw-[\w-]+)"', ts[start:end]))
-    assert len(parsed) == 7, f"the TS comparator loop parsed {len(parsed)} tokens, expected 7"
-    assert parsed == set(COMPARATOR_TOKENS), "the TS comparator set drifted from the ledger"
-    assert set(SEVERITY_HUE_TOKENS) | {"--bw-text-muted", "--bw-border"} == set(COMPARATOR_TOKENS)
-
-
-def test_arm_c_ts_threshold_literals_match_carried_constants() -> None:
-    """Arm (c): the TS file's toBeGreaterThanOrEqual threshold literals equal
-    the carried constants as a SET, both directions — the machine proof that
-    "unchanged" means unchanged. This set covers every carried group-ii
-    numeric constant (11.0 = T2-ENG = LIM-T2-ENG; 8.0 = CENSUS-HARD = T3;
-    9.0 = CENSUS-ENG-DARK; 3.0 = LIM-T1 = T1; 10.0 = LIM-T2 = T2)."""
-    ts = SERIES_COLORS_TS.read_text(encoding="utf-8")
-    literals = {float(m) for m in re.findall(r"toBeGreaterThanOrEqual\(([0-9.]+)\)", ts)}
-    carried = {
-        thresholds.T1_CONTRAST,
-        thresholds.T2_SEVERITY,
-        thresholds.T3_ADJACENT,
-        thresholds.T2_ENG_FLOOR,
-        thresholds.CENSUS_HARD,
-        thresholds.CENSUS_DARK_ENG_FLOOR,
-    }
-    assert literals == carried, (
-        "the TS threshold literals and the carried constants disagree — "
-        "one side of the two-home window has drifted"
-    )
+    # The comparator set, decomposed from the instrument's own token
+    # families: the five severity hues + --bw-text-muted + --bw-border,
+    # exactly — the same 7-member set the TS loop regenerated pre-G1e.
+    assert set(SEVERITY_HUE_TOKENS) | {"--bw-text-muted", "--bw-border"} == set(
+        COMPARATOR_TOKENS
+    ), "the comparator set drifted from the five hues + muted + border"
