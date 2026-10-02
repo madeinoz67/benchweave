@@ -1,0 +1,12 @@
+<aside class="bw-alert-bubble" role="{{ data.live_region }}" data-severity="{{ data.severity }}"{% if data.aria_label %} aria-label="{{ data.aria_label }}"{% endif %}>
+  <div class="bw-alert-bubble__content">
+    <strong>{{ data.title }}</strong>
+    <p>{{ data.message }}</p>
+    {%- if data.source %}
+    <small>{{ data.source }}</small>
+    {%- endif %}
+  </div>
+  {%- if data.dismissible %}
+  <button type="button" class="bw-alert-bubble__dismiss" aria-label="Dismiss">Dismiss</button>
+  {%- endif %}
+</aside>

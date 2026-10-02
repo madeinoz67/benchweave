@@ -1,0 +1,5 @@
+<section class="bw-mode-banner" data-bw-mode-banner aria-label="Presentation mode">
+  {%- for mode in data.modes %}
+  <p class="bw-mode-banner__entry" data-bw-mode="{{ mode.key }}">{{ mode.wording }}</p>
+  {%- endfor %}
+</section>

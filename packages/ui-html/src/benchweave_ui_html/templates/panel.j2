@@ -1,0 +1,13 @@
+<section class="bw-panel" data-surface="{{ data.surface }}" aria-label="{{ data.label if data.label else data.title }}">
+  <header class="bw-panel__header">
+    {%- if data.eyebrow %}
+    <span class="bw-panel__eyebrow">{{ data.eyebrow }}</span>
+    {%- endif %}
+    <span class="bw-panel__title">{{ data.title }}</span>
+  </header>
+  <div class="bw-panel__body">
+    {%- for line in data.body %}
+    <p>{{ line }}</p>
+    {%- endfor %}
+  </div>
+</section>

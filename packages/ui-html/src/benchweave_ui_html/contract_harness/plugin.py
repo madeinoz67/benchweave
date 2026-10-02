@@ -19,7 +19,7 @@ from typing import Any
 
 import pytest
 
-from benchweave_ui_html import registry
+from benchweave_ui_html import artifacts, registry
 from benchweave_ui_html.grammar import ParsedTable, Row, parse_contract
 from benchweave_ui_html.manifest import KIND_BY_SLUG, MANIFEST
 
@@ -44,6 +44,12 @@ class ContractFile(pytest.File):
     def collect(self) -> Iterator[pytest.Item]:
         text = Path(self.path).read_text(encoding="utf-8")
         contract = parse_contract(text, MANIFEST)
+        # G1b — the canonical artifacts register AFTER the parse and BEFORE
+        # the orphan check, so the check polices the registrations it is
+        # about to consume (design record §1.1). Idempotent by sentinel: a
+        # process that registered artifacts beforehand suppresses the
+        # auto-registration instead of colliding with it.
+        artifacts.ensure_registered()
         # F1 fold — orphan check: every registered key must be a row the
         # contract actually parses. Without this, delete-and-pad with a fully
         # populated registry runs green while the deleted row's artifact sits

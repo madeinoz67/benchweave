@@ -13,8 +13,19 @@ import subprocess
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+from benchweave_ui_html import artifacts, registry
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CONTRACT = REPO_ROOT / "docs" / "internal" / "ui-contract.md"
+
+
+def _expected_row_failures() -> int:
+    """Rows red at a plain invocation = 168 minus the auto-registered set
+    (the G1d-deferred rows stay red until the compositions slice). Clears
+    first: earlier in-process arms legitimately leave partial registrations."""
+    registry.REGISTRY.clear()
+    artifacts.ensure_registered()
+    return 168 - len(registry.REGISTRY)
 
 
 def _run_pytest(*args: str, junit: Path) -> tuple[int, dict[str, str]]:
@@ -52,7 +63,9 @@ def test_only_files_named_ui_contract_md_are_claimed(tmp_path: Path) -> None:
     code, attrib = _run_pytest(str(named), "-q", junit=tmp_path / "named.xml")
     assert code != 0
     assert attrib.get("tests") == "196"
-    assert attrib.get("failures") == "168"
+    # G1b: the plain invocation auto-registers — failures = the unregistered
+    # rows (the G1d deferrals), not the G1a empty-registry 168.
+    assert attrib.get("failures") == str(_expected_row_failures())
 
 
 def test_every_generated_item_carries_the_contract_marker(tmp_path: Path) -> None:
