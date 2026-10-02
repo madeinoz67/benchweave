@@ -35,6 +35,19 @@ SEMVER_RE = re.compile(r"\d+\.\d+\.\d+")
 TOKEN_RE = re.compile(r"\{\{stg-([a-z0-9-]+)\}\}")
 BRACES = "{{"
 
+#: The ONE class-11 file exempt from the literal scan (issue #224 slice 2).
+#: The catalogue mirror is a byte-copy of the registry repository's generated
+#: index.json (generator: benchweave-registry ``scripts/generate_index.py``;
+#: sync: the documented manual sync in that repository; gates: the render
+#: guard ``panel_drift:`` + the authority pin ``mirror_authority_drift:`` +
+#: the registry-side ``mirror_drift:``). A derived surface with a motion
+#: mechanism — the exemption cannot launder a hand-edit because those gates
+#: pin its bytes to an immutable authority. Control arms below prove the
+#: boundary: a literal in any OTHER website file, inside the generated
+#: panel block or in the mirror's neighbour ``plugins-index.ref``, still
+#: reddens the scan.
+GENERATED_MIRROR = frozenset({"website/plugins-index.json"})
+
 
 def _assembler() -> Any:
     path = ROOT / "scripts" / "assemble_docs_site.py"
@@ -69,6 +82,8 @@ def _class11_literal_hits(root: Path | None = None) -> list[str]:
     hits: list[str] = []
     for path in files:
         rel = path.relative_to(tree).as_posix()
+        if rel in GENERATED_MIRROR:
+            continue  # the one named exemption — see GENERATED_MIRROR
         hits += [f"{rel}:{hit}" for hit in _hand_stamped_versions(path.read_text(encoding="utf-8"))]
     return hits
 
@@ -183,6 +198,69 @@ def test_tamper_asset_file_literal_is_detected(tmp_path: Path) -> None:
     ), hits
 
 
+# ── the class-11 mirror exemption's boundary (issue #224) ────────────────────
+#
+# The catalogue mirror is the ONE exempt file (GENERATED_MIRROR). These arms
+# pin the boundary from both sides: a literal anywhere else — inside the
+# generated panel block, or in the mirror's neighbour plugins-index.ref —
+# still reddens, and the mirror's own literals are the sole tolerated carrier.
+
+
+def test_tamper_literal_in_panel_block_is_detected(tmp_path: Path) -> None:
+    """Exemption boundary, arm 1: a hand-stamped literal inside the generated
+    panel block is the same defect as anywhere else in index.html — the
+    scan reddens it. The exemption covers one file, not a region."""
+    root = tmp_path / "tree"
+    shutil.copytree(ROOT / "website", root / "website")
+    index = root / "website" / "index.html"
+    html = index.read_text(encoding="utf-8")
+    planted = html.replace(
+        "<!-- bw:plugins-panel end -->",
+        "<!-- v9.9.9 hand-stamped plant -->\n<!-- bw:plugins-panel end -->",
+        1,
+    )
+    assert planted != html, "panel marker missing — scanner blind"
+    index.write_text(planted, encoding="utf-8")
+    hits = _class11_literal_hits(root)
+    assert [
+        h
+        for h in hits
+        if h.startswith("website/index.html:") and h.endswith(":9.9.9")
+    ], hits
+
+
+def test_tamper_literal_in_mirror_neighbor_is_detected(tmp_path: Path) -> None:
+    """Exemption boundary, arm 2: plugins-index.ref is the mirror's neighbour
+    and carries no versions at all — a literal there is NOT covered by the
+    mirror's exemption and reddens the scan."""
+    root = tmp_path / "tree"
+    shutil.copytree(ROOT / "website", root / "website")
+    ref = root / "website" / "plugins-index.ref"
+    ref.write_text(ref.read_text(encoding="utf-8") + "v7.7.7\n", encoding="utf-8")
+    hits = _class11_literal_hits(root)
+    assert [
+        h for h in hits if h.startswith("website/plugins-index.ref:") and h.endswith(":7.7.7")
+    ], hits
+
+
+def test_the_mirror_is_the_sole_class11_exemption() -> None:
+    """The exemption's exact shape: one named file, and the real mirror's
+    version literals are the sole tolerated carrier in the class-11 set.
+
+    What this does not catch: a hand-edit to the mirror itself — the render
+    guard (panel_drift:), the authority pin (mirror_authority_drift:) and the
+    registry-side mirror_drift: gate carry that; this arm only pins the
+    scan's boundary.
+    """
+    assert frozenset({"website/plugins-index.json"}) == GENERATED_MIRROR
+    mirror = ROOT / "website" / "plugins-index.json"
+    assert SEMVER_RE.search(mirror.read_text(encoding="utf-8")), (
+        "the committed mirror carries no version literal — this arm's premise is gone"
+    )
+    hits = _class11_literal_hits()
+    assert not [h for h in hits if h.startswith("website/plugins-index.json:")], hits
+
+
 def test_tamper_cross_card_badge_is_detected() -> None:
     """T5b: swapping a badge token for another standard's reddens T4."""
     text = SOURCE.read_text(encoding="utf-8").replace("v{{stg-otdp}}", "v{{stg-registry}}", 1)
@@ -265,8 +343,11 @@ def _minimal_dest(tmp_path: Path, index_html: str) -> Path:
     assembler = _assembler()
     dest = tmp_path / "site"
     (dest / "assets").mkdir(parents=True)
-    for name in ("logo.svg", "styles.css", "site.js"):
+    for name in ("logo.svg", "styles.css", "site.js", "plugins.js"):
         (dest / "assets" / name).write_text("", encoding="utf-8")
+    (dest / "plugins-index.json").write_text(
+        '{"index_version": 1, "rows": []}', encoding="utf-8"
+    )
     docs = dest / "docs"
     docs.mkdir()
     for rel in (
@@ -320,6 +401,25 @@ def test_verify_tree_refuses_stamp_residue(tmp_path: Path) -> None:
     dest = _minimal_dest(tmp_path, SOURCE.read_text(encoding="utf-8"))
     with pytest.raises(SystemExit, match="stamp_residue:"):
         assembler.verify_tree(dest, paths={})
+
+
+def test_verify_tree_refuses_a_missing_plugins_catalogue(tmp_path: Path) -> None:
+    """Issue #224's probes: the assembled tree must carry the catalogue mirror
+    and its script (website/plugins-index.json, assets/plugins.js) — an
+    assembly that lost either is incomplete and refuses."""
+    assembler = _assembler()
+    copy = tmp_path / "index.html"
+    copy.write_text(SOURCE.read_text(encoding="utf-8"), encoding="utf-8")
+    assembler.stamp_website(copy, assembler.website_stamp_map(ROOT))
+    stamped = copy.read_text(encoding="utf-8")
+    dest = _minimal_dest(tmp_path, stamped)
+    (dest / "plugins-index.json").unlink()
+    with pytest.raises(SystemExit, match="plugins-index.json missing"):
+        assembler.verify_tree(dest, paths={})
+    dest2 = _minimal_dest(tmp_path / "site2", stamped)
+    (dest2 / "assets" / "plugins.js").unlink()
+    with pytest.raises(SystemExit, match="assets/plugins.js missing"):
+        assembler.verify_tree(dest2, paths={})
 
 
 # ── the `{{` residue class (adversary F1) ────────────────────────────────────

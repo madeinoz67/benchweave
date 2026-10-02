@@ -25,6 +25,7 @@
   </a>
   <nav class="panels" aria-label="Site sections">
     <button class="active" onclick="showPanel('home', this)">Home</button>
+    <button onclick="showPanel('plugins', this)">Plugins</button>
     <button onclick="showPanel('standards', this)">Standards</button>
     <button onclick="showPanel('docs', this)">Docs</button>
     <button onclick="showPanel('sdk', this)">SDK</button>
@@ -69,7 +70,7 @@
         <div class="cta-row">
           <a class="btn btn-primary" href="docs/user-guide/architecture.html">Read the architecture</a>
           <a class="btn btn-secondary" href="https://madeinoz67.github.io/benchweave-sdk/" target="_blank" rel="noopener">Install the SDK</a>
-          <a class="btn btn-ghost" href="#standards" onclick="showPanel('standards', document.querySelectorAll('nav.panels button')[1]); return false;">Browse the standards →</a>
+          <a class="btn btn-ghost" href="#standards" onclick="showPanel('standards', document.querySelectorAll('nav.panels button')[2]); return false;">Browse the standards →</a>
         </div>
       </div>
 
@@ -313,10 +314,61 @@
       <div>
         <h2>Where it stands</h2>
         <p><strong>Working now.</strong> The simulator-first PoC is through its acceptance gate: durable run and lease state with kill-recovery, procedure admission and protection, 20 REST routes and 17 MCP tools on one core-operations seam, and an operator CLI. Standards now behave like dependencies: plugins pin the standard versions they admit against, admission checks those pins, and a resolver lists, pins, upgrades and explains what a pin resolves to. Released versions serve side by side, development heads pin by name, and every promotion from a head to a released version is recorded. The SDK scaffolds an independent plugin project and release CI builds one outside the checkout and drives it through the gateway on mock transport. The DPS-150 plugin — hand-written, zero runtime dependencies — has driven the real supply; it is read-only and claims no PSU profile yet.</p>
-        <p><strong>Next.</strong> Gateway and devices talking through the registry: the gateway side of the registry contract is done (signed catalogue, admission with a content-addressed cache, activation, an unsigned dev loop) but the registry service and a device-install command do not exist. The OTDP bridge's remaining scope is profile scheduling on a native async host. The gateway's first operator web UI will be server-rendered, with the React reference renderer retired in a gated cutover. Hardware qualification and unattended bench operation remain separate, commissioned work.</p>
+        <p><strong>Next.</strong> Gateway and devices talking through the registry: the gateway side of the registry contract is done (signed catalogue, admission with a content-addressed cache, activation, an unsigned dev loop), and a catalogue of published, signed releases now exists as a git-native registry repository of record — rendered in the plugins panel — but no hosted registry front end and no device-install command exist, so installation stays local admission. The OTDP bridge's remaining scope is profile scheduling on a native async host. The gateway's first operator web UI will be server-rendered, with the React reference renderer retired in a gated cutover. Hardware qualification and unattended bench operation remain separate, commissioned work.</p>
       </div>
       <a class="btn btn-secondary" href="docs/user-guide/delivery-plan.html">Delivery plan</a>
     </div>
+  </section>
+
+  <!-- ================= PLUGINS ================= -->
+  <section class="panel" id="panel-plugins">
+    <div class="page-head">
+      <h1>Plugins</h1>
+      <p>The catalogue of published, signed plugin releases — generated from the registry repository of record (a git-native repository, not a hosted front end) and mirrored here as committed bytes. Installation is local admission: publication never authorizes control. Version and digest values fill from the index in your browser.</p>
+    </div>
+    <div class="catalogue-filters" role="search" aria-label="Filter plugins">
+      <label>Search <input type="text" id="bw-filter-text" placeholder="name, id or summary"></label>
+      <label>Publisher <select id="bw-filter-publisher"><option value="">any</option></select></label>
+      <label>Standard <select id="bw-filter-standard"><option value="">any</option></select></label>
+      <label>Signature <select id="bw-filter-signature"><option value="signed-valid">signed-valid</option><option value="unsigned">unsigned</option><option value="all">all</option></select></label>
+      <label>Maintenance <select id="bw-filter-maintenance"><option value="">any</option><option value="maintained">maintained</option><option value="maintenance_only">maintenance_only</option><option value="unmaintained">unmaintained</option><option value="unknown">unknown</option></select></label>
+      <label>Advisories <select id="bw-filter-advisories"><option value="">any</option><option value="present">present</option><option value="none">none</option></select></label>
+      <label>Kind <select id="bw-filter-kind"><option value="admitted-release">admitted-release</option><option value="community-shared">community-shared</option><option value="in-tree-fixture">in-tree-fixture</option><option value="all">all kinds</option></select></label>
+      <label><input type="checkbox" id="bw-filter-cap-network"> Network egress</label>
+      <label><input type="checkbox" id="bw-filter-cap-subprocess"> Subprocess or native library</label>
+      <label><input type="checkbox" id="bw-filter-cap-filesystem"> Filesystem writes</label>
+    </div>
+    <p class="catalogue-count" id="catalogue-count"></p>
+    <div class="spec-grid" id="catalogue-list">
+<!-- bw:plugins-panel begin (generated from website/plugins-index.json by
+     scripts/website/render_plugins_panel.py — regenerate, do not hand-edit) --><template data-bw-template>
+<div class="spec-card"
+<div class="spec-head"><h4 data-bw-slot="display-name"></h4><span class="badge badge-version" data-bw-slot="version" hidden></span></div>
+<p data-bw-slot="summary"></p>
+<p class="catalogue-meta"><span data-bw-slot="publisher"></span> · <span data-bw-slot="licence"></span> · <span class="badge badge-version" data-bw-slot="maintenance"></span> · <span class="badge badge-info" data-bw-slot="kind"></span></p>
+<p class="catalogue-meta"><span class="mono" data-bw-slot="release-id"></span> · <span class="mono" data-bw-slot="digest" hidden></span></p>
+<p class="catalogue-meta" data-bw-slot="compat" hidden></p>
+<p class="catalogue-meta">evidence: </p>
+<p class="catalogue-meta">advisories: </p>
+<p class="catalogue-meta">unverified: </p>
+<p class="catalogue-meta">source: <span class="mono" data-bw-slot="source-revision"></span></p>
+</div>
+</template>
+<div class="spec-card" data-bw-package-id="madeinoz67/dps150"
+<div class="spec-head"><h4 data-bw-slot="display-name">FNIRSI DPS-150 (read-only, KochC empty-GET dialect)</h4><span class="badge badge-version" data-bw-slot="version" hidden></span></div>
+<p data-bw-slot="summary">Mock-qualified core identity and scalar reads; no DC PSU profile or hardware qualification.</p>
+<p class="catalogue-meta"><span data-bw-slot="publisher">madeinoz67</span> · <span data-bw-slot="licence">LicenseRef-Proprietary AND MIT</span> · <span class="badge badge-version" data-bw-slot="maintenance">unknown</span> · <span class="badge badge-info" data-bw-slot="kind">admitted-release</span></p>
+<p class="catalogue-meta"><span class="mono" data-bw-slot="release-id">benchweave-registry/madeinoz67/dps150</span> · <span class="mono" data-bw-slot="digest" hidden></span></p>
+<p class="catalogue-meta" data-bw-slot="compat" hidden></p>
+<p class="catalogue-meta">evidence: <span class="badge badge-success">simulated · passed</span> <code>evidence/protocol-evidence.md</code> <a class="spec-link" data-bw-slot="evidence-link" href="https://github.com/madeinoz67/benchweave-registry/tree/main/releases/benchweave-registry/madeinoz67/dps150">release files →</a></p>
+<p class="catalogue-meta">advisories: <span class="text-muted">no advisories</span></p>
+<p class="catalogue-meta">unverified: <span class="badge badge-warning">conformance evidence self-attested</span> <span class="badge badge-warning">review is process, not proof</span></p>
+<p class="catalogue-meta">source: <span class="mono" data-bw-slot="source-revision" title="45d5e7fdc45dc6bbf765b1c8e85af70a2d830d94">45d5e7fdc45d…</span></p>
+</div><!-- bw:plugins-panel end -->
+    </div>
+    <p class="catalogue-empty" id="catalogue-empty" hidden>No plugins match the current filters.</p>
+    <p class="catalogue-notice" id="catalogue-notice" hidden>The catalogue index could not be loaded — the committed list below is shown as committed and may be out of date.</p>
+    <p class="note">Rows carry the registry contract's metadata. A yanked or revoked release disappears from the catalogue at the next sync: what is absent here is absent everywhere, because the index is generated from published releases only.</p>
   </section>
 
   <!-- ================= STANDARDS ================= -->

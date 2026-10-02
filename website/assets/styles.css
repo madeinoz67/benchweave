@@ -237,6 +237,27 @@
   .spec-card p:last-child { margin-bottom: 0; }
   .spec-card .spec-link { font-family: var(--font-mono); font-size: 12.5px; }
 
+  /* ---- plugins catalogue: filter bar + catalogue meta line (issue #224) ----
+     The two component shapes declared in docs/internal/public-site-styleguide.html,
+     built from existing custom properties only (both themes come free). The
+     badge family is completed with the styleguide's danger/info types in this
+     stylesheet's existing transparent idiom. */
+  .catalogue-filters { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; padding-bottom: 16px; }
+  .catalogue-filters label { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); display: inline-flex; align-items: center; gap: 6px; }
+  .catalogue-filters input[type="text"], .catalogue-filters select {
+    font-family: var(--font-body); font-size: 13.5px; color: var(--text);
+    background: var(--bg-inset); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 6px 9px;
+  }
+  .catalogue-filters input[type="checkbox"] { accent-color: var(--blue); }
+  .catalogue-meta { font-family: var(--font-mono); font-size: 13px; color: var(--text-muted); margin: 0 0 8px; }
+  .catalogue-count { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); margin: 0 0 14px; }
+  .catalogue-empty, .catalogue-empty-static { color: var(--text-muted); font-size: 13.5px; }
+  .catalogue-notice { color: var(--amber); font-size: 13.5px; margin: 12px 0; }
+  .text-muted { color: var(--text-muted); }
+  .badge-danger { color: var(--red); border-color: var(--red); background: transparent; }
+  .badge-info { color: var(--blue); border-color: var(--blue); background: transparent; }
+
   /* ---- limits callout ---- */
   .limits-callout { border: 1px solid var(--border); border-left: 3px solid var(--amber); border-radius: 6px; padding: 26px 28px; margin: 8px 0 64px; display: flex; justify-content: space-between; align-items: center; gap: 28px; background: var(--bg-elevated); }
   .limits-callout h2 { font-size: 18px; margin: 0 0 8px; }
