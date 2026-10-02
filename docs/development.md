@@ -137,10 +137,12 @@ Change propagation, end to end:
   `testpaths` since the G1e cutover) and the standards sync check
   (`make check-sdk-standards`), plus a **timing** job that runs the
   real-paced, marker-selected set (`pytest -q -m timing`) serialized on its
-  own fresh VM, a **browser** lane over the pattern library, and a
+  own fresh VM, a **windows** job that runs the gates selection on
+  windows-latest as an evidence lane (issue #207: a test red is carried by the
+  warning annotation, the job summary and the junitxml artifact, and does not
+  block merges in slice 1; setup reds block), and a
   **systemd** template-verification job on Linux. The former **ui** Node
-  job was deleted at the G1e cutover with the React renderer it gated.
-- **Device plugins** checks independent manufacturer/model plugin projects in
+  job was deleted at the G1e cutover with the React renderer it gated.- **Device plugins** checks independent manufacturer/model plugin projects in
   their own locked environments.
 - **Package** builds sdists and wheels for the gateway and SDK, installs them
   into isolated environments on Linux and macOS, and runs the installed-wheel
