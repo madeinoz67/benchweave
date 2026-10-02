@@ -388,8 +388,14 @@ and remain the reviewer's job.
     `scripts/`. `tests/` and `.github/` are OUTSIDE the gates (tests
     carry legitimate fixture literals; assembly there equally so) —
     named so the denominators cannot silently move. Per-scope scanned
-    censuses are pinned (plugins 15, sdk 18, scripts 16, docs 30; the
-    gateway floor 93) — a denominator move is a visible same-commit diff.
+    censuses are pinned (plugins 15, sdk 19, scripts 17, docs 31; the
+    gateway floor 93) — a denominator move is a visible same-commit diff
+    (numbers read from the gate's own pins in
+    `tests/standards/test_zero_literal_gate.py`, which returns to main's
+    bytes with the #224 pivot: the scripts census is 17 again —
+    `scripts/website/` held three .py files at the pre-pivot slice and now
+    holds zero, the directory itself deleted; the census is stated from
+    the gate's own pin, never hand-counted).
 
 21. **The dependency-policy block and the carried set** (issue #215, parent
     #203 slice 1): `standards/standards-manifest.json`'s `dependency_policy`

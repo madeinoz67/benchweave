@@ -25,6 +25,7 @@
   </a>
   <nav class="panels" aria-label="Site sections">
     <button class="active" onclick="showPanel('home', this)">Home</button>
+    <button onclick="showPanel('plugins', this)">Plugins</button>
     <button onclick="showPanel('standards', this)">Standards</button>
     <button onclick="showPanel('docs', this)">Docs</button>
     <button onclick="showPanel('sdk', this)">SDK</button>
@@ -69,7 +70,7 @@
         <div class="cta-row">
           <a class="btn btn-primary" href="docs/user-guide/architecture.html">Read the architecture</a>
           <a class="btn btn-secondary" href="https://madeinoz67.github.io/benchweave-sdk/" target="_blank" rel="noopener">Install the SDK</a>
-          <a class="btn btn-ghost" href="#standards" onclick="showPanel('standards', document.querySelectorAll('nav.panels button')[1]); return false;">Browse the standards →</a>
+          <a class="btn btn-ghost" href="#standards" onclick="showPanel('standards', document.querySelectorAll('nav.panels button')[2]); return false;">Browse the standards →</a>
         </div>
       </div>
 
@@ -313,10 +314,26 @@
       <div>
         <h2>Where it stands</h2>
         <p><strong>Working now.</strong> The simulator-first PoC is through its acceptance gate: durable run and lease state with kill-recovery, procedure admission and protection, 20 REST routes and 17 MCP tools on one core-operations seam, and an operator CLI. Standards now behave like dependencies: plugins pin the standard versions they admit against, admission checks those pins, and a resolver lists, pins, upgrades and explains what a pin resolves to. Released versions serve side by side, development heads pin by name, and every promotion from a head to a released version is recorded. The SDK scaffolds an independent plugin project and release CI builds one outside the checkout and drives it through the gateway on mock transport. The DPS-150 plugin — hand-written, zero runtime dependencies — has driven the real supply; it is read-only and claims no PSU profile yet.</p>
-        <p><strong>Next.</strong> Gateway and devices talking through the registry: the gateway side of the registry contract is done (signed catalogue, admission with a content-addressed cache, activation, an unsigned dev loop) but the registry service and a device-install command do not exist. The OTDP bridge's remaining scope is profile scheduling on a native async host. The gateway's first operator web UI will be server-rendered, with the React reference renderer retired in a gated cutover. Hardware qualification and unattended bench operation remain separate, commissioned work.</p>
+        <p><strong>Next.</strong> Gateway and devices talking through the registry: the gateway side of the registry contract is done (signed catalogue, admission with a content-addressed cache, activation, an unsigned dev loop), and a catalogue of published, signed releases now exists as a git-native registry repository of record with its own catalogue site — but no hosted registry front end and no device-install command exist, so installation stays local admission. The OTDP bridge's remaining scope is profile scheduling on a native async host. The gateway's first operator web UI will be server-rendered, with the React reference renderer retired in a gated cutover. Hardware qualification and unattended bench operation remain separate, commissioned work.</p>
       </div>
       <a class="btn btn-secondary" href="docs/user-guide/delivery-plan.html">Delivery plan</a>
     </div>
+  </section>
+
+  <!-- ================= PLUGINS ================= -->
+  <section class="panel" id="panel-plugins">
+    <div class="page-head">
+      <h1>Plugins</h1>
+      <p>Plugin releases are published and signed in a git-native registry repository of record — not a hosted front end. The catalogue is generated from that repository's records and served from its own site; this page carries no copy of it, so what you reach is always the published state. Installation is local admission: publication never authorizes control.</p>
+    </div>
+    <div class="ai-callout">
+      <div>
+        <h2>The plugin catalogue</h2>
+        <p>Every published release with its version, digest, compatibility and advisories — searchable, kind-tagged, and stamped with the commit it was generated from.</p>
+      </div>
+      <a class="btn btn-secondary" href="https://registry.benchweave.dev/" target="_blank" rel="noopener">Browse the catalogue →</a>
+    </div>
+    <p class="note">What the catalogue offers is generated from published releases only: a yanked or revoked release drops out at the next regeneration — what is absent there is absent everywhere.</p>
   </section>
 
   <!-- ================= STANDARDS ================= -->

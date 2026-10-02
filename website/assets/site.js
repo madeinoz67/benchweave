@@ -3,7 +3,10 @@
    panels reachable from outside the page. */
 
 var THEME_KEY = 'bw-site-theme';
-var PANEL_INDEX = { home: 0, standards: 1, docs: 2, sdk: 3, builtwith: 4 };
+/* Six panels; the DOM button order must agree with these positions
+   (openFromHash indexes buttons by position). Plugins sits second: the
+   teaser panel links out to the registry-served catalogue (issue #224). */
+var PANEL_INDEX = { home: 0, plugins: 1, standards: 2, docs: 3, sdk: 4, builtwith: 5 };
 
 function showPanel(name, btn) {
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));

@@ -52,4 +52,12 @@ promotion copies it to the released version and removes it.
    `{{stg-*}}` tokens, and no three-component version literal is allowed anywhere
    in the class-11 source set (`website/` plus `index.qmd`,
    `tests/contract/test_website_stamps.py`); two-component prose claims remain the
-   named residual.
+   named residual. Amendment 2026-10-02 (issue #224, invariants CON-13
+   amendment, rewritten to the pivot the same day): the plugin catalogue is
+   generated and served from the registry repository; the gateway website
+   carries no registry-derived bytes. The mirror, its pin and the generated
+   panel block this amendment first drafted are deleted (the registry
+   repository's own Pages pipeline renders the catalogue as a deploy-time
+   artifact), the plugins panel is a static teaser with one outbound link
+   and zero catalogue-derived data, and the class-11 literal scan returns
+   to zero exemptions — there is nothing to exempt.
