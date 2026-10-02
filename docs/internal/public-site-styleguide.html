@@ -162,6 +162,15 @@
   .spec-card h4 { font-family: var(--font-display); font-size: 16px; margin: 0; }
   .spec-card p { font-size: 13.5px; color: var(--text-muted); margin: 0; }
 
+  /* Filter bar (issue #224 — catalogue controls) */
+  .filter-bar { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; }
+  .filter-bar label { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); display: inline-flex; align-items: center; gap: 6px; }
+  .filter-bar input[type="text"], .filter-bar select { font-family: var(--font-body); font-size: 13.5px; color: var(--text); background: var(--bg-inset); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 6px 9px; }
+  .filter-bar input[type="checkbox"] { accent-color: var(--blue); }
+
+  /* Catalogue meta line (issue #224) */
+  .catalogue-meta { font-family: var(--font-mono); font-size: 13px; color: var(--text-muted); }
+
   /* Table */
   table.gd-map { width: 100%; border-collapse: collapse; font-size: 14px; }
   table.gd-map th, table.gd-map td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
@@ -317,6 +326,26 @@
 
     <h3>Code block</h3>
     <div class="code-block"><span class="muted"># install</span><br>pip install benchweave-sdk</div>
+
+    <h3>Filter bar <span class="badge badge-version">v0.2</span></h3>
+    <div class="filter-bar" role="search" aria-label="Filter plugins" style="max-width:560px;">
+      <label>Search <input type="text" placeholder="name, id or summary"></label>
+      <label>Publisher <select><option>any</option></select></label>
+      <label>Kind <select><option>admitted-release</option></select></label>
+      <label><input type="checkbox"> Network egress</label>
+    </div>
+    <p class="note" style="margin-top:10px;">The catalogue's controls (issue #224, promoted from the plugins panel). Text input + selects + checkboxes built from <code>--bg-inset</code>, <code>--border</code>, <code>--radius-sm</code>, IBM Plex Sans and the mono label run; the accessibility floor's 2px Signal Blue <code>:focus-visible</code> ring applies as to every control. Sentence-case labels. One bar per view.</p>
+
+    <h3>Catalogue meta line <span class="badge badge-version">v0.2</span></h3>
+    <div class="spec-card" style="max-width:420px;">
+      <div class="spec-card-head">
+        <h4>Northwind PSU driver</h4>
+        <span class="badge badge-version">v0.1.0</span>
+      </div>
+      <p>Bench power supply driver with scalar reads and a snapshot profile.</p>
+      <p class="catalogue-meta">northwind-instruments · MIT · <span class="badge badge-success">maintained</span></p>
+    </div>
+    <p class="note" style="margin-top:10px;">The per-card identity run (issue #224, promoted from the plugins panel): publisher · licence · maintenance in mono 13px. Values are always machine-rendered from the served index — never hand-typed — and absent values render as an explicit "none", never as a guess.</p>
   </section>
 
   <section id="ambient">
