@@ -449,3 +449,11 @@ disposition:
   and this port follows the TS. The G2/G3 design must decide whether the
   host keeps the TS behaviour or the contract grows a row; named here so
   the decision is designed, not inherited by accident.
+- **Post-fold (2026-10-02), the browser job's cache pin was a
+  transcription fault.** The `actions/cache` pin in ci.yml was typed from
+  memory — the first 19 hex chars right, the tail invented — and GitHub
+  failed the job at action resolution in 3s (PR #333). Corrected to the
+  API-resolved v4.3.0 commit `0057852bfaa89a56745cba8c7296529d2fc39830`
+  (repos/actions/cache git/ref/tags/v4.3.0). Lesson, standing: CI action
+  pins are resolved from the GitHub API, never typed from memory — the
+  local gates cannot catch action-resolution failures; only GitHub can.
