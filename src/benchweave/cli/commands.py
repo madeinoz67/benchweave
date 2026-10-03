@@ -756,6 +756,7 @@ def serve(host: str, port: int) -> None:
     import uvicorn
 
     from benchweave.interfaces import app_entry
+    from benchweave.interfaces.ui import build_serving_log_config
 
     try:
         app = app_entry.build()
@@ -768,7 +769,9 @@ def serve(host: str, port: int) -> None:
     except RuntimeError as error:
         # The production secret-posture refusal: handled message, exit 1.
         raise click.ClickException(str(error)) from error
-    uvicorn.run(app, host=host, port=port)
+    # The access log's /ui/login query strings are redacted (G2a R2): a
+    # login code rides the URL exactly once, and no log line keeps it.
+    uvicorn.run(app, host=host, port=port, log_config=build_serving_log_config())
 
 
 # --- status: the first live command -------------------------------------------

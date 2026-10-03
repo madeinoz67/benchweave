@@ -105,7 +105,7 @@ def mint_and_exchange(app: FastAPI, token: str) -> SimpleNamespace:
     session cookie value it set."""
     from starlette.testclient import TestClient
 
-    with TestClient(app) as client:
+    with TestClient(app, base_url="http://testserver:8125") as client:
         minted = client.post(
             "/ui/login-codes", headers={"Authorization": f"Bearer {token}"}, json={}
         )

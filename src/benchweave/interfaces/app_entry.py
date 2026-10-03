@@ -91,6 +91,7 @@ _KNOWN_PUBLIC_SECRETS = frozenset(
         b"wp09-task-four-secret",  # tests/integration/test_poc_acceptance.py
         b"issue85-startup-admission-secret",  # tests/integration/test_startup_admission_refusal.py
         b"test-issuer-secret",  # tests/unit/test_seam_admin.py
+        b"g2a-ui-suite-secret",  # tests/interfaces_ui/ui_gateway_support.py (G2a)
     }
 )
 #: The env value that arms the production secret posture.
