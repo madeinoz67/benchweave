@@ -8,7 +8,7 @@ import posixpath
 import re
 from dataclasses import dataclass
 from datetime import date
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
 VALID_STATUS = frozenset({"draft", "stable", "deprecated"})
@@ -174,6 +174,35 @@ def _retired_for(document: dict[str, Any], entry_id: str) -> tuple[str, ...]:
     return tuple(str(item) for item in retired) if isinstance(retired, list) else ()
 
 
+def _check_normative_row_path(entry_id: str, relative: str) -> None:
+    """Refuse the row-path lexicon repin refuses for corpus rows.
+
+    A manifest row that dodges the ``'standards/'`` prefix also dodges the
+    corpus-pin second authority (``_check_normative_path`` early-returns for
+    non-standards rows), and export's basename mapping presents such a row
+    under ``<id>/<basename>`` — on Windows the backslash form resolves into
+    the real directory tree, so the bytes land in the bundle. Mirrors
+    ``repin._check_row_path`` (pin_path_escape) for this surface; the two
+    prefixes stay two vocabularies (issue #238).
+    """
+    posix = PurePosixPath(relative)
+    windows = PureWindowsPath(relative)
+    if (
+        not relative
+        or posix.is_absolute()
+        or windows.is_absolute()
+        or bool(windows.drive)
+        or "\\" in relative
+        or ".." in posix.parts
+    ):
+        raise StandardsError(
+            f"normative_path_escape: {entry_id}: {relative} "
+            "(manifest rows are '/'-separated repo-relative paths, #138; a "
+            "backslash, drive, absolute, or ../ traversal form dodges the "
+            "'standards/' prefix that routes a row to the corpus-pin authority)"
+        )
+
+
 def load_manifest(root: Path) -> StandardsManifest:
     path = root / "standards/standards-manifest.json"
     document = json.loads(path.read_bytes())
@@ -198,6 +227,11 @@ def load_manifest(root: Path) -> StandardsManifest:
                 "(the active version must be pure semver; a -dev suffix is "
                 "legal only in a dev head)"
             )
+        for relative in normative:
+            # Load-boundary lexicon check (issue #238): a row that dodges the
+            # 'standards/' prefix dodges the corpus-pin second authority, and
+            # the export's basename mapping launders the bytes.
+            _check_normative_row_path(entry_id, relative)
         entry = StandardEntry(
             id=entry_id,
             version=version,
@@ -330,6 +364,12 @@ def _load_dev_head(
                 f"dev_path_outside_head: {entry_id}: {relative} "
                 f"(dev paths must live under {head_prefix})"
             )
+        # The lexical mirror rides AFTER containment (issue #238):
+        # containment stays the dev-specific authority, and the mirror
+        # catches only what it genuinely misses — the tail-backslash form
+        # posixpath.normpath keeps a literal, which resolves deeper into
+        # the head on Windows.
+        _check_normative_row_path(entry_id, relative)
     return DevHead(
         version=version, opened=opened, normative=tuple(normative), candidate=candidate
     )
