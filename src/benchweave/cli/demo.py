@@ -67,7 +67,7 @@ DEFAULT_LIMITS: dict[str, int] = {
     "max_json_bytes": 1048576,
     "max_page_size": 1000,
     "max_chunk_bytes": 65536,
-    "max_lease_ms": 600000,
+    "max_lease_ms": 21600000,
     "min_poll_ms": 100,
     "max_admission_ms": 5000,
 }
