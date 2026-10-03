@@ -571,6 +571,7 @@ All notable changes to this project will be documented in this file.
 - Revert a fence-interior placeholder edit in publishing-guide
 - Convert the two remaining operator-guide section headings
 - Resolve registry check-count and registry-version statements against machine sources (#359)
+- Residual register fixes for the #353 four
 
 ### Features
 
@@ -784,6 +785,7 @@ All notable changes to this project will be documented in this file.
 - Catalogue search — pure predicate + DOM wiring (issue #224 slice 2)
 - Plugins panel becomes a static teaser to the registry-served catalogue (#224 s2 pivot)
 - Teaser links the catalogue's canonical domain — registry.benchweave.dev (owner cutover 2026-10-02); byte-pin regenerated AST-verified
+- Gate packages/sdk staleness — sdk-drift lane (#347 WS1) (#360)
 
 ### Hardware Evidence
 
