@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import sqlite3
 import uuid
 from collections.abc import Callable
@@ -17,6 +18,8 @@ from typing import Any
 from benchweave.host.services import HostServices, QuotaState, ReadingSinks
 from benchweave.host.types import EvidenceStamp, LandingStamp
 from benchweave.state.store import Store
+
+_LOG = logging.getLogger(__name__)
 
 MAX_CHUNK_BYTES = 65536
 
@@ -238,24 +241,41 @@ class ContentStore:
         the CLI's retention/report queries read the same columns by raw
         SQL; composition gets a store method instead of SQL in the
         adapter. The kind filter is the join's own — it reads the
-        telemetry event lane only."""
+        telemetry event lane only.
+
+        A corrupt ``content_ref_json`` column kills exactly its own row
+        (warned, omitted) — never the caller's whole read (#369 fold
+        F3: the reading-tile join's per-row tolerance holds only if the
+        row reader itself is per-row tolerant)."""
         rows = self._conn.execute(
             "SELECT evidence_id, kind, content_ref_json, artifact_id, context_key,"
             " stored_at FROM evidence WHERE context_key = ? AND kind = 'event_log'"
             " ORDER BY stored_at DESC, rowid DESC LIMIT ?",
             (context_key, limit),
         ).fetchall()
-        return [
-            {
-                "evidence_id": row[0],
-                "kind": row[1],
-                "content_ref": json.loads(row[2]) if row[2] is not None else {},
-                "artifact_id": row[3],
-                "context_key": row[4],
-                "stored_at": row[5],
-            }
-            for row in rows
-        ]
+        results: list[dict[str, Any]] = []
+        for row in rows:
+            try:
+                reference = json.loads(row[2]) if row[2] is not None else {}
+            except ValueError:
+                _LOG.warning(
+                    "evidence %s carries a corrupt content_ref_json under"
+                    " context %s; skipping the row",
+                    row[0],
+                    context_key,
+                )
+                continue
+            results.append(
+                {
+                    "evidence_id": row[0],
+                    "kind": row[1],
+                    "content_ref": reference,
+                    "artifact_id": row[3],
+                    "context_key": row[4],
+                    "stored_at": row[5],
+                }
+            )
+        return results
 
 
 class RetainingServices(HostServices):

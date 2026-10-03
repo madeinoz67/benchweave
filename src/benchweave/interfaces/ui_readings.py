@@ -123,10 +123,12 @@ def latest_retained_readings(
     The join, newest-first and budget-bounded (design §4): runs by
     ``updated_at`` descending, evidence rows by ``stored_at`` descending
     (the store method's order), recency decided by the observation's OWN
-    ``observed_at`` — never run order. ``scan_rows`` bounds decoded
-    artifacts (every payload that parses and passes the landing lane's
-    validator, attributed or not). ``now_epoch_ms`` is accepted
-    and unused here on purpose: recency inside the join is the
+    ``observed_at`` — never run order. ``scan_rows`` bounds ARTIFACT
+    OPENS (every payload the join attempts to read, verified or not —
+    counting only successful decodes left failing rows unbounded, the
+    fold's F2) and the walk stops the moment the budget fills, so no
+    further run reads or evidence queries fire. ``now_epoch_ms`` is
+    accepted and unused here on purpose: recency inside the join is the
     observation's own stamp; the RENDER clock belongs to
     :func:`populate_tiles` (the design's split — the join is pure over
     retained bytes, the verdict is computed at render).
@@ -136,11 +138,20 @@ def latest_retained_readings(
     first-found would freeze an older observation whenever a newer
     run's reading is older than a first-found one — exactly the case
     arm A8 pins as wrong. The budget is the only work bound; the
-    expensive case (many runs, no matches) was never bounded by an
-    early stop anyway. A parameter declared by more than one bench
-    device yields NO reading for this render — no attribution guess
-    (A7). Tombstoned runs are not skipped: their retained evidence is
-    retained truth.
+    expensive case (many telemetry-free runs) is bounded by the bench's
+    run count, not by an early stop. A parameter declared by more than
+    one bench device yields NO reading for this render — no attribution
+    guess (A7). Tombstoned runs are not skipped: their retained evidence
+    is retained truth.
+
+    Attribution is parameter-name-only and CANNOT identify which bound
+    device's plugin streamed a reading (the fold's F1): the landing lane
+    records subscription_id on the evidence reference but no device
+    identity — every device in a run shares the one ``run:<id>`` context
+    key and the subscription registry is in-memory — so a sibling
+    bound by the same run whose plugin streams a parameter it does not
+    declare is NOT caught by the census (see the census clause in
+    ``ui_read.device_page`` and the #369 fold addendum for the carrier).
     """
     found: dict[str, RetainedReading] = {}
     newest: dict[str, datetime] = {}
@@ -149,8 +160,10 @@ def latest_retained_readings(
         key=lambda row: str(row["updated_at"]),
         reverse=True,
     )
-    decoded = 0
+    opened = 0
     for run in runs:
+        if opened >= scan_rows:
+            break
         run_id = str(run["run_id"])
         record = store.get_run(run_id)
         if record is None:
@@ -166,7 +179,7 @@ def latest_retained_readings(
             continue
         rows = content.evidence_rows_by_context(f"run:{run_id}", limit=scan_rows)
         for row in rows:
-            if decoded >= scan_rows:
+            if opened >= scan_rows:
                 break
             reference = row["content_ref"]
             if not isinstance(reference, dict):
@@ -182,6 +195,9 @@ def latest_retained_readings(
                 reference.get("sha256"), str
             ):
                 continue
+            # F2: every attempt counts — an open that fails verification
+            # is the cheap-to-forget case that left the walk unbounded.
+            opened += 1
             payload = _verified_payload(content, artifact_id, reference["sha256"])
             if payload is None:
                 continue
@@ -196,7 +212,6 @@ def latest_retained_readings(
                 OTDPBridge._event_reading(reading)
             except InvalidEvent:
                 continue
-            decoded += 1
             parameter = str(reading["parameter"])
             if sibling_parameter_owners.get(parameter) != 1:
                 # Unknown here, or declared by more than one bench

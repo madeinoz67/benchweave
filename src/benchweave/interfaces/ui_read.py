@@ -185,7 +185,18 @@ def register_read_pages(
                 # The census is bench-CURRENT: a sibling that declared the
                 # parameter at run time but is no longer commissioned
                 # escapes the count (design D7 — historic cross-device
-                # ambiguity is not caught here).
+                # ambiguity is not caught here). Does NOT catch either:
+                # a sibling bound by the same run whose plugin STREAMS a
+                # parameter it does not declare (refute lane 1, F1) — the
+                # landing lane records subscription_id on the evidence
+                # reference but no device identity (every run device
+                # shares the one run:<id> context key; the subscription
+                # registry is in-memory), so attribution is
+                # parameter-name-only and cannot distinguish the
+                # streamer. The guard needs a persisted
+                # subscription->device resolution — an interface/host
+                # slice; carried by the #369 fold addendum
+                # (.claude/deep-review/2026-10-04-issue369-fold-addendum.md).
                 now_epoch_ms = now_epoch() * 1000
                 presentation = populate_tiles(
                     presentation,

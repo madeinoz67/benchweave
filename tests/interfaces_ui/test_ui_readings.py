@@ -629,9 +629,17 @@ def test_a7_shared_parameter_declaration_refuses_attribution_for_both_devices(
 def test_a7_discriminator_unique_declaration_populates(
     gateway: SimpleNamespace,
 ) -> None:
-    """DISCRIMINATOR CONTROL (design §8 A7): removing the sibling's
-    declaration must flip the refusal to a populated tile — proving the
-    earlier Unavailable was the census rule, not a broken join."""
+    """DISCRIMINATOR CONTROL (design §8 A7), reframed by the fold's F1:
+    removing the sibling's declaration flips the refusal to a populated
+    tile — which pins TODAY's behavior, parameter-name-only attribution,
+    not a proof of correctness. The reading this arm seeds carries no
+    device identity at all (exactly what a real landing carries), so the
+    populated value is attributed by NAME: a sibling bound by the same
+    run whose plugin streams an undeclared "voltage" is
+    indistinguishable from this reading and is NOT caught — the census
+    clause in ``ui_read.device_page`` names the case; the carrier (a
+    persisted subscription->device resolution at landing) is an
+    interface/host slice recorded in the #369 fold addendum."""
     bench, device, sibling = "bench-a7b", "dev-a7b", "dev-a7b-sib"
     psu = _descriptor_raw([_param("voltage", max_age_ms=500)])
     sibling_v1 = _descriptor_raw([_param("voltage", max_age_ms=500)])
@@ -883,6 +891,215 @@ def test_a12_route_shape_read_only_and_no_mutating_control(
     page = _page(gateway, bench, device)
     assert "12.5" in _tile_zone(page)
     assert "<form" not in page and "<button" not in page
+
+
+# --- the refute lane's fold rows (F2/F3; F1's disclosure is comment-only) --------
+
+
+#: The instrumentation taps for the F2 budget arms: counting wrappers
+#: around the three store surfaces the join touches, patched onto the
+#: CLASSES for the duration of one page GET (the join closes over the
+#: app's own store/content instances; nothing else on the device page
+#: calls these three methods during a GET).
+_original_chunk = ContentStore.artifact_chunk
+_original_rows_by_context = ContentStore.evidence_rows_by_context
+_original_get_run = Store.get_run
+
+
+def _corrupt_run_artifacts(store: Store, run_id: str) -> None:
+    """Corrupt every landed artifact under one run context in place (the
+    read-views H2 discipline, bulk form): evidence rows stay valid, the
+    bytes no longer hash to their references — every open fails digest
+    verification."""
+    store.connection.execute(
+        "UPDATE artifacts SET data = ? WHERE artifact_id IN"
+        " (SELECT artifact_id FROM evidence WHERE context_key = ?)",
+        (b"corrupted", f"run:{run_id}"),
+    )
+    store.connection.commit()
+
+
+def _instrument_join(calls: dict[str, int], monkeypatch: pytest.MonkeyPatch) -> None:
+    """Count the join's artifact opens, evidence queries and run reads."""
+
+    def counting_chunk(
+        self: ContentStore, artifact_id: str, offset: int, length: int
+    ) -> dict[str, Any]:
+        calls["opens"] += 1
+        return _original_chunk(self, artifact_id, offset, length)
+
+    def counting_rows(
+        self: ContentStore, context_key: str, *, limit: int
+    ) -> list[dict[str, Any]]:
+        calls["queries"] += 1
+        return _original_rows_by_context(self, context_key, limit=limit)
+
+    def counting_get_run(self: Store, run_id: str) -> dict[str, Any] | None:
+        calls["runs"] += 1
+        return _original_get_run(self, run_id)
+
+    monkeypatch.setattr(ContentStore, "artifact_chunk", counting_chunk)
+    monkeypatch.setattr(ContentStore, "evidence_rows_by_context", counting_rows)
+    monkeypatch.setattr(Store, "get_run", counting_get_run)
+
+
+def test_f2_artifact_opens_are_bounded_across_runs(
+    budget: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F2(i) (refute lane 1, MEDIUM): the scan budget must bound TOTAL
+    artifact opens, not only successful decodes — rows failing digest
+    verification are the cheap-to-forget case (measured pre-fold:
+    scan_rows=2, five runs x four tampered rows -> 10 opens: the
+    per-run SQL LIMIT clamps rows to scan_rows but nothing bounds the
+    walk across runs). Five runs each carrying four tampered rows: two
+    opens exhaust the budget of 2 and the walk stops inside the first
+    queried run."""
+    bench, device = "bench-f2a", "dev-f2a"
+    descriptor = _descriptor_raw([_param("voltage", max_age_ms=500)])
+    _seed_bench(budget.store, budget.content, bench, [(device, descriptor)])
+    _admit_attachment(budget.content, descriptor, ["voltage"])
+    for index in range(5):
+        run_id = f"run-f2a-{index}"
+        _seed_run(
+            budget.store,
+            run_id,
+            bench,
+            [device],
+            updated_at=f"2026-10-03T00:00:0{index}Z",
+        )
+        _land(
+            budget.store,
+            run_id,
+            [
+                {
+                    "parameter": "voltage",
+                    "observed_ms": _NOW_MS - 250 - index,
+                    "value": 1.0 + index,
+                    "host_received_at": f"2026-10-03T00:00:0{index}.1{row}Z",
+                }
+                for row in range(4)
+            ],
+        )
+        _corrupt_run_artifacts(budget.store, run_id)
+    calls = {"opens": 0, "queries": 0, "runs": 0}
+    _instrument_join(calls, monkeypatch)
+    zone = _tile_zone(_page(budget, bench, device))
+    assert "Unavailable" in zone, "tampered rows must never render"
+    assert calls["opens"] <= 2, (
+        f"artifact opens {calls['opens']} exceed the scan budget of 2"
+    )
+    assert calls["queries"] <= 1, (
+        f"evidence queries {calls['queries']} continued past the exhausted budget"
+    )
+
+
+def test_f2_walk_stops_when_budget_fills(
+    budget: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F2(ii) (refute lane 1, MEDIUM): once the budget fills, the walk
+    must stop issuing store reads for the remaining runs (measured
+    pre-fold: scan_rows=2, four runs -> 4 evidence queries + 4 get_run,
+    get_run preceding the binding check). The newest run's two valid
+    rows fill the budget; three older runs exist and must never be
+    queried."""
+    bench, device = "bench-f2b", "dev-f2b"
+    descriptor = _descriptor_raw([_param("voltage", max_age_ms=500)])
+    _seed_bench(budget.store, budget.content, bench, [(device, descriptor)])
+    _admit_attachment(budget.content, descriptor, ["voltage"])
+    _seed_run(
+        budget.store, "run-f2b-new", bench, [device], updated_at="2026-10-03T00:00:09Z"
+    )
+    _land(
+        budget.store,
+        "run-f2b-new",
+        [
+            {
+                "parameter": "voltage",
+                "observed_ms": _NOW_MS - 250,
+                "value": 12.5,
+                "host_received_at": "2026-10-03T00:00:09.1Z",
+            },
+            {
+                "parameter": "voltage",
+                "observed_ms": _NOW_MS - 400,
+                "value": 13.5,
+                "host_received_at": "2026-10-03T00:00:09.2Z",
+            },
+        ],
+    )
+    for index in range(3):
+        run_id = f"run-f2b-old-{index}"
+        _seed_run(
+            budget.store,
+            run_id,
+            bench,
+            [device],
+            updated_at=f"2026-10-03T00:00:0{index}Z",
+        )
+        _land(
+            budget.store,
+            run_id,
+            [
+                {
+                    "parameter": "voltage",
+                    "observed_ms": _NOW_MS - 600,
+                    "value": 7.7,
+                    "host_received_at": f"2026-10-03T00:00:0{index}.1Z",
+                }
+            ],
+        )
+    calls = {"opens": 0, "queries": 0, "runs": 0}
+    _instrument_join(calls, monkeypatch)
+    zone = _tile_zone(_page(budget, bench, device))
+    assert ">12.5 <small>" in zone, "the budgeted rows did not populate"
+    assert calls["queries"] <= 1, (
+        f"evidence queries {calls['queries']} continued past the filled budget"
+    )
+    assert calls["runs"] <= 1, (
+        f"get_run calls {calls['runs']} continued past the filled budget"
+    )
+
+
+def test_f3_corrupt_reference_row_is_skipped_per_row(
+    gateway: SimpleNamespace,
+) -> None:
+    """F3 (refute lane 1, LOW): a corrupt ``content_ref_json`` column
+    kills exactly its own row, never the join — the newest row's
+    reference corrupted in place (direct SQL, the store-level corruption
+    class), the older valid row still populates."""
+    bench, device = "bench-f3", "dev-f3"
+    descriptor = _descriptor_raw([_param("voltage", max_age_ms=500)])
+    _seed_bench(gateway.store, gateway.content, bench, [(device, descriptor)])
+    _admit_attachment(gateway.content, descriptor, ["voltage"])
+    _seed_run(gateway.store, "run-f3", bench, [device], updated_at=NOW_ISO)
+    _land(
+        gateway.store,
+        "run-f3",
+        [
+            {
+                "parameter": "voltage",
+                "observed_ms": _NOW_MS - 250,
+                "value": 12.5,
+                "host_received_at": "2026-10-03T00:00:00.010Z",
+            },
+            {
+                "parameter": "voltage",
+                "observed_ms": _NOW_MS - 400,
+                "value": 44.4,
+                "host_received_at": "2026-10-03T00:00:00.020Z",
+            },
+        ],
+    )
+    gateway.store.connection.execute(
+        "UPDATE evidence SET content_ref_json = ? WHERE context_key = ?"
+        " AND stored_at = ?",
+        ("{oops", "run:run-f3", "2026-10-03T00:00:00.020Z"),
+    )
+    gateway.store.connection.commit()
+    zone = _tile_zone(_page(gateway, bench, device))
+    assert ">12.5 <small>" in zone, (
+        "one corrupt reference row aborted the whole join"
+    )
 
 
 # --- the limits row (service parameter plumbing) ---------------------------------
