@@ -544,6 +544,8 @@ All notable changes to this project will be documented in this file.
 - #224 follow-on records table + drill-down + signed rows + downloads — amended record folding the owner mockup
 - Authored adoption of the records-table and record-page components (#224 follow-on)
 - Registry mark FIRED on the live domain (owner 2026-10-03) + the missing records-table/record-page CSS declarations (authored-side gap the vendor convergence exposed)
+- #225 slice 3 design record — management surfaces and identity
+- REG-5a amendment — #225 slice 3 namespace/lifecycle clauses (corrected)
 
 ### Features
 
