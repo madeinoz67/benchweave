@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from collections.abc import AsyncIterator, Callable, Mapping
 from typing import Any
 
@@ -67,10 +68,19 @@ from benchweave.interfaces.sessions import (
 #: bounds the tick by the window itself; every drained row renders).
 
 
+#: The SSE line terminators and NOTHING else: ``str.splitlines`` also
+#: splits on U+2028/U+2029/U+0085/\v/\f/\x1c-\x1e, which are NOT SSE
+#: terminators — a payload carrying them corrupted through a
+#: spec-conforming EventSource (FOLD-2).
+_SSE_LINE = re.compile(r"\r\n|\r|\n")
+
+
 def sse_message(data: str) -> str:
-    """One unnamed SSE event whose data is ``data`` (multi-line data
-    rides one ``data:`` line per line, per the SSE grammar)."""
-    lines = data.splitlines() or [""]
+    """One unnamed SSE event whose data is ``data`` (each SSE line of the
+    data rides its own ``data:`` line, split ONLY on CRLF/CR/LF — the
+    grammar's own terminators, so every other code point passes through
+    byte-exact)."""
+    lines = _SSE_LINE.split(data) or [""]
     return "".join(f"data: {line}\n" for line in lines) + "\n"
 
 

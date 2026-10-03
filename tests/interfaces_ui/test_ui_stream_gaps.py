@@ -518,6 +518,55 @@ def test_hwm_never_advances_past_undelivered_rows(tmp_path: Path) -> None:
     _close(gen)
 
 
+# --- FOLD-2: SSE framing splits only on SSE terminators ------------------------
+
+
+def test_sse_message_frames_only_sse_line_terminators() -> None:
+    """FOLD-2 (two-lane LOW): ``str.splitlines`` splits on U+2028, U+2029,
+    U+0085, \v, \f and \x1c-\x1e — none of which terminate an SSE line.
+    A payload carrying them must frame ONLY on CRLF/CR/LF, so a
+    spec-conforming EventSource reassembles the original bytes: parse
+    the frame on the SSE terminators and rejoin the data lines."""
+    from benchweave.interfaces.ui_stream import sse_message
+
+    payload = (
+        "line one twothree\vfour\ffive\x1csix\x1dseven\x1eeight"
+        " then crlf\r\nand\rlf\nlast"
+    )
+    frame = sse_message(payload)
+    # Parse per the SSE grammar: lines split ONLY on \n (the framing
+    # emitted \n after every data line); data lines rejoin with \n —
+    # CR/CRLF are SSE terminators and legitimately normalize to \n,
+    # the Unicode separators are NOT and must pass through byte-exact.
+    lines = re.split(r"\n", frame)
+    data_lines = [
+        line.removeprefix("data: ") for line in lines if line.startswith("data: ")
+    ]
+    reassembled = "\n".join(data_lines)
+    expected = (
+        "line one twothree\vfour\ffive\x1csix\x1dseven\x1eeight"
+        " then crlf\nand\nlf\nlast"
+    )
+    assert reassembled == expected, (reassembled, expected)
+
+
+def test_sse_message_round_trips_plain_newlines() -> None:
+    """The control: payloads whose only breaks ARE SSE terminators frame
+    and reassemble exactly — the fix changes nothing for them."""
+    from benchweave.interfaces.ui_stream import sse_message
+
+    payload = "row one\nrow two\r\nrow three\rrow four"
+    frame = sse_message(payload)
+    lines = re.split(r"\n", frame)
+    data_lines = [
+        line.removeprefix("data: ") for line in lines if line.startswith("data: ")
+    ]
+    # All three break kinds are SSE terminators: each frames its own
+    # data line and the reassembly joins with \n (the spec-normalized
+    # form — not a corruption, the defined behavior).
+    assert "\n".join(data_lines) == "row one\nrow two\nrow three\nrow four"
+
+
 # --- route-level: the real induction through HTTP -------------------------------
 
 
