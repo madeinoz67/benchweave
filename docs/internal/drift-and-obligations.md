@@ -162,7 +162,7 @@ and remain the reviewer's job.
     D-B5). The pin's freshness is machine-watched by the SDK repository's
     `ui-html-pin-freshness` lane (issue #294, 2026-10-04: push-to-main +
     weekly; WARN when the pin trails the index — it advances deliberately
-    per train — and red only on an inability to determine), so a release
+    per train — and red on an inability to determine or a pin that names a release the index does not serve), so a release
     the pin has not yet followed surfaces as a weekly warning, never
     silence.
 
