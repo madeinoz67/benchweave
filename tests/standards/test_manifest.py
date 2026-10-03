@@ -14,8 +14,11 @@ from benchweave.standards.manifest import (
     StandardEntry,
     StandardsError,
     StandardsManifest,
+    active_version_from_corpus,
     load_identity,
     load_manifest,
+    load_manifest_from_corpus,
+    normative_path_from_corpus,
     validate_identity,
     validate_manifest,
 )
@@ -767,3 +770,107 @@ def test_case_camouflaged_prefix_row_refuses_at_load(tmp_path: Path) -> None:
     _rewrite_normative(standards, ["Standards/demo/0.2.0-dev/demo.schema.json"])
     with pytest.raises(StandardsError, match=r"normative_path_escape: demo:"):
         load_manifest(standards)
+
+
+# --- the corpus-rooted row resolver (issue #367 D1) --------------------------------
+#
+# The two RUNTIME normative-row sites (the ACTIVE descriptor resolver and
+# the vendored provider-contract resolver) route through
+# normative_path_from_corpus, so the #238 load discipline covers runtime
+# row resolution, not only the repo-rooted load. The resolver-level arms
+# pin the refusal vocabulary and the two-level discrimination the sites
+# inherit; the site-level arms live in tests/control/test_normative_seam.py
+# and tests/unit/test_provider_settings.py.
+
+
+def test_resolver_refuses_a_backslash_row(tmp_path: Path) -> None:
+    # The backslash form through the RESOLVER: the load-boundary lexicon
+    # fires before any basename match — host-portable. Pre-fix behavior
+    # was Windows-conditional (fold row B2, refute wave): on Windows the
+    # basename matched (backslash is a separator there), the prefix strip
+    # no-oped, and the schema read crashed with a raw, untyped
+    # FileNotFoundError — import-time reachable through
+    # provider_contract_validator (settings load); on POSIX Path.name
+    # keeps the whole backslash row, the basename never matched, and the
+    # typed exactly-once refusal fired instead. The load-boundary refusal
+    # makes both hosts refuse the same row with the same words.
+    standards = _planted_tree(
+        tmp_path, {"title": "Demo schema", "description": "No version mentioned"}
+    )
+    _rewrite_normative(standards, ["standards\\demo\\0.2.2-dev\\demo.schema.json"])
+    with pytest.raises(StandardsError, match=r"normative_path_escape: demo:"):
+        normative_path_from_corpus(standards / "standards", "demo", "demo.schema.json")
+
+
+def test_resolver_refuses_a_leading_dot_row(tmp_path: Path) -> None:
+    # The './' class (the #238 lane-B fold) pinned through the resolver:
+    # the canonical-form identity refuses the row at load, before the
+    # basename match could select it.
+    standards = _planted_tree(
+        tmp_path, {"title": "Demo schema", "description": "No version mentioned"}
+    )
+    _rewrite_normative(standards, ["./standards/demo/0.2.0-dev/demo.schema.json"])
+    with pytest.raises(StandardsError, match=r"normative_path_escape: demo:"):
+        normative_path_from_corpus(standards / "standards", "demo", "demo.schema.json")
+
+
+def test_resolver_resolves_and_discriminates(tmp_path: Path) -> None:
+    # The resolver's own vocabulary over a clean tree, one refusal per
+    # shape: exactly-once resolves to the corpus-joined path; a twice-named
+    # file and an absent entry refuse typed (the twins' vocabulary for the
+    # latter); and a matched NON-corpus row (the parity live source's
+    # shape) refuses here while the loader still ADMITS it — the two-level
+    # discrimination (the loader admits the shape, the resolver declines
+    # to serve it).
+    standards = _planted_tree(
+        tmp_path, {"title": "Demo schema", "description": "No version mentioned"}
+    )
+    corpus = standards / "standards"
+    assert normative_path_from_corpus(corpus, "demo", "demo.schema.json") == (
+        corpus / "demo/0.1.0/demo.schema.json"
+    )
+    _rewrite_normative(
+        standards,
+        [
+            "standards/demo/0.1.0/demo.schema.json",
+            "standards/demo/0.9.0/demo.schema.json",
+        ],
+    )
+    with pytest.raises(
+        StandardsError, match=r"normative_document_unresolved: demo: demo.schema.json"
+    ):
+        normative_path_from_corpus(corpus, "demo", "demo.schema.json")
+    with pytest.raises(StandardsError, match=r"standards_entry_absent: absent"):
+        normative_path_from_corpus(corpus, "absent", "demo.schema.json")
+    _rewrite_normative(
+        standards,
+        [
+            "standards/demo/0.1.0/demo.schema.json",
+            "src/benchweave/presentation/contracts.py",
+        ],
+    )
+    with pytest.raises(StandardsError, match=r"normative_row_not_corpus: demo:"):
+        normative_path_from_corpus(corpus, "demo", "contracts.py")
+    entry = load_manifest_from_corpus(corpus).standards[0]
+    assert entry.normative == (
+        "standards/demo/0.1.0/demo.schema.json",
+        "src/benchweave/presentation/contracts.py",
+    )
+
+
+def test_resolver_entry_absent_message_pins_the_twin_parity(tmp_path: Path) -> None:
+    # Fold row A2 (refute wave): the resolver's standards_entry_absent
+    # message is a string-equal copy of the corpus twin's
+    # (active_version_from_corpus) — "same words on both surfaces"
+    # pinned as current truth over the same planted corpus. A pin arm,
+    # not a RED-able behavior change: it fixes the parity the resolver
+    # was built with, so a future drift in either message redds here.
+    standards = _planted_tree(
+        tmp_path, {"title": "Demo schema", "description": "No version mentioned"}
+    )
+    corpus = standards / "standards"
+    with pytest.raises(StandardsError) as twin_refusal:
+        active_version_from_corpus(corpus, "absent")
+    with pytest.raises(StandardsError) as resolver_refusal:
+        normative_path_from_corpus(corpus, "absent", "demo.schema.json")
+    assert str(resolver_refusal.value) == str(twin_refusal.value)

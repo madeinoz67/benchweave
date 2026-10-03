@@ -44,7 +44,7 @@ from typing import Any
 from jsonschema import Draft202012Validator, FormatChecker
 
 from benchweave.content.json_document import DocumentRejected, load_document
-from benchweave.standards.manifest import StandardsError
+from benchweave.standards.manifest import normative_path_from_corpus
 from benchweave.vendoring import contract_family
 
 #: The one settings filename the bootstrap seam looks for (optional).
@@ -142,26 +142,16 @@ def provider_contract_validator() -> Any:
     if validator is None:
         # contract_family serves both layouts (``_vendored/contracts`` in a
         # wheel, ``standards`` in a checkout); the corpus root is its parent
-        # and carries the standards manifest beside the version dirs.
-        corpus = contract_family("otdp").parent
-        manifest = json.loads(
-            (corpus / "standards-manifest.json").read_text(encoding="utf-8")
+        # and carries the standards manifest beside the version dirs. The
+        # row resolves through the canonical load discipline's corpus-rooted
+        # resolver — every structural and row-lexicon refusal of
+        # load_manifest is this site's refusal too, with the loader's own
+        # words (issue #367 D1); the exactly-once refusal carries the
+        # shared vocabulary (normative_document_unresolved).
+        schema_path = normative_path_from_corpus(
+            contract_family("otdp").parent, "otdp", PROVIDER_SCHEMA_NAME
         )
-        matches = [
-            relative
-            for entry in manifest["standards"]
-            if entry.get("id") == "otdp"
-            for relative in entry["normative"]
-            if Path(relative).name == PROVIDER_SCHEMA_NAME
-        ]
-        if len(matches) != 1:
-            raise StandardsError(
-                f"provider_schema_unresolved: {PROVIDER_SCHEMA_NAME} is not "
-                "named exactly once in the otdp entry's normative list"
-            )
-        schema = json.loads(
-            (corpus / matches[0].removeprefix("standards/")).read_text(encoding="utf-8")
-        )
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
         validator = Draft202012Validator(schema, format_checker=FormatChecker())
         _VALIDATORS[PROVIDER_SCHEMA_NAME] = validator
     return validator

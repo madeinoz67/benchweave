@@ -223,6 +223,16 @@ def _check_normative_row_path(entry_id: str, relative: str) -> None:
 def load_manifest(root: Path) -> StandardsManifest:
     path = root / "standards/standards-manifest.json"
     document = json.loads(path.read_bytes())
+    return _entries_from_document(document)
+
+
+def _entries_from_document(document: dict[str, Any]) -> StandardsManifest:
+    """The parse core every manifest load shares (issue #367 D1): the
+    manifest_version gate, entry validity, pure-semver active versions,
+    duplicate ids, and the #238 row lexicon — verbatim the body
+    ``load_manifest`` carried, moved once so a corpus-rooted load
+    (``load_manifest_from_corpus``) refuses exactly what the repo-rooted
+    load refuses, same words."""
     if document.get("manifest_version") != 1:
         raise StandardsError("standards_manifest_version_unsupported")
     entries: list[StandardEntry] = []
@@ -504,6 +514,72 @@ def active_version_from_corpus(corpus: Path, standard_id: str) -> str:
         "for this standard — a countable-standards manifest always does; "
         "absence is corruption, not an empty answer)"
     )
+
+
+def load_manifest_from_corpus(corpus: Path) -> StandardsManifest:
+    """The canonical load discipline over a CORPUS directory (issue #367 D1).
+
+    The corpus-shaped twin of ``load_manifest`` (the
+    ``load_dependency_policy_from_corpus`` naming): the manifest is read
+    from ``<corpus>/standards-manifest.json`` through
+    ``_read_corpus_manifest``'s corruption wrap, and the parse core
+    (``_entries_from_document``) applies every structural and row-lexicon
+    refusal the repo-rooted load applies — same words on both surfaces, so
+    wheel-packaged consumers (the packaged root carries the manifest at
+    its corpus root) cross the same #238 boundary checkout consumers do.
+    This is also the D2 landing point (issue #367 §10): a dev-segment
+    predicate lands in the shared core and covers both load roots at once.
+    """
+    return _entries_from_document(_read_corpus_manifest(corpus))
+
+
+def normative_path_from_corpus(
+    corpus: Path, standard_id: str, document_name: str
+) -> Path:
+    """The corpus-joined path of the exactly-once normative row named
+    ``document_name`` in ``standard_id``'s entry, under the full load
+    discipline (issue #367 D1 — the runtime sites' ONE resolver).
+
+    The manifest loads through ``load_manifest_from_corpus``, so every
+    structural and row-lexicon refusal of ``load_manifest`` is this
+    resolver's refusal too, with the loader's own words — a resolver that
+    crosses the boundary cannot forget the discipline (the
+    ``declared_dev_family`` pattern, corpus-rooted). The resolved row is
+    never opened here: row trust is manifest trust, and the caller owns
+    the read. Refusals beyond the loader's own: ``standards_entry_absent``
+    (the twins' vocabulary — absence is corruption, not an empty answer),
+    ``normative_document_unresolved`` when the name is not exactly-once
+    (ONE vocabulary for both runtime sites, issue #367 owner fork 3), and
+    ``normative_row_not_corpus`` for a MATCHED row without the
+    ``standards/`` prefix — this resolver serves corpus rows only, while
+    the loader still admits non-corpus rows (the parity live source's
+    shape; the #238 discrimination arm stays green).
+    """
+    manifest = load_manifest_from_corpus(corpus)
+    entry = next((e for e in manifest.standards if e.id == standard_id), None)
+    if entry is None:
+        raise StandardsError(
+            f"standards_entry_absent: {standard_id} (the manifest carries no entry "
+            "for this standard — a countable-standards manifest always does; "
+            "absence is corruption, not an empty answer)"
+        )
+    matches = [
+        relative
+        for relative in entry.normative
+        if PurePosixPath(relative).name == document_name
+    ]
+    if len(matches) != 1:
+        raise StandardsError(
+            f"normative_document_unresolved: {standard_id}: {document_name} "
+            "is not named exactly once in the entry's normative list"
+        )
+    row = matches[0]
+    if not row.startswith("standards/"):
+        raise StandardsError(
+            f"normative_row_not_corpus: {standard_id}: {row} (this resolver "
+            "serves corpus rows; a non-corpus row is not resolvable here)"
+        )
+    return corpus / row[len("standards/") :]
 
 
 def load_sdk_compatibility(root: Path) -> SdkCompatibility:

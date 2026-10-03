@@ -304,3 +304,56 @@ def test_a_missing_document_file_refuses(tmp_path: Path) -> None:
     (tmp_path / "reference-provider.json").unlink()
     with pytest.raises(ValueError, match="settings_schema:"):
         mod.load_transport_settings(path)
+
+
+def test_provider_site_refuses_a_traversal_normative_row(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The vendored provider-contract resolver refuses the interior-``..``
+    normative row at the load discipline (``normative_path_escape``) — the
+    #238 premise planted at the second runtime seam (issue #367 D1). RED
+    pre-fix: the site parsed the manifest itself, matched the basename,
+    stripped the prefix, and built its validator on the dev tree's bytes
+    (different from the active pair's). ``_VALIDATORS`` is reset so the arm
+    resolves the planted corpus, never a previously cached real validator
+    (a vacuous green — the sweep's risk 3)."""
+    import benchweave.vendoring as vendoring
+
+    mod = _module()
+    root = tmp_path / "repo"
+    corpus = root / "standards"
+    corpus.mkdir(parents=True)
+    for version, marker in (("0.2.2", "active"), ("0.2.2-dev", "dev-tree")):
+        family = corpus / "otdp" / version
+        family.mkdir(parents=True)
+        (family / mod.PROVIDER_SCHEMA_NAME).write_text(
+            json.dumps({"type": "object", "properties": {"bytes": {"const": marker}}}),
+            encoding="utf-8",
+        )
+    (corpus / "standards-manifest.json").write_text(
+        json.dumps(
+            {
+                "manifest_version": 1,
+                "standards": [
+                    {
+                        "id": "otdp",
+                        "version": "0.2.2",
+                        "status": "stable",
+                        "released": "2026-10-01",
+                        "normative": [
+                            "standards/otdp/0.2.2/../0.2.2-dev/"
+                            + mod.PROVIDER_SCHEMA_NAME
+                        ],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    packaged = tmp_path / "packaged-miss"
+    (packaged / "contracts").mkdir(parents=True)
+    monkeypatch.setattr(vendoring, "_PACKAGED_ROOT", packaged)
+    monkeypatch.setattr(vendoring, "_REPO_ROOT", root)
+    monkeypatch.setattr(mod, "_VALIDATORS", {})
+    with pytest.raises(ValueError, match="normative_path_escape"):
+        mod.provider_contract_validator()
