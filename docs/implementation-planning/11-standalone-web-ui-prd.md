@@ -1,6 +1,6 @@
 # Standalone Web UI (FastAPI + MCP + HTMX): Requirements PRD
 
-**Status:** Draft v0.3, revised 2026-10-01 for the PRD 12 rulings; amended 2026-10-03 for the 2026-10-02 packaging rulings (issue #309: package `benchweave_sdk_server`, one `src/` tree, `benchweave-sdk[server]` extra — Summary 4, §8 Q1, NFR-P1, SW-02, §9 I1) · **Owner:** Stephen (madeinoz67) · **Scope:** `benchweave-sdk` standalone mode · **Related:** madeinoz67/benchweave#242, #243, #244
+**Status:** Draft v0.3, revised 2026-10-01 for the PRD 12 rulings; amended 2026-10-03 for the 2026-10-02 packaging rulings (issue #309: package `benchweave_sdk_server`, one `src/` tree, `benchweave-sdk[server]` extra — Summary 4, §8 Q1, NFR-P1, NFR-P2, SW-02, SW-03, §9 I1) · **Owner:** Stephen (madeinoz67) · **Scope:** `benchweave-sdk` standalone mode · **Related:** madeinoz67/benchweave#242, #243, #244
 
 ## Summary
 
