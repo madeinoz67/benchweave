@@ -466,7 +466,7 @@ def register_control_routes(
 
     Same closures as the read pages: one session resolution, one
     failure translation, one unauthenticated shape."""
-    max_lease_ms = int(limits.get("max_lease_ms", 600_000))
+    max_lease_ms = int(limits.get("max_lease_ms", 21600000))  # #307's published default
     poll_base_ms = int(limits.get("ui_panel_poll_ms", DEFAULT_PANEL_POLL_MS))
 
     def _authed(request: Request) -> tuple[SessionRecord, Identity] | None:
@@ -513,19 +513,6 @@ def register_control_routes(
                 poll_base_ms=poll_base_ms,
             )
         )
-
-    async def _fragment_inputs(request: Request, bench_id: str) -> tuple[Any, Any]:
-        """The live session record and the bench projection, or the
-        refusal page responses (unauthenticated / seam failure)."""
-        authed = _authed(request)
-        if authed is None:
-            return None, unauthenticated_page()
-        record, identity = authed
-        try:
-            bench = operations.bench_get(identity, bench_id)
-        except OperationFailure as fail:
-            return None, failure_page(fail)
-        return (record, identity), bench
 
     @router.get("/benches/{bench_id}/controls", include_in_schema=False)
     async def controls_fragment(bench_id: str, request: Request) -> Response:

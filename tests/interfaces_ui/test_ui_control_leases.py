@@ -386,6 +386,52 @@ def test_the_form_bound_is_the_minimum_of_lease_limit_and_session(rig: Any) -> N
     assert f'max="{bound}"' in fragment.text
 
 
+def test_the_lease_bound_fallback_is_the_published_default(
+    tmp_path: Any,
+) -> None:
+    """FOLD-9: with ``max_lease_ms`` absent from a caller's limits
+    table, the fragment's bound reads the SAME default the app-entry
+    table publishes (#307's 6-hour ruling, 21 600 000), not the retired
+    10-minute constant. Composed without the key on purpose: the
+    fallback is the only mechanism under test here."""
+    clock = _Clock()
+    store = Store.open(
+        str(tmp_path / "state-fold9.sqlite"), check_same_thread=False
+    )
+    limits = {key: value for key, value in LIMITS.items() if key != "max_lease_ms"}
+    app = create_app(
+        store=store,
+        content=ContentStore(store),
+        secret=SECRET,
+        limits=limits,
+        gateway_id="ui-fold9",
+        fixtures_dir=FIXTURES,
+        now_iso=clock.iso,
+        now_epoch=clock.epoch_s,
+    )
+    with TestClient(app, base_url=_CLIENT_BASE) as client:
+        sessions_store: SessionStore = app.state.ui_sessions
+        code = sessions_store.mint_login_code(
+            Identity(
+                principal="ui-operator",
+                audience="stg",
+                scopes=CONTROL,
+                expires_at=NOW_EPOCH + 12 * 3600,
+            ),
+            ttl_seconds=28800,  # 8 h session: the published default binds first
+        )
+        record = sessions_store.exchange(code)
+        response = client.get(
+            f"/ui/benches/{_BENCH}/controls",
+            cookies={"bw_session": record.session_id},
+            follow_redirects=False,
+        )
+    assert response.status_code == 200
+    # min(published default 21 600 000, session 28 800 000) = 21 600 000.
+    assert 'value="21600000"' in response.text
+    assert 'max="21600000"' in response.text
+
+
 # --- D: the lease lifecycle over the fragment -------------------------------------
 
 
