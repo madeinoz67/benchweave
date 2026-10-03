@@ -402,6 +402,26 @@ rather than rewriting the history — that is how this file earns trust.
   and Windows-form or dot-segment rows resolve into the real tree where
   the export's basename mapping launders the bytes; committed bytes are
   canonical and carry none of these forms.
+  Amendment (2026-10-04, issue #367 D1): the load boundary gains a
+  corpus-rooted twin — `load_manifest_from_corpus` reads
+  `<corpus>/standards-manifest.json` through the corpus twins' corruption
+  wrap and the same parse core (`_entries_from_document`) `load_manifest`
+  applies, so wheel-packaged consumers (the packaged root carries the
+  manifest at its corpus root) cross the same discipline checkout
+  consumers do — and the two RUNTIME normative-row resolvers (the ACTIVE
+  descriptor schema via `documents._otdp_normative_path`; the vendored
+  provider-contract schema via
+  `provider_settings.provider_contract_validator`) route through one
+  shared resolver (`normative_path_from_corpus`), so the refusal family
+  (`normative_path_escape` and the structural set) now covers every
+  runtime row resolution, not only the repo-rooted load. The sites' two
+  private unresolved-name prefixes merge into the resolver's one
+  vocabulary (`normative_document_unresolved`; plus
+  `standards_entry_absent` and `normative_row_not_corpus` for a matched
+  non-corpus row — the loader still admits non-corpus rows, the resolver
+  declines to serve them). A clean `-dev`-segment row in an active list
+  remains the deferred D2 form (issue #367 §10; amended trigger — the
+  next head-opening train's merge).
 - **[CON-8]** The corpus identity block is closed-world and derived-checked against
   its machine authorities at every export/check — an unknown key is refused
   (`identity_key_unknown`; a new key is a standards-governance event, not an

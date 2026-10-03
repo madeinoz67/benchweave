@@ -81,6 +81,7 @@ from benchweave.standards.manifest import (
     StandardsError,
     declared_dev_head,
     load_dependency_policy_from_corpus,
+    normative_path_from_corpus,
     retained_versions_from_corpus,
     served_versions_from_corpus,
     version_tuple,
@@ -657,30 +658,16 @@ def _otdp_versioned_schema_path(
 def _otdp_normative_path(document_name: str) -> Path:
     """The vendored path of the one otdp normative file with this name.
 
-    Manifest-derived (the active version is the manifest's, never a
-    hardcoded gateway constant); refuses unless the name appears exactly
-    once in the otdp entry's normative list.
+    Delegation to the corpus-rooted resolver (issue #367 D1): every
+    structural and row-lexicon refusal of ``load_manifest`` is this
+    site's refusal too, with the loader's own words — a resolver that
+    crosses the boundary cannot forget the discipline (the
+    ``declared_dev_family`` pattern, corpus-rooted). Manifest-derived as
+    before (the active version is the manifest's, never a hardcoded
+    gateway constant); the exactly-once refusal carries the shared
+    vocabulary (``normative_document_unresolved``).
     """
-    # contract_family serves both layouts (``_vendored/contracts`` in a
-    # wheel, ``standards`` in a checkout); the corpus root is its parent
-    # and carries the standards manifest beside the version dirs.
-    corpus = contract_family("otdp").parent
-    manifest = json.loads(
-        (corpus / "standards-manifest.json").read_text(encoding="utf-8")
-    )
-    matches = [
-        relative
-        for entry in manifest["standards"]
-        if entry.get("id") == "otdp"
-        for relative in entry["normative"]
-        if Path(relative).name == document_name
-    ]
-    if len(matches) != 1:
-        raise StandardsError(
-            f"otdp_document_unresolved: {document_name} is not named exactly "
-            "once in the otdp entry's normative list"
-        )
-    return corpus / str(matches[0]).removeprefix("standards/")
+    return normative_path_from_corpus(_otdp_corpus(), "otdp", document_name)
 
 
 def otdp_normative_path(document_name: str) -> Path:
