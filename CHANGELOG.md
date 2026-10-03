@@ -885,6 +885,7 @@ All notable changes to this project will be documented in this file.
 - Regenerate uv.lock for the fastmcp 4.0.10 bump
 - Delete the gateway-side search/panel/authority proof fleet (#224 s2 pivot)
 - Delete the mirror machinery; restore the literal gate to its pre-slice shape (#224 s2 pivot)
+- Bump actions/configure-pages from 5.0.0 to 6.0.0 (#349)
 
 ### Performance
 
