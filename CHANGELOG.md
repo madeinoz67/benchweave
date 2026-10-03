@@ -590,6 +590,7 @@ All notable changes to this project will be documented in this file.
 - #367 fold wave — five record-accuracy rows from the refute lanes
 - Issue #316 endurance-authz design record
 - Fold wave — the full seam-skip family, grant scope, boundary
+- Issue #231 park reconcile — 2026-09-26 dispositions re-verified at main c183db4
 
 ### Features
 
