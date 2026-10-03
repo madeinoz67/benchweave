@@ -793,6 +793,7 @@ All notable changes to this project will be documented in this file.
 - Gate packages/sdk staleness — sdk-drift lane (#347 WS1) (#360)
 - G2a — the browser session, /ui shell and routing pins (#303) (#363)
 - G2b — the read views, refusal matrix and route-mapping gate (#303) (#368)
+- G2c — the live-events SSE bridge (#303) (#370)
 
 ### Hardware Evidence
 
