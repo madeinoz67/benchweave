@@ -146,7 +146,7 @@ The seam is the only place state changes. SSE events are published from the seam
 
 - SW-01. One ASGI app built by a factory; FastAPI for HTTP, FastMCP mounted at `/mcp` under a combined lifespan, mirroring the gateway's `interfaces/app.py` composition.
 - SW-02. One CLI entry: **Direction (non-binding)** `benchweave-sdk-server serve <plugin project> [--port] [--host] [--allow-network] [--no-open]`. Loads the plugin from its installed package or project path, reads `descriptor.json` and `presentation.json`, validates both before binding a port.
-- SW-03. A stdio MCP entry (`benchweave-standalone mcp <plugin project>`) runs the same app in-process with no HTTP listener, for MCP clients that launch servers themselves.
+- SW-03. A stdio MCP entry (`benchweave-sdk-server mcp <plugin project>`) runs the same app in-process with no HTTP listener, for MCP clients that launch servers themselves.
 - SW-04. One adapter session per process. A second device is a second process on another port. Multi-device composition is gateway territory.
 - SW-05. Startup refuses, with a `snake_case:` prefixed error, when the descriptor, presentation or presets fail SDK validation. No partial serve.
 
@@ -254,7 +254,7 @@ Authoring (NFR-S8, NFR-S9). An agent that can rewrite and reload adapter code ho
 **Packaging (NFR-P).**
 
 - NFR-P1. The default dependency set is unchanged (PKG-1, PKG-2). Web, MCP and serial dependencies live in the `benchweave-sdk[server]` optional extra; the wheel's contents include the server package's bytes (extras are dependency sets, not file sets — 2026-10-02 rulings, issue #309).
-- NFR-P2. Pinned versions aligned with the gateway where shared: FastAPI, uvicorn, `fastmcp[server]==4.0.3`, uPlot. The digital lane renderer is host-owned (no vendored JS for it). htmx vendored as a single hashed file with its SSE extension.
+- NFR-P2. Pinned versions aligned with the gateway where shared: FastAPI, uvicorn, `fastmcp==4.0.3`, uPlot. The digital lane renderer is host-owned (no vendored JS for it). htmx vendored as a single hashed file with its SSE extension.
 - NFR-P3. Vendored UI assets (tokens, themes, htmx, uPlot) are inventory-hashed and verified at serve time, as `bundled_assets()` does for the preview renderer.
 - NFR-P4. Python 3.13, uv, runs on Linux, macOS and Windows (serial on all three).
 
