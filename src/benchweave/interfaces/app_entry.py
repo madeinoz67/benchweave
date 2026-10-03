@@ -151,6 +151,11 @@ def _ui_enabled_from_env() -> bool:
     )
 
 
+#: Seconds-granular knobs: a sub-second value is a misconfiguration,
+#: not a tuning choice (fold G3 — the 999-probe refuses at boot).
+_MS_FLOOR_KEYS = frozenset({"ui_login_code_ttl_ms", "ui_session_ttl_ms"})
+
+
 def _limits_from_env() -> dict[str, int]:
     """``_LIMITS`` plus the quota ceilings the environment configures.
 
@@ -168,9 +173,17 @@ def _limits_from_env() -> dict[str, int]:
                 raise RuntimeError(
                     f"refusing to boot: {env}={raw!r} must be an integer >= 1"
                 ) from None
-            if value < 1:
+            floor = 1000 if key in _MS_FLOOR_KEYS else 1
+            if value < floor:
                 raise RuntimeError(
-                    f"refusing to boot: {env}={raw!r} must be an integer >= 1"
+                    f"refusing to boot: {env}={raw!r} must be an integer"
+                    f" >= {floor}"
+                    + (
+                        " (a sub-second TTL is a misconfiguration, not a"
+                        " tuning choice)"
+                        if floor == 1000
+                        else ""
+                    )
                 )
             limits[key] = value
     return limits

@@ -1063,8 +1063,15 @@ def create_app(
         # sees the empty path) — an explicit hop keeps it in the UI's own
         # namespace instead of the slash-redirect landing on the catch-all
         # mount (the defect the GW-04 suite caught at build time).
+        # Fold G1: the exact /ui path is owned for EVERY method — a
+        # 307 preserves the request method, and the redirect keeps
+        # non-GET /ui answers inside the UI's namespace instead of
+        # falling through indistinguishably from the disabled posture.
         app.add_api_route(
-            "/ui", ui_root_redirect, methods=["GET"], include_in_schema=False
+            "/ui",
+            ui_root_redirect,
+            methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+            include_in_schema=False,
         )
         # Mounted BETWEEN the REST include and the catch-all "/" mount so
         # the UI owns its namespace (GW-04); the guards scope to the

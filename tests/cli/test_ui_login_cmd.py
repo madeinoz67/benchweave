@@ -129,7 +129,7 @@ def test_limits_table_carries_the_session_knobs() -> None:
 @pytest.mark.parametrize(
     ("raw", "expected"),
     [
-        ("1", 1),
+        ("1000", 1000),  # the floor itself (fold G3: sub-second refuses)
         ("90000", 90000),
     ],
 )
@@ -212,3 +212,24 @@ def test_disabled_flag_composes_without_the_ui(
     paths = {getattr(route, "path", "") for route in app.routes}
     assert not any(path.startswith("/ui") for path in paths), sorted(paths)
     assert not hasattr(app.state, "ui_sessions")
+
+
+@pytest.mark.parametrize(
+    ("env", "value"),
+    [
+        ("BENCHWEAVE_UI_LOGIN_CODE_TTL_MS", "999"),
+        ("BENCHWEAVE_UI_SESSION_TTL_MS", "999"),
+        ("BENCHWEAVE_UI_LOGIN_CODE_TTL_MS", "1"),  # the old >=1 floor is gone
+    ],
+)
+def test_sub_second_ttl_knobs_refuse_boot(
+    monkeypatch: pytest.MonkeyPatch, env: str, value: str
+) -> None:
+    """Fold G3: a sub-second *_TTL_MS value is a misconfiguration, not a
+    tuning choice — seconds-granular knobs parse fail-loud below 1000.
+    (ui_max_bridges_per_session is a count and keeps its >= 1 floor.)"""
+    from benchweave.interfaces import app_entry
+
+    monkeypatch.setenv(env, value)
+    with pytest.raises(RuntimeError, match=env):
+        app_entry._limits_from_env()

@@ -88,3 +88,17 @@ def test_no_nested_directories_under_assets() -> None:
     for entry in assets.ASSETS_DIR.iterdir():
         assert entry.is_file(), f"unexpected directory: {entry}"
         assert Path(entry).name == entry.name
+
+
+def test_bw_host_acquires_nothing_client_side() -> None:
+    """Fold G7 — the innerHTML provenance invariant, structurally: the
+    host script constructs NO content of its own and fetches nothing;
+    the only data entering a swap is an EventSource payload the SERVER
+    pushed (server-templated fragments). No fetch, no XHR — everything
+    rendered originated server-side."""
+    source = (assets.ASSETS_DIR / "bw-host.js").read_text(encoding="utf-8")
+    assert "fetch(" not in source
+    assert "XMLHttpRequest" not in source
+    assert "$.ajax" not in source
+    # The invariant is named in the source where the swap happens.
+    assert "server-templated" in source
