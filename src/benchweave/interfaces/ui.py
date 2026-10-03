@@ -34,7 +34,6 @@ from pathlib import Path
 from typing import Any
 
 from benchweave_ui_html import assets as ui_assets
-from benchweave_ui_html.data import RefusalData
 from benchweave_ui_html.partials import render_refusal
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import (
@@ -48,6 +47,7 @@ from jinja2 import Environment, PackageLoader, StrictUndefined
 from markupsafe import Markup
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 
+from benchweave.interfaces import ui_refusals
 from benchweave.interfaces.errors import FAILURE_HTTP, Failure, OperationFailure, failure
 from benchweave.interfaces.identity import Identity, IdentityRejected, validate
 from benchweave.interfaces.operations import Operations
@@ -81,16 +81,11 @@ SESSION_COOKIE = "bw_session"
 GUARD_NAMES: tuple[str, ...] = ("trusted_host", "body_cap", "csrf", "csp")
 DEFAULT_GUARDS: frozenset[str] = frozenset(GUARD_NAMES)
 
-#: The §C.3 row the session-less page renders. Carried data, pinned to
-#: ``docs/internal/ui-contract.md``'s table by test (drift reds in the
-#: suite, not in a browser). G2b generalises this to the full row table.
-UNAUTHENTICATED_REFUSAL = RefusalData(
-    code="unauthenticated",
-    severity="warning",
-    what_happened="The request was not accepted: the caller is not authenticated.",
-    sent_status="NO",
-    operator_action="Authenticate and submit again.",
-)
+#: The §C.3 row the session-less page renders — now a reference into the
+#: full carried table (G2b): ``ui_refusals.REFUSAL_ROWS`` is the one copy,
+#: pinned to ``docs/internal/ui-contract.md``'s table by test (drift reds
+#: in the suite, not in a browser).
+UNAUTHENTICATED_REFUSAL = ui_refusals.REFUSAL_ROWS["unauthenticated"]
 
 _HOST_STATIC = Path(__file__).resolve().parent / "ui_static"
 
@@ -527,9 +522,10 @@ def build_ui_router(
         return parsed
 
     def _failure_page(fail: OperationFailure) -> HTMLResponse:
-        """A seam failure renders through the shell with its own code,
-        message and correlation id (GW-11's shape; G2b generalises to the
-        full §C.3 row table and its induced-code matrix)."""
+        """A seam failure renders its own §C.3 row — severity, what
+        happened, sent status, operator action — beside the failure's
+        message and correlation id (GW-11: the code's own row, never a
+        softer one; G2b generalises the G2a shape to the full table)."""
         return _page(
             "failure.j2",
             status=FAILURE_HTTP[fail.failure.code],
@@ -540,6 +536,11 @@ def build_ui_router(
             mode_banner=None,
             csrf_token=None,
             failure=fail.failure,
+            # Trusted package-rendered HTML (the §C.3 partial over the
+            # carried row) — S704's escape hatch is not in play.
+            refusal_html=Markup(  # noqa: S704
+                render_refusal(ui_refusals.row_for(fail.failure.code))
+            ),
         )
 
     @router.get("/", include_in_schema=False)

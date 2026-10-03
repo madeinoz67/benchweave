@@ -1080,6 +1080,11 @@ def create_app(
             ),
         )
         app.state.ui_sessions = ui_sessions
+        # The seam object for the /ui adapter's acceptance arms (G2b): the
+        # induced-code refusal matrix monkeypatches read operations here —
+        # the same object the router closes over, so an induced refusal is
+        # the adapter's own failure translation, not a mock of it.
+        app.state.ui_operations = operations
     # Mounted at "/" so FastMCP's internal "/mcp" route lands at /mcp; the
     # REST router (Task 9) is included BEFORE this mount so /v1 wins.
     app.mount("/", mcp_app)
