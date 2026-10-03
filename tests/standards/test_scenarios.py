@@ -215,13 +215,23 @@ def test_spec10_versioned_breaking_change_updates_the_lock(tmp_path: Path) -> No
     # SDK root's version moves with it or the sync refuses
     # sdk_bump_class_invalid — one SDK version never covers two served sets.
     pyproject = sdk / "pyproject.toml"
+    # Version-agnostic minor bump: the fixture starts at whatever the
+    # gateway mirror says (it has moved with releases before — 0.4.x,
+    # 0.6.0), so derive the successor instead of anchoring a literal.
+    current = re.search(r'version = "(\d+)\.(\d+)\.(\d+)"', pyproject.read_text())
+    assert current is not None, "the throwaway SDK pyproject carries a version"
+    successor = f"{current.group(1)}.{int(current.group(2)) + 1}.0"
     pyproject.write_text(
-        re.sub(r'version = "0\.4\.\d+"', 'version = "0.5.0"', pyproject.read_text())
+        re.sub(
+            r'version = "\d+\.\d+\.\d+"',
+            f'version = "{successor}"',
+            pyproject.read_text(),
+        )
     )
     # The mirror follows the SDK version (CON-12's authority chain).
     manifest_path = repo / "standards/standards-manifest.json"
     manifest_document = json.loads(manifest_path.read_bytes())
-    manifest_document["sdk_compatibility"]["sdk"] = "0.5.0"
+    manifest_document["sdk_compatibility"]["sdk"] = successor
     manifest_path.write_text(json.dumps(manifest_document, indent=2) + "\n")
     export_bundle(repo, bundle)
     report = sync(bundle, sdk)

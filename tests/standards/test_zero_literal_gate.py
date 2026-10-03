@@ -274,7 +274,7 @@ class TestZeroModeOverRealTrees:
             "discipline)"
         )
         if "sdk" in payload["scopes"]:
-            assert payload["scopes"]["sdk"]["scanned"] == 19, (
+            assert payload["scopes"]["sdk"]["scanned"] == 20, (
                 "the sdk class set moved — update this pin in the same "
                 "commit as the submodule tree change (the ratchet "
                 "discipline)"
