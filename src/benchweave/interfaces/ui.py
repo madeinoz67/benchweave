@@ -326,15 +326,20 @@ def install_ui_guards(
         app.add_middleware(TrustedHostGuard, bound_host="127.0.0.1", bound_port=0)
 
 
-def _inventory_asset_names() -> frozenset[str]:
-    """The names the package's committed inventory pins (read once at
-    build; the composition-time verification is the integrity check)."""
+def _inventory_asset_paths() -> dict[str, Path]:
+    """name -> Path, precomputed at construction from the committed
+    inventory's OWN names — the only place a vendored asset's Path is
+    ever built, and never from request data (the assets route resolves
+    by dict lookup, so a request ``name`` can only pick an entry, never
+    construct a path; an unknown name is a dict miss, which 404s)."""
     import json
 
     inventory = json.loads(
         (ui_assets.ASSETS_DIR / ui_assets.INVENTORY_NAME).read_text(encoding="utf-8")
     )
-    return frozenset(row["path"] for row in inventory["assets"])
+    return {
+        row["path"]: ui_assets.ASSETS_DIR / row["path"] for row in inventory["assets"]
+    }
 
 
 # --- the login-link flow (GW-90–92; the Q1 ruling verbatim) --------------------
@@ -466,7 +471,7 @@ def build_ui_router(
     router = APIRouter()
     max_page_size = int(limits.get("max_page_size", 1000))
     max_json_bytes = int(limits.get("max_json_bytes", 1_048_576))
-    asset_names = _inventory_asset_names()
+    asset_paths = _inventory_asset_paths()
     epoch = now_epoch if now_epoch is not None else _default_now_epoch
 
     def _bearer_identity(request: Request) -> Identity:
@@ -694,27 +699,20 @@ def build_ui_router(
     @router.get("/assets/{name}", include_in_schema=False)
     async def asset(name: str) -> Response:
         """Vendored assets, inventory-named (plus the host-chrome alias).
-        A name outside the set is a 404 — there is no filesystem path
-        here to traverse."""
-        source: Path | None = None
-        if name in _HOST_ASSETS:
-            source = _HOST_ASSETS[name]
-        elif name in asset_names:
-            source = ui_assets.ASSETS_DIR / name
-        # Allowlist invariant (the justification for both suppressions
-        # below): `name` reached this Path only through fixed-set
-        # membership (_HOST_ASSETS / the committed inventory names) — the
-        # route 404s every other value, and the refute lane's 14
-        # traversal/encoding variants all 404 (pinned in
-        # test_vendored_assets_are_served_from_the_inventory). The taint
-        # rule does not model set-membership sanitization.
-        if (
-            source is None
-            or not source.is_file()  # codeql[py/path-injection] allowlist-only Path; see invariant
-        ):
+
+        The request's ``name`` only ever indexes dicts whose values were
+        built at construction from FIXED names (the committed inventory
+        and the host-chrome alias map) — no Path is constructed from
+        request data anywhere in this adapter, so there is no traversal
+        to attempt: an unknown name is a dict miss and 404s (the refute
+        lane's traversal/encoding variants, pinned unchanged by
+        test_vendored_assets_are_served_from_the_inventory).
+        """
+        source = _HOST_ASSETS.get(name) or asset_paths.get(name)
+        if source is None or not source.is_file():
             return _not_found()
         return FileResponse(
-            source,  # codeql[py/path-injection] allowlist-only Path; see invariant
+            source,
             media_type=_CONTENT_TYPES.get(source.suffix, "application/octet-stream"),
         )
 
