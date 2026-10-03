@@ -555,6 +555,21 @@ All notable changes to this project will be documented in this file.
 - #302 first-release design record — publish workflow, census, runbook (critic-folded)
 - First-release runbook, walk, operator steps; CI map rows (#302 first release)
 - Split the jammed windows/systemd CI-map rows (#346 follow-up)
+- Rewrite README to ASD-STE100
+- Rewrite development.md to ASD-STE100
+- Rewrite publishing-guide.md to ASD-STE100
+- Rewrite smart-test-gateway-decisions.md to ASD-STE100
+- Rewrite ai-device-reviewer.md prose to ASD-STE100
+- Rewrite architecture-validation.md and architecture-closure.md to ASD-STE100
+- Rewrite pointer pages to ASD-STE100
+- Rewrite device docs to ASD-STE100
+- Rewrite smart-test-gateway-architecture-v1.5.md to ASD-STE100
+- Rewrite compatibility.md prose to ASD-STE100
+- Rewrite develop-your-device.md prose to ASD-STE100
+- Rewrite device-developer-guide.md to ASD-STE100
+- Rewrite operator-guide.md prose to ASD-STE100
+- Revert a fence-interior placeholder edit in publishing-guide
+- Convert the two remaining operator-guide section headings
 
 ### Features
 
@@ -1145,6 +1160,7 @@ All notable changes to this project will be documented in this file.
 - Main (#275's S1 landing) into feat/issue244-s2-renderer
 - Main (#277's renderer landing) into feat/issue244-s3-decoders
 - Fold origin/main (the #223 publishing train) into the G1e cutover branch
+- Origin/main into feat/issue352-ste-remediation — union of #351's which-checkout pointer and the STE rewrite
 
 ### Refine
 
