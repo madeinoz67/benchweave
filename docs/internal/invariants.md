@@ -349,7 +349,9 @@ rather than rewriting the history — that is how this file earns trust.
   session (CON-15), its refusals render the contract envelope's own code through the
   §C.3 row table (`interfaces/ui_refusals.py`), and the I02/I09 suites cover it like
   REST and MCP (I02's read-route half and the observe-no-control pin landed with G2b;
-  I09's cursor half lands with the G2c bridge).
+  I09's cursor half landed with G2c's bridge — the bridge's listing cursor is
+  server-held, and no `/ui` response body, page or stream, carries a cursor-shaped
+  value).
 - **[CON-6]** MCP auth is fail-closed at two layers — an `StgTokenVerifier` (FastMCP
   `TokenVerifier` over `benchweave.interfaces.identity.validate`) plus the layer beneath
   it — `src/benchweave/interfaces/mcp.py`. *An auth gap on the tool surface hands a caller
