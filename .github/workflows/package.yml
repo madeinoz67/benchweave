@@ -61,6 +61,14 @@ jobs:
         # nothing else — the job gains no upload capability of any kind
         # (acceptance A3 checks exactly this). Bash and python -I one-liners
         # only — a helper script would re-tier the slice (design §6).
+        # First-release slice (issue #302 second half, design §2.3): the same
+        # step byte-censuses the INSTALLED package tree against the checkout
+        # tree (the wheel resource-completeness half of the deferred O4 check)
+        # and runs the shipped inventory verifier from the installed location.
+        # A red here is the check working — a file class missing installed-side
+        # is a packaging question, an extra source-side file is a checkout
+        # stray (hatchling excludes gitignored bytes from the wheel), never a
+        # reason to weaken the comparison.
         run: |
           set -euo pipefail
           uv build --out-dir dist/packages/ui-html packages/ui-html
@@ -108,6 +116,28 @@ jobs:
             exit 1
           fi
           echo "ui-html: installed set is exactly benchweave-ui-html, jinja2, markupsafe"
+          installed_pkg="$("$python_bin" -I -c 'import pathlib, benchweave_ui_html
+          print(pathlib.Path(benchweave_ui_html.__file__).resolve().parent)')"
+          "$python_bin" -I -c 'import pathlib, sys
+          src, inst = (pathlib.Path(a).resolve() for a in sys.argv[1:3])
+          def tree(p):
+              return {f.relative_to(p).as_posix(): f.read_bytes()
+                      for f in p.rglob("*") if f.is_file() and "__pycache__" not in f.parts}
+          s, i = tree(src), tree(inst)
+          seen = {}
+          for k in s:
+              fk = k.lower()
+              assert fk not in seen, ("case-colliding package paths", seen[fk], k)
+              seen[fk] = k
+          assert set(s) == set(i), (sorted(set(s) - set(i)), sorted(set(i) - set(s)))
+          bad = sorted(k for k in s if s[k] != i[k])
+          assert not bad, bad
+          print(f"ui-html census: {len(s)} files byte-identical (checkout vs installed wheel)")' \
+            "$PWD/packages/ui-html/src/benchweave_ui_html" "$installed_pkg"
+          "$python_bin" -I -c 'from benchweave_ui_html.assets import verify_vendored_assets
+          refusals = verify_vendored_assets()
+          assert refusals == [], refusals
+          print("ui-html: vendored assets verified from the installed wheel (verify_vendored_assets == [])")'
           rm -rf "$workspace"
       - name: Clean-venv ADC conformance control
         # Issue #203 slice 1, acceptance A1: the out-of-tree ADC plugin at its
