@@ -229,8 +229,10 @@ balloon the pipeline to prove a point a table-driven test could make.
 
 ## Documentation register (ASD-STE100)
 
-Operator- and user-facing documentation — website pages, user guides, README
-instruction sections, warnings, cautions, and safety notices — is written in
+Operator-, user- and developer-facing published documentation — website pages, user
+guides, developer-facing published guides (device-developer-guide, publishing-guide,
+develop-your-device), README instruction sections, warnings, cautions, and safety
+notices — is written in
 ASD-STE100 Simplified Technical English. Dispatch the `document-writer` agent
 (`.claude/agents/document-writer.md`) for any documentation leg that authors or rewrites
 it; the agent carries the register rules and is self-sufficient on any clone. Internal
