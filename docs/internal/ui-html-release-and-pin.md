@@ -6,7 +6,12 @@ dependency elsewhere. It lives in this repository — beside the package, the ta
 machinery and the contract it releases. The SDK repository gets a one-paragraph
 pointer in its standalone distribution docs when the consuming slice creates
 the manifest row for the wheel; that cross-link lands there, not here (nothing
-in the SDK references the wheel today).
+in the SDK references the wheel today). The family umbrella — the three-line
+order rule and gap windows, the immutability and stable-only rulings, and the
+gateway line's own cut procedure — is `docs/internal/release-process-family.md`;
+this page stays the ui-html line's authority, and that page's required
+tag-protection setup supersedes the optional-hardening note at the end of this
+page.
 
 Design sources: the issue #302 REL pipeline record
 (`.claude/deep-review/2026-10-01-issue302-rel-pipeline-design.md`) and the
