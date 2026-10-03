@@ -57,6 +57,7 @@ from benchweave.interfaces.sessions import (
     SessionRecord,
     SessionStore,
 )
+from benchweave.interfaces.ui_read import register_read_pages
 
 _LOG = logging.getLogger(__name__)
 
@@ -521,6 +522,24 @@ def build_ui_router(
             )
         return parsed
 
+    def _unauthenticated_page() -> HTMLResponse:
+        """The session-less refusal every page shares — the §C.3
+        unauthenticated row through the shell (one construction site,
+        where G2a had three inline copies)."""
+        return _page(
+            "refusal-page.j2",
+            status=401,
+            title="Authentication required",
+            gateway_id=None,
+            principal=None,
+            scopes=None,
+            mode_banner=None,
+            csrf_token=None,
+            # Trusted package-rendered HTML (the §C.3 partial), not
+            # request data — S704's escape hatch is not in play.
+            refusal_html=Markup(render_refusal(UNAUTHENTICATED_REFUSAL)),  # noqa: S704
+        )
+
     def _failure_page(fail: OperationFailure) -> HTMLResponse:
         """A seam failure renders its own §C.3 row — severity, what
         happened, sent status, operator action — beside the failure's
@@ -549,19 +568,7 @@ def build_ui_router(
         principal and scopes, the bench inventory."""
         record = _resolve_session(request, sessions)
         if record is None:
-            return _page(
-                "refusal-page.j2",
-                status=401,
-                title="Authentication required",
-                gateway_id=None,
-                principal=None,
-                scopes=None,
-                mode_banner=None,
-                csrf_token=None,
-                # Trusted package-rendered HTML (the §C.3 partial), not
-                # request data — S704's escape hatch is not in play.
-                refusal_html=Markup(render_refusal(UNAUTHENTICATED_REFUSAL)),  # noqa: S704
-            )
+            return _unauthenticated_page()
         identity = _session_identity(record)
         try:
             info = operations.gateway_info(identity)
@@ -650,17 +657,7 @@ def build_ui_router(
             record = sessions.exchange(code)
         except LoginCodeRejected as refused:
             _LOG.info("ui login exchange refused: %s", refused.reason)
-            return _page(
-                "refusal-page.j2",
-                status=401,
-                title="Authentication required",
-                gateway_id=None,
-                principal=None,
-                scopes=None,
-                mode_banner=None,
-                csrf_token=None,
-                refusal_html=Markup(render_refusal(UNAUTHENTICATED_REFUSAL)),  # noqa: S704
-            )
+            return _unauthenticated_page()
         response = RedirectResponse("/ui/", status_code=303)
         response.set_cookie(
             SESSION_COOKIE,
@@ -681,21 +678,22 @@ def build_ui_router(
         only acts on the already-authenticated session."""
         record = _resolve_session(request, sessions)
         if record is None:
-            return _page(
-                "refusal-page.j2",
-                status=401,
-                title="Authentication required",
-                gateway_id=None,
-                principal=None,
-                scopes=None,
-                mode_banner=None,
-                csrf_token=None,
-                refusal_html=Markup(render_refusal(UNAUTHENTICATED_REFUSAL)),  # noqa: S704
-            )
+            return _unauthenticated_page()
         sessions.logout(record.session_id)
         response = RedirectResponse("/ui/", status_code=303)
         response.delete_cookie(SESSION_COOKIE, path="/ui")
         return response
+
+    register_read_pages(
+        router,
+        operations=operations,
+        limits=limits,
+        resolve_session=lambda request: _resolve_session(request, sessions),
+        session_identity=_session_identity,
+        page=_page,
+        failure_page=_failure_page,
+        unauthenticated_page=_unauthenticated_page,
+    )
 
     @router.get("/assets/{name}", include_in_schema=False)
     async def asset(name: str) -> Response:

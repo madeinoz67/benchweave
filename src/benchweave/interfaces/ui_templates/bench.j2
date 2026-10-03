@@ -1,0 +1,47 @@
+{% extends "base.j2" %}
+{% block content %}
+<section aria-label="Bench" data-bw-bench-page data-bw-bench-id="{{ bench.bench_id }}">
+  <h2>Bench {{ bench.bench_id }}</h2>
+  <dl class="bw-kv" data-bw-bench-facts>
+    <div><dt>Generation</dt><dd data-bw-bench-generation>{{ bench.generation }}</dd></div>
+    <div><dt>Qualification</dt><dd data-bw-bench-qualification>{{ bench.qualification }}</dd></div>
+    <div><dt>Busy</dt><dd data-bw-bench-busy>{{ "yes" if bench.busy else "no" }}</dd></div>
+    <div><dt>Tripped</dt><dd data-bw-bench-tripped>{{ "yes" if bench.tripped else "no" }}</dd></div>
+    <div><dt>Configuration</dt><dd><code data-bw-bench-config-sha>{{ bench.configuration.sha256 }}</code></dd></div>
+  </dl>
+
+  <h3>Devices</h3>
+  <ul class="bw-devices" data-bw-device-list>
+    {% for device in devices %}
+    <li data-bw-device="{{ device.device_id }}">
+      <a class="bw-link" href="/ui/benches/{{ bench.bench_id }}/devices/{{ device.device_id }}">{{ device.device_id }}</a>
+      <span class="bw-devices__state" data-bw-device-state>{{ device.identity_state }}</span>
+    </li>
+    {% else %}
+    <li data-bw-device-empty>No devices are available to this caller.</li>
+    {% endfor %}
+  </ul>
+
+  <h3>Events</h3>
+  <div class="bw-table-wrap" data-bw-events-first-page>
+    <table class="bw-data-table">
+      <caption>First page of bench events</caption>
+      <thead>
+        <tr><th scope="col">Sequence</th><th scope="col">Kind</th><th scope="col">At</th><th scope="col">Run</th></tr>
+      </thead>
+      <tbody>
+        {% for event in events %}
+        <tr data-bw-event-row data-bw-event-kind="{{ event.kind }}">
+          <td>{{ event.sequence }}</td>
+          <td>{{ event.kind }}</td>
+          <td>{{ event.get("at", "") }}</td>
+          <td>{% if event.get("run_id") %}<a class="bw-link" href="/ui/runs/{{ event.run_id }}">{{ event.run_id }}</a>{% else %}—{% endif %}</td>
+        </tr>
+        {% else %}
+        <tr data-bw-event-empty><td colspan="4">No events yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

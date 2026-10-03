@@ -1,0 +1,21 @@
+{% extends "base.j2" %}
+{% block content %}
+<section aria-label="Document" data-bw-document-page>
+  <h2>Document</h2>
+  <dl class="bw-kv" data-bw-document-facts>
+    <div><dt>SHA-256</dt><dd><code data-bw-document-sha>{{ document.document.sha256 }}</code></dd></div>
+    <div><dt>Id</dt><dd data-bw-document-id>{{ document.document.id }}</dd></div>
+    <div><dt>Version</dt><dd data-bw-document-version>{{ document.document.version }}</dd></div>
+    <div><dt>Schema</dt><dd><code data-bw-document-schema>{{ document.schema_id }}</code></dd></div>
+  </dl>
+  {% if content is not none %}
+  <h3>Content</h3>
+  <pre class="bw-pre" data-bw-document-content>{{ content }}</pre>
+  {% else %}
+  <p class="bw-document-oversize" data-bw-document-oversize>
+    The document is {{ content_bytes }} bytes; the page bound is {{ page_bound }}.
+    Read the bytes through the digest above.
+  </p>
+  {% endif %}
+</section>
+{% endblock %}
