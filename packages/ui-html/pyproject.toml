@@ -4,7 +4,10 @@ build-backend = "hatchling.build"
 
 [project]
 name = "benchweave-ui-html"
-version = "0.1.0"
+# 0.2.0 (G2a): the vendored JS assets land — htmx.min.js + sse.js (the
+# standalone host's vetted pair, byte-identical) and the generic
+# bw-host.js — as content addition on the 0.1.0 renderer (MINOR).
+version = "0.2.0"
 description = "Renderer-neutral HTML renderer for the BenchWeave presentation contract and its pytest contract gate."
 requires-python = ">=3.13"
 license = "MIT"
