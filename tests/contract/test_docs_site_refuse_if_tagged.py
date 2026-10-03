@@ -27,14 +27,19 @@ Arms:
   — the stable-only policy is procedural, the walk's tag↔version row is
   the semantic gate; this refusal is not where that policy lives).
 - R4 — wiring: the refusal reads the tag listing through the ``run``
-  helper (a pass arm that passed by doing nothing is the silent lie this
-  arm closes).
+  helper via the EXACT command literal ``['git', 'tag', '--list', 'v*']`` —
+  closing both halves of the silent lie: a pass arm that passed by doing
+  nothing, and a mutated selector pattern that can no longer carry a
+  gateway tag (adv2 fold F1: the pattern ``v*`` → ``ui-html-*`` reddens
+  here).
 
 Mutation control (design acceptance A2, RED evidence in the commit): with
 ``TAG_RE`` weakened to accept an arbitrary prefix before the version core
 (``.*v(\\d+)\\.(\\d+)\\.(\\d+)$``) the R2 arm FAILS — the exact shape an
-anchor regression takes; with the ``$`` anchor dropped the R3 arm FAILS.
-A pin that passes under both mutations proves nothing.
+anchor regression takes; with the ``$`` anchor dropped the R3 arm FAILS;
+with the listing's selector pattern mutated (``v*`` → ``ui-html-*``) every
+pass arm's R4 command-literal assert FAILS (adv2 fold F1). A pin that
+passes under any of these mutations proves nothing.
 """
 
 from __future__ import annotations
@@ -78,10 +83,12 @@ def _refuse_with_listing(monkeypatch: pytest.MonkeyPatch, tags: list[str]) -> No
     monkeypatch.setattr(_asm, "run", fake_run)
     _asm.refuse_if_tagged()
     # R4 (pass arms only — a tripped listing raises past this point): the
-    # refusal actually consulted a git tag listing via the run helper, so a
-    # green pass arm means "filtered and passed", never "ran nothing".
-    assert seen and seen[0][:3] == ["git", "tag", "--list"], (
-        "refuse_if_tagged must read the tag listing through the run helper"
+    # refusal consulted the REAL listing command, exact literal — pattern
+    # token included: a mutated selector (`git tag --list ui-html-*`, or
+    # any pattern that cannot carry a gateway tag) reddens here instead of
+    # silently greening (adv2 fold F1).
+    assert seen and seen[0] == ["git", "tag", "--list", "v*"], (
+        "refuse_if_tagged must list tags via exactly ['git', 'tag', '--list', 'v*']"
     )
 
 
