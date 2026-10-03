@@ -102,6 +102,34 @@ class SessionRecord:
     scopes: frozenset[str]
     expires_at: int
     csrf_token: str
+    #: The GRANTED duration in seconds, recorded at exchange (G3a, design
+    #: §2.1): the ttl from the exchange instant to ``expires_at`` — GW-44
+    #: D1's percentage base for the session-expiry warning. ``0`` means
+    #: "not recorded" (records constructed outside ``exchange``) and
+    #: composes no warning verdict.
+    duration_s: int = 0
+
+
+@dataclass(frozen=True)
+class HeldLease:
+    """The session's held-lease view (G3a, design §2.1): the lease
+    projection THIS session's ``lease_create``/``lease_renew`` response
+    carried, plus the ``duration_ms`` the session requested (GW-44's
+    percentage base). Presentation state of the session's own seam
+    answers — never an authority source: every mutating POST re-validates
+    at the seam, and a stale view fails there exactly as for any client.
+
+    The wire deliberately omits the holder (the lease def's closed five
+    fields); the view needs none — holder display renders the session's
+    own principal, correct by construction because the seam mints
+    ``holder = identity.principal`` and renews holder-only."""
+
+    lease_id: str
+    bench_id: str
+    sequence: int
+    expires_at: str
+    state: str
+    requested_duration_ms: int
 
 
 @dataclass(frozen=True)
@@ -149,6 +177,38 @@ class SessionStore:
         # lock as the records, so a logout or expiry sweep and a concurrent
         # bridge claim can never interleave.
         self._bridges: dict[str, set[str]] = {}
+        # The held-lease views (G3a, design §2.1): session_id -> the
+        # benches that session holds a lease VIEW on, same death
+        # semantics as the records themselves (logout, the lazy expiry
+        # sweep, gateway restart).
+        self._leases: dict[str, dict[str, HeldLease]] = {}
+
+    # --- held leases (G3a: response-sourced views, never authority) --------
+
+    def record_held_lease(self, session_id: str, view: HeldLease) -> None:
+        """Store the view this session's own lease response carried.
+        Keyed (session, bench); a re-record (a renew's successor
+        projection) replaces the view."""
+        with self._lock:
+            self._leases.setdefault(session_id, {})[view.bench_id] = view
+
+    def clear_held_lease(self, session_id: str, bench_id: str) -> None:
+        """Drop the view (release cleared it; a seam refusal on the
+        renew/release path clears the stale view — R2's mitigation).
+        Idempotent: a second clear is a no-op."""
+        with self._lock:
+            held = self._leases.get(session_id)
+            if held is not None:
+                held.pop(bench_id, None)
+                if not held:
+                    del self._leases[session_id]
+
+    def held_lease(self, session_id: str, bench_id: str) -> HeldLease | None:
+        """The session's view for ``bench_id``, or ``None`` — a snapshot
+        under the lock (the caller renders from it; the seam re-validates
+        every mutation)."""
+        with self._lock:
+            return self._leases.get(session_id, {}).get(bench_id)
 
     # --- bridges (G2c: one SSE bridge per session-and-bench, GW-33) --------
 
@@ -260,6 +320,7 @@ class SessionStore:
             # ``used``, distinguishing an attack from a stale link) and
             # create the session in the same critical section.
             self._codes[key] = replace(entry, used=True)
+            granted_expiry = min(now + entry.session_ttl_s, entry.caller_expires_at)
             session = SessionRecord(
                 session_id=secrets.token_urlsafe(32),
                 principal=entry.principal,
@@ -268,8 +329,11 @@ class SessionStore:
                 # The session runs for the GRANTED ttl from the moment
                 # of exchange, still ending no later than the caller
                 # token ever allowed (NFR-S2's second bound).
-                expires_at=min(now + entry.session_ttl_s, entry.caller_expires_at),
+                expires_at=granted_expiry,
                 csrf_token=secrets.token_urlsafe(32),
+                # GW-44 D1's percentage base: the granted ttl itself,
+                # recorded once at exchange.
+                duration_s=granted_expiry - now,
             )
             self._sessions[session.session_id] = session
             return session
@@ -293,6 +357,10 @@ class SessionStore:
                 # never outlive its session in the registry, even if no
                 # generator ``finally`` ever runs (G2c teardown belt).
                 self._bridges.pop(session_id, None)
+                # The held-lease views die with it too (G3a): a view is
+                # presentation of one session's own answers, never a
+                # fact another record may keep.
+                self._leases.pop(session_id, None)
                 return None
             return session
 
@@ -305,6 +373,7 @@ class SessionStore:
         with self._lock:
             self._sessions.pop(session_id, None)
             self._bridges.pop(session_id, None)
+            self._leases.pop(session_id, None)
 
     # --- internals -----------------------------------------------------------
 
