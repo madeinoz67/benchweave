@@ -433,3 +433,64 @@ def test_the_login_code_never_reaches_a_log_line(
     finally:
         server.should_exit = True
         thread.join(timeout=5.0)
+
+
+def test_the_code_is_redacted_at_the_record_level(tmp_path: Path) -> None:
+    """FOLD-2 (refute lane-1 F2): redaction is RECORD-scoped, not
+    formatter-scoped — a PLAIN handler with no formatter, attached to
+    uvicorn.access under the serving config, must never render the code
+    (the lane's exact repro: a non-default sink re-leaks otherwise)."""
+    import threading
+    import time
+
+    import uvicorn
+    from ui_gateway_support import module_gateway
+
+    from benchweave.interfaces.ui import build_serving_log_config
+
+    app = module_gateway("ui-logs-record", tmp_path)
+    config = uvicorn.Config(
+        app, host="127.0.0.1", port=0, log_config=build_serving_log_config()
+    )
+    server = uvicorn.Server(config)
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    for _ in range(200):
+        if getattr(server, "started", False):
+            break
+        time.sleep(0.05)
+    assert getattr(server, "started", False), "uvicorn did not start"
+    port = server.servers[0].sockets[0].getsockname()[1]
+    captured: list[logging.LogRecord] = []
+
+    class _Plain(logging.Handler):
+        """No formatter, no redaction of its own: exactly the shape of an
+        arbitrary third-party sink."""
+
+        def emit(self, record: logging.LogRecord) -> None:
+            captured.append(record)
+
+    handler = _Plain()
+    logging.getLogger("uvicorn.access").addHandler(handler)
+    try:
+        minted = httpx.post(
+            f"http://127.0.0.1:{port}/ui/login-codes",
+            headers={"Authorization": f"Bearer {ui_token()}"},
+            json={},
+        )
+        assert minted.status_code == 201
+        code = minted.json()["data"]["login_url"].split("code=")[-1]
+        exchanged = httpx.get(f"http://127.0.0.1:{port}/ui/login?code={code}")
+        assert exchanged.status_code == 303
+        assert captured, "no access records captured — the arm proves nothing"
+        for record in captured:
+            rendered = record.getMessage()
+            assert code not in rendered, (
+                f"a plain sink rendered the login code: {rendered}"
+            )
+        access = [r.getMessage() for r in captured if "/ui/login" in r.getMessage()]
+        assert access, "the exchange request never reached the access logger"
+        assert all("code=[redacted]" in line for line in access), access
+    finally:
+        server.should_exit = True
+        thread.join(timeout=5.0)

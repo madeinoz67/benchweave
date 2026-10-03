@@ -340,6 +340,34 @@ def _inventory_asset_names() -> frozenset[str]:
 # --- the login-link flow (GW-90–92; the Q1 ruling verbatim) --------------------
 
 
+class _LoginCodeRedactionFilter(logging.Filter):
+    """RECORD-level login-code redaction (the fold of refute lane-1 F2).
+
+    The formatter-scoped redaction below cleans uvicorn's own console,
+    but any OTHER sink on the same LogRecord — a JSON shipper, an
+    alternate format string, a plain handler — rendered the raw code
+    from ``record.args``. This filter mutates the record BEFORE any
+    formatter runs, so every sink is clean; installed at LOGGER level on
+    ``uvicorn.access`` by ``build_serving_log_config`` (logger filters
+    run ahead of handler dispatch, including handlers attached after
+    configuration). Returns True always — redaction never suppresses.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        args = record.args
+        if (
+            isinstance(args, tuple)
+            and len(args) >= 3
+            and isinstance(args[2], str)
+            and args[2].startswith("/ui/login")
+        ):
+            record.args = (
+                args[:2] + (args[2].split("?", 1)[0] + "?code=[redacted]",)
+                + args[3:]
+            )
+        return True
+
+
 def _redacting_access_formatter(
     fmt: str | None = None,
     datefmt: str | None = None,
@@ -348,11 +376,14 @@ def _redacting_access_formatter(
 ) -> logging.Formatter:
     """A uvicorn AccessFormatter that redacts the login code (R2).
 
-    The access log line carries the request line with its query string,
-    and the code RIDES that query; this formatter replaces any query on
-    a ``/ui/login`` path with ``code=[redacted]`` before rendering —
-    every other line renders unchanged. Built lazily (uvicorn imports at
-    call time) so composing an app never pays the uvicorn import.
+    BELT to ``_LoginCodeRedactionFilter`` (the record-level mechanism
+    above): with the filter installed, records arrive pre-redacted and
+    this formatter's own pass is a no-op for /ui/login paths — kept as
+    defense in depth for a configuration that somehow bypasses the
+    logger-level filter. Replaces any query on a ``/ui/login`` path with
+    ``code=[redacted]`` before rendering; every other line renders
+    unchanged. Built lazily (uvicorn imports at call time) so composing
+    an app never pays the uvicorn import.
     """
     # ``style`` stays str-typed at the boundary; uvicorn's formatter
     # wants the Literal form, narrowed here (a runtime check, not an
@@ -383,14 +414,22 @@ def _redacting_access_formatter(
 
 
 def build_serving_log_config() -> dict[str, Any]:
-    """uvicorn's default logging config with the access formatter swapped
-    for the redacting one — what ``benchweave serve`` installs; the
-    login-code URL transit is once, and no log line keeps it."""
+    """uvicorn's default logging config plus login-code redaction — what
+    ``benchweave serve`` installs; the login-code URL transit is once,
+    and no log line keeps it.
+
+    Two layers: the RECORD-level filter on the ``uvicorn.access`` LOGGER
+    (every sink — configured or attached later — receives redacted
+    args), and the redacting access FORMATTER as belt (defense in depth
+    for a filter bypass).
+    """
     import copy
 
     from uvicorn.config import LOGGING_CONFIG
 
     config = copy.deepcopy(LOGGING_CONFIG)
+    config["filters"] = {"bw_login_code_redaction": {"()": _LoginCodeRedactionFilter}}
+    config["loggers"]["uvicorn.access"]["filters"] = ["bw_login_code_redaction"]
     config["formatters"]["access"]["()"] = _redacting_access_formatter
     return config
 
@@ -542,7 +581,7 @@ def build_ui_router(
             benches=items,
         )
 
-    @router.post("/login-codes", status_code=201)
+    @router.post("/login-codes", status_code=201, include_in_schema=False)
     async def mint_login_code(request: Request) -> Response:
         """Mint one single-use login code (GW-90, the Q1 ruling).
 
@@ -589,7 +628,7 @@ def build_ui_router(
             status_code=201,
         )
 
-    @router.get("/login")
+    @router.get("/login", include_in_schema=False)
     async def login(request: Request) -> Response:
         """Exchange a login code for a session, exactly once (GW-91/92).
 
@@ -628,7 +667,7 @@ def build_ui_router(
         )
         return response
 
-    @router.post("/logout")
+    @router.post("/logout", include_in_schema=False)
     async def logout(request: Request) -> Response:
         """Delete the session server-side (GW-94): the cookie alone is
         dead from this moment. CSRF-enforced by the guard (the per-session
@@ -716,7 +755,17 @@ def build_ui_app(
     catch-all ``/``) lives in ``create_app`` and is pinned by the GW-04
     suite's toggle control.
     """
-    app = FastAPI(title="BenchWeave UI")
+    # FOLD-1 (refute lane-2 MEDIUM): FastAPI's default docs surfaces
+    # are a live UNAUTHENTICATED surface on the auth slice — the schema
+    # names every route and carries handler docstrings, and none of it
+    # sits behind the session. All three are turned OFF at construction;
+    # the routing suite pins the 404s.
+    app = FastAPI(
+        title="BenchWeave UI",
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
+    )
     app.include_router(
         build_ui_router(
             operations,

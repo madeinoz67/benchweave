@@ -156,6 +156,52 @@ def test_vendored_assets_are_served_from_the_inventory(
     )
 
 
+@pytest.mark.parametrize("path", ["/ui/openapi.json", "/ui/docs", "/ui/redoc"])
+def test_the_docs_surfaces_are_absent(
+    ui_gateway: SimpleNamespace, path: str
+) -> None:
+    """FOLD-1 (refute lane-2 MEDIUM): FastAPI's default docs surfaces on
+    the UI sub-app were a live UNAUTHENTICATED surface on the auth slice
+    (route names + handler docstrings, pre-session). The composition
+    turns all three off; the pin stays here so they stay off."""
+    response = httpx.get(f"{ui_gateway.base}{path}", follow_redirects=False)
+    assert response.status_code == 404, path
+    assert "data-bw-ui-404" in response.text  # the UI's own 404 owns them
+
+
+def test_the_ui_app_generates_no_schema_and_no_route_is_in_schema() -> None:
+    """The companion pins: openapi_url is None on the sub-app, and every
+    UI route is include_in_schema=False — G2b's route-mapping gate
+    enumerates the mounted routes and must meet exactly the declared
+    set, so nothing may register a schema surface."""
+    from benchweave.interfaces.sessions import SessionStore
+    from benchweave.interfaces.ui import build_ui_app, build_ui_router
+
+    store = SessionStore(now_epoch=lambda: 1)
+    app = build_ui_app(
+        cast(Operations, _NullOperations()),
+        store,
+        secret=b"schema-pin",
+        limits={"max_json_bytes": 64},
+    )
+    assert app.openapi_url is None
+    assert app.docs_url is None
+    assert app.redoc_url is None
+    router = build_ui_router(
+        cast(Operations, _NullOperations()),
+        store,
+        secret=b"schema-pin",
+        limits={"max_json_bytes": 64},
+    )
+    from fastapi.routing import APIRoute
+
+    assert router.routes, "the UI router has no routes to pin"
+    api_routes = cast(list[APIRoute], router.routes)
+    assert all(route.include_in_schema is False for route in api_routes), [
+        route.path for route in api_routes if route.include_in_schema
+    ]
+
+
 # --- GW-04: UI disabled means absent, not stubbed ------------------------------
 
 
