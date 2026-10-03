@@ -393,3 +393,33 @@ question at that point.
    `provider_schema_unresolved` → `normative_document_unresolved` + the shared
    prefixes). Recommendation: one vocabulary for one mechanism, as designed;
    unpinned, so either call is cheap now and only expensive later.
+
+## Addendum (2026-10-04) — owner calls on the three forks
+
+Recorded after the fact, per the frozen-record rule: the record's §10/§11
+text stands as committed; this section carries the owner's dispositions,
+which the build lane implemented.
+
+1. **Fork 1 — ADOPTED.** D2's reopen trigger is amended from "the next
+   head-opening train lands on main" to **the next head-opening train's
+   MERGE**: the D2 refusal lands WITH or BEFORE that merge, checked by the
+   governor lane that already gates every `standards/` touch. Rationale as
+   §11 states it: the original wording reactivates D2 one train late — the
+   exposure window opens at the merge, not at a later landing. (The §10
+   table's trigger cell already carried the amended wording as the
+   recommendation; this addendum is the owner call that adopts it.)
+2. **Fork 2 — declined.** D2 stays deferred: no `-dev`-segment predicate
+   rides the D1 slice. No dev head exists in tree to exercise the
+   legit-block coexistence outside planted fixtures.
+3. **Fork 3 — ADOPTED.** The vocabulary merge landed with D1: one resolver,
+   one vocabulary (`normative_document_unresolved` + the shared prefixes);
+   the two old site prefixes are gone.
+
+Landed state (branch `feat/issue367-normative-seam`, slice commit
+`feat(standards): #367 D1 — corpus-rooted load twin, one runtime
+normative-row resolver`): D1 complete per §3 and §6 — RED quoted per arm,
+toggle-off proven (only the two site delegations reverted), focused lanes
+748 tests / 0 failures / 0 errors from junitxml, bare ruff clean,
+fresh-cache mypy clean, zero standards bytes moved. Keyword scan over this
+addendum: the eight §8 words — zero occurrences here (this section is the
+report, the #238 convention).
