@@ -382,6 +382,16 @@ rather than rewriting the history — that is how this file earns trust.
   `promotion_history_unavailable:` rather than silently passing, and a
   root that is not a git repository has no history to consult (the
   current-tree derivation governs there).
+  Amendment (2026-10-03, issue #238): the standards-manifest load boundary
+  refuses separator-spoofed and non-canonical normative rows in both the
+  active and dev lists (`normative_path_escape:`), mirroring repin's
+  row-path lexicon and exceeding it by the canonical-form identity
+  (`posixpath.normpath(row) == row`; pathlib collapses `.` parts, so
+  parts-based tests alone admit `./`-prefixed rows), because a row that
+  dodges the `standards/` prefix dodges the corpus-pin second authority,
+  and Windows-form or dot-segment rows resolve into the real tree where
+  the export's basename mapping launders the bytes; committed bytes are
+  canonical and carry none of these forms.
 - **[CON-8]** The corpus identity block is closed-world and derived-checked against
   its machine authorities at every export/check — an unknown key is refused
   (`identity_key_unknown`; a new key is a standards-governance event, not an

@@ -514,3 +514,25 @@ def test_repin_refuses_a_lineage_naming_a_dev_path(tmp_path: Path) -> None:
         json.dumps(document, indent=2) + "\n", encoding="utf-8"
     )
     _refused_without_write(root, _manifest_bytes(root), "pin_row_lineage_invalid")
+
+
+def test_repin_refuses_a_backslash_corpus_row(tmp_path: Path) -> None:
+    """The precedent pin (issue #238): ``pin_path_escape`` guards corpus
+    rows against the separator/traversal lexicon the standards-manifest load
+    boundary now mirrors. No test pinned the refusal before; this arm pins
+    the raise site — deleting the ``_check_row_path`` call reddens it (its
+    own toggle-off; it pins existing behavior, it is not a fix)."""
+    root = _repo(tmp_path)
+    raw = _manifest_bytes(root)
+    document = json.loads(raw)
+    document["files"].append(
+        {
+            "path": "otdp\\0.2.2\\leak.schema.json",
+            "source": "otdp/0.2.2/otdp-device-descriptor.schema.json",
+            "sha256": "0" * 64,
+        }
+    )
+    (root / CORPUS_MANIFEST).write_text(
+        json.dumps(document, indent=2) + "\n", encoding="utf-8"
+    )
+    _refused_without_write(root, _manifest_bytes(root), "pin_path_escape")
