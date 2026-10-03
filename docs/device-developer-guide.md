@@ -2,21 +2,21 @@
 
 Create, host and share BenchWeave device integrations, whether you are a human developer or an AI coding agent.
 
-For simple five-step workflows with reusable AI prompts, start with [Develop your device with AI](develop-your-device.md): build a device plugin or custom firmware. For SDK installation, generating the manufacturer/name project layout, testing and packaging, use the separate [plugin SDK guide](plugin-sdk.md).
+For simple five-step workflows with reusable AI prompts, start with [Develop your device with AI](develop-your-device.md): build a device plugin or custom firmware. For SDK installation, generating the project layout for manufacturer/name packages, testing and packaging, use the separate [plugin SDK guide](plugin-sdk.md).
 
-A **device** is the physical hardware; **firmware** runs on that hardware. A **device plugin** is the software and metadata that integrate it with BenchWeave: a descriptor plus an adapter and protocol code where required. A declarative plugin can need no executable code. Integrating an existing instrument means developing its device plugin.
+A **device** is the physical hardware; **firmware** runs on that hardware. A **device plugin** is the software and metadata that integrate it with BenchWeave: a descriptor plus an adapter and protocol code where required. A declarative plugin can need no executable code. To integrate an existing instrument, you develop its device plugin.
 
-Prefer independent repositories and externally hosted releases for new device plugins, so authors can develop and maintain them separately from BenchWeave. This is an authoring recommendation, not a new protocol requirement. See the [external plugin layout](develop-your-device.md#where-the-plugin-lives). Plugins maintained in this repository are independent projects under `plugins/<manufacturer>/<name>/`; the DPS-150 integration follows that layout and is not part of the core wheel. The registry kinds remain profile, descriptor and implementation.
+Prefer independent repositories and externally hosted releases for new device plugins, so authors can develop and maintain them separately from BenchWeave. This is an authoring recommendation, not a new protocol requirement. See the [external plugin layout](develop-your-device.md#where-the-plugin-lives). Plugins maintained in this repository are independent projects under `plugins/<manufacturer>/<name>/`. The DPS-150 integration follows that layout and is not part of the core wheel. The registry kinds remain profile, descriptor and implementation.
 
 External hosting distributes source and release files. Admitted executable plugins run on the bench gateway through scoped host services. Hosting a repository does not provide registry admission, hardware commissioning or remote execution.
 
 **Baseline:** architecture 1.5 · OTDP 0.2.2 · adapter API 1.1 · registry 0.1.2 · execution 0.2.0 · interface 0.1.0.
 
-**Current status:** the repository provides architecture contracts, synthetic fixtures, a simulator-first PoC through its acceptance gate, architecture CI, and the **gateway side of the registry contract**: strict schema loaders, an ed25519-authenticated fixture catalogue, configured-origin resolution, admission with a content-addressed package cache and package lock, idle-boundary activation, and a cache plugin loader — plus an **unsigned development loop** (see §10). The registry *service* side (search, submission, review pipeline, TUF distribution, public endpoints) and the device-install command do not yet exist. A minimal [plugin developer SDK](plugin-sdk.md) now provides offline authoring tools, packaged contracts, a standalone starter and mock checks; it is not a hardware-qualified production SDK. You can develop descriptors, adapters and deterministic tests against the published ABI now, package and run them locally through the dev loop, and exercise admission against the committed signed catalogue. Host hardware qualification requires the corresponding implementation and bench evidence.
+**Current status:** the repository provides architecture contracts, synthetic fixtures, architecture CI (continuous integration), a simulator-first proof of concept (PoC) through its acceptance gate, and the **gateway side of the registry contract**. The gateway side covers: strict schema loaders, an ed25519-authenticated fixture catalogue, configured-origin resolution, admission with a content-addressed package cache and package lock, idle-boundary activation, and a cache plugin loader. It also provides an **unsigned development loop** (see §10). The registry *service* side (search, submission, review pipeline, TUF distribution, public endpoints) and the device-install command do not yet exist. A minimal [plugin developer SDK](plugin-sdk.md) now provides offline authoring tools, packaged contracts, a standalone starter and mock checks; it is not a hardware-qualified production SDK. You can develop descriptors, adapters and deterministic tests against the published application binary interface (ABI) now. You can package and run them locally through the development loop. You can exercise admission against the committed signed catalogue. Host hardware qualification needs the corresponding implementation and bench evidence.
 
-**External plugin runtime status:** package admission, activation records and cache loaders are components, not a complete live installation workflow. The legacy simulator interface uses clock-injected factories and `plugin_open`/`dispatch`/`plugin_close`. The new `load_otdp_plugin` loader and `OTDPBridge` support no-argument factories and async adapter API 1.1; the verbs the bridge dispatches and their permission gates are covered in §5. They verify cached inventory and isolate package versions, while the caller supplies admitted scoped services and a matching monotonic clock. The OTDP bridge's remaining scope is profile scheduling on a native async host. The [SDK guide](plugin-sdk.md) explains the tested scope. See [package formats, current gaps and Docker deployment](develop-your-device.md#package-format-and-gateway-installation). The recommended Docker model persists verified packages and bench configuration outside the container image; it does not grant device access or resolve dependencies automatically.
+**Status of the external plugin runtime:** package admission, activation records and cache loaders are components, not a complete live installation workflow. The legacy simulator interface uses clock-injected factories and `plugin_open`/`dispatch`/`plugin_close`. The new `load_otdp_plugin` loader and `OTDPBridge` support no-argument factories and asynchronous adapter API 1.1; the verbs the bridge dispatches and their permission gates are covered in §5. They check cached inventory and isolate package versions, while the caller supplies admitted scoped services and a matching monotonic clock. The OTDP bridge's remaining scope is profile scheduling on a native asynchronous host. The [SDK guide](plugin-sdk.md) explains the tested scope. See [package formats, current gaps and Docker deployment](develop-your-device.md#package-format-and-gateway-installation). The recommended Docker model persists verified packages and bench configuration outside the container image. It does not grant device access or resolve dependencies automatically.
 
-This guide explains the workflow; it introduces no new protocol requirements. The linked specifications and schemas define the contracts. If prose and schema disagree, record a contract defect and resolve it explicitly before relying on the disputed behaviour.
+This guide explains the workflow; it introduces no new protocol requirements. The linked specifications and schemas define the contracts. If the prose and the schema disagree, record a contract defect and resolve it explicitly before you rely on the disputed behaviour.
 
 ## 1. Choose your starting point
 
@@ -62,34 +62,38 @@ plugins/
             └── tests/
 ```
 
-Keep device-specific protocol code, adapter, descriptor, evidence, tests and documentation together. Firmware is the plugin developer's responsibility, not a BenchWeave core component. For a custom device, keep its firmware here too, with its own board configuration, toolchain/dependency locks, build instructions and tests. Core installation, builds and tests must not acquire firmware source, require board toolchains or run flashing tasks. Track exact plugin/firmware compatibility even when their release versions differ. Firmware is optional for existing vendor instruments: the DPS-150 project has no firmware source or flashing implementation. Do not fabricate a firmware tree or redistribute vendor binaries without rights. Flashing and hardware operation remain separately authorised.
+Keep device-specific protocol code, adapter, descriptor, evidence, tests and documentation together. Firmware is the plugin developer's responsibility, not a BenchWeave core component.
 
-Use lowercase manufacturer/model directory names. For this example the Python distribution is `benchweave-fnirsi-dps150`, import package `benchweave_fnirsi_dps150`, and descriptor factory `benchweave_fnirsi_dps150.adapter:create_plugin`. Preserve descriptor ID `org.benchweave.fnirsi-dps150`. Group by manufacturer/model rather than device class: one model can implement multiple profiles.
+For a custom device, keep its firmware here too, with its own board configuration, toolchain and dependency locks, build instructions and tests. Core installation, builds and tests must not acquire firmware source, need board toolchains or run flashing tasks. Track the exact compatibility between plugin and firmware even when their release versions differ. Firmware is optional for existing vendor instruments: the DPS-150 project has no firmware source and no way to flash. Do not fabricate a firmware tree or redistribute vendor binaries without rights. Firmware flashing and hardware operation remain separately authorised.
 
-The plugin owns its protocol implementation. BenchWeave core owns hosting, admission, scheduling and policy. A plugin must not import core implementation modules, rely on a parent checkout's dependency lock, or locate test contracts by walking into the core repository. Use documented structural host interfaces, its own dependency lock and pinned local contract inputs. Initialisers perform no I/O or eager imports of other devices.
+Use lowercase directory names for manufacturer and model. For this example the Python distribution is `benchweave-fnirsi-dps150`, import package `benchweave_fnirsi_dps150`, and descriptor factory `benchweave_fnirsi_dps150.adapter:create_plugin`. Preserve descriptor ID `org.benchweave.fnirsi-dps150`. Group by manufacturer and model rather than device class: one model can implement many profiles.
 
-Author the standards your package consumes beside its lock: `contracts/constraints.json` declares one explicit half-open interval per standard (`{"constraint_version": 1, "standards": {"otdp": "…"}, "opt_in": {}}` — see the DPS-150's committed file for the in-tree example), and the gateway's `benchweave.standards pin` command resolves it into `contracts/lock.json`. Caret sugar (`--set otdp=^0.2`) is accepted at that authoring boundary and expanded before anything is stored; a caret found in any committed file refuses. Constrain only what the package uses — a constraint for a standard it never consumes is fake data. `pin --locked` verifies the committed lock against a fresh resolution without writing, and `upgrade <standard> --precise <version>` moves exactly one row, leaving every other row byte-identical.
+The plugin owns its protocol implementation. BenchWeave core owns hosting, admission, scheduling and policy. A plugin must not import core implementation modules, rely on a parent checkout's dependency lock, or locate test contracts by walking into the core repository. Use documented structural host interfaces, its own dependency lock and pinned local contract inputs. Initialisers do no I/O and no eager imports of other devices.
 
-The core wheel does not include device plugins. Build each plugin's own wheel and source distribution, verify its descriptor and referenced evidence are included, and run tests in an isolated environment outside the core checkout. Repository CI should invoke the plugin's own checks explicitly. This source convention does not introduce a discovery API or replace registry admission. A wheel, registry payload and firmware image are separate release artefacts; none authorises installation, flashing or publication.
+Author the standards your package consumes beside its lock: `contracts/constraints.json` declares one explicit half-open interval per standard (`{"constraint_version": 1, "standards": {"otdp": "…"}, "opt_in": {}}`; see the DPS-150's committed file for the in-tree example), and the gateway's `benchweave.standards pin` command resolves it into `contracts/lock.json`. Caret sugar (`--set otdp=^0.2`) is accepted at that authoring boundary and expanded before anything is stored. A caret found in any committed file refuses. Constrain only what the package uses. A constraint for a standard it never consumes is fake data. `pin --locked` checks the committed lock against a fresh resolution without writing. `upgrade <standard> --precise <version>` moves exactly one row, leaving every other row byte-identical.
+
+The core wheel does not include device plugins. Build each plugin's own wheel and source distribution. Make sure its descriptor and referenced evidence are included. Run tests in an isolated environment outside the core checkout. Repository CI should invoke the plugin's own checks explicitly. This source convention does not introduce a discovery API or replace registry admission. A wheel, registry payload and firmware image are separate release artefacts. None authorises installation, flashing or publication.
 
 ## 2. Establish the device facts first
 
 Create a device evidence sheet before implementing commands. Record:
 
 - Manufacturer, exact model, hardware revision, firmware versions and authoritative protocol-document revisions.
-- Available connection/backend, framing, encoding, baud or bus settings, timeouts, message limits and identity exchange.
+- Available connection and backend, framing, encoding, baud or bus settings, timeouts, message limits and identity exchange.
 - Channels, terminals, shared resources, ranges, coupled operating limits, units and measurement semantics.
 - Each supported operation, its exact request/response, side effects, completion evidence and failure responses.
 - Startup, serial attachment, reset, disconnect and output-enable behaviour. Record facts that are unknown.
 - Captured exchanges and their source, date, target identity and whether they came from a simulator or hardware.
 
-Keep per-instance endpoints, credentials, serial selection, wiring and DUT limits in local bench configuration. They do not belong in a reusable descriptor. A device's maximum capability is not a safe limit for the attached DUT.
+Keep per-instance endpoints, credentials, serial selection, wiring and DUT limits in local bench configuration. They do not belong in a reusable descriptor.
 
-Search existing source projects and configured registries before creating a duplicate. Compare exact firmware, profiles, host requirements, licence, permissions, evidence and maintenance status. Reuse a compatible release, contribute a fix, or fork with attribution. There is no public registry service yet; locally, resolve/admit runs against configured origins (the committed signed fixture catalogue today — see §10).
+> **CAUTION:** DO NOT USE A DEVICE'S MAXIMUM CAPABILITY AS A SAFE LIMIT FOR THE ATTACHED DEVICE UNDER TEST (DUT).
+
+Search existing source projects and configured registries before you create a duplicate. Compare exact firmware, profiles, host requirements, licence, permissions, evidence and maintenance status. Reuse a compatible release, contribute a fix, or fork with attribution. There is no public registry service yet. Locally, resolve and admit runs against configured origins (the committed signed fixture catalogue today; see §10).
 
 ### Example: the first hardware target
 
-The planned first instrument is the FNIRSI DPS-150; ESP32 is the provisional controller family. Follow the [hardware discovery brief](implementation-planning/02-hardware-discovery.md). Do not treat the synthetic `reference-psu` command set as a DPS-150 protocol. In particular, verify the instrument's protection and configuration capabilities before claiming the standard DC PSU profile. If a mandatory action or assurance requirement cannot be met, use a supported limited core integration or propose a separately reviewed limited profile. Do not stub a missing capability with a successful response.
+The planned first instrument is the FNIRSI DPS-150; ESP32 is the provisional controller family. Follow the [hardware discovery brief](implementation-planning/02-hardware-discovery.md). Do not treat the synthetic `reference-psu` command set as a DPS-150 protocol. In particular, make sure of the instrument's protection and configuration capabilities before you claim the standard DC PSU profile. If a mandatory action or assurance need cannot be met, use a supported limited core integration or propose a separately reviewed limited profile. Do not stub a missing capability with a successful response.
 
 ## 3. Select the integration model
 
@@ -102,7 +106,7 @@ The planned first instrument is the FNIRSI DPS-150; ESP32 is the provisional con
 
 Standard class `invoke` integrations use adapter mode in this baseline. Native firmware may still sit behind such an adapter.
 
-The twelve current classes are DC PSU, DMM, oscilloscope, logic analyser, function generator, electronic load, SMU, DAQ, embedded controller, switch matrix, spectrum analyser and VNA. A device may compose profiles, but must implement every required action of each advertised profile. Optional action groups must also be internally complete where required.
+The 12 current classes are DC PSU, DMM, oscilloscope, logic analyser, function generator, electronic load, SMU, DAQ, embedded controller, switch matrix, spectrum analyser and VNA. A device may compose profiles, but must implement every required action of each advertised profile. Optional action groups must also be internally complete where required.
 
 An image or IQ dataset representation does not establish camera or RF-receiver control support. GPIB, USB-HID, arbitrary USB bulk and vendor SDKs need separately admitted host-provider contracts. A `custom` transport label does not grant an escape hatch to raw OS access.
 
@@ -110,25 +114,31 @@ An image or IQ dataset representation does not establish camera or RF-receiver c
 
 Use the [independent device project layout](#repository-layout-for-device-plugins). Keep descriptors and their referenced vectors in the Python package so the wheel contains them; keep project tests, pinned conformance inputs and development documentation at the model project root. Include firmware for custom devices in that same project, with a separate firmware build rather than an automatic Python installation hook.
 
-The integration contract requires a package README, descriptor and referenced evidence; executable integrations also need their Python package and tests. The simulator projects now live at `plugins/benchweave/sim_psu/`, `plugins/benchweave/sim_controller/` and `plugins/benchweave/sim_scope/`; `benchweave` denotes their maintainer, not a physical manufacturer. The legacy pair (`sim_psu`, `sim_controller`) each own their `src/benchweave_sim_*/` package, full-form execution descriptor, replay vectors, project tests and `pyproject.toml`; `sim_scope` owns its package, replay vectors and `pyproject.toml` — its behavioral tests live in the main repository. These legacy test plugins are an explicit exception to the external-plugin boundary: they still require the private synchronous API in `benchweave==0.1.0`. Their wheels can be tested outside this checkout with a supplied gateway wheel, but they are not yet independent of core at runtime. `sim_psu` additionally carries the bridge-leg adapter its descriptor's `entry_point` names (`src/benchweave_sim_psu/adapter.py`): a stdlib-only async OTDP adapter — the bundle loader admits no non-stdlib imports — driving `identify`/`read`/`write` and the stream verbs through the public bridge, with the synchronous core remaining the fixture-sim leg. The bridge-leg adapter does not implement their profile actions or capture, and the synchronous cores still require `benchweave==0.1.0`. Preserve that distinction until the bridge and simulator API migration are reviewed together. Core execution descriptors remain integration snapshots checked against the project-owned documents. The `firmware/esp32_reference/` placeholder was retired 2026-09-16; maintained firmware lives in each device plugin's own project (see below). Local development packaging and cache loading are described in §10; a source layout alone does not establish runtime compatibility.
+The integration contract needs a package README, descriptor and referenced evidence. Executable integrations also need their Python package and tests.
 
-Use uv for Python dependencies. Retain its lockfile and the exact tested runtime/dependency evidence. The registry's `package-lock.schema.json` describes a different lock: registry package identities, versions and manifest digests. An implementation release needs both its executable dependency closure and its registry dependency closure; neither substitutes for the other.
+The simulator projects now live at `plugins/benchweave/sim_psu/`, `plugins/benchweave/sim_controller/` and `plugins/benchweave/sim_scope/`. `benchweave` denotes their maintainer, not a physical manufacturer.
+
+The legacy pair (`sim_psu`, `sim_controller`) each own their `src/benchweave_sim_*/` package, full-form execution descriptor, replay vectors, project tests and `pyproject.toml`. `sim_scope` owns its package, replay vectors and `pyproject.toml`. Its behavioural tests live in the main repository. These legacy test plugins are an explicit exception to the external-plugin boundary: they still need the private synchronous API in `benchweave==0.1.0`. Their wheels can pass tests outside this checkout with a supplied gateway wheel, but they are not yet independent of core at runtime.
+
+`sim_psu` additionally carries the bridge-leg adapter its descriptor's `entry_point` names (`src/benchweave_sim_psu/adapter.py`): a stdlib-only asynchronous OTDP adapter (the bundle loader admits no non-stdlib imports) driving `identify`, `read`, `write` and the stream verbs through the public bridge, with the synchronous core remaining the fixture-sim leg. The bridge-leg adapter does not implement their profile actions or capture, and the synchronous cores still need `benchweave==0.1.0`. Preserve that distinction until the bridge and simulator API migration are reviewed together. Core execution descriptors remain integration snapshots checked against the project-owned documents. The project retired the `firmware/esp32_reference/` placeholder on 2026-09-16; maintained firmware lives in each device plugin's own project (see below). Local development packaging and cache loading are described in §10. A source layout alone does not establish runtime compatibility.
+
+Use uv for Python dependencies. Keep its lockfile and the exact tested runtime and dependency evidence. The registry's `package-lock.schema.json` describes a different lock: registry package identities, versions and manifest digests. An implementation release needs both its executable dependency closure and its registry dependency closure. Neither substitutes for the other.
 
 ### Descriptor authoring checklist
 
-Use the [descriptor schema](../standards/otdp/0.2.2/otdp-device-descriptor.schema.json) and a suitable [class descriptor example](../standards/otdp/0.2.2/examples/class-dc_psu.json) as references. Copying a fixture does not transfer its evidence to your hardware.
+Use the [descriptor schema](../standards/otdp/0.2.2/otdp-device-descriptor.schema.json) and a suitable [class descriptor example](../standards/otdp/0.2.2/examples/class-dc_psu.json) as references. If you copy a fixture, its evidence does not transfer to your hardware.
 
 | Field group | Authoring rule |
 |---|---|
-| Versions and identity | Use a served OTDP version (0.2.2 active; 0.2.0 remains served), a versioned descriptor and a namespaced model ID. Keep model identity separate from physical instance identity. |
+| Versions and identity | Use a served OTDP version (0.2.2 is active; 0.2.0 remains served), a versioned descriptor and a namespaced model ID. Keep model identity separate from physical instance identity. |
 | Integration | Choose declarative or adapter. For an adapter, declare the reviewed factory as `package.module:create_plugin` and API 1.1. |
 | Transport | Supply supported protocol settings and a `connection_key`; the host resolves the actual commissioned connection. |
 | Capabilities and policies | Advertise only implemented verbs, with exactly matching policies. `identify` is mandatory. |
 | Parameters | Separate setpoints from measurements; specify types, access, units, bounds, freshness and write assurance. |
 | Profiles and actions | Declare exact profile IDs, complete required actions and actual channel mappings. Additional `input_constraints` narrow the standard schema. |
 | Required features | Declare core plus applicable adapter, profile-actions, measurement and exact profile feature IDs. Unknown required features fail admission. |
-| Contract files | Pin exact local catalog/schema bytes and hashes. Resolve contract paths from the admitted bundle root without escape. An invoke-capable descriptor pins the profile catalog AND the measurement schema; the gateway verifies every pin at load (digest, catalog-schema validity, and that every embedded `$ref` resolves inside the pinned set) and refuses the whole load on any mismatch — a pinned set with only one of the two documents is not an integrity failure but grants no invoke surface at all. Ship the pinned bytes inside the plugin bundle: the dev publish path includes `device-profile-catalog.json` and `otdp-measurement.schema.json` from the package source at the bundle-root paths your descriptor pins. |
-| Dataset permissions | `artifact_writer` grants the payload services (`payload_create`/`payload_append`/`payload_finalise`/`payload_abort`) — the same permission as the capture lane, and both draw on the per-bench dataset byte budget. `artifact_reader` grants `artifact_read` (published-dataset artifacts only). Without a permission the corresponding members are structurally absent from your services object — not present-but-refused. |
+| Contract files | Pin exact local catalog/schema bytes and hashes. Resolve contract paths from the admitted bundle root without escape. An invoke-capable descriptor pins the profile catalog AND the measurement schema. The gateway checks every pin at load: the digest, the catalog-schema validity, and that every embedded `$ref` resolves inside the pinned set. It refuses the whole load on any mismatch. A pinned set with only one of the two documents is not an integrity failure but grants no invoke surface at all. Ship the pinned bytes inside the plugin bundle: the dev publish path includes `device-profile-catalog.json` and `otdp-measurement.schema.json` from the package source at the bundle-root paths your descriptor pins. |
+| Dataset permissions | `artifact_writer` grants the payload services (`payload_create`, `payload_append`, `payload_finalise` and `payload_abort`): the same permission as the capture lane, and both draw on the per-bench dataset byte budget. `artifact_reader` grants `artifact_read` (published-dataset artefacts only). Without a permission the corresponding members are structurally absent from your services object, not present-but-refused. |
 | Dataset identity | Never choose dataset or payload ids: the host mints `ds:{operation_id}` on the context and `pay:` staging ids from `payload_create`. A manifest must carry `context.dataset_id`; a null value forbids publishing. |
 | Provenance | Record real source revisions and vectors. Vector paths resolve relative to the descriptor and must remain inside the package. |
 | Gateway-issued inputs | If the gateway issues a token for an action input (for example `$stg_issue` for `configuration_id`), declare it in the descriptor-root `x-stg-issued-inputs` map — see below. |
@@ -137,9 +147,9 @@ Validate all applicable **S01–S18**, **C01–C12** and **M01–M14** obligatio
 
 **Full-form is the execution-admitted form.** Runtime admission validates the
 descriptor against the vendored OTDP descriptor schema of **its own
-`otdp_version` pin** — the pin's bytes, digest-verified against the corpus
-manifest — plus the S01 and S02 semantic checks: the same per-pin contract
-`benchweave-sdk check` enforces. The gateway falls back to the active
+`otdp_version` pin**: the pin's bytes, digest-verified against the corpus
+manifest, plus the S01 and S02 semantic checks. This is the same per-pin
+contract `benchweave-sdk check` enforces. The gateway falls back to the active
 schema only for a pin that does not classify as a version at all, so the
 schema's own `otdp_version` const error names the malformed value. Admission
 then projects the execution view the gateway consumes from it (identity,
@@ -190,32 +200,32 @@ The classes, and what each one means for your plugin:
   released here or the pin is mistyped; publish it or fix the pin.
 
 Every version refusal and the non-conforming classification carries the
-same five fields inline — the standard, the pinned version, the supported
-range, the derived move-to version, and the migration-note pointer — so a
+same five fields inline: the standard, the pinned version, the supported
+range, the derived move-to version, and the migration-note pointer. So a
 refusal is actionable without cross-referencing. The machine-matchable
 prefixes: `retired_identifier:`, `version_unknown:`,
 `operator_ack_required:` (riding with the `standard_nonconforming:`
 classification), and `cross_constraint_violation:` (the bench's execution
-version constrains the OTDP range its devices may pin — a pin outside it
+version constrains the OTDP range its devices may pin; a pin outside it
 refuses naming both versions and the constraining row's evidence).
 
 The bench side carries the same pinning (issue #220): the bench
-document's own `contract_version` selects the vendored execution corpus
-version the whole lattice validates against, refusing with
+document's own `contract_version` selects the version of the vendored
+execution corpus that the whole lattice validates against, refusing with
 `version_unknown:`, `retired_identifier:`, or `standard_nonconforming:`
 (the same five inline fields; a non-conforming execution pin has no
 acknowledgement path). Running is an implemented-dialect fact (issue
-#260): a lattice pinned to a non-active execution version runs — and its
-terminal record carries the LATTICE's own version — while every run's
+#260). A lattice pinned to a non-active execution version runs, and its
+terminal record carries the LATTICE's own version. But every run's
 device pins must satisfy the gateway composition's cross-constraint row
 (the same `cross_constraint_violation:` refusal, subject "this gateway
-runs", refused synchronously at run start — best-effort over stored
-documents; an unstored document skips to the worker's 202/
-`outcome_unknown` class — and authoritatively at the worker). Recovery
-terminalizes era runs against their own version doc-first; the echo is
-judged three ways (carried → era record; retired-but-retained → era
+runs", refused synchronously at run start: best-effort over stored
+documents, where an unstored document skips to the worker's 202/
+`outcome_unknown` class, and authoritatively at the worker). Recovery
+terminalizes era runs against their own version doc-first. The echo is
+judged three ways: carried → era record; retired-but-retained → era
 record from the retained bytes; no retained bytes → caller data,
-terminalized as before), and the contained class (doc/echo disagreement,
+terminalized as before. The contained class (doc/echo disagreement,
 unjudgeable or const-less doc const) logs
 `recovery_execution_version_unresolved:` with no record. RETIRED
 vocabulary from before this lane: `execution_version_not_runnable:` (the
@@ -241,8 +251,8 @@ sha and per-file digests over the head's bytes AT that sha, and every
 re-verification compares the head's CURRENT working-tree bytes against
 them (`pin --locked`, the check lane, and upgrades alike): a head that
 moved under the pin refuses `dev_pin_drift:` naming the file and both
-digests — heal it by moving the opt-in to the new sha, never by ignoring
-the drift. Resolution is repo-checkout only: the head's bytes materialize
+digests. To heal it, move the opt-in to the new sha. Never ignore the
+drift. Resolution is repo-checkout only: the head's bytes materialize
 from the object store at the recorded sha, and a wheel or any store-less
 context refuses `dev_head_unresolvable:` by name rather than falling back
 to the active family.
@@ -317,65 +327,65 @@ proof the projection gate (not a rewrite) did the work. Its own
 
 ### Declared plots and the UI preview
 
-How any host renders a plugin — tokens, severities, component contracts and
-safety-relevant presentation — is defined normatively by the
-[UI renderer-neutral component contract](internal/ui-contract.md); the
+How any host renders a plugin is defined normatively by the
+[UI renderer-neutral component contract](internal/ui-contract.md): tokens,
+severities, component contracts and safety-relevant presentation. The
 `ui/` workbench is one implementation of it. Since the safety-behaviours
 slice (#242 slice 2), that contract's safety rules are enforced in the
-reference renderer and its built preview: energy-sourcing actions
+reference renderer and its built preview. Energy-sourcing actions
 (output on, set-point change on an energised output) take a confirm step
-stating the exact value and target; de-energising is always one action;
-energy-sourcing controls disable with a visible reason while a protective
-trip is active; every page carries the presentation-mode banner; and
-transport failures at the boundary render as the no-response refusal —
-unknown whether anything was sent, do not retry blindly. Since the
+stating the exact value and target. De-energising is always one action.
+Energy-sourcing controls disable with a visible reason while a protective
+trip is active. Every page carries the presentation-mode banner. Transport
+failures at the boundary render as the no-response refusal: unknown
+whether anything was sent, do not retry blindly. Since the
 plot-series slice, trace colours and symbols derive from the declared
 channel id SET: adding or removing a declared channel re-derives every
 slot in that plot, so an operator's learned colour-to-channel mapping
 goes stale the moment the declaration changes. The presentation-contract
 additions (limiting reading state, the measured/set/staged setpoint triad,
 computed staleness against the descriptor's own
-`stream_limits.min_interval_ms`/`max_age_ms` cadence) are renderer-neutral
-rows in the same contract (§B.3/§B.4/§E.3): a host renders them from
-descriptor-derived configuration — a binding with no commissioned cadence
+`stream_limits.min_interval_ms` and `max_age_ms` cadence) are renderer-neutral
+rows in the same contract (§B.3/§B.4/§E.3). A host renders them from
+descriptor-derived configuration. A binding with no commissioned cadence
 renders no staleness verdict at all. Since the plot-rules slice,
 multi-unit plots draw one y-axis per unit (≤2, first-declaration order) and
-REFUSE to draw at more than two distinct units (the note names them);
-declared limits render as neutral reference lines on their unit's axis, and
+REFUSE to draw at more than two distinct units (the note names them).
+Declared limits render as neutral reference lines on their unit's axis, and
 decimation is disclosed beside the canvas with the renderer's own drawn
 count.
 
 A manifest page of kind `readings` or `dataset` may declare `plots`
 (`time_series` over an observation binding, `waveform` over a dataset
-binding; axis ids resolve against the binding catalogue's variables, and
-`channel_hints` carry the plugin's `color_role`/`visible` presentation
-preferences). A logic capture declares `digital_lanes` over a dataset
-binding: `y` names the fetch variables carrying the four-state logic
-alphabet (up to 64 channels), `lane_groups` declare collapsed bus lanes
-(`member_ids` 2..64, radix hex default / decimal opt-in — the first
-declared member is the LSB), `decoder_lanes` declare decode-annotation
-bindings on another action than the capture, and hints carry `visible`
-only — colour carries nothing in a lanes view; the renderer contract is
+binding). Axis ids resolve against the binding catalogue's variables, and
+`channel_hints` carry the plugin's `color_role` and `visible` presentation
+preferences. A logic capture declares `digital_lanes` over a dataset
+binding. `y` names the fetch variables carrying the four-state logic
+alphabet (up to 64 channels). `lane_groups` declare collapsed bus lanes
+(`member_ids` 2..64; radix is hex by default and decimal is opt-in; the first
+declared member is the LSB). `decoder_lanes` declare decode-annotation
+bindings on another action than the capture. Hints carry `visible`
+only: colour carries nothing in a lanes view. The renderer contract is
 ui-contract §E.4. Since plugin-ui-preview 0.1.1 the SDK preview renders every
-declared plot: `preview-ui` projects each one into the served document
+declared plot. `preview-ui` projects each one into the served document
 (resolved axis units and hint fields included) and the bundled renderer
-draws it, with hints applied as preferences under the host theme — a hint
-can bias a trace colour to `accent`/`muted` or hide a channel from the
-drawing, and can never carry severity semantics or a threshold. The
-`digital_lanes` capture kind renders, decoder lanes included: each
+draws it, with hints applied as preferences under the host theme. A hint
+can bias a trace colour to `accent` or `muted`, or hide a channel from the
+drawing. A hint can never carry severity semantics or a threshold. The
+`digital_lanes` capture kind renders, decoder lanes included. Each
 declared decoder lane draws its events as annotation spans at their exact
 sample extents, the payload verbatim, and the disclosure line naming the
-decoder and its settings; a source channel hidden (or collapsed into a bus)
-waits visibly, and an event-less declaration keeps the awaiting-render
-note — never a silent blank.
+decoder and its settings. A source channel hidden (or collapsed into a bus)
+waits visibly. An event-less declaration keeps the awaiting-render
+note. The render is never a silent blank.
 
 Preview plot values are **per-scenario snapshots**: the preview data model
 carries one simulated value per observation target per scenario, so a feedable plot
-draws an honest single point, not observation history — the panel states
+draws an honest single point, not observation history. The panel states
 this beside every plot it renders. A declared plot whose binding has no
 feedable value in the current scenario (waveform/dataset plots, or
-loading/disconnected states) still renders its structure — title, axes,
-legend — with a visible "no preview data" row; declaring a plot is never
+loading/disconnected states) still renders its structure (title, axes,
+legend) with a visible "no preview data" row. A declared plot is never
 silently dropped. Plots never fabricate a limit line: `$defs.plot` carries
 no threshold, and the preview adds none.
 
@@ -399,7 +409,7 @@ For an operation:
 2. Check cancellation and the remaining monotonic deadline before each transfer and bounded processing step.
 3. Call `context.mark_dispatch_started()` before the first transmission. This is durable dispatch intent, not proof that the device received bytes. Pure receives need no dispatch marker.
 4. Use `services.transfer(...)` with the exact scoped transaction grammar. Internal payloads are Python `bytes`; runtime JSON envelopes are a separate boundary.
-5. Parse complete bounded responses, preserve consumed error evidence and perform the declared verification.
+5. Parse complete bounded responses, preserve consumed error evidence and do the declared check.
 6. Return the original operation identity and achieved outcome. An uncertain physical effect is `unknown`, not a successful retry or an assumed rollback.
 
 `TimeoutError`, `ConnectionError`, `ValueError` and `RuntimeError` are the documented host failure classes. Map them to runtime error codes and conservative dispatch state. Do not automatically retry whole operations, reconnect, spawn processes or retain contexts for later use.
@@ -420,19 +430,19 @@ A successful result with actual readback evidence has this shape:
 {"operation_id":"op-1","verb":"invoke","status":"ok","data":{"action_id":"otdp.dc_psu.output/1.0.0","result":{"channel":"ch1","enabled":false,"assurance":"readback"}}}
 ```
 
-The action must belong to the admitted profile, channel and instance. Never return this success envelope as a placeholder. Enabling a source additionally requires the profile's verified configuration state and current host authorisation.
+The action must belong to the admitted profile, channel and instance. Never return this success envelope as a placeholder. Enabling a source additionally needs the profile's verified configuration state and current host authorisation.
 
-**How the gateway gates an invoke dispatch.** Before your adapter's `execute` is ever called, the host checks: the descriptor declares the action, the action resolves in the pinned profile catalog, the (resolved) input validates against the action's catalog input schema, and the input also satisfies your descriptor's `input_constraints` narrowing. Any failure is a typed `INVALID_ARGUMENT` refusal with zero device contact. On success the host mints a per-dispatch dataset id (`ds:{operation_id}`) onto `context.dataset_id` — your adapter never chooses it. Your `data` must be exactly `{action_id, result}` with the action_id echoing the request, and `result` must validate against the action's catalog output schema. A dataset-shaped `result` that the host did not admit through its dataset services is refused as a protocol violation from day one: publish through `dataset_publish` with `context.dataset_id` rather than inlining.
+**How the gateway gates an invoke dispatch.** Before your adapter's `execute` is ever called, the host checks: the descriptor declares the action, the action resolves in the pinned profile catalog, the (resolved) input validates against the action's catalog input schema, and the input also satisfies your descriptor's `input_constraints` narrowing. Any failure is a typed `INVALID_ARGUMENT` refusal with zero device contact. On success the host mints a per-dispatch dataset id (`ds:{operation_id}`) onto `context.dataset_id`. Your adapter never chooses it. Your `data` must be exactly `{action_id, result}` with the action_id echoing the request, and `result` must validate against the action's catalog output schema. The host refuses a dataset-shaped `result` that it did not admit through its dataset services, as a protocol violation from day one. Publish through `dataset_publish` with `context.dataset_id` rather than inlining.
 
 ### Capture: single-channel acquisition
 
-The `capture` verb is the retained core lane (spec §7): one channel per capture, `waveform_f64le` (contiguous little-endian float64, byte length = sample_count×8, waveform metadata mandatory) or `raw_binary`. The request carries `{capture_id, format, sample_count, max_bytes}`; the host supplies the capture id, and the successful result's data is the finalised manifest — whose `artifact_id`, `sha256` and `byte_length` the host computes over the real published bytes. Adapter-supplied digest or length values are ignored, never trusted; a short capture (delivered bytes below the declared sample_count×8) is refused at finalise and never published.
+The `capture` verb is the retained core lane (spec §7): one channel per capture, `waveform_f64le` (contiguous little-endian float64, byte length = sample_count×8, waveform metadata mandatory) or `raw_binary`. The format is contiguous little-endian float64. The byte length is sample_count×8. Waveform metadata is mandatory. The request carries `{capture_id, format, sample_count, max_bytes}`; the host supplies the capture id, and the successful result's data is the finalised manifest. The host computes the manifest's `artifact_id`, `sha256` and `byte_length` over the real published bytes. The host ignores adapter-supplied digest or length values. It never trusts them. A short capture (delivered bytes below the declared sample_count×8) is refused at finalise and never published.
 
 **Permission:** only `artifact_writer` grants the capture services (spec §8/S15). Declare the permission in `integration.adapter.permissions`; without it the composing services object has no capture members at all and a `capture` dispatch is refused `UNSUPPORTED` before the device. Requests must satisfy both the descriptor limits (`capture_limits.max_samples/max_bytes`, and `capture_formats`) and the host quota.
 
-**Budget:** a capture dispatch's deadline is the procedure step's `timeout_ms` clamped to the body deadline (`min(now + timeout_ms, body_deadline)`, shortened only) — size `timeout_ms` to cover the acquisition. Monitor ticks freeze for the capture's duration (the serial model's disclosed cost); the bridge's abort epilogue reclaims staging and writes a forensic record on failure without depending on adapter cooperation, and `artifact_abort` after finalise is a no-op retract — a published capture stands.
+**Budget:** a capture dispatch's deadline is the procedure step's `timeout_ms` clamped to the body deadline (`min(now + timeout_ms, body_deadline)`, shortened only). Size `timeout_ms` to cover the acquisition. Monitor ticks freeze for the capture's duration (the serial model's disclosed cost). The bridge's abort epilogue reclaims staging and writes a forensic record on failure without depending on adapter cooperation. `artifact_abort` after finalise is a no-op retract: a published capture stands.
 
-**Standalone mode (no gateway):** plugin and bench development can capture hostlessly with the SDK's `StandaloneCaptureWriter` (`benchweave_sdk.capture`) — the same three capture methods over one directory per capture. The capture root is an explicit argument, then the `BENCHWEAVE_CAPTURE_DIR` environment variable, then `captures/` under the working directory; a root inside the installed package tree is refused. Each event directory holds `manifest.json` (real digest and length over the published bytes; standalone extras under `x-standalone-*` keys), a `staging/` tree while chunks accumulate, the primary artifact (`<capture_id>.f64`/`.bin`/`.csv`/`.txt`/`.vcd`, else `.data`) and an optional `renderings/` tree the plugin writes itself. There is no automatic import of standalone captures into the gateway — ingest is a separate, deliberate path.
+**Standalone mode (no gateway):** plugin and bench development can capture hostlessly with the SDK's `StandaloneCaptureWriter` (`benchweave_sdk.capture`): the same three capture methods over one directory per capture. The capture root is an explicit argument, then the `BENCHWEAVE_CAPTURE_DIR` environment variable, then `captures/` under the working directory; a root inside the installed package tree is refused. Each event directory holds `manifest.json` (real digest and length over the published bytes; standalone extras under `x-standalone-*` keys), a `staging/` tree while chunks accumulate, the primary artefact (`<capture_id>.f64`/`.bin`/`.csv`/`.txt`/`.vcd`, else `.data`) and an optional `renderings/` tree the plugin writes itself. There is no automatic import of standalone captures into the gateway. Ingest is a separate, deliberate path.
 
 #### Capture in a procedure (authoring side)
 
@@ -446,21 +456,25 @@ A later step reads the landed manifest back with `$stg_ref`: the pointers `/capt
 
 ### Streaming: subscriptions and next_event
 
-The `stream_subscribe`/`stream_unsubscribe` verbs open and close subscriptions (spec §7); the host supplies the subscription id (a host-minted opaque — never parse structure out of it, and never mint your own), and the successful result's data echoes exactly that id. The request carries `{subscription_id, parameters, min_interval_ms}`: `min_interval_ms` is a **floor, not a target** — a request shorter than the descriptor's declared `stream_limits.min_interval_ms` is refused outright (spec §7: "requested intervals cannot be shorter"), never clamped. Admitted subscription counts obey both the descriptor's `stream_limits.max_subscriptions` and the host's subscription ceiling.
+The `stream_subscribe` and `stream_unsubscribe` verbs open and close subscriptions (spec §7). The host supplies the subscription id (a host-minted opaque: never parse structure out of it, and never mint your own), and the successful result's data echoes exactly that id. The request carries `{subscription_id, parameters, min_interval_ms}`. `min_interval_ms` is a **floor, not a target**: the host refuses outright a request shorter than the descriptor's declared `stream_limits.min_interval_ms` (spec §7: "requested intervals cannot be shorter"), never clamped. Admitted subscription counts obey both the descriptor's `stream_limits.max_subscriptions` and the host's subscription ceiling.
 
 **Permission:** only `event_sink` grants event production (spec §8/S15). Declare it in `integration.adapter.permissions`; without it there are no event services at all and a `stream_subscribe` dispatch is refused `UNSUPPORTED` before the device.
 
-**Delivery budget, with its derivation.** `next_event` returns one event per call and events flow only inside the poll rhythm. A poll round visits every live subscription once and then waits one poll slice, so with N live subscriptions, per-poll latencies Lᵢ and slice S, a round lasts S + ΣLᵢ: the **shared budget is N/(S + ΣLᵢ) events/s** and each subscription sees at most **1/(S + ΣLᵢ) events/s**. Two asymptotes bound it: with instant polls the shared rate is N/S (two subscriptions at a 10 ms slice ≈ 200 events/s), and with every poll blocking for its full slice it converges to 1/S (≈100 events/s shared at 10 ms; sixteen blocking subscriptions ≈ 94 events/s). Size your expectations against the asymptote your adapter's poll behaviour resembles — a quiet stream that answers instantly costs far less of the budget than one that blocks. A device whose N-variables × R-Hz product approaches the budget that applies to it belongs on the capture or dataset lane, streaming a decimated signal at most. `min_interval_ms` is a maximum emission rate, not a guarantee of hardware sample rate — do not advertise streaming as a substitute for acquisition. (The engine itself floors the slice at 1 ns; the bench poll cadence — minimum declared signal `poll_ms`, defaulting to 10 ms and floored at 1 ms — binds the slice where the run engine wires the engine in, not inside the engine.)
+**Delivery budget, with its derivation.** `next_event` returns one event per call and events flow only inside the poll rhythm. A poll round visits every live subscription once and then waits one poll slice, so with N live subscriptions, per-poll latencies Lᵢ and slice S, a round lasts S + ΣLᵢ: the **shared budget is N/(S + ΣLᵢ) events/s** and each subscription sees at most **1/(S + ΣLᵢ) events/s**.
 
-**Event honesty (the host enforces it):** sequence starts at zero per subscription and increments for every emitted event; the host refuses a duplicate or regressing sequence as a protocol violation, an event after `ended` likewise, and an event whose `subscription_id` is not the polled subscription likewise. `telemetry` events require a complete reading (all seven `$defs/reading` fields); `alarm`/`gap`/`ended` events require `code` and `message`. If your plugin discards telemetry, emit `gap` before the next event when capacity permits — the host independently records every forward jump with no preceding `gap` as a delivery-gap annotation, so a silent drop is visible either way. `ended` is terminal: emit it when the stream finishes. A healthy quiet stream returns `None` from `next_event` — that is not an error.
+Two asymptotes bound it. With instant polls the shared rate is N/S (two subscriptions at a 10 ms slice ≈ 200 events/s). With every poll blocking for its full slice it converges to 1/S (≈100 events/s shared at 10 ms; sixteen blocking subscriptions ≈ 94 events/s). Size your expectations against the asymptote your adapter's poll behaviour resembles. A quiet stream that answers instantly costs far less of the budget than one that blocks. A device whose N-variables × R-Hz product approaches the budget that applies to it belongs on the capture or dataset lane, streaming a decimated signal at most. `min_interval_ms` is a maximum emission rate, not a guarantee of hardware sample rate. Do not advertise streaming as a substitute for acquisition. (The engine itself floors the slice at 1 ns. The bench poll cadence, the minimum declared signal `poll_ms`, defaulting to 10 ms and floored at 1 ms, binds the slice where the run engine wires the engine in, not inside the engine.)
 
-**Landing:** every accepted event lands as durable `event_log` evidence under the host's receipt stamp with its payload digest and capture/dataset linkage, before it is returned to the poll engine. Event rows consume a kind-scoped quota dimension; exhaustion mid-stream tears down that subscription with a host-cause `ended` marker — a resource condition, never a session failure. No stream outlives its host-owned subscription authority: subscriptions die with the run, and a failed session's streams are all torn down with markers.
+**Event honesty (the host enforces it):** sequence starts at zero per subscription and increments for every emitted event. The host refuses a duplicate or regressing sequence as a protocol violation. It refuses an event after `ended` likewise, and an event whose `subscription_id` is not the polled subscription likewise. `telemetry` events require a complete reading (all seven `$defs/reading` fields). The `alarm`, `gap` and `ended` events require `code` and `message`. If your plugin discards telemetry and capacity permits, emit `gap` before the next event. The host independently records every forward jump with no preceding `gap` as a delivery-gap annotation, so a silent drop is visible either way. `ended` is terminal: emit it when the stream finishes. A healthy quiet stream returns `None` from `next_event`. That is not an error.
 
-**The demo lattice streams.** The committed demo fixture is a working in-tree example: the sim-psu descriptor declares `event_sink` and `stream_limits` (`min_interval_ms` 20, `max_subscriptions` 4 — fixture authoring values for a synthetic bench, not commissioned numbers), and its bridge-leg adapter produces telemetry honoring the subscribed interval with strictly-increasing sequences and a terminal `ended` after a fixed synthetic-telemetry budget. What the demonstration leaves unmutated is the device surface: the edited descriptor copied verbatim, the bench copy pinning the committed descriptor digests, the committed signals, and the package closure admitted from the committed origin-main catalogue. The run's policy, procedure, commissioning and binding are authored around that surface for the bridge's verb set (write/read — the committed procedure is invoke-first and the committed policy's psu rules are invoke-only, neither runnable over the committed bridge-leg adapter, which implements identify/read/write and the stream verbs but not invoke (the deferred lane)), including the authored 400 ms settle step. That run constructs the stream controller through the unmutated device surfaces and lands its telemetry as `event_log` evidence during the procedure's `delay` windows.
+**Landing:** every accepted event lands as durable `event_log` evidence under the host's receipt stamp with its payload digest and capture/dataset linkage, before it is returned to the poll engine. Event rows consume a kind-scoped quota dimension. Exhaustion mid-stream tears down that subscription with a host-cause `ended` marker: a resource condition, never a session failure. No stream outlives its host-owned subscription authority. Subscriptions die with the run, and a failed session's streams are all torn down with markers.
+
+**The demo lattice streams.** The committed demo fixture is a working in-tree example. The sim-psu descriptor declares `event_sink` and `stream_limits` (`min_interval_ms` 20, `max_subscriptions` 4: fixture authoring values for a synthetic bench, not commissioned numbers), and its bridge-leg adapter produces telemetry honouring the subscribed interval with strictly-increasing sequences and a terminal `ended` after a fixed synthetic-telemetry budget.
+
+What the demonstration leaves unmutated is the device surface: the edited descriptor copied verbatim, the bench copy pinning the committed descriptor digests, the committed signals, and the package closure admitted from the committed origin-main catalogue. The run's policy, procedure, commissioning and binding are authored around that surface for the bridge's verb set (write and read; the committed procedure is invoke-first and the committed policy's psu rules are invoke-only, neither runnable over the committed bridge-leg adapter, which implements identify, read, write and the stream verbs but not invoke (the deferred lane)), including the authored 400 ms settle step. That run constructs the stream controller through the unmutated device surfaces and lands its telemetry as `event_log` evidence during the procedure's `delay` windows.
 
 ### How a run drives your stream (host-owned subscriptions)
 
-On a bench gateway, the **run engine** — not the procedure — owns the stream
+On a bench gateway, the **run engine**, not the procedure, owns the stream
 verbs (issue #167). When a run constructs your bridge (its bench device's
 declared generation carries the registry activation record that commissioned
 your package's closure), the run derives subscriptions solely from the
@@ -471,45 +485,46 @@ and `min_interval_ms=signal.poll_ms`, issued as an ordinary
 adapter never mints subscriptions on a run; it only answers them. If the
 bench commissions an interval shorter than your descriptor's
 `stream_limits.min_interval_ms`, the subscription is refused cleanly before
-your adapter is called and the run logs one `stream_subscribe_refused:` line
-— the signal simply has no stream and the monitor's read-based snapshot is
-unaffected. (Procedure-authored subscribe steps are a corpus question that
-has not been opened; the run-owned shape is the composed one today.)
+your adapter is called and the run logs one `stream_subscribe_refused:` line.
+The signal simply has no stream and the monitor's read-based snapshot is
+unaffected. Procedure-authored subscribe steps are a corpus question that
+has not been opened; the run-owned shape is the composed one today.
 
-**The poll rhythm:** polls run only inside the run's wait-slice rhythm —
+**The poll rhythm:** polls run only inside the run's wait-slice rhythm,
 during a procedure's `delay` steps, each poll bounded to one slice of the
 bench poll cadence (`bench_poll_ns`: the minimum declared signal `poll_ms`,
 defaulting to 10 ms and floored at 1 ms). A procedure with no wait step
 polls nothing during the body; per-dispatch monitor ticks still cover
 protection. There is no hidden background task polling your adapter.
 Delivered spacing is therefore `max(requested min_interval_ms, poll
-cadence)`; missed opportunities are never produced and never gap-marked.
+cadence)`. The run never produces missed opportunities and never gap-marks
+them.
 
 **Teardown is exit-path-owned:** at body end, before the protective
 transition, the run unsubscribes every live subscription (an ordinary
 `stream_unsubscribe` dispatch) and sweeps anything still live with a
 host-cause `run_body_end` ended marker; `close()` is the last-resort sweep.
-Emitting your own `ended` event remains good citizenship, but no stream
+It is good practice to emit your own `ended` event, but no stream
 outlives the run regardless of what your adapter does.
 
 **Sinks and the containment promise.** The run's host services expose
-`register_reading_sink` — callables receiving every Reading your telemetry
+`register_reading_sink`: callables that receive every Reading your telemetry
 lands, one shared sink set across the whole run (the same set the stream
-landing delivers into). Delivery is contained on both sides: a raising sink
+landing delivers into). Delivery is contained on both sides. A raising sink
 is counted on a run-visible failure counter and logged
-(`stream_on_event_contained:`), never allowed to fail the landing that
-carried the reading, and never visible to your adapter. Symmetrically, the
-run's own `on_event` consumer runs inside the same contained dispatcher —
-a raising consumer cannot derail the body, the protective transition, or
+(`stream_on_event_contained:`). It is never allowed to fail the landing that
+carried the reading, and is never visible to your adapter. Symmetrically, the
+run's own `on_event` consumer runs inside the same contained dispatcher.
+A raising consumer cannot derail the body, the protective transition, or
 your stream.
 
 ## 6. Create controller firmware
 
 For an ESP32 or another controller, first decide whether firmware implements native OTDP UART JSON or a documented protocol behind an adapter. Keep firmware pin assignments and electrical behaviour explicit; OTDP does not choose a safe board configuration.
 
-Native UART JSON uses strict UTF-8 NDJSON with LF termination, bounded frames and exact runtime envelopes. Preserve `operation_id` and `verb` in responses. Distinguish unsolicited events using the event schema; stale responses cannot satisfy later requests. Implement one outstanding request per connection under the initial binding. Reject invalid inputs without changing outputs.
+Native UART JSON uses strict UTF-8 NDJSON with LF termination, bounded frames and exact runtime envelopes. Preserve `operation_id` and `verb` in responses. Distinguish unsolicited events with the event schema. Stale responses cannot satisfy later requests. Implement one outstanding request per connection under the first binding. Reject invalid inputs without changing outputs.
 
-Advertise only the implemented subset. Document boot/reset/serial-control-line behaviour, watchdog behaviour and loss-of-host behaviour, with qualification evidence where applicable. Firmware flashing is a separate controlled activity, not plugin admission or `open()` behaviour.
+Advertise only the implemented subset. Document the behaviour of boot, reset and serial control lines, watchdog behaviour and loss-of-host behaviour, with qualification evidence where applicable. Firmware flashing is a separate controlled activity, not plugin admission or `open()` behaviour.
 
 Use the [synthetic controller descriptor](../standards/otdp/0.2.2/examples/reference-controller.json), [reference protocol](../standards/otdp/0.2.2/examples/reference-protocols.md) and [runtime schema](../standards/otdp/0.2.2/otdp-runtime.schema.json) for exact examples. They are authoring targets, not ready-to-flash ESP32 firmware.
 
@@ -524,9 +539,22 @@ Select the real dataset meaning: scalar set, waveform, digital trace, spectrum, 
 - Distinguish host receipt time from device acquisition time. Unknown synchronisation or channel skew must remain visible.
 - Obtain output IDs from the host. The host mints `context.dataset_id` per invoke dispatch (`ds:{operation_id}`); publish inline datasets through `dataset_publish`, and use bounded payload services for larger results — a dataset-shaped invoke result that was not admitted through `dataset_publish` is refused as a protocol violation (the admitted manifest is immutable; a byte-identical re-publish returns it, a divergent one refuses).
 
-**The publish contract.** `dataset_publish` validates the manifest against the pinned measurement schema and the host-side structural checks — M01 (unique axis/variable ids; dimension and channel references exist), M02 (coordinate lengths and flattened value counts agree with the product of axis lengths — a dimensionless scalar carries exactly one element; artifact byte lengths match the element count × element size; only the derived-invalid record shape — empty values, empty dimensions, invalid status, derivation marker — suspends the count), M03 (dtype pairs with the payload encoding), M04 (inline numerics finite), M10's correlation subset (declared `configuration_id`/`acquisition_id` echo the invoke input), and M11 operation-scoped (every referenced artifact is one THIS dispatch finalised — the host-computed record, never your claimed digest). Two more of the family are enforced elsewhere than publish: **M14** (unknown required contracts are rejected, not treated as opaque success) is enforced at LOAD — the contract-files checklist row above names the load-time verification — and **M15** (derived-variable declarations parse under the section-8 grammar) is enforced post-dispatch in the derivation path. **The remaining class-semantic checks of the corpus's full M01–M15 family — M05–M09, M12 and M13 (quality/status coherence, quantity/profile requirements, log references, timing coherence, multiplexed timing, class-specific rules) — stay author-side obligations:** the gateway does not verify them for you. The manifest's bytes are charged to the dataset byte quota (routed through the staged writer), one `dataset` evidence row lands per publish, and payload bytes (`payload_create`/`payload_append`/`payload_finalise`, requiring `artifact_writer`) draw on the same dataset budget — `payload_create` refuses at create when the ceiling cannot fit, never silently reduced. `payload_abort` is idempotent local cleanup. `dataset_lookup` serves this run's admitted manifests only. `artifact_read` (requiring `artifact_reader`) serves published-dataset artifacts — both the manifest's own storage row and the payload artifacts its variables reference; foreign artifacts refuse. Negative offsets are refused — never clamped — and reads beyond size fail.
+**The publish contract.** `dataset_publish` validates the manifest against the pinned measurement schema and the host-side structural checks:
 
-Payload creation/writing requires `artifact_writer`; reading authorised upload inputs requires `artifact_reader`. Finalising bytes does not validate their physical meaning: the manifest must still pass the dataset and class checks. Partial data must not become a complete successful acquisition merely because the file was written. The capture-lane services are for capture dispatches: a capture-stamped resource condition surfacing during an `invoke` dispatch is not yours to satisfy — the host treats it as an uncorrelated failure and poisons the session (the stamp's operation-binding rule).
+- **M01**: unique axis/variable ids; dimension and channel references exist.
+- **M02**: coordinate lengths and flattened value counts agree with the product of axis lengths (a dimensionless scalar carries exactly one element). Artefact byte lengths match the element count × element size. Only the derived-invalid record shape (empty values, empty dimensions, invalid status, derivation marker) suspends the count.
+- **M03**: dtype pairs with the payload encoding.
+- **M04**: inline numerics finite.
+- **M10's correlation subset**: the declared `configuration_id` and `acquisition_id` echo the invoke input.
+- **M11**, operation-scoped: every referenced artefact is one THIS dispatch finalised (the host-computed record, never your claimed digest).
+
+Two more of the family are enforced elsewhere than publish. **M14** (unknown required contracts are rejected, not treated as opaque success) is enforced at LOAD; the contract-files checklist row above names the load-time verification. **M15** (derived-variable declarations parse under the section-8 grammar) is enforced post-dispatch in the derivation path.
+
+**The remaining class-semantic checks of the corpus's full M01–M15 family stay author-side obligations.** M05–M09, M12 and M13 cover quality and status coherence, quantity and profile requirements, log references, timing coherence, multiplexed timing, and class-specific rules. The gateway does not verify them for you.
+
+The manifest's bytes are charged to the dataset byte quota (routed through the staged writer). One `dataset` evidence row lands per publish. Payload bytes (`payload_create`, `payload_append` and `payload_finalise`, needing `artifact_writer`) draw on the same dataset budget. `payload_create` refuses at create when the ceiling cannot fit; it is never silently reduced. `payload_abort` is idempotent local cleanup. `dataset_lookup` serves this run's admitted manifests only. `artifact_read` (needing `artifact_reader`) serves published-dataset artefacts: both the manifest's own storage row and the payload artefacts its variables reference. Foreign artefacts refuse. The host refuses negative offsets; it never clamps them. Reads beyond size fail.
+
+Payload creation and writing need `artifact_writer`. Reading authorised upload inputs needs `artifact_reader`. Finalisation of bytes does not validate their physical meaning: the manifest must still pass the dataset and class checks. Partial data must not become a complete successful acquisition merely because the file was written. The capture-lane services are for capture dispatches: a capture-stamped resource condition that surfaces during an `invoke` dispatch is not yours to satisfy. The host treats it as an uncorrelated failure and poisons the session (the stamp's operation-binding rule).
 
 See the [measurement model](../standards/otdp/0.2.2/measurement-model.md) for all M01–M15 rules and the [extension contract](../standards/otdp/0.2.2/extension-contract.md) for host method signatures.
 
@@ -579,7 +607,7 @@ naming it.
 
 ## 8. Test before hardware qualification
 
-Start with the SDK's `MockContext`, scripted `MockHost` and generated tests for core transport operations. Extend them or build a deterministic mock host for the relevant evidence/dataset services. Drive it with captured or explicitly synthetic exchanges. Assert exact outbound bytes, results and retained evidence; invalid-input tests should also assert that no transfer occurred.
+Start with the SDK's `MockContext`, scripted `MockHost` and generated tests for core transport operations. Extend them or build a deterministic mock host for the relevant evidence/dataset services. Drive it with captured or explicitly synthetic exchanges. Assert exact outbound bytes, results and retained evidence. Invalid-input tests should also assert that no transfer occurred.
 
 | Surface | Minimum evidence |
 |---|---|
@@ -602,45 +630,47 @@ uv run ruff format --check .
 uv run mypy
 ```
 
-These commands validate the current repository. They do **not** automatically discover or certify a new standalone plugin. Add its own conformance tests and wire them into its CI. For an independent project under `plugins/`, run its own locked environment and checks from its model directory, and add an explicit repository CI job. Core test discovery is not a substitute for independently testing the plugin. Keep contract fixtures inside the plugin or obtain them through an explicit hash-verified bootstrap; tests must not reach into the core checkout.
+These commands validate the current repository. They do **not** automatically discover or certify a new standalone plugin. Add its own conformance tests and wire them into its CI. For an independent project under `plugins/`, run its own locked environment and checks from its model directory. Add an explicit repository CI job. Core test discovery is not a substitute for independent tests of the plugin. Keep contract fixtures inside the plugin or get them through an explicit hash-verified bootstrap; tests must not reach into the core checkout.
 
-Use the [architecture validation guide](architecture-validation.md) to understand existing coverage. Keep checks read-only and add rejection cases when extending a contract. Report evidence as **structural**, **simulated** or **hardware**, with exact source revision, model/firmware, backend/runtime, method, result and limitations. Passing mocks means ready for the next qualification gate, not ready for unattended control.
+Use the [architecture validation guide](architecture-validation.md) to understand existing coverage. Keep checks read-only. Add rejection cases when you extend a contract. Report evidence as **structural**, **simulated** or **hardware**, with exact source revision, model and firmware, backend and runtime, method, result and limitations. When mocks pass, you are ready for the next qualification gate, not for unattended control.
 
 ## 9. Host an integration on a bench gateway
 
 This is the implementation and qualification sequence for the planned host, not an available deployment command.
 
-1. **Select the deployment.** The reference is a supervised host-native Linux service for direct hardware access. Qualify OS, runtime, adapter, backend, device firmware, USB/bus topology and access permissions together. Containers or worker isolation require equivalent qualified behaviour; an in-process Python interface is not a sandbox.
-2. **Resolve and admit the package.** Verify exact dependencies, local schemas, permissions, provenance and firmware support before importing executable code. Search and inspection must not execute install hooks. Do not let descriptors install packages or providers.
-3. **Create local bench records.** Bind `connection_key` to the commissioned instance. Maintain wiring, channel/resource maps, safety policy, procedure, commissioning and package lock separately from shared descriptors. Follow the [execution contract](../standards/execution/0.2.0/execution-contract.md).
+1. **Select the deployment.** The reference is a supervised host-native Linux service for direct hardware access. Qualify OS, runtime, adapter, backend, device firmware, USB and bus topology, and access permissions together. Containers or worker isolation need equivalent qualified behaviour; an in-process Python interface is not a sandbox.
+2. **Resolve and admit the package.** Make sure of the exact dependencies, local schemas, permissions, provenance and firmware support before you import executable code. Search and inspection must not execute install hooks. Do not let descriptors install packages or providers.
+3. **Create local bench records.** Bind `connection_key` to the commissioned instance. Maintain wiring, channel and resource maps, safety policy, procedure, commissioning and package lock separately from shared descriptors. Follow the [execution contract](../standards/execution/0.2.0/execution-contract.md).
 4. **Implement scoped host services.** Enforce connection identity, transaction shape, byte/time limits, monotonic deadlines, ownership, evidence retention and dataset quotas. Resolve schema references from verified local content only. Provide no unrestricted credentials or host paths to adapters.
-5. **Activate at a safe idle boundary.** Create a new configuration generation, instantiate one plugin per physical device, open it and explicitly identify it. Identity or firmware mismatch blocks ordinary control. The approved package lock remains fixed throughout a run.
-6. **Enforce the control path.** Authenticate and authorise, establish ownership, validate current safety conditions, schedule, execute and verify. REST and MCP call the same core; tool annotations and sessions do not grant authority.
-7. **Qualify protection and operation.** Supply actual voltage/current/power/energy limits, safe-state criteria, timing budgets, independent protective response and evidence. Unattended runs require a commissioned bounded procedure. Future mains-powered fixtures require separate qualification.
-8. **Exercise failures and recovery.** Verify lost device/host communication, process failure, storage failure, restart, identity changes and cancellation. Recovery does not blindly replay work, auto-clear trips or resume output. Preserve evidence and require the contract's verification/re-arming process.
+5. **Activate at a safe idle boundary.** Create a new configuration generation. Instantiate one plugin per physical device. Open it. Identify it explicitly. Identity or firmware mismatch blocks ordinary control. The approved package lock remains fixed throughout a run.
+6. **Enforce the control path.** The path is: authenticate and authorise, establish ownership, validate current safety conditions, schedule, execute and verify. REST and MCP (Model Context Protocol) call the same core; tool annotations and sessions do not grant authority.
+7. **Qualify protection and operation.** Supply actual limits for voltage, current, power and energy, safe-state criteria, timing budgets, independent protective response and evidence. Unattended runs need a commissioned bounded procedure. Future mains-powered fixtures need separate qualification.
+8. **Exercise failures and recovery.** Check lost device and host communication, process failure, storage failure, restart, identity changes and cancellation. Recovery does not blindly replay work, auto-clear trips or resume output. Preserve evidence and require the contract's verification and re-arming process.
 
-Network-facing interfaces require the [interface contract](../standards/interface/0.1.0/interface-contract.md) authentication and authorisation model and TLS. Restrict raw instrument protocols to the bench network. Publish REST/MCP interfaces, not direct unauthenticated instrument sockets, to application clients.
+> **WARNING:** UNATTENDED RUNS NEED A COMMISSIONED BOUNDED PROCEDURE. FUTURE MAINS-POWERED FIXTURES NEED SEPARATE QUALIFICATION BEFORE ENERGISED CONTROL.
+
+Network-facing interfaces need the authentication and authorisation model of the [interface contract](../standards/interface/0.1.0/interface-contract.md) and TLS. Restrict raw instrument protocols to the bench network. Publish REST and MCP interfaces, not direct unauthenticated instrument sockets, to application clients.
 
 The host owns protective priority independently of ordinary plugin work. Device shutdown commands alone do not cover host failure. Define retention, backup/restore, health monitoring and resource limits as deployment inputs. A graceful stop must not be the only path to a safe condition.
 
 ## 10. Share packages and host a registry
 
-Hosting an integration on a bench and hosting its downloadable release are different responsibilities. A registry distributes packages and evidence; it never controls the bench.
+To host an integration on a bench and to host its downloadable release are different responsibilities. A registry distributes packages and evidence; it never controls the bench.
 
-### Develop and test locally: the unsigned dev loop
+### Develop and do tests locally: the unsigned development loop
 
-Signed releases are for production. For development and testing, package your plugin **unsigned** into a local dev origin — no signing keys, no ceremony:
+Signed releases are for production. For development and tests, package your plugin **unsigned** into a local development origin. This needs no signing keys and no ceremony:
 
 ```sh
 uv run python scripts/registry/publish_dev.py plugins/benchweave/sim_psu \
   [--descriptor path/to/descriptor.json] [--out .dev-registry] [--version 0.0.0]
 ```
 
-- The publisher emits `manifest.json`, `status.json` and `payload.zip` under `<out>/dev-local/dev/<plugin-dirname>/<version>/`, deterministic for identical inputs (canonical JSON, uncompressed zips). Dependencies default to the committed origin-main pins, so the normal dev closure is your unsigned implementation over signed production descriptor/profile packages; `--descriptor` publishes your descriptor unsigned alongside and repins.
-- A dev origin is configured with `signature_policy="dev-unsigned"`, a `dev-`-prefixed registry id (`dev-local`) and no trust root. **Unsigned skips authenticity only**: schema validation, the served-manifest identity check, dependency digest pinning, payload hashing, status expiry, the persisted sequence high-water, and lifecycle gates (revocation/yanked) all still run. A dev status file is unauthenticated by design — anything that can write the dev root can forge lifecycle state; keep dev roots local and disposable (`.dev-registry/` is gitignored).
-- Dev releases can never enter a production-graded closure: routing requires registry-id match, so a dev release resolves only through the dev origin, and every lock records origin ids — a dev-graded closure is visible by construction.
-- Admission works identically: resolve → admit into a content-addressed cache → `load_plugin` → dispatch. The signed path (`signature_policy="required"`, the default) verifies ed25519 signatures over manifest and status against the origin's trust root; under it, missing or invalid signatures reject `bad_signature`.
-- In this repository, catalogue signing keys live as GitHub repo secrets (`BENCHWEAVE_FIXTURE_KEY_MAIN`/`_ORIGINB`), materialised by CI; only public halves are committed. The committed fixture catalogue is the working example of a signed origin.
+- The publisher emits `manifest.json`, `status.json` and `payload.zip` under `<out>/dev-local/dev/<plugin-dirname>/<version>/`, deterministic for identical inputs (canonical JSON, uncompressed zips). Dependencies default to the committed origin-main pins, so the normal development closure is your unsigned implementation over signed production descriptor/profile packages; `--descriptor` publishes your descriptor unsigned alongside and repins.
+- A development origin is configured with `signature_policy="dev-unsigned"`, a `dev-`-prefixed registry id (`dev-local`) and no trust root. **Unsigned skips authenticity only**: schema validation, the served-manifest identity check, dependency digest pinning, payload hashing, status expiry, the persisted sequence high-water, and lifecycle gates (revocation and yanked) all still run. A development status file is unauthenticated by design: anything that can write the development root can forge lifecycle state. Keep development roots local and disposable (`.dev-registry/` is gitignored).
+- Development releases can never enter a production-graded closure: routing requires registry-id match, so a development release resolves only through the development origin, and every lock records origin ids. A development-graded closure is visible by construction.
+- Admission works identically: resolve → admit into a content-addressed cache → `load_plugin` → dispatch. The signed path (`signature_policy="required"`, the default) checks ed25519 signatures over manifest and status against the origin's trust root; under it, missing or invalid signatures reject `bad_signature`.
+- In this repository, catalogue signing keys live as GitHub repo secrets (`BENCHWEAVE_FIXTURE_KEY_MAIN` and `_ORIGINB`), materialised by CI; only public halves are committed. The committed fixture catalogue is the working example of a signed origin.
 
 ### Package author
 
@@ -652,23 +682,27 @@ Choose the correct registry kind:
 
 Avoid a descriptor/implementation dependency cycle. The normal shape is a profile consumed by an implementation bundling its descriptors; a separate downstream descriptor may depend on that implementation. A descriptor-free generic library is an ordinary language dependency, not a new registry kind.
 
-Supply the [release manifest](../standards/registry/0.1.2/release-manifest.schema.json): registry/package/version identity, publisher and maintainers, support links, licence and bundled licence file, immutable source revision, compatibility/runtime matrix, device targets, exact dependencies, permissions, file inventory and hashes, test evidence, changelog and migration notes. Executable releases also need an SBOM, build provenance and exact dependency lock. The manifest sits outside its payload archive to avoid a circular hash. Emit the manifest bytes as canonical JSON — byte-identical to Python `json.dumps(parsed, sort_keys=True, separators=(",", ":")) + "\n"`: ASCII-escaped (a literal em-dash or any other literal non-ASCII character is refused even when it looks perfect in an editor), LF line endings with the trailing newline, and Python's number spellings — the exact serialization the pin lattice's single digest is keyed by. A manifest that merely parses the same — pretty-printed, re-serialized by another library, carrying literal non-ASCII or CRLF line endings — is refused until republished in that exact form, so a re-serialized manifest is a broken release, not a formatting preference; the gateway refuses a non-canonical serve at resolution with the reason `manifest_not_canonical` (rendered at the exception as `manifest_not_canonical (detail)` with the package named, reason-only at the admission surface as `registry refused: manifest_not_canonical`). Pin the digest of the served bytes as published: whether an inconsistent publication surfaces as `digest_mismatch` or as `manifest_not_canonical` depends on which digest convention the publisher used — a two-reason surface over one underlying defect.
+Supply the [release manifest](../standards/registry/0.1.2/release-manifest.schema.json): registry/package/version identity, publisher and maintainers, support links, licence and bundled licence file, immutable source revision, compatibility/runtime matrix, device targets, exact dependencies, permissions, file inventory and hashes, test evidence, changelog and migration notes. Executable releases also need a software bill of materials (SBOM), build provenance and exact dependency lock. The manifest sits outside its payload archive to avoid a circular hash.
 
-Use a new package ID for a fork and preserve lineage. Do not publish private endpoints, credentials, instance serial selection, bench safety policy or private captures. Do not assume rights to redistribute manuals or SDKs. Required metadata and review/evidence states are defined in the [registry specification](../standards/registry/0.1.2/registry-specification.md). Once a release is published it appears in the plugin catalogue — generated and served from the registry repository of record itself, linked from the website's plugins page (publication never authorizes control; installation stays local admission).
+Emit the manifest bytes as canonical JSON, byte-identical to Python `json.dumps(parsed, sort_keys=True, separators=(",", ":")) + "\n"`. The bytes are ASCII-escaped: a literal em-dash or any other literal non-ASCII character is refused even when it looks perfect in an editor. The bytes use LF line endings with the trailing newline, and Python's number spellings. This is the exact serialization the pin lattice's single digest is keyed by.
+
+A manifest that merely parses the same (pretty-printed, re-serialized by another library, carrying literal non-ASCII or CRLF line endings) is refused until republished in that exact form. A re-serialized manifest is a broken release, not a formatting preference. The gateway refuses a non-canonical serve at resolution with the reason `manifest_not_canonical` (rendered at the exception as `manifest_not_canonical (detail)` with the package named, reason-only at the admission surface as `registry refused: manifest_not_canonical`). Pin the digest of the served bytes as published. Whether an inconsistent publication surfaces as `digest_mismatch` or as `manifest_not_canonical` depends on which digest convention the publisher used: a two-reason surface over one underlying defect.
+
+Use a new package ID for a fork and preserve lineage. Do not publish private endpoints, credentials, instance serial selection, bench safety policy or private captures. Do not assume rights to redistribute manuals or SDKs. Required metadata and review/evidence states are defined in the [registry specification](../standards/registry/0.1.2/registry-specification.md). Once a release is published it appears in the plugin catalogue, generated and served from the registry repository of record itself, linked from the website's plugins page. Publication never authorises control; installation stays local admission.
 
 ### Registry operator
 
 A first registry may use a curated Git source repository plus static immutable artefacts and authenticated metadata; a custom database is optional. GitHub source hosting alone does not implement the selected registry contract.
 
-Provide namespace ownership, search/read/submit/review/status operations, immutable payload storage, review history and a private-mirror/export path. Validate full dependency closure and archive hygiene before atomic publication. Executable releases need an identified reviewer distinct from the submitter and isolated tests without production bench access.
+Provide namespace ownership, the search, read, submit, review and status operations, immutable payload storage, review history and a private-mirror/export path. Validate full dependency closure and archive hygiene before atomic publication. Executable releases need an identified reviewer distinct from the submitter and isolated tests without production bench access.
 
-Authenticated distribution uses TUF, with out-of-band trusted-root bootstrap, delegated namespaces, expiry/rollback protection and documented key recovery. Record the selected TUF version, signer thresholds and custody in the deployment profile. Hashes and TLS alone do not replace that requirement.
+Authenticated distribution uses The Update Framework (TUF), with out-of-band trusted-root bootstrap, delegated namespaces, expiry and rollback protection, and documented key recovery. Record the selected TUF version, signer thresholds and custody in the deployment profile. Hashes and TLS alone do not replace that requirement.
 
-Keep mutable release status separate from immutable manifests. Handle deprecation, yanking and revocation, including dependent packages. Preserve origin identities/digests in mirrors. Define quotas, audit retention, backups, restore tests and signing-key recovery before qualification. Do not invent a registry URL or publication CLI until a service exists.
+Keep mutable release status separate from immutable manifests. Handle deprecation, yanking and revocation, including dependent packages. Preserve origin identities and digests in mirrors. Define quotas, audit retention, backups, restore tests and signing-key recovery before qualification. Do not invent a registry URL or publication CLI until a service exists.
 
 ### Gateway operator
 
-Discover → inspect → resolve/pin → verify/download → local review → qualify → activate safely. No public fallback for a missing private package, floating dependency, live auto-update or import during search. Offline use follows commissioned status-age policy; it cannot silently treat stale metadata as fresh. Updates and rollback occur at the approved idle boundary and do not roll back physical device state.
+Discover → inspect → resolve and pin → check and download → local review → qualify → activate safely. No public fallback for a missing private package, floating dependency, live auto-update or import during search. Offline use follows the commissioned status-age policy; it cannot silently treat stale metadata as fresh. Updates and rollback occur at the approved idle boundary and do not roll back physical device state.
 
 ## 11. AI coding-agent task template
 
@@ -714,15 +748,15 @@ For firmware tasks, add board/pin allocation, toolchain and the approved boot/ou
 
 Use the [AI device integration reviewer](ai-device-reviewer.md) for an independent review session. It defines the review-only role, evidence inputs, severity and stage-specific verdicts, requirement coverage and a structured findings report. Its recommendation complements deterministic tests and accountable human approval.
 
-Before accepting an integration, verify:
+Before you accept an integration, make sure of these points:
 
-- Every claimed capability and model limit traces to the stated device/firmware evidence.
+- Every claimed capability and model limit traces to the stated device and firmware evidence.
 - Descriptor, implementation, profiles, permissions, hashes and package metadata agree.
 - Required actions work; unsupported features are absent or explicitly blocked, with no success placeholders.
 - Invalid inputs stop before I/O; post-dispatch uncertainty, cancellation and reconnect cannot silently replay physical work.
 - Returned data has correct units, quality, timing, configuration/acquisition identity and assurance.
 - Tests include applicable negative paths, run reproducibly, and are included in CI.
-- Documentation explains installation/admission prerequisites, limitations, maintenance ownership and the exact evidence level.
+- Documentation explains installation and admission prerequisites, limitations, maintenance ownership and the exact evidence level.
 - Hardware and unattended claims have separate bench-specific qualification evidence.
 
 An appropriate handoff is: “Mock conformance passed for the listed operations and synthetic exchanges; firmware identity and supervised hardware qualification remain outstanding.” Only replace that statement with a stronger claim when retained evidence supports it.
@@ -731,7 +765,7 @@ An appropriate handoff is: “Mock conformance passed for the listed operations 
 
 When the integration is accepted, the contributor publishing path takes over:
 package and submit with the SDK, review and signing against the versioned
-checklist, publication in the registry repository of record. The whole path —
-commands, entry gates, artefact set, and the honest boundaries (measurement
-truth, execution model, local state) — is documented in the
+checklist, publication in the registry repository of record. The whole path,
+with its commands, entry gates, artefact set and the honest boundaries
+(measurement truth, execution model, local state), is documented in the
 [publishing guide](publishing-guide.md).
