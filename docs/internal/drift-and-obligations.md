@@ -151,7 +151,15 @@ and remain the reviewer's job.
     `create_app` verifies the inventory at composition and refuses to
     compose the UI on any drift, naming the asset (pinned by
     tests/interfaces_ui — the §7-I arms); the row's "wiring lands with
-    G2" clause is closed.
+    G2" clause is closed. Motion into consuming hosts is pin-mediated
+    (issue #309, PRD 12 Q5): the standalone host consumes the published
+    wheel at an exact pin in the SDK's `benchweave-sdk[server]` extra,
+    so a `benchweave-ui-html` release must be followed by an SDK pin
+    bump — a contract change reaches the host through a package release
+    and a pin bump in the SDK repository, never through a copied
+    template; the SDK pin is this surface's named motion surface (the
+    first release past the founding 0.1.0 pin exercises the row, #309
+    D-B5).
 
 13. **The machine-written validation-report family** → a change to a family suite's
     corpus or checks reruns that suite's writer in the same change:
