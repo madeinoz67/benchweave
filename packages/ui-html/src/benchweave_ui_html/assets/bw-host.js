@@ -120,6 +120,13 @@
             ". Re-reading the affected views."
         );
       });
+      // Stream termination (bw-end): announce through the same ARIA
+      // channel — without this the browser's stream stops silently.
+      source.addEventListener("bw-end", function (event) {
+        announce(
+          "Event stream ended" + (event.data ? ": " + event.data : "") + "."
+        );
+      });
     }
   }
 

@@ -70,6 +70,24 @@ class MintRejected(ValueError):
         self.reason = reason
 
 
+class BridgeRefused(ValueError):
+    """An SSE bridge claim was refused; ``reason`` names the class.
+
+    ``conflict`` — the (session, bench) pair already holds a bridge
+    (GW-33: one bridge per pair). ``cap`` — the session already holds
+    ``ui_max_bridges_per_session`` bridges. ``unauthenticated`` — the
+    session is not live; a stream never outlives its session. The UI
+    adapter renders ``unauthenticated`` through the 401 row and the
+    ownership refusals through the ``conflict`` row, the message naming
+    the reason (FOLD-4: the refusal class, not the call site, picks the
+    row).
+    """
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
 @dataclass(frozen=True)
 class SessionRecord:
     """One live browser session — everything the cookie stands for.
@@ -124,6 +142,52 @@ class SessionStore:
         self._lock = threading.Lock()
         self._codes: dict[str, _LoginCode] = {}
         self._sessions: dict[str, SessionRecord] = {}
+        # The bridge registry (G2c, design §2.5): session_id -> the set of
+        # benches that session holds an SSE bridge on. The bridge's live
+        # state is its generator; this registry is the OWNERSHIP record the
+        # pair rule and the per-session cap decide against — under the same
+        # lock as the records, so a logout or expiry sweep and a concurrent
+        # bridge claim can never interleave.
+        self._bridges: dict[str, set[str]] = {}
+
+    # --- bridges (G2c: one SSE bridge per session-and-bench, GW-33) --------
+
+    def register_bridge(self, session_id: str, bench_id: str, *, cap: int) -> None:
+        """Claim the (session, bench) bridge slot, or refuse by class.
+
+        ``conflict`` — the pair is held; ``cap`` — the session holds
+        ``cap`` bridges already; ``unauthenticated`` — the session is not
+        live (only a live session can open a stream, and a stream never
+        outlives its session). Atomic with every other session decision:
+        the check and the claim happen under the one lock.
+        """
+        with self._lock:
+            session = self._sessions.get(session_id)
+            if session is None or self._now() >= session.expires_at:
+                raise BridgeRefused("unauthenticated")
+            held = self._bridges.setdefault(session_id, set())
+            if bench_id in held:
+                raise BridgeRefused("conflict")
+            if len(held) >= cap:
+                raise BridgeRefused("cap")
+            held.add(bench_id)
+
+    def deregister_bridge(self, session_id: str, bench_id: str) -> None:
+        """Release the (session, bench) slot. Idempotent by design: the
+        generator's ``finally`` and the session's own death can both fire
+        — the second release is a no-op, never an error."""
+        with self._lock:
+            held = self._bridges.get(session_id)
+            if held is not None:
+                held.discard(bench_id)
+                if not held:
+                    del self._bridges[session_id]
+
+    def bridge_benches(self, session_id: str) -> frozenset[str]:
+        """The benches this session holds bridges on (the suite's
+        observable; a snapshot under the lock)."""
+        with self._lock:
+            return frozenset(self._bridges.get(session_id, ()))
 
     # --- mint ----------------------------------------------------------------
 
@@ -225,15 +289,22 @@ class SessionStore:
                 return None
             if self._now() >= session.expires_at:
                 del self._sessions[session_id]
+                # The session's bridges die with the record: a bridge can
+                # never outlive its session in the registry, even if no
+                # generator ``finally`` ever runs (G2c teardown belt).
+                self._bridges.pop(session_id, None)
                 return None
             return session
 
     def logout(self, session_id: str) -> None:
         """Delete the session record; the cookie alone is dead from here
-        (GW-94). Idempotent — logging out an unknown id is a no-op, never
-        an error a browser could learn from."""
+        (GW-94). The session's bridges are dropped with it — logout ends
+        every read the session's tabs were making. Idempotent — logging
+        out an unknown id is a no-op, never an error a browser could
+        learn from."""
         with self._lock:
             self._sessions.pop(session_id, None)
+            self._bridges.pop(session_id, None)
 
     # --- internals -----------------------------------------------------------
 

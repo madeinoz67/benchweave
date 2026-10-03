@@ -58,6 +58,7 @@ from benchweave.interfaces.sessions import (
     SessionStore,
 )
 from benchweave.interfaces.ui_read import register_read_pages
+from benchweave.interfaces.ui_stream import register_stream_route
 
 _LOG = logging.getLogger(__name__)
 
@@ -695,6 +696,24 @@ def build_ui_router(
         page=_page,
         failure_page=_failure_page,
         unauthenticated_page=_unauthenticated_page,
+    )
+
+    # The G2c event bridge (§2.5): same closures, same refusal
+    # translation — plus the one template environment so every fragment
+    # the stream swaps is gateway-rendered (payload provenance pinned
+    # server-side; the shipped host script stays byte-frozen).
+    register_stream_route(
+        router,
+        operations=operations,
+        sessions=sessions,
+        limits=limits,
+        resolve_session=lambda request: _resolve_session(request, sessions),
+        session_identity=_session_identity,
+        failure_page=_failure_page,
+        unauthenticated_page=_unauthenticated_page,
+        render=lambda template, **context: _ENV.get_template(template).render(
+            **context
+        ),
     )
 
     @router.get("/assets/{name}", include_in_schema=False)

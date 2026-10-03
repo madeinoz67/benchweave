@@ -43,5 +43,12 @@
       </tbody>
     </table>
   </div>
+
+  <h3>Live events</h3>
+  <div class="bw-live-events-region" data-bw-live-events
+       data-bw-stream-url="/ui/benches/{{ bench.bench_id }}/events/stream"
+       data-bw-stream-target="[data-bw-live-events]">
+    <p data-bw-live-pending>Waiting for the live event stream…</p>
+  </div>
 </section>
 {% endblock %}
