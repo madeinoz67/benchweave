@@ -253,9 +253,10 @@ def register_read_pages(
             # Integrity failure on the gateway's own read path: refuse
             # with the correlation-id-bearing internal row rather than
             # serve unverified bytes.
+            artifact_id_for_log = artifact_id.replace("\r", "\\r").replace("\n", "\\n")
             _LOG.error(
                 "artifact digest mismatch on read: artifact=%s expected=%s",
-                artifact_id,
+                artifact_id_for_log,
                 expected_digest,
             )
             return failure_page(
