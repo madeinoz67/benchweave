@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="htmx-config" content='{"allowEval": false, "selfRequestsOnly": true}'>
+  {% if csrf_token %}<meta name="bw-csrf-token" content="{{ csrf_token }}">{% endif %}
+  <title>{{ title }} — BenchWeave</title>
+  <link rel="stylesheet" href="/ui/assets/tokens.css">
+  <link rel="stylesheet" href="/ui/assets/themes.css">
+  <link rel="stylesheet" href="/ui/assets/globals.css">
+  <link rel="stylesheet" href="/ui/assets/host.css">
+  <script src="/ui/assets/htmx.min.js" defer></script>
+  <script src="/ui/assets/sse.js" defer></script>
+  <script src="/ui/assets/bw-host.js" defer></script>
+</head>
+<body>
+  <header class="bw-strip" data-bw-gateway-strip>
+    <span class="bw-strip__brand">BenchWeave</span>
+    {% if gateway_id %}<span class="bw-strip__gateway" data-bw-gateway-id>{{ gateway_id }}</span>{% endif %}
+    {% if principal %}<span class="bw-strip__principal" data-bw-principal="{{ principal }}">{{ principal }}</span>{% endif %}
+    {% if scopes %}<span class="bw-strip__scopes" data-bw-scopes>{{ scopes | join(", ") }}</span>{% endif %}
+  </header>
+  <main id="main" class="bw-main">
+    {% if mode_banner %}{{ mode_banner }}{% endif %}
+    <div class="bw-announce" data-bw-announce aria-live="polite"></div>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

@@ -168,6 +168,7 @@ name = "benchweave"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "benchweave-ui-html" },
     { name = "click" },
     { name = "cryptography" },
     { name = "fastapi" },
@@ -197,6 +198,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "benchweave-ui-html", editable = "packages/ui-html" },
     { name = "click", specifier = ">=8.1" },
     { name = "cryptography", specifier = ">=50.0.1" },
     { name = "fastapi", specifier = ">=0.141.1" },
@@ -226,7 +228,7 @@ dev = [
 
 [[package]]
 name = "benchweave-ui-html"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "packages/ui-html" }
 dependencies = [
     { name = "jinja2" },

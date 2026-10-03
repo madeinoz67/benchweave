@@ -2,9 +2,24 @@
   "api_version": 1,
   "assets": [
     {
-      "path": "tokens.css",
-      "sha256": "76353723fd3e12653c154c6bf3d0cfd967545dbcd1ede49ab89b90f30747468a",
-      "size": 766
+      "path": "bw-host.js",
+      "sha256": "57cb9dfa5e773cd8c6007ddedb1839c0e03bfeab020f820b40c502d5f0760377",
+      "size": 4766
+    },
+    {
+      "path": "globals.css",
+      "sha256": "3666401981bf801c14eefa89313841a617fd09941f43d1a005d885ae49a319e6",
+      "size": 867
+    },
+    {
+      "path": "htmx.min.js",
+      "sha256": "e209dda5c8235479f3166defc7750e1dbcd5a5c1808b7792fc2e6733768fb447",
+      "size": 50917
+    },
+    {
+      "path": "sse.js",
+      "sha256": "8eed8df4df350126be9dc4fa2496e6eb9890e32f6202a29746e3c3c0e7004c13",
+      "size": 10320
     },
     {
       "path": "themes.css",
@@ -12,9 +27,9 @@
       "size": 1410
     },
     {
-      "path": "globals.css",
-      "sha256": "3666401981bf801c14eefa89313841a617fd09941f43d1a005d885ae49a319e6",
-      "size": 867
+      "path": "tokens.css",
+      "sha256": "76353723fd3e12653c154c6bf3d0cfd967545dbcd1ede49ab89b90f30747468a",
+      "size": 766
     }
   ]
 }

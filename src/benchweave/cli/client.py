@@ -159,6 +159,21 @@ class GatewayClient:
         path = f"/v1/documents/{sha256}"
         return self._unwrap(self.get(path), path)
 
+    def ui_login_code(
+        self,
+        *,
+        scopes: list[str] | None = None,
+        ttl_seconds: int | None = None,
+    ) -> dict[str, Any]:
+        """POST ``/ui/login-codes`` → the minted login URL (G2a; the
+        single-use browser login link an operator hands over)."""
+        payload: dict[str, Any] = {}
+        if scopes is not None:
+            payload["scopes"] = scopes
+        if ttl_seconds is not None:
+            payload["ttl_seconds"] = ttl_seconds
+        return self._unwrap(self.post("/ui/login-codes", payload), "/ui/login-codes")
+
     def events_get(
         self, bench_id: str, *, after: str = "", limit: int = 100
     ) -> dict[str, Any]:

@@ -23,6 +23,7 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
+from benchweave_ui_html import assets as ui_assets
 from fastapi import FastAPI
 
 from benchweave import __version__
@@ -56,6 +57,7 @@ from benchweave.interfaces.device_closures import (
 from benchweave.interfaces.mcp import build_mcp
 from benchweave.interfaces.operations import Operations, append_bench_event
 from benchweave.interfaces.rest import build_router
+from benchweave.interfaces.ui import build_session_store, build_ui_app, ui_root_redirect
 from benchweave.interfaces.validation import VENDORED_CORPUS_ROOT, SeamValidator
 from benchweave.interfaces.worker import RunWorker
 from benchweave.registry.otdp_loading import load_otdp_plugin
@@ -922,6 +924,7 @@ def create_app(
     now_epoch: Callable[[], int],
     registry_session: RegistrySession | None = None,
     execution_corpus: CorpusResolution = CorpusResolution.ACTIVE,
+    ui_enabled: bool = True,
 ) -> FastAPI:
     """Compose the gateway: gate, worker (limits mandated), seam, MCP mount.
 
@@ -1043,6 +1046,40 @@ def create_app(
     app.include_router(
         build_router(operations, gate, secret=secret, limits=limits, now_epoch=now_epoch)
     )
+    if ui_enabled:
+        # Obligation 12's wiring (G2a): the host verifies the vendored-asset
+        # inventory before serving — any drift refuses COMPOSITION, naming
+        # the asset, before a route exists (I1's construction-time
+        # verification precedent). Disabled means never registered: the
+        # router is absent, not stubbed (GW-03/GW-04).
+        refusals = ui_assets.verify_vendored_assets()
+        if refusals:
+            raise RuntimeError(
+                "refusing to compose the UI: vendored asset inventory "
+                f"mismatch: {'; '.join(refusals)}"
+            )
+        ui_sessions = build_session_store(limits, now_epoch=now_epoch)
+        # ``/ui`` (exact) never reaches the mounted sub-app (a mount never
+        # sees the empty path) — an explicit hop keeps it in the UI's own
+        # namespace instead of the slash-redirect landing on the catch-all
+        # mount (the defect the GW-04 suite caught at build time).
+        app.add_api_route(
+            "/ui", ui_root_redirect, methods=["GET"], include_in_schema=False
+        )
+        # Mounted BETWEEN the REST include and the catch-all "/" mount so
+        # the UI owns its namespace (GW-04); the guards scope to the
+        # sub-app, never to the MCP mount's transport.
+        app.mount(
+            "/ui",
+            build_ui_app(
+                operations,
+                ui_sessions,
+                secret=secret,
+                limits=limits,
+                now_epoch=now_epoch,
+            ),
+        )
+        app.state.ui_sessions = ui_sessions
     # Mounted at "/" so FastMCP's internal "/mcp" route lands at /mcp; the
     # REST router (Task 9) is included BEFORE this mount so /v1 wins.
     app.mount("/", mcp_app)

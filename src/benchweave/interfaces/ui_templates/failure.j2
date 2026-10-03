@@ -1,0 +1,8 @@
+{% extends "base.j2" %}
+{% block content %}
+<section class="bw-failure" data-bw-failure="{{ failure.code }}" role="alert">
+  <h2>{{ failure.code }}</h2>
+  <p>{{ failure.message }}</p>
+  <p>Correlation id: <code>{{ failure.correlation_id }}</code></p>
+</section>
+{% endblock %}

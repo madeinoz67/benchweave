@@ -1,0 +1,16 @@
+{% extends "base.j2" %}
+{% block content %}
+<section aria-label="Bench inventory" data-bw-bench-list>
+  <h2>Benches</h2>
+  <ul class="bw-benches">
+    {% for bench in benches %}
+    <li data-bw-bench="{{ bench.bench_id }}">
+      <span class="bw-benches__id">{{ bench.bench_id }}</span>
+      <span class="bw-benches__state" data-bw-bench-state>{{ "busy" if bench.busy else "idle" }}</span>
+    </li>
+    {% else %}
+    <li data-bw-bench-empty>No benches are available to this caller.</li>
+    {% endfor %}
+  </ul>
+</section>
+{% endblock %}
