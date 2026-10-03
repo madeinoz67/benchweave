@@ -282,6 +282,8 @@ All notable changes to this project will be documented in this file.
 - Fold lane A MEDIUM — refuse case-camouflaged normative prefixes (issue #238)
 - The G2b fold rows — H1–H4, F2/F3, the GW-22 addendum (#368; follow-up #369) (#372)
 - The G2a fold rows — G1/G3/G4/G6/G7 + the G5 addendum (#368) (#371)
+- Fold refute lane 1 on the reading-tile join (#369) — F2 budget bounds, F3 per-row tolerance, F1 disclosed
+- Issue #316 fold — typed datetime comparisons + real-worker pins
 
 ### Documentation
 
@@ -579,6 +581,15 @@ All notable changes to this project will be documented in this file.
 - Residual register fixes for the #353 four
 - SA-PREVIEW design record, PRD 11 v0.3 amendments, obligation-12 pin row, SDK pointer (#364)
 - Issue #238 load-boundary refusal for separator-spoofed normative rows
+- Issue #191 capture_limits class-bound question — DEFER record
+- Issue #369 reading tiles — evidence join vs sample-bearing read weighed; shape (1) specified, owner fork named
+- #369 fold addendum — F1 ruling (no stored subscription->device resolution; carrier named), F2/F3 dispositions (dated; the design record stays frozen)
+- #369 fold-2 — claim-accuracy corrections the addendum owes (LOW-2, LOW-5)
+- Issue #367 D1 normative-seam sweep design record
+- #367 dated addendum — owner calls on forks 1-3
+- #367 fold wave — five record-accuracy rows from the refute lanes
+- Issue #316 endurance-authz design record
+- Fold wave — the full seam-skip family, grant scope, boundary
 
 ### Features
 
@@ -796,6 +807,9 @@ All notable changes to this project will be documented in this file.
 - G2a — the browser session, /ui shell and routing pins (#303) (#363)
 - G2b — the read views, refusal matrix and route-mapping gate (#303) (#368)
 - G2c — the live-events SSE bridge (#303) (#370)
+- Populate device-page reading tiles from retained observations (#369)
+- #367 D1 — corpus-rooted load twin, one runtime normative-row resolver
+- Issue #316 — the unattended-grant run gate (two-layer)
 
 ### Hardware Evidence
 
