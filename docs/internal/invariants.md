@@ -749,6 +749,15 @@ the other side; both texts are frozen history and this note is the
 disclosure, not an edit of either. NIT-3: the original CON-14 row above
 carries no inline date on its face; this amendment carries its own
 (2026-10-01) and names the omission rather than backfilling the row.
+- **[CON-15]** Browser sessions are server-side, cookie-mapped,
+  at-most-as-wide projections of a validated Identity — the cookie carries
+  an opaque id only; scopes and expiry live server-side; narrowing is
+  permitted and widening is structurally refused at the mint; logout,
+  expiry and gateway restart invalidate server-side; the bearer token
+  never reaches the browser — `src/benchweave/interfaces/sessions.py`.
+  (2026-10-03, G2a, issue #303: anchored on the module contract of the new
+  session store; first enforcement is the G2 design's login-code refusal
+  matrix — the replay/expired/narrowing/restart acceptance arms.)
 
 
 ## Registry & plugin invariants
