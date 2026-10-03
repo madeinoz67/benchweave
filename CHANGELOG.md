@@ -570,6 +570,7 @@ All notable changes to this project will be documented in this file.
 - Rewrite operator-guide.md prose to ASD-STE100
 - Revert a fence-interior placeholder edit in publishing-guide
 - Convert the two remaining operator-guide section headings
+- Resolve registry check-count and registry-version statements against machine sources (#359)
 
 ### Features
 
