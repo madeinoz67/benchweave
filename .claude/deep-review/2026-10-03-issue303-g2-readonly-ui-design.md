@@ -484,7 +484,7 @@ diff at each review):
 - **F2:** `BENCHWEAVE_UI` default — recommended ON (loopback posture, the flag disables);
   the alternative (default OFF until G3) is one line in `app_entry`.
 - **F3:** the ui-html 0.2.0 release event timing (the gateway rides the workspace; PyPI
-  publication is the `publish-ui-html` trigger and can trail the G2 merges)
+  publication is the `publish-ui-html` trigger and can trail the G2 merges).
 
 ## 13. Addendum (2026-10-03, G2c fold wave — corrects §2.5's consumer-side sentences)
 
@@ -519,8 +519,22 @@ out-run the mechanism (rubric G4):
   the PR body, not changed here..
   publication is the `publish-ui-html` trigger and can trail the G2 merges).
 
-## Addendum (2026-10-03, the GW-22 record fork — lane-1 ruling)
 
+## Addendum (2026-10-03, fold G5 of #368 — the record is frozen; addenda only)
+
+§8's tier note said the uv.lock motion is "not a dependency add (Jinja2/MarkupSafe
+unchanged)". That sentence did not survive contact with the code: the gateway composes
+`benchweave_ui_html` at `create_app` time (construction-time asset verification, the
+assets route, the refusal partial), so the import is runtime, and a runtime import of a
+workspace member is a runtime dependency — the landed arc moved `benchweave-ui-html`
+from the dev group to `[project] dependencies` (commit 3fc732d; uv.lock moved exactly
+three rows — the member version and the two source rows). The parenthetical stays true
+in its own terms: no NEW third-party dependency (Jinja2/MarkupSafe still arrive
+transitively via ui-html's own pins). The record's own deviation protocol — "say so
+explicitly, give the evidence" — is what this addendum does; the tier call (Tier 3) was
+made correctly anyway, for other independent reasons (a new network-serving auth
+surface).
+## Addendum (2026-10-03, the GW-22 record fork — lane-1 ruling)
 The shipped G2b device pages render reading tiles in the CONSERVATIVE
 state: tiles do not consult retained run evidence. A tile renders the
 parameter's label and unit with value `Unavailable` until a

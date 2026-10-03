@@ -26,6 +26,7 @@ carries a CORS header.
 
 from __future__ import annotations
 
+import hmac
 import ipaddress
 import json
 import logging
@@ -267,22 +268,27 @@ class CsrfGuard(BaseHTTPMiddleware):
     async def dispatch(
         self, request: Request, call_next: RequestResponseEndpoint
     ) -> Response:
-        state_changing = request.method in _STATE_CHANGING
-        # Every path inside the UI sub-app is a session path except the
-        # mint (Bearer-authenticated; no ambient credential to ride).
-        mint = request.url.path.startswith("/login-codes")
-        if not (state_changing and not mint):
+        if request.method not in _STATE_CHANGING:
             return await call_next(request)
         cookie = request.cookies.get(SESSION_COOKIE)
         record = self._sessions.resolve(cookie) if cookie else None
         if record is None:
-            return await call_next(request)  # the route renders unauthenticated
+            # No live session rides the request — nothing ambient to
+            # protect (the mint is Bearer-authenticated and cookie-less;
+            # a session-bearing mint POST falls through to the checks
+            # below like any other state change, fail-closed — fold G4:
+            # the old /login-codes exemption was dead code by path and
+            # weaker than the truth).
+            return await call_next(request)
         origin = request.headers.get("origin")
         if origin is not None:
             own = f"{request.url.scheme}://{request.url.netloc}"
             if origin != own:
                 return Response("refused: cross-origin state change", status_code=403)
-        if request.headers.get("x-csrf-token") != record.csrf_token:
+        header_token = request.headers.get("x-csrf-token", "")
+        # Constant-time compare (fold G6): the token is a secret-shaped
+        # value and the answer must not leak match position or timing.
+        if not hmac.compare_digest(header_token, record.csrf_token):
             return Response("refused: csrf token required", status_code=403)
         return await call_next(request)
 

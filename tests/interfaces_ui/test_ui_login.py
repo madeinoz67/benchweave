@@ -494,3 +494,31 @@ def test_the_code_is_redacted_at_the_record_level(tmp_path: Path) -> None:
     finally:
         server.should_exit = True
         thread.join(timeout=5.0)
+
+
+def test_a_session_bearing_mint_post_is_csrf_refused(
+    login_gateway: SimpleNamespace,
+) -> None:
+    """Fold G4: the mint is Bearer-only BY DESIGN, so it holds no
+    browser-rideable credential — and the CSRF guard no longer exempts
+    it. A request carrying a SESSION cookie is treated like any other
+    state-changing /ui request: the per-session CSRF token is required,
+    fail-closed, even alongside a valid Bearer token."""
+    token = ui_token(principal="mint-csrf-probe")
+    minted = httpx.post(
+        f"{login_gateway.base}/ui/login-codes",
+        headers={"Authorization": f"Bearer {token}"},
+        json={},
+    )
+    code = minted.json()["data"]["login_url"].split("code=")[-1]
+    exchanged = httpx.get(f"{login_gateway.base}/ui/login?code={code}")
+    cookie = exchanged.cookies[SESSION_COOKIE]
+
+    refused = httpx.post(
+        f"{login_gateway.base}/ui/login-codes",
+        headers={"Authorization": f"Bearer {token}"},
+        cookies={SESSION_COOKIE: cookie},
+        json={},
+    )
+    assert refused.status_code == 403
+    assert "csrf" in refused.text

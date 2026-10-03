@@ -3,8 +3,8 @@
   "assets": [
     {
       "path": "bw-host.js",
-      "sha256": "5c7114ad4698086f3b7556639199473242695c376f5f9de56e1205236f04c943",
-      "size": 5081
+      "sha256": "11d92a46845bfcc84020ef2e3e29cea050d738b8515fd4fcfd8cd71e6f1950a8",
+      "size": 5367
     },
     {
       "path": "globals.css",

@@ -78,6 +78,10 @@
       }
       // Swapping via range-adjacent nodes keeps one mutation per frame
       // boundary; htmx (when present) owns its own swaps elsewhere.
+      // PROVENANCE INVARIANT: the only html entering this swap is a
+      // server-templated fragment pushed over the SSE connection — this
+      // script constructs no content of its own and fetches nothing (no
+      // fetch, no XHR); everything rendered originated server-side.
       var holder = document.createElement("template");
       holder.innerHTML = item.html;
       target.replaceChildren(holder.content);

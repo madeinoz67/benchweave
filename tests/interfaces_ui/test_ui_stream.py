@@ -124,9 +124,18 @@ def _stream_body(
     until: str,
     bench: str = BENCH_ID,
     timeout: float = 10.0,
+    before_close: Any = None,
 ) -> tuple[str, int]:
     """Open the real stream, accumulate raw bytes until ``until`` is
-    seen, and close (the abort). Returns (accumulated text, status)."""
+    seen, optionally run ``before_close(body)`` INSIDE the open-response
+    window, and close (the abort). Returns (accumulated text, status).
+
+    ``before_close`` is the deterministic observation point: the
+    response is still held open, the generator is parked, the session is
+    alive — asserting the bridge registry THERE cannot race the async
+    disconnect teardown. After this helper returns the stream is CLOSED,
+    and the registry is then only observable by draining it (the abort
+    twin's own comment: the deregistration is async)."""
     context, holder = live.stream(session_id, bench=bench)
     with context as response:
         status = response.status_code
@@ -144,6 +153,8 @@ def _stream_body(
             if time.monotonic() > deadline:
                 break
         assert found, f"stream never carried {until!r}: {''.join(accumulated)!r}"
+        if before_close is not None:
+            before_close("".join(accumulated))
         result = ("".join(accumulated), status)
     holder.close()
     return result
@@ -207,10 +218,22 @@ def test_logout_ends_the_stream_and_frees_the_pair(
     stream for the same bench starts clean, 200 not 409."""
     sessions = live.app.state.ui_sessions
     record = live_session(live.app, principal="logout-arm")
-    body, status = _stream_body(live, record.session_id, until=PROBE_MARKER)
+
+    def while_open(_body: str) -> None:
+        # Inside the open-response window (deterministic): the bridge
+        # holds the pair, the session is alive — and LOGOUT fires while
+        # the stream is genuinely OPEN, which is this test's subject
+        # (the abort twin covers the close path). The old shape asserted
+        # the registry AFTER the helper had already closed the stream,
+        # racing the async disconnect teardown — the CI-red shape
+        # (frozenset() at the precondition on a loaded runner).
+        assert sessions.bridge_benches(record.session_id) == frozenset({BENCH_ID})
+        sessions.logout(record.session_id)
+
+    body, status = _stream_body(
+        live, record.session_id, until=PROBE_MARKER, before_close=while_open
+    )
     assert status == 200
-    assert sessions.bridge_benches(record.session_id) == frozenset({BENCH_ID})
-    sessions.logout(record.session_id)
     # The generator notices the dead session within one poll interval;
     # drain on the observable (bounded wait on the registry, not a
     # sleep-assert).
@@ -232,9 +255,16 @@ def test_abort_deregisters_and_the_pair_starts_clean(
     stream for the same pair starts clean."""
     sessions = live.app.state.ui_sessions
     record = live_session(live.app, principal="abort-arm")
-    body, status = _stream_body(live, record.session_id, until=PROBE_MARKER)
+
+    def while_open(_body: str) -> None:
+        # Deterministic precondition (same race as the logout test's old
+        # shape — asserted here while the response is still open).
+        assert sessions.bridge_benches(record.session_id) == frozenset({BENCH_ID})
+
+    body, status = _stream_body(
+        live, record.session_id, until=PROBE_MARKER, before_close=while_open
+    )
     assert status == 200
-    assert sessions.bridge_benches(record.session_id) == frozenset({BENCH_ID})
     # The stream context closed inside _stream_body (the abort). The
     # deregistration is async — drain on the observable.
     deadline = time.monotonic() + 5.0

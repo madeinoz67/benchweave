@@ -432,3 +432,31 @@ def test_html_responses_carry_the_csp_with_frame_ancestors(
     assert "script-src 'self'" in csp
     assert "frame-ancestors 'none'" in csp
     assert response.headers.get("x-content-type-options") == "nosniff"
+
+
+
+@pytest.mark.parametrize("method", ["post", "head", "put"])
+def test_non_get_ui_exact_discriminates_from_the_disabled_posture(
+    ui_gateway: SimpleNamespace, disabled_base: str, method: str
+) -> None:
+    """Fold G1: with the UI ENABLED, a non-GET request to the exact /ui
+    path must NOT look like the disabled posture's answer — the enabled
+    app owns the path even for methods it refuses. The signature
+    compared is (status, content-type, the UI marker family): identical
+    answers would mean /ui ownership is GET-only, and the GW-04 arms
+    would be blind to a routing change for every other verb."""
+    enabled = httpx.request(method, f"{ui_gateway.base}/ui", follow_redirects=False)
+    disabled = httpx.request(method, f"{disabled_base}/ui", follow_redirects=False)
+
+    def signature(response: httpx.Response) -> tuple[int, str, bool, bool]:
+        return (
+            response.status_code,
+            response.headers.get("content-type", ""),
+            "data-bw-" in response.text,
+            "jsonrpc" in response.text,
+        )
+
+    assert signature(enabled) != signature(disabled), (
+        f"{method.upper()} /ui is indistinguishable between the enabled and "
+        "disabled postures — the ownership pin discriminates GET only"
+    )
