@@ -274,6 +274,9 @@ All notable changes to this project will be documented in this file.
 - #207 the wedge exhaustion instant renders by pure datetime arithmetic
 - Thread the licence expression through the re-derivation
 - Resolve the dangling gitlink; pin the licence threading (folds F3+F4, gateway issue #223)
+- Anchor cliff.toml tag_pattern (#302 first release)
+- Refute lane A fold — env indirection for the release tag (template-injection MEDIUM), github.sha ref pinning (retag/re-run LOW), attestations disclosed
+- Refute lane B fold — accurate id-token claim (F1), casefold collision assert in both census copies (F2), operator-step + notes-command dependency truths (F3)
 
 ### Documentation
 
@@ -549,6 +552,9 @@ All notable changes to this project will be documented in this file.
 - Clarify canonical SDK vs packages/sdk mount (refs #347) (#351)
 - Document-writer agent + the ASD-STE100 documentation register (#352)
 - Register follow-up — developer-facing guides, gortex grant, dictionary-check wording (#352 rows L1/L3/L4)
+- #302 first-release design record — publish workflow, census, runbook (critic-folded)
+- First-release runbook, walk, operator steps; CI map rows (#302 first release)
+- Split the jammed windows/systemd CI-map rows (#346 follow-up)
 
 ### Features
 
@@ -1112,6 +1118,8 @@ All notable changes to this project will be documented in this file.
 - Timeout-minutes 15 on the timing job
 - Catalogue authority pin + browser wiring proof (issue #224 slice 2)
 - Windows evidence lane over the gates selection (#207, #329 D2)
+- Wheel resource census in the package lane (#302 first release)
+- Publish workflow — build, smoke, trusted publish, PyPI digest verify (#302 first release)
 
 ### Ci+docs
 
