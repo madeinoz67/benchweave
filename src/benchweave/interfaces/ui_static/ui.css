@@ -1,0 +1,64 @@
+/* BenchWeave gateway host chrome (served as /ui/assets/host.css).
+ *
+ * Structural styling only for the shell: the identity strip, the main
+ * region, the announce region. Colour, type scale and theme come from
+ * the renderer package's vendored token themes (tokens.css/themes.css);
+ * interactive-target sizing obligations (obligation 26) bind the real
+ * controls and land with the views that carry them (G2b/G3).
+ */
+
+.bw-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: baseline;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--bw-line, currentColor);
+}
+
+.bw-strip__brand {
+  font-weight: 700;
+}
+
+.bw-strip__gateway::before {
+  content: "gateway: ";
+  opacity: 0.7;
+}
+
+.bw-strip__principal::before {
+  content: "session: ";
+  opacity: 0.7;
+}
+
+.bw-strip__scopes::before {
+  content: "scopes: ";
+  opacity: 0.7;
+}
+
+.bw-main {
+  padding: 0.75rem;
+  max-width: 60rem;
+  margin: 0 auto;
+}
+
+.bw-announce {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.bw-benches {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.bw-benches li {
+  display: flex;
+  gap: 0.75rem;
+  align-items: baseline;
+  padding: 0.25rem 0;
+}
