@@ -112,6 +112,15 @@ UI_ROUTES: tuple[RouteSpec, ...] = (
         classification="interface",
     ),
     RouteSpec(
+        # The G2c event bridge (§2.5): a READ route over events_get —
+        # the stream polls the seam; the bridge registry (session-side
+        # ownership, no seam call) is the route's own state.
+        path="/benches/{bench_id}/events/stream",
+        methods=_methods("GET"),
+        operations=frozenset({"events_get"}),
+        classification="interface",
+    ),
+    RouteSpec(
         path="/runs/{run_id}",
         methods=_methods("GET"),
         operations=frozenset({"run_get"}),
