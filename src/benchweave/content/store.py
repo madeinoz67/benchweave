@@ -83,6 +83,30 @@ class ContentStore:
             "schema_id": row[2],
         }
 
+    def documents_by_schema_suffix(self, suffix: str) -> list[dict[str, Any]]:
+        """Admitted documents whose ``schema_id`` ends with ``suffix``
+        (G2b's presentation-attachment resolution query), NEWEST
+        admission first (rowid order — content addressing admits a new
+        digest rather than mutating a row, so the newest row is the
+        current attachment). Read-only and suffix-matched on purpose:
+        schema ids are versioned URLs the DOCUMENT declares, so the
+        resolution never hardcodes a corpus version to find a family of
+        documents."""
+        rows = self._conn.execute(
+            "SELECT sha256, raw_bytes, content_json, schema_id FROM documents"
+            " WHERE schema_id LIKE ? ORDER BY rowid DESC",
+            (f"%{suffix}",),
+        ).fetchall()
+        return [
+            {
+                "sha256": row[0],
+                "raw_bytes": row[1],
+                "content": json.loads(row[2]),
+                "schema_id": row[3],
+            }
+            for row in rows
+        ]
+
     # --- artifacts -----------------------------------------------------------
 
     def put_artifact(self, data: bytes, now: str) -> str:

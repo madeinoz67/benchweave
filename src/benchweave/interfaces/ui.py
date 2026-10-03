@@ -455,6 +455,7 @@ def build_ui_router(
     limits: Mapping[str, int],
     audience: str = "stg",
     now_epoch: Callable[[], int] | None = None,
+    content: Any = None,
 ) -> APIRouter:
     """The UI routes over the seam. UNPREFIXED by design: this router is
     included in the UI sub-application which itself mounts at ``/ui``
@@ -687,6 +688,7 @@ def build_ui_router(
     register_read_pages(
         router,
         operations=operations,
+        content=content,
         limits=limits,
         resolve_session=lambda request: _resolve_session(request, sessions),
         session_identity=_session_identity,
@@ -750,6 +752,7 @@ def build_ui_app(
     audience: str = "stg",
     now_epoch: Callable[[], int] | None = None,
     guards: frozenset[str] = DEFAULT_GUARDS,
+    content: Any = None,
 ) -> FastAPI:
     """The UI sub-application: the router plus its guard set.
 
@@ -781,6 +784,7 @@ def build_ui_app(
             limits=limits,
             audience=audience,
             now_epoch=now_epoch,
+            content=content,
         )
     )
     install_ui_guards(

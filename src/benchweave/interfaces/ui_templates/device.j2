@@ -1,0 +1,74 @@
+{% extends "base.j2" %}
+{% block content %}
+<section aria-label="Device" data-bw-device-page data-bw-device-id="{{ device.device_id }}">
+  <h2>Device {{ device.device_id }}</h2>
+  <dl class="bw-kv" data-bw-device-facts>
+    <div><dt>Identity state</dt><dd data-bw-device-state>{{ device.identity_state }}</dd></div>
+    <div><dt>Generation</dt><dd data-bw-device-generation>{{ device.generation }}</dd></div>
+    <div><dt>Descriptor</dt><dd><code data-bw-device-descriptor-sha>{{ device.descriptor.sha256 }}</code></dd></div>
+    <div><dt>Profiles</dt><dd data-bw-device-profiles>{{ device.profiles | join(", ") }}</dd></div>
+  </dl>
+
+  <h3>Plugin presentation</h3>
+  {% if presentation.absence %}
+  <p class="bw-presentation-absent" data-bw-presentation-absent data-bw-absence="{{ presentation.absence }}">
+    {% if presentation.absence == "no-attachment" %}No presentation attachment is admitted for this device.{% elif presentation.absence == "attachment-incomplete" %}A presentation attachment is admitted, but its manifest or binding catalogue is not admitted; it cannot be validated.{% else %}No presentation attachment can be resolved here.{% endif %}
+  </p>
+  {% else %}
+  <div class="bw-presentation" data-bw-presentation-pages>
+    {% if presentation.findings %}
+    <ul class="bw-presentation-findings" data-bw-presentation-findings>
+      {% for code, path, message in presentation.findings %}
+      <li data-bw-finding-code="{{ code }}">{{ code }} at {{ path }}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    {% for page in presentation.pages %}
+    <section class="bw-panel bw-presentation__page" data-bw-presentation-page-{{ page.page_id }} data-bw-page-kind="{{ page.kind }}">
+      <h4>{{ page.title }}</h4>
+      {% if page.refused %}
+      {# SW-41 as a refusal: the required panel this host lacks fails panel_unavailable — the validator's own finding. #}
+      <aside class="bw-refusal" role="status" data-bw-panel-unavailable="{{ page.page_id }}" data-severity="warning">
+        <div class="bw-refusal__content">
+          <strong>panel_unavailable</strong>
+          <p class="bw-refusal__what">The required panel {{ page.title }} is unavailable on this host.</p>
+        </div>
+        <p class="bw-refusal__action">The plugin declares a panel this gateway does not serve.</p>
+      </aside>
+      {% elif not page.available %}
+      <p class="bw-panel-note" data-bw-panel-unavailable-note>Unavailable on this host.</p>
+      {% else %}
+      {% if page.tiles %}
+      <ul class="bw-presentation__tiles">
+        {% for tile in page.tiles %}
+        {# GW-22: the value renders only from gateway-reported observations — Unavailable until one exists (no staged, submitted or fabricated value). #}
+        <li class="bw-reading" data-bw-reading data-bw-reading-label="{{ tile.label }}">
+          <span class="bw-reading__label">{{ tile.label }}</span>
+          <span class="bw-reading__value">{{ tile.value }}</span>
+          <span class="bw-reading__unit">{{ tile.unit }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+      {% if page.plot_summaries %}
+      <ul class="bw-presentation__plots" data-bw-plot-skeleton>
+        {% for summary in page.plot_summaries %}
+        {# D3 (issue #310): the skeleton and legend render; no draw claims until the plot wrapper lands. #}
+        <li class="bw-plot-note">{{ summary }} — no plotted data</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+      {% if page.preset_ids %}
+      <ul class="bw-presentation__presets">
+        {% for preset in page.preset_ids %}
+        <li data-bw-preset-id="{{ preset }}">{{ preset }}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+      {% endif %}
+    </section>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

@@ -1077,6 +1077,7 @@ def create_app(
                 secret=secret,
                 limits=limits,
                 now_epoch=now_epoch,
+                content=content,
             ),
         )
         app.state.ui_sessions = ui_sessions

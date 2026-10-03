@@ -30,10 +30,12 @@ from typing import Any
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, Response
 
+from benchweave.content.store import ContentStore
 from benchweave.interfaces.errors import OperationFailure, failure
 from benchweave.interfaces.identity import Identity
 from benchweave.interfaces.operations import Operations
 from benchweave.interfaces.sessions import SessionRecord
+from benchweave.interfaces.ui_presentation import compose_device_presentation
 
 _LOG = logging.getLogger(__name__)
 
@@ -47,6 +49,7 @@ def register_read_pages(
     router: APIRouter,
     *,
     operations: Operations,
+    content: ContentStore | None,
     limits: Mapping[str, int],
     resolve_session: Callable[[Request], SessionRecord | None],
     session_identity: Callable[[SessionRecord], Identity],
@@ -116,6 +119,41 @@ def register_read_pages(
             bench=bench,
             devices=devices,
             events=events["events"],
+            **_strip(record),
+        )
+
+    # --- devices and the plugin presentation page (GW-21/22/23) --------------
+
+    @router.get(
+        "/benches/{bench_id}/devices/{device_id}", include_in_schema=False
+    )
+    async def device_page(
+        bench_id: str, device_id: str, request: Request
+    ) -> Response:
+        """One device's projection plus its plugin presentation pages,
+        resolved from admitted documents and validated through the
+        gateway's own validator (GW-21 — SW-41's parity surface). The
+        descriptor bytes come through the SEAM (``document_get`` on the
+        device's pinned digest); the presentation resolution reads the
+        admitted-document store the same admission wrote."""
+        authed = _authed(request)
+        if authed is None:
+            return unauthenticated_page()
+        record, identity = authed
+        try:
+            device = operations.device_get(identity, bench_id, device_id)
+            document = operations.document_get(
+                identity, str(device["descriptor"]["sha256"])
+            )
+        except OperationFailure as fail:
+            return failure_page(fail)
+        descriptor_raw = base64.b64decode(document["original_utf8_base64"])
+        presentation = compose_device_presentation(content, descriptor_raw)
+        return page(
+            "device.j2",
+            title=f"Device {device_id}",
+            device=device,
+            presentation=presentation,
             **_strip(record),
         )
 
