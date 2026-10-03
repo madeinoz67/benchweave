@@ -423,3 +423,60 @@ toggle-off proven (only the two site delegations reverted), focused lanes
 fresh-cache mypy clean, zero standards bytes moved. Keyword scan over this
 addendum: the eight §8 words — zero occurrences here (this section is the
 report, the #238 convention).
+
+## Addendum (2026-10-04, fold wave) — record-accuracy rows from the two refute lanes
+
+Both lanes returned zero code defects; five rows fold below. The record
+above stays as committed — these sentences correct or extend it, they do
+not rewrite it.
+
+1. **§6's arms-1-4 clause was met in substituted form (lane A, row A1).**
+   The "each must fail DID NOT RAISE" wording is reachable as written only
+   for the site arms (1-2): with the library present, arms 3-4 pass by
+   construction; with it absent, the test module fails collection
+   (`ImportError: cannot import name 'load_manifest_from_corpus'`, exit 2)
+   — the missing-API failure, not a DID NOT RAISE. The build satisfied the
+   clause in substituted form: that collection ImportError for the library
+   arms, plus the midpoint run (library present, site delegations
+   withheld) in which exactly the two site arms failed DID NOT RAISE while
+   arms 3-6 stayed green. The prior addendum's "D1 complete per §3 and §6"
+   reads through this substitution.
+2. **Behavior delta 3, disclosed late (lane B, row B1): the sites' manifest
+   read widened to the loader family's bytes semantics.** Pre-sweep both
+   sites read the manifest with `read_text(encoding="utf-8")` (strict
+   UTF-8); through the twin they read `_read_corpus_manifest`'s
+   `json.loads(path.read_bytes())`, which auto-detects UTF-16/UTF-32.
+   Reproduced at both sites over a UTF-16-encoded
+   `standards-manifest.json`: base raises `UnicodeDecodeError`, tip
+   resolves (the parsed document then faces the full load discipline and
+   the #238 lexicon — no boundary is crossed, nothing resolves outside
+   the corpus). The delta is inherent to the design's specified mechanism
+   (§2b names `_read_corpus_manifest` as the read), so the sites aligned
+   to the loader family — `load_manifest` and every corpus twin already
+   read bytes. Strict UTF-8 remains the ADMITTED-document posture
+   (`content.json_document.load_document`), a different surface with a
+   different rule. Whether to pin strict refusal with an arm is an open
+   owner row call; the mechanism is unchanged in this fold.
+3. **§1's backslash-row description is Windows-conditional (lane B, row
+   B2).** "A raw `FileNotFoundError` from the schema read" holds on
+   Windows only (backslash is a separator there: the basename matched,
+   the prefix strip no-oped, the corpus join addressed a nonexistent
+   path). On POSIX `Path.name` keeps the whole backslash row, the basename
+   never matched, and the typed exactly-once refusal fired pre-fix
+   instead. The arm comment in `tests/standards/test_manifest.py` carried
+   the same Windows-conditional wording and is corrected in the fold
+   commit (comment only; no assertion changed).
+4. **Row A2 — the `standards_entry_absent` parity is now pinned.** The
+   resolver's message is a string-equal copy of
+   `active_version_from_corpus`'s; the fold adds a pin arm
+   (`test_resolver_entry_absent_message_pins_the_twin_parity`) asserting
+   the two messages string-equal over the same planted corpus — a pin of
+   current truth, not a RED-able behavior change; a future drift in
+   either message redds there.
+5. **Row A3 — the CON-7 amendment now names the D4 residual.** The
+   amendment's closing clause gained: the resolver judges row trust only;
+   runtime reads of the ACTIVE schema stay digest-unverified (§7 risk 4 /
+   §10 D4 already name it).
+
+Keyword scan over this fold addendum: the eight §8 words — zero
+occurrences here (the reporting convention holds across fold waves).

@@ -14,6 +14,7 @@ from benchweave.standards.manifest import (
     StandardEntry,
     StandardsError,
     StandardsManifest,
+    active_version_from_corpus,
     load_identity,
     load_manifest,
     load_manifest_from_corpus,
@@ -784,11 +785,15 @@ def test_case_camouflaged_prefix_row_refuses_at_load(tmp_path: Path) -> None:
 
 def test_resolver_refuses_a_backslash_row(tmp_path: Path) -> None:
     # The backslash form through the RESOLVER: the load-boundary lexicon
-    # fires before any basename match — host-portable. Pre-fix the runtime
-    # sites joined the row to the corpus root after stripping
-    # 'standards/', so this row missed every file and crashed the schema
-    # read with a raw FileNotFoundError — untyped, and reachable at import
-    # time through provider_contract_validator (settings load).
+    # fires before any basename match — host-portable. Pre-fix behavior
+    # was Windows-conditional (fold row B2, refute wave): on Windows the
+    # basename matched (backslash is a separator there), the prefix strip
+    # no-oped, and the schema read crashed with a raw, untyped
+    # FileNotFoundError — import-time reachable through
+    # provider_contract_validator (settings load); on POSIX Path.name
+    # keeps the whole backslash row, the basename never matched, and the
+    # typed exactly-once refusal fired instead. The load-boundary refusal
+    # makes both hosts refuse the same row with the same words.
     standards = _planted_tree(
         tmp_path, {"title": "Demo schema", "description": "No version mentioned"}
     )
@@ -851,3 +856,21 @@ def test_resolver_resolves_and_discriminates(tmp_path: Path) -> None:
         "standards/demo/0.1.0/demo.schema.json",
         "src/benchweave/presentation/contracts.py",
     )
+
+
+def test_resolver_entry_absent_message_pins_the_twin_parity(tmp_path: Path) -> None:
+    # Fold row A2 (refute wave): the resolver's standards_entry_absent
+    # message is a string-equal copy of the corpus twin's
+    # (active_version_from_corpus) — "same words on both surfaces"
+    # pinned as current truth over the same planted corpus. A pin arm,
+    # not a RED-able behavior change: it fixes the parity the resolver
+    # was built with, so a future drift in either message redds here.
+    standards = _planted_tree(
+        tmp_path, {"title": "Demo schema", "description": "No version mentioned"}
+    )
+    corpus = standards / "standards"
+    with pytest.raises(StandardsError) as twin_refusal:
+        active_version_from_corpus(corpus, "absent")
+    with pytest.raises(StandardsError) as resolver_refusal:
+        normative_path_from_corpus(corpus, "absent", "demo.schema.json")
+    assert str(resolver_refusal.value) == str(twin_refusal.value)

@@ -421,7 +421,10 @@ rather than rewriting the history — that is how this file earns trust.
   non-corpus row — the loader still admits non-corpus rows, the resolver
   declines to serve them). A clean `-dev`-segment row in an active list
   remains the deferred D2 form (issue #367 §10; amended trigger — the
-  next head-opening train's merge).
+  next head-opening train's merge). The resolver judges ROW trust only:
+  runtime reads of the ACTIVE schema stay digest-unverified (the D4
+  residual — row trust, not byte trust; the checker verifies pins at
+  check time).
 - **[CON-8]** The corpus identity block is closed-world and derived-checked against
   its machine authorities at every export/check — an unknown key is refused
   (`identity_key_unknown`; a new key is a standards-governance event, not an
