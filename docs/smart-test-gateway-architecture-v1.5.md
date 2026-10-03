@@ -1,8 +1,8 @@
-# Smart Test Gateway — Architecture v1.5
+# Smart Test Gateway: Architecture v1.5
 
 **Status:** Consolidated architectural baseline at the stated scope; design review complete, implementation and bench qualification not performed  
 **Date:** 9 September 2026  
-**Basis:** Review of STG v0.2, supplied OTDP v0.1 specification/schema, and confirmed unattended-testing requirements  
+**Basis:** Review of STG v0.2, supplied OTDP v0.1 specification and schema, and confirmed requirements for unattended operation  
 **Scope:** One Linux gateway controlling one qualified test bench for embedded-controller testing, including unattended procedures, accessible through REST and MCP  
 **Document owner:** Project owner; named deployment accountabilities are established during commissioning
 
@@ -14,17 +14,17 @@ The gateway is an instrument-control system. Unattended operation is conditional
 
 This document defines architectural contracts and the initial operating model. It does not prescribe electrical protective circuits or establish numeric safety limits. Bench-specific values are mandatory commissioning inputs under §15; they are not guessed architectural defaults.
 
-The supplied OTDP v0.1 specification and schema have been reviewed and reconciled. New integrations target the accompanying OTDP specification, descriptor schema, runtime schema and **Python adapter API 1.1** at a served version (0.2.2 active; 0.2.0 remains served) in `otdp/0.2.2/`. The agent authoring procedure, host interfaces, transport rules, conformance obligations and reference protocols are part of that package. The schemas are interface artefacts; they are not a gateway implementation or proof of hardware behaviour.
+The supplied OTDP v0.1 specification and schema were reviewed and reconciled. New integrations target the accompanying OTDP specification, descriptor schema, runtime schema and **Python adapter API 1.1** at a served version in `otdp/0.2.2/`. Version 0.2.2 is active; version 0.2.0 remains served. The agent authoring procedure, host interfaces, transport rules, conformance obligations and reference protocols are part of that package. The schemas are interface artefacts; they are not a gateway implementation or proof of hardware behaviour.
 
-OTDP owns the device-description and integration boundary. STG owns commissioning, authorisation, ownership, DUT safety policy, execution and recovery. Existing v0.1 descriptors require reviewed migration; changing a version field does not make them compatible. The accompanying `otdp-architecture-reconciliation.md` records the original defects and their resolution. No missing-document dependency remains.
+OTDP owns the device-description and integration boundary. STG owns commissioning, authorisation, ownership, DUT safety policy, execution and recovery. Existing v0.1 descriptors require reviewed migration; a change to a version field does not make them compatible. The accompanying `otdp-architecture-reconciliation.md` records the original defects and their resolution. No missing-document dependency remains.
 
 ## 2. Goals and initial boundary
 
-The gateway shall provide consistent instrument access, enforce approved operating constraints, preserve command and measurement evidence, and support recovery without assuming that the last requested state is the current physical state.
+The gateway shall provide consistent instrument access. It shall enforce approved operating constraints and preserve command and measurement evidence. It shall support recovery. It shall not assume that the last requested state is the current physical state.
 
-**Confirmed user requirements:** The primary DUTs are low-voltage embedded controllers. Unattended testing is a target capability. Future DUTs may be mains-powered. Significant stored energy is not expected initially, but this is an expectation to verify for each fixture, not a safety guarantee. No numeric voltage, current or energy threshold has been provided.
+**Confirmed user requirements:** The primary DUTs are low-voltage embedded controllers. Unattended testing is a target capability. Future DUTs may be mains-powered. Significant stored energy is not expected initially, but this is an expectation to verify for each fixture, not a safety guarantee. No numeric voltage, current or energy threshold was provided.
 
-The initial qualification class covers explicitly characterised low-voltage embedded-controller benches. Future mains-powered DUTs use the same control contracts but require a separate bench qualification addressing supply switching, isolation, earthing, accessible conductors, connected test leads and independent protection as applicable. A low-voltage control interface to a mains-powered DUT does not put the whole fixture in the initial class. Mains support is an architectural extension point, not an initial support claim, and cannot be enabled solely by widening a descriptor range.
+The initial qualification class covers explicitly characterised low-voltage embedded-controller benches. Future mains-powered DUTs use the same control contracts but require a separate bench qualification. That qualification addresses supply switching, isolation, earthing, accessible conductors, connected test leads and independent protection as applicable. A low-voltage control interface to a mains-powered DUT does not put the whole fixture in the initial class. Mains support is an architectural extension point, not an initial support claim, and cannot be enabled solely by widening a descriptor range.
 
 The initial supported boundary is one gateway per bench and one active controlling procedure at a time. Multiple observers are permitted where their queries do not interfere with control. A bench may contain several instruments and shared buses.
 
@@ -76,15 +76,15 @@ The protection path is bench-specific and does not depend on interface or core a
 |---|---|---|
 | Device descriptor | Capabilities, protocol mappings, instrument limits and compatibility | Integration maintainer |
 | Bench configuration | Instrument instances, transport locations, fixture wiring and channel assignments | Bench owner |
-| DUT safety profile | Permitted values, sequencing, duration, protection and safe condition | Accountable test/safety owner |
+| DUT safety policy | Permitted values, sequencing, duration, protection and safe condition | Accountable test/safety owner |
 | Access policy | Observation, control and administration permissions | System administrator |
 | Approved procedure | Required resources, actions, verification and recovery | Test owner |
 
 A request must satisfy all applicable constraints. An instrument's available voltage range is not a DUT safety limit. Where constraints conflict or required information is missing, the operation is refused.
 
-Profiles shall support relevant interactions, including voltage/current/power combinations, channel dependencies, maximum energised duration and required protection settings. Limits use explicit units and valid finite values. Structured constraints must not be reduced to independent min/max fields when those fields cannot express the hazard.
+Profiles shall support relevant interactions, including voltage, current and power combinations, channel dependencies, maximum energised duration and required protection settings. Limits use explicit units and valid finite values. Structured constraints must not be reduced to independent min/max fields when those fields cannot express the hazard.
 
-AI control authority does not include modifying its own safety profile, approving replacement instruments or extending its own permissions.
+AI control authority does not include the modification of its own safety policy, the approval of replacement instruments or the extension of its own permissions.
 
 Every active procedure is associated with specific configuration, descriptor and policy versions. Material changes invalidate affected arming conditions. Activation occurs at a controlled transition and does not silently reinterpret queued work. An urgent safety revocation may terminate a procedure despite version pinning.
 
@@ -102,7 +102,7 @@ Each qualified bench defines:
 
 An output-disable command is not by itself proof that stored energy has dissipated or that the DUT is safe. Simultaneous shutdown is not assumed appropriate for every fixture.
 
-Interlocks apply continuously while their protected condition exists. Loss, invalidity or staleness of required safety evidence triggers the profile's defined response. A pre-command GPIO check alone does not fulfil this obligation.
+Interlocks apply continuously while their protected condition exists. Loss, invalidity or staleness of required safety evidence triggers the safety policy's defined response. A pre-command GPIO check alone does not fulfil this obligation.
 
 A host watchdog assists recovery. It does not establish an instrument's output state. Software shutdown priority also cannot guarantee interruption of a blocked transport.
 
@@ -111,23 +111,23 @@ A host watchdog assists recovery. It does not establish an instrument's output s
 | State | Meaning | Permitted activity |
 |---|---|---|
 | Unverified | Identity, configuration or physical condition is not established | Observation and authorised recovery |
-| Safe | Required safe conditions have been verified | Permitted configuration |
-| Armed | Preconditions, ownership and policy are current | Approved energising operation may start |
+| Safe | Required safe conditions were verified | Permitted configuration |
+| Armed | Preconditions, ownership and policy are current | An approved operation that energises may start |
 | Active | An approved operation controls or energises the DUT | Constrained operation and monitoring |
 | Tripped | A safety condition has been violated | Protective action; ordinary control inhibited |
 | Recovering | Physical state is being reconciled after a fault | Controlled recovery |
 
 Normal progression is Unverified → Safe → Armed → Active. Normal completion returns to Safe only after its conditions are verified. Fault recovery does not bypass verification, and restoration of communications does not automatically clear a trip or re-arm the bench.
 
-Arming is bounded by time, identity, fixture configuration and safety-profile version. The bench policy determines whether an authorised person must acknowledge a trip before re-arming.
+Arming is bounded by time, identity, fixture configuration and safety policy version. The bench policy determines whether an authorised person must acknowledge a trip before re-arming.
 
 Communications health is tracked separately. An unreachable instrument may remain energised; loss of communication must not be represented as a safe state.
 
 ## 7. Ownership and scheduling
 
-The bench gateway is authoritative for control ownership. MCP transport connections are not ownership records. Ownership is explicit, time-bounded and revocable, with defined behaviour on expiry and client loss.
+The gateway is authoritative for control ownership. MCP transport connections are not ownership records. Ownership is explicit, time-bounded and revocable, with defined behaviour on expiry and client loss.
 
-Manual control uses a renewable client lease. Expiry starts the bench's approved safe transition; expiry never leaves indefinite authority behind. A bounded approved procedure may instead hold gateway-owned authority independent of the initiating connection, but only when that execution mode is explicitly permitted by the commissioned profile. Its maximum duration and protective monitoring remain local. This is the sole initial exception allowing control to continue after client authority is lost.
+Manual control uses a renewable client lease. Expiry starts the bench's approved safe transition; expiry never leaves indefinite authority behind. A bounded approved procedure may hold gateway-owned authority instead, independent of the connection that initiated it. Only a commissioned profile that explicitly permits that execution mode allows this. Its maximum duration and protective monitoring remain local. This is the sole initial exception that lets control continue after client authority is lost.
 
 Command/query exchanges are serialised where the instrument protocol requires it. Shared buses also receive appropriate arbitration. Background observation must not consume responses, disrupt procedures or delay protection beyond the approved limit. Work queues and operation durations are bounded.
 
@@ -139,7 +139,7 @@ The supported bench definition shall address front-panel access and other instru
 
 ## 8. Operation and procedure contracts
 
-Operations have stable identifiers and distinguish acceptance, dispatch, device acknowledgement and verification. Terminal outcomes include succeeded, failed, cancelled and outcome unknown. Queued and running states are observable independently of the originating connection.
+Operations have stable identifiers and distinguish acceptance, dispatch, device acknowledgement and verification. Terminal outcomes include succeeded, failed, cancelled and outcome unknown. Queued and running states are observable independently of the connection that created them.
 
 Success means the operation's declared completion criterion has been met. Delivery without confirmation must not be represented as verified physical success.
 
@@ -149,11 +149,11 @@ Duplicate requests with the same operation identity return the recorded state ra
 
 An approved procedure specifies resources, operating envelope, ordered actions, verification points, maximum duration and recovery from partial execution. It also specifies whether loss of the initiating client means shutdown, bounded completion or another independently supervised response.
 
-For unattended tests, approved gateway-owned execution is the normal mode. The accepted procedure and its authorised operating envelope are sufficient to execute locally; continuous AI connectivity or further AI judgement is not a prerequisite for protection, completion or shutdown. Any adaptive action remains inside explicitly approved choices and limits. Exhausting those choices, losing required evidence or exceeding duration initiates the approved failure response. Material changes require a newly authorised procedure.
+For unattended tests, approved gateway-owned execution is the normal mode. The accepted procedure and its authorised operating envelope are sufficient to execute locally. Continuous AI connectivity or further AI judgement is not a prerequisite for protection, completion or shutdown. Any adaptive action remains inside explicitly approved choices and limits. If those choices are exhausted, required evidence is lost, or the duration is exceeded, the approved failure response starts. Material changes require a newly authorised procedure.
 
 Before an unattended run starts, the gateway verifies the commissioned fixture identity, protection readiness, resource ownership, required evidence capacity and valid measurement inputs. Notification failure does not prevent local protective action. Completion, trip and outcome-unknown events are retained for later delivery; a remote alert is not assumed to mean a person has responded. After a gateway restart or protective trip, the initial architecture does not automatically resume or re-arm the run.
 
-Read-only classification follows actual behaviour. Draining an instrument error queue is state-changing; ordinary error-log retrieval reads retained gateway evidence. Self-tests and captures declare their actual effects on instrument configuration and output.
+Read-only classification follows actual behaviour. Drainage of an instrument error queue changes state. Ordinary error-log retrieval reads retained gateway evidence. Self-tests and captures declare their actual effects on instrument configuration and output.
 
 Unrestricted raw protocol commands are excluded from the AI control interface. Input values are typed and constrained before translation; strings cannot introduce additional protocol commands. Bulk reads include only declared non-destructive observations, identify per-value freshness and do not imply a simultaneous snapshot. Device integrations declare command completion, parsing, framing and error-consumption behaviour so these effects remain visible to the coordinator.
 
@@ -178,15 +178,15 @@ Capture jobs have bounded duration, size, retention and cancellation semantics. 
 
 ## 10. Device integration and security
 
-Discovery identifies candidates. Commissioning binds a physical instrument to its bench role using validated identity and compatibility evidence. Transport addresses and enumeration paths are connection details, not sufficient identity on their own. Unexpected replacements are quarantined.
+Discovery identifies candidates. Commissioning binds a physical instrument to its bench role using validated identity and compatibility evidence. Transport addresses and enumeration paths are connection details, not sufficient identity on their own. The gateway quarantines unexpected replacements.
 
 Descriptors are controlled configuration, and imported plugins are trusted executable code unless an explicit isolation boundary exists. A stable interface is not a sandbox. Integration contracts define compatibility, execution limits, failure containment and device-access permissions.
 
 The initial plugin model permits only reviewed, versioned integrations admitted by the project owner. Executable plugin changes are controlled release changes. Descriptor changes may be activated without a full gateway release only at the defined configuration boundary and after validation. Isolation required for fault containment does not make an otherwise untrusted plugin acceptable automatically.
 
-Integrations declare independent capabilities and declarative/adapter mode; legacy numeric OTDP levels do not grant authority. Declarative support initially covers qualified scalar SCPI operations, native correlated UART JSON and passive CAN integer telemetry. CAN control, I²C/SPI transactions, SCPI captures and protocols beyond those complete bindings use reviewed adapters. A binary decoder does not constitute a complete transaction protocol.
+Integrations declare independent capabilities and a declarative or adapter mode; legacy numeric OTDP levels do not grant authority. Declarative support initially covers qualified scalar SCPI operations, native correlated UART JSON and passive CAN integer telemetry. CAN control, I²C/SPI transactions, SCPI captures and protocols beyond those complete bindings use reviewed adapters. A binary decoder does not constitute a complete transaction protocol.
 
-An adapter implements the published factory/open/execute/next_event/close ABI and uses scoped host transport, clocks, evidence and capture services. One instance belongs to one physical instrument. Import/construction has no I/O, and open sends no reset or energising commands. Transport-attachment effects, such as serial line transitions, must be addressed during commissioning. The gateway's scheduler owns calls, cancellation and deadlines. Agents authoring integrations receive the complete specification/schema package plus real device protocol evidence; missing device facts must be reported rather than guessed.
+An adapter implements the published factory/open/execute/next_event/close ABI and uses scoped host transport, clocks, evidence and capture services. One instance belongs to one physical instrument. Import and construction have no I/O. The open verb sends no reset commands and no commands that energise. Transport-attachment effects, such as serial line transitions, must be addressed during commissioning. The gateway's scheduler owns calls, cancellation and deadlines. Agents that author integrations receive the complete specification and schema package plus real device protocol evidence; missing device facts must be reported rather than guessed.
 
 All external control interfaces authenticate callers and enforce per-device and per-operation authorisation in the core. Administration is distinct from observation and control. Credentials have defined issuance, expiry and revocation. MCP and gateway credentials must have explicit intended audiences and delegation rules.
 
@@ -210,18 +210,18 @@ Interface contract 0.1.0 selects REST v1 and MCP 2026-07-28; client interoperabi
 | Required measurement stale | Stop treating it as valid evidence; apply timeout policy | Fresh valid evidence |
 | Unexpected device replacement | Quarantine connection | Commissioning completed |
 | Configuration change | Controlled activation; preserve consistent execution | Affected conditions revalidated |
-| Audit storage unavailable | By default inhibit new energising work; preserve protection | Storage restored and state reconciled |
+| Audit storage unavailable | By default inhibit new work that energises; preserve protection | Storage restored and state reconciled |
 | Partial procedure execution | Record completed and uncertain actions; execute recovery | Required condition verified |
 
 Recovery must establish current physical state. It must not restore previous energised settings merely because they were recorded before failure.
 
 ## 12. Evidence and supportability
 
-Audit records intent, authorisation, policy version, dispatch, acknowledgement, verification and final outcome. Unknown before/after values remain explicitly unknown. Denied requests, protective actions, local takeover and configuration changes are included.
+Audit records intent, authorisation, policy version, dispatch, acknowledgement, verification and final outcome. Values unknown before and after an operation remain explicitly unknown. The audit includes denied requests, protective actions, local takeover and configuration changes.
 
-Evidence has defined retention, storage limits, access protection and export behaviour. Local operation must not depend on continuous connectivity to a central log service. Storage exhaustion and unavailable logging have explicit policies; protective actions remain available.
+Evidence has defined retention, storage limits, access protection and export behaviour. Local operation must not depend on continuous connectivity to a central log service. Storage exhaustion and unavailable log storage have explicit policies; protective actions remain available.
 
-Audit capacity is protected from bulk captures. If command-intent evidence cannot be persisted, new energising work is refused. Active work follows its approved bounded failure response, and protective action is never withheld for lack of logging. Capture retention and audit retention are independently configured before commissioning; their exact periods are deployment values. Configuration and policy history needed to interpret retained audit records is retained with that evidence.
+Audit capacity is protected from bulk captures. If command-intent evidence cannot be persisted, the gateway refuses new work that energises. Active work follows its approved bounded failure response, and protective action is never withheld for lack of logging. Capture retention and audit retention are independently configured before commissioning; their exact periods are deployment values. Configuration and policy history needed to interpret retained audit records is retained with that evidence.
 
 Service health reflects meaningful control progress, not merely an independent heartbeat. Recovery documentation covers ownership reconciliation, device replacement, configuration restoration and requalification after relevant changes.
 
@@ -250,7 +250,7 @@ Cross-gateway orchestration and automatic controller failover require separate d
 
 Qualification covers gateway loss, instrument loss, stuck operations, stale evidence, duplicate requests, interlock changes, external changes, replacement devices and partial procedures. Pass/fail thresholds derive from bench requirements and must be recorded before qualification.
 
-Each supported bench records its equipment/firmware combinations, fixture assumptions, DUT envelope, protective dependencies, reaction times, required supervision and known limitations. Relevant changes trigger a defined review of the evidence affected.
+Each supported bench records its equipment and firmware combinations, fixture assumptions, DUT envelope, protective dependencies, reaction times, required supervision and known limitations. Relevant changes trigger a defined review of the evidence affected.
 
 ## 15. Decision closure and commissioning requirements
 
@@ -268,7 +268,7 @@ The listed architectural choices are selected below for this design baseline; th
 | D08 | Reviewed, versioned trusted plugins only; executable changes are release changes | Project owner admits integrations and records any required containment |
 | D09 | Per-identity, per-bench observer/controller/admin permissions with explicit delegated authority | Administrator selects provider and protocol baseline, then verifies interoperability |
 | D10 | Separate audit/capture budgets; logging loss blocks new energising work but never protection | System owner sets capacities, retention and bounded active-work response |
-| D11 | New integrations target the reconciled OTDP descriptor/runtime/measurement schemas at a served version (0.2.2 active; 0.2.0 remains served), the class catalog and adapter API 1.1; v0.1 requires reviewed migration | Implement and exercise the published structural, semantic and behavioural contracts before claiming implementation conformance |
+| D11 | New integrations target the reconciled OTDP descriptor, runtime and measurement schemas at a served version: 0.2.2 is active and 0.2.0 remains served. They also target the class catalog and adapter API 1.1; v0.1 requires reviewed migration | Implement and exercise the published structural, semantic and behavioural contracts before claiming implementation conformance |
 
 D11 is closed architecturally. The specification and schemas now define authoring inputs, package layout, operation semantics, host interfaces, supported bindings and required conformance evidence. The original v0.1 schema is not presented as a sufficient safety/admission validator. Bench safety information deliberately remains in gateway-owned configuration, rather than ignorable device extensions.
 
@@ -276,9 +276,9 @@ The commissioning record names the accountable owners for D01–D10 and captures
 
 ## 16. Device-class coverage in v1.1
 
-The OTDP package (a served version — 0.2.2 active; 0.2.0 remains served) defines twelve composable profiles: DC PSU, DMM, oscilloscope, logic analyser, function generator, electronic load, SMU, DAQ, embedded controller, switch matrix, spectrum analyser and VNA. Fifty versioned actions have typed inputs and outputs. The normative class definitions, measurement model, extension contract and pinned catalog are part of the integration boundary.
+The OTDP package defines 12 composable profiles: DC PSU, DMM, oscilloscope, logic analyser, function generator, electronic load, SMU, DAQ, embedded controller, switch matrix, spectrum analyser and VNA. Version 0.2.2 is active; version 0.2.0 remains served. 50 versioned actions have typed inputs and outputs. The normative class definitions, measurement model, extension contract and pinned catalog are part of the integration boundary.
 
-Profile actions use validated invoke dispatch with scoped configuration/acquisition identities. Required actions establish class membership; optional features and actual model limits are explicit. Multi-profile instruments retain shared resource ownership. Sources, sinks, switching and stimulus-producing measurements remain subject to the same bench policy and protection requirements.
+Profile actions use validated invoke dispatch with scoped configuration and acquisition identities. Required actions establish class membership; optional features and actual model limits are explicit. Multi-profile instruments retain shared resource ownership. Sources, sinks, switching and measurements that produce stimulus remain subject to the same bench policy and protection requirements.
 
 The evidence service accepts typed datasets with units, dimensions, channels, timing, uncertainty, calibration and immutable inline or hashed binary payloads. Existing single-channel capture remains a core compatibility contract; richer class acquisitions use the dataset services in adapter API 1.1.
 
@@ -290,17 +290,17 @@ Retained: Linux hosting, descriptor-driven integration, a vendor-independent cor
 
 Strengthened: independent protection, separate DUT profiles, continuous interlocks, ownership, operation outcomes, configuration activation, measurement provenance, security boundaries and evidence-based qualification.
 
-Corrected: clamping language becomes rejection; a Python interface is not called a sandbox; startup shutdown is not crash protection; queue draining is not read-only; configuration readback is not a physical measurement; transport availability is not a portability guarantee.
+Corrected: clamping language becomes rejection; a Python interface is not called a sandbox; startup shutdown is not crash protection; queue drainage is not a read-only operation; configuration readback is not a physical measurement; transport availability is not a portability guarantee.
 
 Remaining engineering activities: gateway and plugin implementation, library selection, integration-specific worker boundaries and physical protective-circuit selection. The device plugin API and OTDP schemas are specified in the accompanying package, not left to an implementing agent to invent.
 
-**Review disposition:** Architectural decisions D01–D11 are selected at their documented scope. The package-level closure register remains authoritative for outstanding architectural work. The design package includes the agent-ready OTDP contract, schemas, reference descriptors and validation report. Remaining numeric and physical requirements are mandatory commissioning inputs. No gateway or plugin implementation has been created, and document validation does not authorise energised operation or certify physical protection.
+**Review disposition:** Architectural decisions D01–D11 are selected at their documented scope. The package-level closure register remains authoritative for outstanding architectural work. The design package includes the agent-ready OTDP contract, schemas, reference descriptors and validation report. Remaining numeric and physical requirements are mandatory commissioning inputs. No gateway or plugin implementation was created, and document validation does not authorise energised operation or certify physical protection.
 
 ## 18. Central registry and shared integrations
 
-The companion [registry contract](../standards/registry/0.1.2/registry-specification.md) defines distribution of reusable class profiles, model descriptors and executable implementations. It provides central discovery, publisher ownership, immutable releases, compatibility metadata, licence/provenance, test evidence, maintenance status, advisories and private mirrors. Source repositories support contributions; signed releases support reproducible adoption.
+The companion [registry contract](../standards/registry/0.1.2/registry-specification.md) defines distribution of reusable class profiles, model descriptors and executable implementations. It provides central discovery, publisher ownership, immutable releases, compatibility metadata, licence and provenance, test evidence, maintenance status, advisories and private mirrors. Source repositories support contributions; signed releases support reproducible adoption.
 
-Registry contract 0.1.0 is a packaging/distribution companion to OTDP 0.2.0 and adapter API 1.1; their runtime interfaces remain unchanged. Publication requires the release manifest and applicable evidence. Local-only plugin authoring remains supported. The central service never grants bench authority.
+Registry contract 0.1.0 is a packaging and distribution companion to OTDP 0.2.0 and adapter API 1.1; their runtime interfaces remain unchanged. Publication requires the release manifest and applicable evidence. Local-only plugin authoring remains supported. The central service never grants bench authority.
 
 Gateways resolve an exact dependency closure, verify authenticated metadata and artefacts, review permissions and record a local package lock before safe activation. Active procedures retain their approved package generation. Updates, revocations, offline operation and recovery follow the registry contract and commissioned local policy. No live test depends on a registry request or installs missing code on demand.
 
@@ -310,9 +310,9 @@ The registry operator owns namespace governance, distribution keys, review workf
 
 The companion [execution contract 0.2.0](../standards/execution/0.2.0/execution-contract.md) defines six schemas: portable procedure, bench definition, safety policy, commissioning record, run binding and terminal run record. It preserves the OTDP 0.2.0 and adapter API 1.1 runtime interfaces.
 
-Procedures use bounded sequential steps, fixed-count loops, explicit lexical result references and typed scalar assertions. Logical roles/channels bind to commissioned instances. The host reserves shared resources and protective dependencies before acceptance, validates resolved actions against profile/device/policy constraints and retains the accepted immutable configuration throughout the run.
+Procedures use bounded sequential steps, fixed-count loops, explicit lexical result references and typed scalar assertions. Logical roles and channels bind to commissioned instances. The host reserves shared resources and protective dependencies before acceptance, validates resolved actions against profile, device and policy constraints and retains the accepted immutable configuration throughout the run.
 
-Bench metadata records declared wiring, device identity generations, shared resources and typed signal sources. Policy owns the domain envelope, allow rules, continuous conditions and bounded safe transition. An approved procedure cannot alter that policy. Commissioning binds exact document and package digests, qualified modes, expiry, owners and evidence. A registry download or structurally valid document grants no control authority.
+Bench metadata records declared wiring, device identity generations, shared resources and typed signal sources. The safety policy owns the domain envelope, allow rules, continuous conditions and bounded safe transition. An approved procedure cannot alter that policy. Commissioning binds exact document and package digests, qualified modes, expiry, owners and evidence. A registry download or structurally valid document grants no control authority.
 
 All run endings invoke the approved protective transition. Passing test assertions alone is insufficient for terminal success: the final safe condition must also be verified. Body outcome, physical uncertainty and protection evidence remain separately visible. Gateway restart does not automatically resume a body or energise equipment.
 
@@ -320,9 +320,9 @@ See the [architecture closure register](architecture-closure.md) for review disp
 
 ## 20. REST and MCP interface baseline
 
-The [interface contract 0.1.0](../standards/interface/0.1.0/interface-contract.md) specifies twenty REST operations and seventeen MCP tools. The operation catalog, shared JSON Schema, OpenAPI 3.1.0 document and MCP tool definitions describe one authorised core surface. The MCP transport is pinned to 2026-07-28; compatibility with older revisions is not implicit.
+The [interface contract 0.1.0](../standards/interface/0.1.0/interface-contract.md) specifies 20 REST operations and 17 MCP tools. The operation catalog, shared JSON Schema, OpenAPI 3.1.0 document and MCP tool definitions describe one authorised core surface. The MCP transport is pinned to 2026-07-28; compatibility with older revisions is not implicit.
 
-Discovery and observation read retained metadata/evidence. Control submits an approved run binding, repeats admission checks and returns a durable run ID. Cross-interface deduplication, explicit leases, generation checks and cancellation preserve the procedure contract through disconnects. Event cursors and immutable chunked evidence support client recovery independently of MCP transport sessions.
+Discovery and observation read retained metadata and evidence. Control submits an approved run binding, repeats admission checks and returns a durable run ID. Cross-interface deduplication, explicit leases, generation checks and cancellation preserve the procedure contract through disconnects. Event cursors and immutable chunked evidence support client recovery independently of MCP transport sessions.
 
 Administrative changes are REST-only, independently authorised and constrained to a safe boundary. The control interface cannot fabricate its own approval or directly bypass policy with raw instrument commands. Authentication tokens, protocol request IDs and bench authority remain distinct concepts.
 
@@ -330,8 +330,8 @@ The [interface review scenarios](../standards/interface/0.1.0/review-scenarios.m
 
 ## 21. Consolidated baseline and acceptance
 
-STG 1.5 consolidates the selected architecture with OTDP 0.2.2, adapter API 1.1, registry 0.1.2, execution 0.2.0 and interface 0.1.0 (MCP 2026-07-28). The package manifest identifies the authoritative file bytes. Earlier architecture archives remain historical and must not be mixed into this contract set.
+STG 1.5 consolidates the selected architecture with OTDP 0.2.2, adapter API 1.1, registry 0.1.2, execution 0.2.0 and interface 0.1.0. The MCP transport is pinned to 2026-07-28. The package manifest identifies the authoritative file bytes. Earlier architecture archives remain historical and must not be mixed into this contract set.
 
-The [registry composition review](acceptance/registry-composition-review.md) resolves sixteen reuse/dependency cases. The [integrated acceptance review](acceptance/end-to-end-review.md) traces twenty-six normal/failure cases and records cross-contract corrections. Passing assertions cannot conceal missing safety or missing terminal evidence. Manual ownership, exact document bytes, total qualification duration and nonrenewable protective deadlines are now explicit.
+The [registry composition review](acceptance/registry-composition-review.md) resolves 16 reuse and dependency cases. The [integrated acceptance review](acceptance/end-to-end-review.md) traces 26 normal and failure cases and records cross-contract corrections. Passing assertions cannot conceal missing safety or missing terminal evidence. Manual ownership, exact document bytes, total qualification duration and nonrenewable protective deadlines are now explicit.
 
 Architectural closure applies to the bounded profiles, providers, sequential procedure language and local-authority model described here. It is not a universal device/workflow claim, deployment approval, security certification or proof of implementation conformance. Implementation acceptance and physical qualification must satisfy the supplied checks and scenarios with actual evidence. No software implementation or energised testing was performed in producing this package.
