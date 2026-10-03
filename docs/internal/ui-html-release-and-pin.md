@@ -152,6 +152,10 @@ gateway `v*` release would fire a ui-html publish:
   installed-wheel asserts and the resource census, re-proven at the tag.
 - **publish** — PyPI trusted publishing via OIDC: the repository's ONLY
   `id-token: write`, job-scoped to this one job; no token secret anywhere.
+  The publish action's `attestations` input defaults to true at the pinned
+  version, so the first release emits PEP 740 attestations — disclosed, not
+  configured; the `urls` payload stays file-only, so the verify job's
+  set-equality is unaffected.
 - **verify** — PyPI JSON read-back asserting the version serves BOTH the
   wheel and the sdist with digests equal to the built artifacts' (a short
   retry loop absorbs index lag; a found-but-mismatched digest stops the

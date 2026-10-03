@@ -28,11 +28,20 @@ jobs:
     if: startsWith(github.event.release.tag_name, 'ui-html-v')
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      # Env indirection, never ${{ }} inside run: — the release tag is
+      # attacker-shaped legal-ref text; parameter expansion inside quotes
+      # never re-evaluates it (refute lane A, MEDIUM; the SDK publish.yml
+      # precedent passes its tag the same way).
+      RELEASE_TAG: ${{ github.event.release.tag_name }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # Never build the default branch — only the tagged commit.
-          ref: ${{ github.event.release.tag_name }}
+          # Never build the default branch — and never a re-resolved name:
+          # github.sha on the release event is the tag's commit ("last commit
+          # in the tagged release"), pinned per attempt, so a moved tag cannot
+          # re-target a re-run (refute lane A, LOW).
+          ref: ${{ github.sha }}
           persist-credentials: false
           submodules: false
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
@@ -46,7 +55,7 @@ jobs:
         # fails CLOSED as a mismatch rather than rounding to a match.
         run: |
           set -euo pipefail
-          tag="${{ github.event.release.tag_name }}"
+          tag="${RELEASE_TAG}"
           version="$(uv run --no-project --python 3.13 python -I -c 'import sys, tomllib
           print(tomllib.load(open(sys.argv[1], "rb"))["project"]["version"])' \
             packages/ui-html/pyproject.toml)"
@@ -79,11 +88,17 @@ jobs:
         # .gitattributes normalizes line endings machine-wide (eol=lf) —
         # no Windows leg (design §2.2, disclosed non-goal).
         os: [ubuntu-latest, macos-latest]
+    env:
+      # matrix.os is workflow-static (never attacker-controlled); env
+      # indirection keeps the run block free of template expansion entirely,
+      # so the file stays clean under workflow security audit.
+      SMOKE_OS: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # The census's source side: the checkout tree AT the tag.
-          ref: ${{ github.event.release.tag_name }}
+          # The census's source side: the checkout tree AT the tag's commit
+          # (github.sha — pinned per attempt, same rationale as the build job).
+          ref: ${{ github.sha }}
           persist-credentials: false
           submodules: false
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -147,7 +162,7 @@ jobs:
           refusals = verify_vendored_assets()
           assert refusals == [], refusals
           print("ui-html: vendored assets verified from the installed wheel")'
-          echo "smoke ok on ${{ matrix.os }}: import, version, installed set, census, inventory verify"
+          echo "smoke ok on ${SMOKE_OS}: import, version, installed set, census, inventory verify"
 
   publish:
     name: Publish to PyPI (trusted publishing)
@@ -159,7 +174,7 @@ jobs:
     # asserts the count): trusted publishing via OIDC, no token secret
     # anywhere. Job-scoped so the grant exists nowhere else in the run.
     permissions:
-      id-token: write
+      id-token: write # trusted-publishing OIDC claim — the only job in this repo carrying it
       contents: read
     steps:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -176,6 +191,9 @@ jobs:
     needs: publish
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      # Same env-indirection rule as the build job (refute lane A, MEDIUM).
+      RELEASE_TAG: ${{ github.event.release.tag_name }}
     steps:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -190,7 +208,7 @@ jobs:
         # immediately — that is the STOP path, never retried away.
         run: |
           set -euo pipefail
-          python3 - "${{ github.event.release.tag_name }}" dist <<'PY'
+          python3 - "$RELEASE_TAG" dist <<'PY'
           import hashlib
           import json
           import pathlib
