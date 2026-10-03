@@ -118,7 +118,15 @@ def latest_retained_readings(
     scan_rows: int,
 ) -> dict[str, RetainedReading]:
     """The newest digest-verified reading per parameter this device's
-    tiles may render, from runs on THIS bench that bind THIS device.
+    tiles may render, AMONG THE ROWS THE SCAN BUDGET REACHES, from runs
+    on THIS bench that bind THIS device. The budget bounds completeness,
+    not just cost: the walk is newest-RUN-first (``updated_at``
+    descending), which guarantees nothing about ``observed_at``
+    reachability — a budget that exhausts inside a newer run starves any
+    newer observation sitting in an older run, and the tile then renders
+    the older value with no truncation mark (#369 fold, LOW-2; the
+    earlier "newest ... may render" wording claimed more than the
+    mechanism delivers).
 
     The join, newest-first and budget-bounded (design §4): runs by
     ``updated_at`` descending, evidence rows by ``stored_at`` descending

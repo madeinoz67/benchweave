@@ -74,3 +74,31 @@ a corrupt reference is warned and omitted, exactly its own row. RED arm:
 `test_f3_corrupt_reference_row_is_skipped_per_row` (corrupt newest row via
 direct SQL → the older valid row still populates; pre-fold the join aborted
 to all-`Unavailable`).
+
+## LOW-2 (lane 2) — the "newest" claim overstated: CORRECTED (wording)
+
+`latest_retained_readings`' docstring opened "The newest digest-verified
+reading per parameter this device's tiles may render" — false under budget
+starvation (lane 2's repro): with scan_rows=2, two older-but-valid
+observations in a NEWER run consume the budget and starve the actual newest
+observation in an older run; the tile renders the older value and no
+truncation mark exists. The walk's newest-RUN-first order guarantees nothing
+about `observed_at` reachability. The docstring is reworded in the same
+commit as this row to what holds — newest AMONG THE ROWS REACHED within the
+scan budget. No mechanism change: the budget is the bound, not completeness,
+and A10 already pins the disclosed-absence half.
+
+## LOW-5 (lane 2) — the record's §4 step-7 census claim: CORRECTED here
+
+The design record says the ownership count comes from "ONE seam call,
+`device_list`, whose CON-10 projections carry parameter names". The
+implementation's census is `device_list` plus one `document_get` per bench
+device, because the wire device projection is contract-frozen to five fields
+(`device_id`, `generation`, `profiles`, the descriptor ref, `identity_state` —
+`operations.py::_device_projection`) and carries NO parameter names; the
+parameter-name list exists only in each device's admitted descriptor
+document, which the seam serves by digest. This deviation was disclosed in
+the implementation commit (87fd80e) but the addendum — the designated
+correction surface — owed this row. All census calls stay seam-mediated on
+the session identity; the semantics are the record's own (a parameter
+renders only when exactly one bench device declares it).
