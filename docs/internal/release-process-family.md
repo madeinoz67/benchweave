@@ -56,12 +56,24 @@ Releases flow downstream **ui-html → SDK → gateway**.
   - SDK → gateway: an SDK **range-change MINOR+** — the served-set bump
     class (`sdk_bump_class_invalid:`) — is breaking for the gateway.
   - PATCH releases pair on schedule and open no window.
-- **Which edge is machine-enforced — stated honestly, because the two
-  edges are not symmetric:**
-  - **SDK → gateway is mechanical.** The `sdk-drift` CI lane compares the
-    committed `packages/sdk` gitlink against the SDK's latest release tag
-    and is red until the pointer pairs — no gateway cut can merge inside
-    the window even if this process is skipped.
+- **Which edge is enforced how — stated honestly, because the two edges
+  are not symmetric, and neither machine-blocks today:**
+  - **SDK → gateway: a red lane in THIS repository's CI, held by the
+    merge discipline, not by branch protection.** The `sdk-drift` lane
+    compares the committed `packages/sdk` gitlink against the SDK's
+    latest release tag and is red on every pull request until the
+    pointer pairs — the window's visible edge is red on the very lanes
+    a gateway cut would ride. But it does not machine-block the merge:
+    main's branch protection requires zero status checks (measured —
+    the classic protection endpoint 404s; the active ruleset sets
+    squash-only and zero approvals with an empty required-checks list,
+    and red-lane merges have happened operationally). What refuses to
+    merge over red is the standing merge discipline —
+    `scripts/merge-verified.sh` reading the full checks rollup, zero
+    fail and zero pending asserted, under the merge-on-green orders.
+    Procedural, and stated as procedural. The mechanical upgrade —
+    adding `sdk-drift` and the core lanes to required status checks —
+    is a one-time owner decision, named in the setup section below.
   - **ui-html → SDK is procedural + signal.** The SDK repository's
     `ui-html-pin-freshness` lane (`.github/workflows/pin-freshness.yml`)
     WARNs while the `[server]` extra's exact `benchweave-ui-html` pin
@@ -160,6 +172,18 @@ implementable surface (the pending-publisher precedent):
    stray push is recovered by deleting the remote tag.
 3. **PyPI pending publishers** for the two publishing lines already
    exist (both projects are live) — nothing to do; recorded n/a.
+4. **Required status checks — NOT configured at this writing; owner's
+   call, and this page does not assume it.** Adding `sdk-drift` (and
+   the core lanes) to main's required status checks would upgrade the
+   SDK→gateway gap window from procedural to machine-enforced — a red
+   drift lane would then block the merge outright. Measured at this
+   page's landing: the active main ruleset carries squash-only and
+   zero approvals and requires ZERO status checks (the classic
+   branch-protection endpoint 404s). Until the owner configures
+   required checks, the order rule's SDK→gateway edge rests on the
+   merge discipline, exactly as its clause says — if this item is
+   executed, that clause and the erratum in the design record move
+   with it.
 
 ## The gateway line's cut procedure
 
@@ -205,9 +229,22 @@ implementable surface (the pending-publisher precedent):
    directive targets work commits; process uniformity beats a per-line
    special case (the issue #302 risk disclosure, adopted for this line).
 4. **Tag + GitHub release** — tag on the marker commit; release object
-   with cliff-generated notes pasted as the body (the pinned command
-   shape from the ui-html page; the gateway has no workflow to replace
-   the body — the paste IS the notes).
+   with cliff-generated notes pasted as the body (the gateway has no
+   workflow to replace the body — the paste IS the notes). The gateway
+   commands — a FULL-repository render, matching the changelog boundary
+   the dry run inspected; the ui-html page's pinned commands carry
+   `--include-path 'packages/ui-html/*'` and would render ui-html-only
+   notes, wrong in direction for this line:
+
+   - first release:
+     `git-cliff -c cliff.toml --strip header --unreleased --tag vX.Y.Z`
+   - later releases:
+     `git-cliff -c cliff.toml --strip header --tag vX.Y.Z v<PREV>..v<NEW>`
+
+   Both forms require the anchored `tag_pattern` in `cliff.toml`, for
+   the same reason the ui-html page's commands do — and a `vX.Y.Z` tag
+   MATCHES the anchored pattern, so the render's section becomes the
+   changelog boundary at the next regeneration (walk row 4).
 5. **Post-verify** — the walk's rows below. The changelog boundary
    renders at the next `changelog.yml` run on main (tags do not trigger
    it — the boundary's arrival is named, not assumed).

@@ -30,6 +30,23 @@ What the gateway first cut genuinely requires (all verified in-tree):
 
 ## 1. Verified inventory — what exists per line, and the gaps
 
+[ERRATUM (#380, adv1 fold F1, 2026-10-04): the cross-line facts below
+claim the SDK→gateway gap window is "machine-enforced" — measured
+false. The gateway repository's main branch has NO machine-required
+checks: the classic branch-protection read returns 404 ("Branch not
+protected"), and the active ruleset (id 23575479) sets squash-only
+with zero required approvals and an EMPTY required_status_checks list
+— `sdk-drift` red blocks nothing by itself, and red-lane merges have
+happened operationally (2026-09-23: two merges landed with three red
+lanes between them). The edge is enforced PROCEDURALLY: the merge
+discipline (`scripts/merge-verified.sh` reading the full checks
+rollup, zero fail and zero pending, under the merge-on-green orders)
+refuses to merge over red. Corrected in the shipped process doc's
+order-rule section (`docs/internal/release-process-family.md`); the
+mechanical upgrade (adding `sdk-drift` + core lanes to required status
+checks) is a named owner-decision setup item there. The frozen text
+below is unchanged.]
+
 Evidence read 2026-10-04 at `308ce13` (gateway) and SDK main `e762676` / tag `v0.6.0`.
 
 ### The ui-html line (package `benchweave-ui-html`, gateway repo, tag scheme `ui-html-vX.Y.Z`) — FORMAL
@@ -89,6 +106,19 @@ Repo map, tag schemes, and the per-line authority table:
 Plus the family invariant every line already machine-checks where a publish workflow exists, and the walk checks everywhere: **a release tag equals `prefix + the line's version source`** (fail-closed compare, no PEP 440 rounding — publish-ui-html build assert; SDK `verify_release_tag.py`).
 
 ### 2.2 The order rule and gap windows
+
+[ERRATUM (#380, adv1 fold F1, 2026-10-04): the order rule below states
+the SDK→gateway edge is enforced mechanically ("the `sdk-drift` lane is
+red until the pointer pairs — no gateway cut can merge inside the
+window even if the process is skipped") — measured false; see the
+erratum at section 1's open for the full evidence (branch protection
+404 / empty required-status-checks list on the active ruleset; the
+2026-09-23 red-lane merges). The edge is procedural: the merge
+discipline refuses to merge over red, and nothing else does. The
+shipped process doc (`docs/internal/release-process-family.md`, "The
+order rule and gap windows") carries the corrected modality, and its
+setup section names the mechanical upgrade as a one-time owner
+decision. The frozen text below is unchanged.]
 
 - Releases flow downstream **ui-html → SDK → gateway**. Upstream never waits on a downstream cut; nothing is locked-step.
 - **A breaking upstream release opens a gap window** — the time between the upstream release and the landing of its downstream pairing (§2.4). No downstream cut happens inside that window.
