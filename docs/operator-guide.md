@@ -293,32 +293,7 @@ document skips it — that class of start stays asynchronous (202, then
 `outcome_unknown` under the worker's poison guard); the worker's floor
 over the full admission result is the authority. A composition version
 whose standard declares no row asserts no floor — the same per-version
-honest negative admission has.
-
-RUNNING an unattended body is a commissioned grant, not a default (issue
-#316). A run over a `gateway_owned` procedure requires that the
-commissioning document carries the `unattended` mode with a PASSING
-`unattended`-category evidence row; every run's window — the start time
-plus the procedure's `max_body_ms` plus `max_protection_ms` — must end
-before `commissioning.expires_at`; and a `manual` procedure requires a
-presented client lease. The same two layers enforce it as the
-implemented-dialect floor: refused synchronously at run start (typed
-`policy_denied`, before any lease is consumed) and authoritatively at the
-worker. The refusals: `unattended_grant_absent:` (the commissioning does
-not grant the unattended mode — "missing unattended grant"),
-`unattended_evidence_failed:` (the mode is claimed but no
-`unattended`-category evidence row passed), `qualification_expired:`,
-`qualification_window_exceeded:` (the body plus the protective budget
-does not fit inside the valid qualification interval — checked at
-acceptance only, so a compliant run cannot cross expiry mid-body; the run
-lease stays the binding budget), and `manual_lease_required:`. Granting
-unattended is a commissioning act: re-commission the bench to add it, and
-the grant covers the commissioned procedure set. The best-effort seam
-skip is the floor's own: an unstored procedure or commissioning document
-is not decided at the POST — that start stays asynchronous and the
-worker's admission-path gate owns it.
-
-A stored run whose binding names a carried
+honest negative admission has. A stored run whose binding names a carried
 execution dialect other than the active one (an era run) is terminalized
 at restart recovery against its OWN version: doc-first (the stored binding
 document's const), echo-judged when the doc is absent,
@@ -336,6 +311,34 @@ grep finds it here): `execution_version_not_runnable:` was the pre-record-
 lane run guard (superseded by the floor + threading above) and
 `recovery_execution_version_not_runnable:` was the pre-record-lane era
 skip (superseded by era terminalization).
+
+RUNNING an unattended body is a commissioned grant, not a default (issue
+#316). A run over a `gateway_owned` procedure requires that the
+commissioning document carries the `unattended` mode with a PASSING
+`unattended`-category evidence row; every run's window — the start time
+plus the procedure's `max_body_ms` plus `max_protection_ms` — cannot end
+after `commissioning.expires_at` (a window that ends exactly at expiry
+admits — the contract's boundary is "cannot exceed"); and a `manual`
+procedure requires a presented client lease. The same two layers enforce
+it as the implemented-dialect floor: refused synchronously at run start
+(typed `policy_denied`, before any lease is consumed) and authoritatively
+at the worker. The refusals: `unattended_grant_absent:` (the
+commissioning does not grant the unattended mode — "missing unattended
+grant"), `unattended_evidence_failed:` (the mode is claimed but no
+`unattended`-category evidence row passed), `qualification_expired:`,
+`qualification_window_exceeded:` (the body plus the protective budget
+exceeds the valid qualification interval — checked at acceptance only,
+so a compliant run cannot cross expiry mid-body; the run lease stays the
+binding budget), and `manual_lease_required:`. Granting unattended is a
+commissioning act: re-commission the bench to add it, and the grant
+covers the commissioned procedure set. The best-effort seam skip is the
+floor's own: an UNSTORED bench, descriptor, procedure or commissioning
+document skips the POST check, the grant included — that start stays
+asynchronous and the worker's admission-path gate owns it. The seam
+evaluates the grant but not its scope: `procedure_refs` containment is
+the worker pin lattice's (`pin_absent:`), and a lease presented on such
+a start is consumed for a run the worker will refuse — the same
+disclosed shape as the unstored-binding path.
 
 **Adapter-bridge runs and the quota seam.** A run constructs a real OTDP
 bridge for a bench device only when the device's descriptor declares
