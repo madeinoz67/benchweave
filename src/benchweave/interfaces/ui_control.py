@@ -37,7 +37,7 @@ from markupsafe import Markup, escape
 
 from benchweave.interfaces.errors import OperationFailure, failure
 from benchweave.interfaces.identity import Identity
-from benchweave.interfaces.operations import Operations
+from benchweave.interfaces.operations import TIER_SATISFIES, Operations
 from benchweave.interfaces.sessions import HeldLease, SessionRecord, SessionStore
 
 #: GW-44's floors (the record §2.2, the Q2 ruling); the percentages ride
@@ -64,9 +64,12 @@ DEFAULT_PANEL_POLL_MS = 30_000
 #: character and this is the honest description).
 _RELEASE_REASON = "released via the gateway UI"
 
-#: The scope the interface's lease operations require (the catalog's
-#: ``permission: control`` is satisfied by ``stg:control``).
-_CONTROL_SCOPE = "stg:control"
+#: The control tier the lease operations require — the SAME lattice the
+#: seam's ``require_permission("control")`` judges (observe ⊆ control ⊆
+#: admin), so the rendered controls never claim less authority than the
+#: seam would grant (FOLD-7; the literal-scope check mislabelled an
+#: admin-only session observe-only).
+_CONTROL_TIER = "control"
 
 
 def expiry_warning(remaining_ms: int, duration_ms: int) -> str | None:
@@ -270,7 +273,7 @@ def _render_fragment(
     package-rendered partials enter as pre-rendered trusted strings."""
     bench_id = str(bench["bench_id"])
     busy = bool(bench.get("busy"))
-    has_control_scope = _CONTROL_SCOPE in record.scopes
+    has_control_scope = bool(record.scopes & TIER_SATISFIES[_CONTROL_TIER])
 
     expiry_s = _parse_iso_to_epoch(held.expires_at) if held is not None else None
     view_live = held is not None and expiry_s is not None and now_epoch() < expiry_s

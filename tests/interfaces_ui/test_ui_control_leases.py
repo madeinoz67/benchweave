@@ -525,6 +525,18 @@ def test_d_no_lease_banner_before_and_absent_after_on_bench_and_device(rig: Any)
     assert 'data-bw-mode="no-lease"' not in device_page_after.text
 
 
+def test_an_admin_only_session_renders_the_controls(rig: Any) -> None:
+    """FOLD-7: authority is the TIER lattice (observe ⊆ control ⊆ admin),
+    not a scope-literal membership — an admin-only session satisfies the
+    control tier exactly as the seam's own require_permission does, so
+    the controls render enabled."""
+    record = _session(rig.app, scopes=frozenset({"stg:admin"}), ttl_s=3600)
+    fragment = _get(rig, f"/ui/benches/{_BENCH}/controls", record)
+    assert fragment.status_code == 200
+    assert 'data-bw-disabled-reason="no-authority"' not in fragment.text
+    assert 'hx-post="/ui/benches/sim-bench/leases"' in fragment.text
+
+
 def test_d_observe_session_renders_every_lease_control_disabled(rig: Any) -> None:
     record = _session(rig.app, scopes=OBSERVE, ttl_s=3600)
     fragment = _get(rig, f"/ui/benches/{_BENCH}/controls", record)
