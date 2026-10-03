@@ -62,3 +62,128 @@
   align-items: baseline;
   padding: 0.25rem 0;
 }
+
+/* --- G2b read pages (issue #303) ------------------------------------------
+ * Structural furniture for the read views: fact lists, device lists, the
+ * events table, document content. Colour, type and theme come from the
+ * package's token themes; the host declares no colour of its own.
+ *
+ * Obligation 26 (the component-CSS obligations the G2/G3 host inherits):
+ * interactive targets carry the WCAG 2.2 24 px minimum (`.bw-link`), the
+ * host adds NO glow of its own (no box-shadow on reading surfaces — §B.2
+ * SR-B2 reserves glow for advisory–trip severities, which the package's
+ * CSS owns), and it does not redefine `--bw-limiting` or override the
+ * package's limiting border (§B.3). The browser lane pins these.
+ */
+
+.bw-link {
+  display: inline-block;
+  min-height: 24px; /* obligation 26: WCAG 2.2 target size */
+  padding: 0.125rem 0.25rem;
+  box-sizing: border-box;
+}
+
+.bw-kv {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0 0 1rem;
+}
+
+.bw-kv > div {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.bw-kv dt {
+  color: var(--bw-text-muted);
+  min-width: 10rem;
+}
+
+.bw-kv dd {
+  margin: 0;
+  font-family: var(--bw-font-data);
+  overflow-wrap: anywhere;
+}
+
+.bw-devices {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.bw-devices li {
+  display: flex;
+  gap: 0.75rem;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+
+.bw-devices__state {
+  color: var(--bw-text-muted);
+}
+
+.bw-table-wrap {
+  overflow-x: auto;
+}
+
+.bw-data-table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.bw-data-table caption {
+  text-align: left;
+  color: var(--bw-text-muted);
+  padding: 0.25rem 0;
+}
+
+.bw-data-table th,
+.bw-data-table td {
+  text-align: left;
+  padding: 0.25rem 0.5rem;
+  border-bottom: 1px solid var(--bw-border);
+  font-family: var(--bw-font-data);
+  overflow-wrap: anywhere;
+}
+
+.bw-pre {
+  font-family: var(--bw-font-data);
+  background: var(--bw-surface-recessed);
+  padding: 0.75rem;
+  border-radius: var(--bw-radius-panel);
+  overflow-x: auto;
+  max-height: 30rem;
+}
+
+.bw-presentation__tiles {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  margin-block: 0.5rem;
+}
+
+/* The host adds no glow to reading surfaces (SR-B2): tiles render with
+ * borders only; severity treatment stays the package's. */
+.bw-presentation__tiles .bw-reading {
+  box-shadow: none;
+}
+
+.bw-presentation__page {
+  margin-block: 0.75rem;
+}
+
+.bw-presentation-findings {
+  color: var(--bw-text-muted);
+}
+
+.bw-terminal-absent,
+.bw-document-oversize,
+.bw-panel-note {
+  color: var(--bw-text-muted);
+}
+
+.bw-request__lead {
+  max-width: 46rem;
+}

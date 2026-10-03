@@ -180,6 +180,26 @@ export BENCHWEAVE_SECRET="$(grep '^BENCHWEAVE_SECRET=' /var/lib/benchweave/bench
 benchweave serve --host 127.0.0.1 --port 8125
 ```
 
+### The browser UI (read-only)
+
+Use `benchweave ui-login` to get a login URL. Open the URL in a
+browser. The URL expires after 60 s and it works one time only. The
+session ends when you log out, when it expires, or when the gateway
+restarts.
+
+The UI is read-only. It shows this data:
+
+- the bench list, and one page per bench (its devices and its events);
+- one page per device (the descriptor data and the plugin pages);
+- one page per run (the state, the outcome and the terminal record);
+- one page per request id (the run that the request accepted);
+- one page per evidence record, per document and per artifact.
+
+The artifact download gives the bytes after the digest check. Pages that
+you do not have scope for show a refusal row, not the data. A page that
+fails shows the failure code, the correlation id and the next action.
+Write actions (leases, runs, changes) are not in the UI yet.
+
 **Production secret posture.** With `BENCHWEAVE_ENV=production`, `serve`
 *refuses to boot*, before the store is opened and before anything touches
 disk, if `BENCHWEAVE_SECRET` is unset, empty or whitespace, or a publicly

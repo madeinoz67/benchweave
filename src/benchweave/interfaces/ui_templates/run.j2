@@ -1,0 +1,22 @@
+{% extends "base.j2" %}
+{% block content %}
+<section aria-label="Run" data-bw-run-page data-bw-run-id="{{ run.run_id }}">
+  <h2>Run {{ run.run_id }}</h2>
+  <dl class="bw-kv" data-bw-run-facts>
+    <div><dt>State</dt><dd data-bw-run-state>{{ run.state }}</dd></div>
+    <div><dt>Revision</dt><dd data-bw-run-revision>{{ run.revision }}</dd></div>
+    <div><dt>Bench</dt><dd><a class="bw-link" href="/ui/benches/{{ run.bench_id }}">{{ run.bench_id }}</a></dd></div>
+    <div><dt>Outcome</dt><dd data-bw-run-outcome>{{ run.outcome if run.outcome else "none reported" }}</dd></div>
+    <div><dt>Safe state</dt><dd data-bw-run-safe-state>{{ run.safe_state if run.safe_state else "none reported" }}</dd></div>
+  </dl>
+  {% if run.terminal_record %}
+  <h3>Terminal record</h3>
+  <div class="bw-terminal" data-bw-run-terminal>
+    <p class="bw-terminal__state" data-bw-terminal-state>{{ run.terminal_record.get("state", "") }}</p>
+  </div>
+  {% else %}
+  <p class="bw-terminal-absent" data-bw-run-terminal-absent>No terminal record yet — the run has not reported a terminal state.</p>
+  {% endif %}
+  {# GW-55: G2 renders no cancel control at all; the cancel wording is G3's. #}
+</section>
+{% endblock %}

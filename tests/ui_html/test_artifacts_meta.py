@@ -8,19 +8,41 @@ exactly its own row — ±0 others; a leak is a harness leak).
 
 Every arm sets its own registry state first: they are order-independent and
 safe to run in one process (the default suite never collects the contract,
-so in-process registration reaches no other test).
+so in-process registration reaches no other test) — and the module-local
+autouse fixture below restores the full canonical registration after every
+arm, so no residue reaches the doc-collected row items under xdist.
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
 
+import pytest
 from benchweave_ui_html import artifacts, registry
 from benchweave_ui_html.grammar import Row, parse_contract
 from benchweave_ui_html.manifest import KIND_BY_SLUG, MANIFEST
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CONTRACT = REPO_ROOT / "docs" / "internal" / "ui-contract.md"
+
+
+@pytest.fixture(autouse=True)
+def _restore_canonical_registration() -> Iterator[None]:
+    """Registry hygiene: this module's controls deliberately empty or
+    shrink the module-global artifact registry (``REGISTRY.clear()``,
+    one-artifact registration). Under ``pytest -n auto`` the
+    doc-collected row items share each worker's process, and a residue
+    registry poisons every row item the worker runs after this module
+    (``no canonical artifact for <row>``) — an order fragility any
+    test-count shift exposes (observed as 108 row failures when an
+    unrelated lane added four tests, 2026-10-03). Restore after every
+    test: CLEAR first because ``ensure_registered`` is
+    sentinel-idempotent — after the one-artifact control the sentinel
+    is present and a bare call would no-op."""
+    yield
+    registry.REGISTRY.clear()
+    artifacts.ensure_registered()
 
 
 def _contract_rows() -> list[Row]:

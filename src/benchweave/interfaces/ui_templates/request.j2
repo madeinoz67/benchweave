@@ -1,0 +1,12 @@
+{% extends "base.j2" %}
+{% block content %}
+<section aria-label="Request" data-bw-request-page data-bw-request-id="{{ run.run_id }}">
+  <h2>Reconcile request</h2>
+  <p class="bw-request__lead">The request resolved to the run below (the interface's own §9 resolution — no duplicate was started).</p>
+  <dl class="bw-kv" data-bw-request-facts>
+    <div><dt>Run</dt><dd><a class="bw-link" href="/ui/runs/{{ run.run_id }}" data-bw-request-run>{{ run.run_id }}</a></dd></div>
+    <div><dt>State</dt><dd data-bw-request-state>{{ run.state }}</dd></div>
+    <div><dt>Outcome</dt><dd data-bw-request-outcome>{{ run.outcome if run.outcome else "none reported" }}</dd></div>
+  </dl>
+</section>
+{% endblock %}

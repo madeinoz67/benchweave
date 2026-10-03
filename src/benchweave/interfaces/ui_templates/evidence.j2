@@ -1,0 +1,17 @@
+{% extends "base.j2" %}
+{% block content %}
+<section aria-label="Evidence" data-bw-evidence-page data-bw-evidence-id="{{ evidence.evidence_id }}">
+  <h2>Evidence {{ evidence.evidence_id }}</h2>
+  <dl class="bw-kv" data-bw-evidence-facts>
+    <div><dt>Kind</dt><dd data-bw-evidence-kind>{{ evidence.kind }}</dd></div>
+    <div><dt>Content</dt><dd><code data-bw-evidence-content-ref>{{ evidence.content_ref.get("sha256", evidence.content_ref) }}</code></dd></div>
+    <div><dt>Artifact</dt><dd>
+      {% if evidence.artifact_id %}
+      <a class="bw-link" href="/ui/artifacts/{{ evidence.artifact_id }}" data-bw-evidence-artifact>{{ evidence.artifact_id }}</a>
+      {% else %}
+      <span data-bw-evidence-no-artifact>none</span>
+      {% endif %}
+    </dd></div>
+  </dl>
+</section>
+{% endblock %}
