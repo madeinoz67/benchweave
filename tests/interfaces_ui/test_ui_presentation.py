@@ -276,3 +276,70 @@ def test_device_page_under_wrong_bench_is_not_found(gateway: SimpleNamespace) ->
     assert response.status_code == 404
     assert 'data-bw-refusal-code="not_found"' in response.text
     assert "unavailable to this caller" in response.text
+
+
+# --- the F1 fold at the consumer: admission ordering picks the CURRENT attachment
+
+
+def test_re_admitted_identical_attachment_does_not_shadow_the_newer_one(
+    gateway: SimpleNamespace,
+) -> None:
+    """The lane's repro at the PAGE level: admit attachment v1 (page id
+    readings-v1), admit attachment v2 (page id readings-v2 — a new digest,
+    a new admission), re-admit v1's IDENTICAL bytes — the device page
+    still renders v2. A same-digest re-admission is idempotent (the F1
+    ruling); under INSERT OR REPLACE it shadowed v2 and the page regressed
+    to the stale attachment."""
+    descriptor_raw, _ = _descriptor(gateway)
+    # v1: a readings page with id readings-v1.
+    _admit_attachment(
+        gateway.content,
+        descriptor_raw,
+        pages=[
+            {
+                "id": "readings-v1",
+                "title": "Readings v1",
+                "kind": "readings",
+                "bindings": ["reading"],
+                "required": True,
+            }
+        ],
+    )
+    # v2: different manifest bytes -> a new digest -> a new admission.
+    _admit_attachment(
+        gateway.content,
+        descriptor_raw,
+        pages=[
+            {
+                "id": "readings-v2",
+                "title": "Readings v2",
+                "kind": "readings",
+                "bindings": ["reading"],
+                "required": True,
+            }
+        ],
+    )
+    # Re-admit v1's exact bytes (same manifest shape -> same digests).
+    _admit_attachment(
+        gateway.content,
+        descriptor_raw,
+        pages=[
+            {
+                "id": "readings-v1",
+                "title": "Readings v1",
+                "kind": "readings",
+                "bindings": ["reading"],
+                "required": True,
+            }
+        ],
+    )
+    response = gateway.client.get(
+        f"/ui/benches/sim-bench/devices/{gateway.device['device_id']}",
+        cookies={"bw_session": gateway.session.session_id},
+    )
+    assert response.status_code == 200
+    page = response.text
+    assert "data-bw-presentation-page-readings-v2" in page, (
+        "the re-admitted identical v1 shadowed the newer v2 attachment"
+    )
+    assert "data-bw-presentation-page-readings-v1" not in page

@@ -59,13 +59,26 @@ class ContentStore:
     def put_document(
         self, raw: bytes, sha256: str, content: dict[str, Any], schema_id: str, now: str
     ) -> None:
+        """Admit a document by content digest — FIRST admission wins.
+
+        The admission identity is pinned (the F1 fold, lane-2): a
+        re-admission of the SAME digest is IDEMPOTENT, not a new
+        admission — the first admission's row (rowid, stored_at, content)
+        is immutable for that digest. A NEW digest is a new admission.
+        ``INSERT OR REPLACE`` violated both halves (it deleted and
+        re-inserted on PK conflict, minting a fresh rowid that shadowed
+        genuinely-newer admissions in every rowid-ordered read — the
+        presentation-attachment resolution is the live consumer);
+        ``ON CONFLICT DO NOTHING`` makes the semantics structural.
+        """
         digest = hashlib.sha256(raw).hexdigest()
         if digest != sha256:
             raise ValueError(f"document bytes do not hash to {sha256}")
         self._conn.execute(
-            "INSERT OR REPLACE INTO documents"
+            "INSERT INTO documents"
             " (sha256, raw_bytes, content_json, schema_id, stored_at)"
-            " VALUES (?, ?, ?, ?, ?)",
+            " VALUES (?, ?, ?, ?, ?)"
+            " ON CONFLICT(sha256) DO NOTHING",
             (sha256, raw, json.dumps(content, sort_keys=True), schema_id, now),
         )
 
@@ -86,12 +99,14 @@ class ContentStore:
     def documents_by_schema_suffix(self, suffix: str) -> list[dict[str, Any]]:
         """Admitted documents whose ``schema_id`` ends with ``suffix``
         (G2b's presentation-attachment resolution query), NEWEST
-        admission first (rowid order — content addressing admits a new
-        digest rather than mutating a row, so the newest row is the
-        current attachment). Read-only and suffix-matched on purpose:
-        schema ids are versioned URLs the DOCUMENT declares, so the
-        resolution never hardcodes a corpus version to find a family of
-        documents."""
+        ADMISSION FIRST — rowid order over FIRST admissions. The
+        admission identity is ``put_document``'s pinned semantics (the
+        F1 fold): a same-digest re-admission is idempotent (it keeps its
+        original rowid and does not jump the queue); a NEW digest is a
+        new admission (fresh rowid, newest). Read-only and
+        suffix-matched on purpose: schema ids are versioned URLs the
+        DOCUMENT declares, so the resolution never hardcodes a corpus
+        version to find a family of documents."""
         rows = self._conn.execute(
             "SELECT sha256, raw_bytes, content_json, schema_id FROM documents"
             " WHERE schema_id LIKE ? ORDER BY rowid DESC",

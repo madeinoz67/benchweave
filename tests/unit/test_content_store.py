@@ -33,6 +33,77 @@ def test_document_roundtrip_is_byte_exact(content: tuple[ContentStore, Store]) -
     assert got is not None and got["raw_bytes"] == raw and got["schema_id"] == "urn:x:doc"
 
 
+# --- admission ordering (the F1 fold, lane-2): content addressing pins the
+# admission identity -----------------------------------------------------------
+
+
+def _admit(
+    cs: ContentStore, marker: str, now: str
+) -> str:
+    """Admit one marker document under the suffix-matched schema; return its digest."""
+    raw = f'{{"marker": "{marker}"}}'.encode()
+    sha = hashlib.sha256(raw).hexdigest()
+    cs.put_document(raw, sha, {"marker": marker}, "urn:x:presentation-envelope", now)
+    return sha
+
+
+def test_re_admitted_identical_bytes_do_not_shadow_a_newer_admission(
+    content: tuple[ContentStore, Store],
+) -> None:
+    """The lane's three-put repro, pinned: admit v1, admit v2 (a NEW digest
+    — a new admission), re-admit v1's IDENTICAL bytes — the resolution
+    order still names v2 first. A re-admission of the same digest is
+    idempotent, not a new admission (the F1 ruling); under INSERT OR
+    REPLACE it deleted+re-inserted, minting a fresh rowid that shadowed
+    v2 — the bug this pins shut."""
+    cs, _store = content
+    v1 = _admit(cs, "v1", "2026-10-03T01:00:00Z")
+    v2 = _admit(cs, "v2", "2026-10-03T02:00:00Z")
+    _admit(cs, "v1", "2026-10-03T03:00:00Z")  # identical bytes, later clock
+    first = cs.documents_by_schema_suffix("presentation-envelope")[0]
+    assert first["sha256"] == v2, (
+        "the re-admitted identical v1 shadowed the newer v2 admission"
+    )
+    assert v1 != v2
+
+
+def test_same_digest_re_admission_is_idempotent(
+    content: tuple[ContentStore, Store],
+) -> None:
+    """The other direction of the ruling: re-admitting the SAME digest
+    preserves the admission identity — same rowid, same stored_at — so
+    ordering by first admission is well-defined and the re-put never
+    jumps the queue."""
+    cs, store = content
+    raw = b'{"marker": "stable"}'
+    sha = hashlib.sha256(raw).hexdigest()
+    cs.put_document(raw, sha, {"marker": "stable"}, "urn:x:doc", "2026-10-03T01:00:00Z")
+    before = store.connection.execute(
+        "SELECT rowid, stored_at FROM documents WHERE sha256 = ?", (sha,)
+    ).fetchone()
+    cs.put_document(raw, sha, {"marker": "stable"}, "urn:x:doc", "2026-10-03T09:00:00Z")
+    after = store.connection.execute(
+        "SELECT rowid, stored_at FROM documents WHERE sha256 = ?", (sha,)
+    ).fetchone()
+    assert before == after, (
+        "a same-digest re-admission minted a new admission identity "
+        f"({before} -> {after})"
+    )
+
+
+def test_a_new_digest_is_a_new_admission(
+    content: tuple[ContentStore, Store],
+) -> None:
+    """A NEW digest IS a new admission: the resolution order names the
+    later digest first (rowid order over first admissions)."""
+    cs, _store = content
+    _admit(cs, "old", "2026-10-03T01:00:00Z")
+    late = _admit(cs, "new", "2026-10-03T02:00:00Z")
+    first = cs.documents_by_schema_suffix("presentation-envelope")[0]
+    assert first["content"]["marker"] == "new"
+    assert first["sha256"] == late
+
+
 def test_put_document_rejects_digest_mismatch(content: tuple[ContentStore, Store]) -> None:
     cs, _ = content
     raw = b'{"id": "doc-x", "version": "1.0.0"}'
