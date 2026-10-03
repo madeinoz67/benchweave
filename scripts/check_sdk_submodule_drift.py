@@ -22,9 +22,9 @@ Exit codes (the contract the CI job and the unit tests pin):
 - 1 — drift: the gitlink is not the latest release tag's commit; the
   message names both commits and the tag.
 - 2 — INDETERMINATE: the drift could not be determined (fetch failed or
-  timed out, no vX.Y.Z tag parsed, HEAD carries no packages/sdk gitlink).
-  Fail closed: a network blip must never read as "no drift" — and never
-  masquerade as drift either.
+  timed out, no vX.Y.Z tag parsed, HEAD carries no packages/sdk gitlink,
+  or the remote's bytes were undecodable). Fail closed: a network blip
+  must never read as "no drift" — and never masquerade as drift either.
 
 What this check deliberately does NOT catch, each with its own lane: lock
 or vendored-tree inconsistency against the pinned SDK (``make
@@ -44,7 +44,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 SUBMODULE_PATH = "packages/sdk"
-DEFAULT_REMOTE = "https://github.com/madeinoz67/benchweave-sdk.git"
+# Only a FALLBACK: the remote is read from this repository's .gitmodules so
+# the SDK URL is named once (governor F1) — never duplicated here and there.
+FALLBACK_REMOTE = "https://github.com/madeinoz67/benchweave-sdk.git"
 LS_REMOTE_TIMEOUT_S = 30
 
 EXIT_OK = 0
@@ -128,7 +130,7 @@ def committed_gitlink(repo: Path) -> str:
             timeout=LS_REMOTE_TIMEOUT_S,
             check=False,
         )
-    except (subprocess.TimeoutExpired, OSError) as exc:
+    except (subprocess.TimeoutExpired, OSError, UnicodeDecodeError) as exc:
         raise IndeterminateError(f"git ls-tree failed: {exc}") from exc
     if proc.returncode != 0:
         raise IndeterminateError(
@@ -157,13 +159,45 @@ def remote_tag_list(remote: str) -> str:
         raise IndeterminateError(
             f"git ls-remote timed out after {LS_REMOTE_TIMEOUT_S}s"
         ) from exc
-    except OSError as exc:
-        raise IndeterminateError(f"git ls-remote failed to start: {exc}") from exc
+    except (OSError, UnicodeDecodeError) as exc:
+        # UnicodeDecodeError: subprocess's text=True strict-decodes captured
+        # bytes INSIDE the call (verified against CPython: an undecodable
+        # refname byte raises there), so undecodable remote output reads
+        # indeterminate — never an uncaught traceback exiting 1, which
+        # masquerades as drift (adversary row 1).
+        raise IndeterminateError(f"git ls-remote failed: {exc}") from exc
     if proc.returncode != 0:
         raise IndeterminateError(
             f"git ls-remote exited {proc.returncode}: {proc.stderr.strip()}"
         )
     return proc.stdout
+
+
+def configured_remote(repo: Path) -> str:
+    """The SDK remote as this repository configures it — the submodule's
+    .gitmodules url, so the URL lives in one place (governor F1).
+    FALLBACK_REMOTE when the key is absent, empty, or unreadable."""
+    try:
+        proc = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(repo),
+                "config",
+                "--file",
+                ".gitmodules",
+                f"submodule.{SUBMODULE_PATH}.url",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=LS_REMOTE_TIMEOUT_S,
+            check=False,
+        )
+    except (subprocess.TimeoutExpired, OSError, UnicodeDecodeError):
+        return FALLBACK_REMOTE
+    if proc.returncode != 0:
+        return FALLBACK_REMOTE
+    return proc.stdout.strip() or FALLBACK_REMOTE
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -178,13 +212,16 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--remote",
-        default=DEFAULT_REMOTE,
-        help="SDK remote to read release tags from (any git URL or local path)",
+        default=None,
+        help="SDK remote to read release tags from, any git URL or local "
+        "path (default: the submodule's .gitmodules url, else the canonical "
+        "SDK remote)",
     )
     args = parser.parse_args(argv)
     try:
         gitlink = committed_gitlink(args.repo)
-        output = remote_tag_list(args.remote)
+        remote = args.remote if args.remote is not None else configured_remote(args.repo)
+        output = remote_tag_list(remote)
     except IndeterminateError as exc:
         print(f"sdk-drift INDETERMINATE: {exc}", file=sys.stderr)
         return EXIT_INDETERMINATE

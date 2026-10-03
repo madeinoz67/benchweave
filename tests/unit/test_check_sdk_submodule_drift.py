@@ -16,7 +16,9 @@ import importlib.util
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "check_sdk_submodule_drift.py"
@@ -189,8 +191,21 @@ _IDENTITY = (
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    # core.hooksPath=/dev/null keeps fixture commits hermetic: a machine's
+    # GLOBAL hooks path (this one carries a post-commit enrich hook) fires
+    # inside synthetic repos too — observed stalling a fixture commit for
+    # ~40s and, on a wedged hook, hanging the suite (verified: hookless
+    # commits run in ~25ms with the global hook present). /dev/null is not
+    # a directory, so git finds no executable hook there and runs none.
     proc = subprocess.run(
-        ["git", "-C", str(repo), *args],
+        [
+            "git",
+            "-c",
+            "core.hooksPath=/dev/null",
+            "-C",
+            str(repo),
+            *args,
+        ],
         capture_output=True,
         text=True,
         timeout=60,
@@ -288,4 +303,97 @@ def test_black_box_tagless_remote_fails_closed(tmp_path: Path) -> None:
     assert proc.returncode == EXIT_INDETERMINATE, proc.stdout + proc.stderr
     # The message assertion is load-bearing: python's own launcher also
     # exits 2 on a missing script, so the code alone can pass accidentally.
+    assert "indeterminate" in (proc.stdout + proc.stderr).lower()
+
+
+# --- review fold row 1: undecodable remote output is indeterminate ----------
+
+
+def _raising_run(*args: object, **kwargs: object) -> NoReturn:
+    """Reproduce the verified stdlib raise site: subprocess.run(text=True)
+    strict-decodes captured bytes INSIDE the call, so an undecodable refname
+    byte raises here and never reaches the parser."""
+    raise UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")
+
+
+def test_undecodable_remote_output_is_indeterminate_not_drift(
+    monkeypatch: Any,
+) -> None:
+    """Adversary row 1: the decode raise must surface as INDETERMINATE (2),
+    never as an uncaught traceback exiting 1 — which reads as drift in CI
+    and falsifies the docstring's 'never masquerade as drift either'."""
+    drift = _load()
+    monkeypatch.setattr(drift, "committed_gitlink", lambda repo: _synth("a4"))
+    monkeypatch.setattr(drift.subprocess, "run", _raising_run)
+    assert drift.main([]) == EXIT_INDETERMINATE
+
+
+def test_remote_reader_wraps_undecodable_output_as_indeterminate(
+    monkeypatch: Any,
+) -> None:
+    drift = _load()
+    monkeypatch.setattr(drift.subprocess, "run", _raising_run)
+    with pytest.raises(drift.IndeterminateError):
+        drift.remote_tag_list("synthetic-remote")
+
+
+def test_gitlink_reader_wraps_undecodable_output_as_indeterminate(
+    monkeypatch: Any,
+) -> None:
+    """Symmetric defense on the local reader: git C-quotes exotic paths so
+    ls-tree is not EXPECTED to emit raw non-UTF-8, but any unreadable
+    result is indeterminate by the reader's contract, not a crash."""
+    drift = _load()
+    monkeypatch.setattr(drift.subprocess, "run", _raising_run)
+    with pytest.raises(drift.IndeterminateError):
+        drift.committed_gitlink(Path("."))
+
+
+# --- review fold row 2: the remote derives from .gitmodules ------------------
+
+
+def test_gitmodules_url_is_the_configured_remote(tmp_path: Path) -> None:
+    """Governor F1: the SDK URL is named once, in .gitmodules — the gate
+    reads it from there instead of re-hardcoding it."""
+    remote, gateway, _, _ = _repo_pair(tmp_path)
+    (gateway / ".gitmodules").write_text(
+        f'[submodule "packages/sdk"]\n\turl = {remote}\n', encoding="utf-8"
+    )
+    drift = _load()
+    assert drift.configured_remote(gateway) == str(remote)
+
+
+def test_configured_remote_falls_back_when_gitmodules_is_absent(
+    tmp_path: Path,
+) -> None:
+    _, gateway, _, _ = _repo_pair(tmp_path)
+    drift = _load()
+    assert drift.configured_remote(gateway) == drift.FALLBACK_REMOTE
+
+
+def test_black_box_gitmodules_override_selects_the_remote(tmp_path: Path) -> None:
+    """End to end without --remote: .gitmodules points the gate at a local
+    tagless remote — exit 2 is reachable ONLY through the override (the
+    built-in fallback names a network remote this suite never touches; the
+    override path is network-free and deterministic once the fold lands)."""
+    bare = tmp_path / "tagless-remote"
+    bare.mkdir(parents=True)
+    _git(bare, "init", "-q", "-b", "main")
+    (bare / "README.md").write_text("no releases here\n", encoding="utf-8")
+    _git(bare, "add", "README.md")
+    _git(bare, *_IDENTITY, "commit", "-q", "-m", "seed")
+    _git(bare, "tag", "not-a-release")
+    _, gateway, _, _ = _repo_pair(tmp_path / "pair")
+    (gateway / ".gitmodules").write_text(
+        f'[submodule "packages/sdk"]\n\turl = {bare}\n', encoding="utf-8"
+    )
+    proc = subprocess.run(
+        [sys.executable, str(SCRIPT)],
+        cwd=gateway,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+    assert proc.returncode == EXIT_INDETERMINATE, proc.stdout + proc.stderr
     assert "indeterminate" in (proc.stdout + proc.stderr).lower()
