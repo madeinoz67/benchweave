@@ -1,10 +1,10 @@
 # Develop your device with AI
 
-Use AI to build a BenchWeave device plugin for an existing instrument or your own hardware. Develop custom firmware first when your hardware needs it. Prefer an independently maintained plugin repository so other developers can build, host and release plugins separately from BenchWeave.
+Use AI to build a BenchWeave device plugin for an existing instrument or your own hardware. When your hardware needs it, develop custom firmware first. Prefer an independently maintained plugin repository so other developers can build, host and release plugins separately from BenchWeave.
 
 **Describe → Build → Integrate → Prove → Package and share**
 
-This quickstart adds no protocol requirements. The [device developer guide](device-developer-guide.md) and its linked normative specifications define the contracts. Its documented baseline is architecture 1.5, a served OTDP version (0.2.2 active; 0.2.0 remains served) and adapter API 1.1. Confirm the versions in your chosen BenchWeave revision before starting.
+This quickstart adds no protocol requirements. The [device developer guide](device-developer-guide.md) and its linked normative specifications define the contracts. Its documented baseline is architecture 1.5, a served OTDP version and adapter API 1.1. Version 0.2.2 is active; version 0.2.0 remains served. Confirm the versions in your chosen BenchWeave revision before you start.
 
 ## Choose your path
 
@@ -23,18 +23,18 @@ Both paths use the [shared AI session instruction](#start-the-ai-session). Use o
 | Descriptor | Declares identity, supported firmware, capabilities and constraints | The plugin's `descriptor.json` |
 | Adapter | Executable translation between BenchWeave and the device protocol | The plugin's API 1.1 Python adapter |
 
-“Device integration” describes the plugin's purpose. It is not a different kind of hardware. A simple declarative plugin can consist of a descriptor and evidence without executable adapter code. “Plugin” is the authoring term here; registry package kinds remain descriptor, implementation and profile.
+“Device integration” describes the plugin's purpose. It is not a different kind of hardware. A simple declarative plugin can consist of a descriptor and evidence without executable adapter code. “Plugin” is the authoring term here. Registry package kinds remain descriptor, implementation and profile.
 
 ```text
 BenchWeave → adapter → Python protocol library → device
                          via scoped host transport
 ```
 
-The library encodes device commands and parses responses. The adapter maps BenchWeave operations to that library and supplies the required lifecycle, validation and results. Transport is supplied by the caller: inside BenchWeave, communication uses admitted, scoped host services. A library that opens ports itself, silently retries commands or reconnects automatically needs adapting.
+The library encodes device commands and parses responses. The adapter maps BenchWeave operations to that library and supplies the required lifecycle, validation and results. The caller supplies transport: inside BenchWeave, communication uses admitted, scoped host services. A library that opens ports itself, silently retries commands or reconnects automatically needs a change.
 
 Keep the device-specific library and adapter together in the plugin's independently buildable project and Python distribution. For custom devices, keep maintained firmware in that same project under `firmware/`, with its own toolchain and tests. A reusable library without device descriptors is an ordinary Python dependency, not a separate BenchWeave registry package kind.
 
-For an existing instrument, build a device plugin implementing its documented protocol; changing its firmware to speak OTDP is usually unnecessary. Simple devices may suit a declarative integration and need no Python library. Standard class actions require adapter mode in this baseline. For your own controller firmware, follow [Build my own device firmware](#build-my-own-device-firmware).
+For an existing instrument, build a device plugin that implements its documented protocol. A change to its firmware to speak OTDP is usually unnecessary. Simple devices may suit a declarative integration and need no Python library. Standard class actions need adapter mode in this baseline. For your own controller firmware, follow [Build my own device firmware](#build-my-own-device-firmware).
 
 ## Where the plugin lives
 
@@ -59,13 +59,13 @@ my-device-plugin/
     firmware/              # Custom devices: source, toolchain, tests, recovery docs
 ```
 
-Declare a factory such as `my_device_plugin.adapter:create_plugin` in the descriptor. Include the descriptor and its referenced evidence in the built package and verify their paths in the release bundle. This is a suggested source layout, not a new discovery convention. A declarative plugin needs no Python `src/` tree unless it contains Python tooling.
+Declare a factory such as `my_device_plugin.adapter:create_plugin` in the descriptor. Include the descriptor and its referenced evidence in the built package. Then make sure that their paths are correct in the release bundle. This is a suggested source layout, not a new discovery convention. A declarative plugin needs no Python `src/` tree unless it contains Python tooling.
 
 In this repository, use `plugins/<manufacturer>/<name>/` as the independent project root, containing the complete layout above. For DPS-150 this is `plugins/fnirsi/dps150/`, distribution `benchweave-fnirsi-dps150`, import `benchweave_fnirsi_dps150`, and factory `benchweave_fnirsi_dps150.adapter:create_plugin`. The core wheel does not bundle it. The model directory must build and test unchanged outside the core checkout. See the [complete directory structure](device-developer-guide.md#repository-layout-for-device-plugins), including optional custom-device firmware.
 
-For custom hardware, put firmware source, board configuration, toolchain locks, firmware tests and flashing/recovery documentation in `firmware/` alongside the plugin. Maintain an explicit firmware/plugin compatibility record. Existing vendor devices need no firmware subtree without maintained source. Co-location does not combine Python installation with flashing; firmware operations remain separately authorised.
+For custom hardware, put firmware source, board configuration, toolchain locks, firmware tests and documentation for flashing and recovery in `firmware/` alongside the plugin. Maintain an explicit record of the compatibility between firmware and plugin. Existing vendor devices need no firmware subtree without maintained source. Co-location does not combine Python installation with flashing. Firmware operations remain separately authorised.
 
-**Hosting a plugin means hosting its source or release files.** The admitted plugin runs on the bench gateway using scoped host services; it does not run on the public download host. Authors can maintain public or private repositories, but a source host alone is not a compliant registry. [Package and share](#5-package-and-share) explains current tooling and release requirements.
+**To host a plugin is to host its source or release files.** The admitted plugin runs on the bench gateway with scoped host services. It does not run on the public download host. Authors can maintain public or private repositories, but a source host alone is not a compliant registry. [Package and share](#5-package-and-share) explains current tooling and release requirements.
 
 ## Package format and gateway installation
 
@@ -76,23 +76,23 @@ For custom hardware, put firmware source, board configuration, toolchain locks, 
 | Source repository | Editable source, tests, documentation and build configuration |
 | Device firmware | A separate board-specific image produced by the firmware toolchain |
 
-A Python wheel is an installation archive, not necessarily a compiled binary. Installing plugin software does not flash device firmware. Native dependencies, where present, must match the gateway's platform.
+A Python wheel is an installation archive, not necessarily a compiled binary. The installation of plugin software does not flash device firmware. Native dependencies, where present, must match the gateway's platform.
 
 ### What works now and what still needs integration
 
-The repository contains package admission and cache-loading components, but these do not yet form a complete operator-facing “add plugin to a running gateway” workflow.
+The repository contains package admission and cache-loading components. These do not yet form a complete operator-facing “add plugin to a running gateway” workflow.
 
 - `activate` in `src/benchweave/registry/activation.py` refuses activation while a bench lease is live and writes a configuration-generation record. It does not itself load or attach a plugin.
 - `load_plugin` in the same module checks an implementation entry's cached bytes against the manifest, dynamically loads the verified Python code and calls its factory. The host still has to open and attach the instance.
-- `admit_startup_bench` in `src/benchweave/interfaces/bootstrap.py` populates bench inventory from startup fixtures. The lattice must pass the admission gate before anything is written: device descriptors must be gate-valid — each validated against the vendored OTDP schema of its own `otdp_version` pin (digest-verified against the corpus manifest; the active schema only for a pin that does not classify as a version, so the const error names it) plus the S01/S02 semantic checks — and every digest pin must match the bytes it names, or gateway startup refuses with a typed `startup_admission_rejected:` reason and an untouched store. This is not a general runtime plugin installer.
+- `admit_startup_bench` in `src/benchweave/interfaces/bootstrap.py` populates bench inventory from startup fixtures. The lattice must pass the admission gate before anything is written. Device descriptors must be gate-valid: each is validated against the vendored OTDP schema of its own `otdp_version` pin (digest-verified against the corpus manifest; the active schema only for a pin that does not classify as a version, so the const error names it), plus the S01/S02 semantic checks. Every digest pin must match the bytes it names. If a pin does not match, gateway startup refuses with a typed `startup_admission_rejected:` reason and an untouched store. This is not a general runtime plugin installer.
 
-**External OTDP support is limited to the tested bridge scope.** The documented [OTDP API 1.1](../standards/otdp/0.2.0/otdp-specification.md#8-python-adapter-abi-11) uses `create_plugin()` and async `open`/`execute`/`next_event`/`close`. The new `load_otdp_plugin` in `src/benchweave/registry/otdp_loading.py` verifies cached package files and uses `OTDPBridge` to adapt identify, scalar read, scalar write, single-channel capture (the `artifact_writer`-gated verb, staged appends, a host-computed manifest) and streaming subscriptions (the `event_sink`-gated verbs with `next_event` poll mediation) to the host. It supports package-relative and standard-library imports and requires caller-supplied scoped services. Profile actions and arbitrary third-party dependencies need further integration. The legacy `load_plugin` path still uses clock-injected factories and the synchronous simulator interface; choose the correct loader. Passing the SDK example does not establish compatibility or hardware qualification for every external package.
+**External OTDP support is limited to the tested bridge scope.** The documented [OTDP API 1.1](../standards/otdp/0.2.0/otdp-specification.md#8-python-adapter-abi-11) uses `create_plugin()` and the asynchronous verbs `open`, `execute`, `next_event` and `close`. The new `load_otdp_plugin` in `src/benchweave/registry/otdp_loading.py` verifies cached package files. It uses `OTDPBridge` to adapt these capabilities to the host: identify, scalar read, scalar write, single-channel capture, and streaming subscriptions. Single-channel capture is the `artifact_writer`-gated verb, with staged appends and a host-computed manifest. Streaming subscriptions are the `event_sink`-gated verbs with `next_event` poll mediation. It supports package-relative and standard-library imports and requires caller-supplied scoped services. Profile actions and arbitrary third-party dependencies need further integration. The legacy `load_plugin` path still uses clock-injected factories and the synchronous simulator interface; choose the correct loader. Passing the SDK example does not establish compatibility or hardware qualification for every external package.
 
-The optional [plugin SDK](plugin-sdk.md) now provides offline contracts, types, mocks, conformance helpers and an independently buildable starter. It is a minimal authoring SDK, not a complete production host. Copying a folder or running `pip install` does not complete admission, bench configuration and activation.
+The optional [plugin SDK](plugin-sdk.md) now provides offline contracts, types, mocks, conformance helpers and an independently buildable starter. It is a minimal authoring SDK, not a complete production host. A folder copy or a `pip install` does not complete admission, bench configuration and activation.
 
 ### Recommended Docker deployment model
 
-The following is a deployment recommendation and implementation target, not a supplied Docker configuration or an available installation command. Compatible plugins should be added independently of the gateway image where their dependencies and host services permit it.
+The following is a deployment recommendation and implementation target, not a supplied Docker configuration or an available installation command. Add compatible plugins independently of the gateway image where their dependencies and host services permit it.
 
 ```text
 External source/release host
@@ -112,20 +112,22 @@ Physical test instrument
 The gateway-managed flow to implement is:
 
 1. **Select:** an authorised operator chooses an exact plugin release from a configured origin.
-2. **Admit:** verify compatibility, permissions, dependencies and package integrity; retain the approved package in persistent storage.
+2. **Admit:** do a check of compatibility, permissions, dependencies and package integrity. Keep the approved package in persistent storage.
 3. **Configure:** bind a device instance and its `connection_key` to the actual connection, supported firmware, channels and local bench limits.
-4. **Activate:** wait for the affected bench to be idle, coordinate the new configuration generation, load/open the compatible plugin and verify identity before ordinary control.
-5. **Retain:** persist the approved lock and configuration across container replacement. On restart, revalidate and recreate instances through the qualified startup path; never replay previous physical operations automatically.
+4. **Activate:** wait for the affected bench to be idle. Coordinate the new configuration generation. Load and open the compatible plugin. Before ordinary control, make sure the plugin identity is correct.
+5. **Keep:** persist the approved lock and configuration across container replacement. On restart, revalidate and recreate instances through the qualified startup path. Never replay previous physical operations automatically.
 
-Until that orchestration and support for the plugin's required operations are implemented, neither live installation nor a restart alone is a documented general solution for adding an arbitrary external plugin. Report activation failures without marking a partially configured instrument ready. Keep package versions fixed during a run.
+That orchestration and support for the plugin's required operations are not yet implemented. Until then, neither live installation nor a restart alone is a documented general solution to add an arbitrary external plugin. Report activation failures without marking a partially configured instrument ready. Keep package versions fixed during a run.
 
-Persistent volumes keep approved files outside the disposable container layer; they do not preserve live Python objects or prove those files are still trusted. Protect cache writes and retain integrity checks. A download host distributes files; plugin code executes inside the gateway container. In-process plugins are not isolated from each other merely because the gateway uses Docker.
+Persistent volumes keep approved files outside the disposable container layer. They do not preserve live Python objects. They do not prove those files are still trusted. Protect cache writes and keep integrity checks. A download host distributes files. Plugin code executes inside the gateway container. In-process plugins are not isolated from each other merely because the gateway uses Docker.
 
-The deployment must already provide the required USB/serial mappings, network access, permissions and qualified host backends. A plugin cannot grant them. Python dependencies must be available through a reviewed, reproducible dependency arrangement; pure Python code alone does not guarantee compatibility. Native libraries, drivers or incompatible dependencies can require a different gateway image or a separately supported worker environment. Do not mutate the running container with ad hoc package installs or assume privileged device access.
+The deployment must already provide the required USB and serial mappings, network access, permissions and qualified host backends. A plugin cannot grant them. Python dependencies must be available through a reviewed, reproducible dependency arrangement; pure Python code alone does not guarantee compatibility. Native libraries, drivers or incompatible dependencies can require a different gateway image or a separately supported worker environment. Do not mutate the running container with ad hoc package installs or assume privileged device access.
 
 ## Start the AI session
 
 Give the AI access to the BenchWeave checkout, your integration repository and device evidence. Replace the bracketed fields and use this shared instruction before the step prompts. In a new session, supply it again with the previous step's files and results.
+
+> **WARNING:** THESE PROMPTS PREPARE SOFTWARE AND RELEASE CANDIDATES. THEY DO NOT AUTHORISE HARDWARE ACCESS OR PUBLICATION. DO NOT CONTACT HARDWARE, FLASH FIRMWARE, ENERGISE OUTPUTS OR CHANGE BENCH POLICY UNDER THEM.
 
 ```text
 Help me develop a BenchWeave integration.
@@ -154,7 +156,7 @@ hardware evidence. End each step with deliverables, blockers and the next step.
 
 ## Earlier workflow links
 
-The existing-instrument workflow is now part of [Build a BenchWeave plugin](#build-a-benchweave-plugin). These links preserve earlier bookmarks; use P1–P5 as the single plugin workflow.
+The existing-instrument workflow is now part of [Build a BenchWeave plugin](#build-a-benchweave-plugin). These links preserve earlier bookmarks. Use P1–P5 as the single plugin workflow.
 
 ### 1. Describe the device
 
@@ -162,7 +164,7 @@ Continue at [P1: describe the plugin](#p1-describe-what-the-plugin-should-do).
 
 ### 2. Build the Python protocol library
 
-Protocol-library work is included where needed in [P2: build the plugin](#p2-build-the-plugin). Keep encoding/parsing separate from caller-supplied transport, with bounded transfers, no automatic replay and exact request/response tests.
+Protocol-library work is included where needed in [P2: build the plugin](#p2-build-the-plugin). Keep encoding and parsing separate from caller-supplied transport, with bounded transfers, no automatic replay and exact request and response tests.
 
 ### 3. Make it BenchWeave compatible
 
@@ -174,7 +176,7 @@ Follow [P3](#p3-test-it-without-hardware) and [P4](#p4-get-an-independent-review
 
 ## 5. Package and share
 
-Start with the [unsigned local development loop](device-developer-guide.md#develop-and-test-locally-the-unsigned-dev-loop) to exercise packaging and admission. Unsigned development skips authenticity only; other admission checks still apply. A local dev package cannot become a production-graded release simply by passing tests.
+Start with the [unsigned local development loop](device-developer-guide.md#develop-and-test-locally-the-unsigned-dev-loop) to exercise packaging and admission. Unsigned development skips authenticity only. Other admission checks still apply. A local development package cannot become a production-graded release simply by passing tests.
 
 ```text
 Prepare this reviewed integration revision for release without publishing it.
@@ -192,9 +194,9 @@ the actual tooling; do not invent a registry URL or publication command.
 
 **Ready to share:** release metadata and evidence match the exact candidate, with the required accountable review complete. A simulated-only release must be labelled accordingly.
 
-The current developer guide documents local dev packaging and gateway registry admission, but the public registry service, submission/review pipeline, and device-install command are not yet available. A minimal [authoring SDK](plugin-sdk.md) is available in source and published to PyPI as benchweave-sdk from its own repository. Prepare the release now; public registry publication requires that service and its review/distribution process. Sharing source or publishing an ordinary Python library is separate from BenchWeave registry publication. See the [registry specification](../standards/registry/0.1.1/registry-specification.md).
+The current developer guide documents local development packaging and gateway registry admission. But the public registry service, the submission and review pipeline, and the device-install command are not yet available. A minimal [authoring SDK](plugin-sdk.md) is available in source and published to PyPI as benchweave-sdk from its own repository. Prepare the release now. Public registry publication needs that service and its review and distribution process. Sharing source or publishing an ordinary Python library is separate from BenchWeave registry publication. See the [registry specification](../standards/registry/0.1.1/registry-specification.md).
 
-Installing and activating an integration on a physical bench is also separate: resolve and admit the package, bind local connections, qualify the bench and activate at an approved idle boundary. Package publication alone does not commission a device.
+The installation and activation of an integration on a physical bench is also separate. Resolve and admit the package. Bind local connections. Qualify the bench. Activate at an approved idle boundary. Package publication alone does not commission a device.
 
 ## Build my own device firmware
 
@@ -220,7 +222,7 @@ constraints; do not present proposed behaviour as tested device evidence.
 Resolve missing hardware facts before implementing the affected feature.
 ```
 
-For a straightforward controller, start by assessing [native OTDP UART JSON](../standards/otdp/0.2.0/otdp-specification.md#62-native-uart-json). It can support a declarative integration for operations fully expressed by that binding. Standard class actions and capture require an adapter in this baseline, even with native firmware. A documented custom protocol behind an adapter is another option when native UART JSON does not fit.
+For a straightforward controller, start with an assessment of [native OTDP UART JSON](../standards/otdp/0.2.0/otdp-specification.md#62-native-uart-json). It can support a declarative integration for operations fully expressed by that binding. Standard class actions and capture need an adapter in this baseline, even with native firmware. A documented custom protocol behind an adapter is another option when native UART JSON does not fit.
 
 ```text
 Simple native operations:  BenchWeave → native UART JSON firmware
@@ -252,7 +254,7 @@ resolution. Produce a requirement-to-test table and protocol examples labelled
 synthetic. Do not implement yet.
 ```
 
-**Ready to continue:** the developer has accepted the design choices, and every feature has sufficient hardware evidence and an explicit contract. Exclude unsupported capabilities; do not claim a complete class profile with missing actions.
+**Ready to continue:** the developer accepted the design choices, and every feature has enough hardware evidence and an explicit contract. Exclude unsupported capabilities. Do not claim a complete class profile with missing actions.
 
 ### F2. Build and test the firmware
 
@@ -318,6 +320,8 @@ Report exact commands/results and remaining compatibility blockers.
 
 ### F4. Prove it on the actual board
 
+> **WARNING:** FLASHING AND COMMISSIONING ARE SEPARATELY AUTHORISED STEPS. THESE PROMPTS DO NOT GRANT THEM. DO NOT FLASH FIRMWARE OR ENERGISE OUTPUTS UNDER THIS REVIEW.
+
 Use a separate AI review session before supervised hardware qualification. Give it the exact candidate, accepted design and evidence bundle.
 
 ```text
@@ -335,7 +339,7 @@ without blind replay. Identify tests needing independent measurement or
 protection and any required host/provider support not yet available.
 ```
 
-The developer or bench operator then follows a separately authorised flashing and [commissioning process](device-developer-guide.md#9-host-an-integration-on-a-bench-gateway). Record the board revision, firmware image hash, source revision, host/backend, test setup and observed results. Feed those results back into the evidence bundle and fix failures before strengthening compatibility claims.
+The developer or bench operator then follows a separately authorised flashing and [commissioning process](device-developer-guide.md#9-host-an-integration-on-a-bench-gateway). Record the board revision, firmware image hash, source revision, host and backend, test setup and observed results. Feed those results back into the evidence bundle. Fix failures before you strengthen compatibility claims.
 
 **Ready to continue:** claimed hardware behaviour has retained bench evidence. A simulated-only candidate can still be packaged with that limitation explicit. AI review and software tests do not establish unattended safety or replace accountable publication review.
 
@@ -362,15 +366,15 @@ Exclude private bench records and non-redistributable material. List remaining
 review/publication blockers and the next step supported by actual tooling.
 ```
 
-**Ready to share:** the firmware and integration versions are traceable to their tests, compatibility is explicit and required review is complete. Follow [Package and share](#5-package-and-share) for the current registry limitations: local development packaging exists; public registry submission and distribution infrastructure are not yet available. Source/firmware release hosting, BenchWeave registry publication and physical bench commissioning are separate steps.
+**Ready to share:** the firmware and integration versions are traceable to their tests, compatibility is explicit and required review is complete. Follow [Package and share](#5-package-and-share) for the current registry limitations. Local development packaging exists. Public registry submission and distribution infrastructure are not yet available. Source and firmware release hosting, BenchWeave registry publication and physical bench commissioning are separate steps.
 
 ## Build a BenchWeave plugin
 
 **Describe → Build → Test → Review → Package**
 
-Use this single workflow to integrate an existing instrument or custom hardware whose firmware/protocol already exists. For example, integrating a power supply means building its device plugin. If firmware still needs developing, start with [Build my own device firmware](#build-my-own-device-firmware). P2 includes protocol-library work when needed.
+Use this single workflow to integrate an existing instrument or custom hardware whose firmware and protocol already exist. For example, to integrate a power supply, you build its device plugin. If firmware still needs development, start with [Build my own device firmware](#build-my-own-device-firmware). P2 includes protocol-library work when needed.
 
-Start with the [shared AI session instruction](#start-the-ai-session), then copy one prompt at a time. Give each new AI session the previous step's files and results. These prompts prepare software and release candidates; they do not authorise hardware access or publication.
+Start with the [shared AI session instruction](#start-the-ai-session), then copy one prompt at a time. Give each new AI session the previous step's files and results. These prompts prepare software and release candidates. They do not authorise hardware access or publication.
 
 ### P1. Describe what the plugin should do
 
@@ -480,7 +484,7 @@ If physical use is intended, prepare a supervised test checklist with identity,
 readback, disconnect/recovery cases, prerequisites and stop conditions.
 ```
 
-**Continue when:** findings are resolved and affected checks rerun. A developer or bench operator performs separately authorised hardware qualification before claiming physical behaviour. AI review complements the accountable reviewer required for executable registry publication. A simulated-only candidate must remain labelled as such.
+**Continue when:** findings are resolved and affected checks rerun. A developer or bench operator performs separately authorised hardware qualification before they claim physical behaviour. AI review complements the accountable reviewer needed for executable registry publication. A simulated-only candidate must remain labelled as such.
 
 ### P5. Package it and show me before publishing
 
@@ -513,10 +517,10 @@ blockers and proposed publication destination and action. Stop for my approval
 before publishing. If the required registry service is unavailable, say so.
 ```
 
-**Ready to share:** the exact release candidate has the required review and approval, with claims limited to its evidence. The [publication guidance](#5-package-and-share) explains current limits: local development packaging and gateway admission exist; the public registry service and submission/review pipeline are not yet available. Sharing source, registry publication and commissioning a physical bench are separate activities.
+**Ready to share:** the exact release candidate has the required review and approval, with claims limited to its evidence. The [publication guidance](#5-package-and-share) explains current limits. Local development packaging and gateway admission exist. The public registry service and the submission and review pipeline are not yet available. Sharing source, registry publication and commissioning a physical bench are separate activities.
 
 ## Keep the handoff small
 
-Retain one evidence bundle with device facts, source revision, descriptor/library/adapter, locked dependencies, protocol vectors, test results, review findings and limitations. For custom firmware, include the accepted board design, toolchain versions, firmware image hashes and observed hardware behaviour. Each new AI session should be able to continue from that bundle without guessing what was verified.
+Keep one evidence bundle with device facts, source revision, descriptor, library and adapter, locked dependencies, protocol vectors, test results, review findings and limitations. For custom firmware, include the accepted board design, toolchain versions, firmware image hashes and observed hardware behaviour. A new AI session can then continue from that bundle. It does not need to guess what was verified.
 
 A useful status statement is: “Mock conformance passed for the listed operations; hardware qualification remains outstanding.” Strengthen that claim only when retained evidence supports it.
