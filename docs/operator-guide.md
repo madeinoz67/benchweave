@@ -168,6 +168,10 @@ manager; see §9). It reads:
 | `BENCHWEAVE_REGISTRY_DIR` | Fixture registry root (default: the repository registry). |
 | `BENCHWEAVE_MAX_DATASET_BYTES` | Per-run capture-byte ceiling; **required for adapter-bridge runs** (see below). |
 | `BENCHWEAVE_MAX_EVENT_BATCH` | Per-run event-landing batch ceiling; **required for adapter-bridge runs** (see below). |
+| `BENCHWEAVE_UI` | Compose the browser UI at `/ui` (default: on; `0`/`false`/`off` disables it — the routes are absent, not stubbed). |
+| `BENCHWEAVE_UI_LOGIN_CODE_TTL_MS` | Login-code lifetime (default 60000). |
+| `BENCHWEAVE_UI_SESSION_TTL_MS` | Browser-session lifetime ceiling (default 28800000, 8 h). |
+| `BENCHWEAVE_UI_MAX_BRIDGES_PER_SESSION` | Live event-stream bridges per browser session (default 4). |
 
 ```sh
 export BENCHWEAVE_DB=/var/lib/benchweave/state.sqlite
@@ -739,13 +743,14 @@ Every directive's threat rationale lives in
 
 ## 10. Command reference
 
-Eleven commands — `benchweave --help` is the full surface:
+Twelve commands — `benchweave --help` is the full surface:
 
 | Command | One-liner | Key flags |
 |---|---|---|
 | `setup` | Initialize an at-rest data directory | `--data-dir` (req), `--show-secret`, `--json` |
 | `serve` | Run the gateway (foreground) | `--host`, `--port` |
 | `status` | Gateway identity + bench inventory (live) | `--gateway` (req), `--token` (req), `--json` |
+| `ui-login` | Mint a one-use browser login URL (the URL expires in 60 s; the session is at most as wide as the token) | `--gateway-url` (req), `--token` (req), `--scope` (repeatable), `--ttl-mins`, `--json` |
 | `demo` | Built-in simulator demonstration | `--gateway`/`--token`, `--scratch`, `--keep`, `--timeout`, `--fixtures`, `--json` |
 | `report` | Run evidence from the store at rest | `--data-dir` (req), `--bench`, `--out`, `--json` |
 | `retention` | Disposal/growth projection (read-only; never migrates the store) | `--data-dir` (req), `--bench`, `--policy`, `--max-dataset-bytes`, `--horizon-s`, `--out`, `--json` |

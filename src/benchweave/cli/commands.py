@@ -1,7 +1,8 @@
 """The ``benchweave`` Click command tree (Task 9: CLI foundation).
 
-Eleven commands — ``setup status demo report retention dispose backup restore
-verify serve evidence`` — so ``--help`` is already the full operator surface.
+Twelve commands — ``setup status demo report retention dispose backup restore
+verify serve evidence ui-login`` — so ``--help`` is already the full operator
+surface.
 ``status``
 (Task 9), the four at-rest commands (Task 10), ``demo`` (Task 11: live-gateway
 mode or the labelled ephemeral fresh-install simulation), ``report`` (Task 13:
@@ -818,6 +819,76 @@ def status(gateway_url: str, token: str, json_output: bool) -> None:
             info, cast(Sequence[Mapping[str, object]], benches["items"])
         )
     emit({"gateway": info, "benches": benches}, render=render)
+
+
+# --- ui-login: the browser session mint (G2a) ----------------------------------
+
+
+@cli.command("ui-login")
+@click.option(
+    "--gateway-url",
+    "gateway_url",
+    required=True,
+    envvar="BENCHWEAVE_GATEWAY",
+    help="Gateway base URL, e.g. http://127.0.0.1:8125",
+)
+@click.option(
+    "--token",
+    "token",
+    required=True,
+    envvar="BENCHWEAVE_TOKEN",
+    help="Bearer token (observe tier or higher).",
+)
+@click.option(
+    "--scope",
+    "scopes",
+    multiple=True,
+    help=(
+        "Narrow the browser session to this scope (repeatable; every scope "
+        "must be one the token holds — widening is refused)."
+    ),
+)
+@click.option(
+    "--ttl-mins",
+    "ttl_mins",
+    type=int,
+    default=None,
+    help="Session lifetime in minutes (default: the gateway's configured ceiling).",
+)
+@click.option(
+    "--json",
+    "json_output",
+    is_flag=True,
+    help="Emit the stable machine JSON contract instead of text.",
+)
+def ui_login(
+    gateway_url: str,
+    token: str,
+    scopes: tuple[str, ...],
+    ttl_mins: int | None,
+    json_output: bool,
+) -> None:
+    """Mint a single-use browser login URL (read-only UI session).
+
+    The URL carries a one-use code that expires in 60 seconds: open it in
+    a browser on the bench host within that window. The bearer token
+    itself never reaches the browser — the gateway exchanges the code for
+    a server-side session that is AT MOST as wide as this token (subset
+    scopes, no later expiry)."""
+    _set_json(json_output)
+    client = GatewayClient(gateway_url, token=token)
+    try:
+        data = client.ui_login_code(
+            scopes=list(scopes) or None,
+            ttl_seconds=ttl_mins * 60 if ttl_mins is not None else None,
+        )
+    except GatewayError as error:
+        raise click.ClickException(str(error)) from error
+    if json_output:
+        emit(data)
+        return
+    # The plain surface prints exactly the URL (an operator pastes it).
+    click.echo(data["login_url"])
 
 
 # --- entrypoint ---------------------------------------------------------------

@@ -142,8 +142,12 @@ and remain the reviewer's job.
     half was deleted with `ui/` at G1e). The vendored-asset inventory +
     serve-time verification (UR-10) is the package's
     `benchweave_ui_html.assets.verify_vendored_assets()` plus the host-call
-    documentation (a host verifies the inventory before serving the assets;
-    the wiring lands with G2 / PRD 11).
+    documentation (a host verifies the inventory before serving the assets).
+    **The gateway-side wiring LANDED with G2a (issue #303, 2026-10-03):**
+    `create_app` verifies the inventory at composition and refuses to
+    compose the UI on any drift, naming the asset (pinned by
+    tests/interfaces_ui — the §7-I arms); the row's "wiring lands with
+    G2" clause is closed.
 
 13. **The machine-written validation-report family** → a change to a family suite's
     corpus or checks reruns that suite's writer in the same change:
@@ -518,11 +522,10 @@ and remain the reviewer's job.
     render functions and a static-file writer ONLY — there is no app/ASGI/
     route object to mount, so a production mount is not a code path away.
     Honest limit: this cannot STOP a future host from choosing to serve the
-    generated HTML; the enforcement is G2's GW-04 routing test, which must
-    pin that no `/ui` path serves the pattern library (the dev posture is
-    loopback file:// browsing). This row is the obligation the G2 design
-    inherits — a gateway routing test added at G2 must carry that pin or
-    this row stays open.
+    generated HTML; the enforcement is G2's GW-04 routing test.
+    **LANDED with G2a (issue #303, 2026-10-03):** tests/interfaces_ui pins
+    that no `/ui/patterns*` path resolves (the UI's own 404 shape, never
+    the library); the row is closed for the gateway host.
 
 26. **The real UI's component-CSS obligations died with `ui/` and are
     inherited by the G2/G3 host design** (issue #300 G1d fold F2, extended

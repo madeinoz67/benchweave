@@ -103,6 +103,14 @@ _LIMITS: dict[str, int] = {
     "max_lease_ms": 600000,
     "min_poll_ms": 100,
     "max_admission_ms": 5000,
+    # The browser-session service knobs (G2a, design §2.2): service and
+    # security parameters in the existing limits table (the
+    # ``max_json_bytes`` class), NOT bench safety envelopes — A02's
+    # commissioning rule governs bench hazards, not gateway session
+    # TTLs. Defaults are hints, deployment-tunable.
+    "ui_login_code_ttl_ms": 60000,
+    "ui_session_ttl_ms": 28800000,  # 8 h
+    "ui_max_bridges_per_session": 4,
 }
 
 #: The run-activation quota ceilings an operator may configure (issue #167,
@@ -113,7 +121,34 @@ _LIMITS: dict[str, int] = {
 _QUOTA_ENV_KEYS: tuple[tuple[str, str], ...] = (
     ("max_dataset_bytes", "BENCHWEAVE_MAX_DATASET_BYTES"),
     ("max_event_batch", "BENCHWEAVE_MAX_EVENT_BATCH"),
+    ("ui_login_code_ttl_ms", "BENCHWEAVE_UI_LOGIN_CODE_TTL_MS"),
+    ("ui_session_ttl_ms", "BENCHWEAVE_UI_SESSION_TTL_MS"),
+    ("ui_max_bridges_per_session", "BENCHWEAVE_UI_MAX_BRIDGES_PER_SESSION"),
 )
+
+#: ``BENCHWEAVE_UI``: compose the browser UI or not. The default is ON
+#: (maintainer decision F2, design §12: the deploy posture is loopback
+#: single-operator and the UI is the PRD's deliverable; the flag exists
+#: to disable). A present-but-unknown value refuses boot — a typo must
+#: not silently pick a posture.
+_UI_ENV_KEY = "BENCHWEAVE_UI"
+_UI_TRUTHY = frozenset({"1", "true", "on", "enable", "enabled"})
+_UI_FALSY = frozenset({"0", "false", "off", "disable", "disabled"})
+
+
+def _ui_enabled_from_env() -> bool:
+    raw = os.environ.get(_UI_ENV_KEY)
+    if raw is None:
+        return True
+    lowered = raw.strip().lower()
+    if lowered in _UI_TRUTHY:
+        return True
+    if lowered in _UI_FALSY:
+        return False
+    raise RuntimeError(
+        f"refusing to boot: {_UI_ENV_KEY}={raw!r} must be one of "
+        f"{sorted(_UI_TRUTHY | _UI_FALSY)} — the UI is enabled by default"
+    )
 
 
 def _limits_from_env() -> dict[str, int]:
@@ -127,7 +162,12 @@ def _limits_from_env() -> dict[str, int]:
     for key, env in _QUOTA_ENV_KEYS:
         raw = os.environ.get(env)
         if raw is not None:
-            value = int(raw)
+            try:
+                value = int(raw)
+            except ValueError:
+                raise RuntimeError(
+                    f"refusing to boot: {env}={raw!r} must be an integer >= 1"
+                ) from None
             if value < 1:
                 raise RuntimeError(
                     f"refusing to boot: {env}={raw!r} must be an integer >= 1"
@@ -234,6 +274,9 @@ def build() -> FastAPI:
         # Task 7 carry: the fixture resolver session (None keeps the WP07
         # fail-closed not_ready posture where no registry root exists).
         registry_session=session,
+        # G2a: the browser UI composes by default (F2); BENCHWEAVE_UI=0
+        # leaves it absent (never registered, not stubbed).
+        ui_enabled=_ui_enabled_from_env(),
     )
 
 
