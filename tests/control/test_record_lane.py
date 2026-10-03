@@ -76,6 +76,25 @@ def _below_floor_lattice(tmp_path: Path) -> Path:
 
     commissioning = json.loads((lattice / "commissioning.json").read_bytes())
     commissioning["bench"]["sha256"] = bench_digest
+    # Issue #316: this lattice's RUNS must clear the unattended-grant gate
+    # too, or the grant refusal (not the floor under test) would fire once
+    # the floor is neutralized — the grant rides the same tmp copy, frozen
+    # tree untouched.
+    commissioning["modes"] = ["supervised", "unattended"]
+    commissioning["evidence"] = commissioning["evidence"] + [
+        {
+            "category": "unattended",
+            "report": {
+                "id": "sim-unattended-report",
+                "version": "0.1.0",
+                "sha256": "0" * 64,
+            },
+            "tested_at": "2026-09-11T00:00:00Z",
+            "scope": "Simulator unattended-mode endurance (synthetic).",
+            "result": "passed",
+            "limitations": ["simulator-only"],
+        }
+    ]
     rewrite("commissioning.json", commissioning)
     commissioning_digest = hashlib.sha256(
         (lattice / "commissioning.json").read_bytes()
@@ -102,6 +121,36 @@ class TestG1RunOnPinnedOldLattice:
     ) -> None:
         lattice = tmp_path / "lattice"
         shutil.copytree(LATTICE_010, lattice)
+        # Issue #316: G1's run clears the unattended-grant gate through the
+        # grant carried on this tmp copy (the frozen tree keeps its
+        # historical supervised-only facts; runs over it without the grant
+        # are the gate's own refusal matrix, tests/control/test_unattended_
+        # grant.py).
+        commissioning = json.loads((lattice / "commissioning.json").read_bytes())
+        commissioning["modes"] = ["supervised", "unattended"]
+        commissioning["evidence"] = commissioning["evidence"] + [
+            {
+                "category": "unattended",
+                "report": {
+                    "id": "sim-unattended-report",
+                    "version": "0.1.0",
+                    "sha256": "0" * 64,
+                },
+                "tested_at": "2026-09-11T00:00:00Z",
+                "scope": "Simulator unattended-mode endurance (synthetic).",
+                "result": "passed",
+                "limitations": ["simulator-only"],
+            }
+        ]
+        (lattice / "commissioning.json").write_text(
+            json.dumps(commissioning, indent=2)
+        )
+        commissioning_digest = hashlib.sha256(
+            (lattice / "commissioning.json").read_bytes()
+        ).hexdigest()
+        binding = json.loads((lattice / "run-binding.json").read_bytes())
+        binding["commissioning"]["sha256"] = commissioning_digest
+        (lattice / "run-binding.json").write_text(json.dumps(binding, indent=2))
         store = Store.open(tmp_path / "state.db")
         try:
             content = ContentStore(store)

@@ -24,7 +24,7 @@
   "commissioning": {
     "id": "sim-commissioning",
     "version": "0.1.0",
-    "sha256": "19def64135d4e677f21f9868c5e0ff149606a742799e025ec7e556ef64e22351"
+    "sha256": "5f9a8627d8bb4bfad812dc91b4cf8be6efda792107ff64a550826ffebc610ba7"
   },
   "bindings": [
     {

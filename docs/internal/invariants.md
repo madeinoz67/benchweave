@@ -84,6 +84,34 @@ rather than rewriting the history — that is how this file earns trust.
   (`test_protection.py`, `test_state_recovery.py`). *A12: all endings require the approved
   safe transition; terminal pass requires verified final safety. An interrupted run
   reported as anything else is a lie in the evidence record.*
+- **[CTL-10]** A run start over a `gateway_owned` procedure requires the commissioned
+  unattended grant — `commissioning.modes` contains `"unattended"` with a passing
+  `unattended`-category evidence row — and every run's window
+  (`acceptance + max_body_ms + max_protection_ms`, caller-supplied `now_wall` — never an
+  ambient clock read) cannot exceed `commissioning.expires_at` (a window ending exactly
+  at expiry admits — the contract's boundary is "cannot exceed", not "must end before");
+  a `manual`-mode start requires a presented lease. Refusals are typed
+  (`unattended_grant_absent:`, `unattended_evidence_failed:`, `qualification_expired:`,
+  `qualification_window_exceeded:`, `manual_lease_required:`) and are raised at the seam
+  (best-effort, inverted-guard — an UNSTORED bench, descriptor, procedure or
+  commissioning document skips the seam's whole pre-check, grant included: the #260
+  floor's own skip family, the worker layer remaining authoritative — before lease
+  consumption; the seam evaluates the grant but not its scope — `procedure_refs`
+  containment is the worker pin lattice's `pin_absent:`, and a lease presented on a
+  seam-accepted start the worker will refuse is consumed for that doomed run, the
+  unstored-binding path's own disclosed shape) and authoritatively at the worker, over
+  one helper (`_check_unattended_grant`, `src/benchweave/control/documents.py`) called
+  at both layers — the issue #260 two-layer shape; pinned by
+  `tests/control/test_unattended_grant.py` (refusal matrix + seam/worker byte-parity +
+  neutralized-gate controls + the real-worker pins; the datetime comparisons ride the
+  fail-closed typed clause, fold arms included). The gate does NOT check the seven base evidence categories
+  (the offline census's job), does not detect relevant-change invalidation before expiry
+  (no mechanism; design deferral D3), and adds no mid-run expiry timer — the
+  acceptance-time window arithmetic makes a compliant start unable to straddle expiry, and
+  the run lease stays the binding budget. *A02: the grant is commissioned qualification,
+  never inferred; A04: pure arithmetic on declared values, and no client can silently
+  promote an ordinary operation to autonomous execution; A12: the procedure cannot rewrite
+  its operating envelope — the grant lives outside it, in the commissioning document.*
 
 ## State & persistence invariants
 

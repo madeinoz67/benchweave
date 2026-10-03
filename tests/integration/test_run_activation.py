@@ -636,7 +636,10 @@ def _lattice(
         "package_lock": {"id": "sim-lock", "version": "0.1.0"},
         "procedure_refs": [{"id": "activation-procedure", "version": "0.1.0"}],
         "dut_class": "low_voltage_embedded",
-        "modes": ["supervised"],
+        # Issue #316: the harness's gateway-owned runs carry the
+        # commissioned unattended grant (a passing unattended-category row
+        # beside the envelope row) — without it the run gate refuses.
+        "modes": ["supervised", "unattended"],
         "owners": {
             "bench": "activation-harness-owner",
             "test_safety": "activation-harness-owner",
@@ -659,7 +662,22 @@ def _lattice(
                 "scope": "Simulator envelope over the synthetic activation supply.",
                 "result": "passed",
                 "limitations": ["simulator-only"] if simulated else [],
-            }
+            },
+            {
+                "category": "unattended",
+                "report": {
+                    "id": "activation-unattended-report",
+                    "version": "0.1.0",
+                    "sha256": "0" * 64,
+                },
+                "tested_at": "2026-09-11T00:00:00Z",
+                "scope": "Simulator unattended endurance over the activation supply.",
+                "result": "passed",
+                # The simulation mark stays carried by the envelope row only
+                # — this row inherits the harness's simulated flag so a
+                # non-simulated bench keeps refusing sim substitution (F3).
+                "limitations": ["simulator-only"] if simulated else [],
+            },
         ],
     }
     for name, path in (

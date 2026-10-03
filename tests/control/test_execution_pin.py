@@ -588,6 +588,36 @@ def test_f3_run_on_pinned_old_lattice_is_legal_and_floored(tmp_path: Path) -> No
 
     lattice = tmp_path / "lattice"
     shutil.copytree(LATTICE_010, lattice)
+    # Issue #316: the unattended-grant gate rides the run path beside the
+    # floor, so this arm's RUN needs the commissioned unattended grant on
+    # its tmp copy — otherwise the grant refusal (not the version fact
+    # under test) would fire first. The frozen tree stays untouched; the
+    # mutation-and-repin lives here, this module's own doctrine.
+    commissioning = json.loads((lattice / "commissioning.json").read_bytes())
+    commissioning["modes"] = ["supervised", "unattended"]
+    commissioning["evidence"] = commissioning["evidence"] + [
+        {
+            "category": "unattended",
+            "report": {
+                "id": "sim-unattended-report",
+                "version": "0.1.0",
+                "sha256": "0" * 64,
+            },
+            "tested_at": "2026-09-11T00:00:00Z",
+            "scope": "Simulator unattended-mode endurance (synthetic).",
+            "result": "passed",
+            "limitations": ["simulator-only"],
+        }
+    ]
+    (lattice / "commissioning.json").write_text(
+        json.dumps(commissioning, indent=2)
+    )
+    commissioning_digest = hashlib.sha256(
+        (lattice / "commissioning.json").read_bytes()
+    ).hexdigest()
+    binding = json.loads((lattice / "run-binding.json").read_bytes())
+    binding["commissioning"]["sha256"] = commissioning_digest
+    (lattice / "run-binding.json").write_text(json.dumps(binding, indent=2))
     psu = json.loads((LATTICE_010 / "descriptor-sim-psu.json").read_bytes())
     psu["otdp_version"] = "0.1.2"
     below_floor = _mutated_010(tmp_path / "below-floor", psu=psu)

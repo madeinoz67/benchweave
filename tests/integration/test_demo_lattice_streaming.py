@@ -309,7 +309,10 @@ def _build_run_lattice(root: Path) -> Path:
         "package_lock": {"id": "sim-lock", "version": "0.1.0"},
         "procedure_refs": [{"id": "voltage-check", "version": "0.1.0"}],
         "dut_class": "low_voltage_embedded",
-        "modes": ["supervised"],
+        # Issue #316: the harness's gateway-owned runs carry the
+        # commissioned unattended grant (a passing unattended-category row
+        # beside the envelope row) — without it the run gate refuses.
+        "modes": ["supervised", "unattended"],
         "owners": {
             "bench": "demo-lattice-harness",
             "test_safety": "demo-lattice-harness",
@@ -332,7 +335,19 @@ def _build_run_lattice(root: Path) -> Path:
                 "scope": "Simulator envelope over the synthetic demo devices.",
                 "result": "passed",
                 "limitations": ["simulator-only"],
-            }
+            },
+            {
+                "category": "unattended",
+                "report": {
+                    "id": "sim-unattended-report",
+                    "version": "0.1.0",
+                    "sha256": "0" * 64,
+                },
+                "tested_at": "2026-09-11T00:00:00Z",
+                "scope": "Simulator unattended endurance over the synthetic demo devices.",
+                "result": "passed",
+                "limitations": ["simulator-only"],
+            },
         ],
     }
     for name, path in (
