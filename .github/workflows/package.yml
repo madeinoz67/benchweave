@@ -124,6 +124,11 @@ jobs:
               return {f.relative_to(p).as_posix(): f.read_bytes()
                       for f in p.rglob("*") if f.is_file() and "__pycache__" not in f.parts}
           s, i = tree(src), tree(inst)
+          seen = {}
+          for k in s:
+              fk = k.lower()
+              assert fk not in seen, ("case-colliding package paths", seen[fk], k)
+              seen[fk] = k
           assert set(s) == set(i), (sorted(set(s) - set(i)), sorted(set(i) - set(s)))
           bad = sorted(k for k in s if s[k] != i[k])
           assert not bad, bad

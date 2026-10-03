@@ -104,6 +104,11 @@ pin bump in the SDK repository, never a copied template).
      `git-cliff -c cliff.toml --strip header --tag ui-html-vX.Y.Z --include-path 'packages/ui-html/*' ui-html-v<PREV>..ui-html-v<NEW>`
      (the range form is dry-run-proven; re-verify at the second release)
 
+   Both commands REQUIRE the anchored `tag_pattern` in `cliff.toml`: under
+   an unanchored pattern the first-release form renders the section header
+   over zero commits and exits 0 — the anchor is load-bearing for the
+   release notes, not only for the changelog isolation.
+
    The publish workflow fires on release published (the publish path,
    below); its verify job reads PyPI back and asserts BOTH the wheel and the
    sdist serve the exact built bytes. The release-time walk below is the
@@ -194,8 +199,8 @@ On pypi.org → account settings → Publishing → **add a pending publisher**:
 project `benchweave-ui-html`, owner `madeinoz67`, repository `benchweave`,
 workflow filename `publish-ui-html.yml`, environment name **blank** (v1; a
 GitHub-environment binding is named deferred hardening — the trigger to add
-it is a second maintainer with write access or an owner ruling), default
-branch `main`. The first publish auto-creates the project. Nothing in the
+it is a second maintainer with write access or an owner ruling). The first
+publish auto-creates the project. Nothing in the
 repository can do this; these settings are the whole implementable surface.
 
 Optional hardening (not required for v1): a GitHub tag-protection rule for
