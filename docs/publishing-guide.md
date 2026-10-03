@@ -23,7 +23,7 @@ time**. Nothing gates admission at publish.
 
    ```
    benchweave-sdk package <plugin-dir> \
-     --registry-clone <benchweave-registry clone> \
+     --registry-clone <benchweave-registry checkout> \
      --source-url https://github.com/<you>/<plugin> \
      --revision <40-or-64-hex commit digest> \
      --publisher <your-vetted-publisher-id> \
