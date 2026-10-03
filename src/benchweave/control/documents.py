@@ -1554,6 +1554,11 @@ def _check_unattended_grant(
     try:
         expires = datetime.fromisoformat(str(expires_raw))
         now = datetime.fromisoformat(now_wall)
+        # The comparison rides the same fail-closed clause as construction
+        # (NIT-1 fold): offset-naive against offset-aware datetimes parse
+        # cleanly and raise AT the comparison — a raw TypeError there
+        # would escape the typed vocabulary.
+        expired = now >= expires
     except (TypeError, ValueError) as exc:
         raise AdmissionRejected(
             f"qualification_expired: commissioning "
@@ -1562,7 +1567,7 @@ def _check_unattended_grant(
             f"{now_wall!r}: {exc} — an unjudgeable qualification authorises "
             "no run start"
         ) from exc
-    if now >= expires:
+    if expired:
         raise AdmissionRejected(
             f"qualification_expired: commissioning "
             f"{commissioning.get('id')}@{commissioning.get('version')} "
@@ -1580,7 +1585,22 @@ def _check_unattended_grant(
             f"{expires_raw} — the qualification window is not demonstrably "
             "covered"
         )
-    if now + timedelta(milliseconds=body_ms + protection_ms) > expires:
+    try:
+        window_exceeded = (
+            now + timedelta(milliseconds=body_ms + protection_ms) > expires
+        )
+    except (TypeError, OverflowError) as exc:
+        # The window leg's own fail-closed clause (NIT-1 fold): execution
+        # 0.1.0 caps neither budget field, so a schema-valid budget can
+        # overflow timedelta construction itself — that refusal is typed
+        # too, never a raw OverflowError.
+        raise AdmissionRejected(
+            f"qualification_window_exceeded: now_wall {now_wall} + "
+            f"max_body_ms {body_ms} + max_protection_ms {protection_ms} "
+            f"cannot be compared against expires_at {expires_raw!r}: {exc} "
+            "— an unjudgeable window authorises no run start"
+        ) from exc
+    if window_exceeded:
         raise AdmissionRejected(
             f"qualification_window_exceeded: now_wall {now_wall} + "
             f"max_body_ms {body_ms} + max_protection_ms {protection_ms} "

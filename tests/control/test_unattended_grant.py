@@ -172,7 +172,12 @@ def _binding_ref(lattice: Path) -> dict[str, Any]:
 
 
 class _Cell:
-    """One matrix cell's stack: mutated lattice + admitted store + seam."""
+    """One matrix cell's stack: mutated lattice + admitted store + seam.
+
+    ``real_factory`` wires the worker to the REAL ``_build_run_factory``
+    (at ``worker_clock``, which the LOW-2 pins skew against the seam's
+    NOW); the default's no-op build keeps the refusal arms synchronous.
+    """
 
     lattice: Path
     store: Store
@@ -180,13 +185,26 @@ class _Cell:
     worker: RunWorker
     ref: dict[str, Any]
 
-    def __init__(self, tmp_path: Path, name: str, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        tmp_path: Path,
+        name: str,
+        *,
+        real_factory: bool = False,
+        worker_clock: str = NOW,
+        **kwargs: Any,
+    ) -> None:
         self.lattice = _grant_lattice(tmp_path / name, **kwargs)
         self.store = Store.open(tmp_path / f"{name}.db")
         content = ContentStore(self.store)
         admit_startup_bench(self.store, content, self.lattice, now=NOW)
+        build: Any = (
+            _build_run_factory(self.lattice, lambda: worker_clock, limits=QUOTA_LIMITS)
+            if real_factory
+            else (lambda *a: None)
+        )
         self.worker = RunWorker(
-            self.store, content, build_run=lambda *a: None, now_iso=lambda: NOW
+            self.store, content, build_run=build, now_iso=lambda: worker_clock
         )
         self.ops = Operations(
             self.store,
@@ -558,6 +576,160 @@ def test_parity_manual_lease_required(tmp_path: Path) -> None:
         seam = _seam_refusal(cell)
         assert seam.startswith("manual_lease_required:"), seam
         assert _worker_refusal(cell) == seam
+    finally:
+        cell.close()
+
+
+# --- NIT-1 fold: the comparison itself rides the fail-closed clause --------------
+
+
+def test_nit1_naive_expires_against_aware_now_refuses_typed() -> None:
+    """NIT-1 (fold wave): a naive ``expires_at`` against an aware
+    ``now_wall`` raises at the COMPARISON, not at construction — Python
+    refuses to order offset-naive against offset-aware datetimes. RED at
+    the fold base: that TypeError escaped the typed vocabulary raw.
+    GREEN: the fail-closed clause owns it, mapped to
+    ``qualification_expired:`` (the expiry comparison is the check that
+    needed the value — the deviation-4 prefix mapping) with the
+    cannot-be-compared wording. Unreachable in production (admission's
+    FormatChecker enforces offset date-times in both dialects; every
+    production now_wall is Z-stamped) — pinned at the unit seam the
+    refute lanes probed."""
+    from benchweave.control.documents import _check_unattended_grant
+
+    procedure: dict[str, Any] = {
+        "id": "nit1-procedure",
+        "version": "0.1.0",
+        "mode": "gateway_owned",
+        "max_body_ms": 1000,
+        "max_protection_ms": 1000,
+    }
+    commissioning: dict[str, Any] = {
+        "id": "nit1-commissioning",
+        "version": "0.1.0",
+        "modes": ["unattended"],
+        "evidence": [{"category": "unattended", "result": "passed"}],
+        # Naive — no offset. Construction succeeds; the comparison cannot.
+        "expires_at": "2030-01-01T00:00:00",
+    }
+    with pytest.raises(AdmissionRejected) as raised:
+        _check_unattended_grant(
+            procedure, commissioning, now_wall="2027-06-01T00:00:00Z", lease_present=False
+        )
+    message = str(raised.value)
+    assert message.startswith("qualification_expired:"), message
+    assert "cannot be compared" in message, message
+
+
+def test_nit1_window_arithmetic_that_cannot_be_held_refuses_typed() -> None:
+    """NIT-1's other leg (fold wave): execution 0.1.0 caps neither
+    ``max_body_ms`` nor ``max_protection_ms`` (the 86 400 000 ms cap is
+    0.2.0's), so a schema-valid 0.1.0 lattice can carry a budget whose
+    timedelta construction itself overflows. RED at the fold base: the
+    raw OverflowError escaped typed. GREEN: the window comparison rides
+    its own fail-closed clause under ``qualification_window_exceeded:``
+    with the cannot-be-judged wording."""
+    from benchweave.control.documents import _check_unattended_grant
+
+    procedure: dict[str, Any] = {
+        "id": "nit1b-procedure",
+        "version": "0.1.0",
+        "mode": "gateway_owned",
+        "max_body_ms": 10**30,
+        "max_protection_ms": 1000,
+    }
+    commissioning: dict[str, Any] = {
+        "id": "nit1b-commissioning",
+        "version": "0.1.0",
+        "modes": ["unattended"],
+        "evidence": [{"category": "unattended", "result": "passed"}],
+        "expires_at": "2030-01-01T00:00:00Z",
+    }
+    with pytest.raises(AdmissionRejected) as raised:
+        _check_unattended_grant(
+            procedure, commissioning, now_wall="2027-06-01T00:00:00Z", lease_present=False
+        )
+    message = str(raised.value)
+    assert message.startswith("qualification_window_exceeded:"), message
+    assert "cannot be" in message, message
+
+
+# --- LOW-2 fold pins: the worker claims, driven through the real thread ----------
+
+
+def test_low2_manual_lease_through_the_real_worker_thread_completes(
+    tmp_path: Path,
+) -> None:
+    """LOW-2 pin (i): a manual+lease start through the REAL RunWorker
+    thread wired to the REAL factory — the worker layer reads
+    ``lease_present`` from the seam-created run row's authority ("lease"
+    iff a validated lease was presented and consumed at accept time) and
+    the run completes ``passed``. A pin of lane-probe-verified behavior:
+    the shipped matrix drove the factory directly, never the thread."""
+    cell = _Cell(tmp_path, "low2a", procedure_mode="manual", real_factory=True)
+    try:
+        cell.worker.start()
+        lease = cell.ops.lease_create(
+            _ident(), BENCH_ID, "lease-low2a", 1, 600_000
+        )
+        result = cell.ops.run_start(
+            _ident(),
+            BENCH_ID,
+            str(cell.ref["id"]),
+            cell.ref,
+            1,
+            str(lease["lease_id"]),
+        )
+        assert result["state"] == "accepted", result
+        assert cell.worker.join(timeout=10), "the real worker did not drain"
+        projection = cell.ops.run_get(_ident(), str(result["run_id"]))
+        assert projection["state"] == "terminal", projection
+        assert projection["outcome"] == "passed", projection
+        row = cell.store.get_run(str(result["run_id"]))
+        assert row is not None and row["terminal"] is not None
+        assert row["authority"] == "lease"
+    finally:
+        cell.close()
+
+
+def test_low2_marginal_window_refuses_at_the_worker_after_seam_accepts(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """LOW-2 pin (ii): the marginal window across the two layers' clocks —
+    the seam's now + body + protection lands EXACTLY on ``expires_at``
+    (equality admits; DOC-1), so the seam 202-accepts, but the worker
+    runs one second later and its window overshoots: the factory's
+    admission-path call refuses ``qualification_window_exceeded:`` inside
+    the real thread, the poison guard contains it (terminal projection,
+    NO terminal record — honest ``outcome_unknown``), and the typed
+    reason rides the gateway log. A pin of lane-probe-verified
+    behavior."""
+    import logging
+
+    # expires = seam-now + 10 s exactly: seam equality admits (DOC-1),
+    # worker-now (+1 s) + 10 s overshoots by exactly one second.
+    cell = _Cell(
+        tmp_path,
+        "low2b",
+        expires_at="2027-06-01T00:00:10Z",
+        real_factory=True,
+        worker_clock="2027-06-01T00:00:01Z",
+    )
+    try:
+        cell.worker.start()
+        with caplog.at_level(logging.ERROR, logger="benchweave.interfaces.worker"):
+            result = cell.ops.run_start(
+                _ident(), BENCH_ID, str(cell.ref["id"]), cell.ref, 1, None
+            )
+            assert result["state"] == "accepted", result
+            assert cell.worker.join(timeout=10), "the real worker did not drain"
+        projection = cell.ops.run_get(_ident(), str(result["run_id"]))
+        assert projection["state"] == "terminal", projection
+        assert projection["outcome"] == "outcome_unknown", projection
+        row = cell.store.get_run(str(result["run_id"]))
+        assert row is not None and row["terminal"] is None  # no fabricated record
+        assert "run_worker poison" in caplog.text, caplog.text
+        assert "qualification_window_exceeded" in caplog.text, caplog.text
     finally:
         cell.close()
 
