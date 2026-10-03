@@ -182,12 +182,20 @@ def test_main_fails_closed_when_no_release_tag_parses(monkeypatch: Any) -> None:
 
 # --- black-box: the real CLI against local repositories, zero network ----------
 
-_IDENTITY = (
-    "-c",
-    "user.name=synthetic-fixture",
-    "-c",
-    "user.email=fixture@example.invalid",
-)
+
+def _init_repo(path: Path) -> None:
+    """Create a fixture repo whose identity and hooks are its OWN. CI
+    runners carry no usable ambient git identity — PR #360 red the gates
+    lane with 'fatal: empty ident name' (a machine's global identity
+    masks this locally, and an explicit EMPTY global user.name also
+    disables the OS fallback, which is how the identity test reproduces
+    the runner on any host). Repo-local config sits above the global
+    file, so every ident the fixtures mint — commits and annotated tags
+    alike — comes from the repo itself, on any host."""
+    path.mkdir(parents=True)
+    _git(path, "init", "-q", "-b", "main")
+    _git(path, "config", "user.name", "synthetic-fixture")
+    _git(path, "config", "user.email", "fixture@example.invalid")
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -219,7 +227,7 @@ def _pin(gateway: Path, commit: str) -> None:
     """Write the packages/sdk gitlink into HEAD's tree without any submodule
     clone — a gitlink is just a mode-160000 index entry."""
     _git(gateway, "update-index", "--add", "--cacheinfo", f"160000,{commit},packages/sdk")
-    _git(gateway, *_IDENTITY, "commit", "-q", "-m", "pin sdk")
+    _git(gateway, "commit", "-q", "-m", "pin sdk")
 
 
 def _repo_pair(base: Path) -> tuple[Path, Path, str, str]:
@@ -228,21 +236,19 @@ def _repo_pair(base: Path) -> tuple[Path, Path, str, str]:
     gitlink pinned at the tagged commit. Returns (remote, gateway,
     tagged_commit, other_commit)."""
     remote = base / "sdk-remote"
-    remote.mkdir(parents=True)
-    _git(remote, "init", "-q", "-b", "main")
+    _init_repo(remote)
     (remote / "README.md").write_text("synthetic sdk remote\n", encoding="utf-8")
     _git(remote, "add", "README.md")
-    _git(remote, *_IDENTITY, "commit", "-q", "-m", "seed")
+    _git(remote, "commit", "-q", "-m", "seed")
     tagged = _git(remote, "rev-parse", "HEAD").stdout.strip()
     _git(remote, "tag", "-a", "v0.4.1", "-m", "synthetic release")
     _git(remote, "tag", "v0.3.0", tagged)  # an older lightweight tag
 
     gateway = base / "gateway"
-    gateway.mkdir(parents=True)
-    _git(gateway, "init", "-q", "-b", "main")
+    _init_repo(gateway)
     (gateway / "README.md").write_text("synthetic gateway\n", encoding="utf-8")
     _git(gateway, "add", "README.md")
-    _git(gateway, *_IDENTITY, "commit", "-q", "-m", "seed")
+    _git(gateway, "commit", "-q", "-m", "seed")
     other = _git(gateway, "rev-parse", "HEAD").stdout.strip()
     _pin(gateway, tagged)
     return remote, gateway, tagged, other
@@ -292,11 +298,10 @@ def test_black_box_unreachable_remote_fails_closed_with_distinct_code(
 def test_black_box_tagless_remote_fails_closed(tmp_path: Path) -> None:
     """A reachable remote with no vX.Y.Z tags is equally indeterminate."""
     bare = tmp_path / "tagless-remote"
-    bare.mkdir(parents=True)
-    _git(bare, "init", "-q", "-b", "main")
+    _init_repo(bare)
     (bare / "README.md").write_text("no releases here\n", encoding="utf-8")
     _git(bare, "add", "README.md")
-    _git(bare, *_IDENTITY, "commit", "-q", "-m", "seed")
+    _git(bare, "commit", "-q", "-m", "seed")
     _git(bare, "tag", "not-a-release")
     _, gateway, _, _ = _repo_pair(tmp_path / "pair")
     proc = _run_script("--repo", str(gateway), "--remote", str(bare))
@@ -304,6 +309,34 @@ def test_black_box_tagless_remote_fails_closed(tmp_path: Path) -> None:
     # The message assertion is load-bearing: python's own launcher also
     # exits 2 on a missing script, so the code alone can pass accidentally.
     assert "indeterminate" in (proc.stdout + proc.stderr).lower()
+
+
+def test_fixture_repositories_carry_their_own_git_identity(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    """PR #360 red the gates lane with 'fatal: empty ident name': CI
+    runners carry no usable ambient git identity, and the fixture's
+    annotated release tag wore none of its own (the commits did, via
+    command-line -c). Fixture repos must mint every ident — commits and
+    annotated tags — from their OWN local config. The hostile global here
+    (an explicit empty user.name, which also disables the OS auto-detect
+    fallback) reproduces the runner: it sits BELOW repo-local config, so a
+    self-identifying fixture builds clean while one leaning on the ambient
+    environment reds."""
+    hostile = tmp_path / "empty-identity.gitconfig"
+    hostile.write_text("[user]\n\tname =\n", encoding="utf-8")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(hostile))
+    monkeypatch.setenv("GIT_CONFIG_SYSTEM", "/dev/null")
+    remote, gateway, _, _ = _repo_pair(tmp_path / "pair")
+    # the annotated tag is the ident-minting op that wore no identity of
+    # its own; both release tags must exist for the pair to be usable
+    tags = _git(remote, "tag", "-l").stdout.split()
+    assert "v0.4.1" in tags, tags
+    assert "v0.3.0" in tags, tags
+    assert _git(gateway, "log", "--oneline", "-1").stdout.strip(), (
+        "the gateway seed commit did not land"
+    )
 
 
 # --- review fold row 1: undecodable remote output is indeterminate ----------
@@ -377,11 +410,10 @@ def test_black_box_gitmodules_override_selects_the_remote(tmp_path: Path) -> Non
     built-in fallback names a network remote this suite never touches; the
     override path is network-free and deterministic once the fold lands)."""
     bare = tmp_path / "tagless-remote"
-    bare.mkdir(parents=True)
-    _git(bare, "init", "-q", "-b", "main")
+    _init_repo(bare)
     (bare / "README.md").write_text("no releases here\n", encoding="utf-8")
     _git(bare, "add", "README.md")
-    _git(bare, *_IDENTITY, "commit", "-q", "-m", "seed")
+    _git(bare, "commit", "-q", "-m", "seed")
     _git(bare, "tag", "not-a-release")
     _, gateway, _, _ = _repo_pair(tmp_path / "pair")
     (gateway / ".gitmodules").write_text(
