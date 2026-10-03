@@ -10,6 +10,11 @@
     <div><dt>Configuration</dt><dd><code data-bw-bench-config-sha>{{ bench.configuration.sha256 }}</code></dd></div>
   </dl>
 
+  {% if controls_html %}
+  {# G3a control region (issue #304): the server-rendered fragment, composed at first render and re-fetched by the server-chosen poll cadence. Trusted host-rendered markup — every interpolable byte is escaped at construction. #}
+  <div class="bw-controls-region" data-bw-controls-region>{{ controls_html }}</div>
+  {% endif %}
+
   <h3>Devices</h3>
   <ul class="bw-devices" data-bw-device-list>
     {% for device in devices %}

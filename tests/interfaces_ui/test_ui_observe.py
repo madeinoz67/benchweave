@@ -187,8 +187,14 @@ def test_observe_session_sees_every_observe_tier_view(gateway: SimpleNamespace) 
 
 
 def test_no_read_page_renders_a_form_or_button(gateway: SimpleNamespace) -> None:
-    """§7-E's belt: no form or button on any rendered page — G2 renders
-    no mutating control at all (GW-55's cancel wording is G3's)."""
+    """§7-E's belt, evolved with the surface it polices (G3a): for an
+    observe session no mutating control renders ENABLED anywhere — no
+    form at all, and every button that does render (the lease controls'
+    observe shape) is disabled. G2's no-button pin was this invariant
+    when no control existed; the disabled-with-no-authority shape
+    (design §2.2) is its G3 form."""
+    import re
+
     cookie = {"bw_session": gateway.session.session_id}
     run = _terminal_run(gateway)
     paths = (
@@ -200,7 +206,11 @@ def test_no_read_page_renders_a_form_or_button(gateway: SimpleNamespace) -> None
     for path in paths:
         page = gateway.client.get(path, cookies=cookie).text
         assert "<form" not in page, path
-        assert "<button" not in page, path
+        buttons = re.findall(r"<button\b[^>]*>", page)
+        assert all("disabled" in attrs for attrs in buttons), (
+            path,
+            [a for a in buttons if "disabled" not in a],
+        )
 
 
 def test_direct_post_to_read_paths_is_refused(

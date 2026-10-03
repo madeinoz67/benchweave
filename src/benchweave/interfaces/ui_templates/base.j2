@@ -23,6 +23,7 @@
   </header>
   <main id="main" class="bw-main">
     {% if mode_banner %}{{ mode_banner }}{% endif %}
+    {% if session_warning %}{{ session_warning }}{% endif %}
     <div class="bw-announce" data-bw-announce aria-live="polite"></div>
     {% block content %}{% endblock %}
   </main>

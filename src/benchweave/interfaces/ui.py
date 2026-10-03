@@ -58,6 +58,7 @@ from benchweave.interfaces.sessions import (
     SessionRecord,
     SessionStore,
 )
+from benchweave.interfaces.ui_control import register_control_routes
 from benchweave.interfaces.ui_read import register_read_pages
 from benchweave.interfaces.ui_stream import register_stream_route
 from benchweave.state.store import Store
@@ -533,7 +534,7 @@ def build_ui_router(
         return parsed
 
     def _unauthenticated_page() -> HTMLResponse:
-        """The session-less refusal every page shares — the §C.3
+        """The session-less refusal pages share — the §C.3
         unauthenticated row through the shell (one construction site,
         where G2a had three inline copies)."""
         return _page(
@@ -545,6 +546,7 @@ def build_ui_router(
             scopes=None,
             mode_banner=None,
             csrf_token=None,
+            session_warning=None,
             # Trusted package-rendered HTML (the §C.3 partial), not
             # request data — S704's escape hatch is not in play.
             refusal_html=Markup(render_refusal(UNAUTHENTICATED_REFUSAL)),  # noqa: S704
@@ -570,6 +572,7 @@ def build_ui_router(
             refusal_html=Markup(  # noqa: S704
                 render_refusal(ui_refusals.row_for(fail.failure.code))
             ),
+            session_warning=None,
         )
 
     @router.get("/", include_in_schema=False)
@@ -601,6 +604,9 @@ def build_ui_router(
             # hx-headers consume it; G2a's only state-changing control is
             # logout, G3 wires the rest).
             csrf_token=record.csrf_token,
+            # D1: the session-expiry warning renders in the shell on
+            # every page (GW-44's session half).
+            session_warning=controls.session_warning(record),
             benches=items,
         )
 
@@ -694,6 +700,23 @@ def build_ui_router(
         response.delete_cookie(SESSION_COOKIE, path="/ui")
         return response
 
+    # The G3 control routes (issue #304 G3a): lease take/renew/release,
+    # the polled controls fragment, GW-95's session bound, GW-44's
+    # warnings. Registered BEFORE the read pages so its composed views
+    # reach them (route order vs the catch-all is unaffected — exact
+    # paths), and BEFORE the assets route + the catch-all stay LAST.
+    controls = register_control_routes(
+        router,
+        operations=operations,
+        sessions=sessions,
+        limits=limits,
+        now_epoch=epoch,
+        resolve_session=lambda request: _resolve_session(request, sessions),
+        session_identity=_session_identity,
+        failure_page=_failure_page,
+        unauthenticated_page=_unauthenticated_page,
+    )
+
     register_read_pages(
         router,
         operations=operations,
@@ -706,6 +729,7 @@ def build_ui_router(
         page=_page,
         failure_page=_failure_page,
         unauthenticated_page=_unauthenticated_page,
+        controls=controls,
     )
 
     # The G2c event bridge (§2.5): same closures, same refusal
@@ -756,6 +780,7 @@ def build_ui_router(
             scopes=None,
             mode_banner=None,
             csrf_token=None,
+            session_warning=None,
         )
 
     @router.api_route(
