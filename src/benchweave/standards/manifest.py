@@ -189,7 +189,12 @@ def _check_normative_row_path(entry_id: str, relative: str) -> None:
     == ('x',)`` — so the parts tests alone admit a ``./``-prefixed row whose
     RAW string still fails ``startswith('standards/')`` and launders; the
     identity closes ``./``, interior ``./``, ``//`` and trailing-slash forms
-    at once (fold addendum 2026-10-03, lane B HIGH).
+    at once (fold addendum 2026-10-03, lane B HIGH). A second check goes
+    beyond it for the same reason: a case-camouflaged prefix
+    (``'Standards/...'``) keeps a case-sensitive filesystem's bytes
+    unreachable at validate (``missing_normative_file``) yet resolves on
+    case-insensitive hosts (APFS, default NTFS), dodging the raw prefix
+    while shipping the bytes (fold addendum 2026-10-03, lane A MEDIUM).
     """
     posix = PurePosixPath(relative)
     windows = PureWindowsPath(relative)
@@ -201,12 +206,16 @@ def _check_normative_row_path(entry_id: str, relative: str) -> None:
         or "\\" in relative
         or ".." in posix.parts
         or posixpath.normpath(relative) != relative
+        or (
+            relative.lower().startswith("standards/")
+            and not relative.startswith("standards/")
+        )
     ):
         raise StandardsError(
             f"normative_path_escape: {entry_id}: {relative} "
             "(manifest rows are '/'-separated repo-relative canonical paths, "
-            "#138; a backslash, drive, absolute, or non-canonical "
-            "'./'/'../'/'//' form dodges the 'standards/' prefix that routes "
+            "#138; a backslash, drive, absolute, non-canonical './'/'../'/'//', "
+            "or case-camouflaged form dodges the 'standards/' prefix that routes "
             "a row to the corpus-pin authority)"
         )
 

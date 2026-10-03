@@ -750,3 +750,20 @@ def test_dot_prefix_dev_normative_row_refuses_at_load(tmp_path: Path) -> None:
     )
     with pytest.raises(StandardsError, match=r"normative_path_escape: demo:"):
         load_manifest(root)
+
+
+def test_case_camouflaged_prefix_row_refuses_at_load(tmp_path: Path) -> None:
+    # The case-camouflage form (fold addendum 2026-10-03, lane A MEDIUM):
+    # 'Standards/...' dodges the raw prefix check on every host and, on
+    # case-insensitive filesystems (APFS, default NTFS), still resolves
+    # into the standards tree — is_file() passes, the pin authority is
+    # skipped, and the export's mapping launders (lane A captured it
+    # shipping at the pre-fold tip on macOS). Case-sensitive hosts refuse
+    # the row later as missing_normative_file, so this load arm is the
+    # portable pin; the end-to-end laundering is macOS/APFS-only.
+    standards = _planted_tree(
+        tmp_path, {"title": "Demo schema", "description": "No version mentioned"}
+    )
+    _rewrite_normative(standards, ["Standards/demo/0.2.0-dev/demo.schema.json"])
+    with pytest.raises(StandardsError, match=r"normative_path_escape: demo:"):
+        load_manifest(standards)

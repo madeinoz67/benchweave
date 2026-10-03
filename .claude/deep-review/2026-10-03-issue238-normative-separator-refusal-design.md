@@ -389,3 +389,40 @@ CON-7 amendment is reworded in the same fold: the helper now EXCEEDS repin's
 lexicon (repin has no identity predicate — a potential repin follow-up, not
 folded here: repin's rows are machine-written canonical by construction,
 section 4), and "separator-spoofed" alone under-describes the dodge set.
+
+## Addendum 2026-10-03 (second) — lane A corrections: case camouflage, scan honesty, residual disclosure
+
+Three corrections from adversary lane A, folded same-branch:
+
+1. **Case-camouflaged prefix (lane A MEDIUM).** `'Standards/...'` dodges
+   the raw prefix everywhere and, on case-insensitive hosts (APFS, default
+   NTFS), still resolves into the standards tree — lane A captured the
+   export shipping it at the pre-fold tip on macOS. `posixpath.normpath`
+   cannot catch it (identity holds), so the helper gains its own
+   predicate: refuse when `relative.lower().startswith("standards/")` and
+   not `relative.startswith("standards/")`. One RED arm pins it
+   (`test_case_camouflaged_prefix_row_refuses_at_load`; the end-to-end
+   laundering is case-insensitive-host-only, so the load arm is the
+   portable pin). Case-sensitive hosts previously refused the row at
+   validate as `missing_normative_file`; the load boundary now closes it
+   for all hosts.
+2. **Section 8 scan honesty (lane A LOW, G4).** The record's keyword scan
+   claimed `sha256: 0` over its named expected diff; the diff carries one
+   genuine added-line hit — the `test_repin.py` fixture's
+   `"sha256": "0" * 64` corpus-row key, unavoidable by format. Honest
+   count: 1, wrong at writing time (the record's prose avoided the word;
+   the fixture could not). Tier call unaffected — a test-fixture dict key,
+   not digest machinery — and re-derived over the fold diffs: still 1.
+3. **Residual disclosure and blast radius (lane A MEDIUM mechanism note +
+   NIT).** Repin's mirrored precedent carries filesystem backstops
+   (`pinned_file_absent`, `corpus_file_unpinned`) that the load boundary
+   structurally lacks (load does no filesystem access, by design); the
+   load lexicon + identity + case predicates are therefore weaker than
+   repin's surface for rows that pass every lexical check yet name
+   unpinned bytes — those remain caught at validate
+   (`missing_normative_file` on case-sensitive hosts) and by export's
+   bundle-path collision check. Separately, the pre-fix blast radius was
+   understated: one planted non-standards row multiplies into EVERY
+   carried row of its entry via export's live-source listing (lane A
+   captured the otdp leak row in all three carried versions' bundle
+   rows), not only the active row.
