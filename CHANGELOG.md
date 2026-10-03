@@ -572,6 +572,7 @@ All notable changes to this project will be documented in this file.
 - Convert the two remaining operator-guide section headings
 - Resolve registry check-count and registry-version statements against machine sources (#359)
 - Residual register fixes for the #353 four
+- SA-PREVIEW design record, PRD 11 v0.3 amendments, obligation-12 pin row, SDK pointer (#364)
 
 ### Features
 
