@@ -546,5 +546,33 @@ def test_export_refuses_a_separator_spoofed_normative_row(tmp_path: Path) -> Non
 
     with pytest.raises(StandardsError, match="normative_path_escape"):
         export_bundle(root, tmp_path / "out")
-    assert not (tmp_path / "out").exists(), "export must not leave partial output"
+    assert not (tmp_path / "out").exists(), "export must not write before the refusal"
+    assert not (tmp_path / "out.staging").exists(), "no staging behind"
+
+
+def test_export_refuses_a_dot_prefix_normative_row(tmp_path: Path) -> None:
+    """Lane B's end-to-end repro (fold addendum 2026-10-03): the dot-prefixed
+    row passes validate raw (``./standards/...`` fails ``startswith`` raw but
+    resolves to the planted file) and ``_entry``'s basename mapping ships it
+    as ``otdp/leak.json`` — pre-patch the export genuinely SUCCEEDS; the
+    refusal is the load-side one, before any write."""
+    root = tmp_path / "repo"
+    shutil.copytree(ROOT / "standards", root / "standards")
+    (root / "src/benchweave/presentation").mkdir(parents=True)
+    shutil.copy(
+        ROOT / "src/benchweave/presentation/contracts.py",
+        root / "src/benchweave/presentation/contracts.py",
+    )
+    spoofed = "./standards/otdp/0.2.0-dev/leak.json"
+    leak = root / "standards/otdp/0.2.0-dev/leak.json"
+    leak.parent.mkdir(parents=True, exist_ok=True)
+    leak.write_text('{"title": "undeclared bytes"}\n', encoding="utf-8")
+    document = json.loads((root / "standards/standards-manifest.json").read_bytes())
+    entry = next(e for e in document["standards"] if e["id"] == "otdp")
+    entry["normative"].append(spoofed)
+    (root / "standards/standards-manifest.json").write_text(json.dumps(document))
+
+    with pytest.raises(StandardsError, match="normative_path_escape"):
+        export_bundle(root, tmp_path / "out")
+    assert not (tmp_path / "out").exists(), "export must not write before the refusal"
     assert not (tmp_path / "out.staging").exists(), "no staging behind"

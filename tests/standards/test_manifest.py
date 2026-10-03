@@ -709,3 +709,44 @@ def test_non_standards_parity_shaped_row_still_loads(tmp_path: Path) -> None:
         "standards/demo/0.1.0/demo.schema.json",
         "src/benchweave/presentation/contracts.py",
     )
+
+
+def test_dot_prefix_active_normative_row_refuses_at_load(tmp_path: Path) -> None:
+    # The './' class (fold addendum 2026-10-03, lane B HIGH): pathlib
+    # collapses '.' parts — PurePosixPath('./standards/x').parts ==
+    # ('standards', 'x') — so the parts tests alone admit a row whose RAW
+    # string dodges the 'standards/' prefix and launders.
+    standards = _planted_tree(
+        tmp_path, {"title": "Demo schema", "description": "No version mentioned"}
+    )
+    _rewrite_normative(standards, ["./standards/demo/0.2.0-dev/demo.schema.json"])
+    with pytest.raises(StandardsError, match=r"normative_path_escape: demo:"):
+        load_manifest(standards)
+
+
+def test_dot_prefix_arbitrary_file_row_refuses_at_load(tmp_path: Path) -> None:
+    # The arbitrary-file laundering shape: no standards/ segment anywhere,
+    # no -dev, no corpus row — a dot-prefixed row ships ANY unpinned
+    # checkout file under <id>/<basename> through the export's mapping.
+    standards = _planted_tree(
+        tmp_path, {"title": "Demo schema", "description": "No version mentioned"}
+    )
+    _rewrite_normative(standards, ["./operator-notes.txt"])
+    with pytest.raises(StandardsError, match=r"normative_path_escape: demo:"):
+        load_manifest(standards)
+
+
+def test_dot_prefix_dev_normative_row_refuses_at_load(tmp_path: Path) -> None:
+    # F3's shape: containment passes the dot-prefixed dev row (normpath
+    # collapses it INTO the head prefix) and only the canonical-form
+    # identity catches it.
+    root = _dev_head_tree(
+        tmp_path,
+        dev_block={
+            "version": "0.2.0-dev",
+            "opened": "2026-09-23",
+            "normative": ["./standards/demo/0.2.0-dev/leak.json"],
+        },
+    )
+    with pytest.raises(StandardsError, match=r"normative_path_escape: demo:"):
+        load_manifest(root)

@@ -351,3 +351,41 @@ counts above cover this record's expected diff only.
 3. The tier call in §8 governs review depth; if the owner prefers the deep lane
    regardless (the refusal sits in the standards trust boundary's approach path), the
    Tier-3 refute is cheap to add and nothing in this design depends on the tier.
+
+
+## Addendum 2026-10-03 — lane B HIGH fold: the `./` class and the normpath-identity closure
+
+Lane B's refute reproduced a HIGH on the shipped fix, end-to-end on POSIX: a
+LEADING `./` segment dodges every predicate of `_check_normative_row_path`
+(`PurePosixPath('./standards/x').parts == ('standards', 'x')` — pathlib
+collapses `.` parts), while the RAW string fails `startswith('standards/')`,
+so `_check_normative_path` early-returns (no corpus-pin authority) and
+`_entry`'s basename mapping launders the row. Captured repros: a row
+`./standards/otdp/0.2.0-dev/leak.json` on otdp's active normative exported
+successfully and shipped `otdp/leak.json` with the planted dev body; a row
+`./operator-notes.txt` (no `standards/` segment, no `-dev`, no corpus row)
+shipped `interface/operator-notes.txt` — an arbitrary unpinned checkout file
+under a standards id. The dev loop admitted the same class (F3): a
+`./`-prefixed dev row passes containment (normpath collapses it into the head
+prefix) and the parts-based mirror saw no `..`.
+
+This corrects section 2's claim that export "can never reach `_entry` with a
+spoofed row": that held for the forms the section-2 lexicon covered
+(backslash, traversal, `..`, absolute) and the `./` form sat outside it — the
+class is bigger than the lexicon, the claim's mechanism was not wrong. The
+fold adds ONE identity predicate to the same helper — refuse when
+`posixpath.normpath(relative) != relative` — closing `.`, `./`, `//`,
+interior `./` and trailing-slash forms at once. Committed bytes are canonical
+(machine check at the fold: 60 standards-manifest normative rows + 226 corpus
+rows, zero non-canonical), so nothing legitimate fires; the discrimination
+arm and every existing planted-tree test still load. The refusal prefix
+`normative_path_escape` is unchanged; the message enumeration now names
+non-canonical forms honestly. Four RED arms pin the class (three load arms —
+an active `./` row, an arbitrary-file `./` row, a `./` dev row — plus the
+end-to-end export arm; all four DID NOT RAISE pre-patch, all green
+post-patch). The eight Step-1 keywords: zero occurrences in this addendum and
+the fold diff, stated under the same budget discipline as section 8. The
+CON-7 amendment is reworded in the same fold: the helper now EXCEEDS repin's
+lexicon (repin has no identity predicate — a potential repin follow-up, not
+folded here: repin's rows are machine-written canonical by construction,
+section 4), and "separator-spoofed" alone under-describes the dodge set.

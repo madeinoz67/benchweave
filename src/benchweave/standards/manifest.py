@@ -183,7 +183,13 @@ def _check_normative_row_path(entry_id: str, relative: str) -> None:
     under ``<id>/<basename>`` — on Windows the backslash form resolves into
     the real directory tree, so the bytes land in the bundle. Mirrors
     ``repin._check_row_path`` (pin_path_escape) for this surface; the two
-    prefixes stay two vocabularies (issue #238).
+    prefixes stay two vocabularies (issue #238). One check goes BEYOND that
+    lexicon: the canonical-form identity, ``posixpath.normpath(relative) ==
+    relative``. pathlib collapses ``.`` parts — ``PurePosixPath('./x').parts
+    == ('x',)`` — so the parts tests alone admit a ``./``-prefixed row whose
+    RAW string still fails ``startswith('standards/')`` and launders; the
+    identity closes ``./``, interior ``./``, ``//`` and trailing-slash forms
+    at once (fold addendum 2026-10-03, lane B HIGH).
     """
     posix = PurePosixPath(relative)
     windows = PureWindowsPath(relative)
@@ -194,12 +200,14 @@ def _check_normative_row_path(entry_id: str, relative: str) -> None:
         or bool(windows.drive)
         or "\\" in relative
         or ".." in posix.parts
+        or posixpath.normpath(relative) != relative
     ):
         raise StandardsError(
             f"normative_path_escape: {entry_id}: {relative} "
-            "(manifest rows are '/'-separated repo-relative paths, #138; a "
-            "backslash, drive, absolute, or ../ traversal form dodges the "
-            "'standards/' prefix that routes a row to the corpus-pin authority)"
+            "(manifest rows are '/'-separated repo-relative canonical paths, "
+            "#138; a backslash, drive, absolute, or non-canonical "
+            "'./'/'../'/'//' form dodges the 'standards/' prefix that routes "
+            "a row to the corpus-pin authority)"
         )
 
 
