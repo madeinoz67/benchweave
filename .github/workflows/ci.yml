@@ -263,3 +263,24 @@ jobs:
         with:
           name: windows-evidence-junit
           path: windows-evidence.xml
+
+  sdk-drift:
+    # The mount-staleness lane (issue #347 WS1, R-2): the committed
+    # packages/sdk gitlink must sit at the SDK's latest vX.Y.Z release
+    # tag (dereferenced commit). Every other lane proves the mount's
+    # CONSISTENCY (lock vs vendored tree vs manifest); this one proves
+    # FRESHNESS — the #347 symptom was a self-consistent mount passing
+    # every lane green while behind the latest release. Deliberately no
+    # submodule checkout: the gitlink is read from the superproject's
+    # committed tree, and a stale-but-consistent mount is the failure
+    # being detected, not noise. Exit contract: 0 current, 1 drift,
+    # 2 indeterminate — a fetch failure fails closed; a network blip
+    # must never read as "no drift".
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check packages/sdk gitlink against the latest SDK release tag
+        run: python3 scripts/check_sdk_submodule_drift.py
