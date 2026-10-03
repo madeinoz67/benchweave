@@ -7,7 +7,7 @@
 
 | # | Class | Examples | Mutability | Validated by | Home |
 |---|-------|----------|------------|--------------|------|
-| 1 | Normative machine corpus | schemas, catalogs, vectors, examples | digest-frozen; versioned errata only | devices, registry, execution and interface suites | `standards/<id>/<version>/` |
+| 1 | Normative machine corpus | schemas, catalogues, vectors, examples | digest-frozen; versioned errata only | devices, registry, execution and interface suites | `standards/<id>/<version>/` |
 | 2 | Standards prose companions | `otdp-specification.md`, `execution-contract.md`, `validation-report.md` | versioned with its standard | same suites + link checker | `standards/<id>/<version>/` (whole standard together) |
 | 3 | Governance locks | `standards/standards-manifest.json`, `standards/corpus-manifest.json` | row-per-change, CI-gated | manifest gates | `standards/` root |
 | 4 | Architecture baseline | `smart-test-gateway-architecture-v1.5.md`, decisions, closure, compatibility | admitted record, near-immutable | closure suite | `docs/` |
@@ -45,8 +45,9 @@ the released version and removes it.
    compatibility register, planning history and the changelog may name retired paths.
    They are records, not routing.
 6. **The public site renders, but it does not copy.** Class 11 is the one class that
-   *presents* other classes: the docs site stages classes 2 and 8 (and the changelog)
-   at build time into gitignored trees and renders them. Nothing under `website/` or
+   *presents* other classes. At build time, the docs site stages classes 2 and 8 into
+gitignored trees and renders them. The docs site stages and renders the changelog
+in the same way. Nothing under `website/` or
    the build output is a second home for any document.
 
 Amendments to rule 6:
@@ -59,8 +60,8 @@ Amendments to rule 6:
   `index.qmd`, `tests/contract/test_website_stamps.py`). Two-component prose
   claims remain the named residual.
 - 2026-10-02 (issue #224, invariants CON-13 amendment, rewritten to the pivot
-  the same day): the plugin catalogue is generated and served from the registry
-  repository. The gateway website carries no registry-derived bytes. The pivot
+  the same day): the registry repository generates and serves the plugin catalogue.
+  The gateway website carries no registry-derived bytes. The pivot
   deleted the mirror, its pin and the generated panel block that the amendment
   first drafted. The registry repository's own Pages pipeline renders the
   catalogue as a deploy-time artifact. The plugins panel is a static teaser
