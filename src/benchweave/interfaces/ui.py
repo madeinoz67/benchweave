@@ -701,22 +701,20 @@ def build_ui_router(
             source = _HOST_ASSETS[name]
         elif name in asset_names:
             source = ui_assets.ASSETS_DIR / name
+        # Allowlist invariant (the justification for both suppressions
+        # below): `name` reached this Path only through fixed-set
+        # membership (_HOST_ASSETS / the committed inventory names) — the
+        # route 404s every other value, and the refute lane's 14
+        # traversal/encoding variants all 404 (pinned in
+        # test_vendored_assets_are_served_from_the_inventory). The taint
+        # rule does not model set-membership sanitization.
         if (
             source is None
-            # codeql[py/path-injection] False positive by construction:
-            # `name` reached this Path only through fixed-set membership
-            # (_HOST_ASSETS / the committed inventory names) — the route
-            # 404s every other value, and the refute lane's 14
-            # traversal/encoding variants all 404 (pinned in
-            # test_vendored_assets_are_served_from_the_inventory). The
-            # taint rule does not model set-membership sanitization.
-            or not source.is_file()
+            or not source.is_file()  # codeql[py/path-injection] allowlist-only Path; see invariant
         ):
             return _not_found()
         return FileResponse(
-            # codeql[py/path-injection] Same allowlist invariant as above:
-            # the Path comes from a fixed-name set, never a free join.
-            source,
+            source,  # codeql[py/path-injection] allowlist-only Path; see invariant
             media_type=_CONTENT_TYPES.get(source.suffix, "application/octet-stream"),
         )
 
