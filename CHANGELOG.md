@@ -280,6 +280,7 @@ All notable changes to this project will be documented in this file.
 - Refuse separator-spoofed normative rows at load (issue #238)
 - Fold lane B HIGH — refuse non-canonical (./) normative rows too (issue #238)
 - Fold lane A MEDIUM — refuse case-camouflaged normative prefixes (issue #238)
+- The G2b fold rows — H1–H4, F2/F3, the GW-22 addendum (#368; follow-up #369) (#372)
 
 ### Documentation
 
