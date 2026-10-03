@@ -363,17 +363,13 @@ def test_cursor_expired_restarts_dedupes_and_renders_advisory(
         "retry_after_ms",
     }
 
-    restarted = _stream(gen)  # poll from after=None: the replay's page
+    restarted = _stream(gen)  # the restart's tick drains from after=None
     assert 'data-bw-refusal-code="cursor_expired"' in restarted
+    assert 'data-bw-event-sequence="5"' in restarted  # drained this tick
     for old in ("1", "2", "3", "4"):
         assert f'data-bw-event-sequence="{old}"' not in restarted  # dedupe
 
-    # The replay pages forward and delivers the unseen sequence 5; the
-    # advisory is one-shot — this fragment carries no refusal row.
-    caught_up = _stream(gen)
-    assert 'data-bw-event-sequence="5"' in caught_up
-    assert "data-bw-refusal-code" not in caught_up
-
+    # The advisory is one-shot: the next fragment carries no refusal.
     ops._emit("run_changed", BENCH_ID, "run-1")  # sequence 6
     next_fragment = _stream(gen)
     assert 'data-bw-event-sequence="6"' in next_fragment
@@ -381,7 +377,142 @@ def test_cursor_expired_restarts_dedupes_and_renders_advisory(
 
     delivered = re.findall(
         r'data-bw-event-sequence="(\d+)"',
-        "".join([restarted, caught_up, next_fragment]),
+        "".join([restarted, next_fragment]),
+    )
+    assert len(delivered) == len(set(delivered)), delivered
+    _close(gen)
+
+
+# --- FOLD-1: no silent row drop, one flush per poll tick ------------------------
+
+
+def test_probe_renders_every_retained_event(tmp_path: Path) -> None:
+    """FOLD-1 (two-lane MEDIUM): a retained window larger than the old
+    render cap must render IN FULL — the probe fragment carries every
+    row (25 of 25 here; the dropped-rows defect rendered 20 and advanced
+    the dedupe mark past the five it never emitted)."""
+    ops, _store, sessions, session_id = _seam(tmp_path)
+    for _ in range(25):
+        ops._emit("run_changed", BENCH_ID, "run-1")
+    gen = _bridge_events(
+        operations=ops,
+        sessions=sessions,
+        session_id=session_id,
+        bench_id=BENCH_ID,
+        probe=ops.events_get(IDENT, BENCH_ID, after=None, limit=1000),
+        page_limit=1000,
+        poll_ms=100,
+        render=_render,
+        sleep=_instant_sleep,
+    )
+    _stream(gen)  # retry
+    probe_fragment = _stream(gen)
+    assert probe_fragment.count('data-bw-event-sequence="') == 25
+    _close(gen)
+
+
+def test_midstream_burst_drains_to_one_flush(tmp_path: Path) -> None:
+    """FOLD-1's paging half: a burst spanning several PAGES (25 events
+    against page_limit=8) lands in ONE poll window and flushes as ONE
+    message event carrying every sequence — the poll tick owns the
+    whole batch, reading with the returned cursor until a short page,
+    with nothing dropped and nothing delivered twice."""
+    ops, _store, sessions, session_id = _seam(tmp_path)
+    ops._emit("run_changed", BENCH_ID, "run-1")  # sequence 1, the probe
+    gen = _bridge_events(
+        operations=ops,
+        sessions=sessions,
+        session_id=session_id,
+        bench_id=BENCH_ID,
+        probe=ops.events_get(IDENT, BENCH_ID, after=None, limit=8),
+        page_limit=8,
+        poll_ms=100,
+        render=_render,
+        sleep=_instant_sleep,
+    )
+    _stream(gen)  # retry
+    _stream(gen)  # probe: sequence 1
+    for _ in range(25):  # sequences 2-26, all inside one poll window
+        ops._emit("run_changed", BENCH_ID, "run-1")
+    flush = _stream(gen)
+    events = _parse_sse(flush)
+    messages = [(name, data) for name, data in events if name is None]
+    assert len(messages) == 1, events
+    delivered = re.findall(r'data-bw-event-sequence="(\d+)"', messages[0][1])
+    assert len(delivered) == 25, delivered
+    assert len(set(delivered)) == 25, delivered
+    assert delivered == [str(n) for n in range(2, 27)]
+    _close(gen)
+
+
+def test_hwm_never_advances_past_undelivered_rows(tmp_path: Path) -> None:
+    """FOLD-1's dedupe half, at its now-real site: a restart-class
+    failure MID-DRAIN discards the partial batch — the mark never
+    advanced over rows no fragment carried — so the restart's from-None
+    listing re-delivers them (delivered-once holds; nothing is lost
+    that retention still holds). The wrapper delegates page one, then
+    trims past the drain cursor and lets the seam raise the REAL
+    event_gap on page two."""
+    ops, store, sessions, session_id = _seam(tmp_path)
+    for _ in range(6):
+        ops._emit("run_changed", BENCH_ID, "run-1")
+
+    class _GapOnSecondPage:
+        """Delegates every read; on the SECOND page of a drain, trims the
+        window past the drain cursor first (the seam then raises
+        event_gap on that same, real read path)."""
+
+        def __init__(self, real: Operations) -> None:
+            self._real = real
+            self._pages = 0
+
+        def events_get(
+            self, identity: Identity, bench_id: str, *, after: str | None, limit: int
+        ) -> dict[str, Any]:
+            if after is not None:
+                self._pages += 1
+                if self._pages == 2:
+                    # Retention overtakes the drain cursor mid-tick: only
+                    # the newest row survives.
+                    store.trim_stream(STREAM_ID, keep=1)
+            return self._real.events_get(identity, bench_id, after=after, limit=limit)
+
+    double = _GapOnSecondPage(ops)
+    gen = _bridge_events(
+        operations=cast(Any, double),
+        sessions=sessions,
+        session_id=session_id,
+        bench_id=BENCH_ID,
+        probe=ops.events_get(IDENT, BENCH_ID, after=None, limit=2),
+        page_limit=2,
+        poll_ms=100,
+        render=_render,
+        sleep=_instant_sleep,
+    )
+    _stream(gen)  # retry
+    probe_fragment = _stream(gen)  # probe: sequences 1-2
+    assert probe_fragment.count('data-bw-event-sequence="') == 2
+
+    # The tick drains: page one carries 3-4; page two hits the trim and
+    # the seam raises event_gap — the 3-4 page is DISCARDED (never on a
+    # fragment, mark not advanced) and the bw-gap event fires.
+    gap = _stream(gen)
+    assert gap.startswith("event: bw-gap\n")
+    assert 'data-bw-event-sequence="3"' not in gap  # nothing rendered mid-drain
+
+    # The restart from after=None re-lists the retained window: the
+    # trim kept [6]; the post-gap emission added 7. Six was never
+    # delivered and IS retained, so it renders; 3-5 were trimmed — the
+    # honest gap; 1-2 stay deduped; nothing twice.
+    ops._emit("run_changed", BENCH_ID, "run-1")  # sequence 7, retained
+    restarted = _stream(gen)
+    assert 'data-bw-refusal-code="event_gap"' in restarted
+    assert 'data-bw-event-sequence="6"' in restarted
+    assert 'data-bw-event-sequence="7"' in restarted
+    assert 'data-bw-event-sequence="1"' not in restarted
+    delivered = re.findall(
+        r'data-bw-event-sequence="(\d+)"',
+        "".join([probe_fragment, gap, restarted]),
     )
     assert len(delivered) == len(set(delivered)), delivered
     _close(gen)

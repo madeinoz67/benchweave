@@ -61,10 +61,10 @@ from benchweave.interfaces.sessions import (
     SessionStore,
 )
 
-#: One batch fragment's row bound — a presentation bound (how many rows
-#: one flushed fragment carries), never a protective envelope; it never
-#: exceeds the adapter's ``max_page_size`` which governs the seam reads.
-_BATCH_ROWS = 20
+#: The poll tick drains the retained window to a short page before
+#: flushing ONE message event (GW-34 coalescing + FOLD-1: no row cap —
+#: each seam read is bounded by ``max_page_size``, and the drain loop
+#: bounds the tick by the window itself; every drained row renders).
 
 
 def sse_message(data: str) -> str:
@@ -103,7 +103,8 @@ def _watermark_html(code: str, details: Mapping[str, Any]) -> Markup:
 def _fresh(
     events: list[dict[str, Any]], delivered: dict[str, int]
 ) -> list[dict[str, Any]]:
-    """The events this bridge has not delivered yet.
+    """The events this bridge has not delivered yet — a PURE filter (the
+    caller advances the mark over what it actually emits).
 
     Dedupe is by ``(stream_id, sequence)`` — realized as the highest
     delivered sequence per stream (sequences are per-stream monotonic
@@ -119,11 +120,17 @@ def _fresh(
             continue  # a sequence-less row cannot be paged honestly
         if sequence > delivered.get(stream, 0):
             fresh.append(event)
-    for event in fresh:
+    return fresh
+
+
+def _advance(delivered: dict[str, int], emitted: list[dict[str, Any]]) -> None:
+    """Advance the dedupe high-water mark over the rows an emit actually
+    carried — never past rows that were read but not emitted (the FOLD-1
+    rule: the mark follows the wire, not the read)."""
+    for event in emitted:
         stream = str(event.get("stream_id", ""))
         sequence = int(str(event.get("sequence", "0")))
         delivered[stream] = max(delivered.get(stream, 0), sequence)
-    return fresh
 
 
 async def _bridge_events(
@@ -148,14 +155,15 @@ async def _bridge_events(
     cursor: str | None = None
     try:
         yield sse_retry(poll_ms)
-        batch = _fresh(list(probe["events"]), delivered)
+        fresh = _fresh(list(probe["events"]), delivered)
         fragment = render(
             "event-batch.j2",
-            events=batch[:_BATCH_ROWS],
+            events=fresh,
             gap_html=None,
             advisory_html=None,
         )
         yield sse_message(fragment)
+        _advance(delivered, fresh)
         # The probe's cursor seeds the loop — the listing continues from
         # where the probe stopped (a forgotten seed makes every poll run
         # from after=None, which can never gap and re-pages the head).
@@ -172,9 +180,26 @@ async def _bridge_events(
                 expires_at=record.expires_at,
             )
             try:
-                result = operations.events_get(
-                    identity, bench_id, after=cursor, limit=page_limit
-                )
+                # One poll tick owns the WHOLE backlog: read pages with
+                # the returned cursor until a short/empty page, so a
+                # burst spanning pages still flushes as one boundary and
+                # no row is silently dropped (FOLD-1). Each read is
+                # bounded by ``page_limit``; the drain is bounded by the
+                # retained window (every full page strictly advances the
+                # cursor). A restart-class failure mid-drain discards the
+                # partial batch — the mark never advanced, and the
+                # restart's from-None listing re-delivers whatever
+                # retention still holds.
+                batch: list[dict[str, Any]] = []
+                poll_cursor: str | None = cursor
+                while True:
+                    result = operations.events_get(
+                        identity, bench_id, after=poll_cursor, limit=page_limit
+                    )
+                    batch.extend(_fresh(list(result["events"]), delivered))
+                    poll_cursor = result["cursor"]
+                    if len(result["events"]) < page_limit:
+                        break  # short or empty page: the window is drained
             except OperationFailure as fail:
                 code = fail.failure.code
                 if code in ("event_gap", "cursor_expired"):
@@ -199,11 +224,11 @@ async def _bridge_events(
                     "bw-end", json.dumps(fail.failure.body()["error"], sort_keys=True)
                 )
                 break
-            batch = _fresh(list(result["events"]), delivered)
+            cursor = poll_cursor
             if batch or pending_fragment:
                 fragment = render(
                     "event-batch.j2",
-                    events=batch[:_BATCH_ROWS],
+                    events=batch,
                     gap_html=_watermark_html("event_gap", gap) if gap else None,
                     advisory_html=(
                         _watermark_html("cursor_expired", advisory)
@@ -212,13 +237,13 @@ async def _bridge_events(
                     ),
                 )
                 yield sse_message(fragment)
+                _advance(delivered, batch)
                 # The gap warning is persistent (GW-31); the advisory is
                 # one-shot (its §C.3 severity).
                 advisory = None
                 pending_fragment = False
             else:
                 yield ": keep-alive\n\n"
-            cursor = result["cursor"]
     finally:
         sessions.deregister_bridge(session_id, bench_id)
 
