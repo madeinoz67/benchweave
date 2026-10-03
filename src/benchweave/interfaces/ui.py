@@ -60,6 +60,7 @@ from benchweave.interfaces.sessions import (
 )
 from benchweave.interfaces.ui_read import register_read_pages
 from benchweave.interfaces.ui_stream import register_stream_route
+from benchweave.state.store import Store
 
 _LOG = logging.getLogger(__name__)
 
@@ -463,6 +464,7 @@ def build_ui_router(
     audience: str = "stg",
     now_epoch: Callable[[], int] | None = None,
     content: Any = None,
+    store: Store | None = None,
 ) -> APIRouter:
     """The UI routes over the seam. UNPREFIXED by design: this router is
     included in the UI sub-application which itself mounts at ``/ui``
@@ -696,7 +698,9 @@ def build_ui_router(
         router,
         operations=operations,
         content=content,
+        store=store,
         limits=limits,
+        now_epoch=epoch,
         resolve_session=lambda request: _resolve_session(request, sessions),
         session_identity=_session_identity,
         page=_page,
@@ -778,6 +782,7 @@ def build_ui_app(
     now_epoch: Callable[[], int] | None = None,
     guards: frozenset[str] = DEFAULT_GUARDS,
     content: Any = None,
+    store: Store | None = None,
 ) -> FastAPI:
     """The UI sub-application: the router plus its guard set.
 
@@ -810,6 +815,7 @@ def build_ui_app(
             audience=audience,
             now_epoch=now_epoch,
             content=content,
+            store=store,
         )
     )
     install_ui_guards(

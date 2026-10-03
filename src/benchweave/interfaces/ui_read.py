@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import logging
 from collections.abc import Callable, Mapping
 from typing import Any
@@ -36,6 +37,8 @@ from benchweave.interfaces.identity import Identity
 from benchweave.interfaces.operations import Operations
 from benchweave.interfaces.sessions import SessionRecord
 from benchweave.interfaces.ui_presentation import compose_device_presentation
+from benchweave.interfaces.ui_readings import latest_retained_readings, populate_tiles
+from benchweave.state.store import Store
 
 _LOG = logging.getLogger(__name__)
 
@@ -50,7 +53,9 @@ def register_read_pages(
     *,
     operations: Operations,
     content: ContentStore | None,
+    store: Store | None,
     limits: Mapping[str, int],
+    now_epoch: Callable[[], int],
     resolve_session: Callable[[Request], SessionRecord | None],
     session_identity: Callable[[SessionRecord], Identity],
     page: Callable[..., HTMLResponse],
@@ -62,10 +67,14 @@ def register_read_pages(
     The helpers are ``build_ui_router``'s own closures — the same
     session resolution, page shell and failure translation the index
     uses, so every page shares one refusal shape and one chrome.
+    ``store`` (the single-writer state store) and ``now_epoch`` (the
+    resolved render clock) feed the device page's reading-tile join
+    (#369); both stay None/unused wherever the join is not composed.
     """
     max_page_size = int(limits.get("max_page_size", 1000))
     max_chunk_bytes = int(limits.get("max_chunk_bytes", 65_536))
     max_json_bytes = int(limits.get("max_json_bytes", 1_048_576))
+    reading_scan_rows = int(limits.get("ui_reading_scan_rows", 200))
 
     def _authed(request: Request) -> tuple[SessionRecord, Identity] | None:
         """The live session and its seam identity, or ``None`` (the
@@ -149,6 +158,56 @@ def register_read_pages(
             return failure_page(fail)
         descriptor_raw = base64.b64decode(document["original_utf8_base64"])
         presentation = compose_device_presentation(content, descriptor_raw)
+        if store is not None and content is not None:
+            # The reading-tile join (#369, Fork A): composition-time,
+            # read-only, bench-scoped — the CON-5 amendment's ruled
+            # boundary. Failures NEVER fail the page: an exception here
+            # renders the conservative tile and logs loudly (GW-22's
+            # honest floor is the join's failure mode too).
+            try:
+                devices, _next = operations.device_list(
+                    identity, bench_id, limit=max_page_size, cursor=None
+                )
+                owners: dict[str, int] = {}
+                for item in devices:
+                    if str(item["device_id"]) == device_id:
+                        item_document = document
+                    else:
+                        item_document = operations.document_get(
+                            identity, str(item["descriptor"]["sha256"])
+                        )
+                    item_raw = base64.b64decode(
+                        item_document["original_utf8_base64"]
+                    )
+                    for parameter in json.loads(item_raw).get("parameters", []):
+                        owner_key = str(parameter.get("name", ""))
+                        owners[owner_key] = owners.get(owner_key, 0) + 1
+                # The census is bench-CURRENT: a sibling that declared the
+                # parameter at run time but is no longer commissioned
+                # escapes the count (design D7 — historic cross-device
+                # ambiguity is not caught here).
+                now_epoch_ms = now_epoch() * 1000
+                presentation = populate_tiles(
+                    presentation,
+                    latest_retained_readings(
+                        store,
+                        content,
+                        bench_id=bench_id,
+                        device_id=device_id,
+                        sibling_parameter_owners=owners,
+                        now_epoch_ms=now_epoch_ms,
+                        scan_rows=reading_scan_rows,
+                    ),
+                    json.loads(descriptor_raw),
+                    now_epoch_ms=now_epoch_ms,
+                )
+            except Exception:
+                _LOG.exception(
+                    "reading-tile join failed for bench %s device %s;"
+                    " rendering conservative tiles",
+                    bench_id,
+                    device_id,
+                )
         return page(
             "device.j2",
             title=f"Device {device_id}",

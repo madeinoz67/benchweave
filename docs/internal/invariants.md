@@ -354,7 +354,14 @@ rather than rewriting the history — that is how this file earns trust.
   `Failure` was minted. I02's read-route half and the observe-no-control pin landed with
   G2b; I09's cursor half landed with G2c's bridge — the bridge's listing cursor is
   server-held, and no `/ui` response body, page or stream, carries a cursor-shaped
-  value).- **[CON-6]** MCP auth is fail-closed at two layers — an `StgTokenVerifier` (FastMCP
+  value). The device page's reading-tile composition may read the
+  single-writer store read-only (admitted documents, retained evidence rows
+  and their digest-verified artifacts) for rendering data the frozen seam
+  cannot enumerate; authorization, refusals and cursors remain seam-mediated,
+  the join is bench-scoped by construction, and every rendered value is
+  digest-verified gateway evidence or the honest `Unavailable` —
+  `src/benchweave/interfaces/ui_readings.py` (issue #369).
+- **[CON-6]** MCP auth is fail-closed at two layers — an `StgTokenVerifier` (FastMCP
   `TokenVerifier` over `benchweave.interfaces.identity.validate`) plus the layer beneath
   it — `src/benchweave/interfaces/mcp.py`. *An auth gap on the tool surface hands a caller
   the bench.*

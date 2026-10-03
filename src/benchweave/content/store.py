@@ -230,6 +230,33 @@ class ContentStore:
             "context_key": row[3],
         }
 
+    def evidence_rows_by_context(self, context_key: str, *, limit: int) -> list[dict[str, Any]]:
+        """Event-log evidence rows for one context key, NEWEST FIRST
+        (``stored_at`` descending, rowid as the tiebreaker — the landing
+        order), bounded by ``limit``. Read-only, typed for the interface
+        layer's composition-time reads (the reading-tile join, #369):
+        the CLI's retention/report queries read the same columns by raw
+        SQL; composition gets a store method instead of SQL in the
+        adapter. The kind filter is the join's own — it reads the
+        telemetry event lane only."""
+        rows = self._conn.execute(
+            "SELECT evidence_id, kind, content_ref_json, artifact_id, context_key,"
+            " stored_at FROM evidence WHERE context_key = ? AND kind = 'event_log'"
+            " ORDER BY stored_at DESC, rowid DESC LIMIT ?",
+            (context_key, limit),
+        ).fetchall()
+        return [
+            {
+                "evidence_id": row[0],
+                "kind": row[1],
+                "content_ref": json.loads(row[2]) if row[2] is not None else {},
+                "artifact_id": row[3],
+                "context_key": row[4],
+                "stored_at": row[5],
+            }
+            for row in rows
+        ]
+
 
 class RetainingServices(HostServices):
     """The real HostServices evidence implementation (retain_evidence).

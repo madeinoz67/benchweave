@@ -202,6 +202,17 @@ correlation id and the next action. (A session refusal — no session,
 or an expired one — shows the refusal row without a correlation id:
 nothing reached the gateway operations layer, so there is no failure
 diagnostic to join.)
+
+A device page shows reading tiles. A tile fills only with data that the
+gateway kept: telemetry observations from runs that bound the device.
+The tile shows the value, the quality, the time of the observation, and
+the run that kept it. A tile with the stale mark shows a kept
+observation that is older than the window the device descriptor
+declares; the value is still correct for the time shown. No tile shows
+a live value. When no kept observation exists for a parameter, the tile
+shows "Unavailable". Values that a run read during its steps are not
+kept, so they never fill a tile.
+
 Write actions (leases, runs, changes) are not in the UI yet.
 
 **Production secret posture.** With `BENCHWEAVE_ENV=production`, `serve`

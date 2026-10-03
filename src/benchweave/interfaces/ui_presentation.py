@@ -109,6 +109,10 @@ class PresentationTile:
     quality: str = "unknown"
     freshness: str = "Unavailable"
     stale_verdict: Literal["stale", "fresh", "no-verdict"] = "no-verdict"
+    #: The observation target's ``parameter_id`` — the key the
+    #: reading-tile join (#369) attributes retained readings by. Never
+    #: rendered: it is the tile's identity, not its content.
+    parameter_id: str | None = None
 
     @property
     def html(self) -> Markup:
@@ -308,6 +312,7 @@ def _tiles_for_page(
                     PresentationTile(
                         label=str(variable.get("id", name)),
                         unit=str(variable.get("unit", "")),
+                        parameter_id=str(target.get("parameter_id", "")) or None,
                     )
                 )
     return tiles
