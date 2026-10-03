@@ -216,6 +216,37 @@ def test_artifact_download_verifies_the_complete_digest(
     assert response.headers["content-disposition"].startswith("attachment")
 
 
+def test_artifact_download_compares_against_the_id_embedded_digest(
+    gateway: SimpleNamespace,
+) -> None:
+    """H2 (#368): the download's digest verdict compares the reassembled
+    bytes against the digest EMBEDDED IN THE ARTIFACT ID (art-<sha256>,
+    minted at admission) — not against the chunk response's own sha256,
+    which the store derives from the SAME row being read. A store-row
+    corruption therefore cannot satisfy the check: the served-or-refused
+    decision references the admission identity, and tampered bytes are
+    refused however internally consistent the row is."""
+    payload = b"admitted-bytes"
+    artifact_id = gateway.content.put_artifact(payload, NOW_ISO)
+    assert artifact_id.removeprefix("art-") == hashlib.sha256(payload).hexdigest()
+    # Corrupt the stored row AFTER admission (the API-unreachable path:
+    # only the store's own bytes moved; the id still names the admission).
+    gateway.store.connection.execute(
+        "UPDATE artifacts SET data = ? WHERE artifact_id = ?",
+        (b"tampered-bytes", artifact_id),
+    )
+    gateway.store.connection.commit()
+    response = gateway.client.get(
+        f"/ui/artifacts/{artifact_id}",
+        cookies={"bw_session": gateway.session.session_id},
+    )
+    assert response.status_code == 500, (
+        "tampered bytes were served or judged against the row's own digest"
+    )
+    assert 'data-bw-refusal-code="internal_error"' in response.text
+    assert "failed digest verification" in response.text
+
+
 def test_document_page_shows_digest_and_content(
     gateway: SimpleNamespace,
 ) -> None:
