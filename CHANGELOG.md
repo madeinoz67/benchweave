@@ -591,6 +591,9 @@ All notable changes to this project will be documented in this file.
 - Issue #316 endurance-authz design record
 - Fold wave — the full seam-skip family, grant scope, boundary
 - Issue #231 park reconcile — 2026-09-26 dispositions re-verified at main c183db4
+- Issue #294 token-freshness gate — premise-corrected pin-discipline design
+- Obligation 12 names its freshness detector; CI map gains the SDK lane row (issue #294 slice 1, design §2.3)
+- Obligation-12 red condition matches the mechanism — pin-ahead reddens too (refute LOW-1 fold)
 
 ### Features
 
