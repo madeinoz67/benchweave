@@ -812,6 +812,33 @@ carries no inline date on its face; this amendment carries its own
   are recorded residuals — the lane never claims them (NFR-S1); kind tags are
   machine-checked at write time from slice 1, with `community-shared` records
   activating in slice 5.*
+- **[REG-5a]** *Amendment (2026-10-03, issue #225 slice 3):* the namespace/lifecycle
+  clauses are true now — lifecycle records are per-op shape-enforced with ORDERING
+  semantics (a yank record's cited `status_sequence` must not exceed the served status
+  document's sequence and the served lifecycle must be `yanked`; a served `yanked`
+  status requires its yank record; a stale yank record legitimately rides a newer
+  status revision that preserves lifecycle `yanked` — ordering mirrors the resolver's
+  high-water check, and re-yank is representable with multiplicity nothing consumes
+  yet; an advisory record requires its advisory in the served status's `advisories[]`
+  and a served advisory requires its record; an unlist record removes the catalogue
+  row and touches no status document — the release stays admissible; a withdraw
+  record is pre-acceptance only, and post-publication withdrawal is advisory or
+  unlist); namespace assignment is restricted to vetted publishers under the
+  committed similarity rule with delimiter-bounded containment (records-CI refuses
+  unvetted publishers, collisions, reserved namespaces and reserved-plugin
+  near-matches under the same predicate; vetting citations must resolve); transfer
+  requires both consents naming the publishers plus a receiver vetting reference
+  resolving to a vetted publisher held to the CR-35/39 bar — a transfer record
+  without those is unrepresentable, though reassignment by abandonment remains
+  possible (bounded by the namespace rules, not by transfer records), and transfer
+  does NOT move release authority: publish-status/yank/advise authority is scoped to
+  the origin key's holder plus PR review, and existing release paths are immutable
+  history; no operation erases a signed release from history (append-only records;
+  git history is the floor); lane authorities fail closed (records present without
+  `lane-rules.json` or `publishers.json` refuse). *Held interim (issue #225 F2/F3):
+  the origin root is not yet minted — served status documents carry no signature and
+  the replay reports the typed interim until the maintainer ceremony lands; nothing
+  repo-side binds a status signature to a root today.*
   Amendment (2026-10-02, issue #224 slice 2; rewritten to the pivot the
   same day): the clause "the generated index is never hand-edited on
   either side" now has one side — the registry repository, where the
