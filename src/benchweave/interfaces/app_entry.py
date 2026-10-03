@@ -165,8 +165,12 @@ def _ui_enabled_from_env() -> bool:
 
 
 #: Seconds-granular knobs: a sub-second value is a misconfiguration,
-#: not a tuning choice (fold G3 — the 999-probe refuses at boot).
-_MS_FLOOR_KEYS = frozenset({"ui_login_code_ttl_ms", "ui_session_ttl_ms"})
+#: not a tuning choice (fold G3 — the 999-probe refuses at boot). The
+#: poll cadence (FOLD-5) joins them: a sub-second panel poll hammers
+#: the gateway and the seam, same class.
+_MS_FLOOR_KEYS = frozenset(
+    {"ui_login_code_ttl_ms", "ui_session_ttl_ms", "ui_panel_poll_ms"}
+)
 
 
 def _limits_from_env() -> dict[str, int]:
