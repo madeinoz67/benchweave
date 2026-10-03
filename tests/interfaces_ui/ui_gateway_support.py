@@ -39,6 +39,7 @@ LIMITS: dict[str, int] = {
     "ui_login_code_ttl_ms": 60000,
     "ui_session_ttl_ms": 28800000,
     "ui_max_bridges_per_session": 4,
+    "ui_reading_scan_rows": 200,
 }
 
 

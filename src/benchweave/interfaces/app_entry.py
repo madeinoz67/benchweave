@@ -111,6 +111,13 @@ _LIMITS: dict[str, int] = {
     "ui_login_code_ttl_ms": 60000,
     "ui_session_ttl_ms": 28800000,  # 8 h
     "ui_max_bridges_per_session": 4,
+    # The device-page reading-tile join's decode budget (#369): how many
+    # retained telemetry artifacts one page render may decode, newest
+    # first. A service parameter in the same class as the session knobs
+    # — NOT a bench envelope (A02's commissioning rule governs bench
+    # hazards, not page-composition budgets). Default a hint,
+    # deployment-tunable.
+    "ui_reading_scan_rows": 200,
 }
 
 #: The run-activation quota ceilings an operator may configure (issue #167,
@@ -124,6 +131,7 @@ _QUOTA_ENV_KEYS: tuple[tuple[str, str], ...] = (
     ("ui_login_code_ttl_ms", "BENCHWEAVE_UI_LOGIN_CODE_TTL_MS"),
     ("ui_session_ttl_ms", "BENCHWEAVE_UI_SESSION_TTL_MS"),
     ("ui_max_bridges_per_session", "BENCHWEAVE_UI_MAX_BRIDGES_PER_SESSION"),
+    ("ui_reading_scan_rows", "BENCHWEAVE_UI_READING_SCAN_ROWS"),
 )
 
 #: ``BENCHWEAVE_UI``: compose the browser UI or not. The default is ON
