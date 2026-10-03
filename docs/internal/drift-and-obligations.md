@@ -75,7 +75,11 @@ and remain the reviewer's job.
    verification REMAINS the integrity check (frozen ≠ rot: byte drift still reds
    the SDK build). Exit: dependency 4a — the PRD 11 standalone host with mock
    transport (SA-PREVIEW, #309) — at which point `preview_assets` is deleted from
-   the SDK and `preview-ui` becomes a shim (R-9).
+   the SDK and `preview-ui` becomes a shim (R-9). **Mount staleness (#347 WS1):**
+   the `sdk-drift` CI job holds the gitlink at the SDK's latest `vX.Y.Z` release
+   tag's dereferenced commit (`scripts/check_sdk_submodule_drift.py`; exit 1
+   drift, exit 2 indeterminate — fail closed) — staleness was invisible to every
+   consistency gate here, which is the #347 symptom.
 
 8. **The adapter protocol surface** 🪝 (the SDK protocol
    `packages/sdk/src/benchweave_sdk/interfaces.py` ↔ the gateway mirror
@@ -388,7 +392,7 @@ and remain the reviewer's job.
     `scripts/`. `tests/` and `.github/` are OUTSIDE the gates (tests
     carry legitimate fixture literals; assembly there equally so) —
     named so the denominators cannot silently move. Per-scope scanned
-    censuses are pinned (plugins 15, sdk 19, scripts 17, docs 31; the
+    censuses are pinned (plugins 15, sdk 19, scripts 18, docs 31; the
     gateway floor 93) — a denominator move is a visible same-commit diff
     (numbers read from the gate's own pins in
     `tests/standards/test_zero_literal_gate.py`, which returns to main's
@@ -576,6 +580,7 @@ and remain the reviewer's job.
 | `device-plugins` (`dps150-independent`) | the version-literal zero gate over the plugins + docs scopes BEFORE the plugin project is isolated (obligation 20; completing D8/#233's plugin lane), then the plugin's own offline conformance, quality checks and build from its isolated copy |
 | `package` (OS matrix: ubuntu + macos) | installed-wheel/SDK smoke against the built packages; the ui-html member wheel's standalone install proof (issue #302 REL: build + fresh-venv assertions — import from outside the checkout, version equality with `packages/ui-html/pyproject.toml`, the `pytest11` entry point, installed set exactly the package + its two declared runtime deps; plus the wheel resource census — issue #302 first release: the installed tree byte-compared against the checkout tree (every file, both directions) and `verify_vendored_assets() == []` run from the installed location, so packaging-config drift that drops or rewrites a shipped file class reds at PR time); `make check-sdk-standards`; the clean-venv ADC conformance control (issue #203 slice 1: the out-of-tree ADC plugin at its pre-restamp commit, `git archive`-installed, the built SDK wheel forced over the checkout pin, network blocked — 26/26 or red); and the derived-variable census selection (`tests/unit/test_derivation.py` + `tests/faults/test_derivation_faults.py`) — the lane where cross-platform binary64 agreement is actually measured for the installed-wheel context (Windows checkout-context agreement is the `windows` lane's measurement, its row above; the matrix stays ubuntu + macos — the lane design's deferral D4) |
 | `publish-ui-html` (release-triggered only) | the ui-html publish pipeline (issue #302 first release): build at the release tag with a tag-matches-pyproject assert that fails closed, 2-OS installed-wheel smoke including the resource census, PyPI trusted publishing via OIDC (the repository's only job-scoped `id-token: write` grant — the Pages deploy in docs.yml carries a workflow-level one), and a PyPI JSON read-back asserting the wheel AND the sdist digests equal the built artifacts' bytes. A job-level guard skips all four jobs for any non-`ui-html-v` release, so a gateway `v*` release publishes nothing |
+| `sdk-drift` | the packages/sdk mount-staleness lane (issue #347 WS1, R-2): the committed gitlink vs the SDK's latest `vX.Y.Z` release tag's dereferenced commit, via `scripts/check_sdk_submodule_drift.py` — exit 1 drift, exit 2 indeterminate (fail closed: a fetch blip never reads as "no drift"). Catches FRESHNESS only; CONSISTENCY stays `gates`' `make check-sdk-standards`. Does NOT catch: a deliberately-older pin (reads as drift by design — answered by shipping a fresh release pin) |
 
 What CI does **not** catch: every numbered obligation above that names a doc, a guide, or
 a cross-repo push — those are the reviewer's, which is why G5 exists in the rubric. The

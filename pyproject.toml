@@ -164,6 +164,7 @@ files = [
     "packages/ui-html/src",
     "scripts/sdk_smoke.py",
     "scripts/gate.py",
+    "scripts/check_sdk_submodule_drift.py",
     "scripts/architecture/_validation_report.py",
 ]
 # Independent manufacturer/model projects use their own environments and CI checks.
