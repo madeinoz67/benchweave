@@ -786,6 +786,7 @@ All notable changes to this project will be documented in this file.
 - Plugins panel becomes a static teaser to the registry-served catalogue (#224 s2 pivot)
 - Teaser links the catalogue's canonical domain — registry.benchweave.dev (owner cutover 2026-10-02); byte-pin regenerated AST-verified
 - Gate packages/sdk staleness — sdk-drift lane (#347 WS1) (#360)
+- G2a — the browser session, /ui shell and routing pins (#303) (#363)
 
 ### Hardware Evidence
 
