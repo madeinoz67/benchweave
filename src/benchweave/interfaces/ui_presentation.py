@@ -35,9 +35,12 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
+from benchweave_ui_html.data import ReadingData
+from benchweave_ui_html.partials import render_reading
 from benchweave_ui_html.staleness import staleness
+from markupsafe import Markup
 
 from benchweave.content.store import ContentStore
 from benchweave.presentation.admission import validate_attachment
@@ -95,14 +98,33 @@ def _documents_by_schema_suffix(
 @dataclass(frozen=True)
 class PresentationTile:
     """One readings tile — GW-22's rule renders in the data: the value is
-    ``Unavailable`` unless a gateway-reported observation supplied it."""
+    ``Unavailable`` unless a gateway-reported observation supplied it.
+    Rendered through the PACKAGE's reading-tile partial (the §E.1
+    component), so the contract's tile rules (no glow, staleness marker,
+    severity icon+label) apply to it like every host's."""
 
     label: str
     unit: str
     value: str = "Unavailable"
-    quality: str = "unavailable"
-    freshness: str = ""
-    stale_verdict: str = "no-verdict"
+    quality: str = "unknown"
+    freshness: str = "Unavailable"
+    stale_verdict: Literal["stale", "fresh", "no-verdict"] = "no-verdict"
+
+    @property
+    def html(self) -> Markup:
+        return Markup(  # noqa: S704 - the package partial over this dataclass
+            render_reading(
+                ReadingData(
+                    label=self.label,
+                    severity="neutral",
+                    value=self.value,
+                    unit=self.unit,
+                    quality=self.quality,
+                    freshness=self.freshness,
+                    stale_verdict=self.stale_verdict,
+                )
+            )
+        )
 
 
 @dataclass(frozen=True)

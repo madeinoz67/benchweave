@@ -344,6 +344,12 @@ rather than rewriting the history — that is how this file earns trust.
   frozen contract (`standards/interface/0.1.0/interface-contract.md`), never against the
   sibling transport. *The WP07 lesson: a parity suite that compares REST to MCP proves
   only transport symmetry — both can carry the same wrong behavior invisibly.*
+  Amendment (2026-10, G2 — the read-only UI design record): the `/ui` session adapter is
+  a third transport over the one seam; its identity comes only from the server-side
+  session (CON-15), its refusals render the contract envelope's own code through the
+  §C.3 row table (`interfaces/ui_refusals.py`), and the I02/I09 suites cover it like
+  REST and MCP (I02's read-route half and the observe-no-control pin landed with G2b;
+  I09's cursor half lands with the G2c bridge).
 - **[CON-6]** MCP auth is fail-closed at two layers — an `StgTokenVerifier` (FastMCP
   `TokenVerifier` over `benchweave.interfaces.identity.validate`) plus the layer beneath
   it — `src/benchweave/interfaces/mcp.py`. *An auth gap on the tool surface hands a caller

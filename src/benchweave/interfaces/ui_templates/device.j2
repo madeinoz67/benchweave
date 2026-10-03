@@ -39,16 +39,12 @@
       <p class="bw-panel-note" data-bw-panel-unavailable-note>Unavailable on this host.</p>
       {% else %}
       {% if page.tiles %}
-      <ul class="bw-presentation__tiles">
+      <div class="bw-presentation__tiles">
         {% for tile in page.tiles %}
-        {# GW-22: the value renders only from gateway-reported observations — Unavailable until one exists (no staged, submitted or fabricated value). #}
-        <li class="bw-reading" data-bw-reading data-bw-reading-label="{{ tile.label }}">
-          <span class="bw-reading__label">{{ tile.label }}</span>
-          <span class="bw-reading__value">{{ tile.value }}</span>
-          <span class="bw-reading__unit">{{ tile.unit }}</span>
-        </li>
+        {# GW-22: the value renders only from gateway-reported observations — Unavailable until one exists (no staged, submitted or fabricated value); the package's §E.1 tile partial renders it. #}
+        {{ tile.html }}
         {% endfor %}
-      </ul>
+      </div>
       {% endif %}
       {% if page.plot_summaries %}
       <ul class="bw-presentation__plots" data-bw-plot-skeleton>
