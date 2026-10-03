@@ -11,7 +11,7 @@
 |---|---|
 | [Architecture](smart-test-gateway-architecture-v1.5.md) | System responsibilities, protection, ownership, recovery and commissioning |
 | [Central registry](../standards/registry/0.1.2/registry-specification.md) | Shared packages, discovery, publication, metadata, trust and offline adoption |
-| [Registry checks](../standards/registry/0.1.2/validation-report.md) | 68 metadata-contract checks that pass |
+| [Registry checks](../standards/registry/0.1.2/validation-report.md) | 68 metadata-contract checks that pass (registry contract 0.1.2) |
 | [Procedure and bench contracts](../standards/execution/0.2.0/execution-contract.md) | Bounded execution, wiring and resources, safety policy, commissioning and outcomes |
 | [Execution checks](../standards/execution/0.2.0/validation-report.md) | 151 document and schema checks that pass; 6 linked synthetic examples |
 | [REST/MCP contract](../standards/interface/0.1.0/interface-contract.md) | 20 REST operations, 17 MCP (Model Context Protocol) tools, authentication and recovery |
@@ -84,7 +84,7 @@ Supply this entire package together with the instrument's protocol manual, model
 > 2. For a new integration, create an STG device integration for OTDP 0.2.2 and adapter API 1.1.
 > 3. Read these documents: the core specification, the extension contract, the applicable device classes, the measurement model and the schemas.
 > 4. Select supported class profiles. Declare real channels and device constraints. Implement all claimed actions with verified protocol evidence.
-> 5. For registry publication, also supply the release manifest and the evidence required by registry contract 0.1.1.
+> 5. For registry publication, also supply the release manifest and the evidence required by registry contract 0.1.2.
 > 6. Bundle the pinned local contracts. Then deliver the descriptor, the adapter where it is needed, the dependencies, the tests and the evidence.
 > 7. Apply the semantic and conformance obligations of the specification and the applicable class and dataset checks.
 > 8. Report missing device facts. Do not invent commands or unsupported capabilities.
@@ -100,4 +100,4 @@ From the 0.1.0 baseline forward, the corpus retains superseded versions digest-f
 
 ## Baseline verification
 
-1104 document and schema checks and selected semantic and coverage checks passed: OTDP 616, registry 64, execution 151, interface 256 and closure 17. These checks are not a complete runtime or hardware conformance suite. These counts record the architecture review baseline. They are not results from the repository CI (continuous integration).
+1108 document and schema checks and selected semantic and coverage checks passed: OTDP 616, registry 68, execution 151, interface 256 and closure 17. These checks are not a complete runtime or hardware conformance suite. These counts record the architecture review baseline. They are not results from the repository CI (continuous integration).
