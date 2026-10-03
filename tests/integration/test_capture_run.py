@@ -489,7 +489,10 @@ def _lattice(
         "package_lock": {"id": "sim-lock", "version": "0.1.0"},
         "procedure_refs": [{"id": "capture-procedure", "version": "0.1.0"}],
         "dut_class": "low_voltage_embedded",
-        "modes": ["supervised"],
+        # Issue #316: the harness's gateway-owned runs carry the
+        # commissioned unattended grant (a passing unattended-category row
+        # beside the envelope row) — without it the run gate refuses.
+        "modes": ["supervised", "unattended"],
         "owners": {
             "bench": "capture-harness-owner",
             "test_safety": "capture-harness-owner",
@@ -512,7 +515,19 @@ def _lattice(
                 "scope": "Simulator envelope over the synthetic capture supply.",
                 "result": "passed",
                 "limitations": ["simulator-only"],
-            }
+            },
+            {
+                "category": "unattended",
+                "report": {
+                    "id": "capture-unattended-report",
+                    "version": "0.1.0",
+                    "sha256": "0" * 64,
+                },
+                "tested_at": "2026-09-11T00:00:00Z",
+                "scope": "Simulator unattended endurance over the capture supply.",
+                "result": "passed",
+                "limitations": ["simulator-only"],
+            },
         ],
     }
     for name, path in (

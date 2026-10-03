@@ -20,6 +20,7 @@ from benchweave.control.coordinator import _iso_plus_ms, _parse_utc
 from benchweave.control.documents import (
     _CONTRACTS,
     _check_run_floor,
+    _check_unattended_grant,
     _classify_execution_pin,
     _corpus_root_of,
     _refuse_execution_pin,
@@ -1709,7 +1710,9 @@ class Operations:
                 return found
             offset += len(rows)
 
-    def _assert_run_runnable(self, binding_document: Any) -> None:
+    def _assert_run_runnable(
+        self, binding_document: Any, *, lease_present: bool = False
+    ) -> None:
         """The synchronous §5 runnability pre-check (issue #260): a run whose
         device pins sit outside the COMPOSITION's implemented-dialect row is
         refused HERE — at the POST, typed, before the request key is written
@@ -1776,6 +1779,49 @@ class Operations:
                     descriptor.get("otdp_version")
                 )
             _check_run_floor(pins, self._contracts)
+            # The unattended-grant gate (issue #316, CTL-10): the binding
+            # document's own content pins the procedure and commissioning
+            # by digest — resolved here exactly as the bench document
+            # above, digest-addressed end to end (the bytes read are the
+            # bytes the worker will admit — no TOCTOU). The inverted-guard
+            # doctrine carries over VERBATIM: an UNSTORED procedure or
+            # commissioning document is NOT decided here — that run stays
+            # asynchronous under the worker's authority, whose gate over
+            # the full admission result is authoritative. ``lease_present``
+            # is the seam's own lease_id-is-not-None (the lease itself is
+            # validated by the D12 block; the helper needs presence only),
+            # and the refusal rides the same handler — policy_denied, no
+            # wire-schema bytes move.
+            procedure_ref = binding_document["content"].get("procedure")
+            procedure_sha = (
+                str(procedure_ref.get("sha256", ""))
+                if isinstance(procedure_ref, dict)
+                else ""
+            )
+            commissioning_ref = binding_document["content"].get("commissioning")
+            commissioning_sha = (
+                str(commissioning_ref.get("sha256", ""))
+                if isinstance(commissioning_ref, dict)
+                else ""
+            )
+            procedure_document = (
+                self._content.get_document(procedure_sha) if procedure_sha else None
+            )
+            commissioning_document = (
+                self._content.get_document(commissioning_sha)
+                if commissioning_sha
+                else None
+            )
+            if (
+                procedure_document is not None
+                and commissioning_document is not None
+            ):
+                _check_unattended_grant(
+                    procedure_document["content"],
+                    commissioning_document["content"],
+                    now_wall=self._now_iso(),
+                    lease_present=lease_present,
+                )
         except DocumentAdmissionRejected as rejected:
             # The typed vocabulary rides inside the existing failure
             # envelope — policy_denied is already in the catalog's map; no
@@ -1900,7 +1946,9 @@ class Operations:
                         f" not {request_id!r}",
                     )
                 )
-            self._assert_run_runnable(document)
+            self._assert_run_runnable(
+                document, lease_present=lease_id is not None
+            )
         if lease is not None:
             # Consume LAST: every refusal above leaves the holder's lease
             # untouched, and consumption still precedes the request key —

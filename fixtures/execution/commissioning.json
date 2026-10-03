@@ -27,7 +27,8 @@
   ],
   "dut_class": "low_voltage_embedded",
   "modes": [
-    "supervised"
+    "supervised",
+    "unattended"
   ],
   "owners": {
     "bench": "stephen-eaton",
@@ -53,6 +54,18 @@
       "limitations": [
         "simulator-only"
       ]
+    },
+    {
+      "category": "unattended",
+      "report": {
+        "id": "sim-unattended-report",
+        "version": "0.1.0",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "tested_at": "2026-09-11T00:00:00Z",
+      "scope": "Simulator unattended-mode endurance: gateway-owned body over the sim lattice.",
+      "result": "passed",
+      "limitations": []
     }
   ]
 }

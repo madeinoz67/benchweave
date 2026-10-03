@@ -38,6 +38,7 @@ from benchweave.control.documents import (
     _CONTRACTS,
     AdmittedDocuments,
     _check_run_floor,
+    _check_unattended_grant,
     admit_documents,
 )
 from benchweave.control.operator_acknowledgements import load_operator_acknowledgements
@@ -740,6 +741,24 @@ def _build_run_factory(
         # deliberately does NOT floor — holding and validating a pinned-old
         # lattice is F1's surface.
         _check_run_floor(docs.pins, contracts)
+        # The unattended-grant gate's WORKER layer (issue #316, CTL-10) —
+        # the authoritative call over the full admission result, one
+        # helper and one vocabulary with the seam's runnability pre-check
+        # (the wire-visible early refusal). ``lease_present`` reads the run
+        # row's recorded authority: "lease" iff a validated lease was
+        # presented and consumed at accept time (D12), "gateway" otherwise
+        # — the worker re-derives nothing and no client input can reach
+        # this fact. A refusal here lands in the worker's poison guard
+        # (202 → outcome_unknown at the projection) with the typed reason
+        # on the gateway log, exactly as the floor's does.
+        run_row = worker_store.get_run(run_id)
+        _check_unattended_grant(
+            docs.procedure,
+            docs.commissioning,
+            now_wall=now_iso(),
+            lease_present=bool(run_row)
+            and str((run_row or {}).get("authority")) == "lease",
+        )
         clock = SystemClock()
         bench_id = str(docs.bench["id"])
         plans = _device_plans(content, docs, bench_id, run_id, registry_session)

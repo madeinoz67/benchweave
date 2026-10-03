@@ -55,7 +55,7 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass, replace
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import lru_cache
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -1482,6 +1482,120 @@ def _check_run_floor(pins: dict[str, DescriptorPin], contracts: Path) -> None:
                     f"implemented-dialect row requires adapter_api "
                     f"{adapter_requirement} ({row.evidence})"
                 )
+
+
+def _check_unattended_grant(
+    procedure: dict[str, Any],
+    commissioning: dict[str, Any],
+    *,
+    now_wall: str,
+    lease_present: bool,
+) -> None:
+    """The unattended-grant run gate (issue #316, CTL-10).
+
+    The corpus specifies the grant; this is the gateway's enforcement of
+    it, in the census's own vocabulary. A run over a ``gateway_owned``
+    procedure requires the commissioned unattended grant —
+    ``commissioning.modes`` carries ``"unattended"`` with a PASSING
+    (``result == "passed"``) evidence row of category ``"unattended"``
+    (execution-contract.md:133; the offline census's "missing unattended
+    grant" and its passing-evidence requirement) — every run's window
+    (``now_wall + max_body_ms + max_protection_ms``, the caller-supplied
+    seam clock or the worker's admission stamp — never an ambient clock
+    read, the provider-approval precedent's signature) must fit inside
+    ``commissioning.expires_at`` (execution-contract.md:131), and a
+    ``manual``-mode start requires a presented lease
+    (execution-contract.md:72). One helper, one vocabulary, two
+    enforcement points — the #260 run floor's shape with a different rule
+    inside: refused best-effort at the seam's runnability pre-check (typed
+    ``policy_denied`` before any lease is consumed) and authoritatively at
+    the worker over the full admission result.
+
+    What the gate does NOT check (claim discipline, design §2.4): the
+    seven base evidence categories (commissioning-time completeness — the
+    offline census's job), relevant-change invalidation before expiry (no
+    mechanism exists; deferral D3), and any mid-run expiry timer — the
+    acceptance-time window arithmetic makes a compliant start unable to
+    straddle expiry, and the run lease stays the binding budget (STO-4).
+    """
+    mode = procedure.get("mode")
+    modes_value = commissioning.get("modes")
+    modes = [str(m) for m in modes_value] if isinstance(modes_value, list) else []
+    if mode == "gateway_owned" and "unattended" not in modes:
+        raise AdmissionRejected(
+            f"unattended_grant_absent: procedure {procedure.get('id')}@"
+            f"{procedure.get('version')} declares mode {mode!r} but "
+            f"commissioning {commissioning.get('id')}@"
+            f"{commissioning.get('version')} grants modes {sorted(modes)} — "
+            "missing unattended grant (a gateway-owned run requires the "
+            "commissioned unattended mode)"
+        )
+    if "unattended" in modes:
+        rows = commissioning.get("evidence")
+        unattended_rows = [
+            row
+            for row in (rows if isinstance(rows, list) else [])
+            if isinstance(row, dict) and row.get("category") == "unattended"
+        ]
+        if not any(row.get("result") == "passed" for row in unattended_rows):
+            detail = (
+                "no 'unattended'-category row is carried"
+                if not unattended_rows
+                else "every 'unattended'-category row is non-passing "
+                f"({', '.join(sorted(str(row.get('result')) for row in unattended_rows))})"
+            )
+            raise AdmissionRejected(
+                f"unattended_evidence_failed: commissioning "
+                f"{commissioning.get('id')}@{commissioning.get('version')} "
+                f"claims the unattended mode but {detail} — a syntactically "
+                "complete record with failed evidence grants nothing"
+            )
+    expires_raw = commissioning.get("expires_at")
+    try:
+        expires = datetime.fromisoformat(str(expires_raw))
+        now = datetime.fromisoformat(now_wall)
+    except (TypeError, ValueError) as exc:
+        raise AdmissionRejected(
+            f"qualification_expired: commissioning "
+            f"{commissioning.get('id')}@{commissioning.get('version')} "
+            f"expires_at {expires_raw!r} cannot be compared against now_wall "
+            f"{now_wall!r}: {exc} — an unjudgeable qualification authorises "
+            "no run start"
+        ) from exc
+    if now >= expires:
+        raise AdmissionRejected(
+            f"qualification_expired: commissioning "
+            f"{commissioning.get('id')}@{commissioning.get('version')} "
+            f"expired at {expires_raw} (now_wall {now_wall}) — an expired "
+            "qualification authorises no run start"
+        )
+    body_ms = procedure.get("max_body_ms")
+    protection_ms = procedure.get("max_protection_ms")
+    if not isinstance(body_ms, int) or not isinstance(protection_ms, int):
+        raise AdmissionRejected(
+            f"qualification_window_exceeded: procedure "
+            f"{procedure.get('id')}@{procedure.get('version')} "
+            f"max_body_ms/max_protection_ms ({body_ms!r}/{protection_ms!r}) "
+            "cannot be judged as integers against expires_at "
+            f"{expires_raw} — the qualification window is not demonstrably "
+            "covered"
+        )
+    if now + timedelta(milliseconds=body_ms + protection_ms) > expires:
+        raise AdmissionRejected(
+            f"qualification_window_exceeded: now_wall {now_wall} + "
+            f"max_body_ms {body_ms} + max_protection_ms {protection_ms} "
+            f"exceeds commissioning {commissioning.get('id')}@"
+            f"{commissioning.get('version')} expires_at {expires_raw} — the "
+            "full body plus the protective budget cannot exceed the valid "
+            "qualification interval"
+        )
+    if mode == "manual" and not lease_present:
+        raise AdmissionRejected(
+            f"manual_lease_required: procedure {procedure.get('id')}@"
+            f"{procedure.get('version')} declares mode 'manual' and no "
+            "client lease was presented — manual mode requires an active "
+            "client lease"
+        )
 
 
 def _project_full_form(
