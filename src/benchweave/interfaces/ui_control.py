@@ -549,6 +549,20 @@ def register_control_routes(
             return failure_page(fail)
         if now_epoch() * 1000 + duration_ms > record.expires_at * 1000:
             return failure_page(_gw95_failure(record, duration_ms))
+        if duration_ms > max_lease_ms:
+            # FOLD-6: mirror the form's own bound on the wire path. UI-side
+            # presentation enforcement — the seam stays the authority (the
+            # seam-side envelope is the deferred G3-D6 gap), so a non-UI
+            # client is judged at the seam exactly as before.
+            return failure_page(
+                OperationFailure(
+                    failure(
+                        "policy_denied",
+                        f"the requested {duration_ms} ms exceeds this gateway's"
+                        f" published maximum lease of {max_lease_ms} ms",
+                    )
+                )
+            )
         try:
             lease = operations.lease_create(
                 identity,
@@ -604,6 +618,18 @@ def register_control_routes(
             )
         if now_epoch() * 1000 + duration_ms > record.expires_at * 1000:
             return failure_page(_gw95_failure(record, duration_ms))
+        if duration_ms > max_lease_ms:
+            # FOLD-6, the renew path: same published-max mirror, same
+            # disclosure (the seam stays the authority; G3-D6 unchanged).
+            return failure_page(
+                OperationFailure(
+                    failure(
+                        "policy_denied",
+                        f"the requested {duration_ms} ms exceeds this gateway's"
+                        f" published maximum lease of {max_lease_ms} ms",
+                    )
+                )
+            )
         try:
             successor = operations.lease_renew(
                 identity,

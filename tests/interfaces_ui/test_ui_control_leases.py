@@ -361,12 +361,48 @@ def test_a2_renewal_past_the_session_bound_is_refused_pre_send(rig: Any) -> None
     assert calls == []
 
 
-def test_a3_duration_ending_exactly_at_session_expiry_is_admitted(rig: Any) -> None:
-    """Equality admits: a duration ending exactly at the session's
-    expiry reaches the seam (the seam's own judgement then applies)."""
+def test_a_take_above_the_published_max_is_refused_pre_send(rig: Any) -> None:
+    """FOLD-6: the handler mirrors the form's own bound — a duration
+    above the limits table's ``max_lease_ms`` refuses with the honest
+    policy_denied row BEFORE the seam (UI-side presentation enforcement;
+    the seam-side envelope stays the authority — G3-D6 unchanged)."""
     record = _session(rig.app, scopes=CONTROL, ttl_s=3600)
     calls = _spy(rig, "lease_create")
-    response = _take(rig, record, duration_ms=3_600_000)
+    response = _take(rig, record, duration_ms=3_500_000)  # > the rig's 600 000
+    assert response.status_code == 403
+    assert 'data-bw-refusal-code="policy_denied"' in response.text
+    # No apostrophe in the needle: the full page's autoescape renders
+    # "gateway's" as &#39; — the bound figure is the stable carrier.
+    assert "published maximum lease of 600000 ms" in response.text
+    assert calls == []  # pre-send: the seam never saw it
+
+
+def test_a_renew_above_the_published_max_is_refused_pre_send(rig: Any) -> None:
+    """The same bound on the renewal path: no ``lease_renew`` call."""
+    record = _session(rig.app, scopes=CONTROL, ttl_s=3600)
+    assert _take(rig, record, duration_ms=300_000).status_code == 200
+    lease_id = _held_lease_id(rig, record)
+    calls = _spy(rig, "lease_renew")
+    response = _post(
+        rig,
+        f"/ui/leases/{lease_id}/renewals",
+        record,
+        data={"bench_id": _BENCH, "duration_ms": "3500000"},
+    )
+    assert response.status_code == 403
+    assert 'data-bw-refusal-code="policy_denied"' in response.text
+    assert calls == []
+
+
+def test_a3_duration_ending_exactly_at_session_expiry_is_admitted(rig: Any) -> None:
+    """Equality admits: a duration ending exactly at the session's
+    expiry reaches the seam (the seam's own judgement then applies).
+    FOLD-6 moves the boundary to the rig's published max (600 000): the
+    duration equals BOTH the session remaining AND max_lease_ms, so the
+    equality-admits arm exercises both bounds at once."""
+    record = _session(rig.app, scopes=CONTROL, ttl_s=600)
+    calls = _spy(rig, "lease_create")
+    response = _take(rig, record, duration_ms=600_000)
     assert response.status_code == 200, response.text
     assert calls == ["lease_create"]
     sessions: SessionStore = rig.app.state.ui_sessions
