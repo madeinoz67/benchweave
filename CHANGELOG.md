@@ -277,6 +277,9 @@ All notable changes to this project will be documented in this file.
 - Anchor cliff.toml tag_pattern (#302 first release)
 - Refute lane A fold — env indirection for the release tag (template-injection MEDIUM), github.sha ref pinning (retag/re-run LOW), attestations disclosed
 - Refute lane B fold — accurate id-token claim (F1), casefold collision assert in both census copies (F2), operator-step + notes-command dependency truths (F3)
+- Refuse separator-spoofed normative rows at load (issue #238)
+- Fold lane B HIGH — refuse non-canonical (./) normative rows too (issue #238)
+- Fold lane A MEDIUM — refuse case-camouflaged normative prefixes (issue #238)
 
 ### Documentation
 
@@ -573,6 +576,7 @@ All notable changes to this project will be documented in this file.
 - Resolve registry check-count and registry-version statements against machine sources (#359)
 - Residual register fixes for the #353 four
 - SA-PREVIEW design record, PRD 11 v0.3 amendments, obligation-12 pin row, SDK pointer (#364)
+- Issue #238 load-boundary refusal for separator-spoofed normative rows
 
 ### Features
 
@@ -1114,6 +1118,7 @@ All notable changes to this project will be documented in this file.
 - Re-seed the drain-cap starvation pins under the no-trip policy
 - Refute fold — the poison path is DISPATCH-path, not poll-path
 - Catalogue search fixture + hand-derived truth table (C1 discipline)
+- RED arms for normative_path_escape refusal (issue #238)
 
 ### Build
 
