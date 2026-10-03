@@ -1,15 +1,15 @@
 # BenchWeave Operator Guide
 
 Everything an operator needs to install, run, and care for a BenchWeave
-gateway — written from the **shipped** commands. Every `benchweave ...`
+gateway: written from the **shipped** commands. Every `benchweave ...`
 line below was verified against the installed CLI's `--help` output and is
 copy-pasteable; the automated form of this guide is
 `tests/integration/test_clean_install.py`, which drives the exact
 setup → demo → report → backup → damage → restore → verify flow against a
 wheel-installed `benchweave` binary.
 
-Steps marked **[interactive]** open a Textual view when run on a TTY; they
-fall back to plain text (or JSON with `--json`) when piped — the guide's
+Steps marked **[interactive]** open a Textual view when run on a TTY. They
+fall back to plain text (or JSON with `--json`) when piped. The guide's
 machine paths are what the test pins.
 
 ## 1. Install
@@ -34,17 +34,17 @@ uv pip install --python /opt/benchweave-venv/bin/python dist/benchweave-*.whl
 
 The wheel is self-contained for the gateway runtime: the vendored contract
 corpora and the BenchWeave simulator plugins ship inside it (under
-`benchweave/_vendored/`). **The fixture lattice does not** — it is
-operator-supplied input (`--fixtures` / `BENCHWEAVE_FIXTURES`; see
+`benchweave/_vendored/`). The fixture lattice is **not** in the wheel. It
+is operator-supplied input (`--fixtures` or `BENCHWEAVE_FIXTURES`; see
 §4 Demo and §11 Troubleshooting).
 
 ### Second-install reuse
 
-A second clean installation reuses the same published packages without
-touching plugin source: install the **same built wheel** into a second
-fresh venv, verify the vendored plugin trees are byte-identical to the
-first install (and to the checkout's `plugins/benchweave/` — the
-zero-plugin-source-changes proof), then repeat the demo from install two
+A second clean installation reuses the same published packages. It does
+not touch plugin source. Install the **same built wheel** into a second
+fresh venv. Make sure the vendored plugin trees are byte-identical to the
+first install, and to the checkout's `plugins/benchweave/` (the
+zero-plugin-source-changes proof). Then repeat the demo from install two
 with the same fixtures:
 
 ```sh
@@ -71,34 +71,36 @@ diff /tmp/plugins-one.sha256 /tmp/plugins-repo.sha256 \
     --scratch /tmp/demo-two --keep --fixtures /path/to/fixtures/execution --json
 ```
 
-An empty `diff` (exit 0, the echo confirms) is the reuse evidence: the
-second install resolved the same package bytes as the first and shipped
-the sources verbatim — no plugin source was modified to repeat the demo.
+An empty `diff` (exit 0, the echo confirms) is the reuse evidence. The
+second install resolved the same package bytes as the first. It shipped
+the sources verbatim. No plugin source was modified to repeat the demo.
 
-## 2. Setup — the data directory
+## 2. Setup: the data directory
 
 ```sh
 benchweave setup --data-dir /var/lib/benchweave
 ```
 
-Creates `<data-dir>/state.sqlite` (migrations applied as at app boot; a store refusing to open with `refuse_newer_schema:` was written by a NEWER gateway — downgrade is refused, open it with a gateway that knows the schema),
+Creates `<data-dir>/state.sqlite` (migrations applied as at app boot),
 `<data-dir>/content/`, and the 0600 credential file
-`<data-dir>/benchweave.env` holding the generated gateway secret. The
-secret is never printed unless you opt in:
+`<data-dir>/benchweave.env` holding the generated gateway secret. A store
+that refuses to open with `refuse_newer_schema:` was written by a NEWER
+gateway. Downgrade is refused. Open it with a gateway that knows the
+schema. The secret is never printed unless you opt in:
 
 ```sh
 benchweave setup --data-dir /var/lib/benchweave --show-secret --json
 ```
 
 On Windows, mode bits do not reach a file's access list, so `setup` does the
-equivalent instead: `benchweave.env` is created in a private staging
-directory, stripped of inherited entries and granted to the account running
-`setup` alone, and only then given the secret and moved into place, so no
-other account can open it at any point. Check it with
+equivalent instead. `setup` creates `benchweave.env` in a private staging
+directory. It strips inherited entries. It grants the file to the account
+running `setup` alone. Only then does it give the file the secret and move
+it into place, so no other account can open it at any point. Check it with
 `icacls <data-dir>\benchweave.env`, which should list
 one entry. Run the gateway under that same account. On a volume with no
 access lists (FAT, exFAT) `setup` refuses rather than write a secret it cannot
-protect. Only the credential file is restricted; the rest of the data
+protect. Only the credential file is restricted. The rest of the data
 directory keeps whatever access its location gives it, so choose that
 location as you would on Linux.
 
@@ -132,9 +134,9 @@ directory (beside `bench.json` and `commissioning.json`):
 }
 ```
 
-The document is validated at gateway startup, before any lattice
+The gateway validates the document at startup, before any lattice
 admission: `document` names a settings-relative file whose bytes must hash
-to the admitted `sha256` and validate as a provider contract — your
+to the admitted `sha256` and validate as a provider contract. Your
 admission record and the reviewed bytes are one act. The surface carries
 IDENTITY ONLY: there is no field for an endpoint, path, process,
 credential, or secret, by schema rather than by policy. Endpoint and
@@ -142,26 +144,26 @@ secret configuration arrives with the first provider implementation
 through the execution-standard commissioning shape (deferred; see the
 issue #147 increment-3 design record), never through this file. An
 approval that has expired (`approval.expires_at` in the contract, judged
-at startup) is not an admitted contract; re-admit the renewed bytes.
+at startup) is not an admitted contract. Re-admit the renewed bytes.
 
 Run admission reads this same settings document: each run's spool resolves
 a descriptor's pinned provider contract beside it and threads the fixtures
 directory's `transport-settings.json` with a fresh wall stamp, so a
-provider-declaring lattice executes under the admissions recorded here —
-bootstrap and the run path apply one standard.
+provider-declaring lattice executes under the admissions recorded here.
+Bootstrap and the run path apply one standard.
 
-## 3. Serve — run the gateway
+## 3. Serve: run the gateway
 
 `serve` composes the gateway from the environment and runs it under
 uvicorn in the **foreground** (daemonization belongs to the service
-manager — §9). It reads:
+manager; see §9). It reads:
 
 | Variable | Meaning |
 |---|---|
 | `BENCHWEAVE_DB` | **Required.** Path to the store (`<data-dir>/state.sqlite`). |
 | `BENCHWEAVE_SECRET` | The gateway secret (the one `setup` wrote). |
 | `BENCHWEAVE_ENV` | `production` arms the secret posture (below). |
-| `BENCHWEAVE_HOST` / `BENCHWEAVE_PORT` | Bind address/port (also `--host`/`--port`; loopback + 8125 by default). |
+| `BENCHWEAVE_HOST` / `BENCHWEAVE_PORT` | Bind address and port (also `--host` and `--port`; loopback + 8125 by default). |
 | `BENCHWEAVE_FIXTURES` | Fixture lattice directory (see §4). |
 | `BENCHWEAVE_REGISTRY_DIR` | Fixture registry root (default: the repository registry). |
 | `BENCHWEAVE_MAX_DATASET_BYTES` | Per-run capture-byte ceiling; **required for adapter-bridge runs** (see below). |
@@ -175,24 +177,24 @@ benchweave serve --host 127.0.0.1 --port 8125
 ```
 
 **Production secret posture.** With `BENCHWEAVE_ENV=production`, `serve`
-*refuses to boot* — before the store is opened, before anything touches
-disk — if `BENCHWEAVE_SECRET` is unset, empty/whitespace, or a publicly
+*refuses to boot*, before the store is opened and before anything touches
+disk, if `BENCHWEAVE_SECRET` is unset, empty or whitespace, or a publicly
 known value (the repo's test secret or the deploy example's placeholder).
 Generate a real one: `openssl rand -hex 32`.
 
 **Startup admission gate.** Before the gateway serves anything, the
-fixture lattice passes the same admission gate execution and recovery
-use: every document is decoded exactly, validated against the vendored
+fixture lattice passes the same admission gate that execution and recovery
+use. Every document is decoded exactly, validated against the vendored
 schemas (each OTDP device descriptor against the schema of its own
 `otdp_version` pin) and pin-verified against the bench's digest lattice.
-A lattice that fails refuses startup — the process exits with
+A lattice that fails refuses startup. The process exits with
 `Application startup failed` and logs one `startup_admission_rejected:`
 line carrying the typed reason (`schema:`, `digest_mismatch:` or
 `pin_absent:`, plus the version prefixes below where a pin
 misclassifies; an absent pinned file raises a `FileNotFoundError` naming
-the device and digest prefix). Nothing is written to the store by a
-refused startup, so a repair (fix the lattice, restart) starts from a
-clean inventory. Under systemd the unit then restart-loops (§9) and that
+the device and digest prefix). A refused startup writes nothing to the
+store, so a repair (fix the lattice, restart) starts from a
+clean inventory. Under systemd the unit then restart-loops (§9). That
 log line is the diagnosis surface.
 
 **Version pins, conformance classes, and the operator acknowledgement.**
@@ -213,11 +215,11 @@ startup and recovery admission by the shared resolution body. It binds
 the pin it names, so an acknowledgement recorded for one version does
 not authorise a device later re-pinned to another, and one
 acknowledgement cannot cover a bench's other devices. When a
-non-conforming device admits, the recorded acknowledgement — stamped
-with the admission's time — appears on the admission record, on the
+non-conforming device admits, the recorded acknowledgement (stamped
+with the admission's time) appears on the admission record, on the
 run's evidence stream alongside the pin and its class, and on the
 device's stored row (the read surfaces derive from that row: an
-acknowledged device does not re-warn on every read) — a non-conforming
+acknowledged device does not re-warn on every read). A non-conforming
 device is never silently shown as conforming. Without the
 acknowledgement, admission refuses with
 `operator_ack_required:` (carrying the `standard_nonconforming:`
@@ -226,16 +228,16 @@ classification).
 The remaining pin classes refuse outright, each with the five inline
 fields (standard, pinned version, supported range, derived move-to,
 migration-note pointer): `retired_identifier:` (the number was used
-once and is never reissued — the refusal names the next minor to
+once and is never reissued; the refusal names the next minor to
 re-target to), `version_unknown:` (this corpus never carried the
-version — publish it or fix the pin), and
+version; publish it or fix the pin), and
 `cross_constraint_violation:` (the bench's execution version constrains
 the OTDP range its devices may pin; a pin outside it refuses naming
-both versions and the constraining row's evidence — an operator
+both versions and the constraining row's evidence. An operator
 acknowledgement authorises the version window, never the execution
 runtime interface). A non-conforming pin in the startup lattice without
 a matching entry in `operator-acknowledgements.json` is a hard
-`startup_admission_rejected:` refusal; with one, it loads flagged, and
+`startup_admission_rejected:` refusal. With one, it loads flagged, and
 withdrawing the file withdraws the authorisation at the next startup.
 
 The execution lattice is itself pinned (issue #220): the bench document's
@@ -285,32 +287,37 @@ skip (superseded by era terminalization).
 **Adapter-bridge runs and the quota seam.** A run constructs a real OTDP
 bridge for a bench device only when the device's descriptor declares
 `integration.mode: "adapter"` AND the device's declared `generation`
-carries a registry activation record — the admin act that commissioned the
+carries a registry activation record: the admin act that commissioned the
 package closure (admission wrote the content-addressed cache and the
 package lock; the run resolves through them, digest-pinned). Devices
-without a commissioned closure — including the demo lattice's, which
-declare the startup-admitted generation — run the committed simulator
+without a commissioned closure, including the demo lattice's (which
+declare the startup-admitted generation), run the committed simulator
 plugins instead, disclosed with one `run_device_declarative_fallback:`
 log line per device per run. Bridge-constructing runs additionally
 **require** the two operator ceilings `BENCHWEAVE_MAX_DATASET_BYTES` and
-`BENCHWEAVE_MAX_EVENT_BATCH` (unset is a valid, loud posture: the run
-refuses with `run_quota_config_absent:` before any device opens, the
-worker contains the job, and the run's projection closes terminal with
-`outcome_unknown` — no fabricated outcome). `max_capture_bytes` and
-`max_subscriptions` keep built-in defaults until your bench qualification
-commissions values (they are not env-configured today).
+`BENCHWEAVE_MAX_EVENT_BATCH`. If they are unset, that is a valid, loud
+posture: the run refuses with `run_quota_config_absent:` before any
+device opens, the worker contains the job, and the run's projection
+closes terminal with `outcome_unknown`. No outcome is fabricated.
+`max_capture_bytes` and `max_subscriptions` keep built-in defaults until
+your bench qualification commissions values (they are not env-configured
+today).
 
 ### Shutdown drain
 
 On shutdown the gateway stops the run worker, then gives it a bounded
 drain: 5 seconds for in-flight and queued runs to finish. Runs that
-complete within the bound close normally. Anything still outstanding when
-the bound expires is not waited out — the gateway logs one
+complete within the bound close normally. The gateway does not wait out
+anything still outstanding when the bound expires. It logs one
 `run worker did not drain at shutdown` line and exits, and the next
 startup's recovery sweep records those runs `interrupted` with safe state
-`unknown` — an honest "we do not know how this ended", never a fabricated
-outcome. Recovery never touches the bench: verify the bench's physical
-state before starting new work. A run whose durable record already says
+`unknown`: an honest "we do not know how this ended", never a fabricated
+outcome.
+
+> **WARNING:** RECOVERY DOES NOT TOUCH THE BENCH. VERIFY THE BENCH'S
+> PHYSICAL STATE BEFORE YOU START NEW WORK.
+
+A run whose durable record already says
 it completed keeps that record; only its stale queue state is reconciled.
 The worker thread is a daemon and the bound is a fixed
 grace in the gateway's shutdown path, so an external service manager (§9)
@@ -338,9 +345,9 @@ benchweave status --gateway http://127.0.0.1:8125 --token "$TOKEN" --json
 `--gateway`/`--token` can come from `BENCHWEAVE_GATEWAY`/`BENCHWEAVE_TOKEN`.
 
 `demo` has two modes. **Fresh-install mode** (no `--gateway`) boots an
-ephemeral, `SIMULATION`-labelled simulator gateway on a scratch directory —
-never your data dir — runs the fixture procedure to a terminal state, and
-tears down:
+ephemeral, `SIMULATION`-labelled simulator gateway on a scratch directory,
+never your data directory. It runs the fixture procedure to a terminal
+state, and tears down:
 
 ```sh
 benchweave demo --fixtures /path/to/fixtures/execution --json
@@ -363,14 +370,14 @@ benchweave demo --gateway http://127.0.0.1:8125 --token "$TOKEN" \
     --fixtures /path/to/fixtures/execution --json
 ```
 
-On a TTY both modes open a live event-fed view **[interactive]**; closing
-it early is a clean exit. `--timeout` (default 120 s) bounds the wait for
-a terminal state.
+On a TTY both modes open a live event-fed view **[interactive]**. If you
+close it early, the exit is clean. `--timeout` (default 120 s) bounds the
+wait for a terminal state.
 
 The demo refuses to compose if a live gateway already holds a store under
 its scratch dir (one-coordinator rule — §11).
 
-## 5. Report — run evidence
+## 5. Report: run evidence
 
 `report` reads the data directory **at rest** (never a live gateway;
 `--gateway` is a documented not-implemented stub that refuses):
@@ -383,19 +390,19 @@ benchweave report --data-dir /var/lib/benchweave --bench sim-bench       # one b
 
 The report lists benches and runs (simulated ones labelled `[SIMULATION]`,
 derived from the bench's stored commissioning limitation), every evidence
-digest, and — honestly — any evidence whose backing bytes are gone
+digest, and, honestly, any evidence whose backing bytes are gone
 (`missing_evidence` is never papered over). On a TTY the report opens as a
 view **[interactive]**. Like the other at-rest commands, the report takes
 the store's exclusive lock for its whole read and refuses (naming the
 holder) while a live gateway owns the store.
 
-## 6. Retention — disposal projection (read-only)
+## 6. Retention: disposal projection (read-only)
 
 `retention` reads the data directory **at rest** and projects, from a
 policy file plus the store's own rows, when each capture and evidence row
-would be disposable and how fast storage is growing. It is a pure
-projection: **it writes nothing back** — no classification stamps, no
-cached disposal dates — **it never migrates the store**, and nothing
+becomes disposable and how fast storage grows. It is a pure
+projection: **it writes nothing back**, no classification stamps, no
+cached disposal dates. **It never migrates the store**, and nothing
 deletes or archives anything here (`on_disposition` is a report label in
 this command; the audited disposition path is the `dispose` command
 below).
@@ -408,10 +415,10 @@ benchweave retention --data-dir /var/lib/benchweave --horizon-s 604800
 ```
 
 **Schema mismatches refuse (they never upgrade).** A store behind the
-gateway's schema version — including a *holey* `schema_migrations` (any
-applied-migration row missing, not only a lower newest version) — or
+gateway's schema version, including a *holey* `schema_migrations` (any
+applied-migration row missing, not only a lower newest version), or
 written by a newer one, refuses with a `retention_store:` message naming
-the mismatch — exit code 1 like every handled refusal. To project a
+the mismatch. Exit code 1 applies, like every handled refusal. To project a
 down-level store, open it once with a current gateway
 (`setup`/`serve`/`report` upgrades it) and re-run. (`report` still shares
 the old migration-on-open shape; aligning it is a follow-up, deferred in
@@ -419,10 +426,10 @@ the design record.)
 
 > **WAL note.** Opening the store folds a crashed writer's hot
 > write-ahead log into `state.sqlite` (a SQLite checkpoint on close): the
-> report writes no table content — that is pinned — but the file's
+> report writes no table content (that is pinned), but the file's
 > *bytes* can change. The write-back rule is logical-table, not
-> byte-forensic; copy-before/after workflows that compare raw file bytes
-> should quiesce the store first (or copy the backup command's verified
+> byte-forensic; workflows that compare file bytes before and after a
+> copy should quiesce the store first (or copy the backup command's verified
 > snapshot instead).
 
 The policy file defaults to `<data-dir>/retention-policy.json`; absent
@@ -441,12 +448,12 @@ class → global default — and every row names the **winning** entry
 rule.
 
 Each disposal row carries its status: `scheduled` (with the computed
-`disposal_date`), `held` (no date — the rule keeps the row), `ungoverned`
+`disposal_date`), `held` (no date: the rule keeps the row), `ungoverned`
 (no policy matched), or `anchor_unresolved` (no resolvable offset-bearing
-anchor: missing terminal record, naive or unparseable stamp) — the count
-of `anchor_unresolved` rows is disclosed. `run_end` anchors on the run's
-terminal record `ended_at` (immutable), never the run-state projection
-stamp.
+anchor: a missing terminal record, a naive or unparseable stamp). The
+count of `anchor_unresolved` rows is disclosed. `run_end` anchors on the
+run's terminal record `ended_at` (immutable), never the run-state
+projection stamp.
 
 The report discloses its own arithmetic, per lane with its basis and
 denominator: stored bytes are `SUM(LENGTH(data))` over the artifact table
@@ -456,16 +463,16 @@ and the quota wedge forecasts the capture writer's **reservation ledger**
 (staged reserved + finalised charged — the figure G3 enforces; the ledger
 is not monotone: finalise re-prices and the abort sweep refunds).
 
-**Growth projection.** Per stream/key the wire carries `observed_bytes`,
-`observed_span_s`, `n`, `rate_Bps` and `projected_horizon_bytes` — the
-rate extrapolated over one operator-chosen horizon (`--horizon-s`,
-default 2592000 s / 30 days, accepted range 1..253402300799 — the
-datetime-domain ceiling, the same bound `duration_s` carries; the same
-value for every row, so projections are comparable). Unestimable
-streams (single event, zero
-span, naive/unparseable stamps) render absence — excluded, counted and
-disclosed — never a zero projection; held classes (every governing rule
-is `hold: true`) project the same horizon growth, labeled `held` (they
+**Growth projection.** Per stream and key the wire carries
+`observed_bytes`, `observed_span_s`, `n`, `rate_Bps` and
+`projected_horizon_bytes`. The rate is extrapolated over one
+operator-chosen horizon (`--horizon-s`, default 2592000 s / 30 days,
+accepted range 1..253402300799, the datetime-domain ceiling, the same
+bound `duration_s` carries). The value is the same for every row, so
+projections are comparable. Unestimable streams (single event, zero
+span, naive or unparseable stamps) render absence: excluded, counted and
+disclosed, never a zero projection. Held classes (every governing rule
+is `hold: true`) project the same horizon growth, labelled `held` (they
 never empty at disposal time).
 
 **Quota wedge.** Per capture context (per run), used bytes from the
@@ -494,7 +501,7 @@ always stay and are disclosed by count. Like the other at-rest commands,
 `retention` takes the store's exclusive lock for its whole read and
 refuses (naming the holder) while a live gateway owns the store.
 
-## 7. Dispose — audited delete-tier disposition
+## 7. Dispose: audited delete-tier disposition
 
 `dispose` is the audited path the retention wedge disclosure points at:
 it deletes overdue **delete-tier** rows (finalised captures and evidence
@@ -511,6 +518,10 @@ benchweave dispose --data-dir /var/lib/benchweave --bench sim-bench --execute
 benchweave dispose --data-dir /var/lib/benchweave --execute --archive-target /mnt/offline/benchweave
 benchweave dispose --data-dir /var/lib/benchweave --verify-archive --archive-target /mnt/offline/benchweave
 ```
+
+> **CAUTION:** DELETE IS IRREVERSIBLE. THE AUDIT ROW RETAINS THE DELETED
+> CONTENT'S DIGEST AND BYTE LENGTH, NEVER THE BYTES. ARCHIVAL IS THE
+> RECOVERABLE TIER.
 
 **Dry run by default; `--execute` to act.** Without the flag the command
 projects the plan (per-row outcome, counts, bytes that would be
@@ -602,11 +613,11 @@ ordering signal; the trail's proof is the content address, not
 timestamp comparisons.
 
 **Typed refusals** (the `archive_target:` family): an unwritable or
-uncreatable target; a target resolving inside the data dir (refused —
+uncreatable target; a target resolving inside the data dir (refused:
 `restore` swaps the whole data directory, and an archive inside it
 would be destroyed by disaster recovery); a pre-existing destination
 object whose bytes do not hash to its content address (never silently
-overwritten — overwriting would launder destination corruption into a
+overwritten: overwriting would launder destination corruption into a
 fresh "verified" copy).
 
 **The audit columns, record vs reference.** An archived row's audit
@@ -630,9 +641,9 @@ can rot or be deleted afterwards. `--verify-archive` re-proves every
 archived row's object (present, re-hashed, length matched) and names
 drift per object (`absent` / `digest_mismatch` / `length_mismatch`,
 exit 1 on any drift); orphans are reported, never deleted. **Verify
-reads each row's recorded `archive_destination`** — that column is what
-it exists for — so archiving later batches to a second target never
-makes earlier rows read as drift; the `--archive-target` flag is only a
+reads each row's recorded `archive_destination`**; that column is what
+it exists for, so archiving later batches to a second target never
+makes earlier rows read as drift. The `--archive-target` flag is only a
 fallback for rows that lack a recorded destination (it stays the
 store/dispose-time argument). Relocating a destination directory
 therefore reads as `absent` at the recorded path: the trail names where
@@ -641,14 +652,14 @@ Restoring archived bytes back into a store is deferred (design record
 D1 — first operator request); the verify arm is its trust basis.
 
 **Ledger relief, in two named units.** Disposing finalised captures
-drops their charged bytes from the per-context reservation ledger —
-`charged_ledger_bytes`, the figure G3 enforces — so an at/over-ceiling
+drops their charged bytes from the per-context reservation ledger
+(`charged_ledger_bytes`, the figure G3 enforces), so an at/over-ceiling
 context recovers headroom exactly when its delete-tier rows go. What the
 artifact GC physically removes from disk is reported separately as
 `artifact_bytes_freed`: evidence rows sharing one artifact make a plain
 row-bytes sum double-count and diverge from physical disk, so the two
 units are never summed across meanings (the row-bytes figure is kept as
-`bytes_reclaimed`, labeled as the projection sum).
+`bytes_reclaimed`, labelled as the projection sum).
 
 **Bench scope is inherited from the report.** Under `--bench`, rows whose
 run exists on another bench are excluded — but unattributed keys and
@@ -673,21 +684,21 @@ benchweave verify  --data-dir /var/lib/benchweave                        # exit 
 ```
 
 A backup is `backup-<iso>/` holding a self-contained SQLite snapshot
-(`sqlite3` backup API — committed WAL frames folded in), a verbatim copy
+(`sqlite3` backup API; committed WAL frames folded in), a verbatim copy
 of `content/`, and `manifest.json` with the sha256 of every file.
 `restore` re-verifies **every** manifest digest, refuses any staged file
-the manifest does not list (a backup tree is complete — extras are
+the manifest does not list (a backup tree is complete; extras are
 tampering), and runs a SQLite integrity check on a staged copy *before*
-anything in the data dir is touched, then swaps it in; your previous
-directory is kept beside it as `<name>.pre-restore-<iso>`.
+anything in the data directory is touched, then swaps it in. The
+previous directory is kept beside it as `<name>.pre-restore-<iso>`.
 
 Both mutating commands refuse (naming the holder) while a live gateway
-holds the store — stop the gateway first (§11).
+holds the store. Stop the gateway first (§11).
 
-> **Credentials are deliberately NOT backed up.** `benchweave.env` is
-> never copied into a backup and never written by a restore: a backup
-> covers *state + content* only. After restoring (especially onto a
-> rebuilt machine) re-create or re-place your credential file yourself —
+> **CAUTION:** A BACKUP DOES NOT COPY THE CREDENTIAL FILE, AND A RESTORE
+> DOES NOT WRITE IT. `benchweave.env` IS DELIBERATELY NOT BACKED UP: A
+> BACKUP COVERS *STATE + CONTENT* ONLY. AFTER A RESTORE (ESPECIALLY ONTO
+> A REBUILT MACHINE) RE-CREATE OR RE-PLACE YOUR CREDENTIAL FILE YOURSELF.
 > `benchweave setup` on a fresh dir generates one; keep your existing
 > secret safe and separate from the backup location. A restored gateway
 > re-uses the operator's kept credential.
@@ -822,8 +833,8 @@ closures never hit this refusal.
 with no commissioned closure for its declared generation ran the committed
 simulator plugin instead of a bridge. If this is unexpected, the bench's
 device `generation` and the gateway's activation records
-(`<data-dir>/registry/activations/<bench>/activation-<n>.json`) have
-drifted apart — check which generation the admin act actually activated.
+(`<data-dir>/registry/activations/<bench>/activation-<n>.json`) drifted
+apart. Check which generation the admin act actually activated.
 
 **`archive ... has no manifest.json` / digest mismatches on restore** —
 the target is not a `backup-<iso>/` directory, or its contents changed

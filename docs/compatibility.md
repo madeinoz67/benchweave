@@ -1,18 +1,19 @@
-# Compatibility Record — WP02 MCP/Client Spike
+# Compatibility Record: WP02 MCP/Client Spike
 
-> Evidence for the delivery plan's WP02 risk gate: "Exact 2026-07-28 live
+> Evidence for the WP02 risk gate of the delivery plan: "Exact 2026-07-28 live
 > discovery/tool exchange and wrong-audience/expired/scope rejection; record
 > exact dependency/client versions before freezing adapters."
 
 ## Verdict
 
 **Bounded stdlib adapter is viable; the official MCP SDK is deferred.** The
-complete exchange (initialize → tools/list → tools/call, JSON-RPC over
-streamable-shaped HTTP with the `Mcp-Session-Id` header) was exercised over
-real loopback sockets with zero runtime dependencies. Nothing observed
-justifies taking the SDK dependency before WP07's parity work; revisit if a
-future slice needs SSE streaming responses, transports other than streamable
-HTTP, or client auth flows beyond a bearer token.
+spike exercised the complete exchange over real loopback sockets with zero
+runtime dependencies. The exchange is initialize → tools/list → tools/call:
+JSON-RPC over streamable-shaped HTTP with the `Mcp-Session-Id` header.
+Nothing observed justifies the SDK dependency before WP07's parity work.
+Revisit the decision if a future slice needs SSE streaming responses. Also
+revisit it for transports other than streamable HTTP, or client auth flows
+beyond a bearer token.
 
 ## Exact versions exercised
 
@@ -34,8 +35,9 @@ HTTP, or client auth flows beyond a bearer token.
 
 ## Authentication proven (`benchweave.interfaces.identity`)
 
-Local test issuer, HMAC-SHA256, principal/audience/scopes/expiry, injected
-clock (pure, deterministic), constant-time signature compare, fail-closed
+The issuer is local and uses HMAC-SHA256. It covers the principal, the
+audience, the scopes and the expiry. It uses an injected clock (pure,
+deterministic), a constant-time signature compare, and fail-closed
 rejections. Status mapping exercised over the live loopback:
 
 | Condition | HTTP | Reason token |
@@ -46,24 +48,27 @@ rejections. Status mapping exercised over the live loopback:
 | Expired | 401 | `expired` |
 | Malformed / bad signature | 401 | `malformed_token` / `bad_signature` |
 
-Enforcement point in the spike server: `initialize` open, `tools/*` gated —
-recorded as a decision to revisit when the interface contract grows an auth
-vocabulary (it has none today; checked, not assumed).
+The enforcement point in the spike server is `initialize` open, `tools/*`
+gated. It is recorded as a decision to revisit when the interface contract
+grows an auth vocabulary. The interface contract has no auth vocabulary
+today. This was checked, not assumed.
 
 ## Environment note (venv editable install — ROOT CAUSE)
 
 The intermittent `import benchweave` → `ModuleNotFoundError` (2026-09-10, 5
-occurrences across uv 0.11.16 AND 0.12.12) is NOT a uv bug: the venv's `.pth`
-files were carrying the macOS `UF_HIDDEN` file flag, and CPython's site.py
-refuses hidden `.pth` files (`python -v` shows `Skipping hidden .pth file`),
-silently disabling the editable install while `.pth` + dist-info look intact.
-Proof: `stat -f '%Sf'` showed `flags=hidden`; `python -v` showed the skip.
+occurrences across uv 0.11.16 AND 0.12.12) is NOT a uv bug. The venv's `.pth`
+files carried the macOS `UF_HIDDEN` file flag. CPython's site.py refuses
+hidden `.pth` files (`python -v` shows `Skipping hidden .pth file`). This
+silently disabled the editable install while `.pth` + dist-info looked
+intact. Proof: `stat -f '%Sf'` showed `flags=hidden`; `python -v` showed the
+skip.
 
-**Heal (instant):** `chflags nohidden .venv/lib/python3.13/site-packages/*.pth`
-then re-run. (`uv sync --reinstall-package benchweave` also works; it rewrites
-the file without the flag.) The actor setting the flag between runs is
-UNIDENTIFIED — on recurrence, run `ls -lO .venv/lib/python3.13/site-packages/*.pth`
-immediately and check holders via `lsof +D .venv`. An earlier draft of this
+**Heal (instant):** run `chflags nohidden .venv/lib/python3.13/site-packages/*.pth`,
+then re-run. You can also run `uv sync --reinstall-package benchweave`. It
+rewrites the file without the flag. The actor that sets the flag between
+runs is not identified. On recurrence, run
+`ls -lO .venv/lib/python3.13/site-packages/*.pth` immediately. Then check
+the holders via `lsof +D .venv`. An earlier draft of this
 section attributed the failures to the uv 0.11.16 → 0.12.12 upgrade; the
 recurrence on 0.12.12 disproved that and prompted this correction.
 
@@ -78,13 +83,14 @@ recurrence on 0.12.12 disproved that and prompted this correction.
 ## Verdict
 
 **FastMCP 4.0.3 over the official MCP SDK is qualified for the gateway.**
-One FastAPI ASGI application serves the 20 REST routes under `/v1/*` and a
-FastMCP server mounted at `/mcp` on the same loopback port; both adapters
-wrap the one typed core-operations seam. REST↔MCP parity is proven per
-operation — the full contract envelope compared field-for-field across
-transports, each reachable failure class at its contract code
-(`tests/integration/test_interface_parity.py`) — and event recovery after
-SIGKILL is proven (`tests/integration/test_event_recovery.py`).
+One FastAPI ASGI application serves the 20 REST routes under `/v1/*`. A
+FastMCP server is mounted at `/mcp` on the same loopback port. Both adapters
+wrap the one typed core-operations seam. The parity suite proves parity
+between REST and MCP per operation: the full contract envelope compared
+field-for-field across transports, each reachable failure class at its
+contract code (`tests/integration/test_interface_parity.py`). Event
+recovery after SIGKILL is proven
+(`tests/integration/test_event_recovery.py`).
 
 ## Exact versions exercised (uv.lock, committed)
 
@@ -100,7 +106,7 @@ SIGKILL is proven (`tests/integration/test_event_recovery.py`).
 ## Transport verified
 
 Real loopback HTTP throughout: uvicorn on an ephemeral port, REST `/v1`
-and MCP `/mcp` served by the one application. Not verified — out of PoC
+and MCP `/mcp` served by the one application. Not verified, out of PoC
 scope: TLS, OAuth flows beyond the local HMAC bearer issuer, and
 non-loopback binding.
 
@@ -113,8 +119,8 @@ non-loopback binding.
   advertises `mcp_version "2026-07-28"` on both transports.
 - FastMCP 4.0.3 signature inference cannot reproduce vendored schemas, so
   every tool is constructed with the vendored `inputSchema` verbatim via
-  the SDK's explicit-schema override route (the function signature is only
-  the callable). `tools/list` deep-equals the vendored corpus: all 17
+  the SDK's explicit-schema override route. The function signature is only
+  the callable. `tools/list` deep-equals the vendored corpus: all 17
   `stg_v1_*` tools, `required` included.
 
 ## Deviation register (D1–D16, pinned by the parity suite)
@@ -122,28 +128,29 @@ non-loopback binding.
 Each deviation has a pinning test or an explicit disclosure; none is
 silent. Full wording for D1–D7 lives in the
 `tests/integration/test_interface_parity.py` module docstring. D8–D13 are
-the final-fix-wave register (2026-09-13, from the two whole-branch
-reviews); each names its WP08 reconciliation. D14–D16 were registered
+the register of the final fix wave (2026-09-13, from the two whole-branch
+reviews). Each row names its WP08 reconciliation. D14–D16 were registered
 during WP08 itself (rendered-envelope divergence, the lease_create
 replay asymmetry, the session-wide admission lock).
 
 **WP08 close-out (2026-09-14): every row in the register below carries
-its disposition — CLOSED naming the closing commit(s), ACCEPTED as a
-pinned structural posture, or RE-LEDGERED naming the target (the WP09
-async-posture re-ledger is pre-registered and untouched). Dispositions
-were verified against the code at close — git log is authoritative —
-not copied from the register's own history.**
+its disposition.** A row is CLOSED, with the closing commits named, or
+ACCEPTED as a pinned structural posture, or RE-LEDGERED with the target
+named. The WP09 async-posture re-ledger is pre-registered and untouched.
+The WP08 close verified the dispositions against the code. Git log is
+authoritative. The dispositions were not copied from the register's own
+history.
 
-**Final-fix-wave code corrections shipped the same day** (behavior pins
-updated with them): the §7 retention-overtake failure is `event_gap`, not
-`cursor_expired` (the overtake branch is `event_gap`'s raise site;
-`cursor_expired` now has no emitter — trim deletes contiguous prefixes, so
-a hole cannot arise by construction); `run_cancel` is owner-or-admin
-scoped (§6 — a control-tier stranger gets 403); the artifact offset floor
-moved into the seam (negative offsets serve head bytes on both
-transports); the five mutating MCP tools hold the app's `WriteGate`
-(mirroring REST's seven gated handlers); and MCP failure envelopes carry
-`isError: true` (D10, closed).
+**Code corrections from the final fix wave shipped the same day**
+(behavior pins updated with them). The §7 retention-overtake failure is
+`event_gap`, not `cursor_expired`. The overtake branch is `event_gap`'s
+raise site; `cursor_expired` now has no emitter, because trim deletes
+contiguous prefixes, so a hole cannot arise by construction. `run_cancel`
+is owner-or-admin scoped (§6: a control-tier stranger gets 403). The
+artifact offset floor moved into the seam (negative offsets serve head
+bytes on both transports). The five mutating MCP tools hold the app's
+`WriteGate`, mirroring REST's seven gated handlers. MCP failure envelopes
+carry `isError: true` (D10, closed).
 
 | # | Deviation |
 |---|---|
@@ -166,8 +173,8 @@ transports); the five mutating MCP tools hold the app's `WriteGate`
 
 ## Licence/provenance display (Task 12 verdict: store-retained, not wire-exposed)
 
-The ratified §D carry is served **nowhere on the interface-v1.1.0 wire —
-by the schema's own decision**. The `bench` and `device` $defs are closed
+The ratified §D carry is served **nowhere on the interface-v1.1.0 wire. The
+schema's own decision causes this.** The `bench` and `device` $defs are closed
 (`additionalProperties: false`) with no licence field, and the fallback
 landings are closed the same way: `evidence_get`'s data object admits
 exactly `{evidence_id, kind, content_ref, artifact_id}`, and
@@ -182,7 +189,7 @@ admits a licence field flips that test and forces the wire carry.
 
 ## Conformance boundaries (disclosed, not hidden)
 
-- **Registry change kinds — RESOLVED (WP08, `78a8857` + the serve wiring
+- **Registry change kinds, RESOLVED (WP08, `78a8857` + the serve wiring
   in `dfbccf5`/`f616b9b`)**: `package_admission` and
   `configuration_activation` now apply end-to-end through the
   bootstrap-wired fixture resolver session (`build_registry_session`;
@@ -190,27 +197,27 @@ admits a licence field flips that test and forces the wire carry.
   data dir), proven by `tests/integration/test_registry_changes.py`
   (both kinds submit → apply → `applied`). The fail-closed `not_ready`
   refusal remains the honest default when a deployment supplies no
-  session — now one tested posture among two, not the only reachable
+  session. It is now one tested posture among two, not the only reachable
   one.
 - **`trip_reset`'s gate reads an always-False flag**: the bench projection
   hardcodes `tripped=False` (no live trip source in the PoC), so the
-  reset-refusal gate never fires; reconciled physical state is the
+  reset-refusal gate never fires. Reconciled physical state is the
   contract's assumption, not a wired signal here.
-- **Queued-cancel branch is interface-unreachable — RESOLVED (WP08 Task 2,
+- **Queued-cancel branch is interface-unreachable, RESOLVED (WP08 Task 2,
   `fe0fadd`)**: a second `run_start` on a bench with a live run now
   conflicts at accept time, so
-  no run can queue behind another through the interface; the recorded-no-op
+  no run can queue behind another through the interface. The recorded-no-op
   cancel branch remains for a single run's accept→dispatch window only
   (the worker's FIFO drain is an internal residual).
-- **Repeated-binding second starts conflict at the seam — RESOLVED (WP08
+- **Repeated-binding second starts conflict at the seam, RESOLVED (WP08
   Task 2, `fe0fadd`)**: a
   `run_start` whose §9 request id differs from the binding document's own
   `request_id` is refused synchronously (409 `conflict`) before
-  acceptance; the same §9 id is a §9 replay. The pre-D9 async shape
+  acceptance. The same §9 id is a §9 replay. The pre-D9 async shape
   (seam accepts, coordinator dedups on the binding's own id, worker's
   poison guard closes the run `outcome_unknown`) is retained only for
   unstored binding digests, which are not decided at accept time.
-- **Auth is the local HMAC test issuer, loopback only** — OAuth and TLS
+- **Auth is the local HMAC test issuer, loopback only.** OAuth and TLS
   are out of PoC scope (see Transport verified).
 
 ## Watch-flake closure — poison-survival test (WP08 Task 8, 2026-09-13)
@@ -226,8 +233,9 @@ Result: 20/20 PASS (1.4–1.7 s each); fulls 683 passed / 0 failed / 0 errors /
 0 skipped, three times (28.6 / 28.5 / 28.0 s). The test never tripped.
 
 **Disposition: evidence-backed no-repro.** Recorded hypothesis (unproven):
-environment delta — cross-run state (temp-dir/SQLite residue or machine load
-from the concurrent gate batches the original trip occurred inside), not a
-deterministic code defect; the original one-time trip remains unexplained and
-unreproduced under the 20+3 protocol. Reopen rule: on any recurrence, capture
-DB/env/temp residue at the failing run and write a RED test before any fix.
+an environment delta. The suspected cause is cross-run state (temp-dir and
+SQLite residue, or machine load from the concurrent gate batches the
+original trip occurred inside), not a deterministic code defect. The
+original one-time trip remains unexplained and unreproduced under the 20+3
+protocol. Reopen rule: on any recurrence, capture the DB, env and temp
+residue at the failing run. Then write a RED test before any fix.
