@@ -303,10 +303,18 @@ def register_stream_route(
         except OperationFailure as fail:
             return failure_page(fail)
         except BridgeRefused as refused:
+            # The refusal class keeps its own row: a dead session is the
+            # 401 unauthenticated row wherever it died (FOLD-4 — the
+            # probe window included), while a held pair or a capped
+            # session is conflict. The message names the reason either
+            # way.
+            code = (
+                "unauthenticated" if refused.reason == "unauthenticated" else "conflict"
+            )
             return failure_page(
                 OperationFailure(
                     failure(
-                        "conflict",
+                        code,
                         f"stream refused: {refused.reason}",
                     )
                 )

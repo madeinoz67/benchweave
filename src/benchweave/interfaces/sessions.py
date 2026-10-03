@@ -77,8 +77,10 @@ class BridgeRefused(ValueError):
     (GW-33: one bridge per pair). ``cap`` — the session already holds
     ``ui_max_bridges_per_session`` bridges. ``unauthenticated`` — the
     session is not live; a stream never outlives its session. The UI
-    adapter renders all three through the ``conflict`` §C.3 row, the
-    message naming the reason.
+    adapter renders ``unauthenticated`` through the 401 row and the
+    ownership refusals through the ``conflict`` row, the message naming
+    the reason (FOLD-4: the refusal class, not the call site, picks the
+    row).
     """
 
     def __init__(self, reason: str) -> None:

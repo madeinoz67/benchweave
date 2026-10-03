@@ -322,6 +322,35 @@ def test_sessionless_stream_renders_unauthenticated(
 # --- the page wiring -------------------------------------------------------------
 
 
+def test_session_death_inside_the_probe_renders_unauthenticated(
+    refusals: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """FOLD-4 (two-lane NIT): a session that dies inside the probe window
+    (between the route's resolve and its bridge claim) renders the 401
+    unauthenticated row — not conflict. The probe-window death is the
+    one timing window where the old mapping showed 409 for a dead
+    session; the refusal must not depend on WHERE the session died.
+
+    Induced on the adapter's own seam object (the refused-code matrix's
+    idiom — the router closes over THIS object): the wrapper kills the
+    session inside ``events_get``; the route's own register call then
+    refuses ``unauthenticated`` for real."""
+    sessions = refusals.app.state.ui_sessions
+    record = live_session(refusals.app, principal="probe-death")
+    operations = refusals.app.state.ui_operations
+    original = operations.events_get
+
+    def killing_probe(*args: object, **kwargs: object) -> object:
+        sessions.logout(record.session_id)  # the session dies mid-probe
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(operations, "events_get", killing_probe)
+    response = refusals.client.get(STREAM_PATH, cookies=_cookie(record.session_id))
+    assert response.status_code == 401
+    assert 'data-bw-refusal-code="unauthenticated"' in response.text
+    assert sessions.bridge_benches(record.session_id) == frozenset()
+
+
 def test_bench_page_wires_the_stream_and_the_live_region(
     refusals: SimpleNamespace,
 ) -> None:
