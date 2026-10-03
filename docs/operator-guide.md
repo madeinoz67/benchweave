@@ -377,7 +377,7 @@ wait for a terminal state.
 The demo refuses to compose if a live gateway already holds a store under
 its scratch dir (one-coordinator rule — §11).
 
-## 5. Report — run evidence
+## 5. Report: run evidence
 
 `report` reads the data directory **at rest** (never a live gateway;
 `--gateway` is a documented not-implemented stub that refuses):
@@ -501,7 +501,7 @@ always stay and are disclosed by count. Like the other at-rest commands,
 `retention` takes the store's exclusive lock for its whole read and
 refuses (naming the holder) while a live gateway owns the store.
 
-## 7. Dispose — audited delete-tier disposition
+## 7. Dispose: audited delete-tier disposition
 
 `dispose` is the audited path the retention wedge disclosure points at:
 it deletes overdue **delete-tier** rows (finalised captures and evidence
