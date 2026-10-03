@@ -1,6 +1,6 @@
 # Standalone Web UI (FastAPI + MCP + HTMX): Requirements PRD
 
-**Status:** Draft v0.2, revised 2026-10-01 for the PRD 12 rulings · **Owner:** Stephen (madeinoz67) · **Scope:** `benchweave-sdk` standalone mode · **Related:** madeinoz67/benchweave#242, #243, #244
+**Status:** Draft v0.3, revised 2026-10-01 for the PRD 12 rulings; amended 2026-10-03 for the 2026-10-02 packaging rulings (issue #309: package `benchweave_sdk_server`, one `src/` tree, `benchweave-sdk[server]` extra — Summary 4, §8 Q1, NFR-P1, NFR-P2, SW-02, SW-03, §9 I1) · **Owner:** Stephen (madeinoz67) · **Scope:** `benchweave-sdk` standalone mode · **Related:** madeinoz67/benchweave#242, #243, #244
 
 ## Summary
 
@@ -11,7 +11,7 @@ Headline positions this PRD takes (each is a requirement below, with the alterna
 1. **Same shape as the gateway.** One ASGI app, FastMCP mounted in-process, one operations seam behind REST, MCP and UI — the pattern already in `src/benchweave/interfaces/app.py` upstream.
 2. **HTMX + Jinja partials, no SPA framework.** Alignment to the UI standard is by tokens, rules and states, not by React. `tokens.css`/`themes.css` are framework-neutral and are consumed byte-for-byte; `EngineeringPlot`'s closed interface is re-implemented as a thin uPlot wrapper.
 3. **Plugin UI is rendered from the plugin-ui 0.2.0 manifest**, validated by the same validator bytes `check-ui` uses (SRF-2). No plugin-supplied JS or CSS.
-4. **Not in the SDK wheel.** Shipping device I/O and a web stack inside `benchweave-sdk` breaks PKG-1/PKG-2 and reverses the #147 ruling that standalone provider backends are author/harness-side. Recommended home: a sibling distribution that depends on the SDK (§8 Q1).
+4. **In the SDK distribution, behind the `[server]` extra.** The 2026-10-02 packaging rulings (issue #309) reverse this PRD's original "not in the SDK wheel" position: the host ships as `benchweave-sdk[server]` (package `benchweave_sdk_server`, one `src/` tree) — one install surface, publishing and maintenance stay low-friction. PKG-1/PKG-2 hold via the minimal default install: the default dependency set is unchanged, extras being dependency sets rather than file sets (§8 Q1).
 5. **Fold in the fork's proven parts, not its shortcuts.** Take the serial host-services pattern, SSE streaming, bounded captures, HTML report and MCP capture tools; leave the Chart.js SPA, the CSV-plus-private-SQLite capture format and the no-auth/no-CSRF posture.
 6. **MCP serves authoring as well as operation.** The author's agent scaffolds, validates, edits the plugin's JSON contracts, reloads and tests the plugin, then exercises the device through the same endpoint. Python source stays with the agent's own file tools; authoring tools are off unless the host starts in authoring mode (§6 d.1).
 
@@ -145,8 +145,8 @@ The seam is the only place state changes. SSE events are published from the seam
 ### (a) Application and launch
 
 - SW-01. One ASGI app built by a factory; FastAPI for HTTP, FastMCP mounted at `/mcp` under a combined lifespan, mirroring the gateway's `interfaces/app.py` composition.
-- SW-02. One CLI entry: **Direction (non-binding)** `benchweave-standalone serve <plugin project> [--port] [--host] [--allow-network] [--no-open]`. Loads the plugin from its installed package or project path, reads `descriptor.json` and `presentation.json`, validates both before binding a port.
-- SW-03. A stdio MCP entry (`benchweave-standalone mcp <plugin project>`) runs the same app in-process with no HTTP listener, for MCP clients that launch servers themselves.
+- SW-02. One CLI entry: **Direction (non-binding)** `benchweave-sdk-server serve <plugin project> [--port] [--host] [--allow-network] [--no-open]`. Loads the plugin from its installed package or project path, reads `descriptor.json` and `presentation.json`, validates both before binding a port.
+- SW-03. A stdio MCP entry (`benchweave-sdk-server mcp <plugin project>`) runs the same app in-process with no HTTP listener, for MCP clients that launch servers themselves.
 - SW-04. One adapter session per process. A second device is a second process on another port. Multi-device composition is gateway territory.
 - SW-05. Startup refuses, with a `snake_case:` prefixed error, when the descriptor, presentation or presets fail SDK validation. No partial serve.
 
@@ -253,8 +253,8 @@ Authoring (NFR-S8, NFR-S9). An agent that can rewrite and reload adapter code ho
 
 **Packaging (NFR-P).**
 
-- NFR-P1. The SDK wheel's dependency set and contents are unchanged (PKG-1, PKG-2). Web, MCP and serial dependencies live in the standalone distribution.
-- NFR-P2. Pinned versions aligned with the gateway where shared: FastAPI, uvicorn, `fastmcp[server]==4.0.3`, uPlot. The digital lane renderer is host-owned (no vendored JS for it). htmx vendored as a single hashed file with its SSE extension.
+- NFR-P1. The default dependency set is unchanged (PKG-1, PKG-2). Web, MCP and serial dependencies live in the `benchweave-sdk[server]` optional extra; the wheel's contents include the server package's bytes (extras are dependency sets, not file sets — 2026-10-02 rulings, issue #309).
+- NFR-P2. Pinned versions aligned with the gateway where shared: FastAPI, uvicorn, `fastmcp==4.0.3`, uPlot. The digital lane renderer is host-owned (no vendored JS for it). htmx vendored as a single hashed file with its SSE extension.
 - NFR-P3. Vendored UI assets (tokens, themes, htmx, uPlot) are inventory-hashed and verified at serve time, as `bundled_assets()` does for the preview renderer.
 - NFR-P4. Python 3.13, uv, runs on Linux, macOS and Windows (serial on all three).
 
@@ -275,7 +275,7 @@ Each has a recommendation; rulings stay with the owner.
 2. Sibling distribution in the SDK repo (`benchweave-standalone`, own wheel) — shares CI and standards sync; needs a second build target and its own PKG rules.
 3. Separate repository under `madeinoz67` — cleanest boundary, own release cycle; one more repo to keep in lockstep with the SDK.
 
-**Recommend 2.** It keeps the SDK wheel untouched, keeps the standards lock and validator bytes in one place, and avoids a third repo in the submodule chain. Revisit 3 if release cadence diverges. Q1 now also decides where the SDK's `preview-ui` shim delegates (PRD 12 R-9): the shim points at the standalone host's `serve` in whichever distribution Q1 picks.
+**Ruled 2026-10-02 (issue #309): option 1, as `benchweave-sdk[server]`** — package `benchweave_sdk_server`, one `src/` tree — reversing the recommendation above (option 2, made before the ruling). One install surface keeps publishing and maintenance low-friction, and PKG-1/PKG-2 hold via the minimal default install: the default dependency set is unchanged (the wheel's contents include the server package's bytes — extras are dependency sets, not file sets). Q1's shim question resolves with it (PRD 12 R-9): the `preview-ui` shim delegates to `benchweave-sdk-server serve`.
 
 **Q2. How is UI-standard conformance proven without React?**
 
@@ -357,7 +357,7 @@ Four increments, each shippable and each gated on the one before. Mock transport
 | I3 | Hardware and capture: serial provider backend from the fork, discovery, capture via SDK writer, SQLite index, SSE live view, MCP capture tools | SW-33–34, SW-49–51, SW-54–59, SW-60–62, NFR-O1–O3, NFR-Q3 | `adc_6ch_12bit` captures at full rate for 10 minutes with flat memory; fork's `host.py` and `mcp_server.py` deleted in a migration PR; a retention dry run and prune match the configured rules, with every removal in the retention log; Q1, Q5, Q7, Q12 and Q13 ruled; plot spike criteria met |
 | I4 | Analysis and reporting: fork Analyse features made generic, HTML report | SW-52–53 | Fork's `app.js` deleted; second (non-ADC) adapter runs unmodified; Q8 ruled |
 
-I1 can start before Q1 is ruled if it lands in a throwaway package path; moving it is cheap until I3 adds the serial backend.
+I1's throwaway-package-path condition is resolved by the 2026-10-02 rulings (issue #309): Q1 is ruled — the host lives in `benchweave-sdk[server]` — and the relocation out of the sibling package path is itself the #309 packaging slice; no separate retrofit move remains.
 
 ## 10. Upstream standard dependencies
 
