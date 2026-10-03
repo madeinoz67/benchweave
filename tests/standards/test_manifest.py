@@ -630,3 +630,82 @@ def test_dev_path_traversal_out_of_the_head_refuses(tmp_path: Path) -> None:
     )
     with pytest.raises(StandardsError, match="dev_path_outside_head"):
         load_manifest(root)
+
+
+# --- separator-spoofed normative rows (issue #238) ---------------------------------
+#
+# A normative row that dodges the 'standards/' prefix also dodges the
+# corpus-pin second authority (validate_manifest's _check_normative_path
+# early-returns for non-standards rows), and export's basename mapping
+# presents the row under <id>/<basename> over the raw bytes — the
+# laundering shape. The load boundary refuses the same lexicon repin
+# refuses for corpus rows (pin_path_escape): empty, absolute, drive,
+# backslash, and ../ traversal forms. Load does no filesystem access, so
+# the planted rows need no files on disk.
+
+
+def _rewrite_normative(root: Path, rows: list[str]) -> None:
+    path = root / "standards/standards-manifest.json"
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document["standards"][0]["normative"] = rows
+    path.write_text(json.dumps(document), encoding="utf-8")
+
+
+def test_backslash_active_normative_row_refuses_at_load(tmp_path: Path) -> None:
+    standards = _planted_tree(
+        tmp_path, {"title": "Demo schema", "description": "No version mentioned"}
+    )
+    _rewrite_normative(standards, ["standards\\demo\\0.2.2-dev\\demo.schema.json"])
+    with pytest.raises(StandardsError, match=r"normative_path_escape: demo:"):
+        load_manifest(standards)
+
+
+def test_traversal_active_normative_row_refuses_at_load(tmp_path: Path) -> None:
+    # The platform-independent form (the design's scope correction): no
+    # backslash anywhere, yet the row dodges 'standards/' on every host and
+    # the basename mapping launders on POSIX too.
+    standards = _planted_tree(
+        tmp_path, {"title": "Demo schema", "description": "No version mentioned"}
+    )
+    _rewrite_normative(standards, ["src/../standards/demo/0.2.2-dev/demo.schema.json"])
+    with pytest.raises(StandardsError, match=r"normative_path_escape: demo:"):
+        load_manifest(standards)
+
+
+def test_backslash_tail_dev_normative_row_refuses_at_load(tmp_path: Path) -> None:
+    # The discriminating dev shape: containment PASSES a tail-backslash row
+    # (posixpath.normpath keeps the backslash a literal, so the head-prefix
+    # match holds) and the lexical mirror is what catches it. A whole-path
+    # backslash dev row already refuses dev_path_outside_head — containment
+    # stays the dev-specific authority, checked first.
+    root = _dev_head_tree(
+        tmp_path,
+        dev_block={
+            "version": "0.2.0-dev",
+            "opened": "2026-09-23",
+            "normative": ["standards/demo/0.2.0-dev/a\\b.json"],
+        },
+    )
+    with pytest.raises(StandardsError, match=r"normative_path_escape: demo:"):
+        load_manifest(root)
+
+
+def test_non_standards_parity_shaped_row_still_loads(tmp_path: Path) -> None:
+    # The over-broad-refusal guard: a relative posix row outside standards/
+    # (the parity live source's shape) must keep loading. Green before AND
+    # after the fix.
+    standards = _planted_tree(
+        tmp_path, {"title": "Demo schema", "description": "No version mentioned"}
+    )
+    _rewrite_normative(
+        standards,
+        [
+            "standards/demo/0.1.0/demo.schema.json",
+            "src/benchweave/presentation/contracts.py",
+        ],
+    )
+    entry = load_manifest(standards).standards[0]
+    assert entry.normative == (
+        "standards/demo/0.1.0/demo.schema.json",
+        "src/benchweave/presentation/contracts.py",
+    )
