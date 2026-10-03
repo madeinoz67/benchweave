@@ -337,6 +337,21 @@ def test_bench_page_wires_the_stream_and_the_live_region(
     assert "data-bw-live-pending" in page.text
 
 
+def test_served_host_script_announces_stream_termination(
+    refusals: SimpleNamespace,
+) -> None:
+    """FOLD-3(b): the shipped bw-host.js carries a ``bw-end`` listener
+    announcing stream termination through the existing ARIA channel —
+    without it the browser's stream stops silently. This arm pins the
+    listener's PRESENCE and its announcement wording in the served
+    bytes (there is no JS unit lane; the browser lane exercises the
+    asset end-to-end on the pages)."""
+    asset = refusals.client.get("/ui/assets/bw-host.js")
+    assert asset.status_code == 200
+    assert 'addEventListener("bw-end"' in asset.text
+    assert "Event stream ended" in asset.text
+
+
 def test_the_announce_region_is_the_only_live_region(
     refusals: SimpleNamespace,
 ) -> None:

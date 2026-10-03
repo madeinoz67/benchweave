@@ -484,4 +484,36 @@ diff at each review):
 - **F2:** `BENCHWEAVE_UI` default — recommended ON (loopback posture, the flag disables);
   the alternative (default OFF until G3) is one line in `app_entry`.
 - **F3:** the ui-html 0.2.0 release event timing (the gateway rides the workspace; PyPI
-  publication is the `publish-ui-html` trigger and can trail the G2 merges).
+  publication is the `publish-ui-html` trigger and can trail the G2 merges)
+
+## 13. Addendum (2026-10-03, G2c fold wave — corrects §2.5's consumer-side sentences)
+
+The two-lane refute of the G2c build returned one converged MEDIUM and two LOWs; the
+folds and the rulings that narrowed §2.5's claims, recorded here so the record does not
+out-run the mechanism (rubric G4):
+
+- **Dedupe is the server-side high-water mark.** §2.5 said "the browser dedupes by
+  `(stream_id, sequence)`". No browser dedupe exists and none is needed: the bridge
+  itself never puts a sequence on the wire twice (the per-stream high-water mark over
+  EMITTED rows — advanced only over rows a flushed fragment actually carried), and the
+  host script's swap REPLACES the region's content, so a hypothetical duplicate is
+  structurally inert client-side. The kill criterion's "the bridge delivers a
+  duplicated sequence" is enforced at the producer.
+- **Announcements are the named-event listeners, not every state change.** §2.5's "state
+  changes announce through the page's ARIA live region" reads as a per-change
+  announcement. What exists: the `bw-gap` listener announces the gap (and, from this
+  fold wave, `bw-end` announces stream termination) through the one
+  `data-bw-announce` region. Ordinary event swaps do NOT announce — announcing every
+  swap is chatter, not access (the refuted row, narrowed here rather than built).
+- **One flush per poll tick, no row cap.** §2.5's "one poll's batch is flushed
+  together" resolves to: the tick drains the retained window (pages with the returned
+  cursor until a short/empty page) and flushes ONE message event carrying every
+  drained row. The interim 20-row render cap silently dropped the remainder while the
+  dedupe mark advanced past it — the converged MEDIUM, fixed with the paging drain.
+- **SSE framing splits only on CRLF/CR/LF.** `str.splitlines` also splits on Unicode
+  separators that are not SSE terminators; the framing now uses the grammar's own set.
+  Latent (all fragment fields are gateway-minted), pinned by the round-trip arm.
+- **Observation, no fix (a refuted row):** a stream whose bench row is deleted while
+  events remain retained keeps serving — faithful to the seam's own guard
+  (`events_get` checks bench existence only when the stream is empty); disclosed for
+  the PR body, not changed here..
