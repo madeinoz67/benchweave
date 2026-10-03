@@ -41,6 +41,13 @@ from benchweave.interfaces.sessions import SessionRecord
 
 CONTRACT = Path(__file__).resolve().parents[2] / "docs" / "internal" / "ui-contract.md"
 
+#: The template-posture patterns, hoisted so the hardening is pinnable:
+#: both compiled case-INSENSITIVE (CodeQL py/bad-tag-filter — a
+#: case-sensitive match on <script>/on* misses <SCRIPT>/ONLOAD=, and the
+#: two self-asserting arms at the top of the template test pin that).
+_SCRIPT_TAG = re.compile(r"<script[^>]*>", re.IGNORECASE)
+_INLINE_HANDLER = re.compile(r"\son\w+=", re.IGNORECASE)
+
 
 @pytest.fixture(scope="module")
 def ui_gateway(tmp_path_factory: pytest.TempPathFactory) -> Iterator[SimpleNamespace]:
@@ -380,11 +387,18 @@ def test_gateway_templates_never_inline_script() -> None:
     )
     files = sorted(templates.glob("*.j2"))
     assert files, "the gateway host templates are missing"
+    # The hardening is itself pinned first: uppercase variants MUST match.
+    assert _SCRIPT_TAG.findall("<SCRIPT src='/x.js'></SCRIPT>"), (
+        "the script-tag pattern misses uppercase <SCRIPT>"
+    )
+    assert _INLINE_HANDLER.search("<div ONLOAD='steal()'></div>"), (
+        "the inline-handler pattern misses uppercase ON*"
+    )
     for template in files:
         source = template.read_text(encoding="utf-8")
-        for script in re.findall(r"<script[^>]*>", source):
+        for script in _SCRIPT_TAG.findall(source):
             assert ' src="' in script, f"{template.name}: a script tag without src"
-        assert not re.search(r"\son\w+=", source), f"{template.name}: an inline handler"
+        assert not _INLINE_HANDLER.search(source), f"{template.name}: an inline handler"
     base = (templates / "base.j2").read_text(encoding="utf-8")
     assert '"allowEval": false' in base
     assert '"selfRequestsOnly": true' in base
