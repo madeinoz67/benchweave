@@ -156,6 +156,10 @@ async def _bridge_events(
             advisory_html=None,
         )
         yield sse_message(fragment)
+        # The probe's cursor seeds the loop — the listing continues from
+        # where the probe stopped (a forgotten seed makes every poll run
+        # from after=None, which can never gap and re-pages the head).
+        cursor = probe["cursor"] if probe["events"] else None
         while True:
             await sleep(poll_ms / 1000)
             record = sessions.resolve(session_id)
