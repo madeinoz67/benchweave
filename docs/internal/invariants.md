@@ -345,14 +345,16 @@ rather than rewriting the history — that is how this file earns trust.
   sibling transport. *The WP07 lesson: a parity suite that compares REST to MCP proves
   only transport symmetry — both can carry the same wrong behavior invisibly.*
   Amendment (2026-10, G2 — the read-only UI design record): the `/ui` session adapter is
-  a third transport over the one seam; its identity comes only from the server-side
-  session (CON-15), its refusals render the contract envelope's own code through the
-  §C.3 row table (`interfaces/ui_refusals.py`), and the I02/I09 suites cover it like
-  REST and MCP (I02's read-route half and the observe-no-control pin landed with G2b;
-  I09's cursor half landed with G2c's bridge — the bridge's listing cursor is
+  a third transport over the one seam. Every `/ui` route derives its caller's `Identity`
+  from the server-side session and nowhere else (CON-15; pinned by the session suite and
+  I02's no-spoofing arms — no adapter code constructs an `Identity` outside the
+  session-record mapping). Every seam `Failure` renders its own code through the §C.3
+  row table (`interfaces/ui_refusals.py`) — the 14 codes where `Failure` objects exist;
+  the session-refusal paths render their row with no correlation id, because no
+  `Failure` was minted. I02's read-route half and the observe-no-control pin landed with
+  G2b; I09's cursor half landed with G2c's bridge — the bridge's listing cursor is
   server-held, and no `/ui` response body, page or stream, carries a cursor-shaped
-  value).
-- **[CON-6]** MCP auth is fail-closed at two layers — an `StgTokenVerifier` (FastMCP
+  value).- **[CON-6]** MCP auth is fail-closed at two layers — an `StgTokenVerifier` (FastMCP
   `TokenVerifier` over `benchweave.interfaces.identity.validate`) plus the layer beneath
   it — `src/benchweave/interfaces/mcp.py`. *An auth gap on the tool surface hands a caller
   the bench.*

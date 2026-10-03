@@ -196,8 +196,12 @@ The UI is read-only. It shows this data:
 - one page per evidence record, per document and per artifact.
 
 The artifact download gives the bytes after the digest check. Pages that
-you do not have scope for show a refusal row, not the data. A page that
-fails shows the failure code, the correlation id and the next action.
+you do not have scope for show a refusal row, not the data. When a
+gateway operation fails, the page shows the failure code, the
+correlation id and the next action. (A session refusal — no session,
+or an expired one — shows the refusal row without a correlation id:
+nothing reached the gateway operations layer, so there is no failure
+diagnostic to join.)
 Write actions (leases, runs, changes) are not in the UI yet.
 
 **Production secret posture.** With `BENCHWEAVE_ENV=production`, `serve`

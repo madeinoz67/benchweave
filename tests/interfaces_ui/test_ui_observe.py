@@ -206,11 +206,13 @@ def test_no_read_page_renders_a_form_or_button(gateway: SimpleNamespace) -> None
 def test_direct_post_to_read_paths_is_refused(
     gateway: SimpleNamespace,
 ) -> None:
-    """§7-E's belt around the belt: a direct POST to a read path cannot
-    mutate — the CSRF guard refuses the session-bearing state change
-    (403, no page CSRF token) BEFORE the route table, and the routes are
-    GET-only anyway (a tokenless POST would 405). Either shape is a
-    refusal; neither reaches a handler."""
+    """§7-E's belt around the belt, in the executed truth (the #368 F2
+    fold): a session-bearing POST to a read path is refused by the CSRF
+    guard — 403, before any handler, whatever the path matches. The
+    earlier prose named a 405 route-table refusal that never executes on
+    this path shape: the CSRF guard intercepts every session-bearing
+    state change first (a sessionless POST to a GET-only route is the
+    only 405 shape, and an unknown path falls to the namespace 404)."""
     cookie = {"bw_session": gateway.control.session_id}
     for path in (
         f"/ui/benches/{BENCH_ID}",
@@ -221,8 +223,8 @@ def test_direct_post_to_read_paths_is_refused(
         "/ui/documents/" + "0" * 64,
     ):
         response = gateway.client.post(path, cookies=cookie)
-        assert response.status_code in (403, 405), (path, response.status_code)
-        assert response.text != ""  # a refusal shape, never a mutation ack
+        assert response.status_code == 403, (path, response.status_code)
+        assert "csrf" in response.text.lower()  # a refusal shape, never a mutation ack
 
 
 def test_only_the_session_record_constructs_an_identity() -> None:
@@ -343,6 +345,13 @@ def test_expired_session_renders_unauthenticated(
     sessions._now = original_now
     assert expired.status_code == 401
     assert 'data-bw-refusal-code="unauthenticated"' in expired.text
+    # The honest state (the #368 F3 fold): this path has NO Failure
+    # object — the session layer refused before any seam call — so no
+    # correlation id renders. The correlation id is the seam failure's
+    # diagnostic join (errors.py mints it), not a property of the §C.3
+    # row; the operator guide's wording names that boundary.
+    assert "Correlation id" not in expired.text
+    assert not re.search(r"data-bw-correlation-id", expired.text)
 
 
 @pytest.mark.parametrize("code", INDUCED_CODES)

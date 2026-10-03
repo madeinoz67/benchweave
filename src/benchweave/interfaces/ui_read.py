@@ -236,12 +236,22 @@ def register_read_pages(
                         f" reassembly bound is {max_json_bytes}",
                     )
                 )
-            expected_digest = str(first["sha256"])
+            # H2 (#368): the verdict references the ADMISSION identity —
+            # the digest embedded in the artifact id (art-<sha256>, minted
+            # at put_artifact) — never the chunk response's own sha256,
+            # which the store derives from the same row being read: a
+            # store-row corruption is internally consistent and would
+            # pass a self-referential check (the lane's tamper repro).
+            expected_digest = artifact_id.removeprefix("art-")
             data = bytearray(base64.b64decode(first["base64"]))
             while not first["eof"]:
-                # The loop is bounded by construction: each iteration
-                # consumes a full chunk or ends at eof, and total_bytes
-                # is already under the reassembly bound above.
+                # H3 (#368, G4 accuracy): the loop's boundedness rests on
+                # the SEAM's honest eof/total_bytes reporting — each pass
+                # consumes a full chunk or ends at eof, and total_bytes is
+                # already under the reassembly bound above. The adapter
+                # does NOT defend against a seam that reports eof=false
+                # forever; that is a seam defect outside this adapter's
+                # threat model, surfaced by its own suites.
                 first = operations.artifact_read(
                     identity, artifact_id, len(data), max_chunk_bytes
                 )

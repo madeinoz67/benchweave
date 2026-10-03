@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from typing import Any, cast
 
+import pytest
 from fastapi.routing import APIRoute
 from ui_gateway_support import NOW_EPOCH
 
@@ -29,6 +30,7 @@ from benchweave.interfaces.ui_routes import (
     MUTATING_OPERATIONS,
     READ_OPERATIONS,
     UI_ROUTES,
+    RouteSpec,
     route_mapping_violations,
 )
 
@@ -189,3 +191,75 @@ def test_a_planted_undeclared_read_route_reds() -> None:
     routes = [route for route in router.routes if isinstance(route, APIRoute)]
     violations = route_mapping_violations(routes)
     assert any("/extra/{thing}" in violation for violation in violations)
+
+
+# --- H1 (lane-2 F2 rec, #368): the checker's own mapping clauses pinned ----------
+#
+# The mutation proof showed both mutating-mapping clauses deletable green:
+# no arm drove a spec that maps TWO operations on a mutating route, or one
+# outside GW-10's vocabulary. Both arms below drive the CHECKER with
+# registry rows the mounted router never carries (monkeypatched in) —
+# the planted-route arms above prove the ENUMERATION; these prove the
+# MAPPING JUDGEMENT, which is the clauses' own input space.
+
+
+def _checker_input(
+    monkeypatch: pytest.MonkeyPatch, spec: RouteSpec
+) -> list[APIRoute]:
+    """A one-route list matching ``spec`` against a registry carrying it
+    (param-free paths keep the planted handler honest — it is never
+    called; the checker reads the route table, not handlers)."""
+    from fastapi import APIRouter
+
+    import benchweave.interfaces.ui_routes as ui_routes
+
+    monkeypatch.setattr(ui_routes, "UI_ROUTES", (*UI_ROUTES, spec))
+    router = APIRouter()
+    method = next(iter(spec.methods))
+
+    async def _planted() -> object:  # pragma: no cover - never called
+        return {}
+
+    router.add_api_route(
+        spec.path, _planted, methods=[method], include_in_schema=False
+    )
+    return [route for route in router.routes if isinstance(route, APIRoute)]
+
+
+def test_a_mutating_route_mapping_two_operations_reds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Clause 1: a mutating route mapping MORE THAN ONE operation violates
+    GW-10's exactly-one rule — the checker must name it."""
+    spec = RouteSpec(
+        path="/planted-both",
+        methods=frozenset({"POST"}),
+        operations=frozenset({"run_start", "run_cancel"}),
+        classification="interface",
+    )
+    violations = route_mapping_violations(_checker_input(monkeypatch, spec))
+    assert any(
+        "maps 2 operations" in violation
+        and "exactly one" in violation
+        and "/planted-both" in violation
+        for violation in violations
+    ), violations
+
+
+def test_a_mutating_route_mapping_outside_the_vocabulary_reds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Clause 2: a mutating route mapping an operation OUTSIDE GW-10's
+    eight (a read operation, here) violates the vocabulary — named."""
+    spec = RouteSpec(
+        path="/planted-sneaky",
+        methods=frozenset({"POST"}),
+        operations=frozenset({"gateway_info"}),
+        classification="interface",
+    )
+    violations = route_mapping_violations(_checker_input(monkeypatch, spec))
+    assert any(
+        "outside GW-10's mutating vocabulary" in violation
+        and "/planted-sneaky" in violation
+        for violation in violations
+    ), violations

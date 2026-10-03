@@ -517,3 +517,19 @@ out-run the mechanism (rubric G4):
   events remain retained keeps serving — faithful to the seam's own guard
   (`events_get` checks bench existence only when the stream is empty); disclosed for
   the PR body, not changed here..
+  publication is the `publish-ui-html` trigger and can trail the G2 merges).
+
+## Addendum (2026-10-03, the GW-22 record fork — lane-1 ruling)
+
+The shipped G2b device pages render reading tiles in the CONSERVATIVE
+state: tiles do not consult retained run evidence. A tile renders the
+parameter's label and unit with value `Unavailable` until a
+gateway-reported observation exists for it — GW-22's no-fabrication half
+holds (no submitted, staged or fabricated value reaches a tile), and
+staleness stays the contract predicate computed from the observation's
+own age (wired at `reading_staleness`, pinned at the composition seam).
+Wiring evidence-backed tiles is follow-up issue #369, which names the
+two carrier shapes (an evidence join at composition time, or a
+sample-bearing observation read raised as an interface change) and the
+reopen trigger. Records are frozen; this addendum is the only motion in
+this file since the record landed.
