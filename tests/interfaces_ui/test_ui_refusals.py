@@ -139,3 +139,4 @@ def test_seam_failure_renders_the_c3_row_with_correlation_id(
     assert "Wait the advertised interval and submit again." in page
     assert "induced for the row-render pin" in page
     assert re.search(r"[0-9a-f]{16}", page), "the correlation id renders"
+
