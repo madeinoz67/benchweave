@@ -1,0 +1,191 @@
+"""GW-10's route-mapping gate (design §7-D): the mounted ``/ui`` routes
+are EXACTLY the declared set, every mutating method maps to exactly one
+of the interface's eight mutating operations, and the session-layer
+routes are explicitly flagged non-interface.
+
+The enumeration comes from the app object (``build_ui_app``'s router —
+the same object ``create_app`` mounts), never from the module's own
+self-description alone: the checker compares BOTH directions, so a route
+registered without a registry row reds (the planted-route kill control
+proves the checker polices rather than documents), and a registry row
+without a mounted route reds too.
+
+Mutating vocabulary (GW-10, the PRD's fixed eight): lease_create,
+lease_renew, lease_release, run_check, run_start, run_cancel,
+change_submit, change_apply — G2 mounts NONE of them; G3/G4 add them
+and this suite polices each addition's mapping the day it lands.
+"""
+
+from __future__ import annotations
+
+from typing import Any, cast
+
+from fastapi.routing import APIRoute
+from ui_gateway_support import NOW_EPOCH
+
+from benchweave.interfaces.sessions import SessionStore
+from benchweave.interfaces.ui import build_ui_app, build_ui_router
+from benchweave.interfaces.ui_routes import (
+    MUTATING_OPERATIONS,
+    READ_OPERATIONS,
+    UI_ROUTES,
+    route_mapping_violations,
+)
+
+
+class _NullOperations:
+    """An operations seam stand-in (the routing suite's shape): the
+    mapping arms must never reach it."""
+
+    def __getattr__(self, name: str) -> object:
+        def _unreachable(*args: object, **kwargs: object) -> object:
+            raise AssertionError(f"the mapping arm must not reach operations.{name}")
+
+        return _unreachable
+
+
+def _mounted_routes() -> list[APIRoute]:
+    """The UI sub-app's OWN routes — the object ``create_app`` mounts,
+    enumerated from the app (this FastAPI wraps an included router in a
+    lazy ``_IncludedRouter``; its effective candidates carry each real
+    route as ``original_route``)."""
+    store = SessionStore(now_epoch=lambda: NOW_EPOCH)
+    app = build_ui_app(
+        cast(Any, _NullOperations()),
+        store,
+        secret=b"route-mapping",
+        limits={"max_json_bytes": 64},
+    )
+    routes: list[APIRoute] = []
+    for mounted in app.router.routes:
+        candidates = getattr(mounted, "effective_candidates", None)
+        if candidates is None:
+            if isinstance(mounted, APIRoute):
+                routes.append(mounted)
+            continue
+        routes.extend(
+            candidate.original_route for candidate in candidates()
+        )
+    assert routes, "the UI sub-app has no routes to enumerate"
+    return routes
+
+
+def test_every_mounted_route_is_declared_and_vice_versa() -> None:
+    """Both directions: the mounted set IS ``UI_ROUTES`` (path + methods)
+    — nothing extra mounted, nothing declared but missing."""
+    mounted = {
+        (route.path, frozenset(route.methods or ())) for route in _mounted_routes()
+    }
+    declared = {(spec.path, spec.methods) for spec in UI_ROUTES}
+    assert mounted == declared, (
+        f"mounted-but-undeclared: {sorted(mounted - declared)}; "
+        f"declared-but-unmounted: {sorted(declared - mounted)}"
+    )
+
+
+def test_no_route_has_unmapped_violations() -> None:
+    assert route_mapping_violations(_mounted_routes()) == []
+
+
+def test_interface_routes_map_to_catalog_operations_only() -> None:
+    """Every interface-classified route maps to operations that exist in
+    the interface's own split: mutating methods map to EXACTLY ONE of
+    the eight mutating operations (GW-10); read methods map within the
+    twelve read operations."""
+    for spec in UI_ROUTES:
+        if spec.classification != "interface":
+            continue
+        if spec.methods & {"POST", "PUT", "PATCH", "DELETE"}:
+            assert len(spec.operations) == 1, spec.path
+            assert next(iter(spec.operations)) in MUTATING_OPERATIONS, spec.path
+        else:
+            assert spec.operations, f"{spec.path} maps no operation"
+            assert set(spec.operations) <= READ_OPERATIONS, spec.path
+
+
+def test_the_non_interface_set_is_exactly_the_declared_one() -> None:
+    """The session trio (mint/exchange/logout) plus the assets route and
+    the shell routes (root hop, the namespace 404) are the COMPLETE
+    non-interface set — itself asserted, so a new non-interface route
+    must extend this list deliberately (R7's tripwire: any mutating
+    ``/ui`` route beyond the session trio is scope creep into G3)."""
+    non_interface = {
+        spec.path for spec in UI_ROUTES if spec.classification != "interface"
+    }
+    assert non_interface == {
+        "/login-codes",
+        "/login",
+        "/logout",
+        "/assets/{name}",
+        "/{path:path}",
+    }
+
+
+def test_g2b_read_surface_is_the_declared_operations() -> None:
+    """The read vocabulary G2b actually serves (union over interface
+    routes) — the pages' own claims, regenerable from the registry."""
+    served = set[str]()
+    for spec in UI_ROUTES:
+        if spec.classification == "interface":
+            served.update(spec.operations)
+    assert served == {
+        "gateway_info",
+        "bench_list",
+        "bench_get",
+        "device_list",
+        "device_get",
+        "document_get",
+        "run_get",
+        "run_find",
+        "events_get",
+        "evidence_get",
+        "artifact_read",
+    }
+
+
+# --- the kill control (design §7-D): a planted route must RED the checker -----
+
+
+def test_a_planted_mutating_route_without_mapping_reds() -> None:
+    """A planted mutating route (the G3-shaped scope-creep this gate
+    exists to catch) MUST produce a violation naming it — proving the
+    checker polices the enumeration, not documents it."""
+    store = SessionStore(now_epoch=lambda: 1)
+    router = build_ui_router(
+        cast(Any, _NullOperations()),
+        store,
+        secret=b"route-mapping",
+        limits={"max_json_bytes": 64},
+    )
+
+    @router.post("/benches/{bench_id}/runs", include_in_schema=False)
+    async def _planted(bench_id: str) -> object:  # pragma: no cover - never called
+        return {}
+
+    routes = [
+        route for route in router.routes if isinstance(route, APIRoute)
+    ]
+    violations = route_mapping_violations(routes)
+    assert any("/benches/{bench_id}/runs" in violation for violation in violations), (
+        f"the checker did not name the planted route: {violations}"
+    )
+
+
+def test_a_planted_undeclared_read_route_reds() -> None:
+    """The enumeration direction: a route mounted without a registry row
+    (read-shaped) also reds — both directions police."""
+    store = SessionStore(now_epoch=lambda: 1)
+    router = build_ui_router(
+        cast(Any, _NullOperations()),
+        store,
+        secret=b"route-mapping",
+        limits={"max_json_bytes": 64},
+    )
+
+    @router.get("/extra/{thing}", include_in_schema=False)
+    async def _planted_read(thing: str) -> object:  # pragma: no cover
+        return {}
+
+    routes = [route for route in router.routes if isinstance(route, APIRoute)]
+    violations = route_mapping_violations(routes)
+    assert any("/extra/{thing}" in violation for violation in violations)
