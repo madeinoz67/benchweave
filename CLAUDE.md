@@ -227,6 +227,19 @@ Each traces to a decision record (`docs/smart-test-gateway-decisions.md`) or a
 tests, reach for end-to-end proof only when a change genuinely needs it, and never
 balloon the pipeline to prove a point a table-driven test could make.
 
+## Documentation register (ASD-STE100)
+
+Operator-, user- and developer-facing published documentation — website pages, user
+guides, developer-facing published guides (device-developer-guide, publishing-guide,
+develop-your-device), README instruction sections, warnings, cautions, and safety
+notices — is written in
+ASD-STE100 Simplified Technical English. Dispatch the `document-writer` agent
+(`.claude/agents/document-writer.md`) for any documentation leg that authors or rewrites
+it; the agent carries the register rules and is self-sufficient on any clone. Internal
+engineering records (design records, review rubrics, invariants, tracker text) keep the
+engineering register and are out of scope — STE's controlled language is the wrong
+instrument for them. Never change technical content to obey a register rule.
+
 ## 4. This repository is public
 
 Measure on real benches and real run histories; **never name them**. The corpus a

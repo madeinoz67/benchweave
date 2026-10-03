@@ -73,7 +73,12 @@ or a public surface, run the loop.
    split closes; the no-exemption fast lane now catches that class at the offending
    commit, EARLIER than the adversary pass that found it, and the push battery still
    catches it. The stale-evidence mypy miss was an evidence failure — piped exit +
-   warm cache — closed by the true-exit/fresh-cache rules, not run frequency.)
+   warm cache — closed by the true-exit/fresh-cache rules, not run frequency.) Operator-facing
+   documentation authored in the slice (website pages, user guides, README instruction
+   sections, warnings, safety notices) goes through the `document-writer` agent
+   (`.claude/agents/document-writer.md` — the ASD-STE100 register; CLAUDE.md §
+   Documentation register) before it lands; internal engineering records keep the
+   engineering register.
 4. **Vet (you, independently).** `uv run ruff check .` and bare `uv run mypy` clean;
    focused `uv run pytest` for the touched modules plus the fault suite. RED-check the
    key guards discriminate (toggle off → fail) using a `cp` backup, NEVER `git checkout`

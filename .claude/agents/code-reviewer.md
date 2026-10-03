@@ -76,7 +76,10 @@ flag that it needs the refute pass. The rules below are how you carry the rubric
    bucket.** For every change, map it to its audience-facing surfaces and check the
    matching doc/interface definition actually moved: plugin/device-visible capability (new
    packaging, loading, policy, or lifecycle behaviour) → `docs/device-developer-guide.md`;
-   operator-visible behaviour (service, config, CI) → the operator docs and `README.md`;
+   operator-visible behaviour (service, config, CI) → the operator docs and `README.md`
+   — and operator-facing doc changes carry the ASD-STE100 register
+   (`document-writer` agent; CLAUDE.md § Documentation register): register
+   regressions in operator-facing prose are findings;
    **CLI-visible behaviour (`src/benchweave/cli/`) → the CLI reference in the operator
    docs; API-visible behaviour → the OpenAPI spec (`standards/interface/0.1.0/` is the
    sole machine-artifact home); MCP-visible behaviour →

@@ -546,6 +546,9 @@ All notable changes to this project will be documented in this file.
 - Registry mark FIRED on the live domain (owner 2026-10-03) + the missing records-table/record-page CSS declarations (authored-side gap the vendor convergence exposed)
 - #225 slice 3 design record — management surfaces and identity
 - REG-5a amendment — #225 slice 3 namespace/lifecycle clauses (corrected)
+- Clarify canonical SDK vs packages/sdk mount (refs #347) (#351)
+- Document-writer agent + the ASD-STE100 documentation register (#352)
+- Register follow-up — developer-facing guides, gortex grant, dictionary-check wording (#352 rows L1/L3/L4)
 
 ### Features
 

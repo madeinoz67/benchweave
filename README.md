@@ -21,7 +21,7 @@ The public site is at <https://madeinoz67.github.io/benchweave/> — the standar
 
 ## Sister repository
 
-The [plugin developer SDK](https://github.com/madeinoz67/benchweave-sdk) (`benchweave-sdk`) provides the offline SDK tooling — project generation, validation, mocks and the local UI preview. It is mounted at `packages/sdk` as a git submodule with its own CI and release cycle; the [SDK guide](docs/plugin-sdk.md) documents it.
+The [plugin developer SDK](https://github.com/madeinoz67/benchweave-sdk) (`benchweave-sdk`) provides the offline SDK tooling — project generation, validation, mocks and the local UI preview. **Building a plugin? Use the standalone SDK repo — it is the canonical SDK. The `packages/sdk/` mount here is for gateway integration and can lag it.** See [Which checkout do I use?](https://github.com/madeinoz67/benchweave-sdk#which-checkout-do-i-use). The [SDK guide](docs/plugin-sdk.md) documents the SDK.
 
 ## Community
 
