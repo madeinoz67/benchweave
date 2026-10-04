@@ -124,6 +124,7 @@ def test_the_non_interface_set_is_exactly_the_declared_one() -> None:
         "/benches/{bench_id}/staging/arm",
         "/benches/{bench_id}/staging/disarm",
         "/changes/{change_id}/approval",
+        "/changes/{change_id}/acknowledgements",
         "/{path:path}",
     }
 

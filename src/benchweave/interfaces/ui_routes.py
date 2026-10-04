@@ -232,6 +232,15 @@ UI_ROUTES: tuple[RouteSpec, ...] = (
         classification="session",
     ),
     RouteSpec(
+        # G4 §2.4: the acknowledgement is session-layer presentation
+        # (no seam call — no operation marks a change reconciled); the
+        # gateway record never changes, only this session's view.
+        path="/changes/{change_id}/acknowledgements",
+        methods=_methods("POST"),
+        operations=frozenset(),
+        classification="session",
+    ),
+    RouteSpec(
         path="/runs/{run_id}",
         methods=_methods("GET"),
         operations=frozenset({"run_get"}),

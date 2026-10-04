@@ -212,14 +212,19 @@ class AdminRoutes:
             )
         return blocked
 
-    def _alert_markup(self, blocked: list[dict[str, str]]) -> Markup | None:
+    def _alert_markup(
+        self, blocked: list[dict[str, str]], *, acknowledge: bool = False
+    ) -> Markup | None:
         """The §B.1 critical persistent alert over the blocked changes
         (one bubble per change; each names its id, the state,
         ``reasons[0]`` verbatim, links the record and states the
-        reconciliation route)."""
+        reconciliation route). The REGION render carries the acknowledge
+        affordance under each bubble — the region is the
+        acknowledgement surface (the ruled deviation: the change page's
+        identical alert is informational only)."""
         if not blocked:
             return None
-        bubbles: list[str] = []
+        parts: list[str] = []
         for entry in blocked:
             bubble = AlertBubbleData(
                 severity="critical",
@@ -231,10 +236,21 @@ class AdminRoutes:
                 live_region="alert",
                 dismissible=False,
             )
-            bubbles.append(render_alert_bubble(bubble))
+            parts.append(render_alert_bubble(bubble))
+            if acknowledge:
+                parts.append(
+                    '<form class="bw-control" data-bw-change-acknowledge'
+                    ' hx-post="/ui/changes/'
+                    f'{_esc(entry["change_id"])}/acknowledgements"'
+                    ' hx-target="closest section" hx-swap="outerHTML">'
+                    '<button type="submit" class="bw-button"'
+                    ' data-variant="secondary" aria-busy="false">'
+                    "Acknowledge change</button>"
+                    "</form>"
+                )
         # Trusted package-rendered HTML (the §E.1/§B.1 partial), not
         # request data — S704's escape hatch is not in play.
-        return Markup("".join(bubbles))  # noqa: S704
+        return Markup("".join(parts))  # noqa: S704
 
     # --- the bench administration region (GW-70's submit half) --------------
 
@@ -276,7 +292,14 @@ class AdminRoutes:
             }
             if state == "proposed" and blocked:
                 blocking = blocked[0]["change_id"]
-                row["inhibited_html"] = self._inhibited_apply_html(blocking)
+                # Trusted host-rendered markup (the module's own escaped
+                # composition) wrapped in Markup so the template RENDERS
+                # it — the raw str double-escaped into visible text
+                # until the commit-5 suite caught it (no affordance on
+                # the wire, only escaped glyphs).
+                row["inhibited_html"] = Markup(  # noqa: S704
+                    self._inhibited_apply_html(blocking)
+                )
             rows.append(row)
         configuration = bench.get("configuration") or {}
         return self._render(
@@ -291,8 +314,11 @@ class AdminRoutes:
             kinds=list(_CHANGE_KIND_ORDER),
             rows=rows,
             two_phase_html=_TWO_PHASE_NOTE,
-            # Trusted package-rendered HTML — S704 not in play.
-            alert_html=self._alert_markup(blocked),
+            # Trusted package-rendered HTML — S704 not in play. The region
+            # is the acknowledgement surface: its alert carries the
+            # acknowledge affordance (the ruled deviation — the change
+            # page's identical alert is informational only).
+            alert_html=self._alert_markup(blocked, acknowledge=True),
             no_authority_html=Markup(  # noqa: S704
                 render_disabled_label(
                     DisabledLabelData(
@@ -506,6 +532,12 @@ class AdminRoutes:
         router.add_api_route(
             "/changes/{change_id}/apply",
             self.apply_change,
+            methods=["POST"],
+            include_in_schema=False,
+        )
+        router.add_api_route(
+            "/changes/{change_id}/acknowledgements",
+            self.acknowledge_change,
             methods=["POST"],
             include_in_schema=False,
         )
@@ -766,6 +798,39 @@ class AdminRoutes:
         # fresh from the bench after the seam bumped it.
         return HTMLResponse(
             self.workspace_html(record, identity, applied, bench_generation=generation)
+        )
+
+    async def acknowledge_change(self, change_id: str, request: Request) -> Response:
+        """§2.4's reconciliation (session-layer, NO seam call): the
+        operator, having read the record, marks it acknowledged in this
+        session's index — the alert clears and the region's apply
+        disables lift, the response re-rendering the region (the alert's
+        own surface). The gateway record never changes (no operation
+        marks a change reconciled); the acknowledgement is per-session
+        presentation. A change this session never indexed is an honest
+        ``not_found`` — there is nothing to acknowledge."""
+        authed = self._authed(request)
+        if authed is None:
+            return self._unauthenticated_page(request)
+        record, identity = authed
+        view = self._sessions.change_view(record.session_id, change_id)
+        if view is None or not view.bench_id:
+            return self._failure_page(
+                OperationFailure(
+                    failure(
+                        "not_found",
+                        f"change {change_id} is not in this session's index",
+                    )
+                ),
+                request,
+            )
+        self._sessions.acknowledge_change(record.session_id, change_id)
+        try:
+            bench = self._operations.bench_get(identity, view.bench_id)
+        except OperationFailure as fail:
+            return self._failure_page(fail, request)
+        return HTMLResponse(
+            self.region_html(record, identity, bench, view.bench_id)
         )
 
 
