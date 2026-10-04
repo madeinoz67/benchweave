@@ -206,7 +206,13 @@ def _number_field(
     return (
         '<div class="bw-field">'
         f'<label for="{input_id}">{_esc(label)}</label>'
-        f'<input id="{input_id}" name="{name}" type="number" '
+        # hx-preserve (FOLD-8): the section-level poll swap replaces the
+        # forms wholesale; the attribute keeps a live, half-typed input
+        # across the swap (htmx matches preserved elements by id). The
+        # server-rendered value/min/max still refresh in the new content
+        # for a FRESH element; a preserved one keeps the operator's
+        # in-progress text — the server-side bounds re-judge every POST.
+        f'<input id="{input_id}" name="{name}" type="number" hx-preserve '
         f'value="{_esc(value)}" min="{minimum}" max="{maximum}">'
         "</div>"
     )

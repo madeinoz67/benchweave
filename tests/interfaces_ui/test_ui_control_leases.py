@@ -688,6 +688,20 @@ def test_d_release_clears_the_view(rig: Any) -> None:
     assert 'data-bw-lease-state="none"' in release.text
 
 
+def test_the_duration_inputs_survive_the_poll_swap(rig: Any) -> None:
+    """FOLD-8: the section-level outerHTML poll replaces the take/renew
+    forms — an operator typing a custom duration loses input every
+    warning/critical tick. The duration inputs carry hx-preserve
+    (htmx matches preserved elements by their ids) so the live input
+    survives both the poll swap and a POST's fragment swap."""
+    record = _session(rig.app, scopes=CONTROL, ttl_s=3600)
+    fragment = _get(rig, f"/ui/benches/{_BENCH}/controls", record)
+    assert "hx-preserve" in fragment.text
+    assert _take(rig, record, duration_ms=300_000).status_code == 200
+    held_fragment = _get(rig, f"/ui/benches/{_BENCH}/controls", record)
+    assert held_fragment.text.count("hx-preserve") >= 2  # take + renew inputs
+
+
 def test_d_no_lease_banner_before_and_absent_after_on_bench_and_device(rig: Any) -> None:
     record = _session(rig.app, scopes=CONTROL, ttl_s=3600)
     bench_page = _get(rig, f"/ui/benches/{_BENCH}", record)
