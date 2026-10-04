@@ -210,6 +210,18 @@ class SessionStore:
         with self._lock:
             return self._leases.get(session_id, {}).get(bench_id)
 
+    def held_lease_for_lease(self, session_id: str, lease_id: str) -> HeldLease | None:
+        """The session's view whose lease id matches, or ``None`` — the
+        server-truth lookup the mutating routes resolve their bench key
+        from (FOLD-4: a client-supplied bench field never keys a view;
+        the store keys views by bench and each value carries its own
+        ``bench_id``)."""
+        with self._lock:
+            for view in self._leases.get(session_id, {}).values():
+                if view.lease_id == lease_id:
+                    return view
+            return None
+
     # --- bridges (G2c: one SSE bridge per session-and-bench, GW-33) --------
 
     def register_bridge(self, session_id: str, bench_id: str, *, cap: int) -> None:

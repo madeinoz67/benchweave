@@ -45,6 +45,7 @@ from ui_gateway_support import FIXTURES, LIMITS, NOW_EPOCH, SECRET
 
 from benchweave.content.store import ContentStore
 from benchweave.interfaces.app import create_app
+from benchweave.interfaces.errors import OperationFailure, failure
 from benchweave.interfaces.identity import Identity
 from benchweave.interfaces.operations import Operations
 from benchweave.interfaces.sessions import HeldLease, SessionStore
@@ -476,6 +477,75 @@ def _held_lease_id(rig: Any, record: Any) -> str:
     held = sessions.held_lease(record.session_id, _BENCH)
     assert held is not None, "no held-lease view"
     return held.lease_id
+
+
+def test_release_with_an_absent_bench_field_still_clears_the_view(rig: Any) -> None:
+    """FOLD-4(a): the view-clear keys from the route's own lease id
+    (server truth) through the session's held views, never a form field
+    — an absent bench_id must still clear the view and render the
+    fragment, not skip the clear and 500 on the render."""
+    record = _session(rig.app, scopes=CONTROL, ttl_s=3600)
+    assert _take(rig, record).status_code == 200
+    lease_id = _held_lease_id(rig, record)
+    release = _post(rig, f"/ui/leases/{lease_id}/release", record, data={})
+    assert release.status_code == 200, release.text
+    sessions: SessionStore = rig.app.state.ui_sessions
+    assert sessions.held_lease(record.session_id, _BENCH) is None
+    assert 'data-bw-lease-state="none"' in release.text
+
+
+def test_release_with_a_failed_bench_refetch_renders_the_fragment(
+    rig: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """FOLD-4(b): a failed bench_get refetch after the successful
+    release renders the honest fragment — no KeyError 500 AFTER the
+    seam already released."""
+    record = _session(rig.app, scopes=CONTROL, ttl_s=3600)
+    assert _take(rig, record).status_code == 200
+    lease_id = _held_lease_id(rig, record)
+    operations: Operations = rig.app.state.ui_operations
+
+    def _failing_get(*args: Any, **kwargs: Any) -> Any:
+        raise OperationFailure(failure("not_found", "refetch refused"))
+
+    monkeypatch.setattr(operations, "bench_get", _failing_get)
+    release = _post(
+        rig, f"/ui/leases/{lease_id}/release", record, data={"bench_id": _BENCH}
+    )
+    assert release.status_code == 200, release.text
+    assert 'data-bw-lease-state="none"' in release.text
+
+
+def test_take_with_a_failed_bench_refetch_renders_facts_from_the_view(
+    rig: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """FOLD-4(c): the refetch comment becomes true — with the bench
+    projection unreadable, the fragment renders the held view's facts
+    (state, holder, expiry) while the two surfaces that address the
+    bench by id — the take control and the poll — stay absent."""
+    record = _session(rig.app, scopes=CONTROL, ttl_s=3600)
+    generation = _generation(rig, record)  # fetched before the failing spy
+    operations: Operations = rig.app.state.ui_operations
+
+    def _failing_get(*args: Any, **kwargs: Any) -> Any:
+        raise OperationFailure(failure("not_found", "refetch refused"))
+
+    monkeypatch.setattr(operations, "bench_get", _failing_get)
+    take = _post(
+        rig,
+        f"/ui/benches/{_BENCH}/leases",
+        record,
+        data={
+            "duration_ms": "300000",
+            "expected_generation": str(generation),
+        },
+    )
+    assert take.status_code == 200, take.text
+    assert 'data-bw-lease-state="held"' in take.text
+    assert 'data-bw-lease-holder="ui-operator"' in take.text
+    assert "data-bw-lease-expires-at" in take.text
+    assert "data-bw-panel-poll-ms" not in take.text
+    assert 'hx-post="/ui/benches/sim-bench/leases"' not in take.text
 
 
 def test_d_take_renders_the_lease_facts_row(rig: Any) -> None:

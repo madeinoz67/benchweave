@@ -271,8 +271,14 @@ def _render_fragment(
     the take/renew/release controls — every byte derived at the current
     injected clock. All interpolations are escaped (the CSRF token too);
     package-rendered partials enter as pre-rendered trusted strings."""
-    bench_id = str(bench["bench_id"])
-    busy = bool(bench.get("busy"))
+    raw_id = bench.get("bench_id")
+    # FOLD-4: the projection may be unreadable (a failed refetch after a
+    # successful mutation) — no unconditional indexing. Without a bench
+    # identity the two surfaces that address the bench by id (the take
+    # control and the poll) cannot render; facts, the warning, and the
+    # lease_id-addressed renew/release controls compose from the view.
+    bench_id = str(raw_id) if raw_id is not None else ""
+    busy = bool(bench.get("busy")) if bench_id else False
     has_control_scope = bool(record.scopes & TIER_SATISFIES[_CONTROL_TIER])
 
     expiry_s = _parse_iso_to_epoch(held.expires_at) if held is not None else None
@@ -350,23 +356,30 @@ def _render_fragment(
             )
         else:
             maximum = min(max_lease_ms, session_remaining_ms)
-            generation = int(bench.get("generation", 0))
-            take_html = (
-                '<form class="bw-control" data-bw-lease-take'
-                f' hx-post="/ui/benches/{_esc(bench_id)}/leases"'
-                ' hx-swap="none">'
-                + _hidden("expected_generation", generation)
-                + _number_field(
-                    "duration_ms",
-                    f"bw-lease-duration-{_esc(bench_id)}",
-                    label="Duration (ms)",
-                    value=maximum,
-                    minimum=FORM_MIN_DURATION_MS,
-                    maximum=maximum,
+            if not bench_id:
+                # FOLD-4: the bench identity is unavailable (a failed
+                # refetch), so the take control — which addresses the
+                # bench by id — cannot render; the view's facts and the
+                # lease_id-addressed controls still do.
+                take_html = ""
+            else:
+                generation = int(bench.get("generation", 0))
+                take_html = (
+                    '<form class="bw-control" data-bw-lease-take'
+                    f' hx-post="/ui/benches/{_esc(bench_id)}/leases"'
+                    ' hx-swap="none">'
+                    + _hidden("expected_generation", generation)
+                    + _number_field(
+                        "duration_ms",
+                        f"bw-lease-duration-{_esc(bench_id)}",
+                        label="Duration (ms)",
+                        value=maximum,
+                        minimum=FORM_MIN_DURATION_MS,
+                        maximum=maximum,
+                    )
+                    + _submit("Take lease")
+                    + "</form>"
                 )
-                + _submit("Take lease")
-                + "</form>"
-            )
         if held is None or lease_state != "held":
             renew_html = ""
             release_html = ""  # absence is the no-lease shape (G3a)
@@ -379,7 +392,6 @@ def _render_fragment(
                 '<form class="bw-control" data-bw-lease-release'
                 f' hx-post="/ui/leases/{_esc(held.lease_id)}/release"'
                 ' hx-swap="none">'
-                + _hidden("bench_id", bench_id)
                 + _submit("Release", variant="secondary")
                 + "</form>"
             )
@@ -389,7 +401,6 @@ def _render_fragment(
                 '<form class="bw-control" data-bw-lease-renew'
                 f' hx-post="/ui/leases/{_esc(held.lease_id)}/renewals"'
                 ' hx-swap="none">'
-                + _hidden("bench_id", bench_id)
                 + _hidden("sequence", held.sequence)
                 + _number_field(
                     "duration_ms",
@@ -406,7 +417,6 @@ def _render_fragment(
                 '<form class="bw-control" data-bw-lease-release'
                 f' hx-post="/ui/leases/{_esc(held.lease_id)}/release"'
                 ' hx-swap="none">'
-                + _hidden("bench_id", bench_id)
                 + _submit("Release", variant="secondary")
                 + "</form>"
             )
@@ -438,12 +448,19 @@ def _render_fragment(
     else:
         facts = '<div><dt>Lease</dt><dd data-bw-lease-none>none</dd></div>'
 
+    bench_attr = f' data-bw-bench="{_esc(bench_id)}"' if bench_id else ""
+    poll_ms_attr = f' data-bw-panel-poll-ms="{poll_ms}"' if bench_id else ""
+    poll_attrs = (
+        f' hx-get="/ui/benches/{_esc(bench_id)}/controls"'
+        f' hx-trigger="every {poll_ms}ms" hx-swap="outerHTML"'
+        if bench_id
+        else ""
+    )
     return (
         f'<section class="bw-panel bw-controls" data-bw-controls'
-        f' data-bw-bench="{_esc(bench_id)}" aria-label="Bench control"'
-        f' data-bw-panel-poll-ms="{poll_ms}"'
-        f' hx-get="/ui/benches/{_esc(bench_id)}/controls"'
-        f' hx-trigger="every {poll_ms}ms" hx-swap="outerHTML">'
+        f'{bench_attr} aria-label="Bench control"'
+        f'{poll_ms_attr}'
+        f"{poll_attrs}>"
         f"{warning_html}"
         f"{_lease_facts_row(lease_state, facts)}"
         "<div class=\"bw-controls__actions\">"
@@ -505,12 +522,17 @@ def register_control_routes(
                 failure("invalid_request", f"{name} must be an integer")
             ) from None
 
-    def _fragment_response(record: SessionRecord, bench: dict[str, Any]) -> HTMLResponse:
+    def _fragment_response(
+        record: SessionRecord, bench: dict[str, Any], bench_id: str | None = None
+    ) -> HTMLResponse:
+        resolved = (
+            bench_id if bench_id is not None else str(bench.get("bench_id", ""))
+        )
         return HTMLResponse(
             _render_fragment(
                 record=record,
                 bench=bench,
-                held=sessions.held_lease(record.session_id, str(bench["bench_id"])),
+                held=sessions.held_lease(record.session_id, resolved),
                 now_epoch=now_epoch,
                 max_lease_ms=max_lease_ms,
                 poll_base_ms=poll_base_ms,
@@ -588,7 +610,7 @@ def register_control_routes(
             bench = operations.bench_get(identity, bench_id)
         except OperationFailure:
             bench = {}  # the fragment tolerates a failed refetch (facts from the view)
-        return _fragment_response(record, bench)
+        return _fragment_response(record, bench, bench_id=bench_id)
 
     @router.post("/leases/{lease_id}/renewals", include_in_schema=False)
     async def renew_lease(lease_id: str, request: Request) -> Response:
@@ -605,9 +627,10 @@ def register_control_routes(
             duration_ms = _form_int(form, "duration_ms")
         except OperationFailure as fail:
             return failure_page(fail)
-        bench_id = str(form.get("bench_id", ""))
-        held = sessions.held_lease(record.session_id, bench_id)
-        if held is None or held.lease_id != lease_id:
+        # FOLD-4 (renew): the view resolves from the route's own lease id
+        # (server truth) — the form's bench field never keys the view.
+        held = sessions.held_lease_for_lease(record.session_id, lease_id)
+        if held is None:
             return failure_page(
                 OperationFailure(
                     failure(
@@ -616,6 +639,7 @@ def register_control_routes(
                     )
                 )
             )
+        bench_id = held.bench_id
         if now_epoch() * 1000 + duration_ms > record.expires_at * 1000:
             return failure_page(_gw95_failure(record, duration_ms))
         if duration_ms > max_lease_ms:
@@ -658,7 +682,7 @@ def register_control_routes(
             bench = operations.bench_get(identity, bench_id)
         except OperationFailure:
             bench = {}
-        return _fragment_response(record, bench)
+        return _fragment_response(record, bench, bench_id=bench_id)
 
     @router.post("/leases/{lease_id}/release", include_in_schema=False)
     async def release_lease(lease_id: str, request: Request) -> Response:
@@ -669,8 +693,12 @@ def register_control_routes(
         if authed is None:
             return unauthenticated_page()
         record, identity = authed
-        form = dict(await request.form())
-        bench_id = str(form.get("bench_id", ""))
+        # FOLD-4: the view key resolves from the route's own lease id
+        # through the session's held views (server truth) — never a form
+        # field; an absent/wrong bench_id used to skip the clear and 500
+        # the render after the seam had already released.
+        view = sessions.held_lease_for_lease(record.session_id, lease_id)
+        bench_id = view.bench_id if view is not None else ""
         try:
             operations.lease_release(
                 identity, lease_id, _mint_request_id(), _RELEASE_REASON
@@ -685,13 +713,15 @@ def register_control_routes(
             bench = operations.bench_get(identity, bench_id)
         except OperationFailure:
             bench = {}
-        return _fragment_response(record, bench)
+        return _fragment_response(record, bench, bench_id=bench_id)
 
     return ControlViews(
         render=lambda record, bench: _render_fragment(
             record=record,
             bench=bench,
-            held=sessions.held_lease(record.session_id, str(bench["bench_id"])),
+            held=sessions.held_lease(
+                record.session_id, str(bench.get("bench_id", ""))
+            ),
             now_epoch=now_epoch,
             max_lease_ms=max_lease_ms,
             poll_base_ms=poll_base_ms,
