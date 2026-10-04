@@ -2137,6 +2137,74 @@ def test_d2_staleness_bound_bounds_status_reads(tmp_path: Path) -> None:
     assert all(count == 2 for count in reads.values())
 
 
+# --- signature-verification arms (fold adv2-F1) --------------------------------------
+
+
+def test_d2_tampered_status_bytes_refuse_bad_signature(tmp_path: Path) -> None:
+    """Fold adv2-F1: status bytes tampered AFTER signing (same origin key,
+    schema-valid content, unchanged sequence) refuse — the detached
+    signature is over the exact served bytes, so any byte change is
+    ``closure_status_bad_signature``. Pins the verify call itself: a
+    verify_document pass-through mutation makes this arm red (the
+    tampered status would sail through and the run-build would succeed)."""
+    harness = _CommissionedHarness(tmp_path, "req-d2-tamper", signed_dev_origin=True)
+    release = harness.release_dir(IMPL_PACKAGE)
+    status = json.loads((release / "status.json").read_bytes())
+    status["reason"] = "tampered after signing"
+    (release / "status.json").write_bytes(
+        json.dumps(status, sort_keys=True, separators=(",", ":")).encode() + b"\n"
+    )
+    store, content = harness.open_store()
+    try:
+        factory = harness.build_run(QUOTA_LIMITS)
+        with pytest.raises(ValueError, match="closure_status_bad_signature"):
+            factory("run-d2-tamper", "principal-activation", harness.binding_ref(), store)
+    finally:
+        store.close()
+
+
+def test_d2_wrong_key_status_signature_refuses_bad_signature(
+    tmp_path: Path,
+) -> None:
+    """Fold adv2-F1: a status re-signed by the WRONG key (bytes otherwise
+    untouched, sequence unchanged) refuses ``closure_status_bad_signature``
+    — the consult verifies against the SESSION's trust root, not against
+    any key that happens to sign. Pins the verify call: a verify_document
+    pass-through mutation makes this arm red."""
+    harness = _CommissionedHarness(tmp_path, "req-d2-wrongkey", signed_dev_origin=True)
+    release = harness.release_dir(IMPL_PACKAGE)
+    raw = (release / "status.json").read_bytes()
+    (release / "status.sig").write_bytes(Ed25519PrivateKey.generate().sign(raw))
+    store, content = harness.open_store()
+    try:
+        factory = harness.build_run(QUOTA_LIMITS)
+        with pytest.raises(ValueError, match="closure_status_bad_signature"):
+            factory("run-d2-wrongkey", "principal-activation", harness.binding_ref(), store)
+    finally:
+        store.close()
+
+
+def test_d2_absent_status_signature_refuses_bad_signature(
+    tmp_path: Path,
+) -> None:
+    """Fold adv2-F1: under the required posture the detached signature is
+    part of the status, never an optional extra file — a missing
+    status.sig is a typed ``closure_status_bad_signature`` refusal, never
+    a raw OS error. This arm's refusal arises at the signature FETCH
+    (before verify_document is called), so its discriminating mutation is
+    the fetch's OSError mapping, not verify_document (disclosed in the
+    fold's commit message)."""
+    harness = _CommissionedHarness(tmp_path, "req-d2-nosig", signed_dev_origin=True)
+    (harness.release_dir(IMPL_PACKAGE) / "status.sig").unlink()
+    store, content = harness.open_store()
+    try:
+        factory = harness.build_run(QUOTA_LIMITS)
+        with pytest.raises(ValueError, match="closure_status_bad_signature"):
+            factory("run-d2-nosig", "principal-activation", harness.binding_ref(), store)
+    finally:
+        store.close()
+
+
 # --- D4: approval drift (CR-42) -------------------------------------------------------
 
 
