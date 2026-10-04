@@ -347,8 +347,16 @@ def test_cancel_marker_round_trip() -> None:
     store.clear_cancel_request(session_id, "run-1")  # idempotent
 
 
-def test_staged_start_is_the_recorded_four_fields() -> None:
+def test_staged_start_is_the_recorded_five_fields() -> None:
     """The record's closed shape: request id (the binding's own), the
-    binding ref, the recorded check, the armed flag."""
+    binding ref, the recorded check, the armed flag, and the last-started
+    run id (FOLD-3: ``None`` until a start returns; preserved across a
+    same-binding restage; presentation, never authority)."""
     fields = StagedStart.__dataclass_fields__
-    assert set(fields) == {"request_id", "binding_ref", "check", "armed"}
+    assert set(fields) == {
+        "request_id",
+        "binding_ref",
+        "check",
+        "armed",
+        "started_run_id",
+    }

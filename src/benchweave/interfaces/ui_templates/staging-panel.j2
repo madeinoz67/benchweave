@@ -37,7 +37,15 @@
     {%- endif %}
   </p>
   {% if started_run_id %}
-  <p class="bw-staging__row" data-bw-run-started="{{ started_run_id }}">Run <a class="bw-link" href="/ui/runs/{{ started_run_id }}">{{ started_run_id }}</a> accepted — a resubmission replays the same run.</p>
+  <p class="bw-staging__row" data-bw-run-started="{{ started_run_id }}"{% if replayed %} data-bw-replay="true"{% endif %}>
+    {%- if replayed -%}
+    Replayed run <a class="bw-link" href="/ui/runs/{{ started_run_id }}">{{ started_run_id }}</a> — the §9 replay returned the first start; no new run started.
+    {%- elif prior_started -%}
+    This binding already started run <a class="bw-link" href="/ui/runs/{{ started_run_id }}">{{ started_run_id }}</a> — a resubmission replays it.
+    {%- else -%}
+    Run <a class="bw-link" href="/ui/runs/{{ started_run_id }}">{{ started_run_id }}</a> accepted — a resubmission replays the same run.
+    {%- endif -%}
+  </p>
   {% endif %}
   {% if check %}
   <p data-bw-check-state="{{ check["state"] }}">Check {{ check["state"] }}{% if check["findings_count"] %} — {{ check["findings_count"] }} finding(s) reported by the preflight.{% endif %}</p>

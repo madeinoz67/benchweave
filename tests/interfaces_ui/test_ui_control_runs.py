@@ -676,6 +676,99 @@ def test_e_two_identical_confirms_start_exactly_one_run(energise_rig: Any) -> No
     assert _run_started_id(first) == _run_started_id(second)
 
 
+def test_f3_the_staged_record_discloses_the_started_run(energise_rig: Any) -> None:
+    """FOLD-3 (A-F1, adopted fork, disclosed): the staged record survives
+    a start (keep-record-on-start) and now carries the last-started run
+    id, so the panel discloses it on every render — "This binding
+    already started run X — a resubmission replays it." The disclosure
+    survives a same-binding restage: the §9 id is the binding's own, so
+    the started-run knowledge belongs to the binding, not the check
+    cycle. No seam motion, no authority change — the seam still owns
+    the replay."""
+    rig = energise_rig
+    generation = _generation(rig, rig.record)
+    _take_lease(rig, rig.record, duration_ms=600_000, generation=generation)
+    _stage(rig, rig.record)
+    _check(rig, rig.record)
+    arm = _post(rig, f"/ui/benches/{_BENCH}/staging/arm", rig.record, data={})
+    assert arm.status_code == 200, arm.text[:500]
+    payload = {
+        "request_id": _BINDING_REQUEST_ID,
+        "binding_sha256": rig.binding_sha,
+        "expected_generation": str(generation),
+    }
+    started = _post(rig, f"/ui/benches/{_BENCH}/run-starts", rig.record, data=payload)
+    assert started.status_code == 200, started.text[:800]
+    run_id = _run_started_id(started)
+    page = _get(rig, f"/ui/benches/{_BENCH}", rig.record)
+    assert page.status_code == 200, page.text[:500]
+    assert f'data-bw-run-started="{run_id}"' in page.text
+    assert "This binding already started run" in page.text
+    assert "a resubmission replays it" in page.text
+    # a same-binding restage keeps the disclosure
+    _stage(rig, rig.record)
+    restaged = _get(rig, f"/ui/benches/{_BENCH}", rig.record)
+    assert restaged.status_code == 200, restaged.text[:500]
+    assert f'data-bw-run-started="{run_id}"' in restaged.text
+
+
+def test_f3_a_resubmission_after_a_full_cycle_replays_and_says_so(
+    energise_rig: Any,
+) -> None:
+    """FOLD-3's repro (lane A): a full cycle whose run settles terminal,
+    restage the SAME binding, re-check, re-arm, confirm — the seam's §9
+    replay returns the FIRST run; the response renders it AS a replay
+    (the data-bw-replay marker and the first run's id), never a
+    fresh-looking start; the store holds exactly one run. The second
+    cycle runs under the FIRST cycle's lease (600 s, still live under
+    the injected clock; the seam admits one controlling lease per
+    bench, so no second lease is taken — the repro's "new lease" leg
+    reduces to a live lease at fire)."""
+    rig = energise_rig
+    generation = _generation(rig, rig.record)
+    _take_lease(rig, rig.record, duration_ms=600_000, generation=generation)
+    _stage(rig, rig.record)
+    _check(rig, rig.record)
+    arm = _post(rig, f"/ui/benches/{_BENCH}/staging/arm", rig.record, data={})
+    assert arm.status_code == 200, arm.text[:500]
+    payload = {
+        "request_id": _BINDING_REQUEST_ID,
+        "binding_sha256": rig.binding_sha,
+        "expected_generation": str(generation),
+    }
+    first = _post(rig, f"/ui/benches/{_BENCH}/run-starts", rig.record, data=payload)
+    assert first.status_code == 200, first.text[:800]
+    first_run_id = _run_started_id(first)
+    operations: Operations = rig.app.state.ui_operations
+    identity = Identity(
+        principal=rig.record.principal,
+        audience="stg",
+        scopes=rig.record.scopes,
+        expires_at=rig.record.expires_at,
+    )
+    import time
+
+    start = time.monotonic()
+    while True:
+        current = operations.run_get(identity, first_run_id)
+        if current["state"] == "terminal":
+            break
+        assert time.monotonic() - start < 60.0, current
+        time.sleep(0.2)
+    _stage(rig, rig.record)
+    _check(rig, rig.record)
+    arm2 = _post(rig, f"/ui/benches/{_BENCH}/staging/arm", rig.record, data={})
+    assert arm2.status_code == 200, arm2.text[:500]
+    replay = _post(rig, f"/ui/benches/{_BENCH}/run-starts", rig.record, data=payload)
+    assert replay.status_code == 200, replay.text[:800]
+    assert _run_started_id(replay) == first_run_id
+    assert 'data-bw-replay="true"' in replay.text
+    assert "Replayed run" in replay.text
+    store: Store = rig.app.state.g3b_store
+    runs = store.list_run_states(_BENCH)
+    assert len(runs) == 1, runs
+
+
 def test_g_a_trip_while_armed_refuses_the_confirm_without_a_seam_call(
     energise_rig: Any,
 ) -> None:

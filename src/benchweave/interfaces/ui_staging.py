@@ -224,7 +224,7 @@ class StagingRoutes:
         bench: dict[str, Any],
         bench_id: str,
         page_events: list[dict[str, Any]],
-        started_run_id: str | None = None,
+        started: tuple[str, bool] | None = None,
     ) -> str:
         """The staging panel's HTML, composed from seam answers at the
         render clock: the session's staging record, the DEP7 chain read
@@ -262,6 +262,18 @@ class StagingRoutes:
                 readable = True
             except OperationFailure:
                 pass  # the chain is not readable; the panel says so itself
+        # FOLD-3: the row's event precedence — the response's own start
+        # event (run id, replayed flag) when this render answers a start
+        # POST; otherwise the record's started-run memory renders as the
+        # prior-start disclosure ("this binding already started run X").
+        started_run_id: str | None = None
+        replayed = False
+        prior_started = False
+        if started is not None:
+            started_run_id, replayed = started
+        elif staged_record is not None and staged_record.started_run_id is not None:
+            started_run_id = staged_record.started_run_id
+            prior_started = True
         return self._render(
             "staging-panel.j2",
             observe=not self._has_control(record),
@@ -277,6 +289,8 @@ class StagingRoutes:
             refs=_binding_refs(page_events),
             trip=trip_active(self._tail_events(identity, bench_id)),
             started_run_id=started_run_id,
+            replayed=replayed,
+            prior_started=prior_started,
             # Trusted package-rendered HTML (the §C.2 partial), not
             # request data — S704's escape hatch is not in play.
             no_authority_html=Markup(  # noqa: S704
@@ -379,10 +393,24 @@ class StagingRoutes:
                 return self._failure_page(fail, request)
             # not_found tolerated: the digest stages; the check reports
             # its findings and the arm's chain read refuses honestly.
+        prior = self._sessions.staged_start(record.session_id, bench_id)
+        # FOLD-3: a same-digest restage preserves the started-run memory
+        # (the §9 id is the binding's own — the knowledge belongs to the
+        # binding, not the check cycle); a different binding is a new
+        # cycle without it.
+        prior_started: str | None = None
+        if prior is not None and str(prior.binding_ref.get("sha256", "")) == sha:
+            prior_started = prior.started_run_id
         self._sessions.record_staged_start(
             record.session_id,
             bench_id,
-            StagedStart(request_id=request_id, binding_ref=binding_ref, check=None, armed=False),
+            StagedStart(
+                request_id=request_id,
+                binding_ref=binding_ref,
+                check=None,
+                armed=False,
+                started_run_id=prior_started,
+            ),
         )
         try:
             bench = self._operations.bench_get(identity, bench_id)
@@ -549,7 +577,7 @@ class StagingRoutes:
                         bench,
                         bench_id,
                         identity,
-                        started_run_id=str(replay["run_id"]),
+                        started=(str(replay["run_id"]), True),
                     )
             return self._failure_page(
                 OperationFailure(
@@ -624,6 +652,7 @@ class StagingRoutes:
                 ),
                 request,
             )
+        pre_started = staged.started_run_id
         held = self._sessions.held_lease(record.session_id, bench_id)
         lease_id = held.lease_id if held is not None else None
         try:
@@ -647,11 +676,19 @@ class StagingRoutes:
             )
         # Keep-record-on-start (ruled deviation): the staged record
         # stays as the replay handle — §9 makes the resubmission
-        # idempotent.
+        # idempotent — and now carries the started id itself (FOLD-3),
+        # so every later render discloses the prior start; the returned
+        # id EQUALS the record's memory iff this fire was the §9 replay
+        # of the first start.
+        started_id = str(run["run_id"])
+        replayed = pre_started is not None and started_id == pre_started
+        self._sessions.record_staged_start(
+            record.session_id, bench_id, replace(staged, started_run_id=started_id)
+        )
         try:
             bench = self._operations.bench_get(identity, bench_id)
         except OperationFailure:
             bench = {}
         return self._fragment(
-            record, bench, bench_id, identity, started_run_id=str(run["run_id"])
+            record, bench, bench_id, identity, started=(started_id, replayed)
         )

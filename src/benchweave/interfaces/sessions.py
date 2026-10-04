@@ -154,6 +154,14 @@ class StagedStart:
     binding_ref: dict[str, Any]
     check: dict[str, Any] | None
     armed: bool
+    #: FOLD-3: the run id this cycle's last successful start returned —
+    #: the keep-record-on-start replay handle's memory. ``None`` until a
+    #: start returns for this binding; a same-digest restage PRESERVES
+    #: it (the §9 id is the binding's own, so the knowledge belongs to
+    #: the binding, not the check cycle); a different binding is a new
+    #: cycle without it. Presentation of the session's own seam answers,
+    #: never authority — the seam re-derives the replay.
+    started_run_id: str | None = None
 
 
 @dataclass(frozen=True)
