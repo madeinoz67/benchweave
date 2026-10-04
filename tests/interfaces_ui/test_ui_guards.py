@@ -143,6 +143,75 @@ def test_minus_csp_drops_the_header() -> None:
     assert "content-security-policy" not in response.headers
 
 
+# --- the CSRF delivery surface (G3a, FOLD-1) ------------------------------------
+
+
+def _seeded_ui_app(
+    guards: frozenset[str],
+) -> tuple[FastAPI, SessionStore]:
+    """The sub-app over a store the arm seeds itself (the _sub_app shape,
+    with the store surfaced for a mint+exchange)."""
+    store = SessionStore(now_epoch=lambda: 1_800_000_000)
+    app = build_ui_app(
+        cast(Operations, _NullOperations()),
+        store,
+        secret=b"guard-suite",
+        limits={"max_json_bytes": 64},
+        guards=guards,
+    )
+    return app, store
+
+
+def test_csrf_guard_refuses_a_session_post_without_the_header() -> None:
+    """The guard-side truth the FOLD-1 defect hid: a session-bearing POST
+    with NO x-csrf-token header is refused 403 — so a real browser
+    (pre-FOLD-1) could never satisfy the guard, because nothing put the
+    token on the wire. This arm pins the refusal; the served-bytes pin
+    (test_ui_control_leases) pins the delivery."""
+    from benchweave.interfaces.identity import Identity
+
+    app, store = _seeded_ui_app(DEFAULT_GUARDS)
+    code = store.mint_login_code(
+        Identity(
+            principal="ui-guard",
+            audience="stg",
+            scopes=frozenset({"stg:observe", "stg:control"}),
+            expires_at=1_800_000_000 + 12 * 3600,
+        )
+    )
+    record = store.exchange(code)
+    response = TestClient(app, base_url=_CLIENT_BASE).post(
+        "/logout",
+        cookies={"bw_session": record.session_id},
+        follow_redirects=False,
+    )
+    assert response.status_code == 403
+
+
+def test_minus_csrf_lets_the_headerless_post_through() -> None:
+    """The minus-one control: with exactly the csrf guard disarmed, the
+    same headerless POST reaches the app (the 303 logout) — proving the
+    guard, not an incidental shape, is the mechanism."""
+    from benchweave.interfaces.identity import Identity
+
+    app, store = _seeded_ui_app(DEFAULT_GUARDS - {"csrf"})
+    code = store.mint_login_code(
+        Identity(
+            principal="ui-guard",
+            audience="stg",
+            scopes=frozenset({"stg:observe", "stg:control"}),
+            expires_at=1_800_000_000 + 12 * 3600,
+        )
+    )
+    record = store.exchange(code)
+    response = TestClient(app, base_url=_CLIENT_BASE).post(
+        "/logout",
+        cookies={"bw_session": record.session_id},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+
+
 # --- the body-cap unit (pre-read refusal, the I1 shape) -------------------------
 
 

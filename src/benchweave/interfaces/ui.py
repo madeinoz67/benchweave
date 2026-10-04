@@ -58,6 +58,7 @@ from benchweave.interfaces.sessions import (
     SessionRecord,
     SessionStore,
 )
+from benchweave.interfaces.ui_control import register_control_routes
 from benchweave.interfaces.ui_read import register_read_pages
 from benchweave.interfaces.ui_stream import register_stream_route
 from benchweave.state.store import Store
@@ -256,10 +257,15 @@ class CsrfGuard(BaseHTTPMiddleware):
 
     Applies when a request BOTH carries a live session cookie AND changes
     state — the mint is deliberately exempt: it authenticates by Bearer
-    (no ambient browser credential exists to ride). The token rides htmx
-    ``hx-headers`` and is rendered into every page the session can act
-    from; the comparison happens against the SERVER-side record, so a
-    guessed token is a miss, not a leak.
+    (no ambient browser credential exists to ride). The token is rendered
+    into every page the session can act from as a ``<meta
+    name="bw-csrf-token">`` element, and the host script (``bw-host.js``)
+    stamps it onto every htmx request through its ``htmx:configRequest``
+    listener — the delivery mechanism (FOLD-1: the token never rode
+    ``hx-headers``; the earlier docstring named a mechanism that did not
+    exist, and a real browser could not pass this guard at all until the
+    listener shipped). The comparison happens against the SERVER-side
+    record, so a guessed token is a miss, not a leak.
     """
 
     def __init__(self, app: object, *, sessions: SessionStore) -> None:
@@ -532,10 +538,24 @@ def build_ui_router(
             )
         return parsed
 
-    def _unauthenticated_page() -> HTMLResponse:
-        """The session-less refusal every page shares — the §C.3
+    def _unauthenticated_page(request: Request | None = None) -> HTMLResponse:
+        """The session-less refusal pages share — the §C.3
         unauthenticated row through the shell (one construction site,
-        where G2a had three inline copies)."""
+        where G2a had three inline copies). An htmx request (the
+        ``HX-Request`` header) gets the row as a bare fragment — the
+        responseHandling override (FOLD-2) would otherwise swap this
+        whole page into the controls section on the expiry path
+        (fold-refute F1); a direct client keeps the full page."""
+        if request is not None and request.headers.get("HX-Request") == "true":
+            return HTMLResponse(
+                _ENV.get_template("unauth-fragment.j2").render(
+                    # Trusted package-rendered HTML (the §C.3 partial),
+                    # not request data — S704's escape hatch is not in
+                    # play.
+                    refusal_html=Markup(render_refusal(UNAUTHENTICATED_REFUSAL)),  # noqa: S704
+                ),
+                status_code=401,
+            )
         return _page(
             "refusal-page.j2",
             status=401,
@@ -545,16 +565,36 @@ def build_ui_router(
             scopes=None,
             mode_banner=None,
             csrf_token=None,
+            session_warning=None,
             # Trusted package-rendered HTML (the §C.3 partial), not
             # request data — S704's escape hatch is not in play.
             refusal_html=Markup(render_refusal(UNAUTHENTICATED_REFUSAL)),  # noqa: S704
         )
 
-    def _failure_page(fail: OperationFailure) -> HTMLResponse:
+    def _failure_page(
+        fail: OperationFailure, request: Request | None = None
+    ) -> HTMLResponse:
         """A seam failure renders its own §C.3 row — severity, what
         happened, sent status, operator action — beside the failure's
         message and correlation id (GW-11: the code's own row, never a
-        softer one; G2b generalises the G2a shape to the full table)."""
+        softer one; G2b generalises the G2a shape to the full table).
+        FOLD-2: an htmx request (the ``HX-Request`` header) gets the row
+        as a bare fragment — the control forms' hx-target swap renders it
+        in place of the section; a direct (non-htmx) client keeps the
+        full failure page."""
+        if request is not None and request.headers.get("HX-Request") == "true":
+            return HTMLResponse(
+                _ENV.get_template("failure-fragment.j2").render(
+                    failure=fail.failure,
+                    # Trusted package-rendered HTML (the §C.3 partial over
+                    # the carried row) — S704's escape hatch is not in play
+                    # (the failure.j2 slot rule).
+                    refusal_html=Markup(  # noqa: S704
+                        render_refusal(ui_refusals.row_for(fail.failure.code))
+                    ),
+                ),
+                status_code=FAILURE_HTTP[fail.failure.code],
+            )
         return _page(
             "failure.j2",
             status=FAILURE_HTTP[fail.failure.code],
@@ -570,6 +610,7 @@ def build_ui_router(
             refusal_html=Markup(  # noqa: S704
                 render_refusal(ui_refusals.row_for(fail.failure.code))
             ),
+            session_warning=None,
         )
 
     @router.get("/", include_in_schema=False)
@@ -578,7 +619,7 @@ def build_ui_router(
         principal and scopes, the bench inventory."""
         record = _resolve_session(request, sessions)
         if record is None:
-            return _unauthenticated_page()
+            return _unauthenticated_page(request)
         identity = _session_identity(record)
         try:
             info = operations.gateway_info(identity)
@@ -601,6 +642,9 @@ def build_ui_router(
             # hx-headers consume it; G2a's only state-changing control is
             # logout, G3 wires the rest).
             csrf_token=record.csrf_token,
+            # D1: the session-expiry warning renders in the shell on
+            # every page (GW-44's session half).
+            session_warning=controls.session_warning(record),
             benches=items,
         )
 
@@ -667,7 +711,7 @@ def build_ui_router(
             record = sessions.exchange(code)
         except LoginCodeRejected as refused:
             _LOG.info("ui login exchange refused: %s", refused.reason)
-            return _unauthenticated_page()
+            return _unauthenticated_page(request)
         response = RedirectResponse("/ui/", status_code=303)
         response.set_cookie(
             SESSION_COOKIE,
@@ -688,11 +732,28 @@ def build_ui_router(
         only acts on the already-authenticated session."""
         record = _resolve_session(request, sessions)
         if record is None:
-            return _unauthenticated_page()
+            return _unauthenticated_page(request)
         sessions.logout(record.session_id)
         response = RedirectResponse("/ui/", status_code=303)
         response.delete_cookie(SESSION_COOKIE, path="/ui")
         return response
+
+    # The G3 control routes (issue #304 G3a): lease take/renew/release,
+    # the polled controls fragment, GW-95's session bound, GW-44's
+    # warnings. Registered BEFORE the read pages so its composed views
+    # reach them (route order vs the catch-all is unaffected — exact
+    # paths), and BEFORE the assets route + the catch-all stay LAST.
+    controls = register_control_routes(
+        router,
+        operations=operations,
+        sessions=sessions,
+        limits=limits,
+        now_epoch=epoch,
+        resolve_session=lambda request: _resolve_session(request, sessions),
+        session_identity=_session_identity,
+        failure_page=_failure_page,
+        unauthenticated_page=_unauthenticated_page,
+    )
 
     register_read_pages(
         router,
@@ -706,6 +767,7 @@ def build_ui_router(
         page=_page,
         failure_page=_failure_page,
         unauthenticated_page=_unauthenticated_page,
+        controls=controls,
     )
 
     # The G2c event bridge (§2.5): same closures, same refusal
@@ -756,6 +818,7 @@ def build_ui_router(
             scopes=None,
             mode_banner=None,
             csrf_token=None,
+            session_warning=None,
         )
 
     @router.api_route(

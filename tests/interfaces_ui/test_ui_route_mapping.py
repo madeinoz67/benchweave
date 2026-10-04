@@ -119,18 +119,27 @@ def test_the_non_interface_set_is_exactly_the_declared_one() -> None:
         "/login",
         "/logout",
         "/assets/{name}",
+        "/benches/{bench_id}/controls",
         "/{path:path}",
     }
 
 
 def test_g2b_read_surface_is_the_declared_operations() -> None:
-    """The read vocabulary G2b actually serves (union over interface
-    routes) — the pages' own claims, regenerable from the registry."""
-    served = set[str]()
+    """The operation vocabulary the interface routes serve, regenerable
+    from the registry: the read pages' eleven reads (GET interface
+    routes) plus — since G3a — the three lease mutations (POST
+    interface routes, one each, GW-10's one-operation rule policed
+    separately)."""
+    served_reads = set[str]()
+    served_mutations = set[str]()
     for spec in UI_ROUTES:
-        if spec.classification == "interface":
-            served.update(spec.operations)
-    assert served == {
+        if spec.classification != "interface":
+            continue
+        if spec.methods & {"POST", "PUT", "PATCH", "DELETE"}:
+            served_mutations.update(spec.operations)
+        else:
+            served_reads.update(spec.operations)
+    assert served_reads == {
         "gateway_info",
         "bench_list",
         "bench_get",
@@ -143,6 +152,7 @@ def test_g2b_read_surface_is_the_declared_operations() -> None:
         "evidence_get",
         "artifact_read",
     }
+    assert served_mutations == {"lease_create", "lease_renew", "lease_release"}
 
 
 # --- the kill control (design §7-D): a planted route must RED the checker -----

@@ -30,12 +30,14 @@ from typing import Any
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, Response
+from markupsafe import Markup
 
 from benchweave.content.store import ContentStore
 from benchweave.interfaces.errors import OperationFailure, failure
 from benchweave.interfaces.identity import Identity
 from benchweave.interfaces.operations import Operations
 from benchweave.interfaces.sessions import SessionRecord
+from benchweave.interfaces.ui_control import ControlViews, mode_banner_markup
 from benchweave.interfaces.ui_presentation import compose_device_presentation
 from benchweave.interfaces.ui_readings import latest_retained_readings, populate_tiles
 from benchweave.state.store import Store
@@ -60,7 +62,8 @@ def register_read_pages(
     session_identity: Callable[[SessionRecord], Identity],
     page: Callable[..., HTMLResponse],
     failure_page: Callable[[OperationFailure], HTMLResponse],
-    unauthenticated_page: Callable[[], HTMLResponse],
+    unauthenticated_page: Callable[[Request], HTMLResponse],
+    controls: ControlViews | None = None,
 ) -> None:
     """Register the read routes on the UI router (before its catch-all).
 
@@ -70,6 +73,10 @@ def register_read_pages(
     ``store`` (the single-writer state store) and ``now_epoch`` (the
     resolved render clock) feed the device page's reading-tile join
     (#369); both stay None/unused wherever the join is not composed.
+    ``controls`` (the G3a control views) feeds the bench page's
+    control-region embed, the bench- and device-scoped ``no-lease``
+    banner, and the shell's session-expiry warning; ``None`` keeps the
+    G2 shape (no region, no banner, no warning).
     """
     max_page_size = int(limits.get("max_page_size", 1000))
     max_chunk_bytes = int(limits.get("max_chunk_bytes", 65_536))
@@ -88,10 +95,11 @@ def register_read_pages(
     def _strip(record: SessionRecord) -> dict[str, Any]:
         """The base-template context every authed page shares: gateway
         identity from ``gateway_info`` (GW-81), the session's principal
-        and scopes, no mode-banner entries (GW-80: no gateway-reported
-        fact fires one on these pages today — the wire carries no
-        lease-holder or policy-engine fact; absence asserts full-authority
-        presentation per §D), and the CSRF token (NFR-S4 machinery)."""
+        and scopes, the shell's session-expiry warning (D1; ``None``
+        outside its windows), no mode-banner entries (GW-80: no
+        gateway-reported fact fires one on these pages — bench-scoped
+        pages set their own when ``controls`` is composed), and the CSRF
+        token (NFR-S4 machinery)."""
         identity = session_identity(record)
         info = operations.gateway_info(identity)
         return {
@@ -99,6 +107,9 @@ def register_read_pages(
             "principal": record.principal,
             "scopes": sorted(record.scopes),
             "mode_banner": None,
+            "session_warning": (
+                controls.session_warning(record) if controls is not None else None
+            ),
             "csrf_token": record.csrf_token,
         }
 
@@ -110,7 +121,7 @@ def register_read_pages(
         page (design §2.4) — three read calls on the session's identity."""
         authed = _authed(request)
         if authed is None:
-            return unauthenticated_page()
+            return unauthenticated_page(request)
         record, identity = authed
         try:
             bench = operations.bench_get(identity, bench_id)
@@ -122,13 +133,25 @@ def register_read_pages(
             )
         except OperationFailure as fail:
             return failure_page(fail)
+        context = _strip(record)
+        if controls is not None:
+            # GW-42's bench-scoped mode entry + the control region
+            # embedded at first render (the poll re-fetches it).
+            mode = controls.bench_mode(record, bench_id)
+            if mode is not None:
+                context["mode_banner"] = mode_banner_markup(mode)
+            # Trusted host-rendered fragment markup (the module's own
+            # escaped composition; S704's hatch not in play).
+            context["controls_html"] = Markup(  # noqa: S704
+                controls.render(record, bench)
+            )
         return page(
             "bench.j2",
             title=f"Bench {bench_id}",
             bench=bench,
             devices=devices,
             events=events["events"],
-            **_strip(record),
+            **context,
         )
 
     # --- devices and the plugin presentation page (GW-21/22/23) --------------
@@ -147,7 +170,7 @@ def register_read_pages(
         admitted-document store the same admission wrote."""
         authed = _authed(request)
         if authed is None:
-            return unauthenticated_page()
+            return unauthenticated_page(request)
         record, identity = authed
         try:
             device = operations.device_get(identity, bench_id, device_id)
@@ -219,12 +242,19 @@ def register_read_pages(
                     bench_id,
                     device_id,
                 )
+        context = _strip(record)
+        if controls is not None:
+            # GW-42 fires on the device page too (the bench's authority
+            # posture is the device's).
+            mode = controls.bench_mode(record, bench_id)
+            if mode is not None:
+                context["mode_banner"] = mode_banner_markup(mode)
         return page(
             "device.j2",
             title=f"Device {device_id}",
             device=device,
             presentation=presentation,
-            **_strip(record),
+            **context,
         )
 
     # --- runs and reconcile (GW-55 render half, GW-12's view) ------------------
@@ -236,7 +266,7 @@ def register_read_pages(
         no inferred outcome — an absent terminal record renders absent."""
         authed = _authed(request)
         if authed is None:
-            return unauthenticated_page()
+            return unauthenticated_page(request)
         record, identity = authed
         try:
             run = operations.run_get(identity, run_id)
@@ -252,7 +282,7 @@ def register_read_pages(
         row — the honest tier refusal, never a softened rewrite."""
         authed = _authed(request)
         if authed is None:
-            return unauthenticated_page()
+            return unauthenticated_page(request)
         record, identity = authed
         try:
             run = operations.run_find(identity, request_id)
@@ -269,7 +299,7 @@ def register_read_pages(
         """One evidence record: kind, content ref digest, artifact link."""
         authed = _authed(request)
         if authed is None:
-            return unauthenticated_page()
+            return unauthenticated_page(request)
         record, identity = authed
         try:
             evidence = operations.evidence_get(identity, evidence_id)
@@ -291,7 +321,7 @@ def register_read_pages(
         payload ceiling — never an unbounded reassembly)."""
         authed = _authed(request)
         if authed is None:
-            return unauthenticated_page()
+            return unauthenticated_page(request)
         _record, identity = authed
         try:
             first = operations.artifact_read(
@@ -368,7 +398,7 @@ def register_read_pages(
         ``<pre>`` (the digest is the verifiable identity either way)."""
         authed = _authed(request)
         if authed is None:
-            return unauthenticated_page()
+            return unauthenticated_page(request)
         record, identity = authed
         try:
             document = operations.document_get(identity, sha256)

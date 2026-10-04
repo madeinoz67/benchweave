@@ -121,6 +121,36 @@ UI_ROUTES: tuple[RouteSpec, ...] = (
         classification="interface",
     ),
     RouteSpec(
+        # G3a lease control (issue #304, design §2.2): the three mutating
+        # rows each map EXACTLY ONE operation (GW-10); the fragment GET
+        # below is G3a's one deliberate non-interface row — it renders
+        # this session's own response-sourced views beside the bench
+        # projection, so it is session-classified (the "complete
+        # non-interface set" assertion names it deliberately).
+        path="/benches/{bench_id}/leases",
+        methods=_methods("POST"),
+        operations=frozenset({"lease_create"}),
+        classification="interface",
+    ),
+    RouteSpec(
+        path="/leases/{lease_id}/renewals",
+        methods=_methods("POST"),
+        operations=frozenset({"lease_renew"}),
+        classification="interface",
+    ),
+    RouteSpec(
+        path="/leases/{lease_id}/release",
+        methods=_methods("POST"),
+        operations=frozenset({"lease_release"}),
+        classification="interface",
+    ),
+    RouteSpec(
+        path="/benches/{bench_id}/controls",
+        methods=_methods("GET"),
+        operations=frozenset({"bench_get"}),
+        classification="session",
+    ),
+    RouteSpec(
         path="/runs/{run_id}",
         methods=_methods("GET"),
         operations=frozenset({"run_get"}),

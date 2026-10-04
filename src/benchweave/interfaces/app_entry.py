@@ -100,7 +100,7 @@ _LIMITS: dict[str, int] = {
     "max_json_bytes": 1048576,
     "max_page_size": 1000,
     "max_chunk_bytes": 65536,
-    "max_lease_ms": 600000,
+    "max_lease_ms": 21600000,
     "min_poll_ms": 100,
     "max_admission_ms": 5000,
     # The browser-session service knobs (G2a, design §2.2): service and
@@ -118,6 +118,10 @@ _LIMITS: dict[str, int] = {
     # hazards, not page-composition budgets). Default a hint,
     # deployment-tunable.
     "ui_reading_scan_rows": 200,
+    # The control-region poll cadence (G3a, fork F3): the fragment's
+    # base refresh interval, tightened ÷6 inside a GW-44 warning and
+    # ÷30 inside critical. A service knob in the ui_* class.
+    "ui_panel_poll_ms": 30000,
 }
 
 #: The run-activation quota ceilings an operator may configure (issue #167,
@@ -128,6 +132,7 @@ _LIMITS: dict[str, int] = {
 _QUOTA_ENV_KEYS: tuple[tuple[str, str], ...] = (
     ("max_dataset_bytes", "BENCHWEAVE_MAX_DATASET_BYTES"),
     ("max_event_batch", "BENCHWEAVE_MAX_EVENT_BATCH"),
+    ("ui_panel_poll_ms", "BENCHWEAVE_UI_PANEL_POLL_MS"),
     ("ui_login_code_ttl_ms", "BENCHWEAVE_UI_LOGIN_CODE_TTL_MS"),
     ("ui_session_ttl_ms", "BENCHWEAVE_UI_SESSION_TTL_MS"),
     ("ui_max_bridges_per_session", "BENCHWEAVE_UI_MAX_BRIDGES_PER_SESSION"),
@@ -160,8 +165,12 @@ def _ui_enabled_from_env() -> bool:
 
 
 #: Seconds-granular knobs: a sub-second value is a misconfiguration,
-#: not a tuning choice (fold G3 — the 999-probe refuses at boot).
-_MS_FLOOR_KEYS = frozenset({"ui_login_code_ttl_ms", "ui_session_ttl_ms"})
+#: not a tuning choice (fold G3 — the 999-probe refuses at boot). The
+#: poll cadence (FOLD-5) joins them: a sub-second panel poll hammers
+#: the gateway and the seam, same class.
+_MS_FLOOR_KEYS = frozenset(
+    {"ui_login_code_ttl_ms", "ui_session_ttl_ms", "ui_panel_poll_ms"}
+)
 
 
 def _limits_from_env() -> dict[str, int]:

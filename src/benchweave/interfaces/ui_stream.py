@@ -267,7 +267,7 @@ def register_stream_route(
     resolve_session: Callable[[Request], SessionRecord | None],
     session_identity: Callable[[SessionRecord], Identity],
     failure_page: Callable[[OperationFailure], HTMLResponse],
-    unauthenticated_page: Callable[[], HTMLResponse],
+    unauthenticated_page: Callable[[Request], HTMLResponse],
     render: Callable[..., str],
 ) -> None:
     """Register the SSE route on the UI router (before its catch-all).
@@ -294,7 +294,7 @@ def register_stream_route(
         """
         record = resolve_session(request)
         if record is None:
-            return unauthenticated_page()
+            return unauthenticated_page(request)
         try:
             probe = operations.events_get(
                 session_identity(record), bench_id, after=None, limit=max_page_size

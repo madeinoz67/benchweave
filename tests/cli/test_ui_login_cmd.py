@@ -157,6 +157,35 @@ def test_a_bad_session_knob_refuses_boot(
         app_entry._limits_from_env()
 
 
+@pytest.mark.parametrize("raw", ["10", "999"])
+def test_a_sub_second_poll_cadence_refuses_boot(
+    monkeypatch: pytest.MonkeyPatch, raw: str
+) -> None:
+    """FOLD-5: the poll cadence joins the seconds-granular floor — a
+    sub-second ``BENCHWEAVE_UI_PANEL_POLL_MS`` is a misconfiguration (a
+    hammering poll, not a tuning choice), refused like the TTL knobs."""
+    from benchweave.interfaces import app_entry
+
+    monkeypatch.setenv("BENCHWEAVE_UI_PANEL_POLL_MS", raw)
+    with pytest.raises(RuntimeError, match="BENCHWEAVE_UI_PANEL_POLL_MS"):
+        app_entry._limits_from_env()
+
+
+def test_the_poll_knob_admits_the_floor_value(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The floor itself is admitted: 1000 ms parses and stays in the
+    table (the critical tier's ÷30 render-side figure is the DEFAULT
+    table's 30 000 // 30 = 1000 ms, pinned in the controls-fragment
+    suite; a knob lowered to the floor speeds the critical tier past it
+    — the render floor is presentation arithmetic, the boot floor is
+    the misconfiguration gate)."""
+    from benchweave.interfaces import app_entry
+
+    monkeypatch.setenv("BENCHWEAVE_UI_PANEL_POLL_MS", "1000")
+    assert app_entry._limits_from_env()["ui_panel_poll_ms"] == 1000
+
+
 @pytest.mark.parametrize(
     ("raw", "enabled"),
     [

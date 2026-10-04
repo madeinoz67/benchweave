@@ -130,12 +130,18 @@ def _stream_body(
     seen, optionally run ``before_close(body)`` INSIDE the open-response
     window, and close (the abort). Returns (accumulated text, status).
 
-    ``before_close`` is the deterministic observation point: the
-    response is still held open, the generator is parked, the session is
-    alive — asserting the bridge registry THERE cannot race the async
-    disconnect teardown. After this helper returns the stream is CLOSED,
-    and the registry is then only observable by draining it (the abort
-    twin's own comment: the deregistration is async)."""
+    ``before_close`` is the deterministic observation point because it
+    runs INSIDE the read loop, before the ``break``: the iterator is
+    still held by this frame there, the connection is genuinely open,
+    and no disconnect teardown can be in flight. The old shape (running
+    it after the break) was structurally already the abort — breaking
+    out of ``iter_raw`` drops the iterator's last reference, CPython
+    finalizes the abandoned httpcore iterator, and that finalization
+    CLOSES the connection (the FIN leaves before ``before_close`` ran),
+    so the bridge's deregistration raced the caller's assert and lost on
+    loaded runners (issue #384's CI signature). After this helper
+    returns the stream is CLOSED, and the registry is then only
+    observable by draining it (the deregistration is async)."""
     context, holder = live.stream(session_id, bench=bench)
     with context as response:
         status = response.status_code
@@ -149,12 +155,15 @@ def _stream_body(
             accumulated.append(chunk.decode("utf-8", errors="replace"))
             if until in "".join(accumulated):
                 found = True
+                # The observation point rides the read loop, BEFORE the
+                # break — see the docstring: past the break the iterator
+                # is finalized and the connection is already closing.
+                if before_close is not None:
+                    before_close("".join(accumulated))
                 break
             if time.monotonic() > deadline:
                 break
         assert found, f"stream never carried {until!r}: {''.join(accumulated)!r}"
-        if before_close is not None:
-            before_close("".join(accumulated))
         result = ("".join(accumulated), status)
     holder.close()
     return result
@@ -257,8 +266,13 @@ def test_abort_deregisters_and_the_pair_starts_clean(
     record = live_session(live.app, principal="abort-arm")
 
     def while_open(_body: str) -> None:
-        # Deterministic precondition (same race as the logout test's old
-        # shape — asserted here while the response is still open).
+        # Deterministic precondition: while_open runs INSIDE the read
+        # loop (the helper still holds the iterator), so the stream is
+        # genuinely open here. The bounded pause is the issue-#384
+        # regression arm: the CI red was the abort teardown overtaking
+        # the snapshot on a loaded runner; a teardown in flight during
+        # this pause would empty the registry under the assert.
+        time.sleep(0.5)
         assert sessions.bridge_benches(record.session_id) == frozenset({BENCH_ID})
 
     body, status = _stream_body(
