@@ -1,0 +1,88 @@
+{#- The G3b staging panel (issue #304, design record §2.4): the second
+  panel inside the controls fragment. Every byte is server-derived at
+  the render clock; interpolations are autoescaped; the attributes are
+  the §F/§E.1/§C.2 contract marks the suite pins (data-bw-staged,
+  data-bw-check-state, data-bw-confirm, data-bw-disabled-reason).
+  UR-01: hosts own pages, the package owns components — this template
+  is host content; the one package-rendered slot (no_authority_html)
+  enters as pre-escaped trusted markup, the failure.j2 slot rule. -#}
+<div class="bw-panel bw-staging" data-bw-staging aria-label="Staged run">
+  <h3>Staged run</h3>
+  {% if observe %}
+  <p class="bw-staging__note" data-bw-staging-note>Staging and starting runs is a control-scope action; this session has observe authority only.</p>
+  <div class="bw-controls__actions">
+    <div class="bw-control" data-bw-stage-control>
+      <button type="button" class="bw-button" data-variant="primary" aria-busy="false" disabled data-bw-disabled-reason="no-authority">Stage binding</button>
+      {{ no_authority_html }}
+    </div>
+  </div>
+  {% elif not staged %}
+  <p class="bw-staging__note" data-bw-staging-none>No binding is staged for this bench.</p>
+  <form class="bw-control" data-bw-stage-control hx-post="/ui/benches/{{ bench_id }}/staging" hx-target="closest section" hx-swap="outerHTML">
+    <label for="bw-stage-sha-{{ bench_id }}">Binding digest (sha256)</label>
+    <input id="bw-stage-sha-{{ bench_id }}" name="binding_sha256" type="text" required minlength="64" maxlength="64" pattern="[0-9a-f]{64}" list="bw-stage-refs-{{ bench_id }}" hx-preserve>
+    <datalist id="bw-stage-refs-{{ bench_id }}">
+      {%- for ref in refs -%}
+      <option value="{{ ref }}"></option>
+      {%- endfor -%}
+    </datalist>
+    <p class="bw-field__note" data-bw-stage-note>Digests the bench's own event history pins are offered as candidates; the interface has no binding enumeration.</p>
+    <button type="submit" class="bw-button" data-variant="primary" aria-busy="false">Stage binding</button>
+  </form>
+  {% else %}
+  <p class="bw-staging__row" data-bw-staged="true">
+    Staged binding <code data-bw-staged-sha>{{ staged["sha256"] }}</code>
+    {%- if staged["request_id"] %}
+    · request id <code data-bw-staged-request-id>{{ staged["request_id"] }}</code>
+    {%- endif %}
+  </p>
+  {% if check %}
+  <p data-bw-check-state="{{ check["state"] }}">Check {{ check["state"] }}{% if check["findings_count"] %} — {{ check["findings_count"] }} finding(s) reported by the preflight.{% endif %}</p>
+  {% else %}
+  <p class="bw-staging__note" data-bw-check-none>Not checked yet — the preflight (check) runs before the start control enables.</p>
+  {% endif %}
+  <div class="bw-controls__actions">
+    {% if not arming["readable"] %}
+    <div class="bw-control" data-bw-start-control>
+      <button type="button" class="bw-button" data-variant="primary" aria-busy="false" disabled data-bw-disabled-reason="staged-chain-unreadable">Start run</button>
+      <p class="bw-field__note" data-bw-staged-chain-note>The staged binding's document chain is not readable right now; the panel cannot classify the staged set.</p>
+    </div>
+    {% elif arming["energy"] and not staged["armed"] %}
+    <form class="bw-control" data-bw-arm-control hx-post="/ui/benches/{{ bench_id }}/staging/arm" hx-target="closest section" hx-swap="outerHTML">
+      <p class="bw-field__note" data-bw-arm-note>This staged procedure energises an output — arming composes the confirm from the documents, then one confirm starts the run.</p>
+      <button type="submit" class="bw-button" data-variant="primary" aria-busy="false">Arm staged set</button>
+    </form>
+    {% elif arming["energy"] and staged["armed"] %}
+    <div class="bw-control" data-bw-confirm="armed">
+      <p class="bw-confirm__text" data-bw-armed-text>{{ arming["armed_text"] }}</p>
+      <form class="bw-confirm__form" data-bw-start-control hx-post="/ui/benches/{{ bench_id }}/run-starts" hx-target="closest section" hx-swap="outerHTML">
+        <input type="hidden" name="request_id" value="{{ staged["request_id"] }}">
+        <input type="hidden" name="binding_sha256" value="{{ staged["sha256"] }}">
+        <input type="hidden" name="expected_generation" value="{{ generation }}">
+        {% if trip %}
+        <button type="button" class="bw-button" data-variant="danger" aria-busy="false" disabled data-bw-disabled-reason="protection-active">Confirm: Start run</button>
+        <p class="bw-field__note" data-bw-guard-note>Protection is active on this bench: the newest trip-lifecycle event is a trip. The start control re-enables when the trip clears (an applied trip_reset, observed).</p>
+        {% else %}
+        <button type="submit" class="bw-button" data-variant="danger" aria-busy="false" data-bw-confirm-action="true">Confirm: Start run</button>
+        {% endif %}
+      </form>
+      <form class="bw-disarm" data-bw-disarm-control hx-post="/ui/benches/{{ bench_id }}/staging/disarm" hx-target="closest section" hx-swap="outerHTML">
+        <button type="submit" class="bw-button" data-variant="secondary" aria-busy="false">Cancel</button>
+      </form>
+    </div>
+    {% else %}
+    <form class="bw-control" data-bw-start-control hx-post="/ui/benches/{{ bench_id }}/run-starts" hx-target="closest section" hx-swap="outerHTML">
+      <input type="hidden" name="request_id" value="{{ staged["request_id"] }}">
+      <input type="hidden" name="binding_sha256" value="{{ staged["sha256"] }}">
+      <input type="hidden" name="expected_generation" value="{{ generation }}">
+      <button type="submit" class="bw-button" data-variant="primary" aria-busy="false">Start run</button>
+    </form>
+    {% endif %}
+    <form class="bw-control" data-bw-restage-control hx-post="/ui/benches/{{ bench_id }}/staging" hx-target="closest section" hx-swap="outerHTML">
+      <label for="bw-restage-sha-{{ bench_id }}">Stage a different binding (sha256)</label>
+      <input id="bw-restage-sha-{{ bench_id }}" name="binding_sha256" type="text" required minlength="64" maxlength="64" pattern="[0-9a-f]{64}" list="bw-stage-refs-{{ bench_id }}" hx-preserve>
+      <button type="submit" class="bw-button" data-variant="secondary" aria-busy="false">Re-stage</button>
+    </form>
+  </div>
+  {% endif %}
+</div>

@@ -141,9 +141,11 @@ def register_read_pages(
             if mode is not None:
                 context["mode_banner"] = mode_banner_markup(mode)
             # Trusted host-rendered fragment markup (the module's own
-            # escaped composition; S704's hatch not in play).
+            # escaped composition; S704's hatch not in play). The page's
+            # own first events page feeds the staging panel's selector
+            # refs; the trip predicate walks the tail itself.
             context["controls_html"] = Markup(  # noqa: S704
-                controls.render(record, bench)
+                controls.render(record, bench, events["events"])
             )
         return page(
             "bench.j2",

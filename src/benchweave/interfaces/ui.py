@@ -753,6 +753,9 @@ def build_ui_router(
         session_identity=_session_identity,
         failure_page=_failure_page,
         unauthenticated_page=_unauthenticated_page,
+        render=lambda template, **context: _ENV.get_template(template).render(
+            **context
+        ),
     )
 
     register_read_pages(

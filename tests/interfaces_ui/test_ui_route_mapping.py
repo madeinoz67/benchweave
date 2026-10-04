@@ -120,6 +120,9 @@ def test_the_non_interface_set_is_exactly_the_declared_one() -> None:
         "/logout",
         "/assets/{name}",
         "/benches/{bench_id}/controls",
+        "/benches/{bench_id}/staging",
+        "/benches/{bench_id}/staging/arm",
+        "/benches/{bench_id}/staging/disarm",
         "/{path:path}",
     }
 
@@ -152,7 +155,13 @@ def test_g2b_read_surface_is_the_declared_operations() -> None:
         "evidence_get",
         "artifact_read",
     }
-    assert served_mutations == {"lease_create", "lease_renew", "lease_release"}
+    assert served_mutations == {
+        "lease_create",
+        "lease_renew",
+        "lease_release",
+        "run_check",
+        "run_start",
+    }
 
 
 # --- the kill control (design §7-D): a planted route must RED the checker -----

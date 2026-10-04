@@ -147,8 +147,47 @@ UI_ROUTES: tuple[RouteSpec, ...] = (
     RouteSpec(
         path="/benches/{bench_id}/controls",
         methods=_methods("GET"),
-        operations=frozenset({"bench_get"}),
+        operations=frozenset({"bench_get", "events_get"}),
         classification="session",
+    ),
+    RouteSpec(
+        # G3b (issue #304, design §2.4): staging is a session-layer
+        # action — no seam write, so no interface mapping; the staging
+        # record it updates is presentation of this session's own
+        # cycle. Reads it composes: the binding pin (document_get) and
+        # the bench projection.
+        path="/benches/{bench_id}/staging",
+        methods=_methods("POST"),
+        operations=frozenset(),
+        classification="session",
+    ),
+    RouteSpec(
+        # The arm/disarm pair: session-layer state transitions over the
+        # recorded cycle — reads only (the DEP7 chain + GW-56's bound).
+        path="/benches/{bench_id}/staging/arm",
+        methods=_methods("POST"),
+        operations=frozenset(),
+        classification="session",
+    ),
+    RouteSpec(
+        path="/benches/{bench_id}/staging/disarm",
+        methods=_methods("POST"),
+        operations=frozenset(),
+        classification="session",
+    ),
+    RouteSpec(
+        # The preflight (GW-51): one seam mutation — run_check.
+        path="/benches/{bench_id}/run-checks",
+        methods=_methods("POST"),
+        operations=frozenset({"run_check"}),
+        classification="interface",
+    ),
+    RouteSpec(
+        # The start (GW-50–53): one seam mutation — run_start.
+        path="/benches/{bench_id}/run-starts",
+        methods=_methods("POST"),
+        operations=frozenset({"run_start"}),
+        classification="interface",
     ),
     RouteSpec(
         path="/runs/{run_id}",

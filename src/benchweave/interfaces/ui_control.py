@@ -63,6 +63,12 @@ FORM_MIN_DURATION_MS = 60_000
 #: bench safety envelope (A02 governs bench hazards).
 DEFAULT_PANEL_POLL_MS = 30_000
 
+#: The staging panel's selector reads the bench's own first events page
+#: for candidate binding refs (admission's ``authority_changed`` rows
+#: are the oldest in the stream); the trip predicate separately walks
+#: the retained tail to its newest row (ui_staging.read_bench_events).
+_CONTROLS_EVENTS_PAGE = 20
+
 #: The release control's fixed reason. The release control is one click;
 #: the reason names the action's class (the seam's minimum is one
 #: character and this is the honest description).
@@ -260,7 +266,7 @@ class ControlViews:
     to the page handlers (fragment embed, mode computation, the session
     warning)."""
 
-    render: Callable[[SessionRecord, dict[str, Any]], str]
+    render: Callable[[SessionRecord, dict[str, Any], list[dict[str, Any]]], str]
     bench_mode: Callable[[SessionRecord, str], str | None]
     session_warning: Callable[[SessionRecord], str | None]
 
@@ -349,6 +355,7 @@ def _render_fragment(
     now_epoch: Callable[[], int],
     max_lease_ms: int,
     poll_base_ms: int,
+    staging_html: str = "",
 ) -> str:
     """The control region's fragment: lease facts, GW-44 warning, and
     the take/renew/release controls — every byte derived at the current
@@ -548,7 +555,11 @@ def _render_fragment(
         f"{_lease_facts_row(lease_state, facts)}"
         "<div class=\"bw-controls__actions\">"
         f"{take_html}{renew_html}{release_html}"
-        "</div></section>"
+        "</div>"
+        # G3b: the staging panel rides INSIDE the fragment section —
+        # one swap target, one poll cadence, both panels.
+        f"{staging_html}"
+        "</section>"
     )
 
 
@@ -563,6 +574,7 @@ def register_control_routes(
     session_identity: Callable[[SessionRecord], Identity],
     failure_page: Callable[[OperationFailure, Request], HTMLResponse],
     unauthenticated_page: Callable[[Request], HTMLResponse],
+    render: Callable[..., str],
 ) -> ControlViews:
     """Register the G3a control routes on the UI router (before its
     catch-all) and return the composed views the page handlers use.
@@ -605,12 +617,39 @@ def register_control_routes(
                 failure("invalid_request", f"{name} must be an integer")
             ) from None
 
+    def _first_events_page(identity: Identity, bench_id: str) -> list[dict[str, Any]]:
+        """The selector's candidate refs read: the bench's first events
+        page. A refusal composes no refs (the digest field still works)
+        — never a failed render over presentation data."""
+        try:
+            return list(
+                operations.events_get(
+                    identity, bench_id, after=None, limit=_CONTROLS_EVENTS_PAGE
+                )["events"]
+            )
+        except OperationFailure:
+            return []
+
     def _fragment_response(
-        record: SessionRecord, bench: dict[str, Any], bench_id: str | None = None
+        record: SessionRecord,
+        bench: dict[str, Any],
+        bench_id: str | None = None,
+        identity: Identity | None = None,
+        page_events: list[dict[str, Any]] | None = None,
     ) -> HTMLResponse:
         resolved = (
             bench_id if bench_id is not None else str(bench.get("bench_id", ""))
         )
+        staging_html = ""
+        if staging is not None and identity is not None and resolved:
+            rows = (
+                page_events
+                if page_events is not None
+                else _first_events_page(identity, resolved)
+            )
+            staging_html = staging.panel_html(
+                record, identity, bench, resolved, rows
+            )
         return HTMLResponse(
             _render_fragment(
                 record=record,
@@ -619,6 +658,7 @@ def register_control_routes(
                 now_epoch=now_epoch,
                 max_lease_ms=max_lease_ms,
                 poll_base_ms=poll_base_ms,
+                staging_html=staging_html,
             )
         )
 
@@ -632,7 +672,7 @@ def register_control_routes(
             bench = operations.bench_get(identity, bench_id)
         except OperationFailure as fail:
             return failure_page(fail, request)
-        return _fragment_response(record, bench)
+        return _fragment_response(record, bench, identity=identity)
 
     def _mint_request_id() -> str:
         return "ui-" + uuid.uuid4().hex[:12]
@@ -694,7 +734,7 @@ def register_control_routes(
             bench = operations.bench_get(identity, bench_id)
         except OperationFailure:
             bench = {}  # the fragment tolerates a failed refetch (facts from the view)
-        return _fragment_response(record, bench, bench_id=bench_id)
+        return _fragment_response(record, bench, bench_id=bench_id, identity=identity)
 
     @router.post("/leases/{lease_id}/renewals", include_in_schema=False)
     async def renew_lease(lease_id: str, request: Request) -> Response:
@@ -778,7 +818,7 @@ def register_control_routes(
             bench = operations.bench_get(identity, bench_id)
         except OperationFailure:
             bench = {}
-        return _fragment_response(record, bench, bench_id=bench_id)
+        return _fragment_response(record, bench, bench_id=bench_id, identity=identity)
 
     @router.post("/leases/{lease_id}/release", include_in_schema=False)
     async def release_lease(lease_id: str, request: Request) -> Response:
@@ -809,10 +849,32 @@ def register_control_routes(
             bench = operations.bench_get(identity, bench_id)
         except OperationFailure:
             bench = {}
-        return _fragment_response(record, bench, bench_id=bench_id)
+        return _fragment_response(record, bench, bench_id=bench_id, identity=identity)
+
+    # The G3b staging routes (issue #304, §2.4): the five handlers plus
+    # the staging-panel composition, wired with this module's closures.
+    # Deferred import — ui_staging reads this module's helpers, so a
+    # top-level import would be circular.
+    from benchweave.interfaces.ui_staging import StagingRoutes
+
+    staging = StagingRoutes(
+        operations=operations,
+        sessions=sessions,
+        now_epoch=now_epoch,
+        page_size=int(limits.get("max_page_size", 1000)),
+        resolve_session=resolve_session,
+        session_identity=session_identity,
+        failure_page=failure_page,
+        unauthenticated_page=unauthenticated_page,
+        render=render,
+        fragment=lambda record, bench, bench_id, identity: _fragment_response(
+            record, bench, bench_id=bench_id, identity=identity
+        ),
+    )
+    staging.register(router)
 
     return ControlViews(
-        render=lambda record, bench: _render_fragment(
+        render=lambda record, bench, events: _render_fragment(
             record=record,
             bench=bench,
             held=sessions.held_lease(
@@ -821,6 +883,17 @@ def register_control_routes(
             now_epoch=now_epoch,
             max_lease_ms=max_lease_ms,
             poll_base_ms=poll_base_ms,
+            staging_html=(
+                staging.panel_html(
+                    record,
+                    session_identity(record),
+                    bench,
+                    str(bench.get("bench_id", "")),
+                    events,
+                )
+                if str(bench.get("bench_id", ""))
+                else ""
+            ),
         ),
         bench_mode=lambda record, bench_id: bench_mode(
             sessions.held_lease(record.session_id, bench_id), now_epoch=now_epoch
@@ -832,20 +905,6 @@ def register_control_routes(
 
 
 # --- G3b: runs, staging, energy confirmation (issue #304, design §2.4/§2.5) --------
-
-
-@dataclass(frozen=True)
-class ArmingView:
-    """One render's read-only view of the staged binding's document
-    chain: whether it resolved, the energy class, the mode, and the
-    composed armed text (``None`` unless the procedure is armed-shaped).
-    Prepared once per render from ``document_get`` reads — every byte
-    the panel renders about the staged set is a seam answer."""
-
-    readable: bool
-    energy: bool
-    manual: bool
-    armed_text: str | None
 
 
 _HEX64 = set("0123456789abcdef")
