@@ -24,6 +24,18 @@ already produced —
   hard mismatch — the resolver itself cannot be reused here because its
   strictly-advancing high-water fence refuses a second resolve of the same
   release sequences, by design);
+* each release's STATUS document, consulted through the same origin
+  sources (issue #226 slice 4): schema-loaded, signature-verified against
+  the session's trust root, release-bound, gate-checked on the consult
+  clock (expiry, future-time, sequence FLOOR — replaying the same
+  authenticated sequence is the healthy case) and lifecycle-checked. A
+  published revocation or yank refuses the run-build
+  (``closure_status_revoked`` / ``closure_status_yanked``); advisories
+  DELIVER as append-once operator records and never refuse the run
+  (Q14); a published review block contradicting the local commissioning
+  surfaces as ``approval_drift`` (CR-42 — surfaced, never enforced).
+  Views are cached per session under a stated staleness bound
+  (:data:`_STATUS_CONSULT_BOUND_NS`).
 * the admission cache at ``<cache_root>/<manifest_sha256>/`` (the loader
   re-verifies every payload byte against the manifest inventory anyway).
 
@@ -42,15 +54,44 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
+import os
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from benchweave.interfaces.bootstrap import RegistrySession
+from benchweave.interfaces.bootstrap import RegistrySession, StatusView
+from benchweave.registry.admission import AdmissionRejected, _load_persisted_high_water
+from benchweave.registry.authenticity import (
+    AuthenticityRejected,
+    consult_status,
+    verify_document,
+)
+from benchweave.registry.resolver import _STATUS_MAX_BYTES, PackageSource
+from benchweave.registry.schemas import RegistryRejected, load_status_document
+
+_LOG = logging.getLogger(__name__)
 
 #: Manifest inventory roles the resolution reads.
 _DESCRIPTOR_ROLE = "descriptor"
 _IMPLEMENTATION_ROLE = "implementation"
+
+#: The staleness bound on a consulted status view (issue #226 slice 4,
+#: NFR-S2/NFR-S3). A view read from the origin at ``consulted_at_ns``
+#: serves every consult while ``now_ns() - consulted_at_ns`` stays within
+#: this bound; the next consult beyond it re-reads and re-verifies.
+#:
+#: Denominator (NFR-S2), stated where the bound is claimed: the bound
+#: covers gateways REACHABLE at next run-build after publication — a
+#: revocation, yank or advisory published now reaches the next run-build
+#: of an already-commissioned closure with delay at most this bound.
+#: Gateways OFFLINE since publication, or running no builds, are NOT
+#: covered by it: their refusal or advisory lands at their next consult
+#: whenever that happens (the recorded operator-delivery half), and until
+#: then this constant makes no claim about them. Per-bench commissioning
+#: of the bound is deferred (the design's S4-D3).
+_STATUS_CONSULT_BOUND_NS = 300 * 1_000_000_000
 
 
 class ClosureResolutionError(ValueError):
@@ -73,6 +114,231 @@ class DeviceClosure:
 
 def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def _canonical(obj: object) -> bytes:
+    return json.dumps(obj, sort_keys=True, separators=(",", ":")).encode() + b"\n"
+
+
+def _consult_iso(now_ns: int) -> str:
+    """The consult's wall stamp, derived from the session clock."""
+    return datetime.fromtimestamp(now_ns / 1_000_000_000, tz=UTC).isoformat()
+
+
+def _append_once_record(
+    advisories_dir: Path, identity: dict[str, Any], record: dict[str, Any]
+) -> None:
+    """Write one append-once delivery record (tmp + :func:`os.replace`).
+
+    The record NAME is the sha256 of the canonical IDENTITY bytes — the
+    (kind, release coordinates, advisory id / review outcome) tuple — not
+    of the full record bytes: the record carries the first delivery's
+    ``consulted_at``, so a beyond-bound re-consult that re-reads the same
+    advisory must derive the SAME name, or the append-once dedup rule
+    would silently depend on the cache staying warm. It does not.
+    """
+    target = advisories_dir / (
+        "advisory-" + hashlib.sha256(_canonical(identity)).hexdigest()[:16] + ".json"
+    )
+    if target.exists():
+        return
+    advisories_dir.mkdir(parents=True, exist_ok=True)
+    staged = target.with_name(target.name + ".tmp")
+    staged.write_bytes(_canonical(record))
+    os.replace(staged, target)
+
+
+def _deliver_status_advisories(
+    session: RegistrySession,
+    key: tuple[str, str, str],
+    status: dict[str, Any],
+    served_sha256: str,
+    now_ns: int,
+) -> None:
+    """Advisory delivery (Q14's recorded operator half): an advisory does
+    NOT refuse the run (CR-29 fixes advisory semantics as informational)
+    — the advisory is delivered as one append-once operator record plus a
+    warning line, and re-consults write no duplicate record."""
+    for entry in status.get("advisories") or []:
+        advisory = dict(entry)
+        release = {"registry_id": key[0], "package_id": key[1], "version": key[2]}
+        _LOG.warning(
+            "closure_status_advisory: release=%s advisory=%s severity=%s "
+            "summary=%s url=%s",
+            key,
+            advisory.get("id"),
+            advisory.get("severity"),
+            advisory.get("summary"),
+            advisory.get("url"),
+        )
+        _append_once_record(
+            session.advisories_dir,
+            identity={
+                "kind": "operator_advisory",
+                "release": release,
+                "advisory_id": str(advisory.get("id")),
+            },
+            record={
+                "kind": "operator_advisory",
+                "release": release,
+                "advisory": advisory,
+                "status_sha256": served_sha256,
+                "consulted_at": _consult_iso(now_ns),
+            },
+        )
+
+
+def _surface_approval_drift(
+    session: RegistrySession,
+    key: tuple[str, str, str],
+    manifest: dict[str, Any],
+    now_ns: int,
+) -> None:
+    """Approval-drift surfacing (D4, CR-42): a published review block
+    (registry 0.1.2, optional — every 0.1.1 manifest is out of scope)
+    whose outcome is not ``accepted`` is SURFACED — one ``approval_drift``
+    operator record plus a warning line — and the run continues.
+
+    Deliberately NOT an identity-equivalence check (the local approval's
+    principal and the registry reviewer name different roles; the signed
+    approval channel that would make identity-level cross-checks honest
+    is the design's S4-D2 deferral), and never a gate: REG-5 holds for
+    ADMISSION byte-for-byte, and this reads ``review`` for surfacing
+    only — never as provenance, never for gating.
+    """
+    review = manifest.get("review")
+    if not isinstance(review, dict):
+        return
+    outcome = str(review.get("outcome"))
+    if outcome == "accepted":
+        return
+    release = {"registry_id": key[0], "package_id": key[1], "version": key[2]}
+    _LOG.warning(
+        "closure_status_approval_drift: release=%s outcome=%s reviewer=%s — "
+        "the commissioned release's published review records a non-acceptance",
+        key,
+        outcome,
+        review.get("reviewer_id"),
+    )
+    _append_once_record(
+        session.advisories_dir,
+        identity={"kind": "approval_drift", "release": release, "outcome": outcome},
+        record={
+            "kind": "approval_drift",
+            "release": release,
+            "review": {
+                "reviewer_id": str(review.get("reviewer_id")),
+                "outcome": outcome,
+                "record_sha256": str(review.get("record_sha256")),
+            },
+            "consulted_at": _consult_iso(now_ns),
+        },
+    )
+
+
+def _consult_release_status(
+    session: RegistrySession,
+    key: tuple[str, str, str],
+    source: PackageSource,
+    row: dict[str, Any],
+    manifest: dict[str, Any],
+    floor: int,
+) -> None:
+    """Consult one release's status at run-build (issue #226 slice 4).
+
+    The EXISTING checks — schema load, signature verification against
+    the session's trust root, release binding, expiry/future/floor
+    gates, lifecycle refusal — wired into the third moment they were
+    missing from: resolve and admit already run them, and run-build of
+    an already-commissioned closure now does too. No new verification
+    logic; that is the whole design. A view cached within
+    :data:`_STATUS_CONSULT_BOUND_NS` serves with ZERO origin reads — its
+    content is already verified — while the gates re-run on the consult
+    clock (a cached view is not a licence to serve past expiry) and
+    advisory delivery stays idempotent.
+    """
+    now = session.now_ns()
+    view = session.status_cache.get(key)
+    fresh = False
+    if view is not None and now - view.consulted_at_ns <= _STATUS_CONSULT_BOUND_NS:
+        status: dict[str, Any] = view.status
+        served_sha256 = view.served_sha256
+    else:
+        fresh = True
+        root = session.roots.get(key[0])
+        if root is None:
+            # Fail-closed posture: the consult verifies against the
+            # session's trust roots exactly as admission does. An origin
+            # routed without a root (a dev-unsigned origin) has no
+            # consultable status channel — no skip-signature consult
+            # posture exists (the design's S4-D1 deferral).
+            raise ClosureResolutionError(
+                f"closure_status_root_absent: release {key} routes an origin "
+                "the session holds no trust root for"
+            )
+        try:
+            raw, served_sha256 = source.status_bytes(key[1], key[2])
+            status_doc = load_status_document(
+                raw, served_sha256, max_bytes=_STATUS_MAX_BYTES
+            )
+        except RegistryRejected as exc:
+            raise ClosureResolutionError(f"closure_status_{exc.reason}: {key}") from exc
+        except OSError as exc:
+            # A missing or unreadable status is a typed refusal, never a
+            # raw OS error (F1, fail-closed).
+            raise ClosureResolutionError(
+                f"closure_status_absent: no servable status document for {key}"
+            ) from exc
+        try:
+            signature = source.status_signature(key[1], key[2])
+        except OSError as exc:
+            # Under `required` the signature is part of the status, never
+            # an optional extra file (the resolver's own rule).
+            raise ClosureResolutionError(
+                f"closure_status_bad_signature: {key}"
+            ) from exc
+        try:
+            verify_document(status_doc, signature, root)
+        except AuthenticityRejected as exc:
+            raise ClosureResolutionError(f"closure_status_{exc.reason}: {key}") from exc
+        # Release binding BEFORE the gates: the signature proves the
+        # bytes are authentic, not that they describe THIS release — a
+        # validly-signed foreign "published" status cannot mask this
+        # release's revocation.
+        status_release = status_doc.content["release"]
+        if (
+            status_release["registry_id"],
+            status_release["package_id"],
+            status_release["version"],
+        ) != key or str(status_release["manifest_sha256"]) != str(
+            row.get("manifest_sha256")
+        ):
+            raise ClosureResolutionError(
+                "closure_status_release_mismatch: the served status for "
+                f"{key} does not name this release and pin the admitted "
+                "manifest digest"
+            )
+        status = status_doc.content
+    # Gates on the consult clock — a fresh read and a cached view alike.
+    try:
+        consult_status(status, now_ns=now, floor=floor)
+    except AuthenticityRejected as exc:
+        raise ClosureResolutionError(f"closure_status_{exc.reason}: {key}") from exc
+    lifecycle = str(status["lifecycle"])
+    if lifecycle == "revoked":
+        raise ClosureResolutionError(
+            f"closure_status_revoked: release {key} is revoked at sequence "
+            f"{status['sequence']} — the commissioned closure cannot run"
+        )
+    if lifecycle == "yanked":
+        raise ClosureResolutionError(
+            f"closure_status_yanked: release {key} is yanked at sequence "
+            f"{status['sequence']} — the commissioned closure cannot run"
+        )
+    _deliver_status_advisories(session, key, status, served_sha256, now)
+    _surface_approval_drift(session, key, manifest, now)
+    if fresh:
+        session.status_cache[key] = StatusView(status, served_sha256, now)
 
 
 def _module_components(path: str, code_paths: set[str]) -> list[str]:
@@ -179,6 +445,16 @@ def commissioned_device_closure(
             f"closure_lock_empty: the admitted lock {session.lock_path} names no packages"
         )
     manifests: dict[tuple[str, str, str], dict[str, Any]] = {}
+    try:
+        # The consult's sequence floor: admission's own persisted rollback
+        # view, reused read-only. A file malformed enough to refuse
+        # ADMISSION refuses the consult too — under this module's prefix
+        # discipline, not admission's.
+        floor_map = _load_persisted_high_water(session.cache_root)
+    except AdmissionRejected as exc:
+        raise ClosureResolutionError(
+            f"closure_status_{exc.reason}: {session.cache_root}"
+        ) from exc
     for key, row in sorted(rows.items()):
         registry_id, package_id, version = key
         source = session.resolver.origin_source(registry_id)
@@ -206,6 +482,9 @@ def commissioned_device_closure(
                 f"{key} does not match the admitted lock's pinned digest"
             )
         manifests[key] = manifest
+        # The same iteration that digest-verified the manifest consults
+        # the release's status — the third moment (issue #226 slice 4).
+        _consult_release_status(session, key, source, row, manifest, floor_map.get(key, 0))
 
     descriptor_digest = str(device["descriptor"]["sha256"])
 

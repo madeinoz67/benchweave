@@ -290,6 +290,10 @@ class RegistrySession:
     (``<records_dir>/<bench_id>/activation-<n>.json``) — generations are
     per-bench, so the audit trail partitions by bench to keep record
     identities (the new generation) collision-free across benches.
+    ``advisories_dir`` and ``status_cache`` (issue #226 slice 4) serve the
+    run-build status consult: append-once operator-delivery records and
+    the per-session view cache, set here explicitly — never derived by
+    convention.
     """
 
     resolver: Resolver
@@ -301,9 +305,33 @@ class RegistrySession:
     lock_path: Path
     records_dir: Path
     limits: AdmissionLimits
+    #: Operator-delivery records for consulted advisories and surfaced
+    #: approval drift: append-once canonical JSON per delivery identity
+    #: (a sibling of ``activations/``, per-release rather than per-bench).
+    advisories_dir: Path
+    #: Per-session status-view cache keyed by release key. A fresh session
+    #: starts cold — the honest freshness floor: a process restart forces
+    #: re-reads. In-memory only, never persisted.
+    status_cache: dict[Key, StatusView]
     #: Registry clock (status expiry / future-time / sequence gates).
     now_ns: Callable[[], int]
     registry_id: str = REGISTRY_ORIGIN
+
+
+@dataclass(frozen=True)
+class StatusView:
+    """One release's origin-verified status view, as of one consult.
+
+    The per-session consult cache's value (issue #226 slice 4): the
+    verified status content, the served digest it was verified over, and
+    the ORIGIN-READ time the staleness bound counts from. The stamp is
+    the read, never a cache hit — refreshing it on hits would let a
+    continuously-consulted release serve a pre-revocation view forever.
+    """
+
+    status: dict[str, Any]
+    served_sha256: str
+    consulted_at_ns: int
 
 
 def build_registry_session(
@@ -340,6 +368,8 @@ def build_registry_session(
         cache_root=work_root / "cache",
         lock_path=work_root / "packages.lock.json",
         records_dir=work_root / "activations",
+        advisories_dir=work_root / "advisories",
+        status_cache={},
         limits=REGISTRY_ADMISSION_LIMITS,
         now_ns=now_ns,
     )

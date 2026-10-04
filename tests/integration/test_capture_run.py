@@ -10,10 +10,13 @@ captures invalidate their minted id, and re-entry answers from the
 occurrence ledger without re-dispatching.
 
 The harness composes only through proven in-tree machinery: the unsigned
-dev publisher, the resolver/admission stack, ``registry.activation``,
-and ``_build_run_factory`` — the same construction the run-activation
-controls exercise, resolved against the released execution 0.2.0 corpus.
-Every name in the lattice and the plugin is synthetic.
+dev publisher with runtime origin signing (issue #226 slice 4 — the
+run-build status consult is fail-closed, so the served tree is signed by
+a harness-held keypair), the resolver/admission stack,
+``registry.activation``, and ``_build_run_factory`` — the same construction
+the run-activation controls exercise, resolved against the released
+execution 0.2.0 corpus. Every name in the lattice and the plugin is
+synthetic.
 """
 
 from __future__ import annotations
@@ -591,14 +594,19 @@ class _CaptureHarness:
             activation.ADAPTER_SOURCE = previous_source
         registry_root = tmp_path / "dev-registry"
         activation._publish(plugin_dir, descriptor_path, registry_root)
+        # The signed posture (issue #226 slice 4): the run-build status
+        # consult is fail-closed — an origin routed without a trust root
+        # refuses closure_status_root_absent — so this harness keys its
+        # own origin exactly as the activation harness does (the unsigned
+        # publisher's output, signed by a runtime keypair).
+        dev_root = activation._keyed_dev_origin(registry_root)
 
         origins = {
             DEV_ID: OriginConfig(
                 registry_id=DEV_ID,
-                root=None,
+                root=dev_root,
                 source=LocalDirectorySource(registry_root / DEV_ID),
                 namespaces=("dev",),
-                signature_policy="dev-unsigned",
             ),
             ORIGIN_MAIN: OriginConfig(
                 registry_id=ORIGIN_MAIN,
@@ -612,11 +620,13 @@ class _CaptureHarness:
         self.work = tmp_path / "registry-work"
         self.session = RegistrySession(
             resolver=Resolver(origins),
-            roots={ORIGIN_MAIN: activation._main_root()},
+            roots={DEV_ID: dev_root, ORIGIN_MAIN: activation._main_root()},
             high_water={},
             cache_root=self.work / "cache",
             lock_path=self.work / "packages.lock.json",
             records_dir=self.work / "activations",
+            advisories_dir=self.work / "advisories",
+            status_cache={},
             limits=AdmissionLimits(
                 max_archive_bytes=1_000_000, max_files=100, max_unpacked_bytes=1_000_000
             ),
@@ -642,7 +652,7 @@ class _CaptureHarness:
                 policy_version="1.0.0",
             ),
             now_ns=NOW_NS,
-            roots={DEV_ID: None, ORIGIN_MAIN: activation._main_root()},
+            roots={DEV_ID: dev_root, ORIGIN_MAIN: activation._main_root()},
             high_water=self.session.high_water,
         )
         activate(

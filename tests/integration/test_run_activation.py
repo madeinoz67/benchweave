@@ -21,9 +21,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import subprocess
 import sys
 import time
+from collections import Counter
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -39,6 +41,7 @@ from benchweave.host.otdp_bridge import OTDPBridge
 from benchweave.host.types import OperationRequest, OperationStatus, OperationVerb
 from benchweave.interfaces.app import _build_run_factory
 from benchweave.interfaces.bootstrap import admit_startup_bench
+from benchweave.interfaces.device_closures import commissioned_device_closure
 from benchweave.interfaces.worker import RunWorker
 from benchweave.registry.activation import activate
 from benchweave.registry.admission import AdmissionLimits, Approval, admit
@@ -46,6 +49,7 @@ from benchweave.registry.authenticity import TrustRoot, load_trust_root
 from benchweave.registry.resolver import (
     LocalDirectorySource,
     OriginConfig,
+    PackageSource,
     Resolver,
 )
 from benchweave.standards.manifest import load_manifest
@@ -305,6 +309,11 @@ def _sign_release_tree(
             raw = (release_dir / f"{name}.json").read_bytes()
             (release_dir / f"{name}.sig").write_bytes(key.sign(raw))
     return TrustRoot(origin_id=registry_id, verify_key_pem=_public_pem(key))
+
+
+def _keyed_dev_origin(registry_root: Path, registry_id: str = DEV_ID) -> TrustRoot:
+    """Generate a runtime keypair, sign the served tree, return the root."""
+    return _sign_release_tree(registry_root, registry_id, Ed25519PrivateKey.generate())
 
 
 def _write_status(
@@ -775,7 +784,8 @@ class _CommissionedHarness:
         simulated: bool = True,
         commissioned: bool = True,
         release_mutator: Callable[[Path], None] | None = None,
-        signed_dev_origin: bool = False,
+        signed_dev_origin: bool = True,
+        source_decorator: Callable[[PackageSource], PackageSource] | None = None,
         adapter_source: str | None = None,
         steps: list[dict[str, Any]] | None = None,
         allow_rules: list[dict[str, Any]] | None = None,
@@ -823,21 +833,25 @@ class _CommissionedHarness:
             _write_status(impl_dir, impl_status, None)
             dev_root = _sign_release_tree(registry_root, DEV_ID, self.signing_key)
 
+        def wrap(source: PackageSource) -> PackageSource:
+            return source_decorator(source) if source_decorator is not None else source
+
         origins: dict[str, OriginConfig] = {
             DEV_ID: OriginConfig(
                 registry_id=DEV_ID,
                 root=dev_root,
-                source=LocalDirectorySource(registry_root / DEV_ID),
+                source=wrap(LocalDirectorySource(registry_root / DEV_ID)),
                 namespaces=("dev",),
                 signature_policy="dev-unsigned" if dev_root is None else "required",
             ),
             ORIGIN_MAIN: OriginConfig(
                 registry_id=ORIGIN_MAIN,
                 root=_main_root(),
-                source=LocalDirectorySource(REGISTRY_FIXTURES / ORIGIN_MAIN),
+                source=wrap(LocalDirectorySource(REGISTRY_FIXTURES / ORIGIN_MAIN)),
                 namespaces=("benchweave",),
             ),
         }
+        self._origins = origins
         self.work = tmp_path / "registry-work"
         from benchweave.interfaces.bootstrap import RegistrySession
 
@@ -848,6 +862,8 @@ class _CommissionedHarness:
             cache_root=self.work / "cache",
             lock_path=self.work / "packages.lock.json",
             records_dir=self.work / "activations",
+            advisories_dir=self.work / "advisories",
+            status_cache={},
             limits=AdmissionLimits(
                 max_archive_bytes=1_000_000, max_files=100, max_unpacked_bytes=1_000_000
             ),
@@ -935,6 +951,27 @@ class _CommissionedHarness:
         if manifest_sha256 is not None:
             status["release"]["manifest_sha256"] = manifest_sha256
         _write_status(release, status, self.signing_key)
+
+    def fresh_session(self) -> None:
+        """Replace the session with a process-fresh one over the same work
+        root (issue #226 D1's cold-cache control): same resolver routing,
+        same trust roots, cold status cache — the honest restart-freshness
+        floor, where a process restart forces re-reads."""
+        from benchweave.interfaces.bootstrap import RegistrySession
+
+        self.session = RegistrySession(
+            resolver=Resolver(self._origins),
+            roots=dict(self.session.roots),
+            high_water={},
+            cache_root=self.work / "cache",
+            lock_path=self.work / "packages.lock.json",
+            records_dir=self.work / "activations",
+            advisories_dir=self.work / "advisories",
+            status_cache={},
+            limits=self.session.limits,
+            now_ns=lambda: NOW_NS,
+            registry_id=DEV_ID,
+        )
 
     def open_store(self) -> tuple[Store, ContentStore]:
         store = Store.open(self.root / "state.db")
@@ -1692,17 +1729,17 @@ def test_demo_lattice_without_commissioned_closure_keeps_declarative_fallback(
 def test_m6_baseline_published_revocation_does_not_reach_run_build(
     tmp_path: Path,
 ) -> None:
-    """M6 RED baseline (issue #226 slice 4, design §5 D1) — committed FIRST.
+    """The M6 baseline, flipped at the mechanism commit (issue #226 slice 4,
+    design §5 D1).
 
     The reproduced defect: the commissioned implementation release's
-    served status is rewritten to ``revoked`` AFTER commissioning
+    served status was rewritten to ``revoked`` AFTER commissioning
     (lifecycle flip, sequence+1, updated_at bumped, re-signed by the
     origin key — the SDK lifecycle-op discipline), and the next run-build
-    SUCCEEDS anyway, through the commissioned bridge: nothing between
-    admission and run-build reads lifecycle (M6, PRD §5(l).1). This test
-    pins TODAY's behavior; its recorded output is the M6 reproduction
-    the parent record requires, and the mechanism commit flips the
-    assertion to the refusal.
+    SUCCEEDED anyway, through the commissioned bridge (M6, PRD
+    §5(l).1) — pinned green in the baseline commit (cc92037). The status
+    consult closes M6: the same arm now refuses
+    ``closure_status_revoked`` at run-build.
     """
     harness = _CommissionedHarness(tmp_path, "req-m6-baseline", signed_dev_origin=True)
     harness.rewrite_release_status(
@@ -1711,16 +1748,423 @@ def test_m6_baseline_published_revocation_does_not_reach_run_build(
     store, content = harness.open_store()
     try:
         factory = harness.build_run(QUOTA_LIMITS)
-        coordinator = factory(
-            "run-m6", "principal-activation", harness.binding_ref(), store
+        with pytest.raises(ValueError, match="closure_status_revoked"):
+            factory(
+                "run-m6", "principal-activation", harness.binding_ref(), store
+            )
+        assert store.get_run("run-m6") is None
+    finally:
+        store.close()
+
+
+# The descriptor-override package publish_dev ships beside the
+# implementation (the publisher's dashed-name rule: sim_psu -> sim-psu).
+_DESCRIPTOR_PACKAGE = f"dev/{PLUGIN_DIRNAME.replace('_', '-')}-descriptor"
+
+#: One served advisory (invented fixture content; the schema's closed shape).
+_ADVISORY: dict[str, Any] = {
+    "id": "adv-heat-derate",
+    "severity": "medium",
+    "summary": "Output derates above 40 degrees; requalify before extended runs.",
+    "url": "https://example.invalid/advisories/adv-heat-derate",
+}
+
+
+class _CountingSource:
+    """PackageSource wrapper counting status reads — D2's honest
+    socket-equivalent: there is no socket to patch on a local-dir origin,
+    so the arm counts the reads themselves."""
+
+    def __init__(self, inner: PackageSource, reads: Counter[tuple[str, str]]) -> None:
+        self._inner = inner
+        self._reads = reads
+
+    def manifest_bytes(self, package_id: str, version: str) -> tuple[bytes, str]:
+        return self._inner.manifest_bytes(package_id, version)
+
+    def status_bytes(self, package_id: str, version: str) -> tuple[bytes, str]:
+        self._reads[(package_id, version)] += 1
+        return self._inner.status_bytes(package_id, version)
+
+    def payload_bytes(
+        self, package_id: str, version: str, *, max_archive_bytes: int | None = None
+    ) -> bytes:
+        return self._inner.payload_bytes(
+            package_id, version, max_archive_bytes=max_archive_bytes
         )
-        # The bridge is the commissioned closure's, not a simulator's: the
-        # run that passes below ran the commissioned implementation while
-        # a signed revocation sat on the origin.
-        assert isinstance(coordinator.plugins[DEVICE_ID], OTDPBridge)
-        record = coordinator.start_run("run-m6", "principal-activation")
-        # M6, reproduced: the revocation is published and signed, and the
-        # run-build never reads it.
+
+    def manifest_signature(self, package_id: str, version: str) -> bytes:
+        return self._inner.manifest_signature(package_id, version)
+
+    def status_signature(self, package_id: str, version: str) -> bytes:
+        return self._inner.status_signature(package_id, version)
+
+
+def _review_block(outcome: str) -> dict[str, Any]:
+    """A schema-valid registry 0.1.2 review block (synthetic reviewer)."""
+    return {
+        "checklist_id": "review-checklist",
+        "checklist_version": "1",
+        "reviewer_id": "registry-reviewer-fixture",
+        "outcome": outcome,
+        "record_sha256": "b" * 64,
+    }
+
+
+def _upgrade_manifest_with_review(registry_root: Path, outcome: str) -> None:
+    """Mutator: upgrade the implementation manifest to registry 0.1.2 with
+    a review block (CR-13: admission stays review-indifferent — the
+    release still resolves, admits and commissions; the drift it
+    contradicts is surfaced only at the run-build consult, D4)."""
+    release = registry_root / DEV_ID / IMPL_PACKAGE / PACKAGE_VERSION
+    manifest = json.loads((release / "manifest.json").read_bytes())
+    manifest["manifest_version"] = "0.1.2"
+    manifest["review"] = _review_block(outcome)
+    raw = json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode() + b"\n"
+    (release / "manifest.json").write_bytes(raw)
+    status = json.loads((release / "status.json").read_bytes())
+    status["release"]["manifest_sha256"] = _sha(raw)
+    _write_status(release, status, None)  # the harness signs afterwards
+
+
+def _commissioning_inputs(harness: _CommissionedHarness) -> tuple[dict[str, Any], dict[str, Any]]:
+    """The bench's commissioned device and its descriptor document."""
+    bench = json.loads((harness.lattice_dir / "bench.json").read_bytes())
+    descriptor = json.loads(
+        (harness.lattice_dir / "descriptor-demo-supply.json").read_bytes()
+    )
+    return bench["devices"][0], descriptor
+
+
+def _advisory_records(harness: _CommissionedHarness) -> list[dict[str, Any]]:
+    """Every delivered operator record under the session's advisory dir."""
+    return [
+        json.loads(path.read_bytes())
+        for path in sorted(harness.session.advisories_dir.glob("advisory-*.json"))
+    ]
+
+
+# --- D1: reach (CR-53; closes M6) ---------------------------------------------------
+
+
+def test_d1_revoked_status_refuses_next_run_build(tmp_path: Path) -> None:
+    """D1 SHIP arm — the flipped M6 baseline: a revocation published after
+    commissioning refuses the NEXT run-build of the commissioned closure
+    (the mechanism-composed refusal name; design record section 2.1
+    step 6)."""
+    harness = _CommissionedHarness(tmp_path, "req-d1-revoked", signed_dev_origin=True)
+    harness.rewrite_release_status(
+        IMPL_PACKAGE, lifecycle="revoked", reason="published recall"
+    )
+    store, content = harness.open_store()
+    try:
+        factory = harness.build_run(QUOTA_LIMITS)
+        with pytest.raises(ValueError, match="closure_status_revoked"):
+            factory("run-d1-revoked", "principal-activation", harness.binding_ref(), store)
+        assert store.get_run("run-d1-revoked") is None
+    finally:
+        store.close()
+
+
+def test_d1_yanked_status_refuses_next_run_build(tmp_path: Path) -> None:
+    """D1 SHIP arm: a published yank refuses the next run-build (the same
+    class admission refuses at admit time, now enforced at the third
+    moment)."""
+    harness = _CommissionedHarness(tmp_path, "req-d1-yanked", signed_dev_origin=True)
+    harness.rewrite_release_status(
+        IMPL_PACKAGE, lifecycle="yanked", reason="author yank"
+    )
+    store, content = harness.open_store()
+    try:
+        factory = harness.build_run(QUOTA_LIMITS)
+        with pytest.raises(ValueError, match="closure_status_yanked"):
+            factory("run-d1-yanked", "principal-activation", harness.binding_ref(), store)
+    finally:
+        store.close()
+
+
+def test_d1_advisory_status_proceeds_and_delivers_operator_record(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """D1 SHIP arm (Q14's recorded operator half): an advisory-carrying
+    published status does NOT refuse the run — the advisory is DELIVERED
+    as one append-once operator record plus a warning line, and re-consults
+    (within the bound and beyond it) write no duplicate."""
+    harness = _CommissionedHarness(tmp_path, "req-d1-advisory", signed_dev_origin=True)
+    harness.rewrite_release_status(
+        IMPL_PACKAGE, advisories=[dict(_ADVISORY)], reason="heat advisory"
+    )
+    run_id = "run-d1-advisory"
+    coordinator, store, content = _coordinator(harness, run_id, QUOTA_LIMITS)
+    try:
+        with caplog.at_level(
+            logging.WARNING, logger="benchweave.interfaces.device_closures"
+        ):
+            record = coordinator.start_run(run_id, "principal-activation")
         assert record["outcome"] == "passed"
+        assert any(
+            "closure_status_advisory" in entry.message for entry in caplog.records
+        )
+        delivered = _advisory_records(harness)
+        assert len(delivered) == 1
+        assert delivered[0]["kind"] == "operator_advisory"
+        assert delivered[0]["advisory"] == _ADVISORY
+        assert delivered[0]["release"]["package_id"] == IMPL_PACKAGE
+        assert delivered[0]["release"]["registry_id"] == DEV_ID
+        assert len(delivered[0]["status_sha256"]) == 64
+        assert delivered[0]["consulted_at"]
+    finally:
+        store.close()
+
+    # Re-consult within the bound (the cached view serves; zero reads) ...
+    coordinator2, store2, _content2 = _coordinator(
+        harness, "run-d1-advisory-b", QUOTA_LIMITS, request_id="req-d1-advisory-b"
+    )
+    try:
+        record2 = coordinator2.start_run("run-d1-advisory-b", "principal-activation")
+        assert record2["outcome"] == "passed"
+    finally:
+        store2.close()
+    assert len(_advisory_records(harness)) == 1
+
+    # ... and beyond the bound (the origin is re-read; the SAME advisory
+    # id is already recorded — still exactly one record).
+    from benchweave.interfaces.device_closures import _STATUS_CONSULT_BOUND_NS
+
+    harness.session.now_ns = lambda: NOW_NS + _STATUS_CONSULT_BOUND_NS + 1
+    coordinator3, store3, _content3 = _coordinator(
+        harness, "run-d1-advisory-c", QUOTA_LIMITS, request_id="req-d1-advisory-c"
+    )
+    try:
+        record3 = coordinator3.start_run("run-d1-advisory-c", "principal-activation")
+        assert record3["outcome"] == "passed"
+    finally:
+        store3.close()
+    assert len(_advisory_records(harness)) == 1
+
+
+def test_d1_rolled_back_status_refuses_sequence_rollback(tmp_path: Path) -> None:
+    """D1 SHIP arm: a served sequence BELOW the persisted floor refuses
+    (consult semantics — the reason name is deliberately distinct from
+    the resolver's ``stale_sequence``; same-sequence replay is the healthy
+    case and stays green in the controls below)."""
+    harness = _CommissionedHarness(tmp_path, "req-d1-rollback", signed_dev_origin=True)
+    harness.rewrite_release_status(
+        IMPL_PACKAGE, sequence=1, reason="rolled back to the initial revision"
+    )
+    store, content = harness.open_store()
+    try:
+        factory = harness.build_run(QUOTA_LIMITS)
+        with pytest.raises(ValueError, match="closure_status_sequence_rollback"):
+            factory("run-d1-rollback", "principal-activation", harness.binding_ref(), store)
+    finally:
+        store.close()
+
+
+def test_d1_expired_status_refuses_expired_status(tmp_path: Path) -> None:
+    """D1 SHIP arm: a status whose ``expires_at`` is past refuses — an
+    unattested lifecycle is UNKNOWN, not published (A06; the same clock
+    admission already enforces at admit time)."""
+    harness = _CommissionedHarness(tmp_path, "req-d1-expired", signed_dev_origin=True)
+    harness.rewrite_release_status(
+        IMPL_PACKAGE, expires_at="2026-09-13T00:00:00Z", reason="status lapsed"
+    )
+    store, content = harness.open_store()
+    try:
+        factory = harness.build_run(QUOTA_LIMITS)
+        with pytest.raises(ValueError, match="closure_status_expired_status"):
+            factory("run-d1-expired", "principal-activation", harness.binding_ref(), store)
+    finally:
+        store.close()
+
+
+def test_d1_swapped_status_refuses_release_mismatch(tmp_path: Path) -> None:
+    """D1 SHIP arm: a validly-signed status naming ANOTHER release's key
+    and manifest digest cannot mask this release's lifecycle — the
+    binding check fires before the gates (design section 2.1 step 4)."""
+    harness = _CommissionedHarness(tmp_path, "req-d1-swap", signed_dev_origin=True)
+    donor = harness.release_dir(_DESCRIPTOR_PACKAGE)
+    target = harness.release_dir(IMPL_PACKAGE)
+    (target / "status.json").write_bytes((donor / "status.json").read_bytes())
+    (target / "status.sig").write_bytes((donor / "status.sig").read_bytes())
+    store, content = harness.open_store()
+    try:
+        factory = harness.build_run(QUOTA_LIMITS)
+        with pytest.raises(ValueError, match="closure_status_release_mismatch"):
+            factory("run-d1-swap", "principal-activation", harness.binding_ref(), store)
+    finally:
+        store.close()
+
+
+def test_d1_absent_status_refuses_closure_status_absent(tmp_path: Path) -> None:
+    """D1 SHIP arm and D3's offline half: with a cold cache and the status
+    channel absent from the origin, the consult refuses loudly — never
+    asserts published (F1, fail-closed)."""
+    harness = _CommissionedHarness(tmp_path, "req-d1-absent", signed_dev_origin=True)
+    release = harness.release_dir(IMPL_PACKAGE)
+    (release / "status.json").unlink()
+    (release / "status.sig").unlink()
+    store, content = harness.open_store()
+    try:
+        factory = harness.build_run(QUOTA_LIMITS)
+        with pytest.raises(ValueError, match="closure_status_absent"):
+            factory("run-d1-absent", "principal-activation", harness.binding_ref(), store)
+    finally:
+        store.close()
+
+
+def test_d1_control_untouched_closure_same_sequence_replay_stays_green(
+    tmp_path: Path,
+) -> None:
+    """D1 control: the untouched closure — every release served at exactly
+    the sequence it was admitted at (impl 2, descriptor 1, profile 1) —
+    run-builds green: consult semantics replay the same authenticated
+    sequence; only a lower one refuses."""
+    harness = _CommissionedHarness(tmp_path, "req-d1-ctl", signed_dev_origin=True)
+    coordinator, store, content = _coordinator(harness, "run-d1-ctl", QUOTA_LIMITS)
+    try:
+        record = coordinator.start_run("run-d1-ctl", "principal-activation")
+        assert record["outcome"] == "passed"
+        assert isinstance(coordinator.plugins[DEVICE_ID], OTDPBridge)
+    finally:
+        store.close()
+
+
+def test_d1_control_cold_cache_after_fresh_session_stays_green(
+    tmp_path: Path,
+) -> None:
+    """D1 control: the healthy arm under a COLD cache after process-fresh
+    session construction (the restart-freshness floor — a fresh session
+    starts cold and re-reads everything)."""
+    harness = _CommissionedHarness(tmp_path, "req-d1-cold", signed_dev_origin=True)
+    harness.fresh_session()
+    coordinator, store, content = _coordinator(harness, "run-d1-cold", QUOTA_LIMITS)
+    try:
+        record = coordinator.start_run("run-d1-cold", "principal-activation")
+        assert record["outcome"] == "passed"
+    finally:
+        store.close()
+
+
+# --- D2: staleness and cost (NFR-S3) -------------------------------------------------
+
+
+def test_d2_staleness_bound_bounds_status_reads(tmp_path: Path) -> None:
+    """D2 SHIP arms on the injected clock + the counting source: consult 1
+    cold reads each release's status exactly once; a consult within the
+    bound reads NOTHING (exact zero); a consult beyond the bound re-reads
+    (each release again — the bound is the reach delay)."""
+    reads: Counter[tuple[str, str]] = Counter()
+
+    def wrap(source: PackageSource) -> PackageSource:
+        return _CountingSource(source, reads)
+
+    harness = _CommissionedHarness(
+        tmp_path, "req-d2", signed_dev_origin=True, source_decorator=wrap
+    )
+    # The counter starts AFTER construction: the harness's own resolve
+    # reads each release's status once while admitting (the resolver's
+    # status_bytes — not the consult's), and the arm measures the consult
+    # alone.
+    reads.clear()
+    clock = {"now": NOW_NS}
+    harness.session.now_ns = lambda: clock["now"]
+    device, descriptor = _commissioning_inputs(harness)
+
+    # Consult 1, cold: exactly one status read per release (three
+    # releases in the closure: implementation, descriptor, profile).
+    assert (
+        commissioned_device_closure(harness.session, BENCH_ID, device, descriptor)
+        is not None
+    )
+    assert sum(reads.values()) == 3
+    assert len(reads) == 3 and all(count == 1 for count in reads.values())
+
+    # Consult 2, within the bound: the cached view serves — zero reads.
+    assert (
+        commissioned_device_closure(harness.session, BENCH_ID, device, descriptor)
+        is not None
+    )
+    assert sum(reads.values()) == 3
+
+    # Beyond the bound: the view is stale, every release re-reads.
+    from benchweave.interfaces.device_closures import _STATUS_CONSULT_BOUND_NS
+
+    clock["now"] = NOW_NS + _STATUS_CONSULT_BOUND_NS + 1
+    assert (
+        commissioned_device_closure(harness.session, BENCH_ID, device, descriptor)
+        is not None
+    )
+    assert sum(reads.values()) == 6
+    assert all(count == 2 for count in reads.values())
+
+
+# --- D4: approval drift (CR-42) -------------------------------------------------------
+
+
+def test_d4_review_changes_requested_surfaces_approval_drift(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """D4 SHIP arm: a commissioned release whose published review block
+    records a non-acceptance (the local lock's approval block asserts an
+    approval-for-commissioning) never rides silently — the consult
+    surfaces one ``approval_drift`` operator record plus a warning line,
+    and the run CONTINUES (surfaced, never enforced; REG-5's admission
+    seam holds). Admission admitted the 0.1.2 changes-requested release
+    unchanged — CR-13's review-indifference, proven by the fixture."""
+    harness = _CommissionedHarness(
+        tmp_path,
+        "req-d4-drift",
+        signed_dev_origin=True,
+        release_mutator=lambda root: _upgrade_manifest_with_review(
+            root, "changes-requested"
+        ),
+    )
+    run_id = "run-d4-drift"
+    coordinator, store, content = _coordinator(harness, run_id, QUOTA_LIMITS)
+    try:
+        with caplog.at_level(
+            logging.WARNING, logger="benchweave.interfaces.device_closures"
+        ):
+            record = coordinator.start_run(run_id, "principal-activation")
+        assert record["outcome"] == "passed"
+        assert any(
+            "closure_status_approval_drift" in entry.message
+            for entry in caplog.records
+        )
+        surfaced = _advisory_records(harness)
+        assert len(surfaced) == 1
+        assert surfaced[0]["kind"] == "approval_drift"
+        assert surfaced[0]["review"]["outcome"] == "changes-requested"
+        assert surfaced[0]["review"]["reviewer_id"] == "registry-reviewer-fixture"
+        assert surfaced[0]["release"]["package_id"] == IMPL_PACKAGE
+    finally:
+        store.close()
+
+
+def test_d4_control_accepted_review_surfaces_nothing(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """D4 control: an accepted review block on the same 0.1.2 upgrade is
+    agreement, not drift — no record, no warning."""
+    harness = _CommissionedHarness(
+        tmp_path,
+        "req-d4-accepted",
+        signed_dev_origin=True,
+        release_mutator=lambda root: _upgrade_manifest_with_review(root, "accepted"),
+    )
+    run_id = "run-d4-accepted"
+    coordinator, store, content = _coordinator(harness, run_id, QUOTA_LIMITS)
+    try:
+        with caplog.at_level(
+            logging.WARNING, logger="benchweave.interfaces.device_closures"
+        ):
+            record = coordinator.start_run(run_id, "principal-activation")
+        assert record["outcome"] == "passed"
+        assert not any(
+            "closure_status_approval_drift" in entry.message
+            for entry in caplog.records
+        )
+        assert _advisory_records(harness) == []
     finally:
         store.close()
