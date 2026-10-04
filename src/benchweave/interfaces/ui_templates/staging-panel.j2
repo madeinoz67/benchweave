@@ -36,6 +36,9 @@
     · request id <code data-bw-staged-request-id>{{ staged["request_id"] }}</code>
     {%- endif %}
   </p>
+  {% if started_run_id %}
+  <p class="bw-staging__row" data-bw-run-started="{{ started_run_id }}">Run <a class="bw-link" href="/ui/runs/{{ started_run_id }}">{{ started_run_id }}</a> accepted — a resubmission replays the same run.</p>
+  {% endif %}
   {% if check %}
   <p data-bw-check-state="{{ check["state"] }}">Check {{ check["state"] }}{% if check["findings_count"] %} — {{ check["findings_count"] }} finding(s) reported by the preflight.{% endif %}</p>
   {% else %}

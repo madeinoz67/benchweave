@@ -636,6 +636,7 @@ def register_control_routes(
         bench_id: str | None = None,
         identity: Identity | None = None,
         page_events: list[dict[str, Any]] | None = None,
+        started_run_id: str | None = None,
     ) -> HTMLResponse:
         resolved = (
             bench_id if bench_id is not None else str(bench.get("bench_id", ""))
@@ -648,7 +649,7 @@ def register_control_routes(
                 else _first_events_page(identity, resolved)
             )
             staging_html = staging.panel_html(
-                record, identity, bench, resolved, rows
+                record, identity, bench, resolved, rows, started_run_id
             )
         return HTMLResponse(
             _render_fragment(
@@ -867,8 +868,9 @@ def register_control_routes(
         failure_page=failure_page,
         unauthenticated_page=unauthenticated_page,
         render=render,
-        fragment=lambda record, bench, bench_id, identity: _fragment_response(
-            record, bench, bench_id=bench_id, identity=identity
+        fragment=lambda record, bench, bench_id, identity, started_run_id=None: _fragment_response(
+            record, bench, bench_id=bench_id, identity=identity,
+            started_run_id=started_run_id,
         ),
     )
     staging.register(router)

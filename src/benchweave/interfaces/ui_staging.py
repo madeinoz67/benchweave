@@ -43,6 +43,7 @@ from benchweave.interfaces.ui_control import (
     armed_composition,
     trip_active,
 )
+from benchweave.interfaces.ui_refusals import render_no_response
 
 #: The trip predicate's event read: page size for the tail walk. The
 #: seam's own retention bound (``max_page_size * 10`` rows per stream)
@@ -120,9 +121,7 @@ class StagingRoutes:
         failure_page: Callable[[OperationFailure, Request], HTMLResponse],
         unauthenticated_page: Callable[[Request], HTMLResponse],
         render: Callable[..., str],
-        fragment: Callable[
-            [SessionRecord, dict[str, Any], str | None, Identity], Response
-        ],
+        fragment: Callable[..., Response],
     ) -> None:
         self._operations = operations
         self._sessions = sessions
@@ -225,6 +224,7 @@ class StagingRoutes:
         bench: dict[str, Any],
         bench_id: str,
         page_events: list[dict[str, Any]],
+        started_run_id: str | None = None,
     ) -> str:
         """The staging panel's HTML, composed from seam answers at the
         render clock: the session's staging record, the DEP7 chain read
@@ -276,6 +276,7 @@ class StagingRoutes:
             generation=int(bench.get("generation", 0)),
             refs=_binding_refs(page_events),
             trip=trip_active(self._tail_events(identity, bench_id)),
+            started_run_id=started_run_id,
             # Trusted package-rendered HTML (the §C.2 partial), not
             # request data — S704's escape hatch is not in play.
             no_authority_html=Markup(  # noqa: S704
@@ -507,23 +508,56 @@ class StagingRoutes:
         return self._fragment(record, bench, bench_id, identity)
 
     async def run_starts(self, bench_id: str, request: Request) -> Response:
-        """GW-51's start gate, mounted guard-only in this commit: no
-        staged set, or no check on record for the CURRENT staged set,
-        refuses pre-send (``invalid_request``; no seam write — the
-        suite's spy pins it). With the guards satisfied the honest
-        answer is ``not_ready`` until the fire path lands with the next
-        commit; the staged set and its recorded check stand."""
+        """GW-50–53's start: the staged cycle's fire path. Pre-send
+        guards (no seam write): a staged set with a check on record, the
+        form's §9 id matching the staged cycle (a foreign id replays
+        through run_find first — §9's own resolution), the armed flag
+        for the energy class. Fire-time guards (GW-52/54, R-PROTECT-1):
+        a trip arrived while armed — re-render the armed state with the
+        protection-active disable, no seam call; GW-56's bound again at
+        fire. Then one ``run_start`` (the §9 id IS the binding's own
+        request id); a non-OperationFailure composes the §C.3
+        no-response row with the reconcile link. Keep-record-on-start
+        (RULED DEVIATION): the staged record survives a committed start
+        as the replay handle, so a resubmission reaches the seam and
+        replays (§9), never a second run."""
         authed = self._authed(request)
         if authed is None:
             return self._unauthenticated_page(request)
         record, identity = authed
         if not self._has_control(record):
             return self._observe_refusal(request)
+        form = dict(await request.form())
+        form_request = str(form.get("request_id", ""))
         staged = self._sessions.staged_start(record.session_id, bench_id)
-        if staged is None:
+        if staged is None or (form_request and staged.request_id != form_request):
+            # The record cleared, or the form carries another cycle's
+            # §9 id: the id may still resolve to an accepted run —
+            # replay it before refusing the stale form.
+            if form_request:
+                try:
+                    replay = self._operations.run_find(identity, form_request)
+                except OperationFailure:
+                    replay = None
+                if replay is not None:
+                    try:
+                        bench = self._operations.bench_get(identity, bench_id)
+                    except OperationFailure:
+                        bench = {}
+                    return self._fragment(
+                        record,
+                        bench,
+                        bench_id,
+                        identity,
+                        started_run_id=str(replay["run_id"]),
+                    )
             return self._failure_page(
                 OperationFailure(
-                    failure("invalid_request", "stage and check a binding first")
+                    failure(
+                        "invalid_request",
+                        "stage and check a binding first — the form names no"
+                        " cycle this session holds",
+                    )
                 ),
                 request,
             )
@@ -538,13 +572,86 @@ class StagingRoutes:
                 ),
                 request,
             )
-        return self._failure_page(
-            OperationFailure(
-                failure(
-                    "not_ready",
-                    "the start's fire path is not live on this interim"
-                    " build; the staged set and its recorded check stand",
-                )
-            ),
-            request,
+        if staged.request_id is None:
+            return self._failure_page(
+                OperationFailure(
+                    failure(
+                        "invalid_request",
+                        "the staged binding's request id is unknown — restage a"
+                        " stored binding",
+                    )
+                ),
+                request,
+            )
+        try:
+            binding_doc, procedure_doc = _binding_chain(
+                self._operations, identity, staged.binding_ref
+            )
+        except OperationFailure as fail:
+            return self._failure_page(fail, request)
+        energy, _manual, _text = armed_composition(binding_doc, procedure_doc)
+        if energy and not staged.armed:
+            return self._failure_page(
+                OperationFailure(
+                    failure(
+                        "invalid_request",
+                        "the staged procedure energises an output — arm the"
+                        " staged set before confirming",
+                    )
+                ),
+                request,
+            )
+        if energy and trip_active(self._tail_events(identity, bench_id)):
+            # GW-52/54's fire-time guard: a trip arrived while armed —
+            # refuse WITHOUT a seam call, re-rendering the armed state
+            # with the §E.1 protection-active disable; no auto-disarm.
+            try:
+                bench = self._operations.bench_get(identity, bench_id)
+            except OperationFailure:
+                bench = {}
+            return self._fragment(record, bench, bench_id, identity)
+        gw56 = self._attention_failure(record, bench_id, procedure_doc)
+        if gw56 is not None:
+            return self._failure_page(gw56, request)
+        try:
+            expected_generation = int(str(form.get("expected_generation", "")))
+        except ValueError:
+            return self._failure_page(
+                OperationFailure(
+                    failure(
+                        "invalid_request", "expected_generation must be an integer"
+                    )
+                ),
+                request,
+            )
+        held = self._sessions.held_lease(record.session_id, bench_id)
+        lease_id = held.lease_id if held is not None else None
+        try:
+            run = self._operations.run_start(
+                identity,
+                bench_id,
+                staged.request_id,
+                staged.binding_ref,
+                expected_generation,
+                lease_id,
+            )
+        except OperationFailure as fail:
+            return self._failure_page(fail, request)
+        except Exception:
+            # Transport-shaped (no interface answer): §C.3's no-response
+            # row, sent status UNKNOWN, the reconcile link to run_find's
+            # view. An in-process adapter cannot honestly produce this;
+            # the suite induces it (the G2 §7-F posture).
+            return HTMLResponse(
+                render_no_response(staged.request_id), status_code=504
+            )
+        # Keep-record-on-start (ruled deviation): the staged record
+        # stays as the replay handle — §9 makes the resubmission
+        # idempotent.
+        try:
+            bench = self._operations.bench_get(identity, bench_id)
+        except OperationFailure:
+            bench = {}
+        return self._fragment(
+            record, bench, bench_id, identity, started_run_id=str(run["run_id"])
         )

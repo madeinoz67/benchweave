@@ -528,3 +528,93 @@ def test_observe_session_renders_the_panel_controls_disabled(energise_rig: Any) 
     assert response.status_code == 200
     assert 'data-bw-disabled-reason="no-authority"' in response.text
     assert "No lease or policy authority" in response.text
+
+
+# --- GW-12/13: double-submit and fire-time guards (arms E/G) ---------------------
+
+
+def _run_started_id(response: Any) -> str:
+    import re
+
+    match = re.search(r'data-bw-run-started="([^"]+)"', response.text)
+    assert match is not None, response.text[:800]
+    return match.group(1)
+
+
+def test_e_two_identical_confirms_start_exactly_one_run(energise_rig: Any) -> None:
+    """Arm E (§6.E): Arm then two identical Confirm POSTs (same cookie,
+    same request id): exactly one run exists in the store, both
+    responses carry the same run id, the second being the §9 replay.
+    The binding's own request id IS the staging cycle's §9 id (the
+    keep-record-on-start ruled deviation: the staged record stays as
+    the replay handle, so the second POST reaches the seam and replays
+    instead of being refused by the guards)."""
+    rig = energise_rig
+    generation = _generation(rig, rig.record)
+    _take_lease(rig, rig.record, duration_ms=10_000, generation=generation)
+    _stage(rig, rig.record)
+    _check(rig, rig.record)
+    arm = _post(rig, f"/ui/benches/{_BENCH}/staging/arm", rig.record, data={})
+    assert arm.status_code == 200, arm.text[:500]
+    payload = {
+        "request_id": _BINDING_REQUEST_ID,
+        "binding_sha256": rig.binding_sha,
+        "expected_generation": str(generation),
+    }
+    first = _post(rig, f"/ui/benches/{_BENCH}/run-starts", rig.record, data=payload)
+    assert first.status_code == 200, first.text[:800]
+    second = _post(rig, f"/ui/benches/{_BENCH}/run-starts", rig.record, data=payload)
+    assert second.status_code == 200, second.text[:800]
+    store: Store = rig.app.state.g3b_store
+    runs = store.list_run_states(_BENCH)
+    assert len(runs) == 1, runs
+    assert _run_started_id(first) == _run_started_id(second)
+
+
+def test_g_a_trip_while_armed_refuses_the_confirm_without_a_seam_call(
+    energise_rig: Any,
+) -> None:
+    """Arm G (§6.G), planted-event induction (labelled: the belt of the
+    two inductions the record names — the seam's own events_get reads
+    the same stream the row is planted on): Arm, then a planted trip
+    row, then the Confirm POST — NO seam run_start call, the armed
+    state re-rendered with the §E.1 protection-active disable and its
+    guard note, no auto-disarm (Cancel stays enabled), and the armed
+    flag survives (a departing guard re-enables on the next render)."""
+    rig = energise_rig
+    generation = _generation(rig, rig.record)
+    _take_lease(rig, rig.record, duration_ms=10_000, generation=generation)
+    _stage(rig, rig.record)
+    _check(rig, rig.record)
+    arm = _post(rig, f"/ui/benches/{_BENCH}/staging/arm", rig.record, data={})
+    assert arm.status_code == 200, arm.text[:500]
+    store: Store = rig.app.state.g3b_store
+    store.append_event(
+        f"bench.{_BENCH}",
+        {
+            "stream_id": f"bench.{_BENCH}",
+            "at": rig.clock.iso(),
+            "kind": "trip",
+            "run_id": None,
+            "evidence": {},
+        },
+    )
+    calls_start = _spy(rig, "run_start")
+    response = _post(
+        rig,
+        f"/ui/benches/{_BENCH}/run-starts",
+        rig.record,
+        data={
+            "request_id": _BINDING_REQUEST_ID,
+            "binding_sha256": rig.binding_sha,
+            "expected_generation": str(generation),
+        },
+    )
+    assert response.status_code == 200, response.text[:800]
+    assert not calls_start
+    assert 'data-bw-confirm="armed"' in response.text
+    assert 'data-bw-disabled-reason="protection-active"' in response.text
+    assert ">Cancel</button>" in response.text
+    sessions: SessionStore = rig.app.state.ui_sessions
+    staged = sessions.staged_start(rig.record.session_id, _BENCH)
+    assert staged is not None and staged.armed is True
