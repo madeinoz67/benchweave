@@ -17,6 +17,8 @@
   {% else %}
   <p class="bw-terminal-absent" data-bw-run-terminal-absent>No terminal record yet — the run has not reported a terminal state.</p>
   {% endif %}
-  {# GW-55: G2 renders no cancel control at all; the cancel wording is G3's. #}
+  {# G3b (GW-53/55): the cancel region — one action, ungated; the
+     marker gives way to the run's own terminal state. #}
+  {% include "cancel-region.j2" %}
 </section>
 {% endblock %}

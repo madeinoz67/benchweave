@@ -204,6 +204,28 @@ def _compose(data_dir: Any, name: str, clock: _Clock, lattice_dir: Any) -> Any:
     return app
 
 
+@pytest.fixture()
+def gateway_owned_rig(tmp_path: Any) -> Any:
+    """The commissioned-grant lattice (the committed fixture's own
+    mode): gateway_owned + unattended grant — starts admit with no
+    lease, so it is the rig for the ungated legs (arm I) and GW-56's
+    gateway-owned non-refusal (arm J's fourth leg)."""
+    clock = _Clock()
+    lattice_dir, binding_sha = author_g3b_lattice(
+        tmp_path, mode="gateway_owned", enabled=True, request_id=_BINDING_REQUEST_ID
+    )
+    app = _compose(tmp_path, "g3b-gateway-owned", clock, lattice_dir)
+    with TestClient(app, base_url=_CLIENT_BASE) as client:
+        record = _session(app, scopes=CONTROL)
+        yield SimpleNamespace(
+            app=app,
+            client=client,
+            clock=clock,
+            binding_sha=binding_sha,
+            record=record,
+        )
+
+
 def _session(
     app: Any, *, principal: str = "ui-operator", scopes: frozenset[str], ttl_s: int = 3600
 ) -> Any:
@@ -618,3 +640,263 @@ def test_g_a_trip_while_armed_refuses_the_confirm_without_a_seam_call(
     sessions: SessionStore = rig.app.state.ui_sessions
     staged = sessions.staged_start(rig.record.session_id, _BENCH)
     assert staged is not None and staged.armed is True
+
+
+def test_f_a_transport_shaped_failure_renders_no_response(energise_rig: Any) -> None:
+    """Arm F (§6.F), labelled INDUCED-not-emitted (the G2 §7-F honesty
+    rule): a seam double raising RuntimeError on run_start — no
+    interface answer — renders §C.3's no-response row, sent status
+    UNKNOWN, and the reconcile link naming the staged request id,
+    resolving to run_find's view."""
+    rig = energise_rig
+    generation = _generation(rig, rig.record)
+    _take_lease(rig, rig.record, duration_ms=10_000, generation=generation)
+    _stage(rig, rig.record)
+    _check(rig, rig.record)
+    arm = _post(rig, f"/ui/benches/{_BENCH}/staging/arm", rig.record, data={})
+    assert arm.status_code == 200, arm.text[:500]
+    operations: Operations = rig.app.state.ui_operations
+
+    def _boom(*args: Any, **kwargs: Any) -> Any:
+        raise RuntimeError("induced transport-shaped failure")
+
+    operations.run_start = _boom  # type: ignore[method-assign]
+    response = _post(
+        rig,
+        f"/ui/benches/{_BENCH}/run-starts",
+        rig.record,
+        data={
+            "request_id": _BINDING_REQUEST_ID,
+            "binding_sha256": rig.binding_sha,
+            "expected_generation": str(generation),
+        },
+    )
+    assert response.status_code == 504, response.text[:500]
+    assert "No interface answer arrived" in response.text
+    assert "UNKNOWN" in response.text
+    assert f'href="/ui/requests/{_BINDING_REQUEST_ID}"' in response.text
+
+
+# --- GW-53/55: ungated cancel, the run-page marker (arm I) ----------------------
+
+
+@pytest.fixture()
+def _started_gateway_run(gateway_owned_rig: Any) -> Any:
+    """Arm + confirm on the commissioned-grant rig (no lease anywhere —
+    the grant admits it), returning the started run id via the rig."""
+    rig = gateway_owned_rig
+    generation = _generation(rig, rig.record)
+    _stage(rig, rig.record)
+    _check(rig, rig.record)
+    arm = _post(rig, f"/ui/benches/{_BENCH}/staging/arm", rig.record, data={})
+    assert arm.status_code == 200, arm.text[:500]
+    started = _post(
+        rig,
+        f"/ui/benches/{_BENCH}/run-starts",
+        rig.record,
+        data={
+            "request_id": _BINDING_REQUEST_ID,
+            "binding_sha256": rig.binding_sha,
+            "expected_generation": str(generation),
+        },
+    )
+    # Arm J's fourth leg (GW-56): gateway-owned + commissioned grant +
+    # NO lease — the guard does not refuse (it is manual-only); the
+    # seam's own grant gate decides, and admits.
+    assert started.status_code == 200, started.text[:800]
+    rig.run_id = _run_started_id(started)
+    return rig
+
+
+def test_i_cancel_is_ungated_and_marks_the_run_page(
+    _started_gateway_run: Any,
+) -> None:
+    """Arm I (§6.I): with NO lease and a trip planted, the cancel
+    control renders enabled; the POST reaches the seam (owner session);
+    the run page carries the pending-cancel marker; once run_get
+    reports terminal the marker gives way to the state (the driven
+    poll discipline)."""
+    rig = _started_gateway_run
+    store: Store = rig.app.state.g3b_store
+    store.append_event(
+        f"bench.{_BENCH}",
+        {
+            "stream_id": f"bench.{_BENCH}",
+            "at": rig.clock.iso(),
+            "kind": "trip",
+            "run_id": None,
+            "evidence": {},
+        },
+    )
+    page = _get(rig, f"/ui/runs/{rig.run_id}", rig.record)
+    assert page.status_code == 200, page.text[:500]
+    assert 'data-bw-cancel-control' in page.text
+    assert 'data-bw-disabled-reason="no-authority"' not in page.text
+    calls_cancel = _spy(rig, "run_cancel")
+    cancel = _post(
+        rig,
+        f"/ui/runs/{rig.run_id}/cancellations",
+        rig.record,
+        data={"reason": "operator stopped the run"},
+    )
+    assert cancel.status_code == 200, cancel.text[:500]
+    assert "run_cancel" in calls_cancel
+    sessions: SessionStore = rig.app.state.ui_sessions
+    assert sessions.cancel_requested(rig.record.session_id, rig.run_id) is True
+    # The immediate render carries the marker while the run is live; a
+    # run the sim already finished shows the terminal note instead —
+    # both are the design's answer, so the fork asserts the invariant.
+    assert (
+        'data-bw-cancel-requested' in cancel.text
+        or 'data-bw-terminal-note' in cancel.text
+    )
+    operations: Operations = rig.app.state.ui_operations
+    from benchweave.interfaces.identity import Identity as _Identity
+
+    identity = _Identity(
+        principal=rig.record.principal,
+        audience="stg",
+        scopes=rig.record.scopes,
+        expires_at=rig.record.expires_at,
+    )
+    deadline = 60.0
+    import time
+
+    start = time.monotonic()
+    while True:
+        current = operations.run_get(identity, rig.run_id)
+        if current["state"] == "terminal":
+            break
+        assert time.monotonic() - start < deadline, current
+        time.sleep(0.2)
+    settled = _get(rig, f"/ui/runs/{rig.run_id}", rig.record)
+    assert 'data-bw-cancel-requested' not in settled.text
+    assert 'data-bw-terminal-note' in settled.text
+
+
+# --- GW-56 at fire (arm J): the re-judged bound --------------------------------
+
+
+def _confirm(rig: Any, generation: int) -> Any:
+    return _post(
+        rig,
+        f"/ui/benches/{_BENCH}/run-starts",
+        rig.record,
+        data={
+            "request_id": _BINDING_REQUEST_ID,
+            "binding_sha256": rig.binding_sha,
+            "expected_generation": str(generation),
+        },
+    )
+
+
+def test_j_gw56_at_fire_the_renewed_shorter_lease_refuses(energise_rig: Any) -> None:
+    """Arm J, lease leg (§6.J): armed under a long lease, then renewed
+    down to 5 000 ms — at fire the bound (10 000 ms) exceeds the
+    attention remainder: pre-send refusal (no seam run_start call)
+    naming the bound and the figures."""
+    rig = energise_rig
+    generation = _generation(rig, rig.record)
+    _take_lease(rig, rig.record, duration_ms=600_000, generation=generation)
+    _stage(rig, rig.record)
+    _check(rig, rig.record)
+    arm = _post(rig, f"/ui/benches/{_BENCH}/staging/arm", rig.record, data={})
+    assert arm.status_code == 200, arm.text[:500]
+    sessions: SessionStore = rig.app.state.ui_sessions
+    held = sessions.held_lease(rig.record.session_id, _BENCH)
+    assert held is not None
+    renew = _post(
+        rig,
+        f"/ui/leases/{held.lease_id}/renewals",
+        rig.record,
+        data={"duration_ms": "5000"},
+    )
+    assert renew.status_code == 200, renew.text[:500]
+    calls_start = _spy(rig, "run_start")
+    response = _confirm(rig, generation)
+    assert response.status_code == 403, response.text[:800]
+    assert 'data-bw-failure="policy_denied"' in response.text
+    assert "10000" in response.text
+    assert "5000" in response.text
+    assert "benchweave ui-login" in response.text
+    assert not calls_start
+
+
+def test_j_gw56_at_fire_the_clock_advanced_session_refuses(energise_rig: Any) -> None:
+    """Arm J, session leg (§6.J), injected clock: armed with hours of
+    session, the clock advanced to 5 000 ms of session remaining (the
+    lease long expired — no live view, no lease leg) — the session is
+    the shorter remainder and the fire refuses pre-send."""
+    rig = energise_rig
+    generation = _generation(rig, rig.record)
+    _take_lease(rig, rig.record, duration_ms=600_000, generation=generation)
+    _stage(rig, rig.record)
+    _check(rig, rig.record)
+    arm = _post(rig, f"/ui/benches/{_BENCH}/staging/arm", rig.record, data={})
+    assert arm.status_code == 200, arm.text[:500]
+    rig.clock.advance(3_595)  # 3 600 s session minus 5 s
+    calls_start = _spy(rig, "run_start")
+    response = _confirm(rig, generation)
+    assert response.status_code == 403, response.text[:800]
+    assert 'data-bw-failure="policy_denied"' in response.text
+    assert "10000" in response.text
+    assert "5000" in response.text
+    assert "benchweave ui-login" in response.text
+    assert not calls_start
+
+
+def test_j_gw56_fire_boundary_equal_is_allowed(energise_rig: Any) -> None:
+    """Arm J boundary (§6.J): the bound exactly equal to the attention
+    remainder at FIRE is allowed — the post sends and the seam decides
+    (here: it accepts, the run starts)."""
+    rig = energise_rig
+    generation = _generation(rig, rig.record)
+    _take_lease(rig, rig.record, duration_ms=10_000, generation=generation)
+    _stage(rig, rig.record)
+    _check(rig, rig.record)
+    arm = _post(rig, f"/ui/benches/{_BENCH}/staging/arm", rig.record, data={})
+    assert arm.status_code == 200, arm.text[:500]
+    response = _confirm(rig, generation)
+    assert response.status_code == 200, response.text[:800]
+    assert 'data-bw-run-started=' in response.text
+
+
+# --- GW-53's de-energising class (arm H's second half) --------------------------
+
+
+@pytest.fixture()
+def deenergise_rig(tmp_path: Any) -> Any:
+    """The explicit de-energising lattice: manual + ``enabled: false``.
+    One action, never confirmed (§E.1 renders no confirm pattern)."""
+    clock = _Clock()
+    lattice_dir, binding_sha = author_g3b_lattice(
+        tmp_path, mode="manual", enabled=False, request_id=_BINDING_REQUEST_ID
+    )
+    app = _compose(tmp_path, "g3b-deenergise", clock, lattice_dir)
+    with TestClient(app, base_url=_CLIENT_BASE) as client:
+        record = _session(app, scopes=CONTROL)
+        yield SimpleNamespace(
+            app=app,
+            client=client,
+            clock=clock,
+            binding_sha=binding_sha,
+            record=record,
+        )
+
+
+def test_h_deenergising_renders_no_confirm_pattern(deenergise_rig: Any) -> None:
+    """Arm H's second half (§6.H): the de-energising staged set renders
+    the ONE-action start — no armed confirm pattern, no arm control —
+    and its start is never gated by protection-active in the
+    presentation (GW-53/R-DEENERGISE-1)."""
+    rig = deenergise_rig
+    _stage(rig, rig.record)
+    _check(rig, rig.record)
+    response = _post(rig, f"/ui/benches/{_BENCH}/staging/arm", rig.record, data={})
+    assert response.status_code == 400, response.text[:500]
+    assert 'data-bw-failure="invalid_request"' in response.text
+    page = _get(rig, f"/ui/benches/{_BENCH}", rig.record)
+    assert 'data-bw-staged="true"' in page.text
+    assert 'data-bw-confirm="armed"' not in page.text
+    assert "Arm staged set" not in page.text
+    assert 'data-bw-disabled-reason="protection-active"' not in page.text

@@ -875,6 +875,62 @@ def register_control_routes(
     )
     staging.register(router)
 
+    def _cancel_region(
+        run_id: str, terminal: bool, requested: bool, has_control: bool
+    ) -> str:
+        """The run page's cancel region as its own swap target (the
+        POST re-renders exactly this block — GW-55's marker appears
+        without a page reload and gives way to the run's own state)."""
+        return render(
+            "cancel-region.j2",
+            run_id=run_id,
+            run_terminal=terminal,
+            cancel_requested=requested,
+            has_control=has_control,
+        )
+
+    @router.post("/runs/{run_id}/cancellations", include_in_schema=False)
+    async def cancel_run(run_id: str, request: Request) -> Response:
+        """GW-53/55 (§2.4): one action, never confirmed, UNGATED by
+        lease or trip (§6's owner-or-admin judgement is the seam's,
+        which "does not require an unexpired controlling lease" — its
+        own clause). run_cancel carries the form's reason; the
+        pending-cancel marker then renders until run_get reports
+        terminal."""
+        authed = _authed(request)
+        if authed is None:
+            return unauthenticated_page(request)
+        record, identity = authed
+        form = dict(await request.form())
+        reason = str(form.get("reason", ""))
+        if not reason.strip():
+            return failure_page(
+                OperationFailure(
+                    failure(
+                        "invalid_request",
+                        "a reason is required (one character minimum)",
+                    )
+                ),
+                request,
+            )
+        try:
+            operations.run_cancel(identity, run_id, _mint_request_id(), reason)
+        except OperationFailure as fail:
+            return failure_page(fail, request)
+        sessions.record_cancel_request(record.session_id, run_id)
+        try:
+            run = operations.run_get(identity, run_id)
+        except OperationFailure:
+            run = {}
+        return HTMLResponse(
+            _cancel_region(
+                run_id,
+                str(run.get("state", "")) == "terminal",
+                sessions.cancel_requested(record.session_id, run_id),
+                bool(record.scopes & TIER_SATISFIES[_CONTROL_TIER]),
+            )
+        )
+
     return ControlViews(
         render=lambda record, bench, events: _render_fragment(
             record=record,

@@ -35,8 +35,8 @@ from markupsafe import Markup
 from benchweave.content.store import ContentStore
 from benchweave.interfaces.errors import OperationFailure, failure
 from benchweave.interfaces.identity import Identity
-from benchweave.interfaces.operations import Operations
-from benchweave.interfaces.sessions import SessionRecord
+from benchweave.interfaces.operations import TIER_SATISFIES, Operations
+from benchweave.interfaces.sessions import SessionRecord, SessionStore
 from benchweave.interfaces.ui_control import ControlViews, mode_banner_markup
 from benchweave.interfaces.ui_presentation import compose_device_presentation
 from benchweave.interfaces.ui_readings import latest_retained_readings, populate_tiles
@@ -64,6 +64,7 @@ def register_read_pages(
     failure_page: Callable[[OperationFailure], HTMLResponse],
     unauthenticated_page: Callable[[Request], HTMLResponse],
     controls: ControlViews | None = None,
+    sessions: SessionStore | None = None,
 ) -> None:
     """Register the read routes on the UI router (before its catch-all).
 
@@ -264,8 +265,11 @@ def register_read_pages(
     @router.get("/runs/{run_id}", include_in_schema=False)
     async def run_page(run_id: str, request: Request) -> Response:
         """A run exactly as ``run_get`` reports it: state, revision,
-        outcome, safe state, terminal record. No cancel control (G3's),
-        no inferred outcome — an absent terminal record renders absent."""
+        outcome, safe state, terminal record. G3b adds the cancel
+        region (GW-53/55): one action, ungated, and the pending-cancel
+        marker that gives way to the state once the run reports
+        terminal. No inferred outcome — an absent terminal record
+        renders absent."""
         authed = _authed(request)
         if authed is None:
             return unauthenticated_page(request)
@@ -274,7 +278,27 @@ def register_read_pages(
             run = operations.run_get(identity, run_id)
         except OperationFailure as fail:
             return failure_page(fail)
-        return page("run.j2", title=f"Run {run_id}", run=run, **_strip(record))
+        terminal = str(run.get("state", "")) == "terminal"
+        cancel_requested = False
+        if sessions is not None:
+            if terminal:
+                # GW-55: the marker gives way to the state itself once
+                # run_get reports terminal.
+                sessions.clear_cancel_request(record.session_id, run_id)
+            else:
+                cancel_requested = sessions.cancel_requested(
+                    record.session_id, run_id
+                )
+        return page(
+            "run.j2",
+            title=f"Run {run_id}",
+            run=run,
+            run_id=run_id,
+            run_terminal=terminal,
+            cancel_requested=cancel_requested,
+            has_control=bool(record.scopes & TIER_SATISFIES["control"]),
+            **_strip(record),
+        )
 
     @router.get("/requests/{request_id}", include_in_schema=False)
     async def request_page(request_id: str, request: Request) -> Response:

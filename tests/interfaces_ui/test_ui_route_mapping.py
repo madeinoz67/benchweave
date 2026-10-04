@@ -161,6 +161,7 @@ def test_g2b_read_surface_is_the_declared_operations() -> None:
         "lease_release",
         "run_check",
         "run_start",
+        "run_cancel",
     }
 
 

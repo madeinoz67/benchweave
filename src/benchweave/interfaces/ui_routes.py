@@ -196,6 +196,14 @@ UI_ROUTES: tuple[RouteSpec, ...] = (
         classification="interface",
     ),
     RouteSpec(
+        # The cancel (GW-53/55): one seam mutation — run_cancel; the
+        # pending-cancel marker it records is session-side presentation.
+        path="/runs/{run_id}/cancellations",
+        methods=_methods("POST"),
+        operations=frozenset({"run_cancel"}),
+        classification="interface",
+    ),
+    RouteSpec(
         path="/requests/{request_id}",
         methods=_methods("GET"),
         operations=frozenset({"run_find"}),

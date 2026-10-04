@@ -771,6 +771,7 @@ def build_ui_router(
         failure_page=_failure_page,
         unauthenticated_page=_unauthenticated_page,
         controls=controls,
+        sessions=sessions,
     )
 
     # The G2c event bridge (§2.5): same closures, same refusal
