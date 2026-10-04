@@ -207,3 +207,38 @@ def markup_no_response(request_id: str) -> Markup:
     # Trusted package-rendered HTML over escaped interpolables — S704's
     # escape hatch is not in play (same rule as ui.py's refusal slots).
     return Markup(render_no_response(request_id))  # noqa: S704
+
+
+def render_no_response_change_submit(request_id: str) -> str:
+    """GW-12's change half for submit (G4, design record §2.5): the §C.3
+    no-response row with the change-honest reconcile action — resubmit
+    the IDENTICAL form. §9 makes that retry safe by construction (same
+    principal, same operation key, same body digest → the original
+    change returns; a different body → conflict). ``run_find``'s link
+    would be a lie here: change keys are invisible to it. The run-shaped
+    ``render_no_response`` stays byte-identical (suite-pinned wording)."""
+    row = REFUSAL_ROWS["no-response"]
+    safe_id = str(escape(request_id))
+    return (
+        render_refusal(row)
+        + '<p class="bw-refusal__reconcile" data-bw-reconcile-action>'
+        "Reconcile: resubmit the identical form (request id "
+        f"<code>{safe_id}</code>) — duplicate suppression returns the "
+        "original change.</p>"
+    )
+
+
+def render_no_response_change_apply(change_id: str) -> str:
+    """GW-12's change half for apply (G4, design record §2.5): the row
+    plus the change-page link — ``change_get`` shows the outcome the
+    apply left behind (proposed, applied, failed or unknown). No retry
+    action: the seam's advice is ``never`` (the D13 retry honesty; a
+    re-apply of a decided change is the two-phase ``conflict``)."""
+    row = REFUSAL_ROWS["no-response"]
+    safe_id = str(escape(change_id))
+    return (
+        render_refusal(row)
+        + '<p class="bw-refusal__reconcile" data-bw-reconcile-action>'
+        f'Reconcile: <a href="/ui/changes/{safe_id}">read the change record</a>'
+        " before you act again — do not re-apply this change.</p>"
+    )

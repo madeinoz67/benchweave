@@ -1,0 +1,51 @@
+{#- The G4 bench administration region (issue #305, design record §2.2):
+  this session's indexed changes, the persistent failed/unknown alert,
+  the submit form. Server-rendered at page render; re-rendered as the
+  response of its own POSTs. Host content; package partials enter as
+  pre-escaped trusted markup. -#}
+<section class="bw-panel bw-admin" data-bw-admin aria-label="Bench administration">
+  <h3>Administration</h3>
+  {{ alert_html }}
+  {% if observe %}
+  <div class="bw-controls__actions">
+    <div class="bw-control" data-bw-change-submit>
+      <button type="button" class="bw-button" data-variant="primary" aria-busy="false" disabled data-bw-disabled-reason="no-authority">Submit change</button>
+      {{ no_authority_html }}
+    </div>
+  </div>
+  {% else %}
+  <div class="bw-changes" data-bw-change-list>
+    {% for row in rows %}
+    <div class="bw-change-row" data-bw-change-row data-bw-change-id="{{ row.change_id }}" data-bw-change-state="{{ row.state }}">
+      <a class="bw-link" href="/ui/changes/{{ row.change_id }}">{{ row.change_id }}</a>
+      · {{ row.kind }} · {{ row.state }}
+      {% if row.proposed %}
+      <p class="bw-field__note" data-bw-two-phase-note>{{ two_phase_html }}</p>
+      {% endif %}
+      {{ row.inhibited_html }}
+    </div>
+    {% else %}
+    <p class="bw-staging__note" data-bw-change-none>No changes filed from this session.</p>
+    {% endfor %}
+  </div>
+  <form class="bw-control" data-bw-change-submit hx-post="/ui/benches/{{ bench_id }}/changes" hx-target="closest section" hx-swap="outerHTML">
+    <input type="hidden" name="request_id" value="{{ request_id }}">
+    <label for="bw-change-kind-{{ bench_id }}">Kind</label>
+    <select id="bw-change-kind-{{ bench_id }}" name="kind">
+      {% for kind in kinds %}<option value="{{ kind }}">{{ kind }}</option>{% endfor %}
+    </select>
+    <label for="bw-change-target-id-{{ bench_id }}">Target id</label>
+    <input id="bw-change-target-id-{{ bench_id }}" name="target_id" type="text" required value="{{ config_id }}" hx-preserve>
+    <label for="bw-change-target-version-{{ bench_id }}">Target version</label>
+    <input id="bw-change-target-version-{{ bench_id }}" name="target_version" type="text" required value="{{ config_version }}" hx-preserve>
+    <label for="bw-change-target-sha-{{ bench_id }}">Target sha256</label>
+    <input id="bw-change-target-sha-{{ bench_id }}" name="target_sha256" type="text" required minlength="64" maxlength="64" pattern="[0-9a-f]{64}" value="{{ config_sha256 }}" hx-preserve>
+    <p class="bw-field__note" data-bw-target-note>The target prefills from the bench's own configuration (the trip-reset convention); the registry kinds take the package's own id, version and sha256 — enter them manually.</p>
+    <label for="bw-change-generation-{{ bench_id }}">Expected generation</label>
+    <input id="bw-change-generation-{{ bench_id }}" name="expected_generation" type="number" value="{{ generation }}" min="0" hx-preserve>
+    <label for="bw-change-reason-{{ bench_id }}">Reason</label>
+    <input id="bw-change-reason-{{ bench_id }}" name="reason" type="text" required minlength="1" hx-preserve>
+    <button type="submit" class="bw-button" data-variant="primary" aria-busy="false">Submit change</button>
+  </form>
+  {% endif %}
+</section>

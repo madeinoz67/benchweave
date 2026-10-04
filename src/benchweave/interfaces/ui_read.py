@@ -37,6 +37,7 @@ from benchweave.interfaces.errors import OperationFailure, failure
 from benchweave.interfaces.identity import Identity
 from benchweave.interfaces.operations import TIER_SATISFIES, Operations
 from benchweave.interfaces.sessions import SessionRecord, SessionStore
+from benchweave.interfaces.ui_admin import AdminRoutes
 from benchweave.interfaces.ui_control import ControlViews, mode_banner_markup
 from benchweave.interfaces.ui_presentation import compose_device_presentation
 from benchweave.interfaces.ui_readings import latest_retained_readings, populate_tiles
@@ -65,6 +66,7 @@ def register_read_pages(
     unauthenticated_page: Callable[[Request], HTMLResponse],
     controls: ControlViews | None = None,
     sessions: SessionStore | None = None,
+    admin: AdminRoutes | None = None,
 ) -> None:
     """Register the read routes on the UI router (before its catch-all).
 
@@ -147,6 +149,15 @@ def register_read_pages(
             # refs; the trip predicate walks the tail itself.
             context["controls_html"] = Markup(  # noqa: S704
                 controls.render(record, bench, events["events"])
+            )
+        if admin is not None:
+            # The G4 administration region (issue #305): server-rendered
+            # at page render beside the control region — change state is
+            # not live data and does not ride the controls poll.
+            # Trusted host-rendered fragment markup (the module's own
+            # escaped composition; S704's hatch not in play).
+            context["admin_html"] = Markup(  # noqa: S704
+                admin.region_html(record, identity, bench, bench_id)
             )
         return page(
             "bench.j2",

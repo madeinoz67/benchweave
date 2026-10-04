@@ -1,0 +1,26 @@
+{% extends "base.j2" %}
+{% block content %}
+<section aria-label="Change" data-bw-change-page data-bw-change-id="{{ change.change_id }}">
+  <h2>Change {{ change.change_id }}</h2>
+  <dl class="bw-kv" data-bw-change-record>
+    <div><dt>Bench</dt><dd data-bw-change-bench-id>{{ change.bench_id }}</dd></div>
+    <div><dt>Kind</dt><dd data-bw-change-kind>{{ change.kind }}</dd></div>
+    <div><dt>State</dt><dd data-bw-change-state="{{ change.state }}">{{ change.state }}</dd></div>
+    <div><dt>Target</dt><dd><code data-bw-change-target>{{ change.target_ref.id }} {{ change.target_ref.version }} @ {{ change.target_ref.sha256 }}</code></dd></div>
+    <div><dt>Expected generation</dt><dd data-bw-change-generation>{{ change.expected_generation }}</dd></div>
+    <div><dt>Reason</dt><dd data-bw-change-reason>{{ change.reason }}</dd></div>
+    <div><dt>Reasons</dt><dd data-bw-change-reasons>{% if change.reasons %}{{ change.reasons | join("; ") }}{% else %}—{% endif %}</dd></div>
+    <div><dt>Created</dt><dd data-bw-change-created_at>{{ change.created_at }}</dd></div>
+    <div><dt>Updated</dt><dd data-bw-change-updated_at>{{ change.updated_at }}</dd></div>
+  </dl>
+  {% if alert_html %}
+  <div data-bw-change-alert-region>{{ alert_html }}</div>
+  {% endif %}
+  {% if workspace_html %}
+  <div data-bw-change-workspace-region>{{ workspace_html }}</div>
+  {% endif %}
+  {% if bench_generation is not none %}
+  <p data-bw-change-applied-generation>Generation {{ change.expected_generation }} → {{ bench_generation }}</p>
+  {% endif %}
+</section>
+{% endblock %}

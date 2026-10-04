@@ -190,6 +190,26 @@ UI_ROUTES: tuple[RouteSpec, ...] = (
         classification="interface",
     ),
     RouteSpec(
+        # G4 (issue #305, design record §2.2): the submit half of GW-10's
+        # last two rows — one operation, change_submit; the §9 id is the
+        # form's own (the GW-13 rule) and a §9 replay of the identical
+        # form returns the original change.
+        path="/benches/{bench_id}/changes",
+        methods=_methods("POST"),
+        operations=frozenset({"change_submit"}),
+        classification="interface",
+    ),
+    RouteSpec(
+        # The review page: a read composing change_get (the record); the
+        # approval workspace renders from the session's own loaded view
+        # (design §2.3), the document link pointing at the existing
+        # document page.
+        path="/changes/{change_id}",
+        methods=_methods("GET"),
+        operations=frozenset({"change_get"}),
+        classification="interface",
+    ),
+    RouteSpec(
         path="/runs/{run_id}",
         methods=_methods("GET"),
         operations=frozenset({"run_get"}),

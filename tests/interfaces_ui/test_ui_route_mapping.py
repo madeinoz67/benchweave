@@ -154,6 +154,7 @@ def test_g2b_read_surface_is_the_declared_operations() -> None:
         "events_get",
         "evidence_get",
         "artifact_read",
+        "change_get",
     }
     assert served_mutations == {
         "lease_create",
@@ -162,6 +163,10 @@ def test_g2b_read_surface_is_the_declared_operations() -> None:
         "run_check",
         "run_start",
         "run_cancel",
+        # G4 mounts GW-10's last two rows, one operation each
+        # (design record §2.6): submit here; apply joins with its
+        # commit.
+        "change_submit",
     }
 
 
