@@ -180,14 +180,14 @@ export BENCHWEAVE_SECRET="$(grep '^BENCHWEAVE_SECRET=' /var/lib/benchweave/bench
 benchweave serve --host 127.0.0.1 --port 8125
 ```
 
-### The browser UI (read-only)
+### The browser UI
 
 Use `benchweave ui-login` to get a login URL. Open the URL in a
 browser. The URL expires after 60 s and it works one time only. The
 session ends when you log out, when it expires, or when the gateway
 restarts.
 
-The UI is read-only. It shows this data:
+The UI shows this data:
 
 - the bench list, and one page per bench (its devices and its events);
 - one page per device (the descriptor data and the plugin pages);
@@ -213,7 +213,78 @@ a live value. When no kept observation exists for a parameter, the tile
 shows "Unavailable". Values that a run read during its steps are not
 kept, so they never fill a tile.
 
-Write actions (leases, runs, changes) are not in the UI yet.
+The lease controls are in the UI. Run starts and configuration
+changes are not in the UI yet.
+
+**Take a lease.** Enter a duration in milliseconds. Then select **Take
+lease**. The field starts at the largest duration that you can take.
+That duration is the smaller of two values: the maximum lease of the
+gateway, and the time that your session has left. The default maximum
+lease is 6 hours (21600000 ms). A ruling set this default. The gateway
+publishes the exact maximum in its limits.
+
+**Renew a lease.** Select **Renew** to extend the lease before it
+expires. The duration field starts at the duration that you requested
+for the lease.
+
+**Release a lease.** Select **Release** to release the lease before it
+expires.
+
+**The lease facts.** The panel shows the holder, the expiry time, and
+the remaining time. It shows `expired` after the expiry time passes.
+It shows `held by another caller` when another caller holds the live
+lease.
+
+**Expiry warnings.** The panel warns you before the lease ends. A
+warning appears when the remaining time falls to 20 percent of the
+lease duration, or to 2 minutes, whichever is larger. A critical
+warning appears when the remaining time falls to 5 percent of the
+lease duration, or to 30 seconds, whichever is larger. At the default
+6-hour maximum, the warning appears at 72 minutes remaining. The
+critical warning appears at 18 minutes remaining.
+
+The warning tells you that the safe transition will end manual work on
+the bench at the expiry time. It shows the renew action. You can
+dismiss a warning message. The critical warning stays until you renew
+or release the lease.
+
+The panel refreshes itself. The usual interval is the value of
+`BENCHWEAVE_UI_PANEL_POLL_MS` (30000 ms by default). Inside a warning
+the panel refreshes 6 times as often. Inside a critical warning it
+refreshes 30 times as often.
+
+**The session warning.** A warning about the session appears on every
+page. It uses the same rule: the warning appears when the session has
+20 percent of its time left, or 2 minutes, whichever is larger. The
+warning states the session expiry time. It tells you that the leases
+of this session cannot be renewed after the session ends. It gives
+the action: run `benchweave ui-login` again for a longer session.
+
+**The session bound.** A lease cannot end after the session that
+holds it ends. When a lease duration would end after the session
+ends, the gateway refuses it. When every legal duration would end
+after the session ends, the take and renew controls show as disabled.
+The note under the control states the session expiry time and the
+action: run `benchweave ui-login` for a longer session. A duration
+that ends exactly at the session expiry is legal.
+
+**No lease held.** When your session holds no lease for the bench,
+the page shows the banner "NO CONTROLLER LEASE · ACTIONS CANNOT BE
+AUTHORISED". The renew and release controls do not show. The take
+control shows, so you can take a lease.
+
+**Observe-tier sessions.** An observe-tier session cannot change
+anything. All lease controls show as disabled with the reason "No
+lease or policy authority".
+
+**Leases from other tools.** The panel shows only the leases that
+this browser session took. A lease that you took with a REST client
+or the MCP tools does not show in the panel. The take control stays
+available. The gateway gives a conflict refusal for a second live
+lease on a bench.
+
+Nothing renews the lease in the background. Renew the lease before it
+expires.
 
 **Production secret posture.** With `BENCHWEAVE_ENV=production`, `serve`
 *refuses to boot*, before the store is opened and before anything touches
