@@ -15,7 +15,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, overload
 
 from benchweave.state.migrations import MIGRATIONS
 
@@ -582,17 +582,41 @@ class Store:
         ).fetchone()
         return int(row[0]) if row else 0
 
-    def bump_generation(self, bench_id: str, now: str) -> int:
+    @overload
+    def bump_generation(self, bench_id: str, now: str) -> int: ...
+
+    @overload
+    def bump_generation(
+        self, bench_id: str, now: str, *, expected_generation: int
+    ) -> int | None: ...
+
+    def bump_generation(
+        self, bench_id: str, now: str, *, expected_generation: int | None = None
+    ) -> int | None:
         """Advance the bench's generation by one under BEGIN IMMEDIATE and
         return the new value (1 on the first bump). Read-then-write inside
         the transaction — the check-then-act callers must still serialise
-        through the app's write gate."""
+        through the app's write gate.
+
+        ``expected_generation`` makes the bump itself a compare-and-swap
+        (the G4 foldref CAS): when the bench's current generation is not
+        the expected value, NOTHING is written and the answer is ``None``
+        — the caller composes its conflict refusal. This closes the
+        two-writer window change_apply's upfront fence cannot (two
+        applies both passing the fence while the change is still
+        ``proposed`` would both bump); the gate remains the app's
+        discipline for every other check-then-act caller, which is why
+        the default form is unchanged for them."""
         self._conn.execute("BEGIN IMMEDIATE")
         try:
             row = self._conn.execute(
                 "SELECT generation FROM generations WHERE bench_id = ?", (bench_id,)
             ).fetchone()
-            generation = int(row[0]) + 1 if row else 1
+            current = int(row[0]) if row else 0
+            if expected_generation is not None and expected_generation != current:
+                self._conn.execute("ROLLBACK")
+                return None
+            generation = current + 1
             self._conn.execute(
                 "INSERT INTO generations (bench_id, generation, updated_at) VALUES (?, ?, ?) "
                 "ON CONFLICT(bench_id) DO UPDATE SET generation = excluded.generation, "
@@ -894,17 +918,42 @@ class Store:
         }
 
     def set_change_state(
-        self, change_id: str, state: str, reasons: list[str], now: str
-    ) -> None:
+        self,
+        change_id: str,
+        state: str,
+        reasons: list[str],
+        now: str,
+        *,
+        only_if_state: str | None = None,
+    ) -> bool:
         """Move a change record to ``state`` and replace its audit
-        ``reasons``; ``ValueError`` when the change id is unknown."""
+        ``reasons``; ``ValueError`` when the change id is unknown.
+
+        ``only_if_state`` makes the write state-conditional (the G4
+        foldref CAS): the UPDATE carries ``AND state = ?`` and the answer
+        is ``False`` — not an exception — when zero rows matched, so a
+        record that already left ``only_if_state`` is unwritable by
+        construction, regardless of how two writers interleave. The
+        guarded form does not distinguish "no such change" from "state
+        moved" (both are zero rows); the outcome recorder that uses it
+        pre-reads existence, and a change that never existed has no
+        terminal record to protect. The unguarded form (the default) is
+        unchanged: it raises ``ValueError`` on an unknown id."""
+        if only_if_state is None:
+            cursor = self._conn.execute(
+                "UPDATE changes SET state = ?, reasons_json = ?, updated_at = ?"
+                " WHERE change_id = ?",
+                (state, json.dumps(reasons), now, change_id),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError(f"change {change_id!r} not found")
+            return True
         cursor = self._conn.execute(
             "UPDATE changes SET state = ?, reasons_json = ?, updated_at = ?"
-            " WHERE change_id = ?",
-            (state, json.dumps(reasons), now, change_id),
+            " WHERE change_id = ? AND state = ?",
+            (state, json.dumps(reasons), now, change_id, only_if_state),
         )
-        if cursor.rowcount != 1:
-            raise ValueError(f"change {change_id!r} not found")
+        return cursor.rowcount == 1
 
     # --- fault-injection window (test support) --------------------------------------
 
