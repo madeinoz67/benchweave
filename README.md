@@ -58,6 +58,8 @@ uv run pytest tests/contracts -s
 
 The renderer lives in `packages/ui-html` (the Jinja/HTMX `benchweave-ui-html` package). See the [renderer-neutral component contract](docs/internal/ui-contract.md) (normative), the [approved UI design](docs/internal/ui-styleguide-workbench-design.md), [implementation style guide](docs/internal/ui-styleguide.md), and [portable light/dark mock-up](docs/internal/ui-styleguide-mockup.html).
 
+The served UI (the `/ui` browser surface behind `serve`) covers the read views, leases, staged run control, and the two-phase administration flow — change submit, the independent-approval review and apply, and the failed/unknown inhibited state ([operator guide](docs/operator-guide.md)).
+
 ```sh
 uv run pytest docs/internal/ui-contract.md   # the contract gate (also in the default run)
 uv run pytest -m browser                     # the pattern library's axe + screenshot lane

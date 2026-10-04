@@ -389,6 +389,24 @@ rather than rewriting the history — that is how this file earns trust.
   the join is bench-scoped by construction, and every rendered value is
   digest-verified gateway evidence or the honest `Unavailable` —
   `src/benchweave/interfaces/ui_readings.py` (issue #369).
+  Amendment (2026-10, G3 — the control design record for issue #304 §7, never landed
+  with G3b and folded here with G4): the `/ui` control routes are one-operation
+  translations over the same seam (GW-10's fixed eight; six in G3); session-side
+  staging and held-lease state are presentation of this session's own seam responses
+  — never an authority source, with every mutating POST re-validated by the seam;
+  energy-removing actions render ungated and unconfirmed (§C.1 R-DEENERGISE-1), and
+  the armed confirm re-evaluates its guards server-side at fire time (R-PROTECT-1)
+  — `src/benchweave/interfaces/ui_control.py`, `src/benchweave/interfaces/ui_staging.py`
+  (staging's module home since G3b's split; the record's own text predates the split).
+  Amendment (2026-10, G4 — the administration design record, issue #305 §7): the
+  `/ui` administration routes complete GW-10's eight (change_submit and change_apply,
+  one operation each); the session change index is presentation of this session's
+  own seam responses and never an authority source, with every mutating POST
+  re-validated by the seam; the administrative apply re-evaluates its approval
+  guards server-side at fire time (R-PROTECT-1; GW-71 — the approval document is
+  re-read fresh, content-addressed and immutable, and a self-approval or a
+  non-binding approval refuses pre-send with no seam call) —
+  `src/benchweave/interfaces/ui_admin.py`.
 - **[CON-6]** MCP auth is fail-closed at two layers — an `StgTokenVerifier` (FastMCP
   `TokenVerifier` over `benchweave.interfaces.identity.validate`) plus the layer beneath
   it — `src/benchweave/interfaces/mcp.py`. *An auth gap on the tool surface hands a caller
