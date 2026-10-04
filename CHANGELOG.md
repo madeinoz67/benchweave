@@ -296,6 +296,7 @@ All notable changes to this project will be documented in this file.
 - The expired-session refusal fragments for htmx too (fold-refute F1)
 - Reconcile __version__ with the single source (fold-refute F2)
 - The mid-stream bridge observable — observe before the abort (#384)
+- Pin the docs-site listing command literal (adv2 fold F1)
 
 ### Documentation
 
@@ -608,6 +609,9 @@ All notable changes to this project will be documented in this file.
 - Obligation-12 red condition matches the mechanism — pin-ahead reddens too (refute LOW-1 fold)
 - Issue #304 G3 control — leases, staging, energy confirmation, expiry guards
 - The G3a operator rows — lease controls, the 6-hour default, the poll knob (#304)
+- Issue #380 family release process design record
+- Issue #380 family release process + gateway cut authority
+- Issue #380 fold adv1 F1+F2 — honest enforcement modality + the gateway notes command
 
 ### Features
 
@@ -1159,6 +1163,7 @@ All notable changes to this project will be documented in this file.
 - Catalogue search fixture + hand-derived truth table (C1 discipline)
 - RED arms for normative_path_escape refusal (issue #238)
 - The G3a browser lane — arm L (#304)
+- Issue #380 pin the docs-site tag-namespace refusal
 
 ### Build
 
