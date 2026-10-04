@@ -460,3 +460,43 @@ def test_reapply_on_unknown_keeps_the_unknown_record(
     assert settled["reasons"][0] == crash_reason, (
         f"the re-apply rewrote the crash evidence: {settled['reasons'][0]!r}"
     )
+
+
+def test_reapply_on_failed_keeps_the_original_reasons(
+    seam_admin: tuple[Operations, Store, ContentStore],
+    approval_doc: tuple[dict[str, str], str, dict[str, Any]],
+) -> None:
+    """The failed-record twin of the terminality arm (the refute fold's
+    F2, same root as F1): a re-apply attempt on a ``failed`` change
+    must not rewrite its audit reasons. ``set_change_state`` REPLACES
+    ``reasons_json`` wholesale, so the pre-fold recorder turned the
+    original refusal evidence ("the token check rejected this apply")
+    into the re-entry conflict message ("change ... is failed, not
+    proposed") — and the inhibited-state alert renders ``reasons[0]``,
+    i.e. the wrong reason. The fix rode the terminality guard; this
+    arm pins the second symptom on its own."""
+    ops, store, _ = seam_admin
+    ref, token, _ = approval_doc
+    # A decided refusal first: a garbage token fails the token check.
+    with pytest.raises(errors.OperationFailure) as refused:
+        ops.change_apply(
+            ADMIN, "req-fold2", "chg-ok", 1, ref, approver_token="not-a-token"
+        )
+    assert refused.value.failure.code == "unauthenticated"
+    failed = ops.change_get(ADMIN, "chg-ok")
+    assert failed["state"] == "failed"
+    original_reason = failed["reasons"][0]
+
+    # Re-apply with the REAL token: the refusal is the two-phase state
+    # conflict, and the record keeps the original audit reason.
+    with pytest.raises(errors.OperationFailure) as reentered:
+        ops.change_apply(
+            ADMIN, "req-fold2-re", "chg-ok", 1, ref, approver_token=token
+        )
+    assert reentered.value.failure.code == "conflict"
+    settled = ops.change_get(ADMIN, "chg-ok")
+    assert settled["state"] == "failed"
+    assert settled["reasons"] == [original_reason], (
+        "the re-apply rewrote the failed record's audit reasons:"
+        f" {settled['reasons']}"
+    )
