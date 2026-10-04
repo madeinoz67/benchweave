@@ -258,6 +258,48 @@ def test_review_page_unknown_change_renders_not_found(admin_rig: Any) -> None:
     assert 'data-bw-failure="not_found"' in page.text
 
 
+def _admin_region_of(text: str) -> str:
+    """The admin region's own markup — the assertion scope for the
+    literal-``None`` arms (the rest of the bench page is out of scope)."""
+    region = text.split('data-bw-admin aria-label="Bench administration"', 1)[1]
+    return region.split("</section>", 1)[0]
+
+
+def test_the_region_renders_no_literal_none(admin_rig: Any) -> None:
+    """Jinja prints an explicit ``None`` as the literal text "None"
+    (the environment sets no finalize): the healthy region — no alert,
+    no inhibited rows — must render neither slot (the refute fold, F6;
+    pre-fold, every healthy page carried a bare "None" line)."""
+    rig = admin_rig
+    healthy = _get(rig, f"/ui/benches/{_BENCH}", rig.record)
+    assert healthy.status_code == 200
+    assert "None" not in _admin_region_of(healthy.text)
+    # A proposed change without inhibition exercises the row slot too.
+    _post(rig, f"/ui/benches/{_BENCH}/changes", rig.record, _form())
+    with_change = _get(rig, f"/ui/benches/{_BENCH}", rig.record)
+    assert with_change.status_code == 200
+    assert "None" not in _admin_region_of(with_change.text)
+    # The observe shape renders the region with no alert either.
+    observe = _get(rig, f"/ui/benches/{_BENCH}", rig.observe)
+    assert observe.status_code == 200
+    assert "None" not in _admin_region_of(observe.text)
+
+
+def test_the_change_page_renders_no_literal_none(admin_rig: Any) -> None:
+    """The same hunt over the change page (its alert and workspace slots
+    carry ``None`` on the healthy render — guarded there already; this
+    arm pins the absence so a future unguarded slot reds)."""
+    rig = admin_rig
+    submitted = _post(rig, f"/ui/benches/{_BENCH}/changes", rig.record, _form())
+    import re
+
+    match = re.search(r"/ui/changes/(chg-[0-9a-f]+)", submitted.text)
+    assert match is not None, submitted.text[:500]
+    page = _get(rig, f"/ui/changes/{match.group(1)}", rig.record)
+    assert page.status_code == 200
+    assert "None" not in page.text
+
+
 # --- arm D (submit half): the change-honest no-response variant ----------------------
 
 

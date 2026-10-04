@@ -5,7 +5,11 @@
   pre-escaped trusted markup. -#}
 <section class="bw-panel bw-admin" data-bw-admin aria-label="Bench administration">
   <h3>Administration</h3>
-  {{ alert_html }}
+  {#- The alert and the inhibited affordance are None on the healthy
+      render (the environment sets no finalize — an unguarded slot
+      prints the literal text "None"), so both render under an explicit
+      guard. -#}
+  {% if alert_html %}{{ alert_html }}{% endif %}
   {% if observe %}
   <div class="bw-controls__actions">
     <div class="bw-control" data-bw-change-submit>
@@ -22,7 +26,7 @@
       {% if row.proposed %}
       <p class="bw-field__note" data-bw-two-phase-note>{{ two_phase_html }}</p>
       {% endif %}
-      {{ row.inhibited_html }}
+      {% if row.inhibited_html %}{{ row.inhibited_html }}{% endif %}
     </div>
     {% else %}
     <p class="bw-staging__note" data-bw-change-none>No changes filed from this session.</p>
