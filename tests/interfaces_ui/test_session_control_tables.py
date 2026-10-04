@@ -16,18 +16,30 @@ the injected clock, before any route exists:
   the lazy expiry sweep both drop them, and a gateway restart empties
   the whole store (CON-15's death semantics by construction).
 
+G3b (issue #304, design record §2.1's second side table) adds the
+staging record — ``session_id -> {bench_id -> StagedStart}`` — and the
+pending-cancel markers, under the same lock and the same death
+semantics. The staging cycle's request id is the STAGED BINDING
+document's own ``request_id`` (the seam's binding-match pre-check
+requires exactly that id on ``run_start``), so the record carries the
+binding's id, never a session-minted one; a re-stage of the same
+binding keeps the record (and its id — fixed across check/arm/confirm
+and post-refusal retries), a different binding replaces it.
+
 The route-level translation (GW-95 refusals, the fragment, the mode
-banner) lives in ``test_ui_control_leases.py``.
+banner) lives in ``test_ui_control_leases.py``; the G3b route arms in
+``test_ui_control_runs.py``.
 """
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 from ui_gateway_support import NOW_EPOCH
 
 from benchweave.interfaces.identity import Identity
-from benchweave.interfaces.sessions import HeldLease, SessionStore
+from benchweave.interfaces.sessions import HeldLease, SessionStore, StagedStart
 
 
 def _store(*, now: int = NOW_EPOCH, session_ttl_s: int = 3600) -> SessionStore:
@@ -225,3 +237,118 @@ def test_held_lease_is_the_projection_plus_the_requested_duration() -> None:
         "state",
         "requested_duration_ms",
     }
+
+
+# --- the staging record (G3b, design record §2.1's second side table) --------------
+
+
+def _binding_ref(sha: str) -> dict[str, Any]:
+    return {"id": "voltage-check", "version": "0.1.0", "sha256": sha}
+
+
+def _staged(
+    request_id: str = "req-voltage-check-1", sha: str = "a" * 64, *, armed: bool = False
+) -> StagedStart:
+    return StagedStart(
+        request_id=request_id,
+        binding_ref=_binding_ref(sha),
+        check=None,
+        armed=armed,
+    )
+
+
+def test_staging_record_round_trips_and_is_session_and_bench_scoped() -> None:
+    store = _store()
+    first = _live_session(store, principal="op-one")
+    second = _live_session(store, principal="op-two")
+    staged = _staged(sha="a" * 64)
+    store.record_staged_start(first, "bench-one", staged)
+    assert store.staged_start(first, "bench-one") == staged
+    # One session's staging never answers another session's read.
+    assert store.staged_start(second, "bench-one") is None
+    # One bench's staging never answers another bench's read.
+    assert store.staged_start(first, "bench-two") is None
+
+
+def test_re_stage_the_same_binding_keeps_the_cycle_request_id() -> None:
+    """A same-binding re-stage REPLACES the record's mutable halves (the
+    check clears — GW-51) while the binding's own request id — the
+    staging cycle's id — stays fixed; a DIFFERENT binding replaces the
+    record wholesale (the new cycle's new id)."""
+    store = _store()
+    session_id = _live_session(store)
+    store.record_staged_start(session_id, "bench-one", _staged(sha="a" * 64))
+    store.record_staged_start(
+        session_id,
+        "bench-one",
+        replace(_staged(sha="a" * 64), check={"valid": True, "generation": 3, "findings": []}),
+    )
+    held = store.staged_start(session_id, "bench-one")
+    assert held is not None
+    assert held.request_id == "req-voltage-check-1"  # the cycle id, unchanged
+    assert held.check is not None  # the caller's re-record is what reads back
+    # A different binding (a different cycle): the record replaces wholesale.
+    store.record_staged_start(
+        session_id, "bench-one", _staged(request_id="req-other-2", sha="b" * 64)
+    )
+    staged = store.staged_start(session_id, "bench-one")
+    assert staged is not None
+    assert staged.request_id == "req-other-2"
+    assert staged.binding_ref["sha256"] == "b" * 64
+    assert staged.check is None
+
+
+def test_clear_staged_start_is_idempotent() -> None:
+    store = _store()
+    session_id = _live_session(store)
+    store.record_staged_start(session_id, "bench-one", _staged())
+    store.clear_staged_start(session_id, "bench-one")
+    assert store.staged_start(session_id, "bench-one") is None
+    store.clear_staged_start(session_id, "bench-one")  # no-op, never an error
+
+
+def test_staging_and_markers_die_with_logout_and_expiry_sweep() -> None:
+    """CON-15's death semantics: the staging records and the pending-cancel
+    markers are presentation of one session's own answers, not identity
+    facts — both drop at logout and at the lazy expiry sweep."""
+    clock = [NOW_EPOCH]
+    store = SessionStore(now_epoch=lambda: clock[0], session_ttl_s=100)
+    session_id = _live_session(store)
+    store.record_staged_start(session_id, "bench-one", _staged())
+    store.record_cancel_request(session_id, "run-1")
+    store.logout(session_id)
+    assert store.staged_start(session_id, "bench-one") is None
+    assert not store.cancel_requested(session_id, "run-1")
+
+    session_id = _live_session(store)
+    store.record_staged_start(session_id, "bench-one", _staged())
+    store.record_cancel_request(session_id, "run-2")
+    clock[0] = NOW_EPOCH + 101  # the next resolution sweeps the record...
+    assert store.resolve(session_id) is None
+    assert store.staged_start(session_id, "bench-one") is None
+    assert not store.cancel_requested(session_id, "run-2")
+
+
+# --- pending-cancel markers (G3b GW-55: the operator's own action,
+# --- presented until the seam reports the run terminal) -----------------------------
+
+
+def test_cancel_marker_round_trip() -> None:
+    store = _store()
+    session_id = _live_session(store)
+    assert not store.cancel_requested(session_id, "run-1")
+    store.record_cancel_request(session_id, "run-1")
+    assert store.cancel_requested(session_id, "run-1")
+    # Session-scoped: another session's read stays clear.
+    other = _live_session(store, principal="op-two")
+    assert not store.cancel_requested(other, "run-1")
+    store.clear_cancel_request(session_id, "run-1")
+    assert not store.cancel_requested(session_id, "run-1")
+    store.clear_cancel_request(session_id, "run-1")  # idempotent
+
+
+def test_staged_start_is_the_recorded_four_fields() -> None:
+    """The record's closed shape: request id (the binding's own), the
+    binding ref, the recorded check, the armed flag."""
+    fields = StagedStart.__dataclass_fields__
+    assert set(fields) == {"request_id", "binding_ref", "check", "armed"}
