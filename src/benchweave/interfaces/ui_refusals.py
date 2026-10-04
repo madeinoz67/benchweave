@@ -252,18 +252,27 @@ def render_no_response_change_submit(
         for name, value in staged.items()
     )
     return (
-        render_refusal(row)
+        # The fragment's OWN root: the triggering swap replaced the admin
+        # section, so the resubmit form's relative target must resolve
+        # inside THIS fragment — the wrapper aside is what "closest
+        # aside" finds, and a successful replay swaps the whole fragment
+        # back into the admin region's place (the browser lane's
+        # defect-1 fold: "closest section" resolved past it to the bench
+        # section and destroyed the bench page).
+        '<aside class="bw-failure-fragment" data-bw-failure-fragment>'
+        + render_refusal(row)
         + '<p class="bw-refusal__reconcile" data-bw-reconcile-action>'
         "Reconcile: resubmit the identical form (request id "
         f"<code>{escape(request_id)}</code>) — duplicate suppression returns the "
         "original change.</p>"
         + '<form class="bw-control" data-bw-change-resubmit'
         f' hx-post="/ui/benches/{escape(bench_id)}/changes"'
-        ' hx-target="closest section" hx-swap="outerHTML">'
+        ' hx-target="closest aside" hx-swap="outerHTML">'
         + hidden
         + '<button type="submit" class="bw-button" data-variant="secondary"'
         ' aria-busy="false">Resubmit the identical form</button>'
         "</form>"
+        "</aside>"
     )
 
 

@@ -651,21 +651,6 @@ def test_the_section9_replay_of_the_carried_form_returns_the_original_change(
     ).count() == 1, "the resubmitted region does not name the original change"
 
 
-@pytest.mark.xfail(
-    reason="DEFECT (reported, not fixed, per the brief): the submit "
-    "no-response fragment's root is the §C.3 refusal <aside>, but it "
-    "swaps as outerHTML of the admin <section data-bw-admin> — the "
-    "carried resubmit form's hx-target=\"closest section\" then resolves "
-    "past the replaced section to the BENCH section, so a successful "
-    "resubmit swaps the entire bench section with the region fragment "
-    "(bench facts, devices, events destroyed; the operator loses the "
-    "page the moment the reconcile works). Evidence: arm order "
-    "test_the_section9_replay... then this test on one live page; the "
-    "resubmit returns 200 and files nothing new (§9 holds) while "
-    "[data-bw-bench-facts] leaves the DOM. REST-level suites cannot see "
-    "this: they never resolve hx-target.",
-    strict=True,
-)
 def test_the_carried_reconcile_swaps_in_place(
     served: SimpleNamespace, page: Page, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -863,23 +848,7 @@ def test_planted_violation_must_red_in_this_context(
     [
         "admin-bench",
         "observe-bench",
-        pytest.param(
-            "change-independent",
-            marks=pytest.mark.xfail(
-                reason="DEFECT (reported, not fixed, per the brief): "
-                "_approval_facts_html (ui_admin.py) renders the binds-note "
-                "<p data-bw-approval-binds-note> as a DIRECT child of the "
-                "approval-facts <dl> — invalid HTML (a dl may hold only "
-                "dt/dd/div groups), and axe's definition-list rule flags it "
-                "serious on the loaded-approval change page. The G2 census "
-                "cannot render this shape (the change pages are G4-new), so "
-                "'no new violations vs the census' fails honestly here. "
-                "Evidence: this arm on a live page — violations_count == 1, "
-                "rule definition-list.",
-                strict=True,
-            ),
-        ),
-        "change-failed",
+        "change-independent",        "change-failed",
     ],
 )
 def test_axe_zero_violations_on_the_admin_shapes(

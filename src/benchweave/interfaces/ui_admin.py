@@ -447,9 +447,9 @@ class AdminRoutes:
             f'<div><dt>Document</dt><dd><a class="bw-link"'
             f' href="/ui/documents/{_esc(approval.sha256)}">the stored'
             " document</a></dd></div>"
+            "</dl>"
             f'<p class="bw-field__note" data-bw-approval-binds-note>The approval'
             f" {binds_text}.</p>"
-            "</dl>"
         )
 
     def _apply_control_html(
