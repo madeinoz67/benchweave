@@ -121,6 +121,79 @@ def bench_mode(held: HeldLease | None, *, now_epoch: Callable[[], int]) -> str |
     return None
 
 
+#: The trip-lifecycle kinds on the bench event wire: a ``trip`` raises
+#: protection-active; a ``bench_changed`` — the ONLY wire shadow an
+#: applied trip_reset has (the closed event def has no channel for the
+#: change kind) — clears it.
+_TRIP_LIFECYCLE = frozenset({"trip", "bench_changed"})
+
+
+def trip_active(events: list[dict[str, Any]]) -> bool:
+    """§2.5's wire-honest trip predicate over the bench's event rows:
+    protection-active iff the NEWEST trip-lifecycle event (by sequence)
+    is a ``trip``.
+
+    Disclosed boundaries (the record §2.5, each pinned by test): (a) the
+    gateway's own bench projection hardcodes ``tripped=False`` — this
+    predicate consumes the gateway's own ``trip`` events, the only live
+    trip signal the wire carries, and §C.1's row is presentation-level;
+    (b) an admin configuration activation after a trip ALSO emits
+    ``bench_changed`` and therefore also clears the marker (the err-clear
+    boundary the owner accepted as disclosed); (c) retention may have
+    dropped an old trip past the window — no trip-lifecycle row is no
+    verdict, never protection-active. The gateway's own start checks stay
+    authoritative and carry no trip gate (G3-D3 files that seam gap).
+    """
+    newest: tuple[int, str] | None = None
+    for row in events:
+        kind = str(row.get("kind", ""))
+        if kind not in _TRIP_LIFECYCLE:
+            continue
+        try:
+            sequence = int(row.get("sequence", 0))
+        except (TypeError, ValueError):
+            sequence = 0
+        if newest is None or sequence >= newest[0]:
+            newest = (sequence, kind)
+    return newest is not None and newest[1] == "trip"
+
+
+def _iter_steps(steps: list[Any]) -> Any:
+    """Yield every step in a procedure's step tree, recursing through the
+    structured kinds' nested bodies (``if.then`` / ``if.else`` /
+    ``repeat.steps``) — an author cannot hide an enable by nesting it."""
+    for step in steps:
+        if not isinstance(step, dict):
+            continue
+        yield step
+        for key in ("then", "else", "steps"):
+            nested = step.get(key)
+            if isinstance(nested, list):
+                yield from _iter_steps(nested)
+
+
+def energy_sourcing(procedure: dict[str, Any]) -> bool:
+    """GW-52's energy classification — a pure function of the admitted
+    procedure document: energy-sourcing IFF any ``invoke`` step's input
+    carries ``"enabled": true`` (R-ENERGISE-1's enabling clause,
+    mechanically derivable from admitted documents).
+
+    Disclosed boundary (the record §2.4/G3-D2): "changing a setpoint of
+    a currently-energised output" is NOT derivable from documents — it
+    needs live device state — and is uncovered at run-start granularity.
+    A procedure whose every enable-shaped input is false or absent is the
+    de-energising class. The classifier errs toward MORE confirmation
+    only by rule change, never silently.
+    """
+    for step in _iter_steps(procedure.get("steps", [])):
+        if step.get("kind") != "invoke":
+            continue
+        action_input = step.get("input")
+        if isinstance(action_input, dict) and action_input.get("enabled") is True:
+            return True
+    return False
+
+
 def session_warning_bubble(
     record: SessionRecord, *, now_epoch: Callable[[], int]
 ) -> Markup | None:
