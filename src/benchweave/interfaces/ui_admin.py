@@ -26,6 +26,7 @@ from __future__ import annotations
 import logging
 import uuid
 from collections.abc import Callable
+from dataclasses import replace
 from typing import Any
 
 from benchweave_ui_html.data import AlertBubbleData, DisabledLabelData
@@ -44,7 +45,10 @@ from benchweave.interfaces.sessions import (
     SessionStore,
 )
 from benchweave.interfaces.ui_control import _esc
-from benchweave.interfaces.ui_refusals import render_no_response_change_submit
+from benchweave.interfaces.ui_refusals import (
+    render_no_response_change_apply,
+    render_no_response_change_submit,
+)
 
 _LOG = logging.getLogger(__name__)
 
@@ -118,6 +122,43 @@ class AdminRoutes:
 
     def _mint_request_id(self) -> str:
         return "ui-" + uuid.uuid4().hex[:12]
+
+    def _derive_approval(
+        self,
+        *,
+        ref_id: str,
+        ref_version: str,
+        sha256: str,
+        body: dict[str, Any],
+        change: dict[str, Any],
+    ) -> ApprovalView:
+        """The view over what one stored approval document SAYS, read
+        fresh through ``document_get`` and re-derived at every use (the
+        offer-time load and the fire-time guard share this derivation):
+        the approver the document names, its policy version, and whether
+        it binds the change record being viewed (its ``change_id`` and
+        ``expected_generation`` both match). Presentation of the
+        document's own bytes — never authority: the seam re-verifies the
+        pair at apply time."""
+        bound_change = str(body.get("change_id", ""))
+        try:
+            bound_generation = int(body.get("expected_generation", -1))
+        except (TypeError, ValueError):
+            bound_generation = -1
+        binds = (
+            bound_change == str(change.get("change_id", ""))
+            and bound_generation == int(change.get("expected_generation", -1))
+        )
+        return ApprovalView(
+            sha256=sha256,
+            ref_id=ref_id,
+            ref_version=ref_version,
+            approver_principal=str(body.get("approver_principal", "")),
+            policy_version=str(body.get("policy_version", "")),
+            binds=binds,
+            bound_change_id=bound_change,
+            bound_generation=bound_generation,
+        )
 
     def _strip(self, record: SessionRecord) -> dict[str, Any]:
         """The base-template context (the read pages' shape): gateway
@@ -456,6 +497,18 @@ class AdminRoutes:
             methods=["GET"],
             include_in_schema=False,
         )
+        router.add_api_route(
+            "/changes/{change_id}/approval",
+            self.load_approval,
+            methods=["POST"],
+            include_in_schema=False,
+        )
+        router.add_api_route(
+            "/changes/{change_id}/apply",
+            self.apply_change,
+            methods=["POST"],
+            include_in_schema=False,
+        )
 
     async def submit_change(self, bench_id: str, request: Request) -> Response:
         """GW-70's submit half: ``change_submit`` with the FORM's §9 id —
@@ -561,6 +614,158 @@ class AdminRoutes:
             else None,
             bench_generation=None,
             **self._strip(record),
+        )
+
+    async def load_approval(self, change_id: str, request: Request) -> Response:
+        """§2.3 step 1 (the session layer, the staging trio's shape): read
+        the stored approval document through ``document_get`` — no seam
+        write — and record what it SAYS in this session's change view. An
+        unstored digest renders the seam's own ``not_found`` row; the
+        binding verdict derives from the document's bytes against the
+        change record being viewed. The response re-renders the
+        workspace with the approval facts and the apply control's
+        offer-time state (GW-71 at offer time)."""
+        authed = self._authed(request)
+        if authed is None:
+            return self._unauthenticated_page(request)
+        record, identity = authed
+        form = dict(await request.form())
+        sha256 = str(form.get("approval_sha256", ""))
+        try:
+            change = self._operations.change_get(identity, change_id)
+            doc = self._operations.document_get(identity, sha256)
+        except OperationFailure as fail:
+            return self._failure_page(fail, request)
+        approval = self._derive_approval(
+            ref_id=str(form.get("approval_id", "")),
+            ref_version=str(form.get("approval_version", "")),
+            sha256=sha256,
+            body=doc["content"],
+            change=change,
+        )
+        self._sessions.record_change_approval(record.session_id, change_id, approval)
+        return HTMLResponse(self.workspace_html(record, identity, change))
+
+    async def apply_change(self, change_id: str, request: Request) -> Response:
+        """§2.3 step 3: ``change_apply`` with server-side truth — the form
+        carries only the §9 request id and the approver's detached
+        token; the generation comes from the record, the approval ref
+        from the loaded view. GW-71's fire-time re-evaluation runs
+        BEFORE the send (the armed-confirm rule): the approval document
+        is re-read fresh and the view re-derived, and a self-approval or
+        a non-binding approval refuses PRE-SEND — no ``change_apply``
+        call; the UI does not send what it can see the gateway would
+        refuse, and a pre-send refusal records nothing (the seam never
+        judged). A seam-answered refusal re-reads the record and indexes
+        the change — the state rendered anywhere is the record's, never
+        the refusal's (§2.4). A non-``OperationFailure`` composes §C.3's
+        no-response row with the change-page reconcile (§2.5)."""
+        authed = self._authed(request)
+        if authed is None:
+            return self._unauthenticated_page(request)
+        record, identity = authed
+        form = dict(await request.form())
+        request_id = str(form.get("request_id", ""))
+        token = str(form.get("approver_token", ""))
+        if not request_id or not token:
+            return self._failure_page(
+                OperationFailure(
+                    failure(
+                        "invalid_request",
+                        "the apply form carries its request id and the approver"
+                        " token",
+                    )
+                ),
+                request,
+            )
+        view = self._sessions.change_view(record.session_id, change_id)
+        if view is None or view.approval is None:
+            return self._failure_page(
+                OperationFailure(
+                    failure(
+                        "invalid_request",
+                        "load the approval for this change before applying it",
+                    )
+                ),
+                request,
+            )
+        try:
+            change = self._operations.change_get(identity, change_id)
+        except OperationFailure as fail:
+            return self._failure_page(fail, request)
+        # Index the change with the record's own bench binding (a
+        # manually-entered change id gains its true bench here; the
+        # index carries no state — this is not an outcome).
+        bench_id = str(change.get("bench_id", ""))
+        self._sessions.record_change_view(
+            record.session_id, change_id, replace(view, bench_id=bench_id)
+        )
+        # GW-71's fire-time re-evaluation: the approval document re-read
+        # FRESH (content-addressed and immutable — no TOCTOU by
+        # construction) and the view re-derived from its bytes, never
+        # from session memory; the corrected view is what renders.
+        prior = view.approval
+        try:
+            doc = self._operations.document_get(identity, prior.sha256)
+        except OperationFailure as fail:
+            return self._failure_page(fail, request)
+        approval = self._derive_approval(
+            ref_id=prior.ref_id,
+            ref_version=prior.ref_version,
+            sha256=prior.sha256,
+            body=doc["content"],
+            change=change,
+        )
+        self._sessions.record_change_approval(record.session_id, change_id, approval)
+        if not approval.binds or approval.approver_principal == record.principal:
+            # Pre-send refusal: the workspace re-renders the same
+            # disabled shape (non-binding or self-approval) — the seam
+            # never judged, so no outcome exists to present.
+            return HTMLResponse(self.workspace_html(record, identity, change))
+        try:
+            applied = self._operations.change_apply(
+                identity,
+                request_id,
+                change_id,
+                int(change["expected_generation"]),
+                {
+                    "id": approval.ref_id,
+                    "version": approval.ref_version,
+                    "sha256": approval.sha256,
+                },
+                approver_token=token,
+            )
+        except OperationFailure as fail:
+            # Seam-answered: re-read the record and index the change —
+            # the rendered state is the record's, never inferred from
+            # the refusal (§2.4). The row itself renders unsoftened.
+            try:
+                settled = self._operations.change_get(identity, change_id)
+                self._sessions.record_change_view(
+                    record.session_id,
+                    change_id,
+                    replace(view, bench_id=str(settled.get("bench_id", bench_id))),
+                )
+            except OperationFailure:
+                pass
+            return self._failure_page(fail, request)
+        except Exception:
+            # Transport-shaped (no interface answer): §C.3's no-response
+            # row with the change-honest reconcile. An in-process adapter
+            # cannot honestly produce this; the suite induces it (the G2
+            # §7-F posture).
+            return HTMLResponse(
+                render_no_response_change_apply(change_id), status_code=504
+            )
+        try:
+            bench = self._operations.bench_get(identity, bench_id)
+            generation = int(bench.get("generation", 0))
+        except (OperationFailure, ValueError):
+            generation = None
+        # US9: the applied record beside the generation increment, read
+        # fresh from the bench after the seam bumped it.
+        return HTMLResponse(
+            self.workspace_html(record, identity, applied, bench_generation=generation)
         )
 
 

@@ -10,6 +10,8 @@ deterministically.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import threading
 import time
 from pathlib import Path
@@ -118,6 +120,37 @@ def mint_and_exchange(app: FastAPI, token: str) -> SimpleNamespace:
     return SimpleNamespace(
         login_url=login_url, code=code, response=exchanged, cookie=cookie or ""
     )
+
+
+def put_approval(
+    content: ContentStore,
+    *,
+    change_id: str,
+    approver: str = "approver-x",
+    expected_generation: int = 1,
+) -> tuple[dict[str, str], str]:
+    """Store an approval document + mint its detached token (the seam
+    suite's ``_put_approval`` lifted for the G4 UI suites, design record
+    §6): the approval pair is constructed OUT OF BAND — no gateway
+    surface mints the applier's approval — so the tests build it
+    directly against the content store and the local issuer."""
+    body = {
+        "change_id": change_id,
+        "expected_generation": expected_generation,
+        "approver_principal": approver,
+        "policy_version": "1",
+    }
+    raw = json.dumps(body, sort_keys=True).encode()
+    sha = hashlib.sha256(raw).hexdigest()
+    content.put_document(raw, sha, body, "urn:stg:approval", NOW_ISO)
+    token = issue(
+        SECRET,
+        principal=approver,
+        audience="gateway-admin",
+        scopes=["stg:admin"],
+        expires_at=NOW_EPOCH + 12 * 3600,
+    )
+    return {"id": f"approval-{change_id}", "version": "1", "sha256": sha}, token
 
 
 def module_gateway(gateway_id: str, data_dir: Path) -> FastAPI:

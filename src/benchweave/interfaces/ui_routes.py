@@ -210,6 +210,28 @@ UI_ROUTES: tuple[RouteSpec, ...] = (
         classification="interface",
     ),
     RouteSpec(
+        # G4 (issue #305, design record §2.6): GW-10's LAST mutating row —
+        # one operation, change_apply. The form carries only the §9 id
+        # and the approver's detached token; generation and approval ref
+        # are server-side truth. The GW-71 fire-time guard re-reads the
+        # approval document before the send (no seam call when the UI
+        # can see the gateway would refuse).
+        path="/changes/{change_id}/apply",
+        methods=_methods("POST"),
+        operations=frozenset({"change_apply"}),
+        classification="interface",
+    ),
+    RouteSpec(
+        # G4 §2.3 step 1: the approval load is a session-layer action
+        # (the staging trio's shape) — no seam write; it composes
+        # ``change_get`` + ``document_get`` reads and records what the
+        # approval document says in the session's change view.
+        path="/changes/{change_id}/approval",
+        methods=_methods("POST"),
+        operations=frozenset(),
+        classification="session",
+    ),
+    RouteSpec(
         path="/runs/{run_id}",
         methods=_methods("GET"),
         operations=frozenset({"run_get"}),
