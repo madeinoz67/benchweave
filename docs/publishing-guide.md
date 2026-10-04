@@ -124,6 +124,21 @@ Packaging refuses, with a stable machine prefix, when:
   project records tamper-evident state work as a structural need. It is
   not shipped. The publishing lane never accepts gateway-local state as
   provenance.
+- **Response reach (NFR-S2/NFR-S3, issue #226).** A published revocation,
+  yank or advisory reaches the gateway at the NEXT run-build of a
+  commissioned closure. The delay is at most 5 minutes (300 s) after the
+  gateway first reads the new status document. This bound covers only
+  gateways that are reachable at a next run-build. A gateway that is
+  offline since publication, or that runs no builds, is covered by the
+  recorded operator-delivery half instead: its refusal or advisory lands
+  at its next consult, whenever that happens. Until then the bound makes
+  no claim. At that run-build, a revoked or yanked release refuses the
+  run (`closure_status_revoked` / `closure_status_yanked`); an advisory
+  does not refuse the run — it is delivered as a recorded operator
+  notice under the gateway's advisories directory. The consult verifies
+  every status document against the gateway's trust root. If the origin
+  serves no status document, the run-build refuses
+  (`closure_status_absent`). It never assumes `published`.
 - **What review is not.** Structural validity never establishes trust. A
   correctly-signed release carries no technical backstop against malicious
   intent. Publish-time review owns that residual. A clean platform scan
