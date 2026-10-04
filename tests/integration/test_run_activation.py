@@ -1945,6 +1945,77 @@ def test_d1_advisory_status_proceeds_and_delivers_operator_record(
     assert len(_advisory_records(harness)) == 1
 
 
+def test_d1_escalated_advisory_lands_a_second_record(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Fold adv2-F2 (MEDIUM): an advisory ESCALATED in place (same id,
+    higher severity, sequence+1, beyond the staleness bound so the
+    re-read happens) is a second delivery — the durable record must carry
+    the escalation, not freeze the first severity. The log line already
+    fires per consult with the current content; this arm pins the RECORD
+    half. Control: unchanged content re-read beyond the bound still
+    dedups to one record per content (the design's append-once rule,
+    risk 6)."""
+    from benchweave.interfaces.device_closures import _STATUS_CONSULT_BOUND_NS
+
+    harness = _CommissionedHarness(tmp_path, "req-d1-escalate", signed_dev_origin=True)
+    harness.rewrite_release_status(
+        IMPL_PACKAGE, advisories=[dict(_ADVISORY)], reason="heat advisory"
+    )
+    run_id = "run-d1-esc-a"
+    coordinator, store, content = _coordinator(harness, run_id, QUOTA_LIMITS)
+    try:
+        record = coordinator.start_run(run_id, "principal-activation")
+        assert record["outcome"] == "passed"
+    finally:
+        store.close()
+    delivered = _advisory_records(harness)
+    assert len(delivered) == 1
+    assert delivered[0]["advisory"]["severity"] == "medium"
+
+    # Escalation: the SAME advisory id at critical, sequence+1, re-signed;
+    # the clock moves past the bound so the consult re-reads the origin.
+    escalated = {**_ADVISORY, "severity": "critical"}
+    harness.rewrite_release_status(
+        IMPL_PACKAGE, advisories=[escalated], reason="advisory escalated"
+    )
+    harness.session.now_ns = lambda: NOW_NS + _STATUS_CONSULT_BOUND_NS + 1
+    coordinator2, store2, _content2 = _coordinator(
+        harness, "run-d1-esc-b", QUOTA_LIMITS, request_id="req-d1-escalate-b"
+    )
+    try:
+        with caplog.at_level(
+            logging.WARNING, logger="benchweave.interfaces.device_closures"
+        ):
+            record2 = coordinator2.start_run("run-d1-esc-b", "principal-activation")
+        assert record2["outcome"] == "passed"
+        assert any(
+            "critical" in entry.message
+            for entry in caplog.records
+            if "closure_status_advisory" in entry.message
+        )
+    finally:
+        store2.close()
+    delivered = _advisory_records(harness)
+    assert len(delivered) == 2, "the escalation must land a second durable record"
+    severities = sorted(str(entry["advisory"]["severity"]) for entry in delivered)
+    assert severities == ["critical", "medium"]
+    assert all(entry["advisory"]["id"] == _ADVISORY["id"] for entry in delivered)
+
+    # Control: unchanged content re-read beyond the bound again — still
+    # exactly two records (the escalated content dedups to its own one).
+    harness.session.now_ns = lambda: NOW_NS + 2 * _STATUS_CONSULT_BOUND_NS + 2
+    coordinator3, store3, _content3 = _coordinator(
+        harness, "run-d1-esc-c", QUOTA_LIMITS, request_id="req-d1-escalate-c"
+    )
+    try:
+        record3 = coordinator3.start_run("run-d1-esc-c", "principal-activation")
+        assert record3["outcome"] == "passed"
+    finally:
+        store3.close()
+    assert len(_advisory_records(harness)) == 2
+
+
 def test_d1_rolled_back_status_refuses_sequence_rollback(tmp_path: Path) -> None:
     """D1 SHIP arm: a served sequence BELOW the persisted floor refuses
     (consult semantics — the reason name is deliberately distinct from

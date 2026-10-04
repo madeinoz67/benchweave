@@ -133,12 +133,17 @@ def _append_once_record(
 ) -> None:
     """Write one append-once delivery record (tmp + :func:`os.replace`).
 
-    The record NAME is the sha256 of the canonical IDENTITY bytes — the
-    (kind, release coordinates, advisory id / review outcome) tuple — not
-    of the full record bytes: the record carries the first delivery's
-    ``consulted_at``, so a beyond-bound re-consult that re-reads the same
-    advisory must derive the SAME name, or the append-once dedup rule
-    would silently depend on the cache staying warm. It does not.
+    The record NAME is the sha256 of the canonical DELIVERY-IDENTITY
+    bytes: what the delivery IS — kind, release coordinates, advisory id
+    or review outcome, and the ADVISORY/REVIEW CONTENT VERBATIM (fold
+    adv2-F2, disclosed as deviation 3.2). Escalated content names a NEW
+    record, so an in-place advisory escalation lands a second durable
+    record; unchanged content names the same record forever. Two
+    volatile fields are deliberately OUT of the identity: the record's
+    ``consulted_at`` (it churns on every beyond-bound re-read — naming on
+    it would falsify the design's append-once rule, risk 6) and the
+    status document digest (a pure sequence revision carrying an
+    unchanged advisory must not double-deliver).
     """
     target = advisories_dir / (
         "advisory-" + hashlib.sha256(_canonical(identity)).hexdigest()[:16] + ".json"
@@ -180,6 +185,7 @@ def _deliver_status_advisories(
                 "kind": "operator_advisory",
                 "release": release,
                 "advisory_id": str(advisory.get("id")),
+                "advisory": advisory,
             },
             record={
                 "kind": "operator_advisory",
@@ -225,7 +231,16 @@ def _surface_approval_drift(
     )
     _append_once_record(
         session.advisories_dir,
-        identity={"kind": "approval_drift", "release": release, "outcome": outcome},
+        identity={
+            "kind": "approval_drift",
+            "release": release,
+            "outcome": outcome,
+            "review": {
+                "reviewer_id": str(review.get("reviewer_id")),
+                "outcome": outcome,
+                "record_sha256": str(review.get("record_sha256")),
+            },
+        },
         record={
             "kind": "approval_drift",
             "release": release,
