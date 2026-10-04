@@ -415,3 +415,48 @@ def store_put_configuration_activation(
 ) -> None:
     _, store, _ = seam_admin
     store.put_change(change_id, BENCH, kind, json.dumps(TARGET_REF), 1, "fixture", NOW)
+
+
+# --- the terminality guard (G4 refute fold: a terminal record never rewrites) ---
+
+
+def test_reapply_on_unknown_keeps_the_unknown_record(
+    seam_admin: tuple[Operations, Store, ContentStore],
+    approval_doc: tuple[dict[str, str], str, dict[str, Any]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A re-apply attempt on an ``unknown`` change answers the
+    two-phase ``conflict`` WITHOUT reclassifying the record: the
+    undecided record IS the crash evidence (A06), and rewriting it to
+    ``failed`` with the conflict message would erase what the crash
+    left. The outcome recorder writes only over a change still
+    ``proposed`` (the G4 refute fold, lane B F1 — pinned here at the
+    seam, where the recorder lives)."""
+    ops, store, _ = seam_admin
+    ref, token, _ = approval_doc
+
+    def power_loss(bench_id: str, now: str) -> int:
+        raise RuntimeError("power lost mid-apply")
+
+    monkeypatch.setattr(store, "bump_generation", power_loss)
+    with pytest.raises(errors.OperationFailure) as crashed:
+        ops.change_apply(ADMIN, "req-fold1", "chg-ok", 1, ref, approver_token=token)
+    assert crashed.value.failure.code == "unavailable"
+    record = ops.change_get(ADMIN, "chg-ok")
+    assert record["state"] == "unknown"
+    crash_reason = record["reasons"][0]
+
+    monkeypatch.undo()
+    with pytest.raises(errors.OperationFailure) as reentered:
+        ops.change_apply(
+            ADMIN, "req-fold1-re", "chg-ok", 1, ref, approver_token=token
+        )
+    assert reentered.value.failure.code == "conflict"
+    settled = ops.change_get(ADMIN, "chg-ok")
+    assert settled["state"] == "unknown", (
+        "the re-apply reclassified the undecided record:"
+        f" {settled['state']} ({settled['reasons']})"
+    )
+    assert settled["reasons"][0] == crash_reason, (
+        f"the re-apply rewrote the crash evidence: {settled['reasons'][0]!r}"
+    )

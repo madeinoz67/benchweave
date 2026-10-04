@@ -1105,6 +1105,11 @@ class Operations:
         (bump + bench-row refresh + ``applied`` + event). Every decided
         failure records ``failed``; an undecided crash records ``unknown``
         and surfaces as ``unavailable`` (uncertainty is never erased).
+        Recording happens only while the change is still ``proposed``: a
+        terminal record (``applied``, ``failed``, ``unknown``) is never
+        rewritten, so a re-apply attempt on a decided or undecided change
+        answers ``conflict`` and leaves the record — and its audit
+        reasons — exactly as the first outcome left them.
         """
         require_permission(identity, "admin")
         # The validated payload is the corpus's REST body for this route:
@@ -1485,10 +1490,15 @@ class Operations:
     def _record_change_outcome(
         self, change_id: str, state: str, reason: str, now: str
     ) -> None:
-        """Record a failed/unknown outcome — never over an already-applied
-        change (a post-commit crash leaves the applied record truthful)."""
+        """Record a failed/unknown outcome — only over a change still
+        ``proposed``. Every terminal record is load-bearing evidence and
+        is never rewritten: a post-commit crash leaves the applied record
+        truthful, and a re-apply attempt on a failed/unknown change must
+        neither reclassify it (A06 — the undecided record IS the crash
+        evidence) nor rewrite its audit reasons (``reasons[0]`` is what
+        the inhibited-state alert renders verbatim)."""
         change = self._store.get_change(change_id)
-        if change is not None and change["state"] != "applied":
+        if change is not None and change["state"] == "proposed":
             self._store.set_change_state(change_id, state, [reason], now)
 
     def _change_projection(self, change_id: str) -> dict[str, Any]:

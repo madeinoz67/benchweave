@@ -1728,8 +1728,9 @@ def test_change_apply_unknown_outcome_advertises_retry_never(
     assert record["data"]["state"] == "unknown"
 
     # The advertised re-entry semantics are real: the same-key apply now
-    # conflicts on the unknown state (and records failed) — the exact
-    # outcome ``same_request`` would have misled the client into.
+    # conflicts on the unknown state (the terminal record itself stays
+    # unknown — a re-apply attempt never rewrites it) — the exact refusal
+    # ``same_request`` would have misled the client into.
     monkeypatch.undo()
     reentry = gateway.client.post(
         f"/v1/admin/changes/{change_id}/apply",

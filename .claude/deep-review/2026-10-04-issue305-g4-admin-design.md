@@ -533,3 +533,24 @@ the real diff at review):
 - **F3 (G4-D5/D7):** accept the theme toggle's trigger-pinned re-deferral (standalone
   UX issue; first operator request or the standalone host's own toggle lands the
   shared mechanism), or call the UX slice now.
+
+## Addendum (2026-10-04, the two-lane refute fold): §1's terminality sentence corrected
+
+§1's bullet — "`_record_change_outcome` (operations.py:1485) never overwrites
+`applied`; a `failed`/`unknown` change can never re-enter `proposed`, so
+re-apply is structurally impossible" — was true as written and incomplete as
+read. The recorder's guard was `state != "applied"`: a re-apply attempt on an
+`unknown` change reclassified it to `failed` with the two-phase conflict
+message, erasing the crash evidence, and a re-apply on a `failed` change
+replaced its audit reasons — the `reasons[0]` GW-72's alert renders. That is
+the seam pre-dating this slice; §1 cited the guard as terminality proof for a
+property it did not have. "Structurally impossible" described re-entering
+`proposed`, never the record's immutability.
+
+The fold: the recorder writes only over a change still `proposed` — every
+terminal state (`applied`, `failed`, `unknown`) is non-overwritable, and a
+re-apply's `conflict` reaches the caller with the record, and its reasons,
+exactly as the first outcome left them (A06: the undecided record IS the
+evidence). Pinned at the seam in `test_seam_admin.py`
+(`test_reapply_on_unknown_keeps_the_unknown_record`, and the failed-record
+reasons arm that followed it).
