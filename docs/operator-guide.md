@@ -213,8 +213,8 @@ a live value. When no kept observation exists for a parameter, the tile
 shows "Unavailable". Values that a run read during its steps are not
 kept, so they never fill a tile.
 
-The lease controls are in the UI. Run starts and configuration
-changes are not in the UI yet.
+The lease controls and the run controls are in the UI.
+Configuration changes are not in the UI yet.
 
 **Take a lease.** Enter a duration in milliseconds. Then select **Take
 lease**. The field starts at the largest duration that you can take.
@@ -275,7 +275,7 @@ control shows, so you can take a lease.
 
 **Observe-tier sessions.** An observe-tier session cannot change
 anything. All lease controls show as disabled with the reason "No
-lease or policy authority".
+lease or policy authority". The run controls show the same way.
 
 **Leases from other tools.** The panel shows only the leases that
 this browser session took. A lease that you took with a REST client
@@ -285,6 +285,79 @@ lease on a bench.
 
 Nothing renews the lease in the background. Renew the lease before it
 expires.
+
+**Stage a run.** The staging panel is on the bench page, under the lease
+controls. To stage a binding, enter its sha256 digest in the field. Then
+select **Stage binding**. The digest has 64 hexadecimal characters. The
+field offers binding digests that the bench's own event history pins. The
+interface has no binding enumeration.
+
+After you stage a binding, the panel shows the staged digest, and its
+request id when the gateway knows it. To stage a different binding,
+enter its digest. Then select **Re-stage**. A new staging clears the
+recorded check.
+
+**Run the preflight.** The start control stays disabled until a
+preflight returns for the current staged set. Select **Run preflight**
+to send the staged set to the check. The panel then shows the verdict:
+valid, or invalid with the finding count. If you stage a different
+binding, the recorded check clears. The **Run preflight** control
+returns.
+
+**Arm the staged set.** A staged procedure that energises no output
+needs no arm. Its start is one action. You must arm a staged procedure
+that energises an output before the start. Select **Arm staged set**.
+The gateway composes the confirm text from the binding and procedure
+documents. The text names every energised output, with its values and
+its channel target.
+
+The text says exactly what the run will energise. Select **Confirm:
+Start run** one time to start the run. To clear the armed state, select
+**Cancel** beside the confirm. The staged binding and the recorded
+check stay.
+
+**The attention window.** A manual procedure has an attention bound:
+the sum of its maximum body time and its maximum protection time. The
+bound must not exceed the smaller of the remaining lease time and the
+remaining session time. A bound that equals the window is allowed. When
+the bound exceeds the window, the arm or the start refuses. The refusal
+gives the action: renew the lease, or run `benchweave ui-login` for a
+longer session.
+
+**One binding, one run.** A binding document starts exactly one run.
+After the start, the panel shows a row that names the run. If you
+submit the same binding again, the gateway replays the run. The row
+then says "Replayed run <id> — the §9 replay returned the first start;
+no new run started". When you come back to the page, the row can say
+"This binding already started run <id> — a resubmission replays it".
+
+The binding document carries its own request id. The gateway uses it
+for the replay, not your browser session. The panel can forget the run
+after you stage a different binding, or after a gateway restart. The
+replay protection stays.
+
+**Cancel a run.** The cancel control is on the run page. You cancel a
+run with one action. The gateway does not ask you to confirm it. It
+needs no lease and works during a protection trip. Enter a reason, one
+character minimum. Then select **Cancel run**.
+
+After the request, the page shows the cancel-requested marker. The
+marker stays until the run reports a terminal state. The run state on
+the page is always the run's own report. For a run that already
+reported a terminal state, the region says "This run has reported a
+terminal state — there is nothing to cancel".
+
+**Protection trips.** While a protection trip is active, the confirm
+control of an energy-sourcing staged set shows as disabled. The note
+under the control gives the reason: protection is active on the bench.
+The disabled state comes from the bench's own trip events. The control
+re-enables when the trip clears.
+
+**A staged digest that is not a binding.** You can stage a digest that
+is not a binding document. The start control then shows as disabled.
+The note says the staged binding's document chain is not readable. The
+panel cannot classify the staged set. To recover, stage the digest of a
+valid binding document. The panel then recovers.
 
 **Production secret posture.** With `BENCHWEAVE_ENV=production`, `serve`
 *refuses to boot*, before the store is opened and before anything touches
