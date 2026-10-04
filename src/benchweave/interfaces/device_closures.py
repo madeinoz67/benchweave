@@ -150,10 +150,24 @@ def _append_once_record(
     )
     if target.exists():
         return
-    advisories_dir.mkdir(parents=True, exist_ok=True)
-    staged = target.with_name(target.name + ".tmp")
-    staged.write_bytes(_canonical(record))
-    os.replace(staged, target)
+    try:
+        advisories_dir.mkdir(parents=True, exist_ok=True)
+        staged = target.with_name(target.name + ".tmp")
+        staged.write_bytes(_canonical(record))
+        os.replace(staged, target)
+    except OSError as exc:
+        # R1 (PR #391): advisory delivery and drift surfacing are
+        # informational (CR-29) — an unusable advisories path must never
+        # refuse a commissioned run. Residual, stated plainly here and in
+        # the warning: while the path is unusable the operator record is
+        # NOT written; the log line is the only delivery surface.
+        _LOG.warning(
+            "closure_status_record_unwritten: identity=%s — the run proceeds "
+            "(advisories are informational, CR-29); the operator record is "
+            "NOT written while the advisories path is unusable (%s)",
+            _canonical(identity).decode(),
+            exc,
+        )
 
 
 def _deliver_status_advisories(

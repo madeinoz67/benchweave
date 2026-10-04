@@ -2016,6 +2016,37 @@ def test_d1_escalated_advisory_lands_a_second_record(
     assert len(_advisory_records(harness)) == 2
 
 
+def test_d1_advisory_delivery_io_failure_never_refuses_the_run(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """R1 fold (PR #391): advisory delivery is informational (CR-29) — an
+    unusable advisories path (here: the directory path occupied by a FILE)
+    must never refuse a commissioned run. Pre-fix, the run refused with a
+    raw FileExistsError out of the record writer. The run now proceeds and
+    a warning names the unwritten record. Residual, stated in the warning
+    and in the writer: while the path is unusable the operator record is
+    NOT written — the log line is the only delivery surface."""
+    harness = _CommissionedHarness(tmp_path, "req-r1-io", signed_dev_origin=True)
+    harness.rewrite_release_status(
+        IMPL_PACKAGE, advisories=[dict(_ADVISORY)], reason="heat advisory"
+    )
+    (harness.work / "advisories").write_text("occupied by a file")
+    run_id = "run-r1-io"
+    coordinator, store, content = _coordinator(harness, run_id, QUOTA_LIMITS)
+    try:
+        with caplog.at_level(
+            logging.WARNING, logger="benchweave.interfaces.device_closures"
+        ):
+            record = coordinator.start_run(run_id, "principal-activation")
+        assert record["outcome"] == "passed"
+        assert any(
+            "closure_status_record_unwritten" in entry.message
+            for entry in caplog.records
+        ), "the unwritten-record warning is absent"
+    finally:
+        store.close()
+
+
 def test_d1_rolled_back_status_refuses_sequence_rollback(tmp_path: Path) -> None:
     """D1 SHIP arm: a served sequence BELOW the persisted floor refuses
     (consult semantics — the reason name is deliberately distinct from
