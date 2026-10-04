@@ -585,6 +585,15 @@ and remain the reviewer's job.
     tree. `scripts/registry/sign_release.py` here is the only lane signer, and
     the lane key never enters any CI (CR-12).
 
+28. **A release-machinery change, any line** (issue #380; the family
+    umbrella `docs/internal/release-process-family.md` is also the
+    gateway line's cut authority) → any line's publish workflow,
+    `cliff.toml`, a tag scheme, a version source, or the family process
+    doc itself moves `docs/internal/release-process-family.md` in the
+    same change — the doc names machine mechanisms (lanes, workflows,
+    guards), so a mechanism change that leaves the doc behind rots it
+    silently.
+
 ## CI map
 
 | Job | What it catches |
