@@ -30,6 +30,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from benchweave.content.capture_services import CaptureServicesBundle
 from benchweave.content.store import ContentStore
@@ -40,7 +42,7 @@ from benchweave.interfaces.bootstrap import admit_startup_bench
 from benchweave.interfaces.worker import RunWorker
 from benchweave.registry.activation import activate
 from benchweave.registry.admission import AdmissionLimits, Approval, admit
-from benchweave.registry.authenticity import load_trust_root
+from benchweave.registry.authenticity import TrustRoot, load_trust_root
 from benchweave.registry.resolver import (
     LocalDirectorySource,
     OriginConfig,
@@ -277,6 +279,47 @@ def _sha(data: bytes) -> str:
 
 def _main_root() -> Any:
     return load_trust_root(ORIGIN_MAIN, REGISTRY_FIXTURES / "keys" / "main.pub.pem")
+
+
+def _public_pem(key: Ed25519PrivateKey) -> bytes:
+    return key.public_key().public_bytes(
+        serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
+    )
+
+
+def _sign_release_tree(
+    registry_root: Path, registry_id: str, key: Ed25519PrivateKey
+) -> TrustRoot:
+    """Runtime-key the served tree (issue #226 slice 4): sign every
+    release's manifest and status bytes, return the matching trust root.
+
+    The committed fixture statuses are signed by CI-materialised keys
+    the tests cannot reuse, and the response-reach arms must rewrite and
+    re-sign served statuses the way the SDK lifecycle ops do — so the
+    harness keys its own origin (the replay_admission --fixture
+    precedent) and signs everything the publisher left unsigned.
+    """
+    for status_path in sorted((registry_root / registry_id).rglob("status.json")):
+        release_dir = status_path.parent
+        for name in ("manifest", "status"):
+            raw = (release_dir / f"{name}.json").read_bytes()
+            (release_dir / f"{name}.sig").write_bytes(key.sign(raw))
+    return TrustRoot(origin_id=registry_id, verify_key_pem=_public_pem(key))
+
+
+def _write_status(
+    release_dir: Path, status: dict[str, Any], key: Ed25519PrivateKey | None
+) -> None:
+    """Canonical-encode a status document, write it, and sign it in place.
+
+    The registry discipline every status writer follows: canonical JSON
+    (sorted keys, compact separators, trailing newline — the fixture
+    builder's form) and a detached signature over the exact served bytes.
+    """
+    raw = json.dumps(status, sort_keys=True, separators=(",", ":")).encode() + b"\n"
+    (release_dir / "status.json").write_bytes(raw)
+    if key is not None:
+        (release_dir / "status.sig").write_bytes(key.sign(raw))
 
 
 def _write(path: Path, payload: dict[str, Any]) -> Path:
@@ -732,6 +775,7 @@ class _CommissionedHarness:
         simulated: bool = True,
         commissioned: bool = True,
         release_mutator: Callable[[Path], None] | None = None,
+        signed_dev_origin: bool = False,
         adapter_source: str | None = None,
         steps: list[dict[str, Any]] | None = None,
         allow_rules: list[dict[str, Any]] | None = None,
@@ -760,14 +804,32 @@ class _CommissionedHarness:
         _publish(plugin_dir, descriptor_path, registry_root)
         if release_mutator is not None:
             release_mutator(registry_root)
+        self.registry_root = registry_root
+        # The signed posture (issue #226 slice 4): the harness keys its
+        # own origin so arms can publish lifecycle changes the way the
+        # SDK ops do — rewrite the served status, re-sign, let the
+        # consult verify. The implementation release commissions at
+        # sequence 2 (the floor the rollback arm needs: the status
+        # schema's minimum sequence is 1, so a floor of 1 can never see a
+        # served sequence below it).
+        self.signing_key: Ed25519PrivateKey | None = None
+        dev_root: TrustRoot | None = None
+        if signed_dev_origin:
+            self.signing_key = Ed25519PrivateKey.generate()
+            impl_dir = registry_root / DEV_ID / IMPL_PACKAGE / PACKAGE_VERSION
+            impl_status = json.loads((impl_dir / "status.json").read_bytes())
+            impl_status["sequence"] = 2
+            impl_status["reason"] = "harness commissioning revision"
+            _write_status(impl_dir, impl_status, None)
+            dev_root = _sign_release_tree(registry_root, DEV_ID, self.signing_key)
 
         origins: dict[str, OriginConfig] = {
             DEV_ID: OriginConfig(
                 registry_id=DEV_ID,
-                root=None,
+                root=dev_root,
                 source=LocalDirectorySource(registry_root / DEV_ID),
                 namespaces=("dev",),
-                signature_policy="dev-unsigned",
+                signature_policy="dev-unsigned" if dev_root is None else "required",
             ),
             ORIGIN_MAIN: OriginConfig(
                 registry_id=ORIGIN_MAIN,
@@ -792,6 +854,8 @@ class _CommissionedHarness:
             now_ns=lambda: NOW_NS,
             registry_id=DEV_ID,
         )
+        if dev_root is not None:
+            self.session.roots[DEV_ID] = dev_root
         closure = self.session.resolver.resolve(
             DEV_ID,
             IMPL_PACKAGE,
@@ -812,9 +876,10 @@ class _CommissionedHarness:
             ),
             now_ns=NOW_NS,
             # Admission's roots cover EVERY origin in the closure, the
-            # dev origin included (None root = dev-unsigned); the session's
-            # own roots field stays typed to real trust roots.
-            roots={DEV_ID: None, ORIGIN_MAIN: _main_root()},
+            # dev origin included (None root = dev-unsigned; the runtime
+            # trust root under the signed posture); the session's own
+            # roots field stays typed to real trust roots.
+            roots={DEV_ID: dev_root, ORIGIN_MAIN: _main_root()},
             high_water=self.session.high_water,
         )
         # The commissioning admin act: the activation record for generation
@@ -829,6 +894,47 @@ class _CommissionedHarness:
                 records_dir=self.session.records_dir / BENCH_ID,
                 activated_at=NOW_ISO,
             )
+
+    def release_dir(self, package_id: str) -> Path:
+        """The served release directory for one dev package."""
+        return self.registry_root / DEV_ID / package_id / PACKAGE_VERSION
+
+    def rewrite_release_status(
+        self,
+        package_id: str,
+        *,
+        lifecycle: str | None = None,
+        advisories: list[dict[str, Any]] | None = None,
+        sequence: int | None = None,
+        reason: str | None = None,
+        updated_at: str = NOW_ISO,
+        expires_at: str = "2027-09-11T00:00:00Z",
+        manifest_sha256: str | None = None,
+    ) -> None:
+        """Publish a lifecycle change the way the SDK lifecycle ops do.
+
+        Issue #226 slice 4, design §5 D1: lifecycle flip, ``sequence + 1``
+        (or an explicit value), ``updated_at`` bumped, ``expires_at``
+        renewed, canonical bytes, re-signed by the origin key.
+        """
+        assert self.signing_key is not None, "status rewriting needs the signed origin"
+        release = self.release_dir(package_id)
+        status = json.loads((release / "status.json").read_bytes())
+        if lifecycle is not None:
+            status["lifecycle"] = lifecycle
+        if advisories is not None:
+            status["advisories"] = advisories
+        if reason is not None:
+            status["reason"] = reason
+        if sequence is not None:
+            status["sequence"] = sequence
+        else:
+            status["sequence"] = int(status["sequence"]) + 1
+        status["updated_at"] = updated_at
+        status["expires_at"] = expires_at
+        if manifest_sha256 is not None:
+            status["release"]["manifest_sha256"] = manifest_sha256
+        _write_status(release, status, self.signing_key)
 
     def open_store(self) -> tuple[Store, ContentStore]:
         store = Store.open(self.root / "state.db")
@@ -1576,5 +1682,45 @@ def test_demo_lattice_without_commissioned_closure_keeps_declarative_fallback(
                 f"demo device {device_id} constructed a bridge without a "
                 "commissioned closure"
             )
+    finally:
+        store.close()
+
+
+# --- issue #226 slice 4: response reach — the cached status consult ------------------
+
+
+def test_m6_baseline_published_revocation_does_not_reach_run_build(
+    tmp_path: Path,
+) -> None:
+    """M6 RED baseline (issue #226 slice 4, design §5 D1) — committed FIRST.
+
+    The reproduced defect: the commissioned implementation release's
+    served status is rewritten to ``revoked`` AFTER commissioning
+    (lifecycle flip, sequence+1, updated_at bumped, re-signed by the
+    origin key — the SDK lifecycle-op discipline), and the next run-build
+    SUCCEEDS anyway, through the commissioned bridge: nothing between
+    admission and run-build reads lifecycle (M6, PRD §5(l).1). This test
+    pins TODAY's behavior; its recorded output is the M6 reproduction
+    the parent record requires, and the mechanism commit flips the
+    assertion to the refusal.
+    """
+    harness = _CommissionedHarness(tmp_path, "req-m6-baseline", signed_dev_origin=True)
+    harness.rewrite_release_status(
+        IMPL_PACKAGE, lifecycle="revoked", reason="published recall"
+    )
+    store, content = harness.open_store()
+    try:
+        factory = harness.build_run(QUOTA_LIMITS)
+        coordinator = factory(
+            "run-m6", "principal-activation", harness.binding_ref(), store
+        )
+        # The bridge is the commissioned closure's, not a simulator's: the
+        # run that passes below ran the commissioned implementation while
+        # a signed revocation sat on the origin.
+        assert isinstance(coordinator.plugins[DEVICE_ID], OTDPBridge)
+        record = coordinator.start_run("run-m6", "principal-activation")
+        # M6, reproduced: the revocation is published and signed, and the
+        # run-build never reads it.
+        assert record["outcome"] == "passed"
     finally:
         store.close()
