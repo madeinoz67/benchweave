@@ -9,6 +9,12 @@
  *     <meta name="htmx-config"> element (allowEval=false,
  *     selfRequestsOnly=true — the CSP posture); this script never
  *     overrides it, only reads documented values.
+ *   - CSRF token delivery (G3a FOLD-1): the shell renders the session's
+ *     token as <meta name="bw-csrf-token">; an htmx:configRequest
+ *     listener stamps it onto every htmx request (x-csrf-token), so a
+ *     session-bearing POST passes the gateway's CsrfGuard without any
+ *     inline handler. A page without the meta — a session-less view —
+ *     sends no header, and the guard's cookie-less branch applies.
  *   - SSE connect: an element carrying data-bw-stream-url opens one
  *     EventSource; data-bw-stream-target names the swap target for event
  *     payloads. The connection is read-only: it never issues writes.
@@ -143,6 +149,22 @@
   } else {
     boot();
   }
+
+  /* --- CSRF token delivery (G3a FOLD-1) --- */
+
+  // The CsrfGuard refuses every session-bearing state change without the
+  // page-delivered token (NFR-S4). The token rides the <meta
+  // name="bw-csrf-token"> element the shell renders; this listener stamps
+  // it onto EVERY htmx request, so the control forms carry it without any
+  // inline handler (none exist: the CSP forbids them). A page without the
+  // meta — a session-less view — sends no header, and the guard's
+  // cookie-less branch applies.
+  document.addEventListener("htmx:configRequest", function (event) {
+    var meta = document.querySelector('meta[name="bw-csrf-token"]');
+    if (meta && event.detail && event.detail.headers) {
+      event.detail.headers["x-csrf-token"] = meta.content || "";
+    }
+  });
 
   /* Host-exposed surface: the announce hook pages may call directly. */
   window.bw = { announce: announce };

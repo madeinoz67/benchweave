@@ -672,6 +672,35 @@ def test_the_shell_configures_htmx_to_swap_the_refusal_rows(rig: Any) -> None:
     assert '"[23].."' in page.text
 
 
+# --- the CSRF delivery surface (G3a, FOLD-1) ------------------------------------
+
+
+def test_served_host_script_wires_the_csrf_token(rig: Any) -> None:
+    """FOLD-1's wire-level pin (the served-asset pin class): the SERVED
+    bw-host.js bytes carry the htmx:configRequest listener that reads the
+    page-delivered ``<meta name="bw-csrf-token">`` and stamps it onto
+    every htmx request as ``x-csrf-token``. The suite's _post helper
+    passes the header by hand, so this pin is what keeps the DELIVERY
+    mechanism from silently vanishing; the drawn browser behaviour is
+    the browser lane's acceptance arm."""
+    asset = rig.client.get("/ui/assets/bw-host.js")
+    assert asset.status_code == 200
+    assert "htmx:configRequest" in asset.text
+    assert 'meta[name="bw-csrf-token"]' in asset.text
+    assert "x-csrf-token" in asset.text
+
+
+def test_the_shell_delivers_the_csrf_token_to_the_page(rig: Any) -> None:
+    """The delivery's other half pinned: the authed shell renders the
+    session's token as the meta element the host script reads. (The meta
+    is the only page-delivered copy; htmx hx-headers never carried it —
+    the claim the guard's docstring used to make, corrected in the same
+    fold.)"""
+    record = _session(rig.app, scopes=CONTROL, ttl_s=3600)
+    page = _get(rig, "/ui/", record)
+    assert f'<meta name="bw-csrf-token" content="{record.csrf_token}">' in page.text
+
+
 def test_d_release_clears_the_view(rig: Any) -> None:
     record = _session(rig.app, scopes=CONTROL, ttl_s=3600)
     assert _take(rig, record).status_code == 200

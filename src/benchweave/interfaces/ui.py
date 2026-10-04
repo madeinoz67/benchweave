@@ -257,10 +257,15 @@ class CsrfGuard(BaseHTTPMiddleware):
 
     Applies when a request BOTH carries a live session cookie AND changes
     state — the mint is deliberately exempt: it authenticates by Bearer
-    (no ambient browser credential exists to ride). The token rides htmx
-    ``hx-headers`` and is rendered into every page the session can act
-    from; the comparison happens against the SERVER-side record, so a
-    guessed token is a miss, not a leak.
+    (no ambient browser credential exists to ride). The token is rendered
+    into every page the session can act from as a ``<meta
+    name="bw-csrf-token">`` element, and the host script (``bw-host.js``)
+    stamps it onto every htmx request through its ``htmx:configRequest``
+    listener — the delivery mechanism (FOLD-1: the token never rode
+    ``hx-headers``; the earlier docstring named a mechanism that did not
+    exist, and a real browser could not pass this guard at all until the
+    listener shipped). The comparison happens against the SERVER-side
+    record, so a guessed token is a miss, not a leak.
     """
 
     def __init__(self, app: object, *, sessions: SessionStore) -> None:
