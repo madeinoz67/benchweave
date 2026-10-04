@@ -284,6 +284,18 @@ All notable changes to this project will be documented in this file.
 - The G2a fold rows — G1/G3/G4/G6/G7 + the G5 addendum (#368) (#371)
 - Fold refute lane 1 on the reading-tile join (#369) — F2 budget bounds, F3 per-row tolerance, F1 disclosed
 - Issue #316 fold — typed datetime comparisons + real-worker pins
+- FOLD-5 — the poll cadence joins the sub-second floor (MEDIUM)
+- FOLD-9 — dead code + the retired max-lease fallback (NIT)
+- FOLD-7 — judge the controls' authority through the tier lattice (LOW)
+- FOLD-6 — enforce the published max_lease_ms on the UI POST path (LOW)
+- FOLD-4 — release keys the view by server truth; the fragment tolerates a failed refetch (MEDIUM)
+- FOLD-3 — a conflict renewal no longer clears the held view (MEDIUM)
+- FOLD-2 — control outcomes render in place, refusals included (HIGH)
+- FOLD-8 — the duration inputs survive the poll swap (LOW)
+- FOLD-1 — the CSRF token is actually delivered (CRITICAL, two-lane)
+- The expired-session refusal fragments for htmx too (fold-refute F1)
+- Reconcile __version__ with the single source (fold-refute F2)
+- The mid-stream bridge observable — observe before the abort (#384)
 
 ### Documentation
 
@@ -594,6 +606,8 @@ All notable changes to this project will be documented in this file.
 - Issue #294 token-freshness gate — premise-corrected pin-discipline design
 - Obligation 12 names its freshness detector; CI map gains the SDK lane row (issue #294 slice 1, design §2.3)
 - Obligation-12 red condition matches the mechanism — pin-ahead reddens too (refute LOW-1 fold)
+- Issue #304 G3 control — leases, staging, energy confirmation, expiry guards
+- The G3a operator rows — lease controls, the 6-hour default, the poll knob (#304)
 
 ### Features
 
@@ -814,6 +828,9 @@ All notable changes to this project will be documented in this file.
 - Populate device-page reading tiles from retained observations (#369)
 - #367 D1 — corpus-rooted load twin, one runtime normative-row resolver
 - Issue #316 — the unattended-grant run gate (two-layer)
+- Session-side held-lease views and granted session duration (G3a)
+- G3a lease controls — take/renew/release, GW-95 session bound, GW-44 warnings, polled fragment (issue #304)
+- 6-hour manual lease default (#307) — app-entry, demo, and the poll-knob env (G3a §2.6)
 
 ### Hardware Evidence
 
@@ -1141,6 +1158,7 @@ All notable changes to this project will be documented in this file.
 - Refute fold — the poison path is DISPATCH-path, not poll-path
 - Catalogue search fixture + hand-derived truth table (C1 discipline)
 - RED arms for normative_path_escape refusal (issue #238)
+- The G3a browser lane — arm L (#304)
 
 ### Build
 
