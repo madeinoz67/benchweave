@@ -909,24 +909,37 @@ def test_i_cancel_is_ungated_and_marks_the_run_page(
     assert 'data-bw-cancel-control' in page.text
     assert 'data-bw-disabled-reason="no-authority"' not in page.text
     calls_cancel = _spy(rig, "run_cancel")
+    # FOLD-4 (A-F3): the OR-fork let a fast sim's terminal render mask a
+    # broken marker (lane A observed the masking; on a slower sim the
+    # same OR caught the break — the arm's outcome was the sim's speed,
+    # not the render's correctness). The during-live-window render is
+    # pinned on an INDUCED live window (a one-shot run_get wrap
+    # reporting the run's own accepted state — labelled induction, the
+    # G2 §7-F posture; every seam call stays real): the marker renders,
+    # the terminal note does not. The terminal settle below runs on the
+    # unwrapped seam.
+    operations: Operations = rig.app.state.ui_operations
+    real_get = operations.run_get
+
+    def _live_once(*args: Any, **kwargs: Any) -> Any:
+        projection = real_get(*args, **kwargs)
+        return {**projection, "state": "accepted"}  # one poll only
+
+    operations.run_get = _live_once  # type: ignore[method-assign]
     cancel = _post(
         rig,
         f"/ui/runs/{rig.run_id}/cancellations",
         rig.record,
         data={"reason": "operator stopped the run"},
     )
+    operations.run_get = real_get  # type: ignore[method-assign]
     assert cancel.status_code == 200, cancel.text[:500]
     assert "run_cancel" in calls_cancel
     sessions: SessionStore = rig.app.state.ui_sessions
     assert sessions.cancel_requested(rig.record.session_id, rig.run_id) is True
-    # The immediate render carries the marker while the run is live; a
-    # run the sim already finished shows the terminal note instead —
-    # both are the design's answer, so the fork asserts the invariant.
-    assert (
-        'data-bw-cancel-requested' in cancel.text
-        or 'data-bw-terminal-note' in cancel.text
-    )
-    operations: Operations = rig.app.state.ui_operations
+    assert "data-bw-cancel-requested" in cancel.text
+    assert "data-bw-terminal-note" not in cancel.text
+    operations = rig.app.state.ui_operations
     from benchweave.interfaces.identity import Identity as _Identity
 
     identity = _Identity(
