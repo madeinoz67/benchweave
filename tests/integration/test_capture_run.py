@@ -627,6 +627,7 @@ class _CaptureHarness:
             records_dir=self.work / "activations",
             advisories_dir=self.work / "advisories",
             status_cache={},
+            consult_water={},
             limits=AdmissionLimits(
                 max_archive_bytes=1_000_000, max_files=100, max_unpacked_bytes=1_000_000
             ),

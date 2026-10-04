@@ -313,6 +313,14 @@ class RegistrySession:
     #: starts cold — the honest freshness floor: a process restart forces
     #: re-reads. In-memory only, never persisted.
     status_cache: dict[Key, StatusView]
+    #: Consult-water per release key (issue #226, fold adv1-F1): the
+    #: highest sequence the run-build consult has AUTHENTICATED for the
+    #: release — lifecycle refusals included, so a revoked view raises
+    #: it. In-memory only, like the view cache: a restart resets it to
+    #: the persisted admission floor (the named cross-restart residual,
+    #: tied to the Q19 re-issue — durable water is design work, not a
+    #: fold).
+    consult_water: dict[Key, int]
     #: Registry clock (status expiry / future-time / sequence gates).
     now_ns: Callable[[], int]
     registry_id: str = REGISTRY_ORIGIN
@@ -370,6 +378,7 @@ def build_registry_session(
         records_dir=work_root / "activations",
         advisories_dir=work_root / "advisories",
         status_cache={},
+        consult_water={},
         limits=REGISTRY_ADMISSION_LIMITS,
         now_ns=now_ns,
     )

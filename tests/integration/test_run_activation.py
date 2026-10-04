@@ -864,6 +864,7 @@ class _CommissionedHarness:
             records_dir=self.work / "activations",
             advisories_dir=self.work / "advisories",
             status_cache={},
+            consult_water={},
             limits=AdmissionLimits(
                 max_archive_bytes=1_000_000, max_files=100, max_unpacked_bytes=1_000_000
             ),
@@ -968,6 +969,7 @@ class _CommissionedHarness:
             records_dir=self.work / "activations",
             advisories_dir=self.work / "advisories",
             status_cache={},
+            consult_water={},
             limits=self.session.limits,
             now_ns=lambda: NOW_NS,
             registry_id=DEV_ID,
@@ -1957,6 +1959,42 @@ def test_d1_rolled_back_status_refuses_sequence_rollback(tmp_path: Path) -> None
         factory = harness.build_run(QUOTA_LIMITS)
         with pytest.raises(ValueError, match="closure_status_sequence_rollback"):
             factory("run-d1-rollback", "principal-activation", harness.binding_ref(), store)
+    finally:
+        store.close()
+
+
+def test_d1_resurrection_via_origin_rollback_refused(tmp_path: Path) -> None:
+    """adv1-F1 fold (issue #226): an origin rollback cannot resurrect a run
+    past an AUTHENTICATED revocation within one session.
+
+    The executed defect: a revocation at sequence 3 refuses the run-build;
+    restoring the previously-signed sequence-2 bytes (an attacker needs no
+    key — the old bytes were always validly signed) made the next consult
+    pass the same-sequence replay, and a full run executed. The consult
+    keeps a SESSION consult-water per release — every authenticated
+    consult raises it, lifecycle refusals included (a revoked view counts)
+    — and a consult below the water refuses
+    ``closure_status_sequence_rollback``. Cross-restart exposure (a
+    restart resets the water to the persisted admission floor) is the
+    named residual for the PR body, tied to the Q19 re-issue."""
+    harness = _CommissionedHarness(tmp_path, "req-d1-resurrect", signed_dev_origin=True)
+    release = harness.release_dir(IMPL_PACKAGE)
+    restored_status = (release / "status.json").read_bytes()
+    restored_sig = (release / "status.sig").read_bytes()
+    harness.rewrite_release_status(
+        IMPL_PACKAGE, lifecycle="revoked", reason="published recall"
+    )
+    store, content = harness.open_store()
+    try:
+        factory = harness.build_run(QUOTA_LIMITS)
+        with pytest.raises(ValueError, match="closure_status_revoked"):
+            factory("run-res-a", "principal-activation", harness.binding_ref(), store)
+        # The origin rolls back to the previously-signed sequence-2 bytes.
+        (release / "status.json").write_bytes(restored_status)
+        (release / "status.sig").write_bytes(restored_sig)
+        with pytest.raises(ValueError, match="closure_status_sequence_rollback"):
+            factory("run-res-b", "principal-activation", harness.binding_ref(), store)
+        assert store.get_run("run-res-b") is None
     finally:
         store.close()
 

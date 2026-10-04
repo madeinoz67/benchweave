@@ -28,7 +28,10 @@ already produced —
   sources (issue #226 slice 4): schema-loaded, signature-verified against
   the session's trust root, release-bound, gate-checked on the consult
   clock (expiry, future-time, sequence FLOOR — replaying the same
-  authenticated sequence is the healthy case) and lifecycle-checked. A
+  authenticated sequence is the healthy case) and lifecycle-checked; a
+  session consult-water remembers every authenticated sequence
+  (lifecycle refusals included), so an origin rollback below an
+  authenticated sequence refuses as well (fold adv1-F1). A
   published revocation or yank refuses the run-build
   (``closure_status_revoked`` / ``closure_status_yanked``); advisories
   DELIVER as append-once operator records and never refuse the run
@@ -320,20 +323,26 @@ def _consult_release_status(
             )
         status = status_doc.content
     # Gates on the consult clock — a fresh read and a cached view alike.
+    # A passing sequence is AUTHENTICATED: it raises the session's
+    # consult-water even when the lifecycle check below refuses, so a
+    # revoked view counts and a later rollback to lower bytes cannot
+    # replay past it (fold adv1-F1).
     try:
-        consult_status(status, now_ns=now, floor=floor)
+        sequence = consult_status(status, now_ns=now, floor=floor)
     except AuthenticityRejected as exc:
         raise ClosureResolutionError(f"closure_status_{exc.reason}: {key}") from exc
+    if sequence > session.consult_water.get(key, 0):
+        session.consult_water[key] = sequence
     lifecycle = str(status["lifecycle"])
     if lifecycle == "revoked":
         raise ClosureResolutionError(
             f"closure_status_revoked: release {key} is revoked at sequence "
-            f"{status['sequence']} — the commissioned closure cannot run"
+            f"{sequence} — the commissioned closure cannot run"
         )
     if lifecycle == "yanked":
         raise ClosureResolutionError(
             f"closure_status_yanked: release {key} is yanked at sequence "
-            f"{status['sequence']} — the commissioned closure cannot run"
+            f"{sequence} — the commissioned closure cannot run"
         )
     _deliver_status_advisories(session, key, status, served_sha256, now)
     _surface_approval_drift(session, key, manifest, now)
@@ -484,7 +493,19 @@ def commissioned_device_closure(
         manifests[key] = manifest
         # The same iteration that digest-verified the manifest consults
         # the release's status — the third moment (issue #226 slice 4).
-        _consult_release_status(session, key, source, row, manifest, floor_map.get(key, 0))
+        # The gate floor is the PERSISTED admission high-water and the
+        # session's consult-water taken together: the persisted floor
+        # forbids pre-admission rollback, the session water forbids
+        # rolling an origin back below a sequence this session already
+        # authenticated (fold adv1-F1 — same-session resurrection).
+        _consult_release_status(
+            session,
+            key,
+            source,
+            row,
+            manifest,
+            max(floor_map.get(key, 0), session.consult_water.get(key, 0)),
+        )
 
     descriptor_digest = str(device["descriptor"]["sha256"])
 
