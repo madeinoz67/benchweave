@@ -615,9 +615,14 @@ def register_control_routes(
     @router.post("/leases/{lease_id}/renewals", include_in_schema=False)
     async def renew_lease(lease_id: str, request: Request) -> Response:
         """Renew (GW-41/57): ``lease_renew`` with the HELD VIEW's current
-        sequence — never a client-supplied one. Same GW-95 bound; a seam
-        refusal clears the stale view (R2's mitigation) before the row
-        renders; success replaces the view with the successor."""
+        sequence — never a client-supplied one. Same GW-95 bound; a
+        not_found/forbidden refusal clears the phantom view (R2's
+        mitigation, scoped by kind); a CONFLICT keeps the view — the
+        sequence moved elsewhere (a REST-class renewal), the lease may
+        still be this session's, and release stays the recovery path
+        (the seam's lease_release judges the bench's own stored
+        sequence, never the view's — FOLD-3); success replaces the view
+        with the successor."""
         authed = _authed(request)
         if authed is None:
             return unauthenticated_page()
@@ -663,9 +668,14 @@ def register_control_routes(
                 duration_ms,
             )
         except OperationFailure as fail:
-            # The view is stale: clear it before the row renders (the
-            # next render shows the honest no-lease posture).
-            sessions.clear_held_lease(record.session_id, bench_id)
+            if fail.failure.code in ("not_found", "forbidden"):
+                # The lease is gone or not this session's — the view is
+                # phantom; clear it (R2's mitigation, scoped to these).
+                sessions.clear_held_lease(record.session_id, bench_id)
+            # A conflict — and every other refusal — keeps the view: the
+            # sequence moved elsewhere, the lease may still be live and
+            # THIS session's, and release (the seam judges its own stored
+            # sequence) stays available (FOLD-3).
             return failure_page(fail)
         sessions.record_held_lease(
             record.session_id,

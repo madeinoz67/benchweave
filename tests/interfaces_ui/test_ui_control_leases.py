@@ -593,6 +593,38 @@ def test_d_renew_advances_the_sequence_in_the_held_view(rig: Any) -> None:
     assert held.sequence == 2
 
 
+def test_a_conflict_renewal_keeps_the_held_view_and_release_available(
+    rig: Any,
+) -> None:
+    """FOLD-3: a conflict refusal on renew means the VIEW is stale, not
+    the lease gone — the seam's lease_release judges the bench's own
+    stored sequence (never the view's), so release stays the recovery
+    path: the view survives the conflict row and the release succeeds."""
+    record = _session(rig.app, scopes=CONTROL, ttl_s=3600)
+    assert _take(rig, record, duration_ms=300_000).status_code == 200
+    sessions: SessionStore = rig.app.state.ui_sessions
+    held = sessions.held_lease(record.session_id, _BENCH)
+    assert held is not None
+    # Renew out-of-band (a REST-class client): the view's sequence is
+    # stale from this instant.
+    rig.app.state.ui_operations.lease_renew(
+        _identity_for(record), held.lease_id, "ui-fold3-oob", held.sequence, 600_000
+    )
+    renew = _post(
+        rig,
+        f"/ui/leases/{held.lease_id}/renewals",
+        record,
+        data={"duration_ms": "300000"},
+    )
+    assert renew.status_code == 409
+    assert 'data-bw-refusal-code="conflict"' in renew.text
+    assert sessions.held_lease(record.session_id, _BENCH) is not None
+    # The recovery path: release works from the stale view.
+    release = _post(rig, f"/ui/leases/{held.lease_id}/release", record, data={})
+    assert release.status_code == 200
+    assert sessions.held_lease(record.session_id, _BENCH) is None
+
+
 def test_d_release_clears_the_view(rig: Any) -> None:
     record = _session(rig.app, scopes=CONTROL, ttl_s=3600)
     assert _take(rig, record).status_code == 200
