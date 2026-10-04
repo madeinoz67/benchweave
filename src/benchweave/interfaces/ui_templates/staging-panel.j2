@@ -59,6 +59,9 @@
       <p class="bw-field__note" data-bw-staged-chain-note>The staged binding's document chain is not readable right now; the panel cannot classify the staged set.</p>
     </div>
     {% elif not check %}
+    <form class="bw-control" data-bw-check-control hx-post="/ui/benches/{{ bench_id }}/run-checks" hx-target="closest section" hx-swap="outerHTML">
+      <button type="submit" class="bw-button" data-variant="primary" aria-busy="false">Run preflight</button>
+    </form>
     <div class="bw-control" data-bw-start-control>
       <button type="button" class="bw-button" data-variant="primary" aria-busy="false" disabled data-bw-disabled-reason="invalid-staged-input">Start run</button>
       <p class="bw-field__note" data-bw-check-gate-note>No check is on record for the current staged set — the start control enables when the preflight (check) returns.</p>

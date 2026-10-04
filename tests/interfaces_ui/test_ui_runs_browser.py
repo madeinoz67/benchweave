@@ -10,15 +10,10 @@ restages the same binding and proves the §9 replay in the real browser.
 Each run-bearing arm re-enters the cycle through real buttons (stage,
 re-stage, arm, confirm) exactly as an operator would.
 
-One disclosed gap the lane works around (found on orientation, not a
-defect of an arm): the staging panel renders the check verdict
-(data-bw-check-state) and the check gate, but NO check button — the
-design record §2.4 specifies the check as a route (POST run-checks)
-that records into the staging record; a browser operator cannot
-initiate the preflight from the panel. The arms drive the check through
-the page's own htmx pipeline (htmx.ajax POST — the same configRequest
-CSRF stamping every button click rides), and the gap is reported to the
-owner with this lane.
+The preflight control rides its own button on the staging panel (the
+orientation-time gap — a check route with no affordance — was folded
+with the browser lane's report; the arms click the button like an
+operator does).
 
 The served app's clock is the mutable cell the other UI suites use; no
 arm advances it (nothing here tests expiry). The cancel arm pins its
@@ -237,20 +232,13 @@ def _assert_wire(post_tokens: list[str | None], responses: list[Response]) -> No
     )
 
 
-def _htmx_check(page: Page, served: SimpleNamespace) -> None:
-    """The preflight through the page's own htmx pipeline (the configRequest
-    CSRF stamp rides exactly as it does for button clicks). The panel
-    renders no check button — the disclosed gap in this module's
-    docstring — so the operator-facing POST this arm drives is the page's
-    own htmx request."""
-    page.evaluate(
-        """async (url) => {
-            await htmx.ajax('POST', url, {
-                target: '[data-bw-controls]', swap: 'outerHTML',
-            });
-        }""",
-        f"{served.base}{CHECK_URL}",
-    )
+def _click_check(page: Page, served: SimpleNamespace) -> None:
+    """The preflight through its own button (folded after this lane's
+    orientation caught the panel rendering the gate with no affordance —
+    a route a browser operator could not initiate). The button is a
+    normal hx-post form control; the configRequest CSRF stamp rides it
+    like every other button on the page."""
+    page.locator("[data-bw-check-control] button").click()
 
 
 def _wait_fresh_section(page: Page) -> None:
@@ -304,7 +292,7 @@ def _cycle_to_armed(
         '[data-bw-start-control] button[disabled]'
         '[data-bw-disabled-reason="invalid-staged-input"]'
     ).count() == 1, "a fresh stage must render the check-gated start control"
-    _htmx_check(page, served)
+    _click_check(page, served)
     expect(
         page.locator('[data-bw-check-state="valid"]')
     ).to_be_attached()
@@ -378,7 +366,7 @@ def test_staging_cycle_renders_staged_and_the_check_gate_opens(
     )
     assert page.url == f"{served.base}/ui/benches/{BENCH_ID}"
 
-    _htmx_check(page, served)
+    _click_check(page, served)
     verdict = page.locator('[data-bw-check-state="valid"]')
     expect(verdict).to_be_attached()
     # the gate opened: the gated shape is gone, the energy start path

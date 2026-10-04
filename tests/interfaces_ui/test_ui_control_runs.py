@@ -1198,3 +1198,14 @@ def test_h_deenergising_renders_no_confirm_pattern(deenergise_rig: Any) -> None:
     assert 'data-bw-confirm="armed"' not in page.text
     assert "Arm staged set" not in page.text
     assert 'data-bw-disabled-reason="protection-active"' not in page.text
+
+
+def test_the_unchecked_panel_offers_the_preflight_control(energise_rig: Any) -> None:
+    """Browser-lane catch: the gate rendered (FOLD-2) but the panel
+    offered no way to RUN the preflight — a route with no affordance.
+    The unchecked, readable, staged panel now carries the check form."""
+    rig = energise_rig
+    _stage(rig, rig.record)
+    response = _get(rig, f"/ui/benches/{_BENCH}", rig.record)
+    assert 'data-bw-check-control' in response.text
+    assert 'hx-post="/ui/benches/sim-bench/run-checks"' in response.text
