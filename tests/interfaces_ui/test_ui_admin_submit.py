@@ -283,3 +283,55 @@ def test_submit_no_response_renders_the_change_reconcile(
     # The run_find reconcile link would be a lie for a change submit.
     assert "/ui/requests/" not in response.text
     assert len(_change_rows(rig)) == 0
+
+
+def test_submit_no_response_reconcile_is_executable_from_the_refusal_body(
+    admin_rig: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The reconcile action is SELF-CONTAINED (the refute fold, F4):
+    the no-response refusal body carries its own resubmit form — the
+    §9 request id and the staged fields hidden, one button. Prose
+    advice alone is unexecutable: htmx's outerHTML swap already
+    destroyed the original form, and every fresh render mints a NEW
+    request id. Posting the carried form's fields back must return the
+    ORIGINAL change (the D-arm's substance, now executable from the
+    surface it renders on)."""
+    import re
+
+    rig = admin_rig
+    operations: Any = rig.app.state.ui_operations
+    # The original submit LANDS (the §9 key is recorded server-side)...
+    landed = _post(rig, f"/ui/benches/{_BENCH}/changes", rig.record, _form())
+    assert landed.status_code == 200, landed.text[:500]
+    rows_before = _change_rows(rig)
+    assert len(rows_before) == 1
+
+    def _crash(*args: Any, **kwargs: Any) -> Any:
+        raise RuntimeError("induced: no interface answer")
+
+    # ...then the transport dies on the replay: no interface answer.
+    monkeypatch.setattr(operations, "change_submit", _crash)
+    replay = _post(rig, f"/ui/benches/{_BENCH}/changes", rig.record, _form())
+    assert replay.status_code == 504, replay.text[:500]
+    assert "data-bw-change-resubmit" in replay.text, replay.text[:500]
+    assert f'hx-post="/ui/benches/{_BENCH}/changes"' in replay.text
+    fields = dict(
+        re.findall(
+            r'<input type="hidden" name="([^"]+)" value="([^"]*)"', replay.text
+        )
+    )
+    assert fields.get("request_id") == "ui-g4submit0001", fields
+    assert fields.get("kind") == "trip_reset", fields
+    assert fields.get("target_sha256") == "0" * 64, fields
+    assert fields.get("expected_generation") == "1", fields
+    assert fields.get("reason") == "reset after a clean bench", fields
+
+    # Posting the carried form back: §9 returns the ORIGINAL change.
+    monkeypatch.undo()
+    resubmitted = _post(
+        rig, f"/ui/benches/{_BENCH}/changes", rig.record, fields
+    )
+    assert resubmitted.status_code == 200, resubmitted.text[:500]
+    assert _change_rows(rig) == rows_before
+    ids = re.findall(r'data-bw-change-id="(chg-[0-9a-f]+)"', resubmitted.text)
+    assert set(ids) == {rows_before[0][0]}, ids

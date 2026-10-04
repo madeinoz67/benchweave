@@ -600,9 +600,22 @@ class AdminRoutes:
             # Transport-shaped (no interface answer): §C.3's no-response
             # row with the change-honest reconcile. An in-process adapter
             # cannot honestly produce this; the suite induces it (the G2
-            # §7-F posture).
+            # §7-F posture). The reconcile action is self-contained: the
+            # refusal body carries the replay form itself (the §9 id and
+            # the staged fields hidden — F4) because the swap destroyed
+            # the original form and every render mints a new id.
             return HTMLResponse(
-                render_no_response_change_submit(request_id), status_code=504
+                render_no_response_change_submit(
+                    request_id,
+                    bench_id=bench_id,
+                    kind=str(form.get("kind", "")),
+                    target_id=str(form.get("target_id", "")),
+                    target_version=str(form.get("target_version", "")),
+                    target_sha256=str(form.get("target_sha256", "")),
+                    expected_generation=str(form.get("expected_generation", "")),
+                    reason=str(form.get("reason", "")),
+                ),
+                status_code=504,
             )
         change_id = str(change["change_id"])
         prior = self._sessions.change_view(record.session_id, change_id)

@@ -209,22 +209,61 @@ def markup_no_response(request_id: str) -> Markup:
     return Markup(render_no_response(request_id))  # noqa: S704
 
 
-def render_no_response_change_submit(request_id: str) -> str:
+def render_no_response_change_submit(
+    request_id: str,
+    *,
+    bench_id: str,
+    kind: str,
+    target_id: str,
+    target_version: str,
+    target_sha256: str,
+    expected_generation: str,
+    reason: str,
+) -> str:
     """GW-12's change half for submit (G4, design record §2.5): the §C.3
     no-response row with the change-honest reconcile action — resubmit
     the IDENTICAL form. §9 makes that retry safe by construction (same
     principal, same operation key, same body digest → the original
     change returns; a different body → conflict). ``run_find``'s link
     would be a lie here: change keys are invisible to it. The run-shaped
-    ``render_no_response`` stays byte-identical (suite-pinned wording)."""
+    ``render_no_response`` stays byte-identical (suite-pinned wording).
+
+    The reconcile action is SELF-CONTAINED (the refute fold, F4): the
+    body carries its own resubmit form — the §9 request id and the
+    staged fields as hidden inputs, one button. Prose advice alone is
+    unexecutable: the htmx swap that surfaced this refusal already
+    destroyed the original form, and every fresh render mints a NEW
+    request id, so "resubmit the identical form" names a form that no
+    longer exists unless this body carries it."""
     row = REFUSAL_ROWS["no-response"]
-    safe_id = str(escape(request_id))
+    staged = {
+        "request_id": request_id,
+        "kind": kind,
+        "target_id": target_id,
+        "target_version": target_version,
+        "target_sha256": target_sha256,
+        "expected_generation": expected_generation,
+        "reason": reason,
+    }
+    # Caller data (form fields) — every interpolable byte escapes here
+    # so the replayed form cannot carry markup whatever was pasted.
+    hidden = "".join(
+        f'<input type="hidden" name="{escape(name)}" value="{escape(value)}">'
+        for name, value in staged.items()
+    )
     return (
         render_refusal(row)
         + '<p class="bw-refusal__reconcile" data-bw-reconcile-action>'
         "Reconcile: resubmit the identical form (request id "
-        f"<code>{safe_id}</code>) — duplicate suppression returns the "
+        f"<code>{escape(request_id)}</code>) — duplicate suppression returns the "
         "original change.</p>"
+        + '<form class="bw-control" data-bw-change-resubmit'
+        f' hx-post="/ui/benches/{escape(bench_id)}/changes"'
+        ' hx-target="closest section" hx-swap="outerHTML">'
+        + hidden
+        + '<button type="submit" class="bw-button" data-variant="secondary"'
+        ' aria-busy="false">Resubmit the identical form</button>'
+        "</form>"
     )
 
 
