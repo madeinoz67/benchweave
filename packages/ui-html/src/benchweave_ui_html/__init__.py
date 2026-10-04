@@ -10,7 +10,7 @@ import it, and tests/ui_html/ pins that by walking the import graph.
 from benchweave_ui_html.grammar import Contract, PinDefect, Row, TableSpec, parse_contract
 from benchweave_ui_html.manifest import MANIFEST, TOTAL_ROWS, TOTAL_TABLES, ManifestTable
 
-__version__ = "0.1.0"
+__version__ = "0.2.1"
 
 __all__ = [
     "Contract",
