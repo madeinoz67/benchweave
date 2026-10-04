@@ -977,10 +977,36 @@ def _binding_chain(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """The DEP7 chain over the seam (never the store): the staged
     binding by digest, then its pinned procedure — the same
-    digest-addressed resolution ``run_check`` performs."""
+    digest-addressed resolution ``run_check`` performs.
+
+    FOLD-1: a STORED document lacking the binding shape (no procedure
+    pin — the stage handler tolerates every stored document) is the
+    unreadable-chain class, never a raw KeyError: it refuses
+    ``not_found`` ("no binding document exists at this digest"), the
+    same seam answer an unstored digest gets, so every caller composes
+    its own honest shape (the panel's disabled branch, the arm's §C.3
+    row). What it does NOT catch: a stored binding whose PINNED
+    procedure digest is shapeless — the second ``document_get`` returns
+    whatever the store holds and downstream readers (``armed_composition``)
+    treat missing keys honestly (FOLD-5)."""
     binding_sha = str(binding_ref.get("sha256", ""))
     binding_doc = operations.document_get(identity, binding_sha)["content"]
-    procedure_sha = str(binding_doc["procedure"]["sha256"])
+    procedure_pin = (
+        binding_doc.get("procedure") if isinstance(binding_doc, dict) else None
+    )
+    procedure_sha = (
+        str(procedure_pin.get("sha256", ""))
+        if isinstance(procedure_pin, dict)
+        else ""
+    )
+    if not procedure_sha:
+        raise OperationFailure(
+            failure(
+                "not_found",
+                "the stored document does not name a pinned procedure —"
+                " no binding document exists at this digest",
+            )
+        )
     procedure_doc = operations.document_get(identity, procedure_sha)["content"]
     return binding_doc, procedure_doc
 

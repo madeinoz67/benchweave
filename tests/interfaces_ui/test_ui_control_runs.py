@@ -11,6 +11,7 @@ and the run report).
 
 from __future__ import annotations
 
+import hashlib
 import json
 from types import SimpleNamespace
 from typing import Any
@@ -481,6 +482,57 @@ def test_arm_with_an_unstored_binding_refuses(energise_rig: Any) -> None:
     response = _post(rig, f"/ui/benches/{_BENCH}/staging/arm", rig.record, data={})
     assert response.status_code == 404
     assert 'data-bw-failure="not_found"' in response.text
+
+
+# --- FOLD-1: a staged stored NON-binding document is the unreadable chain ----------
+
+
+def _lattice_procedure_sha(tmp_path: Any) -> str:
+    """The rig lattice's procedure document digest: the committed
+    fixture's bytes with the lattice mutation re-applied, deterministic
+    for the rig's (mode, enabled) — the digest the store holds."""
+    return hashlib.sha256(
+        (tmp_path / "lattice" / "procedure-voltage-check.json").read_bytes()
+    ).hexdigest()
+
+
+def test_stored_non_binding_digest_renders_the_unreadable_branch(
+    energise_rig: Any, tmp_path: Any
+) -> None:
+    """FOLD-1 (A-F2/B-F1, two-lane convergence): a STORED document that
+    is not a binding — here the lattice's own procedure document, staged
+    by its content digest — used to KeyError the panel's chain read
+    (``binding_doc["procedure"]["sha256"]``) and 500 the whole bench
+    surface: stage tolerates every stored document (only ``not_found``
+    refuses) and the panel caught OperationFailure only. The chain now
+    treats the shapeless document as unreadable: the stage answers 200,
+    the panel renders the honest-disabled staged-chain-unreadable branch
+    (template code that previously had zero coverage), and the bench
+    page composes."""
+    rig = energise_rig
+    procedure_sha = _lattice_procedure_sha(tmp_path)
+    staged = _stage(rig, rig.record, sha=procedure_sha)
+    assert staged.status_code == 200, staged.text[:500]
+    page = _get(rig, f"/ui/benches/{_BENCH}", rig.record)
+    assert page.status_code == 200, page.text[:500]
+    assert 'data-bw-disabled-reason="staged-chain-unreadable"' in page.text
+    assert "document chain is not readable" in page.text
+
+
+def test_arm_refuses_a_stored_non_binding_document_honestly(
+    energise_rig: Any, tmp_path: Any
+) -> None:
+    """FOLD-1's second leg: the arm step's chain read on the stored
+    non-binding document refuses ``not_found`` honestly — the same §C.3
+    row an unstored digest gets — never a raw KeyError 500."""
+    rig = energise_rig
+    procedure_sha = _lattice_procedure_sha(tmp_path)
+    staged = _stage(rig, rig.record, sha=procedure_sha)
+    assert staged.status_code == 200, staged.text[:500]
+    arm = _post(rig, f"/ui/benches/{_BENCH}/staging/arm", rig.record, data={})
+    assert arm.status_code == 404, arm.text[:500]
+    assert 'data-bw-failure="not_found"' in arm.text
+    assert "does not name a pinned procedure" in arm.text
 
 
 # --- GW-56 at arm (the J-family guard fires on the arm step too) -------------------
