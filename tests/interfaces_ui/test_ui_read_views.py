@@ -142,9 +142,13 @@ def test_run_page_renders_state_exactly_as_reported(
     assert f'data-bw-run-id="{run["run_id"]}"' in page
     assert "data-bw-run-state>terminal<" in page
     # GW-55: outcome and safe state render exactly as reported — no
-    # inferred terminal wording, no cancel control.
+    # inferred terminal wording. G3b transition: the cancel region now
+    # exists; on a TERMINAL run it renders the terminal note — the
+    # control itself (form, button) stays absent, and a run this
+    # session never cancelled carries no marker.
     assert "data-bw-run-outcome" in page
-    assert "cancel" not in page.lower()
+    assert 'data-bw-terminal-note' in page
+    assert 'data-bw-cancel-requested' not in page
     assert "<form" not in page and "<button" not in page
 
 

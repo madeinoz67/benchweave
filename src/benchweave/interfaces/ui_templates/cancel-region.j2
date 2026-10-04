@@ -1,0 +1,27 @@
+{#- The run page's cancel region (G3b, issue #304 GW-53/55): ONE
+  action, never confirmed, ungated by lease or trip (the owner-or-admin
+  judgement is §6's, at the seam — "does not require an unexpired
+  controlling lease", its own clause). The region is its own swap
+  target: the POST re-renders it, so the marker (presentation of the
+  operator's own action) appears without a page reload, and gives way
+  to the state when run_get reports terminal. UR-01: host content; the
+  interpolations are autoescaped. -#}
+<div class="bw-cancel-region" data-bw-cancel-region>
+  {% if run_terminal %}
+  <p class="bw-run__state-note" data-bw-terminal-note>This run has reported a terminal state — there is nothing to cancel.</p>
+  {% elif cancel_requested %}
+  <p class="bw-run__cancel-requested" data-bw-cancel-requested>Cancel requested — waiting for the coordinator to honour it at its next monitor tick. The state below is always the run's own report.</p>
+  {% elif has_control %}
+  <form class="bw-control" data-bw-cancel-control hx-post="/ui/runs/{{ run_id }}/cancellations" hx-target="closest div" hx-swap="outerHTML">
+    <div class="bw-field">
+      <label for="bw-cancel-reason-{{ run_id }}">Reason for cancelling</label>
+      <input id="bw-cancel-reason-{{ run_id }}" name="reason" type="text" required minlength="1">
+    </div>
+    <button type="submit" class="bw-button" data-variant="danger" aria-busy="false">Cancel run</button>
+  </form>
+  {% else %}
+  <div class="bw-control" data-bw-cancel-control>
+    <button type="button" class="bw-button" data-variant="danger" aria-busy="false" disabled data-bw-disabled-reason="no-authority">Cancel run</button>
+  </div>
+  {% endif %}
+</div>
