@@ -1,0 +1,11 @@
+{#- The §C.3 unauthenticated row as a bare fragment (the fold-refute's
+    F1): the session-less refusal pages render through the shell for a
+    direct client, but an htmx request gets the row alone — the shell's
+    responseHandling override (FOLD-2) would otherwise swap the full
+    login page into the controls section on the ordinary expiry path.
+    Same shape as failure-fragment.j2 without the operation fields
+    (there is no operation — the session never authenticated). -#}
+<section class="bw-failure" data-bw-failure="unauthenticated">
+  <h2>unauthenticated</h2>
+  {{ refusal_html }}
+</section>

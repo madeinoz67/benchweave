@@ -538,10 +538,24 @@ def build_ui_router(
             )
         return parsed
 
-    def _unauthenticated_page() -> HTMLResponse:
+    def _unauthenticated_page(request: Request | None = None) -> HTMLResponse:
         """The session-less refusal pages share — the §C.3
         unauthenticated row through the shell (one construction site,
-        where G2a had three inline copies)."""
+        where G2a had three inline copies). An htmx request (the
+        ``HX-Request`` header) gets the row as a bare fragment — the
+        responseHandling override (FOLD-2) would otherwise swap this
+        whole page into the controls section on the expiry path
+        (fold-refute F1); a direct client keeps the full page."""
+        if request is not None and request.headers.get("HX-Request") == "true":
+            return HTMLResponse(
+                _ENV.get_template("unauth-fragment.j2").render(
+                    # Trusted package-rendered HTML (the §C.3 partial),
+                    # not request data — S704's escape hatch is not in
+                    # play.
+                    refusal_html=Markup(render_refusal(UNAUTHENTICATED_REFUSAL)),  # noqa: S704
+                ),
+                status_code=401,
+            )
         return _page(
             "refusal-page.j2",
             status=401,
@@ -605,7 +619,7 @@ def build_ui_router(
         principal and scopes, the bench inventory."""
         record = _resolve_session(request, sessions)
         if record is None:
-            return _unauthenticated_page()
+            return _unauthenticated_page(request)
         identity = _session_identity(record)
         try:
             info = operations.gateway_info(identity)
@@ -697,7 +711,7 @@ def build_ui_router(
             record = sessions.exchange(code)
         except LoginCodeRejected as refused:
             _LOG.info("ui login exchange refused: %s", refused.reason)
-            return _unauthenticated_page()
+            return _unauthenticated_page(request)
         response = RedirectResponse("/ui/", status_code=303)
         response.set_cookie(
             SESSION_COOKIE,
@@ -718,7 +732,7 @@ def build_ui_router(
         only acts on the already-authenticated session."""
         record = _resolve_session(request, sessions)
         if record is None:
-            return _unauthenticated_page()
+            return _unauthenticated_page(request)
         sessions.logout(record.session_id)
         response = RedirectResponse("/ui/", status_code=303)
         response.delete_cookie(SESSION_COOKIE, path="/ui")

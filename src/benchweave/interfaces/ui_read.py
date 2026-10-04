@@ -62,7 +62,7 @@ def register_read_pages(
     session_identity: Callable[[SessionRecord], Identity],
     page: Callable[..., HTMLResponse],
     failure_page: Callable[[OperationFailure], HTMLResponse],
-    unauthenticated_page: Callable[[], HTMLResponse],
+    unauthenticated_page: Callable[[Request], HTMLResponse],
     controls: ControlViews | None = None,
 ) -> None:
     """Register the read routes on the UI router (before its catch-all).
@@ -121,7 +121,7 @@ def register_read_pages(
         page (design §2.4) — three read calls on the session's identity."""
         authed = _authed(request)
         if authed is None:
-            return unauthenticated_page()
+            return unauthenticated_page(request)
         record, identity = authed
         try:
             bench = operations.bench_get(identity, bench_id)
@@ -170,7 +170,7 @@ def register_read_pages(
         admitted-document store the same admission wrote."""
         authed = _authed(request)
         if authed is None:
-            return unauthenticated_page()
+            return unauthenticated_page(request)
         record, identity = authed
         try:
             device = operations.device_get(identity, bench_id, device_id)
@@ -266,7 +266,7 @@ def register_read_pages(
         no inferred outcome — an absent terminal record renders absent."""
         authed = _authed(request)
         if authed is None:
-            return unauthenticated_page()
+            return unauthenticated_page(request)
         record, identity = authed
         try:
             run = operations.run_get(identity, run_id)
@@ -282,7 +282,7 @@ def register_read_pages(
         row — the honest tier refusal, never a softened rewrite."""
         authed = _authed(request)
         if authed is None:
-            return unauthenticated_page()
+            return unauthenticated_page(request)
         record, identity = authed
         try:
             run = operations.run_find(identity, request_id)
@@ -299,7 +299,7 @@ def register_read_pages(
         """One evidence record: kind, content ref digest, artifact link."""
         authed = _authed(request)
         if authed is None:
-            return unauthenticated_page()
+            return unauthenticated_page(request)
         record, identity = authed
         try:
             evidence = operations.evidence_get(identity, evidence_id)
@@ -321,7 +321,7 @@ def register_read_pages(
         payload ceiling — never an unbounded reassembly)."""
         authed = _authed(request)
         if authed is None:
-            return unauthenticated_page()
+            return unauthenticated_page(request)
         _record, identity = authed
         try:
             first = operations.artifact_read(
@@ -398,7 +398,7 @@ def register_read_pages(
         ``<pre>`` (the digest is the verifiable identity either way)."""
         authed = _authed(request)
         if authed is None:
-            return unauthenticated_page()
+            return unauthenticated_page(request)
         record, identity = authed
         try:
             document = operations.document_get(identity, sha256)

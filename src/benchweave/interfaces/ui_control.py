@@ -485,7 +485,7 @@ def register_control_routes(
     resolve_session: Callable[[Request], SessionRecord | None],
     session_identity: Callable[[SessionRecord], Identity],
     failure_page: Callable[[OperationFailure, Request], HTMLResponse],
-    unauthenticated_page: Callable[[], HTMLResponse],
+    unauthenticated_page: Callable[[Request], HTMLResponse],
 ) -> ControlViews:
     """Register the G3a control routes on the UI router (before its
     catch-all) and return the composed views the page handlers use.
@@ -549,7 +549,7 @@ def register_control_routes(
     async def controls_fragment(bench_id: str, request: Request) -> Response:
         authed = _authed(request)
         if authed is None:
-            return unauthenticated_page()
+            return unauthenticated_page(request)
         record, identity = authed
         try:
             bench = operations.bench_get(identity, bench_id)
@@ -567,7 +567,7 @@ def register_control_routes(
         the control region from the recorded view."""
         authed = _authed(request)
         if authed is None:
-            return unauthenticated_page()
+            return unauthenticated_page(request)
         record, identity = authed
         form = dict(await request.form())
         try:
@@ -632,7 +632,7 @@ def register_control_routes(
         with the successor."""
         authed = _authed(request)
         if authed is None:
-            return unauthenticated_page()
+            return unauthenticated_page(request)
         record, identity = authed
         form = dict(await request.form())
         try:
@@ -710,7 +710,7 @@ def register_control_routes(
         release renders its own refusal); success clears the view."""
         authed = _authed(request)
         if authed is None:
-            return unauthenticated_page()
+            return unauthenticated_page(request)
         record, identity = authed
         # FOLD-4: the view key resolves from the route's own lease id
         # through the session's held views (server truth) — never a form

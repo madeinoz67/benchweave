@@ -893,3 +893,50 @@ def test_unused_helpers_import_clean() -> None:
     """The G2-era fixtures stay importable (the suite's own hygiene)."""
     assert callable(hashlib.sha256)
     assert json.loads("{}") == {}
+
+
+# --- the expired-session fragment (fold-refute F1, the 401 path) -----------------
+
+
+def test_an_expired_sessions_htmx_poll_gets_the_row_fragment(rig: Any) -> None:
+    """F1: the session-less refusal shape must fragment for htmx too.
+    FOLD-2's discrimination lived only in ``_failure_page`` — an expired
+    session's poll (HX-Request) got the FULL login page, and the shell's
+    responseHandling override swapped it into the controls section (a
+    nested document). The unauthenticated row now renders as the bare
+    fragment, in place."""
+    record = _session(rig.app, scopes=CONTROL, ttl_s=60)
+    rig.clock.advance(61)  # the session dies mid-use
+    fragment = rig.client.get(
+        "/ui/benches/sim-bench/controls",
+        cookies={"bw_session": record.session_id},
+        headers={"HX-Request": "true"},
+    )
+    assert fragment.status_code == 401
+    assert "<html" not in fragment.text
+    assert 'data-bw-failure="unauthenticated"' in fragment.text
+
+
+def test_an_expired_sessions_htmx_take_post_gets_the_row_fragment(rig: Any) -> None:
+    """F1's POST leg: the same expired-session fragment on the mutating
+    path — the form's hx-target swap renders the row, not the shell."""
+    record = _session(rig.app, scopes=CONTROL, ttl_s=60)
+    rig.clock.advance(61)
+    refusal = rig.client.post(
+        "/ui/benches/sim-bench/leases",
+        cookies={"bw_session": record.session_id},
+        data={"duration_ms": "300000"},
+        headers={"X-CSRF-Token": record.csrf_token, "HX-Request": "true"},
+    )
+    assert refusal.status_code == 401
+    assert "<html" not in refusal.text
+    assert 'data-bw-failure="unauthenticated"' in refusal.text
+    # The non-htmx control arm: a direct client keeps the full page.
+    page = rig.client.post(
+        "/ui/benches/sim-bench/leases",
+        cookies={"bw_session": record.session_id},
+        data={"duration_ms": "300000"},
+        headers={"X-CSRF-Token": record.csrf_token},
+    )
+    assert page.status_code == 401
+    assert "<html" in page.text
