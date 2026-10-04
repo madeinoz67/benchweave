@@ -551,7 +551,9 @@ class AdminRoutes:
         same id is the seam's ``conflict``. Success re-renders the region
         with the new change's row (fresh state, review link, the
         two-phase statement); the change indexes into the session's
-        change view. A non-``OperationFailure`` composes the §C.3
+        change view — a §9 replay PRESERVES the existing view's
+        acknowledgement and loaded approval, re-indexing only what is
+        new. A non-``OperationFailure`` composes the §C.3
         no-response row with the resubmit reconcile (§2.5)."""
         authed = self._authed(request)
         if authed is None:
@@ -602,10 +604,20 @@ class AdminRoutes:
             return HTMLResponse(
                 render_no_response_change_submit(request_id), status_code=504
             )
+        change_id = str(change["change_id"])
+        prior = self._sessions.change_view(record.session_id, change_id)
+        # The §9 replay returns the ORIGINAL change: re-index only what
+        # is new. A view this session already holds for this bench KEEPS
+        # its acknowledged flag (a browser-back replay must not resurrect
+        # the GW-72 alert over a change this session reconciled) and its
+        # loaded approval; a first sighting — or a bench rebinding —
+        # records a fresh view (the refute fold, F3).
         self._sessions.record_change_view(
             record.session_id,
-            str(change["change_id"]),
-            ChangeView(bench_id=bench_id),
+            change_id,
+            replace(prior, bench_id=bench_id)
+            if prior is not None and prior.bench_id == bench_id
+            else ChangeView(bench_id=bench_id),
         )
         try:
             bench = self._operations.bench_get(identity, bench_id)

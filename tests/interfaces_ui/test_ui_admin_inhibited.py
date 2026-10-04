@@ -310,6 +310,29 @@ def test_acknowledging_a_change_this_session_never_indexed_is_not_found(
     assert 'data-bw-failure="not_found"' in response.text
 
 
+def test_submit_replay_preserves_the_acknowledgement(inhibited_rig: Any) -> None:
+    """The P1 sequence (the refute fold, F3): the §9 replay of the
+    original submit form returns the ORIGINAL change — the handler
+    re-indexes only what is new. A fresh view wiped the operator's
+    acknowledgement and resurrected the GW-72 alert over a change this
+    session had already reconciled (the browser-back shape)."""
+    rig = inhibited_rig
+    failed = _submit(rig)
+    _failed_apply(rig, failed)
+    acknowledged = _post(rig, f"/ui/changes/{failed}/acknowledgements", {})
+    assert acknowledged.status_code == 200, acknowledged.text[:500]
+    assert 'data-severity="critical"' not in acknowledged.text
+    # Browser-back: the original form replays; §9 returns the same change.
+    replay = _post(rig, f"/ui/benches/{_BENCH}/changes", _form())
+    assert replay.status_code == 200, replay.text[:500]
+    assert 'data-bw-change-state="failed"' in replay.text
+    # The acknowledgement survived: no resurrected alert, here or on a
+    # fresh render.
+    assert 'data-severity="critical"' not in replay.text
+    after = _get(rig, f"/ui/benches/{_BENCH}")
+    assert 'data-severity="critical"' not in after.text
+
+
 # --- C2: an unknown change from an undecided crash ------------------------------------
 
 

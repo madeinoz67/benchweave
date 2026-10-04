@@ -238,6 +238,26 @@ def test_unstored_digest_renders_the_seam_not_found_row(apply_rig: Any) -> None:
     assert 'data-bw-failure="not_found"' in response.text
 
 
+def test_submit_replay_preserves_the_loaded_approval(apply_rig: Any) -> None:
+    """The approval half of the replay rule (the refute fold, F3): the
+    §9 replay re-indexes only what is new — the loaded approval
+    survives the replay (a fresh view wiped it, sending the operator
+    back to the paste step for nothing)."""
+    rig = apply_rig
+    change_id = _submit(rig)
+    ref, token = put_approval(rig.app.state.g4_content, change_id=change_id)
+    assert token
+    loaded = _load(rig, change_id, ref)
+    assert loaded.status_code == 200, loaded.text[:500]
+    assert "data-bw-approval-facts" in loaded.text
+    replay = _post(rig, f"/ui/benches/{_BENCH}/changes", rig.record, _form())
+    assert replay.status_code == 200, replay.text[:500]
+    page = _get(rig, f"/ui/changes/{change_id}", rig.record)
+    assert page.status_code == 200, page.text[:500]
+    assert "data-bw-approval-facts" in page.text
+    assert 'data-bw-approval-approver="approver-x"' in page.text
+
+
 # --- GW-71: self-approval is not offered ---------------------------------------------
 
 
