@@ -399,6 +399,33 @@ def test_staged_change_clears_the_recorded_check(energise_rig: Any) -> None:
     assert staged.armed is False
 
 
+def test_stage_only_start_control_gates_on_the_recorded_check(
+    energise_rig: Any,
+) -> None:
+    """FOLD-2 (B-F2): §2.4's invalid-staged-input state. Stage-only (no
+    check on record) rendered the start control ENABLED while the
+    panel's own note said the preflight gates it — the render now
+    matches the handler's no-check refusal: the start control renders
+    disabled with the §C.2 invalid-staged-input reason until a check is
+    on record for the current staged set. A check on record composes
+    the actions again (the energy class's arm control appears; the
+    handler legs were already honest and stay as-is)."""
+    rig = energise_rig
+    _stage(rig, rig.record)
+    page = _get(rig, f"/ui/benches/{_BENCH}", rig.record)
+    assert page.status_code == 200, page.text[:500]
+    assert 'data-bw-disabled-reason="invalid-staged-input"' in page.text
+    assert "No check is on record" in page.text
+    # no enabled start path composes: the gated control is a disabled
+    # div, never a form posting to run-starts
+    assert "data-bw-start-control hx-post" not in page.text
+    _post(rig, f"/ui/benches/{_BENCH}/run-checks", rig.record, data={})
+    page = _get(rig, f"/ui/benches/{_BENCH}", rig.record)
+    assert page.status_code == 200, page.text[:500]
+    assert 'data-bw-disabled-reason="invalid-staged-input"' not in page.text
+    assert "data-bw-arm-control" in page.text
+
+
 # --- GW-52: the arm step composes the confirm from the documents -------------------
 
 
@@ -412,6 +439,10 @@ def test_arm_composes_the_armed_confirm_from_the_documents(energise_rig: Any) ->
     armed-text shape — and no seam MUTATION ran (reads only)."""
     rig = energise_rig
     _stage(rig, rig.record)
+    # FOLD-2: the check pre-step — the gate requires a check on record
+    # before any start/confirm action composes (the arm composes reads
+    # only; its own intent, the documents → armed text, is unchanged).
+    _check(rig, rig.record)
     # Two named live lists, asserted separately: ``_spy`` returns the list
     # it appends to, and concatenating two spy results snapshots dead empty
     # copies — the repaired shape keeps each assertion live (kill rule: an

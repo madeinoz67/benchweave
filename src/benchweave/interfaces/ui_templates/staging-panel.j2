@@ -50,6 +50,11 @@
       <button type="button" class="bw-button" data-variant="primary" aria-busy="false" disabled data-bw-disabled-reason="staged-chain-unreadable">Start run</button>
       <p class="bw-field__note" data-bw-staged-chain-note>The staged binding's document chain is not readable right now; the panel cannot classify the staged set.</p>
     </div>
+    {% elif not check %}
+    <div class="bw-control" data-bw-start-control>
+      <button type="button" class="bw-button" data-variant="primary" aria-busy="false" disabled data-bw-disabled-reason="invalid-staged-input">Start run</button>
+      <p class="bw-field__note" data-bw-check-gate-note>No check is on record for the current staged set — the start control enables when the preflight (check) returns.</p>
+    </div>
     {% elif arming["energy"] and not staged["armed"] %}
     <form class="bw-control" data-bw-arm-control hx-post="/ui/benches/{{ bench_id }}/staging/arm" hx-target="closest section" hx-swap="outerHTML">
       <p class="bw-field__note" data-bw-arm-note>This staged procedure energises an output — arming composes the confirm from the documents, then one confirm starts the run.</p>
