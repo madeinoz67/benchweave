@@ -38,7 +38,11 @@ from markupsafe import Markup, escape
 from benchweave.interfaces.errors import OperationFailure, failure
 from benchweave.interfaces.identity import Identity
 from benchweave.interfaces.operations import TIER_SATISFIES, Operations
-from benchweave.interfaces.sessions import HeldLease, SessionRecord, SessionStore
+from benchweave.interfaces.sessions import (
+    HeldLease,
+    SessionRecord,
+    SessionStore,
+)
 
 #: GW-44's floors (the record §2.2, the Q2 ruling); the percentages ride
 #: the predicate body. The floors guarantee a minimum reaction window
@@ -825,3 +829,153 @@ def register_control_routes(
             record, now_epoch=now_epoch
         ),
     )
+
+
+# --- G3b: runs, staging, energy confirmation (issue #304, design §2.4/§2.5) --------
+
+
+@dataclass(frozen=True)
+class ArmingView:
+    """One render's read-only view of the staged binding's document
+    chain: whether it resolved, the energy class, the mode, and the
+    composed armed text (``None`` unless the procedure is armed-shaped).
+    Prepared once per render from ``document_get`` reads — every byte
+    the panel renders about the staged set is a seam answer."""
+
+    readable: bool
+    energy: bool
+    manual: bool
+    armed_text: str | None
+
+
+_HEX64 = set("0123456789abcdef")
+
+
+def _is_digest(candidate: str) -> bool:
+    return len(candidate) == 64 and set(candidate) <= _HEX64
+
+
+def _binding_chain(
+    operations: Operations, identity: Identity, binding_ref: dict[str, Any]
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """The DEP7 chain over the seam (never the store): the staged
+    binding by digest, then its pinned procedure — the same
+    digest-addressed resolution ``run_check`` performs."""
+    binding_sha = str(binding_ref.get("sha256", ""))
+    binding_doc = operations.document_get(identity, binding_sha)["content"]
+    procedure_sha = str(binding_doc["procedure"]["sha256"])
+    procedure_doc = operations.document_get(identity, procedure_sha)["content"]
+    return binding_doc, procedure_doc
+
+
+def _attention_bound_ms(procedure: dict[str, Any]) -> int | None:
+    """GW-56's attention bound (DEP7, the #306-verified chain): the
+    procedure document's ``max_body_ms + max_protection_ms``. Both are
+    required by the procedure schema for every admitted manual
+    document; absent (a non-schema shape) composes no refusal — never a
+    fabricated zero."""
+    body = procedure.get("max_body_ms")
+    protection = procedure.get("max_protection_ms")
+    if (
+        isinstance(body, int)
+        and not isinstance(body, bool)
+        and isinstance(protection, int)
+        and not isinstance(protection, bool)
+    ):
+        return int(body) + int(protection)
+    return None
+
+
+def _format_number(value: Any) -> str:
+    """Exact values, not floats: 5.0 renders ``5`` and 0.5 renders
+    ``0.5`` (the confirm's non-optional exact value+unit)."""
+    if isinstance(value, bool):
+        return str(value)
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value)
+
+
+_UNIT_SUFFIXES: tuple[tuple[str, str], ...] = (
+    ("_ms", "ms"),
+    ("_a", "A"),
+    ("_v", "V"),
+)
+
+
+def _unit_for(field: str, sample_units: dict[str, str]) -> str:
+    """Unit derivation precedence (the record §2.4): (1) a same-named
+    ``sample`` step's declared unit; (2) the field-name SI suffix
+    (``_v``/``_a``/``_ms``) as the documented last resort."""
+    if field in sample_units:
+        return sample_units[field]
+    for suffix, unit in _UNIT_SUFFIXES:
+        if field.endswith(suffix):
+            return unit
+    return ""
+
+
+_EFFECT = "the output will be energised"
+
+
+def armed_composition(
+    binding_doc: dict[str, Any], procedure_doc: dict[str, Any]
+) -> tuple[bool, bool, str | None]:
+    """(energy, manual, armed_text) from the document chain (GW-52,
+    §E.1): energy-sourcing iff ``energy_sourcing(procedure)``; the armed
+    text states the effect, the exact values with units (the enable
+    step's sibling configure inputs), and the target (the enable step's
+    role mapped through the binding's ``bindings[]``) — joined per the
+    contract's shape. ``None`` text when the class is de-energising."""
+    energy = energy_sourcing(procedure_doc)
+    manual = str(procedure_doc.get("mode", "")) == "manual"
+    if not energy:
+        return energy, manual, None
+    sample_units = {
+        str(step.get("variable_id", "")): str(step.get("unit", ""))
+        for step in _iter_steps(procedure_doc.get("steps", []))
+        if isinstance(step, dict) and step.get("kind") == "sample"
+    }
+    enable = next(
+        (
+            step
+            for step in _iter_steps(procedure_doc.get("steps", []))
+            if step.get("kind") == "invoke"
+            and isinstance(step.get("input"), dict)
+            and step["input"].get("enabled") is True
+            and step.get("role")
+        ),
+        None,
+    )
+    values: list[str] = []
+    if enable is not None:
+        for step in _iter_steps(procedure_doc.get("steps", [])):
+            if step.get("kind") != "invoke" or not isinstance(step.get("input"), dict):
+                continue
+            if step is enable:
+                break
+            action_input = step["input"]
+            for field, value in action_input.items():
+                if field.startswith("$stg_"):
+                    continue
+                if isinstance(value, bool) or not isinstance(value, (int, float)):
+                    continue
+                unit = _unit_for(str(field), sample_units)
+                values.append(f"{_format_number(value)} {unit}".rstrip())
+            break  # the configure inputs are the enable step's nearest preceding sibling
+    target = ""
+    if enable is not None:
+        role = str(enable.get("role", ""))
+        for entry in binding_doc.get("bindings", []):
+            if str(entry.get("role", "")) == role:
+                device_id = str(entry.get("device_id", ""))
+                channels = entry.get("channels", {}) or {}
+                channel = next(iter(channels.values()), "") if isinstance(channels, dict) else ""
+                target = f"{device_id} {channel}".strip()
+                break
+    text = f"{_EFFECT}: {', '.join(values)} to {target}. Confirm to proceed."
+    return energy, manual, text
+
+
