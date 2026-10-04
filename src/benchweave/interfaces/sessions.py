@@ -177,6 +177,42 @@ class _LoginCode:
     used: bool = False
 
 
+@dataclass(frozen=True)
+class ApprovalView:
+    """The loaded approval's own facts (G4, design record §2.3): what the
+    stored approval document says, read through the interface
+    (``document_get``) and recorded for presentation. Never authority:
+    the seam re-verifies the pair at apply time and the fire-time guard
+    re-reads the document fresh before the UI sends anything."""
+
+    sha256: str
+    ref_id: str
+    ref_version: str
+    approver_principal: str
+    policy_version: str
+    #: Whether the document binds THIS change (its ``change_id`` and
+    #: ``expected_generation`` match the record this session is viewing).
+    binds: bool
+    bound_change_id: str
+    bound_generation: int
+
+
+@dataclass(frozen=True)
+class ChangeView:
+    """The session's change index entry (G4, design record §2.1): which
+    changes THIS session submitted or attempted to apply, and the
+    operator's acknowledgement. An index, not a state cache — it carries
+    NO change state; every rendered state comes from a fresh
+    ``change_get`` at render time (the stale-view failure class deleted,
+    not mitigated). Changes filed by other sessions or surfaces are
+    invisible to the index (disclosed; manual change-id entry reaches
+    any change — G4-D2)."""
+
+    bench_id: str
+    acknowledged: bool = False
+    approval: ApprovalView | None = None
+
+
 def _keyed(code: str) -> str:
     return hashlib.sha256(code.encode("utf-8")).hexdigest()
 
@@ -224,6 +260,13 @@ class SessionStore:
         # OPERATOR'S OWN action until the seam reports the run terminal;
         # the state itself is always run_get's.
         self._cancels: dict[str, set[str]] = {}
+        # The change index (G4, design record §2.1): session_id ->
+        # {change_id -> ChangeView}. Which changes THIS session submitted
+        # or attempted to apply, plus the operator's acknowledgement and
+        # any loaded approval — presentation of this session's own seam
+        # answers, never authority, never a state cache. Same lock, same
+        # death semantics as every other side table.
+        self._changes: dict[str, dict[str, ChangeView]] = {}
 
     # --- held leases (G3a: response-sourced views, never authority) --------
 
@@ -312,6 +355,60 @@ class SessionStore:
                 markers.discard(run_id)
                 if not markers:
                     del self._cancels[session_id]
+
+    # --- the change index (G4: an index, never a state cache) -------------------
+
+    def record_change_view(self, session_id: str, change_id: str, view: ChangeView) -> None:
+        """Store the view for one change THIS session submitted or
+        attempted to apply; a re-record REPLACES it (the caller passes
+        the current view with ``replace`` for a field update)."""
+        with self._lock:
+            self._changes.setdefault(session_id, {})[change_id] = view
+
+    def change_view(self, session_id: str, change_id: str) -> ChangeView | None:
+        """This session's view for ``change_id``, or ``None`` — a
+        snapshot under the lock (the caller renders from it; the seam
+        re-validates every mutation)."""
+        with self._lock:
+            return self._changes.get(session_id, {}).get(change_id)
+
+    def change_views_for_bench(
+        self, session_id: str, bench_id: str
+    ) -> dict[str, ChangeView]:
+        """This session's indexed changes for one bench — the bench admin
+        region's query (a snapshot under the lock)."""
+        with self._lock:
+            return {
+                change_id: view
+                for change_id, view in self._changes.get(session_id, {}).items()
+                if view.bench_id == bench_id
+            }
+
+    def record_change_approval(
+        self, session_id: str, change_id: str, approval: ApprovalView
+    ) -> None:
+        """Record (or replace) the loaded approval on this session's
+        change view, indexing the change when the session had no view for
+        it (a manually-entered change id — the G4-D2 discovery posture)."""
+        with self._lock:
+            views = self._changes.setdefault(session_id, {})
+            prior = views.get(change_id)
+            views[change_id] = (
+                replace(prior, approval=approval)
+                if prior is not None
+                else ChangeView(bench_id="", approval=approval)
+            )
+
+    def acknowledge_change(self, session_id: str, change_id: str) -> None:
+        """Mark the change acknowledged in this session's index (the
+        operator read the record). A change this session never indexed is
+        a no-op — there is nothing to clear. Idempotent."""
+        with self._lock:
+            view = self._changes.get(session_id, {}).get(change_id)
+            if view is not None:
+                self._changes[session_id][change_id] = replace(
+                    view, acknowledged=True
+                )
 
     # --- bridges (G2c: one SSE bridge per session-and-bench, GW-33) --------
 
@@ -469,6 +566,10 @@ class SessionStore:
                 # answers, never facts another record may keep.
                 self._staged.pop(session_id, None)
                 self._cancels.pop(session_id, None)
+                # The change index dies with it too (G4): presentation of
+                # one session's own answers, never a fact another record
+                # may keep.
+                self._changes.pop(session_id, None)
                 return None
             return session
 
@@ -484,6 +585,7 @@ class SessionStore:
             self._leases.pop(session_id, None)
             self._staged.pop(session_id, None)
             self._cancels.pop(session_id, None)
+            self._changes.pop(session_id, None)
 
     # --- internals -----------------------------------------------------------
 
