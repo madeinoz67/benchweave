@@ -612,6 +612,7 @@ All notable changes to this project will be documented in this file.
 - Issue #380 family release process design record
 - Issue #380 family release process + gateway cut authority
 - Issue #380 fold adv1 F1+F2 — honest enforcement modality + the gateway notes command
+- Discovery wording defers to the schema and the landed code (#386)
 
 ### Features
 
