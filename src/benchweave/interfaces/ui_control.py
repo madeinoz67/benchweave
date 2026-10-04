@@ -1109,11 +1109,21 @@ def armed_composition(
                 if str(entry.get("role", "")) == role:
                     device_id = str(entry.get("device_id", ""))
                     channels = entry.get("channels", {}) or {}
-                    channel = (
-                        next(iter(channels.values()), "")
-                        if isinstance(channels, dict)
-                        else ""
-                    )
+                    # Fold-refute F1: the enable's own $stg_channel names the
+                    # alias it targets — a two-alias role's confirm must name
+                    # THAT channel, not the binding map's first. A channel
+                    # input without the reference (or naming an unmapped
+                    # alias) falls back to the first mapped channel.
+                    channel = ""
+                    stg_channel = action_input.get("channel")
+                    if (
+                        isinstance(stg_channel, dict)
+                        and isinstance(channels, dict)
+                        and stg_channel.get("$stg_channel") in channels
+                    ):
+                        channel = str(channels[str(stg_channel["$stg_channel"])])
+                    elif isinstance(channels, dict):
+                        channel = next(iter(channels.values()), "")
                     target = f"{device_id} {channel}".strip()
                     break
             values_text = ", ".join(values) if values else "no input values"

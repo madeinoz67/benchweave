@@ -676,10 +676,13 @@ class StagingRoutes:
             )
         # Keep-record-on-start (ruled deviation): the staged record
         # stays as the replay handle — §9 makes the resubmission
-        # idempotent — and now carries the started id itself (FOLD-3),
-        # so every later render discloses the prior start; the returned
-        # id EQUALS the record's memory iff this fire was the §9 replay
-        # of the first start.
+        # idempotent — and carries the started id (FOLD-3) when the
+        # session's memory holds it. The memory's SCOPE is same-digest
+        # continuity: a different-digest restage clears it, so a §9
+        # replay fired after that round-trip renders as a fresh accept
+        # (no marker) — the same loss class as a gateway restart (the
+        # session store is in-memory); the seam's replay stays correct
+        # either way. Disclosed (fold-refute finding 2).
         started_id = str(run["run_id"])
         replayed = pre_started is not None and started_id == pre_started
         self._sessions.record_staged_start(

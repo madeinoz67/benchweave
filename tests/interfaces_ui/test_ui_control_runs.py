@@ -1209,3 +1209,33 @@ def test_the_unchecked_panel_offers_the_preflight_control(energise_rig: Any) -> 
     response = _get(rig, f"/ui/benches/{_BENCH}", rig.record)
     assert 'data-bw-check-control' in response.text
     assert 'hx-post="/ui/benches/sim-bench/run-checks"' in response.text
+
+
+def test_armed_text_names_the_channel_the_enable_targets() -> None:
+    """Fold-refute F1: the target block took the binding map's FIRST
+    channel — a two-alias role's enable targeting the second alias
+    composed a confirm naming the wrong channel (ch1 shown, ch2
+    energised). The enable's own ``$stg_channel`` reference wins."""
+    binding = _f5_binding()
+    for entry in binding["bindings"]:
+        if entry.get("role") == "supply":
+            entry["channels"] = {"output": "ch1", "output2": "ch2"}
+    base = json.loads(_FIXTURES_PROCEDURE.read_text())
+    two_alias = dict(base)
+    two_alias["steps"] = [
+        {
+            "id": "enable",
+            "kind": "invoke",
+            "role": "supply",
+            "action_id": "otdp.dc_psu.output/1.0.0",
+            "input": {
+                "enabled": True,
+                "channel": {"$stg_channel": "output2"},
+            },
+            "timeout_ms": 500,
+        }
+    ]
+    _energy, _manual, text = armed_composition(binding, two_alias)
+    assert text is not None
+    assert "psu ch2" in text  # the channel the enable targets
+    assert "psu ch1" not in text  # not the map's first channel
