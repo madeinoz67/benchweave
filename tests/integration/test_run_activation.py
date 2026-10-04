@@ -2047,6 +2047,122 @@ def test_d1_advisory_delivery_io_failure_never_refuses_the_run(
         store.close()
 
 
+# --- PR #391 pin arms: R2 cached gates, R3 digest half, R4 boundaries, R7 root ----
+
+
+def test_d2_cached_view_past_expiry_is_refused(tmp_path: Path) -> None:
+    """R2 (PR #391): a cached view does not bypass the gates — the docstring's
+    "a cached view is not a licence to serve past expiry" gets its arm. The
+    status expires one second after the frozen clock; consult 1 (valid)
+    caches the view; consult 2 at +2 s is a CACHE HIT (well inside the 300 s
+    bound — no re-read) and must still refuse on the expiry gate. adv1's M10
+    mutation (gates skipped for cached views) reds this arm."""
+    harness = _CommissionedHarness(tmp_path, "req-r2-cached", signed_dev_origin=True)
+    harness.rewrite_release_status(
+        IMPL_PACKAGE, expires_at="2026-09-14T00:00:01Z", reason="lapses in a second"
+    )
+    device, descriptor = _commissioning_inputs(harness)
+    assert (
+        commissioned_device_closure(harness.session, BENCH_ID, device, descriptor)
+        is not None
+    )
+    harness.session.now_ns = lambda: NOW_NS + 2 * 1_000_000_000
+    with pytest.raises(ValueError, match="closure_status_expired_status"):
+        commissioned_device_closure(harness.session, BENCH_ID, device, descriptor)
+
+
+def test_d2_same_key_wrong_digest_status_refuses_release_mismatch(
+    tmp_path: Path,
+) -> None:
+    """R3 (PR #391): the binding check's manifest-DIGEST half — a status
+    whose release block names the RIGHT key but pins the WRONG manifest
+    digest refuses closure_status_release_mismatch. The swapped arm pins
+    the key half; this pins the digest half independently (adv1's M-null
+    proved the live behavior; the digest-comparison-drop mutation reds
+    this arm while the swapped arm stays green)."""
+    harness = _CommissionedHarness(tmp_path, "req-r3-digest", signed_dev_origin=True)
+    harness.rewrite_release_status(
+        IMPL_PACKAGE, manifest_sha256="c" * 64, reason="re-pinned to a foreign digest"
+    )
+    store, content = harness.open_store()
+    try:
+        factory = harness.build_run(QUOTA_LIMITS)
+        with pytest.raises(ValueError, match="closure_status_release_mismatch"):
+            factory("run-r3-digest", "principal-activation", harness.binding_ref(), store)
+    finally:
+        store.close()
+
+
+def test_d2_exactly_at_the_bound_the_cached_view_still_serves(
+    tmp_path: Path,
+) -> None:
+    """R4a (PR #391): the staleness bound is INCLUSIVE — a consult at
+    EXACTLY now + _STATUS_CONSULT_BOUND_NS is a cache hit and performs zero
+    status reads (adv1's P5 boundary probe; the bound's <= mutation reds
+    this arm)."""
+    reads: Counter[tuple[str, str]] = Counter()
+
+    def wrap(source: PackageSource) -> PackageSource:
+        return _CountingSource(source, reads)
+
+    harness = _CommissionedHarness(
+        tmp_path, "req-r4a-bound", signed_dev_origin=True, source_decorator=wrap
+    )
+    reads.clear()
+    clock = {"now": NOW_NS}
+    harness.session.now_ns = lambda: clock["now"]
+    device, descriptor = _commissioning_inputs(harness)
+    assert (
+        commissioned_device_closure(harness.session, BENCH_ID, device, descriptor)
+        is not None
+    )
+    assert sum(reads.values()) == 3
+
+    from benchweave.interfaces.device_closures import _STATUS_CONSULT_BOUND_NS
+
+    clock["now"] = NOW_NS + _STATUS_CONSULT_BOUND_NS
+    assert (
+        commissioned_device_closure(harness.session, BENCH_ID, device, descriptor)
+        is not None
+    )
+    assert sum(reads.values()) == 3, "a consult at exactly the bound must not re-read"
+
+
+def test_d2_status_expiring_exactly_now_refuses(tmp_path: Path) -> None:
+    """R4b (PR #391): the expiry gate is INCLUSIVE — a status whose
+    expires_at equals the consult clock exactly (expires_at == now)
+    REFUSES closure_status_expired_status (adv1's P9 boundary probe; the
+    gate's <= mutation reds this arm)."""
+    harness = _CommissionedHarness(tmp_path, "req-r4b-expiry", signed_dev_origin=True)
+    harness.rewrite_release_status(
+        IMPL_PACKAGE, expires_at="2026-09-14T00:00:00Z", reason="expires this instant"
+    )
+    store, content = harness.open_store()
+    try:
+        factory = harness.build_run(QUOTA_LIMITS)
+        with pytest.raises(ValueError, match="closure_status_expired_status"):
+            factory("run-r4b-expiry", "principal-activation", harness.binding_ref(), store)
+    finally:
+        store.close()
+
+
+def test_d2_origin_without_a_trust_root_refuses_closure_status_root_absent(
+    tmp_path: Path,
+) -> None:
+    """R7 (PR #391): an origin routed without a session trust root refuses
+    closure_status_root_absent — the fail-closed consult posture, now with
+    its arm (previously only a conversion comment named the refusal)."""
+    harness = _CommissionedHarness(tmp_path, "req-r7-root", signed_dev_origin=True)
+    del harness.session.roots[DEV_ID]
+    store, content = harness.open_store()
+    try:
+        factory = harness.build_run(QUOTA_LIMITS)
+        with pytest.raises(ValueError, match="closure_status_root_absent"):
+            factory("run-r7-root", "principal-activation", harness.binding_ref(), store)
+    finally:
+        store.close()
+
+
 def test_d1_rolled_back_status_refuses_sequence_rollback(tmp_path: Path) -> None:
     """D1 SHIP arm: a served sequence BELOW the persisted floor refuses
     (consult semantics — the reason name is deliberately distinct from
