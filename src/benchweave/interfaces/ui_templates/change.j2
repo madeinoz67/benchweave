@@ -19,8 +19,5 @@
   {% if workspace_html %}
   <div data-bw-change-workspace-region>{{ workspace_html }}</div>
   {% endif %}
-  {% if bench_generation is not none %}
-  <p data-bw-change-applied-generation>Generation {{ change.expected_generation }} → {{ bench_generation }}</p>
-  {% endif %}
 </section>
 {% endblock %}

@@ -403,6 +403,29 @@ def test_a_second_apply_renders_the_two_phase_conflict(apply_rig: Any) -> None:
     assert _change_rows(rig) == [(change_id, "applied")]
 
 
+def test_the_applied_change_page_claims_no_generation_increment(apply_rig: Any) -> None:
+    """The GET change page never renders a generation increment for an
+    applied change (the refute fold, F7): the change record stores no
+    at-apply generation (the bump lands on the bench row), and the
+    bench's CURRENT generation is not this change's outcome once later
+    changes land — an increment paragraph on the page would be a false
+    claim on a terminal record. The increment is the apply RESPONSE's
+    claim alone (US9, ``data-bw-change-applied``); the page renders the
+    terminal workspace with no increment."""
+    rig = apply_rig
+    change_id = _submit(rig)
+    ref, token = put_approval(rig.app.state.g4_content, change_id=change_id)
+    _load(rig, change_id, ref)
+    applied = _apply(rig, change_id, token)
+    assert applied.status_code == 200, applied.text[:600]
+    assert "Generation 1 → 2" in applied.text  # US9 lives on the response
+    page = _get(rig, f"/ui/changes/{change_id}", rig.record)
+    assert page.status_code == 200, page.text[:500]
+    assert 'data-bw-change-state="applied"' in page.text
+    assert 'data-bw-change-applied-generation' not in page.text
+    assert "Generation 1 → 2" not in page.text
+
+
 def test_a_decided_refusal_records_failed_and_renders_its_row(
     apply_rig: Any,
 ) -> None:

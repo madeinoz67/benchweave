@@ -669,7 +669,6 @@ class AdminRoutes:
             )
             if self._has_admin(record)
             else None,
-            bench_generation=None,
             **self._strip(record),
         )
 
