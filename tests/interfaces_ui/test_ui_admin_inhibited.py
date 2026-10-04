@@ -310,6 +310,27 @@ def test_acknowledging_a_change_this_session_never_indexed_is_not_found(
     assert 'data-bw-failure="not_found"' in response.text
 
 
+def test_acknowledging_a_proposed_change_refuses_and_cannot_silence_a_future_alert(
+    inhibited_rig: Any,
+) -> None:
+    """The acknowledgement is the reconciliation of a TERMINAL record
+    (the refute fold, F5): acknowledging a change that is still
+    ``proposed`` refuses ``invalid_request`` — there is nothing to
+    acknowledge yet. Pre-fold, the route marked the view silently, so a
+    forged early ack permanently silenced the alert the change's LATER
+    failure should raise."""
+    rig = inhibited_rig
+    change_id = _submit(rig)
+    too_early = _post(rig, f"/ui/changes/{change_id}/acknowledgements", {})
+    assert too_early.status_code == 400, too_early.text[:500]
+    assert 'data-bw-failure="invalid_request"' in too_early.text
+    # The refusal marked nothing: the later failure's alert renders.
+    _failed_apply(rig, change_id)
+    region = _get(rig, f"/ui/benches/{_BENCH}")
+    assert 'data-severity="critical"' in region.text, region.text[:500]
+    assert f"Change {change_id} failed" in region.text
+
+
 def test_submit_replay_preserves_the_acknowledgement(inhibited_rig: Any) -> None:
     """The P1 sequence (the refute fold, F3): the §9 replay of the
     original submit form returns the ORIGINAL change — the handler

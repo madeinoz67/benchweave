@@ -401,7 +401,9 @@ bench page shows a critical alert. The alert names the change and its
 reason. While the alert shows, the apply controls of the bench show as
 disabled. Submit stays open: to correct the bench, submit a NEW change.
 Never apply the same change again. To clear the alert, read the change
-record first. Then select **Acknowledge change** in the region. The
+record first. Then select **Acknowledge change** in the region. An
+acknowledgement is possible only for a failed or unknown change. The
+region refuses it for a change that is still proposed. The
 acknowledgement is for this browser session only. The gateway record
 does not change.
 

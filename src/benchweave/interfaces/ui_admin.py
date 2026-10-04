@@ -833,7 +833,12 @@ class AdminRoutes:
         own surface). The gateway record never changes (no operation
         marks a change reconciled); the acknowledgement is per-session
         presentation. A change this session never indexed is an honest
-        ``not_found`` — there is nothing to acknowledge."""
+        ``not_found`` — there is nothing to acknowledge. A change still
+        ``proposed`` REFUSES ``invalid_request`` (the refute fold, F5):
+        the acknowledgement reconciles a TERMINAL record, and marking a
+        proposed one would silently arm the session against the alert a
+        LATER failure should raise — the state is read fresh from the
+        record, never trusted from the index."""
         authed = self._authed(request)
         if authed is None:
             return self._unauthenticated_page(request)
@@ -845,6 +850,22 @@ class AdminRoutes:
                     failure(
                         "not_found",
                         f"change {change_id} is not in this session's index",
+                    )
+                ),
+                request,
+            )
+        try:
+            change = self._operations.change_get(identity, change_id)
+        except OperationFailure as fail:
+            return self._failure_page(fail, request)
+        state = str(change.get("state", ""))
+        if state not in ("failed", "unknown"):
+            return self._failure_page(
+                OperationFailure(
+                    failure(
+                        "invalid_request",
+                        f"change {change_id} is {state}; there is nothing to"
+                        " acknowledge until it is failed or unknown",
                     )
                 ),
                 request,
