@@ -623,13 +623,18 @@ class AdminRoutes:
         # is new. A view this session already holds for this bench KEEPS
         # its acknowledged flag (a browser-back replay must not resurrect
         # the GW-72 alert over a change this session reconciled) and its
-        # loaded approval; a first sighting — or a bench rebinding —
-        # records a fresh view (the refute fold, F3).
+        # loaded approval; an approval-first view — indexed by the
+        # manual-entry approval load with an empty bench, the only path
+        # that can precede this session's first submit of the change —
+        # ADOPTS the replayed submit's bench here, keeping its loaded
+        # approval; a first sighting — or a bench rebinding — records a
+        # fresh view (the refute fold, F3, and the foldref's
+        # approval-first row).
         self._sessions.record_change_view(
             record.session_id,
             change_id,
             replace(prior, bench_id=bench_id)
-            if prior is not None and prior.bench_id == bench_id
+            if prior is not None and prior.bench_id in ("", bench_id)
             else ChangeView(bench_id=bench_id),
         )
         try:

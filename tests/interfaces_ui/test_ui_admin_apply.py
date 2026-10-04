@@ -258,6 +258,47 @@ def test_submit_replay_preserves_the_loaded_approval(apply_rig: Any) -> None:
     assert 'data-bw-approval-approver="approver-x"' in page.text
 
 
+def test_submit_replay_adopts_an_approval_first_view(apply_rig: Any) -> None:
+    """The approval-first half of the replay rule (the foldref's LOW row):
+    a second session of the SAME principal loads the approval on a
+    manually-entered change — the only path that indexes a view with an
+    empty bench — then replays the first session's submit form (§9
+    returns the original change). The pre-fold predicate
+    (``prior.bench_id == bench_id``) was False for the empty bench, so
+    the replay recorded a FRESH view and wiped the just-loaded approval,
+    sending the operator back to the paste step for nothing. The replay
+    ADOPTS the bench instead, keeping the loaded approval."""
+    rig = apply_rig
+    change_id = _submit(rig)
+    ref, token = put_approval(rig.app.state.g4_content, change_id=change_id)
+    assert token
+    second = _session(rig.app, scopes=ADMIN)
+    loaded = _post(
+        rig,
+        f"/ui/changes/{change_id}/approval",
+        second,
+        {
+            "approval_sha256": ref["sha256"],
+            "approval_id": ref["id"],
+            "approval_version": ref["version"],
+        },
+    )
+    assert loaded.status_code == 200, loaded.text[:500]
+    assert "data-bw-approval-facts" in loaded.text
+    # The §9 replay: same principal, same form — the original change.
+    replay = _post(rig, f"/ui/benches/{_BENCH}/changes", second, _form())
+    assert replay.status_code == 200, replay.text[:500]
+    page = _get(rig, f"/ui/changes/{change_id}", second)
+    assert page.status_code == 200, page.text[:500]
+    assert "data-bw-approval-facts" in page.text, (
+        "the §9 replay wiped the approval-first view's loaded approval"
+    )
+    assert 'data-bw-approval-approver="approver-x"' in page.text
+    view = rig.app.state.ui_sessions.change_view(second.session_id, change_id)
+    assert view is not None and view.approval is not None
+    assert view.bench_id == _BENCH, "the approval-first view did not adopt the bench"
+
+
 # --- GW-71: self-approval is not offered ---------------------------------------------
 
 
