@@ -130,12 +130,13 @@ Packaging refuses, with a stable machine prefix, when:
   gateway first reads the new status document. This bound covers only
   gateways that are reachable at a next run-build. A gateway that is
   offline since publication, or that runs no builds, is covered by the
-  recorded operator-delivery half instead: its refusal or advisory lands
-  at its next consult, whenever that happens. Until then the bound makes
+  recorded operator-delivery half instead. Its refusal or advisory
+  reaches the gateway at its next consult, whenever that happens. Until
+  then the bound makes
   no claim. At that run-build, a revoked or yanked release refuses the
-  run (`closure_status_revoked` / `closure_status_yanked`); an advisory
-  does not refuse the run — it is delivered as a recorded operator
-  notice under the gateway's advisories directory. The consult verifies
+  run (`closure_status_revoked` / `closure_status_yanked`). An advisory
+  does not refuse the run. It is delivered as a recorded operator notice
+  under the gateway's advisories directory. The consult verifies
   every status document against the gateway's trust root. If the origin
   serves no status document, the run-build refuses
   (`closure_status_absent`). It never assumes `published`.
