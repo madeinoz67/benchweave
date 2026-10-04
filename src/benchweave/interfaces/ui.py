@@ -552,11 +552,30 @@ def build_ui_router(
             refusal_html=Markup(render_refusal(UNAUTHENTICATED_REFUSAL)),  # noqa: S704
         )
 
-    def _failure_page(fail: OperationFailure) -> HTMLResponse:
+    def _failure_page(
+        fail: OperationFailure, request: Request | None = None
+    ) -> HTMLResponse:
         """A seam failure renders its own §C.3 row — severity, what
         happened, sent status, operator action — beside the failure's
         message and correlation id (GW-11: the code's own row, never a
-        softer one; G2b generalises the G2a shape to the full table)."""
+        softer one; G2b generalises the G2a shape to the full table).
+        FOLD-2: an htmx request (the ``HX-Request`` header) gets the row
+        as a bare fragment — the control forms' hx-target swap renders it
+        in place of the section; a direct (non-htmx) client keeps the
+        full failure page."""
+        if request is not None and request.headers.get("HX-Request") == "true":
+            return HTMLResponse(
+                _ENV.get_template("failure-fragment.j2").render(
+                    failure=fail.failure,
+                    # Trusted package-rendered HTML (the §C.3 partial over
+                    # the carried row) — S704's escape hatch is not in play
+                    # (the failure.j2 slot rule).
+                    refusal_html=Markup(  # noqa: S704
+                        render_refusal(ui_refusals.row_for(fail.failure.code))
+                    ),
+                ),
+                status_code=FAILURE_HTTP[fail.failure.code],
+            )
         return _page(
             "failure.j2",
             status=FAILURE_HTTP[fail.failure.code],

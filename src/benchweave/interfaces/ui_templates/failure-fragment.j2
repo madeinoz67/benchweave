@@ -1,0 +1,12 @@
+{#- The §C.3 refusal as a bare fragment (FOLD-2): what failure.j2 renders
+  inside the shell, without the shell — an htmx request's hx-target swap
+  brings this in place of the controls section, so the refusal renders
+  where the operator acted. Escaping as failure.j2's (autoescape); the
+  refusal_html slot is trusted package-rendered markup, the same rule as
+  failure.j2. -#}
+<section class="bw-failure" data-bw-failure="{{ failure.code }}">
+  <h2>{{ failure.code }}</h2>
+  {{ refusal_html }}
+  <p class="bw-failure__message" data-bw-failure-message>{{ failure.message }}</p>
+  <p class="bw-failure__correlation">Correlation id: <code data-bw-correlation-id>{{ failure.correlation_id }}</code></p>
+</section>

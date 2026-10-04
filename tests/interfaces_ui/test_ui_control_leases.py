@@ -625,6 +625,53 @@ def test_a_conflict_renewal_keeps_the_held_view_and_release_available(
     assert sessions.held_lease(record.session_id, _BENCH) is None
 
 
+def test_the_control_forms_target_the_controls_section(rig: Any) -> None:
+    """FOLD-2: the control forms swap the controls section in place —
+    ``hx-target="closest section"`` + ``hx-swap="outerHTML"``, matching
+    the poll's own replacement — so success fragments and refusal rows
+    render where the operator acted."""
+    record = _session(rig.app, scopes=CONTROL, ttl_s=3600)
+    fragment = _get(rig, f"/ui/benches/{_BENCH}/controls", record)
+    assert 'hx-target="closest section"' in fragment.text
+    assert 'hx-swap="outerHTML"' in fragment.text
+    assert 'hx-swap="none"' not in fragment.text
+    assert _take(rig, record, duration_ms=300_000).status_code == 200
+    take = _get(rig, f"/ui/benches/{_BENCH}/controls", record)
+    assert take.text.count('hx-target="closest section"') >= 2  # renew + release
+
+
+def test_an_htmx_refusal_renders_the_row_fragment_in_place(rig: Any) -> None:
+    """FOLD-2: an htmx POST refusal (the HX-Request header) renders the
+    §C.3 row as a bare fragment — not the full failure page — so the
+    form's hx-target swap shows the refusal where the operator acted."""
+    record = _session(rig.app, scopes=CONTROL, ttl_s=3600)
+    refusal = rig.client.post(
+        "/ui/leases/unknown-lease/renewals",
+        cookies={"bw_session": record.session_id},
+        data={"duration_ms": "300000"},
+        headers={"X-CSRF-Token": record.csrf_token, "HX-Request": "true"},
+    )
+    assert refusal.status_code == 400
+    assert 'data-bw-refusal-code="invalid_request"' in refusal.text
+    assert "<html" not in refusal.text
+    # The non-htmx control arm: a direct client keeps the full page.
+    page = _post(rig, "/ui/leases/unknown-lease/renewals", record, {"duration_ms": "300000"})
+    assert page.status_code == 400
+    assert "<html" in page.text
+
+
+def test_the_shell_configures_htmx_to_swap_the_refusal_rows(rig: Any) -> None:
+    """FOLD-2: the shell's htmx-config carries the responseHandling
+    override — the vendored htmx 2.0.4 default discards 4xx/5xx
+    (measured from the vendored bytes: ``[45]..`` → swap:false), so the
+    shell overrides it or the refusal rows render nowhere."""
+    record = _session(rig.app, scopes=CONTROL, ttl_s=3600)
+    page = _get(rig, "/ui/", record)
+    assert '"[45].."' in page.text
+    assert '"swap": true, "error": false' in page.text
+    assert '"[23].."' in page.text
+
+
 def test_d_release_clears_the_view(rig: Any) -> None:
     record = _session(rig.app, scopes=CONTROL, ttl_s=3600)
     assert _take(rig, record).status_code == 200

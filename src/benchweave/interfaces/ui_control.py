@@ -367,7 +367,7 @@ def _render_fragment(
                 take_html = (
                     '<form class="bw-control" data-bw-lease-take'
                     f' hx-post="/ui/benches/{_esc(bench_id)}/leases"'
-                    ' hx-swap="none">'
+                    ' hx-target="closest section" hx-swap="outerHTML">'
                     + _hidden("expected_generation", generation)
                     + _number_field(
                         "duration_ms",
@@ -391,7 +391,7 @@ def _render_fragment(
             release_html = (
                 '<form class="bw-control" data-bw-lease-release'
                 f' hx-post="/ui/leases/{_esc(held.lease_id)}/release"'
-                ' hx-swap="none">'
+                ' hx-target="closest section" hx-swap="outerHTML">'
                 + _submit("Release", variant="secondary")
                 + "</form>"
             )
@@ -400,7 +400,7 @@ def _render_fragment(
             renew_html = (
                 '<form class="bw-control" data-bw-lease-renew'
                 f' hx-post="/ui/leases/{_esc(held.lease_id)}/renewals"'
-                ' hx-swap="none">'
+                ' hx-target="closest section" hx-swap="outerHTML">'
                 + _hidden("sequence", held.sequence)
                 + _number_field(
                     "duration_ms",
@@ -416,7 +416,7 @@ def _render_fragment(
             release_html = (
                 '<form class="bw-control" data-bw-lease-release'
                 f' hx-post="/ui/leases/{_esc(held.lease_id)}/release"'
-                ' hx-swap="none">'
+                ' hx-target="closest section" hx-swap="outerHTML">'
                 + _submit("Release", variant="secondary")
                 + "</form>"
             )
@@ -478,7 +478,7 @@ def register_control_routes(
     now_epoch: Callable[[], int],
     resolve_session: Callable[[Request], SessionRecord | None],
     session_identity: Callable[[SessionRecord], Identity],
-    failure_page: Callable[[OperationFailure], HTMLResponse],
+    failure_page: Callable[[OperationFailure, Request], HTMLResponse],
     unauthenticated_page: Callable[[], HTMLResponse],
 ) -> ControlViews:
     """Register the G3a control routes on the UI router (before its
@@ -548,7 +548,7 @@ def register_control_routes(
         try:
             bench = operations.bench_get(identity, bench_id)
         except OperationFailure as fail:
-            return failure_page(fail)
+            return failure_page(fail, request)
         return _fragment_response(record, bench)
 
     def _mint_request_id() -> str:
@@ -568,9 +568,9 @@ def register_control_routes(
             duration_ms = _form_int(form, "duration_ms")
             expected_generation = _form_int(form, "expected_generation")
         except OperationFailure as fail:
-            return failure_page(fail)
+            return failure_page(fail, request)
         if now_epoch() * 1000 + duration_ms > record.expires_at * 1000:
-            return failure_page(_gw95_failure(record, duration_ms))
+            return failure_page(_gw95_failure(record, duration_ms), request)
         if duration_ms > max_lease_ms:
             # FOLD-6: mirror the form's own bound on the wire path. UI-side
             # presentation enforcement — the seam stays the authority (the
@@ -583,7 +583,8 @@ def register_control_routes(
                         f"the requested {duration_ms} ms exceeds this gateway's"
                         f" published maximum lease of {max_lease_ms} ms",
                     )
-                )
+                ),
+                request,
             )
         try:
             lease = operations.lease_create(
@@ -594,7 +595,7 @@ def register_control_routes(
                 duration_ms,
             )
         except OperationFailure as fail:
-            return failure_page(fail)
+            return failure_page(fail, request)
         sessions.record_held_lease(
             record.session_id,
             HeldLease(
@@ -631,7 +632,7 @@ def register_control_routes(
         try:
             duration_ms = _form_int(form, "duration_ms")
         except OperationFailure as fail:
-            return failure_page(fail)
+            return failure_page(fail, request)
         # FOLD-4 (renew): the view resolves from the route's own lease id
         # (server truth) — the form's bench field never keys the view.
         held = sessions.held_lease_for_lease(record.session_id, lease_id)
@@ -642,11 +643,12 @@ def register_control_routes(
                         "invalid_request",
                         "no held lease view for this lease in this session",
                     )
-                )
+                ),
+                request,
             )
         bench_id = held.bench_id
         if now_epoch() * 1000 + duration_ms > record.expires_at * 1000:
-            return failure_page(_gw95_failure(record, duration_ms))
+            return failure_page(_gw95_failure(record, duration_ms), request)
         if duration_ms > max_lease_ms:
             # FOLD-6, the renew path: same published-max mirror, same
             # disclosure (the seam stays the authority; G3-D6 unchanged).
@@ -657,7 +659,8 @@ def register_control_routes(
                         f"the requested {duration_ms} ms exceeds this gateway's"
                         f" published maximum lease of {max_lease_ms} ms",
                     )
-                )
+                ),
+                request,
             )
         try:
             successor = operations.lease_renew(
@@ -676,7 +679,7 @@ def register_control_routes(
             # sequence moved elsewhere, the lease may still be live and
             # THIS session's, and release (the seam judges its own stored
             # sequence) stays available (FOLD-3).
-            return failure_page(fail)
+            return failure_page(fail, request)
         sessions.record_held_lease(
             record.session_id,
             HeldLease(
@@ -716,7 +719,7 @@ def register_control_routes(
         except OperationFailure as fail:
             if bench_id:
                 sessions.clear_held_lease(record.session_id, bench_id)
-            return failure_page(fail)
+            return failure_page(fail, request)
         if bench_id:
             sessions.clear_held_lease(record.session_id, bench_id)
         try:
