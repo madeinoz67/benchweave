@@ -26,7 +26,11 @@ from benchweave.interfaces.app import create_app
 from benchweave.interfaces.identity import Identity
 from benchweave.interfaces.operations import Operations
 from benchweave.interfaces.sessions import SessionStore
-from benchweave.interfaces.ui_control import energy_sourcing, trip_active
+from benchweave.interfaces.ui_control import (
+    armed_composition,
+    energy_sourcing,
+    trip_active,
+)
 from benchweave.state.store import Store
 
 _FIXTURES_PROCEDURE = (
@@ -157,6 +161,111 @@ def test_the_setpoint_clause_is_not_derived() -> None:
         ],
     }
     assert energy_sourcing(write_only) is False
+
+
+# --- FOLD-5: the armed text composes EVERY enable, honestly ----------------------
+
+
+def _f5_binding() -> dict[str, Any]:
+    """The committed fixture's own role map, isolated: supply → psu ch1."""
+    return {
+        "bindings": [
+            {"role": "supply", "device_id": "psu", "channels": {"output": "ch1"}}
+        ]
+    }
+
+
+def test_armed_text_names_every_energised_output() -> None:
+    """FOLD-5 (B-F3): EVERY enable step composes — each with its own
+    preceding configure invoke's values and its mapped target — never
+    only the first (the first-enable-only text understated the blast
+    radius: one device named while a second is energised)."""
+    base = json.loads(_FIXTURES_PROCEDURE.read_text())
+    two_enables = dict(base)
+    two_enables["steps"] = [
+        base["steps"][0],  # the fixture's configure invoke (5 V, …)
+        {
+            "id": "enable-1",
+            "kind": "invoke",
+            "role": "supply",
+            "action_id": "otdp.dc_psu.output/1.0.0",
+            "input": {"enabled": True},
+            "timeout_ms": 500,
+        },
+        {
+            "id": "configure-2",
+            "kind": "invoke",
+            "role": "supply",
+            "action_id": "otdp.dc_psu.configure/1.0.0",
+            "input": {"voltage_v": 9.0},
+            "timeout_ms": 500,
+        },
+        {
+            "id": "enable-2",
+            "kind": "invoke",
+            "role": "supply",
+            "action_id": "otdp.dc_psu.output/1.0.0",
+            "input": {"enabled": True},
+            "timeout_ms": 500,
+        },
+    ]
+    _energy, _manual, text = armed_composition(_f5_binding(), two_enables)
+    assert text is not None
+    assert "9 V" in text  # the second enable's own configure value
+    assert text.count("to psu ch1") == 2  # BOTH targets named
+
+
+def test_armed_text_says_no_input_values_when_the_enable_precedes_its_configure() -> None:
+    """FOLD-5's degenerate value shape: an enable whose preceding
+    sibling carries no numeric inputs renders the honest "no input
+    values" — never the old empty gap ("…:  to psu ch1")."""
+    base = json.loads(_FIXTURES_PROCEDURE.read_text())
+    enable_first = dict(base)
+    enable_first["steps"] = [
+        {
+            "id": "enable",
+            "kind": "invoke",
+            "role": "supply",
+            "action_id": "otdp.dc_psu.output/1.0.0",
+            "input": {"enabled": True},
+            "timeout_ms": 500,
+        },
+        {
+            "id": "configure",
+            "kind": "invoke",
+            "role": "supply",
+            "action_id": "otdp.dc_psu.configure/1.0.0",
+            "input": {"voltage_v": 5.0},
+            "timeout_ms": 500,
+        },
+    ]
+    _energy, _manual, text = armed_composition(_f5_binding(), enable_first)
+    assert text is not None
+    assert "no input values" in text
+    assert "psu ch1" in text
+
+
+def test_armed_text_names_an_unmapped_role() -> None:
+    """FOLD-5's degenerate target shape: an enable whose role maps to
+    no binding entry renders "an unmapped role" — never the old blank
+    target ("… to . Confirm…")."""
+    base = json.loads(_FIXTURES_PROCEDURE.read_text())
+    unmapped = dict(base)
+    unmapped["steps"] = [
+        base["steps"][0],
+        {
+            "id": "enable",
+            "kind": "invoke",
+            "role": "heater",
+            "action_id": "otdp.heater.output/1.0.0",
+            "input": {"enabled": True},
+            "timeout_ms": 500,
+        },
+    ]
+    _energy, _manual, text = armed_composition(_f5_binding(), unmapped)
+    assert text is not None
+    assert "an unmapped role" in text
+    assert "5 V" in text
 
 
 # --- the composed-gateway rig ------------------------------------------------------

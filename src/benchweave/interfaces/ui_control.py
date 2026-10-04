@@ -1066,12 +1066,21 @@ _EFFECT = "the output will be energised"
 def armed_composition(
     binding_doc: dict[str, Any], procedure_doc: dict[str, Any]
 ) -> tuple[bool, bool, str | None]:
-    """(energy, manual, armed_text) from the document chain (GW-52,
+    """(energy, manual, armed text) from the document chain (GW-52,
     §E.1): energy-sourcing iff ``energy_sourcing(procedure)``; the armed
-    text states the effect, the exact values with units (the enable
-    step's sibling configure inputs), and the target (the enable step's
-    role mapped through the binding's ``bindings[]``) — joined per the
-    contract's shape. ``None`` text when the class is de-energising."""
+    text states the effect, then ONE segment per enable step — each with
+    the exact values (value+unit) its preceding invokes carried since the
+    previous enable, and the enable's role mapped through the binding's
+    ``bindings[]`` — joined per the contract's shape. ``None`` text when
+    the class is de-energising.
+
+    FOLD-5: EVERY enable composes (the first-enable-only text understated
+    the blast radius: one device named while a second is energised), and
+    degenerate shapes render honest text — "no input values" for an
+    enable whose preceding invokes carry none, "an unmapped role" for a
+    role outside ``bindings[]`` — never blanks. An enable-shaped invoke
+    whose own inputs carry no role composes "an unmapped role" too (the
+    role is what the binding maps)."""
     energy = energy_sourcing(procedure_doc)
     manual = str(procedure_doc.get("mode", "")) == "manual"
     if not energy:
@@ -1081,25 +1090,37 @@ def armed_composition(
         for step in _iter_steps(procedure_doc.get("steps", []))
         if isinstance(step, dict) and step.get("kind") == "sample"
     }
-    enable = next(
-        (
-            step
-            for step in _iter_steps(procedure_doc.get("steps", []))
-            if step.get("kind") == "invoke"
-            and isinstance(step.get("input"), dict)
-            and step["input"].get("enabled") is True
-            and step.get("role")
-        ),
-        None,
-    )
+    segments: list[str] = []
     values: list[str] = []
-    if enable is not None:
-        for step in _iter_steps(procedure_doc.get("steps", [])):
-            if step.get("kind") != "invoke" or not isinstance(step.get("input"), dict):
-                continue
-            if step is enable:
-                break
-            action_input = step["input"]
+    for step in _iter_steps(procedure_doc.get("steps", [])):
+        if step.get("kind") != "invoke" or not isinstance(step.get("input"), dict):
+            continue
+        action_input = step["input"]
+        if action_input.get("enabled") is True:
+            # FOLD-5: an enable — compose its segment now (the values its
+            # preceding invokes accumulated since the previous enable, and
+            # its role mapped through bindings[]); its OWN numeric inputs
+            # are not rendered (the enable is not a configure).
+            role = str(step.get("role", ""))
+            target = ""
+            for entry in binding_doc.get("bindings", []):
+                if not isinstance(entry, dict):
+                    continue
+                if str(entry.get("role", "")) == role:
+                    device_id = str(entry.get("device_id", ""))
+                    channels = entry.get("channels", {}) or {}
+                    channel = (
+                        next(iter(channels.values()), "")
+                        if isinstance(channels, dict)
+                        else ""
+                    )
+                    target = f"{device_id} {channel}".strip()
+                    break
+            values_text = ", ".join(values) if values else "no input values"
+            target_text = target if target else "an unmapped role"
+            segments.append(f"{values_text} to {target_text}")
+            values = []
+        else:
             for field, value in action_input.items():
                 if field.startswith("$stg_"):
                     continue
@@ -1107,18 +1128,7 @@ def armed_composition(
                     continue
                 unit = _unit_for(str(field), sample_units)
                 values.append(f"{_format_number(value)} {unit}".rstrip())
-            break  # the configure inputs are the enable step's nearest preceding sibling
-    target = ""
-    if enable is not None:
-        role = str(enable.get("role", ""))
-        for entry in binding_doc.get("bindings", []):
-            if str(entry.get("role", "")) == role:
-                device_id = str(entry.get("device_id", ""))
-                channels = entry.get("channels", {}) or {}
-                channel = next(iter(channels.values()), "") if isinstance(channels, dict) else ""
-                target = f"{device_id} {channel}".strip()
-                break
-    text = f"{_EFFECT}: {', '.join(values)} to {target}. Confirm to proceed."
+    text = f"{_EFFECT}: {'; '.join(segments)}. Confirm to proceed."
     return energy, manual, text
 
 
