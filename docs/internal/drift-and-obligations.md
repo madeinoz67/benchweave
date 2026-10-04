@@ -591,9 +591,10 @@ and remain the reviewer's job.
     lane-local record format with no standard schema), cached per session
     under the staleness bound `_STATUS_CONSULT_BOUND_NS` = 300 s
     (`device_closures.py`). The bound's NFR-S2 denominator statement lives
-    in THREE places that must move together: the module constant's docstring,
-    REG-5b in `docs/internal/invariants.md`, and the publishing guide's
-    Response reach bullet (Honest boundaries).
+    in TWO places that must move together — the module constant's docstring
+    and the publishing guide's Response reach bullet (Honest boundaries) —
+    and REG-5b in `docs/internal/invariants.md` states the bound itself
+    with the same reachable/offline halves (PR #391 R5).
 
 28. **A release-machinery change, any line** (issue #380; the family
     umbrella `docs/internal/release-process-family.md` is also the

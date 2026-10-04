@@ -61,6 +61,16 @@ moment. No new verification logic is invented; that is the whole design.
 | The consult's exact shape already exists twice as a proven pattern | `admission.py::_gate_lifecycle` (gates + binding + lifecycle refusal) and `benchweave-registry/scripts/replay_admission.py::_replay_real_tree` (served bytes → schema → signature → binding → gates → lifecycle reading, on gateway machinery) |
 | Lifecycle rewrite discipline: every status change rides sequence+1 | SDK `registry_ops.py` (`yank_release` "sequence+1 lifecycle yanked", `advise_release` appends under sequence+1); REG-5a's per-op ordering clauses |
 
+> **[Erratum — 2026-10-04, PR #391 row R8: the client-duty row overstates
+> what shipped.]** The specification's client duty — "persist the highest
+> authenticated sequence per release" — names DURABLE persistence. As
+> built, the consult persists a SESSION consult-water (in-memory only,
+> raised on every authenticated consult including lifecycle refusals; fold
+> adv1-F1, commit 8ebab3a); across a process restart only the ADMISSION
+> floor persists. The cross-restart residual is named on the PR and tied
+> to the owner's Q19 re-issue; durable consult water is design work, not a
+> fold.
+
 **A discovery that reshapes one clause of the parent record.** The parent design §3.6
 says "verify it against the session's trust root" for every served status. The gateway's
 routed origin (`fixtures/registry/origin-main`) does serve `status.sig` for every release
@@ -285,6 +295,15 @@ bumped, re-signed by the origin key, `expires_at` renewed.
   `closure_status_expired`; swapped status (validly signed, names another release's
   manifest digest) → `closure_status_release_mismatch`; absent status file →
   `closure_status_absent`.
+
+> **[Erratum — 2026-10-04, PR #391 row R8: arm-table naming drift.]** The
+> arm table above names `closure_status_rollback` and `closure_status_expired`;
+> as BUILT the refusal names follow section 2.1 step 5's reason names
+> composed with the `closure_status_` prefix — `closure_status_sequence_rollback`
+> and `closure_status_expired_status` (disclosed as the mechanism commit's
+> deviation 1; the mechanism section, not the shorthand table, won). The
+> committed arms assert the built names.
+
 - **Controls (each must PASS for the arm to count):** the untouched closure (published,
   sequence unchanged — the same-sequence replay case) run-build stays green; and the
   healthy-control arm run under a COLD cache after process-fresh session construction
@@ -295,6 +314,18 @@ bumped, re-signed by the origin key, `expires_at` renewed.
 
 **D2 — staleness and cost (NFR-S3).**
 Injected clock (`session.now_ns`) + an instrumented `PackageSource` wrapper counting
+
+> **[Erratum — 2026-10-04, PR #391 row R6: the measurement boundary.]** The
+> committed figure's boundary is the run-build `factory()` call (the
+> closure-resolution moment plus bridge construction and plugin open — the
+> operator-facing unit): N = 20 per arm, consult cold vs consult disabled,
+> median 36.33 ms vs 31.70 ms, delta median +4.63 ms / p95 +8.77 ms, on a
+> 3-release closure. A five-iteration replication at the BARE
+> closure-resolution boundary (`commissioned_device_closure` alone, bridge
+> construction excluded) read **+1.52 ms** (N = 5). Both figures are true
+> and non-contradictory: they measure different boundaries, and the factory()
+> figure carries the bridge/plugin-open cost that is common to both of its
+> arms while the resolution-boundary figure isolates the consult.
 `status_bytes` calls (the "monkeypatched-clock/socket" control adapted to local-dir
 origins — there is no socket to patch; the counting wrapper is the honest equivalent
 and is stronger: it counts the reads themselves).
@@ -390,6 +421,16 @@ committed figure is the same failure, not a pass.
    arm passing because the harness skipped signature verification rather than because
    the consult performed it — the counting wrapper and the swapped-status arm close
    this.
+
+   > **[Erratum — 2026-10-04, PR #391 row R8: risk 5's closer claim is partly
+   > false.]** The swapped-status arm pins the release BINDING (the key half,
+   > and after PR #391 row R3 the digest half), NOT signature verification —
+   > a swapped status is validly signed, so its refusal exercises the binding
+   > check, not the verify call. The arms that actually close risk 5's
+   > falsifier (a harness skipping signature verification) are the fold-2
+   > signature arms (commit 6984a2d): tampered-after-signing and wrong-key —
+   > both red under a `verify_document` pass-through mutation. The counting
+   > wrapper closes the read-skipping half as claimed.
 6. **Advisory-record spam or loss.** Append-once per (release, advisory id) is the
    dedup rule; a missing dedup falsifies D1's advisory arm (re-consult writes a
    duplicate). The records are operator-visible only via files and logs this slice —

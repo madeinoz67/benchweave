@@ -127,7 +127,7 @@ Packaging refuses, with a stable machine prefix, when:
 - **Response reach (NFR-S2/NFR-S3, issue #226).** A published revocation,
   yank or advisory reaches the gateway at the NEXT run-build of a
   commissioned closure. The delay is at most 5 minutes (300 s) after the
-  gateway first reads the new status document. This bound covers only
+  status document is published. This bound covers only
   gateways that are reachable at a next run-build. A gateway that is
   offline since publication, or that runs no builds, is covered by the
   recorded operator-delivery half instead. Its refusal or advisory
