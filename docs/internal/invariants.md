@@ -939,6 +939,37 @@ carries no inline date on its face; this amendment carries its own
   `yanked` or `revoked` drops out of the index at regeneration (CR-25's
   "no stale rows survive a yank"), while the record and git history
   retain it.
+- **[REG-5b]** *Amendment (2026-10-04, issue #226 slice 4):* the reach clause is true
+  now — yank/advisory reach commissioned gateways through the run-build status
+  consult with a stated, testable bound (NFR-S2's denominator) and cached cost
+  (NFR-S3). `commissioned_device_closure` consults every closure release's
+  status beside its manifest re-read: schema-loaded, signature-verified against
+  the session's trust roots, release-bound, gate-checked on the consult clock
+  (sequence FLOOR — same-sequence replay is the healthy re-consult) and
+  lifecycle-checked; a published `revoked`/`yanked` refuses the next run-build
+  (`closure_status_revoked` / `closure_status_yanked`), an advisory DELIVERS as
+  an append-once operator record and never refuses the run, and the view is
+  cached per session under `_STATUS_CONSULT_BOUND_NS` = 300 s
+  (`device_closures.py`), measured at +4.63 ms median / +8.77 ms p95 per cold
+  run-build on a 3-release closure (N = 20, this lane's machine, macOS arm64,
+  Python 3.13) with zero origin reads inside the bound. The bound's
+  denominator (PR #391 R5): it covers gateways REACHABLE at next run-build
+  after publication — their refusal or advisory lands with delay at most the
+  bound; gateways OFFLINE since publication or running no builds are covered
+  by the recorded operator-delivery half instead, landing at their next
+  consult whenever that happens, and until then the bound makes no claim
+  about them. Two precision notes
+  the seam needs: (a) ADMISSION still never consults `review` — byte-true,
+  pinned by `tests/contract/test_registry_review_block.py`'s admission-
+  indifference arms; the RUN-BUILD consult reads `review` for drift SURFACING
+  only (`closure_status_approval_drift` records, run continues), never as
+  provenance, never for gating; (b) the consult's verification posture is the
+  session's fail-closed `required` policy over the status channel the origin
+  actually serves — an origin routed without a trust root refuses
+  `closure_status_root_absent` (degrade loudly, never silently skip
+  verification), so reach is only as good as the origin's status channel
+  (the registry repository's F2/F3 residual, #225). Pinned by
+  `tests/integration/test_run_activation.py`'s D1–D4 family.
 
 ## Known open wounds
 

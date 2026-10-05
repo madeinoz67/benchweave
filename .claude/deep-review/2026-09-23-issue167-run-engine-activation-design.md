@@ -104,6 +104,21 @@ registry resolution second — rather than inventing a second admission path (Ri
 downloaded package is data until commissioned locally, and the closure WAS commissioned by the
 admin act).
 
+> **Amendment (2026-10-04, issue #226 slice 4):** the commissioned closure's run-build
+> preconditions now include a STATUS CONSULT beside the manifest re-read. The parent
+> record's §4 Slice 4 (acceptance rule D) named this edit:
+> `commissioned_device_closure` consults every closure release's served status —
+> schema-loaded, signature-verified against the session's trust roots, release-bound,
+> gate-checked (expiry, future-time, sequence FLOOR), lifecycle-checked — inside the same
+> manifest re-read iteration, cached per session under a 300 s staleness bound. A published
+> revocation or yank refuses the next run-build (`closure_status_revoked` /
+> `closure_status_yanked`); advisories deliver as append-once operator records and never
+> refuse the run; a registry 0.1.2 review block contradicting the local commissioning
+> surfaces as `approval_drift` (surfaced, never enforced). Decision 1's authority chain is
+> unchanged — the consult adds a refusal surface, not an authority: the activation record,
+> the lock pin and the digest verification remain exactly this record's chain. Design
+> record: `.claude/deep-review/2026-10-04-issue226-slice4-response-reach-design.md`.
+
 **One context key per run** — `run:{run_id}` — across `RetainingServices`, every capture bundle
 and every stream controller in the run. This is what makes the slice-2 erratum's shared
 `event_log` accounting dimension TRUE in production (stream events, bundle evidence and forensic

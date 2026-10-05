@@ -588,7 +588,18 @@ and remain the reviewer's job.
     `check_enumeration.py` over the gateway checkout at the pin; the DPS-150
     dogfooded release's records live in the registry repository, never in this
     tree. `scripts/registry/sign_release.py` here is the only lane signer, and
-    the lane key never enters any CI (CR-12).
+    the lane key never enters any CI (CR-12). Slice 4 of the registry train
+    (issue #226) added the run-build status consult to this lane's surfaces:
+    `commissioned_device_closure` consults every closure release's served
+    status (fail-closed `closure_status_*` refusals at run-build;
+    append-once operator advisory records under `<work_root>/advisories/`, a
+    lane-local record format with no standard schema), cached per session
+    under the staleness bound `_STATUS_CONSULT_BOUND_NS` = 300 s
+    (`device_closures.py`). The bound's NFR-S2 denominator statement lives
+    in TWO places that must move together — the module constant's docstring
+    and the publishing guide's Response reach bullet (Honest boundaries) —
+    and REG-5b in `docs/internal/invariants.md` states the bound itself
+    with the same reachable/offline halves (PR #391 R5).
 
 28. **A release-machinery change, any line** (issue #380; the family
     umbrella `docs/internal/release-process-family.md` is also the

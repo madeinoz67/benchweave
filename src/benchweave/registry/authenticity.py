@@ -88,3 +88,28 @@ def check_status(
     if sequence <= high_water.get(key, 0):
         raise AuthenticityRejected("stale_sequence")
     return sequence
+
+
+def consult_status(status: dict[str, Any], *, now_ns: int, floor: int) -> int:
+    """Consult-semantics status gates: expiry, freshness, sequence floor.
+
+    The run-build status consult's gates (issue #226 slice 4), sharing
+    :func:`check_status`'s clock helpers and future tolerance but NOT its
+    sequence rule. The resolver's fence is strictly increasing because a
+    second resolve of the same release must be structurally impossible;
+    a consult REPLAYS the same authenticated sequence freely — the healthy
+    re-consult of an unchanged release, admission's own persisted-layer
+    rule (``_gate_lifecycle``) lifted verbatim — and refuses only a
+    sequence BELOW the persisted floor, under the reason name
+    ``sequence_rollback`` (deliberately distinct from the fence's
+    ``stale_sequence``). The consult writes nothing back — no high-water
+    advance, no lock change; it is a consult, not an admission.
+    """
+    if _ns(_parse_utc(status["expires_at"])) <= now_ns:
+        raise AuthenticityRejected("expired_status")
+    if _ns(_parse_utc(status["updated_at"])) > now_ns + _FUTURE_TOLERANCE_NS:
+        raise AuthenticityRejected("future_updated_at")
+    sequence: int = status["sequence"]
+    if sequence < floor:
+        raise AuthenticityRejected("sequence_rollback")
+    return sequence
