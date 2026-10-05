@@ -46,7 +46,9 @@ class GapDetector:
         self._prev = counter
         if delta == 1:
             return None
-        return (last_seen, counter, missed)
+        record = (last_seen, counter, missed)
+        self.gaps.append(record)
+        return record
 
 
 def gaps_in_stream(counters: list[int]) -> list[tuple[int, int, int]]:
