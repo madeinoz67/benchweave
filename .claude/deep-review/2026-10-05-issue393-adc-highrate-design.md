@@ -125,6 +125,21 @@ New module `src/benchweave_sdk_server/serial.py`: a `HostServices` implementatio
 
 ### 4.4 Wire-family v2 reference implementation — main repo device project
 
+> **ADDENDUM 2026-10-06 (owner ruling, post-fold):** the in-tree reference
+> firmware is REMOVED before merge. The firmware's home is the plugin's own
+> repository (the PRD fold-in stance; deferral D5 hands the v2 adoption to the
+> contributor). What this tree ships instead: the wire spec, the `adc_wire`
+> host-side reference package, the emulator, and THIS record's firmware design
+> (§7's scan/DMA pacing, wait-TC TX discipline, negotiation handlers, cycle
+> budget) as the implementation guidance for whoever adopts v2. The rate
+> model's t_conv constants are inlined in `tests/test_rate_model.py` with
+> their vendor-table citation — no build-time coupling to the removed tree.
+> `needs-hardware-validation` and the bench checklist stand unchanged in
+> intent: the checklist's flash row now reads "implement/adopt v2 firmware
+> per this spec and record" rather than flashing a hash from this tree.
+> Follow-on #405 (the firmware CI build lane) closed wontfix-now on the same
+> ruling.
+
 Landing zone (precedent in §5): a first-party device project `plugins/benchweave/adc_6ch_12bit/` containing **only** what the fork boundary leaves us: the contract, the firmware, the reference host-side wire code, the emulator, the tests. **No descriptor, no adapter** — those live in the contributor's repository, untouched.
 
 - `docs/wire-protocol.md` — the v2 wire spec (§4.1/4.2 above, normative) with v1 recorded as superseded-but-cited history.
