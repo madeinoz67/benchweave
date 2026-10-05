@@ -274,9 +274,12 @@ class TestZeroModeOverRealTrees:
             "discipline)"
         )
         if "sdk" in payload["scopes"]:
-            # 19 at the v0.7.0 pin: the deleted preview_tui.py/preview_server.py
-            # (whose registered row 21b4986 retired) left the scanned set one
-            # file smaller than the v0.6.0-era 20.
+            # 20 at the 0.6.0 pin; 19 at 0.7.x (gateway #308: preview_server.py
+            # and preview_tui.py die, benchweave_sdk/scaffold_update.py
+            # arrived with WS2's upgrade/adopt lane in between — the
+            # set-diff's one addition; the 0.7.0->0.7.1 anchor moved no .py
+            # bytes; the sdk-scope register's scaffold.py row retired with
+            # the same motion) — the ratchet moves with the submodule tree.
             assert payload["scopes"]["sdk"]["scanned"] == 19, (
                 "the sdk class set moved — update this pin in the same "
                 "commit as the submodule tree change (the ratchet "

@@ -115,22 +115,36 @@ def test_seeded_skill_frontmatter_present(tmp_path: Path) -> None:
 
 
 def test_claude_md_references_real_commands(tmp_path: Path) -> None:
-    """SDK 0.7.0 shape: CLAUDE.md is the project-owned stub deferring to the
-    SDK-managed AGENTS.md (rewritten by ``benchweave-sdk upgrade``). The
-    references-are-real anti-drift survives as: the stub's one command
-    reference names a subcommand the CLI actually registers, and the
-    SDK-managed file it defers to exists in the rendered tree. The content
-    needles the pre-0.7.0 CLAUDE.md carried moved into AGENTS.md and the
-    .claude/skills tree, pinned by the SDK's own agent-assets suite."""
+    """SDK 0.7.x shape: CLAUDE.md is the project-owned stub deferring to the
+    SDK-managed AGENTS.md (rewritten by ``benchweave-sdk upgrade``). The arm
+    pins both halves: the stub's deferral line and the upgrade command, that
+    the deferred AGENTS.md exists and carries the command/fact needles (the
+    pre-0.7.0 CLAUDE.md content moved into AGENTS.md and the .claude/skills
+    tree), and that the stub's one command reference names a subcommand the
+    CLI actually registers."""
     import importlib
 
     from click.testing import CliRunner
 
     project = _generate(tmp_path)
-    text = (project / "CLAUDE.md").read_text(encoding="utf-8")
-    assert "@AGENTS.md" in text, "CLAUDE.md no longer defers to the SDK-managed AGENTS.md"
-    assert "benchweave-sdk upgrade" in text, "CLAUDE.md does not name the upgrade path"
-    assert (project / "AGENTS.md").is_file(), "the deferred AGENTS.md is absent from the tree"
+    claude = (project / "CLAUDE.md").read_text(encoding="utf-8")
+    for needle in ("@AGENTS.md", "benchweave-sdk upgrade"):
+        assert needle in claude, f"CLAUDE.md does not reference {needle}"
+    agents_path = project / "AGENTS.md"
+    assert agents_path.is_file(), "the deferred AGENTS.md is absent from the tree"
+    agents = agents_path.read_text(encoding="utf-8")
+    for needle in (
+        "pytest",
+        "uv build",
+        "benchweave-sdk check",
+        "AI-GUIDE.md",
+        ".claude/skills/",
+    ):
+        assert needle in agents, f"AGENTS.md does not reference {needle}"
+    # Facts-only needles: every claim in the managed file is a fact of the
+    # generated project (R11-adjacent honesty pins).
+    for needle in ("Safety rails", "This project is synthetic"):
+        assert needle in agents, f"AGENTS.md drops its facts-only content: {needle!r}"
     cli = importlib.import_module("benchweave_sdk.cli")
     result = CliRunner().invoke(cli.cli, ["--help"])
     assert result.exit_code == 0

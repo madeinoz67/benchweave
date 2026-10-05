@@ -66,9 +66,10 @@ and remain the reviewer's job.
    dependents together) — with `make check-sdk-standards` as the mechanical half: it
    anchors the lock's `compatibility.sdk` to the pinned SDK's own pyproject
    (`sdk_version_unanchored`), so a stale lock reds at pointer-advance time.
-   **Preview bundle exit (G1e R-5 → executed at SDK 0.7.0):** the frozen
-   `preview_assets` React bundle (`renderer_version 0.1.2`, inventory at freeze
-   commit `085b0ff78e126b5b124b95451d2b08114ae78b71` — recorded at landing) is
+   **Preview bundle exit (G1e R-5 → executed at SDK 0.7.0, closed at the
+   0.7.1 pin):** the frozen `preview_assets` React bundle (`renderer_version`
+   0.1.2, inventory at freeze commit
+   `085b0ff78e126b5b124b95451d2b08114ae78b71` — recorded at landing) is
    DELETED as of SDK 0.7.0: the SA-PREVIEW exit (dependency 4a — the PRD 11
    standalone host with mock transport, #309) landed, `preview-ui` became the
    `[server]`-extra shim (R-9), and the host suite owns the moved properties
@@ -77,8 +78,11 @@ and remain the reviewer's job.
    verbatim from the dying benchweave_sdk.preview_server at 0.7.0"), asset
    inventory/tamper refusal into tests/server/test_assets.py, traversal into
    tests/server/test_web.py. `renderer_version` reports the emitter's own
-   version since 0.7.0 (#308). The gateway-side main-side detectors that
-   matched the bundle (tests/sdk/test_preview_server.py, the preview arms of
+   version since 0.7.0 (#308); the release notes' BREAKING footer names the
+   command-surface change, the `[server]` requirement, and textual's removal
+   (feat/issue308-sdk-shim, released v0.7.0/v0.7.1; the pin's tag deref is
+   c6298ad). The gateway-side main-side detectors that matched the bundle
+   (tests/sdk/test_preview_server.py, the preview arms of
    test_cli_frameworks.py, the packaging inventory asserts) were retired or
    re-pointed in the same pairing. **Mount staleness (#347 WS1):**
    the `sdk-drift` CI job holds the gitlink at the SDK's latest `vX.Y.Z` release
