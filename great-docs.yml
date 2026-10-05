@@ -14,10 +14,10 @@ display_name: BenchWeave
 parser: numpy
 dynamic: true
 repo: https://github.com/madeinoz67/benchweave
-site_url: https://madeinoz67.github.io/benchweave/docs/
+site_url: https://www.benchweave.dev/docs/
 seo:
   canonical:
-    base_url: https://madeinoz67.github.io/benchweave/docs/
+    base_url: https://www.benchweave.dev/docs/
 
 # The gateway's public surface is REST, MCP and the CLI; its Python internals
 # are not a supported API (the plugin-facing API is documented in the SDK's

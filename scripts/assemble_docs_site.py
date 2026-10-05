@@ -610,7 +610,7 @@ def write_llms_txt(docs_root: Path) -> None:
                 return line[6:].strip().strip('"')
         return md.stem.replace("-", " ")
 
-    base = "https://madeinoz67.github.io/benchweave/docs/"
+    base = "https://www.benchweave.dev/docs/"
     index = [
         "# BenchWeave",
         "",
