@@ -188,11 +188,14 @@ def test_preview_model_is_built_from_the_validated_candidate(tmp_path: Path) -> 
     assert author_ids == {"example-normal", "example-warning"}
     assert [view.kind for view in model.plot_views] == ["time_series"]
 
-    assert fixtures.__file__ is not None
-    inventory = json.loads(
-        (Path(fixtures.__file__).with_name("preview_assets") / "inventory.json").read_bytes()
-    )
-    assert model.renderer_version == inventory["renderer_version"]
+    # renderer_version reports the EMITTER's version since SDK 0.7.0 (#308):
+    # the same importlib.metadata derivation benchweave_sdk.__version__ uses.
+    # The frozen renderer inventory this once anchored against died with the
+    # deleted preview_assets bundle; the SDK's own suite pins the same shape
+    # (tests/test_preview_fixtures.py at the pinned tree).
+    from benchweave_sdk import __version__
+
+    assert model.renderer_version == __version__
 
 
 def test_served_preview_document_conforms_to_wire_schema(tmp_path: Path) -> None:

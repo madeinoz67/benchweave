@@ -31,18 +31,6 @@ def test_click_usage_and_domain_exit_codes(tmp_path: Path) -> None:
     assert result.exit_code == 1
 
 
-def test_rich_output_is_plain_when_captured() -> None:
-    from benchweave_sdk.console import ConsoleOutput
-
-    stream = StringIO()
-    output = ConsoleOutput(file=stream, terminal=False)
-    output.preview_ready("http://127.0.0.1:49152", scenarios=11, renderer_version="0.1.0")
-    rendered = stream.getvalue()
-    assert "SIMULATED PRESENTATION DATA" in rendered
-    assert "http://127.0.0.1:49152" in rendered
-    assert "\x1b[" not in rendered
-
-
 def test_findings_render_author_strings_literally() -> None:
     from benchweave_sdk.console import ConsoleOutput
 
@@ -54,32 +42,11 @@ def test_findings_render_author_strings_literally() -> None:
     assert "[bold]spoofed[/bold]" in rendered
 
 
-def test_textual_preview_status_lifecycle() -> None:
-    from benchweave_sdk.preview_tui import PreviewStatusApp
-
-    shutdown: list[bool] = []
-    opened: list[str] = []
-
-    def record_open(url: str) -> bool:
-        opened.append(url)
-        return True
-
-    app = PreviewStatusApp(
-        url="http://127.0.0.1:49152",
-        renderer_version="0.1.0",
-        scenarios=11,
-        open_browser=record_open,
-        shutdown=lambda: shutdown.append(True),
-    )
-
-    async def exercise() -> None:
-        async with app.run_test() as pilot:
-            assert "SIMULATED PRESENTATION DATA" in str(app.query_one("#simulation").render())
-            await pilot.press("o")
-            assert opened == ["http://127.0.0.1:49152"]
-            await pilot.press("q")
-        assert shutdown == [True]
-
-    import asyncio
-
-    asyncio.run(exercise())
+# v0.7.0 reconciliation: the SDK deleted the in-package preview surfaces these
+# two arms pinned (ConsoleOutput.preview_ready and the textual
+# preview_tui.PreviewStatusApp — the banner text and textual are gone from the
+# SDK tree entirely). The preview moved to the [server]-extra host
+# (benchweave_sdk_server), whose extras-missing refusal and serve behavior the
+# SDK's own suite and wheel-install smoke pin; the gateway-provable remainder
+# of the preview surface (preview-ui listed in --help) stays pinned by the
+# command-group test above.

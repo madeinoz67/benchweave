@@ -526,14 +526,6 @@ REGISTER: dict[str, dict[str, tuple[str, int, tuple[str, ...] | None]]] = {
             3,
             None,
         ),
-        "src/benchweave_sdk/scaffold.py": (
-            "authored example-template fields that are not standards "
-            "references (descriptor_version, firmware version, adapter "
-            "version, provenance revision); the otdp_version example IS "
-            "derived (served.active_version) and stays outside this row",
-            4,
-            ("0.1.0", "0.1.0", "0.1.0", "1.0.0"),
-        ),
         "src/benchweave_sdk/publishing.py": (
             "authored lane constants — the submission-manifest schema version "
             "stamped by the packager (MANIFEST_SCHEMA_VERSION), the fallback "

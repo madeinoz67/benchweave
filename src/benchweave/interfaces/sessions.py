@@ -39,6 +39,7 @@ import secrets
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass, replace
+from typing import Any
 
 from benchweave.interfaces.identity import Identity
 
@@ -133,6 +134,37 @@ class HeldLease:
 
 
 @dataclass(frozen=True)
+class StagedStart:
+    """The session's staged-start record (G3b, design §2.1's second side
+    table): one staging cycle per (session, bench) — the staged binding
+    ref, the recorded ``run_check`` answer (``None`` until one has
+    returned for the CURRENT staged set, GW-51), the armed flag, and the
+    staging cycle's request id.
+
+    The request id is the STAGED BINDING document's own ``request_id``,
+    not a session-minted one: the seam's binding-match pre-check requires
+    ``run_start``'s §9 request id to equal the binding document's own
+    top-level ``request_id``, so the id the UI replays is the binding's —
+    fixed across check/arm/confirm and post-refusal retries by
+    construction (the same staged binding always carries the same id).
+    A different binding is a new cycle with a new id. Presentation state
+    of the session's own seam answers — never authority."""
+
+    request_id: str | None
+    binding_ref: dict[str, Any]
+    check: dict[str, Any] | None
+    armed: bool
+    #: FOLD-3: the run id this cycle's last successful start returned —
+    #: the keep-record-on-start replay handle's memory. ``None`` until a
+    #: start returns for this binding; a same-digest restage PRESERVES
+    #: it (the §9 id is the binding's own, so the knowledge belongs to
+    #: the binding, not the check cycle); a different binding is a new
+    #: cycle without it. Presentation of the session's own seam answers,
+    #: never authority — the seam re-derives the replay.
+    started_run_id: str | None = None
+
+
+@dataclass(frozen=True)
 class _LoginCode:
     """The server side of one minted login code (keyed by sha256)."""
 
@@ -182,6 +214,16 @@ class SessionStore:
         # semantics as the records themselves (logout, the lazy expiry
         # sweep, gateway restart).
         self._leases: dict[str, dict[str, HeldLease]] = {}
+        # The staged-start records (G3b, design §2.1's second side
+        # table): session_id -> {bench_id -> StagedStart}, same lock,
+        # same death semantics. Presentation of the session's own
+        # staged binding/check/arm cycle — never authority.
+        self._staged: dict[str, dict[str, StagedStart]] = {}
+        # Pending-cancel markers (G3b GW-55): session_id -> run ids the
+        # session has POSTed a cancellation for. The marker presents the
+        # OPERATOR'S OWN action until the seam reports the run terminal;
+        # the state itself is always run_get's.
+        self._cancels: dict[str, set[str]] = {}
 
     # --- held leases (G3a: response-sourced views, never authority) --------
 
@@ -221,6 +263,55 @@ class SessionStore:
                 if view.lease_id == lease_id:
                     return view
             return None
+
+    # --- staged starts and pending-cancel markers (G3b) -----------------------
+
+    def record_staged_start(
+        self, session_id: str, bench_id: str, staged: StagedStart
+    ) -> None:
+        """Store the staging cycle's record, keyed (session, bench); a
+        re-record REPLACES it (a different binding is the new cycle;
+        the caller keeps a same-binding re-stage's id stable by passing
+        the same request id)."""
+        with self._lock:
+            self._staged.setdefault(session_id, {})[bench_id] = staged
+
+    def staged_start(self, session_id: str, bench_id: str) -> StagedStart | None:
+        """The session's staging record for ``bench_id``, or ``None`` —
+        a snapshot under the lock (the caller renders from it; the seam
+        re-validates every start)."""
+        with self._lock:
+            return self._staged.get(session_id, {}).get(bench_id)
+
+    def clear_staged_start(self, session_id: str, bench_id: str) -> None:
+        """Drop the record (a start committed). Idempotent."""
+        with self._lock:
+            staged = self._staged.get(session_id)
+            if staged is not None:
+                staged.pop(bench_id, None)
+                if not staged:
+                    del self._staged[session_id]
+
+    def record_cancel_request(self, session_id: str, run_id: str) -> None:
+        """Mark that this session POSTed a cancellation for ``run_id``
+        (GW-55's marker is presentation of the operator's own action)."""
+        with self._lock:
+            self._cancels.setdefault(session_id, set()).add(run_id)
+
+    def cancel_requested(self, session_id: str, run_id: str) -> bool:
+        """Whether this session's marker for ``run_id`` is set."""
+        with self._lock:
+            return run_id in self._cancels.get(session_id, set())
+
+    def clear_cancel_request(self, session_id: str, run_id: str) -> None:
+        """Drop the marker (the run reported terminal; the presentation
+        gives way to the state itself). Idempotent."""
+        with self._lock:
+            markers = self._cancels.get(session_id)
+            if markers is not None:
+                markers.discard(run_id)
+                if not markers:
+                    del self._cancels[session_id]
 
     # --- bridges (G2c: one SSE bridge per session-and-bench, GW-33) --------
 
@@ -373,6 +464,11 @@ class SessionStore:
                 # presentation of one session's own answers, never a
                 # fact another record may keep.
                 self._leases.pop(session_id, None)
+                # The staging records and pending-cancel markers die with
+                # it as well (G3b): presentation of one session's own
+                # answers, never facts another record may keep.
+                self._staged.pop(session_id, None)
+                self._cancels.pop(session_id, None)
                 return None
             return session
 
@@ -386,6 +482,8 @@ class SessionStore:
             self._sessions.pop(session_id, None)
             self._bridges.pop(session_id, None)
             self._leases.pop(session_id, None)
+            self._staged.pop(session_id, None)
+            self._cancels.pop(session_id, None)
 
     # --- internals -----------------------------------------------------------
 

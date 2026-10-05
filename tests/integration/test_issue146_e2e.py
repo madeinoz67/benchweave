@@ -199,6 +199,17 @@ def create_plugin():
     return DatasetSupplyAdapter()
 '''
 
+# Step budgets: the dispatch steps carry a stall-absorbing timeout so the
+# control measures the dataset lane, not CI scheduler latency. A first
+# under-load CI breach (the v0.7.1 pairing push, one run of the thirty)
+# mapped a post-dispatch adapter stall to an honest outcome_unknown — the
+# same disclosed class as the demo-lattice D-R1 control. The measured
+# publish+validate cost at fixture scale sits orders of magnitude under
+# the budget (disclosure line below), so the design record's risk-three
+# gate-placement fork is NOT triggered; these budgets only stop a starved
+# runner from failing the ship gate. The 1900 ms figure keeps the static
+# body-budget admission coherent: worst case 4x1900 + 200 delay + 100
+# scheduling overhead = 7900 <= the harness's 8000 max_body_ms.
 INVOKE_STEPS: list[dict[str, Any]] = [
     {
         "id": "configure",
@@ -213,7 +224,7 @@ INVOKE_STEPS: list[dict[str, Any]] = [
             "ovp_v": 6.0,
             "ocp_a": 1.0,
         },
-        "timeout_ms": 500,
+        "timeout_ms": 1900,
     },
     {
         "id": "fetch",
@@ -221,7 +232,7 @@ INVOKE_STEPS: list[dict[str, Any]] = [
         "role": "supply",
         "action_id": "otdp.dc_psu.measure/1.0.0",
         "input": {"configuration_id": "conf-e2e", "channels": ["ch1"]},
-        "timeout_ms": 500,
+        "timeout_ms": 1900,
     },
     {
         "id": "assert-voltage",
@@ -240,7 +251,7 @@ INVOKE_STEPS: list[dict[str, Any]] = [
         "role": "supply",
         "parameter": "voltage_setpoint_v",
         "value": 5.0,
-        "timeout_ms": 500,
+        "timeout_ms": 1900,
     },
     {"id": "settle", "kind": "delay", "duration_ms": 200},
     {
@@ -248,7 +259,7 @@ INVOKE_STEPS: list[dict[str, Any]] = [
         "kind": "read",
         "role": "supply",
         "parameter": "output_voltage_v",
-        "timeout_ms": 500,
+        "timeout_ms": 1900,
     },
 ]
 

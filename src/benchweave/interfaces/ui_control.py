@@ -38,7 +38,11 @@ from markupsafe import Markup, escape
 from benchweave.interfaces.errors import OperationFailure, failure
 from benchweave.interfaces.identity import Identity
 from benchweave.interfaces.operations import TIER_SATISFIES, Operations
-from benchweave.interfaces.sessions import HeldLease, SessionRecord, SessionStore
+from benchweave.interfaces.sessions import (
+    HeldLease,
+    SessionRecord,
+    SessionStore,
+)
 
 #: GW-44's floors (the record §2.2, the Q2 ruling); the percentages ride
 #: the predicate body. The floors guarantee a minimum reaction window
@@ -58,6 +62,12 @@ FORM_MIN_DURATION_MS = 60_000
 #: ÷30 inside critical. A service parameter in the ui_* class — NOT a
 #: bench safety envelope (A02 governs bench hazards).
 DEFAULT_PANEL_POLL_MS = 30_000
+
+#: The staging panel's selector reads the bench's own first events page
+#: for candidate binding refs (admission's ``authority_changed`` rows
+#: are the oldest in the stream); the trip predicate separately walks
+#: the retained tail to its newest row (ui_staging.read_bench_events).
+_CONTROLS_EVENTS_PAGE = 20
 
 #: The release control's fixed reason. The release control is one click;
 #: the reason names the action's class (the seam's minimum is one
@@ -119,6 +129,79 @@ def bench_mode(held: HeldLease | None, *, now_epoch: Callable[[], int]) -> str |
     if expiry_s is None or now_epoch() >= expiry_s:
         return "no-lease"
     return None
+
+
+#: The trip-lifecycle kinds on the bench event wire: a ``trip`` raises
+#: protection-active; a ``bench_changed`` — the ONLY wire shadow an
+#: applied trip_reset has (the closed event def has no channel for the
+#: change kind) — clears it.
+_TRIP_LIFECYCLE = frozenset({"trip", "bench_changed"})
+
+
+def trip_active(events: list[dict[str, Any]]) -> bool:
+    """§2.5's wire-honest trip predicate over the bench's event rows:
+    protection-active iff the NEWEST trip-lifecycle event (by sequence)
+    is a ``trip``.
+
+    Disclosed boundaries (the record §2.5, each pinned by test): (a) the
+    gateway's own bench projection hardcodes ``tripped=False`` — this
+    predicate consumes the gateway's own ``trip`` events, the only live
+    trip signal the wire carries, and §C.1's row is presentation-level;
+    (b) an admin configuration activation after a trip ALSO emits
+    ``bench_changed`` and therefore also clears the marker (the err-clear
+    boundary the owner accepted as disclosed); (c) retention may have
+    dropped an old trip past the window — no trip-lifecycle row is no
+    verdict, never protection-active. The gateway's own start checks stay
+    authoritative and carry no trip gate (G3-D3 files that seam gap).
+    """
+    newest: tuple[int, str] | None = None
+    for row in events:
+        kind = str(row.get("kind", ""))
+        if kind not in _TRIP_LIFECYCLE:
+            continue
+        try:
+            sequence = int(row.get("sequence", 0))
+        except (TypeError, ValueError):
+            sequence = 0
+        if newest is None or sequence >= newest[0]:
+            newest = (sequence, kind)
+    return newest is not None and newest[1] == "trip"
+
+
+def _iter_steps(steps: list[Any]) -> Any:
+    """Yield every step in a procedure's step tree, recursing through the
+    structured kinds' nested bodies (``if.then`` / ``if.else`` /
+    ``repeat.steps``) — an author cannot hide an enable by nesting it."""
+    for step in steps:
+        if not isinstance(step, dict):
+            continue
+        yield step
+        for key in ("then", "else", "steps"):
+            nested = step.get(key)
+            if isinstance(nested, list):
+                yield from _iter_steps(nested)
+
+
+def energy_sourcing(procedure: dict[str, Any]) -> bool:
+    """GW-52's energy classification — a pure function of the admitted
+    procedure document: energy-sourcing IFF any ``invoke`` step's input
+    carries ``"enabled": true`` (R-ENERGISE-1's enabling clause,
+    mechanically derivable from admitted documents).
+
+    Disclosed boundary (the record §2.4/G3-D2): "changing a setpoint of
+    a currently-energised output" is NOT derivable from documents — it
+    needs live device state — and is uncovered at run-start granularity.
+    A procedure whose every enable-shaped input is false or absent is the
+    de-energising class. The classifier errs toward MORE confirmation
+    only by rule change, never silently.
+    """
+    for step in _iter_steps(procedure.get("steps", [])):
+        if step.get("kind") != "invoke":
+            continue
+        action_input = step.get("input")
+        if isinstance(action_input, dict) and action_input.get("enabled") is True:
+            return True
+    return False
 
 
 def session_warning_bubble(
@@ -183,7 +266,7 @@ class ControlViews:
     to the page handlers (fragment embed, mode computation, the session
     warning)."""
 
-    render: Callable[[SessionRecord, dict[str, Any]], str]
+    render: Callable[[SessionRecord, dict[str, Any], list[dict[str, Any]]], str]
     bench_mode: Callable[[SessionRecord, str], str | None]
     session_warning: Callable[[SessionRecord], str | None]
 
@@ -272,6 +355,7 @@ def _render_fragment(
     now_epoch: Callable[[], int],
     max_lease_ms: int,
     poll_base_ms: int,
+    staging_html: str = "",
 ) -> str:
     """The control region's fragment: lease facts, GW-44 warning, and
     the take/renew/release controls — every byte derived at the current
@@ -471,7 +555,11 @@ def _render_fragment(
         f"{_lease_facts_row(lease_state, facts)}"
         "<div class=\"bw-controls__actions\">"
         f"{take_html}{renew_html}{release_html}"
-        "</div></section>"
+        "</div>"
+        # G3b: the staging panel rides INSIDE the fragment section —
+        # one swap target, one poll cadence, both panels.
+        f"{staging_html}"
+        "</section>"
     )
 
 
@@ -486,6 +574,7 @@ def register_control_routes(
     session_identity: Callable[[SessionRecord], Identity],
     failure_page: Callable[[OperationFailure, Request], HTMLResponse],
     unauthenticated_page: Callable[[Request], HTMLResponse],
+    render: Callable[..., str],
 ) -> ControlViews:
     """Register the G3a control routes on the UI router (before its
     catch-all) and return the composed views the page handlers use.
@@ -528,12 +617,40 @@ def register_control_routes(
                 failure("invalid_request", f"{name} must be an integer")
             ) from None
 
+    def _first_events_page(identity: Identity, bench_id: str) -> list[dict[str, Any]]:
+        """The selector's candidate refs read: the bench's first events
+        page. A refusal composes no refs (the digest field still works)
+        — never a failed render over presentation data."""
+        try:
+            return list(
+                operations.events_get(
+                    identity, bench_id, after=None, limit=_CONTROLS_EVENTS_PAGE
+                )["events"]
+            )
+        except OperationFailure:
+            return []
+
     def _fragment_response(
-        record: SessionRecord, bench: dict[str, Any], bench_id: str | None = None
+        record: SessionRecord,
+        bench: dict[str, Any],
+        bench_id: str | None = None,
+        identity: Identity | None = None,
+        page_events: list[dict[str, Any]] | None = None,
+        started: tuple[str, bool] | None = None,
     ) -> HTMLResponse:
         resolved = (
             bench_id if bench_id is not None else str(bench.get("bench_id", ""))
         )
+        staging_html = ""
+        if staging is not None and identity is not None and resolved:
+            rows = (
+                page_events
+                if page_events is not None
+                else _first_events_page(identity, resolved)
+            )
+            staging_html = staging.panel_html(
+                record, identity, bench, resolved, rows, started
+            )
         return HTMLResponse(
             _render_fragment(
                 record=record,
@@ -542,6 +659,7 @@ def register_control_routes(
                 now_epoch=now_epoch,
                 max_lease_ms=max_lease_ms,
                 poll_base_ms=poll_base_ms,
+                staging_html=staging_html,
             )
         )
 
@@ -555,7 +673,7 @@ def register_control_routes(
             bench = operations.bench_get(identity, bench_id)
         except OperationFailure as fail:
             return failure_page(fail, request)
-        return _fragment_response(record, bench)
+        return _fragment_response(record, bench, identity=identity)
 
     def _mint_request_id() -> str:
         return "ui-" + uuid.uuid4().hex[:12]
@@ -617,7 +735,7 @@ def register_control_routes(
             bench = operations.bench_get(identity, bench_id)
         except OperationFailure:
             bench = {}  # the fragment tolerates a failed refetch (facts from the view)
-        return _fragment_response(record, bench, bench_id=bench_id)
+        return _fragment_response(record, bench, bench_id=bench_id, identity=identity)
 
     @router.post("/leases/{lease_id}/renewals", include_in_schema=False)
     async def renew_lease(lease_id: str, request: Request) -> Response:
@@ -701,7 +819,7 @@ def register_control_routes(
             bench = operations.bench_get(identity, bench_id)
         except OperationFailure:
             bench = {}
-        return _fragment_response(record, bench, bench_id=bench_id)
+        return _fragment_response(record, bench, bench_id=bench_id, identity=identity)
 
     @router.post("/leases/{lease_id}/release", include_in_schema=False)
     async def release_lease(lease_id: str, request: Request) -> Response:
@@ -732,10 +850,89 @@ def register_control_routes(
             bench = operations.bench_get(identity, bench_id)
         except OperationFailure:
             bench = {}
-        return _fragment_response(record, bench, bench_id=bench_id)
+        return _fragment_response(record, bench, bench_id=bench_id, identity=identity)
+
+    # The G3b staging routes (issue #304, §2.4): the five handlers plus
+    # the staging-panel composition, wired with this module's closures.
+    # Deferred import — ui_staging reads this module's helpers, so a
+    # top-level import would be circular.
+    from benchweave.interfaces.ui_staging import StagingRoutes
+
+    staging = StagingRoutes(
+        operations=operations,
+        sessions=sessions,
+        now_epoch=now_epoch,
+        page_size=int(limits.get("max_page_size", 1000)),
+        resolve_session=resolve_session,
+        session_identity=session_identity,
+        failure_page=failure_page,
+        unauthenticated_page=unauthenticated_page,
+        render=render,
+        fragment=lambda record, bench, bench_id, identity, started=None: _fragment_response(
+            record, bench, bench_id=bench_id, identity=identity,
+            started=started,
+        ),
+    )
+    staging.register(router)
+
+    def _cancel_region(
+        run_id: str, terminal: bool, requested: bool, has_control: bool
+    ) -> str:
+        """The run page's cancel region as its own swap target (the
+        POST re-renders exactly this block — GW-55's marker appears
+        without a page reload and gives way to the run's own state)."""
+        return render(
+            "cancel-region.j2",
+            run_id=run_id,
+            run_terminal=terminal,
+            cancel_requested=requested,
+            has_control=has_control,
+        )
+
+    @router.post("/runs/{run_id}/cancellations", include_in_schema=False)
+    async def cancel_run(run_id: str, request: Request) -> Response:
+        """GW-53/55 (§2.4): one action, never confirmed, UNGATED by
+        lease or trip (§6's owner-or-admin judgement is the seam's,
+        which "does not require an unexpired controlling lease" — its
+        own clause). run_cancel carries the form's reason; the
+        pending-cancel marker then renders until run_get reports
+        terminal."""
+        authed = _authed(request)
+        if authed is None:
+            return unauthenticated_page(request)
+        record, identity = authed
+        form = dict(await request.form())
+        reason = str(form.get("reason", ""))
+        if not reason.strip():
+            return failure_page(
+                OperationFailure(
+                    failure(
+                        "invalid_request",
+                        "a reason is required (one character minimum)",
+                    )
+                ),
+                request,
+            )
+        try:
+            operations.run_cancel(identity, run_id, _mint_request_id(), reason)
+        except OperationFailure as fail:
+            return failure_page(fail, request)
+        sessions.record_cancel_request(record.session_id, run_id)
+        try:
+            run = operations.run_get(identity, run_id)
+        except OperationFailure:
+            run = {}
+        return HTMLResponse(
+            _cancel_region(
+                run_id,
+                str(run.get("state", "")) == "terminal",
+                sessions.cancel_requested(record.session_id, run_id),
+                bool(record.scopes & TIER_SATISFIES[_CONTROL_TIER]),
+            )
+        )
 
     return ControlViews(
-        render=lambda record, bench: _render_fragment(
+        render=lambda record, bench, events: _render_fragment(
             record=record,
             bench=bench,
             held=sessions.held_lease(
@@ -744,6 +941,17 @@ def register_control_routes(
             now_epoch=now_epoch,
             max_lease_ms=max_lease_ms,
             poll_base_ms=poll_base_ms,
+            staging_html=(
+                staging.panel_html(
+                    record,
+                    session_identity(record),
+                    bench,
+                    str(bench.get("bench_id", "")),
+                    events,
+                )
+                if str(bench.get("bench_id", ""))
+                else ""
+            ),
         ),
         bench_mode=lambda record, bench_id: bench_mode(
             sessions.held_lease(record.session_id, bench_id), now_epoch=now_epoch
@@ -752,3 +960,185 @@ def register_control_routes(
             record, now_epoch=now_epoch
         ),
     )
+
+
+# --- G3b: runs, staging, energy confirmation (issue #304, design §2.4/§2.5) --------
+
+
+_HEX64 = set("0123456789abcdef")
+
+
+def _is_digest(candidate: str) -> bool:
+    return len(candidate) == 64 and set(candidate) <= _HEX64
+
+
+def _binding_chain(
+    operations: Operations, identity: Identity, binding_ref: dict[str, Any]
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """The DEP7 chain over the seam (never the store): the staged
+    binding by digest, then its pinned procedure — the same
+    digest-addressed resolution ``run_check`` performs.
+
+    FOLD-1: a STORED document lacking the binding shape (no procedure
+    pin — the stage handler tolerates every stored document) is the
+    unreadable-chain class, never a raw KeyError: it refuses
+    ``not_found`` ("no binding document exists at this digest"), the
+    same seam answer an unstored digest gets, so every caller composes
+    its own honest shape (the panel's disabled branch, the arm's §C.3
+    row). What it does NOT catch: a stored binding whose PINNED
+    procedure digest is shapeless — the second ``document_get`` returns
+    whatever the store holds and downstream readers (``armed_composition``)
+    treat missing keys honestly (FOLD-5)."""
+    binding_sha = str(binding_ref.get("sha256", ""))
+    binding_doc = operations.document_get(identity, binding_sha)["content"]
+    procedure_pin = (
+        binding_doc.get("procedure") if isinstance(binding_doc, dict) else None
+    )
+    procedure_sha = (
+        str(procedure_pin.get("sha256", ""))
+        if isinstance(procedure_pin, dict)
+        else ""
+    )
+    if not procedure_sha:
+        raise OperationFailure(
+            failure(
+                "not_found",
+                "the stored document does not name a pinned procedure —"
+                " no binding document exists at this digest",
+            )
+        )
+    procedure_doc = operations.document_get(identity, procedure_sha)["content"]
+    return binding_doc, procedure_doc
+
+
+def _attention_bound_ms(procedure: dict[str, Any]) -> int | None:
+    """GW-56's attention bound (DEP7, the #306-verified chain): the
+    procedure document's ``max_body_ms + max_protection_ms``. Both are
+    required by the procedure schema for every admitted manual
+    document; absent (a non-schema shape) composes no refusal — never a
+    fabricated zero."""
+    body = procedure.get("max_body_ms")
+    protection = procedure.get("max_protection_ms")
+    if (
+        isinstance(body, int)
+        and not isinstance(body, bool)
+        and isinstance(protection, int)
+        and not isinstance(protection, bool)
+    ):
+        return int(body) + int(protection)
+    return None
+
+
+def _format_number(value: Any) -> str:
+    """Exact values, not floats: 5.0 renders ``5`` and 0.5 renders
+    ``0.5`` (the confirm's non-optional exact value+unit)."""
+    if isinstance(value, bool):
+        return str(value)
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value)
+
+
+_UNIT_SUFFIXES: tuple[tuple[str, str], ...] = (
+    ("_ms", "ms"),
+    ("_a", "A"),
+    ("_v", "V"),
+)
+
+
+def _unit_for(field: str, sample_units: dict[str, str]) -> str:
+    """Unit derivation precedence (the record §2.4): (1) a same-named
+    ``sample`` step's declared unit; (2) the field-name SI suffix
+    (``_v``/``_a``/``_ms``) as the documented last resort."""
+    if field in sample_units:
+        return sample_units[field]
+    for suffix, unit in _UNIT_SUFFIXES:
+        if field.endswith(suffix):
+            return unit
+    return ""
+
+
+_EFFECT = "the output will be energised"
+
+
+def armed_composition(
+    binding_doc: dict[str, Any], procedure_doc: dict[str, Any]
+) -> tuple[bool, bool, str | None]:
+    """(energy, manual, armed text) from the document chain (GW-52,
+    §E.1): energy-sourcing iff ``energy_sourcing(procedure)``; the armed
+    text states the effect, then ONE segment per enable step — each with
+    the exact values (value+unit) its preceding invokes carried since the
+    previous enable, and the enable's role mapped through the binding's
+    ``bindings[]`` — joined per the contract's shape. ``None`` text when
+    the class is de-energising.
+
+    FOLD-5: EVERY enable composes (the first-enable-only text understated
+    the blast radius: one device named while a second is energised), and
+    degenerate shapes render honest text — "no input values" for an
+    enable whose preceding invokes carry none, "an unmapped role" for a
+    role outside ``bindings[]`` — never blanks. An enable-shaped invoke
+    whose own inputs carry no role composes "an unmapped role" too (the
+    role is what the binding maps)."""
+    energy = energy_sourcing(procedure_doc)
+    manual = str(procedure_doc.get("mode", "")) == "manual"
+    if not energy:
+        return energy, manual, None
+    sample_units = {
+        str(step.get("variable_id", "")): str(step.get("unit", ""))
+        for step in _iter_steps(procedure_doc.get("steps", []))
+        if isinstance(step, dict) and step.get("kind") == "sample"
+    }
+    segments: list[str] = []
+    values: list[str] = []
+    for step in _iter_steps(procedure_doc.get("steps", [])):
+        if step.get("kind") != "invoke" or not isinstance(step.get("input"), dict):
+            continue
+        action_input = step["input"]
+        if action_input.get("enabled") is True:
+            # FOLD-5: an enable — compose its segment now (the values its
+            # preceding invokes accumulated since the previous enable, and
+            # its role mapped through bindings[]); its OWN numeric inputs
+            # are not rendered (the enable is not a configure).
+            role = str(step.get("role", ""))
+            target = ""
+            for entry in binding_doc.get("bindings", []):
+                if not isinstance(entry, dict):
+                    continue
+                if str(entry.get("role", "")) == role:
+                    device_id = str(entry.get("device_id", ""))
+                    channels = entry.get("channels", {}) or {}
+                    # Fold-refute F1: the enable's own $stg_channel names the
+                    # alias it targets — a two-alias role's confirm must name
+                    # THAT channel, not the binding map's first. A channel
+                    # input without the reference (or naming an unmapped
+                    # alias) falls back to the first mapped channel.
+                    channel = ""
+                    stg_channel = action_input.get("channel")
+                    if (
+                        isinstance(stg_channel, dict)
+                        and isinstance(channels, dict)
+                        and stg_channel.get("$stg_channel") in channels
+                    ):
+                        channel = str(channels[str(stg_channel["$stg_channel"])])
+                    elif isinstance(channels, dict):
+                        channel = next(iter(channels.values()), "")
+                    target = f"{device_id} {channel}".strip()
+                    break
+            values_text = ", ".join(values) if values else "no input values"
+            target_text = target if target else "an unmapped role"
+            segments.append(f"{values_text} to {target_text}")
+            values = []
+        else:
+            for field, value in action_input.items():
+                if field.startswith("$stg_"):
+                    continue
+                if isinstance(value, bool) or not isinstance(value, (int, float)):
+                    continue
+                unit = _unit_for(str(field), sample_units)
+                values.append(f"{_format_number(value)} {unit}".rstrip())
+    text = f"{_EFFECT}: {'; '.join(segments)}. Confirm to proceed."
+    return energy, manual, text
+
+

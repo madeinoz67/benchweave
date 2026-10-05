@@ -297,6 +297,16 @@ All notable changes to this project will be documented in this file.
 - Reconcile __version__ with the single source (fold-refute F2)
 - The mid-stream bridge observable — observe before the abort (#384)
 - Pin the docs-site listing command literal (adv2 fold F1)
+- FOLD-1 — a staged stored non-binding digest reads as the unreadable chain, not a KeyError 500 (issue #304)
+- FOLD-2 — the §2.4 invalid-staged-input state renders (issue #304)
+- FOLD-3 — the §9 replay surfaces honestly (issue #304)
+- FOLD-4 — arm I pins the marker, not an OR the sim's speed decides (issue #304)
+- FOLD-5 — the armed text composes EVERY enable, and degenerate shapes render honest text (issue #304)
+- The staging panel offers the preflight control (browser-lane catch)
+- The confirm names the channel the enable targets (fold-refute F1)
+- Reconcile the gateway's v0.7.0-coupled surfaces
+- Sdk_smoke installs the SDK wheel with the [scaffold] extra
+- The 146 E2E step budgets absorb starved-runner stalls
 
 ### Documentation
 
@@ -613,6 +623,7 @@ All notable changes to this project will be documented in this file.
 - Issue #380 family release process + gateway cut authority
 - Issue #380 fold adv1 F1+F2 — honest enforcement modality + the gateway notes command
 - Discovery wording defers to the schema and the landed code (#386)
+- The G3b operator rows — staging, preflight, confirm, replay, cancel (#304)
 
 ### Features
 
@@ -836,6 +847,11 @@ All notable changes to this project will be documented in this file.
 - Session-side held-lease views and granted session duration (G3a)
 - G3a lease controls — take/renew/release, GW-95 session bound, GW-44 warnings, polled fragment (issue #304)
 - 6-hour manual lease default (#307) — app-entry, demo, and the poll-knob env (G3a §2.6)
+- Session-side staging records and pending-cancel markers (G3b)
+- The trip predicate and the energy classification (G3b §2.5/GW-52)
+- The staging panel and the five G3b routes (issue #304, §2.4)
+- The run-starts fire path with fire-time guards (issue #304, §2.4)
+- The ungated cancel route and the run-page marker (issue #304, §2.4)
 
 ### Hardware Evidence
 
@@ -964,6 +980,13 @@ All notable changes to this project will be documented in this file.
 - Delete the mirror machinery; restore the literal gate to its pre-slice shape (#224 s2 pivot)
 - Bump actions/configure-pages from 5.0.0 to 6.0.0 (#349)
 - Advance packages/sdk to v0.6.0 (#309) (#365)
+- Advance packages/sdk to v0.7.0
+- Advance packages/sdk to v0.7.0 — lock + mirror + pointer
+- Render the compatibility matrix for the 0.7.0 pairing
+- Retire the scaffold.py register row — the v0.7.0 SDK deleted the file
+- Advance packages/sdk to v0.7.1
+- Render the compatibility matrix for the 0.7.1 pairing
+- Follow the v0.7.1 tag re-point to its self-registration commit
 
 ### Performance
 
@@ -1165,6 +1188,8 @@ All notable changes to this project will be documented in this file.
 - RED arms for normative_path_escape refusal (issue #238)
 - The G3a browser lane — arm L (#304)
 - Issue #380 pin the docs-site tag-namespace refusal
+- Repair the vacuous-spy arms (kill rule: an assertion that cannot fail polices nothing)
+- The G3b browser arms (#304)
 
 ### Build
 
