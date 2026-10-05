@@ -277,8 +277,10 @@ def parse_nak(payload: bytes) -> tuple[int, int]:
 def parse_identify(payload: bytes) -> IdentifyInfo:
     """IDENTIFY_RSP by declared length: 5 B reads as proto 1 (caps None);
     7 B is proto 2 with the caps field."""
-    if len(payload) < 5:
-        raise ValueError("short IDENTIFY payload")
+    if len(payload) not in (5, 7):
+        # M10 (fold): a 6 B or >=8 B payload is a wire error, not a
+        # proto-1 payload -- refuse loudly instead of parsing silently.
+        raise ValueError(f"identify_len: payload is {len(payload)} B, expected 5 or 7")
     if len(payload) >= 7:
         caps = int.from_bytes(payload[5:7], "little")
         proto = payload[0]

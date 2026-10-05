@@ -171,6 +171,9 @@ static void dma_tx_wait(void) {
 
 static void dma_tx_kick(const uint8_t *data, uint8_t len) {
     DMA_InitTypeDef d = {0};
+    dma_tx_wait(); /* M1 (fold): never reprogram mid-frame — the previous
+                    * transfer must complete (TC) or this kick truncates
+                    * it; the double buffer pipelines as build-under-wire */
     DMA_Cmd(DMA1_Channel4, DISABLE);
     DMA_ClearFlag(DMA1_FLAG_TC4);
     d.DMA_PeripheralBaseAddr = (uint32_t) & (USART1->DATAR);
@@ -291,6 +294,7 @@ static uint8_t send_sample(uint32_t counter, const uint16_t ch6[]) {
 /* ── Revert guard (T_revert after a baud switch) ────────────────────────── */
 static uint32_t revert_deadline_ms = 0; /* 0 = disarmed */
 static void usart_set_baud(uint32_t baud);
+static void adc_scan_reconfigure(void);
 static void revert_guard_arm(void) {
     revert_deadline_ms = ms_now() + T_REVERT_MS;
 }
@@ -406,6 +410,9 @@ static void rx_byte(uint8_t b) {
         uint16_t received = (uint16_t)(((uint16_t)b << 8) | frame_crc_lo);
         rx_state = RX_SYNC0;
         if (received == rx_crc) {
+            revert_guard_disarm(); /* M8 (fold): any CRC-valid frame
+                                    * proves the link — the guard disarms
+                                    * (spec + emulator wording) */
             handle_frame(frame_type, frame_payload, frame_len);
         }
         /* else: bad CRC -> silently drop (resync). */
@@ -467,9 +474,13 @@ static void handle_frame(uint8_t type, const uint8_t *payload, uint8_t len) {
         break;
 
     case TYPE_SET_CHANNELS:
-        if (len >= 1 && payload[0] <= 0x3F) {
+        if (len >= 1 && payload[0] >= 1 && payload[0] <= 0x3F) {
             channel_mask = payload[0];
             ws2812_set_channels(channel_mask);
+            adc_scan_reconfigure(); /* M2 (fold): the rule group and the
+                                     * DMA count must track the mask, or
+                                     * a non-prefix mask reports the
+                                     * wrong channel with valid CRC */
             send_ack(type, (uint16_t)payload[0]);
         } else {
             send_nak(type, ERR_BAD_PARAMETER);

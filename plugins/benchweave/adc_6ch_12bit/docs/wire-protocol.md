@@ -14,7 +14,10 @@ in these documents is MODELLED or ESTIMATE — see `rate-model.md`.
   over `type..payload`, little-endian on the wire. The firmware and this
   project's host codec compute it through the same 16-entry nibble table
   (pinned to the bitwise reference by the codec tests).
-- `len` is the payload length; a frame is `11 + len` bytes on the wire.
+- `len` is the payload length; a frame is `7 + len` bytes on the wire
+  (5 header + len + 2 CRC). The SAMPLE specialization with `n` active
+  channels is `11 + 2n` bytes; the all-six mask is 23 B, byte-identical
+  to the v1 frame (pinned by the codec tests).
 
 ## Frame types
 
@@ -81,16 +84,28 @@ One attempt, no silent retry loop:
    entry, never retry the switch.
 4. `T_switch` (host, hint 500 ms): if SET_FRAME_FORMAT is not ACKed
    within it after the reopen, the host reopens at 2 Mbps, re-IDENTIFYs
-   to confirm the legacy path, and reports (a failed confirm is reported
-   as unresolved — the fallback still reports).
+   to confirm the legacy path, and reports. The report DISTINGUISHES two
+   terminal states (the `link_state` field of the negotiation result):
+   `ok` — the reported state is known to match the device — and
+   `unresolved` — a switch attempt was made and the legacy confirm
+   failed, so the device may still sit at the switched baud (its
+   SET_FRAME_FORMAT ACK was lost after it applied slim); only a RESET or
+   a successful fresh IDENTIFY recovers it. A plain legacy fallback
+   report in that state is a lie.
 
 ## Device revert guard
 
 After applying a baud switch, if no CRC-valid frame arrives within
 `T_revert` (hint 250 ms; commissioned per bench per A02), the device
 reverts to boot state (2 Mbps + legacy) on its own. Any CRC-valid frame
-disarms the guard. The guard is the device's own action; the master
-re-IDENTIFYs on its fallback path and finds the boot state.
+disarms the guard (a valid frame proves the link; the firmware, the
+emulator, and this spec carry the same rule). The guard is the device's
+own action. With the default timings the master's fallback
+re-IDENTIFY may land INSIDE the guard's window (before the device has
+reverted) and read wrong-baud garbage — the honest outcomes are a clean
+fallback (the device reverted and the confirm proves boot state) or the
+`unresolved` link state above; a report that assumes the device already
+reverted is not one of them.
 
 ## Timing basis
 

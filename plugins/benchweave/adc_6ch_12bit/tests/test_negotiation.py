@@ -38,6 +38,16 @@ async def _noop_reopen(baud: int) -> None:
     """The in-process transport carries its baud state internally."""
 
 
+def _emulator_reopen(emulator: AdcEmulator) -> Any:
+    """The in-process reopen: the host side moves to the new baud (the
+    emulator tracks both ends since fold M7)."""
+
+    async def reopen(baud: int) -> None:
+        emulator.host_baud = baud
+
+    return reopen
+
+
 def _negotiate(
     emulator: AdcEmulator,
     *,
@@ -47,7 +57,7 @@ def _negotiate(
     services = EmulatorServices(emulator)
     context = _Ctx(5.0)
     call = negotiator or negotiate_stream
-    return asyncio.run(call(services, context, reopen=_noop_reopen, **kwargs))
+    return asyncio.run(call(services, context, reopen=_emulator_reopen(emulator), **kwargs))
 
 
 def _decode_one(emu: AdcEmulator, *, n_active: int) -> tuple[codec.Frame, int, tuple[int, ...]]:
@@ -81,6 +91,10 @@ def _cell_v1_fallback(emulator: AdcEmulator, negotiator: Negotiator) -> None:
     assert not result.negotiated and result.baud == BOOT_BAUD and not result.slim
     steps = {(e["step"], e["outcome"]) for e in result.events}
     assert ("v2_attempt", "skipped") in steps, result.events
+    # M5 (fold): wire-level reach — the negotiator must have ASKED the
+    # device. A silent stub (zero transmissions) fails here.
+    identifies = [c for c in emulator.commands if c[0] == int(codec.FrameType.IDENTIFY)]
+    assert identifies, "the fallback cell requires the device to receive IDENTIFY"
     frame, _counter, values = _decode_one(emulator, n_active=6)
     assert len(frame.payload) == 16 and codec.frame_bytes(6, slim=False) == 23, (
         "the legacy stream carries the fixed 23 B frame"
@@ -164,6 +178,86 @@ def test_a2_5_host_switch_timeout_one_fallback_no_retry() -> None:
 
 def test_a2_6_len_mask_mismatch_is_a_protocol_error_with_resync() -> None:
     _cell_len_mask_mismatch(AdcEmulator(variant="v2"))
+
+
+# ---------------------------------------------------------------------------
+# fold-wave cells (M6/M7/M8)
+
+
+def test_m6_out_of_enum_reply_type_raises_negotiation_failed() -> None:
+    """M6 (fold): an out-of-enum IDENTIFY answer (0x0C) must raise
+    NegotiationFailed carrying the raw byte — never a ValueError from
+    FrameType(x).name inside the raiser."""
+
+    class _OddServices:
+        """Answers every send with a hand-built 0x0C frame."""
+
+        def __init__(self) -> None:
+            self.sent: list[bytes] = []
+
+        async def transfer(self, transaction: dict[str, Any], context: Any) -> dict[str, Any]:
+            if transaction["kind"] == "stream_receive":
+                frame = codec.Frame(type=0x0C, seq=0, payload=b"")
+                return {"data": codec.encode_frame(frame)}
+            self.sent.append(transaction["data"])
+            return {}
+
+    from adc_wire.negotiate import NegotiationFailed
+
+    services = _OddServices()
+    context = _Ctx(5.0)
+    with pytest.raises(NegotiationFailed, match="0x0c"):
+        asyncio.run(
+            negotiate_stream(services, context, reopen=_noop_reopen)  # type: ignore[arg-type]
+        )
+
+
+def test_m7_revert_during_reopen_is_never_a_success() -> None:
+    """M7 (fold): the emulator is baud-aware — if the host's reopen
+    outlasts the device's T_revert, the device reverts and the late
+    SET_FRAME_FORMAT arrives as wrong-baud garbage. The host must NOT
+    report a negotiated 3 Mbps success; the result is a fallback (with
+    an unresolved link, since the confirm then also fails)."""
+
+    async def _slow_reopen(baud: int) -> None:
+        await asyncio.sleep(0.4)  # > the emulator's T_revert (0.25 s)
+        emu.host_baud = baud
+
+    emu = AdcEmulator(variant="v2", t_revert_s=0.25)
+    services = EmulatorServices(emu)
+    context = _Ctx(5.0)
+    result = asyncio.run(negotiate_stream(services, context, reopen=_slow_reopen))
+    assert not result.negotiated, (
+        f"a revert during the reopen must never read as success: {result.events}"
+    )
+    assert result.baud == BOOT_BAUD
+    assert emu.garbled_bytes > 0, "the late frames must arrive as wrong-baud garble"
+    # The device self-reverted, so the host's fallback re-joins it at the
+    # boot baud: a CLEAN legacy fallback here is the honest outcome (the
+    # defect the fold named was the old emulator reporting 3 Mbps
+    # SUCCESS). Unresolved is the other acceptable terminal state.
+    assert result.link_state in ("ok", "unresolved"), result.events
+    assert ("v2_attempt", "fallback") in {(e["step"], e["outcome"]) for e in result.events}
+
+
+def test_m8_lost_format_ack_leaves_the_link_unresolved() -> None:
+    """M8 (fold): the SET_FRAME_FORMAT ACK is lost after the device
+    applied slim — the host falls back, the confirm fails (wrong baud),
+    and the result must carry link_state='unresolved': the device sits
+    at the switched baud until RESET. A plain legacy fallback is a lie."""
+    emu = AdcEmulator(variant="v2", t_revert_s=60)
+    emu.drop_ack_once = int(codec.FrameType.SET_FRAME_FORMAT)
+    services = EmulatorServices(emu)
+    context = _Ctx(5.0)
+
+    async def _noop_reopen(baud: int) -> None:
+        emu.host_baud = baud
+
+    result = asyncio.run(negotiate_stream(services, context, reopen=_noop_reopen))
+    assert not result.negotiated, result.events
+    assert result.link_state == "unresolved", result.events
+    assert emu.slim, "the device applied the format before the ACK was lost"
+    assert emu.baud == TARGET_BAUD, "the device is stranded at the switched baud"
 
 
 # ---------------------------------------------------------------------------

@@ -73,6 +73,14 @@ async def _main(run_s: float) -> dict[str, object]:
     from benchweave_sdk_server.serial import SerialCaptureServices, SerialLink
 
     link = SerialLink(host_port, quiet_s=0.05)
+    # M13 (fold, disclosure): max_frame_bytes=65536 is this instrument's
+    # DECLARED host configuration — the services clamp the per-receive
+    # ceiling to min(transfer_ceiling, max_frame_bytes), so an honest
+    # frame-scale descriptor (max_frame_bytes ~ 23) would cap receives at
+    # frame size and this 40,950 B bulk transfer would refuse. The A3
+    # measurement is a bulk-stream instrument, not a descriptor-driven
+    # host; the conflation of the two clamps is a candidate follow-up
+    # issue for the backend owner (filed by the run lead).
     services = SerialCaptureServices(link, max_frame_bytes=65536)
     try:
         ctx = _Ctx(5.0)

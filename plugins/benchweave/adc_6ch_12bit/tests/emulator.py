@@ -69,6 +69,8 @@ class AdcEmulator:
         self.drop_list = tuple(sorted(drop_list))
         self.legacy_override = legacy_override
         self.baud = codec.SUPPORTED_BAUDS[0]
+        self.host_baud = codec.SUPPORTED_BAUDS[0]  # M7 (fold): the host side
+        self.garbled_bytes = 0
         self.slim = False
         self.streaming = False
         self.channel_mask = codec.CHANNEL_MASK_ALL
@@ -80,11 +82,21 @@ class AdcEmulator:
         self._parser = codec.FrameParser()
         self._revert_deadline: float | None = None
         self._silent = False
+        self.drop_ack_once: int | None = None  # M8 (fold): frame type whose next ACK is lost
+        self._drop_armed = False
 
     # -- low byte surface (the device side of a port) ----------------------
 
     def write(self, data: bytes) -> None:
-        """Host -> device bytes: parse frames, answer like firmware."""
+        """Host -> device bytes: parse frames, answer like firmware. A
+        write from a host whose baud disagrees with the device's is
+        line garbage (M7, fold): dropped and counted, never parsed."""
+        now = time.monotonic()
+        if self._revert_deadline is not None and now >= self._revert_deadline:
+            self._revert()
+        if self.host_baud != self.baud:
+            self.garbled_bytes += len(data)
+            return
         for frame in self._parser.feed(bytes(data)):
             self._handle(frame)
 
@@ -133,8 +145,11 @@ class AdcEmulator:
                 + self.averaging.to_bytes(2, "little"),
             ))
         elif frame.type == int(codec.FrameType.SET_CHANNELS):
-            self.channel_mask = frame.payload[0] if frame.payload else 0
-            self._out += self._ack(codec.FrameType.SET_CHANNELS, self.channel_mask)
+            if len(frame.payload) < 1 or frame.payload[0] == 0 or frame.payload[0] > 0x3F:
+                self._out += self._nak(codec.FrameType.SET_CHANNELS, codec.ErrorCode.BAD_PARAMETER)
+            else:
+                self.channel_mask = frame.payload[0]
+                self._out += self._ack(codec.FrameType.SET_CHANNELS, self.channel_mask)
         elif frame.type == int(codec.FrameType.START_STREAM):
             self.streaming = True
             self._out += self._ack(codec.FrameType.START_STREAM, 0)
@@ -147,6 +162,7 @@ class AdcEmulator:
             self._out += self._stream_frame()
         elif frame.type == int(codec.FrameType.RESET):
             self.streaming = False
+            self.counter = 0  # M9 (fold): the firmware reboots its counter
             self._out += self._ack(codec.FrameType.RESET, 0)
         else:
             self._out += self._nak(codec.FrameType(frame.type), codec.ErrorCode.BAD_COMMAND)
@@ -178,10 +194,14 @@ class AdcEmulator:
         return codec.encode_frame(frame)
 
     def _ack(self, command: codec.FrameType, value: int) -> bytes:
-        return self._encode(codec.Frame(
+        frame = codec.Frame(
             type=int(codec.FrameType.ACK), seq=0,
             payload=bytes((int(command),)) + value.to_bytes(2, "little"),
-        ))
+        )
+        if self.drop_ack_once is not None and int(command) == int(self.drop_ack_once):
+            self.drop_ack_once = None  # one shot: the NEXT matching ACK is lost
+            return b""
+        return self._encode(frame)
 
     def _nak(self, command: codec.FrameType, error: int) -> bytes:
         return self._encode(codec.Frame(

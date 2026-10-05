@@ -6,8 +6,11 @@ Makefile header for `MRS_BASE`):
     make MRS_BASE=<mrs resources dir>
 
 Artifacts land in `build/`: `.elf`, `.hex`, `.bin`, `.lst`, `.siz`. The
-v2 build is 6.6 KB of flash and ~0.8 KB of RAM against the part's
-62 KB / 20 KB budget.
+v2 build is ~6.6 KB of flash and 0.8 KB of RAM against the part's
+62 KB / 8 KB budget (`Ld/Link.ld` is the authority: the CH32V006
+variant block reads FLASH 62K, RAM 8K). Reproducibility: record and
+compare the `.hex` sha256 — the hex image is identical across build
+directories; object files are not.
 
 Flash: WCH-LinkE (or WCH-Link) via wlink / MounRiver Studio, SWIO on the
 board's programming header; the image is `build/ch32v006e8r_adc.hex`.

@@ -1,3 +1,4 @@
+# author: Stephen Eaton
 """Path bootstrap for the standalone device project's tests.
 
 The project is standalone (no pyproject; the CI job copies the directory

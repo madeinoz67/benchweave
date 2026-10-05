@@ -105,3 +105,65 @@ def test_gap_detector_reports_planted_gaps_and_wraps() -> None:
 def test_gap_detector_baseline_never_fabricates() -> None:
     detector = GapDetector()
     assert detector.feed(1234) is None  # the baseline is not a gap
+
+
+def test_gap_duplicate_is_never_a_negative_gap() -> None:
+    """M9 (fold): a repeated counter is a duplicate event, never a
+    fabricated negative missed count."""
+    detector = GapDetector()
+    assert detector.feed(10) is None
+    assert detector.feed(11) is None
+    assert detector.feed(11) is None  # duplicate
+    assert detector.feed(12) is None  # continuation resumes
+    assert detector.gaps == []
+    assert detector.duplicates == [11]
+
+
+def test_gap_restart_rebaselines_never_a_giant_gap() -> None:
+    """M9 (fold): a counter that goes BACKWARDS (device RESET reboots to
+    0) is a restart event and a rebaseline — never a ~2**32 gap."""
+    detector = GapDetector()
+    for c in (100, 101, 102):
+        detector.feed(c)
+    detector.feed(0)  # the device rebooted its counter
+    detector.feed(1)
+    assert detector.gaps == [], "a restart must never fabricate a gap"
+    assert detector.restarts == [(102, 0)]
+    detector.feed(5)
+    assert detector.gaps == [(1, 5, 3)], "gaps resume from the new baseline"
+
+
+def test_wrap_near_2p32_is_continuation_not_restart() -> None:
+    detector = GapDetector()
+    detector.feed(0xFFFFFFFE)
+    detector.feed(0xFFFFFFFF)
+    detector.feed(0)
+    assert detector.gaps == [] and detector.restarts == []
+    assert detector.feed(1) is None
+
+
+def test_general_frame_is_seven_plus_len() -> None:
+    """M3 (fold): the general frame is 7 + len (5 header + len + 2 CRC);
+    11 + 2n is the SAMPLE specialization only."""
+    import random
+
+    rng = random.Random(3939)
+    for length in (0, 1, 4, 6, 16, 255):
+        payload = bytes(rng.randrange(256) for _ in range(length))
+        wire = codec.encode_frame(codec.Frame(type=0x07, seq=0, payload=payload))
+        assert len(wire) == 7 + length, length
+    # the SAMPLE specialization, and the mask=all byte-identity
+    assert codec.frame_bytes(6, slim=True) == codec.frame_bytes(6, slim=False) == 23
+    assert codec.frame_bytes(1, slim=True) == 13
+
+
+def test_parse_identify_accepts_only_five_or_seven_bytes() -> None:
+    """M10 (fold): 6 B and >=8 B payloads refuse loudly instead of
+    parsing silently as proto 1."""
+    with pytest.raises(ValueError, match="identify_len"):
+        codec.parse_identify(bytes((1, 0, 2, 6, 12, 0x00)))
+    with pytest.raises(ValueError, match="identify_len"):
+        codec.parse_identify(bytes((2, 0, 3, 6, 12, 3, 0, 9)))
+    v1 = codec.parse_identify(bytes((1, 0, 2, 6, 12)))
+    v2 = codec.parse_identify(bytes((2, 0, 3, 6, 12, 3, 0)))
+    assert v1.proto_version == 1 and v2.proto_version == 2

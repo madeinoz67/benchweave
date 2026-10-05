@@ -6,6 +6,45 @@
 
 ---
 
+## 2026-10-05 ADDENDUM (fold wave — original text below is frozen; these corrections supersede where they disagree)
+
+1. **Byte-rate arithmetic (§4.3):** a baud rate carries baud/10 bytes per
+second (10 bit-times per 8N1 byte), so 3 Mbps = 300 kB/s — the record's
+375 kB/s figures and the derived 1.4 s / 0.68 s statements are corrected
+to 1.7 s / 0.87 s in the code comments (the wrong numbers also shipped in
+commit 146047f's message; the follow-up commit is their correction of
+record).
+2. **t_conv (§6, §7):** the 1.0 us DMA-path ESTIMATE is superseded by a
+COMPUTED 11.33 us/channel — the vendor's own numbers (CyclesMode5 sample
+55.5 cycles + 12.5-cycle conversion = 68 ADC cycles at ADCCLK = 48/8 =
+6 MHz). The v1 measured 31.6 us/channel stands as the polled-path total.
+3. **Operator reconciliation (§6):** v1 rows are the serial sum
+(n * t_conv + wire); v2-with-DMA rows are the pipelined max(n * t_conv,
+wire) — true in the firmware BECAUSE the stream path now waits the
+previous frame's transfer-complete before each kick (the fold's M1 fix;
+without it a kick aborted the in-flight frame). The pipelining
+assumption is the row's remaining ESTIMATE; the conservative serial-sum
+row is kept beside it. Row 4 recomputes to the wire ceiling 23,077 SPS
+(19k = 82% wire utilisation).
+4. **Transfer scale at 3 Mbps:** the byte rate is 300 kB/s, so the
+`transfer_ceiling` / ring sizing statements in §4.3 that used 375 kB/s
+read proportionally (512 KiB >= 1.7 s).
+5. **Bench checklist (§10 Part B) additions:** bridge baud ACCURACY / BER
+at 3 Mbps (not just throughput); host reopen latency measured against
+the 250 ms T_revert window; USB-FS sustained scheduling at 300 kB/s; PCB
+signal integrity at 3 Mbps; a disarm-scope probe (a valid IDENTIFY at 3
+Mbps inside the T_revert window — any CRC-valid frame disarms); a
+nominal-vs-measured T_nominal reconciliation (recompute the nominal grid
+from the measured SPS); a sample-time-mode sensitivity probe (whether
+shorter ADC sample modes are safe for the board's source impedance —
+Mode0 computes to 2.67 us/channel and would clear 19k even serially, but
+analog quality owns the decision).
+6. **Stream TX discipline (§7):** the "double-buffered DMA TX" claim
+REQUIRES wait-for-TC before every kick (one DMA channel is reprogrammed
+by each kick); the increment's firmware carries that wait as of the fold.
+7. The refute pass (2 adversary lanes + mechanism-critic) and this fold
+are recorded in the PR body.
+
 ## 1. Premise verification (why this increment exists)
 
 Issue #393's core claim checks out arithmetically, and one number in it is now known wrong:

@@ -63,12 +63,21 @@ Reopen = Callable[[int], Awaitable[None]]
 
 @dataclass
 class NegotiationResult:
-    """The negotiated stream state plus the surfaced events."""
+    """The negotiated stream state plus the surfaced events.
+
+    ``link_state`` (fold M8): ``"ok"`` means the reported state is known
+    to match the device; ``"unresolved"`` means a switch attempt was
+    made, the legacy confirm failed, and the device may still sit at the
+    switched baud (SET_FRAME_FORMAT's ACK lost) -- only a RESET (or a
+    successful fresh IDENTIFY) recovers it. Hosts must surface the
+    distinction; a plain legacy fallback is a lie here.
+    """
 
     baud: int
     slim: bool
     identify: codec.IdentifyInfo
     events: list[dict[str, str]] = field(default_factory=list)
+    link_state: str = "ok"
 
     @property
     def negotiated(self) -> bool:
@@ -159,8 +168,11 @@ async def _identify(
         codec.Frame(type=int(codec.FrameType.IDENTIFY), seq=0, payload=b""),
     )
     if reply.type != int(codec.FrameType.IDENTIFY_RSP):
+        # M6 (fold): the raw byte, never FrameType(x).name -- an
+        # out-of-enum reply type would raise ValueError here and mask
+        # the NegotiationFailed the caller needs.
         raise NegotiationFailed(
-            f"identify answered {codec.FrameType(reply.type).name}, not IDENTIFY_RSP"
+            f"identify answered type {reply.type:#04x}, not IDENTIFY_RSP"
         )
     return codec.parse_identify(reply.payload)
 
@@ -280,12 +292,22 @@ async def _fallback(
     surface the fallback, then one confirm IDENTIFY (its failure is
     recorded as ``legacy_confirm: unresolved`` — the fallback still
     reports)."""
-    if switched:
-        await reopen(codec.SUPPORTED_BAUDS[0])
-        events.append(_event("baud_switch", "reverted", "host reopened at 2 Mbps"))
+    unresolved = False
     events.append(
         _event("v2_attempt", "fallback", f"{type(reason).__name__}: {reason}")
     )
+    if switched:
+        # M10 (fold): the fallback is surfaced even when the reopen
+        # itself fails; the link is then unresolved, never a fictional
+        # clean legacy state.
+        try:
+            await reopen(codec.SUPPORTED_BAUDS[0])
+            events.append(_event("baud_switch", "reverted", "host reopened at 2 Mbps"))
+        except Exception as exc:
+            events.append(
+                _event("baud_switch", "reverted_failed", f"{type(exc).__name__}: {exc}")
+            )
+            unresolved = True
     try:
         confirm = await _identify(services, parser, context)
         events.append(
@@ -295,6 +317,12 @@ async def _fallback(
         events.append(
             _event("legacy_confirm", "unresolved", f"{type(exc).__name__}: {exc}")
         )
+        if switched:
+            unresolved = True  # M8 (fold): the device may sit at the switched baud
     return NegotiationResult(
-        baud=codec.SUPPORTED_BAUDS[0], slim=False, identify=identify, events=events
+        baud=codec.SUPPORTED_BAUDS[0],
+        slim=False,
+        identify=identify,
+        events=events,
+        link_state="unresolved" if unresolved else "ok",
     )
