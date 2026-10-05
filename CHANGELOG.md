@@ -310,6 +310,7 @@ All notable changes to this project will be documented in this file.
 - Reconcile the gateway's v0.7.0-coupled surfaces
 - Sdk_smoke installs the SDK wheel with the [scaffold] extra
 - The 146 E2E step budgets absorb starved-runner stalls
+- The installed-SDK smoke's scaffold leg rides [scaffold] (gateway #308, PR #400)
 
 ### Documentation
 
@@ -631,6 +632,7 @@ All notable changes to this project will be documented in this file.
 - STE pass on the Response reach bullet — two sentence splits
 - PR #391 row calls — denominator truth, temporal fix, record errata
 - The G3b operator rows — staging, preflight, confirm, replay, cancel (#304)
+- Close obligation 7 and re-home the developer guide's preview sentence (gateway #308)
 
 ### Features
 
@@ -995,6 +997,7 @@ All notable changes to this project will be documented in this file.
 - Advance packages/sdk to v0.7.1
 - Render the compatibility matrix for the 0.7.1 pairing
 - Follow the v0.7.1 tag re-point to its self-registration commit
+- Advance the SDK pointer to v0.7.1 — gitlink, CON-12 mirror, twin register, census (gateway #308)
 
 ### Performance
 
@@ -1016,6 +1019,10 @@ All notable changes to this project will be documented in this file.
 - Authorisation reads the classification's status; the pin record threads through (#217 review fold R6/R7/R11c)
 - M4 — one canonical derive_move_to, labeled degenerate states
 - M4 twin reconciliation — the downgrade label rides the refusal side
+
+### Security
+
+- Origin/main into feat/issue308-pointer — the pairing duplicates drop (gateway #308, PR #400)
 
 ### Style
 
@@ -1201,6 +1208,9 @@ All notable changes to this project will be documented in this file.
 - PR #391 pin arms — cached gates, digest half, boundaries, root
 - Repair the vacuous-spy arms (kill rule: an assertion that cannot fail polices nothing)
 - The G3b browser arms (#304)
+- The SDK test motions for the 0.7.0 pin and the pins it enables (gateway #308, pre-pointer)
+- The remaining gateway dependents of the changed SDK surfaces at the 0.7.1 pin (gateway #308)
+- Review folds F4, F-A1, F-A2 on PR #400 (gateway #308)
 
 ### Build
 
