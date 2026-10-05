@@ -97,9 +97,13 @@ def test_sdk_wheel_rebuilt_from_sdist_contains_locked_standards_tree(tmp_path: P
         names = archive.namelist()
         _assert_standards_tree(names, archive.read)
         # The checkout reach is gone: no force-included contracts copy and no
-        # synthesized top-level validator module may remain in the wheel.
+        # synthesized top-level validator module may remain in the wheel. The
+        # frozen preview_assets bundle that was also asserted here died with
+        # SDK 0.7.0 (the SA-PREVIEW exit, #309): deleted from the wheel
+        # entirely — nothing preview-shaped may ship in it either.
         assert "benchweave_sdk/_presentation_contract.py" not in names
         assert not any(name.startswith("benchweave_sdk/contracts/") for name in names)
+        assert not any(name.startswith("benchweave_sdk/preview_assets/") for name in names)
     # The vendored validator stays byte-identical to the gateway's canonical
     # source; the lock pins that exact digest.
     gateway_validator = ROOT / "src/benchweave/presentation/contracts.py"
@@ -115,7 +119,7 @@ def test_sdk_wheel_rebuilt_from_sdist_contains_locked_standards_tree(tmp_path: P
     source = next(unpacked.iterdir())
     assert (source / "standards-lock.json").is_file(), "sdist omits the standards lock"
     # PKG-2, pinned at the sdist too: no repo/VCS metadata or agent
-    # configuration ships past the declared five-entry include list. Caught
+    # configuration ships past the declared include list. Caught
     # live in the issue-#71 fold — an unanchored "README.md" include matched
     # .claude/deep-review/README.md at depth, and hatchling force-includes
     # .gitignore into every sdist past include/exclude entirely (stopped in

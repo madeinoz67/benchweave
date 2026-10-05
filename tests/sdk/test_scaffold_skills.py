@@ -1,4 +1,4 @@
-"""The scaffold seeds the agent-native tree: root CLAUDE.md + packaged skills.
+"""The scaffold seeds the agent-native tree: CLAUDE.md/AGENTS.md + skills.
 
 Issue #71 slice 2 (design record section 8): the file-set pin below is the
 SRF-1 contract — the sorted file list of every generated project. A
@@ -23,6 +23,11 @@ PACKAGE = "lumen_probe"
 #: The complete generated file set (sorted relative paths). Skills live under
 #: src/<package>/ so they ship in the wheel and catalogue under the registry
 #: ``skill`` role; CLAUDE.md is root-level dev tooling and never ships.
+#: Re-pinned at the SDK 0.7.0 copier render: the .claude/skills tree,
+#: .copier-answers.yml and AGENTS.md joined the set (the SDK-managed agent
+#: notes the upgrade path rewrites). The byte-exact authority for the tree
+#: is the SDK's own fixture comparison (tests/test_scaffold_copier.py at
+#: the pinned tree); this pin keeps the gateway-side shape alarm.
 PINNED_FILE_SET = [
     ".claude/skills/benchweave-adapter-testing/SKILL.md",
     ".claude/skills/benchweave-capture/SKILL.md",
@@ -110,16 +115,24 @@ def test_seeded_skill_frontmatter_present(tmp_path: Path) -> None:
 
 
 def test_claude_md_references_real_commands(tmp_path: Path) -> None:
-    """Since the SDK's WS3 thin-pointer rework (in the 0.7.x pins) CLAUDE.md
-    is the author's own file carrying one load-bearing line — the
-    ``@AGENTS.md`` import — and every command/fact needle lives in the
-    SDK-managed AGENTS.md. The arm pins both halves: the pointer's line,
-    and the managed file's references."""
+    """SDK 0.7.x shape: CLAUDE.md is the project-owned stub deferring to the
+    SDK-managed AGENTS.md (rewritten by ``benchweave-sdk upgrade``). The arm
+    pins both halves: the stub's deferral line and the upgrade command, that
+    the deferred AGENTS.md exists and carries the command/fact needles (the
+    pre-0.7.0 CLAUDE.md content moved into AGENTS.md and the .claude/skills
+    tree), and that the stub's one command reference names a subcommand the
+    CLI actually registers."""
+    import importlib
+
+    from click.testing import CliRunner
+
     project = _generate(tmp_path)
     claude = (project / "CLAUDE.md").read_text(encoding="utf-8")
     for needle in ("@AGENTS.md", "benchweave-sdk upgrade"):
         assert needle in claude, f"CLAUDE.md does not reference {needle}"
-    agents = (project / "AGENTS.md").read_text(encoding="utf-8")
+    agents_path = project / "AGENTS.md"
+    assert agents_path.is_file(), "the deferred AGENTS.md is absent from the tree"
+    agents = agents_path.read_text(encoding="utf-8")
     for needle in (
         "pytest",
         "uv build",
@@ -129,11 +142,13 @@ def test_claude_md_references_real_commands(tmp_path: Path) -> None:
     ):
         assert needle in agents, f"AGENTS.md does not reference {needle}"
     # Facts-only needles: every claim in the managed file is a fact of the
-    # generated project (R11-adjacent honesty pins). The old CLAUDE.md
-    # facts moved with the thin-pointer rework; the honesty line rides the
-    # Safety rails section now.
+    # generated project (R11-adjacent honesty pins).
     for needle in ("Safety rails", "This project is synthetic"):
         assert needle in agents, f"AGENTS.md drops its facts-only content: {needle!r}"
+    cli = importlib.import_module("benchweave_sdk.cli")
+    result = CliRunner().invoke(cli.cli, ["--help"])
+    assert result.exit_code == 0
+    assert "upgrade" in result.output, "CLAUDE.md names a subcommand the CLI does not register"
 
 
 def test_drive_device_honesty_label_pinned(tmp_path: Path) -> None:

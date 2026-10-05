@@ -278,7 +278,8 @@ class TestZeroModeOverRealTrees:
             # and preview_tui.py die, benchweave_sdk/scaffold_update.py
             # arrived with WS2's upgrade/adopt lane in between — the
             # set-diff's one addition; the 0.7.0->0.7.1 anchor moved no .py
-            # bytes) — the ratchet moves with the submodule tree.
+            # bytes; the sdk-scope register's scaffold.py row retired with
+            # the same motion) — the ratchet moves with the submodule tree.
             assert payload["scopes"]["sdk"]["scanned"] == 19, (
                 "the sdk class set moved — update this pin in the same "
                 "commit as the submodule tree change (the ratchet "

@@ -152,12 +152,15 @@ def test_conformance_times_out_stalled_adapter(stage: str, tmp_path: Path) -> No
 
     conformance = sdk_module("conformance")
     testing = sdk_module("testing")
-    # The pre-copier scaffold.descriptor_for constant builder was removed at
-    # WS2 (in the 0.7.x pins); the generated project's descriptor.json is
-    # the same document shape, rendered through the current scaffold API.
-    sdk_module("scaffold").create_project(tmp_path / "stall", "stall_plugin")
+    # SDK 0.7.0: scaffold.descriptor_for is gone. The SDK's own suite builds
+    # the descriptor by rendering a project and reading its descriptor.json
+    # (tests/test_sdk.py at the pinned tree); this port follows that shape.
+    scaffold = sdk_module("scaffold")
+    scaffold.create_project(tmp_path / "stall", "stall_plugin")
     descriptor = json.loads(
-        (tmp_path / "stall" / "src" / "stall_plugin" / "descriptor.json").read_bytes()
+        (tmp_path / "stall" / "src" / "stall_plugin" / "descriptor.json").read_text(
+            encoding="utf-8"
+        )
     )
 
     class Stalled:

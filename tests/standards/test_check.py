@@ -219,6 +219,12 @@ def test_mirror_null_and_empty_notes_normalise_equal(tmp_path: Path) -> None:
 
     sdk = _sdk_copy(tmp_path)
     lock = _lock(sdk)
+    # Own the version side too: this test isolates notes normalization, and
+    # the ambient lock may be legitimately stale (pairing health is
+    # test_real_tree_is_clean's subject, not this one's), so plant the pin's
+    # version on both sides for a fixture consistent regardless of live state.
+    pinned = _copied_pin_version()
+    lock["compatibility"]["sdk"] = pinned
     lock["compatibility"]["notes"] = ""
     _write_lock(sdk, lock)
     root = _standards_root(tmp_path)
@@ -227,6 +233,7 @@ def test_mirror_null_and_empty_notes_normalise_equal(tmp_path: Path) -> None:
     manifest = root / "standards" / "standards-manifest.json"
     m = json.loads(manifest.read_bytes())
     m["sdk_compatibility"]["notes"] = None
+    m["sdk_compatibility"]["sdk"] = pinned
     manifest.write_text(json.dumps(m, indent=2))
     failures = run_check(root, sdk)
     assert "sdk_compatibility_drift" not in _prefixes(failures)
@@ -488,7 +495,12 @@ def test_sdk_version_anchor_catches_the_issue_187_replay(tmp_path: Path) -> None
 
     sdk = _sdk_copy(tmp_path)
     lock = _lock(sdk)
-    pinned_version = lock["compatibility"]["sdk"]  # the true-pairing value
+    # The true-pairing value is the PINNED PYPROJECT's version, not the lock's
+    # stamp: deriving it from the lock assumes the very invariant under test
+    # elsewhere, and reds while the ambient lock is legitimately stale (the
+    # v0.7.0 tag shipped compatibility.sdk 0.6.0 against pyproject 0.7.0 —
+    # this defect class). Same derivation _copied_pin_version uses.
+    pinned_version = _copied_pin_version()
     lock["compatibility"]["sdk"] = "0.1.1"
     _write_lock(sdk, lock)
     root = _standards_root(tmp_path)
@@ -609,7 +621,14 @@ def test_sdk_version_anchor_greens_a_regenerated_pairing(tmp_path: Path) -> None
         pinned = str(tomllib.load(handle)["project"]["version"])
     mirror = json.loads((root / "standards" / "standards-manifest.json").read_bytes())
     lock = _lock(sdk)
-    # Precondition: the untouched fixture copy IS the three-way-equal pairing —
+    # Regenerate the fixture's lock stamp to the pin — the test's own premise
+    # (a REGENERATED pairing greens). The ambient v0.7.0 tag ships the stamp
+    # stale, and a green control constructs its healthy state rather than
+    # borrowing the live tree's (the same doctrine
+    # _repo_with_committed_187_pairing documents for _copied_pin_version).
+    lock["compatibility"]["sdk"] = pinned
+    _write_lock(sdk, lock)
+    # Precondition: the fixture copy IS the three-way-equal pairing —
     # this test guards the anchor's false-positive edge, so pin it explicitly.
     assert lock["compatibility"]["sdk"] == mirror["sdk_compatibility"]["sdk"] == pinned
     assert run_check(root, sdk) == []

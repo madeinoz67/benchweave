@@ -40,3 +40,13 @@ def test_findings_render_author_strings_literally() -> None:
     rendered = stream.getvalue()
     assert "[red]evil[/red]" in rendered
     assert "[bold]spoofed[/bold]" in rendered
+
+
+# v0.7.0 reconciliation: the SDK deleted the in-package preview surfaces these
+# two arms pinned (ConsoleOutput.preview_ready and the textual
+# preview_tui.PreviewStatusApp — the banner text and textual are gone from the
+# SDK tree entirely). The preview moved to the [server]-extra host
+# (benchweave_sdk_server), whose extras-missing refusal and serve behavior the
+# SDK's own suite and wheel-install smoke pin; the gateway-provable remainder
+# of the preview surface (preview-ui listed in --help) stays pinned by the
+# command-group test above.
