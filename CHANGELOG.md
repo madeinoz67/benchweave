@@ -645,6 +645,8 @@ All notable changes to this project will be documented in this file.
 - Close obligation 7 and re-home the developer guide's preview sentence (gateway #308)
 - G4 administration — change submit, review, apply (issue #305)
 - The G4 operator rows + the CON-5 fold (issue #305)
+- Land the issue #401 domain-links design of record
+- Repoint published-site links onto the project domains
 
 ### Features
 
