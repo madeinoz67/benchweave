@@ -63,6 +63,16 @@ jobs:
         run: python3 scripts/standards/count_version_literals.py --scope plugins,docs
       - name: Isolate the device project from the core checkout
         run: cp -R "plugins/benchweave/adc_6ch_12bit" "$RUNNER_TEMP/adc6ch"
+      - name: Prime the interpreter and the pinned pytest into the uv cache (online)
+        # The dps150 lane's ordering: its ONLINE uv sync materialises the
+        # managed interpreter and the cached wheels its later --offline
+        # steps reuse. This project deliberately has no pyproject, so the
+        # prime is the same isolated invocation WITHOUT --offline — it
+        # caches the 3.13 interpreter and the pinned pytest wheel; a bare
+        # --offline first run would fail in seconds (no interpreter, no
+        # cache, downloads forbidden).
+        working-directory: ${{ runner.temp }}/adc6ch
+        run: uv run --isolated --no-project --with pytest==9.1.1 python -m pytest tests -q --collect-only
       - name: Offline tests with an isolated pinned pytest
         working-directory: ${{ runner.temp }}/adc6ch
         run: |
