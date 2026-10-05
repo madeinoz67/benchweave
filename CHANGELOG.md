@@ -311,6 +311,16 @@ All notable changes to this project will be documented in this file.
 - Sdk_smoke installs the SDK wheel with the [scaffold] extra
 - The 146 E2E step budgets absorb starved-runner stalls
 - The installed-SDK smoke's scaffold leg rides [scaffold] (gateway #308, PR #400)
+- A terminal change record is never rewritten (issue #305, FOLD-1)
+- Pin re-apply-on-failed keeping its audit reasons (issue #305, FOLD-2)
+- A submit §9 replay preserves the session's change view (issue #305, FOLD-3)
+- The submit no-response reconcile carries its own replay form (issue #305, FOLD-4)
+- Acknowledging a non-terminal change refuses (issue #305, FOLD-5)
+- Guard the None-valued admin-region slots (issue #305, FOLD-6)
+- Remove the dead applied-generation block from change.j2 (issue #305, FOLD-7)
+- The no-response fragment roots its own reconcile (browser defects 1+2)
+- Terminality and bump-once become compare-and-swaps (issue #305, FOLD-A)
+- The approval-first view survives a §9 replay (issue #305, FOLD-B)
 
 ### Documentation
 
@@ -633,6 +643,8 @@ All notable changes to this project will be documented in this file.
 - PR #391 row calls — denominator truth, temporal fix, record errata
 - The G3b operator rows — staging, preflight, confirm, replay, cancel (#304)
 - Close obligation 7 and re-home the developer guide's preview sentence (gateway #308)
+- G4 administration — change submit, review, apply (issue #305)
+- The G4 operator rows + the CON-5 fold (issue #305)
 
 ### Features
 
@@ -862,6 +874,10 @@ All notable changes to this project will be documented in this file.
 - The staging panel and the five G3b routes (issue #304, §2.4)
 - The run-starts fire path with fire-time guards (issue #304, §2.4)
 - The ungated cancel route and the run-page marker (issue #304, §2.4)
+- G4 change index — the session's change side table (issue #305)
+- G4 submit + review page + the submit no-response variant (issue #305)
+- G4 approval load + apply + the GW-71 guards (issue #305)
+- G4 inhibited state + the per-session acknowledgement (issue #305)
 
 ### Hardware Evidence
 
@@ -1211,6 +1227,7 @@ All notable changes to this project will be documented in this file.
 - The SDK test motions for the 0.7.0 pin and the pins it enables (gateway #308, pre-pointer)
 - The remaining gateway dependents of the changed SDK surfaces at the 0.7.1 pin (gateway #308)
 - Review folds F4, F-A1, F-A2 on PR #400 (gateway #308)
+- The G4 browser arms (#305)
 
 ### Build
 
