@@ -297,6 +297,9 @@ All notable changes to this project will be documented in this file.
 - Reconcile __version__ with the single source (fold-refute F2)
 - The mid-stream bridge observable — observe before the abort (#384)
 - Pin the docs-site listing command literal (adv2 fold F1)
+- Session consult-water — an origin rollback cannot resurrect a run
+- Advisory escalation lands a second durable record
+- Advisory-delivery I/O never refuses the run (PR #391 R1)
 - FOLD-1 — a staged stored non-binding digest reads as the unreadable chain, not a KeyError 500 (issue #304)
 - FOLD-2 — the §2.4 invalid-staged-input state renders (issue #304)
 - FOLD-3 — the §9 replay surfaces honestly (issue #304)
@@ -623,6 +626,10 @@ All notable changes to this project will be documented in this file.
 - Issue #380 family release process + gateway cut authority
 - Issue #380 fold adv1 F1+F2 — honest enforcement modality + the gateway notes command
 - Discovery wording defers to the schema and the landed code (#386)
+- #226 slice 4 — response reach: cached status consult design record
+- REG-5b amendment, #167 Decision-1 amendment, obligation 27, Response reach
+- STE pass on the Response reach bullet — two sentence splits
+- PR #391 row calls — denominator truth, temporal fix, record errata
 - The G3b operator rows — staging, preflight, confirm, replay, cancel (#304)
 
 ### Features
@@ -847,6 +854,7 @@ All notable changes to this project will be documented in this file.
 - Session-side held-lease views and granted session duration (G3a)
 - G3a lease controls — take/renew/release, GW-95 session bound, GW-44 warnings, polled fragment (issue #304)
 - 6-hour manual lease default (#307) — app-entry, demo, and the poll-knob env (G3a §2.6)
+- The cached status consult — response reach for commissioned closures
 - Session-side staging records and pending-cancel markers (G3b)
 - The trip predicate and the energy classification (G3b §2.5/GW-52)
 - The staging panel and the five G3b routes (issue #304, §2.4)
@@ -1188,6 +1196,9 @@ All notable changes to this project will be documented in this file.
 - RED arms for normative_path_escape refusal (issue #238)
 - The G3a browser lane — arm L (#304)
 - Issue #380 pin the docs-site tag-namespace refusal
+- M6 RED baseline — published revocation does not reach run-build
+- Signature-verification discriminating arms
+- PR #391 pin arms — cached gates, digest half, boundaries, root
 - Repair the vacuous-spy arms (kill rule: an assertion that cannot fail polices nothing)
 - The G3b browser arms (#304)
 
