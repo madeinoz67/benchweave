@@ -110,6 +110,10 @@ class AdcEmulator:
         if self._revert_deadline is not None and now >= self._revert_deadline:
             self._revert()
         if self.variant == "silent_revert" and self._silent:
+            return  # the dead-air window: answers nothing, disarms nothing
+        if self._revert_deadline is not None:
+            self._revert_deadline = None  # any valid frame disarms the guard
+        if self.variant == "silent_revert" and self._silent:
             return  # the dead-air window: answers nothing until the revert fires
         if frame.type == int(codec.FrameType.IDENTIFY):
             self._queue_identify(frame.seq)

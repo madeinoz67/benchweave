@@ -46,6 +46,29 @@ jobs:
         working-directory: ${{ runner.temp }}/dps150
         run: uv build
 
+  adc-6ch-highrate:
+    # Issue #393: the adc_6ch_12bit device project's tests (the v2 wire
+    # codec, the negotiation cells, the rate-model regeneration). Explicit
+    # wiring — standalone plugins are not auto-discovered. Minimal cost:
+    # stdlib-only tests under an isolated pinned pytest, no project env.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          python-version: "3.13"
+      - name: Version-literal zero gate (plugins + docs scopes)
+        run: python3 scripts/standards/count_version_literals.py --scope plugins,docs
+      - name: Isolate the device project from the core checkout
+        run: cp -R "plugins/benchweave/adc_6ch_12bit" "$RUNNER_TEMP/adc6ch"
+      - name: Offline tests with an isolated pinned pytest
+        working-directory: ${{ runner.temp }}/adc6ch
+        run: |
+          uv run --isolated --no-project --offline \
+            --with pytest==9.1.1 python -m pytest tests -q
+
   legacy-simulator-packages:
     runs-on: ubuntu-latest
     strategy:
