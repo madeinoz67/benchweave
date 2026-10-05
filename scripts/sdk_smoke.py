@@ -290,7 +290,15 @@ def build_and_check(out_dir: Path) -> None:
                 "--python",
                 str(python),
                 str(gateway_wheel),
-                str(sdk_wheel),
+                # [scaffold] rides the SDK wheel: `new` must render through the
+                # packaged copier template, and WS2 (SDK #347) made that extra
+                # load-bearing — a bare install refuses scaffold_extra_absent
+                # at the new step below. The gateway-side twin of SDK #107's
+                # e2c8279 (same latent-red class: the smoke installed the
+                # wheel bare and then ran a command the extra gates). The
+                # gateway wheel stays bare; nothing this smoke runs on it
+                # needs an extra.
+                f"{sdk_wheel}[scaffold]",
                 "pytest",
             ],
             cwd=workspace,
