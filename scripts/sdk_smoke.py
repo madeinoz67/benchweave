@@ -290,7 +290,12 @@ def build_and_check(out_dir: Path) -> None:
                 "--python",
                 str(python),
                 str(gateway_wheel),
-                str(sdk_wheel),
+                # The SDK's `new` renders through copier, which rides the
+                # optional [scaffold] extra (SDK issue #347 WS2 — absence
+                # refuses with scaffold_extra_absent, by design). The smoke
+                # installs the wheel WITH the extra so the scaffolding leg
+                # exercises the documented install shape.
+                f"{sdk_wheel}[scaffold]",
                 "pytest",
             ],
             cwd=workspace,
