@@ -152,8 +152,9 @@ select = ["E", "F", "I", "UP", "B", "SIM", "S", "RUF100"]
 # loopback URLs, and uses dummy credentials and fixed paths by design.
 "tests/**" = ["S101", "S104", "S105", "S106", "S108", "S310", "S603", "S607"]
 # The device-plugin suites assert freely like tests/** and seed the stdlib
-# RNG for CRC/codec vectors (issue #393) — not a crypto surface.
-"plugins/*/*/tests/**" = ["S101", "S311"]
+# RNG for CRC/codec vectors (issue #393) — not a crypto surface. The A3
+# harness bootstraps sys.path before its imports (script-shaped module).
+"plugins/*/*/tests/**" = ["S101", "S311", "E402"]
 # Repo maintenance scripts run trusted, fixed commands; sdk_smoke's asserts
 # ARE its failure mechanism (run directly, never under -O).
 "scripts/**" = ["S603", "S607"]

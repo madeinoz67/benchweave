@@ -24,16 +24,15 @@ import os
 import statistics
 import sys
 import time
-from typing import Any
 import tracemalloc
 from pathlib import Path
+from typing import Any
 
 _HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))
 sys.path.insert(0, str(_HERE.parent / "src"))
 
 import serial  # pyserial, [server] extra
-
 from adc_wire import codec
 from adc_wire.gaps import GapDetector
 from adc_wire.negotiate import negotiate_stream
@@ -47,7 +46,6 @@ RUNS = 3
 
 def _open_pty():
     master_fd, slave_fd = os.openpty()
-    import termios
     import tty
 
     tty.setraw(master_fd)
