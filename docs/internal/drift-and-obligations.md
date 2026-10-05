@@ -73,8 +73,9 @@ and remain the reviewer's job.
    the mock transport pinned, and the `hatch_build` inventory integrity check
    retired with the tree. The obligation's exit condition (the PRD 11 standalone
    host with mock transport, SA-PREVIEW, #309) was met and consumed by the #308
-   SDK train (feat/issue308-sdk-shim, released v0.7.0/v0.7.1); the release
-   notes' BREAKING footer names the command-surface change, the `[server]`
+   SDK train (feat/issue308-sdk-shim, released v0.7.0/v0.7.1; the pin's tag
+   deref is c6298ad); the release notes' BREAKING footer names the
+   command-surface change, the `[server]`
    requirement, and textual's removal. **Mount staleness (#347 WS1):**
    the `sdk-drift` CI job holds the gitlink at the SDK's latest `vX.Y.Z` release
    tag's dereferenced commit (`scripts/check_sdk_submodule_drift.py`; exit 1
