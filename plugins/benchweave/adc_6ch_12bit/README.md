@@ -2,7 +2,10 @@
 
 The wire-family v2 reference implementation for the 6-channel 12-bit ADC
 board (issue #393): the v2 wire spec, the host-side reference code, the
-scripted device emulator, the modelled rate table, and the v2 firmware.
+scripted device emulator, and the modelled rate table. The firmware
+DESIGN (scan/DMA pacing, wait-TC TX, negotiation handlers, cycle budget)
+lives in the design record; the implementation is the plugin
+repository's (PRD fold-in stance).
 No descriptor, no adapter — those live in the contributor's repository,
 untouched.
 
@@ -23,11 +26,5 @@ Layout (the documented device-project root shape):
 - `tests/` — the six A2 negotiation cells + RED control, codec/gap
   cells, the rate-model regeneration, and the scripted emulator
   (v2 / v1 / silent-revert / drop-list variants).
-- `firmware/ch32v006e8r_adc/` — the v2 firmware (ADC scan + DMA, USART
-  TX DMA double-buffered, nibble-table CRC, SET_BAUD / SET_FRAME_FORMAT
-  with the T_revert revert guard, IDENTIFY v2). Re-homed from the
-  contributor's public tree (author header kept; that tree stays the v1
-  snapshot).
-
 CI: the `adc-6ch-highrate` job in `.github/workflows/device-plugins.yml`
 runs the project's tests offline from an isolated copy.
