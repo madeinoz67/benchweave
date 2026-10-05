@@ -213,8 +213,8 @@ a live value. When no kept observation exists for a parameter, the tile
 shows "Unavailable". Values that a run read during its steps are not
 kept, so they never fill a tile.
 
-The lease controls and the run controls are in the UI.
-Configuration changes are not in the UI yet.
+The lease controls, the run controls, and the change flow are in the
+UI.
 
 **Take a lease.** Enter a duration in milliseconds. Then select **Take
 lease**. The field starts at the largest duration that you can take.
@@ -275,7 +275,8 @@ control shows, so you can take a lease.
 
 **Observe-tier sessions.** An observe-tier session cannot change
 anything. All lease controls show as disabled with the reason "No
-lease or policy authority". The run controls show the same way.
+lease or policy authority". The run controls and the change controls
+show the same way.
 
 **Leases from other tools.** The panel shows only the leases that
 this browser session took. A lease that you took with a REST client
@@ -358,6 +359,58 @@ is not a binding document. The start control then shows as disabled.
 The note says the staged binding's document chain is not readable. The
 panel cannot classify the staged set. To recover, stage the digest of a
 valid binding document. The panel then recovers.
+
+**Submit a change.** The administration region is on the bench page,
+under the run controls. To submit a change, select the kind. Then enter
+the target: its id, its version, and its sha256 digest. For a trip
+reset, the fields start with the bench's own configuration. Enter a
+reason, one character minimum. Then select **Submit change**. The form
+carries its own request id. If you send the same form again, the
+gateway returns the first change. It does not make a second change. If
+you change the form and send it again with the same request id, the
+gateway refuses with a conflict.
+
+**The two-phase flow.** A change applies in two phases. First you
+submit it. Then a second person approves it. The approver must not be
+the person who applies the change. The approval is two things: a
+stored document, and a detached token. Both come from the approver,
+away from the gateway. The gateway does not make approvals, and the
+approval flow is not in the UI.
+
+**Read the change record.** Select the change id to open the change
+page. The page shows the full record: the bench, the kind, the state,
+the target, the expected generation, the reason, and the outcome
+reasons.
+
+**Load the approval.** On the change page, under the record, enter the
+approval digest, its id, and its version. Then select **Load
+approval**. The panel shows what the approval says: who approved it,
+which change it binds, and the policy version. An approval that binds
+a different change does not offer the apply control.
+
+**Apply the change.** Enter the approver's detached token. Then select
+**Apply change**. The token never shows again in any response. If the
+approval names you, the apply control shows as disabled. The reason:
+the approval must come from a principal other than the applier. The
+gateway refuses a self-approval. The UI does not offer what the
+gateway would refuse. When the apply succeeds, the page shows the new
+generation of the bench.
+
+**A failed or unknown change.** After a failed or unknown apply, the
+bench page shows a critical alert. The alert names the change and its
+reason. While the alert shows, the apply controls of the bench show as
+disabled. Submit stays open: to correct the bench, submit a NEW change.
+Never apply the same change again. To clear the alert, read the change
+record first. Then select **Acknowledge change** in the region. An
+acknowledgement is possible only for a failed or unknown change. The
+region refuses it for a change that is still proposed. The
+acknowledgement is for this browser session only. The gateway record
+does not change.
+
+**Changes from other sessions.** The region lists only the changes
+that this browser session filed. A change that another session filed
+does not show in the region. To read such a change, open the address
+`/ui/changes/` followed by the change id.
 
 **Production secret posture.** With `BENCHWEAVE_ENV=production`, `serve`
 *refuses to boot*, before the store is opened and before anything touches

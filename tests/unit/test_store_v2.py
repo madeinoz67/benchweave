@@ -54,6 +54,46 @@ def test_change_records_and_state_machine(store: Store) -> None:
     assert change is not None and change["state"] == "applied"
 
 
+def test_guarded_change_state_write_refuses_a_terminal_record(store: Store) -> None:
+    """The G4 foldref CAS primitive: with ``only_if_state`` the write is
+    state-conditional — it lands over the named state and answers
+    ``False`` over any other, so a terminal record is unwritable past its
+    terminal state by construction (not by a read-then-write check the
+    caller could race). The unguarded form still names an unknown id."""
+    store.put_change(
+        "chg-cas", "bench-1", "trip_reset", "{}", 1, "fixture", "2026-09-12T00:00:00Z"
+    )
+    assert store.set_change_state(
+        "chg-cas", "unknown", ["crash"], "2026-09-12T00:00:01Z", only_if_state="proposed"
+    )
+    refused = store.set_change_state(
+        "chg-cas", "failed", ["later"], "2026-09-12T00:00:02Z", only_if_state="proposed"
+    )
+    assert refused is False
+    change = store.get_change("chg-cas")
+    assert change is not None
+    assert change["state"] == "unknown" and change["reasons"] == ["crash"]
+    with pytest.raises(ValueError, match="not found"):
+        store.set_change_state("chg-nope", "failed", [], "2026-09-12T00:00:03Z")
+
+
+def test_expected_generation_bump_is_a_compare_and_swap(store: Store) -> None:
+    """The bump half of the foldref CAS: ``expected_generation`` writes
+    only when the bench sits at that generation (``None``, nothing
+    written, otherwise) — the two-writer window the upfront fence cannot
+    close. The default form is unchanged for every other caller."""
+    assert store.bump_generation("bench-1", "2026-09-12T00:00:00Z") == 1
+    assert store.bump_generation(
+        "bench-1", "2026-09-12T00:00:01Z", expected_generation=1
+    ) == 2
+    assert (
+        store.bump_generation("bench-1", "2026-09-12T00:00:02Z", expected_generation=1)
+        is None
+    )
+    assert store.current_generation("bench-1") == 2  # the refused bump wrote nothing
+    assert store.bump_generation("bench-1", "2026-09-12T00:00:03Z") == 3  # default form
+
+
 def test_find_request_returns_accepted_row(store: Store) -> None:
     store.accept_request("key-1", "aa" * 32, "run-9", "2026-09-12T00:00:00Z")
     row = store.find_request("key-1")

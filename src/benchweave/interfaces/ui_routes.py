@@ -190,6 +190,57 @@ UI_ROUTES: tuple[RouteSpec, ...] = (
         classification="interface",
     ),
     RouteSpec(
+        # G4 (issue #305, design record §2.2): the submit half of GW-10's
+        # last two rows — one operation, change_submit; the §9 id is the
+        # form's own (the GW-13 rule) and a §9 replay of the identical
+        # form returns the original change.
+        path="/benches/{bench_id}/changes",
+        methods=_methods("POST"),
+        operations=frozenset({"change_submit"}),
+        classification="interface",
+    ),
+    RouteSpec(
+        # The review page: a read composing change_get (the record); the
+        # approval workspace renders from the session's own loaded view
+        # (design §2.3), the document link pointing at the existing
+        # document page.
+        path="/changes/{change_id}",
+        methods=_methods("GET"),
+        operations=frozenset({"change_get"}),
+        classification="interface",
+    ),
+    RouteSpec(
+        # G4 (issue #305, design record §2.6): GW-10's LAST mutating row —
+        # one operation, change_apply. The form carries only the §9 id
+        # and the approver's detached token; generation and approval ref
+        # are server-side truth. The GW-71 fire-time guard re-reads the
+        # approval document before the send (no seam call when the UI
+        # can see the gateway would refuse).
+        path="/changes/{change_id}/apply",
+        methods=_methods("POST"),
+        operations=frozenset({"change_apply"}),
+        classification="interface",
+    ),
+    RouteSpec(
+        # G4 §2.3 step 1: the approval load is a session-layer action
+        # (the staging trio's shape) — no seam write; it composes
+        # ``change_get`` + ``document_get`` reads and records what the
+        # approval document says in the session's change view.
+        path="/changes/{change_id}/approval",
+        methods=_methods("POST"),
+        operations=frozenset(),
+        classification="session",
+    ),
+    RouteSpec(
+        # G4 §2.4: the acknowledgement is session-layer presentation
+        # (no seam call — no operation marks a change reconciled); the
+        # gateway record never changes, only this session's view.
+        path="/changes/{change_id}/acknowledgements",
+        methods=_methods("POST"),
+        operations=frozenset(),
+        classification="session",
+    ),
+    RouteSpec(
         path="/runs/{run_id}",
         methods=_methods("GET"),
         operations=frozenset({"run_get"}),

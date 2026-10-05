@@ -15,6 +15,11 @@
   <div class="bw-controls-region" data-bw-controls-region>{{ controls_html }}</div>
   {% endif %}
 
+  {% if admin_html %}
+  {# G4 administration region (issue #305): this session's changes, the persistent failed/unknown alert, and the submit form. Trusted host-rendered markup — escaped at construction. #}
+  <div class="bw-admin-region" data-bw-admin-region>{{ admin_html }}</div>
+  {% endif %}
+
   <h3>Devices</h3>
   <ul class="bw-devices" data-bw-device-list>
     {% for device in devices %}

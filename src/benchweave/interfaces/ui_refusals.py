@@ -207,3 +207,86 @@ def markup_no_response(request_id: str) -> Markup:
     # Trusted package-rendered HTML over escaped interpolables — S704's
     # escape hatch is not in play (same rule as ui.py's refusal slots).
     return Markup(render_no_response(request_id))  # noqa: S704
+
+
+def render_no_response_change_submit(
+    request_id: str,
+    *,
+    bench_id: str,
+    kind: str,
+    target_id: str,
+    target_version: str,
+    target_sha256: str,
+    expected_generation: str,
+    reason: str,
+) -> str:
+    """GW-12's change half for submit (G4, design record §2.5): the §C.3
+    no-response row with the change-honest reconcile action — resubmit
+    the IDENTICAL form. §9 makes that retry safe by construction (same
+    principal, same operation key, same body digest → the original
+    change returns; a different body → conflict). ``run_find``'s link
+    would be a lie here: change keys are invisible to it. The run-shaped
+    ``render_no_response`` stays byte-identical (suite-pinned wording).
+
+    The reconcile action is SELF-CONTAINED (the refute fold, F4): the
+    body carries its own resubmit form — the §9 request id and the
+    staged fields as hidden inputs, one button. Prose advice alone is
+    unexecutable: the htmx swap that surfaced this refusal already
+    destroyed the original form, and every fresh render mints a NEW
+    request id, so "resubmit the identical form" names a form that no
+    longer exists unless this body carries it."""
+    row = REFUSAL_ROWS["no-response"]
+    staged = {
+        "request_id": request_id,
+        "kind": kind,
+        "target_id": target_id,
+        "target_version": target_version,
+        "target_sha256": target_sha256,
+        "expected_generation": expected_generation,
+        "reason": reason,
+    }
+    # Caller data (form fields) — every interpolable byte escapes here
+    # so the replayed form cannot carry markup whatever was pasted.
+    hidden = "".join(
+        f'<input type="hidden" name="{escape(name)}" value="{escape(value)}">'
+        for name, value in staged.items()
+    )
+    return (
+        # The fragment's OWN root: the triggering swap replaced the admin
+        # section, so the resubmit form's relative target must resolve
+        # inside THIS fragment — the wrapper aside is what "closest
+        # aside" finds, and a successful replay swaps the whole fragment
+        # back into the admin region's place (the browser lane's
+        # defect-1 fold: "closest section" resolved past it to the bench
+        # section and destroyed the bench page).
+        '<aside class="bw-failure-fragment" data-bw-failure-fragment>'
+        + render_refusal(row)
+        + '<p class="bw-refusal__reconcile" data-bw-reconcile-action>'
+        "Reconcile: resubmit the identical form (request id "
+        f"<code>{escape(request_id)}</code>) — duplicate suppression returns the "
+        "original change.</p>"
+        + '<form class="bw-control" data-bw-change-resubmit'
+        f' hx-post="/ui/benches/{escape(bench_id)}/changes"'
+        ' hx-target="closest aside" hx-swap="outerHTML">'
+        + hidden
+        + '<button type="submit" class="bw-button" data-variant="secondary"'
+        ' aria-busy="false">Resubmit the identical form</button>'
+        "</form>"
+        "</aside>"
+    )
+
+
+def render_no_response_change_apply(change_id: str) -> str:
+    """GW-12's change half for apply (G4, design record §2.5): the row
+    plus the change-page link — ``change_get`` shows the outcome the
+    apply left behind (proposed, applied, failed or unknown). No retry
+    action: the seam's advice is ``never`` (the D13 retry honesty; a
+    re-apply of a decided change is the two-phase ``conflict``)."""
+    row = REFUSAL_ROWS["no-response"]
+    safe_id = str(escape(change_id))
+    return (
+        render_refusal(row)
+        + '<p class="bw-refusal__reconcile" data-bw-reconcile-action>'
+        f'Reconcile: <a href="/ui/changes/{safe_id}">read the change record</a>'
+        " before you act again — do not re-apply this change.</p>"
+    )

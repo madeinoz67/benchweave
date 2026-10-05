@@ -123,6 +123,8 @@ def test_the_non_interface_set_is_exactly_the_declared_one() -> None:
         "/benches/{bench_id}/staging",
         "/benches/{bench_id}/staging/arm",
         "/benches/{bench_id}/staging/disarm",
+        "/changes/{change_id}/approval",
+        "/changes/{change_id}/acknowledgements",
         "/{path:path}",
     }
 
@@ -154,6 +156,7 @@ def test_g2b_read_surface_is_the_declared_operations() -> None:
         "events_get",
         "evidence_get",
         "artifact_read",
+        "change_get",
     }
     assert served_mutations == {
         "lease_create",
@@ -162,6 +165,10 @@ def test_g2b_read_surface_is_the_declared_operations() -> None:
         "run_check",
         "run_start",
         "run_cancel",
+        # G4 mounts GW-10's last two rows, one operation each
+        # (design record §2.6): submit and apply.
+        "change_submit",
+        "change_apply",
     }
 
 

@@ -58,6 +58,7 @@ from benchweave.interfaces.sessions import (
     SessionRecord,
     SessionStore,
 )
+from benchweave.interfaces.ui_admin import register_admin_routes
 from benchweave.interfaces.ui_control import register_control_routes
 from benchweave.interfaces.ui_read import register_read_pages
 from benchweave.interfaces.ui_stream import register_stream_route
@@ -772,6 +773,20 @@ def build_ui_router(
         unauthenticated_page=_unauthenticated_page,
         controls=controls,
         sessions=sessions,
+        admin=register_admin_routes(
+            router,
+            operations=operations,
+            sessions=sessions,
+            resolve_session=lambda request: _resolve_session(request, sessions),
+            session_identity=_session_identity,
+            failure_page=_failure_page,
+            unauthenticated_page=_unauthenticated_page,
+            page=_page,
+            render=lambda template, **context: _ENV.get_template(template).render(
+                **context
+            ),
+            session_warning=controls.session_warning,
+        ),
     )
 
     # The G2c event bridge (§2.5): same closures, same refusal

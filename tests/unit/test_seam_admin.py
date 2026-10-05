@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -415,3 +416,255 @@ def store_put_configuration_activation(
 ) -> None:
     _, store, _ = seam_admin
     store.put_change(change_id, BENCH, kind, json.dumps(TARGET_REF), 1, "fixture", NOW)
+
+
+# --- the terminality guard (G4 refute fold: a terminal record never rewrites) ---
+
+
+def test_reapply_on_unknown_keeps_the_unknown_record(
+    seam_admin: tuple[Operations, Store, ContentStore],
+    approval_doc: tuple[dict[str, str], str, dict[str, Any]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A re-apply attempt on an ``unknown`` change answers the
+    two-phase ``conflict`` WITHOUT reclassifying the record: the
+    undecided record IS the crash evidence (A06), and rewriting it to
+    ``failed`` with the conflict message would erase what the crash
+    left. The outcome recorder writes only over a change still
+    ``proposed`` (the G4 refute fold, lane B F1 — pinned here at the
+    seam, where the recorder lives)."""
+    ops, store, _ = seam_admin
+    ref, token, _ = approval_doc
+
+    def power_loss(bench_id: str, now: str) -> int:
+        raise RuntimeError("power lost mid-apply")
+
+    monkeypatch.setattr(store, "bump_generation", power_loss)
+    with pytest.raises(errors.OperationFailure) as crashed:
+        ops.change_apply(ADMIN, "req-fold1", "chg-ok", 1, ref, approver_token=token)
+    assert crashed.value.failure.code == "unavailable"
+    record = ops.change_get(ADMIN, "chg-ok")
+    assert record["state"] == "unknown"
+    crash_reason = record["reasons"][0]
+
+    monkeypatch.undo()
+    with pytest.raises(errors.OperationFailure) as reentered:
+        ops.change_apply(
+            ADMIN, "req-fold1-re", "chg-ok", 1, ref, approver_token=token
+        )
+    assert reentered.value.failure.code == "conflict"
+    settled = ops.change_get(ADMIN, "chg-ok")
+    assert settled["state"] == "unknown", (
+        "the re-apply reclassified the undecided record:"
+        f" {settled['state']} ({settled['reasons']})"
+    )
+    assert settled["reasons"][0] == crash_reason, (
+        f"the re-apply rewrote the crash evidence: {settled['reasons'][0]!r}"
+    )
+
+
+def test_reapply_on_failed_keeps_the_original_reasons(
+    seam_admin: tuple[Operations, Store, ContentStore],
+    approval_doc: tuple[dict[str, str], str, dict[str, Any]],
+) -> None:
+    """The failed-record twin of the terminality arm (the refute fold's
+    F2, same root as F1): a re-apply attempt on a ``failed`` change
+    must not rewrite its audit reasons. ``set_change_state`` REPLACES
+    ``reasons_json`` wholesale, so the pre-fold recorder turned the
+    original refusal evidence ("the token check rejected this apply")
+    into the re-entry conflict message ("change ... is failed, not
+    proposed") — and the inhibited-state alert renders ``reasons[0]``,
+    i.e. the wrong reason. The fix rode the terminality guard; this
+    arm pins the second symptom on its own."""
+    ops, store, _ = seam_admin
+    ref, token, _ = approval_doc
+    # A decided refusal first: a garbage token fails the token check.
+    with pytest.raises(errors.OperationFailure) as refused:
+        ops.change_apply(
+            ADMIN, "req-fold2", "chg-ok", 1, ref, approver_token="not-a-token"
+        )
+    assert refused.value.failure.code == "unauthenticated"
+    failed = ops.change_get(ADMIN, "chg-ok")
+    assert failed["state"] == "failed"
+    original_reason = failed["reasons"][0]
+
+    # Re-apply with the REAL token: the refusal is the two-phase state
+    # conflict, and the record keeps the original audit reason.
+    with pytest.raises(errors.OperationFailure) as reentered:
+        ops.change_apply(
+            ADMIN, "req-fold2-re", "chg-ok", 1, ref, approver_token=token
+        )
+    assert reentered.value.failure.code == "conflict"
+    settled = ops.change_get(ADMIN, "chg-ok")
+    assert settled["state"] == "failed"
+    assert settled["reasons"] == [original_reason], (
+        "the re-apply rewrote the failed record's audit reasons:"
+        f" {settled['reasons']}"
+    )
+
+
+# --- the concurrent-apply CAS (G4 foldref F1: terminality by conditional write) -----
+
+
+def _race_seam(tmp_path: Path) -> tuple[Operations, Store, ContentStore]:
+    """The seam_admin seeding over the app-posture store
+    (``check_same_thread=False``): the UI adapter shares one store with
+    the gated transports, so two ungated applies interleave exactly as
+    the foldref observed (the event loop against the threadpool). This
+    rig deliberately holds NO WriteGate — the seam must be race-safe for
+    the one transport that has no gate."""
+    store = Store.open(tmp_path / "state-race.db", check_same_thread=False)
+    content = ContentStore(store)
+    store.bump_generation(BENCH, NOW)  # authority: 0 -> 1
+    store.put_bench(
+        BENCH, 1, "observation", json.dumps({"id": BENCH, "version": "1"}), "", NOW
+    )
+    store.put_change(
+        "chg-race", BENCH, "trip_reset", json.dumps(TARGET_REF), 1, "fixture", NOW
+    )
+    ops = Operations(
+        store,
+        content,
+        validator=SeamValidator(CORPUS),
+        gateway_id="gw-admin-race",
+        limits=LIMITS,
+        issuer_secret=SECRET,
+        now_epoch=lambda: 0,
+        now_iso=lambda: NOW,
+    )
+    return ops, store, content
+
+
+def test_concurrent_crash_recorder_never_rewrites_an_applied_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Foldref finding 1, interleaving A (applied-stays-applied): thread
+    A crashes mid-dispatch and its crash recorder — having read the
+    change still ``proposed`` — parks INSIDE the outcome write while the
+    racing apply commits the same change to ``applied``. The unfixed
+    recorder's read-then-write then lands unconditionally and rewrites
+    the committed record to ``unknown``; with the outcome write made
+    state-conditional (``WHERE change_id=? AND state='proposed'``), a
+    record that left ``proposed`` is unwritable regardless of how the
+    two writers interleave."""
+    ops, store, content = _race_seam(tmp_path)
+    ref, token = _put_approval(content, change_id="chg-race")
+
+    parked = threading.Event()  # A sits inside the outcome write
+    winner_committed = threading.Event()  # the winner's applied write landed
+    release = threading.Event()
+    original_set = store.set_change_state
+    original_bump = store.bump_generation
+    failures: list[errors.OperationFailure] = []
+
+    def crash_bump(bench_id: str, now: str, **kwargs: Any) -> int | None:
+        if threading.current_thread().name == "apply-A":
+            raise RuntimeError("power lost mid-apply")
+        return original_bump(bench_id, now, **kwargs)
+
+    def parking_set(
+        change_id: str, state: str, reasons: list[str], now: str, **kwargs: Any
+    ) -> bool:
+        if threading.current_thread().name == "apply-A":
+            parked.set()
+            assert release.wait(timeout=10), "the release never came"
+            return original_set(change_id, state, reasons, now, **kwargs)
+        written = original_set(change_id, state, reasons, now, **kwargs)
+        winner_committed.set()
+        return written
+
+    monkeypatch.setattr(store, "bump_generation", crash_bump)
+    monkeypatch.setattr(store, "set_change_state", parking_set)
+
+    def crashing_apply() -> None:
+        try:
+            ops.change_apply(
+                ADMIN, "req-race-a", "chg-race", 1, ref, approver_token=token
+            )
+        except errors.OperationFailure as fail:
+            failures.append(fail)
+
+    thread = threading.Thread(target=crashing_apply, name="apply-A")
+    thread.start()
+    assert parked.wait(timeout=10), "thread A never reached the outcome write"
+    # The winning apply runs on the test thread: a full, clean apply.
+    winner = ops.change_apply(
+        ADMIN, "req-race-b", "chg-race", 1, ref, approver_token=token
+    )
+    assert winner["state"] == "applied"
+    assert winner_committed.is_set()
+    release.set()
+    thread.join(timeout=10)
+    assert not thread.is_alive(), "thread A never finished"
+
+    assert [fail.failure.code for fail in failures] == ["unavailable"]
+    assert store.current_generation(BENCH) == 2  # A crashed before its bump
+    record = store.get_change("chg-race")
+    assert record is not None
+    assert record["state"] == "applied", (
+        "the crash recorder rewrote the committed record:"
+        f" {record['state']} ({record['reasons']})"
+    )
+
+
+def test_concurrent_double_apply_bumps_once_and_the_loser_is_told_conflict(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Foldref finding 1, interleaving B (bump-once): both applies pass
+    every upfront fence while the change is still ``proposed``; thread A
+    parks INSIDE the generation bump, the racing apply commits the whole
+    apply, then A's bump proceeds. Unfixed, A bumps the canonical
+    generation a SECOND time and both callers are told ``applied``; with
+    the expected-generation CAS on the bump, A's bump refuses (the
+    conditional rowcount-zero composed into the same ``conflict`` the
+    upfront fences serve) and A's outcome recorder cannot touch the
+    winner's ``applied`` record."""
+    ops, store, content = _race_seam(tmp_path)
+    ref, token = _put_approval(content, change_id="chg-race")
+
+    parked = threading.Event()
+    release = threading.Event()
+    original_bump = store.bump_generation
+    results: list[dict[str, Any]] = []
+    failures: list[errors.OperationFailure] = []
+
+    def parking_bump(bench_id: str, now: str, **kwargs: Any) -> int | None:
+        if threading.current_thread().name == "apply-A":
+            parked.set()
+            assert release.wait(timeout=10), "the release never came"
+        return original_bump(bench_id, now, **kwargs)
+
+    monkeypatch.setattr(store, "bump_generation", parking_bump)
+
+    def racing_apply() -> None:
+        try:
+            results.append(
+                ops.change_apply(
+                    ADMIN, "req-race-a", "chg-race", 1, ref, approver_token=token
+                )
+            )
+        except errors.OperationFailure as fail:
+            failures.append(fail)
+
+    thread = threading.Thread(target=racing_apply, name="apply-A")
+    thread.start()
+    assert parked.wait(timeout=10), "thread A never reached the bump"
+    winner = ops.change_apply(
+        ADMIN, "req-race-b", "chg-race", 1, ref, approver_token=token
+    )
+    assert winner["state"] == "applied"
+    release.set()
+    thread.join(timeout=10)
+    assert not thread.is_alive(), "thread A never finished"
+
+    assert store.current_generation(BENCH) == 2, (
+        "the double-apply bumped the canonical generation twice:"
+        f" {store.current_generation(BENCH)}"
+    )
+    record = store.get_change("chg-race")
+    assert record is not None and record["state"] == "applied"
+    assert [fail.failure.code for fail in failures] == ["conflict"], (
+        "the losing apply must be told the fence conflict, not applied:"
+        f" results={results} failures={failures}"
+    )
+    assert results == []

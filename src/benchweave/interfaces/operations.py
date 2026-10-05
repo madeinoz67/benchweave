@@ -1105,6 +1105,17 @@ class Operations:
         (bump + bench-row refresh + ``applied`` + event). Every decided
         failure records ``failed``; an undecided crash records ``unknown``
         and surfaces as ``unavailable`` (uncertainty is never erased).
+        Recording happens only while the change is still ``proposed``: a
+        terminal record (``applied``, ``failed``, ``unknown``) is never
+        rewritten, so a re-apply attempt on a decided or undecided change
+        answers ``conflict`` and leaves the record — and its audit
+        reasons — exactly as the first outcome left them. Under two
+        concurrent appliers this holds structurally, not by the checks
+        above: the outcome write is state-conditional and the commit's
+        bump is a compare-and-swap on the verified generation, so the
+        loser is refused at the bump and cannot rewrite the winner's
+        record (the G4 foldref CAS — one bump, one terminal record, no
+        gate required).
         """
         require_permission(identity, "admin")
         # The validated payload is the corpus's REST body for this route:
@@ -1294,7 +1305,25 @@ class Operations:
             "trip_reset": self._apply_trip_reset,
         }[kind]
         event_kind = handler(change, bench_id, approver_principal)
-        new_generation = self._store.bump_generation(bench_id, now)
+        # The bump is a compare-and-swap on the fence change_apply already
+        # verified (the G4 foldref CAS): a second apply that also passed the
+        # upfront fence while the change was still ``proposed`` finds the
+        # bench moved here and refuses — one bump per apply, ever, even with
+        # two ungated writers interleaving. The refusal is the same conflict
+        # the upfront fences serve, and the loser's outcome recorder then
+        # cannot touch the winner's record (its write is state-conditional).
+        new_generation = self._store.bump_generation(
+            bench_id, now, expected_generation=int(change["expected_generation"])
+        )
+        if new_generation is None:
+            current = self._store.current_generation(bench_id)
+            raise errors.OperationFailure(
+                errors.failure(
+                    "conflict",
+                    f"bench {bench_id} is at generation {current},"
+                    f" not {change['expected_generation']}",
+                )
+            )
         row = self._store.get_bench(bench_id)
         if row is not None:
             self._store.put_bench(
@@ -1485,11 +1514,23 @@ class Operations:
     def _record_change_outcome(
         self, change_id: str, state: str, reason: str, now: str
     ) -> None:
-        """Record a failed/unknown outcome — never over an already-applied
-        change (a post-commit crash leaves the applied record truthful)."""
+        """Record a failed/unknown outcome — only over a change still
+        ``proposed``. Every terminal record is load-bearing evidence and
+        is never rewritten: a post-commit crash leaves the applied record
+        truthful, and a re-apply attempt on a failed/unknown change must
+        neither reclassify it (A06 — the undecided record IS the crash
+        evidence) nor rewrite its audit reasons (``reasons[0]`` is what
+        the inhibited-state alert renders verbatim). The guarantee is the
+        write itself, not this read: the outcome write is state-conditional
+        (``WHERE change_id=? AND state='proposed'``), so a record that
+        left ``proposed`` between the read and the write is unwritable no
+        matter how two concurrent appliers interleave — the read is only
+        the skip-the-useless-write fast path (the G4 foldref CAS)."""
         change = self._store.get_change(change_id)
-        if change is not None and change["state"] != "applied":
-            self._store.set_change_state(change_id, state, [reason], now)
+        if change is not None and change["state"] == "proposed":
+            self._store.set_change_state(
+                change_id, state, [reason], now, only_if_state="proposed"
+            )
 
     def _change_projection(self, change_id: str) -> dict[str, Any]:
         """Contract change object; ``get_change`` returns the target ref as
