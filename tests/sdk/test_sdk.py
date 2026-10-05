@@ -146,12 +146,19 @@ def test_conformance_catches_wrong_identity_and_lifecycle_io(tmp_path: Path) -> 
 
 
 @pytest.mark.parametrize("stage", ["open", "next_event", "close", "execute"])
-def test_conformance_times_out_stalled_adapter(stage: str) -> None:
+def test_conformance_times_out_stalled_adapter(stage: str, tmp_path: Path) -> None:
+    import json
     from typing import Any
 
     conformance = sdk_module("conformance")
     testing = sdk_module("testing")
-    descriptor = sdk_module("scaffold").descriptor_for("stall_plugin")
+    # The pre-copier scaffold.descriptor_for constant builder was removed at
+    # WS2 (in the 0.7.x pins); the generated project's descriptor.json is
+    # the same document shape, rendered through the current scaffold API.
+    sdk_module("scaffold").create_project(tmp_path / "stall", "stall_plugin")
+    descriptor = json.loads(
+        (tmp_path / "stall" / "src" / "stall_plugin" / "descriptor.json").read_bytes()
+    )
 
     class Stalled:
         async def open(self, *args: Any) -> None:

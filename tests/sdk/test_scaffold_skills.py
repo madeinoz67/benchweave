@@ -24,6 +24,13 @@ PACKAGE = "lumen_probe"
 #: src/<package>/ so they ship in the wheel and catalogue under the registry
 #: ``skill`` role; CLAUDE.md is root-level dev tooling and never ships.
 PINNED_FILE_SET = [
+    ".claude/skills/benchweave-adapter-testing/SKILL.md",
+    ".claude/skills/benchweave-capture/SKILL.md",
+    ".claude/skills/benchweave-descriptor/SKILL.md",
+    ".claude/skills/benchweave-plugin-ui/SKILL.md",
+    ".claude/skills/benchweave-plugin-workflow/SKILL.md",
+    ".copier-answers.yml",
+    "AGENTS.md",
     "AI-GUIDE.md",
     "CLAUDE.md",
     "README.md",
@@ -103,20 +110,30 @@ def test_seeded_skill_frontmatter_present(tmp_path: Path) -> None:
 
 
 def test_claude_md_references_real_commands(tmp_path: Path) -> None:
+    """Since the SDK's WS3 thin-pointer rework (in the 0.7.x pins) CLAUDE.md
+    is the author's own file carrying one load-bearing line — the
+    ``@AGENTS.md`` import — and every command/fact needle lives in the
+    SDK-managed AGENTS.md. The arm pins both halves: the pointer's line,
+    and the managed file's references."""
     project = _generate(tmp_path)
-    text = (project / "CLAUDE.md").read_text(encoding="utf-8")
+    claude = (project / "CLAUDE.md").read_text(encoding="utf-8")
+    for needle in ("@AGENTS.md", "benchweave-sdk upgrade"):
+        assert needle in claude, f"CLAUDE.md does not reference {needle}"
+    agents = (project / "AGENTS.md").read_text(encoding="utf-8")
     for needle in (
         "pytest",
         "uv build",
         "benchweave-sdk check",
         "AI-GUIDE.md",
-        f"src/{PACKAGE}/skills/",
+        ".claude/skills/",
     ):
-        assert needle in text, f"CLAUDE.md does not reference {needle}"
-    # Facts-only needles: every claim in CLAUDE.md is a fact of the generated
-    # project (R11-adjacent honesty pins; grep showed zero coverage pre-fold).
-    for needle in ("synthetic BenchWeave device plugin", "developer tooling", "Safety rails"):
-        assert needle in text, f"CLAUDE.md drops its facts-only content: {needle!r}"
+        assert needle in agents, f"AGENTS.md does not reference {needle}"
+    # Facts-only needles: every claim in the managed file is a fact of the
+    # generated project (R11-adjacent honesty pins). The old CLAUDE.md
+    # facts moved with the thin-pointer rework; the honesty line rides the
+    # Safety rails section now.
+    for needle in ("Safety rails", "This project is synthetic"):
+        assert needle in agents, f"AGENTS.md drops its facts-only content: {needle!r}"
 
 
 def test_drive_device_honesty_label_pinned(tmp_path: Path) -> None:
