@@ -59,14 +59,6 @@ def test_sdk_wheel_rebuilt_from_sdist_contains_locked_standards_tree(tmp_path: P
         # synthesized top-level validator module may remain in the wheel.
         assert "benchweave_sdk/_presentation_contract.py" not in names
         assert not any(name.startswith("benchweave_sdk/contracts/") for name in names)
-        inventory_path = "benchweave_sdk/preview_assets/inventory.json"
-        inventory = json.loads(archive.read(inventory_path))
-        assert inventory["api_version"] == 1
-        assert inventory["assets"]
-        for asset in inventory["assets"]:
-            packaged = archive.read(f"benchweave_sdk/preview_assets/{asset['path']}")
-            assert len(packaged) == asset["size"]
-            assert hashlib.sha256(packaged).hexdigest() == asset["sha256"]
     # The vendored validator stays byte-identical to the gateway's canonical
     # source; the lock pins that exact digest.
     gateway_validator = ROOT / "src/benchweave/presentation/contracts.py"
@@ -88,10 +80,17 @@ def test_sdk_wheel_rebuilt_from_sdist_contains_locked_standards_tree(tmp_path: P
     # .gitignore into every sdist past include/exclude entirely (stopped in
     # the SDK's build hook; this pin is the main-side detector).
     forbidden_files = {".gitignore", ".mcp.json", "AGENTS.md", "CLAUDE.md"}
+    # The SDK's PKG-2 carve-out (since #347 WS2/WS3, in the tree the 0.7.0
+    # pointer advances to): the force-included copier template — copier.yml +
+    # template/, including template/.claude/skills and the jinja agent
+    # assets — is generated-PROJECT content that ships by design. The leak
+    # detector catches repo config OUTSIDE that template; the old pin
+    # predated the template members entirely.
     leaked = [
         name
         for name in sdist_names
-        if Path(name).name in forbidden_files or "/.claude/" in f"/{name}"
+        if "/template/" not in f"/{name}"
+        and (Path(name).name in forbidden_files or "/.claude/" in f"/{name}")
     ]
     assert not leaked, f"sdist leaks repo files past the include list: {sorted(leaked)}"
     rebuilt = tmp_path / "rebuilt"
@@ -104,7 +103,3 @@ def test_sdk_wheel_rebuilt_from_sdist_contains_locked_standards_tree(tmp_path: P
     )
     with zipfile.ZipFile(next(rebuilt.glob("*.whl"))) as archive:
         _assert_standards_tree(archive.namelist(), archive.read)
-        rebuilt_inventory = json.loads(
-            archive.read("benchweave_sdk/preview_assets/inventory.json")
-        )
-        assert rebuilt_inventory == inventory

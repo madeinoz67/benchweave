@@ -60,6 +60,12 @@ dev = [
   # entry point is installed in the repo venv; packages/sdk stays a submodule
   # and is NOT a workspace member (two-repo discipline).
   "benchweave-ui-html",
+  # The SDK pin's [scaffold] extra import (issue #347 WS2; the 0.7.0
+  # pointer, gateway #308): the gateway's bare mypy walks packages/sdk/src,
+  # whose scaffold.py/scaffold_update.py import copier lazily — dev-only so
+  # mypy resolves it; the published gateway dependency set is unchanged (the
+  # SDK carries the same dev-group rationale for its own tree).
+  "copier>=9.18,<10",
   # The browser lane's pins (issue #300 G1d; F-D1 ruled the pip wrapper over
   # vendored axe.min.js bytes — dependency motion, uv.lock moves in the same
   # commit). The ui-html `browser` extra carries the same floors; the dev
