@@ -22,4 +22,4 @@ The first PoC is simulator-first. The planned hardware MVP targets the FNIRSI DP
 
 # Sister repository
 
-The [plugin developer SDK](https://madeinoz67.github.io/benchweave-sdk/) (`benchweave-sdk`) provides the offline plugin tooling — project generation, validation, mocks and the local UI preview. It is mounted in this repository at `packages/sdk` as a git submodule with its own CI and release cycle; the [plugin SDK guide](user-guide/plugin-sdk.md) documents it.
+The [plugin developer SDK](https://sdk.benchweave.dev/) (`benchweave-sdk`) provides the offline plugin tooling — project generation, validation, mocks and the local UI preview. It is mounted in this repository at `packages/sdk` as a git submodule with its own CI and release cycle; the [plugin SDK guide](user-guide/plugin-sdk.md) documents it.
