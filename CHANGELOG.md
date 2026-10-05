@@ -304,6 +304,9 @@ All notable changes to this project will be documented in this file.
 - FOLD-5 — the armed text composes EVERY enable, and degenerate shapes render honest text (issue #304)
 - The staging panel offers the preflight control (browser-lane catch)
 - The confirm names the channel the enable targets (fold-refute F1)
+- Reconcile the gateway's v0.7.0-coupled surfaces
+- Sdk_smoke installs the SDK wheel with the [scaffold] extra
+- The 146 E2E step budgets absorb starved-runner stalls
 
 ### Documentation
 
@@ -977,6 +980,13 @@ All notable changes to this project will be documented in this file.
 - Delete the mirror machinery; restore the literal gate to its pre-slice shape (#224 s2 pivot)
 - Bump actions/configure-pages from 5.0.0 to 6.0.0 (#349)
 - Advance packages/sdk to v0.6.0 (#309) (#365)
+- Advance packages/sdk to v0.7.0
+- Advance packages/sdk to v0.7.0 — lock + mirror + pointer
+- Render the compatibility matrix for the 0.7.0 pairing
+- Retire the scaffold.py register row — the v0.7.0 SDK deleted the file
+- Advance packages/sdk to v0.7.1
+- Render the compatibility matrix for the 0.7.1 pairing
+- Follow the v0.7.1 tag re-point to its self-registration commit
 
 ### Performance
 

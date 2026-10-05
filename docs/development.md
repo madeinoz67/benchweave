@@ -40,8 +40,9 @@ The renderer is the `benchweave-ui-html` workspace member
 (`packages/ui-html/`). It has Jinja partials, the `pytest11` contract gate,
 and the vendored style assets pinned by the assets inventory. There is no
 Node toolchain. The React reference renderer and its build lane were deleted
-at the G1e cutover. The SDK's committed `preview_assets` bundle is FROZEN
-at its last build (see drift-and-obligations row 7). Use these commands:
+at the G1e cutover. The SDK's frozen `preview_assets` bundle was deleted at
+SDK 0.7.0. The preview host is now the SDK `[server]` extra (see
+drift-and-obligations row 7). Use these commands:
 
 ```sh
 uv run pytest docs/internal/ui-contract.md   # the contract gate (also rides the default run)

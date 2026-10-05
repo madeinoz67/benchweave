@@ -56,17 +56,13 @@ def test_sdk_wheel_rebuilt_from_sdist_contains_locked_standards_tree(tmp_path: P
         names = archive.namelist()
         _assert_standards_tree(names, archive.read)
         # The checkout reach is gone: no force-included contracts copy and no
-        # synthesized top-level validator module may remain in the wheel.
+        # synthesized top-level validator module may remain in the wheel. The
+        # frozen preview_assets bundle that was also asserted here died with
+        # SDK 0.7.0 (the SA-PREVIEW exit, #309): deleted from the wheel
+        # entirely — nothing preview-shaped may ship in it either.
         assert "benchweave_sdk/_presentation_contract.py" not in names
         assert not any(name.startswith("benchweave_sdk/contracts/") for name in names)
-        inventory_path = "benchweave_sdk/preview_assets/inventory.json"
-        inventory = json.loads(archive.read(inventory_path))
-        assert inventory["api_version"] == 1
-        assert inventory["assets"]
-        for asset in inventory["assets"]:
-            packaged = archive.read(f"benchweave_sdk/preview_assets/{asset['path']}")
-            assert len(packaged) == asset["size"]
-            assert hashlib.sha256(packaged).hexdigest() == asset["sha256"]
+        assert not any(name.startswith("benchweave_sdk/preview_assets/") for name in names)
     # The vendored validator stays byte-identical to the gateway's canonical
     # source; the lock pins that exact digest.
     gateway_validator = ROOT / "src/benchweave/presentation/contracts.py"
@@ -82,16 +78,22 @@ def test_sdk_wheel_rebuilt_from_sdist_contains_locked_standards_tree(tmp_path: P
     source = next(unpacked.iterdir())
     assert (source / "standards-lock.json").is_file(), "sdist omits the standards lock"
     # PKG-2, pinned at the sdist too: no repo/VCS metadata or agent
-    # configuration ships past the declared five-entry include list. Caught
+    # configuration ships past the declared include list. Caught
     # live in the issue-#71 fold — an unanchored "README.md" include matched
     # .claude/deep-review/README.md at depth, and hatchling force-includes
     # .gitignore into every sdist past include/exclude entirely (stopped in
-    # the SDK's build hook; this pin is the main-side detector).
+    # the SDK's build hook; this pin is the main-side detector). SDK 0.7.0
+    # carve-out: the declared "/template" sdist member (the copier scaffold
+    # payload — the SDK's build hook refuses a build without it) legitimately
+    # carries template/.claude/skills/*.jinja; that is product data which
+    # GENERATES plugin agent config, not this repo's configuration leaking.
+    # A .claude/ path outside template/ is still a leak.
     forbidden_files = {".gitignore", ".mcp.json", "AGENTS.md", "CLAUDE.md"}
     leaked = [
         name
         for name in sdist_names
-        if Path(name).name in forbidden_files or "/.claude/" in f"/{name}"
+        if Path(name).name in forbidden_files
+        or ("/.claude/" in f"/{name}" and "/template/" not in f"/{name}")
     ]
     assert not leaked, f"sdist leaks repo files past the include list: {sorted(leaked)}"
     rebuilt = tmp_path / "rebuilt"
@@ -104,7 +106,3 @@ def test_sdk_wheel_rebuilt_from_sdist_contains_locked_standards_tree(tmp_path: P
     )
     with zipfile.ZipFile(next(rebuilt.glob("*.whl"))) as archive:
         _assert_standards_tree(archive.namelist(), archive.read)
-        rebuilt_inventory = json.loads(
-            archive.read("benchweave_sdk/preview_assets/inventory.json")
-        )
-        assert rebuilt_inventory == inventory

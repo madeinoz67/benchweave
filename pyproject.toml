@@ -68,6 +68,12 @@ dev = [
   # browsers themselves are only installed in the browser job.
   "playwright>=1.49",
   "axe-playwright-python>=0.1.7",
+  # Same shape as the SDK's own dev group (SDK issue #347 WS2): this repo's
+  # mypy `files` includes packages/sdk/src, so the gateway venv must resolve
+  # the lazy `from copier import run_copy` in the SDK's scaffold bytes the
+  # same way the SDK's dev env does. Users still get copier only via the
+  # SDK's [scaffold] extra; nothing gateway-side imports it.
+  "copier>=9.18,<10",
 ]
 
 [tool.uv.sources]
