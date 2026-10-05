@@ -14,7 +14,13 @@ Kill on any shortfall; the underpowered arm (null-consumer sink below
 23,077 fps on the source lane) records runner-starved, never a lowered
 bar.
 
-Run:  uv run python plugins/benchweave/adc_6ch_12bit/tests/a3_sustained_stream.py
+Invocation contract: run FROM the plugin project directory
+(`plugins/benchweave/adc_6ch_12bit/`) with a Python environment that
+carries benchweave_sdk_server with its [server] extra (pyserial) —
+e.g. the SDK worktree venv:
+  uv run --project <sdk-worktree> python tests/a3_sustained_stream.py
+The harness bootstraps its own src/tests paths; everything else must
+already be importable.
 """
 
 from __future__ import annotations
@@ -84,8 +90,14 @@ async def _main(run_s: float) -> dict[str, object]:
     services = SerialCaptureServices(link, max_frame_bytes=65536)
     try:
         ctx = _Ctx(5.0)
+
         async def _reopen(baud: int) -> None:
-            pass  # the pty carries no real baud state
+            # The in-process reopen: the HOST side moves to the new baud.
+            # Since fold M7 the emulator tracks both ends — a no-op here
+            # leaves host_baud at the boot rate and the post-reopen
+            # SET_FRAME_FORMAT lands as wrong-baud garble (the regression
+            # the A3 vet caught at the fold tip).
+            emu.host_baud = baud
 
         far.attach(emu)
         result = await negotiate_stream(services, ctx, reopen=_reopen)

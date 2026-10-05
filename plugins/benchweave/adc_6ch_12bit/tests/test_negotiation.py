@@ -260,6 +260,105 @@ def test_m8_lost_format_ack_leaves_the_link_unresolved() -> None:
     assert emu.baud == TARGET_BAUD, "the device is stranded at the switched baud"
 
 
+class _AckBaudSpy(AdcEmulator):
+    """Records the device baud at the moment the SET_BAUD ACK is encoded —
+    the in-process observable of 'the ACK leaves at the old rate'."""
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.baud_at_ack: int | None = None
+
+    def _ack(self, command: codec.FrameType, value: int) -> bytes:
+        if int(command) == int(codec.FrameType.SET_BAUD) and self.baud_at_ack is None:
+            self.baud_at_ack = self.baud
+        return super()._ack(command, value)
+
+
+class _MutantEmulatorSwitchesFirst(_AckBaudSpy):
+    """The fold-vet ordering mutant: the switch applies BEFORE the ACK is
+    queued — on real hardware that is a baud change with the ACK still in
+    the TX buffer, i.e. the ACK leaves at the WRONG rate exactly when the
+    host must read it."""
+
+    def _set_baud(self, frame: codec.Frame) -> None:
+        if self.variant in ("v1", "v2_nak_baud"):
+            self._out += self._nak(frame.type, codec.ErrorCode.BAD_COMMAND)
+            return
+        if len(frame.payload) < 4:
+            self._out += self._nak(frame.type, codec.ErrorCode.BAD_PARAMETER)
+            return
+        baud = int.from_bytes(frame.payload[:4], "little")
+        if baud not in codec.SUPPORTED_BAUDS:
+            self._out += self._nak(frame.type, codec.ErrorCode.BAD_PARAMETER)
+            return
+        self.baud = baud  # THE MUTANT: switch first ...
+        self._out += self._ack(codec.FrameType.SET_BAUD, baud & 0xFFFF)  # ... ACK after
+        self._revert_deadline = (
+            None if baud == codec.SUPPORTED_BAUDS[0] else time.monotonic() + self.t_revert_s
+        )
+
+
+def _cell_m15(emu: AdcEmulator) -> None:
+    """The ordering body, shared by the green pin and the mutant control.
+    ``emu`` must be an :class:`_AckBaudSpy` (the discrimination is the
+    baud observed at ACK-encode time — the end state alone cannot
+    distinguish the orders)."""
+    request = codec.encode_frame(
+        codec.Frame(
+            type=int(codec.FrameType.SET_BAUD),
+            seq=1,
+            payload=codec.build_set_baud(TARGET_BAUD),
+        )
+    )
+    emu.write(request)
+    # the ACK is queued (it leaves at the old rate) ...
+    queued = codec.FrameParser().feed(bytes(emu._out))
+    assert queued and queued[0].type == int(codec.FrameType.ACK), emu.commands
+    assert codec.parse_ack(queued[0].payload)[0] == int(codec.FrameType.SET_BAUD)
+    # ... the switch applies after the queueing: the ACK was encoded at
+    # the OLD rate (the end state alone cannot see the order).
+    assert emu.baud == TARGET_BAUD, "the switch applies after the ACK is queued"
+    assert emu.baud_at_ack == BOOT_BAUD, (
+        "the ACK must be encoded at the old rate; the switch-first mutant "
+        f"encodes it at {emu.baud_at_ack}"
+    )
+    # A host still at the boot baud sends the next command pre-reopen:
+    # wrong-baud garble — dropped, never parsed, never answered.
+    format_request = codec.encode_frame(
+        codec.Frame(
+            type=int(codec.FrameType.SET_FRAME_FORMAT), seq=2, payload=b"\x01"
+        )
+    )
+    emu.write(format_request)
+    assert emu.garbled_bytes == len(format_request), "pre-reopen writes are garble"
+    replies_after_garble = codec.FrameParser().feed(bytes(emu._out))
+    assert len(replies_after_garble) == 1, "no ACK may answer a garbled write"
+    # The host reopens (host side moves), and the SAME command now lands.
+    emu.host_baud = TARGET_BAUD
+    emu.write(format_request)
+    replies = codec.FrameParser().feed(bytes(emu._out))
+    assert replies[-1].type == int(codec.FrameType.ACK)
+    assert emu.slim, "the format command lands once the host has reopened"
+
+
+def test_m15_ack_leaves_at_the_old_rate_before_the_switch_applies() -> None:
+    """Fold-vet ordering pin: SET_BAUD queues its ACK (which leaves at
+    the OLD rate) and only then applies the switch — and a host that has
+    not yet reopened sends wrong-baud garble the device must drop. The
+    A3 regression at the fold tip (a no-op reopen left host_baud stale
+    and the post-reopen SET_FRAME_FORMAT garbled) is this cell's unit
+    shape."""
+    _cell_m15(_AckBaudSpy(variant="v2"))
+
+
+def test_m15_control_switch_first_fails_the_ordering_pin() -> None:
+    """The ordering mutant: switch BEFORE the ACK is queued — on real
+    hardware a baud change with the ACK still in the TX buffer, i.e. the
+    ACK leaves at the wrong rate exactly when the host must read it."""
+    with pytest.raises(AssertionError, match="encoded at the old rate"):
+        _cell_m15(_MutantEmulatorSwitchesFirst(variant="v2"))
+
+
 # ---------------------------------------------------------------------------
 # the RED control: a stub that skips negotiation must fail the cells
 
