@@ -66,16 +66,16 @@ and remain the reviewer's job.
    dependents together) — with `make check-sdk-standards` as the mechanical half: it
    anchors the lock's `compatibility.sdk` to the pinned SDK's own pyproject
    (`sdk_version_unanchored`), so a stale lock reds at pointer-advance time.
-   **Frozen preview bundle (G1e, R-5):** the SDK's committed `preview_assets` React
-   bundle is FROZEN at its last build (`renderer_version 0.1.2`, inventory at freeze
-   commit `085b0ff78e126b5b124b95451d2b08114ae78b71` — recorded at landing):
-   shippable, NEVER rebuilt — the toolchain that built it (`ui/`,
-   `write-preview-inventory.mjs`, the Node CI lane) is deleted, so no path exists
-   that regenerates it. The SDK's `hatch_build` inventory-vs-committed-bytes
-   verification REMAINS the integrity check (frozen ≠ rot: byte drift still reds
-   the SDK build). Exit: dependency 4a — the PRD 11 standalone host with mock
-   transport (SA-PREVIEW, #309) — at which point `preview_assets` is deleted from
-   the SDK and `preview-ui` becomes a shim (R-9). **Mount staleness (#347 WS1):**
+   **Frozen preview bundle (G1e, R-5) — CLOSED at the 0.7.1 pin (gateway #308):**
+   the frozen React bundle is deleted from the SDK (`preview_assets/` gone; the
+   served document's `renderer_version` now reports the emitting SDK's own
+   version), `preview-ui` is the R-9 shim delegating to the standalone host with
+   the mock transport pinned, and the `hatch_build` inventory integrity check
+   retired with the tree. The obligation's exit condition (the PRD 11 standalone
+   host with mock transport, SA-PREVIEW, #309) was met and consumed by the #308
+   SDK train (feat/issue308-sdk-shim, released v0.7.0/v0.7.1); the release
+   notes' BREAKING footer names the command-surface change, the `[server]`
+   requirement, and textual's removal. **Mount staleness (#347 WS1):**
    the `sdk-drift` CI job holds the gitlink at the SDK's latest `vX.Y.Z` release
    tag's dereferenced commit (`scripts/check_sdk_submodule_drift.py`; exit 1
    drift, exit 2 indeterminate — fail closed) — staleness was invisible to every

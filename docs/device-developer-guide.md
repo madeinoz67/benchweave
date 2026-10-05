@@ -367,9 +367,10 @@ declared member is the LSB). `decoder_lanes` declare decode-annotation
 bindings on another action than the capture. Hints carry `visible`
 only: colour carries nothing in a lanes view. The renderer contract is
 ui-contract §E.4. Since plugin-ui-preview 0.1.1 the SDK preview renders every
-declared plot. `preview-ui` projects each one into the served document
-(resolved axis units and hint fields included) and the bundled renderer
-draws it, with hints applied as preferences under the host theme. A hint
+declared plot. `preview-ui` (the standalone host's preview alias, mock
+transport) projects each one into the served document (resolved axis
+units and hint fields included) and the host renders it, with hints
+applied as preferences under the host theme. A hint
 can bias a trace colour to `accent` or `muted`, or hide a channel from the
 drawing. A hint can never carry severity semantics or a threshold. The
 `digital_lanes` capture kind renders, decoder lanes included. Each
