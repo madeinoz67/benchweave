@@ -257,15 +257,17 @@ class TestZeroModeOverRealTrees:
         result = _counter_run("--scope", scopes, "--json")
         assert result.returncode == 0
         payload = json.loads(result.stdout)
-        assert payload["scopes"]["plugins"]["scanned"] == 15, (
+        assert payload["scopes"]["plugins"]["scanned"] == 19, (
             "the plugins class set moved (issue #269 widened the rule to "
-            "flat plugins: 13 + the two dps150 script files) — update this "
-            "pin in the same commit as the tree change (the ratchet "
-            "discipline)"
+            "flat plugins: 13 + the two dps150 script files; #393 adds the "
+            "four adc_wire modules) — update this pin in the same commit "
+            "as the tree change (the ratchet discipline)"
         )
-        assert payload["scopes"]["docs"]["scanned"] == 31, (
-            "the docs class set moved — update this pin in the same commit "
-            "as the tree change, or refresh the snapshot deliberately"
+        assert payload["scopes"]["docs"]["scanned"] == 33, (
+            "the docs class set moved (#393 added docs/adc-protocol.md and "
+            "the device project's own docs join the scan) — update this pin "
+            "in the same commit as the tree change, or refresh the snapshot "
+            "deliberately"
         )
         assert payload["scopes"]["scripts"]["scanned"] == 18, (
             "the scripts class set moved (18 .py minus the self-exempted "
@@ -704,13 +706,14 @@ class TestScopeMembershipRules:
         )
         return scratch
 
-    def test_plugins_census_pins_fifteen_with_the_flat_scripts_inside(self) -> None:
-        """Census 13 -> 15: the two dps150 script files (zero literals in
-        either) joined the denominator. The pin moves in the same commit
-        as the rule (the ratchet discipline the message instructs)."""
+    def test_plugins_census_pins_nineteen_with_the_flat_scripts_inside(self) -> None:
+        """Census 15 -> 19 (#393: the four adc_wire modules joined the
+        denominator, zero literals in any). The pin moves in the same
+        commit as the rule (the ratchet discipline the message
+        instructs)."""
         result = _counter_run("--scope", "plugins", "--json")
         assert result.returncode == 0, result.stdout + result.stderr
-        assert json.loads(result.stdout)["scopes"]["plugins"]["scanned"] == 15, (
+        assert json.loads(result.stdout)["scopes"]["plugins"]["scanned"] == 19, (
             "the plugins class set moved — update this pin in the same "
             "commit as the tree change (the ratchet discipline)"
         )
