@@ -321,6 +321,11 @@ All notable changes to this project will be documented in this file.
 - The no-response fragment roots its own reconcile (browser defects 1+2)
 - Terminality and bump-once become compare-and-swaps (issue #305, FOLD-A)
 - The approval-first view survives a §9 replay (issue #305, FOLD-B)
+- GapDetector.feed records into the detector + the A3 harness (issue #393)
+- The census pins move with the #393 tree change (ratchet discipline)
+- The fold wave — stream TX discipline, scan reconfigure, honest negotiation states (issue #393)
+- The A3 harness's reopen moves the host baud (the fold-tip regression) + the ordering pin (issue #393)
+- Prime the interpreter and the pinned pytest before the adc job's offline run (issue #393)
 
 ### Documentation
 
@@ -647,6 +652,8 @@ All notable changes to this project will be documented in this file.
 - The G4 operator rows + the CON-5 fold (issue #305)
 - Land the issue #401 domain-links design of record
 - Repoint published-site links onto the project domains
+- The issue #393 design record (ADC high-rate, protocol v2 + SW-60/61)
+- Complete the firmware-drop sweep (re-review fold M1+L2, issue #393)
 
 ### Features
 
@@ -880,6 +887,9 @@ All notable changes to this project will be documented in this file.
 - G4 submit + review page + the submit no-response variant (issue #305)
 - G4 approval load + apply + the GW-71 guards (issue #305)
 - G4 inhibited state + the per-session acknowledgement (issue #305)
+- The adc_6ch_12bit wire-family v2 reference implementation (issue #393)
+- The adc v2 firmware, wire spec, and CI lane (issue #393)
+- Drop the in-tree reference firmware — the plugin repository owns it (issue #393)
 
 ### Hardware Evidence
 
@@ -1016,6 +1026,12 @@ All notable changes to this project will be documented in this file.
 - Render the compatibility matrix for the 0.7.1 pairing
 - Follow the v0.7.1 tag re-point to its self-registration commit
 - Advance the SDK pointer to v0.7.1 — gitlink, CON-12 mirror, twin register, census (gateway #308)
+- Point packages/sdk at the #393 serial-backend branch tip
+- Refresh the docs literal baseline for the adc pointer stub (issue #393)
+- Follow the #393 SDK fold (S1-S5) at 145f3a6
+- Follow the v0.8.0 release tag (issue #393)
+- The v0.8.0 pairing — sdk_compatibility mirror follows the tag (issue #393)
+- Regenerate the compatibility matrix for the v0.8.0 pairing (issue #393)
 
 ### Performance
 
@@ -1047,6 +1063,7 @@ All notable changes to this project will be documented in this file.
 - Extract the execute-call fixture constant to clear E501
 - Ruff/mypy cleanups in the registry-contract instrument
 - Ruff-format the dps150 SCHEMAS expression
+- Ruff autofix (import order, unused import) after the A3 slice
 
 ### Testing
 
