@@ -78,6 +78,12 @@ python_version = "3.13"
 strict = true
 files = ["src/benchweave", "src/adc_6ch_12bit", "tests"]
 
+# The standalone-host extra ships without a py.typed marker at the 0.7.1
+# pin; the proof-arm tests import it (proof, not production code).
+[[tool.mypy.overrides]]
+module = "benchweave_sdk_server.*"
+ignore_missing_imports = true
+
 # Coverage is report-only (run with `pytest --cov`); no threshold is enforced.
 [tool.coverage.run]
 source = ["src/benchweave", "src/adc_6ch_12bit"]
