@@ -1,4 +1,4 @@
 [submodule "packages/sdk"]
 	path = packages/sdk
 	url = https://github.com/madeinoz67/benchweave-sdk.git
-	pin = v0.7.1
+	pin = v0.8.0
