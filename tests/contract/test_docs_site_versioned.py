@@ -67,12 +67,14 @@ command-literal assert FAILS.
 from __future__ import annotations
 
 import importlib.util
+import re
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
+SOURCE = ROOT / "website" / "index.html"
 
 
 def _assembler() -> Any:
@@ -273,30 +275,56 @@ def test_s2_latest_label_exists_iff_tags_exist() -> None:
     assert sum(1 for label in untagged if "(latest)" in label) == 0
 
 
-def test_s3_scaffold_without_its_token_refuses() -> None:
-    # The selector was hand-edited away: the generation cannot fill a
-    # scaffold that carries no token.
-    with pytest.raises(SystemExit, match=r"selector"):
-        _asm.fill_selector_token("<select class=\"version-select\"></select>", ["v0.4.0"])
+def _stamped_copy(html: str) -> Path:
+    """Stamp a copy of ``html`` and return its path (the assembly-copy seam)."""
+    import tempfile
+
+    with tempfile.NamedTemporaryFile("w", suffix=".html", delete=False, encoding="utf-8") as tmp:
+        tmp.write(html)
+        path = Path(tmp.name)
+    _asm.stamp_website(path, _asm.website_stamp_map(ROOT))
+    return path
+
+
+def test_s3_scaffold_without_its_token_has_no_rows() -> None:
+    # The selector was hand-edited away: nothing fills the select, so the
+    # assembled copy carries zero option rows — which verify_tree's
+    # selector-honesty arm refuses (design §1.4's fail-closed direction).
+    html = SOURCE.read_text(encoding="utf-8").replace("{{stg-versions}}", "", 1)
+    path = _stamped_copy(html)
+    out = path.read_text(encoding="utf-8")
+    select = re.search(r'<select class="version-select".*?</select>', out, re.DOTALL)
+    assert select is not None, "the selector element must survive"
+    assert "<option" not in select.group(0)
 
 
 def test_s3_generation_fills_the_token_in_the_assembly_copy() -> None:
-    html = (
-        '<select class="version-select" onchange="gotoVersion(this)">\n'
-        "  {{stg-versions}}\n"
-        "</select>"
-    )
-    out = _asm.fill_selector_token(html, ["v0.4.0"])
+    html = SOURCE.read_text(encoding="utf-8")
+    path = _stamped_copy(html)
+    out = path.read_text(encoding="utf-8")
     assert "{{" not in out
-    assert '<option value="docs/">v0.4.0 (latest)</option>' in out
-    assert '<option value="docs/v/dev/">dev</option>' in out
-    # The source shape is untouched by construction: this function is pure
-    # over its input and writes nothing to disk.
+    assert '<option value="docs/">dev</option>' in out  # zero tags on the real repo
+    assert "(latest)" not in out  # a '(latest)' label with no releases is a lie
+    # The source shape is untouched by construction: stamping writes the
+    # assembly copy only (CON-13).
     assert "{{stg-versions}}" in html
 
 
-def test_s3_zero_tag_rows_land_in_the_assembly_copy() -> None:
-    html = "<select>\n  {{stg-versions}}\n</select>"
-    out = _asm.fill_selector_token(html, [])
-    assert '<option value="docs/">dev</option>' in out
-    assert "(latest)" not in out
+def test_s3_a_token_the_generation_cannot_fill_refuses() -> None:
+    # An unknown stg-* token is not the selector family and has no map
+    # entry — stamp_website's stamp_unmapped_token arm refuses it rather
+    # than letting it reach the published site.
+    html = SOURCE.read_text(encoding="utf-8").replace(
+        "v{{stg-otdp}}", "v{{stg-otdp}}{{stg-nope}}", 1
+    )
+    copy = _tmp_index(html)
+    with pytest.raises(SystemExit, match=r"stamp_unmapped_token:"):
+        _asm.stamp_website(copy, _asm.website_stamp_map(ROOT))
+
+
+def _tmp_index(html: str) -> Path:
+    import tempfile
+
+    with tempfile.NamedTemporaryFile("w", suffix=".html", delete=False, encoding="utf-8") as tmp:
+        tmp.write(html)
+        return Path(tmp.name)

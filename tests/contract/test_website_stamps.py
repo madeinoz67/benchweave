@@ -137,9 +137,17 @@ def test_stamp_map_derives_from_committed_state() -> None:
 def test_token_coverage_is_exact_in_both_directions() -> None:
     """T3: every token maps, every map key is used (R3 — fail-closed both ways:
     a new standard admission reddens the site until a card exists, and an
-    unknown token can never pass for a claim)."""
+    unknown token can never pass for a claim).
+
+    Scope: the standards claim family. The selector scaffold's
+    ``{{stg-versions}}`` placeholder is a SECOND claim-site family whose
+    value derives from the release tags, not the map (design §1.4) — its
+    bidirectionality is pinned by
+    tests/contract/test_docs_site_versioned.py arms S3.
+    """
     stamps = _assembler().website_stamp_map(ROOT)
     tokens = set(_tokens(SOURCE.read_text(encoding="utf-8")))
+    tokens.discard(_assembler().SELECTOR_PLACEHOLDER)
     unmapped = sorted(tokens - set(stamps))
     unused = sorted(set(stamps) - tokens)
     assert not unmapped, f"token(s) with no map entry: {unmapped}"
@@ -197,7 +205,9 @@ def test_tamper_unknown_token_is_detected(tmp_path: Path) -> None:
         "v{{stg-otdp}}", "v{{stg-otdp}}{{stg-nope}}", 1
     )
     stamps = _assembler().website_stamp_map(ROOT)
-    assert sorted(set(_tokens(text)) - set(stamps)) == ["stg-nope"]
+    # The selector family is out of scope here (see T3's docstring).
+    observed = set(_tokens(text)) - {_assembler().SELECTOR_PLACEHOLDER}
+    assert sorted(observed - set(stamps)) == ["stg-nope"]
     copy = tmp_path / "index.html"
     copy.write_text(text, encoding="utf-8")
     with pytest.raises(SystemExit, match="stamp_unmapped_token:"):

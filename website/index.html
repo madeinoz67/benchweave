@@ -380,7 +380,12 @@
   <!-- ================= DOCS ================= -->
   <section class="panel" id="panel-docs">
     <div class="page-head">
-      <h1>Documentation</h1>
+      <div class="title-row">
+        <h1>Documentation</h1>
+        <select class="version-select" onchange="gotoVersion(this)" aria-label="Documentation version">
+          {{stg-versions}}
+        </select>
+      </div>
       <p>Built with Great Docs from the repository's own guides, architecture record and standards. Unversioned until the first tagged release; every page links back here.</p>
     </div>
     <div class="docs-grid">

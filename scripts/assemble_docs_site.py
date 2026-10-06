@@ -610,43 +610,28 @@ def selector_rows(tags: list[str]) -> list[tuple[str, str]]:
     return rows
 
 
-def fill_selector_token(html: str, tags: list[str]) -> str:
-    """Fill the selector scaffold's ``{{stg-versions}}`` token with generated rows.
+def selector_options_html(tags: list[str]) -> str:
+    """The selector's generated ``<option>`` rows (design §1.4).
 
-    Fail-closed both directions, mirroring ``stamp_website``: a scaffold
-    without its token refuses (the selector was hand-edited away), and a
-    ``{{stg-*}}`` token the generation cannot fill is left in place for
-    ``stamp_website``'s ``stamp_unmapped_token`` arm to refuse. The ``{{``
-    delimiter residue sweep in ``verify_tree`` covers a token this function
-    failed to replace.
+    The rows are the ``{{stg-versions}}`` token's map value, so the
+    substitution rides ``stamp_website``'s existing fail-closed arms
+    (design §1.4: "fail-closed both directions, mirroring stamp_website"):
+    a scaffold without its token refuses via ``stamp_unused_key`` (the
+    selector was hand-edited away), and a token the generation cannot fill
+    refuses via ``stamp_unmapped_token``. The ``{{`` delimiter residue sweep
+    in ``verify_tree`` covers a token neither arm replaced.
     """
-    token = "{{" + SELECTOR_PLACEHOLDER + "}}"
-    if token not in html:
-        raise SystemExit(
-            "selector_token_missing: the website's version selector scaffold carries no "
-            f"{token} placeholder — the selector was hand-edited away (it is generated "
-            "into the assembly copy, never hand-coded)"
-        )
-    rows = selector_rows(tags)
-    options = "\n".join(
-        f'        <option value="{value}">{label}</option>' for label, value in rows
+    return "\n".join(
+        f'        <option value="{value}">{label}</option>' for label, value in selector_rows(tags)
     )
-    return html.replace(token, options)
 
 
-def copy_website(dest: Path, tags: list[str]) -> None:
+def copy_website(dest: Path) -> None:
     src = REPO / "website"
     if not (src / "index.html").is_file():
         raise SystemExit(f"static website missing or incomplete: {src / 'index.html'} not found")
     shutil.copytree(src, dest, dirs_exist_ok=True)
-    # Selector rows are GENERATED into the assembly copy from the release
-    # tags BEFORE stamping: an unfilled {{stg-versions}} would trip
-    # stamp_website's stamp_unmapped_token arm (design §1.4).
-    index = dest / "index.html"
-    index.write_text(
-        fill_selector_token(index.read_text(encoding="utf-8"), tags), encoding="utf-8"
-    )
-    stamp_website(index, website_stamp_map(REPO))
+    stamp_website(dest / "index.html", website_stamp_map(REPO))
     log(
         f"static site <- {src.relative_to(REPO)}/ (artifact root, version stamps + "
         "selector rows applied)"
@@ -829,12 +814,26 @@ def stamp_website(dest_index: Path, stamps: dict[str, str]) -> None:
     (``stamp_unmapped_token:``) and a map key used by no token refuses
     (``stamp_unused_key:``) — the standards panel cannot silently omit a
     standard, and an unmapped token can never reach the published site.
+
+    The front-door selector (design §1.4) is a SECOND claim-site family,
+    outside the map's derivation (CON-13: ``website_stamp_map`` derives from
+    the standards manifest and the ``sdk_compatibility`` mirror — the
+    selector derives from the release tags). Its ``{{stg-versions}}`` token
+    is filled here from ``release_tags()`` rather than the map, so a raw
+    source stamps cleanly for every caller. The fail-closed directions are
+    the generation's own: a ``{{stg-*}}`` token it cannot fill refuses via
+    ``stamp_unmapped_token``, and a scaffold whose token was hand-edited
+    away ships zero option rows, which ``verify_tree``'s selector-honesty
+    arm refuses. The ``{{`` residue sweep covers a token neither replaced.
     """
     html = dest_index.read_text(encoding="utf-8")
     used: set[str] = set()
 
     def substitute(match: re.Match[str]) -> str:
         key = f"stg-{match.group(1)}"
+        if key == SELECTOR_PLACEHOLDER:
+            used.add(key)
+            return selector_options_html(release_tags())
         if key not in stamps:
             raise SystemExit(f"stamp_unmapped_token: {match.group(0)} has no map entry")
         used.add(key)
@@ -1326,7 +1325,7 @@ def main() -> None:
         docs_root = dest / "docs"
         site = REPO / "great-docs" / "_site"
         replace_dir(bucket_source(site, args.bucket), docs_root)
-        copy_website(dest, [])
+        copy_website(dest)
         rename_standards_section(docs_root)
         copy_standards_resources(docs_root)
         stage_pattern_library(docs_root)
@@ -1394,7 +1393,7 @@ def main() -> None:
         # two-shape tolerance (flat when dev is the config's latest, bucket
         # otherwise).
         replace_dir(bucket_source(site, "dev"), docs_root / "v" / "dev")
-    copy_website(dest, tags)
+    copy_website(dest)
     rename_standards_section(docs_root if not tags else docs_root / "v" / "dev")
     copy_standards_resources(docs_root if not tags else docs_root / "v" / "dev")
     stage_pattern_library(docs_root if not tags else docs_root / "v" / "dev")
