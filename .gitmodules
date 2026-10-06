@@ -1,3 +1,7 @@
 [submodule "packages/sdk"]
 	path = packages/sdk
 	url = https://github.com/madeinoz67/benchweave-sdk.git
+	# The declared pin (gateway #408's checker reads this): the exact
+	# SDK commit this branch's pointer names — the #407 fold tip. A
+	# pointer move updates this line in the same commit.
+	pin = 3d8b6b85118579e9fca0a745a14c388917cbdf52
