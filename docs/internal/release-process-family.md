@@ -58,12 +58,16 @@ Releases flow downstream **ui-html → SDK → gateway**.
   - PATCH releases pair on schedule and open no window.
 - **Which edge is enforced how — stated honestly, because the two edges
   are not symmetric, and neither machine-blocks today:**
-  - **SDK → gateway: a red lane in THIS repository's CI, held by the
-    merge discipline, not by branch protection.** The `sdk-drift` lane
-    compares the committed `packages/sdk` gitlink against the SDK's
-    latest release tag and is red on every pull request until the
-    pointer pairs — the window's visible edge is red on the very lanes
-    a gateway cut would ride. But it does not machine-block the merge:
+  - **SDK → gateway: a declared pin, enforced in THIS repository's CI,
+    held by the merge discipline, not by branch protection.** The
+    `sdk-drift` lane compares the committed `packages/sdk` gitlink
+    against the DECLARED pin in `.gitmodules` (`pin = vX.Y.Z`, or a
+    40-hex SHA while a train declares itself) and is red when the two
+    disagree — the pin and the gitlink move in the same commit, so the
+    pointer PR carries its own declaration and no window reddens it.
+    The freshness signal is an annotation: a pin trailing the latest
+    release renders `::warning::` (`pairing pending`) on every run of
+    the lane. The lane does not machine-block the merge:
     main's branch protection requires zero status checks (measured —
     the classic protection endpoint 404s; the active ruleset sets
     squash-only and zero approvals with an empty required-checks list,
@@ -183,7 +187,10 @@ implementable surface (the pending-publisher precedent):
    required checks, the order rule's SDK→gateway edge rests on the
    merge discipline, exactly as its clause says — if this item is
    executed, that clause and the erratum in the design record move
-   with it.
+   with it. The required-checks shape is compatible with the declared
+   pin's always-run annotation posture (issue #408): the lane exits 0
+   with `::warning::` rather than skipping, so a required check never
+   sits Pending.
 
 ## The gateway line's cut procedure
 
@@ -200,9 +207,12 @@ implementable surface (the pending-publisher precedent):
    then the gateway line has no cut — this clause is what makes the loud
    refusal a planned gate instead of an incident. The port's own tracker
    issue is the prerequisite's home.
-2. **The SDK pairing is current** — `sdk-drift` green (the gitlink
-   at-or-after the SDK's latest release tag). No gateway cut inside an
-   open SDK gap window.
+2. **The SDK pairing is current** — `sdk-drift` green **and no
+   trailing-pin annotation** (green alone no longer proves the window
+   closed: the lane greens a trailing pin with `::warning::`, and the
+   annotation is the window's visible edge — owner fork F3: the walk
+   row reads it, the machine does not). No gateway cut inside an open
+   SDK gap window.
 3. **The release-time walk below is walked** between the marker commit
    and the tag, rows recorded on the tracking issue — the SDK matrix's
    row discipline, adopted per its skill's own scope note.
@@ -260,7 +270,7 @@ skipped step.
 | 3 | the docs site | the versioned assembly's bucket + selector (post-port) | version absent from the selector; registration missing pre-tag |
 | 4 | the changelog boundary | `CHANGELOG.md` after the next regeneration (or the dry-run paste) | Unreleased still carrying post-tag commits; boundary at the wrong tag |
 | 5 | contributor window | `git log <range> --format='%an'` minus bots + owner | unacknowledged new human contributor; empty = recorded result |
-| 6 | the SDK pairing | `sdk-drift` green; the compatibility matrix render | cut made over a red/trailing gitlink |
+| 6 | the SDK pairing | `sdk-drift` green AND no trailing-pin annotation on the lane; the compatibility matrix render | cut made over a red gitlink; a cut shipped over a trailing pin whose warning went unread |
 | 7 | ui-html workspace member | same-commit motion (path dependency) | (recorded n/a — the row exists so the walk never wonders) |
 
 ## The family check (cross-line rows, every cut, whichever line)

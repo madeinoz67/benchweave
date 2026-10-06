@@ -654,6 +654,9 @@ All notable changes to this project will be documented in this file.
 - Repoint published-site links onto the project domains
 - The issue #393 design record (ADC high-rate, protocol v2 + SW-60/61)
 - Complete the firmware-drop sweep (re-review fold M1+L2, issue #393)
+- Issue #408 release-pipeline hardening — the design record
+- The declared-pin amendments (obligation 7, CI map, family, order rule)
+- Addendum 2 — m1's runtime failure modes (F7) and the open-world class's silent-pass correction (F4)
 
 ### Features
 
@@ -890,6 +893,7 @@ All notable changes to this project will be documented in this file.
 - The adc_6ch_12bit wire-family v2 reference implementation (issue #393)
 - The adc v2 firmware, wire spec, and CI lane (issue #393)
 - Drop the in-tree reference firmware — the plugin repository owns it (issue #393)
+- The declared-pin lane for the packages/sdk mount
 
 ### Hardware Evidence
 
@@ -1032,6 +1036,7 @@ All notable changes to this project will be documented in this file.
 - Follow the v0.8.0 release tag (issue #393)
 - The v0.8.0 pairing — sdk_compatibility mirror follows the tag (issue #393)
 - Regenerate the compatibility matrix for the v0.8.0 pairing (issue #393)
+- The pin advances with its mount — v0.7.1 -> v0.8.0
 
 ### Performance
 
@@ -1291,6 +1296,7 @@ All notable changes to this project will be documented in this file.
 
 - The two-lane refute wave — 11 findings, all dispositioned (verdict DEFENDED)
 - Teaser byte-pins (G2) + parent-design supersession (G1)
+- Adversary lane 2 on the declared-pin lane — observed-refs boundary, HEAD-blob pin, self-referential arm
 
 ### Merge
 
