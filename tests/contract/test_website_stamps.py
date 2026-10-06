@@ -300,7 +300,14 @@ def _minimal_dest(tmp_path: Path, index_html: str) -> Path:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("", encoding="utf-8")
     (docs / "index.html").write_text(assembler.SITE_LINK_MARKER, encoding="utf-8")
-    for link in sorted(set(re.findall(r'href="(docs/[^"#]*)"', index_html))):
+    # verify_tree resolves BOTH href= links and the selector's value= rows
+    # (options are values, not hrefs) — a stamped artifact in a tagged clone
+    # carries value="docs/v/dev/" rows, so both classes materialise here or
+    # GREEN-2 reddens the moment the first release tag lands (fold B-F1:
+    # the suite must be regime-independent).
+    hrefs = set(re.findall(r'href="(docs/[^"#]*)"', index_html))
+    hrefs |= set(re.findall(r'value="(docs/[^"#]*)"', index_html))
+    for link in sorted(hrefs):
         target = dest / link
         if link.endswith("/"):
             target = target / "index.html"
@@ -320,6 +327,23 @@ def test_verify_tree_green_on_a_stamped_artifact(tmp_path: Path) -> None:
     copy.write_text(SOURCE.read_text(encoding="utf-8"), encoding="utf-8")
     assembler.stamp_website(copy, assembler.website_stamp_map(ROOT))
     stamped = copy.read_text(encoding="utf-8")
+    assembler.verify_tree(_minimal_dest(tmp_path, stamped), paths={})
+
+
+def test_verify_tree_green_on_a_stamped_artifact_with_a_tagged_listing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """GREEN-2 in the tagged regime (fold B-F1): the stamp fills the selector
+    from release_tags(), so a tagged listing yields value="docs/v/dev/" rows —
+    the artifact root must still pass whole, or the first release tag reddens
+    main CI (ci.yml checks out fetch-depth: 0, tags included)."""
+    assembler = _assembler()
+    monkeypatch.setattr(assembler, "release_tags", lambda: ["v0.4.0"])
+    copy = tmp_path / "index.html"
+    copy.write_text(SOURCE.read_text(encoding="utf-8"), encoding="utf-8")
+    assembler.stamp_website(copy, assembler.website_stamp_map(ROOT))
+    stamped = copy.read_text(encoding="utf-8")
+    assert 'value="docs/v/dev/"' in stamped, "the tagged listing must fill tagged rows"
     assembler.verify_tree(_minimal_dest(tmp_path, stamped), paths={})
 
 

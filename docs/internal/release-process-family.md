@@ -229,16 +229,22 @@ implementable surface (the pending-publisher precedent):
    existing cliff skip pattern verbatim, so every release tags a
    prepare-commit and there is no first-release special case to
    misremember. A bump, when wanted, is its own commit first.
-2. **Pre-tag registration** — add the release's entry to `great-docs.yml`'s
-   `versions:` list (one entry: `- tag: vX.Y.Z` / `label:` / `latest: true` /
-   `git_ref: vX.Y.Z`) and merge it BEFORE the tag is pushed. The tag's own
-   `great-docs.yml` is what its bucket build filters against, so a
-   registration that lands after the tag is cut produces a zero-version
-   build (the SDK's v0.0.4 lesson). The assembly enforces both directions
-   (`check_registration`): a tag with no registration refuses naming the
-   tag, and a tag whose own yml does not list itself as `latest: true`
-   refuses naming the tag-self rule. This step is why the marker commit
-   below stays empty — the registration is its own commit.
+2. **Pre-tag registration** — add the release's entries to `great-docs.yml`'s
+   `versions:` list and merge them BEFORE the tag is pushed. The
+   registration is TWO entries, not one: the release entry
+   (`- tag: vX.Y.Z` / `label:` / `latest: true` / `git_ref: vX.Y.Z`) AND the
+   `dev` entry (`- tag: dev` / `label: dev` / `prerelease: true`) — the
+   parent assembly's `--versions dev` build filters against this same list,
+   and a block without the dev entry fails it with
+   `Multi-version build: 0 version(s)`. The tag's own `great-docs.yml` is
+   what its bucket build filters against, so a registration that lands
+   after the tag is cut produces a zero-version build (the SDK's v0.0.4
+   lesson). The assembly enforces every direction (`check_registration`):
+   a tag with no registration refuses naming the tag; a tag whose own yml
+   does not list itself as `latest: true` refuses naming the tag-self rule;
+   a block without the dev entry refuses; two `latest: true` entries (or a
+   latest naming an older release) refuse. This step is why the marker
+   commit below stays empty — the registration is its own commit.
 3. **Changelog boundary dry run** — in a disposable clone: the anchored
    config plus a scratch tag at the marker commit; inspect the full
    render. Never run in the real repository. The first main-reachable

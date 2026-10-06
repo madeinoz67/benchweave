@@ -501,36 +501,56 @@ def yml_version_tags(text: str) -> set[str]:
 
 def yml_latest_tag(text: str) -> str | None:
     """The tag whose versions: entry carries ``latest: true`` (None if no entry does)."""
+    marked = yml_latest_marked(text)
+    return marked[0] if marked else None
+
+
+def yml_latest_marked(text: str) -> list[str]:
+    """Every tag whose versions: entry carries ``latest: true``, in list order.
+
+    The current tree's registration must mark exactly one — great-docs
+    accepts two silently, so the assembly validates the flags itself (fold
+    A-F3).
+    """
     body = yml_versions_block(text)
     if body is None:
-        return None
+        return []
+    marked: list[str] = []
     for entry in re.split(r"(?=^\s*-?\s*tag:)", body, flags=re.MULTILINE):
         if re.search(r"^\s*latest:\s*true\b", entry, re.MULTILINE):
             matched = VERSIONS_ENTRY_RE.search(entry)
-            return matched.group(1) if matched else None
-    return None
+            if matched:
+                marked.append(matched.group(1))
+    return marked
 
 
 def check_registration(tags: list[str], yml_text: str, tag_ymls: dict[str, str]) -> None:
     """The pre-tag registration ordering constraint, mechanized (design §1.3).
 
-    Four checks, each with a scenario where it is the only one that can fire
+    Six checks, each with a scenario where it is the only one that can fire
     (so the mutation controls in the contract test are honest):
 
     1. Completeness — every release tag appears in the current tree's
        ``versions:`` block (the SDK check, :613-618).
-    2. Tag self-registration — the tag's OWN ``great-docs.yml`` lists the tag
+    2. Dev entry — with tags present the block must also carry the ``dev``
+       entry: the parent assembly's ``--versions dev`` build filters against
+       this same list, and a block without it fails with "Multi-version
+       build: 0 version(s)" (fold A-F2).
+    3. Tag self-registration — the tag's OWN ``great-docs.yml`` lists the tag
        itself and marks it ``latest: true`` (at its own ref a
        correctly-registered tag is always the newest release). This is the
        v0.0.4 lesson turned into a machine check the SDK never had: the
        per-tag bucket build filters against the tag's own yml, so a
        registration that lands AFTER the tag is cut produces a zero-version
        build. Register and merge BEFORE pushing the tag.
-    3. Inverse — every release-tag-shaped ``versions:`` entry is a real
+    4. Inverse — every release-tag-shaped ``versions:`` entry is a real
        release tag (a stale registration for a deleted or never-pushed tag
        refuses). The tool's own ``dev`` special is not release-tag-shaped
        and is not this check's concern.
-    4. Regime consistency — a ``versions:`` block with zero release tags is
+    5. Latest flag — exactly one ``latest: true``, naming the newest release
+       tag; great-docs accepts two silently, so the assembly validates the
+       flags itself (fold A-F3).
+    6. Regime consistency — a ``versions:`` block with zero release tags is
        a stale registration: the key must not exist while zero tags exist
        (design §1.3), which is what makes the vacuous-green window honest.
        The converse (tags with no list) is check 1's failure.
@@ -543,6 +563,19 @@ def check_registration(tags: list[str], yml_text: str, tag_ymls: dict[str, str])
             "the list is static and complete by design; register every release in "
             "great-docs.yml and merge BEFORE pushing its tag (the tag's own yml is what "
             "its bucket build filters)"
+        )
+    if tags and "dev" not in registered:
+        # Fold A-F2: the registration is not just the release entries — the
+        # parent assembly's --versions dev build filters against this same
+        # list, and a block without the dev entry fails it with
+        # "Multi-version build: 0 version(s)" (the SDK's v0.0.4 failure
+        # class, one layer up). Refused here so the first cut's own docs
+        # run cannot red on its own registration.
+        raise SystemExit(
+            "registration lacks the dev entry — great-docs.yml's versions: must carry "
+            "the release entries AND the dev entry (prerelease: true): the parent "
+            "assembly's --versions dev build filters against this list, and a block "
+            "without it fails with 'Multi-version build: 0 version(s)'"
         )
     for tag in tags:
         own = tag_ymls.get(tag)
@@ -566,6 +599,16 @@ def check_registration(tags: list[str], yml_text: str, tag_ymls: dict[str, str])
             f"stale version registration(s) in great-docs.yml 'versions:': {', '.join(stale)} "
             "— every entry must name a real release tag"
         )
+    if tags:
+        # Fold A-F3: great-docs accepts two latest: true entries silently;
+        # the current tree's registration must mark exactly one, naming the
+        # newest release tag.
+        marked = yml_latest_marked(yml_text)
+        if len(marked) != 1 or marked[0] != tags[-1]:
+            raise SystemExit(
+                f"versions: must mark exactly one entry latest: true, naming the newest "
+                f"release tag ({tags[-1]}); found: {', '.join(marked) if marked else 'none'}"
+            )
     if yml_versions_block(yml_text) is not None and not tags:
         raise SystemExit(
             "versions: block present with zero release tags — a stale registration; the "
@@ -674,18 +717,6 @@ def replace_dir(src: Path, dst: Path) -> None:
         shutil.rmtree(dst)
     dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.copytree(src, dst)
-
-
-def copy_root_tree(src: Path, dst: Path) -> None:
-    """Copy a site root's content into dst, skipping an existing ``v/`` tree."""
-    for entry in src.iterdir():
-        if entry.name == "v":
-            continue
-        target = dst / entry.name
-        if entry.is_dir():
-            shutil.copytree(entry, target, dirs_exist_ok=True)
-        else:
-            shutil.copy2(entry, target)
 
 
 def replace_root(src: Path, dest: Path) -> None:
@@ -1038,10 +1069,19 @@ def verify_tree(
                 failures.append(f"static site {rel} missing (website/ incomplete?)")
     if not (docs / "index.html").is_file():
         failures.append("docs root index.html missing (Great Docs build failed?)")
+    # The CURRENT TREE's render map and the active-corpus schema verify
+    # where the current tree's build lives (fold A-F1): the docs root in
+    # the zero-tag regime, the dev bucket in the tagged regime — the root
+    # is the latest tag's bucket there, so a page or schema added after
+    # the tag is absent from it BY CONSTRUCTION and the arm would red on
+    # the first post-release guide. Root-level arms (index, reference,
+    # standards, changelog, patterns, llms) stay on the root: the tag's own
+    # bucket build produced them.
+    current = docs / "v" / "dev" if tags else docs
+    rendered_at = "docs/v/dev" if tags else "docs"
     for rel in (
         "reference/cli/index.html",
         "standards/index.html",
-        ACTIVE_OTDP_RUNTIME_SCHEMA,  # corpus copied beside the prose
         "user-guide/changelog.html",
         "user-guide/patterns/index.html",  # the staged pattern library (#300)
         "user-guide/patterns/light/button.html",
@@ -1051,9 +1091,11 @@ def verify_tree(
     ):
         if not (docs / rel).is_file():
             failures.append(f"docs/{rel} missing")
+    if not (current / ACTIVE_OTDP_RUNTIME_SCHEMA).is_file():
+        failures.append(f"{rendered_at}/{ACTIVE_OTDP_RUNTIME_SCHEMA} missing")
     for src, html in paths.items():
-        if not (docs / html).is_file():
-            failures.append(f"{src} did not render to docs/{html}")
+        if not (current / html).is_file():
+            failures.append(f"{src} did not render to {rendered_at}/{html}")
     # Every relative docs/ link on the static site must resolve in the
     # assembled tree. Options are VALUES, not hrefs — the arm reads both.
     index = (dest / "index.html").read_text(encoding="utf-8") if not bucket_mode else ""
@@ -1100,6 +1142,22 @@ def verify_tree(
         for alias in ALIASES:
             if not (docs / "v" / alias / "index.html").is_file():
                 failures.append(f"alias docs/v/{alias}/ missing")
+        # Fold B-F2: a lifted bucket carries no nested v/ tree — the aliases
+        # live at docs/v/{latest,stable}, never inside a bucket.
+        vdir = docs / "v"
+        if vdir.is_dir():
+            for bucket in vdir.iterdir():
+                if (
+                    bucket.is_dir()
+                    and bucket.name not in ALIASES
+                    and bucket.name != "dev"
+                    and (bucket / "v").exists()
+                ):
+                    failures.append(
+                        f"nested v/ tree inside the lifted bucket docs/v/{bucket.name}/ — "
+                        "alias stubs are stripped at the bucket source; the aliases live at "
+                        "docs/v/{latest,stable}"
+                    )
     else:
         # Zero-tag regime: today's tree exactly — no v/ tree at all.
         if (docs / "v").exists():
@@ -1263,6 +1321,22 @@ def run_bucket_build(great_docs: str, tag: str, dest: Path) -> None:
         cwd=tree,
         env=env,
     )
+    # The tool emits alias stubs (v/latest, v/stable with url=/ — origin-root
+    # redirects) inside the version output; the REAL aliases are the parent's
+    # (fix_alias_stubs at docs/v/{latest,stable}). Strip them at the SOURCE so
+    # neither the lifted bucket nor the root carries them (fold B-F2) — an
+    # unswept stub inside a bucket redirects to the hosting origin's root.
+    for alias in ALIASES:
+        stub = out / "docs" / "v" / alias
+        if stub.is_dir():
+            shutil.rmtree(stub)
+            log(
+                f"bucket {tag}: stripped nested alias stub v/{alias}/ "
+                "(the parent's fix_alias_stubs owns the real ones)"
+            )
+    nested_v = out / "docs" / "v"
+    if nested_v.is_dir() and not any(nested_v.iterdir()):
+        nested_v.rmdir()  # the emptied husk is still unexpected structure
     src = bucket_source(out / "docs", tag)
     replace_dir(src, dest)
     log(f"bucket {tag}: lifted {src.relative_to(out)} -> {dest.relative_to(REPO)}")

@@ -73,6 +73,59 @@ and the SDK's PR preview-comment job — the gateway workflow has none today.
 
 ## 1. The mechanism
 
+> **Addendum (2026-10-06, fold wave — lanes A/B).** Two claims in this section
+> did not survive the review and are corrected here rather than rewritten
+> (the record is the pre-commitment; the fold is the record of what changed):
+>
+> 1. §1.2's "`--bucket <tag>` mode is today's `main()` verbatim — with exactly
+>    **three** documented deltas" — the count is **four**. The fourth delta,
+>    landed with fold B-F2: the bucket driver strips the tool's alias stubs
+>    (`v/latest`, `v/stable` with `url=/`) from the bucket output at the
+>    source, because the real aliases are the parent's (`fix_alias_stubs` at
+>    `docs/v/{latest,stable}`) and an unswept stub inside a lifted bucket is
+>    an origin-root redirect shipped to the site. The dead `copy_root_tree`
+>    port was deleted in the same fold (strip-at-source left it without a
+>    job). The website step is also absent from bucket mode (the shipped
+>    shape is the section's own "stage → build → repairs → verify_tree"
+>    listing, which never named it).
+> 2. §1.4's "a scaffold without its token refuses (the selector was
+>    hand-edited away)" — the direction now has its arm:
+>    `test_docs_site_versioned.py::test_f6_a_latest_label_with_zero_release_tags_refuses`
+>    and its siblings pin the selector-honesty refusals end-to-end (fold
+>    B-F3: the refusals existed but no test exercised them — neutralizing all
+>    three left the suite green). The same fold re-rooted §1.5's current-tree
+>    arms into the dev bucket in the tagged regime (A-F1: the render map and
+>    the active-corpus schema follow the current tree, not the tag at the
+>    root), added the dev-entry and latest-flag registration arms (A-F2/A-F3:
+>    the documented one-entry registration reds its own docs run under the
+>    pinned toolchain, and two `latest: true` entries pass silently), and
+>    made the suite regime-independent (B-F1: `_minimal_dest` materialises
+>    `value=` rows; the S3 arm injects its listing).
+>
+> **G6 accuracy corrections (2026-10-06, same fold, review addendum).** Three
+> measurement-accuracy rows from the cross-vendor audit; none changes the fix
+> list (six fixes, one commit, per-row RED):
+>
+> 3. The build report's part-4 sentence describing the pre-fix A2
+>    root-vs-bucket file-set delta — "the bucket's own two alias stubs
+>    relocate to `docs/v/{latest,stable}/` — the only delta, and the correct
+>    place for them" — is FALSIFIED. The pre-fix tree carried BOTH:
+>    the parent's top-level stubs (`docs/v/latest/index.html`, `url=/docs/`,
+>    written/rewritten by `fix_alias_stubs`) AND the bucket's own nested
+>    copies (`docs/v/v0.4.0/v/latest/index.html`, `url=/`, unrewritten —
+>    `fix_alias_stubs` never looks inside a bucket). That is duplication,
+>    not relocation: the nested copies were shipped wrong, and fold B-F2's
+>    source strip is what removes them. The old behavior must not be
+>    described as correct.
+> 4. The build report's part 1 claimed "7 commits on top of the design
+>    record" — wrong. The branch at that point carried 4 commits on top of
+>    the design record (5 total including it).
+> 5. Two evidence numbers in the build report: the B7 "tests=28" was the
+>    RUN's two-file collect (test_website_stamps 19 +
+>    test_website_plugins_teaser 9), not the stamps file's own collect —
+>    all 10 failures sat in the stamps file (the "10 of 19" reading); and
+>    the standards-cli focused-test label is 7 tests, not 8.
+
 ### 1.1 The regime switch — the port's key divergence from the SDK
 
 The SDK assembly refuses to run at all with zero release tags

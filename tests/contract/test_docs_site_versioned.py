@@ -298,12 +298,18 @@ def test_s3_scaffold_without_its_token_has_no_rows() -> None:
     assert "<option" not in select.group(0)
 
 
-def test_s3_generation_fills_the_token_in_the_assembly_copy() -> None:
+def test_s3_generation_fills_the_token_in_the_assembly_copy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Regime-independent (fold B-F1): the listing is INJECTED, not read from
+    # the ambient repository — a tagged clone must not change this arm's
+    # verdict. The tagged listing has its own arm (F2 below).
+    monkeypatch.setattr(_asm, "release_tags", lambda: [])
     html = SOURCE.read_text(encoding="utf-8")
     path = _stamped_copy(html)
     out = path.read_text(encoding="utf-8")
     assert "{{" not in out
-    assert '<option value="docs/">dev</option>' in out  # zero tags on the real repo
+    assert '<option value="docs/">dev</option>' in out  # the zero-tag listing's row
     assert "(latest)" not in out  # a '(latest)' label with no releases is a lie
     # The source shape is untouched by construction: stamping writes the
     # assembly copy only (CON-13).
@@ -328,3 +334,213 @@ def _tmp_index(html: str) -> Path:
     with tempfile.NamedTemporaryFile("w", suffix=".html", delete=False, encoding="utf-8") as tmp:
         tmp.write(html)
         return Path(tmp.name)
+
+
+# ── fold wave (review lanes A/B, 2026-10-06): per-fix arms ──────────────────
+
+
+def _versioned_dest(
+    tmp_path: Path, *, tags: list[str], paths: dict[str, str], index_html: str
+) -> Path:
+    """A verify_tree-shaped artifact root around the given index.html.
+
+    Every file verify_tree requires exists as a stub; the selector rows come
+    from the caller's index_html; render-map pages are written BOTH at the
+    docs root and (in the tagged regime) under docs/v/dev/ so a test can
+    delete one copy to shape the divergence it pins.
+    """
+    dest = tmp_path / "dest"
+    docs = dest / "docs"
+    for rel in ("assets/logo.svg", "assets/styles.css", "assets/site.js"):
+        p = dest / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("", encoding="utf-8")
+    (dest / "index.html").write_text(index_html, encoding="utf-8")
+    root_rels = [
+        "index.html",
+        "reference/cli/index.html",
+        "standards/index.html",
+        "user-guide/changelog.html",
+        "user-guide/patterns/index.html",
+        "user-guide/patterns/light/button.html",
+        "user-guide/patterns/dark/refusals.html",
+        "llms.txt",
+        "llms-full.txt",
+        _asm.ACTIVE_OTDP_RUNTIME_SCHEMA,
+    ]
+    root_rels += list(paths.values())
+    for rel in root_rels:
+        p = docs / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(_asm.SITE_LINK_MARKER if rel == "index.html" else "", encoding="utf-8")
+    if tags:
+        for html in paths.values():
+            p = docs / "v" / "dev" / html
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text("", encoding="utf-8")
+        p = docs / "v" / "dev" / _asm.ACTIVE_OTDP_RUNTIME_SCHEMA
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("", encoding="utf-8")
+        for name in (*tags, "dev", *_asm.ALIASES):
+            p = docs / "v" / name / "index.html"
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text("", encoding="utf-8")
+        (docs / "version-selector.js").write_text("// widget\n", encoding="utf-8")
+    return dest
+
+
+def _selector_html(tags: list[str]) -> str:
+    options = "\n".join(
+        f'<option value="{value}">{label}</option>' for label, value in _asm.selector_rows(tags)
+    )
+    return f'<select class="version-select">\n{options}\n</select>'
+
+
+# F1 — the current-tree render map and the active-corpus schema follow the
+# current tree into the dev bucket when tags exist (review A-F1).
+
+
+def test_f1_tagged_regime_verifies_current_tree_pages_in_the_dev_bucket(tmp_path: Path) -> None:
+    # A guide added to the current tree AFTER the release tag renders in
+    # docs/v/dev/ and is absent from the root (the root is the tag's
+    # bucket). The render-map arm must follow it into the dev bucket.
+    paths = {"docs/new-guide.md": "user-guide/new-guide.html"}
+    dest = _versioned_dest(
+        tmp_path, tags=["v0.4.0"], paths=paths, index_html=_selector_html(["v0.4.0"])
+    )
+    (dest / "docs" / "user-guide" / "new-guide.html").unlink()  # divergent shape
+    _asm.verify_tree(dest, paths, ["v0.4.0"])  # must stay green
+
+
+def test_f1_zero_tag_regime_keeps_the_render_map_at_the_root(tmp_path: Path) -> None:
+    # Control: in the zero-tag regime the root IS the current tree's build
+    # — the same absence must refuse.
+    paths = {"docs/new-guide.md": "user-guide/new-guide.html"}
+    dest = _versioned_dest(tmp_path, tags=[], paths=paths, index_html=_selector_html([]))
+    (dest / "docs" / "user-guide" / "new-guide.html").unlink()
+    with pytest.raises(SystemExit, match=r"new-guide"):
+        _asm.verify_tree(dest, paths, [])
+
+
+def test_f1_active_otdp_schema_follows_the_current_corpus_into_dev(tmp_path: Path) -> None:
+    # A standards bump after the tag: the root (the tag's bucket) carries
+    # the tag's OLD schema path, the dev bucket the new one. The schema arm
+    # must verify the current corpus in the dev bucket.
+    dest = _versioned_dest(
+        tmp_path, tags=["v0.4.0"], paths={}, index_html=_selector_html(["v0.4.0"])
+    )
+    (dest / "docs" / _asm.ACTIVE_OTDP_RUNTIME_SCHEMA).unlink()
+    _asm.verify_tree(dest, {}, ["v0.4.0"])  # must stay green
+
+
+# F3 — the registration must carry the dev entry: the parent's --versions
+# dev build filters against the yml, and a versions: block with only the
+# release entry fails it with "Multi-version build: 0 version(s)" (A-F2).
+
+
+def test_f3_registration_without_a_dev_entry_refuses() -> None:
+    yml_no_dev = YML_WITH_V040.replace(
+        "  - tag: dev\n    label: dev\n    prerelease: true\n", ""
+    )
+    assert "dev" not in _asm.yml_version_tags(yml_no_dev)
+    with pytest.raises(SystemExit, match=r"dev"):
+        _asm.check_registration(["v0.4.0"], yml_no_dev, {"v0.4.0": YML_WITH_V040})
+
+
+# F4 — the current yml's latest flags: exactly one latest: true, naming the
+# newest release tag (A-F3).
+
+
+def test_f4_two_latest_flags_in_the_current_yml_refuse() -> None:
+    yml_two_latest = YML_WITH_V040.replace(
+        "  - tag: v0.4.0\n    label: v0.4.0\n    latest: true\n    git_ref: v0.4.0\n",
+        "  - tag: v0.4.0\n    label: v0.4.0\n    latest: true\n    git_ref: v0.4.0\n"
+        "  - tag: v0.3.0\n    label: v0.3.0\n    latest: true\n    git_ref: v0.3.0\n",
+        1,
+    )
+    self_ymls = {"v0.4.0": YML_WITH_V040, "v0.3.0": YML_WITH_V040.replace("v0.4.0", "v0.3.0")}
+    with pytest.raises(SystemExit, match=r"latest"):
+        _asm.check_registration(["v0.3.0", "v0.4.0"], yml_two_latest, self_ymls)
+
+
+def test_f4_the_latest_flag_must_name_the_newest_tag() -> None:
+    # Both tags registered and each self-registered; the ONLY defect is the
+    # latest flag naming the older release — exactly one latest: true, and it
+    # names tags[-1].
+    yml_old_latest = (
+        "display_name: Scratch\nsite_url: https://www.benchweave.dev/docs/\nversions:\n"
+        "  - tag: v0.4.0\n    label: v0.4.0\n    git_ref: v0.4.0\n"
+        "  - tag: v0.3.0\n    label: v0.3.0\n    latest: true\n    git_ref: v0.3.0\n"
+        "  - tag: dev\n    label: dev\n    prerelease: true\n"
+    )
+    self_ymls = {"v0.4.0": YML_WITH_V040, "v0.3.0": YML_WITH_V040.replace("v0.4.0", "v0.3.0")}
+    with pytest.raises(SystemExit, match=r"latest"):
+        _asm.check_registration(["v0.3.0", "v0.4.0"], yml_old_latest, self_ymls)
+
+
+# F5 — a lifted bucket carries no nested alias stubs: the aliases live at
+# docs/v/{latest,stable}, never inside a bucket (B-F2).
+
+
+def test_f5_nested_alias_stubs_inside_a_bucket_refuse(tmp_path: Path) -> None:
+    dest = _versioned_dest(
+        tmp_path, tags=["v0.4.0"], paths={}, index_html=_selector_html(["v0.4.0"])
+    )
+    nested = dest / "docs" / "v" / "v0.4.0" / "v" / "latest" / "index.html"
+    nested.parent.mkdir(parents=True, exist_ok=True)
+    nested.write_text('<meta http-equiv="refresh" content="0; url=/">', encoding="utf-8")
+    with pytest.raises(SystemExit, match=r"nested"):
+        _asm.verify_tree(dest, {}, ["v0.4.0"])
+
+
+# F6 — the selector-honesty refusals are pinned by arms, not just present in
+# the mechanism (B-F3): each arm must redden under mutation of its refusal.
+
+
+def test_f6_a_latest_label_with_zero_release_tags_refuses(tmp_path: Path) -> None:
+    html = '<select class="version-select"><option value="docs/">dev (latest)</option></select>'
+    dest = _versioned_dest(tmp_path, tags=[], paths={}, index_html=html)
+    with pytest.raises(SystemExit, match=r"latest"):
+        _asm.verify_tree(dest, {}, [])
+
+
+def test_f6_a_selector_value_that_does_not_resolve_refuses(tmp_path: Path) -> None:
+    html = (
+        '<select class="version-select">\n'
+        '  <option value="docs/">dev</option>\n'
+        '  <option value="docs/v/v9.9.9/">v9.9.9</option>\n'
+        "</select>"
+    )
+    dest = _versioned_dest(tmp_path, tags=[], paths={}, index_html=html)
+    with pytest.raises(SystemExit, match=r"v9\.9\.9"):
+        _asm.verify_tree(dest, {}, [])
+
+
+def test_f6_a_tagged_selector_with_zero_latest_rows_refuses(tmp_path: Path) -> None:
+    html = (
+        '<select class="version-select">\n'
+        '  <option value="docs/">v0.4.0</option>\n'
+        '  <option value="docs/v/dev/">dev</option>\n'
+        "</select>"
+    )
+    dest = _versioned_dest(tmp_path, tags=["v0.4.0"], paths={}, index_html=html)
+    with pytest.raises(SystemExit, match=r"latest"):
+        _asm.verify_tree(dest, {}, ["v0.4.0"])
+
+
+# F2 — the suite is regime-independent: a tagged listing must leave the
+# stamped-artifact arms green (B-F1).
+
+
+def test_f2_a_tagged_listing_leaves_the_stamped_selector_green(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The stamp fills the selector from release_tags(); with a tagged
+    # listing the rows include docs/v/dev/ — the arm asserts the ROWS for
+    # the listing, not one regime's shape.
+    monkeypatch.setattr(_asm, "release_tags", lambda: ["v0.4.0"])
+    path = _stamped_copy(SOURCE.read_text(encoding="utf-8"))
+    out = path.read_text(encoding="utf-8")
+    assert "{{" not in out
+    assert '<option value="docs/">v0.4.0 (latest)</option>' in out
+    assert '<option value="docs/v/dev/">dev</option>' in out
