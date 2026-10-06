@@ -4,4 +4,4 @@
 	# The declared pin (gateway #408's checker reads this): the exact
 	# SDK commit this branch's pointer names — the #407 fold tip. A
 	# pointer move updates this line in the same commit.
-	pin = 3d8b6b85118579e9fca0a745a14c388917cbdf52
+	pin = 270feb889dcc3116f7a4a9029692dace381fe215
