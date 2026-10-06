@@ -8,11 +8,14 @@ annotation (a trailing pin is green with ``::warning::`` — the honest
 trade the design record discloses, F3).
 
 Parsing, the pin resolution and the verdict are pure functions over
-fixture ``git ls-remote --tags`` output; no test in this module touches
-the network. The fail-closed paths (exit 2 — pin absent, malformed, or a
+fixture ``git ls-remote --tags`` output; every test but one is
+network-free — the one deliberate exception is the self-referential
+arm, which shells the real checker at this repository's root (its pin
+is a tag, so the verdict genuinely needs the remote; that is the arm's
+point). The fail-closed paths (exit 2 — pin absent, malformed, or a
 tag-pin fetch failure) are proven in-process against monkeypatched
-readers and black-box against a local repository pair and an unreachable
-remote path."""
+readers and black-box against a local repository pair and an
+unreachable remote path."""
 
 from __future__ import annotations
 
@@ -373,7 +376,7 @@ def _repo_pair(base: Path) -> tuple[Path, Path, str, str]:
     """A local SDK remote carrying an annotated release tag (plus an older
     lightweight one), and a gateway repo whose HEAD carries a packages/sdk
     gitlink pinned at the tagged commit. The gateway carries a .gitmodules
-    whose pin DECLARSes the mount (owner fork F2). Returns (remote,
+    whose pin DECLARES the mount (owner fork F2). Returns (remote,
     gateway, tagged_commit, other_commit)."""
     remote = base / "sdk-remote"
     _init_repo(remote)
@@ -553,6 +556,63 @@ def test_fixture_repositories_carry_their_own_git_identity(
     assert "v0.3.0" in tags, tags
     assert _git(gateway, "log", "--oneline", "-1").stdout.strip(), (
         "the gateway seed commit did not land"
+    )
+
+
+# --- fold wave 2, L-3: the pin is read from HEAD BYTES, not the working tree ---
+
+
+def test_working_tree_pin_edit_cannot_green_a_committed_red_repo(
+    tmp_path: Path,
+) -> None:
+    """L-3 (CON-12 consistency): the gate judges COMMITTED state — the
+    gitlink already does; the pin must too. A repo whose HEAD carries
+    pin=vX + gitlink=Y (committed red) stays red even when the working
+    tree's .gitmodules has been edited to pin=Y: an uncommitted edit must
+    not green what was committed red."""
+    remote, gateway, tagged, other = _repo_pair(tmp_path)
+    # commit a RED state: the mount moves to `other` while HEAD's pin keeps
+    # declaring v0.4.1's commit (the _repo_pair declaration) — committed red
+    _pin(gateway, other)
+    proc = _run_script("--repo", str(gateway), "--remote", str(remote))
+    assert proc.returncode == EXIT_DRIFT, proc.stdout + proc.stderr
+    # the working-tree edit: pin re-written (NOT committed) to match the mount
+    (gateway / ".gitmodules").write_text(
+        '[submodule "packages/sdk"]\n'
+        "\tpath = packages/sdk\n"
+        f"\turl = {remote}\n"
+        f"\tpin = {other}\n",
+        encoding="utf-8",
+    )
+    proc = _run_script("--repo", str(gateway), "--remote", str(remote))
+    assert proc.returncode == EXIT_DRIFT, (
+        "a working-tree pin edit greened a committed-red repo:\n"
+        + proc.stdout
+        + proc.stderr
+    )
+    assert "indeterminate" not in (proc.stdout + proc.stderr).lower()
+
+
+# --- fold wave 2, M-1(b): the self-referential fast-lane arm -------------------
+
+
+def test_self_referential_root_is_green() -> None:
+    """M-1(b): the real repo, the real gate — this arm shells the checker
+    at THIS repository's root and asserts exit 0, so any future split-
+    motion train (pin and gitlink advancing in separate commits, an
+    intermediate landing on main) reddens every fast-lane run, not just
+    the push lane. THE module's one deliberate network touch: the root's
+    pin is a tag, so the verdict needs the remote; a network-less
+    environment fails here loudly (indeterminate), which is honest for a
+    gate whose freshness half is remote-adjacent. RED evidence (the lane's
+    own captured history): at 93877e6 (this branch's pre-pin-advance
+    intermediate) the same invocation exits 1 — pin v0.7.1, gitlink at the
+    v0.8.0 mount — the split-motion state this arm exists to catch."""
+    proc = _run_script("--repo", str(ROOT))
+    assert proc.returncode == EXIT_OK, (
+        "the checked-out root is not at its declared pin:\n"
+        + proc.stdout
+        + proc.stderr
     )
 
 

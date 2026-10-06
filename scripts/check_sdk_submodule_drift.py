@@ -25,7 +25,11 @@ Exit codes (the contract the CI job and the unit tests pin):
   verdict needs no network — mid-train pushes stay green offline); tag
   pins resolve through the existing peeled-deref machinery.
 - 1 — red: ``gitlink != resolved(pin)``. The pin and the gitlink move in
-  the same commit, ENFORCED — a pin disagreeing with the mount is red.
+  the same commit — a pin disagreeing with the mount is red. Enforced AT
+  EVERY REF THIS LANE OBSERVES: CI sees pushed refs, so an intermediate
+  commit of a split train is unobserved until pushed (this branch's own
+  pre-advance intermediates sat red); the self-referential fast-lane arm
+  extends the observation to every local run of the suite.
 - 2 — INDETERMINATE (fail closed): no gitlink at HEAD; the pin key absent
   or malformed (an undeclared mount fails closed — every pointer PR must
   carry the pin); tag-pin resolution failed (network — identical
@@ -45,7 +49,9 @@ check-sdk-standards``); a pin that trails by more than the pairing window
 (a family-doc walk row reads the annotation; the mechanical upgrade is a
 "trailing by >1 release is red" rule, which re-accepts network dependence
 in that arm only); prerelease-suffixed tags (``vX.Y.Z-rc1`` names no
-release).
+release); any SECOND submodule mount — the gate reads
+``submodule.packages/sdk`` alone, so another submodule (today none) would
+be silently undeclared by this lane and needs its own row.
 """
 
 from __future__ import annotations
@@ -234,12 +240,17 @@ def configured_remote(repo: Path) -> str:
 
 
 def configured_pin(repo: Path) -> str:
-    """The DECLARED pin: ``submodule.<name>.pin`` from .gitmodules. Empty
-    string when absent — the caller reads that as an undeclared mount and
-    fails closed (exit 2), so every pointer PR must carry the pin."""
+    """The DECLARED pin: ``submodule.<name>.pin`` from .gitmodules — read
+    from HEAD's BLOB (``git config --blob HEAD:.gitmodules``), not the
+    working tree: this gate judges committed state, and an uncommitted
+    working-tree pin edit must not green what was committed red (the L-3
+    repro: committed pin v0.4.1 + mount moved + working-tree edit to match
+    greened the old reader). Empty string when absent — the caller reads
+    that as an undeclared mount and fails closed (exit 2), so every
+    pointer PR must carry the pin."""
     proc = _run_git(
         [
-            "git", "-C", str(repo), "config", "--file", ".gitmodules",
+            "git", "-C", str(repo), "config", "--blob", "HEAD:.gitmodules",
             f"submodule.{SUBMODULE_PATH}.pin",
         ],
         missing_ok=True,
@@ -275,8 +286,9 @@ def _run_git(
         # pass missing_ok and read the empty string.
         if missing_ok and proc.returncode == 1:
             return ""
+        verb = cmd[3] if len(cmd) > 3 and cmd[1] == "-C" else cmd[1]
         raise IndeterminateError(
-            f"{cmd[1]} exited {proc.returncode}: {proc.stderr.strip()}"
+            f"{verb} exited {proc.returncode}: {proc.stderr.strip()}"
         )
     return proc.stdout
 

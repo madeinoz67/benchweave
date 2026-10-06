@@ -643,3 +643,18 @@ family's history.
   network-dependent red.
 - **F4**: standards-governor dispatch on PR-A (recommended ON — the lock
   motion is standards-adjacent; conservative reading of the mandate).
+
+
+---
+
+## Addendum (2026-10-06, fold wave 2 — the section-8 keyword-scan correction)
+
+Section 8's S2 scan estimated the checker's `subprocess` occurrences at 8
+over the expected diff; the shipped checker carries 5 (the rewrite
+consolidated the three readers' subprocess plumbing into one `_run_git`
+entry point — fewer call sites than the pre-rewrite whole-file estimate
+assumed). The test file's count (10) held. Measured on
+feat/issue408-declared-pin at the fold-wave tip; the section-8 text above
+is frozen as written — this addendum is the correction of record. The
+tier call (Tier 3 via the `subprocess` keyword) is unaffected: the keyword
+is present at any count.

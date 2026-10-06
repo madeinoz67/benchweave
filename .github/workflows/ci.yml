@@ -279,7 +279,9 @@ jobs:
     # local) and indeterminate on a tag pin (never worse than before).
     # Deliberately no submodule checkout: the gitlink is read from the
     # superproject's committed tree. Exit contract: 0 green (pin
-    # matches), 1 red (pin/gitlink disagree — they move together), 2
+    # matches), 1 red (pin/gitlink disagree — they move in the same commit,
+    # enforced at every ref the lane observes: CI sees pushed refs, so an
+    # intermediate of a split train is unobserved until pushed), 2
     # indeterminate (fail closed: no gitlink, pin absent or malformed,
     # tag-pin resolution failed, undecodable bytes). CONSISTENCY stays
     # `gates`' make check-sdk-standards.
@@ -289,5 +291,5 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Check packages/sdk gitlink against the latest SDK release tag
+      - name: Check the packages/sdk gitlink against its declared pin
         run: python3 scripts/check_sdk_submodule_drift.py
