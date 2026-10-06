@@ -196,17 +196,20 @@ implementable surface (the pending-publisher precedent):
 
 **Readiness conditions — all three hold before the marker commit:**
 
-1. **The versioned-docs port has landed.** The docs assembly is
-   unversioned by design and `refuse_if_tagged`
-   (`scripts/assemble_docs_site.py`) refuses to run once an exact `vX.Y.Z`
-   tag exists — the docs workflow checks out with full history, tags
-   included, so the very push of the first gateway tag turns the docs
-   job red until the port lands: per-tag `v/<tag>/` buckets, a
-   `versions:` list, the site selector, and the pre-tag registration
-   ordering constraint the SDK's own port learned the hard way. Until
-   then the gateway line has no cut — this clause is what makes the loud
-   refusal a planned gate instead of an incident. The port's own tracker
-   issue is the prerequisite's home.
+1. **The versioned-docs port has landed.** It has: the assembly is now
+   two-regime (`scripts/assemble_docs_site.py`) — zero `vX.Y.Z` tags is
+   today's unversioned tree, one or more tags is per-tag `docs/v/<tag>/`
+   buckets with the latest at the `docs/` root, the `versions:` list and the
+   site selector generated from the registered releases. The former
+   `refuse_if_tagged` gate is retired: its demand is satisfied by the port.
+   What must still land before the first tag is the **pre-tag registration
+   ordering constraint** — at every release including the first, the
+   `versions:` entry is committed and merged BEFORE the tag is pushed,
+   because the tag's own `great-docs.yml` is what its bucket build filters
+   (the SDK's v0.0.4 lesson). The assembly mechanizes both halves of that
+   constraint (`check_registration`: completeness, tag self-registration,
+   inverse, and regime consistency), so a violated ordering refuses the docs
+   lane loudly instead of failing at bucket-build time.
 2. **The SDK pairing is current** — `sdk-drift` green **and no
    trailing-pin annotation** (green alone no longer proves the window
    closed: the lane greens a trailing pin with `::warning::`, and the
@@ -226,7 +229,17 @@ implementable surface (the pending-publisher precedent):
    existing cliff skip pattern verbatim, so every release tags a
    prepare-commit and there is no first-release special case to
    misremember. A bump, when wanted, is its own commit first.
-2. **Changelog boundary dry run** — in a disposable clone: the anchored
+2. **Pre-tag registration** — add the release's entry to `great-docs.yml`'s
+   `versions:` list (one entry: `- tag: vX.Y.Z` / `label:` / `latest: true` /
+   `git_ref: vX.Y.Z`) and merge it BEFORE the tag is pushed. The tag's own
+   `great-docs.yml` is what its bucket build filters against, so a
+   registration that lands after the tag is cut produces a zero-version
+   build (the SDK's v0.0.4 lesson). The assembly enforces both directions
+   (`check_registration`): a tag with no registration refuses naming the
+   tag, and a tag whose own yml does not list itself as `latest: true`
+   refuses naming the tag-self rule. This step is why the marker commit
+   below stays empty — the registration is its own commit.
+3. **Changelog boundary dry run** — in a disposable clone: the anchored
    config plus a scratch tag at the marker commit; inspect the full
    render. Never run in the real repository. The first main-reachable
    `v*` tag becomes `CHANGELOG.md`'s first release boundary
@@ -234,11 +247,11 @@ implementable surface (the pending-publisher precedent):
    section collapses into that release section at the next
    regeneration) — the dry run is how the boundary is chosen, not
    discovered.
-3. **Gates** — the marker commit merges green (full battery). It rides
+4. **Gates** — the marker commit merges green (full battery). It rides
    main directly per the release-flow exception — the no-direct-commits
    directive targets work commits; process uniformity beats a per-line
    special case (the issue #302 risk disclosure, adopted for this line).
-4. **Tag + GitHub release** — tag on the marker commit; release object
+5. **Tag + GitHub release** — tag on the marker commit; release object
    with cliff-generated notes pasted as the body (the gateway has no
    workflow to replace the body — the paste IS the notes). The gateway
    commands — a FULL-repository render, matching the changelog boundary
@@ -255,7 +268,7 @@ implementable surface (the pending-publisher precedent):
    the same reason the ui-html page's commands do — and a `vX.Y.Z` tag
    MATCHES the anchored pattern, so the render's section becomes the
    changelog boundary at the next regeneration (walk row 4).
-5. **Post-verify** — the walk's rows below. The changelog boundary
+6. **Post-verify** — the walk's rows below. The changelog boundary
    renders at the next `changelog.yml` run on main (tags do not trigger
    it — the boundary's arrival is named, not assumed).
 
@@ -267,7 +280,7 @@ skipped step.
 |---|---|---|---|
 | 1 | tag `vX.Y.Z` vs root `pyproject.toml` version | pyproject (single source) | tag ≠ `v` + version |
 | 2 | the GitHub release body | the pinned cliff command's output at the tag | hand-written notes; non-gateway commits included |
-| 3 | the docs site | the versioned assembly's bucket + selector (post-port) | version absent from the selector; registration missing pre-tag |
+| 3 | the docs site | the versioned assembly's bucket + selector; `check_registration`'s four arms | version absent from the selector; registration missing pre-tag (the assembly refuses it); a `versions:` entry naming no real tag |
 | 4 | the changelog boundary | `CHANGELOG.md` after the next regeneration (or the dry-run paste) | Unreleased still carrying post-tag commits; boundary at the wrong tag |
 | 5 | contributor window | `git log <range> --format='%an'` minus bots + owner | unacknowledged new human contributor; empty = recorded result |
 | 6 | the SDK pairing | `sdk-drift` green AND no trailing-pin annotation on the lane; the compatibility matrix render | cut made over a red gitlink; a cut shipped over a trailing pin whose warning went unread |
