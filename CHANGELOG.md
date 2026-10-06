@@ -326,6 +326,7 @@ All notable changes to this project will be documented in this file.
 - The fold wave — stream TX discipline, scan reconfigure, honest negotiation states (issue #393)
 - The A3 harness's reopen moves the host baud (the fold-tip regression) + the ordering pin (issue #393)
 - Prime the interpreter and the pinned pytest before the adc job's offline run (issue #393)
+- Script the with-ui scaffold's drain probe (issue #407 wave 4)
 
 ### Documentation
 
@@ -654,6 +655,10 @@ All notable changes to this project will be documented in this file.
 - Repoint published-site links onto the project domains
 - The issue #393 design record (ADC high-rate, protocol v2 + SW-60/61)
 - Complete the firmware-drop sweep (re-review fold M1+L2, issue #393)
+- The #407 negotiated-transport design record (as committed authority)
+- The #407 refute-wave addendum (dated, frozen record intact)
+- Wave-2 addendum — the drift-lane fact, the coupling matrix, two claim corrections
+- Wave-3 addendum — the closed-session law and four corrections
 - Issue #408 release-pipeline hardening — the design record
 - The declared-pin amendments (obligation 7, CI map, family, order rule)
 - Addendum 2 — m1's runtime failure modes (F7) and the open-world class's silent-pass correction (F4)
@@ -1252,6 +1257,9 @@ All notable changes to this project will be documented in this file.
 - The remaining gateway dependents of the changed SDK surfaces at the 0.7.1 pin (gateway #308)
 - Review folds F4, F-A1, F-A2 on PR #400 (gateway #308)
 - The G4 browser arms (#305)
+- The #407 REG-4 agreement row + the negotiation's real lane
+- Tests/sdk presentation-cli cell catches up to 931fcff
+- N4's bounded arm enforces through the mechanism (wave-2 F2, arm 1)
 
 ### Build
 
@@ -1259,6 +1267,10 @@ All notable changes to this project will be documented in this file.
 - Mount benchweave-sdk as a submodule at packages/sdk
 - Pull _validation_report into strict mypy scope; honest NoReturn (#102 D1, review R-F4)
 - Dev-stage bytes never ship — hook-owned contracts mapping (F1)
+- Advance packages/sdk to the #407 link-reconfigure branch tip
+- Advance packages/sdk to the #407 fold tip (22f9a1e)
+- Pin the declared submodule sha alongside the pointer advance
+- Advance the pointer and the declared pin to the wave-3 fold tip
 
 ### Ci
 
@@ -1306,6 +1318,7 @@ All notable changes to this project will be documented in this file.
 - Main (#277's renderer landing) into feat/issue244-s3-decoders
 - Fold origin/main (the #223 publishing train) into the G1e cutover branch
 - Origin/main into feat/issue352-ste-remediation — union of #351's which-checkout pointer and the STE rewrite
+- Origin/main into feat/issue407-negotiated-lane (issue #407)
 
 ### Refine
 
