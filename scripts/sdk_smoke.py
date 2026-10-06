@@ -90,6 +90,7 @@ def installed_check(reference: Path, report: Path) -> None:
     example_plugin = import_module("example_plugin")
     mock_host = import_module("benchweave_sdk.testing").MockHost
     transaction = import_module("example_plugin.protocol").transaction
+    probe = import_module("example_plugin.protocol").probe
     expected = json.loads(reference.read_text())
     checkout = Path(expected["checkout"])
     for module in (benchweave, benchweave_sdk, example_plugin):
@@ -174,6 +175,16 @@ def installed_check(reference: Path, report: Path) -> None:
     host = mock_host(
         [
             (transaction("identify"), {"data": b"SDK Example,demo,SIM001,1.0.0\n"}),
+            # The with-ui scaffold drains before the read's send (the
+            # #394 send_receive dialect): the drain's probe is a bare
+            # stream_receive, and this strict-FIFO mock matches whole
+            # transactions in order -- so the quiet-line answer must be
+            # scripted explicitly, or the probe consumes the read's
+            # scripted entry and the read poisons (the installed lane's
+            # PROTOCOL_ERROR/UNKNOWN; reproduced locally, mac + ubuntu
+            # CI). The pointer advance serving the drain-era template is
+            # what exposed it -- the wave-1 mirror-sync family again.
+            (probe(), {"data": b""}),
             (transaction("read"), {"data": b"3.3\n"}),
         ]
     )
