@@ -29,6 +29,10 @@ classifiers = [
 ]
 dependencies = [
     "pyserial>=3.5",
+    # The nanodla-mcp console script is shipped runtime surface and imports
+    # the MCP SDK (nanodla_mcp.py: from mcp.server.mcpserver import MCPServer).
+    # Dev-group transitivity never reaches a clean-venv wheel install (F1).
+    "mcp>=2.2.0",
 ]
 
 [project.optional-dependencies]

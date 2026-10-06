@@ -2,10 +2,10 @@
 
 The hand-rolled stack (the ``benchweave`` web package, the stdio MCP server
 module, and the ``plugins`` package) is gone; nothing under version control
-may still instruct a reader, an import, or a tool to reach for it. The
-design record under ``.claude/deep-review/`` is the one exclusion: it is
-this migration's own contract and names the removed surfaces as its
-subject.
+may still instruct a reader, an import, or a tool to reach for it. The one
+excluded tree is ``.claude/deep-review/`` — the migration's design records,
+which name the removed surfaces as their subject (anything else under
+``.claude/`` is still scanned).
 
 The forbidden tokens are assembled by concatenation so that this file's own
 source cannot match them.
@@ -30,9 +30,10 @@ REMOVED_SURFACE_TOKENS = [
     "plugins" + "/" + "adc_6ch_12bit",
 ]
 
-#: The migration's own design record documents the removed surfaces by
-#: name; it is excluded rather than rewritten to amnesia.
-EXCLUDED_PREFIXES = (".claude/",)
+#: The migration's design records document the removed surfaces by name;
+#: that tree is excluded rather than rewritten to amnesia. Everything else
+#: under ``.claude/`` is scanned like the rest of the repo.
+EXCLUDED_PREFIXES = (".claude/deep-review/",)
 
 
 def _tracked_files() -> list[Path]:

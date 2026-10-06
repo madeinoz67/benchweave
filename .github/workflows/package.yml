@@ -36,4 +36,8 @@ jobs:
           uv pip install --python "$RUNNER_TEMP/benchweave-smoke/bin/python" dist/*.whl
           cd "$RUNNER_TEMP"
           "$RUNNER_TEMP/benchweave-smoke/bin/benchweave-adc"
+          # nanodla-mcp runs a stdio server when invoked, so exercise its
+          # console-script entry point by loading it (import chain + entry
+          # wiring) without launching the server.
+          "$RUNNER_TEMP/benchweave-smoke/bin/python" -c 'from importlib.metadata import entry_points; eps = [e for e in entry_points(group="console_scripts") if e.name == "nanodla-mcp"]; assert len(eps) == 1, eps; assert eps[0].load() is not None'
           "$RUNNER_TEMP/benchweave-smoke/bin/python" -c 'from importlib.resources import files; assert files("benchweave").joinpath("py.typed").is_file()'
