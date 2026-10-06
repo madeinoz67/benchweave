@@ -1029,9 +1029,13 @@ def verify_tree(
     A list — empty included — switches them on per regime (design §1.5)."""
     docs = dest / "docs"
     failures: list[str] = []
-    for rel in ("index.html", "assets/logo.svg", "assets/styles.css", "assets/site.js"):
-        if not (dest / rel).is_file():
-            failures.append(f"static site {rel} missing (website/ incomplete?)")
+    if not bucket_mode:
+        # The website is the parent's front door (a bucket ships only its
+        # docs/ tree; the parent owns the website copy, its stamps and its
+        # selector).
+        for rel in ("index.html", "assets/logo.svg", "assets/styles.css", "assets/site.js"):
+            if not (dest / rel).is_file():
+                failures.append(f"static site {rel} missing (website/ incomplete?)")
     if not (docs / "index.html").is_file():
         failures.append("docs root index.html missing (Great Docs build failed?)")
     for rel in (
@@ -1052,25 +1056,26 @@ def verify_tree(
             failures.append(f"{src} did not render to docs/{html}")
     # Every relative docs/ link on the static site must resolve in the
     # assembled tree. Options are VALUES, not hrefs — the arm reads both.
-    index = (dest / "index.html").read_text(encoding="utf-8")
-    # Stamp residue (R1): sweep the DELIMITER, not the grammar — a case-variant,
-    # nested or unterminated `{{` matches no token pattern and would ship raw
-    # (review fold F1) — and sweep every copied website/ file, not just the
-    # index: the stamper only reads index.html, so a token anywhere else in the
-    # static source stamps nothing at all.
-    for f in sorted(p for p in dest.rglob("*") if p.is_file() and docs not in p.parents):
-        if b"{{" in f.read_bytes():
-            failures.append(
-                f"stamp_residue: {f.relative_to(dest).as_posix()} carries an unstamped "
-                "{{ delimiter (website/ carries well-formed tokens in index.html only)"
-            )
-    hrefs = set(re.findall(r'href="(docs/[^"#]*)"', index))
-    hrefs |= set(re.findall(r'value="(docs/[^"#]*)"', index))
-    for link in sorted(hrefs):
-        target = dest / link
-        ok = (target / "index.html").is_file() if link.endswith("/") else target.is_file()
-        if not ok:
-            failures.append(f"website links to {link}, which the assembled tree lacks")
+    index = (dest / "index.html").read_text(encoding="utf-8") if not bucket_mode else ""
+    if not bucket_mode:
+        # Stamp residue (R1): sweep the DELIMITER, not the grammar — a case-variant,
+        # nested or unterminated `{{` matches no token pattern and would ship raw
+        # (review fold F1) — and sweep every copied website/ file, not just the
+        # index: the stamper only reads index.html, so a token anywhere else in the
+        # static source stamps nothing at all.
+        for f in sorted(p for p in dest.rglob("*") if p.is_file() and docs not in p.parents):
+            if b"{{" in f.read_bytes():
+                failures.append(
+                    f"stamp_residue: {f.relative_to(dest).as_posix()} carries an unstamped "
+                    "{{ delimiter (website/ carries well-formed tokens in index.html only)"
+                )
+        hrefs = set(re.findall(r'href="(docs/[^"#]*)"', index))
+        hrefs |= set(re.findall(r'value="(docs/[^"#]*)"', index))
+        for link in sorted(hrefs):
+            target = dest / link
+            ok = (target / "index.html").is_file() if link.endswith("/") else target.is_file()
+            if not ok:
+                failures.append(f"website links to {link}, which the assembled tree lacks")
     home_linked = sum(
         1 for p in docs.rglob("*.html") if SITE_LINK_MARKER in p.read_text(encoding="utf-8")
     )
@@ -1136,8 +1141,10 @@ def verify_tree(
                 )
 
     # Doubled-v labels (great-docs 0.17.0's selector-trigger bug): none may
-    # ship in any gd-version-map meta, _version_map.json, or widget copy.
-    if tags is not None:
+    # ship in any gd-version-map meta, _version_map.json, or widget copy. The
+    # parent un-doubles every bucket's widget after lifting
+    # (fix_version_selector_trigger), so the arm is parent-side.
+    if tags is not None and not bucket_mode:
         vv_pattern = re.compile(r"vv\d")
         for page in docs.rglob("*.html"):
             html = page.read_text(encoding="utf-8")
@@ -1325,7 +1332,6 @@ def main() -> None:
         docs_root = dest / "docs"
         site = REPO / "great-docs" / "_site"
         replace_dir(bucket_source(site, args.bucket), docs_root)
-        copy_website(dest)
         rename_standards_section(docs_root)
         copy_standards_resources(docs_root)
         stage_pattern_library(docs_root)
@@ -1335,7 +1341,6 @@ def main() -> None:
         verify_tree(dest, paths, [], bucket_mode=True)
         log(f"assembled bucket {args.bucket} at {dest}")
         return
-
     # ── the parent assembly: the registration ordering constraint first ──
     # (design §1.3 — loud, before anything is built: a tag whose own yml
     # lacks its entry cannot build a bucket at all)
