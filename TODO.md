@@ -4,7 +4,7 @@ Open items, newest first. Dates are when the item was logged.
 
 ## Analyse page — further analysis & measurement features
 
-Logged 2026-09-14 · **partially done** — region inspector, edge/timing, and HTML report export shipped; the rest are candidates.
+Logged 2026-09-14 · **partially done** — region inspector, edge/timing, and HTML report export shipped; the rest are candidates. **Parked 2026-10-06 (v0.2.0):** the Analyse tab, its HTML report and the stdio MCP capture tools were removed with the hand-rolled web stack — the standalone benchweave-sdk host is the serving surface now. The open candidates below need host-side capture export (report/CSV parity) before they can come back; the shipped pieces live on in the pre-migration tag's history.
 
 Candidate features for the Analyse tab, building on the existing CSV plot and
 brush-region Ah/Wh readout. Roughly in value-per-effort order; pick individually.
@@ -53,7 +53,7 @@ brush-region Ah/Wh readout. Roughly in value-per-effort order; pick individually
 
 - **FFT spectrum view** — find switching noise / ringing / unexpected oscillation.
   Most captures run at low SPS (see the sample-rate table in
-  `plugins/adc_6ch_12bit/README.md`), so spectral bandwidth is limited; revisit if
+  `src/adc_6ch_12bit/README.md`), so spectral bandwidth is limited; revisit if
   higher-rate captures become common.
 
 **Note:** CSVs store *converted* engineering values, not raw 12-bit counts, so
@@ -80,8 +80,9 @@ a compact kit, and how each board should be housed/protected.
 Treat this as v1.0 of the travel kit.
 
 **Scope split:** the switchable-power ports pair with an MCP per-port power tool
-(software, this codebase — reuse `src/benchweave/mcp_server.py`); the enclosure
-itself is mechanical/CAD, tracked outside this repo.
+(software, this codebase — follow the nanoDLA server's pattern in
+`src/benchweave/nanodla_mcp.py`); the enclosure itself is mechanical/CAD,
+tracked outside this repo.
 
 ## Contribute ADC plugin upstream
 
@@ -92,10 +93,13 @@ repo `madeinoz67/benchweave`. The SDK rework that blocked this is landed: the
 plugin is OTDP 0.2.2 and its adapter matches the current SDK (0.3.1) interfaces.
 
 - Draft feature request is committed at `docs/feature-request-measurement-profiles.md`.
-- Remaining before the PR: relayout `plugins/adc_6ch_12bit/` into upstream's
-  self-contained `plugins/<vendor>/<device>/` package shape, bump `benchweave-sdk`
-  to 0.3.1 and re-verify the descriptor validates, and scope the PR to plugin +
-  `tests/adc/` only (drop the web gateway, `host.py`, firmware).
+- **Relayout done 2026-10-06 (v0.2.0, issue #285 I3d):** the plugin now lives at
+  `src/adc_6ch_12bit/` in the standalone-host layout and the hand-rolled web
+  gateway, host and stdio MCP server are gone. Still remaining before an
+  upstream PR: re-shape for upstream's `plugins/<vendor>/<device>/` convention
+  (a copy, not a move, per upstream's copy-never-move law), re-verify the
+  descriptor validates against the SDK the PR targets, and scope the PR to
+  plugin + `tests/adc/` only (drop firmware).
 - Upstream now implements capture/streaming host services (Issue #43 completed
   2026-09-24), so the adapter no longer depends on the fork's host.
 - Branch off `upstream/main` — never fork `main`, which now carries ~152 commits
@@ -106,10 +110,12 @@ plugin is OTDP 0.2.2 and its adapter matches the current SDK (0.3.1) interfaces.
 
 Logged 2026-09-14 · **not started**.
 
-Add an MCP service for a USB webcam, mirroring the existing `benchweave-adc`
-server (`src/benchweave/mcp_server.py`). Lets Claude Code capture a photo and
+Add an MCP service for a USB webcam, mirroring the nanoDLA server
+(`src/benchweave/nanodla_mcp.py`). Lets Claude Code capture a photo and
 analyse it — e.g. confirm a connected ADC board is switched on, or whether its
-LED is blinking.
+LED is blinking. (The old `benchweave-adc` stdio server this item once pointed
+at was removed in v0.2.0; a persistent stdio MCP surface is a disclosed gap —
+see the follow-up noted in README.md.)
 
 - **Hardware:** EMeet C960 4K UHD autofocus webcam (dual mic) — purchased
   2026-09-14, arrives later that week; CLI-controllable. Expect a UVC device at

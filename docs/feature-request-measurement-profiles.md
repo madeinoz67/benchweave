@@ -122,7 +122,7 @@ use.
 
 ## Repo context
 
-- Plugin: `plugins/adc_6ch_12bit/` (config today: `active_profile`, `profiles`,
+- Plugin: `src/adc_6ch_12bit/` (config today: `active_profile`, `profiles`,
   per-channel `name`/`unit`/`gain`/`offset`/`show`/`color`, `computed[]`, and a
   `settings` block).
 - Would like to keep the fork independent and contribute this as a focused,

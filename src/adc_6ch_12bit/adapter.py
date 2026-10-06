@@ -9,9 +9,10 @@ SDK's ``Adapter`` docstring). Raw ADC counts cross this boundary — gain,
 offset and computed channels are product-side concerns (see
 docs/feature-request-measurement-profiles.md for the upstream story).
 
-The host side of the contract lives in ``benchweave.web.host`` — this
-project implements both halves because no released BenchWeave gateway
-implements capture/streaming host services yet.
+The host side of the contract is the standalone BenchWeave host shipped as
+``benchweave-sdk[server]`` (its serial transport supplies the transfer
+services this adapter's stream grammar needs); this project ships the
+plugin half only.
 """
 
 from __future__ import annotations

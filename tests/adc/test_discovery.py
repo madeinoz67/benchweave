@@ -6,14 +6,14 @@ from types import SimpleNamespace
 from typing import ClassVar
 from unittest import mock
 
-from plugins.adc_6ch_12bit import protocol
-from plugins.adc_6ch_12bit.discovery import (
+from adc_6ch_12bit import protocol
+from adc_6ch_12bit.discovery import (
     WCH_VENDOR_ID,
     _probe,
     adc_capture_filename,
     discover_adc_boards,
 )
-from plugins.adc_6ch_12bit.protocol import IdentifyInfo
+from adc_6ch_12bit.protocol import IdentifyInfo
 
 ADC_PORT = "/dev/ttyACM2"
 
@@ -75,7 +75,7 @@ def test_discover_filters_by_vendor_and_probes() -> None:
     _FakeSerial.constructed = []
     with (
         mock.patch("serial.tools.list_ports.comports") as comports,
-        mock.patch("plugins.adc_6ch_12bit.discovery.serial.Serial", _FakeSerial),
+        mock.patch("adc_6ch_12bit.discovery.serial.Serial", _FakeSerial),
     ):
         comports.return_value = [
             _port(ADC_PORT, WCH_VENDOR_ID),  # the ADC board
@@ -95,7 +95,7 @@ def test_discover_returns_empty_when_no_board() -> None:
     _FakeSerial.constructed = []
     with (
         mock.patch("serial.tools.list_ports.comports") as comports,
-        mock.patch("plugins.adc_6ch_12bit.discovery.serial.Serial", _FakeSerial),
+        mock.patch("adc_6ch_12bit.discovery.serial.Serial", _FakeSerial),
     ):
         comports.return_value = [
             _port("/dev/ttyACM3", WCH_VENDOR_ID),  # WCH but not an ADC board
@@ -107,7 +107,7 @@ def test_discover_returns_empty_when_no_board() -> None:
 
 def test_probe_sends_identify_and_parses_reply() -> None:
     _FakeSerial.constructed = []
-    with mock.patch("plugins.adc_6ch_12bit.discovery.serial.Serial", _FakeSerial):
+    with mock.patch("adc_6ch_12bit.discovery.serial.Serial", _FakeSerial):
         info = _probe(ADC_PORT, 2_000_000, timeout=0.2)
 
     assert info == IdentifyInfo(1, 0, 2, 6, 12)
@@ -116,7 +116,7 @@ def test_probe_sends_identify_and_parses_reply() -> None:
 def test_probe_writes_one_identify_frame_and_closes() -> None:
     _FakeSerial.constructed = []
     _FakeSerial.instances = []
-    with mock.patch("plugins.adc_6ch_12bit.discovery.serial.Serial", _FakeSerial):
+    with mock.patch("adc_6ch_12bit.discovery.serial.Serial", _FakeSerial):
         _probe(ADC_PORT, 2_000_000, timeout=0.2)
 
     assert len(_FakeSerial.instances) == 1
@@ -126,13 +126,13 @@ def test_probe_writes_one_identify_frame_and_closes() -> None:
 
 def test_probe_returns_none_on_silence() -> None:
     _FakeSerial.constructed = []
-    with mock.patch("plugins.adc_6ch_12bit.discovery.serial.Serial", _FakeSerial):
+    with mock.patch("adc_6ch_12bit.discovery.serial.Serial", _FakeSerial):
         assert _probe("/dev/ttyACM3", 2_000_000, timeout=0.05) is None
 
 
 def test_probe_returns_none_when_port_cannot_open() -> None:
     _FakeSerial.constructed = []
-    with mock.patch("plugins.adc_6ch_12bit.discovery.serial.Serial", _FakeSerial):
+    with mock.patch("adc_6ch_12bit.discovery.serial.Serial", _FakeSerial):
         assert _probe("/dev/ttyBROKEN", 2_000_000, timeout=0.05) is None
 
 

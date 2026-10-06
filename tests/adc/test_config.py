@@ -3,8 +3,8 @@ from unittest import mock
 
 import pytest
 
-from plugins.adc_6ch_12bit import config
-from plugins.adc_6ch_12bit.config import (
+from adc_6ch_12bit import config
+from adc_6ch_12bit.config import (
     CHANNEL_KEYS,
     DEFAULT_CONFIG,
     convert_channels,
@@ -14,7 +14,7 @@ from plugins.adc_6ch_12bit.config import (
     output_channels,
     save_config,
 )
-from plugins.adc_6ch_12bit.protocol import Sample
+from adc_6ch_12bit.protocol import Sample
 
 
 def test_default_config_has_six_channels_in_order() -> None:

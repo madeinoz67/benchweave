@@ -57,63 +57,33 @@ board does ~3,300 samples/s at averaging 0. Expected sample rates (6 channels):
 | 128 | ~41 |
 | 256 | ~20 |
 
-Averaging trades noise against speed; a `sample_rate_hz` recording setting
-(backend decimation) caps how many of those samples are recorded.
-
-Python-side recording is not the bottleneck: the CSV writer benchmarks at
-~230,000 rows/s (4.3 µs/row), so even the ~8,700 frames/s UART ceiling uses only
-~4% of the write budget — the ADC (~3,300 SPS) is the limiter, not the recorder.
-At very high rates (>~20K SPS) the per-sample `call_soon_threadsafe` used to feed
-the SSE display would start to matter; downsample in the host-loop pump instead.
+Averaging trades noise against speed; the limiter is the ADC conversion time,
+not the link.
 
 ## Usage
 
-The supported host-side surface is `benchweave.web.board.BoardManager`, which
-drives the plugin's SDK adapter (`adapter.py` + `descriptor.json`) on a
-dedicated event loop:
+The plugin is served by the standalone BenchWeave host
+(`benchweave-sdk[server]`, the optional `host` extra):
 
-```python
-from benchweave.web.board import BoardManager
-from plugins.adc_6ch_12bit import discover_adc_boards
-
-boards = discover_adc_boards()  # probe serial ports with IDENTIFY
-manager = BoardManager()
-manager.connect(boards[0].device)  # open + identify + restore channels
-manager.set_averaging(16)
-print(manager.capture_seconds(5.0))  # CSV + per-channel summary
-manager.disconnect()
+```sh
+uv sync --locked --dev --extra host
+uv run benchweave-sdk-server serve . --transport serial --device /dev/tty.usbserial-XXX
 ```
+
+That serves the UI, REST and MCP surfaces (loopback by default) over this
+project's adapter. Captures publish under the host's capture root
+(`--capture-root`, else `BENCHWEAVE_CAPTURE_DIR`, else `captures/` under the
+working directory).
 
 Direct adapter use (async, one session per connection) follows the
 benchweave-sdk contract: `create_plugin()`, `open(descriptor, services, ctx)`,
 `execute` with `identify`/`reset`/`invoke` (`otdp.daq.*` actions), and
-`next_event` for streamed samples. `benchweave.web.host` provides the matching
-host services over a serial port.
+`next_event` for streamed samples. The SDK server's serial transport provides
+the matching host services over a serial port.
 
 `discover_adc_boards()` enumerates WCH USB-UART ports and probes each with
 `IDENTIFY`, accepting only ports that reply with the ADC signature — so the
 `/dev/ttyACM*` node can move between reboots without breaking the code.
-
-### Web frontend
-
-```sh
-./scripts/run_adc_web.sh           # -> http://localhost:8000
-```
-
-Discover/connect, configure averaging + channels, start/stop streaming, and a
-live 6-channel graph (SSE). While streaming, **Pause** halts data collection
-(the live graph freezes) but keeps the CSV open; **Resume** continues collection
-into the same file, with `elapsed_s` and SPS continuous across the pause gap.
-**Stop** ends the session and closes the CSV (from either a running or paused
-state). Optionally records to
-`plugins/adc_6ch_12bit/captures/adc_<serial>_<timestamp>.csv`.
-
-### CSV capture
-
-```sh
-uv run scripts/adc_capture.py --seconds 5 --averaging 16
-# -> plugins/adc_6ch_12bit/captures/adc_<serial>_<timestamp>.csv
-```
 
 ## Firmware
 
@@ -146,22 +116,18 @@ the linked spec, before changing anything.
 at 2 Mbps. Host is the master: it sends commands, the board replies or streams.
 
 **Layout:**
-- `plugins/adc_6ch_12bit/` — this plugin (`protocol.py` codec — including the
+- `src/adc_6ch_12bit/` — this plugin (`protocol.py` codec — including the
   parsed `Sample` vocabulary — `adapter.py` + `descriptor.json` SDK adapter,
   `discovery.py`).
-- `src/benchweave/web/host.py` — host half of the SDK contract (SerialLink,
-  operation contexts, transfer + capture-artifact services). `transfer` speaks
-  OTDP §8.1's stream grammar: the adapter sends each command with
-  `stream_send` and reads with exact-byte `stream_receive` calls (a frame's
-  header, then the rest); an empty receive means the line is quiet.
-- `src/benchweave/web/board.py` — BoardManager: the sync facade that runs the
-  adapter on a dedicated host event loop.
 - `firmware/ch32v006e8r_adc/` — matching CH32V006 firmware (C; `make`).
-- `src/benchweave/web/` — FastAPI frontend (REST + SSE + live graph).
-- `scripts/adc_capture.py` / `scripts/run_adc_web.sh` — CLI capture / web launcher.
-- `tests/adc/`, `tests/web/` — tests.
+- `tests/adc/` — tests (adapter conformance over the SDK's MockHost, plus
+  protocol/config/discovery).
 - `docs/superpowers/specs/2026-09-11-adc-board-uart-driver-design.md` — the
   wire-protocol spec (**source of truth**).
+
+The host side (serial transport, transfer services speaking OTDP §8.1's
+stream grammar, capture publishing, UI/REST/MCP surfaces) is the standalone
+BenchWeave host in `benchweave-sdk[server]`, not this repository.
 
 **Protocol (summary):** `[0xAA 0x55][type][seq][len][payload][CRC16 LE]`,
 CRC-16/CCITT-FALSE over type..payload. Commands: `identify`, `set_averaging`,
@@ -175,7 +141,7 @@ CRC-16/CCITT-FALSE over type..payload. Commands: `identify`, `set_averaging`,
 - Python: ruff (line-length 100) + mypy strict + pytest — run
   `uv run pytest`, `uv run ruff check .`, `uv run mypy`.
 - Firmware: `make -C firmware/ch32v006e8r_adc`.
-- Captured data goes to `plugins/adc_6ch_12bit/captures/` (gitignored).
+- Captured data goes to the serving host's capture root (gitignored).
 
 **Deferred work (next):** ADC scan mode + DMA (raw rate → UART ceiling); link
 the config `show` flag to firmware `SET_CHANNELS` so hidden channels are not

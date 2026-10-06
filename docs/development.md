@@ -35,9 +35,9 @@ Hosted runs require the repository to be pushed to GitHub with Actions enabled.
 
 ## Documentation baseline
 
-`docs/` carries this project's own documentation (the Analyse page guide and
+`docs/` carries this project's own documentation (the adapter guide and
 feature notes); the hardware and protocol reference lives beside the plugin at
-`plugins/adc_6ch_12bit/README.md`, and the firmware under
+`src/adc_6ch_12bit/README.md`, and the firmware under
 `firmware/ch32v006e8r_adc/`. The upstream BenchWeave architecture corpus this
 repository once carried now lives in the upstream project; use Git history to
-consult superseded revisions.
+consult superseded revisions (including the pre-v0.2.0 web-stack docs).

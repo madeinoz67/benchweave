@@ -12,7 +12,7 @@ import threading
 import time
 from collections.abc import Callable, Iterable, Iterator
 
-from plugins.adc_6ch_12bit import protocol
+from adc_6ch_12bit import protocol
 
 #: proto 1, fw 0.2, 6 channels, 12-bit — the signature discovery expects.
 IDENTIFY_PAYLOAD = bytes((1, 0, 2, 6, 12))

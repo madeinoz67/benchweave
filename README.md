@@ -1,53 +1,45 @@
 # benchweave-adc
 
-Capture and analysis gateway for a custom **6-channel, 12-bit ADC board**
-(WCH CH32V006E8R, 2 Mbps binary serial protocol). Forked from
-[BenchWeave](https://github.com/madeinoz67/benchweave) and focused on one
-job: streaming samples off the board, recording them as CSV captures, and
-analysing them — live in a browser, after the fact in the Analyse tab, or
-programmatically over MCP.
+Plugin project for a custom **6-channel, 12-bit ADC board** (WCH CH32V006E8R,
+2 Mbps binary serial protocol). Forked from
+[BenchWeave](https://github.com/madeinoz67/benchweave) and focused on one job:
+the OTDP adapter for streaming samples off the board, served by the standalone
+BenchWeave host.
 
 What's in the box:
 
-- **Web UI** (FastAPI + SSE): live graph, channel configuration with
-  measurement profiles (gain/offset/computed channels), and an **Analyse**
-  tab — capture browser, brush-region statistics, power analysis with V/I
-  rail pairing, zoom regions, A–Z markers with notes, and self-contained
-  HTML report export.
-- **MCP server** (stdio): tools to discover/configure the board, run bounded
-  captures, and list/load/inspect recorded captures from an agent session.
-- **Capture library**: CSV captures on disk with a SQLite overlay for
-  projects, retention, annotations, and power-analysis settings.
-- **Plugin** `plugins/adc_6ch_12bit/`: the binary protocol codec, SDK
-  adapter, board discovery, and channel-conversion config.
+- **Plugin** `src/adc_6ch_12bit/`: the binary protocol codec, SDK adapter
+  (`descriptor.json` + `adapter.py`), board discovery, channel-conversion
+  config, and a minimal presentation for the host's live-readings page.
+- **Standalone host** (optional extra `host`, i.e. `benchweave-sdk[server]`):
+  serves the plugin's UI, REST and MCP surfaces from one process — loopback by
+  default — with the serial transport this adapter's stream grammar needs.
 - **Firmware** `firmware/ch32v006e8r_adc/`: the board's CH32V006 firmware
   (MounRiver toolchain Makefile).
+
+The fork's earlier hand-rolled web stack (FastAPI + SSE UI, Analyse tab,
+capture library, stdio MCP server) was removed in v0.2.0 when the standalone
+host took over: serve the project with `benchweave-sdk-server serve` instead.
+MCP-over-HTTP is available while the host serves; a persistent stdio MCP
+server is a disclosed gap with a planned follow-up (see TODO.md).
 
 ## Quickstart
 
 Python 3.13 and [uv](https://docs.astral.sh/uv/) are required.
 
 ```sh
-uv sync --locked --dev
-uv run uvicorn benchweave.web.app:app        # web UI on http://127.0.0.1:8000
+uv sync --locked --dev --extra host
+uv run benchweave-sdk-server serve . --transport serial --device <port>
 ```
 
-or use the launcher (binds 127.0.0.1 by default):
+Without a board, the mock transport serves the same surfaces for development:
 
 ```sh
-scripts/run_adc_web.sh
+uv run benchweave-sdk-server serve .
 ```
 
-Plug the board in over USB (CH343 bridge); the UI's board picker probes
-candidate ports with an IDENTIFY exchange. One-off captures without the web
-UI:
-
-```sh
-uv run python scripts/adc_capture.py --seconds 10 --output capture.csv
-```
-
-The MCP server is launched by MCP clients as `uv run benchweave-adc-mcp`
-(see `.mcp.json`).
+Plug the board in over USB (CH343 bridge); the host's scan probes candidate
+ports with an IDENTIFY exchange.
 
 ## Reflashing the firmware (kickstart)
 
@@ -91,26 +83,22 @@ Do this, then do that:
 
 4. **Verify.** Discovery should report fw `0.2`, 6 ch, 12-bit:
    ```sh
-   uv run python -c "from plugins.adc_6ch_12bit.discovery import discover_adc_boards; print(discover_adc_boards())"
+   uv run python -c "from adc_6ch_12bit.discovery import discover_adc_boards; print(discover_adc_boards())"
    ```
-   Then `sample_once()` returning real 12-bit values confirms end-to-end.
+   Then a `sample_once` action returning real 12-bit values confirms end-to-end.
 
 ## Security posture
 
-The web app has **no authentication, CORS policy, or CSRF protection** — it
-is built for a single operator on localhost. The launcher binds `127.0.0.1`
-by default; exposing it more widely is at your own risk.
+The standalone host binds loopback by default and carries its own guard
+policy; see the `benchweave-sdk` server documentation. Exposing it more widely
+is at your own risk.
 
 ## Documentation
 
 | Topic | Where |
 |---|---|
-| Analyse tab guide | [docs/analyse-page.md](docs/analyse-page.md) |
-| REST API reference | [docs/rest-api.md](docs/rest-api.md) (live version at `/docs`) |
-| MCP tools | [docs/mcp-tools.md](docs/mcp-tools.md) |
-| Capture library schema | [docs/library-schema.md](docs/library-schema.md) |
 | SDK adapter | [docs/adapter.md](docs/adapter.md) |
-| Hardware + wire protocol | [plugins/adc_6ch_12bit/README.md](plugins/adc_6ch_12bit/README.md) |
+| Hardware + wire protocol | [src/adc_6ch_12bit/README.md](src/adc_6ch_12bit/README.md) |
 | Hardware compatibility | [docs/hardware.md](docs/hardware.md) |
 | nanoDLA logic analyser MCP server | [docs/nanodla-mcp-server.md](docs/nanodla-mcp-server.md) |
 | Firmware | [firmware/ch32v006e8r_adc/](firmware/ch32v006e8r_adc/) |
@@ -121,9 +109,9 @@ by default; exposing it more widely is at your own risk.
 
 This project began as a fork of BenchWeave's early scaffold and inherited its
 architecture-contract corpus; that machinery now lives (much evolved) in the
-upstream project and has been removed here. The ADC plugin is intended to
-track BenchWeave's plugin SDK ([benchweave-sdk](https://pypi.org/project/benchweave-sdk/))
-as its host-side capture support matures.
+upstream project and has been removed here. The ADC plugin tracks BenchWeave's
+plugin SDK ([benchweave-sdk](https://pypi.org/project/benchweave-sdk/)); since
+v0.2.0 the standalone host from that SDK is this project's serving surface.
 
 ## License
 

@@ -1,24 +1,25 @@
 # The SDK adapter
 
 The board is driven through a [benchweave-sdk](https://pypi.org/project/benchweave-sdk/)
-adapter. This repository implements **both halves of the contract**, because
-no released BenchWeave gateway implements capture/streaming host services
-yet:
+adapter. Since v0.2.0 this repository implements **the device half** of the
+contract; the host half is the standalone BenchWeave host shipped as
+`benchweave-sdk[server]` (this project's optional `host` extra):
 
-- **Device half** — `plugins/adc_6ch_12bit/adapter.py` (`AdcAdapter`) plus
+- **Device half** — `src/adc_6ch_12bit/adapter.py` (`AdcAdapter`) plus
   `descriptor.json`. Owns protocol framing and command semantics only; every
   byte goes through `services.transfer`, and neither construction nor
   `open()` performs device I/O.
-- **Host half** — `src/benchweave/web/host.py`: `SerialLink` (a reader
-  thread draining the port into a bounded ring so 2 Mbps never backs up),
-  `SerialHostServices` (transfer, clocks, evidence, capture artifacts), and
-  `AdcOperationContext` (identity, deadline, cancellation). Structurally
-  compatible with `benchweave_sdk.interfaces.HostServices`/`CaptureServices`
-  (Protocols; never imported at runtime).
+- **Host half** — the SDK server: its serial transport (a reader thread
+  draining the port into a bounded ring so 2 Mbps never backs up), transfer,
+  clocks, evidence and capture-artifact services, and the UI/REST/MCP
+  surfaces. Runtime plugin code never imports the SDK — the
+  `Adapter`/`HostServices` contracts are structural Protocols.
 
-`benchweave.web.board.BoardManager` is the product-side facade: it runs the
-adapter on a dedicated event loop and exposes the synchronous API the web
-app and MCP server call.
+Serve the project with the standalone host (mock transport for development):
+
+```sh
+uv run benchweave-sdk-server serve .
+```
 
 ## The descriptor
 
@@ -32,7 +33,7 @@ reads its operation timeouts from here rather than hard-coding them.
 
 ## Operation mapping
 
-| Product action (BoardManager) | OTDP operation | Wire frames |
+| Capture scenario (client-side action) | OTDP operation | Wire frames |
 |---|---|---|
 | `connect` | `open` (no I/O), `identify`, then a configure | `IDENTIFY` → `IDENTIFY_RSP`; `SET_AVERAGING`, `SET_CHANNELS` → `ACK` |
 | `set_averaging` / `set_channels` | `invoke otdp.daq.configure/1.0.0` | `SET_AVERAGING` → `ACK`, `SET_CHANNELS` → `ACK` |
@@ -47,7 +48,7 @@ reads its operation timeouts from here rather than hard-coding them.
 Two mappings deserve a note:
 
 - **Averaging rides on `sample_rate_hz`.** The `otdp.daq.configure` input
-  schema is closed — there is no raw averaging knob — so the manager
+  schema is closed — there is no raw averaging knob — so a client
   requests `sample_rate_hz = estimate_max_sps(averaging, n_channels)` and
   the adapter's nearest-averaging search lands on exactly that averaging.
   The same table drives both sides, so the round trip is exact by
@@ -71,12 +72,12 @@ halves keep to that grammar:
 - An empty receive means the line is quiet: `next_event` answers `None`,
   a reply that has not arrived yet is read again until the deadline, and a
   frame the line pauses inside stays buffered until it completes.
-- The host refuses any transaction that misses a field of its kind or
-  carries another, refuses `eom` termination (a serial line has no message
-  boundary), and only ever answers a receive complete. When the ring
-  already holds the bytes a receive asks for, it is served without waiting
-  on the reader thread, so a burst of `SAMPLE` frames costs two reads per
-  frame but no per-frame thread hop.
+- The host side of the transfer refuses any transaction that misses a field
+  of its kind or carries another, refuses `eom` termination (a serial line
+  has no message boundary), and only ever answers a receive complete. When
+  the ring already holds the bytes a receive asks for, it is served without
+  waiting on the reader thread, so a burst of `SAMPLE` frames costs two
+  reads per frame but no per-frame thread hop.
 
 ## The `x-adc-sample` event extension
 
@@ -84,8 +85,8 @@ halves keep to that grammar:
 only the first active channel (in `count` units). The schema-sanctioned
 extension key **`x-adc-sample`** carries the full frame —
 `{counter, channels[6], averaged_n}` — so the host never reassembles six
-per-channel events per sample. `BoardManager` rebuilds its `Sample` objects
-from this key.
+per-channel events per sample. Host-side consumers (the SDK server's capture
+and plot paths) rebuild full-sample structures from this key.
 
 ## Raw counts at the boundary
 

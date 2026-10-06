@@ -12,8 +12,8 @@ from benchweave_sdk.conformance import check_lifecycle, check_operation
 from benchweave_sdk.testing import MockContext, MockHost
 from benchweave_sdk.validation import validate, validate_descriptor
 
-from plugins.adc_6ch_12bit import protocol
-from plugins.adc_6ch_12bit.adapter import (
+from adc_6ch_12bit import protocol
+from adc_6ch_12bit.adapter import (
     RECEIVE,
     SEND,
     AdcAdapter,
@@ -21,7 +21,7 @@ from plugins.adc_6ch_12bit.adapter import (
     create_plugin,
 )
 
-DESCRIPTOR_PATH = Path(__file__).resolve().parents[2] / "plugins/adc_6ch_12bit/descriptor.json"
+DESCRIPTOR_PATH = Path(__file__).resolve().parents[2] / "src/adc_6ch_12bit/descriptor.json"
 DESCRIPTOR: dict[str, Any] = json.loads(DESCRIPTOR_PATH.read_text(encoding="utf-8"))
 # The runtime and measurement schemas are looked up under the OTDP version the
 # descriptor declares, so a version move is made in one place: the descriptor.

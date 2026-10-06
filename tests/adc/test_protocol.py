@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from plugins.adc_6ch_12bit.protocol import (
+from adc_6ch_12bit.protocol import (
     CHANNEL_MASK_ALL,
     HEADER_LEN,
     Frame,
