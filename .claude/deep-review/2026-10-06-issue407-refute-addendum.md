@@ -65,3 +65,52 @@ admit the set `{1}` silently.
 The refute cells live in the SDK repo's
 `tests/server/test_reconfigure_folds.py` (nine cells, RED-first; the
 RED evidence is quoted in the SDK branch's fold commits).
+
+---
+
+# Wave-2 addendum (2026-10-06, second fold wave)
+
+## B1. The pointer's CI posture and the 407↔408 land order (facts of record)
+
+The branch pins the SDK fold tip while main's LIVE drift lane still
+expects a released tag, so main's lane is red against this branch
+today (gitlink dfa4e63-era bytes vs v0.8.0) — undisclosed anywhere
+until this row. The coupling is proven by execution, not argument:
+
+| state of the pointer declaration | 408's checker |
+|---|---|
+| as-is (no pin line) | exit 2, `pin_absent` |
+| pin inherited from an older pointer commit | exit 1, pin/gitlink mismatch |
+| pin == gitlink in the pointer commit (this branch) | exit 0 + the non-tag warning |
+
+Land order: **408 first** (the declared-pin checker), then 407. The
+branch carries the declared pin
+(`3d8b6b85118579e9fca0a745a14c388917cbdf52`) so its own posture is
+declared under either world: harmless under main's old checker, exact
+under 408's.
+
+## B2. §7(a)'s CI claim, restated honestly (corrects the record)
+
+The record's acceptance clause "N1–N5 green ... in both repos' CI" is
+vacuous as written: the N-cells execute in NO CI lane. The
+device-plugins lane runs an isolated stdlib-only pytest where pyserial
+is absent, so the module skips via the importorskip gate — pyserial
+absence is the real skip mechanism, NOT openpty absence (the record's
+§10 named the wrong one); the main ci.yml suite's testpaths exclude
+`plugins/` entirely. The N-cells' execution evidence is the local posix
+run with the SDK [server] extra (and the mutant proofs recorded in the
+test files); CI carries the clean skip and the agreement-row run.
+
+## B3. §2.3's attribution, corrected (corrects the record)
+
+"The new link's ring starts empty — proven by `garbled_bytes == 0`"
+mis-attributes. `garbled_bytes` is the far-end MODEL's counter (a pty
+has no bit timing); under a skip-close mutant the old link's unclosed
+reader competes for the pty's bytes nondeterministically (observed: N1
+passed 2 of 3 mutant runs — byte-theft), so N1's garble count pins
+nothing about the swap. The fresh-link ring-reset class is pinned
+DETERMINISTICALLY by R1 (old reader dead, both rings empty, the new
+link serves a real exchange) in the SDK repo's
+`tests/server/test_reconfigure_folds.py`'s sibling
+`test_serial_reconfigure.py::test_r1_*`; N1 pins the negotiation
+outcome and the link-event family over the real backend.
