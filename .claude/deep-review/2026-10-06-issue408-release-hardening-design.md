@@ -658,3 +658,28 @@ feat/issue408-declared-pin at the fold-wave tip; the section-8 text above
 is frozen as written — this addendum is the correction of record. The
 tier call (Tier 3 via the `subprocess` keyword) is unaffected: the keyword
 is present at any count.
+
+
+---
+
+## Addendum 2 (2026-10-06, wave 3 — the release-cut referee's two corrections of record)
+
+**Section 9.2, m1's failure modes (F7).** The m1 spec — "registry row
+removed -> cut or --verify fails naming the stale surface" — is met only
+at the committed-test layer (the pattern-level census arm). At RUNTIME,
+with the website-tagline pattern removed, cut AND --verify both exit 0
+(referee-captured, independent of this branch's own m1 finding): the
+tool cannot see what it does not declare, and its post-cut smoke
+validates the same (now smaller) registry. The runtime hole stands
+disclosed; the census arm is the tripwire that makes the REMOVAL loud.
+
+**Section 9.3, the underpowered-case disclosure (F4).** "A miss becomes
+a new census row with its motion mechanism" assumed a miss REDDENNS
+something. The OPEN-WORLD class never reddens anything: a NEW
+version-bearing file, or an unpatterned version mention inside a
+registered file, passes every current gate permanently
+(count_version_literals scopes src/ only; the census covers TEST
+surfaces only; the registry covers declared files' declared patterns).
+This addendum corrects the disclosure — the failure mode for this class
+is SILENT PASS, and the carrier (a tree-wide version-literal census
+gate) is filed as its own issue.
