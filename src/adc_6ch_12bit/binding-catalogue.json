@@ -1,0 +1,66 @@
+{
+  "contract_version": "0.3.0",
+  "descriptor_sha256": "92d75ebf13ceaddad8d0b2fd792f7f4e2893b01f081af9a44329fc10db311a05",
+  "targets": [
+    {
+      "id": "fetch-waveform",
+      "kind": "dataset",
+      "action_id": "otdp.daq.fetch/1.0.0",
+      "profile_ids": [
+        "otdp.daq/1.0.0"
+      ],
+      "measurement_schema_id": "urn:otdp:measurement:0.2.2",
+      "variables": [
+        {
+          "id": "time",
+          "type": "number",
+          "unit": "s",
+          "shape": "vector",
+          "axis_role": "x"
+        },
+        {
+          "id": "a0",
+          "type": "number",
+          "unit": "count",
+          "shape": "vector",
+          "axis_role": "y"
+        },
+        {
+          "id": "a1",
+          "type": "number",
+          "unit": "count",
+          "shape": "vector",
+          "axis_role": "y"
+        },
+        {
+          "id": "a2",
+          "type": "number",
+          "unit": "count",
+          "shape": "vector",
+          "axis_role": "y"
+        },
+        {
+          "id": "a3",
+          "type": "number",
+          "unit": "count",
+          "shape": "vector",
+          "axis_role": "y"
+        },
+        {
+          "id": "a4",
+          "type": "number",
+          "unit": "count",
+          "shape": "vector",
+          "axis_role": "y"
+        },
+        {
+          "id": "a7",
+          "type": "number",
+          "unit": "count",
+          "shape": "vector",
+          "axis_role": "y"
+        }
+      ]
+    }
+  ]
+}

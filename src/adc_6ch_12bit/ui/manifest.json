@@ -1,0 +1,71 @@
+{
+  "contract_version": "0.3.0",
+  "plugin_id": "community.benchweave-adc.adc-6ch-12bit",
+  "descriptor_sha256": "92d75ebf13ceaddad8d0b2fd792f7f4e2893b01f081af9a44329fc10db311a05",
+  "required_ui_features": [
+    "plots.waveform"
+  ],
+  "bindings": [
+    {
+      "id": "read-a0",
+      "kind": "dataset",
+      "target_id": "fetch-waveform"
+    },
+    {
+      "id": "read-a1",
+      "kind": "dataset",
+      "target_id": "fetch-waveform"
+    },
+    {
+      "id": "read-a2",
+      "kind": "dataset",
+      "target_id": "fetch-waveform"
+    },
+    {
+      "id": "read-a3",
+      "kind": "dataset",
+      "target_id": "fetch-waveform"
+    },
+    {
+      "id": "read-a4",
+      "kind": "dataset",
+      "target_id": "fetch-waveform"
+    },
+    {
+      "id": "read-a7",
+      "kind": "dataset",
+      "target_id": "fetch-waveform"
+    }
+  ],
+  "pages": [
+    {
+      "id": "readings",
+      "title": "Channel readings",
+      "kind": "dataset",
+      "bindings": [
+        "read-a0",
+        "read-a1",
+        "read-a2",
+        "read-a3",
+        "read-a4",
+        "read-a7"
+      ],
+      "required": true,
+      "plots": [
+        {
+          "kind": "waveform",
+          "binding_id": "read-a0",
+          "x": "time",
+          "y": [
+            "a0",
+            "a1",
+            "a2",
+            "a3",
+            "a4",
+            "a7"
+          ]
+        }
+      ]
+    }
+  ]
+}
