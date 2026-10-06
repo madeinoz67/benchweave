@@ -114,3 +114,61 @@ link serves a real exchange) in the SDK repo's
 `tests/server/test_reconfigure_folds.py`'s sibling
 `test_serial_reconfigure.py::test_r1_*`; N1 pins the negotiation
 outcome and the link-event family over the real backend.
+
+---
+
+# Wave-3 addendum (2026-10-06, fold re-refute)
+
+## C1. The closed-session law (extends §2.1's failure posture)
+
+`close_transport` marks the session closed, and the swap honors that
+fact in both windows: a switch on a closed session refuses typed
+(`standalone_serial_reconfigure_closed`, a ConnectionError — the
+transport-is-lost family), and a close landing DURING a reopen closes
+the produced transport, publishes the failed row, and refuses the same
+way — never a reconfigured-after-close, never a live link rebound onto
+a closed session (the pre-fix leak: session.close drops the services
+reference before any later close could reach the swap's new link).
+Disclosed residual: close_transport is lock-free, so a close landing
+inside the final pre-rebind instructions can still rebind — bounded by
+the same instructions-fence as C4's dispatch window; the mid-open
+shape (the long window) is the pinned one.
+
+## C2. R6's fallback story, scoped precisely (amends §7's R6 reading)
+
+The caller's explicit fallback reconfigure is proven on a session that
+was never closed. A reconfigure after a CLOSE refuses (C1) — the
+record's "a second reconfigure is still possible" sentence reads on
+the failed-swap state, not on the closed state.
+
+## C3. from_baud is a critical-section read (extends the event taxonomy)
+
+The published `from_baud` is the CURRENT link's baud read under the
+swap lock: a switch queued behind another publishes the true
+transition (e.g. 3M -> boot), never a stale boot -> boot row.
+
+## C4. The busy guard's visibility boundary (corrects the receive_depth claim)
+
+"Structurally visible" was an overclaim: the receive-depth counter is
+visible from the worker's first instruction, not from dispatch — a
+transfer and a reconfigure dispatched in the same event-loop tick can
+pass under the guard (it reads 0 before the worker increments); the
+parked receive then unwinds through the closing link with typed
+outcomes. No corruption, no mechanism change — the claim now states
+the window instead of denying it.
+
+## C5. The wave-2 cells' sensitivity correction (corrects the wave-1/2 evidence claims)
+
+The wave-1 f2a/f2b cells ran their twins SEQUENTIALLY (instantaneous
+openers resolve their to_thread futures before each twin suspends), so
+the no-op-lock mutant passed the entire suite — including them. With a
+planted 0.05 s opener delay, the same mutant reddens f2a at the
+closes-balance assert (the orphan class). Sensitivity is a property of
+the interleave, not the assertion; concurrency cells need genuinely
+pending futures, not merely concurrent gather calls.
+
+## B4 (citation correction to B1). B1 said "gitlink dfa4e63-era
+bytes"; the branch tip moved through the fold waves and reads 270feb8
+at this addendum's writing. The drift-lane fact (main's lane red
+against a branch-pinned gitlink vs released v0.8.0) is unchanged; only
+the cited sha was stale.
