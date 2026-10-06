@@ -341,8 +341,14 @@ def test_n4_the_reopen_latency_window_is_device_enforced_and_bounded() -> None:
                     {"baud": _TARGET}, ctx
                 )
 
+            # The outer bound sits STRICTLY ABOVE the context's own
+            # deadline (5 s vs timeout_ms 150): the typed TimeoutError
+            # can then only come from the services' own deadline
+            # re-checks — an outer bound numerically equal to the inner
+            # deadline masks the mechanism (wave-2: a mutant removing
+            # BOTH context checks stayed green under the equal bound).
             with pytest.raises(TimeoutError):
-                asyncio.run(asyncio.wait_for(bounded(), timeout=0.15))
+                asyncio.run(asyncio.wait_for(bounded(), timeout=5.0))
             assert bounded_lane.requests[-1] == _TARGET
             assert bounded_lane.requests.count(_TARGET) == 1, "opener ran at most once"
         finally:
