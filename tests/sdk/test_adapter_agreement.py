@@ -112,6 +112,11 @@ EXPECTED_DATASET_SERVICES = frozenset(
         "payload_abort",
     }
 )
+# documented gap: the link-control surface is SDK-only (issue #407: the
+# negotiated serial transport — the bridge drives no line settings; the
+# capability rides the SDK's serial backend, pinned by this row exactly
+# as the capture and dataset gaps are)
+EXPECTED_LINK_CONTROL = frozenset({"reconfigure_link"})
 REQUEST_KEYS = frozenset({"operation_id", "verb", "arguments"})
 RESULT_KEYS = frozenset({"operation_id", "verb", "status", "data"})
 ERROR_PATH_KEYS = frozenset({"operation_id", "verb", "status", "error"})
@@ -513,6 +518,10 @@ def check_host_services(sdk: ModuleType, source: str) -> None:
     assert dataset == EXPECTED_HOST_SERVICES | EXPECTED_DATASET_SERVICES, (
         "SDK DatasetServices drifted from the pinned twelve-member shape"
     )
+    link = _protocol_surface(sdk.LinkControlServices)
+    assert link == EXPECTED_HOST_SERVICES | EXPECTED_LINK_CONTROL, (
+        "SDK LinkControlServices drifted from the pinned six-member shape"
+    )
     used = bridge_services_members(source)
     assert used == GATEWAY_SERVICES_SUBSET, "bridge services subset drifted"
     # each gap row asserts its own presence so silent narrowing becomes a diff
@@ -524,6 +533,7 @@ def check_host_services(sdk: ModuleType, source: str) -> None:
     }
     assert not (EXPECTED_CAPTURE_SERVICES & used), "capture surface must stay SDK-only"
     assert not (EXPECTED_DATASET_SERVICES & used), "dataset surface must stay SDK-only"
+    assert not (EXPECTED_LINK_CONTROL & used), "link-control surface must stay SDK-only"
 
 
 def check_envelopes(source: str, runtime: dict[str, Any]) -> None:
