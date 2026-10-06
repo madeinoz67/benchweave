@@ -1,37 +1,51 @@
-"""CI gate: refuse a stale ``packages/sdk`` gitlink (issue #347 WS1, R-2).
+"""CI gate: the declared-pin lane for the ``packages/sdk`` mount (issue #408 S2).
 
-The gateway mounts the SDK as a git submodule. Every existing gate proves
-CONSISTENCY of the mount (gateway standards vs the SDK lock vs the vendored
-tree, via ``make check-sdk-standards``); none proves FRESHNESS — a
-self-consistent mount pinned many commits behind the SDK's latest release
-tag passed every lane green, which is the staleness symptom #347 filed.
+The gateway mounts the SDK as a git submodule. The OLD gate keyed the
+mount's freshness to the SDK remote's LATEST release tag with exact
+equality — structurally red on every legitimate branch-tip gitlink (the
+era-bind mid-train mounts, the post-merge/pre-tag window); the CI map's
+own row carried that cost. The declared-pin pattern kills the coupling:
+the pin and the gitlink move in the SAME commit, and the gate checks
+pointer-vs-pin.
 
-The check compares two commits:
+The declaration lives beside the mount's own metadata (``.gitmodules``,
+owner fork F2 — the checker already read the file for the remote; unknown
+``submodule.<name>.*`` keys are inert to git tooling)::
 
-- the gitlink COMMITTED in this repository's HEAD (``git ls-tree`` — not
-  the submodule working tree's HEAD, which moves before the pointer is
-  committed), and
-- the commit the SDK's latest ``vX.Y.Z`` RELEASE tag dereferences to
-  (``git ls-remote --tags``: the ``^{}`` line when the tag is annotated —
-  the plain ref line names the tag OBJECT for annotated tags, and comparing
-  against it would report permanent drift on a current mount).
+    [submodule "packages/sdk"]
+        path = packages/sdk
+        url = https://github.com/madeinoz67/benchweave-sdk.git
+        pin = v0.7.1          # or a 40-hex SHA: the declared-train state
+
+The pin IS the declaration: writing a SHA is how a train declares itself.
 
 Exit codes (the contract the CI job and the unit tests pin):
 
-- 0 — no drift: the gitlink sits at the latest release tag's commit.
-- 1 — drift: the gitlink is not the latest release tag's commit; the
-  message names both commits and the tag.
-- 2 — INDETERMINATE: the drift could not be determined (fetch failed or
-  timed out, no vX.Y.Z tag parsed, HEAD carries no packages/sdk gitlink,
-  or the remote's bytes were undecodable). Fail closed: a network blip
-  must never read as "no drift" — and never masquerade as drift either.
+- 0 — green: ``gitlink == resolved(pin)``. SHA pins compare locally (the
+  verdict needs no network — mid-train pushes stay green offline); tag
+  pins resolve through the existing peeled-deref machinery.
+- 1 — red: ``gitlink != resolved(pin)``. The pin and the gitlink move in
+  the same commit, ENFORCED — a pin disagreeing with the mount is red.
+- 2 — INDETERMINATE (fail closed): no gitlink at HEAD; the pin key absent
+  or malformed (an undeclared mount fails closed — every pointer PR must
+  carry the pin); tag-pin resolution failed (network — identical
+  sensitivity to the old gate, never worse); undecodable bytes.
+
+Annotations ride the message on green (never a skipped job — the GitHub
+skipped-required-check constraint): ``::warning::`` when the pin trails
+the latest release tag (``pin vA trails latest vB — pairing pending``) or
+names a non-tag SHA (``declared train or unpaired mount``); ``::notice::``
+when freshness is unknowable (fetch failed — the annotation degrades, the
+verdict does not). Owner fork F3: the trailing-pin condition gates the
+gateway cut as a family-doc walk row, NOT a machine gate.
 
 What this check deliberately does NOT catch, each with its own lane: lock
 or vendored-tree inconsistency against the pinned SDK (``make
-check-sdk-standards``); a DELIBERATELY older pin — pinning below the latest
-release on purpose still reads as drift here and is answered by shipping a
-fresh release pin, not by ignoring the gate; prerelease-suffixed tags
-(``vX.Y.Z-rc1`` names no release — the highest plain ``vX.Y.Z`` wins).
+check-sdk-standards``); a pin that trails by more than the pairing window
+(a family-doc walk row reads the annotation; the mechanical upgrade is a
+"trailing by >1 release is red" rule, which re-accepts network dependence
+in that arm only); prerelease-suffixed tags (``vX.Y.Z-rc1`` names no
+release).
 """
 
 from __future__ import annotations
@@ -58,6 +72,8 @@ EXIT_INDETERMINATE = 2
 # itself, not by post-filtering.
 _RELEASE_REF = re.compile(r"^refs/tags/v(\d+)\.(\d+)\.(\d+)$")
 _DEREF_SUFFIX = "^{}"
+_PIN_TAG = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
+_PIN_SHA = re.compile(r"^[0-9a-f]{40}$")
 
 
 class IndeterminateError(Exception):
@@ -72,11 +88,10 @@ class ReleaseTag:
     commit: str
 
 
-def latest_release(ls_remote_output: str) -> ReleaseTag | None:
-    """Parse ``git ls-remote --tags`` output and return the highest
-    ``vX.Y.Z`` release tag with its PEELED commit — the ``^{}`` deref line
-    when the tag is annotated, the ref line itself for a lightweight tag.
-    None when no release tag parses."""
+def _parse_refs(ls_remote_output: str) -> tuple[dict[str, str], dict[str, str]]:
+    """Split ``git ls-remote --tags`` output into (plain refs, peeled
+    derefs) maps for release tags. The deref line wins for its tag: it
+    names the commit the annotated tag object points at."""
     refs: dict[str, str] = {}
     derefs: dict[str, str] = {}
     for line in ls_remote_output.splitlines():
@@ -90,57 +105,106 @@ def latest_release(ls_remote_output: str) -> ReleaseTag | None:
         if _RELEASE_REF.match(ref) is None:
             continue
         tag = ref.removeprefix("refs/tags/")
-        # A deref line wins for its tag: it names the commit the annotated
-        # tag object points at.
         (derefs if peeled else refs)[tag] = sha
+    return refs, derefs
+
+
+def latest_release(ls_remote_output: str) -> ReleaseTag | None:
+    """Parse ``git ls-remote --tags`` output and return the highest
+    ``vX.Y.Z`` release tag with its PEELED commit — the ``^{}`` deref line
+    when the tag is annotated, the ref line itself for a lightweight tag.
+    None when no release tag parses."""
+    refs, derefs = _parse_refs(ls_remote_output)
     if not refs:
         return None
     best = max(refs, key=lambda tag: tuple(int(part) for part in tag[1:].split(".")))
     return ReleaseTag(tag=best, commit=derefs.get(best, refs[best]))
 
 
-def evaluate(gitlink: str, ls_remote_output: str) -> tuple[int, str]:
-    """The drift verdict as a pure function of its inputs: (exit code,
-    message) per the module's exit-code contract."""
-    release = latest_release(ls_remote_output)
-    if release is None:
-        return (
-            EXIT_INDETERMINATE,
-            "no vX.Y.Z release tag parsed from the remote — cannot determine drift",
+def resolve_tag(ls_remote_output: str, tag: str) -> str | None:
+    """The commit ONE release tag denotes — ``latest_release``'s peeled
+    handling generalized to a single tag. None when the tag is absent."""
+    refs, derefs = _parse_refs(ls_remote_output)
+    return derefs.get(tag, refs.get(tag))
+
+
+def _tag_order(tag: str) -> tuple[int, ...]:
+    return tuple(int(part) for part in tag[1:].split("."))
+
+
+def evaluate(
+    gitlink: str, pin: str, ls_remote_output: str | None
+) -> tuple[int, str]:
+    """The verdict as a pure function of its inputs: (exit code, message)
+    per the module's exit-code contract. Annotation lines (``::warning::``/
+    ``::notice::``) ride the message on green — the lane prints them as-is.
+
+    SHA pins decide locally: ``ls_remote_output`` may be None (fetch
+    failed) without changing the verdict — that is the structural
+    improvement over keying freshness to the latest tag. Tag pins need the
+    remote; a failed fetch reads indeterminate, never red-or-green."""
+    sha_pin = _PIN_SHA.fullmatch(pin) is not None
+    if sha_pin:
+        if gitlink != pin:
+            return (
+                EXIT_DRIFT,
+                f"packages/sdk gitlink {gitlink} is not the declared pin {pin} "
+                "— the pin and the gitlink move in the same commit",
+            )
+    else:
+        if ls_remote_output is None:
+            return (
+                EXIT_INDETERMINATE,
+                f"cannot resolve pin {pin}: the remote was unreadable "
+                "(identical sensitivity to the old gate, never worse)",
+            )
+        commit = resolve_tag(ls_remote_output, pin)
+        if commit is None:
+            return (
+                EXIT_INDETERMINATE,
+                f"pin {pin} not found on the remote — cannot resolve the "
+                "declared pin (a removed/renamed tag fails closed)",
+            )
+        if gitlink != commit:
+            return (
+                EXIT_DRIFT,
+                f"packages/sdk gitlink {gitlink} is not the declared pin {pin} "
+                f"({commit}) — the pin and the gitlink move in the same commit",
+            )
+
+    lines = [
+        f"packages/sdk gitlink {gitlink} is at the declared pin {pin}"
+        + ("" if sha_pin else f" ({resolve_tag(ls_remote_output or '', pin)})")
+    ]
+    release = latest_release(ls_remote_output) if ls_remote_output is not None else None
+    if sha_pin:
+        lines.append(
+            f"::warning::non-tag pin {pin} — declared train or unpaired mount"
         )
-    if release.commit != gitlink:
-        return (
-            EXIT_DRIFT,
-            f"packages/sdk gitlink {gitlink} is stale: latest SDK release "
-            f"{release.tag} sits at {release.commit} — advance the pointer "
-            f"(git -C packages/sdk checkout {release.tag} && git add packages/sdk)",
+        if release is None:
+            lines.append(
+                "::notice::pin freshness unknowable (the remote was unreadable) "
+                "— the annotation degrades, the verdict does not"
+            )
+    elif release is not None and _tag_order(pin) < _tag_order(release.tag):
+        lines.append(
+            f"::warning::pin {pin} trails latest {release.tag} — pairing pending"
         )
-    return EXIT_OK, f"packages/sdk gitlink {gitlink} is at {release.tag}"
+    return EXIT_OK, "\n".join(lines)
 
 
 def committed_gitlink(repo: Path) -> str:
     """The gitlink COMMITTED at HEAD for the submodule path. Deliberately
     not the submodule working tree's HEAD: that moves before the pointer
     commit lands, and this gate judges committed state."""
-    try:
-        proc = subprocess.run(
-            ["git", "-C", str(repo), "ls-tree", "HEAD", SUBMODULE_PATH],
-            capture_output=True,
-            text=True,
-            timeout=LS_REMOTE_TIMEOUT_S,
-            check=False,
-        )
-    except (subprocess.TimeoutExpired, OSError, UnicodeDecodeError) as exc:
-        raise IndeterminateError(f"git ls-tree failed: {exc}") from exc
-    if proc.returncode != 0:
-        raise IndeterminateError(
-            f"git ls-tree exited {proc.returncode}: {proc.stderr.strip()}"
-        )
+    proc = _run_git(
+        ["git", "-C", str(repo), "ls-tree", "HEAD", SUBMODULE_PATH]
+    )
     # "160000 commit <sha>\t<path>" — tab-split fields.
-    fields = proc.stdout.split()
+    fields = proc.split()
     if len(fields) < 3 or fields[0] != "160000" or fields[1] != "commit":
         raise IndeterminateError(
-            f"HEAD carries no packages/sdk gitlink (ls-tree: {proc.stdout.strip()!r})"
+            f"HEAD carries no packages/sdk gitlink (ls-tree: {proc.strip()!r})"
         )
     return fields[2]
 
@@ -148,61 +212,85 @@ def committed_gitlink(repo: Path) -> str:
 def remote_tag_list(remote: str) -> str:
     """``git ls-remote --tags`` against the SDK remote."""
     try:
-        proc = subprocess.run(
-            ["git", "ls-remote", "--tags", remote],
-            capture_output=True,
-            text=True,
-            timeout=LS_REMOTE_TIMEOUT_S,
-            check=False,
-        )
-    except subprocess.TimeoutExpired as exc:
+        return _run_git(["git", "ls-remote", "--tags", remote], timeout=LS_REMOTE_TIMEOUT_S)
+    except IndeterminateError as exc:
         raise IndeterminateError(
-            f"git ls-remote timed out after {LS_REMOTE_TIMEOUT_S}s"
+            f"git ls-remote against {remote} failed: {exc}"
         ) from exc
-    except (OSError, UnicodeDecodeError) as exc:
-        # UnicodeDecodeError: subprocess's text=True strict-decodes captured
-        # bytes INSIDE the call (verified against CPython: an undecodable
-        # refname byte raises there), so undecodable remote output reads
-        # indeterminate — never an uncaught traceback exiting 1, which
-        # masquerades as drift (adversary row 1).
-        raise IndeterminateError(f"git ls-remote failed: {exc}") from exc
-    if proc.returncode != 0:
-        raise IndeterminateError(
-            f"git ls-remote exited {proc.returncode}: {proc.stderr.strip()}"
-        )
-    return proc.stdout
 
 
 def configured_remote(repo: Path) -> str:
     """The SDK remote as this repository configures it — the submodule's
     .gitmodules url, so the URL lives in one place (governor F1).
     FALLBACK_REMOTE when the key is absent, empty, or unreadable."""
+    proc = _run_git(
+        [
+            "git", "-C", str(repo), "config", "--file", ".gitmodules",
+            f"submodule.{SUBMODULE_PATH}.url",
+        ],
+        missing_ok=True,
+    )
+    return proc.strip() or FALLBACK_REMOTE
+
+
+def configured_pin(repo: Path) -> str:
+    """The DECLARED pin: ``submodule.<name>.pin`` from .gitmodules. Empty
+    string when absent — the caller reads that as an undeclared mount and
+    fails closed (exit 2), so every pointer PR must carry the pin."""
+    proc = _run_git(
+        [
+            "git", "-C", str(repo), "config", "--file", ".gitmodules",
+            f"submodule.{SUBMODULE_PATH}.pin",
+        ],
+        missing_ok=True,
+    )
+    return proc.strip()
+
+
+def _run_git(
+    cmd: list[str], *, timeout: int = LS_REMOTE_TIMEOUT_S, missing_ok: bool = False
+) -> str:
+    """One git entry point for every reader: subprocess plumbing plus the
+    fail-closed wrapping the decode-raise arms pin (an undecodable byte
+    reads indeterminate, never a traceback exiting 1)."""
     try:
         proc = subprocess.run(
-            [
-                "git",
-                "-C",
-                str(repo),
-                "config",
-                "--file",
-                ".gitmodules",
-                f"submodule.{SUBMODULE_PATH}.url",
-            ],
+            cmd,
             capture_output=True,
             text=True,
-            timeout=LS_REMOTE_TIMEOUT_S,
+            timeout=timeout,
             check=False,
         )
-    except (subprocess.TimeoutExpired, OSError, UnicodeDecodeError):
-        return FALLBACK_REMOTE
+    except subprocess.TimeoutExpired as exc:
+        raise IndeterminateError(f"timed out after {timeout}s") from exc
+    except (OSError, UnicodeDecodeError) as exc:
+        # UnicodeDecodeError: subprocess's text=True strict-decodes captured
+        # bytes INSIDE the call, so undecodable output raises here and reads
+        # indeterminate — never an uncaught traceback exiting 1 (adversary
+        # row 1 of the original review, preserved).
+        raise IndeterminateError(f"{cmd[1]} failed: {exc}") from exc
     if proc.returncode != 0:
-        return FALLBACK_REMOTE
-    return proc.stdout.strip() or FALLBACK_REMOTE
+        # `git config --file <f> <key>` exits 1 exactly when the key is
+        # unset — the readers that distinguish "absent" from "broken"
+        # pass missing_ok and read the empty string.
+        if missing_ok and proc.returncode == 1:
+            return ""
+        raise IndeterminateError(
+            f"{cmd[1]} exited {proc.returncode}: {proc.stderr.strip()}"
+        )
+    return proc.stdout
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Refuse a stale packages/sdk gitlink (issue #347 WS1, R-2)."
+        description=(
+            "The declared-pin lane for the packages/sdk mount (issue #408 S2): "
+            "gitlink vs the .gitmodules pin — tag or SHA. Exit 0 green (annotations "
+            "for a trailing pin or a non-tag SHA), 1 red (pin/gitlink disagree — "
+            "they move in the same commit), 2 indeterminate (fail closed: no "
+            "gitlink, pin absent or malformed, tag-pin resolution failed, "
+            "undecodable bytes)."
+        )
     )
     parser.add_argument(
         "--repo",
@@ -213,21 +301,42 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--remote",
         default=None,
-        help="SDK remote to read release tags from, any git URL or local "
-        "path (default: the submodule's .gitmodules url, else the canonical "
-        "SDK remote)",
+        help="SDK remote to read release tags from, any git URL or local path "
+        "(default: the submodule's .gitmodules url, else the canonical SDK remote)",
     )
     args = parser.parse_args(argv)
     try:
         gitlink = committed_gitlink(args.repo)
         remote = args.remote if args.remote is not None else configured_remote(args.repo)
-        output = remote_tag_list(remote)
+        pin = configured_pin(args.repo)
+        if not pin:
+            raise IndeterminateError(
+                "pin_absent: .gitmodules carries no submodule.packages/sdk.pin — "
+                "an undeclared mount fails closed; every pointer PR must carry "
+                "the pin"
+            )
+        if _PIN_TAG.fullmatch(pin) is None and _PIN_SHA.fullmatch(pin) is None:
+            raise IndeterminateError(
+                f"pin_malformed: {pin!r} is neither vX.Y.Z nor a 40-hex SHA — "
+                "an undeclared mount fails closed"
+            )
+        try:
+            output: str | None = remote_tag_list(remote)
+        except IndeterminateError:
+            # The verdict degrades per the pin's kind (evaluate), never to a
+            # silent pass: tag pins read indeterminate; SHA pins stay green
+            # locally with a notice.
+            output = None
+        code, message = evaluate(gitlink, pin, output)
     except IndeterminateError as exc:
         print(f"sdk-drift INDETERMINATE: {exc}", file=sys.stderr)
         return EXIT_INDETERMINATE
-    code, message = evaluate(gitlink, output)
     prefix = {EXIT_OK: "OK", EXIT_DRIFT: "DRIFT", EXIT_INDETERMINATE: "INDETERMINATE"}
-    print(f"sdk-drift {prefix[code]}: {message}", file=sys.stderr if code else sys.stdout)
+    out = sys.stdout if code == EXIT_OK else sys.stderr
+    for line in message.splitlines():
+        if line.startswith("::"):
+            print(line, file=sys.stdout)
+    print(f"sdk-drift {prefix[code]}: {message.splitlines()[0]}", file=out)
     return code
 
 

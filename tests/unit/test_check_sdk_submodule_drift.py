@@ -1,14 +1,18 @@
-"""The SDK-submodule drift gate (issue #347 WS1, R-2): the committed
-``packages/sdk`` gitlink must sit at the SDK's latest ``vX.Y.Z`` release tag.
-Every existing lane catches *inconsistency* (gateway lock vs vendored tree vs
-manifest); none catches *staleness* — a self-consistent mount that is 11
-commits behind the latest release passed green, which is the #347 finding.
+"""The declared-pin lane for the SDK submodule mount (issue #408 S2).
 
-Parsing and the drift verdict are pure functions over fixture
-``git ls-remote --tags`` output; no test in this module touches the network.
-The fail-closed path (exit 2 — a fetch failure must never read as "no
-drift") is proven in-process against monkeypatched readers and black-box
-against a local repository pair and an unreachable remote path."""
+The committed ``packages/sdk`` gitlink must equal the DECLARED pin in
+``.gitmodules`` (``submodule.packages/sdk.pin`` — a ``vX.Y.Z`` release tag
+or a 40-hex SHA). The pin and the gitlink move in the SAME commit and the
+gate enforces exactly that; the freshness signal moves from hard-red to
+annotation (a trailing pin is green with ``::warning::`` — the honest
+trade the design record discloses, F3).
+
+Parsing, the pin resolution and the verdict are pure functions over
+fixture ``git ls-remote --tags`` output; no test in this module touches
+the network. The fail-closed paths (exit 2 — pin absent, malformed, or a
+tag-pin fetch failure) are proven in-process against monkeypatched
+readers and black-box against a local repository pair and an unreachable
+remote path."""
 
 from __future__ import annotations
 
@@ -29,8 +33,10 @@ EXIT_INDETERMINATE = 2
 
 
 def _synth(seed: str) -> str:
-    """A deterministic synthetic 40-hex SHA — invented, never a real object."""
-    return (seed * 5)[:40]
+    """A deterministic synthetic 40-hex SHA — invented, never a real object
+    (and genuinely 40 hex chars: under the pin contract the string must BE
+    a well-formed SHA to read as a SHA pin)."""
+    return (seed * 20)[:40]
 
 
 def _remote(*entries: tuple[str, str]) -> str:
@@ -117,67 +123,200 @@ def test_empty_or_tagless_output_parses_to_none() -> None:
     assert drift.latest_release("\n\n") is None
 
 
-# --- the verdict: evaluate(gitlink, ls_remote_output) --------------------------
+# --- the verdict: evaluate(gitlink, pin, ls_remote_output) ---------------------
 
 
-def test_stale_gitlink_reads_drift_with_both_shas_and_the_tag() -> None:
+def test_pin_at_the_mount_reads_ok_with_no_annotation_on_a_current_tag() -> None:
+    """The release state: tag pin == latest tag, gitlink at its commit —
+    green, and NO trailing annotation (the window is closed)."""
+    drift = _load()
+    code, message = drift.evaluate(_synth("a4"), "v0.4.1", _v041_annotated())
+    assert code == EXIT_OK
+    assert "v0.4.1" in message
+    assert "::warning::" not in message
+
+
+def test_stale_gitlink_reads_drift_naming_both_shas_and_the_pin() -> None:
+    """Red is the pin/gitlink disagreement, enforced: the mount moved
+    without the pin (or the pin without the mount)."""
     drift = _load()
     gitlink = _synth("99")
-    code, message = drift.evaluate(gitlink, _v041_annotated())
+    code, message = drift.evaluate(gitlink, "v0.4.1", _v041_annotated())
     assert code == EXIT_DRIFT
     assert gitlink in message
     assert _synth("a4") in message
     assert "v0.4.1" in message
 
 
-def test_current_gitlink_reads_ok() -> None:
+def test_sha_pin_disagreeing_with_the_mount_reads_drift_locally(
+    monkeypatch: Any,
+) -> None:
+    """m4, and the structural improvement in one arm: the red decision is
+    LOCAL for SHA pins — no remote, no network (the old gate reddened every
+    mid-train push by construction)."""
     drift = _load()
-    code, message = drift.evaluate(_synth("a4"), _v041_annotated())
+    code, message = drift.evaluate(_synth("99"), _synth("a4"), None)
+    assert code == EXIT_DRIFT
+    assert _synth("a4") in message
+
+
+def test_sha_pin_at_the_mount_is_green_offline() -> None:
+    """m5 offline half: a SHA pin whose mount matches is green WITHOUT any
+    remote at all — network failure cannot produce this verdict any more."""
+    drift = _load()
+    code, message = drift.evaluate(_synth("a4"), _synth("a4"), None)
     assert code == EXIT_OK
-    assert "v0.4.1" in message
+    assert "::warning::non-tag pin" in message
+    assert "::notice::pin freshness unknowable" in message
+
+
+def test_sha_pin_with_an_older_latest_tag_warns_trailing() -> None:
+    """m5 online half: SHA pin at the mount, but the remote's latest
+    release is ahead — green with the pairing-pending warning (F3: a walk
+    row reads it, not a machine gate)."""
+    drift = _load()
+    code, message = drift.evaluate(_synth("a4"), _synth("a4"), _v041_annotated())
+    assert code == EXIT_OK
+    assert "::warning::non-tag pin" in message
+
+
+def test_trailing_tag_pin_warns_but_stays_green() -> None:
+    """The v0.7.1-mount-before-pairing state: green + the pairing-pending
+    annotation — the freshness signal moved from hard-red to annotation
+    (the honest trade, disclosed in the design record's risks)."""
+    drift = _load()
+    remote = _remote(
+        (_synth("a4"), "refs/tags/v0.4.1"),
+        (_synth("a4"), "refs/tags/v0.4.1^{}"),
+        (_synth("e1"), "refs/tags/v0.5.0"),
+        (_synth("e1"), "refs/tags/v0.5.0^{}"),
+    )
+    code, message = drift.evaluate(_synth("a4"), "v0.4.1", remote)
+    assert code == EXIT_OK
+    assert "::warning::pin v0.4.1 trails latest v0.5.0 — pairing pending" in message
 
 
 def test_unparsable_remote_output_reads_indeterminate_not_ok() -> None:
-    """A remote we cannot read a release from is a failed check, never a
-    drift-free pass."""
+    """A remote we cannot read the pin's tag from is a failed check, never
+    a drift-free pass (tag pins fail closed on resolution)."""
     drift = _load()
-    code, _ = drift.evaluate(_synth("a4"), "no tabs no tags\n")
+    code, _ = drift.evaluate(_synth("a4"), "v0.4.1", "no tabs no tags\n")
     assert code == EXIT_INDETERMINATE
 
+
+def test_tag_pin_absent_from_the_remote_fails_closed() -> None:
+    drift = _load()
+    code, message = drift.evaluate(_synth("a4"), "v0.9.9", _v041_annotated())
+    assert code == EXIT_INDETERMINATE
+    assert "v0.9.9" in message
+
+
+def test_malformed_pin_fails_closed_at_the_main_level(monkeypatch: Any) -> None:
+    """A pin that is neither vX.Y.Z nor a 40-hex SHA is an undeclared
+    mount: main fails closed (the pin IS the declaration — anything else
+    means nobody declared)."""
+    drift = _load()
+    monkeypatch.setattr(drift, "committed_gitlink", lambda repo: _synth("a4"))
+    monkeypatch.setattr(drift, "configured_pin", lambda repo: "latest")
+    monkeypatch.setattr(drift, "remote_tag_list", lambda remote: _v041_annotated())
+    code = drift.main([])
+    assert code == EXIT_INDETERMINATE
+    assert "pin_malformed" in _stderr_of(drift.main, [])
 
 # --- main(): the wiring, in-process with injected readers ----------------------
 
 
+def _wired(
+    drift: Any,
+    monkeypatch: Any,
+    *,
+    gitlink: str,
+    pin: str | None,
+    output: str | None,
+    fetch_raises: bool = False,
+) -> None:
+    """Wire main()'s three readers to synthetic values."""
+
+    def _pin_reader(repo: Any) -> str:
+        assert pin is not None
+        return pin
+
+    def _boom(remote: str) -> str:
+        raise drift.IndeterminateError("synthetic network blip")
+
+    monkeypatch.setattr(drift, "configured_pin", _pin_reader)
+    monkeypatch.setattr(drift, "committed_gitlink", lambda repo: gitlink)
+    monkeypatch.setattr(
+        drift, "remote_tag_list", _boom if fetch_raises else (lambda remote: output or "")
+    )
+
+
 def test_main_returns_drift_code_on_a_stale_mount(monkeypatch: Any) -> None:
     drift = _load()
-    monkeypatch.setattr(drift, "committed_gitlink", lambda repo: _synth("99"))
-    monkeypatch.setattr(drift, "remote_tag_list", lambda remote: _v041_annotated())
+    _wired(drift, monkeypatch, gitlink=_synth("99"), pin="v0.4.1", output=_v041_annotated())
     assert drift.main([]) == EXIT_DRIFT
 
 
 def test_main_returns_ok_on_a_current_mount(monkeypatch: Any) -> None:
     drift = _load()
-    monkeypatch.setattr(drift, "committed_gitlink", lambda repo: _synth("a4"))
-    monkeypatch.setattr(drift, "remote_tag_list", lambda remote: _v041_annotated())
+    _wired(drift, monkeypatch, gitlink=_synth("a4"), pin="v0.4.1", output=_v041_annotated())
     assert drift.main([]) == EXIT_OK
 
 
-def test_main_fails_closed_when_the_fetch_fails(monkeypatch: Any) -> None:
+def test_main_tag_pin_fetch_failure_reads_indeterminate(monkeypatch: Any) -> None:
+    """Tag pins still need the remote: a fetch failure reads indeterminate —
+    identical sensitivity to the old gate, never worse."""
+    drift = _load()
+    _wired(
+        drift, monkeypatch,
+        gitlink=_synth("a4"), pin="v0.4.1", output=None, fetch_raises=True,
+    )
+    assert drift.main([]) == EXIT_INDETERMINATE
+
+
+def _stderr_of(fn: Any, argv: list[str], monkeypatch: Any = None) -> str:
+    """main() prints its verdict to stderr; capture it (capsys is not
+    available inside an arm that also needs monkeypatch wiring, so the
+    caller wires capsys through)."""
+    import contextlib
+    import io
+
+    buffer = io.StringIO()
+    with contextlib.redirect_stderr(buffer):
+        fn(argv)
+    return buffer.getvalue()
+
+
+def test_main_pin_absent_fails_closed(monkeypatch: Any) -> None:
+    """m6: an undeclared mount fails closed — every pointer PR must carry
+    the pin."""
     drift = _load()
     monkeypatch.setattr(drift, "committed_gitlink", lambda repo: _synth("a4"))
-
-    def _boom(remote: str) -> str:
-        raise drift.IndeterminateError("synthetic network blip")
-
-    monkeypatch.setattr(drift, "remote_tag_list", _boom)
+    monkeypatch.setattr(drift, "configured_pin", lambda repo: "")
+    monkeypatch.setattr(drift, "remote_tag_list", lambda remote: _v041_annotated())
     assert drift.main([]) == EXIT_INDETERMINATE
 
 
 def test_main_fails_closed_when_no_release_tag_parses(monkeypatch: Any) -> None:
     drift = _load()
-    monkeypatch.setattr(drift, "committed_gitlink", lambda repo: _synth("a4"))
-    monkeypatch.setattr(drift, "remote_tag_list", lambda remote: "")
+    _wired(drift, monkeypatch, gitlink=_synth("a4"), pin="v0.4.1", output="")
     assert drift.main([]) == EXIT_INDETERMINATE
+
+
+def test_main_sha_pin_fetch_failure_stays_green_with_a_notice(monkeypatch: Any) -> None:
+    """The structural improvement end to end: a SHA pin at the mount stays
+    green when the fetch fails — the verdict is local; the annotation
+    degrades (notice), never the verdict."""
+    drift = _load()
+    monkeypatch.setattr(drift, "committed_gitlink", lambda repo: _synth("a4"))
+    monkeypatch.setattr(drift, "configured_pin", lambda repo: _synth("a4"))
+
+    def _boom(remote: str) -> str:
+        raise drift.IndeterminateError("synthetic network blip")
+
+    monkeypatch.setattr(drift, "remote_tag_list", _boom)
+    assert drift.main([]) == EXIT_OK
+
 
 
 # --- black-box: the real CLI against local repositories, zero network ----------
@@ -233,8 +372,9 @@ def _pin(gateway: Path, commit: str) -> None:
 def _repo_pair(base: Path) -> tuple[Path, Path, str, str]:
     """A local SDK remote carrying an annotated release tag (plus an older
     lightweight one), and a gateway repo whose HEAD carries a packages/sdk
-    gitlink pinned at the tagged commit. Returns (remote, gateway,
-    tagged_commit, other_commit)."""
+    gitlink pinned at the tagged commit. The gateway carries a .gitmodules
+    whose pin DECLARSes the mount (owner fork F2). Returns (remote,
+    gateway, tagged_commit, other_commit)."""
     remote = base / "sdk-remote"
     _init_repo(remote)
     (remote / "README.md").write_text("synthetic sdk remote\n", encoding="utf-8")
@@ -251,7 +391,26 @@ def _repo_pair(base: Path) -> tuple[Path, Path, str, str]:
     _git(gateway, "commit", "-q", "-m", "seed")
     other = _git(gateway, "rev-parse", "HEAD").stdout.strip()
     _pin(gateway, tagged)
+    _declare(gateway, "v0.4.1", url=str(remote))
     return remote, gateway, tagged, other
+
+
+_SYNTHETIC_URL = "https://sdk.example.invalid/synthetic.git"
+
+
+def _declare(gateway: Path, pin: str, url: str = _SYNTHETIC_URL) -> None:
+    """Write the DECLARED pin into .gitmodules (owner fork F2): a tag or a
+    40-hex SHA — writing a SHA is how a train declares itself."""
+    text = gateway / ".gitmodules"
+    text.write_text(
+        '[submodule "packages/sdk"]\n'
+        f"\tpath = packages/sdk\n"
+        f"\turl = {url}\n"
+        f"\tpin = {pin}\n",
+        encoding="utf-8",
+    )
+    _git(gateway, "add", ".gitmodules")
+    _git(gateway, "commit", "-q", "-m", f"declare pin {pin}")
 
 
 def _run_script(*args: str) -> subprocess.CompletedProcess[str]:
@@ -265,13 +424,18 @@ def _run_script(*args: str) -> subprocess.CompletedProcess[str]:
 
 
 def test_black_box_current_gitlink_exits_zero(tmp_path: Path) -> None:
-    remote, gateway, _, _ = _repo_pair(tmp_path)
-    proc = _run_script("--repo", str(gateway), "--remote", str(remote))
+    """Green WITHOUT --remote: the .gitmodules url + pin carry the whole
+    declaration (the F2 single-home)."""
+    _, gateway, _, _ = _repo_pair(tmp_path)
+    proc = _run_script("--repo", str(gateway))
     assert proc.returncode == EXIT_OK, proc.stdout + proc.stderr
     assert "v0.4.1" in proc.stdout
+    assert "::warning::" not in proc.stdout  # pin == latest: window closed
 
 
-def test_black_box_stale_gitlink_exits_one_with_both_shas(tmp_path: Path) -> None:
+def test_black_box_pin_without_the_mount_reads_drift(tmp_path: Path) -> None:
+    """m4 black-box: the mount moved without the pin (or the pin without
+    the mount) — red, both SHAs named, the same-commit rule enforced."""
     remote, gateway, tagged, other = _repo_pair(tmp_path)
     _pin(gateway, other)  # deliberately stale: pinned at a non-release commit
     proc = _run_script("--repo", str(gateway), "--remote", str(remote))
@@ -282,11 +446,47 @@ def test_black_box_stale_gitlink_exits_one_with_both_shas(tmp_path: Path) -> Non
     assert "v0.4.1" in combined
 
 
+def test_black_box_trailing_pin_warns(tmp_path: Path) -> None:
+    """The mount/pin sit at v0.3.0 while the remote's latest is v0.4.1 —
+    green + the pairing-pending annotation (F3: a walk row reads it)."""
+    remote, gateway, tagged, _ = _repo_pair(tmp_path)
+    # a genuinely OLDER release: the fixture's two tags share one commit,
+    # so the trailing state needs its own commit + tag below v0.4.1
+    (remote / "older.txt").write_text("older release\n", encoding="utf-8")
+    _git(remote, "add", "older.txt")
+    _git(remote, "commit", "-q", "-m", "older release")
+    older = _git(remote, "rev-parse", "HEAD").stdout.strip()
+    _git(remote, "tag", "v0.3.1", older)
+    _pin(gateway, older)
+    _declare(gateway, "v0.3.1", url=str(remote))
+    proc = _run_script("--repo", str(gateway), "--remote", str(remote))
+    assert proc.returncode == EXIT_OK, proc.stdout + proc.stderr
+    assert "::warning::pin v0.3.1 trails latest v0.4.1 — pairing pending" in (
+        proc.stdout
+    )
+
+
+def test_black_box_sha_pin_declared_train_green(tmp_path: Path) -> None:
+    """The era-bind mid-train state the OLD gate reddened by construction:
+    a SHA pin whose mount matches — green, with the non-tag warning; and
+    OFFLINE (unreachable remote: a SHA pin needs no network for its
+    verdict, with the freshness-unknowable notice)."""
+    _, gateway, tagged, _ = _repo_pair(tmp_path)
+    # the mount is already at `tagged`; declaring the SHA pin over an
+    # UNREACHABLE url is the offline proof (no --remote override: the
+    # .gitmodules url itself is the unreachable one)
+    _declare(gateway, tagged, url=str(tmp_path / "no-such-remote"))
+    proc = _run_script("--repo", str(gateway))
+    assert proc.returncode == EXIT_OK, proc.stdout + proc.stderr
+    assert f"::warning::non-tag pin {tagged}" in proc.stdout
+    assert "::notice::pin freshness unknowable" in proc.stdout
+
+
 def test_black_box_unreachable_remote_fails_closed_with_distinct_code(
     tmp_path: Path,
 ) -> None:
-    """The network-failure contract: exit 2, not 0 and not 1 — a blip must
-    never read as 'no drift' (and never masquerade as drift either)."""
+    """Tag pin + unreachable remote: exit 2, not 0 and not 1 — a blip must
+    never read as 'no drift' (identical sensitivity, never worse)."""
     _, gateway, _, _ = _repo_pair(tmp_path)
     proc = _run_script(
         "--repo", str(gateway), "--remote", str(tmp_path / "no-such-remote")
@@ -309,6 +509,23 @@ def test_black_box_tagless_remote_fails_closed(tmp_path: Path) -> None:
     # The message assertion is load-bearing: python's own launcher also
     # exits 2 on a missing script, so the code alone can pass accidentally.
     assert "indeterminate" in (proc.stdout + proc.stderr).lower()
+
+
+def test_black_box_pin_absent_fails_closed(tmp_path: Path) -> None:
+    """m6 black-box: .gitmodules without the pin key — an undeclared mount
+    fails closed; every pointer PR must carry the pin."""
+    _, gateway, _, _ = _repo_pair(tmp_path)
+    (gateway / ".gitmodules").write_text(
+        '[submodule "packages/sdk"]\n'
+        "\tpath = packages/sdk\n"
+        "\turl = https://sdk.example.invalid/synthetic.git\n",
+        encoding="utf-8",
+    )
+    _git(gateway, "add", ".gitmodules")
+    _git(gateway, "commit", "-q", "-m", "strip the pin")
+    proc = _run_script("--repo", str(gateway), "--remote", str(tmp_path / "unused"))
+    assert proc.returncode == EXIT_INDETERMINATE, proc.stdout + proc.stderr
+    assert "pin_absent" in (proc.stdout + proc.stderr)
 
 
 def test_fixture_repositories_carry_their_own_git_identity(
@@ -400,6 +617,7 @@ def test_configured_remote_falls_back_when_gitmodules_is_absent(
     tmp_path: Path,
 ) -> None:
     _, gateway, _, _ = _repo_pair(tmp_path)
+    (gateway / ".gitmodules").unlink()
     drift = _load()
     assert drift.configured_remote(gateway) == drift.FALLBACK_REMOTE
 
