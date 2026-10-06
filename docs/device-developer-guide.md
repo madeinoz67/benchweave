@@ -519,6 +519,39 @@ run's own `on_event` consumer runs inside the same contained dispatcher.
 A raising consumer cannot derail the body, the protective transition, or
 your stream.
 
+### The connect-time identity check
+
+The host can check your device identity when a connection opens. This is
+device-visible behaviour. Know it before you qualify hardware.
+
+An operator can bind one device to one connection key. The operator picks a
+port that a scan confirmed. The host records the identity that the scan read
+from that port.
+
+When the connection opens, the host compares two identities. It compares the
+answer from your `identify` operation against the recorded identity. It
+compares `manufacturer` and `model` every time. It compares the USB serial
+number only when the scan recorded one.
+
+Two fields are never compared. `serial` and `firmware` do not take part in
+the check. The firmware value changes when you upgrade firmware, so a
+compare would refuse a good device after every upgrade. The `serial` value
+in the identify answer is not a unique board identifier.
+
+A mismatch refuses the connect. The host closes the session and answers
+`binding_mismatch`. The device page shows the reason. The host does not open
+a session to the wrong device in silence.
+
+Write your identify answer so it is stable. Return the same `manufacturer`
+and `model` on every call. Do not derive these values from the port name, the
+serial number, or the time of day. A device that reports a varying identity
+will fail to connect when an operator has bound it.
+
+This check is not a security boundary. It cannot see two devices of the same
+class that report no serial number and swap across ports. A device that
+echoes an expected identity can pass. The check is a routing safeguard and
+operator trust, not a defence against a hostile device.
+
 ## 6. Create controller firmware
 
 For an ESP32 or another controller, first decide whether firmware implements native OTDP UART JSON or a documented protocol behind an adapter. Keep firmware pin assignments and electrical behaviour explicit; OTDP does not choose a safe board configuration.
