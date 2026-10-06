@@ -265,22 +265,31 @@ jobs:
           path: windows-evidence.xml
 
   sdk-drift:
-    # The mount-staleness lane (issue #347 WS1, R-2): the committed
-    # packages/sdk gitlink must sit at the SDK's latest vX.Y.Z release
-    # tag (dereferenced commit). Every other lane proves the mount's
-    # CONSISTENCY (lock vs vendored tree vs manifest); this one proves
-    # FRESHNESS — the #347 symptom was a self-consistent mount passing
-    # every lane green while behind the latest release. Deliberately no
-    # submodule checkout: the gitlink is read from the superproject's
-    # committed tree, and a stale-but-consistent mount is the failure
-    # being detected, not noise. Exit contract: 0 current, 1 drift,
-    # 2 indeterminate — a fetch failure fails closed; a network blip
-    # must never read as "no drift".
+    # The declared-pin lane (issue #408 S2): the committed packages/sdk
+    # gitlink must equal the DECLARED pin in .gitmodules
+    # (submodule.packages/sdk.pin — a vX.Y.Z release tag or a 40-hex
+    # SHA). The pin and the gitlink move in the SAME commit and the lane
+    # enforces exactly that; the pin IS the declaration, so a mid-train
+    # era-bind mount declares itself with a SHA pin and stays green
+    # OFFLINE (the old latest-tag gate reddened every such push by
+    # construction). The freshness signal moved from hard-red to
+    # annotation: a trailing pin is green with ::warning:: (the
+    # family-doc walk row reads it — owner fork F3, never a machine
+    # gate), a fetch failure is ::notice:: on a SHA pin (the verdict is
+    # local) and indeterminate on a tag pin (never worse than before).
+    # Deliberately no submodule checkout: the gitlink is read from the
+    # superproject's committed tree. Exit contract: 0 green (pin
+    # matches), 1 red (pin/gitlink disagree — they move in the same commit,
+    # enforced at every ref the lane observes: CI sees pushed refs, so an
+    # intermediate of a split train is unobserved until pushed), 2
+    # indeterminate (fail closed: no gitlink, pin absent or malformed,
+    # tag-pin resolution failed, undecodable bytes). CONSISTENCY stays
+    # `gates`' make check-sdk-standards.
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Check packages/sdk gitlink against the latest SDK release tag
+      - name: Check the packages/sdk gitlink against its declared pin
         run: python3 scripts/check_sdk_submodule_drift.py
