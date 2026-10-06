@@ -96,6 +96,15 @@ submodule working tree with uncommitted changes, and its report reminds you
 that the pointer commit is still yours to make. Nothing in the flow pushes or
 commits for you.
 
+**The SDK-side order rule (issue #408): SDK PRs merge → the SDK release cut
+(`make release-cut VERSION=x.y.z` in the SDK repo) → the gateway pointer PR.**
+The gateway pointer PR advances the submodule gitlink and its `.gitmodules`
+`pin` in the SAME commit — the `sdk-drift` lane reds when they disagree. A
+pin naming a tag older than the SDK's latest release is green with a
+`::warning::` (`pairing pending`); the gateway release-time walk (row 6 of
+the family doc) reads that annotation — green alone does not close the
+window.
+
 Planning docs under `docs/superpowers/` stay local-untracked in **both**
 repositories (they are force-added only at close-out, when they document
 something that has landed).
