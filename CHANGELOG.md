@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.4.0] - 2026-10-07
 
 ### Bug Fixes
 
@@ -669,6 +669,7 @@ All notable changes to this project will be documented in this file.
 - Versioned-docs landing — readiness condition 1, cut procedure, taxonomy
 - Issue #394 mock byte-stream transport — design of record
 - Issue #394 addendum 1 — the fold's corrections
+- The v0.4.0 pre-tag registration (versions list + dev entry)
 
 ### Features
 
@@ -1051,6 +1052,7 @@ All notable changes to this project will be documented in this file.
 - The v0.8.0 pairing — sdk_compatibility mirror follows the tag (issue #393)
 - Regenerate the compatibility matrix for the v0.8.0 pairing (issue #393)
 - The pin advances with its mount — v0.7.1 -> v0.8.0
+- Bump version to 0.4.0
 
 ### Performance
 
