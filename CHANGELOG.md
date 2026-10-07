@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 - Fold adversary findings F1-F9 (#420) — RED evidence per row
 - Fold reviewer round 2 — vocabulary laundering, egress disclosure, mode honesty (#420)
 - Fold second-lane findings M1-M3 (#420) — scanner recall, guard test, egress set
+- #422 inc1 fold wave — parse hardening, seam shadows, record truth
 
 ### Documentation
 
@@ -17,6 +18,8 @@ All notable changes to this project will be documented in this file.
 - #385 slice (g) gateway half — SW-10 amendment + the connect-time identity note
 - Record the 2026-10-07 owner rulings — Q7/Q13/Q8 ruled, Q5 deferred on #422, F-5 reframed, issue-4 raised as #423
 - Correct fold-3's battery claim — full pytest exited 1, flake-diagnosed (#420)
+- #422 inc1 env-file autoload design record
+- Serve --data-dir locator, env-file autoload guide, allowlist drift row (#422)
 
 ### Features
 
@@ -25,6 +28,7 @@ All notable changes to this project will be documented in this file.
 - Advisory noise-bar scoring for memory proposals (#420)
 - Cross-lane reconciliation aid for two-lane refutes (#420)
 - G4 claim-discipline sweep for design records and PR bodies (#420)
+- #422 inc1 serve --data-dir locator + benchweave.env autoload
 
 ### Testing
 
