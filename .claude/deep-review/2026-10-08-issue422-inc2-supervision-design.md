@@ -27,7 +27,17 @@ behavior:
    (src/benchweave/cli/commands.py, the `serve` body after the increment-1 autoload)
    ends with `uvicorn.run(app, ...)`. uvicorn installs SIGTERM/SIGINT handlers that
    trigger graceful shutdown: stop accepting, drain connections, run the lifespan
-   shutdown above. So SIGTERM-to-idle-serve already drains and releases the hold today.
+   shutdown above. So SIGTERM-to-idle-serve already drains and releases the hold
+   today — CORRECTED (lane-1 F2 fold): true only while no connection outlives the
+   drain. uvicorn waits for connections BEFORE the lifespan shutdown,
+   `timeout_graceful_shutdown` defaults to None, and serve does not override it —
+   a single open UI SSE stream (the Events view) hangs the shutdown forever
+   today, and a second SIGTERM is a no-op. Increment 3 bounds it: serve passes an
+   explicit `timeout_graceful_shutdown` (derived with the same discipline as
+   `TimeoutStopSec`), the stop decision closes live SSE streams, and the
+   plain-stop CLI's verdict-wait and exit-wait are BOUNDED (the idle bound = the
+   join window plus the connection-close bound); L1 asserts the wall-time bound
+   R9 names.
    What does NOT exist: refusal when a run is active (a SIGTERM mid-run waits at most
    the 5 s join, then abandons the run — nothing names it, nothing audits it), the
    protective routing, the escalation audit, and every pidfile/status affordance.
@@ -231,11 +241,21 @@ verdict plus one cross-check:
 2. **identity**: if running, compare the live process's start time to
    `started_ticks`. Match → OURS. Mismatch or unobtainable-and-pid-reuse-plausible →
    NOT-OURS (stale handle: the named process is not this gateway).
-3. **cross-check vs the hold** (the truth): when `daemon_holds(db)` is true, the
-   holder body names the live holder's pid; a pidfile pid that disagrees with the
-   holder pid is a typed desync (`supervision_hold_desync:`) — `stop` signals NOTHING
+3. **cross-check vs the hold** (the truth), label-first (lane-1 F6 fold): when
+   `daemon_holds(db)` is true, consult the holder's LABEL — a non-gateway label
+   (`service-install`, `backup pid …`, `restore pid …`) means an at-rest command
+   holds a store no daemon owns: the pidfile stands on probe alone and NO desync
+   fires. A gateway-label holder whose pid disagrees with the pidfile pid is a typed
+   desync (`supervision_hold_desync:`) — `stop` signals NOTHING
    and says both numbers. When the hold is free, a NOT-OURS pidfile is stale:
    sidecars may be cleared, nothing signaled.
+   Verdict lattice, every cell defined (lane-1 F7 fold): identity MISMATCH (live
+   process, different start time) ⇒ NOT-OURS; ticks unobtainable ⇒ the hold
+   decides — hold free ⇒ UNKNOWN (refuse, name the file); hold held by a gateway
+   label whose pid equals the pidfile pid ⇒ the hold vouches: signal (the hold is
+   the truth); any other held shape ⇒ refuse. Zombies (probe and start-time both
+   succeed on an unreaped child) read OURS; the signal no-ops and the CLI's
+   bounded wait discloses it — low reach (init/systemd reap), disclosed.
 
 Acting rule (the conservative direction everywhere): signal only on OURS (+hold
 agreement when the hold is held). DEAD → clear sidecars, report "not running".
@@ -259,6 +279,11 @@ plain stop's whole job); a queued-but-unstarted run (`accepted`) is NOT idle —
 abandoning it is an interruption, and the refusal says so. Pending scheduled
 observations inside an active procedure are part of that run's monitored body — they
 are covered by the run being live, not counted separately.
+The predicate is TOCTOU-closed (lane-1 F4 fold): the stop decision FIRST sets a
+stopping flag under the run-start write gate (the gate run_start already takes; a
+start arriving after the flag refuses typed `stop_in_progress:`), THEN reads live
+states — set-then-check, so a run accepted mid-decision can never be silently
+abandoned under an `accepted` verdict; arm L13 pins the concurrent-start shape.
 
 ### 3.2 The doorbell protocol (request file + signal fast-path)
 
@@ -276,8 +301,13 @@ stop channel is a FILE plus a signal, and the daemon is the sole authority:
 3. serve polls `<dir>.stop` at a bounded cadence (≤ 1 s; an asyncio task mounted in
    the lifespan — it exists only while serving) AND (POSIX) installs a SIGTERM handler
    inside the lifespan startup (after uvicorn installs its own, capturing uvicorn's
-   handler for delegation — the handler-delegation contract in §3.4). Either trigger
-   runs the SAME decision code. **Arming is serve-command-scoped (F4 fold):** the
+   handler for delegation — the handler-delegation contract in §3.4). Either
+   trigger SCHEDULES the same decision — the signal handler (or poll task) only
+   sets an event / creates an asyncio task; the decision and the protective wait
+   run ON the loop, never inside the handler, so serving, the doorbell poll, and
+   further signals stay live for the whole commissioned window (lane-1 F12 fold —
+   the protective path run inside the handler would freeze the loop for the
+   window). **Arming is serve-command-scoped (F4 fold):** the
    doorbell, pidfile write, and handler mount are armed ONLY when the process was
    launched as the serve command — the serve CLI sets an internal arm flag before
    `uvicorn.run`; the `demo` and `evidence` compositions boot the REAL lifespan
@@ -334,11 +364,14 @@ nothing was stopped, nothing was recorded, the bench is exactly as it was.
 transition THROUGH the existing seams — there is no second way to enter protecting:
 
 1. Rewrite the request to
-   `{"status":"accepted","mode":"protective","protective_deadline_wall":"…",…}` where
-   the deadline is computed from the commissioned documents in the store — the same
-   arithmetic family CTL-10/STO-4 pin for the run window (`acceptance +
-   max_body_ms + max_protection_ms`, values from the run's binding/commissioning
-   documents, never ambient guesses). The verdict STATES the deadline it acts under;
+   `{"status":"accepted","mode":"protective","protective_deadline_wall":"…","run_ids":["…"],…}`
+   where the deadline is computed from the commissioned documents in the store —
+   the same arithmetic family CTL-10/STO-4 pin for the run window
+   (`acceptance + max_body_ms + max_protection_ms`, values from the run's
+   binding/commissioning documents, never ambient guesses). The run_ids field is
+   REQUIRED in the accepted shape (lane-1 F8 fold: the SIGKILL rung's audit row
+   cites the last verdict's run ids — without them here, rung 3 logs empty by
+   construction). The verdict STATES the deadline it acts under;
    the CLI waits to that plus a margin (the numeric authority stays in the daemon —
    A02: commissioned values, not CLI constants).
 2. For the ACTIVE (`running`/`protecting`) run: call the coordinator cancel path —
@@ -353,11 +386,23 @@ transition THROUGH the existing seams — there is no second way to enter protec
    for the CLI to journal (F1/F2 fold). The in-process cancel carries principal
    `gateway-supervision` with a typed reason riding run_changed, so the store can
    distinguish an operator REST cancel from a protective-stop cancel (F15 fold).
-3. For QUEUED (`accepted`, never-started) runs: after the active run is terminal, run
-   the EXISTING recovery sweep in-process (`_recover_interrupted_runs`-shaped: the
-   #156 queued-ghost leg — `interrupted`/`unknown`, occurrence ledger rebuilt from
-   events, zero dispatches so zero identities) with the era reason reading
-   `gateway stop: run was never started`. Reusing the recovery record shape (not
+3. For QUEUED (`accepted`, never-started) runs — the ORDERING here is load-bearing
+   (lane-1 F1 fold: the worker's `queue.get` returns already-queued jobs regardless
+   of its stopping flag, so the microsecond the active run finishes, the worker
+   picks up the next queued run and starts dispatching — a sweep running then would
+   finalize `interrupted` a run a live coordinator is dispatching, and the
+   coordinator would write a SECOND terminal record over it: the exact CTL-9
+   corruption this record exists to prevent): FIRST the worker enters a
+   don't-pick-up mode (an inc3 mechanism this record hereby REQUIRES: a pickup gate
+   that stops dequeuing new jobs while letting the active job finish), THEN cancel
+   and wait the active run terminal, THEN confirm the queue is EMPTY under the
+   gate, and only THEN run the sweep — scoped to the #156 queued-ghost leg
+   (`interrupted`/`unknown`, occurrence ledger rebuilt from events, zero dispatches
+   so zero identities) with the era reason reading `gateway stop: run was never
+   started`. The sweep's `reclaim_orphans` and `reconcile_dangling_requests` legs
+   are SKIPPED at stop time — their predicates assume a dead host and can race
+   in-flight staging requests (lane-1 F13 fold), disclosed here. Reusing the
+   recovery record shape (not
    inventing a "skipped" outcome) keeps CTL-9's vocabulary closed: a never-started
    run's honest outcome is `interrupted`. If the in-process sweep SKIPS (lattice
    admission fails — the recovery_skipped branch), the protective verdict and the
@@ -378,8 +423,12 @@ record that never lands (wedged writer past the deadline) escalates: §3.5 rung 
 POSIX: within the lifespan startup, serve captures uvicorn's installed SIGTERM handler
 and installs its own that runs the decision code: request file present → act on its
 mode; bare SIGTERM (no request file — systemd's `KillSignal`, an operator's
-`kill $PID`) → the same three-way decision on live state: idle → delegate to the
-captured uvicorn handler (graceful drain, unchanged bytes in the shutdown path);
+`kill $PID`) → the same three-way decision on live state: idle → trigger the
+graceful shutdown DIRECTLY — set the captured server's `should_exit = True`; do
+NOT re-raise into uvicorn's captured-signal replay (uvicorn 0.52.4 restores the
+pre-uvicorn handlers at context exit and re-raises the captured SIGTERM, ending
+the process by signal 15 AFTER a clean drain — failing L4's exit 0; lane-1 F3
+fold);
 run active → REFUSE (log one typed line, keep serving; systemd then waits
 `TimeoutStopSec` and SIGKILLs — see §3.6). The contract ExecStop depends on:
 *bare SIGTERM on an idle gateway produces the in-tree graceful drain and a clean
@@ -387,6 +436,10 @@ exit 0; on a busy gateway it produces a refusal, never a silent abandon.* SIGINT
 (Ctrl-C, foreground) keeps uvicorn's behavior untouched — the foreground operator's
 interrupt is today's behavior, and this record does not change the terminal session's
 stop story (the daemonization fix is `start`, not a foreground signal redesign).
+SIGHUP is UNHANDLED by design (uvicorn installs no handler; the default disposition
+terminates without drain — reachable for foreground serve on a closing terminal):
+it lands in the KILLED class, and `start`'s detached session and systemd both
+remove the exposure (lane-1 F11 fold).
 
 ### 3.5 The escalation ladder, with each rung's audit event (A07)
 
@@ -463,7 +516,11 @@ admission completes). During the window `start` polls the child's liveness
 (`proc.poll()`, the live-leg precedent in tests/cli/test_serve.py): a child dying
 before or after the pidfile → non-zero with the log tail hint, never a hung window
 and never an exit-0-over-a-dead-daemon (F8 fold; a boot failing admission after the
-pidfile — poisoned lattice — surfaces through the same liveness poll). No new HTTP
+pidfile — poisoned lattice — surfaces through the same liveness poll). Readiness
+reporting re-checks liveness at END-of-wait before exit 0 (lane-1 F5 fold: a boot
+refusing admission seconds after the window would otherwise leave start's success
+message over a dead child; the stale pidfile such a boot leaves behind is stop's
+stale-path business, disclosed). No new HTTP
 surface; no daemonizing-interpreter
 tricks: the child is the same foreground-capable `serve`, merely parented by init.
 
@@ -598,13 +655,15 @@ its expected TYPED outcome; the RED control is named once and applies per bank.
 | L3 | protective: live run → `stop --protective` | run terminal `cancelled` with the transition's safe_state; verdict `accepted`+deadline; exit 0; hold released; rows `protective_cancel`+`terminal_observed` |
 | L4 | bare SIGTERM on idle serve (no request file) — the ExecStop contract | graceful lifespan drain; exit 0; hold released; NO "did not drain" log line |
 | L5 | SIGKILL rung: protective with fault-injected wedged terminalization (stall `finalize_run` in the test daemon) | after the verdict-stated deadline: one SIGKILL; supervision row `sigkill_sent` with reason `protective_deadline_exceeded`; run left NON-terminal in the store; `stop` exits non-zero disclosing the kill |
-| L6 | stale pid: (a) pidfile names a dead pid (write the pid of an exited child); (b) identity mismatch — pidfile names a pid that is ALIVE but whose process start time differs (write a live unrelated child's pid + its start time); (c) pid alive, `started_ticks` unobtainable on the platform, hold free | (a) `not running (cleared stale sidecars)` + rows; (b) NOT-OURS verdict, NOTHING signaled, typed `supervision_stale_pid:`; (c) UNKNOWN verdict, nothing signaled, typed `supervision_pid_unknown:` |
+| L6 | stale pid: (a) pidfile names a dead pid (write the pid of an exited child); (b) identity mismatch — pidfile names a pid that is ALIVE but whose recorded start time differs (write a live unrelated child's pid + a MISMATCHED ticks value — writing the child's own start time would match and signal; lane-1 F9 fold); (c) pid alive, `started_ticks` unobtainable on the platform, hold free | (a) `not running (cleared stale sidecars)` + rows; (b) NOT-OURS verdict, NOTHING signaled, typed `supervision_stale_pid:`; (c) UNKNOWN verdict, nothing signaled, typed `supervision_pid_unknown:` |
 | L7 | reconciliation ordering (A06): store carrying a non-terminal run → boot → the sweep's `interrupted` records exist BEFORE the seam accepts any run (ordering-intercept arm over the real composition) | ordering assertion holds; a run_start arriving at readiness sees the recovered terminal state |
 | L8 | boot recovery, no human: SIGKILL a serving gateway mid-run → restart via `start` | new pidfile names the new pid; the run finalizes `interrupted`/`unknown`; gateway serves; old sidecars replaced |
 | L9 | hold desync: pidfile pid ≠ holder pid (hand-written sidecar) | typed `supervision_hold_desync:` naming both; nothing signaled |
 | L10 | `service install` render: commissioned store → unit bytes | `ExecStop` present; `TimeoutStopSec` = commissioned max + 30 s; `systemd-analyze verify` green in the CI rehearsal (obligation 9 extension); uncommissioned store → default with the disclosed comment |
 | L11 | two concurrent stops, one plain one protective, against one busy gateway (the R7 promised arm, F7 fold — named so it cannot be quietly dropped) | exactly ONE action occurs (the consumed mode); both CLIs exit with truthful reports (the loser observes the mode mismatch as a typed note) |
 | L12 | foreign-owned request file: write `<dir>.stop` and chown it to a nonexistent uid (test-side `os.chown`) | typed `supervision_stop_foreign_owner:` verdict; the request is NOT consumed; the run is untouched (F3 fold's machine check) |
+| L3b | active + queued: run A live, run B accepted → `stop --protective` (lane-1 F1's arm) | B never dispatches (the pickup gate held); B finalizes `interrupted` via the scoped sweep; exactly ONE writer ever terminalizes each run; A ends `cancelled` with its transition truth |
+| L13 | run_start concurrent with an idle plain stop (lane-1 F4's arm: the start's body in flight as the stop decision reads live states) | the start refuses typed `stop_in_progress:` (set-then-check under the write gate); NO run is abandoned under an accepted verdict |
 
 **SDK arms** (`tests/server/test_lifecycle.py`): S1 start/stop/status happy path
 (pidfile verifies, log file written, exit 0) · S2 wedge → bounded wait → SIGKILL row ·
@@ -618,7 +677,7 @@ must FAIL; (b) the identity comparison (skip the start-time check): L6(b) must F
 (never send SIGKILL): L5 must FAIL (it would hang or exit clean-lie). Restored, all
 pass.
 
-**SHIP =** all 12 gateway arms + 3 SDK arms green with typed outcomes as tabled, all
+**SHIP =** all 14 gateway arms (L1-L13 + L3b) + 3 SDK arms green with typed outcomes as tabled, all
 four RED controls red-then-green, fast lane + full battery green both repos (where
 the SDK twin lands), the systemd rehearsal extended and green. L8's determinism is
 specified, not hoped (F14 fold): the arm observes LIVE state before its SIGKILL
@@ -653,10 +712,11 @@ Scan result, MEASURED over this record at design time
 (`grep -oiw <kw> <record> | wc -l`, the legend's one occurrence per keyword
 excluded): 1: 1 · 2: 1 · 3: 7 · 4: 0 · 5: 0 · 6: 0 · 7: 16 · 8: 7.
 (F11 fold, disclosure: the pre-fold draft's count for keyword 7 did not reproduce
-under the stated method — 17, not 16. This record has since been AMENDED by the
-refute fold (§12), so its counts moved again by construction; increment 3's build
+under the stated method — 17, not 16. FINAL MEASURE at commit time, post both
+fold waves: 1: 1 · 2: 2 · 3: 7 · 4: 0 · 5: 0 · 6: 0 · 7: 17 · 8: 7 —
+first-match-wins fires on keyword 3, Tier 3 unchanged. Increment 3's build
 record re-measures and states its OWN scan over its real diff, which is the number
-that gates. First-match-wins ordering was and remains unaffected.)
+that gates.)
 First-match-wins: keyword 3 fires → Tier 3 (keywords 7 and 8 fire too). Expected
 increment-3 code diff: all of 3/7/8 present (spawn, reconciliation, protective) plus
 1 if worker.py moves; the counts are re-measured by increment 3's own build record
@@ -777,3 +837,38 @@ Lane 2's nulls worth carrying into inc3 unchanged: the SDK's atomic-write
 discipline survives SIGKILL mid-write (torn parts inert); restore-vs-stop fd
 interactions are structurally moot (sibling placement + hold refusal); L5's fault
 injection fits the established test-child pattern (Store's kill-window seams).
+
+**Lane 1 (code-claim audit) — folded as this branch's second commit (the owner's
+late-findings rule).** 13 findings (1 HIGH, 4 MEDIUM, 3 LOW-MED, 5 NIT), every
+§0 file:line premise verified accurate, dispositions:
+
+- F1 (HIGH) FIXED: §3.3's protective path reordered — worker pickup-gate (a
+  REQUIRED inc3 mechanism: stop dequeuing, let the active job finish) → cancel +
+  wait-terminal → confirmed queue-empty → sweep scoped to the #156 queued-ghost
+  leg only (reclaim/reconcile legs skipped at stop time, F13) → drain/release.
+  The dual-writer terminalization race (worker picks up a queued run the sweep is
+  finalizing) is the CTL-9 corruption class; arm L3b added.
+- F2 (MEDIUM-HIGH) FIXED: §0.2 corrected (the drain hangs on an open SSE stream
+  today — `timeout_graceful_shutdown` None); inc3 passes an explicit timeout,
+  closes live SSE at the stop decision, bounds the plain-stop waits; L1 carries
+  the wall-time assert R9 names.
+- F3 (MEDIUM) FIXED: §3.4 sets `should_exit` directly — uvicorn's captured-signal
+  replay would exit by signal 15 after a clean drain, failing L4's exit 0.
+- F4 (MEDIUM) FIXED: §3.1 TOCTOU-closed (set-then-check under the run-start write
+  gate, typed `stop_in_progress:` refusal); arm L13 added.
+- F5 (MEDIUM) FIXED: §4.1 end-of-wait liveness re-check before readiness exit 0.
+- F6/F7 FIXED: §2.4 label-first hold cross-check (no false desync on at-rest
+  holders) + the verdict lattice fully defined (ticks-unobtainable defers to the
+  hold; hold-agreement vouches; zombies disclosed).
+- F8 FIXED: protective accepted verdict carries run_ids (rung 3's audit source).
+- F9 FIXED: L6(b)'s fixture writes a MISMATCHED ticks value.
+- F10 FIXED: §8 re-measured at commit time (final numbers in place).
+- F11 FIXED: SIGHUP named — unhandled by design, lands in the KILLED class.
+- F12 FIXED: §3.2 — the trigger schedules; decision and protective wait run on
+  the loop, never in the handler.
+- F13 FIXED: scoped sweep (F1 above).
+
+Lane 1's nulls carried forward: no cancel-deadlock shape exists; no torn verdict
+reads; SIGTERM capture-then-replace is temporally sound; projection states are
+complete outside F4's (now-closed) window; the §0 template and contract quotes
+byte-verified. SHIP count is now 14 gateway arms (L1-L13 + L3b) + 3 SDK arms.
