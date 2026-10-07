@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "benchweave"
-version = "0.1.0"
+version = "0.4.0"
 description = "Local test-bench gateway for reusable instrument and DUT plugins."
 # NOTE: this file's repo-relative links would render broken on PyPI (unpublished today).
 readme = "docs/project-index.md"
