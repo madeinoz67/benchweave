@@ -7,6 +7,8 @@ All notable changes to this project will be documented in this file.
 ### Documentation
 
 - The gateway line's release blast radius and tag discipline
+- Issue #385 device-addition surface — bind connection_key to a physical endpoint
+- #385 slice (g) gateway half — SW-10 amendment + the connect-time identity note
 ## [0.4.0] - 2026-10-07
 
 ### Bug Fixes
