@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Miscellaneous
+
+- Refresh uv.lock for 0.4.0
 ## [0.4.0] - 2026-10-07
 
 ### Bug Fixes
