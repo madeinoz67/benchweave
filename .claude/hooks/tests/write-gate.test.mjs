@@ -35,11 +35,23 @@ test("branch-new (untracked) file is exempt: native Write allowed", () => {
   }
 });
 
-test("tracked source in the tracked primary checkout is still denied", () => {
+test("tracked source: denied in the primary checkout, allowed in a linked worktree", () => {
   const tracked = join(ROOT, ".claude", "hooks", "gortex-write-gate.mjs");
   const r = runHook(tracked);
-  assert.notEqual(r.status, 0, "expected DENY for a tracked file in the gortex-tracked checkout");
-  assert.match(r.stderr || "", /GortexWriteGate/);
+  // The gate exempts linked worktrees by design (git-dir differs from common dir —
+  // the routing card's overlay row). Pin BOTH directions so the suite is honest in
+  // a .wt/ lane AND in the primary/CI clone, instead of failing environmentally.
+  const g = (args) => spawnSync("git", ["-C", ROOT, ...args], { encoding: "utf8" });
+  const gitDir = g(["rev-parse", "--git-dir"])?.stdout?.trim();
+  const commonDir = g(["rev-parse", "--git-common-dir"])?.stdout?.trim();
+  const isLinkedWorktree = Boolean(gitDir && commonDir && gitDir !== commonDir);
+  if (isLinkedWorktree) {
+    assert.equal(r.status, 0, "expected ALLOW for a tracked file inside a linked worktree");
+    assert.doesNotMatch(r.stderr || "", /GortexWriteGate/);
+  } else {
+    assert.notEqual(r.status, 0, "expected DENY for a tracked file in the gortex-tracked checkout");
+    assert.match(r.stderr || "", /GortexWriteGate/);
+  }
 });
 
 test("files outside the repo are allowed", () => {
