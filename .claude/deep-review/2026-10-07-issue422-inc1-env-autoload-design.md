@@ -105,7 +105,11 @@ The quota-key subset is DERIVED, not re-spelled: the allowlist imports
 `app_entry._QUOTA_ENV_KEYS`'s env column (it is a module-level tuple) so the two
 cannot drift silently; the hand-named members are pinned by a test that fails when a
 new `BENCHWEAVE_*` read appears in `app_entry`/serve without joining the allowlist or
-the documented exclusion set.
+the documented exclusion set. Scope limit (fold correction, gw2 F4): the inventory
+scan sees literal `os.environ.get("...")`/`os.environ["..."]`/`envvar=` spellings
+only — an indirectly-read key (a constants idiom routing through a variable) is
+invisible to it; the known indirect reads ride the imported quota tuple by
+construction, and a NEW indirect read is a review-lane catch, not a scan catch.
 
 **Excluded keys — each refused with a reason in the message if present in the file:**
 
@@ -135,6 +139,21 @@ commissioned per bench, never ambient config).
   Windows-edited file must not grow a `\r` into the secret). A BOM corrupts the first
   key into an invalid key name and refuses (consistent with the exact-byte decoder's
   BOM refusal posture, CON-1's provider-doc precedent).
+- Fold R1: a value whose first character is a space/tab after the `=`
+  refuses (`KEY= "v"` / `KEY= v` are the `KEY = value` typo class wearing a
+  different mask). NOT systemd-style trimming — trimming would re-open the
+  silent-corruption class.
+- Fold R3: any C0 control character (0x00-0x1F) in a value refuses,
+  validated before any `os.environ` write — allowlist value domains
+  (paths, urlsafe tokens, ints, enums) never carry controls.
+- Fold R4: lines split on `\r\n` / `\r` / `\n` ONLY (reading with
+  `newline=""`); U+2028/NEL are not line ends here and stay in the value
+  verbatim (`str.splitlines()` would truncate on them).
+- Fold R5: parse + validate the WHOLE file, then apply — a refused file
+  leaves zero `os.environ` residue (two-phase; `parse_env_file` +
+  `apply_env_entries`, with `load_env_file` the composed §2.7 contract).
+- Fold R9: a duplicate key in one file refuses naming the key and both
+  line numbers — an editing mistake must not silently keep the old value.
 - Malformed anything (no `=`, bad KEY chars, unknown KEY, mismatched quotes,
   set-but-empty value `KEY=`) → **fail loud**: typed refusal, prefix `env_file:`,
   naming path, line number, key (when parseable) and the problem class — never the
@@ -168,15 +187,19 @@ record:
   (3) with no file in the DB's parent, behavior is byte-identical to today (no note
   needed — nothing new was promised; the note fires only where the operator named a
   data-dir).
-- Permissions: POSIX — refuse if `(st.st_mode & 0o177) != 0` (group/other any access)
-  with `env_file:` naming the octal mode. The file carries a live secret; ssh's
+- Permissions: POSIX — refuse if `(st.st_mode & 0o077) != 0` (group/other
+  any access; fold R2 corrected the mask from 0o177, which wrongly counted
+  the owner-execute bit — a 0700 file is owner-only and loads) with
+  `env_file:` naming the octal mode. Residual, disclosed: bits above 0o777
+  (setuid/setgid/sticky) are unexamined. The file carries a live secret; ssh's
   posture, not a warning. Windows (`sys.platform == "win32"`): no mode check (mode
   bits do not reach the ACL; setup enforces owner-only at write time) — W1 residual,
   CI-corroborated on the Windows leg.
 - Logging: exactly one stderr line on success —
   `benchweave: loaded <path> (set BENCHWEAVE_SECRET, …)` — key NAMES only, never
-  values; keys already present in the environment are named as `(already set: …)` or
-  omitted, builder's choice, pinned by test A14 either way.
+  values; keys already present in the environment are OMITTED from the line
+  (the applied-keys-only choice, pinned by A14: the line names key NAMES and
+  the path, and never the secret value).
 
 ### 2.7 New module (gateway)
 
@@ -252,6 +275,9 @@ DEFERRED (each named, none silent):
   graduates into `docs/internal/invariants.md`
 - Windows ACL verification of the loaded file (W1: land, let the Windows CI leg
   corroborate the skip path)
+- increment 2's record must pin "stderr prose is not an interface" (critic
+  Q5): the loaded/note stderr lines are human-facing; `doctor` re-derives
+  state from inputs, never parses stderr
 
 ## 5. Precedent (what this extends, none of it invented)
 
@@ -341,7 +367,9 @@ unknown · S4 malformed line refuses with the same prefix · S5 perms refusal tw
 S6 no flag → no file reads, behavior unchanged.
 
 **Acceptance rule (pre-committed, before any code exists):** all 14 gateway arms +
-E2E + 6 SDK arms pass, counts read from `--junitxml` attributes or exit codes (never
+E2E + 6 SDK arms pass (fold correction, gw1 F7b: the arithmetic is 21 arms —
+15 gateway lettered arms counting A3b, + E2E, + 6 SDK arms = 22 collected
+arm count; the original "21" undercounted the lettered set), counts read from `--junitxml` attributes or exit codes (never
 an output-filter summary). RED control: with the autoload call bypassed at exactly
 one call site per repo, A1+A3+E2E (gateway) and S1 (SDK) must FAIL with typed
 failures; restored, all pass. SHIP = 21/21 green + 4/4 control arms red-then-green,
@@ -406,6 +434,16 @@ ones already public.
 - **Windows path/perm behavior.** Perms check skipped (W1, CI-corroborated);
   universal newlines handle CRLF (A12); relative `--data-dir` resolved (A9's
   resolve() comparison). Falsifier: the Windows CI leg green post-merge.
+- **Hand-extended service keys live in a never-backed-up file (fold row,
+  gw2 F1).** The credential file is deliberately excluded from backups; an
+  operator who hand-adds allowlisted service keys (quota ceilings,
+  `BENCHWEAVE_ENV=production`) loses them across a restore. Consequences:
+  quota keys vanish → runs that required them refuse loudly at
+  `build_run` (the R16 refusal — loud, not silent); `BENCHWEAVE_ENV`
+  absent → the gateway silently boots in development posture. The restore
+  story already requires re-placing the secret; hand-added keys follow it.
+  Falsifier: none in this increment — increment 2's record owns the
+  doctor surface that re-derives and reports this.
 - **R7 Fresh-store-on-typo.** The exists-guard fires only on the NEW locators; the
   legacy `BENCHWEAVE_DB` path keeps today's create-on-typo behavior because
   integration suites boot fresh stores via `build()` against chosen DB paths —

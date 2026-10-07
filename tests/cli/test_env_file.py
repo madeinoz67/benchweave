@@ -89,12 +89,14 @@ def _serve_with_build_probe(
     return result, built["value"], snapshot.get("env")
 
 
-def _legacy_data_dir_with_env_file(tmp_path: Path, body: str) -> Path:
+def _legacy_data_dir_with_env_file(
+    tmp_path: Path, body: str, name: str = "legacy"
+) -> Path:
     """A data dir reached through the legacy ``BENCHWEAVE_DB`` locator,
     whose credential file carries ``body`` (0600, as setup leaves it). The
     store file is NOT created: the legacy locator guards nothing by design
     (risk R7) and build is parked in every arm that uses this helper."""
-    data_dir = tmp_path / "legacy"
+    data_dir = tmp_path / name
     data_dir.mkdir()
     path = data_dir / atrest.CREDENTIAL_FILE
     path.write_text(body, encoding="utf-8")
@@ -399,3 +401,205 @@ def test_the_inventory_scan_discriminates_a_planted_key() -> None:
     arm reds on a future un-allowlisted key instead of passing vacuously."""
     planted = _env_key_reads('x = os.environ.get("BENCHWEAVE_PLANTED_THING")')
     assert planted == {"BENCHWEAVE_PLANTED_THING"}
+
+
+# --- fold wave (review battery): parse-hardening rows R1-R12 --------------------
+
+
+def test_r1_leading_whitespace_after_the_equals_refuses(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, clean_benchweave_env: None
+) -> None:
+    """Fold R1 (triple-confirmed): a value whose first character is a
+    space/tab after the ``=`` is the ``KEY = value`` typo class wearing a
+    different mask — refuse, symmetric with the key-pattern refusal. NOT
+    systemd-style trimming: trimming would re-open the silent-corruption
+    class (a value that quietly means something else than written)."""
+    twin_detail = 'BENCHWEAVE_ENV: value starts with whitespace after "="'
+    for name, body in (
+        ("quoted", 'BENCHWEAVE_ENV= "production"\n'),
+        ("bare", "BENCHWEAVE_ENV= production\n"),
+    ):
+        data_dir = _legacy_data_dir_with_env_file(tmp_path, body, name=name)
+        monkeypatch.setenv("BENCHWEAVE_DB", str(data_dir / atrest.DB_NAME))
+        result, built, _ = _serve_with_build_probe(monkeypatch, ["serve"])
+        assert result.exit_code != 0, _combined(result)
+        combined = _combined(result)
+        # The twin literal — identical bytes in the SDK suite's R1 arm:
+        assert (
+            f"env_file: {data_dir / atrest.CREDENTIAL_FILE}: line 1:"
+            f" {twin_detail}" in combined
+        )
+        assert not built
+    # The healthy quoted form still loads (A12 pins the CRLF half).
+    data_dir = _legacy_data_dir_with_env_file(
+        tmp_path, 'BENCHWEAVE_ENV="production"\n', name="loads"
+    )
+    monkeypatch.setenv("BENCHWEAVE_DB", str(data_dir / atrest.DB_NAME))
+    result, built, env = _serve_with_build_probe(monkeypatch, ["serve"])
+    assert result.exit_code == 0, _combined(result)
+    assert built
+    assert env is not None and env.get("BENCHWEAVE_ENV") == "production"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX mode bits; W1 residual")
+def test_r2_owner_only_mode_applies(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, clean_benchweave_env: None
+) -> None:
+    """Fold R2: the perms mask is 0o077 (group/other), not 0o177 — a file
+    mode 0700 is owner-only access and LOADS; the owner-execute bit is not
+    group access. A11's 0644 refusal stands unchanged."""
+    data_dir = _legacy_data_dir_with_env_file(tmp_path, "BENCHWEAVE_ENV=production\n")
+    (data_dir / atrest.CREDENTIAL_FILE).chmod(0o700)
+    monkeypatch.setenv("BENCHWEAVE_DB", str(data_dir / atrest.DB_NAME))
+    result, built, env = _serve_with_build_probe(monkeypatch, ["serve"])
+    assert result.exit_code == 0, _combined(result)
+    assert built
+    assert env is not None and env.get("BENCHWEAVE_ENV") == "production"
+
+
+def test_r3_control_characters_in_a_value_refuse(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, clean_benchweave_env: None
+) -> None:
+    """Fold R3: allowlist value domains (paths, urlsafe tokens, ints,
+    enums) never carry C0 controls — any 0x00-0x1F in a value refuses,
+    validated before any os.environ write."""
+    data_dir = _legacy_data_dir_with_env_file(tmp_path, "BENCHWEAVE_ENV=pro\x01duction\n")
+    monkeypatch.setenv("BENCHWEAVE_DB", str(data_dir / atrest.DB_NAME))
+    result, built, _ = _serve_with_build_probe(monkeypatch, ["serve"])
+    assert result.exit_code != 0
+    combined = _combined(result)
+    # The twin literal — identical bytes in the SDK suite's R3 arm:
+    assert (
+        f"env_file: {data_dir / atrest.CREDENTIAL_FILE}: line 1:"
+        " BENCHWEAVE_ENV: value contains a control character (0x01)" in combined
+    )
+    assert not built
+
+
+def test_r4_unicode_line_separators_stay_in_the_value(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, clean_benchweave_env: None
+) -> None:
+    """Fold R4: lines split on \r\n / \r / \n ONLY — U+2028 and NEL are not
+    line ends here (str.splitlines() would split on them and truncate the
+    value); they are not C0, so they stay in the applied value verbatim."""
+    data_dir = _legacy_data_dir_with_env_file(
+        tmp_path, "BENCHWEAVE_ENV=pro duction\n"
+    )
+    monkeypatch.setenv("BENCHWEAVE_DB", str(data_dir / atrest.DB_NAME))
+    result, built, env = _serve_with_build_probe(monkeypatch, ["serve"])
+    assert result.exit_code == 0, _combined(result)
+    assert built
+    assert env is not None
+    assert env.get("BENCHWEAVE_ENV") == "pro duction"
+
+
+def test_r5_a_refused_file_leaves_the_environment_untouched(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, clean_benchweave_env: None
+) -> None:
+    """Fold R5: parse + validate the WHOLE file before applying — a good
+    line followed by a bad one refuses with zero os.environ residue."""
+    data_dir = _legacy_data_dir_with_env_file(
+        tmp_path, "BENCHWEAVE_UI=0\nBENCHWEAVE_ENV\n"
+    )
+    monkeypatch.setenv("BENCHWEAVE_DB", str(data_dir / atrest.DB_NAME))
+    result, built, _ = _serve_with_build_probe(monkeypatch, ["serve"])
+    assert result.exit_code != 0
+    assert "env_file:" in _combined(result)
+    assert not built
+    assert "BENCHWEAVE_UI" not in os.environ, (
+        "a refused file must leave no residue in the process environment"
+    )
+
+
+def test_r6_empty_process_env_shadowing_the_file_refuses(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, clean_benchweave_env: None
+) -> None:
+    """Fold R6: an allowlisted key present-but-EMPTY in the process env
+    shadows the file's real value with no effect (setdefault keeps ""),
+    silently disarming e.g. the production posture — refuse at the serve
+    seam, naming the key and the file that holds the real value."""
+    data_dir = tmp_path / "gateway"
+    atrest.setup(data_dir)
+    with (data_dir / atrest.CREDENTIAL_FILE).open("a", encoding="utf-8") as handle:
+        handle.write("BENCHWEAVE_ENV=production\n")
+    monkeypatch.setenv("BENCHWEAVE_ENV", "")
+    result, built, _ = _serve_with_build_probe(monkeypatch, ["serve", "--data-dir", str(data_dir)])
+    assert result.exit_code != 0
+    combined = _combined(result)
+    assert "env_file:" in combined
+    assert "BENCHWEAVE_ENV is set but empty in the process environment" in combined
+    assert str(data_dir / atrest.CREDENTIAL_FILE) in combined
+    assert not built
+
+
+def test_r7_empty_benchweave_db_refuses_before_locator_logic(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, clean_benchweave_env: None
+) -> None:
+    """Fold R7: ``BENCHWEAVE_DB=`` (set but empty) refuses typed BEFORE
+    any conflict logic — Path("") resolves to the cwd, which would
+    fabricate a misleading serve_locator_conflict against an unrelated
+    data-dir."""
+    named = tmp_path / "named"
+    named.mkdir()
+    monkeypatch.setenv("BENCHWEAVE_DB", "")
+    result, built, _ = _serve_with_build_probe(monkeypatch, ["serve", "--data-dir", str(named)])
+    assert result.exit_code != 0
+    combined = _combined(result)
+    assert "BENCHWEAVE_DB is set but empty" in combined
+    assert "serve_locator_conflict:" not in combined
+    assert not built
+
+
+def test_r8_agreeing_nonexistent_locators_refuse_naming_setup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, clean_benchweave_env: None
+) -> None:
+    """Fold R8: the exists-guard covers EVERY named-locator boot — an
+    agreeing-but-nonexistent BENCHWEAVE_DB used to bypass the A10 guard
+    and reach build(), which would silently create a fresh store."""
+    nowhere = tmp_path / "nowhere"
+    monkeypatch.setenv("BENCHWEAVE_DB", str(nowhere / atrest.DB_NAME))
+    result, built, _ = _serve_with_build_probe(monkeypatch, ["serve", "--data-dir", str(nowhere)])
+    assert result.exit_code != 0
+    combined = _combined(result)
+    assert "benchweave setup" in combined
+    assert not built
+    assert not (nowhere / atrest.DB_NAME).exists(), "no store file may be created"
+
+
+def test_r9_duplicate_key_refuses_naming_both_lines(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, clean_benchweave_env: None
+) -> None:
+    """Fold R9 (twin): a duplicate key in one file is an editing mistake —
+    refuse naming the key and both line numbers, never silently keep the
+    first value."""
+    data_dir = _legacy_data_dir_with_env_file(
+        tmp_path, "BENCHWEAVE_ENV=development\nBENCHWEAVE_ENV=production\n"
+    )
+    monkeypatch.setenv("BENCHWEAVE_DB", str(data_dir / atrest.DB_NAME))
+    result, built, _ = _serve_with_build_probe(monkeypatch, ["serve"])
+    assert result.exit_code != 0
+    combined = _combined(result)
+    # The twin literal — identical bytes in the SDK suite's R9 arm:
+    assert (
+        f"env_file: {data_dir / atrest.CREDENTIAL_FILE}: line 2:"
+        " BENCHWEAVE_ENV appears twice (first at line 1) — one value per key"
+        in combined
+    )
+    assert not built
+
+
+def test_r12_missing_file_note_fires_on_the_named_locator_with_a_store(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, clean_benchweave_env: None
+) -> None:
+    """Fold R12: the POSITIVE half of the missing-file note — a named
+    locator with a real store and no credential file prints the note and
+    still reaches build (the note never blocks)."""
+    data_dir = tmp_path / "gateway"
+    atrest.setup(data_dir)
+    (data_dir / atrest.CREDENTIAL_FILE).unlink()
+    result, built, _ = _serve_with_build_probe(monkeypatch, ["serve", "--data-dir", str(data_dir)])
+    assert result.exit_code == 0, _combined(result)
+    assert built
+    combined = _combined(result)
+    assert "no env file at" in combined
+    assert str(data_dir / atrest.CREDENTIAL_FILE) in combined

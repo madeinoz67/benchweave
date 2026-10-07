@@ -51,7 +51,8 @@ from benchweave.cli.demo import View
 from benchweave.cli.env_file import (
     ENV_FILE_EXCLUDED_KEYS,
     EnvFileError,
-    load_env_file,
+    apply_env_entries,
+    parse_env_file,
     serve_env_file_keys,
 )
 from benchweave.cli.output import Renderer, emit
@@ -793,6 +794,15 @@ def serve(host: str, port: int, data_dir: Path | None) -> None:
     # when no file is present). This runs BEFORE build() and touches no
     # disk: a refused boot leaves nothing behind.
     db_env = os.environ.get("BENCHWEAVE_DB")
+    if db_env is not None and not db_env.strip():
+        # Fold R7: an empty BENCHWEAVE_DB would fabricate a conflict path
+        # (Path("") resolves to the cwd) — the binding.py set-but-empty
+        # posture, refused BEFORE any locator logic.
+        raise click.ClickException(
+            "serve_locator: BENCHWEAVE_DB is set but empty or whitespace-only"
+            f" ({db_env!r}); unset it to use --data-dir /"
+            " BENCHWEAVE_DATA_DIR, or set it to a store path"
+        )
     named_data_dir = data_dir is not None
     if data_dir is None:
         if db_env is None:
@@ -813,20 +823,24 @@ def serve(host: str, port: int, data_dir: Path | None) -> None:
                 f" names {data_dir.resolve()} but BENCHWEAVE_DB names"
                 f" {db_parent} — pass one locator, not two that disagree"
             )
-    elif "BENCHWEAVE_DB" not in os.environ:
-        derived = data_dir / atrest.DB_NAME
-        if not derived.exists():
-            # A typo'd data-dir must not silently create a fresh store
-            # (build() would) — the guard fires only on the NEW locators;
-            # the legacy BENCHWEAVE_DB path keeps today's create-on-typo
-            # behavior because the integration suites boot fresh stores
-            # through it (risk R7, disclosed in the design record).
+    if named_data_dir:
+        # Fold R8: the exists-guard covers EVERY named-locator boot — the
+        # derived path AND an agreeing BENCHWEAVE_DB (which used to bypass
+        # the guard and reach build(), which would silently create a fresh
+        # store). The legacy bare-BENCHWEAVE_DB locator keeps today's
+        # create-on-typo behavior (risk R7 in the record — the integration
+        # suites boot fresh stores through it).
+        if "BENCHWEAVE_DB" in os.environ:
+            effective_db = Path(os.environ["BENCHWEAVE_DB"])
+        else:
+            effective_db = data_dir / atrest.DB_NAME
+            os.environ["BENCHWEAVE_DB"] = str(effective_db)
+        if not effective_db.exists():
             raise click.ClickException(
-                f"no store at {derived} — run `benchweave setup --data-dir"
+                f"no store at {effective_db} — run `benchweave setup --data-dir"
                 f" {data_dir}` first (a data-dir with no {atrest.DB_NAME}"
                 " must not silently create a fresh store)"
             )
-        os.environ["BENCHWEAVE_DB"] = str(derived)
     env_path = data_dir / atrest.CREDENTIAL_FILE
     if not env_path.is_file():
         if named_data_dir:
@@ -839,11 +853,24 @@ def serve(host: str, port: int, data_dir: Path | None) -> None:
             )
     else:
         try:
-            applied = load_env_file(
+            entries = parse_env_file(
                 env_path, serve_env_file_keys(), excluded=ENV_FILE_EXCLUDED_KEYS
             )
         except EnvFileError as error:
             raise click.ClickException(str(error)) from error
+        # Fold R6: a present-but-EMPTY process-env value shadows the file's
+        # real value with no effect (setdefault keeps ""), silently
+        # disarming e.g. the production posture — refuse at the seam,
+        # BEFORE applying, so a refusal leaves no partial residue.
+        for _lineno, key, _value in entries:
+            current = os.environ.get(key)
+            if current is not None and not current.strip():
+                raise click.ClickException(
+                    f"env_file: {env_path}: {key} is set but empty in the"
+                    " process environment and shadows the value this file"
+                    " carries — unset it or set it to a real value"
+                )
+        applied = apply_env_entries(entries)
         if applied:
             # Key NAMES only, never values (the file carries a live secret).
             click.echo(

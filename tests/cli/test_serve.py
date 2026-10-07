@@ -611,6 +611,8 @@ def test_a1_serve_data_dir_autoloads_credential_file_and_derives_db(
     secret plus ``BENCHWEAVE_ENV=production``; the process env is scrubbed;
     ``serve --data-dir`` → build received the FILE's secret and the DERIVED
     ``<data-dir>/state.sqlite``."""
+    from benchweave.cli import atrest
+
     data_dir, file_secret = _setup_data_dir_with_env_file(tmp_path)
     result, env = _serve_with_build_snapshot(
         monkeypatch, ["serve", "--data-dir", str(data_dir)]
@@ -618,7 +620,7 @@ def test_a1_serve_data_dir_autoloads_credential_file_and_derives_db(
     assert result.exit_code == 0, _combined(result)
     assert env is not None, "build must be called"
     assert env["BENCHWEAVE_SECRET"] == file_secret
-    assert env["BENCHWEAVE_DB"] == str(data_dir / "state.sqlite")
+    assert env["BENCHWEAVE_DB"] == str(data_dir / atrest.DB_NAME)
     assert env.get("BENCHWEAVE_ENV") == "production"
 
 
