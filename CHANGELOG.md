@@ -327,6 +327,8 @@ All notable changes to this project will be documented in this file.
 - The A3 harness's reopen moves the host baud (the fold-tip regression) + the ordering pin (issue #393)
 - Prime the interpreter and the pinned pytest before the adc job's offline run (issue #393)
 - Script the with-ui scaffold's drain probe (issue #407 wave 4)
+- --bucket mode verifies its own docs tree, not the parent's website
+- Versioned-assembly fold — review lanes A/B, 2 HIGH + 4 MEDIUM
 
 ### Documentation
 
@@ -662,6 +664,8 @@ All notable changes to this project will be documented in this file.
 - Issue #408 release-pipeline hardening — the design record
 - The declared-pin amendments (obligation 7, CI map, family, order rule)
 - Addendum 2 — m1's runtime failure modes (F7) and the open-world class's silent-pass correction (F4)
+- Issue #381 versioned-docs port design record
+- Versioned-docs landing — readiness condition 1, cut procedure, taxonomy
 
 ### Features
 
@@ -899,6 +903,8 @@ All notable changes to this project will be documented in this file.
 - The adc v2 firmware, wire spec, and CI lane (issue #393)
 - Drop the in-tree reference firmware — the plugin repository owns it (issue #393)
 - The declared-pin lane for the packages/sdk mount
+- Versioned-docs port — two-regime assembly + registration checks (issue #381)
+- Selector scaffold + gotoVersion; selector family in stamp_website
 
 ### Hardware Evidence
 
