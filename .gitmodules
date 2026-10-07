@@ -7,4 +7,4 @@
 	# branch SHA pin through the origin/main merge (main's tag pin
 	# v0.8.0 names the pre-#407 template era; the branch-posture SHA
 	# pin reads exit 0 with the checker's non-tag warning).
-	pin = 270feb889dcc3116f7a4a9029692dace381fe215
+	pin = v0.9.0
