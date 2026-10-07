@@ -306,11 +306,17 @@ Each has a recommendation; rulings stay with the owner.
 
 **Recommend 2 as default, 1 as fallback** when no host is running. The fork's two-process SQLite sharing is the thing to avoid; one session owner per device is the safety property.
 
+**Deferred 2026-10-07 (owner):** ruling waits on the serve-surface supervision model (#422 increment 2), which standardises serve/daemon lifecycle across both CLIs — deciding the stdio-proxy shape before that record exists risks designing it twice. Interim: the disclosed MCP-over-HTTP-at-serve posture stands.
+
 **Q6. Client JS budget.** Proposed: htmx + SSE extension + uPlot (single ~50 KB file, no build step / no tree-shake) + host script ≤ 60 KiB gzip. Confirm or set another figure.
 
 **Q7. Capture export format.** CSV (fork) vs the manifest's primary artifact plus a CSV rendering. Recommend the latter; CSV is a view, not the record.
 
+**Ruled 2026-10-07 (owner):** option 2 — the manifest's primary artifact is the record; CSV is an export rendering under `renderings/`.
+
 **Q8. Measurement profiles in the interim.** The ADC needs gain/offset and computed channels to be useful. Options: (1) block ADC migration on the upstream contract, (2) let the ADC ship them as a plugin-side rendering in the dataset it emits, clearly non-standard. Recommend 2 with a sunset tied to the upstream issue.
+
+**Ruled 2026-10-07 (owner):** option 2 — gain/offset and computed channels are plugin-side dataset content, clearly labelled non-standard, with the sunset tied to the upstream issue (raised 2026-10-07 as #423).
 
 **Q9. Windows serial.** The fork is Linux-first (`/dev/ttyACM*`, CH343). Confirm Windows is in scope for v1 or defer to v1.1.
 
@@ -346,6 +352,8 @@ Each has a recommendation; rulings stay with the owner.
 
 **Recommend 2.** Operator captures are deliberate and should not disappear. Agent-driven captures are high-volume and mostly exploratory, so they age out unless someone pins them. A global oldest-first quota (3) can delete an operator's evidence to make room for an agent's scratch runs.
 
+**Ruled 2026-10-07 (owner):** option 2 — ui/rest captures kept until deleted; mcp captures kept 30 days unless pinned; warn at 80% of the byte quota. These are the *defaults* when no custom rule matches: per-SW-55 rules (by source and by project, keys composable, unset key = wildcard) are additive on top, and pinned and in-flight captures are never pruned whatever a rule says.
+
 ## 9. Suggested increments
 
 Four increments, each shippable and each gated on the one before. Mock transport first, hardware second, same order the gateway took.
@@ -354,8 +362,8 @@ Four increments, each shippable and each gated on the one before. Mock transport
 | --- | --- | --- | --- |
 | I1 | Skeleton over `MockHost`: app factory, seam, REST, in-process MCP, HTMX shell with tokens, banner, device page with readings | SW-01–13, SW-20–21, SW-27, SW-30–32, SW-35, NFR-S1–S6, NFR-S8, NFR-P1–P3 | Generated `--with-ui` starter plugin serves, reads, and answers MCP `host_info`/`device_get`; an agent scaffolds a plugin and gets plugin_check and ui_check results over MCP; security refusal tests green |
 | I2 | Presentation and control: manifest rendering, staged/apply, presets, plot wrapper, parity suite | SW-22–26, SW-29, SW-36–39, SW-40–43, NFR-S9, NFR-Q1–Q2 | Nine baseline scenarios pass structural parity; axe clean in both themes; agent completes patch, reload and test on the mock-transport starter; Q2, Q3, Q10 and Q11 ruled |
-| I3 | Hardware and capture: serial provider backend from the fork, discovery, capture via SDK writer, SQLite index, SSE live view, MCP capture tools | SW-33–34, SW-49–51, SW-54–59, SW-60–62, NFR-O1–O3, NFR-Q3 | `adc_6ch_12bit` captures at full rate for 10 minutes with flat memory; fork's `host.py` and `mcp_server.py` deleted in a migration PR; a retention dry run and prune match the configured rules, with every removal in the retention log; Q1, Q5, Q7, Q12 and Q13 ruled; plot spike criteria met. *(Amended 2026-10-06 for issue #385: a serial serve with no device binding and no `--device` flag starts **binding-pending** — the listener binds and the pages render their layout, device operations answer `not_ready` with `standalone_binding_pending:`, and `device_discover` still serves candidates so the operator can pick one (SW-73's degraded-load posture generalised). The `--device` flag is an explicit ephemeral override, not a requirement: it routes when given and is disclosed as `binding_source: flag`; the recorded binding routes otherwise.)*
-| I4 | Analysis and reporting: fork Analyse features made generic, HTML report | SW-52–53 | Fork's `app.js` deleted; second (non-ADC) adapter runs unmodified; Q8 ruled |
+| I3 | Hardware and capture: serial provider backend from the fork, discovery, capture via SDK writer, SQLite index, SSE live view, MCP capture tools | SW-33–34, SW-49–51, SW-54–59, SW-60–62, NFR-O1–O3, NFR-Q3 | `adc_6ch_12bit` captures at full rate for 10 minutes with flat memory; fork's `host.py` and `mcp_server.py` deleted in a migration PR; a retention dry run and prune match the configured rules, with every removal in the retention log; Q1, Q5, Q7, Q12 and Q13 ruled; plot spike criteria met. *(Amended 2026-10-06 for issue #385: a serial serve with no device binding and no `--device` flag starts **binding-pending** — the listener binds and the pages render their layout, device operations answer `not_ready` with `standalone_binding_pending:`, and `device_discover` still serves candidates so the operator can pick one (SW-73's degraded-load posture generalised). The `--device` flag is an explicit ephemeral override, not a requirement: it routes when given and is disclosed as `binding_source: flag`; the recorded binding routes otherwise.)* *(Amended 2026-10-07, owner rulings: Q7 and Q13 ruled (§8); Q5 deferred pending #422, so that gate line stays open until its ruling lands there; the hardware clause is reframed as plugin-author evidence responsibility — best-effort no-hardware coverage plus issues on newly found gaps — closing F-5.)*
+| I4 | Analysis and reporting: fork Analyse features made generic, HTML report | SW-52–53 | Fork's `app.js` deleted; second (non-ADC) adapter runs unmodified; Q8 ruled *(Amended 2026-10-07: Q8 ruled option 2 (§8); the upstream issue is raised as #423 and carries the sunset.)* |
 
 I1's throwaway-package-path condition is resolved by the 2026-10-02 rulings (issue #309): Q1 is ruled — the host lives in `benchweave-sdk[server]` — and the relocation out of the sibling package path is itself the #309 packaging slice; no separate retrofit move remains.
 
@@ -368,7 +376,7 @@ Four gaps in the standards this host aligns with are tracked as upstream issues 
 | 1 | Renderer-neutral component contract and safety-relevant definitions: energise/de-energise, disabled reasons, refusal mapping, mode indicator, plot series colours | UI style guide | Raised: [#242](https://github.com/madeinoz67/benchweave/issues/242) | SW-22 parity has no normative contract to test against; SW-23, SW-24 and SW-27 wording follows the draft; `--bw-series-*` tokens in the example pages are proposed until it lands |
 | 2 | Limiting state, measured/set/staged, staleness, plot axes and reference lines, processed-data presentation | UI style guide | Raised: [#243](https://github.com/madeinoz67/benchweave/issues/243); depends on #242 | SW-25 and SW-52 analysis views; the DPS-150 page's CC state and set-value display |
 | 3 | `digital_lanes` plot kind, 64-lane cap, edge-preserving decimation | plugin-ui | Raised: [#244](https://github.com/madeinoz67/benchweave/issues/244) | Logic-analyser plugins cannot declare a plot until it lands; Q12's lane renderer implements it |
-| 4 | Temporal processing and operator-defined math | OTDP measurement model | Drafted, to raise, labelled `deferred` | None now |
+| 4 | Temporal processing and operator-defined math | OTDP measurement model | Raised 2026-10-07: #423, labelled `deferred` | Interim: host-computed labelling per §10's rule; Q8's plugin-side profiles sunset on #423 landing |
 
 Processing stays host behaviour. Which analysis functions the host offers (SW-52: brush statistics, edge timing, power modes, averaging) and how it computes them is local implementation, presented per issue 2. It becomes a standards matter only when issue 4's trigger is met: a processed value is asserted by a procedure, recorded as evidence in a run record, report or capture, computed by the gateway, or exposed over REST or MCP as a measurement. SW-53's report export must label processed values as host-computed until then.
 
