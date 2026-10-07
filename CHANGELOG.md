@@ -20,6 +20,7 @@ All notable changes to this project will be documented in this file.
 - Correct fold-3's battery claim — full pytest exited 1, flake-diagnosed (#420)
 - #422 inc1 env-file autoload design record
 - Serve --data-dir locator, env-file autoload guide, allowlist drift row (#422)
+- Issue #159 Option-B owner decision brief (OWNER_FORK) (#429)
 
 ### Features
 
