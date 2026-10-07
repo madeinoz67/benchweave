@@ -38,9 +38,10 @@ dependencies = [
 [project.optional-dependencies]
 # The standalone host (UI/REST/MCP + serial transport) is an optional
 # install: the default install stays a plain plugin project with no SDK
-# runtime import. 0.7.1 is the published floor carrying the [server]
-# extra and the standalone plugin-project loader.
-host = ["benchweave-sdk[server]>=0.7.1"]
+# runtime import. 0.8.0 is the published floor carrying the [server]
+# extra and the standalone plugin-project loader (owner ruling 2026-10-07;
+# loads-and-serves verified against the published 0.8.0).
+host = ["benchweave-sdk[server]>=0.8.0"]
 
 [dependency-groups]
 dev = [
@@ -82,8 +83,9 @@ python_version = "3.13"
 strict = true
 files = ["src/benchweave", "src/adc_6ch_12bit", "tests"]
 
-# The standalone-host extra ships without a py.typed marker at the 0.7.1
-# pin; the proof-arm tests import it (proof, not production code).
+# The standalone-host extra ships without a py.typed marker at the 0.8.0
+# pin (verified: no py.typed in the installed 0.8.0 wheel); the proof-arm
+# tests import it (proof, not production code).
 [[tool.mypy.overrides]]
 module = "benchweave_sdk_server.*"
 ignore_missing_imports = true
