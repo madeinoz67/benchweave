@@ -19,15 +19,19 @@
 //   node .claude/hooks/claims-check.mjs --json design.md
 // Exit codes: 0 = no flags, 2 = flags found.
 
-import { readFileSync } from 'node:fs'
-import { pathToFileURL } from 'node:url'
+import { readFileSync, realpathSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { resolve } from 'node:path'
 import { createClient, noulQuestion } from './lib/typesafe.mjs'
 
 const REASON_PRESENT = 0.5
 const MAX_CLAIMS = 40 // bounded semantic batch
 
 // Normative markers — the G4 vocabulary. Ordinary narration does not match.
-const NORMATIVE = /\b(?:cannot|can never|never|must always|always|only|every|all|no [a-z-]+ (?:can|may|will)|guarantee[d]?|impossible|ensure[sd]?(?: that)? no)\b/i
+// F9b: evasion phrasings ("unable to", "ruled out", "by construction") are in the list;
+// the list remains a defined vocabulary and every disclosure says so — a guard states
+// what it does not catch.
+const NORMATIVE = /\b(?:cannot|can never|never|must always|always|only|every|all|no [a-z-]+ (?:can|may|will|way to)|guarantee[d]?|impossible|unable to|ruled out|by construction|ensure[sd]?(?: that)? no)\b/i
 
 // Citation shapes: file:line, file, issue/PR refs, backticked paths.
 const CITATION =
@@ -73,7 +77,13 @@ export async function checkClaims(text, client) {
   const overflow = all.filter((cl) => cl.cited).length - semantic.length
 
   if (!semantic.length) {
-    return { ...base, mode: 'model', reasonFlags: [], disclosure: overflow > 0 ? `${overflow} claim(s) beyond the semantic batch cap` : 'no cited claims to judge' }
+    return {
+      ...base,
+      mode: 'model',
+      reasonFlags: [],
+      unjudged: 0,
+      disclosure: `no cited claims to judge; the marker vocabulary is a defined list — normative claims worded outside it are invisible to the deterministic layer${overflow > 0 ? `; ${overflow} claim(s) beyond the semantic batch cap` : ''}`,
+    }
   }
 
   const questions = {}
@@ -93,18 +103,23 @@ export async function checkClaims(text, client) {
       ...base,
       mode: 'fallback',
       reasonFlags: [],
-      disclosure: `structural-reason pass not run (typesafe: ${r.reason}) — cited claims stand unjudged; only citation absence is flagged${overflow > 0 ? `; ${overflow} claim(s) beyond the semantic batch cap` : ''}`,
+      // F9a: cited-but-unjudged claims are a disclosure, not a clean pass — the exit
+      // contract treats them like flags.
+      unjudged: semantic.length,
+      disclosure: `structural-reason pass not run (typesafe: ${r.reason}) — ${semantic.length} cited claim(s) stand unjudged; only citation absence is flagged; the marker vocabulary is a defined list — claims worded outside it are invisible to the deterministic layer${overflow > 0 ? `; ${overflow} claim(s) beyond the semantic batch cap` : ''}`,
     }
   }
 
   const reasonFlags = []
   semantic.forEach((cl, i) => {
     const a = r.answers[`claim_${i}`]
-    if (typeof a?.noul !== 'number') {
+    // F8: a probability is [0,1] or it is not an answer.
+    const p = a?.noul
+    if (typeof p !== 'number' || !Number.isFinite(p) || p < 0 || p > 1) {
       reasonFlags.push({ ...cl, why: 'reason-missing', note: 'invalid-answer' })
       return
     }
-    if (a.noul < REASON_PRESENT) reasonFlags.push({ ...cl, why: 'reason-missing', p: a.noul })
+    if (p < REASON_PRESENT) reasonFlags.push({ ...cl, why: 'reason-missing', p })
   })
 
   return {
@@ -112,12 +127,20 @@ export async function checkClaims(text, client) {
     mode: 'model',
     flagged: [...flagged, ...reasonFlags.map((f) => ({ text: f.text, passage: f.passage, why: f.why }))],
     reasonFlags,
-    disclosure: `semantic pass over ${semantic.length} cited claim(s); rule in code: reason-present probability < ${REASON_PRESENT} flags${overflow > 0 ? `; ${overflow} claim(s) beyond the semantic batch cap` : ''}`,
+    unjudged: overflow,
+    disclosure: `semantic pass over ${semantic.length} cited claim(s); rule in code: reason-present probability < ${REASON_PRESENT} flags; the marker vocabulary is a defined list — claims worded outside it are invisible to the deterministic layer${overflow > 0 ? `; ${overflow} claim(s) beyond the semantic batch cap` : ''}`,
   }
 }
 
 // ---- CLI (guarded: importing for exports must never read stdin) ----
-const isMain = import.meta.url === pathToFileURL(process.argv[1] || '').href
+// F6: real paths, not as-typed — a symlinked invocation runs the CLI, never a silent no-op.
+const isMain = (() => {
+  try {
+    return realpathSync(fileURLToPath(import.meta.url)) === realpathSync(resolve(process.argv[1] || 'x-not-main'))
+  } catch {
+    return false
+  }
+})()
 if (isMain) {
   const args = process.argv.slice(2)
   const asJson = args.includes('--json')
@@ -132,5 +155,5 @@ if (isMain) {
     console.log(`  ${result.disclosure}`)
     for (const f of result.flagged) console.log(`  [${f.why}] ${f.text.slice(0, 120)}`)
   }
-  process.exit(result.flagged.length ? 2 : 0)
+  process.exit(result.flagged.length || result.unjudged ? 2 : 0)
 }

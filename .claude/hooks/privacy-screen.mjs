@@ -21,8 +21,9 @@
 // Exit codes: 0 = PASS, 2 = REVIEW, 3 = BLOCK. Verdict, mode, and per-hazard detail
 // print to stdout; nothing is written anywhere else.
 
-import { readFileSync } from 'node:fs'
-import { pathToFileURL } from 'node:url'
+import { readFileSync, realpathSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { resolve } from 'node:path'
 import { createClient, noulQuestion } from './lib/typesafe.mjs'
 
 export const THRESHOLDS = { block: 0.85, review: 0.5 }
@@ -65,8 +66,31 @@ const HAZARDS = [
 // The deterministic classes the fallback CAN see. Mechanical, low-false-positive
 // patterns only — anything needing semantics stays the judgment layer's job, and its
 // absence is why a clean fallback is REVIEW.
+// F2: the email class is a linear hand-rolled scanner, not a regex — the nested-quantifier
+// shape was quadratic on adversarial input (measured 74.5 s at 100k chars). This walk is
+// O(n) with bounded local/domain spans (64/255), by construction.
+const LOCAL_CHAR = /[A-Za-z0-9._%+-]/
+const DOMAIN_CHAR = /[A-Za-z0-9.-]/
+const EMAIL_SHAPE = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?\.[A-Za-z]{2,}$/
+
+function scanEmails(text, cap) {
+  const hits = []
+  let i = 0
+  while (i < text.length && hits.length < cap) {
+    const at = text.indexOf('@', i)
+    if (at === -1) break
+    let s = at
+    while (s > 0 && at - s < 64 && LOCAL_CHAR.test(text[s - 1])) s--
+    let e = at + 1
+    while (e < text.length && e - at - 1 < 255 && DOMAIN_CHAR.test(text[e])) e++
+    const cand = text.slice(s, e)
+    if (EMAIL_SHAPE.test(cand)) hits.push({ id: 'email', hazard: 'person_or_org', cls: 'block', match: cand.slice(0, 80) })
+    i = at + 1
+  }
+  return hits
+}
+
 const PATTERNS = [
-  { id: 'email', re: /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, hazard: 'person_or_org', cls: 'block' },
   { id: 'home_path', re: /\/(?:Users|home)\/[A-Za-z0-9_.-]+/g, hazard: 'path_leak', cls: 'block' },
   { id: 'hex_dump', re: /(?:[0-9a-f]{2} ){8,}/gi, hazard: 'protocol_content', cls: 'block' },
   { id: 'mac', re: /\b[0-9a-f]{2}(?::[0-9a-f]{2}){5}\b/gi, hazard: 'device_identifier', cls: 'block' },
@@ -76,7 +100,7 @@ const PATTERNS = [
 
 /** Deterministic pattern scan. Returns [{id, hazard, cls, match}] — the classes it can see. */
 export function fallbackScan(text) {
-  const hits = []
+  const hits = scanEmails(text, 200)
   for (const p of PATTERNS) {
     p.re.lastIndex = 0
     let m
@@ -114,8 +138,9 @@ export async function screen(text, client) {
   if (r.ok) {
     const probs = {}
     for (const h of HAZARDS) {
-      const a = r.answers[h.id]
-      probs[h.id] = typeof a?.noul === 'number' ? a.noul : NaN
+      const p = r.answers[h.id]?.noul
+      // F8: a probability is [0,1] or it is not an answer — out-of-domain never thresholds.
+      probs[h.id] = typeof p === 'number' && Number.isFinite(p) && p >= 0 && p <= 1 ? p : NaN
     }
     // A malformed answer for any hazard is an unavailable screen, not a clean one.
     if (Object.values(probs).some((p) => !Number.isFinite(p))) {
@@ -145,7 +170,14 @@ function fallbackResult(text, reason) {
 }
 
 // ---- CLI (guarded: importing this module for its exports must never read stdin) ----
-const isMain = import.meta.url === pathToFileURL(process.argv[1] || '').href
+// F6: real paths, not as-typed — a symlinked invocation runs the CLI, never a silent no-op.
+const isMain = (() => {
+  try {
+    return realpathSync(fileURLToPath(import.meta.url)) === realpathSync(resolve(process.argv[1] || 'x-not-main'))
+  } catch {
+    return false
+  }
+})()
 if (isMain) {
   const args = process.argv.slice(2)
   const asJson = args.includes('--json')
@@ -162,7 +194,9 @@ if (isMain) {
     if (result.hazards) for (const [id, p] of Object.entries(result.hazards)) console.log(`  ${id}: ${p.toFixed(2)}`)
     if (result.blocking?.length) console.log(`  blocking: ${result.blocking.join(', ')}`)
     if (result.reviewing?.length) console.log(`  review: ${result.reviewing.join(', ')}`)
-    process.exit(result.verdict === 'BLOCK' ? 3 : result.verdict === 'REVIEW' ? 2 : 0)
   }
+  // F1: the exit contract (0/2/3) holds in BOTH output modes — a --json BLOCK that
+  // exits 0 wires the privacy gate's consumers to misread BLOCK as PASS.
+  process.exit(result.verdict === 'BLOCK' ? 3 : result.verdict === 'REVIEW' ? 2 : 0)
 }
 

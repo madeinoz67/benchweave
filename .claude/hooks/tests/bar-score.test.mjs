@@ -61,6 +61,22 @@ test('the question battery is three score questions with self-standing levels', 
   }
 })
 
+test('F8: an out-of-domain score is invalid-answer, never a verdict', async () => {
+  const neg = {
+    ask: async () => ({
+      ok: true,
+      model: 'm',
+      answers: {
+        durable: { type: 'score', score: -1 },
+        non_obvious: { type: 'score', score: 2 },
+        self_contained: { type: 'score', score: 2 },
+      },
+    }),
+  }
+  const out = await scoreBar([RECORD], neg)
+  assert.match(out, /skipped \(typesafe: invalid-answer\)/)
+})
+
 test('the state carries the proposal fields the bar judges, and nothing else', async () => {
   let seen = null
   const client = { ask: async ({ state }) => { seen = state; return answersAt(2, 2, 2) } }

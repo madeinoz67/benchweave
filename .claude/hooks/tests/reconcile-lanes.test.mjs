@@ -74,6 +74,23 @@ test('a failed model call degrades to the deterministic layer with disclosure', 
   assert.equal(r.candidatePairs.length, 1)
 })
 
+test('F5: numeric-string lines parse and pair within the window', () => {
+  const A = [{ id: 'A1', file: 'src/x.py', line: 'L120', summary: 'a' }]
+  const B = [{ id: 'B1', file: 'src/x.py', line: '120-124', summary: 'b' }]
+  assert.equal(sameFilePairs(A, B).length, 1)
+})
+
+test('F5: far or unparseable line strings never pair — failure direction is more clusters', async () => {
+  const far = [
+    { id: 'A1', file: 'src/x.py', line: 'L10', summary: 'a' },
+    { id: 'A2', file: 'src/x.py', line: 'near the top', summary: 'a2' },
+  ]
+  const B = [{ id: 'B1', file: 'src/x.py', line: '8890', summary: 'b' }]
+  const r = await reconcile(far, B, createClient({ disable: true }))
+  assert.equal(r.candidatePairs.length, 0)
+  assert.equal(r.singleLane.length, 3)
+})
+
 test('the question battery is one choice per candidate pair, options named in code', async () => {
   let seen = null
   const client = { ask: async ({ state, questions }) => { seen = { state, questions }; return { ok: true, model: 'm', answers: Object.fromEntries(Object.keys(questions).map((id) => [id, { type: 'choice', choice: 'distinct', probabilities: {}, confidence: 0.9 }])) } } }

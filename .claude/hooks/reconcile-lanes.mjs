@@ -16,13 +16,27 @@
 //   node .claude/hooks/reconcile-lanes.mjs laneA.json laneB.json [--json]
 // Each input is a JSON array of {id?, severity, file?, line?, summary}.
 
-import { readFileSync } from 'node:fs'
-import { pathToFileURL } from 'node:url'
+import { readFileSync, realpathSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { resolve } from 'node:path'
 import { createClient, choiceQuestion } from './lib/typesafe.mjs'
 
 const LINE_WINDOW = 5
 const MERGE_CONFIDENCE = 0.6
 const MAX_PAIRS = 60 // bounded batch; beyond this the deterministic layer alone answers
+
+/** F5: line fields arrive as numbers and as natural LLM emissions ("L17", "120-124").
+ * Parse the leading integer when one exists; anything unparseable never pairs —
+ * the failure direction is more clusters, never fewer. */
+function lineNumber(f) {
+  const n = f?.line ?? f?.line_start ?? null
+  if (typeof n === 'number' && Number.isFinite(n)) return n
+  if (typeof n === 'string') {
+    const m = n.match(/\d+/)
+    if (m) return Number(m[0])
+  }
+  return null
+}
 
 /** Deterministic candidate pairs: same file, lines within the window. Pure. */
 export function sameFilePairs(a, b) {
@@ -31,8 +45,8 @@ export function sameFilePairs(a, b) {
     if (!fa.file) continue
     for (const fb of b) {
       if (fb.file !== fa.file) continue
-      const la = fa.line ?? fa.line_start ?? null
-      const lb = fb.line ?? fb.line_start ?? null
+      const la = lineNumber(fa)
+      const lb = lineNumber(fb)
       if (la === null || lb === null || Math.abs(la - lb) > LINE_WINDOW) continue
       pairs.push({ a: fa, b: fb })
     }
@@ -91,18 +105,20 @@ export async function reconcile(laneA, laneB, client) {
   const keptSeparate = []
   pairs.forEach((p, i) => {
     const a = r.answers[`pair_${i}`]
-    if (!a || a.type !== 'choice' || typeof a.confidence !== 'number') {
+    const conf = a?.confidence
+    // F8: confidence is [0,1] or it is not an answer.
+    if (!a || a.type !== 'choice' || typeof conf !== 'number' || !Number.isFinite(conf) || conf < 0 || conf > 1) {
       uncertain.push({ pair: p, why: 'invalid-answer' })
       return
     }
-    if (a.confidence < MERGE_CONFIDENCE) {
-      uncertain.push({ pair: p, why: `${a.choice} at confidence ${a.confidence.toFixed(2)} < ${MERGE_CONFIDENCE}` })
+    if (conf < MERGE_CONFIDENCE) {
+      uncertain.push({ pair: p, why: `${a.choice} at confidence ${conf.toFixed(2)} < ${MERGE_CONFIDENCE}` })
     } else if (a.choice === 'same_root') {
-      merged.push({ members: [p.a, p.b], confidence: a.confidence })
+      merged.push({ members: [p.a, p.b], confidence: conf })
     } else {
       // A confidently-distinct or confidently-related pair is RESOLVED, not open —
       // `uncertain` is exactly the row-call queue, nothing else.
-      keptSeparate.push({ pair: p, verdict: a.choice, confidence: a.confidence })
+      keptSeparate.push({ pair: p, verdict: a.choice, confidence: conf })
     }
   })
   return {
@@ -116,7 +132,14 @@ export async function reconcile(laneA, laneB, client) {
 }
 
 // ---- CLI (guarded: importing for exports must never read files or stdin) ----
-const isMain = import.meta.url === pathToFileURL(process.argv[1] || '').href
+// F6: real paths, not as-typed — a symlinked invocation runs the CLI, never a silent no-op.
+const isMain = (() => {
+  try {
+    return realpathSync(fileURLToPath(import.meta.url)) === realpathSync(resolve(process.argv[1] || 'x-not-main'))
+  } catch {
+    return false
+  }
+})()
 if (isMain) {
   const args = process.argv.slice(2)
   const asJson = args.includes('--json')

@@ -75,6 +75,14 @@ test('the judgment question references the claim and its passage by backticked p
   assert.match(Object.values(seen.questions)[0].instructions, /claims\[\d+\]\.passage/)
 })
 
+test('F9b: evasion-shaped normative wording is extracted and the vocabulary blind spot disclosed', async () => {
+  const doc = 'The store is unable to lose a committed run. Duplication is ruled out by construction.\n'
+  const claims = extractClaims(doc)
+  assert.ok(claims.length >= 2, 'evasion phrasings must still be extracted as claims')
+  const r = await checkClaims(doc, createClient({ disable: true }))
+  assert.match(r.disclosure, /marker vocabulary is a defined list/)
+})
+
 test('claims beyond the batch cap are disclosed, not silently dropped', async () => {
   const big = Array.from({ length: 50 }, (_, i) => `Rule ${i}: this can never happen anywhere (\`src/x${i}.py:10\`).\n\n`).join('')
   const r = await checkClaims(big, createClient({ disable: true }))

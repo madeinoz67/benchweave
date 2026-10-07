@@ -65,10 +65,15 @@ export async function scoreBar(records, client) {
   }
   if (!r.ok) return `memory-propose: bar scoring skipped (typesafe: ${r.reason}) — append proceeds.`
 
-  const num = (a) => (a && typeof a.score === 'number' && Number.isFinite(a.score) ? a.score : null)
-  const d = num(r.answers.durable)
-  const n = num(r.answers.non_obvious)
-  const s = num(r.answers.self_contained)
+  // F8: a score is on its level scale (0..criteria.length-1) or it is not an answer.
+  const num = (a, id) => {
+    const s = a?.score
+    const max = QUESTIONS[id].criteria.length - 1
+    return typeof s === 'number' && Number.isFinite(s) && s >= 0 && s <= max ? s : null
+  }
+  const d = num(r.answers.durable, 'durable')
+  const n = num(r.answers.non_obvious, 'non_obvious')
+  const s = num(r.answers.self_contained, 'self_contained')
   if (d === null || n === null || s === null) {
     return 'memory-propose: bar scoring skipped (typesafe: invalid-answer) — append proceeds.'
   }

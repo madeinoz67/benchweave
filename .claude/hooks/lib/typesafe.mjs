@@ -46,6 +46,10 @@ function readEnvFile(path) {
 function resolveKey(opts) {
   if (typeof opts.key === 'string' && opts.key.length > 0) return opts.key
   if (process.env.TYPESAFE_API_KEY) return process.env.TYPESAFE_API_KEY
+  // Hermeticity guard (F4): a hook spawned from a node:test process inherits
+  // NODE_TEST_CONTEXT; tests must never reach the operator's key file, whatever the
+  // spawning test remembered to set. An explicit env key still works for live tests.
+  if (process.env.NODE_TEST_CONTEXT) return ''
   const envFile = opts.envFile || process.env.TYPESAFE_ENV_FILE || join(homedir(), '.claude', '.env')
   return readEnvFile(envFile).TYPESAFE_API_KEY || ''
 }
@@ -73,6 +77,10 @@ export function createClient(opts = {}) {
       const timer = setTimeout(() => controller.abort(), timeoutMs)
       // The race is owned here: even a fetch that ignores the signal cannot exceed the bound.
       const bounded = Symbol('typesafe-timeout')
+      let raceTimer
+      const timeoutPromise = new Promise((resolve) => {
+        raceTimer = setTimeout(() => resolve(bounded), timeoutMs)
+      })
       let res
       try {
         res = await Promise.race([
@@ -82,12 +90,16 @@ export function createClient(opts = {}) {
             body: JSON.stringify({ state, model, questions }),
             signal: controller.signal,
           }),
-          new Promise((resolve) => setTimeout(() => resolve(bounded), timeoutMs)),
+          timeoutPromise,
         ])
-      } catch {
-        return { ok: false, reason: 'network' }
+      } catch (e) {
+        // F7: a real fetch's abort can surface as an AbortError or as a wrapped cause;
+        // the signal's own state is the authoritative discriminator.
+        const timedOut = (e && e.name === 'AbortError') || controller.signal.aborted
+        return { ok: false, reason: timedOut ? 'timeout' : 'network' }
       } finally {
         clearTimeout(timer)
+        clearTimeout(raceTimer) // F3: an orphaned race timer held every caller's event loop open for the full timeout
       }
       if (res === bounded) return { ok: false, reason: 'timeout' }
 

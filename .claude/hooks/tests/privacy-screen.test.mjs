@@ -92,6 +92,29 @@ test('the question battery covers every hazard the threshold table names', async
   assert.equal(ids.length, 6)
 })
 
+test('F8: an out-of-domain probability is an unavailable screen, never a pass', async () => {
+  const ids = ['device_identifier', 'person_or_org', 'bench_or_site', 'protocol_content', 'query_text', 'path_leak']
+  const client = {
+    ask: async () => ({
+      ok: true,
+      model: 'm',
+      answers: Object.fromEntries(ids.map((id) => [id, { type: 'noul', noul: id === 'person_or_org' ? -5 : 0.02 }])),
+    }),
+  }
+  const r = await screen(CLEAN, client)
+  assert.equal(r.mode, 'fallback')
+  assert.match(r.reason, /invalid-answer/)
+})
+
+test('F2: adversarial no-dot email-shaped input completes fast and yields no email hit', () => {
+  const evil = 'a'.repeat(20000) + '@' + 'b'.repeat(20000)
+  const t0 = process.hrtime.bigint()
+  const hits = fallbackScan(evil)
+  const ms = Number(process.hrtime.bigint() - t0) / 1e6
+  assert.ok(!hits.some((h) => h.id === 'email'))
+  assert.ok(ms < 500, `scan must be near-linear, took ${ms.toFixed(1)}ms`) // 150x headroom; not a CI perf gate, a blowup tripwire
+})
+
 test('no PASS verdict is reachable with an unavailable judgment layer, even for empty text', async () => {
   const r = await screen('', disabled)
   assert.notEqual(r.verdict, 'PASS')

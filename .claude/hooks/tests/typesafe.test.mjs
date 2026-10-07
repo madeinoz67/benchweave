@@ -86,6 +86,22 @@ test('question builders match the API contract shapes', () => {
   })
 })
 
+test('F7: a real-fetch abort (signal-honoring) maps to timeout, not network', async () => {
+  const c = createClient({
+    ...NO_ENV,
+    key: 'k-test',
+    timeoutMs: 30,
+    fetchImpl: (_url, init) =>
+      new Promise((_resolve, reject) => {
+        init.signal.addEventListener('abort', () =>
+          reject(Object.assign(new Error('This operation was aborted'), { name: 'AbortError' }))
+        )
+      }),
+  })
+  const r = await c.ask({ state: 'x', questions: { q: noulQuestion('is it?') } })
+  assert.equal(r.reason, 'timeout')
+})
+
 test('the bearer key travels in the Authorization header, never in the URL', async () => {
   let seenUrl = null
   let seenHeaders = null
