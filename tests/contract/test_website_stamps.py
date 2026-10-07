@@ -511,6 +511,20 @@ def test_stamp_map_refuses_a_manifest_id_colliding_with_the_reserved_key(
         _assembler().website_stamp_map(_fake_root(tmp_path, "sdk"))
 
 
+def test_stamp_map_refuses_an_id_colliding_with_the_selector_family(
+    tmp_path: Path,
+) -> None:
+    """PR #415 row 4: a manifest entry id `versions` maps to the key
+    `stg-versions` — the front-door selector's claim family (filled from the
+    release tags by stamp_website, outside the map's derivation). A manifest
+    entry under that id would shadow the selector's rows with a standards
+    version; the map refuses the collision exactly as it does `sdk`."""
+    assembler = _assembler()
+    for entry_id in (assembler.SELECTOR_PLACEHOLDER, "versions"):
+        with pytest.raises(SystemExit, match="stamp_reserved_key:"):
+            assembler.website_stamp_map(_fake_root(tmp_path, entry_id))
+
+
 def test_stamp_map_control_unknown_id_reaches_the_unused_key_arm(tmp_path: Path) -> None:
     """F4 control: a merely-unknown manifest id (`frob`) maps without refusal,
     and an unused key reddens at the stamp site exactly as before — the

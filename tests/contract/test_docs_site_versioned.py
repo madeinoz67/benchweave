@@ -544,3 +544,90 @@ def test_f2_a_tagged_listing_leaves_the_stamped_selector_green(
     assert "{{" not in out
     assert '<option value="docs/">v0.4.0 (latest)</option>' in out
     assert '<option value="docs/v/dev/">dev</option>' in out
+
+
+# ── PR #415 owner row table, foldable rows (2026-10-07 wave) ────────────────
+
+
+# Row 1 — a bare `versions:` key at EOF is a stale registration too: the
+# block regex required at least one indented entry line, so a truncated
+# registration (the key with no entries, end of file) matched nothing and
+# slipped past check 4 silently.
+
+
+def test_row1_bare_versions_key_at_eof_refuses() -> None:
+    yml_bare_eof = YML_UNVERSIONED + "versions:\n"
+    assert _asm.yml_version_tags(yml_bare_eof) == set()
+    with pytest.raises(SystemExit, match=r"versions"):
+        _asm.check_registration([], yml_bare_eof, {})
+
+
+def test_row1_bare_versions_key_without_trailing_newline_refuses() -> None:
+    yml_bare = YML_UNVERSIONED + "versions:"
+    with pytest.raises(SystemExit, match=r"versions"):
+        _asm.check_registration([], yml_bare, {})
+
+
+# Row 2 — the inverse check refused only TAG_RE-shaped stale entries, so a
+# registered pre-release (v0.4.0-rc1, no bucket, not a release tag) passed
+# every check. Every registered entry must be a real release tag or the
+# dev special.
+
+
+def test_row2_registered_pre_release_entry_refuses() -> None:
+    yml_with_rc = YML_WITH_V040.replace(
+        "  - tag: dev",
+        "  - tag: v0.4.0-rc1\n    label: v0.4.0-rc1\n    git_ref: v0.4.0-rc1\n  - tag: dev",
+    )
+    with pytest.raises(SystemExit, match=r"v0\.4\.0-rc1"):
+        _asm.check_registration(["v0.4.0"], yml_with_rc, {"v0.4.0": YML_WITH_V040})
+
+
+# Row 6 — a relative --great-docs must reach the bucket child as an
+# absolute path: the child runs with cwd=<tag tree>, so a relative path
+# would resolve against the CLONE, not the parent.
+
+
+def test_row6_relative_great_docs_is_resolved_absolute_for_the_child(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import os
+
+    seen: list[list[str]] = []
+
+    def fake_run(
+        cmd: list[str], *, cwd: Path | None = None, env: dict[str, str] | None = None
+    ) -> str:
+        seen.append(cmd)
+        return ""
+
+    monkeypatch.setattr(_asm, "run", fake_run)
+    monkeypatch.setattr(_asm, "bucket_source", lambda out_dir, tag: out_dir)
+    monkeypatch.setattr(_asm, "replace_dir", lambda src, dst: None)
+    # dest under the repo's gitignored .docs-assembly/ (run_bucket_build logs
+    # dest.relative_to(REPO); replace_dir is mocked so nothing is written)
+    dest = _asm.REPO / ".docs-assembly" / "row6-test-bucket"
+    _asm.run_bucket_build("rel/gd", "v0.4.0", dest)
+    child = next(c for c in seen if "--bucket" in c)
+    passed = child[child.index("--great-docs") + 1]
+    assert os.path.isabs(passed), f"relative --great-docs reached the child: {passed}"
+
+
+# Row 7a — the generated selector's first row carries no indent of its own:
+# it lands where the scaffold token sat, whose line already indents it
+# (double-indent was the cosmetic artifact).
+
+
+def test_row7a_first_selector_row_carries_no_generator_indent() -> None:
+    html = _asm.selector_options_html(["v0.4.0"])
+    assert html.startswith("<option"), repr(html[:40])
+
+
+# Row 7b — a tag whose great-docs.yml cannot be read at its ref refuses
+# naming exactly that (the parent wires None for the unreadable case; the
+# arm pins the refusal so the wiring stays honest).
+
+
+def test_row7b_unreadable_tag_yml_refuses_naming_the_ref() -> None:
+    with pytest.raises(SystemExit, match=r"no great-docs.yml readable at v0\.4\.0"):
+        _asm.check_registration(["v0.4.0"], YML_WITH_V040, {"v0.4.0": None})
