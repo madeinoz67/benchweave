@@ -26,6 +26,7 @@
 import { readFileSync } from 'node:fs'
 import { DEFAULT_VAULT, validate, explain, CANONICAL_SHAPE } from './memory-schema.mjs'
 import { paths, acquireLock, appendRecords } from './memory-ledger.mjs'
+import { scoreBar } from './lib/bar-score.mjs'
 
 const P = paths()
 const CHECK = process.argv.includes('--check')
@@ -82,6 +83,16 @@ if (problems.length) {
   console.error(`\nThe shape:\n${CANONICAL_SHAPE}`)
   console.error('\nFix and re-send the whole batch. The bar for what qualifies is in .claude/memory-protocol.md.')
   process.exit(1)
+}
+
+// Advisory noise-bar feedback (issue #420): one bounded judgment call, one line of
+// feedback printed to the proposing session. Never blocks, never edits the records —
+// the protocol's retracted HOLD-gate lesson stands: advice at the producer, dumb pipe
+// everywhere else. --no-score opts out; an unavailable judgment layer prints a skip
+// line and the append proceeds exactly as before.
+if (!process.argv.includes('--no-score')) {
+  const feedback = await scoreBar(prepared)
+  if (feedback) console.log(feedback)
 }
 
 if (CHECK) {

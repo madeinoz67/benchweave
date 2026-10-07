@@ -78,6 +78,14 @@ It takes a single object, a JSON array, or one object per line. `--check` valida
 appending. If a record is rejected, **nothing is appended** and the error names the field —
 fix and re-send the whole batch.
 
+When the judgment layer is available, the helper also prints **advisory noise-bar
+feedback** after validating: one line scoring the batch durable / non-obvious /
+self-contained (`--no-score` to skip; unavailable prints a skip line and appends
+anyway). It is advice to the proposing session, not a gate — it never blocks, never
+edits the record, and its absence changes nothing about the append. The bar itself
+stays where it has always been: the judgment of the proposing session, against the
+lists above.
+
 Raw appends to `.claude/memory-proposals.jsonl` (gitignored) still work — never rewrite or
 reorder the file, append only — and `ledger-guard.mjs` will flag a malformed one while the
 session that wrote it can still fix it. But the helper is the path that cannot be wrong.
