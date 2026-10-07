@@ -102,6 +102,6 @@ jobs:
         working-directory: ${{ runner.temp }}/simulator
         run: |
           uv run --isolated --no-project \
-            --with "$RUNNER_TEMP/gateway/benchweave-0.1.0-py3-none-any.whl" \
+            --with "$RUNNER_TEMP"/gateway/benchweave-*.whl \
             --with "$RUNNER_TEMP/simulator-dist/benchweave_${{ matrix.model }}-0.1.0-py3-none-any.whl" \
             --with pytest==9.1.1 python -m pytest tests
