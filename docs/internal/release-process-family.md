@@ -278,6 +278,40 @@ implementable surface (the pending-publisher precedent):
    renders at the next `changelog.yml` run on main (tags do not trigger
    it — the boundary's arrival is named, not assumed).
 
+## The release blast radius (gateway line)
+
+The version source is one file; the bump's blast radius is not. Three surfaces
+have each broken a release's CI and must move with every version change. The
+SDK sweeps these mechanically (`release_cut.py`); until the gateway line has an
+equivalent, this checklist IS the gate — walked between the bump commit and the
+marker commit:
+
+1. **`uv.lock`'s root entry** — regenerate with the bump (`uv lock`). A bump
+   alone reddens every `--locked` CI sync the moment the pipelines run.
+2. **Companion-package pins** — every in-repo package that pins `benchweave`
+   exactly (today: `plugins/benchweave/*/pyproject.toml`) moves to the new
+   version. Exact bounds break resolution as soon as the wheel renames.
+3. **Workflow version literals** — no version-stamped artifact names in
+   `.github/workflows/*`. Glob or derive the wheel path; a hard-coded filename
+   breaks the moment the version changes.
+
+Recorded from the v0.4.0 first cut (2026-10-07), where each surface was found
+by the failing lane it broke and fixed before the tag landed.
+
+**Tag discipline (same cut, same record).** The local battery does not see
+CI-only surfaces — runner setup, `--locked` syncs, cross-package resolution:
+**wait for the marker commit's full CI rollup to read green before pushing the
+tag**. If a pushed tag's tree turns out defective and nothing has consumed the
+release, the owner may move the tag pre-consumption — recorded on the tracking
+issue with the reason; after consumption, a defect is fixed by a NEW release,
+never a moved tag (the immutability clause above stands). If a tag push's
+workflow events drop (the known Actions wedge class), re-fire the publish or
+release workflow by `workflow_dispatch` at a **verified remote peeled SHA** —
+never a working-tree read. The changelog boundary is CI's artifact
+(`changelog.yml` regenerates it on the next main push) — never hand-render it.
+And gate the release in a **clean worktree**: a shared checkout's untracked
+strays are collected by pytest and make the battery lie about the tree.
+
 **The gateway release-time walk.** Every row records a result — updated
 / correct-as-is / n-a; an empty window is a recorded result, not a
 skipped step.
