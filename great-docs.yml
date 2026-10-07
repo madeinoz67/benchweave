@@ -133,3 +133,10 @@ include_in_header:
       h1, h2, h3, h4, h5, h6, .navbar-brand { font-family: "Space Grotesk", "IBM Plex Sans", -apple-system, BlinkMacSystemFont, sans-serif; }
       code, pre, kbd, samp { font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
       </style>
+versions:
+  - tag: v0.4.0
+    label: v0.4.0
+    latest: true
+  - tag: dev
+    label: dev
+    prerelease: true
