@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Bug Fixes
+
+- Conform the simulator packages' gateway pin to the 0.4.0 wheel
+
 ### Miscellaneous
 
 - Refresh uv.lock for 0.4.0
