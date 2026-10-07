@@ -30,6 +30,7 @@ import socket
 import subprocess
 import sys
 import time
+from collections.abc import Iterator
 from pathlib import Path
 from typing import cast
 
@@ -545,3 +546,229 @@ def test_deploy_tree_carries_no_secret_looking_content() -> None:
             assert match is None, (
                 f"{path}:{number} carries secret-looking content: {match.group()!r}"
             )
+
+
+# --- issue #422 increment 1: serve --data-dir locator + env-file autoload -------
+
+
+@pytest.fixture()
+def clean_benchweave_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Scrub every ``BENCHWEAVE_*`` process-env key for the arm (the
+    operator's clean shell), restoring the exact prior state afterwards —
+    INCLUDING keys serve derives into ``os.environ`` with a bare write (the
+    locator's ``BENCHWEAVE_DB`` derivation), which monkeypatch cannot
+    track."""
+    original = {
+        key: value for key, value in os.environ.items() if key.startswith("BENCHWEAVE_")
+    }
+    for key in original:
+        monkeypatch.delenv(key, raising=False)
+    yield
+    for key in [key for key in os.environ if key.startswith("BENCHWEAVE_") and key not in original]:
+        del os.environ[key]
+
+
+def _serve_with_build_snapshot(
+    monkeypatch: pytest.MonkeyPatch, args: list[str]
+) -> tuple[Result, dict[str, str] | None]:
+    """Invoke serve with uvicorn parked and ``app_entry.build`` replaced by
+    an ``os.environ`` snapshot capture — the issue #422 arms assert on the
+    environment build actually received (the design record's section 7),
+    never on uvicorn side effects."""
+    import uvicorn
+
+    from benchweave.interfaces import app_entry
+
+    snapshot: dict[str, dict[str, str]] = {}
+
+    def fake_build() -> object:
+        snapshot["env"] = dict(os.environ)
+        return object()
+
+    monkeypatch.setattr(uvicorn, "run", lambda *a, **k: None)
+    monkeypatch.setattr(app_entry, "build", fake_build)
+    result = CliRunner().invoke(cli, args)
+    return result, snapshot.get("env")
+
+
+def _setup_data_dir_with_env_file(tmp_path: Path) -> tuple[Path, str]:
+    """A real ``atrest.setup`` data dir whose credential file additionally
+    carries ``BENCHWEAVE_ENV=production`` (the A1 arrangement). Returns the
+    data dir and the FILE's secret — runtime-generated, never a literal."""
+    from benchweave.cli import atrest
+
+    data_dir = tmp_path / "gateway"
+    atrest.setup(data_dir)
+    with (data_dir / atrest.CREDENTIAL_FILE).open("a", encoding="utf-8") as handle:
+        handle.write("BENCHWEAVE_ENV=production\n")
+    return data_dir, atrest.read_secret(data_dir)
+
+
+def test_a1_serve_data_dir_autoloads_credential_file_and_derives_db(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, clean_benchweave_env: None
+) -> None:
+    """A1: a setup-created data dir; the file carries the runtime-generated
+    secret plus ``BENCHWEAVE_ENV=production``; the process env is scrubbed;
+    ``serve --data-dir`` → build received the FILE's secret and the DERIVED
+    ``<data-dir>/state.sqlite``."""
+    from benchweave.cli import atrest
+
+    data_dir, file_secret = _setup_data_dir_with_env_file(tmp_path)
+    result, env = _serve_with_build_snapshot(
+        monkeypatch, ["serve", "--data-dir", str(data_dir)]
+    )
+    assert result.exit_code == 0, _combined(result)
+    assert env is not None, "build must be called"
+    assert env["BENCHWEAVE_SECRET"] == file_secret
+    assert env["BENCHWEAVE_DB"] == str(data_dir / atrest.DB_NAME)
+    assert env.get("BENCHWEAVE_ENV") == "production"
+
+
+def test_a2_process_env_secret_beats_the_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, clean_benchweave_env: None
+) -> None:
+    """A2: explicit process environment always wins — the systemd
+    EnvironmentFile precedence stays intact by construction."""
+    data_dir, file_secret = _setup_data_dir_with_env_file(tmp_path)
+    process_secret = secrets.token_urlsafe(32)
+    monkeypatch.setenv("BENCHWEAVE_SECRET", process_secret)
+    result, env = _serve_with_build_snapshot(
+        monkeypatch, ["serve", "--data-dir", str(data_dir)]
+    )
+    assert result.exit_code == 0, _combined(result)
+    assert env is not None
+    assert env["BENCHWEAVE_SECRET"] == process_secret
+    assert env["BENCHWEAVE_SECRET"] != file_secret
+
+
+def test_a3_legacy_db_locator_autoloads_the_parent_env_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, clean_benchweave_env: None
+) -> None:
+    """A3: today's only path — ``BENCHWEAVE_DB`` set, the credential file
+    sitting in its parent — now gets its secret bridged automatically."""
+    from benchweave.cli import atrest
+
+    data_dir = tmp_path / "legacy"
+    data_dir.mkdir()
+    legacy_secret = secrets.token_urlsafe(32)
+    credential = data_dir / atrest.CREDENTIAL_FILE
+    credential.write_text(f"BENCHWEAVE_SECRET={legacy_secret}\n", encoding="utf-8")
+    credential.chmod(0o600)
+    monkeypatch.setenv("BENCHWEAVE_DB", str(data_dir / atrest.DB_NAME))
+    result, env = _serve_with_build_snapshot(monkeypatch, ["serve"])
+    assert result.exit_code == 0, _combined(result)
+    assert env is not None
+    assert env["BENCHWEAVE_SECRET"] == legacy_secret
+
+
+def test_a3b_legacy_locator_without_a_file_is_byte_identical_today(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, clean_benchweave_env: None
+) -> None:
+    """A3b: the legacy locator with no file in the DB's parent keeps
+    today's default-secret posture AND stays silent — nothing new was
+    promised on that path, so no note fires."""
+    monkeypatch.setenv("BENCHWEAVE_DB", str(tmp_path / "state.sqlite"))
+    result, env = _serve_with_build_snapshot(monkeypatch, ["serve"])
+    assert result.exit_code == 0, _combined(result)
+    assert env is not None
+    assert "BENCHWEAVE_SECRET" not in env, "build's own default fallback applies"
+    assert "no env file" not in _combined(result)
+
+
+def test_a4_no_locator_names_db_and_the_new_locators(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, clean_benchweave_env: None
+) -> None:
+    """A4: neither a data-dir nor ``BENCHWEAVE_DB`` → today's typed refusal,
+    extended to name the two new locators."""
+    result, env = _serve_with_build_snapshot(monkeypatch, ["serve"])
+    assert result.exit_code != 0
+    combined = _combined(result)
+    assert "BENCHWEAVE_DB" in combined
+    assert "--data-dir" in combined
+    assert "BENCHWEAVE_DATA_DIR" in combined
+    assert env is None, "build must never be called without a locator"
+
+
+def test_serve_live_data_dir_env_file_boots_production_on_the_file_secret(
+    tmp_path: Path,
+) -> None:
+    """E2E: a real subprocess with ONLY ``BENCHWEAVE_DATA_DIR`` (plus the
+    production posture) set — the file's secret is bridged, the DB derived,
+    and ``/v1`` answers 200 to a token minted from the FILE's secret (the
+    live-serve pattern above, issue #422's operator story end to end)."""
+    from benchweave.interfaces.identity import issue
+
+    port = _free_port()
+    data_dir, file_secret = _setup_data_dir_with_env_file(tmp_path)
+    stderr_path = tmp_path / "serve.stderr.log"
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.startswith("BENCHWEAVE_")
+    }
+    env.update(
+        {
+            "BENCHWEAVE_ENV": "production",
+            "BENCHWEAVE_DATA_DIR": str(data_dir),
+        }
+    )
+    with stderr_path.open("wb") as handle:
+        proc = subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                "benchweave",
+                "serve",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                str(port),
+            ],
+            cwd=str(REPO),
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=handle,
+        )
+        token = issue(
+            file_secret.encode(),
+            principal="issue422-observe",
+            audience="stg",
+            scopes={"stg:observe"},
+            expires_at=int(time.time()) + 3600,
+        )
+        try:
+            with httpx.Client(
+                base_url=f"http://127.0.0.1:{port}", timeout=5.0
+            ) as client:
+                deadline = time.monotonic() + 30.0
+                while time.monotonic() < deadline:
+                    if proc.poll() is not None:
+                        tail = stderr_path.read_text(errors="replace")[-2000:]
+                        raise AssertionError(
+                            f"serve exited early (rc={proc.returncode})"
+                            f"\nstderr tail:\n{tail}"
+                        )
+                    try:
+                        resp = client.get(
+                            "/v1", headers={"Authorization": f"Bearer {token}"}
+                        )
+                        if resp.status_code == 200:
+                            body = resp.json()
+                            break
+                    except httpx.HTTPError:
+                        pass
+                    time.sleep(0.2)
+                else:
+                    tail = stderr_path.read_text(errors="replace")[-2000:]
+                    raise AssertionError(f"serve gateway not ready\nstderr tail:\n{tail}")
+                assert body["data"]["gateway_id"] == "gw-app-entry"
+        finally:
+            proc.terminate()
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=10)
+    tail = stderr_path.read_text(errors="replace")
+    assert "Traceback" not in tail, f"serve must not traceback:\n{tail[-2000:]}"
+    assert file_secret not in tail, "the secret VALUE never reaches stderr (risk R1)"

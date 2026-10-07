@@ -34,6 +34,7 @@ unchanged plain/JSON.
 from __future__ import annotations
 
 import json
+import os
 import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -47,6 +48,13 @@ from benchweave.cli import demo as demo_lib
 from benchweave.cli import evidence as evidence_lib
 from benchweave.cli.client import GatewayClient, GatewayError
 from benchweave.cli.demo import View
+from benchweave.cli.env_file import (
+    ENV_FILE_EXCLUDED_KEYS,
+    EnvFileError,
+    apply_env_entries,
+    parse_env_file,
+    serve_env_file_keys,
+)
 from benchweave.cli.output import Renderer, emit
 from benchweave.state.hold import StoreHeldError
 
@@ -742,7 +750,21 @@ def _write_out(out: Path, text: str) -> None:
     envvar="BENCHWEAVE_PORT",
     help="Bind port.",
 )
-def serve(host: str, port: int) -> None:
+@click.option(
+    "--data-dir",
+    "data_dir",
+    type=click.Path(path_type=Path),
+    default=None,
+    envvar="BENCHWEAVE_DATA_DIR",
+    help=(
+        _DATA_DIR_HELP
+        + " serve: this locates benchweave.env, whose allowlisted keys"
+        " are bridged into the environment set-if-not-set (explicit process"
+        " environment always wins; BENCHWEAVE_DB is derived from the"
+        " directory when unset)."
+    ),
+)
+def serve(host: str, port: int, data_dir: Path | None) -> None:
     """Run a BenchWeave gateway locally (foreground; systemd Type=simple).
 
     Wires the environment into :func:`app_entry.build` — the same
@@ -752,7 +774,109 @@ def serve(host: str, port: int) -> None:
     production secret posture is enforced inside ``build``: with
     ``BENCHWEAVE_ENV=production`` a default/absent ``BENCHWEAVE_SECRET``
     refuses before anything touches disk.
+
+    Issue #422 increment 1: the data-dir locator (``--data-dir`` /
+    ``BENCHWEAVE_DATA_DIR``, or today's ``BENCHWEAVE_DB`` parent) also
+    auto-bridges ``<data-dir>/benchweave.env`` into the environment,
+    set-if-not-set, before ``build()`` — the secret ``setup`` wrote to disk
+    no longer needs the operator's grep/cut/export dance. A systemd
+    ``EnvironmentFile`` still wins by construction (process environment
+    first), and the file may only carry allowlisted service keys
+    (:func:`benchweave.cli.env_file.serve_env_file_keys`); anything else
+    refuses typed with the ``env_file:`` prefix.
     """
+    # --- issue #422 inc1: locator resolution + env-file autoload ----------
+    #
+    # The data-dir locates the file; the file never needs to locate
+    # itself. Resolution order, first match wins: the flag (click already
+    # prefers it over its envvar), the BENCHWEAVE_DATA_DIR process env,
+    # then the legacy BENCHWEAVE_DB parent (byte-for-byte today's behavior
+    # when no file is present). This runs BEFORE build() and touches no
+    # disk: a refused boot leaves nothing behind.
+    db_env = os.environ.get("BENCHWEAVE_DB")
+    if db_env is not None and not db_env.strip():
+        # Fold R7: an empty BENCHWEAVE_DB would fabricate a conflict path
+        # (Path("") resolves to the cwd) — the binding.py set-but-empty
+        # posture, refused BEFORE any locator logic.
+        raise click.ClickException(
+            "serve_locator: BENCHWEAVE_DB is set but empty or whitespace-only"
+            f" ({db_env!r}); unset it to use --data-dir /"
+            " BENCHWEAVE_DATA_DIR, or set it to a store path"
+        )
+    named_data_dir = data_dir is not None
+    if data_dir is None:
+        if db_env is None:
+            raise click.ClickException(
+                "missing required environment variable 'BENCHWEAVE_DB' —"
+                " serve reads BENCHWEAVE_DB, or name a data directory with"
+                " --data-dir / BENCHWEAVE_DATA_DIR (its benchweave.env is"
+                " then autoloaded, set-if-not-set)"
+            )
+        data_dir = Path(db_env).parent
+    elif db_env is not None:
+        db_parent = Path(db_env).resolve().parent
+        if db_parent != data_dir.resolve():
+            # resolve() so a relative --data-dir cannot false-conflict
+            # (the _integrity_problems precedent).
+            raise click.ClickException(
+                f"serve_locator_conflict: --data-dir/BENCHWEAVE_DATA_DIR"
+                f" names {data_dir.resolve()} but BENCHWEAVE_DB names"
+                f" {db_parent} — pass one locator, not two that disagree"
+            )
+    if named_data_dir:
+        # Fold R8: the exists-guard covers EVERY named-locator boot — the
+        # derived path AND an agreeing BENCHWEAVE_DB (which used to bypass
+        # the guard and reach build(), which would silently create a fresh
+        # store). The legacy bare-BENCHWEAVE_DB locator keeps today's
+        # create-on-typo behavior (risk R7 in the record — the integration
+        # suites boot fresh stores through it).
+        if "BENCHWEAVE_DB" in os.environ:
+            effective_db = Path(os.environ["BENCHWEAVE_DB"])
+        else:
+            effective_db = data_dir / atrest.DB_NAME
+            os.environ["BENCHWEAVE_DB"] = str(effective_db)
+        if not effective_db.exists():
+            raise click.ClickException(
+                f"no store at {effective_db} — run `benchweave setup --data-dir"
+                f" {data_dir}` first (a data-dir with no {atrest.DB_NAME}"
+                " must not silently create a fresh store)"
+            )
+    env_path = data_dir / atrest.CREDENTIAL_FILE
+    if not env_path.is_file():
+        if named_data_dir:
+            # The note fires only where the operator named a data-dir —
+            # the legacy locator promised nothing new, so it stays silent.
+            click.echo(
+                f"benchweave: no env file at {env_path} — nothing loaded"
+                " from it",
+                err=True,
+            )
+    else:
+        try:
+            entries = parse_env_file(
+                env_path, serve_env_file_keys(), excluded=ENV_FILE_EXCLUDED_KEYS
+            )
+        except EnvFileError as error:
+            raise click.ClickException(str(error)) from error
+        # Fold R6: a present-but-EMPTY process-env value shadows the file's
+        # real value with no effect (setdefault keeps ""), silently
+        # disarming e.g. the production posture — refuse at the seam,
+        # BEFORE applying, so a refusal leaves no partial residue.
+        for _lineno, key, _value in entries:
+            current = os.environ.get(key)
+            if current is not None and not current.strip():
+                raise click.ClickException(
+                    f"env_file: {env_path}: {key} is set but empty in the"
+                    " process environment and shadows the value this file"
+                    " carries — unset it or set it to a real value"
+                )
+        applied = apply_env_entries(entries)
+        if applied:
+            # Key NAMES only, never values (the file carries a live secret).
+            click.echo(
+                f"benchweave: loaded {env_path} (set {', '.join(applied)})",
+                err=True,
+            )
     # Lazy heavy imports: only serve pays for the app stack.
     import uvicorn
 

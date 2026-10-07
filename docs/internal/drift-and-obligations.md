@@ -622,6 +622,17 @@ and remain the reviewer's job.
     guards), so a mechanism change that leaves the doc behind rots it
     silently.
 
+29. **The serve env-file allowlist** (issue #422 increment 1) →
+    `serve_env_file_keys()` (`src/benchweave/cli/env_file.py`) must cover
+    every `BENCHWEAVE_*` key the serve path reads, or that key joins the
+    documented exclusion set with a reason (`BENCHWEAVE_DATA_DIR`, `DB`,
+    `HOST`, `PORT`). The inventory test pins the direct-read idiom only:
+    keys read through constants or loop variables (the `BENCHWEAVE_UI` and
+    quota-key idioms) are invisible to it, so a new serve-path env read
+    added that way must be hand-checked against the allowlist. The SDK
+    twin (`benchweave_sdk_server/env_file.py`) carries the same coupling
+    for its two-key allowlist.
+
 ## CI map
 
 | Job | What it catches |

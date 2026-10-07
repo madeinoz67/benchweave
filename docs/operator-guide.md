@@ -105,8 +105,9 @@ directory keeps whatever access its location gives it, so choose that
 location as you would on Linux.
 
 `--data-dir` can come from `BENCHWEAVE_DATA_DIR` instead of the flag (true
-for `setup`, `backup`, `restore`, `report`, and `verify`). Every command
-also takes `--json` for the stable machine contract.
+for `setup`, `backup`, `restore`, `report`, `retention`, `dispose`,
+`verify`, and `serve`). Every command except `serve` also takes `--json`
+for the stable machine contract.
 
 ### Optional: admitting transport providers (`transport-settings.json`)
 
@@ -156,11 +157,19 @@ Bootstrap and the run path apply one standard.
 
 `serve` composes the gateway from the environment and runs it under
 uvicorn in the **foreground** (daemonization belongs to the service
-manager; see §9). It reads:
+manager; see §9). The short form names the data directory, and `serve`
+finds the store and the secret there:
+
+```sh
+benchweave serve --data-dir /var/lib/benchweave --host 127.0.0.1 --port 8125
+```
+
+Set `BENCHWEAVE_ENV` to `production` in the process environment or in
+the env file (below). `serve` reads:
 
 | Variable | Meaning |
 |---|---|
-| `BENCHWEAVE_DB` | **Required.** Path to the store (`<data-dir>/state.sqlite`). |
+| `BENCHWEAVE_DB` | Path to the store (`<data-dir>/state.sqlite`). Give it, or let a named data directory derive it (below). |
 | `BENCHWEAVE_SECRET` | The gateway secret (the one `setup` wrote). |
 | `BENCHWEAVE_ENV` | `production` arms the secret posture (below). |
 | `BENCHWEAVE_HOST` / `BENCHWEAVE_PORT` | Bind address and port (also `--host` and `--port`; loopback + 8125 by default). |
@@ -173,12 +182,53 @@ manager; see §9). It reads:
 | `BENCHWEAVE_UI_SESSION_TTL_MS` | Browser-session lifetime ceiling (default 28800000, 8 h). |
 | `BENCHWEAVE_UI_MAX_BRIDGES_PER_SESSION` | Live event-stream bridges per browser session (default 4). |
 
-```sh
-export BENCHWEAVE_DB=/var/lib/benchweave/state.sqlite
-export BENCHWEAVE_ENV=production
-export BENCHWEAVE_SECRET="$(grep '^BENCHWEAVE_SECRET=' /var/lib/benchweave/benchweave.env | cut -d= -f2-)"
-benchweave serve --host 127.0.0.1 --port 8125
-```
+### Locate the store: the data-dir locator
+
+The locator order is: the `--data-dir` flag first, `BENCHWEAVE_DATA_DIR`
+second, then the parent of a set `BENCHWEAVE_DB` (the legacy path). When
+a data directory is named and `BENCHWEAVE_DB` is unset, `serve` derives
+the store as `<data-dir>/state.sqlite`. A named data directory without a
+store refuses and names `benchweave setup`: a typo must not silently
+create a fresh store. A `--data-dir` that disagrees with a set
+`BENCHWEAVE_DB` refuses with `serve_locator_conflict:`. Pass one
+locator, not two that disagree. A set-but-empty `BENCHWEAVE_DB` refuses
+with `serve_locator:`. On the legacy path a missing store is
+created fresh. That path keeps its old behavior.
+
+### The env file: `<data-dir>/benchweave.env`
+
+With a data directory named, `serve` reads
+`<data-dir>/benchweave.env` before it composes the gateway. This is the
+0600 credential file that `setup` writes (§2). You may hand-add
+allowlisted service keys to it. Each key applies set-if-not-set. An
+explicit process environment always wins.
+
+The file may carry `BENCHWEAVE_SECRET`, `BENCHWEAVE_ENV`,
+`BENCHWEAVE_FIXTURES`, `BENCHWEAVE_REGISTRY_DIR`, `BENCHWEAVE_UI`, and
+the quota keys the gateway reads. `BENCHWEAVE_DATA_DIR`, `BENCHWEAVE_DB`,
+`BENCHWEAVE_HOST`, and `BENCHWEAVE_PORT` never come from the file, each
+for its own reason. The locator finds the file, the directory derives
+the store, and the bind is read before the file loads. An unknown key
+refuses, and the refusal lists the allowed keys.
+
+Lines are `KEY=VALUE`. Blank lines and full-line `#` comments are
+skipped. A value may sit in one pair of single or double quotes, and
+`serve` removes that pair. There is no variable expansion.
+
+A malformed line, a duplicate key, or an empty value refuses with a
+typed `env_file:` message. Whitespace directly after `=`, a control
+character in a value, and non-UTF-8 bytes refuse the same way. The
+message names the path, the line, and the problem. It never shows the
+value.
+
+On POSIX, a file that gives group or other access refuses. Keep the
+file at mode 0600 (a 0700 file also loads). When a data directory is
+named and the file is absent, `serve` prints one note on stderr and
+continues. On success it prints one stderr line with the applied key
+names and the path, never a value.
+
+The legacy path also loads the file when it sits beside the store. It
+stays silent when the file is absent.
 
 ### The browser UI
 
@@ -597,6 +647,12 @@ sudo chmod 0600 /etc/benchweave/benchweave.env
 # edit /etc/benchweave/benchweave.env: BENCHWEAVE_SECRET=<your real secret>
 ```
 
+Two files carry the name `benchweave.env`. The deployment file at
+`/etc/benchweave/benchweave.env` is systemd's `EnvironmentFile` (§9).
+The data-dir file at `<data-dir>/benchweave.env` is the credential file
+that `serve` autoloads (§2, §3). They are different files with
+different writers.
+
 ## 4. Status and the demo
 
 `status` speaks to a **live** gateway (observe tier or higher):
@@ -963,6 +1019,10 @@ holds the store. Stop the gateway first (§11).
 > DOES NOT WRITE IT. `benchweave.env` IS DELIBERATELY NOT BACKED UP: A
 > BACKUP COVERS *STATE + CONTENT* ONLY. AFTER A RESTORE (ESPECIALLY ONTO
 > A REBUILT MACHINE) RE-CREATE OR RE-PLACE YOUR CREDENTIAL FILE YOURSELF.
+> IF YOU HAND-ADDED SERVICE KEYS TO IT (QUOTA CEILINGS,
+> `BENCHWEAVE_ENV`), PLACE THEM AGAIN AFTER THE RESTORE. WITHOUT THE
+> QUOTA KEYS, ADAPTER-BRIDGE RUNS REFUSE (§3). WITHOUT `BENCHWEAVE_ENV`,
+> THE GATEWAY STARTS IN DEVELOPMENT POSTURE WITHOUT A WARNING.
 > `benchweave setup` on a fresh dir generates one; keep your existing
 > secret safe and separate from the backup location. A restored gateway
 > re-uses the operator's kept credential.
@@ -990,6 +1050,11 @@ Preconditions the rendered unit assumes (and CI rehearses):
 `useradd --system benchweave`, `/var/lib/benchweave/` (the one writable
 root), and the filled `/etc/benchweave/benchweave.env`.
 
+systemd injects the unit's `EnvironmentFile` into the process
+environment before Python starts. An explicit process environment always
+wins (§3), so the unit file keeps its priority. When the unit file omits
+`BENCHWEAVE_SECRET`, the data-dir env file supplies it.
+
 Every directive's threat rationale lives in
 **`deploy/PERMISSIONS-REVIEW.md`** — read it before changing the unit.
 
@@ -1008,7 +1073,7 @@ Twelve commands — `benchweave --help` is the full surface:
 | Command | One-liner | Key flags |
 |---|---|---|
 | `setup` | Initialize an at-rest data directory | `--data-dir` (req), `--show-secret`, `--json` |
-| `serve` | Run the gateway (foreground) | `--host`, `--port` |
+| `serve` | Run the gateway (foreground; autoloads the data-dir env file) | `--data-dir`, `--host`, `--port` |
 | `status` | Gateway identity + bench inventory (live) | `--gateway` (req), `--token` (req), `--json` |
 | `ui-login` | Mint a one-use browser login URL (the URL expires in 60 s; the session is at most as wide as the token) | `--gateway-url` (req), `--token` (req), `--scope` (repeatable), `--ttl-mins`, `--json` |
 | `demo` | Built-in simulator demonstration | `--gateway`/`--token`, `--scratch`, `--keep`, `--timeout`, `--fixtures`, `--json` |
@@ -1075,9 +1140,14 @@ publicly-known secret (including the deploy example's placeholder). Set a
 real secret in the env file (`openssl rand -hex 32`) and keep the file 0600.
 
 **`missing required environment variable 'BENCHWEAVE_DB'`** — `serve`
-composes from the environment; export `BENCHWEAVE_DB` (plus
-`BENCHWEAVE_SECRET`/`BENCHWEAVE_FIXTURES`/`BENCHWEAVE_HOST`/`BENCHWEAVE_PORT`
-as your deployment configures them), or use the env file from §3.
+has no store locator. Pass `--data-dir`, set `BENCHWEAVE_DATA_DIR`, or
+export `BENCHWEAVE_DB` (plus the other variables your deployment
+configures, §3).
+
+**`env_file: ...`** — the data-dir env file refused to load (§3). The
+message names the path, the line, and the problem. It never shows the
+value. Correct the named line. The file carries allowlisted service
+keys only.
 
 **`not_ready` registry posture** — on boot, stderr may say
 `no fixture registry root — the registry admin change kinds stay not_ready
