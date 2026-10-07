@@ -1,12 +1,13 @@
 name: CI Docs
 
 # Public Pages site: the static front door from website/ at the root and the
-# Great Docs tree under docs/ (unversioned until the first release tag — see
-# scripts/assemble_docs_site.py), assembled into one artifact and deployed to
+# Great Docs tree under docs/, assembled into one artifact and deployed to
 # GitHub Pages on pushes to main. Same shape as the SDK repository's docs.yml.
 #
-# A docs build failure fails the job: no continue-on-error on any build or
-# assembly step.
+# The assembly is two-regime (scripts/assemble_docs_site.py): zero vX.Y.Z
+# release tags is an unversioned tree at docs/; one or more tags is per-tag
+# docs/v/<tag>/ buckets with the latest at the root. Either way a docs build
+# failure fails the job: no continue-on-error on any build or assembly step.
 
 on:
   push:
@@ -34,7 +35,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0 # full history + tags: refuse_if_tagged, page dates
+          fetch-depth: 0 # full history + tags: release-tag detection + bucket sources
           submodules: true # packages/sdk — importing benchweave needs the vendored trees resolved
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -47,7 +48,10 @@ jobs:
           python -m pip install uv
           uv sync
           # [svg] is great-docs' supported cairosvg extra — without it raster favicons silently skip.
-          uv pip install "great-docs[svg]"
+          # Pinned: scripts/assemble_docs_site.py's markup workarounds are written
+          # against great-docs 0.17.0 — bump the pin and the workarounds together
+          # (the SDK's own docs.yml carries the same precedent comment).
+          uv pip install "great-docs[svg]==0.17.0"
 
       - name: Set up Quarto
         uses: quarto-dev/quarto-actions/setup@8a96df13519ee81fd526f2dfca5962811136661b # v2.2.0

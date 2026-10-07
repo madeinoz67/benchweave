@@ -115,6 +115,7 @@ plugins/*/*/contracts/*-*.*.*/
 /.great-docs-cache/
 /site/
 /standards_pages/
+/.docs-assembly/
 
 # Gate wrapper retained logs (scripts/gate.py) — per-run evidence, pruned to
 # the last 20 runs by the wrapper itself. Anchored: a nested gate-logs/ must

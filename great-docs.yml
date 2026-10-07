@@ -7,8 +7,13 @@
 # assembly from docs/ (doc-taxonomy rule 1: one home per class — user_guide/ is
 # build output, gitignored); the Standards section renders standards/ in place.
 #
-# Unversioned by design until the first vX.Y.Z release tag exists — see the
-# assembly script's refuse_if_tagged.
+# Unversioned while zero vX.Y.Z release tags exist — the assembly's zero-tag
+# regime (scripts/assemble_docs_site.py). From the first release the
+# `versions:` list is registered here, ONE ENTRY AT A TIME, committed and
+# merged BEFORE its tag is pushed: the tag's own great-docs.yml is what its
+# bucket build filters against, so a registration that lands after the tag
+# is cut produces a zero-version build. The assembly refuses both directions
+# (a tag with no registration; a registration naming no real tag).
 
 display_name: BenchWeave
 parser: numpy

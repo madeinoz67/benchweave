@@ -36,6 +36,10 @@ function toggleTheme() {
   try { localStorage.setItem(THEME_KEY, next); } catch (e) {}
 }
 
+function gotoVersion(select) {
+  if (select.value) window.location.href = select.value;
+}
+
 applyStoredTheme();
 
 /* Header star CTA: live count from the GitHub API, best-effort. The ask

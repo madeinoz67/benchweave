@@ -137,9 +137,17 @@ def test_stamp_map_derives_from_committed_state() -> None:
 def test_token_coverage_is_exact_in_both_directions() -> None:
     """T3: every token maps, every map key is used (R3 — fail-closed both ways:
     a new standard admission reddens the site until a card exists, and an
-    unknown token can never pass for a claim)."""
+    unknown token can never pass for a claim).
+
+    Scope: the standards claim family. The selector scaffold's
+    ``{{stg-versions}}`` placeholder is a SECOND claim-site family whose
+    value derives from the release tags, not the map (design §1.4) — its
+    bidirectionality is pinned by
+    tests/contract/test_docs_site_versioned.py arms S3.
+    """
     stamps = _assembler().website_stamp_map(ROOT)
     tokens = set(_tokens(SOURCE.read_text(encoding="utf-8")))
+    tokens.discard(_assembler().SELECTOR_PLACEHOLDER)
     unmapped = sorted(tokens - set(stamps))
     unused = sorted(set(stamps) - tokens)
     assert not unmapped, f"token(s) with no map entry: {unmapped}"
@@ -197,7 +205,9 @@ def test_tamper_unknown_token_is_detected(tmp_path: Path) -> None:
         "v{{stg-otdp}}", "v{{stg-otdp}}{{stg-nope}}", 1
     )
     stamps = _assembler().website_stamp_map(ROOT)
-    assert sorted(set(_tokens(text)) - set(stamps)) == ["stg-nope"]
+    # The selector family is out of scope here (see T3's docstring).
+    observed = set(_tokens(text)) - {_assembler().SELECTOR_PLACEHOLDER}
+    assert sorted(observed - set(stamps)) == ["stg-nope"]
     copy = tmp_path / "index.html"
     copy.write_text(text, encoding="utf-8")
     with pytest.raises(SystemExit, match="stamp_unmapped_token:"):
@@ -290,7 +300,14 @@ def _minimal_dest(tmp_path: Path, index_html: str) -> Path:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("", encoding="utf-8")
     (docs / "index.html").write_text(assembler.SITE_LINK_MARKER, encoding="utf-8")
-    for link in sorted(set(re.findall(r'href="(docs/[^"#]*)"', index_html))):
+    # verify_tree resolves BOTH href= links and the selector's value= rows
+    # (options are values, not hrefs) — a stamped artifact in a tagged clone
+    # carries value="docs/v/dev/" rows, so both classes materialise here or
+    # GREEN-2 reddens the moment the first release tag lands (fold B-F1:
+    # the suite must be regime-independent).
+    hrefs = set(re.findall(r'href="(docs/[^"#]*)"', index_html))
+    hrefs |= set(re.findall(r'value="(docs/[^"#]*)"', index_html))
+    for link in sorted(hrefs):
         target = dest / link
         if link.endswith("/"):
             target = target / "index.html"
@@ -310,6 +327,23 @@ def test_verify_tree_green_on_a_stamped_artifact(tmp_path: Path) -> None:
     copy.write_text(SOURCE.read_text(encoding="utf-8"), encoding="utf-8")
     assembler.stamp_website(copy, assembler.website_stamp_map(ROOT))
     stamped = copy.read_text(encoding="utf-8")
+    assembler.verify_tree(_minimal_dest(tmp_path, stamped), paths={})
+
+
+def test_verify_tree_green_on_a_stamped_artifact_with_a_tagged_listing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """GREEN-2 in the tagged regime (fold B-F1): the stamp fills the selector
+    from release_tags(), so a tagged listing yields value="docs/v/dev/" rows —
+    the artifact root must still pass whole, or the first release tag reddens
+    main CI (ci.yml checks out fetch-depth: 0, tags included)."""
+    assembler = _assembler()
+    monkeypatch.setattr(assembler, "release_tags", lambda: ["v0.4.0"])
+    copy = tmp_path / "index.html"
+    copy.write_text(SOURCE.read_text(encoding="utf-8"), encoding="utf-8")
+    assembler.stamp_website(copy, assembler.website_stamp_map(ROOT))
+    stamped = copy.read_text(encoding="utf-8")
+    assert 'value="docs/v/dev/"' in stamped, "the tagged listing must fill tagged rows"
     assembler.verify_tree(_minimal_dest(tmp_path, stamped), paths={})
 
 
