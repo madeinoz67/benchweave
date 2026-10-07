@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Bug Fixes
 
 - Conform the simulator packages' gateway pin to the 0.4.0 wheel
+- The simulator lanes reference the gateway wheel without a version literal
 
 ### Miscellaneous
 
