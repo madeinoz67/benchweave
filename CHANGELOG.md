@@ -4,14 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-### Bug Fixes
+### Documentation
 
-- Conform the simulator packages' gateway pin to the 0.4.0 wheel
-- The simulator lanes reference the gateway wheel without a version literal
-
-### Miscellaneous
-
-- Refresh uv.lock for 0.4.0
+- The gateway line's release blast radius and tag discipline
 ## [0.4.0] - 2026-10-07
 
 ### Bug Fixes
@@ -340,6 +335,8 @@ All notable changes to this project will be documented in this file.
 - --bucket mode verifies its own docs tree, not the parent's website
 - Versioned-assembly fold — review lanes A/B, 2 HIGH + 4 MEDIUM
 - PR #415 owner-row fold — bare versions: key, inverse scope, reserved ids, absolute great-docs
+- Conform the simulator packages' gateway pin to the 0.4.0 wheel
+- The simulator lanes reference the gateway wheel without a version literal
 
 ### Documentation
 
@@ -1063,6 +1060,7 @@ All notable changes to this project will be documented in this file.
 - Regenerate the compatibility matrix for the v0.8.0 pairing (issue #393)
 - The pin advances with its mount — v0.7.1 -> v0.8.0
 - Bump version to 0.4.0
+- Refresh uv.lock for 0.4.0
 
 ### Performance
 
