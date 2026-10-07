@@ -82,8 +82,20 @@ and an honest verdict. Then explicitly:
 valuable answers that kill features and save the project from shipping fiction. Never
 dress up noise to have something to report, and never soften a null result.
 
-Close with confirmation that copies are deleted and nothing identifying appears in your
-report.
+Before delivering, run the privacy screen over the report text:
+
+```sh
+node .claude/hooks/privacy-screen.mjs report.md        # --json for machine-readable
+```
+
+Exit 0 = PASS. Exit 2 = REVIEW: redact and re-run, or state explicitly why each flagged
+item is not identifying. Exit 3 = BLOCK: the report does not leave until it passes. When
+the judgment layer is unavailable the screen still runs its deterministic pattern battery
+and a clean result returns REVIEW — that is the discipline working, not an obstacle to
+route around: self-audit the report and say so.
+
+Close with confirmation that copies are deleted, the screen's verdict, and that nothing
+identifying appears in your report.
 
 ## Findings that should outlive this session
 
