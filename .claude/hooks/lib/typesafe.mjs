@@ -7,8 +7,9 @@
 // with reason in: disabled | no-key | timeout | network | http-<status> | invalid-response.
 //
 // The unavailable path is a DESIGNED path, not an error path:
-//   - TYPESAFE_DISABLE (any non-empty value) short-circuits before key resolution —
-//     the deterministic lever for tests and for running the fallbacks on purpose.
+//   - TYPESAFE_DISABLE (any value that trims to non-empty) short-circuits before key
+//     resolution — the deterministic lever for tests and for running the fallbacks on
+//     purpose.
 //   - One attempt, bounded timeout (default 10 s). No retry: retrying inside the client
 //     multiplies the offline latency every caller pays, and the fallback IS the recovery.
 //   - The await is raced against the timer in this module — a fetch implementation that

@@ -90,7 +90,8 @@ if (problems.length) {
 // the protocol's retracted HOLD-gate lesson stands: advice at the producer, dumb pipe
 // everywhere else. --no-score opts out; an unavailable judgment layer prints a skip
 // line and the append proceeds exactly as before.
-if (!process.argv.includes('--no-score')) {
+if (!process.argv.includes('--no-score') && !CHECK) {
+  // --check implies --no-score: pure validation is not a judgment call (cr420 review).
   const feedback = await scoreBar(prepared)
   if (feedback) console.log(feedback)
 }

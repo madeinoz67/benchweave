@@ -91,6 +91,36 @@ test('F5: far or unparseable line strings never pair — failure direction is mo
   assert.equal(r.singleLane.length, 3)
 })
 
+test('R4: an off-vocabulary choice is invalid-answer, never resolved', async () => {
+  const client = {
+    ask: async () => ({ ok: true, model: 'm', answers: { pair_0: { type: 'choice', choice: 'banana', probabilities: {}, confidence: 0.99 } } }),
+  }
+  const r = await reconcile(laneA, laneB, client)
+  assert.equal(r.merged.length, 0)
+  assert.equal(r.keptSeparate.length, 0, 'banana at 0.99 must not buy its way onto keptSeparate')
+  assert.equal(r.uncertain.length, 1)
+  assert.match(r.uncertain[0].why, /invalid-answer/)
+})
+
+test('R4: same_root at out-of-range confidence never merges', async () => {
+  const client = {
+    ask: async () => ({ ok: true, model: 'm', answers: { pair_0: { type: 'choice', choice: 'same_root', probabilities: {}, confidence: 7 } } }),
+  }
+  const r = await reconcile(laneA, laneB, client)
+  assert.equal(r.merged.length, 0)
+  assert.equal(r.uncertain.length, 1)
+  assert.match(r.uncertain[0].why, /invalid-answer/)
+})
+
+test('LOW: a no-pairs reconcile reports mode none, not a semantic pass', async () => {
+  const r = await reconcile(
+    [{ id: 'A1', file: 'a.py', line: 1, summary: 'x' }],
+    [{ id: 'B1', file: 'b.py', line: 1, summary: 'y' }],
+    createClient({ disable: true })
+  )
+  assert.equal(r.mode, 'none')
+})
+
 test('the question battery is one choice per candidate pair, options named in code', async () => {
   let seen = null
   const client = { ask: async ({ state, questions }) => { seen = { state, questions }; return { ok: true, model: 'm', answers: Object.fromEntries(Object.keys(questions).map((id) => [id, { type: 'choice', choice: 'distinct', probabilities: {}, confidence: 0.9 }])) } } }

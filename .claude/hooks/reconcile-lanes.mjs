@@ -24,6 +24,7 @@ import { createClient, choiceQuestion } from './lib/typesafe.mjs'
 const LINE_WINDOW = 5
 const MERGE_CONFIDENCE = 0.6
 const MAX_PAIRS = 60 // bounded batch; beyond this the deterministic layer alone answers
+const VALID_VERDICTS = ['distinct', 'related', 'same_root'] // R4: off-vocabulary answers are not answers
 
 /** F5: line fields arrive as numbers and as natural LLM emissions ("L17", "120-124").
  * Parse the leading integer when one exists; anything unparseable never pairs —
@@ -72,8 +73,10 @@ export async function reconcile(laneA, laneB, client) {
   const singleLane = [...laneA.filter((f) => !paired.has(f)), ...laneB.filter((f) => !paired.has(f))]
 
   const base = { candidatePairs: pairs, singleLane }
+  const capped = pairs.length === MAX_PAIRS
   if (!pairs.length) {
-    return { ...base, mode: 'model', merged: [], uncertain: [], disclosure: 'no same-file candidate pairs — nothing to reconcile semantically' }
+    // LOW: nothing was judged — a mode keyed on 'model' would read as a semantic pass
+    return { ...base, mode: 'none', merged: [], uncertain: [], keptSeparate: [], disclosure: 'no same-file candidate pairs — nothing to reconcile semantically' }
   }
 
   const questions = {}
@@ -96,7 +99,8 @@ export async function reconcile(laneA, laneB, client) {
       mode: 'fallback',
       merged: [],
       uncertain: [],
-      disclosure: `semantic same-root pass not run (typesafe: ${r.reason}) — ${pairs.length} candidate pair(s) left unmerged for the row-call table`,
+      keptSeparate: [],
+      disclosure: `semantic same-root pass not run (typesafe: ${r.reason}) — ${pairs.length} candidate pair(s) left unmerged for the row-call table${capped ? `; deterministic pairing reached the ${MAX_PAIRS}-pair cap — excess same-file findings appear single-lane` : ''}`,
     }
   }
 
@@ -106,8 +110,18 @@ export async function reconcile(laneA, laneB, client) {
   pairs.forEach((p, i) => {
     const a = r.answers[`pair_${i}`]
     const conf = a?.confidence
-    // F8: confidence is [0,1] or it is not an answer.
-    if (!a || a.type !== 'choice' || typeof conf !== 'number' || !Number.isFinite(conf) || conf < 0 || conf > 1) {
+    // F8 + R4: confidence is [0,1] AND the choice is in the vocabulary, or it is not
+    // an answer — an off-vocabulary verdict at high confidence must not buy its way
+    // onto keptSeparate (recorded RESOLVED) the way 'banana' at 0.99 did.
+    if (
+      !a ||
+      a.type !== 'choice' ||
+      !VALID_VERDICTS.includes(a.choice) ||
+      typeof conf !== 'number' ||
+      !Number.isFinite(conf) ||
+      conf < 0 ||
+      conf > 1
+    ) {
       uncertain.push({ pair: p, why: 'invalid-answer' })
       return
     }
@@ -127,7 +141,7 @@ export async function reconcile(laneA, laneB, client) {
     merged,
     uncertain,
     keptSeparate,
-    disclosure: `semantic pass ran over ${pairs.length} pair(s); rule in code: same_root at confidence >= ${MERGE_CONFIDENCE} merges`,
+    disclosure: `semantic pass ran over ${pairs.length} pair(s); rule in code: same_root at confidence >= ${MERGE_CONFIDENCE} merges${capped ? `; deterministic pairing reached the ${MAX_PAIRS}-pair cap — excess same-file findings appear single-lane` : ''}`,
   }
 }
 
@@ -155,8 +169,8 @@ if (isMain) {
   } else {
     console.log(`reconcile-lanes: ${result.merged.length} merged, ${result.uncertain.length} uncertain/kept-separate, ${result.singleLane.length} single-lane (${result.mode})`)
     console.log(`  ${result.disclosure}`)
-    for (const m of result.merged) console.log(`  MERGED  ${m.members.map((x) => x.id).join(' + ')} (confidence ${m.confidence.toFixed(2)})`)
-    for (const u of result.uncertain) console.log(`  ROW-CALL ${u.pair.a.id} vs ${u.pair.b.id} — ${u.why}`)
-    for (const f of result.singleLane) console.log(`  SINGLE  [${f.severity}] ${f.id || ''} ${f.file || '(no file)'}: ${f.summary}`)
+    for (const m of result.merged) console.log(`  MERGED  ${m.members.map((x) => x.id || '(no id)').join(' + ')} (confidence ${m.confidence.toFixed(2)})`)
+    for (const u of result.uncertain) console.log(`  ROW-CALL ${(u.pair.a.id || '(no id)')} vs ${(u.pair.b.id || '(no id)')} — ${u.why}`)
+    for (const f of result.singleLane) console.log(`  SINGLE  [${f.severity}] ${f.id || '(no id)'} ${f.file || '(no file)'}: ${f.summary}`)
   }
 }

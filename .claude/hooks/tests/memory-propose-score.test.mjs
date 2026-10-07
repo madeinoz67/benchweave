@@ -35,6 +35,28 @@ function runHook(extraEnv) {
   return { r, dir }
 }
 
+test('--check implies --no-score: pure validation makes no judgment call and pays no linger', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'mp-checkscore-'))
+  try {
+    const r = spawnSync(process.execPath, [HOOK, '--check'], {
+      input: JSON.stringify(RECORD),
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        TYPESAFE_ENV_FILE: '/nonexistent/mp-score.env',
+        MUNINN_LEDGER_ROOT: dir,
+        MUNINN_PROPOSAL_VAULT: 'probe-vault',
+        // No TYPESAFE_DISABLE: --check itself must suppress scoring.
+      },
+    })
+    assert.equal(r.status, 0, r.stderr)
+    assert.match(r.stdout, /--check, nothing appended/)
+    assert.doesNotMatch(r.stdout, /bar sco/)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 const findLedger = (dir) => {
   const walk = (d) =>
     readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(d, e.name)) : [join(d, e.name)]))

@@ -83,6 +83,18 @@ test('F9b: evasion-shaped normative wording is extracted and the vocabulary blin
   assert.match(r.disclosure, /marker vocabulary is a defined list/)
 })
 
+test('R5: an out-of-domain noul in the semantic pass is flagged, never silently cleared', async () => {
+  const doc = 'The store cannot lose a committed run (`state/store.py:412`).\n'
+  const client = { ask: async () => ({ ok: true, model: 'm', answers: { claim_0: { type: 'noul', noul: -5 } } }) }
+  const r = await checkClaims(doc, client)
+  assert.ok(r.reasonFlags.some((f) => f.note === 'invalid-answer'), 'the malformed arm needs test teeth in this file too')
+})
+
+test('LOW: claims-check with nothing to judge reports mode none', async () => {
+  const r = await checkClaims('Sometimes the cache is warm.', createClient({ disable: true }))
+  assert.equal(r.mode, 'none')
+})
+
 test('claims beyond the batch cap are disclosed, not silently dropped', async () => {
   const big = Array.from({ length: 50 }, (_, i) => `Rule ${i}: this can never happen anywhere (\`src/x${i}.py:10\`).\n\n`).join('')
   const r = await checkClaims(big, createClient({ disable: true }))

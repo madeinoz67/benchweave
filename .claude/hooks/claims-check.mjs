@@ -79,7 +79,7 @@ export async function checkClaims(text, client) {
   if (!semantic.length) {
     return {
       ...base,
-      mode: 'model',
+      mode: 'none',
       reasonFlags: [],
       unjudged: 0,
       disclosure: `no cited claims to judge; the marker vocabulary is a defined list — normative claims worded outside it are invisible to the deterministic layer${overflow > 0 ? `; ${overflow} claim(s) beyond the semantic batch cap` : ''}`,

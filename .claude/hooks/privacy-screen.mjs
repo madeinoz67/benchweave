@@ -28,8 +28,10 @@ import { createClient, noulQuestion } from './lib/typesafe.mjs'
 
 export const THRESHOLDS = { block: 0.85, review: 0.5 }
 
-// One Noul per hazard. The classes are the bench-measurer contract verbatim; keep the
-// two lists in step or the threshold table silently stops covering a hazard.
+// One Noul per hazard. The classes derive from the bench-measurer privacy contract
+// (path_leak is added as an operator-machine class the contract implies but does not
+// name); keep the two lists in step or the threshold table silently stops covering a
+// hazard.
 const HAZARDS = [
   {
     id: 'device_identifier',

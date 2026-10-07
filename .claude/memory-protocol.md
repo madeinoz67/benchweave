@@ -81,10 +81,13 @@ fix and re-send the whole batch.
 When the judgment layer is available, the helper also prints **advisory noise-bar
 feedback** after validating: one line scoring the batch durable / non-obvious /
 self-contained (`--no-score` to skip; unavailable prints a skip line and appends
-anyway). It is advice to the proposing session, not a gate — it never blocks, never
-edits the record, and its absence changes nothing about the append. The bar itself
-stays where it has always been: the judgment of the proposing session, against the
-lists above.
+anyway). **Egress disclosure: when the key resolves, scoring ships each proposal's
+`concept`, `content`, and `summary` to the external judgment endpoint
+(`api.typesafe.ai`) — on by default. If a finding's text must not leave the machine,
+invoke with `--no-score`; `--check` never scores.** It is advice to the proposing
+session, not a gate — it never blocks, never edits the record, and its absence
+changes nothing about the append. The bar itself stays where it has always been: the
+judgment of the proposing session, against the lists above.
 
 Raw appends to `.claude/memory-proposals.jsonl` (gitignored) still work — never rewrite or
 reorder the file, append only — and `ledger-guard.mjs` will flag a malformed one while the
