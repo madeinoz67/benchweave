@@ -18,6 +18,9 @@
 //   node .claude/hooks/claims-check.mjs design.md        # or stdin
 //   node .claude/hooks/claims-check.mjs --json design.md
 // Exit codes: 0 = no flags, 2 = flags found.
+//
+// EGRESS (M3, lane 2): in judgment mode the claim passages are sent to
+// https://api.typesafe.ai. TYPESAFE_DISABLE forces the deterministic-only path.
 
 import { readFileSync, realpathSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'

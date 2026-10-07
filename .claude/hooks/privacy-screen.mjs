@@ -20,6 +20,11 @@
 //   node .claude/hooks/privacy-screen.mjs --json report.md
 // Exit codes: 0 = PASS, 2 = REVIEW, 3 = BLOCK. Verdict, mode, and per-hazard detail
 // print to stdout; nothing is written anywhere else.
+//
+// EGRESS (M3, lane 2): in judgment mode the report text is sent to
+// https://api.typesafe.ai BEFORE any verdict exists — redact first if the text must
+// not leave the machine, or set TYPESAFE_DISABLE for the deterministic-only path
+// (whose clean result is REVIEW, by design).
 
 import { readFileSync, realpathSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -85,6 +90,10 @@ function scanEmails(text, cap) {
     while (s > 0 && at - s < 64 && LOCAL_CHAR.test(text[s - 1])) s--
     let e = at + 1
     while (e < text.length && e - at - 1 < 255 && DOMAIN_CHAR.test(text[e])) e++
+    // M1 (lane 2): the maximal run can swallow sentence punctuation ('.'/'-') that a
+    // valid domain cannot end with — trim it before the shape check or the whole
+    // email vanishes (a trailing period erased BLOCK-class hits at tip).
+    while (e > at + 1 && (text[e - 1] === '.' || text[e - 1] === '-')) e--
     const cand = text.slice(s, e)
     if (EMAIL_SHAPE.test(cand)) hits.push({ id: 'email', hazard: 'person_or_org', cls: 'block', match: cand.slice(0, 80) })
     i = at + 1
@@ -185,6 +194,9 @@ if (isMain) {
   const asJson = args.includes('--json')
   const file = args.find((a) => !a.startsWith('--'))
   const text = file ? readFileSync(file, 'utf8') : readFileSync(0, 'utf8')
+  if (!asJson) {
+    console.error('note: judgment mode sends this text to api.typesafe.ai before any verdict; TYPESAFE_DISABLE forces the deterministic-only path')
+  }
 
   const result = await screen(text)
   if (asJson) {

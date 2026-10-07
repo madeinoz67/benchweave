@@ -50,6 +50,9 @@ function resolveKey(opts) {
   // Hermeticity guard (F4): a hook spawned from a node:test process inherits
   // NODE_TEST_CONTEXT; tests must never reach the operator's key file, whatever the
   // spawning test remembered to set. An explicit env key still works for live tests.
+  // Residual, deliberately uncovered (M2, lane 2): NODE_TEST_CONTEXT is ABSENT when a
+  // test file is run directly (node tests/x.test.mjs) — the guard cannot see that
+  // route; test spawns pin TYPESAFE_ENV_FILE to a nonexistent path instead.
   if (process.env.NODE_TEST_CONTEXT) return ''
   const envFile = opts.envFile || process.env.TYPESAFE_ENV_FILE || join(homedir(), '.claude', '.env')
   return readEnvFile(envFile).TYPESAFE_API_KEY || ''

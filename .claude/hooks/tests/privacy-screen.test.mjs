@@ -115,6 +115,13 @@ test('F2: adversarial no-dot email-shaped input completes fast and yields no ema
   assert.ok(ms < 500, `scan must be near-linear, took ${ms.toFixed(1)}ms`) // 150x headroom; not a CI perf gate, a blowup tripwire
 })
 
+test('M1 (lane 2): sentence-final punctuation does not erase an email the old regex caught', () => {
+  const hits1 = fallbackScan('Contact the operator at ops@example.com. They replied.')
+  assert.ok(hits1.some((h) => h.id === 'email' && h.match === 'ops@example.com'), 'trailing period erased the hit at 3ca9586e')
+  const hits2 = fallbackScan('Reach ops@example.com... or ops@example.com- for anything.')
+  assert.equal(hits2.filter((h) => h.id === 'email').length, 2, 'dot-runs and hyphens after the domain must trim, not swallow')
+})
+
 test('no PASS verdict is reachable with an unavailable judgment layer, even for empty text', async () => {
   const r = await screen('', disabled)
   assert.notEqual(r.verdict, 'PASS')

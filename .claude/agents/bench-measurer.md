@@ -89,10 +89,13 @@ node .claude/hooks/privacy-screen.mjs report.md        # --json for machine-read
 ```
 
 Exit 0 = PASS. Exit 2 = REVIEW: redact and re-run, or state explicitly why each flagged
-item is not identifying. Exit 3 = BLOCK: the report does not leave until it passes. When
-the judgment layer is unavailable the screen still runs its deterministic pattern battery
-and a clean result returns REVIEW — that is the discipline working, not an obstacle to
-route around: self-audit the report and say so.
+item is not identifying. Exit 3 = BLOCK: the report does not leave until it passes. **The
+screen in judgment mode sends the report text to the external judgment endpoint
+(api.typesafe.ai) BEFORE any verdict exists — redact first if the report must not leave
+the machine, or run with TYPESAFE_DISABLE for the deterministic-only path (whose clean
+result is REVIEW, by design).** When the judgment layer is unavailable the screen still
+runs its deterministic pattern battery and a clean result returns REVIEW — that is the
+discipline working, not an obstacle to route around: self-audit the report and say so.
 
 Close with confirmation that copies are deleted, the screen's verdict, and that nothing
 identifying appears in your report.

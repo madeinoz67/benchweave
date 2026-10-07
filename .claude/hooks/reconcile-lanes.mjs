@@ -15,6 +15,9 @@
 // Usage:
 //   node .claude/hooks/reconcile-lanes.mjs laneA.json laneB.json [--json]
 // Each input is a JSON array of {id?, severity, file?, line?, summary}.
+//
+// EGRESS (M3, lane 2): in judgment mode the candidate finding pairs are sent to
+// https://api.typesafe.ai. TYPESAFE_DISABLE forces the deterministic-only path.
 
 import { readFileSync, realpathSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'

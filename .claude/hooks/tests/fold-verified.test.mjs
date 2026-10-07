@@ -2,7 +2,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -65,6 +65,35 @@ test('F9a: claims-check fallback exits 2 when cited claims went unjudged', () =>
     const r = run(CLAIMS, [doc], NO_KEY)
     assert.equal(r.status, 2, 'unjudged cited claims are a disclosure, not a clean pass')
     assert.match(r.stdout, /structural-reason pass not run/)
+  } finally {
+    rmSync(tmp, { recursive: true, force: true })
+  }
+})
+
+// M2 (lane 2): the F4 arm above pins the env-file out of range, so the guard itself is
+// not its discriminator. THIS test leaves a real key reachable and a dead endpoint —
+// only the NODE_TEST_CONTEXT guard can produce no-key. Pre-guard code returns 'network'.
+test('M2: the hermeticity guard itself is the discriminator — key reachable, still no live call', () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'm2-'))
+  try {
+    const envDir = join(tmp, 'env')
+    mkdirSync(envDir)
+    writeFileSync(join(envDir, 'ts.env'), 'TYPESAFE_API_KEY=k-live-fixture\n')
+    const rec = { concept: 'guard discriminator probe', content: 'a probe record long enough to clear the forty-character content floor for validation', summary: 's', type: 'fact', tags: ['probe'], source: 'test' }
+    const r = spawnSync(process.execPath, [PROPOSE], {
+      input: JSON.stringify(rec),
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        TYPESAFE_ENV_FILE: join(envDir, 'ts.env'), // a REAL key file, in range
+        TYPESAFE_ENDPOINT: 'http://127.0.0.1:9/', // dead port: a resolved key would surface as network, fast
+        MUNINN_LEDGER_ROOT: tmp,
+        MUNINN_PROPOSAL_VAULT: 'probe',
+      },
+    })
+    assert.equal(r.status, 0, r.stderr)
+    assert.match(r.stdout, /bar scoring skipped \(typesafe: no-key\)/, 'the guard must suppress the key file; network would mean it resolved')
+    assert.doesNotMatch(r.stdout, /bar feedback \(advisory/)
   } finally {
     rmSync(tmp, { recursive: true, force: true })
   }
