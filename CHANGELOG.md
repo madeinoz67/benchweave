@@ -21,6 +21,8 @@ All notable changes to this project will be documented in this file.
 - #422 inc1 env-file autoload design record
 - Serve --data-dir locator, env-file autoload guide, allowlist drift row (#422)
 - Issue #159 Option-B owner decision brief (OWNER_FORK) (#429)
+- #422 inc2 supervision + stop-semantics record (two-lane refuted, F1-F15 folded)
+- #422 inc2 lane-1 fold — pickup-gate ordering, SSE-bound drain, signal semantics, TOCTOU close, verdict lattice (F1-F13)
 
 ### Features
 
