@@ -481,7 +481,10 @@ def ref_has_config(ref: str) -> bool:
 
 # The versions: block parse (SDK's yml_version_tags regex, :134-140) — pure
 # over its input so the registration checks are testable without a tree.
-VERSIONS_BLOCK_RE = re.compile(r"^versions:\n((?:[ \t]+.*\n?)+)", re.MULTILINE)
+# The body is OPTIONAL and the key's newline optional: a bare `versions:`
+# key at EOF (a truncated registration) is a stale registration too, not a
+# match failure (PR #415 row 1) — the block is "present, empty".
+VERSIONS_BLOCK_RE = re.compile(r"^versions:[ \t]*\n?((?:[ \t]+.*\n?)*)", re.MULTILINE)
 VERSIONS_ENTRY_RE = re.compile(r"^\s*-?\s*tag:\s*(\S+)", re.MULTILINE)
 
 
@@ -593,11 +596,11 @@ def check_registration(tags: list[str], yml_text: str, tag_ymls: dict[str, str])
                 "'latest: true' (at its own ref a correctly-registered tag is always the "
                 "newest release)"
             )
-    stale = sorted(t for t in registered if TAG_RE.match(t) and t not in tags)
+    stale = sorted(t for t in registered if t not in tags and t != "dev")
     if stale:
         raise SystemExit(
             f"stale version registration(s) in great-docs.yml 'versions:': {', '.join(stale)} "
-            "— every entry must name a real release tag"
+            "— every entry must name a real release tag or the dev special"
         )
     if tags:
         # Fold A-F3: great-docs accepts two latest: true entries silently;
@@ -664,9 +667,11 @@ def selector_options_html(tags: list[str]) -> str:
     refuses via ``stamp_unmapped_token``. The ``{{`` delimiter residue sweep
     in ``verify_tree`` covers a token neither arm replaced.
     """
-    return "\n".join(
-        f'        <option value="{value}">{label}</option>' for label, value in selector_rows(tags)
-    )
+    rows = [f'<option value="{value}">{label}</option>' for label, value in selector_rows(tags)]
+    # The first row carries no generator indent: it lands where the scaffold
+    # token sat, whose line already indents it (PR #415 row 7a — the
+    # double-indent was the cosmetic artifact).
+    return ("\n" + " " * 8).join(rows)
 
 
 def copy_website(dest: Path) -> None:
@@ -720,7 +725,15 @@ def replace_dir(src: Path, dst: Path) -> None:
 
 
 def replace_root(src: Path, dest: Path) -> None:
-    """Replace the site root (everything outside ``v/``) with a bucket build."""
+    """Clear the site root outside ``v/`` and MERGE a bucket build into it.
+
+    ``shutil.copytree(..., dirs_exist_ok=True)`` merges src into dest — src's
+    own ``v/`` subtree (if any) merges into dest's ``v/`` beside the lifted
+    buckets rather than replacing it. The fold's source strip means the
+    bucket output carries no alias stubs, so in practice nothing lands under
+    ``v/`` from here and ``fix_alias_stubs`` remains the sole creator of the
+    real aliases.
+    """
     for entry in dest.iterdir():
         if entry.name == "v":
             continue
@@ -810,7 +823,7 @@ STAMP_TOKEN_RE = re.compile(r"\{\{stg-([a-z0-9-]+)\}\}")
 # `stg-sdk` derives from the sdk_compatibility mirror, never from a standards
 # entry: an entry id `sdk` would silently shadow the mirror's key (the mirror
 # write wins) and be invisible to every coverage arm (review fold F4).
-RESERVED_STAMP_IDS = frozenset({"sdk"})
+RESERVED_STAMP_IDS = frozenset({"sdk", "versions", "stg-versions"})
 
 
 def website_stamp_map(root: Path) -> dict[str, str]:
@@ -1302,6 +1315,12 @@ def run_bucket_build(great_docs: str, tag: str, dest: Path) -> None:
     venv = tree / ".bucket-venv"
     env = dict(os.environ)
     env["UV_PROJECT_ENVIRONMENT"] = str(venv)
+    # The child runs with cwd=<tag tree>: a relative --great-docs would
+    # resolve against the CLONE, not the parent — resolve it here (PR #415
+    # row 6; the alternative was a loud refusal, but resolving preserves the
+    # invocation for every absolute/PATH-resolved case and fixes the
+    # relative one).
+    great_docs_abs = str(Path(great_docs).resolve())
     log(f"bucket {tag}: running the tag's own assembly --bucket {tag}")
     run(
         [
@@ -1316,7 +1335,7 @@ def run_bucket_build(great_docs: str, tag: str, dest: Path) -> None:
             "--dest",
             str(out),
             "--great-docs",
-            great_docs,
+            great_docs_abs,
         ],
         cwd=tree,
         env=env,
@@ -1426,7 +1445,10 @@ def main() -> None:
             capture_output=True,
             text=True,
         )
-        tag_ymls[tag] = proc.stdout if proc.returncode == 0 else ""
+        # None (not "") for the unreadable case: an absent yml at the ref is a
+        # different refusal from a yml that does not list the tag (PR #415
+        # row 7b — the None branch of check_registration was dead wiring).
+        tag_ymls[tag] = proc.stdout if proc.returncode == 0 else None
     check_registration(tags, yml_text, tag_ymls)
 
     if dest.exists():
