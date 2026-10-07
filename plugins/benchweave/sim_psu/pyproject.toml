@@ -9,7 +9,7 @@ description = "BenchWeave deterministic PSU simulator (private host API)"
 readme = "README.md"
 requires-python = ">=3.13"
 license = {text = "Proprietary"}
-dependencies = ["benchweave==0.1.0"]
+dependencies = ["benchweave==0.4.0"]
 
 [project.optional-dependencies]
 test = ["pytest==9.1.1"]
