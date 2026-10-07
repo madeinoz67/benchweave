@@ -667,6 +667,8 @@ All notable changes to this project will be documented in this file.
 - Addendum 2 — m1's runtime failure modes (F7) and the open-world class's silent-pass correction (F4)
 - Issue #381 versioned-docs port design record
 - Versioned-docs landing — readiness condition 1, cut procedure, taxonomy
+- Issue #394 mock byte-stream transport — design of record
+- Issue #394 addendum 1 — the fold's corrections
 
 ### Features
 
@@ -1278,6 +1280,7 @@ All notable changes to this project will be documented in this file.
 - Advance packages/sdk to the #407 fold tip (22f9a1e)
 - Pin the declared submodule sha alongside the pointer advance
 - Advance the pointer and the declared pin to the wave-3 fold tip
+- Advance the pointer and the declared pin to the v0.9.0 release tag
 
 ### Ci
 
