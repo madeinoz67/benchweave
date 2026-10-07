@@ -329,6 +329,7 @@ All notable changes to this project will be documented in this file.
 - Script the with-ui scaffold's drain probe (issue #407 wave 4)
 - --bucket mode verifies its own docs tree, not the parent's website
 - Versioned-assembly fold — review lanes A/B, 2 HIGH + 4 MEDIUM
+- PR #415 owner-row fold — bare versions: key, inverse scope, reserved ids, absolute great-docs
 
 ### Documentation
 
