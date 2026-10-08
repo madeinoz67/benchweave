@@ -120,11 +120,25 @@ and remain the reviewer's job.
    pins the disclosed 0.1.2 prefix-split cell (SDK `version_not_served:` fold vs the
    gateway's ack gate).
 
-9. **`deploy/systemd/` templates** 🪝 → the `systemd` CI job renders the template and
+9. **`deploy/` templates** 🪝 → the `systemd` CI job renders the template and
    `systemd-analyze verify`s it against rehearsed preconditions (dedicated user, one
-   writable data dir, env file). The `{{`-absence assertion in `tests/cli/test_serve.py`
+   writable data dir, env file). Issue #422 inc3 added a second render leg to the same
+   rehearsal: `setup` a real fresh uncommissioned store, render through
+   `benchweave service install --unit-output` itself, and verify THAT unit — the
+   derived-`TimeoutStopSec` code path (commissioned max + 30 s, else the manager
+   default with the disclosed comment) must emit a unit the verifier accepts, not only
+   a hand-sedded template. The `{{`-absence assertion in `tests/cli/test_serve.py`
    catches placeholder misses that `systemd-analyze verify` tolerates — the CI job's own
    comment says do not simplify that test away; the two catch complementary failure modes.
+   **The launchd template (`deploy/launchd/com.benchweave.gateway.plist.template`, same
+   increment) has no lint**: its `{{DATA_DIR}}` and `{{TIMEOUT_NOTE}}` placeholders have
+   no verifier in any lane, and `service install` renders the plist only on darwin
+   (`sys.platform` gate — explicit `--plist-output` included), so the ubuntu CI lanes
+   never exercise it. The macOS analogue candidate is `plutil -lint` over the rendered
+   plist (syntax only — it cannot judge the mapping-limit comments the template writes
+   in lieu of enforcement). Status: DEFERRED, condition = a macOS rehearsal lane in CI
+   (the same platform boundary the unit's behavioural verification has); until then the
+   plist render path is macOS-operator-verified only.
 
 10. **A dependency change** 🪝 → `pyproject.toml` and `uv.lock` together, CI in the same
     change when the dependency changes what CI must install or materialise.
