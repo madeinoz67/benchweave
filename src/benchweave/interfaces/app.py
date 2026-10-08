@@ -1154,6 +1154,7 @@ def create_app(
                 now_epoch=now_epoch,
                 content=content,
                 store=store,
+                write_gate=gate,
                 streams_closing=(
                     supervision_surface.streams_closing
                     if supervision_surface is not None

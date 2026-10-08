@@ -582,12 +582,226 @@ def test_pickup_gate_stops_dequeue_and_lets_the_active_job_finish() -> None:
         assert worker.wait_gated_exit(timeout=10), "the gated worker must exit"
         assert ran == ["run-blocker"], ran
         # The queued job is still IN the queue (requeued, never taken).
-        # Note the arithmetic: the requeue's ``put`` increments
-        # ``unfinished_tasks`` while the ``get`` that fetched it never
-        # decremented it (only ``task_done`` does) — the ghost's count is
-        # requeue-inflated BY DESIGN; ``join`` therefore reports the
-        # honest did-not-drain at stop time, which is exactly the
-        # CTL-9-honest shutdown line. The pin here is the QUEUE CONTENT.
+        # G7 folded the arithmetic: the requeue's ``put`` re-increments
+        # ``unfinished_tasks`` (the ``get`` that fetched it never
+        # decremented it — only ``task_done`` does), so the ghost's count
+        # is requeue-inflated until ``join`` settles it at thread exit
+        # under the gate — the join-True arm directly below pins that.
+        # The pin here is the QUEUE CONTENT.
         assert worker._queue.qsize() == 1
         job = worker._queue.get_nowait()
         assert job[0] == "run-queued"
+
+
+def test_g7_join_settles_gated_ghost_bookkeeping_and_reports_drained() -> None:
+    """G7: after a gated stop with a queued ghost, ``join`` reports the
+    truth — no job mid-flight, the thread gone — instead of the false
+    did-not-drain (whose CTL-9 shutdown line then cannot fire after a
+    protective stop that already finalized its ghosts). The ghost stays
+    IN the queue for the stop-time sweep; the queue's unfinished-count
+    bookkeeping settles at thread exit under the gate."""
+
+    from benchweave.interfaces.worker import RunWorker
+
+    blocker_started = threading.Event()
+    released = threading.Event()
+
+    def build_run(run_id: str, principal: str, binding: dict[str, Any],
+                  store: Any) -> Any:
+        class FakeCoordinator:
+            def start_run(self, rid: str, principal_id: str) -> dict[str, Any]:
+                if rid == "run-active":
+                    blocker_started.set()
+                    released.wait(timeout=30)
+                return {}
+
+            def cancel(self, rid: str, principal_id: str) -> None:
+                pass
+
+        return FakeCoordinator()
+
+    import tempfile
+
+    from benchweave.state.store import Store
+
+    with tempfile.TemporaryDirectory() as tmp:
+        real = Store.open(Path(tmp) / "state.sqlite")
+        worker = RunWorker(
+            real,
+            cast(Any, None),
+            build_run=build_run,
+            limits={"max_page_size": 100},
+        )
+        worker.submit("run-active", "p", {}, "bench")
+        worker.submit("run-ghost", "p", {}, "bench")
+        worker.start()
+        assert blocker_started.wait(timeout=10), "the active job never started"
+        worker.gate_pickup()
+        released.set()
+        assert worker.wait_gated_exit(timeout=10), "the gated worker must exit"
+        # The RED shape: unfinished_tasks counts the ghost (and the
+        # requeue's put double-counts the taken slot) — join reported
+        # the false did-not-drain at stop time.
+        assert worker.join(timeout=2.0) is True, (
+            "join after a gated stop with a queued ghost must report the "
+            "drained truth (G7) — the false CTL-9 shutdown line rides "
+            "the False return"
+        )
+        assert worker._queue.qsize() == 1, "the ghost stays for the sweep"
+        assert worker._queue.get_nowait()[0] == "run-ghost"
+        real.close()
+
+
+# --- G4: the dequeue-to-mark escape (2026-10-08 refute fold) -----------------------
+
+
+def _compose_armed_stock(
+    tmp_path: Path,
+) -> tuple[Any, Any, threading.Thread, Any, Path]:
+    """The in-process armed composition over the DERIVED SLOW lattice
+    (the cli suite's ``_compose_armed`` shape): the G4 arm needs the
+    escape's mark to land inside the shrunken gate wait AND the body to
+    still be IN-FLIGHT when the fixpoint loop's cancel arrives — a fast
+    body would complete before the cancel's monitor tick and the outcome
+    assert would pin timing instead of the mechanism."""
+    from fastapi import FastAPI
+
+    from benchweave.content.store import ContentStore
+    from benchweave.interfaces.app import create_app
+    from benchweave.state.store import Store
+
+    data_dir = tmp_path / "gateway"
+    data_dir.mkdir()
+    fixtures = _derived_slow_lattice(tmp_path)
+    store = Store.open(data_dir / "state.sqlite", check_same_thread=False)
+    content = ContentStore(store)
+    app: FastAPI = create_app(
+        store=store,
+        content=content,
+        secret=b"wp08-task-nine-secret",
+        limits={"max_json_bytes": 1048576, "max_page_size": 100,
+                "max_chunk_bytes": 65536, "max_lease_ms": 21600000,
+                "min_poll_ms": 100, "max_admission_ms": 5000},
+        gateway_id="gw-g4-arm",
+        fixtures_dir=fixtures,
+        now_iso=_now_iso,
+        now_epoch=lambda: 0,
+        supervision_armed=True,
+    )
+    server, thread = _boot(app)
+    return app, server, thread, store, fixtures
+
+
+def test_g4_dequeue_to_mark_escape_cannot_abandon_a_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """G4: a job taken between ``queue.get`` and the running mark escapes
+    the stop window's state read — the protective decision currently
+    ends mid-body-abandon (``wait_gated_exit`` False → the sweep-note →
+    graceful exit over a run it never cancelled). The fold: after
+    ``wait_gated_exit``, RE-READ live states, cancel+wait anything now
+    running, loop to fixpoint BEFORE the sweep."""
+    import asyncio
+    import hashlib
+
+    import benchweave.interfaces.supervision as supervision_surface_module
+    from benchweave import supervision
+    from benchweave.interfaces.errors import OperationFailure
+    from benchweave.interfaces.identity import Identity
+    from benchweave.state.store import Store
+
+    park_seconds = 1.5
+    monkeypatch.setattr(
+        supervision_surface_module, "GATE_EXIT_WAIT_S", 0.5
+    )
+    real_put = Store.put_run_state
+    parked = threading.Event()
+
+    def parking_put(self: Any, *args: Any, **kwargs: Any) -> None:
+        state = args[2] if len(args) > 2 else kwargs.get("state")
+        if state == "running" and not parked.is_set():
+            parked.set()
+            time.sleep(park_seconds)  # the dequeue-to-mark window, held open
+        return real_put(self, *args, **kwargs)
+
+    monkeypatch.setattr(Store, "put_run_state", parking_put)
+    app, server, thread, store, fixtures = _compose_armed_stock(tmp_path)
+    try:
+        surface = app.state.supervision
+        operations = app.state.operations
+        gate = app.state.write_gate
+        identity = Identity(
+            "g4-principal", "stg", frozenset({"stg:control"}), 2**31
+        )
+        raw = (fixtures / "run-binding.json").read_bytes()
+        binding = {
+            "id": json.loads(raw)["request_id"],
+            "version": "0.1.0",
+            "sha256": hashlib.sha256(raw).hexdigest(),
+        }
+        with gate:
+            try:
+                operations.run_start(
+                    identity, BENCH_ID, "req-voltage-check-1", binding,
+                    store.current_generation(BENCH_ID), None,
+                )
+            except OperationFailure as failure:
+                pytest.fail(f"the run_start refused pre-park: {failure}")
+        assert parked.wait(timeout=10.0), (
+            "the worker never took the job (the park never armed)"
+        )
+        # The protective stop lands INSIDE the parked window: the window
+        # read sees the run as `accepted` (a ghost), the gate lands after
+        # the dequeue.
+        supervision.stop_path(surface.db_path).write_text(
+            json.dumps(
+                {
+                    "schema": 1,
+                    "mode": "protective",
+                    "requested_wall": _now_iso(),
+                    "actor_pid": os.getpid(),
+                    "target_pid": os.getpid(),
+                }
+            ),
+            encoding="utf-8",
+        )
+        future = asyncio.run_coroutine_threadsafe(
+            surface._run_decision(
+                supervision.read_stop_file(surface.db_path), trigger="file"
+            ),
+            surface._loop,
+        )
+        future.result(timeout=30.0)
+        # THE ASSERT: the decision is over — the escaped run must already
+        # be terminal, cancelled by the fixpoint loop (never abandoned
+        # mid-body, never fabricated `interrupted` by the sweep).
+        deadline = time.monotonic() + 10.0
+        run = None
+        while time.monotonic() < deadline:
+            run = _only_run(store)
+            if run is not None and run["terminal"] is not None:
+                break
+            time.sleep(0.2)
+        assert run is not None, "the escaped run's row exists"
+        assert run["terminal"] is not None, (
+            "the decision completed over a NON-terminal run — the "
+            "mid-body abandon (G4)"
+        )
+        assert run["terminal"]["body_outcome"] == "cancelled", run["terminal"]
+        assert str(run["terminal"]["body_outcome"]) != "interrupted", (
+            "a dispatched run is the coordinator's to terminalize — the "
+            "sweep must never own it (CTL-9)"
+        )
+    finally:
+        server.should_exit = True
+        thread.join(timeout=10)
+        store.close()
+
+
+def _only_run(store: Any) -> Any:
+    for bench in store.list_benches(limit=1000, offset=0)[0]:
+        for row in store.list_run_states(str(bench["bench_id"])):
+            run = store.get_run(str(row["run_id"]))
+            if run is not None:
+                return run
+    return None

@@ -29,6 +29,7 @@ import os
 import signal as signal_module
 import sys
 import threading
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -50,6 +51,21 @@ STOP_POLL_SECONDS = 1.0
 
 #: The protective wait's own poll cadence (terminal-record observation).
 TERMINAL_POLL_SECONDS = 0.2
+
+#: The pickup-gate exit wait (G8's derivation comment): three times the
+#: lifespan's 5 s drain-join bound. The gated thread's remaining work
+#: after the active job terminalizes is sub-second bookkeeping (the
+#: requeue, the thread return), so 15 s covers any healthy exit with
+#: margin; the bound only decides whether the fixpoint loop re-reads
+#: state (G4) or the sweep-note disclosure stands — the protective wait
+#: itself is deadline-stated, never this number.
+GATE_EXIT_WAIT_S = 15.0
+
+#: G5: every daemon-side verdict write carries the F6 bounded
+#: replace-retry (the CLI's request write already does) — a transient
+#: ``os.replace`` failure (a Windows share-mode handle on the read side)
+#: must not latch the decision dead with no verdict on disk.
+VERDICT_WRITE_RETRY_S = 5.0
 
 #: The era reason the scoped stop sweep writes into interrupted records
 #: (record §3.3 step 3).
@@ -125,6 +141,13 @@ class SupervisionSurface:
         self._decision_task: asyncio.Task[None] | None = None
         self._decided = False
         self._foreign_seen: set[tuple[int, int]] = set()
+        # S1's era rule, the log-dedupe half: one typed line per stale
+        # request FILE VERSION, never one per poll.
+        self._stale_seen: set[tuple[int, str]] = set()
+        # G10: the graceful-shutdown timeout serve armed — stated in the
+        # accepted verdicts so the CLI's exit-wait derives from the
+        # daemon's number (A02).
+        self._graceful_timeout: float | None = None
         # The SSE close event (F2 fold: the stop decision closes live
         # streams so the drain cannot hang on the Events view forever).
         self.streams_closing = asyncio.Event()
@@ -149,6 +172,13 @@ class SupervisionSurface:
         fold: the replay ends the process by signal 15 after a clean
         drain, failing the exit-0 contract)."""
         self._server = server
+
+    def bind_graceful_timeout(self, seconds: float) -> None:
+        """serve states the ``timeout_graceful_shutdown`` it armed (G10):
+        the accepted verdicts carry it and the CLI's exit-wait derives
+        from the DAEMON's number — the numeric authority stays here
+        (A02), never a CLI-side constant."""
+        self._graceful_timeout = float(seconds)
 
     def log_destination(self) -> str:
         """Where this daemon's stderr bytes land (§2.3): ``start`` sets
@@ -219,9 +249,20 @@ class SupervisionSurface:
     async def _poll_loop(self) -> None:
         while True:
             await asyncio.sleep(STOP_POLL_SECONDS)
-            task = self.poll_once()
-            if task is not None:
-                await task
+            try:
+                task = self.poll_once()
+                if task is not None:
+                    await task
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                # G3: the doorbell must survive any single poll or decision
+                # failure — a dead poll task is a silently disarmed stop
+                # surface (the Windows ``os.geteuid`` death was the found
+                # instance of the class; the guard covers the class).
+                _LOG.exception(
+                    "supervision doorbell poll failed; polling continues"
+                )
 
     def poll_once(self) -> asyncio.Task[None] | None:
         """ONE doorbell poll (the poll loop's body; the deterministic
@@ -229,11 +270,16 @@ class SupervisionSurface:
         decision task, or None when there was nothing to consume.
 
         A verdict-shaped file (already consumed) is a no-op: the protocol
-        is single-shot by construction. A foreign-owned request is NOT
-        consumed (§3.2 step 4) — the typed line answers on the gateway
-        log and the file is left exactly as it is."""
+        is single-shot by construction. A request NOT bound to this
+        launch (S1's era rule) is a no-op with one typed line — the next
+        launch's `stop` writes a bound request. A foreign-owned request
+        is NOT consumed (§3.2 step 4) — the typed line answers on the
+        gateway log and the file is left exactly as it is."""
         record = supervision.read_stop_file(self.db_path)
         if record is None or "status" in record:
+            return None
+        if not supervision.stop_request_is_bound_to(record, os.getpid()):
+            self._note_stale_request(record)
             return None
         path = supervision.stop_path(self.db_path)
         if not supervision.request_owner_ok(path):
@@ -241,18 +287,41 @@ class SupervisionSurface:
             key = (stat.st_uid, stat.st_mtime_ns)
             if key not in self._foreign_seen:
                 self._foreign_seen.add(key)
+                own = supervision.effective_request_owner_uid()
                 _LOG.warning(
                     "%s request file %s is owned by uid %s, not this gateway "
                     "(uid %s); not consumed — nothing acts on it",
                     supervision.STOP_FOREIGN_OWNER,
                     path,
                     stat.st_uid,
-                    os.geteuid(),
+                    "unavailable (no effective uid on this platform)"
+                    if own is None else own,
                 )
             return None
         if self._decided:
             return None
         return asyncio.ensure_future(self._run_decision(record, trigger="file"))
+
+    def _note_stale_request(self, record: dict[str, Any]) -> None:
+        """S1's era rule, the log half: an unconsumed request naming
+        another launch is not ours to consume — one typed line per file
+        version (deduped), the file left exactly as it is."""
+        try:
+            stat = os.stat(supervision.stop_path(self.db_path))
+            key = (stat.st_mtime_ns, repr(record.get("target_pid")))
+        except OSError:
+            key = (0, repr(record.get("target_pid")))
+        if key in self._stale_seen:
+            return
+        self._stale_seen.add(key)
+        _LOG.warning(
+            "%s request %s names target pid %s, not this gateway (pid %d)"
+            " — not consumed; run stop again against this launch",
+            supervision.STOP_STALE_REQUEST,
+            supervision.stop_path(self.db_path),
+            record.get("target_pid"),
+            os.getpid(),
+        )
 
     # -- the decision (§3.3) ---------------------------------------------------
 
@@ -265,29 +334,49 @@ class SupervisionSurface:
         accepted verdict (F4 fold; arm L13)."""
         with self._gate:
             self._operations.begin_stop()
-            live: list[dict[str, Any]] = []
-            offset = 0
-            while True:
-                items, has_more = self._store.list_benches(limit=1000, offset=offset)
-                for bench in items:
-                    for row in self._store.list_run_states(str(bench["bench_id"])):
-                        if row["state"] in LIVE_RUN_STATES:
-                            live.append(
-                                {
-                                    "run_id": str(row["run_id"]),
-                                    "bench_id": str(bench["bench_id"]),
-                                    "state": str(row["state"]),
-                                }
-                            )
-                if not has_more:
-                    break
-                offset += len(items)
+            live = self._read_live_runs()
         return StopWindow(live_runs=live, decided_wall=self._now_iso())
+
+    def _read_live_runs(self) -> list[dict[str, Any]]:
+        """The live-run projection over every bench (§3.1's predicate,
+        regenerable from ``LIVE_RUN_STATES``) — the read half of the stop
+        window, reusable at fixpoint (G4: the dequeue-to-mark escape is
+        found by RE-READING, never by trusting the window's snapshot)."""
+        live: list[dict[str, Any]] = []
+        offset = 0
+        while True:
+            items, has_more = self._store.list_benches(limit=1000, offset=offset)
+            for bench in items:
+                for row in self._store.list_run_states(str(bench["bench_id"])):
+                    if row["state"] in LIVE_RUN_STATES:
+                        live.append(
+                            {
+                                "run_id": str(row["run_id"]),
+                                "bench_id": str(bench["bench_id"]),
+                                "state": str(row["state"]),
+                            }
+                        )
+            if not has_more:
+                break
+            offset += len(items)
+        return live
 
     def reset_stop_window(self) -> None:
         """Clear the stop flag WITHOUT acting (the L13 arm's round reset;
         production never resets — the flag's life is the stop's)."""
         self._operations.end_stop()
+
+    def _write_verdict(self, verdict: dict[str, Any]) -> None:
+        """One daemon-side verdict write, WITH the F6 bounded
+        replace-retry (G5): a transient ``os.replace`` failure must not
+        latch the decision dead — the retry cadence is short and the
+        deadline bounded, then the write raises (the decision's
+        exception path clears the stop flag and serving continues)."""
+        supervision.atomic_write_json(
+            supervision.stop_path(self.db_path),
+            verdict,
+            retry_deadline_s=VERDICT_WRITE_RETRY_S,
+        )
 
     async def _run_decision(self, request: dict[str, Any] | None, *, trigger: str
                             ) -> None:
@@ -297,13 +386,39 @@ class SupervisionSurface:
         # The FILE is the mode carrier whichever trigger won the race: a
         # signal landing before the poll still acts on an unconsumed
         # request's mode (and writes its verdict — the polling CLI learns
-        # the outcome); a file already consumed (a verdict) or absent is a
-        # BARE decision (§3.4's three-way on live state).
+        # the outcome); a file already consumed (a verdict), absent, or
+        # NOT BOUND TO THIS LAUNCH (S1's era rule) leaves a BARE decision
+        # (§3.4's three-way on live state).
         file_record = supervision.read_stop_file(self.db_path)
         if file_record is not None and "status" not in file_record:
-            request = file_record
+            if supervision.stop_request_is_bound_to(file_record, os.getpid()):
+                request = file_record
+            else:
+                self._note_stale_request(file_record)
         mode = "plain" if request is None else str(request.get("mode", "plain"))
         window = self.open_stop_window()
+        try:
+            await self._decide(request, mode, window, trigger)
+        except Exception:
+            # G1: an exception mid-decision is a CONTINUE-SERVING outcome —
+            # the stop flag clears with it (a wedged ``stop_in_progress``
+            # refuses every later run_start) and the doorbell stays armed
+            # for the next request; the poll loop logs the failure and
+            # keeps polling (G3).
+            _LOG.exception(
+                "supervision stop decision failed; serving continues"
+            )
+            self._decided = False
+            self._operations.end_stop()
+            raise
+
+    async def _decide(
+        self,
+        request: dict[str, Any] | None,
+        mode: str,
+        window: StopWindow,
+        trigger: str,
+    ) -> None:
         _LOG.info(
             "supervision stop decision trigger=%s mode=%s live_runs=%d",
             trigger, mode, len(window.live_runs),
@@ -312,8 +427,7 @@ class SupervisionSurface:
             if window.live_runs:
                 states = {row["run_id"]: row["state"] for row in window.live_runs}
                 if request is not None:
-                    supervision.atomic_write_json(
-                        supervision.stop_path(self.db_path),
+                    self._write_verdict(
                         {
                             "schema": supervision.STOP_SCHEMA,
                             "status": "refused",
@@ -331,12 +445,16 @@ class SupervisionSurface:
                     supervision.STOP_REFUSED_RUN_ACTIVE,
                     sorted(states), states,
                 )
+                # G1: the refusal is a CONTINUE-SERVING outcome — the
+                # stop flag clears with it (a wedged stop-in-progress would
+                # refuse every later run_start on a gateway that stays up
+                # and serves for hours).
                 self._decided = False  # a later stop may be protective
+                self._operations.end_stop()
                 return
             # Plain idle: accept and drain through the in-tree lifespan.
             if request is not None:
-                supervision.atomic_write_json(
-                    supervision.stop_path(self.db_path),
+                self._write_verdict(
                     {
                         "schema": supervision.STOP_SCHEMA,
                         "status": "accepted",
@@ -344,7 +462,10 @@ class SupervisionSurface:
                         "run_ids": [],
                         "decided_wall": self._now_iso(),
                         "gateway_pid": os.getpid(),
-                    },
+                        # G10: the graceful timeout serve armed — the
+                        # CLI's exit-wait derives from THIS number (A02).
+                        "graceful_timeout_s": self._graceful_timeout,
+                    }
                 )
             await self._graceful_exit()
             return
@@ -360,8 +481,9 @@ class SupervisionSurface:
             "protective_deadline_wall": deadline,
             "decided_wall": self._now_iso(),
             "gateway_pid": os.getpid(),
+            "graceful_timeout_s": self._graceful_timeout,
         }
-        supervision.atomic_write_json(supervision.stop_path(self.db_path), verdict)
+        self._write_verdict(verdict)
         # Close live SSE streams FIRST (F2): the drain must not hang on
         # the Events view while the protective wait runs.
         self.streams_closing.set()
@@ -371,7 +493,7 @@ class SupervisionSurface:
         self._worker.gate_pickup()
         if run_ids:
             verdict["protective_cancel"] = {"run_ids": run_ids}
-            supervision.atomic_write_json(supervision.stop_path(self.db_path), verdict)
+            self._write_verdict(verdict)
         for row in window.live_runs:
             if row["state"] in ("running", "protecting"):
                 self._worker.cancel(row["run_id"], SUPERVISION_PRINCIPAL)
@@ -393,6 +515,103 @@ class SupervisionSurface:
             row for row in window.live_runs
             if row["state"] in ("running", "protecting")
         ]
+        still, exceeded = await self._wait_rows_terminal(
+            pending, deadline_moment, verdict, observed
+        )
+        if exceeded:
+            self._deadline_exceeded(still, deadline, verdict)
+            return
+        # The scoped sweep's precondition (F1/G4): the worker thread has
+        # exited under the gate AND live state is at fixpoint. A job taken
+        # between ``queue.get`` and the running mark ESCAPES the window's
+        # state read (it read `accepted`; the gate landed after the
+        # dequeue) — the decision re-reads live state, cancels and waits
+        # anything now running, and loops until nothing live-and-running
+        # remains anywhere: never a mid-body abandon over a dispatched
+        # run, never a sweep that races a live coordinator (CTL-9).
+        cancelled_ids = set(run_ids)
+        mark_grace_end = time.monotonic() + GATE_EXIT_WAIT_S * 4
+        sweep_note: str | None = None
+        while True:
+            exited = self._worker.wait_gated_exit(timeout=GATE_EXIT_WAIT_S)
+            with self._gate:
+                escapers = [
+                    row for row in self._read_live_runs()
+                    if row["state"] in ("running", "protecting")
+                ]
+            if not escapers:
+                if exited:
+                    break  # fixpoint: thread out, nothing live-and-running
+                if time.monotonic() >= mark_grace_end:
+                    # The thread is wedged with NOTHING dispatchable (the
+                    # dequeue-to-mark window is straight-line code — only
+                    # a fault holds it open): the F10-honest disclosure
+                    # stands, never a mid-body abandon.
+                    _LOG.error(
+                        "supervision pickup gate: the run worker did not "
+                        "exit within bounds; queued runs are left for "
+                        "next-boot recovery"
+                    )
+                    sweep_note = (
+                        "worker did not exit under the pickup gate; queued "
+                        "runs are left for next-boot recovery"
+                    )
+                    break
+                await asyncio.sleep(TERMINAL_POLL_SECONDS)
+                continue
+            # Escaped runs join the verdict's cancel set (the audit row
+            # names every run the stop acted on), are cancelled —
+            # re-issued per round: cancel REQUESTS termination and a
+            # cancel that raced the active-set is simply re-sent — and
+            # are waited under their own commissioned window.
+            for row in escapers:
+                if row["run_id"] not in cancelled_ids:
+                    cancelled_ids.add(row["run_id"])
+                    verdict.setdefault("protective_cancel", {})["run_ids"] = (
+                        sorted(cancelled_ids)
+                    )
+                    verdict["run_ids"] = sorted(cancelled_ids)
+                    self._write_verdict(verdict)
+            for row in escapers:
+                self._worker.cancel(row["run_id"], SUPERVISION_PRINCIPAL)
+                _LOG.info(
+                    "run_cancel run_id=%s reason=%s principal=%s (protective "
+                    "stop, dequeue-to-mark escape)",
+                    row["run_id"], PROTECTIVE_CANCEL_REASON, SUPERVISION_PRINCIPAL,
+                )
+                self._emit_run_changed(row["run_id"], row["bench_id"])
+            escape_end = _parse_wall(self._protective_deadline(escapers))
+            if escape_end is not None and escape_end > deadline_moment:
+                deadline_moment = escape_end
+            still, exceeded = await self._wait_rows_terminal(
+                escapers, deadline_moment, verdict, observed
+            )
+            if exceeded:
+                self._deadline_exceeded(still, deadline, verdict)
+                return
+        if sweep_note is None:
+            interrupted, skipped = self._stop_time_sweep()
+            if skipped:
+                sweep_note = (
+                    "recovery_skipped: lattice failed admission; queued "
+                    "runs are left for next-boot recovery"
+                )
+        if sweep_note is not None:
+            verdict["sweep_disclosure"] = sweep_note
+            self._write_verdict(verdict)
+        await self._graceful_exit()
+
+    async def _wait_rows_terminal(
+        self,
+        rows: list[dict[str, Any]],
+        deadline_moment: datetime,
+        verdict: dict[str, Any],
+        observed: list[dict[str, Any]],
+    ) -> tuple[list[dict[str, Any]], bool]:
+        """Wait the given live rows to terminal, quoting each into the
+        verdict as the coordinator's own record lands (F1: quote, never
+        authority). Returns ``(still_pending, deadline_exceeded)``."""
+        pending = list(rows)
         while pending:
             await asyncio.sleep(TERMINAL_POLL_SECONDS)
             with self._gate:
@@ -402,53 +621,42 @@ class SupervisionSurface:
                 ]
             for row in [r for r in pending if r not in still_pending]:
                 quoted = self._quote_terminal(row["run_id"])
-                if quoted is not None:
+                if quoted is not None and quoted not in observed:
                     observed.append(quoted)
                     verdict["terminal_observed"] = observed
-                    supervision.atomic_write_json(
-                        supervision.stop_path(self.db_path), verdict
-                    )
+                    self._write_verdict(verdict)
             pending = still_pending
             if not pending:
                 break
             if datetime.now().astimezone() >= deadline_moment:
-                # The commissioned window closed with a non-terminal run:
-                # rung 3 belongs to the CLI (or systemd's TimeoutStopSec).
-                # This process does NOT drain over a possibly-wedged
-                # writer — it stays up for the external kill and says so.
-                verdict["deadline_exceeded"] = True
-                supervision.atomic_write_json(
-                    supervision.stop_path(self.db_path), verdict
-                )
-                _LOG.error(
-                    "supervision_protective_deadline_exceeded: %s did not "
-                    "terminalize by %s; staying up for the external "
-                    "escalation rung (CLI SIGKILL / TimeoutStopSec)",
-                    sorted(row["run_id"] for row in pending), deadline,
-                )
-                return
-        # The scoped sweep (F1/F13): queued ghosts only, after the
-        # confirmed gate-held queue state.
-        sweep_note: str | None = None
-        if not self._worker.wait_gated_exit(timeout=15.0):
-            _LOG.error(
-                "supervision pickup gate: the run worker did not exit "
-                "within bounds; queued runs are left for next-boot recovery"
-            )
-            sweep_note = "worker did not exit under the pickup gate"
-        else:
-            interrupted, skipped = self._stop_time_sweep()
-            if skipped:
-                sweep_note = (
-                    f"{len(interrupted) and ''}recovery_skipped: lattice failed "
-                    "admission; queued runs left for next-boot recovery"
-                )
-        if sweep_note is not None:
-            verdict["sweep_disclosure"] = sweep_note
-            supervision.atomic_write_json(
-                supervision.stop_path(self.db_path), verdict
-            )
-        await self._graceful_exit()
+                return pending, True
+        return [], False
+
+    def _deadline_exceeded(
+        self,
+        pending: list[dict[str, Any]],
+        deadline: str,
+        verdict: dict[str, Any],
+    ) -> None:
+        """The commissioned window closed with a non-terminal run: rung 3
+        belongs to the CLI (or systemd's TimeoutStopSec). This process
+        does NOT drain over a possibly-wedged writer — it stays up for
+        the external kill and says so. The stop flag STAYS SET (G1: the
+        external escalation precedes everything — no new runs are
+        accepted while it is pending), disclosed in the verdict."""
+        verdict["deadline_exceeded"] = True
+        verdict["stop_flag_held"] = (
+            "held until the external escalation ends this process — no "
+            "new runs are accepted"
+        )
+        self._write_verdict(verdict)
+        _LOG.error(
+            "supervision_protective_deadline_exceeded: %s did not "
+            "terminalize by %s; staying up for the external "
+            "escalation rung (CLI SIGKILL / TimeoutStopSec); the stop "
+            "flag is held — no new runs are accepted",
+            sorted(row["run_id"] for row in pending), deadline,
+        )
 
     async def _graceful_exit(self) -> None:
         """Trigger the in-tree lifespan drain: close SSE, then set the

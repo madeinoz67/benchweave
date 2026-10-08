@@ -575,6 +575,7 @@ def register_control_routes(
     failure_page: Callable[[OperationFailure, Request], HTMLResponse],
     unauthenticated_page: Callable[[Request], HTMLResponse],
     render: Callable[..., str],
+    write_gate: Any = None,
 ) -> ControlViews:
     """Register the G3a control routes on the UI router (before its
     catch-all) and return the composed views the page handlers use.
@@ -872,6 +873,7 @@ def register_control_routes(
             record, bench, bench_id=bench_id, identity=identity,
             started=started,
         ),
+        write_gate=write_gate,
     )
     staging.register(router)
 

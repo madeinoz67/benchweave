@@ -472,6 +472,7 @@ def build_ui_router(
     now_epoch: Callable[[], int] | None = None,
     content: Any = None,
     store: Store | None = None,
+    write_gate: Any = None,
     streams_closing: Any = None,
 ) -> APIRouter:
     """The UI routes over the seam. UNPREFIXED by design: this router is
@@ -758,6 +759,7 @@ def build_ui_router(
         render=lambda template, **context: _ENV.get_template(template).render(
             **context
         ),
+        write_gate=write_gate,
     )
 
     register_read_pages(
@@ -867,6 +869,7 @@ def build_ui_app(
     guards: frozenset[str] = DEFAULT_GUARDS,
     content: Any = None,
     store: Store | None = None,
+    write_gate: Any = None,
     streams_closing: Any = None,
 ) -> FastAPI:
     """The UI sub-application: the router plus its guard set.
@@ -901,6 +904,7 @@ def build_ui_app(
             now_epoch=now_epoch,
             content=content,
             store=store,
+            write_gate=write_gate,
             streams_closing=streams_closing,
         )
     )

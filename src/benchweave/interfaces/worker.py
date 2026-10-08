@@ -122,8 +122,12 @@ class RunWorker:
         """Enter don't-pick-up mode (issue #422 inc3, §3.3 step 3): stop
         dequeuing new jobs while letting the ACTIVE job finish. Jobs
         already queued are never taken; one in flight when the gate lands
-        is requeued untouched (the ``get`` consumed its slot, the requeue
-        restores ``unfinished_tasks`` truthfully for ``join``)."""
+        is requeued untouched — the ghost stays in the queue for the
+        stop-time sweep, and ``join`` settles the ghost slots' unfinished
+        bookkeeping at thread exit under the gate (G7: the requeue's
+        ``put`` re-increments ``unfinished_tasks`` — ``get`` never
+        decrements it, only ``task_done`` does — so the count is
+        requeue-inflated until ``join`` drains it to match the truth)."""
         self._pickup_gated.set()
 
     @property
@@ -168,6 +172,19 @@ class RunWorker:
         deadline = None if timeout is None else time.monotonic() + timeout
         while self._queue.unfinished_tasks:
             if not self._thread.is_alive():
+                if self._pickup_gated.is_set():
+                    # G7: the drain thread exited under the pickup gate —
+                    # the remaining unfinished slots are the stop-time
+                    # sweep's ghosts (store-terminal, or disclosed for
+                    # next-boot recovery), and this worker will never
+                    # ``task_done`` them. Settle the queue's bookkeeping
+                    # to match the truth — no job is mid-flight, nothing
+                    # will ever drain — so the shutdown path does not log
+                    # the false CTL-9 did-not-drain line over a stop that
+                    # already finalized its ghosts.
+                    while self._queue.unfinished_tasks:
+                        self._queue.task_done()
+                    break
                 return False
             if deadline is not None and time.monotonic() >= deadline:
                 return False
@@ -214,9 +231,13 @@ class RunWorker:
                     return
                 continue
             if self._pickup_gated.is_set():
-                # §3.3 step 3: gated — requeue (no ``task_done``: the put
-                # balances the get for ``unfinished_tasks``) and exit. The
-                # job stays a queued ghost for the stop-time sweep.
+                # §3.3 step 3: gated — requeue and exit. The job stays a
+                # queued ghost for the stop-time sweep; ``get`` does not
+                # touch ``unfinished_tasks`` and the requeue's ``put``
+                # re-increments it, so the ghost's count is settled by
+                # ``join`` at thread exit under the gate (G7 — the
+                # comment this replaces claimed the put "balanced" the
+                # get; it does not, ``task_done`` does).
                 self._queue.put(job)
                 return
             run_id, principal_id, binding_ref, bench_id = job

@@ -693,11 +693,15 @@ def _run_at_rest(data_dir: Path, run_id: str) -> dict[str, Any] | None:
 # --- the arms (record §7) ---------------------------------------------------------
 
 
-@POSIX_ONLY
 def test_l1_idle_stop_drains_releases_and_journals(daemon: Daemon) -> None:
     """L1: idle stop — verdict accepted, process exited, hold released,
-    pidfile gone, supervision rows `stop_requested`(SIGTERM)+`stopped`,
-    and the R9 wall-time bound holds."""
+    pidfile gone, supervision rows `stop_requested`+`stopped`,
+    and the R9 wall-time bound holds.
+
+    Not POSIX-gated (G3's W1 posture): the doorbell file is the stop
+    channel of record — on the Windows leg the CLI skips the signal and
+    the row's `signal_name` says `file-poll-only`, which is exactly the
+    corroborated path."""
     from benchweave.state.hold import daemon_holds
 
     pid = daemon.pid()
@@ -718,18 +722,22 @@ def test_l1_idle_stop_drains_releases_and_journals(daemon: Daemon) -> None:
     events = [row["event"] for row in _journal_events(daemon.data_dir)]
     assert "stop_requested" in events
     requested = _journal_events(daemon.data_dir)[events.index("stop_requested")]
-    assert requested["signal_name"] == "SIGTERM"
+    assert requested["signal_name"] == (
+        "file-poll-only" if sys.platform == "win32" else "SIGTERM"
+    )
     assert requested["target_pid"] == pid
     assert "stopped" in events
     assert "did not drain" not in daemon.stderr_tail()
 
 
-@POSIX_ONLY
 def test_l2_active_plain_stop_refuses_run_active(slow_daemon: Daemon) -> None:
     """L2: a live run + plain stop → typed `stop_refused_run_active:` naming
     the run; the daemon KEEPS serving (a follow-up read succeeds); the run
     continues to its own terminal; no terminal record was written by the
-    stop (the KILL-on-sight condition)."""
+    stop (the KILL-on-sight condition).
+
+    Not POSIX-gated (G3's W1 posture): the doorbell file carries the
+    request; the Windows leg corroborates the file path."""
     daemon = slow_daemon
     with daemon.client() as client:
         run_id = daemon.start_run(client)
@@ -753,11 +761,13 @@ def test_l2_active_plain_stop_refuses_run_active(slow_daemon: Daemon) -> None:
     )
 
 
-@POSIX_ONLY
 def test_l3_protective_stop_cancels_with_transition_truth(slow_daemon: Daemon) -> None:
     """L3: protective — run terminal `cancelled` with the transition's
     safe_state; verdict accepted + deadline; exit 0; hold released; rows
-    `protective_cancel` + `terminal_observed`."""
+    `protective_cancel` + `terminal_observed`.
+
+    Not POSIX-gated (G3's W1 posture): the protective decision is the
+    doorbell's; the SIGKILL rung is not reached on this arm."""
     daemon = slow_daemon
     from benchweave.supervision import read_stop_file
 
@@ -795,12 +805,13 @@ def test_l3_protective_stop_cancels_with_transition_truth(slow_daemon: Daemon) -
     )
 
 
-@POSIX_ONLY
 def test_l3b_active_and_queued_one_writer_per_run(slow_daemon: Daemon) -> None:
     """L3b (lane-1 F1's arm): run A live, run B accepted (a seeded queued
     ghost — the #156 shape) → protective stop: B NEVER dispatches, B
     finalizes `interrupted` via the scoped sweep, A ends `cancelled` with
-    its transition truth, exactly ONE writer terminalizes each run."""
+    its transition truth, exactly ONE writer terminalizes each run.
+
+    Not POSIX-gated (G3's W1 posture)."""
     daemon = slow_daemon
     from benchweave.state.store import Store
 
@@ -866,15 +877,16 @@ def test_l4_bare_sigterm_idle_is_the_execstop_contract(daemon: Daemon) -> None:
     assert "did not drain" not in tail, tail
 
 
-@POSIX_ONLY
 def test_l11_two_concurrent_stops_one_action_truthful_reports(
     slow_daemon: Daemon, tmp_path: Path
 ) -> None:
-    daemon = slow_daemon
     """L11 (R7/F7): two concurrent stops — one plain, one protective —
     against one busy gateway: exactly ONE action occurs (the consumed
     mode); both CLIs exit with truthful reports (the loser observes the
-    mode mismatch as a typed note)."""
+    mode mismatch as a typed note).
+
+    Not POSIX-gated (G3's W1 posture): both CLIs ride the doorbell."""
+    daemon = slow_daemon
     with daemon.client() as client:
         run_id = daemon.start_run(client)
         daemon.wait_run_state(client, run_id, "running")
@@ -950,7 +962,9 @@ def test_l12_foreign_owner_request_not_consumed(
     try:
         surface = app.state.supervision
         db = surface.db_path
-        supervision.write_stop_request(db, mode="protective", actor_pid=999999)
+        supervision.write_stop_request(
+            db, mode="protective", actor_pid=999999, target_pid=os.getpid()
+        )
         # Stage foreign ownership without privilege: the daemon-side owner
         # check reads through supervision._path_owner_uid — the arm pins
         # the real decision over a foreign uid (the chown the record's
@@ -1469,6 +1483,602 @@ def test_service_install_renders_launchd_plist_on_macos(tmp_path: Path) -> None:
 
 
 # --- helpers ----------------------------------------------------------------------
+
+
+# --- the inc3 refute fold arms (2026-10-08) -----------------------------------------
+
+
+def test_l2b_refused_stop_does_not_wedge_later_starts(
+    slow_daemon: Daemon,
+) -> None:
+    """G1 (HIGH, twice-reproduced — the stop-flag wedge): the refused
+    plain stop is a CONTINUE-SERVING outcome — the stop flag clears with
+    it, so once the refused run reaches its own terminal a FRESH
+    principal's run_start succeeds. RED against the inc3 build: every
+    later start refuses ``stop_in_progress:`` forever."""
+    from benchweave.interfaces.identity import issue
+
+    daemon = slow_daemon
+    with daemon.client() as client:
+        run_id = daemon.start_run(client)
+        daemon.wait_run_state(client, run_id, "running")
+        code, output = _stop_cli(daemon.data_dir)
+        assert code != 0, output
+        assert "stop_refused_run_active:" in output
+        daemon.wait_run_state(client, run_id, "terminal", timeout=60.0)
+        # The wedge probe: a FRESH principal (its own §9 key space) starts
+        # a run on the still-serving gateway.
+        fresh = issue(
+            daemon.secret.encode(),
+            principal="l2b-fresh",
+            audience="stg",
+            scopes={"stg:control"},
+            expires_at=int(time.time()) + 3600,
+        )
+        with httpx.Client(
+            base_url=f"http://127.0.0.1:{daemon.port}",
+            timeout=10.0,
+            headers={"Authorization": f"Bearer {fresh}"},
+        ) as fresh_client:
+            second = daemon.start_run(fresh_client)
+            daemon.wait_run_state(fresh_client, second, "terminal", timeout=60.0)
+
+
+def test_g2_ui_staging_fire_path_holds_the_write_gate(tmp_path: Path) -> None:
+    """G2 (the L13 variant over the one adapter that forgot the gate):
+    the staging fire path holds the WRITE GATE around its run_start seam
+    call — the same ``with gate:`` shape rest.py/mcp.py use. The
+    interleave: the stop window opens between the seam's stop-flag check
+    and the run-row write, reachable ONLY when the caller is ungated —
+    an idle window that read accepted while a run went on to be created
+    is the abandoned shape F4 exists to close."""
+    import re as _re
+
+    from benchweave.interfaces.identity import Identity
+
+    app, server, thread, store = _compose_armed(tmp_path)
+    try:
+        surface = app.state.supervision
+        operations = app.state.operations
+        port = server.servers[0].sockets[0].getsockname()[1]
+        sessions = app.state.ui_sessions
+        code = sessions.mint_login_code(
+            Identity(
+                "g2-staging", "stg", frozenset({"stg:control"}), 2**31
+            ),
+            ttl_seconds=3600,
+        )
+        record = sessions.exchange(code)
+        import hashlib
+
+        binding_sha = hashlib.sha256(
+            (FIXTURES / "run-binding.json").read_bytes()
+        ).hexdigest()
+        base = f"http://127.0.0.1:{port}"
+        with httpx.Client(
+            base_url=base,
+            cookies={"bw_session": record.session_id},
+            timeout=10.0,
+        ) as client:
+            page = client.get(f"/ui/benches/{BENCH_ID}")
+            assert page.status_code == 200, page.text[:500]
+            match = _re.search(r"data-bw-bench-generation>(\d+)<", page.text)
+            assert match is not None, page.text[:1000]
+            generation = int(match.group(1))
+            headers = {"X-CSRF-Token": record.csrf_token}
+            staged = client.post(
+                f"/ui/benches/{BENCH_ID}/staging",
+                data={"binding_sha256": binding_sha},
+                headers=headers,
+            )
+            assert staged.status_code == 200, staged.text[:500]
+            checked = client.post(
+                f"/ui/benches/{BENCH_ID}/run-checks", data={}, headers=headers
+            )
+            assert checked.status_code == 200, checked.text[:500]
+            # The stock procedure energises its supply output — the armed
+            # confirm is part of the fire path (GW-51's ordering).
+            armed = client.post(
+                f"/ui/benches/{BENCH_ID}/staging/arm", data={}, headers=headers
+            )
+            assert armed.status_code == 200, armed.text[:500]
+
+            # The interleave: a DECISION thread whose stop window can only
+            # open while the seam call is ungated; under the gate it blocks
+            # and the wrapper observes the serialization instead.
+            proceed = threading.Event()
+            window_done = threading.Event()
+            windows: list[Any] = []
+            serialized: list[bool] = []
+
+            def decision() -> None:
+                proceed.wait(timeout=10.0)
+                windows.append(surface.open_stop_window())
+                window_done.set()
+
+            decision_thread = threading.Thread(target=decision, daemon=True)
+            decision_thread.start()
+            real_validate = operations._validator.validate
+
+            def interleaving_validate(op: str, payload: Any) -> Any:
+                if op != "run_start":
+                    return real_validate(op, payload)
+                proceed.set()
+                if not window_done.wait(timeout=2.0):
+                    # The window could not take the write gate while the
+                    # seam call held it — the serialization G2 requires.
+                    serialized.append(True)
+                return real_validate(op, payload)
+
+            operations._validator.validate = interleaving_validate
+            fired = client.post(
+                f"/ui/benches/{BENCH_ID}/run-starts",
+                data={
+                    "request_id": BINDING_REQUEST_ID,
+                    "binding_sha256": binding_sha,
+                    "expected_generation": str(generation),
+                },
+                headers=headers,
+            )
+            operations._validator.validate = real_validate
+            assert fired.status_code == 200, fired.text[:800]
+            decision_thread.join(timeout=10.0)
+            assert store.list_run_states(BENCH_ID), "the fired run exists"
+            abandoned = any(w.live_runs == [] for w in windows)
+            assert (not abandoned) or serialized, (
+                "the ungated staging fire path let the stop window read "
+                "idle while a run it could not see was created — the "
+                "abandoned shape F4 closes (G2)"
+            )
+            assert serialized, (
+                "the staging fire path must hold the write gate across its "
+                "run_start seam call (G2)"
+            )
+            surface.reset_stop_window()
+            _drain_live_runs(store)
+    finally:
+        server.should_exit = True
+        thread.join(timeout=5)
+        store.close()
+
+
+def test_g3_request_owner_check_survives_a_win32_platform(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """G3 (the Windows doorbell death): the owner check is per-platform —
+    POSIX ``geteuid``; Windows has no euid (the typed-skip, disclosed in
+    the helper's docstring) — an absent ``os.geteuid`` must not raise.
+    RED against the inc3 build: the check (and with it the poll task)
+    dies with AttributeError on win32."""
+    from benchweave import supervision
+
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.delattr(os, "geteuid", raising=False)
+    target = tmp_path / "gateway.stop"
+    target.write_text("{}", encoding="utf-8")
+    assert supervision.request_owner_ok(target) is True
+    # The daemon_uid form stays an explicit comparison on every platform.
+    assert supervision.request_owner_ok(target, daemon_uid=-1) is False
+
+
+def test_g3_poll_task_survives_a_raising_poll(tmp_path: Path) -> None:
+    """G3: the doorbell poll task survives any exception — one raising
+    poll logs and the NEXT poll still runs (no silent doorbell death).
+    The arm drives the composition's OWN poll task (the one production
+    mounts); a second hand-rolled loop would mask the death by polling
+    on its own. RED against the inc3 build: the raise kills the task."""
+    app, server, thread, store = _compose_armed(tmp_path)
+    try:
+        surface = app.state.supervision
+        assert surface._poll_task is not None, "the doorbell poll is mounted"
+        calls: list[int] = []
+        real_poll = surface.poll_once
+
+        def flaky_poll() -> Any:
+            calls.append(1)
+            if len(calls) == 1:
+                raise RuntimeError("one poll explodes")
+            return real_poll()
+
+        surface.poll_once = flaky_poll
+        time.sleep(3.3)  # ≥ 3 doorbell cadences on the serving loop
+        assert len(calls) >= 3, (
+            f"the poll task died on the first raise (calls={len(calls)}) — "
+            "the doorbell must survive any single poll failure (G3)"
+        )
+    finally:
+        server.should_exit = True
+        thread.join(timeout=5)
+        store.close()
+
+
+def test_g5_verdict_write_retries_bounded_on_transient_replace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """G5: ONE OSError on the first verdict replace → the bounded
+    replace-retry (the F6 discipline the CLI's request write already
+    carries) lands the verdict and the decision completes. RED against
+    the inc3 build: the daemon-side verdict writes carry no retry — the
+    decision dies and no verdict ever lands."""
+    import asyncio
+
+    from benchweave import supervision
+
+    app, server, thread, store = _compose_armed(tmp_path)
+    try:
+        surface = app.state.supervision
+        db = surface.db_path
+        # Hand-write the request (era-bound to THIS process) so the only
+        # replace on the stop path is the daemon's own verdict write.
+        supervision.stop_path(db).write_text(
+            json.dumps(
+                {
+                    "schema": 1,
+                    "mode": "plain",
+                    "requested_wall": _now_iso(),
+                    "actor_pid": os.getpid(),
+                    "target_pid": os.getpid(),
+                }
+            ),
+            encoding="utf-8",
+        )
+        real_replace = os.replace
+        stop_target = supervision.stop_path(db)
+        failures: list[int] = []
+
+        def failing_once(src: Any, dst: Any) -> None:
+            if Path(dst) == stop_target and not failures:
+                failures.append(1)
+                raise OSError("transient replace (a share-mode handle)")
+            return real_replace(src, dst)
+
+        monkeypatch.setattr(os, "replace", failing_once)
+        future = asyncio.run_coroutine_threadsafe(
+            surface._run_decision(
+                supervision.read_stop_file(db), trigger="file"
+            ),
+            surface._loop,
+        )
+        import contextlib
+
+        with contextlib.suppress(OSError):  # the RED shape dies with the replace
+            future.result(timeout=15.0)
+        monkeypatch.undo()
+        verdict = supervision.read_stop_file(db)
+        assert verdict is not None and verdict.get("status") == "accepted", (
+            f"the verdict write must retry past one transient replace "
+            f"(failures={len(failures)}, file={verdict})"
+        )
+    finally:
+        server.should_exit = True
+        thread.join(timeout=5)
+        store.close()
+
+
+def test_g6_rung3_sends_the_kill_on_windows_and_journals_truthfully(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """G6: rung 3 on Windows SENDS the kill (``os.kill(pid, 9)`` routes
+    to TerminateProcess — the capability exists) instead of skipping it
+    while asserting it was sent; the row's signal field names what
+    actually went out."""
+    from benchweave import supervision
+    from benchweave.cli import lifecycle
+
+    monkeypatch.setattr(sys, "platform", "win32")
+    kills: list[tuple[int, int]] = []
+    # The spy on os.kill intercepts supervision.send_sigkill's own call
+    # (one os module process-wide) — nothing signals a real pid 4242.
+    monkeypatch.setattr(
+        os, "kill", lambda pid, sig: kills.append((pid, sig))
+    )
+    db = tmp_path / "gateway" / "state.sqlite"
+    db.parent.mkdir()
+    message = ""
+    try:
+        # The rung RETURNS its disclosure (stop() raises it) — raise it
+        # here so the message assert pins the truthful wording too.
+        raise lifecycle._rung3_kill(
+            db,
+            4242,
+            {"run_ids": ["run-g6"], "protective_deadline_wall": _now_iso()},
+        )
+    except lifecycle.LifecycleError as error:
+        message = str(error)
+    assert kills == [(4242, 9)], (
+        "the Windows rung sends the TerminateProcess kill, never a "
+        "skip-while-asserted (G6)"
+    )
+    rows = [
+        json.loads(line)
+        for line in supervision.journal_path(db).read_text().splitlines()
+    ]
+    kills_rows = [row for row in rows if row["event"] == "sigkill_sent"]
+    assert len(kills_rows) == 1, rows
+    assert kills_rows[0]["signal_name"] == "TerminateProcess"
+    assert "TerminateProcess" in message or "SIGKILL" in message
+
+
+def test_g8_identity_seam_params_are_wired(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """G8: ``verify_gateway_identity``'s probe/ticks seam parameters are
+    WIRED (the inc3 build accepted them and ignored both — dead seams).
+    An injected unknown probe must decide the verdict with no real
+    process consulted."""
+    from benchweave import supervision
+
+    db = tmp_path / "gateway" / "state.sqlite"
+    db.parent.mkdir()
+    _write_pidfile(
+        db.parent, {"pid": 424242, "started_ticks": 1, "schema": 1}
+    )
+    verdict = supervision.verify_gateway_identity(
+        db,
+        probe=lambda pid: "unknown",
+        ticks=lambda pid: pytest.fail("the ticks seam must not run (G8)"),
+    )
+    assert verdict.verdict == "unknown"
+    assert supervision.PID_UNKNOWN in verdict.detail
+
+
+def test_g9_unarmed_demo_composition_has_no_supervision_surface(
+    tmp_path: Path,
+) -> None:
+    """G9 (the F4-negative arm the lane probed): an UNARMED demo-shaped
+    composition boots the real lifespan with NO supervision surface on
+    ``app.state``, NO pidfile — and ``stop`` against its holder-label
+    answers the typed holder verdict with a LABEL-AWARE hint (stop the
+    demo command, not systemctl)."""
+    from fastapi import FastAPI
+
+    from benchweave.cli import lifecycle
+    from benchweave.content.store import ContentStore
+    from benchweave.interfaces.app import create_app
+    from benchweave.state.store import Store
+
+    data_dir = tmp_path / "demo"
+    data_dir.mkdir()
+    store = Store.open(data_dir / "state.sqlite", check_same_thread=False)
+    content = ContentStore(store)
+    app: FastAPI = create_app(
+        store=store,
+        content=content,
+        secret=b"wp08-task-nine-secret",
+        limits={"max_json_bytes": 1048576, "max_page_size": 100,
+                "max_chunk_bytes": 65536, "max_lease_ms": 21600000,
+                "min_poll_ms": 100, "max_admission_ms": 5000},
+        gateway_id="gw-g9-demo",
+        fixtures_dir=FIXTURES,
+        now_iso=_now_iso,
+        now_epoch=lambda: 0,
+        supervision_armed=False,
+        hold_label="gw-cli-demo",
+    )
+    server, thread = _boot(app)
+    try:
+        assert not hasattr(app.state, "supervision"), (
+            "an unarmed composition carries no supervision surface (F4)"
+        )
+        from benchweave import supervision as protocol
+
+        assert not protocol.pid_path(data_dir / "state.sqlite").exists(), (
+            "an unarmed composition writes no pidfile (F4)"
+        )
+        with pytest.raises(lifecycle.LifecycleError) as refused:
+            lifecycle.stop(data_dir)
+        assert "supervision_hold_held:" in str(refused.value)
+        assert "gw-cli-demo" in str(refused.value)
+        assert "stop the demo/evidence command" in str(refused.value), (
+            "the holder-label verdict is label-aware: a demo/evidence "
+            "holder's stop story is its own command, not systemctl (G9)"
+        )
+        assert "systemctl" not in str(refused.value)
+    finally:
+        server.should_exit = True
+        thread.join(timeout=5)
+        store.close()
+
+
+def test_g10_plain_exit_wait_is_derived_from_the_stated_graceful_timeout(
+    tmp_path: Path,
+) -> None:
+    """G10: the plain-stop exit-wait bound derives from the commissioned
+    ceiling per its own documented formula — the daemon STATES its
+    graceful-shutdown timeout in the accepted verdict (the numeric
+    authority stays in the daemon, A02) and the CLI adds the drain join
+    and schedule slack. A ~70 s commissioned ceiling must not trip a
+    false ``stop_timeout`` (the old fixed 120 s sat inside graceful 100 s
+    + join 5 s with nothing left for slack)."""
+    import asyncio
+
+    from benchweave import supervision
+    from benchweave.cli import lifecycle
+
+    # The derivation half: the formula, from the stated field.
+    stated = lifecycle.plain_exit_wait_s({"graceful_timeout_s": 130.0})
+    assert stated >= 130.0 + lifecycle.DRAIN_JOIN_S, stated
+    assert stated > 120.0, "the fixed 120 s bound is the false-timeout class"
+    fallback = lifecycle.plain_exit_wait_s({})
+    assert fallback >= (
+        lifecycle.MANAGER_DEFAULT_STOP_S
+        + lifecycle.TIMEOUT_STOP_MARGIN_S
+        + lifecycle.DRAIN_JOIN_S
+    ), fallback
+
+    # The verdict half: the daemon states what it will wait.
+    app, server, thread, store = _compose_armed(tmp_path)
+    try:
+        surface = app.state.supervision
+        db = surface.db_path
+        # The bind serve performs after deriving its graceful timeout —
+        # the verdict must carry exactly this number.
+        surface.bind_graceful_timeout(96.0)
+        supervision.stop_path(db).write_text(
+            json.dumps(
+                {
+                    "schema": 1,
+                    "mode": "plain",
+                    "requested_wall": _now_iso(),
+                    "actor_pid": os.getpid(),
+                    "target_pid": os.getpid(),
+                }
+            ),
+            encoding="utf-8",
+        )
+        future = asyncio.run_coroutine_threadsafe(
+            surface._run_decision(
+                supervision.read_stop_file(db), trigger="file"
+            ),
+            surface._loop,
+        )
+        future.result(timeout=15.0)
+        verdict = supervision.read_stop_file(db)
+        assert verdict is not None and verdict.get("status") == "accepted"
+        assert verdict.get("graceful_timeout_s") == 96.0, (
+            "the accepted plain verdict states the graceful timeout the "
+            f"CLI's exit-wait derives from (G10): {verdict}"
+        )
+    finally:
+        server.should_exit = True
+        thread.join(timeout=5)
+        store.close()
+
+
+def test_s1twin_stale_stop_request_is_not_the_new_daemons_to_consume(
+    tmp_path: Path,
+) -> None:
+    """S1's gateway twin (the sdk lane flagged the shared shape): a
+    hand-written unconsumed request bound to a DEAD launch is not the
+    new daemon's to consume — era-bound requests only. RED against the
+    inc3 build: the daemon consumes it within one poll cadence and stops
+    itself (the stale-request suicide)."""
+    from benchweave import supervision
+    from benchweave.cli import atrest
+    from benchweave.interfaces.identity import issue
+
+    data_dir = tmp_path / "gateway"
+    atrest.setup(data_dir)
+    secret = atrest.read_secret(data_dir)
+    db = data_dir / "state.sqlite"
+    supervision.stop_path(db).write_text(
+        json.dumps(
+            {
+                "schema": 1,
+                "mode": "plain",
+                "requested_wall": _now_iso(),
+                "actor_pid": os.getpid(),
+                "target_pid": 999999,  # a launch that no longer exists
+            }
+        ),
+        encoding="utf-8",
+    )
+    port = _free_port()
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.startswith("BENCHWEAVE_")
+    }
+    env.update(
+        {"BENCHWEAVE_DATA_DIR": str(data_dir), "BENCHWEAVE_FIXTURES": str(FIXTURES)}
+    )
+    token = issue(
+        secret.encode(),
+        principal="s1twin",
+        audience="stg",
+        scopes={"stg:observe"},
+        expires_at=int(time.time()) + 3600,
+    )
+    handle = (tmp_path / "daemon.stderr.log").open("wb")
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "benchweave", "serve",
+         "--host", "127.0.0.1", "--port", str(port)],
+        cwd=str(REPO), env=env, stdout=subprocess.DEVNULL, stderr=handle,
+    )
+    try:
+        with httpx.Client(
+            base_url=f"http://127.0.0.1:{port}",
+            timeout=5.0,
+            headers={"Authorization": f"Bearer {token}"},
+        ) as client:
+            deadline = time.monotonic() + 30.0
+            while True:
+                assert proc.poll() is None, (
+                    "the daemon died in boot — not this arm's shape"
+                )
+                try:
+                    if client.get("/v1").status_code == 200:
+                        break
+                except httpx.HTTPError:
+                    pass
+                assert time.monotonic() < deadline, "daemon never became ready"
+                time.sleep(0.2)
+            # The era bound: 3 s is ≥ 3 doorbell cadences past readiness.
+            time.sleep(3.0)
+            assert proc.poll() is None, (
+                "the daemon consumed a request bound to a dead launch and "
+                "stopped itself (the stale-request suicide, S1's twin)"
+            )
+            assert client.get("/v1").status_code == 200
+        leftover = supervision.read_stop_file(db)
+        assert leftover is not None and "status" not in leftover, (
+            "a request not bound to this launch is never consumed"
+        )
+    finally:
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=10)
+        handle.close()
+
+
+def test_s1twin_start_clears_unconsumed_stale_requests(tmp_path: Path) -> None:
+    """S1's gateway twin, the start leg: ``start`` clears unconsumed
+    stale requests before spawning (typed note in the journal) so the
+    new launch boots clean."""
+    from benchweave import supervision
+    from benchweave.cli import atrest
+
+    data_dir = tmp_path / "gateway"
+    atrest.setup(data_dir)
+    db = data_dir / "state.sqlite"
+    supervision.stop_path(db).write_text(
+        json.dumps(
+            {
+                "schema": 1,
+                "mode": "plain",
+                "requested_wall": _now_iso(),
+                "actor_pid": os.getpid(),
+                "target_pid": 999999,
+            }
+        ),
+        encoding="utf-8",
+    )
+    port = _free_port()
+    started = subprocess.run(
+        [sys.executable, "-m", "benchweave", "start", "--data-dir",
+         str(data_dir), "--host", "127.0.0.1", "--port", str(port)],
+        cwd=str(REPO), capture_output=True, text=True, timeout=60,
+    )
+    try:
+        assert started.returncode == 0, started.stdout + started.stderr
+        rows = _journal_events(data_dir)
+        cleared = [row for row in rows if row["event"] == "stale_stop_request_cleared"]
+        assert cleared, (
+            f"start journals the typed stale-request clear (S1's twin): {rows}"
+        )
+        assert not supervision.stop_path(db).exists(), (
+            "the stale request is gone before the child boots"
+        )
+    finally:
+        subprocess.run(
+            [sys.executable, "-m", "benchweave", "stop", "--data-dir",
+             str(data_dir)],
+            cwd=str(REPO), capture_output=True, text=True, timeout=60,
+        )
 
 
 def _combined(result: Result) -> str:

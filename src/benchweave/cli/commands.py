@@ -924,6 +924,11 @@ def serve(host: str, port: int, data_dir: Path | None) -> None:
         (max_ms // 1000 + TIMEOUT_STOP_MARGIN_S) if max_ms is not None
         else MANAGER_DEFAULT_STOP_S
     )
+    if surface is not None:
+        # G10: the daemon STATES the graceful timeout it armed — the
+        # accepted verdict carries it and the CLI's exit-wait derives
+        # from this number (A02: the numeric authority stays here).
+        surface.bind_graceful_timeout(float(graceful_timeout))
     config = uvicorn.Config(
         app,
         host=host,

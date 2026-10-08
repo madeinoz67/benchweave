@@ -23,6 +23,7 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import signal
 import sys
 import time
 import uuid
@@ -61,6 +62,7 @@ PID_UNKNOWN = "supervision_pid_unknown:"
 HOLD_DESYNC = "supervision_hold_desync:"
 STOP_REFUSED_RUN_ACTIVE = "stop_refused_run_active:"
 STOP_FOREIGN_OWNER = "supervision_stop_foreign_owner:"
+STOP_STALE_REQUEST = "supervision_stop_stale_request:"
 STOP_MODE_SUPERSEDED = "stop_mode_superseded:"
 STOP_TIMEOUT = "stop_timeout:"
 
@@ -224,9 +226,18 @@ def probe_process(pid: int) -> str:
 def _probe_windows(pid: int) -> str:
     import ctypes
 
+    if not hasattr(ctypes, "WinDLL"):
+        # A simulated win32 platform on a POSIX host (the G6 arm): there
+        # is no WinDLL to consult — indeterminate, never a crash.
+        return "unknown"
     PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
     STILL_ACTIVE = 259
-    kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+    # use_last_error is LOAD-BEARING (S6): ctypes.get_last_error() reads
+    # the swap slot only a WinDLL created with the flag maintains — the
+    # windll cached instance leaves it at 0, and every OpenProcess
+    # failure misreads "unknown" (the dead(87)/running(5) classes never
+    # fire).
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
     handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid)
     if not handle:
         error = int(ctypes.get_last_error())  # type: ignore[attr-defined]
@@ -262,6 +273,15 @@ def process_start_ticks(pid: int) -> int | None:
 
 
 def _ticks_linux(pid: int) -> int | None:
+    """``/proc/<pid>/stat`` field 22 (§2.4).
+
+    G11 disclosure: the value is a count since BOOT — two boots can hand
+    different processes equal tick counts with ~1e-9 probability, so a
+    recycled-pid collision across a reboot frame is residual (the
+    boot_id fix would need a second read; deferred with a
+    condition-shaped trigger — the first Linux-hosted deployment, where
+    real reboot frequency makes the residual worth closing).
+    """
     try:
         raw = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
     except OSError:
@@ -316,7 +336,7 @@ def _ticks_windows(pid: int) -> int | None:
     import ctypes
 
     PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-    kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)  # type: ignore[attr-defined]  # S6: see _probe_windows
     handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid)
     if not handle:
         return None
@@ -394,10 +414,17 @@ class IdentityVerdict:
 def verify_gateway_identity(
     db_path: Path,
     *,
-    probe: Any = probe_process,
-    ticks: Any = process_start_ticks,
+    probe: Any = None,
+    ticks: Any = None,
 ) -> IdentityVerdict:
-    """The full §2.4 lattice over one store's pidfile + hold."""
+    """The full §2.4 lattice over one store's pidfile + hold.
+
+    ``probe``/``ticks`` are the injection seams (G8: the inc3 build
+    accepted them and ignored both — dead parameters; they now decide
+    the verdict). ``None`` resolves the module attribute AT CALL TIME —
+    the L6 arms monkeypatch ``supervision.process_start_ticks`` and the
+    resolution must follow them.
+    """
     db_path = Path(db_path)
     record = read_pidfile(db_path)
     if record is None:
@@ -407,7 +434,7 @@ def verify_gateway_identity(
     holder = holder_info(db_path)
     held = daemon_holds(db_path)
 
-    liveness = probe_process(pid)
+    liveness = (probe_process if probe is None else probe)(pid)
     if liveness == "dead":
         return IdentityVerdict("dead", pid, record, holder, "not running")
     if liveness == "unknown":
@@ -417,7 +444,7 @@ def verify_gateway_identity(
             f"({file_ref}) — verify the process manually before acting",
         )
 
-    live_ticks = process_start_ticks(pid)
+    live_ticks = (process_start_ticks if ticks is None else ticks)(pid)
     if live_ticks is not None:
         recorded = record.get("started_ticks")
         if not isinstance(recorded, int) or recorded != live_ticks:
@@ -477,17 +504,40 @@ def verify_gateway_identity(
 
 
 def write_stop_request(
-    db_path: Path, *, mode: str, actor_pid: int, retry_deadline_s: float = 10.0
+    db_path: Path,
+    *,
+    mode: str,
+    actor_pid: int,
+    target_pid: int | None = None,
+    retry_deadline_s: float = 10.0,
 ) -> dict[str, Any]:
-    """Write the stop REQUEST atomically (step 1 of the doorbell)."""
+    """Write the stop REQUEST atomically (step 1 of the doorbell).
+
+    ``target_pid`` era-binds the request to its target launch (the S1
+    shared-shape fold): the daemon consumes only requests naming its own
+    pid, and ``start`` clears unconsumed requests before spawning — a
+    request a dead launch never consumed can never stop the next one
+    (the stale-request suicide).
+    """
     payload: dict[str, Any] = {
         "schema": STOP_SCHEMA,
         "mode": mode,
         "requested_wall": _now_wall(),
         "actor_pid": actor_pid,
     }
+    if target_pid is not None:
+        payload["target_pid"] = int(target_pid)
     atomic_write_json(stop_path(db_path), payload, retry_deadline_s=retry_deadline_s)
     return payload
+
+
+def stop_request_is_bound_to(record: dict[str, Any], pid: int) -> bool:
+    """S1's era rule: the request is this launch's to consume only when
+    it names this pid. An unbound (legacy or hand-written) request is
+    NOT bound to this launch — the operator's next ``stop`` writes a
+    bound one; refusing is the conservative direction."""
+    target = record.get("target_pid")
+    return isinstance(target, int) and target == pid
 
 
 def read_stop_file(db_path: Path) -> dict[str, Any] | None:
@@ -504,11 +554,57 @@ def read_stop_file(db_path: Path) -> dict[str, Any] | None:
     return parsed if isinstance(parsed, dict) else None
 
 
+def effective_request_owner_uid() -> int | None:
+    """The daemon's effective identity for the request-owner check.
+
+    POSIX: the effective uid. Windows (and any platform without
+    ``os.geteuid``): ``None`` — the disclosed typed-skip (G3 fold: the
+    cross-uid forgery the owner check closes is POSIX-shaped; a Windows
+    owner-SID comparison needs a security-descriptor read);
+    disproportionate to the loopback single-operator posture, so the
+    check degrades to skip-with-disclosure instead of dying on the
+    missing attribute and silently disarming the doorbell).
+    """
+    if sys.platform == "win32":
+        return None
+    getter = getattr(os, "geteuid", None)
+    return int(getter()) if callable(getter) else None
+
+
 def request_owner_ok(path: Path, *, daemon_uid: int | None = None) -> bool:
     """§3.2 step 4: the request file's OWNER must be the daemon's own
-    effective identity — a foreign-owned request is never consumed."""
-    expected = os.geteuid() if daemon_uid is None else daemon_uid
+    effective identity — a foreign-owned request is never consumed.
+
+    Windows is the disclosed typed-skip (``True`` — see
+    :func:`effective_request_owner_uid`); an explicit ``daemon_uid``
+    stays a real comparison on every platform (the test seam).
+    """
+    expected = (
+        daemon_uid
+        if daemon_uid is not None
+        else effective_request_owner_uid()
+    )
+    if expected is None:
+        return True
     return _path_owner_uid(path) == expected
+
+
+def sigkill_signal_name() -> str:
+    """The truthful name for what rung 3 sends on this platform (G6)."""
+    return "TerminateProcess" if sys.platform == "win32" else "SIGKILL"
+
+
+def send_sigkill(pid: int) -> str:
+    """Rung 3's kill (§3.5, G6 fold): POSIX ``SIGKILL``; Windows
+    ``os.kill(pid, 9)`` — the OS routes it to TerminateProcess (the
+    capability exists, so the kill is SENT on every platform, never
+    skipped-while-asserted). Returns the platform-truthful signal name
+    for the audit row."""
+    if sys.platform == "win32":
+        os.kill(pid, 9)  # TerminateProcess
+        return "TerminateProcess"
+    os.kill(pid, signal.SIGKILL)
+    return "SIGKILL"
 
 
 # --- the supervision journal (§3.5 — the CLI is the SOLE writer) -------------------

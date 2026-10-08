@@ -443,6 +443,18 @@ remove the exposure (lane-1 F11 fold).
 
 ### 3.5 The escalation ladder, with each rung's audit event (A07)
 
+> **2026-10-08 implementation fold (dated addendum, frozen-bytes
+> discipline):** the rung-1 field is `signal_name` as implemented; stop
+> requests are era-bound to their target launch (a daemon consumes only
+> requests naming its own pid — a request a dead launch never consumed
+> can never stop the next one — and `start` clears unconsumed leftovers
+> with a typed journal note); PLAIN_EXIT_WAIT is ceiling-derived (the
+> accepted verdict states the daemon's `graceful_timeout_s` and the CLI
+> adds the drain join and schedule slack); the deadline_exceeded verdict
+> discloses the closed SSE surface (streams close at the decision and
+> stay closed until the external kill ends the process — deliberate:
+> events observers see the stop verdict, not a half-live stream).
+
 | Rung | Actor | Trigger | Bound | Audit event (supervision.jsonl row) | Run record |
 |---|---|---|---|---|---|
 | 1. SIGTERM | `stop` / systemd | always first | daemon verdict cadence ≤1 s; CLI waits for verdict/exit (bounded by the accepted verdict's own deadline) | `stop_requested` {mode, target_pid, signal: "SIGTERM"\|"file-poll-only"} — the row records the REQUEST; on Windows the signal leg is skipped and the row must not assert a signal that was not sent (F12 fold) | none written by any rung — ever |

@@ -18,6 +18,7 @@ append (F9 fold).
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import signal
@@ -36,10 +37,16 @@ from benchweave.state.hold import StoreHeldError, daemon_holds, holder_info
 #: envelope (A02 governs the protective window, which the DAEMON states).
 VERDICT_WAIT_S = 15.0
 
-#: The plain-stop exit-wait bound: the in-tree drain (join 5 s) plus the
-#: daemon's own graceful-shutdown timeout (commissioned ceiling + 30 s,
-#: else the 90 s manager default) plus schedule slack.
-PLAIN_EXIT_WAIT_S = 120.0
+#: The in-tree drain's join window — the lifespan's own
+#: ``worker.join(timeout=5.0)`` (record §0.1) — one addend of the
+#: plain exit-wait formula below (G10).
+DRAIN_JOIN_S = 5.0
+
+#: Schedule slack — the second addend: process teardown beyond the join
+#: and the connection close (atexit chains, sidecar removals) observed
+#: well under this on the arms' hosts; the bound only decides the CLI's
+#: typed stop_timeout, never a physical envelope (G10).
+EXIT_SLACK_S = 15.0
 
 #: The margin the CLI adds PAST the verdict-stated protective deadline
 #: before escalating (record §3.3: "the CLI waits to that plus a margin").
@@ -132,6 +139,26 @@ def _wait_verdict(db: Path, timeout: float) -> dict[str, Any] | None:
     return None
 
 
+def plain_exit_wait_s(verdict: dict[str, Any]) -> float:
+    """The plain-stop exit-wait bound, DERIVED per the formula the record
+    documents (G10): the daemon's stated graceful-shutdown timeout
+    (``graceful_timeout_s`` in the accepted verdict — the commissioned
+    ceiling + 30 s, else the 90 s manager default; the numeric authority
+    stays in the daemon, A02) plus the in-tree drain join (5 s) plus
+    schedule slack. A verdict without the field (an older daemon, a
+    hand-driven verdict) falls back to the manager-default arithmetic.
+    The retired fixed ``120 s`` sat inside a 100 s graceful timeout plus
+    the join with nothing left for slack — the false-``stop_timeout``
+    class above ~70 s commissioned ceilings."""
+    stated = verdict.get("graceful_timeout_s")
+    graceful = (
+        float(stated)
+        if isinstance(stated, (int, float)) and not isinstance(stated, bool)
+        else float(MANAGER_DEFAULT_STOP_S + TIMEOUT_STOP_MARGIN_S)
+    )
+    return graceful + DRAIN_JOIN_S + EXIT_SLACK_S
+
+
 def _copy_terminal_observations(
     db: Path, verdict: dict[str, Any], seen: set[str]
 ) -> None:
@@ -167,12 +194,25 @@ def stop(data_dir: Path, *, protective: bool = False) -> dict[str, Any]:
     if identity.verdict == "absent":
         if daemon_holds(db):
             holder = holder_info(db) or {}
+            label = str(holder.get("label", ""))
+            # G9: the holder-label verdict is LABEL-AWARE — a demo or
+            # evidence composition is an unsupervised lifespan holder
+            # (record §3.2's F4 fold); its stop story is its own command,
+            # never a service manager's.
+            if label.startswith(("gw-cli-demo", "gw-cli-evidence")):
+                hint = (
+                    " — stop the demo/evidence command that holds it (its "
+                    "own process; it is not a supervised gateway)"
+                )
+            else:
+                hint = (
+                    " — if a service manager owns this gateway, stop it "
+                    "there (e.g. systemctl stop benchweave)"
+                )
             raise LifecycleError(
                 "supervision_hold_held: the store is held by "
-                f"{holder.get('label', 'an unidentified live holder')} but no "
-                "pidfile exists — if a service manager owns this gateway, "
-                "stop it there (e.g. systemctl stop benchweave); nothing "
-                "was signaled"
+                f"{label or 'an unidentified live holder'} but no pidfile "
+                f"exists{hint}; nothing was signaled"
             )
         supervision.journal_append(db, "stop_noop", reason="no pidfile")
         return {"stopped": False, "status": "not_running"}
@@ -192,7 +232,16 @@ def stop(data_dir: Path, *, protective: bool = False) -> dict[str, Any]:
 
     pid = int(identity.pid or 0)
     mode = "protective" if protective else "plain"
-    supervision.write_stop_request(db, mode=mode, actor_pid=os.getpid())
+    supervision.write_stop_request(
+        db,
+        mode=mode,
+        actor_pid=os.getpid(),
+        # S1's era binding (the shared shape the sdk lane flagged): the
+        # request names the launch it targets — the next daemon over
+        # this data dir refuses to consume it, and `start` clears any
+        # unconsumed leftover before spawning.
+        target_pid=pid,
+    )
     signal_name = "file-poll-only"
     if _POSIX:
         supervision._signal_pid(pid, signal.SIGTERM)
@@ -255,10 +304,10 @@ def stop(data_dir: Path, *, protective: bool = False) -> dict[str, Any]:
                 parsed - datetime.now(UTC)
             ).total_seconds() + PROTECTIVE_MARGIN_S + KILL_WINDOW_S
         except ValueError:
-            bound = PLAIN_EXIT_WAIT_S
+            bound = plain_exit_wait_s(verdict)
         bound = max(bound, PROTECTIVE_MARGIN_S)
     else:
-        bound = PLAIN_EXIT_WAIT_S
+        bound = plain_exit_wait_s(verdict)
     deadline = time.monotonic() + bound
     exited = False
     while time.monotonic() < deadline:
@@ -279,35 +328,8 @@ def stop(data_dir: Path, *, protective: bool = False) -> dict[str, Any]:
                 "verify the gateway before acting further"
             )
         # Rung 3 (§3.5): the intent row BEFORE the kill (PLANNED class,
-        # F9 fold), then one SIGKILL, then a bounded exit-wait.
-        run_ids = [str(r) for r in verdict.get("run_ids", [])]
-        append_failed = False
-        try:
-            supervision.journal_append(
-                db,
-                "sigkill_sent",
-                target_pid=pid,
-                run_ids=run_ids,
-                run_ids_source="last_verdict" if run_ids else "unknown",
-                reason="protective_deadline_exceeded",
-            )
-        except OSError:
-            append_failed = True
-        if _POSIX:
-            supervision._signal_pid(pid, signal.SIGKILL)
-        kill_deadline = time.monotonic() + KILL_WINDOW_S
-        while time.monotonic() < kill_deadline and _still_owns(db, pid):
-            time.sleep(0.2)
-        still = _still_owns(db, pid)
-        raise LifecycleError(
-            "supervision_sigkill: the protective deadline "
-            f"({verdict.get('protective_deadline_wall')}) passed with no "
-            f"terminal record; the CLI sent SIGKILL to pid {pid} (reason: "
-            "protective_deadline_exceeded) — the run stays non-terminal in "
-            "the store and the NEXT boot's sweep records it interrupted"
-            + ("; the journal append FAILED before the kill" if append_failed else "")
-            + ("; the process is STILL ALIVE" if still else "")
-        )
+        # F9 fold), then one kill, then a bounded exit-wait.
+        raise _rung3_kill(db, pid, verdict)
 
     # Exited: verify the hold released and the sidecar cleaned.
     if daemon_holds(db):
@@ -333,6 +355,44 @@ def stop(data_dir: Path, *, protective: bool = False) -> dict[str, Any]:
 
 
 # --- start / restart (record §4.1) --------------------------------------------------
+
+
+def _rung3_kill(db: Path, pid: int, verdict: dict[str, Any]) -> LifecycleError:
+    """Rung 3 (§3.5, G6 fold): the intent row BEFORE the kill (PLANNED
+    class, F9), then ONE kill — POSIX ``SIGKILL``, Windows
+    ``os.kill(pid, 9)`` (the OS routes it to TerminateProcess: the
+    capability exists, so the kill is SENT on every platform, never
+    skipped-while-asserted) — then the bounded exit-wait; the row's
+    signal field names what actually went out."""
+    run_ids = [str(r) for r in verdict.get("run_ids", [])]
+    signal_name = supervision.sigkill_signal_name()
+    append_failed = False
+    try:
+        supervision.journal_append(
+            db,
+            "sigkill_sent",
+            target_pid=pid,
+            run_ids=run_ids,
+            run_ids_source="last_verdict" if run_ids else "unknown",
+            reason="protective_deadline_exceeded",
+            signal_name=signal_name,
+        )
+    except OSError:
+        append_failed = True
+    sent = supervision.send_sigkill(pid)
+    kill_deadline = time.monotonic() + KILL_WINDOW_S
+    while time.monotonic() < kill_deadline and _still_owns(db, pid):
+        time.sleep(0.2)
+    still = _still_owns(db, pid)
+    return LifecycleError(
+        "supervision_sigkill: the protective deadline "
+        f"({verdict.get('protective_deadline_wall')}) passed with no "
+        f"terminal record; the CLI sent {sent} to pid {pid} (reason: "
+        "protective_deadline_exceeded) — the run stays non-terminal in "
+        "the store and the NEXT boot's sweep records it interrupted"
+        + ("; the journal append FAILED before the kill" if append_failed else "")
+        + ("; the process is STILL ALIVE" if still else "")
+    )
 
 
 def start(data_dir: Path, *, host: str, port: int) -> dict[str, Any]:
@@ -365,6 +425,19 @@ def start(data_dir: Path, *, host: str, port: int) -> dict[str, Any]:
             f"no store at {db} — run `benchweave setup --data-dir "
             f"{data_dir}` first (a data-dir with no {DB_NAME} must not "
             "silently create a fresh store)"
+        )
+    stale = supervision.read_stop_file(db)
+    if stale is not None and "status" not in stale:
+        # S1's era binding, the start leg: a request a dead launch never
+        # consumed is not the next launch's to honor — clear it (typed
+        # journal note) so the boot is clean; a stale VERDICT is not a
+        # request and stays (the next stop's request write replaces it).
+        with contextlib.suppress(OSError):
+            supervision.stop_path(db).unlink()
+        supervision.journal_append(
+            db,
+            "stale_stop_request_cleared",
+            target_pid=stale.get("target_pid"),
         )
     log = supervision.log_path(db)
     supervision.journal_append(
