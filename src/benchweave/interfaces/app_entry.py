@@ -264,8 +264,16 @@ def registry_session_from_env(data_dir: Path) -> RegistrySession | None:
     )
 
 
-def build() -> FastAPI:
-    """Compose the gateway from ``BENCHWEAVE_*`` environment inputs."""
+def build(*, supervision_armed: bool = False) -> FastAPI:
+    """Compose the gateway from ``BENCHWEAVE_*`` environment inputs.
+
+    ``supervision_armed`` (issue #422 inc3) is the serve-only arm flag
+    (record §3.2's F4 fold): the serve CLI passes True before
+    ``uvicorn.run``; no other production caller passes it, so the
+    demo/evidence compositions (and the suites) boot the real lifespan
+    with NO supervision surface. It is deliberately NOT an environment
+    variable — a deploy must not be able to arm the doorbell on a
+    composition that was not spawned as the serve command."""
     db_path = os.environ["BENCHWEAVE_DB"]
     fixtures = Path(os.environ.get("BENCHWEAVE_FIXTURES", str(_DEFAULT_FIXTURES)))
     if not fixtures.is_dir():
@@ -307,6 +315,7 @@ def build() -> FastAPI:
         # G2a: the browser UI composes by default (F2); BENCHWEAVE_UI=0
         # leaves it absent (never registered, not stubbed).
         ui_enabled=_ui_enabled_from_env(),
+        supervision_armed=supervision_armed,
     )
 
 

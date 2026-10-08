@@ -30,6 +30,17 @@ CapabilityBoundingSet=
 MemoryDenyWriteExecute=true
 EnvironmentFile={{ENV_FILE}}
 ExecStart=/usr/bin/python3 -m benchweave serve
+# The stop path (issue #422 inc3, design record §3.6): plain stop — an
+# active run refuses typed (visible in `systemctl status`), then systemd's
+# own SIGTERM → TimeoutStopSec → SIGKILL ladder is the unattended
+# backstop. `--protective` stays a deliberate human verb (fork F2).
+ExecStop=/usr/bin/python3 -m benchweave stop --data-dir {{DATA_DIR}}
+# DERIVED at `benchweave service install` from the commissioned protective
+# ceilings (max safe_transition.max_duration_ms + 30 s) so the unit can
+# never cut a commissioned transition's legs out from under it; with no
+# commissioned value the manager default applies (disclosed in the
+# rendered comment).
+TimeoutStopSec={{TIMEOUT_STOP_SEC}}
 # --- additional sandboxing, documented alongside the nine (§4) ---------------
 ProtectHome=true
 PrivateDevices=true

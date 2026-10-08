@@ -131,7 +131,12 @@ and remain the reviewer's job.
 
 11. **Key/secret handling** → the security-posture docs must track the real key paths and
     secret names (the reviewer's G0 secret scan catches leaks; this catches drift between
-    the posture text and the posture).
+    the posture text and the posture). Issue #422 inc3's supervision file family
+    (`<dir>.pid`/`.stop`/`.log`/`.supervision.jsonl`) carries pids, run ids, paths,
+    timestamps and outcome words ONLY — never a secret, token, or credential; the ONE
+    documented credential-carrying exception anywhere in the family's orbit is the SDK
+    started-mode token file (its own repo's twin, beside its bindings document — the
+    `_deliver_operator_action_token` precedent; `logs` never displays it).
 
 12. **The UI/preview renderer surface** (the Python renderer package, the
     pattern library, the ported proofs, and the served wire document) → the

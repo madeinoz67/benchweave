@@ -660,6 +660,7 @@ def run_simulation(
         secret=secret,
         limits=DEFAULT_LIMITS,
         gateway_id=GATEWAY_ID,
+        hold_label="gw-cli-demo",
         fixtures_dir=fixtures_dir,
         now_iso=_now_iso,
         now_epoch=_now_epoch,

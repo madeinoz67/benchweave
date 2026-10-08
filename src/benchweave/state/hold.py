@@ -77,6 +77,28 @@ class StoreHeldError(RuntimeError):
         super().__init__(f"refusing: the store is held by {who}")
 
 
+def sibling_path(db_path: Path, suffix: str) -> Path:
+    """``<parent>/<dir><suffix>`` — a sibling of the database's RESOLVED
+    data directory, the one derivation behind the whole supervision file
+    family (issue #422 inc3: ``.hold``/``.pid``/``.stop``/``.log``/
+    ``.supervision.jsonl``).
+
+    Why a sibling and why RESOLVED — the same two reasons ``hold_path``
+    documents, now load-bearing for the family: ``restore`` swaps the
+    whole data directory with ``os.replace``, so a file inside it can be
+    swapped away from a live reference while a sibling cannot; and one
+    resolved directory must derive ONE family no matter which spelling
+    (an alias, a relative form) named it, or two coordinators/supervisors
+    using two spellings act on different sidecars for one store. A data
+    dir named X beside a directory named ``X<suffix>`` refuses the open
+    with EISDIR after hold acquire — the preexisting ``X.hold`` shape,
+    named in STO-3's amendment.
+    """
+    db_path = Path(db_path)
+    data_dir = db_path.parent.resolve()
+    return data_dir.parent / (data_dir.name + suffix)
+
+
 def hold_path(db_path: Path) -> Path:
     """The advisory lock file that marks ownership of ``db_path``.
 
@@ -105,9 +127,7 @@ def hold_path(db_path: Path) -> Path:
     marker lives beside the RESOLVED directory, and the old spelling's
     marker is a stale leftover to delete.
     """
-    db_path = Path(db_path)
-    data_dir = db_path.parent.resolve()
-    return data_dir.parent / (data_dir.name + ".hold")
+    return sibling_path(db_path, ".hold")
 
 
 def _read_holder(path: Path) -> dict[str, Any] | None:

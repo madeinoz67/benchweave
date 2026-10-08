@@ -84,6 +84,14 @@ rather than rewriting the history — that is how this file earns trust.
   (`test_protection.py`, `test_state_recovery.py`). *A12: all endings require the approved
   safe transition; terminal pass requires verified final safety. An interrupted run
   reported as anything else is a lie in the evidence record.*
+  Amendment (2026-10-08, issue #422 increment 3 — the supervision design record's §6
+  rider): the supervision ladder never writes terminal records — only the coordinator's
+  §5 ending or a recovery-shaped sweep do (the stop-time sweep
+  `interrupt_queued_at_stop`, scoped to the #156 queued-ghost leg under the worker pickup
+  gate — never the lease/reclaim/reconcile legs, whose predicates assume a dead host);
+  a PLAIN stop over any live run is a typed refusal naming the run. Pinned by
+  `tests/cli/test_lifecycle.py` (L2's refusal-is-never-a-terminal-write, L3b's
+  one-writer-per-run) and `tests/faults/test_lifecycle_faults.py`.
 - **[CTL-10]** A run start over a `gateway_owned` procedure requires the commissioned
   unattended grant — `commissioning.modes` contains `"unattended"` with a passing
   `unattended`-category evidence row — and every run's window
@@ -113,6 +121,23 @@ rather than rewriting the history — that is how this file earns trust.
   promote an ordinary operation to autonomous execution; A12: the procedure cannot rewrite
   its operating envelope — the grant lives outside it, in the commissioning document.*
 
+- **[CTL-11]** *(2026-10-08, issue #422 increment 3 — the supervision design record's §6
+  new invariant.)* The supervision ladder is outcome-blind by construction: no rung
+  writes or rewrites a terminal record and none is an outcome authority — rung 2 QUOTES
+  the coordinator's own terminal record verbatim with its source named
+  (`terminal_observed` carries `source: "coordinator_terminal_record"`, an observation,
+  never an authority); a PLAIN stop over a live run is a typed refusal
+  (`stop_refused_run_active:`) naming the run; the pidfile is a signaling handle whose
+  verdicts yield to the store hold, never override it — `src/benchweave/supervision.py`
+  (the protocol: identity lattice, doorbell, journal), `src/benchweave/interfaces/
+  supervision.py` (the daemon surface), `src/benchweave/cli/lifecycle.py` (the verbs and
+  the SIGKILL rung), pinned by `tests/cli/test_lifecycle.py` +
+  `tests/faults/test_lifecycle_faults.py` (arms L2/L5/L6/L9). *CTL-9's writers-only
+  clause made structural for the process level: a stop that manufactured an outcome
+  would launder the exact ambiguity the run record exists to preserve, and a signaling
+  handle that overrode the hold would put a second coordinator's veto in a sidecar
+  file.*
+
 ## State & persistence invariants
 
 - **[STO-1]** The store is single-writer SQLite — WAL journal, `synchronous=FULL`,
@@ -133,6 +158,19 @@ rather than rewriting the history — that is how this file earns trust.
   `src/benchweave/state/hold.py`. *A03's one-active-procedure rule needs exactly one
   writer; `flock` dies with the process, so a crashed gateway can never leave a false
   "held" behind.*
+  Amendment (2026-10-08, issue #422 increment 3 — the supervision design record's §6
+  rider): the supervision file family (`<dir>.pid` / `<dir>.stop` / `<dir>.log` /
+  `<dir>.supervision.jsonl`) derives from the SAME resolved-sibling rule as
+  `hold_path` (`state.hold.sibling_path`, the one derivation behind the family — a
+  directory swapped by `restore` can never strand a live sidecar reference, and one
+  resolved directory derives one family under every spelling); `stop`/`status` treat
+  `daemon_holds` as the truth and the pidfile as the signaling handle — a pid/hold
+  disagreement is a typed desync (`supervision_hold_desync:`), never an override; a
+  gateway-label holder is distinguished from at-rest holders by the hold body's LABEL
+  (the label-first cross-check). The sibling-name collision class (a data dir X beside
+  a DIRECTORY named `X.pid`/`X.stop`/`X.log` refuses the open with EISDIR after hold
+  acquire — the preexisting `X.hold` shape, surface ×4 with the family) is named here,
+  not discovered later.
 - **[STO-4]** The run's bench lease is held as `run:{run_id}` with expiry =
   acceptance + max_body + max_protection; binding takes `expires_at` and `now_wall` as
   caller-supplied values and never reads a clock — `src/benchweave/control/binding.py`,

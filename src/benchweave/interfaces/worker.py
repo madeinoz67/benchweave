@@ -76,6 +76,15 @@ class RunWorker:
         self._queue: queue.Queue[tuple[str, str, dict[str, Any], str]] = queue.Queue()
         self._thread = threading.Thread(target=self._drain, name="stg-run-worker", daemon=True)
         self._stopping = threading.Event()
+        # Issue #422 inc3 (record §3.3 step 3): the PICKUP GATE. Once set,
+        # the drain loop stops dequeuing new jobs while letting the ACTIVE
+        # job finish — the ordering the protective stop depends on: the
+        # microsecond the active run ends, an ungated worker would pick up
+        # the next queued run and start dispatching into a sweep (lane-1
+        # F1's dual-writer terminalization race, the CTL-9 corruption
+        # class). Gated, a queued job is requeued untouched and stays a
+        # ghost for the scoped sweep.
+        self._pickup_gated = threading.Event()
         self._done = 0
         self._submitted_count = 0
         self._active_lock = threading.Lock()
@@ -108,6 +117,32 @@ class RunWorker:
 
     def stop(self) -> None:
         self._stopping.set()
+
+    def gate_pickup(self) -> None:
+        """Enter don't-pick-up mode (issue #422 inc3, §3.3 step 3): stop
+        dequeuing new jobs while letting the ACTIVE job finish. Jobs
+        already queued are never taken; one in flight when the gate lands
+        is requeued untouched (the ``get`` consumed its slot, the requeue
+        restores ``unfinished_tasks`` truthfully for ``join``)."""
+        self._pickup_gated.set()
+
+    @property
+    def pickup_gated(self) -> bool:
+        """True once :meth:`gate_pickup` has been called."""
+        return self._pickup_gated.is_set()
+
+    def wait_gated_exit(self, timeout: float) -> bool:
+        """Wait until the drain thread has EXITED under the pickup gate —
+        the "confirmed queue-empty under the gate" precondition the
+        protective sweep needs before it may finalize ghosts (a live
+        thread could otherwise still be between ``get`` and dispatch).
+        True: exited. False: still alive at the deadline."""
+        deadline = time.monotonic() + timeout
+        while self._thread.is_alive():
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(0.05)
+        return True
 
     def join(self, timeout: float | None = None) -> bool:
         """Wait for the queue to drain. True: drained (and, after
@@ -169,11 +204,22 @@ class RunWorker:
     def _drain_with(self, store: Store) -> None:
         while True:
             try:
-                run_id, principal_id, binding_ref, bench_id = self._queue.get(timeout=0.1)
+                job = self._queue.get(timeout=0.1)
             except queue.Empty:
                 if self._stopping.is_set():
                     return  # queue drained; stop cleanly
+                if self._pickup_gated.is_set():
+                    # Gated with an empty queue: nothing will ever arrive
+                    # (the stop flag refuses new submissions) — exit now.
+                    return
                 continue
+            if self._pickup_gated.is_set():
+                # §3.3 step 3: gated — requeue (no ``task_done``: the put
+                # balances the get for ``unfinished_tasks``) and exit. The
+                # job stays a queued ghost for the stop-time sweep.
+                self._queue.put(job)
+                return
+            run_id, principal_id, binding_ref, bench_id = job
             try:
                 store.put_run_state(run_id, bench_id, "running", self._now_iso())
                 coordinator = self._build_run(run_id, principal_id, binding_ref, store)

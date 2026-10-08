@@ -472,6 +472,7 @@ def build_ui_router(
     now_epoch: Callable[[], int] | None = None,
     content: Any = None,
     store: Store | None = None,
+    streams_closing: Any = None,
 ) -> APIRouter:
     """The UI routes over the seam. UNPREFIXED by design: this router is
     included in the UI sub-application which itself mounts at ``/ui``
@@ -805,6 +806,7 @@ def build_ui_router(
         render=lambda template, **context: _ENV.get_template(template).render(
             **context
         ),
+        streams_closing=streams_closing,
     )
 
     @router.get("/assets/{name}", include_in_schema=False)
@@ -865,6 +867,7 @@ def build_ui_app(
     guards: frozenset[str] = DEFAULT_GUARDS,
     content: Any = None,
     store: Store | None = None,
+    streams_closing: Any = None,
 ) -> FastAPI:
     """The UI sub-application: the router plus its guard set.
 
@@ -898,6 +901,7 @@ def build_ui_app(
             now_epoch=now_epoch,
             content=content,
             store=store,
+            streams_closing=streams_closing,
         )
     )
     install_ui_guards(

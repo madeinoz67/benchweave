@@ -506,6 +506,7 @@ def _ephemeral_gateway(fixtures_dir: Path, *, timeout_s: float) -> Iterator[AppH
             secret=secret,
             limits=DEFAULT_LIMITS,
             gateway_id=EVIDENCE_GATEWAY_ID,
+            hold_label="gw-cli-evidence",
             fixtures_dir=fixtures_dir,
             now_iso=_now_iso,
             now_epoch=_now_epoch,
