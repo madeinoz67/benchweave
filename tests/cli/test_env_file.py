@@ -78,12 +78,19 @@ def _serve_with_build_probe(
     built = {"value": False}
     snapshot: dict[str, dict[str, str]] = {}
 
-    def probe() -> object:
+    def probe(*, supervision_armed: bool = False) -> object:
         built["value"] = True
         snapshot["env"] = dict(os.environ)
-        return object()
+        # serve's tail reads the composed app's supervision surface: the
+        # stub carries an unarmed state (issue #422 inc3).
+        from types import SimpleNamespace
 
-    monkeypatch.setattr(uvicorn, "run", lambda *a, **k: None)
+        return SimpleNamespace(state=SimpleNamespace(supervision=None))
+
+    # Issue #422 inc3: serve drives uvicorn.Config/Server directly (it
+    # binds the server so the stop decision can set should_exit), so the
+    # parking seam is Server.run.
+    monkeypatch.setattr(uvicorn.Server, "run", lambda self: None)
     monkeypatch.setattr(app_entry, "build", probe)
     result = CliRunner().invoke(cli, args)
     return result, built["value"], snapshot.get("env")

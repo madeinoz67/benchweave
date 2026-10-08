@@ -32,6 +32,10 @@ def _build_surface(tmp_path: Path) -> Path:
     shutil.copyfile(REPO / "docs/project-index.md", root / "docs/project-index.md")
     shutil.copytree(REPO / "src", root / "src")
     shutil.copytree(REPO / "standards", root / "standards")
+    # The deploy templates the pyproject force-includes for `service
+    # install` (issue #422 inc3): the synthetic surface carries them or
+    # hatchling's forced-include walk fails on the missing file.
+    shutil.copytree(REPO / "deploy", root / "deploy")
     shutil.copytree(
         REPO / "plugins/benchweave",
         root / "plugins/benchweave",
