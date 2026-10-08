@@ -1470,17 +1470,60 @@ def test_service_install_renders_launchd_plist_on_macos(tmp_path: Path) -> None:
         ["service", "install", "--data-dir", str(data_dir),
          "--plist-output", str(plist_out)],
     )
-    # The EXPLICIT --plist-output flag renders cross-platform (text
-    # generation; the operator carries the file to their mac). The
-    # platform-conditional surface is the DEFAULT target — linux install
-    # renders the systemd unit — pinned by the L10 arms; CI-corroborated
-    # (the first rollup caught the old non-darwin refusal expectation
-    # contradicting the implementation).
+    if sys.platform != "darwin":
+        # The plist renders only on darwin (drift-and-obligations row 9:
+        # the sys.platform gate covers the explicit --plist-output too).
+        # Off darwin the flag REFUSES TYPED, naming the platform and the
+        # flag — never the silent exit-0-that-writes-nothing, which also
+        # journaled service_installed having installed nothing (the
+        # second rollup's ubuntu evidence: exit 0, no file).
+        assert result.exit_code != 0, _combined(result)
+        combined = _combined(result)
+        assert "--plist-output" in combined, "the refusal names the flag"
+        assert sys.platform in combined, "the refusal names the platform"
+        assert not plist_out.exists(), "a refused install writes no plist"
+        return
+    # darwin: the explicit --plist-output renders the plist (text
+    # generation on the operator's own machine). The platform-conditional
+    # surface is the DEFAULT target — linux install renders the systemd
+    # unit — pinned by the L10 arms.
     assert result.exit_code == 0, _combined(result)
     text = plist_out.read_text()
     assert "launchd" in text
     assert "benchweave stop" in text, "the ExecStop mapping is named in comments"
     assert "TimeoutStopSec" in text, "the divergence is tabled in comments"
+
+
+def test_service_install_plist_output_refuses_typed_off_darwin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Cross-platform pin of the non-darwin refusal (the test_g3
+    win32-monkeypatch precedent): with sys.platform forced off darwin on a
+    darwin host, --plist-output refuses typed naming the flag and the
+    platform — the CI second-rollup shape was exit 0 with no plist
+    written, the silent no-op this repo refuses. Non-darwin hosts
+    (including the windows CI leg) run their native platform through the
+    same asserts; the force is darwin-only so a win32 host never lands on
+    POSIX-only branches."""
+    from benchweave.cli import atrest
+
+    if sys.platform == "darwin":
+        monkeypatch.setattr(sys, "platform", "linux")
+    seen_platform = sys.platform
+    data_dir = tmp_path / "gateway"
+    atrest.setup(data_dir)
+    _commissioned_store(data_dir)
+    plist_out = tmp_path / "com.benchweave.gateway.plist"
+    result = CliRunner().invoke(
+        cli,
+        ["service", "install", "--data-dir", str(data_dir),
+         "--plist-output", str(plist_out)],
+    )
+    assert result.exit_code != 0, _combined(result)
+    combined = _combined(result)
+    assert "--plist-output" in combined, "the refusal names the flag"
+    assert seen_platform in combined, "the refusal names the platform"
+    assert not plist_out.exists(), "a refused install writes no plist"
 
 
 # --- helpers ----------------------------------------------------------------------

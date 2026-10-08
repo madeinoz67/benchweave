@@ -709,6 +709,19 @@ def service_install(
     from benchweave.state.store import Store
 
     data_dir = Path(data_dir)
+    # A non-darwin --plist-output is a typed refusal, not a silent skip:
+    # the plist render is darwin-gated (write_plist below), so on any
+    # other host this flag combination writes NOTHING while exiting 0 —
+    # and the journal row would still claim service_installed. Refusing
+    # before the hold names the mismatch instead.
+    if plist_output is not None and sys.platform != "darwin":
+        raise LifecycleError(
+            "service_install_refused_plist_non_darwin: --plist-output "
+            "writes the launchd plist and service install renders the "
+            f"plist only on darwin — this host is {sys.platform}; drop "
+            "--plist-output (the systemd unit is the deploy target here) "
+            "or render the plist on a Mac"
+        )
     db = _db(data_dir)
     if not db.is_file():
         raise LifecycleError(

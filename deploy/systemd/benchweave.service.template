@@ -1,12 +1,19 @@
 # BenchWeave gateway — systemd unit TEMPLATE (WP08 Task 14).
 #
-# Render the two placeholders before installing:
+# Render the three placeholders before installing:
 #   sed -e 's|{{DATA_DIR}}|/var/lib/benchweave|g' \
 #       -e 's|{{ENV_FILE}}|/etc/benchweave/benchweave.env|g' \
+#       -e 's|{{TIMEOUT_STOP_SEC}}|120s|g' \
 #       deploy/systemd/benchweave.service.template \
 #       | sudo tee /etc/systemd/system/benchweave.service
 #   sudo systemctl daemon-reload
 #   sudo systemctl enable --now benchweave
+#
+# {{TIMEOUT_STOP_SEC}} is DERIVED at render time (the commissioned
+# safe-transition ceiling + 30 s, else the manager default with the
+# disclosed comment) — `benchweave service install` computes it from the
+# store; the sed example's 120s is a manual-render stand-in for an
+# uncommissioned store.
 #
 # Every directive's threat rationale: deploy/PERMISSIONS-REVIEW.md (the
 # review document is the deliverable this template implements). CI renders
