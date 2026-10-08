@@ -187,9 +187,13 @@ jobs:
           # TimeoutStopSec must produce a unit the verifier accepts (the
           # uncommissioned fallback arm in tests/cli/test_lifecycle.py pins
           # the rendered comment; this leg proves the rendered unit parses).
-          uv run python -m benchweave setup --data-dir /var/lib/benchweave
+          # The fresh store must be RUNNER-WRITABLE — /var/lib/benchweave is
+          # root-owned from the precondition mkdir above (the sed leg only
+          # renders text into it; setup writes content). First-rollup catch.
+          RENDER_DATA_DIR="$RUNNER_TEMP/benchweave-render-store"
+          uv run python -m benchweave setup --data-dir "$RENDER_DATA_DIR"
           uv run python -m benchweave service install \
-            --data-dir /var/lib/benchweave --unit-output /tmp/benchweave.rendered.service
+            --data-dir "$RENDER_DATA_DIR" --unit-output /tmp/benchweave.rendered.service
           systemd-analyze verify /tmp/benchweave.rendered.service
 
   windows:

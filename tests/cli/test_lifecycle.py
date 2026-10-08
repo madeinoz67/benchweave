@@ -1470,11 +1470,12 @@ def test_service_install_renders_launchd_plist_on_macos(tmp_path: Path) -> None:
         ["service", "install", "--data-dir", str(data_dir),
          "--plist-output", str(plist_out)],
     )
-    if sys.platform != "darwin":
-        # The plist analogue renders on macOS only; the arm degrades to a
-        # typed note on the other platforms (the unit is the deploy target).
-        assert result.exit_code != 0
-        return
+    # The EXPLICIT --plist-output flag renders cross-platform (text
+    # generation; the operator carries the file to their mac). The
+    # platform-conditional surface is the DEFAULT target — linux install
+    # renders the systemd unit — pinned by the L10 arms; CI-corroborated
+    # (the first rollup caught the old non-darwin refusal expectation
+    # contradicting the implementation).
     assert result.exit_code == 0, _combined(result)
     text = plist_out.read_text()
     assert "launchd" in text
@@ -1483,6 +1484,44 @@ def test_service_install_renders_launchd_plist_on_macos(tmp_path: Path) -> None:
 
 
 # --- helpers ----------------------------------------------------------------------
+
+
+# --- the template-header truthfulness pin (2026-10-08, writer-flagged) ------------
+
+
+def test_l10_template_header_names_every_placeholder() -> None:
+    """The unit template's header is operator instruction: its stated
+    placeholder count and its sed example must cover EVERY placeholder
+    the template actually carries. RED against the pushed branch: the
+    header said \"two\" and the sed rendered two while the template
+    carried three ({{TIMEOUT_STOP_SEC}} joined the family) — an operator
+    following the header installs a unit with a literal `{{` in it."""
+    import re
+
+    from benchweave.cli.lifecycle import unit_template
+
+    text = unit_template().read_text(encoding="utf-8")
+    placeholders = sorted(set(re.findall(r"\{\{([A-Z_]+)\}\}", text)))
+    assert placeholders, "the template carries placeholders"
+    header = text.split("# Every directive")[0]
+    words = {
+        "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
+    }
+    stated = [
+        words[word]
+        for word in re.findall(r"\b(one|two|three|four|five|six)\b", header)
+    ]
+    assert stated, "the header states its placeholder count in words"
+    assert max(stated) == len(placeholders), (
+        f"the header's stated count ({max(stated)}) must match the "
+        f"template's placeholder set ({placeholders})"
+    )
+    for name in placeholders:
+        assert f"s|{{{{{name}}}}}|" in header, (
+            f"the header's sed example must render {{{{{name}}}}} — a "
+            "manual render that skips it installs a literal `{{` into "
+            "the unit"
+        )
 
 
 # --- the inc3 refute fold arms (2026-10-08) -----------------------------------------
@@ -2223,10 +2262,19 @@ def test_g4i_protective_cancel_names_only_cancelled_runs(tmp_path: Path) -> None
             surface._loop,
         )
         future.result(timeout=30.0)
-        verdict = supervision.read_stop_file(surface.db_path)
-        assert verdict is not None and verdict.get("status") == "accepted"
-        cancel = verdict.get("protective_cancel") or {}
-        cancelled = [str(r) for r in cancel.get("run_ids", [])]
+        deadline = time.monotonic() + 10.0
+        cancelled: list[str] = []
+        while time.monotonic() < deadline:
+            verdict = supervision.read_stop_file(surface.db_path)
+            assert verdict is not None and verdict.get("status") == "accepted"
+            cancel = verdict.get("protective_cancel") or {}
+            cancelled = [str(r) for r in cancel.get("run_ids", [])]
+            if cancelled:
+                break
+            # The cancel set lands in a later verdict refresh than the
+            # accepted write (the G15a ordering) — poll it bounded instead
+            # of a single immediate read (CI-load catch, first rollup).
+            time.sleep(0.1)
         assert "run-g4i-ghost00001" not in cancelled, (
             f"protective_cancel names runs no cancel was issued for "
             f"(the ghost is sweep-owned — G4i): {verdict}"
