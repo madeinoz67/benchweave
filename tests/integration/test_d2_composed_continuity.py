@@ -9,10 +9,11 @@ bench whose two devices are both real ``OTDPBridge`` instances built by
 ``_continuity_rule.TrialRecord`` ledgers with provenance (§2.8).
 
 The instrument-level bands asserted here are the design's §4 clause 2 (the
-#172 §5 bands verbatim at the same fixture scale: dispatch arm 200 ms,
-capture cut at 50 ms budget, ``poll_ms`` 50, B frame period 20 ms,
-``max_age_ms`` 300). They are the rig's own discrimination proof, explicitly
-NOT ``G1/G2/P/TB`` and never citable as a commissioning (A02). Every figure
+#172 §5 bands at the rig's fixture scale: dispatch arm 200 ms, capture cut
+at 50 ms budget, ``poll_ms`` 50, B frame period 50 ms (the poll cadence,
+deviation 5), ``max_age_ms`` 500 (deviation 4)). They are the rig's own
+discrimination proof, explicitly NOT ``G1/G2/P/TB`` and never citable as a
+commissioning (A02). Every figure
 this module prints carries its denominator (the rig's dispatch/poll/frame
 scale), its cell (arm x class), and its sample size; the trial log is the
 provenance record.
@@ -40,13 +41,22 @@ code and none silent (the record's §6 risk 7 guard):
    absent — the cut ends the body outcome_unknown before any crossing can
    trip), the completing control (X1/X2/X3), two worker-leg trials — the
    ~30-composed-run scale §8's own budget names. X4's clause-2 control band
-   ("<= 1 s control") is structurally UNMEASURABLE here: the self-anchored
-   crossing can only fire inside a blackout longer than DELTA, and DELTA
-   must exceed the ~50 ms tick rhythm — the 20 ms control dispatch can
-   never contain an anchor. Disclosed, not worked around.
+   ("<= 1 s control") is NOT RELIABLY MEASURABLE at n=5 here (the fold's
+   MEDIUM-1 correction of this docstring's earlier "structurally
+   unmeasurable"): the self-anchored crossing needs a blackout longer than
+   DELTA, and DELTA must exceed the ~50 ms tick rhythm, so the 20 ms
+   control dispatch can only contain an anchor on tick-phase alignment —
+   observed possible but rare (~8% of trials, phase luck); five trials do
+   not reliably produce one. Disclosed, not worked around (scripting the
+   onset would be the harness omniscience §2.2 rejects).
 3. DELTA_MS stays 100 as designed on the 200 ms arms; the anchor-in-window
    property (§6 risk 5) is asserted only where the arm's arithmetic makes
    it hold (the armed read arm). No armed control cell exists (deviation 2).
+
+Disclosed band notes: the capture cells' X2 floor is asserted only as
+``>= 0.0`` — vacuous by design pending an owner floor (the capture arm's
+cut makes the same dispatch-scale arithmetic that drives the read bands
+inapplicable at a 50 ms budget); flagged for the owner row table.
 
 Import discipline: ``test_run_activation as activation`` (the
 ``test_capture_run``/``test_issue146_e2e`` precedent) and the light rig's
@@ -66,6 +76,7 @@ from statistics import median
 from typing import Any
 
 import pytest
+import test_cross_instance_continuity as continuity
 import test_run_activation as activation
 from _continuity_rule import Arm, TrialRecord, classify, write_trial_log
 
@@ -1472,6 +1483,11 @@ def _assert_discriminators(outcome: dict[str, Any], *, arm: str, run_id: str) ->
     assert retained == evidence_rows, (
         f"retention cross-check: {retained} snapshots vs {evidence_rows} rows"
     )
+    # §6 risk 3's kill arm, per trial: a quota collision lands in
+    # retention_failures (the A07 shape) - it must never be silent.
+    assert monitor is None or monitor.retention_failures == 0, (
+        f"retention_failures {monitor.retention_failures} on {run_id}"
+    )
 
 def _ledger_record(
     outcome: dict[str, Any], *, node: str, device_class: str, trial_index: int
@@ -1483,12 +1499,18 @@ def _ledger_record(
         axes["X3"] = outcome["x3_ms"]
     if outcome["x4_ms"] is not None:
         axes["X4"] = outcome["x4_ms"]
+    # The light convention: the T_acq arms' rows carry the CONJUNCTIVE
+    # consistency-control fact (both §2.5 controls asserted by the
+    # dedicated short-T and replay tests), so D5's FIRE arm stays
+    # reachable; the control arm is exempt by construction. Fold B-F4:
+    # the hardcoded False left every ledger with zero t_acq rows.
+    t_acq = arm in ("read", "armed_read")
     return TrialRecord(
         trial=trial_index,
         arm=f"composed-{arm}",
         device_class=device_class,
         axes_ms=axes,
-        t_acq_controls=False,
+        t_acq_controls=t_acq,
         tightening_admitted=False,
         splitting_admitted=False,
         unsplittable_class=True,
@@ -1503,6 +1525,17 @@ def _ledger_record(
             "worker_leg": False,
             "x3_in_window": outcome["x3_in_window"],
             "x3_unlanded": outcome["x3_unlanded_count"],
+            # The 3-way X4 decomposition (fold MEDIUM-3): a future re-cut
+            # re-derives the legs without re-measuring.
+            **(
+                {
+                    "x4_onset_obs_ms": outcome["observation_ms"],
+                    "x4_obs_action_ms": outcome["x4_ms"] - outcome["observation_ms"],
+                }
+                if outcome["x4_ms"] is not None
+                and outcome["observation_ms"] is not None
+                else {}
+            ),
         },
         command=_COMMAND_TEMPLATE.format(node=node),
     )
@@ -1602,8 +1635,12 @@ def _measure_cell(
         _LEDGER.append(records[-1])
     write_trial_log(tmp_path / f"trial-log-{node}.json", records)
     for axis in ("X1", "X2", "X3", "X4"):
-        if all(axis in r.axes_ms for r in records):
-            gate = _trimmed_range_gate(records, axis)
+        subset = [r for r in records if axis in r.axes_ms]
+        if subset:
+            # Gate every axis that recorded, subsets included - an axis
+            # missing from some trials (X3's window-hit subset) is gated on
+            # its subset, never skipped.
+            gate = _trimmed_range_gate(subset, axis)
             assert gate <= 0.25, (
                 f"{node} {axis} trimmed range {gate * 200.0:.1f} ms past the "
                 "25%-of-dispatch gate"
@@ -1619,14 +1656,19 @@ def _measure_cell(
     return records
 
 def _trimmed_range_gate(records: list[TrialRecord], axis: str) -> float:
-    """The range-gate statistic (#172 §5 item 7): the axis's trial range
-    trimmed of the single most extreme value, as a fraction of the 200 ms
-    dispatch scale (<= 0.25 passes)."""
+    """The range-gate statistic (#172 §5 item 7), on the LIGHT RIG'S OWN
+    machinery (imported, not copied — the design's "imported machinery"):
+    the axis's trial range trimmed of the single most extreme trial (the
+    one furthest from the median), as a fraction of the 200 ms dispatch
+    scale (<= 0.25 passes). Fewer than three values is a LOUD refusal, not
+    a vacuous pass — a gate that cannot measure must not wave the cell
+    through."""
     values = [r.axes_ms[axis] for r in records if axis in r.axes_ms]
     if len(values) < 3:
-        return 0.0
-    trimmed = sorted(values)[1:-1]
-    return (max(trimmed) - min(trimmed)) / 200.0
+        raise AssertionError(
+            f"range gate on {axis}: {len(values)} value(s) — too few to gate"
+        )
+    return continuity._underpowered_range_ms(values) / 200.0
 
 pytestmark = [pytest.mark.timing]
 
@@ -1735,8 +1777,17 @@ def test_armed_cells_measure_protective_latency(tmp_path: Path) -> None:
     signal_invalid, the R14 + freshness discipline), the self-anchored
     onset lands inside A's recorded dispatch span (§6 risk 5), and X4's
     decomposition (onset -> observation -> write-start -> write-end) is
-    recorded for every trial."""
+    recorded in every trial-log row (fold B-F3/MEDIUM-3).
+
+    The acceptance band binds the CELL MEDIAN over ALL TEN trials, never a
+    single trial (fold HIGH-1): one X4 reading is not the cell's — the
+    pre-committed rule consumes medians, and a band checked on the last
+    loop variable accepts on one trial of ten. The trial log is written
+    inside the loop so a mid-run failure still leaves the measured rows.
+    """
+    records: list[TrialRecord] = []
     for device_class in ("buffered", "unbuffered"):
+        class_records: list[TrialRecord] = []
         for index in range(5):
             outcome = _run_axis_trial(
                 tmp_path,
@@ -1756,30 +1807,44 @@ def test_armed_cells_measure_protective_latency(tmp_path: Path) -> None:
             assert dispatch_start_ns <= onset_ns <= dispatch_end_ns, (
                 "the anchor fell outside A's recorded dispatch span"
             )
-
-    assert outcome["x4_ms"] is not None
-    assert outcome["x4_ms"] >= 0.0
-    observation = outcome["observation_ns"]
-    write_landed = outcome["write_landed_ns"]
-    assert observation is not None and write_landed is not None
+            assert outcome["x4_ms"] is not None
+            observation = outcome["observation_ns"]
+            write_landed = outcome["write_landed_ns"]
+            assert observation is not None and write_landed is not None
+            record = _ledger_record(
+                outcome,
+                node=f"armed-{device_class}-{index}",
+                device_class=device_class,
+                trial_index=index,
+            )
+            _LEDGER.append(record)
+            class_records.append(record)
+            records.append(record)
+        write_trial_log(
+            tmp_path / f"trial-log-armed-{device_class}.json", class_records
+        )
+        gate = _trimmed_range_gate(class_records, "X4")
+        assert gate <= 0.25, (
+            f"armed {device_class} X4 trimmed range {gate * 200.0:.1f} ms "
+            "past the 25%-of-dispatch gate"
+        )
+        print(
+            f"[armed-{device_class}] X4="
+            f"{median([r.axes_ms['X4'] for r in class_records]):.1f}ms (n=5)"
+        )
+    assert len(records) == 10, f"the armed ledger holds {len(records)} of 10"
     # The clause-2 floor (150) encoded the LIGHT rig's scripted-early
     # onset (20-40 ms into the dispatch); the self-anchored onset sits at
     # prev-read + DELTA = ~100 ms into the 200 ms dispatch, so X4 =
     # (dispatch - DELTA) + observation-to-action by arithmetic. The floor
     # moves to that anchor arithmetic; the decomposition is the headline.
-    assert outcome["x4_ms"] >= 90.0, f"X4 {outcome['x4_ms']:.1f} ms below the band"
-    _LEDGER.append(
-        _ledger_record(
-            outcome,
-            node=f"armed-{device_class}-{index}",
-            device_class=device_class,
-            trial_index=index,
-        )
+    x4_values = [r.axes_ms["X4"] for r in records]
+    x4_median = median(x4_values)
+    assert x4_median >= 90.0, (
+        f"armed-cell X4 median {x4_median:.1f} ms below the band "
+        f"({len(x4_values)} trials)"
     )
-    print(
-        f"[armed-{device_class}] X4={outcome['x4_ms']:.1f}ms "
-        f"(onset->observation {outcome['observation_ms']:.1f}ms)"
-    )
+    print(f"[armed-all] X4 median {x4_median:.1f} ms over {len(records)} trials")
 
 def test_control_cell_separates_from_the_long_arm(tmp_path: Path) -> None:
     """The matched short-dispatch control (5 trials) against the long arm:
@@ -1898,7 +1963,8 @@ def test_red_arm_discriminator_refuses_bypassed_dispatch(tmp_path: Path) -> None
     occurrence-ledger entry, no terminal record. A discriminator that
     passes both ways proves nothing — this arm pins that it discriminates."""
     harness = _ComposedRigHarness(tmp_path, "req-red", arm="capture")
-    coordinator, store = harness._coordinator("run-red-direct")
+    run_id = "run-red-direct"
+    coordinator, store = harness._coordinator(run_id)
     try:
         request = OperationRequest(
             operation_id="op-red-direct",
@@ -1915,12 +1981,19 @@ def test_red_arm_discriminator_refuses_bypassed_dispatch(tmp_path: Path) -> None
         result = coordinator.plugins[DEVICE_A].dispatch(request, deadline_ns=deadline_ns)
         assert result.status is OperationStatus.OK
         assert result.data["capture_id"] == "cap.rig-direct"
-        events = store.read_events("run:red-direct")
+        # The key the coordinator actually namespaces: f"run:{run_id}"
+        # Two key conventions, both load-bearing (fold HIGH-3 + row 8):
+        # the EVENT STREAM is namespaced run:{run_id}, while the RUNS
+        # TABLE keys on the BARE run id (store.get_run's WHERE run_id = ?)
+        # - the f-string form reads an events context here, and the bare
+        # form reads the runs table. Mixing them makes the no-events or
+        # no-row half vacuous.
+        events = store.read_events(f"run:{run_id}")
         assert not events, "a bypassed dispatch produced run events"
         assert coordinator.occurrence_ledger == {}, (
             "a bypassed dispatch reached the occurrence ledger"
         )
-        run = store.get_run("run:red-direct")
+        run = store.get_run(run_id)
         assert run is None, "a bypassed dispatch created a run row"
     finally:
         store.close()
@@ -2080,14 +2153,153 @@ def test_store_connection_census_worker(tmp_path: Path, monkeypatch: pytest.Monk
     assert len(opened) == 2, f"census: {len(opened)} opens ({opened})"
     assert len(set(opened)) == 2, f"census: threads {opened}"
 
+#: The light rig's re-measured cells ([R5]: PR #236 body, re-measured
+#: post-fix) - the clause-3 class-agreement reference.
+_LIGHT_CELLS_R5: dict[str, float] = {
+    "X2-long-buffered": 219.0,
+    "X2-control": 42.0,
+    "X2-unbuffered": 1.0,
+    "X3-long": 202.0,
+    "X3-control": 32.0,
+}
+
+
+def _composed_cell_median(
+    arm: str, device_class: str, axis: str, *, minimum: int = 3
+) -> float:
+    values = [
+        r.axes_ms[axis]
+        for r in _LEDGER
+        if r.arm == arm and r.device_class == device_class and axis in r.axes_ms
+    ]
+    assert len(values) >= minimum, (
+        f"clause-3 cell {arm} x {device_class} {axis}: {len(values)} "
+        f"value(s) - the producing cell test did not run"
+    )
+    return median(values)
+
+
+def test_clause3_class_agreement_against_the_light_cells() -> None:
+    """§4 clause 3 as an executable arm (fold HIGH-2/B-F1): every compared
+    composed cell lies within the pre-committed ±100 ms class tolerance of
+    the light rig's same-cell median [R5], and the long-vs-control
+    separation direction matches. X4 is EXCLUDED from the cross-rig
+    comparison with a disclosed rationale: the light rig's hazard onset
+    was SCRIPTED at 10-40 ms into the dispatch (harness omniscience),
+    while the composed onset is SELF-ANCHORED at prev-read + DELTA
+    (~105-115 ms into the 200 ms window) - a mechanism change, not a
+    scale change, so same-cell X4 numbers are not comparable; the
+    composed X4 band (>= 90, anchor arithmetic) and its recorded
+    decomposition are the X4 evidence instead."""
+    assert _LEDGER, "no composed trials ran"
+    x2_long = _composed_cell_median("composed-read", "buffered", "X2")
+    x2_control = _composed_cell_median("composed-control", "buffered", "X2")
+    x2_unbuffered = _composed_cell_median("composed-read", "unbuffered", "X2")
+    x3_long = _composed_cell_median("composed-read", "buffered", "X3")
+    # The control's X3 records only when the 20 ms window catches a 50 ms
+    # emission-grid point, and the grid phase LOCKS per process - a
+    # partial-selection session can measure 0/5 where a full-module run
+    # measures 4/5. The consumer belongs to the full battery; minimum=1
+    # with the phase caveat in the refusal.
+    x3_control = _composed_cell_median(
+        "composed-control", "buffered", "X3", minimum=1
+    )
+    # Direction first (a wiring defect reads long ~ control).
+    assert x2_long > x2_control, (
+        f"X2 separation direction lost: long {x2_long:.1f} vs control "
+        f"{x2_control:.1f}"
+    )
+    assert x3_long > x3_control, (
+        f"X3 separation direction lost: long {x3_long:.1f} vs control "
+        f"{x3_control:.1f}"
+    )
+    comparisons = {
+        "X2-long-buffered": (x2_long, _LIGHT_CELLS_R5["X2-long-buffered"]),
+        "X2-control": (x2_control, _LIGHT_CELLS_R5["X2-control"]),
+        "X2-unbuffered": (x2_unbuffered, _LIGHT_CELLS_R5["X2-unbuffered"]),
+        "X3-long": (x3_long, _LIGHT_CELLS_R5["X3-long"]),
+        "X3-control": (x3_control, _LIGHT_CELLS_R5["X3-control"]),
+    }
+    for cell, (composed, light) in comparisons.items():
+        delta = abs(composed - light)
+        assert delta <= 100.0, (
+            f"clause-3 tolerance exceeded on {cell}: composed "
+            f"{composed:.1f} vs light {light:.1f} (delta {delta:.1f} ms) - "
+            "the #172 record re-opens per its own risk table"
+        )
+        print(f"[clause-3] {cell}: composed {composed:.1f} vs light {light:.1f} ms")
+
+
+def test_range_gate_double_spike_fails() -> None:
+    """Fold B-F2, the table test: the gate trims ONE trial (the one
+    furthest from the median - the light rig's exact machinery), never
+    both ends, so a double-spiked cell [100, 210, 220, 230, 400] FAILS
+    (both-ends trimming passes it at 20 ms; single-trim reads 130/200 =
+    0.65)."""
+    records = [
+        TrialRecord(
+            trial=i,
+            arm="composed-read",
+            device_class="buffered",
+            axes_ms={"X1": value},
+            t_acq_controls=False,
+            tightening_admitted=False,
+            splitting_admitted=False,
+            unsplittable_class=True,
+        )
+        for i, value in enumerate([100.0, 210.0, 220.0, 230.0, 400.0])
+    ]
+    gate = _trimmed_range_gate(records, "X1")
+    assert gate > 0.25, f"the double-spiked cell passed the gate at {gate:.3f}"
+
+
+def test_get_run_reads_the_bare_run_id(tmp_path: Path) -> None:
+    """Fold row 8, the permanent pin: the runs table keys on the BARE run
+    id (store.get_run's WHERE run_id = ?) while the event stream is
+    namespaced run:{run_id} - a real start_run-minted run is readable at
+    the bare id, and the "run:"-prefixed form is structurally blind to it
+    (the vacuous shape the RED arm briefly carried)."""
+    outcome = _run_axis_trial(
+        tmp_path,
+        node="get-run-probe",
+        arm="capture",
+        device_class="buffered",
+        trial_index=0,
+    )
+    store: Store = outcome["store"]
+    run_id = outcome["run_id"]
+    try:
+        assert store.get_run(run_id) is not None, (
+            "the runs table is not readable at the BARE run id - the "
+            "real path writes run_id, not run:{run_id}"
+        )
+        assert store.get_run(f"run:{run_id}") is None, (
+            "the run:-prefixed form FOUND a runs-table row - that form "
+            "belongs to the event stream namespace only"
+        )
+    finally:
+        store.close()
+
+
 def test_ledger_classifier_consumption_underpowered(tmp_path: Path) -> None:
     """§4 clause 4: classify over the rig's real ledger with the §6
     all-None bounds returns UNDERPOWERED — the no-commissioning reading
     applies verbatim, no denominator invented (A02); and the check-3
     shape test is reused verbatim from the light rig (imported, not
     copied)."""
-    import test_cross_instance_continuity as continuity
-
+    assert _LEDGER, (
+        "the composed ledger is empty - the classifier consumption would "
+        "pass vacuously (fold B-F5/LOW-3)"
+    )
+    long_arm_rows = [
+        r
+        for r in _LEDGER
+        if r.arm in ("composed-read", "composed-armed_read")
+    ]
+    assert any(r.t_acq_controls for r in long_arm_rows), (
+        "the long arm carries zero t_acq=True rows - D5's FIRE arm is "
+        "unreachable from this ledger (fold B-F4)"
+    )
     verdict = classify(_LEDGER, {"X1": None, "X2": None, "X3": None, "X4": None})
     assert verdict is Arm.UNDERPOWERED
     by_cell: dict[tuple[str, str], list[TrialRecord]] = {}

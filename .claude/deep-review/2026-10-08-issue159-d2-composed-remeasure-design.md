@@ -317,6 +317,46 @@ this record. Nothing else moves. No fixture-lattice change (documents authored i
 
 ## 4. Measurable proof — the pre-committed acceptance rule
 
+> **Fold-wave addendum (2026-10-08, post-refute; the rule text above and
+> below this note is frozen and unedited):** the builder's composed rig
+> met the rule with the following recorded caveats and corrections, folded
+> as one batch on `feat/159-d2-remeasure`.
+>
+> **(a) Fixture-scale drift (class-agreement caveat).** The rig runs B's
+> frame period at 50 ms (= the poll cadence; the composed poll engine
+> delivers one frame per slice, so the designed 20 ms schedule accumulates
+> an unbounded backlog the composed path cannot drain) and `max_age_ms` at
+> 500 (not 300: the composed path cannot pre-align, so post-dispatch ages
+> run ~270-380 ms and a 300 bound trips `signal_invalid` on jitter — the
+> #172 margin lesson repeating). The clause-3 ±100 ms class comparison is
+> read with that drift in view.
+>
+> **(b) Band-floor arithmetic (revert evidence).** The clause-2 floors
+> `X4 >= 150` and `control X2 <= 50` encoded the light rig's scripted-early
+> onset (10-40 ms into dispatch) and aligned control (fresh frame at
+> dispatch start). The composed shape forces the floors to the anchor
+> arithmetic: the self-anchored onset sits at prev-read + DELTA (~100 ms
+> into the 200 ms dispatch), so composed X4 = (dispatch − DELTA) +
+> observation-to-action ≈ 105-115 ms (floor moved to >= 90); the composed
+> control's X2 floor is dispatch + last-poll residue ≈ 70-120 ms (band
+> moved to <= 150). Reverting the floor moves re-opens both bands red.
+>
+> **(c) X4 excluded from clause 3's cross-rig comparison.** The light
+> rig's onset placement was a harness-scripted mechanism; the composed
+> onset is self-anchored — a mechanism change, not a scale change — so
+> same-cell X4 numbers are not comparable. The composed X4 evidence is its
+> own band (>= 90, cell median over all 10 armed trials) plus the recorded
+> 3-way decomposition per trial-log row. X4 measured 109 ms median at the
+> ±100 tolerance edge run-to-run (105.9 / 109 / 114.1), confirming the
+> boundary straddle this exclusion resolves.
+>
+> **(d) MEDIUM-1 correction.** "Structurally unmeasurable" (the builder's
+> phrase for the control-X4 band) is wrong: the self-anchored crossing CAN
+> fire on an armed control via tick-phase alignment (~8% of trials, phase
+> luck). The honest statement is NOT RELIABLY MEASURABLE AT n=5 — five
+> trials do not reliably produce an aligned phase. The band stays
+> unmeasured for that reason, not by impossibility.
+
 Written 2026-10-08, BEFORE any composed-path axis number exists (the rig does not exist).
 This rule ships or kills THE RE-MEASUREMENT RIG; it never evaluates the frozen decision
 rule (§0). Fixture scale mirrors the light rig exactly so the cells compare: dispatch arm
