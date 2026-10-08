@@ -915,15 +915,24 @@ def test_l11_two_concurrent_stops_one_action_truthful_reports(
         assert run["terminal"]["body_outcome"] == "cancelled", (
             "exactly one action: the protective consumption cancelled the run"
         )
-        # The loser's report is TRUTHFUL: the gateway DID stop (exit 0
-        # mirrors the observed outcome) and the typed note names whose
-        # mode acted — the record's "both CLIs exit with truthful
-        # reports", not a failure that never happened.
-        assert plain.returncode == 0, (
-            f"the plain loser's report:\n{plain_out}"
-        )
-        assert "stopped: True" in plain_out or '"stopped": true' in plain_out
-        assert "stop_mode_superseded:" in plain_out, plain_out
+        # The loser's report is TRUTHFUL — and there are TWO truthful
+        # interleavings (third-rollup CI catch): the arm originally
+        # demanded exit 0 unconditionally, but a legal race has the PLAIN
+        # request landing FIRST — the daemon consumes and REFUSES it (run
+        # live, still serving; the plain CLI exits 1 on the typed refusal)
+        # — and the protective request, consumed SECOND, then stops the
+        # gateway. The protocol is single-shot per REQUEST, not per stop
+        # episode: a refusal re-arms the doorbell for the next request.
+        # The invariants that must hold either way: exactly one ACTION
+        # (the protective cancelled the run, asserted above), the gateway
+        # stopped, and the plain report carries TYPED truth.
+        if plain.returncode == 0:
+            assert "stopped: True" in plain_out or '"stopped": true' in plain_out
+            assert "stop_mode_superseded:" in plain_out, plain_out
+        else:
+            assert "stop_refused_run_active:" in plain_out, (
+                f"the plain refusal must be the typed run-active one:\n{plain_out}"
+            )
     else:
         # The plain request was consumed against a BUSY gateway: it gets
         # the truthful run_active refusal (non-zero), the daemon keeps
