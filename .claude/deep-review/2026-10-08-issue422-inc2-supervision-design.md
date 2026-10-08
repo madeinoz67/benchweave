@@ -453,7 +453,11 @@ remove the exposure (lane-1 F11 fold).
 > adds the drain join and schedule slack); the deadline_exceeded verdict
 > discloses the closed SSE surface (streams close at the decision and
 > stay closed until the external kill ends the process — deliberate:
-> events observers see the stop verdict, not a half-live stream).
+> events observers see the stop verdict, not a half-live stream). The
+> unresolvable-deadline → decided-now deferral (an empty
+> `_protective_deadline` result makes the wait loop defer to the
+> external rung immediately) is a builder-invented behavior disclosed
+> in the helper's docstring only — named here so the record carries it.
 
 | Rung | Actor | Trigger | Bound | Audit event (supervision.jsonl row) | Run record |
 |---|---|---|---|---|---|

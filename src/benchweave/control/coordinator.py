@@ -1009,7 +1009,9 @@ class RunCoordinator:
             recovered.append(run_id)
         return recovered
 
-    def interrupt_queued_at_stop(self, now_value: str) -> list[str]:
+    def interrupt_queued_at_stop(
+        self, now_value: str, *, bench_ids: list[str] | None = None
+    ) -> list[str]:
         """Issue #422 inc3 — the STOP-TIME scoped sweep (§3.3 step 3).
 
         Finalizes never-started runs (projection ``accepted``, durable
@@ -1026,8 +1028,34 @@ class RunCoordinator:
         invented "skipped" outcome) — CTL-9's vocabulary stays closed,
         and a never-started run rebuilds zero occurrence identities
         (nothing dispatched, nothing to suppress).
+
+        G13: the sweep pages EVERY bench by default — exactly like the
+        stop window's read. A queued ghost on another bench is named in
+        the verdict's run_ids; leaving it unswept would be an exit-0
+        over a silent live row (the F10-condemned shape). ``bench_ids``"
+        narrows the sweep for callers that own a smaller scope.
         """
-        bench_id = str(self._docs.bench["id"])
+        if bench_ids is None:
+            bench_ids = []
+            offset = 0
+            while True:
+                items, has_more = self._store.list_benches(
+                    limit=1000, offset=offset
+                )
+                bench_ids.extend(str(bench["bench_id"]) for bench in items)
+                if not has_more:
+                    break
+                offset += len(items)
+        interrupted: list[str] = []
+        for bench_id in bench_ids:
+            interrupted.extend(
+                self._interrupt_queued_on_bench(bench_id, now_value)
+            )
+        return interrupted
+
+    def _interrupt_queued_on_bench(
+        self, bench_id: str, now_value: str
+    ) -> list[str]:
         interrupted: list[str] = []
         for row in self._store.list_run_states(bench_id):
             run_id = str(row["run_id"])

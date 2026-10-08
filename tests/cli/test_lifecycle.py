@@ -2081,6 +2081,454 @@ def test_s1twin_start_clears_unconsumed_stale_requests(tmp_path: Path) -> None:
         )
 
 
+# --- the addendum fold arms (2026-10-08, battery-lane parts 1+2) --------------------
+
+
+def test_g12_foreign_request_signal_path_is_bare_not_adoptive(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """G12 (MEDIUM — the foreign-owner bypass): the signal-triggered
+    decision (operator kill, KillSignal, the TimeoutStopSec ladder) used
+    to adopt an unconsumed request with NO ownership check — any
+    legitimate SIGTERM following a foreign-written protective request
+    executed the forged stop. The decided shape (b): a signal is its own
+    authority — a request file the daemon does not own is NEVER
+    consumed; the decision runs BARE (§3.4's three-way on live state),
+    the foreign file stays in place with the typed note."""
+    import asyncio
+
+    from benchweave import supervision
+    from benchweave.interfaces.errors import OperationFailure
+    from benchweave.interfaces.identity import Identity
+
+    app, server, thread, store = _compose_armed(tmp_path)
+    try:
+        surface = app.state.supervision
+        operations = app.state.operations
+        gate = app.state.write_gate
+        identity = Identity(
+            "g12-principal", "stg", frozenset({"stg:control"}), 2**31
+        )
+        # A LIVE run: a bare decision over it REFUSES (serving continues);
+        # an adopted protective request CANCELS it — the discriminator.
+        with gate:
+            try:
+                operations.run_start(
+                    identity, BENCH_ID, BINDING_REQUEST_ID, _binding_ref(),
+                    store.current_generation(BENCH_ID), None,
+                )
+            except OperationFailure as failure:
+                pytest.fail(f"the seeding run_start refused: {failure}")
+        # The foreign protective request: era-bound to THIS daemon (the
+        # era check passes — ownership is the discriminator) and stubbed
+        # foreign (the L12 discipline: chown needs privilege no runner
+        # has, so the stat the check reads is staged).
+        supervision.write_stop_request(
+            surface.db_path,
+            mode="protective",
+            actor_pid=os.getpid(),
+            target_pid=os.getpid(),
+        )
+        monkeypatch.setattr(
+            supervision, "_path_owner_uid", lambda path: os.getuid() + 4242
+        )
+        future = asyncio.run_coroutine_threadsafe(
+            surface._run_decision(None, trigger="signal"), surface._loop
+        )
+        future.result(timeout=15.0)
+        leftover = supervision.read_stop_file(surface.db_path)
+        assert leftover is not None and "status" not in leftover, (
+            "a signal-triggered decision must NEVER consume a request the "
+            "daemon does not own (G12)"
+        )
+        assert server.should_exit is False, (
+            "the bare decision over a live run refuses — the gateway keeps "
+            "serving (nothing protective ran from the foreign file)"
+        )
+        deadline = time.monotonic() + 30.0
+        while time.monotonic() < deadline:
+            if all(
+                row["state"] == "terminal"
+                for row in store.list_run_states(BENCH_ID)
+            ) and store.list_run_states(BENCH_ID):
+                break
+            time.sleep(0.2)
+        runs = [
+            store.get_run(str(row["run_id"]))
+            for row in store.list_run_states(BENCH_ID)
+        ]
+        assert runs and all(
+            run is not None and run["terminal"] is not None
+            and str(run["terminal"]["body_outcome"]) != "cancelled"
+            for run in runs
+        ), "the live run reached its OWN terminal — the forged protective "
+        "cancel never ran (G12)"
+    finally:
+        server.should_exit = True
+        thread.join(timeout=5)
+        store.close()
+
+
+def test_g4i_protective_cancel_names_only_cancelled_runs(tmp_path: Path) -> None:
+    """G4(i) (the lying audit row): `protective_cancel` names ONLY the
+    runs a cancel was actually issued for — a queued ghost (sweep-owned,
+    never cancelled) must not appear in it; pre-fold it named every
+    run_id the window read (cancels issued: [])."""
+    import asyncio
+
+    from benchweave import supervision
+    from benchweave.interfaces.errors import OperationFailure
+    from benchweave.interfaces.identity import Identity
+    from benchweave.state.store import Store
+
+    app, server, thread, store = _compose_armed(tmp_path)
+    try:
+        surface = app.state.supervision
+        operations = app.state.operations
+        gate = app.state.write_gate
+        identity = Identity(
+            "g4i-principal", "stg", frozenset({"stg:control"}), 2**31
+        )
+        with gate:
+            try:
+                operations.run_start(
+                    identity, BENCH_ID, BINDING_REQUEST_ID, _binding_ref(),
+                    store.current_generation(BENCH_ID), None,
+                )
+            except OperationFailure as failure:
+                pytest.fail(f"the active run_start refused: {failure}")
+        # The queued ghost: a durable row + accepted projection, never
+        # enqueued (the L3b seeding shape).
+        seeder = Store.open(surface.db_path)
+        try:
+            seeder.create_run(
+                "run-g4i-ghost00001",
+                binding=_binding_ref(),
+                principal_id="g4i-seeder",
+                now=_now_iso(),
+            )
+            seeder.put_run_state(
+                "run-g4i-ghost00001", BENCH_ID, "accepted", _now_iso()
+            )
+        finally:
+            seeder.close()
+        supervision.write_stop_request(
+            surface.db_path, mode="protective", actor_pid=os.getpid(),
+            target_pid=os.getpid(),
+        )
+        future = asyncio.run_coroutine_threadsafe(
+            surface._run_decision(
+                supervision.read_stop_file(surface.db_path), trigger="file"
+            ),
+            surface._loop,
+        )
+        future.result(timeout=30.0)
+        verdict = supervision.read_stop_file(surface.db_path)
+        assert verdict is not None and verdict.get("status") == "accepted"
+        cancel = verdict.get("protective_cancel") or {}
+        cancelled = [str(r) for r in cancel.get("run_ids", [])]
+        assert "run-g4i-ghost00001" not in cancelled, (
+            f"protective_cancel names runs no cancel was issued for "
+            f"(the ghost is sweep-owned — G4i): {verdict}"
+        )
+        assert cancelled, "the ACTIVE run's cancel is named"
+        ghost = store.get_run("run-g4i-ghost00001")
+        assert ghost is not None and ghost["terminal"] is not None
+        assert ghost["terminal"]["body_outcome"] == "interrupted"
+    finally:
+        server.should_exit = True
+        thread.join(timeout=5)
+        store.close()
+
+
+def test_g4ii_gate_wait_derives_from_the_commissioned_window(
+    tmp_path: Path,
+) -> None:
+    """G4(ii): the pickup-gate wait derives from the SAME
+    commissioned-window arithmetic as the protective deadline
+    (CTL-10/STO-4), never a flat constant — a commissioned body that
+    legitimately needs its window must not have the gate budget cut at
+    15 s. The escape arm (test_g4_...) proves the slicing behavior; this
+    arm pins the derivation itself."""
+    from datetime import timedelta
+
+    import benchweave.interfaces.supervision as supervision_module
+
+    app, server, thread, store = _compose_armed(tmp_path)
+    try:
+        surface = app.state.supervision
+        far = datetime_now() + timedelta(seconds=120)
+        assert surface._gate_exit_wait_s(far) >= 110.0, (
+            "the gate budget extends to the commissioned window's end, "
+            "not a flat constant (G4ii)"
+        )
+        past = datetime_now() - timedelta(seconds=5)
+        assert (
+            surface._gate_exit_wait_s(past)
+            == supervision_module.GATE_EXIT_FLOOR_S
+        ), "the degenerate shapes floor at the bookkeeping beat"
+    finally:
+        server.should_exit = True
+        thread.join(timeout=5)
+        store.close()
+
+
+def datetime_now() -> Any:
+    from datetime import datetime
+
+    return datetime.now().astimezone()
+
+
+def test_g5ext_poll_loop_survives_decision_task_exceptions(
+    tmp_path: Path,
+) -> None:
+    """G5 extension: the poll loop survives ALL decision-task exceptions
+    — a decision that raises EVERY time must leave the doorbell polling
+    (a dead loop is a silently disarmed stop surface for the process's
+    life — the failed-verdict-write case the lane probed)."""
+    from benchweave import supervision
+
+    app, server, thread, store = _compose_armed(tmp_path)
+    try:
+        surface = app.state.supervision
+        supervision.write_stop_request(
+            surface.db_path, mode="plain", actor_pid=os.getpid(),
+            target_pid=os.getpid(),
+        )
+        calls: list[int] = []
+
+        def exploding_decision(*args: Any, **kwargs: Any) -> Any:
+            calls.append(1)
+            raise RuntimeError("every decision explodes")
+
+        surface._run_decision = exploding_decision
+        time.sleep(3.3)  # ≥ 3 doorbell cadences
+        assert len(calls) >= 3, (
+            f"the poll loop died on the first decision-task raise "
+            f"(calls={len(calls)}) — the doorbell must survive every "
+            "decision failure (G5 ext)"
+        )
+    finally:
+        server.should_exit = True
+        thread.join(timeout=5)
+        store.close()
+
+
+def test_g15a_protective_cancel_copied_on_every_refresh() -> None:
+    """G15(a): the CLI journals `protective_cancel` like
+    terminal_observed — on every verdict refresh, once per run — because
+    the daemon's cancel set lands in a LATER verdict write than the
+    accepted verdict; a CLI that journals only the FIRST read misses the
+    row (or journals an empty one)."""
+    import tempfile
+
+    from benchweave import supervision
+    from benchweave.cli import lifecycle
+
+    with tempfile.TemporaryDirectory() as tmp:
+        db = Path(tmp) / "state.sqlite"
+        seen: set[str] = set()
+        # First read: the accepted verdict carries no cancel set yet.
+        lifecycle._copy_protective_cancel(
+            db, {"status": "accepted", "mode": "protective"}, seen
+        )
+        assert not supervision.journal_path(db).exists()
+        # The refresh carries it.
+        lifecycle._copy_protective_cancel(
+            db,
+            {"protective_cancel": {"run_ids": ["run-a", "run-b"]}},
+            seen,
+        )
+        rows = [
+            json.loads(line)
+            for line in supervision.journal_path(db).read_text().splitlines()
+        ]
+        assert rows == [
+            {"event": "protective_cancel", "run_ids": ["run-a", "run-b"]}
+        ] or (
+            len(rows) == 1
+            and rows[0]["event"] == "protective_cancel"
+            and sorted(rows[0]["run_ids"]) == ["run-a", "run-b"]
+        ), rows
+        # A later refresh adding one run journals exactly the addition.
+        lifecycle._copy_protective_cancel(
+            db,
+            {"protective_cancel": {"run_ids": ["run-a", "run-b", "run-c"]}},
+            seen,
+        )
+        rows = [
+            json.loads(line)
+            for line in supervision.journal_path(db).read_text().splitlines()
+        ]
+        assert len(rows) == 2 and rows[-1]["run_ids"] == ["run-c"], rows
+
+
+def test_g15b_rung3_dead_before_kill_is_typed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """G15(b): a daemon that exits between the CLI's check and the kill
+    is a TYPED disclosure ("the process exited before the kill"), never
+    a raw ProcessLookupError traceback."""
+    from benchweave.cli import lifecycle
+
+    def dead_pid(pid: int, sig: int) -> None:
+        raise ProcessLookupError()
+
+    monkeypatch.setattr(os, "kill", dead_pid)
+    db = tmp_path / "gateway" / "state.sqlite"
+    db.parent.mkdir()
+    try:
+        raise lifecycle._rung3_kill(
+            db, 4242,
+            {"run_ids": ["run-g15b"], "protective_deadline_wall": _now_iso()},
+        )
+    except lifecycle.LifecycleError as error:
+        message = str(error)
+    except ProcessLookupError:
+        pytest.fail("the pre-kill death must be typed, not a raw traceback")
+    assert "exited before the kill" in message
+    assert "supervision_sigkill" in message
+
+
+@POSIX_ONLY
+def test_g13_sweep_pages_every_bench(slow_daemon: Daemon) -> None:
+    """G13: the stop-time sweep pages EVERY bench exactly like the stop
+    window's read — a queued ghost on ANOTHER bench is named in the
+    verdict's run_ids and must be swept, never left a silent live row
+    under an exit-0 stop (the F10-condemned shape)."""
+    from benchweave.state.store import Store
+
+    daemon = slow_daemon
+    with daemon.client() as client:
+        run_a = daemon.start_run(client)
+        daemon.wait_run_state(client, run_a, "running")
+    # The other bench: a real inventory row (cloned from the admitted
+    # one — the read pages the benches table) + the seeded ghost.
+    store = Store.open(daemon.data_dir / "state.sqlite")
+    try:
+        admitted = store.get_bench(BENCH_ID)
+        assert admitted is not None
+        store.put_bench(
+            "sim-bench-other",
+            admitted["generation"],
+            admitted["qualification"],
+            admitted["configuration_json"],
+            admitted["licence"],
+            _now_iso(),
+        )
+        import hashlib as _hashlib
+
+        binding_raw = (daemon.fixtures / "run-binding.json").read_bytes()
+        store.create_run(
+            "run-otherbench0001",
+            binding={
+                "id": json.loads(binding_raw)["request_id"],
+                "version": "0.1.0",
+                "sha256": _hashlib.sha256(binding_raw).hexdigest(),
+            },
+            principal_id="g13-seeder",
+            now=_now_iso(),
+        )
+        store.put_run_state(
+            "run-otherbench0001", "sim-bench-other", "accepted", _now_iso()
+        )
+    finally:
+        store.close()
+    code, output = _stop_cli(daemon.data_dir, "--protective")
+    assert code == 0, output
+    daemon.proc.wait(timeout=30)
+    ghost = _run_at_rest(daemon.data_dir, "run-otherbench0001")
+    assert ghost is not None, "the ghost's durable row exists"
+    assert ghost["terminal"] is not None, (
+        "a queued ghost on another bench is named in the verdict's "
+        "run_ids but was never swept — exit-0 over a silent live row "
+        "(G13, the F10-condemned shape)"
+    )
+    assert ghost["terminal"]["body_outcome"] == "interrupted"
+
+
+@POSIX_ONLY
+def test_g14_open_events_stream_drains_clean_on_plain_stop(
+    daemon: Daemon,
+) -> None:
+    """G14 (the unpinned SSE fix): an Events stream held open across a
+    plain idle stop — exit 0, the stream CLOSED by the stop decision (the
+    reader thread ends), no did-not-drain line, and the L1 wall bound
+    holds (an unbounded drain would blow through it)."""
+    import queue as _queue
+
+    from benchweave.interfaces.identity import issue
+
+    port = daemon.port
+    # The bearer must outlive the session TTL (NFR-S2: the projection
+    # cannot outlive its source identity) — 12 h, the rigs' horizon.
+    bearer = issue(
+        daemon.secret.encode(),
+        principal="g14-ui",
+        audience="stg",
+        scopes={"stg:control"},
+        expires_at=int(time.time()) + 12 * 3600,
+    )
+    lines: _queue.Queue[str] = _queue.Queue()
+    stream_open = threading.Event()
+    reader_done = threading.Event()
+
+    def reader() -> None:
+        import httpx
+
+        try:
+            with httpx.Client(
+                base_url=f"http://127.0.0.1:{port}", timeout=30.0
+            ) as ui:
+                minted = ui.post("/ui/login-codes", json={}, headers={
+                    "Authorization": f"Bearer {bearer}"
+                })
+                assert minted.status_code == 201, minted.text
+                code_value = str(
+                    minted.json()["data"]["login_url"]
+                ).split("code=")[-1]
+                login = ui.get(
+                    f"/ui/login?code={code_value}", follow_redirects=False
+                )
+                assert login.status_code == 303, login.text
+                session = login.cookies.get("bw_session")
+                assert session, login.headers
+                with ui.stream(
+                    "GET",
+                    f"/ui/benches/{BENCH_ID}/events/stream",
+                    cookies={"bw_session": session},
+                ) as stream:
+                    stream_open.set()
+                    for line in stream.iter_lines():
+                        lines.put(line)
+        finally:
+            reader_done.set()
+
+    reader_thread = threading.Thread(target=reader, daemon=True)
+    reader_thread.start()
+    try:
+        assert stream_open.wait(timeout=30.0), "the events stream never opened"
+        started = time.monotonic()
+        code, output = _stop_cli(daemon.data_dir)
+        elapsed = time.monotonic() - started
+        assert code == 0, output
+        assert elapsed < L1_WALL_BOUND_S, (
+            f"the stop over an open Events stream must be bounded: "
+            f"took {elapsed:.1f}s (the SSE close + graceful timeout own "
+            "the drain — G14)"
+        )
+        daemon.proc.wait(timeout=10)
+        assert daemon.proc.returncode == 0, daemon.stderr_tail()
+        assert reader_done.wait(timeout=10.0), (
+            "the stream must CLOSE at the stop decision (F2/G14) — the "
+            "reader is still blocked on it"
+        )
+        assert "did not drain" not in daemon.stderr_tail()
+    finally:
+        daemon.close()
+        reader_thread.join(timeout=5)
+
+
 def _combined(result: Result) -> str:
     """stdout + stderr, robust to click < 8.2's mixed-stream Result."""
     try:

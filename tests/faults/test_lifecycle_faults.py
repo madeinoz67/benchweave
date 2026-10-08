@@ -712,7 +712,7 @@ def test_g4_dequeue_to_mark_escape_cannot_abandon_a_run(
 
     park_seconds = 1.5
     monkeypatch.setattr(
-        supervision_surface_module, "GATE_EXIT_WAIT_S", 0.5
+        supervision_surface_module, "GATE_EXIT_FLOOR_S", 0.5
     )
     real_put = Store.put_run_state
     parked = threading.Event()
@@ -805,3 +805,107 @@ def _only_run(store: Any) -> Any:
             if run is not None:
                 return run
     return None
+
+
+def test_g4b_deadline_discovered_escapers_disclosed_not_cancelled(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """G4(i)'s deadline leg: an escaper DISCOVERED past the commissioned
+    window is disclosed (`deadline_discovered`), never laundered as a
+    cancel — the window's authority closed; rung 3 owns the ending. The
+    pre-fold shape cancelled it anyway and named it in
+    protective_cancel."""
+    import asyncio
+    import hashlib
+    from datetime import timedelta
+
+    import benchweave.interfaces.supervision as supervision_surface_module
+    from benchweave import supervision
+    from benchweave.interfaces.errors import OperationFailure
+    from benchweave.interfaces.identity import Identity
+    from benchweave.state.store import Store
+
+    park_seconds = 1.5
+    monkeypatch.setattr(
+        supervision_surface_module, "GATE_EXIT_FLOOR_S", 0.5
+    )
+    real_put = Store.put_run_state
+    parked = threading.Event()
+
+    def parking_put(self: Any, *args: Any, **kwargs: Any) -> None:
+        state = args[2] if len(args) > 2 else kwargs.get("state")
+        if state == "running" and not parked.is_set():
+            parked.set()
+            time.sleep(park_seconds)
+        return real_put(self, *args, **kwargs)
+
+    monkeypatch.setattr(Store, "put_run_state", parking_put)
+    app, server, thread, store, fixtures = _compose_armed_stock(tmp_path)
+    try:
+        surface = app.state.supervision
+        operations = app.state.operations
+        gate = app.state.write_gate
+        identity = Identity(
+            "g4b-principal", "stg", frozenset({"stg:control"}), 2**31
+        )
+        raw = (fixtures / "run-binding.json").read_bytes()
+        binding = {
+            "id": json.loads(raw)["request_id"],
+            "version": "0.1.0",
+            "sha256": hashlib.sha256(raw).hexdigest(),
+        }
+        with gate:
+            try:
+                operations.run_start(
+                    identity, BENCH_ID, "req-voltage-check-1", binding,
+                    store.current_generation(BENCH_ID), None,
+                )
+            except OperationFailure as failure:
+                pytest.fail(f"the run_start refused pre-park: {failure}")
+        assert parked.wait(timeout=10.0), "the park never armed"
+        # The commissioned window is ALREADY CLOSED when the escape lands.
+        from datetime import datetime as _datetime
+
+        past_wall = (
+            _datetime.now().astimezone() - timedelta(seconds=60)
+        ).isoformat().replace("+00:00", "Z")
+        surface._protective_deadline = lambda rows: past_wall
+        supervision.write_stop_request(
+            surface.db_path, mode="protective", actor_pid=os.getpid(),
+            target_pid=os.getpid(),
+        )
+        future = asyncio.run_coroutine_threadsafe(
+            surface._run_decision(
+                supervision.read_stop_file(surface.db_path), trigger="file"
+            ),
+            surface._loop,
+        )
+        future.result(timeout=30.0)
+        verdict = supervision.read_stop_file(surface.db_path)
+        assert verdict is not None
+        assert verdict.get("deadline_exceeded") is True, (
+            f"the closed window's discovery stays up for the external rung: "
+            f"{verdict}"
+        )
+        run = _only_run(store)
+        discovered = [str(r) for r in verdict.get("deadline_discovered", [])]
+        cancelled = [
+            str(r)
+            for r in (verdict.get("protective_cancel") or {}).get("run_ids", [])
+        ]
+        assert discovered, (
+            f"the past-window escaper is DISCLOSED (deadline_discovered): "
+            f"{verdict}"
+        )
+        assert not cancelled, (
+            f"no cancel is issued past the commissioned window — the "
+            f"discovery must not launder as one: {verdict}"
+        )
+        assert server.should_exit is False, "stay-up: the external rung owns it"
+        assert run is not None and run["terminal"] is None, (
+            "the discovered run stays non-terminal (CTL-9/CTL-11)"
+        )
+    finally:
+        server.should_exit = True
+        thread.join(timeout=10)
+        store.close()

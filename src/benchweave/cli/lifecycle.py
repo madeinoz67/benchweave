@@ -180,6 +180,23 @@ def _copy_terminal_observations(
         )
 
 
+def _copy_protective_cancel(
+    db: Path, verdict: dict[str, Any], seen: set[str]
+) -> None:
+    """G15(a): journal the verdict's `protective_cancel` fields like
+    terminal_observed — on EVERY verdict refresh, once per run. The
+    daemon's cancel set lands in a LATER verdict write than the accepted
+    verdict (the cancels happen between them), so a CLI that journals
+    only the first read misses the row entirely."""
+    cancel = verdict.get("protective_cancel") or {}
+    ids = [str(r) for r in cancel.get("run_ids", [])]
+    fresh = [r for r in ids if r not in seen]
+    if not fresh:
+        return
+    seen.update(fresh)
+    supervision.journal_append(db, "protective_cancel", run_ids=sorted(fresh))
+
+
 # --- stop (record §3.3) ------------------------------------------------------------
 
 
@@ -283,10 +300,10 @@ def stop(data_dir: Path, *, protective: bool = False) -> dict[str, Any]:
         )
 
     if consumed == "protective":
-        cancel = verdict.get("protective_cancel") or {}
-        supervision.journal_append(
-            db, "protective_cancel", run_ids=list(cancel.get("run_ids", []))
-        )
+        cancel_seen: set[str] = set()
+        _copy_protective_cancel(db, verdict, cancel_seen)
+    else:
+        cancel_seen = set()
     seen: set[str] = set()
     _copy_terminal_observations(db, verdict, seen)
 
@@ -311,14 +328,30 @@ def stop(data_dir: Path, *, protective: bool = False) -> dict[str, Any]:
     deadline = time.monotonic() + bound
     exited = False
     while time.monotonic() < deadline:
-        if not supervision.pid_path(db).exists() or not _pid_alive(pid):
-            exited = True
-            break
+        # Battery-caught ordering fix (the G15(a) family): read the
+        # refreshed verdict BEFORE the exit check in every iteration —
+        # the exit observation (pidfile gone / probe dead) can only
+        # follow the daemon's final verdict write, so a check-first
+        # loop could break past a write it never read under load.
         refreshed = supervision.read_stop_file(db)
         if refreshed is not None and "status" in refreshed:
             verdict = refreshed
             _copy_terminal_observations(db, verdict, seen)
+            _copy_protective_cancel(db, verdict, cancel_seen)
+        if not supervision.pid_path(db).exists() or not _pid_alive(pid):
+            exited = True
+            break
         time.sleep(0.2)
+    if exited:
+        # The post-loop final read closes the nano-window: a verdict
+        # written between the last in-loop read and the exit observation
+        # is still ON DISK (the daemon never deletes the stop file) and
+        # is journaled here, never skipped.
+        final = supervision.read_stop_file(db)
+        if final is not None and "status" in final:
+            verdict = final
+            _copy_terminal_observations(db, verdict, seen)
+            _copy_protective_cancel(db, verdict, cancel_seen)
 
     if not exited:
         if consumed != "protective":
@@ -379,7 +412,22 @@ def _rung3_kill(db: Path, pid: int, verdict: dict[str, Any]) -> LifecycleError:
         )
     except OSError:
         append_failed = True
-    sent = supervision.send_sigkill(pid)
+    try:
+        sent = supervision.send_sigkill(pid)
+    except ProcessLookupError:
+        # G15(b): the daemon exited between the CLI's check and the kill
+        # — a TYPED disclosure, never a raw ProcessLookupError traceback.
+        # The non-zero exit stands: the deadline was exceeded with no
+        # terminal record observed, and the next boot's sweep owns the
+        # run's outcome.
+        return LifecycleError(
+            "supervision_sigkill: the protective deadline "
+            f"({verdict.get('protective_deadline_wall')}) passed with no "
+            f"terminal record, and the process exited before the kill "
+            f"could land (pid {pid}) — the run stays non-terminal in "
+            "the store and the NEXT boot's sweep records it interrupted"
+            + ("; the journal append FAILED before the kill" if append_failed else "")
+        )
     kill_deadline = time.monotonic() + KILL_WINDOW_S
     while time.monotonic() < kill_deadline and _still_owns(db, pid):
         time.sleep(0.2)

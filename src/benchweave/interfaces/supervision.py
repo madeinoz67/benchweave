@@ -52,14 +52,18 @@ STOP_POLL_SECONDS = 1.0
 #: The protective wait's own poll cadence (terminal-record observation).
 TERMINAL_POLL_SECONDS = 0.2
 
-#: The pickup-gate exit wait (G8's derivation comment): three times the
-#: lifespan's 5 s drain-join bound. The gated thread's remaining work
-#: after the active job terminalizes is sub-second bookkeeping (the
-#: requeue, the thread return), so 15 s covers any healthy exit with
-#: margin; the bound only decides whether the fixpoint loop re-reads
-#: state (G4) or the sweep-note disclosure stands — the protective wait
-#: itself is deadline-stated, never this number.
-GATE_EXIT_WAIT_S = 15.0
+#: G4(ii): the pickup-gate exit wait's per-slice floor and the ONLY term
+#: not drawn from the commissioned window. The wait BUDGET derives from
+#: the same commissioned-window arithmetic as the protective deadline
+#: (CTL-10/STO-4 — seconds remaining to it, never a flat constant: a
+#: commissioned body that legitimately needs its window must not have
+#: the gate budget cut at 15 s); each SLICE is this floor so escape
+#: detection stays responsive (a slice that blocked through a body
+#: would let an escaped run complete uncancelled under a protective
+#: stop). The floor itself derives as three doorbell cadences — the
+#: gated thread's remaining work after the active job terminalizes is
+#: sub-second bookkeeping.
+GATE_EXIT_FLOOR_S = STOP_POLL_SECONDS * 3
 
 #: G5: every daemon-side verdict write carries the F6 bounded
 #: replace-retry (the CLI's request write already does) — a transient
@@ -281,26 +285,37 @@ class SupervisionSurface:
         if not supervision.stop_request_is_bound_to(record, os.getpid()):
             self._note_stale_request(record)
             return None
-        path = supervision.stop_path(self.db_path)
-        if not supervision.request_owner_ok(path):
-            stat = os.stat(path)
-            key = (stat.st_uid, stat.st_mtime_ns)
-            if key not in self._foreign_seen:
-                self._foreign_seen.add(key)
-                own = supervision.effective_request_owner_uid()
-                _LOG.warning(
-                    "%s request file %s is owned by uid %s, not this gateway "
-                    "(uid %s); not consumed — nothing acts on it",
-                    supervision.STOP_FOREIGN_OWNER,
-                    path,
-                    stat.st_uid,
-                    "unavailable (no effective uid on this platform)"
-                    if own is None else own,
-                )
+        if not supervision.request_owner_ok(supervision.stop_path(self.db_path)):
+            self._note_foreign_owner()
             return None
         if self._decided:
             return None
         return asyncio.ensure_future(self._run_decision(record, trigger="file"))
+
+    def _note_foreign_owner(self) -> None:
+        """The F3 closure's typed line (one per file version, deduped):
+        the request file's owner is not this gateway — not consumed,
+        nothing acts on it. Shared by the poll and the signal-triggered
+        decision's adoption check (G12)."""
+        path = supervision.stop_path(self.db_path)
+        try:
+            stat = os.stat(path)
+        except OSError:
+            return
+        key = (stat.st_uid, stat.st_mtime_ns)
+        if key in self._foreign_seen:
+            return
+        self._foreign_seen.add(key)
+        own = supervision.effective_request_owner_uid()
+        _LOG.warning(
+            "%s request file %s is owned by uid %s, not this gateway "
+            "(uid %s); not consumed — nothing acts on it",
+            supervision.STOP_FOREIGN_OWNER,
+            path,
+            stat.st_uid,
+            "unavailable (no effective uid on this platform)"
+            if own is None else own,
+        )
 
     def _note_stale_request(self, record: dict[str, Any]) -> None:
         """S1's era rule, the log half: an unconsumed request naming
@@ -391,10 +406,25 @@ class SupervisionSurface:
         # (§3.4's three-way on live state).
         file_record = supervision.read_stop_file(self.db_path)
         if file_record is not None and "status" not in file_record:
-            if supervision.stop_request_is_bound_to(file_record, os.getpid()):
-                request = file_record
-            else:
+            # G12: the ownership closure runs on EVERY consumption path —
+            # the signal-triggered decision re-checks what the poll would
+            # have checked. A request this daemon does not own is NEVER
+            # consumed: the decision treats itself as BARE (§3.4's
+            # bare-signal contract — a signal is its own authority; a
+            # request file it did not own is not), the foreign file stays
+            # in place with the typed note.
+            if not supervision.request_owner_ok(
+                supervision.stop_path(self.db_path)
+            ):
+                self._note_foreign_owner()
+                file_record = None
+            elif not supervision.stop_request_is_bound_to(
+                file_record, os.getpid()
+            ):
                 self._note_stale_request(file_record)
+                file_record = None
+        if file_record is not None:
+            request = file_record
         mode = "plain" if request is None else str(request.get("mode", "plain"))
         window = self.open_stop_window()
         try:
@@ -491,8 +521,17 @@ class SupervisionSurface:
         # active run is terminal AND the worker thread has exited under
         # the gate.
         self._worker.gate_pickup()
-        if run_ids:
-            verdict["protective_cancel"] = {"run_ids": run_ids}
+        # G4(i): `protective_cancel` names ONLY the runs a cancel was
+        # actually issued for — a queued ghost is sweep-owned, never
+        # cancelled, and must not appear in the audit row (the pre-fold
+        # shape named every run_id the window read with cancels issued:
+        # [] — a lying row).
+        cancelled_ids = {
+            row["run_id"] for row in window.live_runs
+            if row["state"] in ("running", "protecting")
+        }
+        if cancelled_ids:
+            verdict["protective_cancel"] = {"run_ids": sorted(cancelled_ids)}
             self._write_verdict(verdict)
         for row in window.live_runs:
             if row["state"] in ("running", "protecting"):
@@ -529,11 +568,14 @@ class SupervisionSurface:
         # anything now running, and loops until nothing live-and-running
         # remains anywhere: never a mid-body abandon over a dispatched
         # run, never a sweep that races a live coordinator (CTL-9).
-        cancelled_ids = set(run_ids)
-        mark_grace_end = time.monotonic() + GATE_EXIT_WAIT_S * 4
+        mark_grace_end = time.monotonic() + GATE_EXIT_FLOOR_S * 4
         sweep_note: str | None = None
         while True:
-            exited = self._worker.wait_gated_exit(timeout=GATE_EXIT_WAIT_S)
+            # G4(ii): each slice is the responsive floor; the LOOP's
+            # budget is the commissioned deadline (extended per escape
+            # round below) — the gate wait never cuts a commissioned
+            # window, and a slice never blocks through a body.
+            exited = self._worker.wait_gated_exit(timeout=GATE_EXIT_FLOOR_S)
             with self._gate:
                 escapers = [
                     row for row in self._read_live_runs()
@@ -559,6 +601,16 @@ class SupervisionSurface:
                     break
                 await asyncio.sleep(TERMINAL_POLL_SECONDS)
                 continue
+            if datetime.now().astimezone() >= deadline_moment:
+                # G4(i)'s deadline leg: past the commissioned window no
+                # NEW cancel is issued — the window's authority closed and
+                # rung 3 owns the ending. The discovery is DISCLOSED
+                # (``deadline_discovered``), never laundered as a cancel.
+                verdict["deadline_discovered"] = sorted(
+                    {row["run_id"] for row in escapers}
+                )
+                self._deadline_exceeded(escapers, deadline, verdict)
+                return
             # Escaped runs join the verdict's cancel set (the audit row
             # names every run the stop acted on), are cancelled —
             # re-issued per round: cancel REQUESTS termination and a
@@ -570,7 +622,12 @@ class SupervisionSurface:
                     verdict.setdefault("protective_cancel", {})["run_ids"] = (
                         sorted(cancelled_ids)
                     )
-                    verdict["run_ids"] = sorted(cancelled_ids)
+                    # run_ids stays the WINDOW's set (ghosts included —
+                    # rung 3's audit reads the last verdict's ids), the
+                    # escape EXTENDS it, never replaces it.
+                    verdict["run_ids"] = sorted(
+                        set(verdict.get("run_ids", [])) | {row["run_id"]}
+                    )
                     self._write_verdict(verdict)
             for row in escapers:
                 self._worker.cancel(row["run_id"], SUPERVISION_PRINCIPAL)
@@ -600,6 +657,19 @@ class SupervisionSurface:
             verdict["sweep_disclosure"] = sweep_note
             self._write_verdict(verdict)
         await self._graceful_exit()
+
+    def _gate_exit_wait_s(self, deadline_moment: datetime) -> float:
+        """G4(ii): the pickup-gate wait budget — the SAME
+        commissioned-window arithmetic as the protective deadline
+        (seconds remaining to it), floored at the bookkeeping beat for
+        the degenerate shapes (an empty window's decided-now deadline, a
+        deadline already past). Never a flat constant: a commissioned
+        body that legitimately needs its window must not have the gate
+        budget cut short."""
+        remaining = (
+            deadline_moment - datetime.now().astimezone()
+        ).total_seconds()
+        return max(remaining, GATE_EXIT_FLOOR_S)
 
     async def _wait_rows_terminal(
         self,
