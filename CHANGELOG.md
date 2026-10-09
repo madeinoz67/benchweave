@@ -28,6 +28,8 @@ All notable changes to this project will be documented in this file.
 - #422 inc2 supervision + stop-semantics record (two-lane refuted, F1-F15 folded)
 - #422 inc2 lane-1 fold — pickup-gate ordering, SSE-bound drain, signal semantics, TOCTOU close, verdict lattice (F1-F13)
 - #422 inc3 — the lifecycle verbs in the operator guide, README, and the website CLI card
+- #422 inc4 doctor + logs record (forks disposed, read-only boundary, 20-arm rule)
+- #422 inc4 fold both refute lanes into the doctor+logs record
 
 ### Features
 
