@@ -284,7 +284,7 @@ the rider's literal text in invariants.md; the sidecar pair makes that claim fal
   is not an audit event.
 - **G0 discipline:** doctor/logs never print env-file VALUES or token material
   (key names and paths only); arms assert the secret/token strings are ABSENT from
-  combined output (D7-gateway, X6, S6-SDK).
+  combined output (G7, X6, S6).
 
 ## 5. Pre-committed acceptance rule for increment 4
 
@@ -467,8 +467,7 @@ real-subprocess arms and therefore does not aggravate the windows rollup it name
 > issue home (rendering `StandardErrorPath` under a root-run plist opens a
 > permissions fork this increment does not own). F3 ADOPTED — the SDK doctor
 > twin (one standard, per-surface application; four checks at fork time, widened
-> to five by the lane-2 R4 fold). Redirect open until the
-> build dispatches. before the record commits
+> to five by the lane-2 R4 fold). Redirect open until the build dispatches.
 
 - **Fork 1 — does `unknown` exit 1?** Recommended: YES (§1.2 — the conservative
   gate; scripts gating `start` on doctor must not read an unverifiable pidfile as
