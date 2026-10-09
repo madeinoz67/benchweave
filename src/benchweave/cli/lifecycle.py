@@ -447,7 +447,11 @@ def start(data_dir: Path, *, host: str, port: int) -> dict[str, Any]:
     """The start verb: pre-spawn gates, detached spawn, hold-acquired
     readiness with liveness polling and the end-of-wait re-check (F5/F8
     folds)."""
-    data_dir = Path(data_dir)
+    # W7: resolve --data-dir to absolute BEFORE deriving/recording the log
+    # destination, so the recorded log_destination field is absolute by
+    # construction — a same-named file at a later ``logs``-invoker's cwd
+    # can never be silently tailed through a relative recorded field.
+    data_dir = Path(data_dir).resolve()
     db = _db(data_dir)
     identity = supervision.verify_gateway_identity(db)
     if identity.verdict == "ours":

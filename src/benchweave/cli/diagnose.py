@@ -49,6 +49,11 @@ JOURNAL_UNIT = "benchweave"
 #: the window bound the tail's own IO, never a bench envelope).
 TAIL_WINDOW_BYTES = 64 * 1024
 
+#: The doubling window's cap (service parameter, A02 — same class as
+#: ``TAIL_WINDOW_BYTES``). The window never grows past this, so a blob
+#: that defeats line-splitting is refused, never read whole (W1).
+TAIL_WINDOW_CAP_BYTES = 8 * 1024 * 1024
+
 #: The journalctl consult's bound (the atrest whoami/icacls precedent:
 #: fixed argv, bounded timeout).
 JOURNALCTL_TIMEOUT_S = 10.0
@@ -58,6 +63,7 @@ JOURNALCTL_TIMEOUT_S = 10.0
 LOGS_LINES_DOMAIN = "logs_lines_domain:"
 LOGS_DESTINATION_CREDENTIAL = "logs_destination_credential:"
 LOGS_UNREADABLE = "logs_unreadable:"
+LOGS_WINDOW_CAP = "logs_window_cap:"
 LOGS_JOURNAL_UNAVAILABLE = "logs_journal_unavailable:"
 LOGS_DESTINATION_STDERR = "logs_destination_stderr:"
 LOGS_NO_DESTINATION = "logs_no_destination:"
@@ -158,6 +164,11 @@ def _check_pid(snapshot: dict[str, Any]) -> dict[str, Any]:
         return _row("pid", "unknown", detail, pid=pid.get("pid"))
     note = _PID_ROW_NOTES.get(verdict)
     if note is not None:
+        if verdict == "absent" and detail != "no pidfile":
+            # W8: the lattice's absent detail names the real shape (a
+            # fieldless/legacy pidfile IS present) — the notice says so,
+            # never "no pidfile" while one exists.
+            return _row("pid", "pass", detail, pid=pid.get("pid"))
         return _row("pid", "pass", note, pid=pid.get("pid"))
     return _row("pid", "pass", detail or verdict, pid=pid.get("pid"))
 
@@ -242,6 +253,18 @@ def _check_env_file(data_dir: Path) -> dict[str, Any]:
         parse_env_file(path, serve_env_file_keys(), excluded=ENV_FILE_EXCLUDED_KEYS)
     except EnvFileError as error:
         return _row("env_file", "fail", str(error), present=True)
+    except OSError as error:
+        # W2: the delete-in-window race — the file can vanish between the
+        # is_file() above and the path.stat() inside _check_owner_only.
+        # That OSError is not an EnvFileError; it becomes a FAIL row and
+        # triage CONTINUES (never a mid-run crash with zero rows).
+        return _row(
+            "env_file",
+            "fail",
+            f"env_file: {path} disappeared or became unreadable during "
+            f"the check: {error}",
+            present=True,
+        )
     note = (
         "valid against serve's own allowlist and perms discipline "
         "(key names only — values never reach output"
@@ -305,11 +328,17 @@ def _journal_problems(path: Path) -> tuple[list[str], list[str]]:
     NOTE, not a problem. An unparseable non-final line is only reachable
     by tampering — a problem, and the row says so. An unreadable journal
     (OSError on open/read) is the ``supervision_journal_unreadable:``
-    problem the caller maps to the row's ``unknown`` verdict."""
+    problem the caller maps to the row's ``unknown`` verdict.
+
+    The classifier (W3, l2 F1): torn ONLY when the raw tail does not end
+    ``"\\n"``. A single-write+fsync append cannot end with its own
+    newline, so a NEWLINE-TERMINATED unparseable line — final or not — is
+    TAMPERING, never the crash-tear pass."""
     try:
         raw = path.read_text(encoding="utf-8", errors="replace")
     except OSError as error:
         return ([f"supervision_journal_unreadable: cannot read it: {error}"], [])
+    torn_final_possible = not raw.endswith("\n")
     lines = raw.split("\n")
     if lines and lines[-1] == "":
         lines.pop()
@@ -321,7 +350,7 @@ def _journal_problems(path: Path) -> tuple[list[str], list[str]]:
         try:
             json.loads(line)
         except json.JSONDecodeError:
-            if index == len(lines) - 1:
+            if index == len(lines) - 1 and torn_final_possible:
                 notes.append(
                     "the journal's final line is torn — the known crash-tear "
                     "shape (appends are single-write+fsync)"
@@ -329,8 +358,9 @@ def _journal_problems(path: Path) -> tuple[list[str], list[str]]:
             else:
                 problems.append(
                     f"the journal's line {index + 1} is unparseable — "
-                    "mid-file tears cannot occur by construction (appends "
-                    "are single-write+fsync), so this is tampering"
+                    "every line here is newline-terminated (a completed "
+                    "single-write+fsync append), so this is tampering, not "
+                    "a crash tear (only an unterminated final line can tear)"
                 )
     return (problems, notes)
 
@@ -444,19 +474,44 @@ def _resolve_logs_destination(db: Path) -> tuple[str, Any]:
 
 
 def _is_credential_destination(resolved: Path, credential: Path) -> bool:
-    """The credential guard (the R3 fold): the pidfile field is
-    operator-steerable through ``BENCHWEAVE_LOG_DESTINATION`` and pointed
-    at ``benchweave.env`` rung 1 would otherwise tail the secret — an
-    exact resolved-path match is refused before any read."""
-    return resolved.resolve() == credential.resolve()
+    """The credential guard (the R3 fold, widened by W4): the pidfile
+    field is operator-steerable through ``BENCHWEAVE_LOG_DESTINATION``
+    and pointed at ``benchweave.env`` the tail would otherwise read the
+    secret. The compare is ``(st_dev, st_ino)`` AFTER resolve — identity,
+    not path equality — so it covers the symlink alias AND the hardlink
+    and case-variant aliases (same inode, different spelling). What it
+    covers: both rungs of the resolution ladder — the pidfile-named
+    destination and the post-mortem ``<dir>.log`` sibling (a symlink or
+    hardlink of the env file is refused wherever the tail would open
+    it). What it does NOT catch: a copied (distinct-inode) credential
+    file named like a log — only identity is refused, and a copy is a
+    different file the tail may legitimately read."""
+    try:
+        destination = resolved.resolve().stat()
+        secret = credential.resolve().stat()
+    except OSError:
+        # A path that cannot be stat'ed is not the credential (the tail
+        # path reports its own typed unreadable/no-destination outcome).
+        return False
+    return (destination.st_dev, destination.st_ino) == (secret.st_dev, secret.st_ino)
 
 
 def _tail_lines(path: Path, lines: int) -> list[str]:
-    """The seek-bounded windowed tail: read from ``max(0, size - 64 KiB)``,
-    doubling on undercount — never a whole-file read of a file that may
-    have grown unbounded (rotation is the deferred issue's). Decode with
+    """The seek-bounded windowed tail: read from ``max(0, size - window)``,
+    doubling on undercount up to ``TAIL_WINDOW_CAP_BYTES`` — windowed
+    WITH a cap (a whole-file read happens only for a file inside the
+    first window; the doubling never grows past the cap, so a blob that
+    defeats line-splitting is refused, never read whole). Decode with
     ``errors="replace"`` (the ``_log_tail`` DECODE policy only — this
-    helper improves on that one's whole-file read)."""
+    helper improves on that one's whole-file read).
+
+    The refusal rule (W1): when the windowed ladder cannot produce
+    ``lines`` complete rows and the window had to grow past its first
+    read window to get there — the ladder ended at the file start or at
+    the cap — the requested lines cannot be served within the windowed
+    tail: typed :data:`LOGS_WINDOW_CAP`. A file that fits the first
+    window and simply has fewer lines than requested returns what it has
+    (the standard short-file tail)."""
     with path.open("rb") as handle:
         handle.seek(0, os.SEEK_END)
         size = handle.tell()
@@ -470,9 +525,20 @@ def _tail_lines(path: Path, lines: int) -> list[str]:
                 rows = rows[1:]  # the leading partial line at a mid-file seek
             if rows and rows[-1] == "":
                 rows.pop()  # the final newline's empty remainder
-            if len(rows) >= lines or offset == 0:
+            if len(rows) >= lines:
                 return rows[-lines:]
-            window *= 2
+            if offset == 0 or window >= TAIL_WINDOW_CAP_BYTES:
+                if window > TAIL_WINDOW_BYTES:
+                    raise DiagnoseError(
+                        f"{LOGS_WINDOW_CAP} the requested {lines} line(s) "
+                        "cannot be served within the windowed read "
+                        f"(window cap {TAIL_WINDOW_CAP_BYTES // (1024 * 1024)} "
+                        f"MiB; {path}) — the file has fewer complete lines "
+                        "than requested beyond the first read window; try a "
+                        "smaller --lines"
+                    )
+                return rows[-lines:]
+            window = min(window * 2, TAIL_WINDOW_CAP_BYTES)
 
 
 def _file_tail(path: Path, lines: int, *, post_mortem: bool) -> dict[str, Any]:
@@ -585,4 +651,15 @@ def logs(data_dir: Path, lines: int) -> dict[str, Any]:
                 "source; point it back at the <dir>.log sibling"
             )
         return _file_tail(path, lines, post_mortem=False)
-    return _file_tail(Path(str(dest)), lines, post_mortem=True)
+    # W4: the post-mortem rung rides the same guard — a <dir>.log symlink
+    # or hardlink of the env file is the credential however it is named.
+    sibling = Path(str(dest))
+    credential = data_dir / CREDENTIAL_FILE
+    if _is_credential_destination(sibling, credential):
+        raise DiagnoseError(
+            f"{LOGS_DESTINATION_CREDENTIAL} the resolved destination is "
+            f"the credential file ({credential}) — a <dir>.log that is a "
+            "symlink or hardlink of it is refused as a tail source; point "
+            "the log at a real log file"
+        )
+    return _file_tail(sibling, lines, post_mortem=True)

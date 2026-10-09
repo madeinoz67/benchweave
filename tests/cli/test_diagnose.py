@@ -142,14 +142,16 @@ def test_g1_empty_data_dir_fails_the_store_row(tmp_path: Path) -> None:
 
 
 #: The enumerated sidecar family the read-only pin walks (§5 G2, R1 fold):
-#: the four in-dir names plus the four siblings beside the data dir.
+#: the four in-dir names plus the five siblings beside the data dir —
+#: ``.hold`` included (W6): doctor taking the store hold is the KILL
+#: criterion's own example, and the pin must see that path appear.
 _FAMILY_IN_DIR = (
     atrest.DB_NAME,
     atrest.DB_NAME + "-wal",
     atrest.DB_NAME + "-shm",
     atrest.CREDENTIAL_FILE,
 )
-_FAMILY_SIBLINGS = (".pid", ".stop", ".log", ".supervision.jsonl")
+_FAMILY_SIBLINGS = (".pid", ".stop", ".log", ".supervision.jsonl", ".hold")
 
 
 def _family_snapshot(data_dir: Path) -> dict[str, tuple[bool, int]]:
@@ -164,6 +166,26 @@ def _family_snapshot(data_dir: Path) -> dict[str, tuple[bool, int]]:
             path.stat().st_mtime_ns if path.exists() else 0,
         )
     return snapshot
+
+
+def _read_only_pin_violations(
+    before: dict[str, tuple[bool, int]], after: dict[str, tuple[bool, int]]
+) -> list[str]:
+    """The structural read-only pin over the ENUMERATED family (§5 G2,
+    R1 fold): existing files' mtimes unchanged, and no path appears
+    beyond the disclosed empty ``-shm``/``-wal`` pair."""
+    violations: list[str] = []
+    disclosed = {atrest.DB_NAME + "-wal", atrest.DB_NAME + "-shm"}
+    for name, (was, mtime) in before.items():
+        now_exists, now_mtime = after[name]
+        if was:
+            if not now_exists:
+                violations.append(f"{name} vanished across the doctor run")
+            elif now_mtime != mtime:
+                violations.append(f"{name} mtime moved across the run")
+        elif now_exists and name not in disclosed:
+            violations.append(f"{name} appeared beyond the disclosed sidecar pair")
+    return violations
 
 
 def test_g2_healthy_at_rest_all_pass_and_writes_nothing(tmp_path: Path) -> None:
@@ -181,16 +203,7 @@ def test_g2_healthy_at_rest_all_pass_and_writes_nothing(tmp_path: Path) -> None:
     for row in payload["checks"]:
         assert row["verdict"] == "pass", row
     after = _family_snapshot(data_dir)
-    disclosed = {atrest.DB_NAME + "-wal", atrest.DB_NAME + "-shm"}
-    for name, (was, mtime) in before.items():
-        now_exists, now_mtime = after[name]
-        if was:
-            assert now_exists, f"{name} vanished across the doctor run"
-            assert now_mtime == mtime, f"{name} mtime moved across the run"
-        else:
-            assert (not now_exists) or name in disclosed, (
-                f"{name} appeared beyond the disclosed sidecar pair"
-            )
+    assert _read_only_pin_violations(before, after) == []
     # The setup-written secret never reaches doctor output (G0 discipline).
     secret = atrest.read_secret(data_dir)
     assert secret not in _combined(result)
@@ -893,3 +906,440 @@ def test_control_f_neutralized_credential_guard_breaks_x6(
     result = _logs(data_dir)
     assert "logs_destination_credential:" not in _combined(result)
     assert result.exit_code == 0, _combined(result)  # the tail proceeded
+
+
+# --- W1: the tail cap (critic + gw1 F3) -------------------------------------------
+
+
+def _stage_giant_line(db: Path, size: int) -> Path:
+    """A staged ``<dir>.log`` whose ONLY line is ``size`` bytes and carries
+    no newline — the blob shape the windowed tail must refuse, not dump."""
+    log = supervision_log_path(db)
+    log.write_bytes(b"x" * size)
+    return log
+
+
+def _destination_pidfile(data_dir: Path, destination: str) -> None:
+    _write_pidfile(
+        data_dir,
+        {
+            "pid": os.getpid(),
+            "gateway_id": "gw-x",
+            "data_dir": str(data_dir),
+            "started_wall": "2026-10-09T00:00:00Z",
+            "started_ticks": 1,
+            "log_destination": destination,
+            "schema": 1,
+        },
+    )
+
+
+def test_w1a_giant_single_line_refuses_the_fifty_line_request(tmp_path: Path) -> None:
+    """W1 RED arm 1: a no-newline giant file (300 KiB single-line) +
+    ``--lines 50`` — the requested lines cannot be served within the
+    windowed tail, so a typed ``logs_window_cap:`` refusal, exit 1, and
+    the blob's bytes never reach output (today the whole file lands in
+    memory and is returned as the tail)."""
+    data_dir = tmp_path / "gateway"
+    data_dir.mkdir()
+    db = _db(data_dir)
+    log = _stage_giant_line(db, 300 * 1024)
+    _destination_pidfile(data_dir, str(log))
+    result = _logs(data_dir, "--lines", "50")
+    assert result.exit_code == 1, _combined(result)
+    assert "logs_window_cap:" in _combined(result), _combined(result)
+    assert "Traceback" not in _combined(result)
+    assert "x" * 100 not in _combined(result), "the blob never reaches output"
+
+
+def test_w1b_dense_blob_refuses_within_one_doubling_cycle_of_the_cap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """W1 RED arm 2: a dense 5 MiB no-newline file + ``--lines 50`` — the
+    typed refusal fires within one doubling cycle of the window cap: the
+    tail never reads past ``TAIL_WINDOW_CAP_BYTES`` in one read, and the
+    cumulative windowed reads stay under ``2 x`` the cap (the geometric
+    series up to the cap)."""
+    from benchweave.cli import diagnose
+
+    data_dir = tmp_path / "gateway"
+    data_dir.mkdir()
+    db = _db(data_dir)
+    log = _stage_giant_line(db, 5 * 1024 * 1024)
+    _destination_pidfile(data_dir, str(log))
+    reads: list[int] = []
+    real_open = Path.open
+
+    def counting_open(self: Path, *args: Any, **kwargs: Any) -> Any:
+        handle = real_open(self, *args, **kwargs)
+        real_read = handle.read
+
+        def counting_read(size: int = -1) -> bytes:
+            data = real_read(size)
+            reads.append(len(data))
+            return cast(bytes, data)
+
+        handle.read = counting_read
+        return handle
+
+    monkeypatch.setattr(Path, "open", counting_open)
+    result = _logs(data_dir, "--lines", "50")
+    assert result.exit_code == 1, _combined(result)
+    assert "logs_window_cap:" in _combined(result), _combined(result)
+    assert reads, "the windowed tail read something"
+    assert max(reads) <= diagnose.TAIL_WINDOW_CAP_BYTES, max(reads)
+    assert sum(reads) <= 2 * diagnose.TAIL_WINDOW_CAP_BYTES, sum(reads)
+
+
+def test_w1c_short_log_still_returns_what_it_has(tmp_path: Path) -> None:
+    """The short-file undercount stays the standard tail (the X2/S8-2
+    pin): a file inside the first read window with fewer lines than
+    requested returns its lines — the window cap refuses only where the
+    windowed read cannot serve the request (a grown window)."""
+    data_dir = tmp_path / "gateway"
+    data_dir.mkdir()
+    log = _stage_log(_db(data_dir), count=5)
+    _destination_pidfile(data_dir, str(log))
+    result = _logs(data_dir, "--lines", "50", "--json")
+    assert result.exit_code == 0, _combined(result)
+    assert len(_payload(result)["lines"]) == 5
+
+
+# --- W2: the env-file stat race (critic) ------------------------------------------
+
+
+def test_w2_env_file_stat_race_fails_the_row_and_triage_continues(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """W2 (critic): the delete-in-window race — the env file disappears
+    between ``is_file()`` and the ``path.stat()`` inside
+    ``_check_owner_only``. Today that OSError escapes the EnvFileError
+    catch and crashes doctor with zero rows; the fix turns it into a FAIL
+    row and triage continues (all seven rows emitted)."""
+    data_dir = tmp_path / "gateway"
+    _setup_store(data_dir)
+    env = data_dir / atrest.CREDENTIAL_FILE
+    real_stat = Path.stat
+    seen: list[str] = []
+
+    def racing_stat(self: Path, *args: object, **kwargs: object) -> Any:
+        if self == env:
+            seen.append("stat")
+            if len(seen) >= 2:
+                # The file vanished in the is_file -> stat window.
+                raise FileNotFoundError(str(self))
+        return real_stat(self, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(Path, "stat", racing_stat)
+    result = _doctor(data_dir, "--json")
+    assert result.exit_code == 1, _combined(result)
+    payload = _payload(result)
+    assert len(payload["checks"]) == 7, payload["checks"]
+    row = _row(payload, "env_file")
+    assert row["verdict"] == "fail"
+    assert "Traceback" not in _combined(result)
+
+
+# --- W3: the torn-final classifier (l2 F1) ----------------------------------------
+
+
+def test_w3_newline_terminated_unparseable_final_line_is_tampering(
+    tmp_path: Path,
+) -> None:
+    """W3 (l2 F1): a newline-terminated unparseable FINAL line is
+    TAMPERING — a single-write+fsync append cannot end with its own
+    newline — not the crash-tear pass. Today the classifier calls any
+    unparseable final line a crash tear and passes with a false note."""
+    from benchweave import supervision
+
+    data_dir = tmp_path / "gateway"
+    _setup_store(data_dir)
+    journal = supervision.journal_path(_db(data_dir))
+    journal.write_text(
+        '{"wall": "2026-10-09T00:00:00Z", "event": "started"}\n'
+        "GARBAGE-COMPLETE-LINE\n",
+        encoding="utf-8",
+    )
+    result = _doctor(data_dir, "--json")
+    assert result.exit_code == 1, _combined(result)
+    row = _row(_payload(result), "supervision_sidecars")
+    assert row["verdict"] == "fail", row
+    assert "tamper" in row["detail"].lower(), row
+
+
+def test_w3_unterminated_unparseable_final_line_stays_the_crash_tear(
+    tmp_path: Path,
+) -> None:
+    """The crash-tear half (unchanged): an UNTERMINATED unparseable final
+    line is still the known tear shape — pass with the note."""
+    from benchweave import supervision
+
+    data_dir = tmp_path / "gateway"
+    _setup_store(data_dir)
+    journal = supervision.journal_path(_db(data_dir))
+    journal.write_text(
+        '{"wall": "2026-10-09T00:00:00Z", "event": "started"}\n'
+        '{"wall": "2026-10-09T00:00:01Z", "even',
+        encoding="utf-8",
+    )
+    result = _doctor(data_dir, "--json")
+    assert result.exit_code == 0, _combined(result)
+    row = _row(_payload(result), "supervision_sidecars")
+    assert row["verdict"] == "pass", row
+    assert "torn" in row["detail"].lower(), row
+
+
+# --- W4: the credential guard's remaining holes (gw1 F4) --------------------------
+
+
+@POSIX_ONLY
+def test_w4a_post_mortem_symlink_to_the_env_file_refuses(tmp_path: Path) -> None:
+    """W4 (a): the post-mortem rung had NO credential guard — a
+    ``<dir>.log`` SYMLINK to ``benchweave.env`` tailed the secret. The
+    guard now covers both rungs (stat identity after resolve)."""
+    data_dir = tmp_path / "gateway"
+    data_dir.mkdir()
+    env = data_dir / atrest.CREDENTIAL_FILE
+    secret = "tok-do-not-print-5f3a"
+    env.write_text(f"BENCHWEAVE_SECRET={secret}\n", encoding="utf-8")
+    env.chmod(0o600)
+    log = supervision_log_path(_db(data_dir))
+    log.symlink_to(env)
+    result = _logs(data_dir)
+    assert result.exit_code == 1, _combined(result)
+    assert "logs_destination_credential:" in _combined(result)
+    assert secret not in _combined(result)
+
+
+@POSIX_ONLY
+def test_w4b_post_mortem_hardlink_to_the_env_file_refuses(tmp_path: Path) -> None:
+    """W4 (b): the compare is ``(st_dev, st_ino)`` after resolve — a
+    HARDLINK of ``benchweave.env`` (a different path, the same inode) is
+    the same credential and is refused (today's path-equality compare
+    misses it and the tail leaks the secret)."""
+    data_dir = tmp_path / "gateway"
+    data_dir.mkdir()
+    env = data_dir / atrest.CREDENTIAL_FILE
+    secret = "tok-do-not-print-5f3a"
+    env.write_text(f"BENCHWEAVE_SECRET={secret}\n", encoding="utf-8")
+    env.chmod(0o600)
+    log = supervision_log_path(_db(data_dir))
+    os.link(env, log)
+    result = _logs(data_dir)
+    assert result.exit_code == 1, _combined(result)
+    assert "logs_destination_credential:" in _combined(result)
+    assert secret not in _combined(result)
+
+
+# --- W5: log_destination's rungs were unguarded (gw1 F1) --------------------------
+
+
+def _surface_log_destination(
+    monkeypatch: pytest.MonkeyPatch, env: str | None, journal: bool
+) -> str:
+    from benchweave.interfaces.supervision import SupervisionSurface
+
+    if env is None:
+        monkeypatch.delenv("BENCHWEAVE_LOG_DESTINATION", raising=False)
+    else:
+        monkeypatch.setenv("BENCHWEAVE_LOG_DESTINATION", env)
+    if journal:
+        monkeypatch.setenv("JOURNAL_STREAM", "8:12345")
+    else:
+        monkeypatch.delenv("JOURNAL_STREAM", raising=False)
+    surface = object.__new__(SupervisionSurface)
+    return surface.log_destination()
+
+
+def test_w5a_env_destination_beats_the_journal_indicator(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """W5 leg 1 (gw1 F1): the R2-folded order — the env path (the
+    ``start``-written value) WINS over ``JOURNAL_STREAM``. Swapping the
+    rungs back to journal-first makes exactly this leg fail: the
+    mechanism shipped unguarded (no leg pinned the order)."""
+    assert (
+        _surface_log_destination(monkeypatch, "/abs/data.log", journal=True)
+        == "/abs/data.log"
+    )
+
+
+def test_w5b_journal_indicator_when_no_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """W5 leg 2: no env value, systemd's ``JOURNAL_STREAM`` present →
+    ``"journal"``."""
+    assert (
+        _surface_log_destination(monkeypatch, None, journal=True) == "journal"
+    )
+
+
+def test_w5c_stderr_when_neither(monkeypatch: pytest.MonkeyPatch) -> None:
+    """W5 leg 3: neither the env value nor ``JOURNAL_STREAM`` →
+    ``"stderr"`` (foreground serve keeps the terminal)."""
+    assert _surface_log_destination(monkeypatch, None, journal=False) == "stderr"
+
+
+# --- W6: the G2 pin-scope vs the KILL (gw1 F2) ------------------------------------
+
+
+def test_w6_control_hold_take_breaks_the_read_only_pin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """W6 RED: neutralize ``_check_store`` into a StoreHold acquire +
+    release — doctor taking the hold is the KILL criterion's own example
+    — and the G2 read-only pin must FAIL (the ``<dir>.hold`` family
+    member appears). Today the pin is green on it: ``.hold`` was not in
+    the enumerated family, so the new path was invisible."""
+    from benchweave.cli import diagnose
+    from benchweave.state.hold import StoreHold
+
+    data_dir = tmp_path / "gateway"
+    _setup_store(data_dir)
+
+    def hold_taking_check(db: Path) -> dict[str, Any]:
+        hold = StoreHold(db, label="doctor (neutralized)")
+        hold.acquire()
+        hold.release()
+        return {"check": "store", "verdict": "pass", "detail": "neutralized"}
+
+    monkeypatch.setattr(diagnose, "_check_store", hold_taking_check)
+    before = _family_snapshot(data_dir)
+    result = _doctor(data_dir, "--json")
+    assert result.exit_code == 0, _combined(result)
+    after = _family_snapshot(data_dir)
+    violations = _read_only_pin_violations(before, after)
+    assert violations, (
+        "the read-only pin must catch doctor taking the hold "
+        f"(the KILL criterion's own example): {violations}"
+    )
+
+
+# --- W7: the recorded field is absolute by construction (gw1 F5) -------------------
+
+
+def test_w7_relative_data_dir_records_an_absolute_log_destination(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Structural pin (disclosed NON-RED): ``start`` resolves ``--data-dir``
+    to absolute before recording ``log_destination``, so the recorded
+    field is absolute for any spelling — a same-named file at a later
+    ``logs``-invoker's cwd can never be silently tailed through it. (The
+    property already held via ``state.hold.sibling_path``'s resolve; this
+    pin makes it structural at ``start`` rather than incidental.)"""
+    from benchweave.cli import lifecycle
+
+    root = tmp_path / "invoker"
+    (root / "gw-data").mkdir(parents=True)
+    _setup_store(root / "gw-data")
+    captured: dict[str, Any] = {}
+
+    class _StubChild:
+        pid = 42424242
+        returncode = 1
+
+        def poll(self) -> int:
+            return 1
+
+        def terminate(self) -> None:
+            return None
+
+        def wait(self, timeout: float | None = None) -> None:
+            return None
+
+        def kill(self) -> None:
+            return None
+
+    def stub_popen(argv: list[str], **kwargs: Any) -> Any:
+        captured["argv"] = list(argv)
+        captured["env"] = dict(kwargs.get("env") or {})
+        return _StubChild()
+
+    monkeypatch.setattr(subprocess, "Popen", stub_popen)
+    monkeypatch.chdir(root)
+    with pytest.raises(lifecycle.LifecycleError):
+        # The stubbed child dies before readiness; the pin reads what
+        # start recorded into the spawn env on its way there.
+        lifecycle.start(Path("gw-data"), host="127.0.0.1", port=8125)
+    value = str(captured["env"]["BENCHWEAVE_LOG_DESTINATION"])
+    assert Path(value).is_absolute(), value
+
+
+# --- W8: NITs + the two unarmed R7 cells ------------------------------------------
+
+
+def test_w8a_fieldless_pidfile_notice_names_the_real_shape(tmp_path: Path) -> None:
+    """W8 (NIT): a pidfile that exists but names no pid (a fieldless or
+    legacy shape) reads as the lattice's ``absent`` cell — the notice
+    must name that real shape, never claim ``no pidfile`` while one
+    exists."""
+    data_dir = tmp_path / "gateway"
+    _setup_store(data_dir)
+    _write_pidfile(
+        data_dir,
+        {"gateway_id": "gw-x", "log_destination": "stderr", "schema": 1},
+    )
+    result = _doctor(data_dir, "--json")
+    assert result.exit_code == 0, _combined(result)
+    row = _row(_payload(result), "pid")
+    assert row["verdict"] == "pass", row
+    detail = str(row["detail"]).lower()
+    assert "fieldless" in detail or "legacy" in detail, row
+    assert "no pidfile" not in detail, row
+
+
+def test_w8b_out_of_vocabulary_destination_is_unknown_and_exits_one(
+    tmp_path: Path,
+) -> None:
+    """W8: the R7-folded D6 cell (an out-of-vocab ``log_destination`` —
+    a tampered or hand-written pidfile whose field is not the pinned
+    ``journal``/``stderr``/non-empty string shape) reports ``unknown``
+    naming the raw value and feeds the exit-1 contract; this arm pins the
+    previously untested cell (both the non-string and the empty form)."""
+    data_dir = tmp_path / "gateway"
+    _setup_store(data_dir)
+    for raw in (42, ""):
+        _write_pidfile(
+            data_dir,
+            {
+                "pid": os.getpid(),
+                "gateway_id": "gw-x",
+                "data_dir": str(data_dir),
+                "started_wall": "2026-10-09T00:00:00Z",
+                "started_ticks": 1,
+                "log_destination": raw,
+                "schema": 1,
+            },
+        )
+        result = _doctor(data_dir, "--json")
+        assert result.exit_code == 1, _combined(result)
+        row = _row(_payload(result), "log_destination")
+        assert row["verdict"] == "unknown", row
+
+
+def test_w8c_unreadable_journal_is_unknown_and_triage_continues(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """W8: the R7-folded D7 cell — an unreadable journal (OSError on
+    open/read) reports ``unknown`` and triage CONTINUES (all seven rows
+    emitted, never a mid-run crash); this arm pins the cell."""
+    from benchweave import supervision
+
+    data_dir = tmp_path / "gateway"
+    _setup_store(data_dir)
+    journal = supervision.journal_path(_db(data_dir))
+    journal.write_text(_journal_row("started") + "\n", encoding="utf-8")
+    real_read_text = Path.read_text
+
+    def unreadable(self: Path, *args: object, **kwargs: object) -> str:
+        if self == journal:
+            raise OSError("permission denied (the unreadable-journal cell)")
+        return real_read_text(self, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(Path, "read_text", unreadable)
+    result = _doctor(data_dir, "--json")
+    assert result.exit_code == 1, _combined(result)
+    payload = _payload(result)
+    assert len(payload["checks"]) == 7, payload["checks"]
+    row = _row(payload, "supervision_sidecars")
+    assert row["verdict"] == "unknown", row
