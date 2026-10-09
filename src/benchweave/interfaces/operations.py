@@ -337,6 +337,24 @@ class Operations:
         #: The runnability pre-check classifies against it and floors runs
         #: with its cross-constraint row.
         self._contracts = contracts
+        #: Issue #422 inc3 (§3.1, F4 fold): the stop-in-progress flag. The
+        #: supervision decision sets it under the WRITE GATE before reading
+        #: live states; ``run_start`` checks it at the top (also under the
+        #: gate, which every transport already holds for mutating calls) and
+        #: refuses typed ``stop_in_progress:`` — set-then-check, so a run
+        #: accepted mid-decision can never be silently abandoned under an
+        #: accepted verdict.
+        self._stop_in_progress = False
+
+    def begin_stop(self) -> None:
+        """Set the stop-in-progress flag (called under the write gate by
+        the supervision surface's stop window)."""
+        self._stop_in_progress = True
+
+    def end_stop(self) -> None:
+        """Clear the flag without acting (the L13 arm's round reset;
+        production never resets — the flag's life is the stop's)."""
+        self._stop_in_progress = False
 
     # --- observe -------------------------------------------------------------
 
@@ -620,6 +638,19 @@ class Operations:
         ``authority='lease'`` is exactly that evidence.
         """
         require_permission(identity, "control")
+        if self._stop_in_progress:
+            # Issue #422 inc3 (§3.1): a stop decision is in flight — no new
+            # runs are accepted until it completes. Typed, under the same
+            # write gate the decision holds: set-then-check closes the
+            # TOCTOU where a start accepted mid-decision would be abandoned
+            # under an accepted verdict.
+            raise errors.OperationFailure(
+                errors.failure(
+                    "conflict",
+                    "stop_in_progress: a gateway stop decision is in flight;"
+                    " no new runs are accepted until it completes",
+                )
+            )
         self._validator.validate("run_start", {
             "bench_id": bench_id,
             "request_id": request_id,

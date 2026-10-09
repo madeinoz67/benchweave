@@ -154,10 +154,17 @@ async def _bridge_events(
     poll_ms: int,
     render: Callable[..., str],
     sleep: Callable[[float], Any] = asyncio.sleep,
+    streams_closing: Any = None,
 ) -> AsyncIterator[str]:
     """The bridge loop. The cursor is a local: it advances here and is
     never serialized (I09). Session death, client disconnect (via
-    cancellation) and generator close all land in the ``finally``."""
+    cancellation) and generator close all land in the ``finally``.
+
+    ``streams_closing`` (issue #422 inc3, record §0.2's F2 fold) is the
+    stop decision's close event: when it fires the stream ENDS at the
+    next wait point, so uvicorn's connection drain cannot hang on the
+    Events view while the gateway stops (``timeout_graceful_shutdown``
+    bounds the residual)."""
     delivered: dict[str, int] = {}
     gap: Mapping[str, Any] | None = None
     advisory: Mapping[str, Any] | None = None
@@ -179,7 +186,21 @@ async def _bridge_events(
         # from after=None, which can never gap and re-pages the head).
         cursor = probe["cursor"] if probe["events"] else None
         while True:
-            await sleep(poll_ms / 1000)
+            if streams_closing is not None and streams_closing.is_set():
+                break  # the stop decision closed the live streams (F2 fold)
+            if streams_closing is None:
+                await sleep(poll_ms / 1000)
+            else:
+                sleep_task = asyncio.ensure_future(sleep(poll_ms / 1000))
+                close_task = asyncio.ensure_future(streams_closing.wait())
+                done, pending = await asyncio.wait(
+                    {sleep_task, close_task},
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                for task in pending:
+                    task.cancel()
+                if streams_closing.is_set():
+                    break
             record = sessions.resolve(session_id)
             if record is None:
                 break  # logout or expiry: teardown (GW-33)
@@ -269,6 +290,7 @@ def register_stream_route(
     failure_page: Callable[[OperationFailure], HTMLResponse],
     unauthenticated_page: Callable[[Request], HTMLResponse],
     render: Callable[..., str],
+    streams_closing: Any = None,
 ) -> None:
     """Register the SSE route on the UI router (before its catch-all).
 
@@ -329,6 +351,7 @@ def register_stream_route(
                 page_limit=max_page_size,
                 poll_ms=poll_ms,
                 render=render,
+                streams_closing=streams_closing,
             ),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-store"},

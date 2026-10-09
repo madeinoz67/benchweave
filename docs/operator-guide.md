@@ -106,8 +106,9 @@ location as you would on Linux.
 
 `--data-dir` can come from `BENCHWEAVE_DATA_DIR` instead of the flag (true
 for `setup`, `backup`, `restore`, `report`, `retention`, `dispose`,
-`verify`, and `serve`). Every command except `serve` also takes `--json`
-for the stable machine contract.
+`verify`, `serve`, `start`, `stop`, `restart`, `status`, and
+`service install`). Most commands take `--json` for the stable machine
+contract. `serve`, `start`, `restart`, and `service install` do not.
 
 ### Optional: admitting transport providers (`transport-settings.json`)
 
@@ -638,6 +639,80 @@ grace in the gateway's shutdown path, so an external service manager (§9)
 remains the real limit on total shutdown time; plan restarts accordingly
 when runs can exceed the grace.
 
+### The lifecycle verbs: `start`, `stop`, `restart`
+
+`serve` stays in the foreground. `start` runs the same gateway in the
+background:
+
+```sh
+benchweave start --data-dir /var/lib/benchweave --host 127.0.0.1 --port 8125
+benchweave restart --data-dir /var/lib/benchweave
+```
+
+The child sends its stderr to `<data-dir>.log`. Readiness is the pidfile:
+`start` exits 0 only when the pidfile names the live child, within 30 s.
+A child that dies inside the window exits non-zero and prints the log
+tail. `start` refuses typed when the gateway already runs or when another
+holder owns the store. A data directory with no store also refuses.
+
+`stop` ends the gateway that serves the data directory. The plain stop
+writes a stop request beside the data directory and sends SIGTERM. An
+idle gateway drains, releases the store hold, and exits 0:
+
+```sh
+benchweave stop --data-dir /var/lib/benchweave
+```
+
+A gateway with a live run refuses typed. The refusal
+(`stop_refused_run_active:`) names the run. Nothing is stopped and
+nothing is recorded. The gateway keeps serving. The daemon bounds its own
+connection drain, closes live SSE streams at the stop decision, and
+states the armed bound in its verdict.
+
+> **CAUTION:** THE PROTECTIVE STOP CANCELS THE LIVE RUN. WHEN THE
+> COMMISSIONED WINDOW PASSES WITH NO TERMINAL RECORD, THE CLI SENDS
+> SIGKILL AND THE RUN STAYS INTERRUPTED. VERIFY THE BENCH'S PHYSICAL
+> STATE BEFORE YOU START NEW WORK.
+
+`stop --protective` cancels the live run through its commissioned safe
+transition. The daemon states the protective deadline in its verdict. The
+CLI waits to that deadline plus a margin. Past the deadline with no
+terminal record, the CLI writes its intent to the journal and sends one
+audited SIGKILL. The run stays non-terminal in the store. The next
+startup's recovery sweep records it `interrupted`. The CLI records no
+completion that did not happen. `--protective` is a deliberate human
+verb. The systemd unit's `ExecStop` stays plain (§9).
+
+`restart` runs `stop` and then `start`. A stop refusal propagates:
+nothing starts.
+
+### The supervision file family
+
+The lifecycle verbs keep four files beside the data directory. Each is a
+sibling of `state.sqlite`:
+
+| File | What it holds |
+|---|---|
+| `<data-dir>.pid` | The gateway pid, its start time, its gateway id, and its log destination. |
+| `<data-dir>.stop` | The stop request, then the daemon's verdict. |
+| `<data-dir>.log` | The stderr of a `start`-launched gateway. |
+| `<data-dir>.supervision.jsonl` | The lifecycle journal: one JSON row per event. |
+
+Every file in the family is mode 0600. The files carry pids, run ids,
+paths, timestamps, and outcome words only. They never carry a secret or a
+token.
+
+A stop request names the launch it targets. A later gateway over the same
+data directory refuses a request that names an older launch, and `start`
+clears such a request before it spawns. A stale request can never stop
+the next launch.
+
+Under systemd, the unit's `ExecStop` runs the plain stop. A refusal is
+visible in `systemctl status`. The manager's own ladder (SIGTERM, then
+`TimeoutStopSec`, then SIGKILL) is the unattended backstop.
+`TimeoutStopSec` is derived so it never cuts a commissioned transition
+short (§9).
+
 For the deployment env file, copy and fill the shipped example:
 
 ```sh
@@ -655,14 +730,26 @@ different writers.
 
 ## 4. Status and the demo
 
-`status` speaks to a **live** gateway (observe tier or higher):
+`status` is polymodal. Pass exactly one of `--data-dir` and `--gateway`.
+Neither flag, or both at once, refuses typed.
+
+`--data-dir` answers the lifecycle question. It needs no token and no
+live gateway. It prints the pid verdict for the data directory, the hold
+state with its holder, and the log destination:
+
+```sh
+benchweave status --data-dir /var/lib/benchweave --json
+```
+
+`--gateway` speaks to a **live** gateway (observe tier or higher):
 
 ```sh
 benchweave status --gateway http://127.0.0.1:8125 --token "$TOKEN"          # [interactive] on a TTY
 benchweave status --gateway http://127.0.0.1:8125 --token "$TOKEN" --json
 ```
 
-`--gateway`/`--token` can come from `BENCHWEAVE_GATEWAY`/`BENCHWEAVE_TOKEN`.
+The `--gateway` and `--token` values can come from `BENCHWEAVE_GATEWAY`
+and `BENCHWEAVE_TOKEN`.
 
 `demo` has two modes. **Fresh-install mode** (no `--gateway`) boots an
 ephemeral, `SIMULATION`-labelled simulator gateway on a scratch directory,
@@ -1034,17 +1121,41 @@ the **nine hardening directives** from `deploy/PERMISSIONS-REVIEW.md` §3
 (`Type=simple`, a dedicated `benchweave` user, `NoNewPrivileges`,
 `ProtectSystem=strict` with a single `ReadWritePaths` data dir,
 `PrivateTmp`, an empty `CapabilityBoundingSet`, `MemoryDenyWriteExecute`,
-`EnvironmentFile`) plus additional §4 sandboxing. Render the two
-placeholders and install:
+`EnvironmentFile`) plus additional §4 sandboxing, `Restart=on-failure`, a
+plain `ExecStop` (`benchweave stop`), and a derived `TimeoutStopSec`.
+Render it with the service verb (issue #422):
 
 ```sh
-sed -e 's|{{DATA_DIR}}|/var/lib/benchweave|g' \
-    -e 's|{{ENV_FILE}}|/etc/benchweave/benchweave.env|g' \
-    deploy/systemd/benchweave.service.template | sudo tee /etc/systemd/system/benchweave.service
+sudo benchweave service install --data-dir /var/lib/benchweave
 sudo systemctl daemon-reload
 sudo systemctl enable --now benchweave
 journalctl -u benchweave -f
 ```
+
+`service install` renders from the store at rest. It refuses while a
+gateway holds the store, because install-time is stopped-time. It refuses
+a data directory with no store. It derives `TimeoutStopSec` from the
+commissioned protective ceilings: the largest commissioned
+`safe_transition.max_duration_ms`, plus 30 s. A store with no commissioned
+ceiling renders the systemd manager default instead, with a comment that
+names the reason. On macOS, the same command also renders the launchd
+plist analogue (`~/Library/LaunchDaemons/com.benchweave.gateway.plist`).
+Pass `--unit-output` or `--plist-output` to render to a file you choose.
+
+To render by hand, substitute all three placeholders:
+
+```sh
+sed -e 's|{{DATA_DIR}}|/var/lib/benchweave|g' \
+    -e 's|{{ENV_FILE}}|/etc/benchweave/benchweave.env|g' \
+    -e 's|{{TIMEOUT_STOP_SEC}}|90s|g' \
+    deploy/systemd/benchweave.service.template | sudo tee /etc/systemd/system/benchweave.service
+```
+
+The `90s` value is the manager-default arm that CI rehearses. The honest
+value for your store comes from `service install`. Under systemd, an
+`ExecStop` refusal (a live run) surfaces in `systemctl status`.
+`TimeoutStopSec` then bounds the manager's SIGTERM-to-SIGKILL ladder as
+the unattended backstop.
 
 Preconditions the rendered unit assumes (and CI rehearses):
 `useradd --system benchweave`, `/var/lib/benchweave/` (the one writable
@@ -1068,13 +1179,17 @@ Every directive's threat rationale lives in
 
 ## 10. Command reference
 
-Twelve commands — `benchweave --help` is the full surface:
+Sixteen commands — `benchweave --help` is the full surface:
 
 | Command | One-liner | Key flags |
 |---|---|---|
 | `setup` | Initialize an at-rest data directory | `--data-dir` (req), `--show-secret`, `--json` |
 | `serve` | Run the gateway (foreground; autoloads the data-dir env file) | `--data-dir`, `--host`, `--port` |
-| `status` | Gateway identity + bench inventory (live) | `--gateway` (req), `--token` (req), `--json` |
+| `start` | Run the gateway in the background (stderr to `<dir>.log`) | `--data-dir` (req), `--host`, `--port` |
+| `stop` | Stop the gateway (plain: an active run refuses typed; `--protective` cancels through the safe transition) | `--data-dir` (req), `--protective`, `--json` |
+| `restart` | Stop then start; a stop refusal propagates | `--data-dir` (req), `--host`, `--port` |
+| `status` | Polymodal: the live REST view, or the lifecycle verdicts | `--gateway` + `--token`, or `--data-dir` (exactly one mode), `--json` |
+| `service` | Render the service-manager files (`install`) | `install --data-dir` (req), `--unit-output`, `--plist-output` |
 | `ui-login` | Mint a one-use browser login URL (the URL expires in 60 s; the session is at most as wide as the token) | `--gateway-url` (req), `--token` (req), `--scope` (repeatable), `--ttl-mins`, `--json` |
 | `demo` | Built-in simulator demonstration | `--gateway`/`--token`, `--scratch`, `--keep`, `--timeout`, `--fixtures`, `--json` |
 | `report` | Run evidence from the store at rest | `--data-dir` (req), `--bench`, `--out`, `--json` |
@@ -1113,7 +1228,29 @@ gateway, rejected token, failed verify); 130 on Ctrl-C.
 stop the serving gateway (`sudo systemctl stop benchweave`) before
 `backup`, `restore`, or pointing the demo's scratch at a held tree. The OS
 releases the hold if the process died; a wedged gate self-clears on
-process death.
+process death. `benchweave stop --data-dir ...` (§3) is the verb for an
+unsupervised gateway.
+
+**`stop_refused_run_active: ...`** — the gateway has a live run, so the
+plain `stop` refused. Nothing was stopped and nothing was recorded. Wait
+for the run to end and stop again. To cancel the run now, use
+`benchweave stop --protective` (§3) and read its caution first.
+
+**`stop_timeout: ...`** — the daemon did not answer the stop request
+within 15 s, or accepted it but did not exit in its stated window. Read
+`<data-dir>.log` and `benchweave status --data-dir ...` before you act
+again. A dead launch's stale sidecar files clear on the next `stop` or
+`start`.
+
+**`supervision_stale_pid:`, `supervision_pid_unknown:`, or
+`supervision_hold_desync:`** — the pidfile beside the data directory does
+not agree with the live process or the store hold. Nothing was signaled.
+Run `benchweave status --data-dir ...` and find which process owns the
+bench before you act.
+
+**`service_install_refused_store_held: ...`** — install-time is
+stopped-time: a live gateway holds the store. Stop the gateway first
+(§3), then render the unit again.
 
 **`startup_admission_rejected: ...` / `Application startup failed`** —
 the fixture lattice failed the startup admission gate: a document is

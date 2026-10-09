@@ -39,6 +39,21 @@ Questions, plugin builds, works in progress — join the [BenchWeave Discord](ht
 - [Development and CI](docs/development.md)
 - [Architecture validation](docs/architecture-validation.md)
 
+## Running as a service
+
+`benchweave service install --data-dir <dir>` renders the systemd unit
+from the store at rest (on macOS, the launchd plist analogue too). The
+unit runs `serve` in the foreground under `Type=simple`, stops through the
+plain `benchweave stop`, and restarts on failure (`Restart=on-failure`).
+`TimeoutStopSec` is derived from the commissioned protective ceilings, so
+a stop never cuts a commissioned transition short. The lifecycle verbs
+keep a small file family beside the data directory: `<dir>.pid`,
+`<dir>.stop`, `<dir>.log` and `<dir>.supervision.jsonl`. Every file is
+mode 0600 and never secret-bearing. Logs land in `<dir>.log` under
+`benchweave start`, in the journal under systemd, and on your terminal
+under `serve`. The [operator guide](docs/operator-guide.md) carries the
+full verb reference.
+
 ## Development
 
 Use Python 3.13 and uv:

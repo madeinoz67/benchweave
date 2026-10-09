@@ -1009,6 +1009,115 @@ class RunCoordinator:
             recovered.append(run_id)
         return recovered
 
+    def interrupt_queued_at_stop(
+        self, now_value: str, *, bench_ids: list[str] | None = None
+    ) -> list[str]:
+        """Issue #422 inc3 — the STOP-TIME scoped sweep (§3.3 step 3).
+
+        Finalizes never-started runs (projection ``accepted``, durable
+        terminal absent) as ``interrupted``/``unknown`` with the stop era
+        reason — the #156 queued-ghost leg ONLY. The lease leg's and the
+        dangling-request/reclaim legs' predicates assume a dead host and
+        can race in-flight requests at stop time (lane-1 F13), so they
+        are deliberately absent here; the CALLER must hold the worker
+        pickup gate and have waited the active run terminal first (F1:
+        this method finalizing a run a live coordinator is dispatching
+        would be the exact CTL-9 dual-writer corruption).
+
+        Reuses the recovery record shape (``interrupted``, never a
+        invented "skipped" outcome) — CTL-9's vocabulary stays closed,
+        and a never-started run rebuilds zero occurrence identities
+        (nothing dispatched, nothing to suppress).
+
+        G13: the sweep pages EVERY bench by default — exactly like the
+        stop window's read. A queued ghost on another bench is named in
+        the verdict's run_ids; leaving it unswept would be an exit-0
+        over a silent live row (the F10-condemned shape). ``bench_ids``"
+        narrows the sweep for callers that own a smaller scope.
+        """
+        if bench_ids is None:
+            bench_ids = []
+            offset = 0
+            while True:
+                items, has_more = self._store.list_benches(
+                    limit=1000, offset=offset
+                )
+                bench_ids.extend(str(bench["bench_id"]) for bench in items)
+                if not has_more:
+                    break
+                offset += len(items)
+        interrupted: list[str] = []
+        for bench_id in bench_ids:
+            interrupted.extend(
+                self._interrupt_queued_on_bench(bench_id, now_value)
+            )
+        return interrupted
+
+    def _interrupt_queued_on_bench(
+        self, bench_id: str, now_value: str
+    ) -> list[str]:
+        interrupted: list[str] = []
+        for row in self._store.list_run_states(bench_id):
+            run_id = str(row["run_id"])
+            if row["state"] != "accepted":
+                # The active run is terminal by ordering; anything else is
+                # not this sweep's to touch.
+                continue
+            run = self._store.get_run(run_id)
+            if run is None or run["tombstoned"] or run["terminal"] is not None:
+                continue
+            decision = _recovery_record_version(
+                run, self._contracts, ContentStore(self._store)
+            )
+            if decision.containment is not None:
+                _log_recovery_unresolved(
+                    run_id,
+                    decision.containment,
+                    str(run["binding"].get("version", "")),
+                )
+                continue
+            try:
+                era_reasons = [
+                    "gateway stop: run was never started",
+                    *decision.reasons,
+                ]
+                if (
+                    decision.record_version is not None
+                    and decision.record_version != self._contracts.name
+                ):
+                    era_reasons.append(
+                        _implementation_disclosure(
+                            self._contracts.name,
+                            decision.record_version,
+                            "stopped",
+                        )
+                    )
+                record = build_terminal_record(
+                    run_id=run_id,
+                    binding_pin=decision.binding_pin,
+                    principal_id=run["principal_id"],
+                    started_at=run["started_at"],
+                    ended_at=now_value,
+                    body_outcome="interrupted",
+                    safe_state="unknown",
+                    reasons=era_reasons,
+                    evidence_refs=self._recovery_evidence_refs(
+                        run_id, decision.binding_pin
+                    ),
+                    contracts=self._contracts,
+                    execution_version=decision.record_version,
+                )
+                self._store.finalize_run(run_id, record)
+                self._rebuild_ledger_from_events(run_id)
+                interrupted.append(run_id)
+            except Exception as exc:  # the sweep never dies the stop path
+                _log_recovery_unresolved(
+                    run_id,
+                    f"terminalization failed: {type(exc).__name__}: {exc}",
+                    str(run["binding"].get("version", "")),
+                )
+        return interrupted
+
     # -- pipeline ---------------------------------------------------------------
 
     def _binding_pin(self) -> dict[str, str]:

@@ -462,6 +462,7 @@ def _rendered_template() -> str:
         TEMPLATE.read_text(encoding="utf-8")
         .replace("{{DATA_DIR}}", DATA_DIR)
         .replace("{{ENV_FILE}}", ENV_FILE)
+        .replace("{{TIMEOUT_STOP_SEC}}", "90s")
     )
 
 
@@ -488,6 +489,16 @@ def test_systemd_template_renders_with_the_nine_hardening_directives() -> None:
     exec_start = re.search(r"^ExecStart=(.+)$", rendered, re.MULTILINE)
     assert exec_start is not None
     assert "serve" in exec_start.group(1), "ExecStart renders the serve command"
+    # Issue #422 inc3 (obligation 9's extension): the stop path renders —
+    # plain stop (fork F2: --protective stays a deliberate human verb;
+    # systemd's own ladder is the unattended backstop) and the DERIVED
+    # TimeoutStopSec placeholder (consumed by `service install`, by this
+    # rehearsal's sed, and by the {{-absence gate below).
+    exec_stop = re.search(r"^ExecStop=(.+)$", rendered, re.MULTILINE)
+    assert exec_stop is not None
+    assert "benchweave stop" in exec_stop.group(1)
+    assert DATA_DIR in exec_stop.group(1), "ExecStop names the data dir"
+    assert re.search(r"^TimeoutStopSec=90s$", rendered, re.MULTILINE)
     assert "[Install]" in rendered and "WantedBy=" in rendered
 
 
@@ -579,16 +590,27 @@ def _serve_with_build_snapshot(
 
     from benchweave.interfaces import app_entry
 
-    snapshot: dict[str, dict[str, str]] = {}
+    snapshot: dict[str, object] = {}
 
-    def fake_build() -> object:
+    def fake_build(*, supervision_armed: bool = False) -> object:
         snapshot["env"] = dict(os.environ)
-        return object()
+        snapshot["supervision_armed"] = supervision_armed
+        # serve's tail derives its graceful timeout off the composed app's
+        # supervision surface: the fake carries an unarmed stub state.
+        from types import SimpleNamespace
 
-    monkeypatch.setattr(uvicorn, "run", lambda *a, **k: None)
+        return SimpleNamespace(state=SimpleNamespace(supervision=None))
+
+    # Issue #422 inc3: serve drives uvicorn.Config/Server directly (it
+    # binds the server so the stop decision can set should_exit), so the
+    # parking seam is Server.run — the old uvicorn.run patch is bypassed
+    # by construction now.
+    monkeypatch.setattr(uvicorn.Server, "run", lambda self: None)
     monkeypatch.setattr(app_entry, "build", fake_build)
     result = CliRunner().invoke(cli, args)
-    return result, snapshot.get("env")
+    env = snapshot.get("env")
+    assert env is None or isinstance(env, dict)
+    return result, cast("dict[str, str] | None", env)
 
 
 def _setup_data_dir_with_env_file(tmp_path: Path) -> tuple[Path, str]:

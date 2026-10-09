@@ -122,6 +122,7 @@ class StagingRoutes:
         unauthenticated_page: Callable[[Request], HTMLResponse],
         render: Callable[..., str],
         fragment: Callable[..., Response],
+        write_gate: Any = None,
     ) -> None:
         self._operations = operations
         self._sessions = sessions
@@ -133,6 +134,14 @@ class StagingRoutes:
         self._unauthenticated_page = unauthenticated_page
         self._render = render
         self._fragment = fragment
+        # G2 (the inc3 refute fold): the composition's write gate. The
+        # fire path holds it around its ``run_start`` seam call — the
+        # same ``with gate:`` shape rest.py/mcp.py use; without it the
+        # stop window's set-then-check (§3.1, F4) is open through this
+        # one adapter. ``None`` keeps the ungated posture for the test
+        # compositions that build the routes standalone (disclosed —
+        # the production composition always passes it).
+        self._write_gate = write_gate
 
     # --- shared shapes ------------------------------------------------------
 
@@ -656,14 +665,32 @@ class StagingRoutes:
         held = self._sessions.held_lease(record.session_id, bench_id)
         lease_id = held.lease_id if held is not None else None
         try:
-            run = self._operations.run_start(
-                identity,
-                bench_id,
-                staged.request_id,
-                staged.binding_ref,
-                expected_generation,
-                lease_id,
-            )
+            # G2: the fire path holds the WRITE GATE around the seam call
+            # — the same ``with gate:`` shape rest.py/mcp.py use, closing
+            # the stop window's set-then-check (§3.1, F4) through this
+            # adapter too: an ungated caller can interleave between the
+            # seam's stop-flag check and the run-row write, leaving an
+            # idle window over a run it could not see (the abandoned
+            # shape). ``None`` is the standalone-test posture above.
+            if self._write_gate is not None:
+                with self._write_gate:
+                    run = self._operations.run_start(
+                        identity,
+                        bench_id,
+                        staged.request_id,
+                        staged.binding_ref,
+                        expected_generation,
+                        lease_id,
+                    )
+            else:
+                run = self._operations.run_start(
+                    identity,
+                    bench_id,
+                    staged.request_id,
+                    staged.binding_ref,
+                    expected_generation,
+                    lease_id,
+                )
         except OperationFailure as fail:
             return self._failure_page(fail, request)
         except Exception:

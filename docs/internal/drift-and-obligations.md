@@ -120,18 +120,37 @@ and remain the reviewer's job.
    pins the disclosed 0.1.2 prefix-split cell (SDK `version_not_served:` fold vs the
    gateway's ack gate).
 
-9. **`deploy/systemd/` templates** 🪝 → the `systemd` CI job renders the template and
+9. **`deploy/` templates** 🪝 → the `systemd` CI job renders the template and
    `systemd-analyze verify`s it against rehearsed preconditions (dedicated user, one
-   writable data dir, env file). The `{{`-absence assertion in `tests/cli/test_serve.py`
+   writable data dir, env file). Issue #422 inc3 added a second render leg to the same
+   rehearsal: `setup` a real fresh uncommissioned store, render through
+   `benchweave service install --unit-output` itself, and verify THAT unit — the
+   derived-`TimeoutStopSec` code path (commissioned max + 30 s, else the manager
+   default with the disclosed comment) must emit a unit the verifier accepts, not only
+   a hand-sedded template. The `{{`-absence assertion in `tests/cli/test_serve.py`
    catches placeholder misses that `systemd-analyze verify` tolerates — the CI job's own
    comment says do not simplify that test away; the two catch complementary failure modes.
+   **The launchd template (`deploy/launchd/com.benchweave.gateway.plist.template`, same
+   increment) has no lint**: its `{{DATA_DIR}}` and `{{TIMEOUT_NOTE}}` placeholders have
+   no verifier in any lane, and `service install` renders the plist only on darwin
+   (`sys.platform` gate — explicit `--plist-output` included), so the ubuntu CI lanes
+   never exercise it. The macOS analogue candidate is `plutil -lint` over the rendered
+   plist (syntax only — it cannot judge the mapping-limit comments the template writes
+   in lieu of enforcement). Status: DEFERRED, condition = a macOS rehearsal lane in CI
+   (the same platform boundary the unit's behavioural verification has); until then the
+   plist render path is macOS-operator-verified only.
 
 10. **A dependency change** 🪝 → `pyproject.toml` and `uv.lock` together, CI in the same
     change when the dependency changes what CI must install or materialise.
 
 11. **Key/secret handling** → the security-posture docs must track the real key paths and
     secret names (the reviewer's G0 secret scan catches leaks; this catches drift between
-    the posture text and the posture).
+    the posture text and the posture). Issue #422 inc3's supervision file family
+    (`<dir>.pid`/`.stop`/`.log`/`.supervision.jsonl`) carries pids, run ids, paths,
+    timestamps and outcome words ONLY — never a secret, token, or credential; the ONE
+    documented credential-carrying exception anywhere in the family's orbit is the SDK
+    started-mode token file (its own repo's twin, beside its bindings document — the
+    `_deliver_operator_action_token` precedent; `logs` never displays it).
 
 12. **The UI/preview renderer surface** (the Python renderer package, the
     pattern library, the ported proofs, and the served wire document) → the

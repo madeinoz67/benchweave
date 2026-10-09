@@ -58,6 +58,7 @@ from benchweave.interfaces.device_closures import (
 from benchweave.interfaces.mcp import build_mcp
 from benchweave.interfaces.operations import Operations, append_bench_event
 from benchweave.interfaces.rest import build_router
+from benchweave.interfaces.supervision import SupervisionSurface
 from benchweave.interfaces.ui import build_session_store, build_ui_app, ui_root_redirect
 from benchweave.interfaces.validation import VENDORED_CORPUS_ROOT, SeamValidator
 from benchweave.interfaces.worker import RunWorker
@@ -944,6 +945,8 @@ def create_app(
     registry_session: RegistrySession | None = None,
     execution_corpus: CorpusResolution = CorpusResolution.ACTIVE,
     ui_enabled: bool = True,
+    supervision_armed: bool = False,
+    hold_label: str | None = None,
 ) -> FastAPI:
     """Compose the gateway: gate, worker (limits mandated), seam, MCP mount.
 
@@ -1009,6 +1012,30 @@ def create_app(
     )
     mcp_app = mcp_server.http_app(path="/mcp")
 
+    # Issue #422 inc3: the supervision surface exists ONLY on an armed
+    # composition (record §3.2's F4 fold). ``serve`` arms it before
+    # ``uvicorn.run``; the demo/evidence compositions (and every test
+    # composition) leave it unset and inherit NO doorbell, NO pidfile, NO
+    # signal handler — their stop story is the typed holder-label verdict.
+    db_file_for_supervision = _store_db_path(store)
+    supervision_surface: SupervisionSurface | None = None
+    if supervision_armed and db_file_for_supervision is not None:
+        supervision_surface = SupervisionSurface(
+            db_path=db_file_for_supervision,
+            gateway_id=gateway_id,
+            store=store,
+            content=content,
+            worker=worker,
+            operations=operations,
+            gate=gate,
+            fixtures_dir=fixtures_dir,
+            contracts=contracts,
+            now_iso=now_iso,
+            emit_keep=quota,
+        )
+    # The seam handle the supervision decision and the L13 arm drive.
+    app_state_operations = operations
+
     @asynccontextmanager
     async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         # WP08 Task 10: mark store ownership for the whole serving lifetime.
@@ -1017,10 +1044,26 @@ def create_app(
         # gateway on the same database fails loudly here instead of silently
         # corrupting it. The OS releases the flock on process death, so a
         # crash can never wedge the gate (see state/hold.py).
+        #
+        # Issue #422 inc3: the label distinguishes a serving daemon from
+        # the demo/evidence compositions and the at-rest commands — the
+        # stop path's label-first hold cross-check (§2.4, F6 fold) reads
+        # exactly this field.
         db_file = _store_db_path(store)
-        hold = StoreHold(db_file, label=f"gateway {gateway_id}") if db_file else None
+        effective_label = (
+            hold_label
+            if hold_label is not None
+            else f"gateway {gateway_id}"
+        )
+        hold = StoreHold(db_file, label=effective_label) if db_file else None
         if hold is not None:
             hold.acquire()
+        if supervision_surface is not None:
+            # §2.1: the pidfile lands immediately after hold acquire —
+            # HOLD-ACQUIRED readiness, before admission completes (a boot
+            # failing admission after this leaves a stale pidfile behind;
+            # stop's stale-path business, disclosed in the record §4.1).
+            supervision_surface.write_pidfile()
         try:
             with gate:
                 admit_startup_bench(
@@ -1036,10 +1079,14 @@ def create_app(
                     contracts=contracts,
                 )
             worker.start()
+            if supervision_surface is not None:
+                await supervision_surface.startup(app)
             try:
                 async with mcp_app.lifespan(app):
                     yield
             finally:
+                if supervision_surface is not None:
+                    await supervision_surface.shutdown()
                 worker.stop()
                 if not worker.join(timeout=5.0):
                     # Issue #156: the join bound is now real — a wedged or
@@ -1058,6 +1105,8 @@ def create_app(
         finally:
             if hold is not None:
                 hold.release()
+            if supervision_surface is not None:
+                supervision_surface.remove_pidfile()
 
     app = FastAPI(title="BenchWeave gateway", version=__version__, lifespan=_lifespan)
     # Task 9: the REST router is included BEFORE the "/" mount — a mount at
@@ -1105,6 +1154,12 @@ def create_app(
                 now_epoch=now_epoch,
                 content=content,
                 store=store,
+                write_gate=gate,
+                streams_closing=(
+                    supervision_surface.streams_closing
+                    if supervision_surface is not None
+                    else None
+                ),
             ),
         )
         app.state.ui_sessions = ui_sessions
@@ -1119,4 +1174,9 @@ def create_app(
     # Task 9's REST adapter routes admin change applies through this gate
     # (Task 7 carry: change_apply's fence-then-bump is check-then-act).
     app.state.write_gate = gate
+    # Issue #422 inc3: the seam + surface handles the supervision decision
+    # and the L13 arm drive (app.state is the composition's own registry).
+    app.state.operations = app_state_operations
+    if supervision_surface is not None:
+        app.state.supervision = supervision_surface
     return app

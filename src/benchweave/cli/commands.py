@@ -884,7 +884,11 @@ def serve(host: str, port: int, data_dir: Path | None) -> None:
     from benchweave.interfaces.ui import build_serving_log_config
 
     try:
-        app = app_entry.build()
+        # Issue #422 inc3: the serve command is the ONLY armed composition
+        # (record §3.2's F4 fold) — the supervision surface (doorbell
+        # poll, pidfile, SIGTERM handler) exists exactly here. demo and
+        # evidence boot the real lifespan unarmed and inherit nothing.
+        app = app_entry.build(supervision_armed=True)
     except KeyError as error:
         raise click.ClickException(
             f"missing required environment variable {error} — serve reads "
@@ -896,7 +900,170 @@ def serve(host: str, port: int, data_dir: Path | None) -> None:
         raise click.ClickException(str(error)) from error
     # The access log's /ui/login query strings are redacted (G2a R2): a
     # login code rides the URL exactly once, and no log line keeps it.
-    uvicorn.run(app, host=host, port=port, log_config=build_serving_log_config())
+    #
+    # Issue #422 inc3 (record §0.2's F2 fold, R9): the connection drain is
+    # BOUNDED explicitly — uvicorn's default (`None`) waits for open
+    # connections forever, and one open UI SSE view (the Events page)
+    # would hang every stop. Derived with the TimeoutStopSec discipline:
+    # the commissioned protective ceiling + 30 s, else the 90 s manager
+    # default — the stop decision closes live SSE streams itself, and
+    # this timeout is the residual bound (a service parameter, not a
+    # bench envelope; A02 governs the protective window the DAEMON
+    # states in its verdict).
+    from benchweave.cli.lifecycle import (
+        MANAGER_DEFAULT_STOP_S,
+        TIMEOUT_STOP_MARGIN_S,
+        commissioned_protective_max_ms,
+    )
+
+    surface = getattr(app.state, "supervision", None)
+    max_ms: int | None = None
+    if surface is not None:
+        max_ms = commissioned_protective_max_ms(surface.store, surface.content)
+    graceful_timeout = (
+        (max_ms // 1000 + TIMEOUT_STOP_MARGIN_S) if max_ms is not None
+        else MANAGER_DEFAULT_STOP_S
+    )
+    if surface is not None:
+        # G10: the daemon STATES the graceful timeout it armed — the
+        # accepted verdict carries it and the CLI's exit-wait derives
+        # from this number (A02: the numeric authority stays here).
+        surface.bind_graceful_timeout(float(graceful_timeout))
+    config = uvicorn.Config(
+        app,
+        host=host,
+        port=port,
+        log_config=build_serving_log_config(),
+        timeout_graceful_shutdown=graceful_timeout,
+    )
+    server = uvicorn.Server(config)
+    if surface is not None:
+        # The decision triggers the graceful shutdown DIRECTLY
+        # (`should_exit`) — never uvicorn's captured-signal replay, which
+        # ends the process by signal 15 after a clean drain (F3 fold).
+        surface.bind_server(server)
+    server.run()
+
+
+# --- lifecycle verbs (issue #422 inc3: stop/start/restart/status/service) --------
+
+
+@cli.command()
+@click.option(
+    "--data-dir",
+    "data_dir",
+    type=click.Path(path_type=Path),
+    required=True,
+    envvar="BENCHWEAVE_DATA_DIR",
+    help=_DATA_DIR_HELP,
+)
+@click.option(
+    "--protective",
+    "protective",
+    is_flag=True,
+    help=(
+        "Cancel any live run through its commissioned safe transition, "
+        "then drain and exit (the deliberate human verb — the systemd unit's "
+        "ExecStop stays plain; an unattended protective ending is the "
+        "manager's own SIGTERM/TimeoutStopSec/SIGKILL ladder)."
+    ),
+)
+@click.option(
+    "--json",
+    "json_output",
+    is_flag=True,
+    help="Emit the stable machine JSON contract instead of text.",
+)
+def stop(data_dir: Path, protective: bool, json_output: bool) -> None:
+    """Stop the gateway serving this data directory (the doorbell).
+
+    Plain stop: idle drains, releases the hold and exits 0; a live run
+    refuses typed naming the run (nothing stopped, nothing recorded).
+    --protective routes the existing protection engine through the cancel
+    seam, waits the verdict-stated commissioned window, and escalates to
+    one audited SIGKILL past it."""
+    _set_json(json_output)
+    from benchweave.cli import lifecycle
+
+    try:
+        payload = lifecycle.stop(data_dir, protective=protective)
+    except lifecycle.LifecycleError as error:
+        raise click.ClickException(str(error)) from error
+    emit(payload)
+
+
+@cli.command()
+@click.option(
+    "--data-dir",
+    "data_dir",
+    type=click.Path(path_type=Path),
+    required=True,
+    envvar="BENCHWEAVE_DATA_DIR",
+    help=_DATA_DIR_HELP,
+)
+@click.option(
+    "--host",
+    "host",
+    default="127.0.0.1",
+    show_default=True,
+    help="Bind address the detached serve child uses.",
+)
+@click.option(
+    "--port",
+    "port",
+    type=int,
+    default=8125,
+    show_default=True,
+    help="Bind port the detached serve child uses.",
+)
+def start(data_dir: Path, host: str, port: int) -> None:
+    """Start the gateway detached (supervised surface; stderr to <dir>.log).
+
+    Readiness is HOLD-ACQUIRED (the pidfile names the child), not serving
+    readiness; a child dying inside the window exits non-zero with the log
+    tail, never a hung window and never exit-0-over-a-dead-daemon."""
+    from benchweave.cli import lifecycle
+
+    try:
+        payload = lifecycle.start(data_dir, host=host, port=port)
+    except lifecycle.LifecycleError as error:
+        raise click.ClickException(str(error)) from error
+    emit(payload)
+
+
+@cli.command()
+@click.option(
+    "--data-dir",
+    "data_dir",
+    type=click.Path(path_type=Path),
+    required=True,
+    envvar="BENCHWEAVE_DATA_DIR",
+    help=_DATA_DIR_HELP,
+)
+@click.option(
+    "--host",
+    "host",
+    default="127.0.0.1",
+    show_default=True,
+    help="Bind address the restarted serve child uses.",
+)
+@click.option(
+    "--port",
+    "port",
+    type=int,
+    default=8125,
+    show_default=True,
+    help="Bind port the restarted serve child uses.",
+)
+def restart(data_dir: Path, host: str, port: int) -> None:
+    """Stop then start; a stop refusal propagates (nothing starts)."""
+    from benchweave.cli import lifecycle
+
+    try:
+        payload = lifecycle.restart(data_dir, host=host, port=port)
+    except lifecycle.LifecycleError as error:
+        raise click.ClickException(str(error)) from error
+    emit(payload)
 
 
 # --- status: the first live command -------------------------------------------
@@ -906,15 +1073,29 @@ def serve(host: str, port: int, data_dir: Path | None) -> None:
 @click.option(
     "--gateway",
     "gateway_url",
-    required=True,
     envvar="BENCHWEAVE_GATEWAY",
-    help="Gateway base URL, e.g. http://127.0.0.1:8123",
+    default=None,
+    help=(
+        "Gateway base URL, e.g. http://127.0.0.1:8123 — today's live "
+        "REST view (requires --token)."
+    ),
 )
 @click.option(
     "--token",
-    required=True,
     envvar="BENCHWEAVE_TOKEN",
-    help="Bearer token (observe tier or higher).",
+    default=None,
+    help="Bearer token (observe tier or higher) for --gateway mode.",
+)
+@click.option(
+    "--data-dir",
+    "data_dir",
+    type=click.Path(path_type=Path),
+    default=None,
+    envvar="BENCHWEAVE_DATA_DIR",
+    help=(
+        "Lifecycle verdicts for this data directory (pid identity, hold, "
+        "log destination) — the supervised-process view, no token needed."
+    ),
 )
 @click.option(
     "--json",
@@ -922,11 +1103,37 @@ def serve(host: str, port: int, data_dir: Path | None) -> None:
     is_flag=True,
     help="Emit the stable machine JSON contract instead of text.",
 )
-def status(gateway_url: str, token: str, json_output: bool) -> None:
-    """Show gateway identity and the bench inventory."""
+def status(
+    gateway_url: str | None,
+    token: str | None,
+    data_dir: Path | None,
+    json_output: bool,
+) -> None:
+    """Show gateway state — polymodal (exclusive flags).
+
+    ``--data-dir`` answers the LIFECYCLE question (is a daemon ours, is
+    the hold held, where do its logs land); ``--gateway`` answers the
+    LIVE question (today's REST view). Neither or both is a typed
+    refusal (fork F1 of the supervision design record)."""
     ctx = click.get_current_context()
     obj = ctx.ensure_object(dict)
     obj["json"] = json_output
+    if (gateway_url is None) == (data_dir is None):
+        raise click.ClickException(
+            "status: pass exactly one of --data-dir (lifecycle verdicts) "
+            "or --gateway (the live REST view)"
+        )
+    if data_dir is not None:
+        from benchweave.cli import lifecycle
+
+        emit(lifecycle.status_lifecycle(data_dir))
+        return
+    if token is None:
+        raise click.ClickException(
+            "--gateway mode needs --token (or BENCHWEAVE_TOKEN)"
+        )
+    if gateway_url is None:  # unreachable past the exclusive-flags gate
+        raise click.ClickException("status: --gateway is required here")
     try:
         client = GatewayClient(gateway_url, token=token)
         info = client.gateway_info()
@@ -943,6 +1150,63 @@ def status(gateway_url: str, token: str, json_output: bool) -> None:
             info, cast(Sequence[Mapping[str, object]], benches["items"])
         )
     emit({"gateway": info, "benches": benches}, render=render)
+
+
+# --- service install (issue #422 inc3) ------------------------------------------
+
+
+@cli.group()
+def service() -> None:
+    """Service-manager surface (install renders the unit/plist)."""
+
+
+@service.command("install")
+@click.option(
+    "--data-dir",
+    "data_dir",
+    type=click.Path(path_type=Path),
+    required=True,
+    envvar="BENCHWEAVE_DATA_DIR",
+    help=_DATA_DIR_HELP,
+)
+@click.option(
+    "--unit-output",
+    "unit_output",
+    type=click.Path(path_type=Path),
+    default=None,
+    help=(
+        "Where to write the rendered systemd unit (default: the "
+        "conventional /etc/systemd/system path, which needs privileges)."
+    ),
+)
+@click.option(
+    "--plist-output",
+    "plist_output",
+    type=click.Path(path_type=Path),
+    default=None,
+    help=(
+        "Where to write the rendered launchd plist (macOS only; default: "
+        "~/Library/LaunchDaemons/com.benchweave.gateway.plist)."
+    ),
+)
+def service_install_cmd(
+    data_dir: Path, unit_output: Path | None, plist_output: Path | None
+) -> None:
+    """Render the service-manager files for this store (at-rest).
+
+    Runs under the store hold (label ``service-install``): a live gateway
+    REFUSES — install-time is stopped-time. The unit derives
+    TimeoutStopSec from the commissioned protective ceilings; the plist
+    carries the launchd mapping divergences in comments."""
+    from benchweave.cli import lifecycle
+
+    try:
+        payload = lifecycle.service_install(
+            data_dir, unit_output=unit_output, plist_output=plist_output
+        )
+    except lifecycle.LifecycleError as error:
+        raise click.ClickException(str(error)) from error
+    emit(payload)
 
 
 # --- ui-login: the browser session mint (G2a) ----------------------------------

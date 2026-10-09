@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- BenchWeave gateway — launchd analogue of deploy/systemd/
+     benchweave.service.template (issue #422 increment 3, design record
+     §4.3). Same rendered directives mapped to KeepAlive/RunAtLoad
+     semantics; the divergences launchd cannot express are named here:
+
+     - ExecStop: launchd has NO analogue. The doorbell path IS the stop
+       path — run `benchweave stop --data-dir {{DATA_DIR}}` directly; the
+       manager's own kill is `launchctl remove` (SIGTERM, then SIGKILL
+       after the system timeout).
+     - TimeoutStopSec: no launchd knob. The derived value for this store
+       is {{TIMEOUT_NOTE}}, documented here for the operator, not
+       enforced by launchd.
+     - Restart=on-failure maps to KeepAlive {SuccessfulExit = false};
+       RestartSec has no direct analogue (launchd's throttle interval
+       applies). -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.benchweave.gateway</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/python3</string>
+        <string>-m</string>
+        <string>benchweave</string>
+        <string>serve</string>
+        <string>--data-dir</string>
+        <string>{{DATA_DIR}}</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+</dict>
+</plist>
