@@ -1209,6 +1209,54 @@ def service_install_cmd(
     emit(payload)
 
 
+# --- doctor + logs (issue #422 increment 4 — read-only triage + log tail) ---------
+
+
+@cli.command()
+@click.option(
+    "--data-dir",
+    "data_dir",
+    type=click.Path(path_type=Path),
+    required=True,
+    envvar="BENCHWEAVE_DATA_DIR",
+    help=_DATA_DIR_HELP,
+)
+@click.option(
+    "--json",
+    "json_output",
+    is_flag=True,
+    help="Emit the stable machine JSON contract instead of text.",
+)
+def doctor(data_dir: Path, json_output: bool) -> None:
+    """Read-only triage over one data directory (seven typed checks).
+
+    Takes no store hold and writes nothing (the mode=ro store probe may
+    materialize the empty SQLite -shm/-wal sidecar pair — verify's own
+    at-rest behavior), so it works while a gateway is LIVE. Exit 0 iff
+    every row passes: `unknown` rows also exit 1 — scripts must not read
+    an unverifiable pidfile as healthy."""
+    from benchweave.cli import diagnose
+
+    _set_json(json_output)
+    payload = diagnose.doctor(data_dir)
+    if json_output:
+        emit(payload)
+    else:
+        # One doctor: line per row (the verify command's line precedent)
+        # plus a summary; operators read the verdict WORDS, scripts read
+        # the exit code / ok.
+        for row in payload["checks"]:
+            click.echo(f"doctor: {row['check']} {row['verdict']} {row['detail']}")
+        if payload["ok"]:
+            click.echo("doctor: ok")
+        else:
+            fails = sum(1 for row in payload["checks"] if row["verdict"] == "fail")
+            unknowns = sum(1 for row in payload["checks"] if row["verdict"] == "unknown")
+            click.echo(f"doctor: not ok ({fails} fail, {unknowns} unknown)")
+    if not payload["ok"]:
+        raise click.exceptions.Exit(1)
+
+
 # --- ui-login: the browser session mint (G2a) ----------------------------------
 
 
