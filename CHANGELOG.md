@@ -10,6 +10,10 @@ All notable changes to this project will be documented in this file.
 - Fold reviewer round 2 — vocabulary laundering, egress disclosure, mode honesty (#420)
 - Fold second-lane findings M1-M3 (#420) — scanner recall, guard test, egress set
 - #422 inc1 fold wave — parse hardening, seam shadows, record truth
+- #422 inc3 refute fold — the stop-flag wedge, the ungated UI racer, the dequeue-to-mark escape (G1-G11 + S1's twin)
+- #422 inc3 addendum fold — the signal-path owner bypass, the lying cancel row, the commissioned gate budget (G12/G4ext/G5ext/G13/G14/G15)
+- First-rollup catches — runner-writable render store, cross-platform plist arm, g4i bounded cancel poll
+- Template header names all three placeholders; non-darwin --plist-output refuses typed (#422 inc3 fix wave 2)
 
 ### Documentation
 
@@ -23,6 +27,7 @@ All notable changes to this project will be documented in this file.
 - Issue #159 Option-B owner decision brief (OWNER_FORK) (#429)
 - #422 inc2 supervision + stop-semantics record (two-lane refuted, F1-F15 folded)
 - #422 inc2 lane-1 fold — pickup-gate ordering, SSE-bound drain, signal semantics, TOCTOU close, verdict lattice (F1-F13)
+- #422 inc3 — the lifecycle verbs in the operator guide, README, and the website CLI card
 
 ### Features
 
@@ -32,10 +37,14 @@ All notable changes to this project will be documented in this file.
 - Cross-lane reconciliation aid for two-lane refutes (#420)
 - G4 claim-discipline sweep for design records and PR bodies (#420)
 - #422 inc1 serve --data-dir locator + benchweave.env autoload
+- #422 inc3 — supervision protocol, stop/start/status/service verbs, worker pickup gate
 
 ### Testing
 
 - Pin the write-gate's worktree exemption both ways (#420)
+- #422 inc3 fold — the serve-harness parking seams and the wheel surface carry deploy/
+- L11 accepts both truthful interleavings — a refused-then-acted stop episode is legal (single-shot is per request, not per episode)
+- G4i gains the F14 wait-for-running (fourth-rollup catch — an accepted-not-running active run routes to the sweep, no cancel to name)
 ## [0.4.0] - 2026-10-07
 
 ### Bug Fixes
