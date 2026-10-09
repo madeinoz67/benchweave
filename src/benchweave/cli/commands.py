@@ -1,8 +1,10 @@
 """The ``benchweave`` Click command tree (Task 9: CLI foundation).
 
-Twelve commands — ``setup status demo report retention dispose backup restore
-verify serve evidence ui-login`` — so ``--help`` is already the full operator
-surface.
+Eighteen top-level commands and groups — ``setup status demo report
+retention dispose backup restore verify serve evidence ui-login stop
+start restart service doctor logs`` — so ``--help`` is already the full
+operator surface (the lifecycle verbs are issue #422 inc3; the doctor and
+logs triage pair is inc4).
 ``status``
 (Task 9), the four at-rest commands (Task 10), ``demo`` (Task 11: live-gateway
 mode or the labelled ephemeral fresh-install simulation), ``report`` (Task 13:
@@ -1255,6 +1257,57 @@ def doctor(data_dir: Path, json_output: bool) -> None:
             click.echo(f"doctor: not ok ({fails} fail, {unknowns} unknown)")
     if not payload["ok"]:
         raise click.exceptions.Exit(1)
+
+
+@cli.command("logs")
+@click.option(
+    "--data-dir",
+    "data_dir",
+    type=click.Path(path_type=Path),
+    required=True,
+    envvar="BENCHWEAVE_DATA_DIR",
+    help=_DATA_DIR_HELP,
+)
+@click.option(
+    "--lines",
+    "lines",
+    type=int,
+    default=50,
+    show_default=True,
+    help="Lines to tail (a positive integer; the windowed read bounds the IO).",
+)
+@click.option(
+    "--json",
+    "json_output",
+    is_flag=True,
+    help="Emit the stable machine JSON contract instead of text.",
+)
+def logs(data_dir: Path, lines: int, json_output: bool) -> None:
+    """Tail the named log destination for this data directory.
+
+    Resolution: the pidfile's log_destination field (a path, the journal
+    via journalctl, or a typed stderr refusal), else the <dir>.log sibling
+    post-mortem. The credential file is refused as a destination even
+    when named. No --follow (deferred — tail -f / journalctl -f exist)."""
+    from benchweave.cli import diagnose
+
+    _set_json(json_output)
+    try:
+        payload = diagnose.logs(data_dir, lines)
+    except diagnose.DiagnoseError as error:
+        raise click.ClickException(str(error)) from error
+    if json_output:
+        emit(payload)
+    else:
+        if payload.get("post_mortem"):
+            click.echo(
+                "logs: no pidfile — tailing the sibling log post-mortem "
+                "(a fresh `start` inside its ≤30 s pidfile window can "
+                "transiently land here; re-run once the pidfile lands)",
+                err=True,
+            )
+        for line in payload["lines"]:
+            click.echo(line)
 
 
 # --- ui-login: the browser session mint (G2a) ----------------------------------

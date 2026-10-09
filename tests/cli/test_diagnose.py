@@ -569,3 +569,327 @@ def test_control_g_neutralized_journal_check_breaks_g10(
 def live_child() -> Iterator[int]:
     with _live_child() as pid:
         yield pid
+
+
+# --- X1-X6: the logs verb ------------------------------------------------------------
+
+
+def _logs(data_dir: Path, *extra: str) -> Result:
+    return CliRunner().invoke(cli, ["logs", "--data-dir", str(data_dir), *extra])
+
+
+def _stage_log(db: Path, count: int, width: int = 700) -> Path:
+    """A staged <dir>.log whose last ``--lines`` tail spans MORE than the
+    64 KiB first window (so the doubling rung is exercised, not skipped)."""
+    log = supervision_log_path(db)
+    lines = [f"line-{index:04d}-" + "x" * width for index in range(count)]
+    log.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return log
+
+
+def supervision_log_path(db: Path) -> Path:
+    from benchweave import supervision
+
+    return supervision.log_path(db)
+
+
+def test_x1_windowed_tail_returns_exactly_the_last_n(tmp_path: Path) -> None:
+    """X1: a staged <dir>.log larger than the tail window + a pidfile with
+    a path destination, ``--lines 100`` — exactly the last 100 lines, and
+    the ``--json`` shape is ``{destination, lines}``."""
+    data_dir = tmp_path / "gateway"
+    data_dir.mkdir()
+    db = _db(data_dir)
+    log = _stage_log(db, count=400)
+    _write_pidfile(
+        data_dir,
+        {
+            "pid": os.getpid(),
+            "gateway_id": "gw-x",
+            "data_dir": str(data_dir),
+            "started_wall": "2026-10-09T00:00:00Z",
+            "started_ticks": 1,
+            "log_destination": str(log),
+            "schema": 1,
+        },
+    )
+    result = _logs(data_dir, "--lines", "100", "--json")
+    assert result.exit_code == 0, _combined(result)
+    payload = _payload(result)
+    assert payload["destination"] == str(log)
+    assert len(payload["lines"]) == 100
+    assert payload["lines"][0].startswith("line-0300-"), payload["lines"][0][:20]
+    assert payload["lines"][-1].startswith("line-0399-"), payload["lines"][-1][:20]
+    assert "post_mortem" not in payload
+    # The plain surface prints the tail's lines themselves.
+    plain = _logs(data_dir, "--lines", "100")
+    assert plain.exit_code == 0, _combined(plain)
+    printed = [line for line in plain.output.splitlines() if line]
+    assert printed[-1].startswith("line-0399-")
+    assert len(printed) == 100
+
+
+def test_x1b_lines_domain_is_typed(tmp_path: Path) -> None:
+    """The R8-fold ``--lines`` domain: zero and negative are typed
+    ``logs_lines_domain:`` refusals — never a silent default, never a
+    traceback."""
+    data_dir = tmp_path / "gateway"
+    data_dir.mkdir()
+    db = _db(data_dir)
+    _stage_log(db, count=5)
+    _write_pidfile(
+        data_dir,
+        {
+            "pid": os.getpid(),
+            "gateway_id": "gw-x",
+            "data_dir": str(data_dir),
+            "started_wall": "2026-10-09T00:00:00Z",
+            "started_ticks": 1,
+            "log_destination": str(supervision_log_path(db)),
+            "schema": 1,
+        },
+    )
+    for bad in ("0", "-3"):
+        result = _logs(data_dir, "--lines", bad)
+        assert result.exit_code == 1, _combined(result)
+        assert "logs_lines_domain:" in _combined(result), _combined(result)
+        assert "Traceback" not in _combined(result)
+
+
+def test_x2_pidfile_absent_tails_post_mortem(tmp_path: Path) -> None:
+    """X2: no pidfile + a present <dir>.log — the post-mortem tail, with
+    the resolution REPORTED as post-mortem (the JSON flag and the plain
+    note both carry it)."""
+    data_dir = tmp_path / "gateway"
+    data_dir.mkdir()
+    log = _stage_log(_db(data_dir), count=5)
+    result = _logs(data_dir, "--json")
+    assert result.exit_code == 0, _combined(result)
+    payload = _payload(result)
+    assert payload["destination"] == str(log)
+    assert payload["post_mortem"] is True
+    assert payload["lines"][-1].startswith("line-0004-")
+    plain = _logs(data_dir)
+    assert plain.exit_code == 0, _combined(plain)
+    assert "post-mortem" in _combined(plain)
+    assert any(line.startswith("line-0004-") for line in plain.output.splitlines())
+
+
+def test_x3_stderr_destination_refuses_typed(tmp_path: Path) -> None:
+    """X3: destination ``stderr`` — the typed refusal naming the journalctl
+    alternative; exit 1."""
+    data_dir = tmp_path / "gateway"
+    data_dir.mkdir()
+    _write_pidfile(
+        data_dir,
+        {
+            "pid": os.getpid(),
+            "gateway_id": "gw-x",
+            "data_dir": str(data_dir),
+            "started_wall": "2026-10-09T00:00:00Z",
+            "started_ticks": 1,
+            "log_destination": "stderr",
+            "schema": 1,
+        },
+    )
+    result = _logs(data_dir)
+    assert result.exit_code == 1, _combined(result)
+    assert "logs_destination_stderr:" in _combined(result)
+    assert "journalctl -u benchweave" in _combined(result)
+
+
+def test_x4_journal_destination_pins_the_fixed_argv_and_degrades(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """X4: destination ``journal`` — with the resolver stubbed present the
+    EXACT fixed argv is asserted (the real journalctl read cannot run in
+    CI: no systemd user session — the argv pin plus the typed refusal are
+    the evidence); with the resolver stubbed absent the typed
+    ``logs_journal_unavailable:`` refusal fires."""
+    from benchweave.cli import diagnose
+
+    data_dir = tmp_path / "gateway"
+    data_dir.mkdir()
+    _write_pidfile(
+        data_dir,
+        {
+            "pid": os.getpid(),
+            "gateway_id": "gw-x",
+            "data_dir": str(data_dir),
+            "started_wall": "2026-10-09T00:00:00Z",
+            "started_ticks": 1,
+            "log_destination": "journal",
+            "schema": 1,
+        },
+    )
+    captured: dict[str, list[str]] = {}
+
+    def fake_run(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        captured["argv"] = list(argv)
+        return subprocess.CompletedProcess(list(argv), 0, stdout="j1\nj2\n", stderr="")
+
+    monkeypatch.setattr(diagnose, "_resolve_journalctl", lambda: Path("/stub/journalctl"))
+    # diagnose's own `import subprocess` is this same module object — the
+    # patch reaches the journalctl leg without naming a non-exported attr.
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    result = _logs(data_dir, "--lines", "7", "--json")
+    assert result.exit_code == 0, _combined(result)
+    assert captured["argv"] == [
+        "/stub/journalctl", "--no-pager", "-n", "7", "-u", "benchweave",
+    ], captured["argv"]
+    payload = _payload(result)
+    assert payload["destination"] == "journal"
+    assert payload["unit"] == "benchweave"
+    assert payload["lines"] == ["j1", "j2"]
+    # The absent half: degrade loudly, typed.
+    monkeypatch.setattr(diagnose, "_resolve_journalctl", lambda: None)
+    result = _logs(data_dir)
+    assert result.exit_code == 1, _combined(result)
+    assert "logs_journal_unavailable:" in _combined(result)
+    assert "benchweave" in _combined(result), "the refusal names the unit"
+
+
+@POSIX_ONLY
+def test_x5_unreadable_destination_refuses_typed(tmp_path: Path) -> None:
+    """X5: a destination path with mode 000 — the typed
+    ``logs_unreadable:`` refusal, never a traceback (POSIX-only
+    provocation: mode bits; W1 residual)."""
+    data_dir = tmp_path / "gateway"
+    data_dir.mkdir()
+    locked = data_dir / "locked.log"
+    locked.write_text("secret-ish bytes\n", encoding="utf-8")
+    locked.chmod(0o000)
+    _write_pidfile(
+        data_dir,
+        {
+            "pid": os.getpid(),
+            "gateway_id": "gw-x",
+            "data_dir": str(data_dir),
+            "started_wall": "2026-10-09T00:00:00Z",
+            "started_ticks": 1,
+            "log_destination": str(locked),
+            "schema": 1,
+        },
+    )
+    try:
+        result = _logs(data_dir)
+        assert result.exit_code == 1, _combined(result)
+        assert "logs_unreadable:" in _combined(result)
+        assert "Traceback" not in _combined(result)
+    finally:
+        locked.chmod(0o600)
+
+
+def test_x6_credential_destination_refuses_typed(tmp_path: Path) -> None:
+    """X6: a staged pidfile whose log_destination names the env file — the
+    typed ``logs_destination_credential:`` refusal naming the env-file
+    class (the R3 fold: the pidfile field is operator-steerable through
+    BENCHWEAVE_LOG_DESTINATION and rung 1 must not tail the secret); the
+    SECRET is absent from combined output; exit 1."""
+    data_dir = tmp_path / "gateway"
+    data_dir.mkdir()
+    env = data_dir / atrest.CREDENTIAL_FILE
+    secret = "tok-do-not-print-5f3a"
+    env.write_text(f"BENCHWEAVE_SECRET={secret}\n", encoding="utf-8")
+    env.chmod(0o600)
+    _write_pidfile(
+        data_dir,
+        {
+            "pid": os.getpid(),
+            "gateway_id": "gw-x",
+            "data_dir": str(data_dir),
+            "started_wall": "2026-10-09T00:00:00Z",
+            "started_ticks": 1,
+            "log_destination": str(env),
+            "schema": 1,
+        },
+    )
+    result = _logs(data_dir)
+    assert result.exit_code == 1, _combined(result)
+    assert "logs_destination_credential:" in _combined(result)
+    assert secret not in _combined(result)
+    # --json refuses identically (the machine contract refuses too).
+    json_result = _logs(data_dir, "--json")
+    assert json_result.exit_code == 1, _combined(json_result)
+    assert secret not in _combined(json_result)
+
+
+def test_control_d_neutralized_resolution_breaks_x3_x4(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Control (d): with the destination resolution forced to the .log
+    path, neither X3's stderr refusal nor X4's journalctl leg fires — both
+    arms would be red (the typed refusals depend on the resolution
+    ladder)."""
+    from benchweave.cli import diagnose
+
+    data_dir = tmp_path / "gateway"
+    data_dir.mkdir()
+    _stage_log(_db(data_dir), count=5)
+    _write_pidfile(
+        data_dir,
+        {
+            "pid": os.getpid(),
+            "gateway_id": "gw-x",
+            "data_dir": str(data_dir),
+            "started_wall": "2026-10-09T00:00:00Z",
+            "started_ticks": 1,
+            "log_destination": "stderr",
+            "schema": 1,
+        },
+    )
+    monkeypatch.setattr(
+        diagnose,
+        "_resolve_logs_destination",
+        lambda db: ("pidfile", str(supervision_log_path(db))),
+    )
+    result = _logs(data_dir)
+    assert "logs_destination_stderr:" not in _combined(result)
+    _write_pidfile(
+        data_dir,
+        {
+            "pid": os.getpid(),
+            "gateway_id": "gw-x",
+            "data_dir": str(data_dir),
+            "started_wall": "2026-10-09T00:00:00Z",
+            "started_ticks": 1,
+            "log_destination": "journal",
+            "schema": 1,
+        },
+    )
+    result = _logs(data_dir)
+    assert "logs_journal_unavailable:" not in _combined(result)
+    assert result.exit_code == 0, _combined(result)  # it tailed instead
+
+
+def test_control_f_neutralized_credential_guard_breaks_x6(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Control (f): with the credential guard neutralized (the path is
+    forced open), X6's scenario produces NO refusal and would tail the
+    credential file — X6 would be red, and the guard is what stands
+    between the operator and the secret."""
+    from benchweave.cli import diagnose
+
+    data_dir = tmp_path / "gateway"
+    data_dir.mkdir()
+    env = data_dir / atrest.CREDENTIAL_FILE
+    secret = "tok-do-not-print-5f3a"
+    env.write_text(f"BENCHWEAVE_SECRET={secret}\n", encoding="utf-8")
+    env.chmod(0o600)
+    _write_pidfile(
+        data_dir,
+        {
+            "pid": os.getpid(),
+            "gateway_id": "gw-x",
+            "data_dir": str(data_dir),
+            "started_wall": "2026-10-09T00:00:00Z",
+            "started_ticks": 1,
+            "log_destination": str(env),
+            "schema": 1,
+        },
+    )
+    monkeypatch.setattr(diagnose, "_is_credential_destination", lambda resolved, credential: False)
+    result = _logs(data_dir)
+    assert "logs_destination_credential:" not in _combined(result)
+    assert result.exit_code == 0, _combined(result)  # the tail proceeded

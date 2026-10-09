@@ -15,15 +15,19 @@ the ``mode=ro`` probe may materialize the empty SQLite sidecar pair
 by atrest ``_UNLISTED_OK``. Triage therefore works WHILE a live
 coordinator holds the store, which is the whole point.
 
-``logs`` (§2) tails the named destination; it lands in this module with
-its own slice. Both verbs emit key NAMES and paths only — never env-file
-values or token material.
+``logs`` (§2) tails the named destination through the resolution ladder
+(pidfile field → journal/stderr/path, the post-mortem sibling rung, the
+credential guard refusing the env file as a tail source). Both verbs emit
+key NAMES and paths only — never env-file values or token material.
 """
 
 from __future__ import annotations
 
 import json
+import os
+import shutil
 import sqlite3
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -40,6 +44,27 @@ from benchweave.cli.env_file import (
 #: The journald unit the gateway's systemd deploy serves under (the
 #: journalctl leg's ``-u`` argument and D6's carried unit name).
 JOURNAL_UNIT = "benchweave"
+
+#: The tail's first read window (service parameter, A02: ``--lines`` and
+#: the window bound the tail's own IO, never a bench envelope).
+TAIL_WINDOW_BYTES = 64 * 1024
+
+#: The journalctl consult's bound (the atrest whoami/icacls precedent:
+#: fixed argv, bounded timeout).
+JOURNALCTL_TIMEOUT_S = 10.0
+
+#: Typed refusal prefixes (the greppable discipline every refusal family
+#: carries).
+LOGS_LINES_DOMAIN = "logs_lines_domain:"
+LOGS_DESTINATION_CREDENTIAL = "logs_destination_credential:"
+LOGS_UNREADABLE = "logs_unreadable:"
+LOGS_JOURNAL_UNAVAILABLE = "logs_journal_unavailable:"
+LOGS_DESTINATION_STDERR = "logs_destination_stderr:"
+LOGS_NO_DESTINATION = "logs_no_destination:"
+
+
+class DiagnoseError(RuntimeError):
+    """A typed logs refusal (the message carries the prefix)."""
 
 
 def _db(data_dir: Path) -> Path:
@@ -394,3 +419,170 @@ def doctor(data_dir: Path) -> dict[str, Any]:
     ]
     ok = all(row["verdict"] == "pass" for row in rows)
     return {"data_dir": str(data_dir), "ok": ok, "checks": rows}
+
+
+# --- logs (§2) ----------------------------------------------------------------------
+
+
+def _resolve_logs_destination(db: Path) -> tuple[str, Any]:
+    """The resolution ladder as one seam, from inputs only: the pidfile's
+    ``log_destination`` field when a pidfile is present, else the
+    ``<dir>.log`` sibling when it exists (the post-mortem rung — absent
+    means never-served or cleanly-stopped; foreground serve writes a
+    PRESENT stderr pidfile, and a crash LEAVES one for `stop` to clear),
+    else nothing. A present pidfile whose field is missing falls through
+    to the sibling: the family is the only remaining input."""
+    record = supervision.read_pidfile(db)
+    if record is not None:
+        raw = record.get("log_destination")
+        if isinstance(raw, str) and raw:
+            return ("pidfile", raw)
+    log = supervision.log_path(db)
+    if log.is_file():
+        return ("post_mortem", str(log))
+    return ("none", None)
+
+
+def _is_credential_destination(resolved: Path, credential: Path) -> bool:
+    """The credential guard (the R3 fold): the pidfile field is
+    operator-steerable through ``BENCHWEAVE_LOG_DESTINATION`` and pointed
+    at ``benchweave.env`` rung 1 would otherwise tail the secret — an
+    exact resolved-path match is refused before any read."""
+    return resolved.resolve() == credential.resolve()
+
+
+def _tail_lines(path: Path, lines: int) -> list[str]:
+    """The seek-bounded windowed tail: read from ``max(0, size - 64 KiB)``,
+    doubling on undercount — never a whole-file read of a file that may
+    have grown unbounded (rotation is the deferred issue's). Decode with
+    ``errors="replace"`` (the ``_log_tail`` DECODE policy only — this
+    helper improves on that one's whole-file read)."""
+    with path.open("rb") as handle:
+        handle.seek(0, os.SEEK_END)
+        size = handle.tell()
+        window = TAIL_WINDOW_BYTES
+        while True:
+            offset = max(0, size - window)
+            handle.seek(offset)
+            text = handle.read().decode("utf-8", errors="replace")
+            rows = text.split("\n")
+            if offset > 0 and rows:
+                rows = rows[1:]  # the leading partial line at a mid-file seek
+            if rows and rows[-1] == "":
+                rows.pop()  # the final newline's empty remainder
+            if len(rows) >= lines or offset == 0:
+                return rows[-lines:]
+            window *= 2
+
+
+def _file_tail(path: Path, lines: int, *, post_mortem: bool) -> dict[str, Any]:
+    try:
+        tailed = _tail_lines(path, lines)
+    except OSError as error:
+        raise DiagnoseError(
+            f"{LOGS_UNREADABLE} cannot tail {path}: {error}"
+        ) from error
+    payload: dict[str, Any] = {"destination": str(path), "lines": tailed}
+    if post_mortem:
+        payload["post_mortem"] = True
+    return payload
+
+
+def _resolve_journalctl() -> Path | None:
+    """PATH-resolve journalctl (None where the host has none — the typed
+    degrade's trigger)."""
+    found = shutil.which("journalctl")
+    return Path(found) if found else None
+
+
+def _journal_tail(lines: int) -> dict[str, Any]:
+    """The journalctl rung (fixed argv, bounded timeout — the atrest
+    whoami/icacls subprocess precedent). The real read cannot run in CI
+    (no systemd user session): X4's argv pin plus this typed refusal are
+    the evidence, and the first real systemd deployment corroborates."""
+    binary = _resolve_journalctl()
+    if binary is None:
+        raise DiagnoseError(
+            f"{LOGS_JOURNAL_UNAVAILABLE} journalctl is not resolvable on "
+            f"this host — cannot read the {JOURNAL_UNIT} unit's journal "
+            "(run `logs` on the systemd host, or `journalctl -u "
+            f"{JOURNAL_UNIT}` there)"
+        )
+    argv = [str(binary), "--no-pager", "-n", str(lines), "-u", JOURNAL_UNIT]
+    try:
+        completed = subprocess.run(  # noqa: S603 — fixed argv, resolved binary
+            argv,
+            capture_output=True,
+            text=True,
+            timeout=JOURNALCTL_TIMEOUT_S,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise DiagnoseError(
+            f"{LOGS_JOURNAL_UNAVAILABLE} journalctl did not answer within "
+            f"{JOURNALCTL_TIMEOUT_S:.0f}s for unit {JOURNAL_UNIT}"
+        ) from error
+    except OSError as error:
+        raise DiagnoseError(
+            f"{LOGS_JOURNAL_UNAVAILABLE} journalctl could not be executed "
+            f"({error}) — unit {JOURNAL_UNIT}"
+        ) from error
+    if completed.returncode != 0:
+        detail = (completed.stderr or "").strip().splitlines()
+        raise DiagnoseError(
+            f"{LOGS_JOURNAL_UNAVAILABLE} journalctl exited "
+            f"rc={completed.returncode} for unit {JOURNAL_UNIT}"
+            + (f": {detail[0]}" if detail else "")
+        )
+    return {
+        "destination": "journal",
+        "unit": JOURNAL_UNIT,
+        "lines": completed.stdout.splitlines(),
+    }
+
+
+def logs(data_dir: Path, lines: int) -> dict[str, Any]:
+    """Tail the named destination for ``data_dir`` (§2's ladder).
+
+    Raises :class:`DiagnoseError` on every typed refusal; returns the
+    ``{destination, unit?, lines, post_mortem?}`` payload otherwise. No
+    ``--follow`` (deferred: streaming needs subprocess lifecycle +
+    interrupt semantics + a Windows story; ``tail -f`` / ``journalctl -f``
+    exist and the operator has them)."""
+    if not isinstance(lines, int) or isinstance(lines, bool) or lines <= 0:
+        raise DiagnoseError(
+            f"{LOGS_LINES_DOMAIN} --lines must be a positive integer "
+            f"(got {lines!r})"
+        )
+    data_dir = Path(data_dir)
+    db = _db(data_dir)
+    kind, dest = _resolve_logs_destination(db)
+    if kind == "none":
+        raise DiagnoseError(
+            f"{LOGS_NO_DESTINATION} no pidfile names a destination and no "
+            f"sibling log exists for {data_dir} — never served, or served "
+            "with no log file; nothing to tail"
+        )
+    if kind == "pidfile":
+        raw = str(dest)
+        if raw == "journal":
+            return _journal_tail(lines)
+        if raw == "stderr":
+            raise DiagnoseError(
+                f"{LOGS_DESTINATION_STDERR} the daemon was started "
+                "foreground (its bytes went to a terminal this command "
+                "cannot recover) or the pidfile predates journal detection "
+                f"— under systemd try: journalctl -u {JOURNAL_UNIT}"
+            )
+        path = Path(raw)
+        credential = data_dir / CREDENTIAL_FILE
+        if _is_credential_destination(path, credential):
+            raise DiagnoseError(
+                f"{LOGS_DESTINATION_CREDENTIAL} the resolved destination "
+                f"is the credential file ({credential}) — the pidfile's "
+                "log_destination is steerable through "
+                "BENCHWEAVE_LOG_DESTINATION and is refused as a tail "
+                "source; point it back at the <dir>.log sibling"
+            )
+        return _file_tail(path, lines, post_mortem=False)
+    return _file_tail(Path(str(dest)), lines, post_mortem=True)

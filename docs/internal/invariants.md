@@ -171,6 +171,15 @@ rather than rewriting the history — that is how this file earns trust.
   a DIRECTORY named `X.pid`/`X.stop`/`X.log` refuses the open with EISDIR after hold
   acquire — the preexisting `X.hold` shape, surface ×4 with the family) is named here,
   not discovered later.
+  Amendment (2026-10-09, issue #422 increment 4 — the doctor+logs design
+  record's §4 rider): `doctor` and `logs` are read-only, non-hold-taking
+  readers of the store-at-rest and the supervision family — doctor's
+  store read is the `verify`-precedent `mode=ro` SQLite probe, deliberately
+  NOT an at-rest hold acquisition, so triage works while a live
+  coordinator holds the store; neither writes any supervision or
+  benchweave-owned file (the `mode=ro` probe may materialize the empty
+  SQLite sidecar pair `-shm`/`-wal` — `verify`'s own at-rest behavior,
+  already tolerated by atrest `_UNLISTED_OK`).
 - **[STO-4]** The run's bench lease is held as `run:{run_id}` with expiry =
   acceptance + max_body + max_protection; binding takes `expires_at` and `now_wall` as
   caller-supplied values and never reads a clock — `src/benchweave/control/binding.py`,
