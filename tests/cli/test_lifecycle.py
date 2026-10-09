@@ -2282,12 +2282,33 @@ def test_g4i_protective_cancel_names_only_cancelled_runs(tmp_path: Path) -> None
         )
         with gate:
             try:
-                operations.run_start(
+                active = operations.run_start(
                     identity, BENCH_ID, BINDING_REQUEST_ID, _binding_ref(),
                     store.current_generation(BENCH_ID), None,
                 )
             except OperationFailure as failure:
                 pytest.fail(f"the active run_start refused: {failure}")
+        # F14 discipline (fourth-rollup CI catch — the sibling busy arms
+        # all do this, this arm didn't): wait for the run to be
+        # verifiably IN-BODY before driving the stop decision. Under CI
+        # load the worker pickup lags, and an `accepted`-not-yet-`running`
+        # "active" run routes to the sweep leg — no cancel is issued and
+        # the arm's own assertion is unfalsifiable.
+        active_id = str(active["run_id"] if isinstance(active, dict) else active)
+        pickup_deadline = time.monotonic() + 10.0
+        while True:
+            states = {
+                str(row["run_id"]): str(row["state"])
+                for row in store.list_run_states(BENCH_ID)
+            }
+            if states.get(active_id) == "running":
+                break
+            assert time.monotonic() < pickup_deadline, (
+                f"the active run never reached running "
+                f"(states={states}) — the arm cannot pin a cancel that "
+                f"presupposes an in-body run"
+            )
+            time.sleep(0.1)
         # The queued ghost: a durable row + accepted projection, never
         # enqueued (the L3b seeding shape).
         seeder = Store.open(surface.db_path)
