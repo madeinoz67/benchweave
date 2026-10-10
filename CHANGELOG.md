@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file.
 - #422 inc3 addendum fold — the signal-path owner bypass, the lying cancel row, the commissioned gate budget (G12/G4ext/G5ext/G13/G14/G15)
 - First-rollup catches — runner-writable render store, cross-platform plist arm, g4i bounded cancel poll
 - Template header names all three placeholders; non-darwin --plist-output refuses typed (#422 inc3 fix wave 2)
+- #422 inc4 fold the critic/gw1/l2 review wave into doctor+logs
+- CRLF-honest tail rows (windows rollup catch) + windows lane timeout 30->45 (the lifecycle arms outgrew it; split-lane stays the retro row)
 
 ### Documentation
 
@@ -30,6 +32,8 @@ All notable changes to this project will be documented in this file.
 - #422 inc3 — the lifecycle verbs in the operator guide, README, and the website CLI card
 - #422 inc4 doctor + logs record (forks disposed, read-only boundary, 20-arm rule)
 - #422 inc4 fold both refute lanes into the doctor+logs record
+- #422 inc4 fix the record's two pre-build-flagged artifacts
+- Doctor and logs triage pair in the operator guide; README names the verbs
 
 ### Features
 
@@ -40,6 +44,8 @@ All notable changes to this project will be documented in this file.
 - G4 claim-discipline sweep for design records and PR bodies (#420)
 - #422 inc1 serve --data-dir locator + benchweave.env autoload
 - #422 inc3 — supervision protocol, stop/start/status/service verbs, worker pickup gate
+- #422 inc4 doctor — the seven-check read-only triage probe
+- #422 inc4 logs + the log_destination journal completion
 
 ### Testing
 
