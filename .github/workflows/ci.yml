@@ -206,10 +206,16 @@ jobs:
     # block merges (merge-verified.sh reads the job conclusion; its
     # zero-red rollup rule is unchanged) and is carried instead by the
     # warning annotation, the job summary, and the junitxml artifact.
+    # TIMEOUT: 45m (#422 inc4 rollup catch — the inc3 lifecycle arms
+    # pushed the full selection past 30m at ~95%; the job-level cancel
+    # redded the rollup where the lane's own continue-on-error would
+    # have carried test reds as annotations. The durable fix — splitting
+    # the lifecycle/diagnose arms onto their own lane — is the standing
+    # retrospective row).
     # Setup failures have NO continue-on-error: a broken lane blocks
     # like any broken CI. Graduation (slice 2) deletes one line.
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     permissions:
       contents: read
     defaults:
