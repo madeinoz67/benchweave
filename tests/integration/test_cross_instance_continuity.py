@@ -40,6 +40,7 @@ import hashlib
 import json
 import re
 import statistics
+import sys
 import threading
 import time
 from collections.abc import Callable
@@ -2239,26 +2240,33 @@ def test_belt_forced_loose_fixture_reds_on_both_generations(
     generations of it. The module caches are snapshotted and restored
     around the arm: the scattered cell must never leak into the
     measurement tests' gen-1 cache."""
+    # Outcome-mode scatter (the 2026-10-10 main-red fix): the original
+    # shape scaled _pace (the INPUT), but CI-load wall-time stretch is
+    # roughly UNIFORM across trials, compressing the relative spread the
+    # range gate reads — under load the planted ±40% drowns and the gate
+    # sees no breach (observed three CI appearances: #437 rollup, two
+    # consecutive main runs). Scaling the RECORDED x-values post-hoc
+    # plants the scatter in the gate's own domain: whatever wall times
+    # the rig produces, the recorded values carry the ladder's ±40% —
+    # deterministic under any load. The belt, gate, and rendering are
+    # untouched: they consume the recorded values.
     ladder = (0.8, 1.0, 1.2, 0.9, 1.4)
-    adapters: list[ARigAdapter] = []
-    original_init = ARigAdapter.__init__
+    scatter_counter = [0]
+    original_run_trial = run_trial
 
-    def counting_init(self: ARigAdapter) -> None:
-        original_init(self)
-        adapters.append(self)
+    def scattered_trial(
+        tmp_path: Path, **kwargs: Any
+    ) -> dict[str, Any]:
+        trial = original_run_trial(tmp_path, **kwargs)
+        factor = ladder[scatter_counter[0] % len(ladder)]
+        scatter_counter[0] += 1
+        for axis_key in ("x1_ms", "x2_ms", "x3_ms", "x4_ms"):
+            trial[axis_key] = trial[axis_key] * factor
+        return trial
 
-    monkeypatch.setattr(ARigAdapter, "__init__", counting_init)
-    original_pace = ARigAdapter._pace
-
-    async def scattered_pace(self: ARigAdapter, total_ms: float) -> None:
-        # Systematic looseness: each rig's acquisition paces to a
-        # different duration (±40%), so every trial in the cell scatters —
-        # no single outlier for the one-trial trim to absorb.
-        await original_pace(
-            self, total_ms * ladder[adapters.index(self) % len(ladder)]
-        )
-
-    monkeypatch.setattr(ARigAdapter, "_pace", scattered_pace)
+    monkeypatch.setattr(
+        sys.modules[__name__], "run_trial", scattered_trial
+    )
     saved_cells = dict(_TRIAL_CELLS)
     saved_fresh = dict(_BELT_FRESH_GENERATIONS)
     saved_runs = dict(_BELT_GENERATION_RUNS)
