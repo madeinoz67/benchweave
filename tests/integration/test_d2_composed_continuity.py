@@ -2166,16 +2166,27 @@ _LIGHT_CELLS_R5: dict[str, float] = {
 
 def _composed_cell_median(
     arm: str, device_class: str, axis: str, *, minimum: int = 3
-) -> float:
-    values = [
-        r.axes_ms[axis]
+) -> float | None:
+    """The clause-3 consumer's cell median: the RECORD-count floor guards
+    the producer having run; the AXIS subset is a different matter - X3
+    records only when the dispatch window catches the emission grid, and
+    the grid phase LOCKS per process (a session can measure 0/5 on the
+    control where another measures 4/5). An empty axis subset is
+    therefore session luck, not a missing producer: the caller gets None
+    and skips with a disclosure - the fold's letter ("the MEASURED
+    cells") is exactly this."""
+    records = [
+        r
         for r in _LEDGER
-        if r.arm == arm and r.device_class == device_class and axis in r.axes_ms
+        if r.arm == arm and r.device_class == device_class
     ]
-    assert len(values) >= minimum, (
-        f"clause-3 cell {arm} x {device_class} {axis}: {len(values)} "
-        f"value(s) - the producing cell test did not run"
+    assert len(records) >= minimum, (
+        f"clause-3 cell {arm} x {device_class}: {len(records)} record(s) "
+        f"- the producing cell test did not run"
     )
+    values = [r.axes_ms[axis] for r in records if axis in r.axes_ms]
+    if not values:
+        return None
     return median(values)
 
 
@@ -2195,31 +2206,48 @@ def test_clause3_class_agreement_against_the_light_cells() -> None:
     x2_long = _composed_cell_median("composed-read", "buffered", "X2")
     x2_control = _composed_cell_median("composed-control", "buffered", "X2")
     x2_unbuffered = _composed_cell_median("composed-read", "unbuffered", "X2")
+    # X2 always records (the envelope is the after-tick snapshot); only
+    # X3's subset is phase-lucky. Narrow the structural cells.
+    assert x2_long is not None and x2_control is not None
+    assert x2_unbuffered is not None
     x3_long = _composed_cell_median("composed-read", "buffered", "X3")
-    # The control's X3 records only when the 20 ms window catches a 50 ms
-    # emission-grid point, and the grid phase LOCKS per process - a
-    # partial-selection session can measure 0/5 where a full-module run
-    # measures 4/5. The consumer belongs to the full battery; minimum=1
-    # with the phase caveat in the refusal.
-    x3_control = _composed_cell_median(
-        "composed-control", "buffered", "X3", minimum=1
+    assert x3_long is not None, (
+        "the long cell's X3 subset is empty - the 200 ms window at the "
+        "50 ms grid always catches points; this session is degenerate"
     )
-    # Direction first (a wiring defect reads long ~ control).
+    # The control's X3 subset is session luck (the grid-phase lock, see
+    # the helper): an empty subset skips the comparison with a disclosure
+    # rather than red the battery on a phase coin.
+    x3_control = _composed_cell_median("composed-control", "buffered", "X3", minimum=1)
+    # Direction first (a wiring defect reads long ~ control). The X3
+    # direction is asserted only when the control subset produced a
+    # median this session.
     assert x2_long > x2_control, (
         f"X2 separation direction lost: long {x2_long:.1f} vs control "
         f"{x2_control:.1f}"
     )
-    assert x3_long > x3_control, (
-        f"X3 separation direction lost: long {x3_long:.1f} vs control "
-        f"{x3_control:.1f}"
-    )
+    if x3_control is not None:
+        assert x3_long > x3_control, (
+            f"X3 separation direction lost: long {x3_long:.1f} vs control "
+            f"{x3_control:.1f}"
+        )
     comparisons = {
         "X2-long-buffered": (x2_long, _LIGHT_CELLS_R5["X2-long-buffered"]),
         "X2-control": (x2_control, _LIGHT_CELLS_R5["X2-control"]),
         "X2-unbuffered": (x2_unbuffered, _LIGHT_CELLS_R5["X2-unbuffered"]),
         "X3-long": (x3_long, _LIGHT_CELLS_R5["X3-long"]),
-        "X3-control": (x3_control, _LIGHT_CELLS_R5["X3-control"]),
     }
+    if x3_control is None:
+        print(
+            "[clause-3] X3-control: the control cell's X3 subset is empty "
+            "this session (grid-phase lock, 0/5 window hits) - no median "
+            "exists to compare; skipped with this disclosure"
+        )
+    else:
+        comparisons["X3-control"] = (
+            x3_control,
+            _LIGHT_CELLS_R5["X3-control"],
+        )
     for cell, (composed, light) in comparisons.items():
         delta = abs(composed - light)
         assert delta <= 100.0, (
