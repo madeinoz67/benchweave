@@ -357,22 +357,6 @@ this record. Nothing else moves. No fixture-lattice change (documents authored i
 > trials do not reliably produce an aligned phase. The band stays
 > unmeasured for that reason, not by impossibility.
 >
-> **(e) Row 9 (2026-10-09, the landing battery's own reproduction): the
-> X3-control coverage is made DETERMINISTIC.** The clause-3 consumer red
-> on TWO independent full-battery runs (builder's and landing's) at the
-> same commit: the control cell's X3 records only when its 20 ms window
-> catches the 50 ms emission grid, and the grid phase locks per process —
-> this fixture drew 0/5 control hits in both runs. Passing by phase luck
-> is the run-instability class the refute condemned. Fix: the device's
-> emission schedule is READ-ANCHORED (one emission scheduled a fixed
-> offset after each level read), so the wrapper's pre-dispatch tick
-> deterministically schedules one emission inside the window it precedes
-> — coverage is structural, the §2.2 omniscience ban is untouched (it
-> governs the hazard onset, not the device's emission schedule), and the
-> measured quantity (emission->landing latency) is unchanged. The
-> clause-3 X3-control comparison runs unconditionally again; clause 7's
-> X3 completeness holds 5/5 per cell.
->
 > **(e) Row 9 (2026-10-09, the landing battery's own reproduction): X3's
 > control coverage is a SESSION PHASE LOTTERY, and the LOUD CONDITIONAL
 > (option b) is the honest arm.** The clause-3 consumer red on THREE
