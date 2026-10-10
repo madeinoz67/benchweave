@@ -53,6 +53,7 @@ All notable changes to this project will be documented in this file.
 - #422 inc3 fold — the serve-harness parking seams and the wheel surface carry deploy/
 - L11 accepts both truthful interleavings — a refused-then-acted stop episode is legal (single-shot is per request, not per episode)
 - G4i gains the F14 wait-for-running (fourth-rollup catch — an accepted-not-running active run routes to the sweep, no cancel to name)
+- Outcome-mode scatter for the belt's forced-loose pin — recorded x-values, not input pacing (main-red fix, the #241 wall-time class)
 
 ### Build
 
