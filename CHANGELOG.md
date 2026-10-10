@@ -53,6 +53,11 @@ All notable changes to this project will be documented in this file.
 - #422 inc3 fold — the serve-harness parking seams and the wheel surface carry deploy/
 - L11 accepts both truthful interleavings — a refused-then-acted stop episode is legal (single-shot is per request, not per episode)
 - G4i gains the F14 wait-for-running (fourth-rollup catch — an accepted-not-running active run routes to the sweep, no cancel to name)
+
+### Build
+
+- Bump fastmcp from 4.0.10 to 4.0.11
+- Regenerate uv.lock for fastmcp 4.0.11 (dependabot lock-companion)
 ## [0.4.0] - 2026-10-07
 
 ### Bug Fixes
