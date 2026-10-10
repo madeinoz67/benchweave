@@ -34,6 +34,8 @@ All notable changes to this project will be documented in this file.
 - #422 inc4 fold both refute lanes into the doctor+logs record
 - #422 inc4 fix the record's two pre-build-flagged artifacts
 - Doctor and logs triage pair in the operator guide; README names the verbs
+- Record the Q5 ruling — option 2, stdio shim proxies the running host (issue #285)
+- Delivery-scope ruling — the fork-deletion clause closes on our-repo evidence (issue #285)
 
 ### Features
 
