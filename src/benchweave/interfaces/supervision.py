@@ -185,12 +185,23 @@ class SupervisionSurface:
         self._graceful_timeout = float(seconds)
 
     def log_destination(self) -> str:
-        """Where this daemon's stderr bytes land (§2.3): ``start`` sets
-        ``BENCHWEAVE_LOG_DESTINATION`` to the ``<dir>.log`` path in the
-        child env; under systemd the unit sets no StandardError so the
-        journal collects them (``logs`` in increment 4 derives from this
-        field); foreground serve keeps the terminal."""
-        return os.environ.get("BENCHWEAVE_LOG_DESTINATION", "stderr")
+        """Where this daemon's stderr bytes land (§2.3, the inc4
+        completion of the pinned vocabulary): the env path when
+        ``BENCHWEAVE_LOG_DESTINATION`` is set (the ``start``-written
+        value), else ``"journal"`` when systemd's ``JOURNAL_STREAM`` is
+        present in the environment (set by systemd exactly when stderr is
+        connected to the journal — the semantically precise indicator;
+        ``INVOCATION_ID`` is the coarser twin), else ``"stderr"``
+        (foreground serve keeps the terminal). The env var comes FIRST:
+        a journal-first order would shadow the very variable ``start``
+        itself sets. Pidfile schema stays 1; an old ``"stderr"`` pidfile
+        keeps today's honest handling."""
+        env = os.environ.get("BENCHWEAVE_LOG_DESTINATION")
+        if env:
+            return env
+        if "JOURNAL_STREAM" in os.environ:
+            return "journal"
+        return "stderr"
 
     # -- lifecycle mounting ----------------------------------------------------
 

@@ -104,11 +104,12 @@ protect. Only the credential file is restricted. The rest of the data
 directory keeps whatever access its location gives it, so choose that
 location as you would on Linux.
 
-`--data-dir` can come from `BENCHWEAVE_DATA_DIR` instead of the flag (true
-for `setup`, `backup`, `restore`, `report`, `retention`, `dispose`,
-`verify`, `serve`, `start`, `stop`, `restart`, `status`, and
-`service install`). Most commands take `--json` for the stable machine
-contract. `serve`, `start`, `restart`, and `service install` do not.
+`--data-dir` can come from `BENCHWEAVE_DATA_DIR` instead of the flag. This
+is true for `setup`, `backup`, `restore`, `report`, `retention`, `dispose`,
+`verify`, `serve`, `start`, `stop`, `restart`, `status`, `service
+install`, `doctor`, and `logs`. Most commands take `--json` for the stable
+machine contract. `serve`, `start`, `restart`, and `service install` do
+not.
 
 ### Optional: admitting transport providers (`transport-settings.json`)
 
@@ -728,6 +729,66 @@ The data-dir file at `<data-dir>/benchweave.env` is the credential file
 that `serve` autoloads (§2, §3). They are different files with
 different writers.
 
+### The triage pair: `doctor` and `logs`
+
+`doctor` checks a data directory at rest. It takes no store hold and
+writes no file of its own. The read-only store probe can create the
+empty SQLite `-shm` and `-wal` sidecar files, as `verify` does. Triage
+therefore works while a gateway is live:
+
+```sh
+benchweave doctor --data-dir /var/lib/benchweave
+benchweave doctor --data-dir /var/lib/benchweave --json
+```
+
+Each check yields one row. The row names the check, a verdict, and a
+detail:
+
+| Check | What it reports |
+|---|---|
+| `store` | The store opens read-only and `integrity_check` says `ok`. |
+| `hold` | The store hold and its holder. A held store is not a fault; the row stays informational. |
+| `pid` | The pidfile verdict: this gateway, no pidfile, a dead pid, or unknown. |
+| `env_file` | The data-dir env file parses against the keys `serve` allows. The row prints key names only, never values. |
+| `unit` | A service-manager unit is present at the conventional path. The row stays informational. |
+| `log_destination` | The pidfile's log destination: a file, the journal, or stderr. |
+| `supervision_sidecars` | The stop file and the journal beside the data directory are coherent. |
+
+Every row ends in `pass`, `fail`, or `unknown`. The command exits 0 only
+when every row is `pass`. A `fail` row or an `unknown` row exits 1. A
+script that gates an action on `doctor` must not read an unverifiable
+pidfile as healthy.
+
+`doctor` is triage, not a lock. A gateway can start between a `doctor`
+run and the gated action. The hold-owning commands still refuse on their
+own. `doctor` adds no ownership.
+
+`logs` tails the log destination that the pidfile names:
+
+```sh
+benchweave logs --data-dir /var/lib/benchweave
+benchweave logs --data-dir /var/lib/benchweave --lines 200
+```
+
+With no pidfile, `logs` tails the `<data-dir>.log` sibling when it
+exists. This is the post-mortem tail. The read is windowed. It starts at
+the last 64 KiB of the file and doubles to a cap of 8 MiB. When the
+requested lines cannot be served inside the window, the command refuses
+typed (`logs_window_cap:`). Ask for fewer lines.
+
+A `journal` destination runs `journalctl` for the `benchweave` unit with
+fixed arguments. A host without `journalctl` refuses typed
+(`logs_journal_unavailable:`). A `stderr` destination always refuses
+typed (`logs_destination_stderr:`). The bytes went to a terminal this
+command cannot recover.
+
+The data-dir env file (`<data-dir>/benchweave.env`) is never a tail
+source. The credential guard refuses it
+(`logs_destination_credential:`). The guard compares the resolved file
+identity, not the name. The guard refuses a symlink or a hardlink of
+the env file under any name. A copy of the env file under a log name is
+a different file, and the guard does not refuse it.
+
 ## 4. Status and the demo
 
 `status` is polymodal. Pass exactly one of `--data-dir` and `--gateway`.
@@ -1179,7 +1240,7 @@ Every directive's threat rationale lives in
 
 ## 10. Command reference
 
-Sixteen commands — `benchweave --help` is the full surface:
+Eighteen commands — `benchweave --help` is the full surface:
 
 | Command | One-liner | Key flags |
 |---|---|---|
@@ -1190,6 +1251,8 @@ Sixteen commands — `benchweave --help` is the full surface:
 | `restart` | Stop then start; a stop refusal propagates | `--data-dir` (req), `--host`, `--port` |
 | `status` | Polymodal: the live REST view, or the lifecycle verdicts | `--gateway` + `--token`, or `--data-dir` (exactly one mode), `--json` |
 | `service` | Render the service-manager files (`install`) | `install --data-dir` (req), `--unit-output`, `--plist-output` |
+| `doctor` | Read-only triage over the data directory: seven check rows, exit 0 only when every row passes (an `unknown` row also exits 1); triage, not a lock; a gateway can start between the check and a gated action | `--data-dir` (req), `--json` |
+| `logs` | Tail the named log destination (a file, or the journal via `journalctl`; the post-mortem `<dir>.log` when no pidfile; the env file is refused as a destination) | `--data-dir` (req), `--lines` (default 50), `--json` |
 | `ui-login` | Mint a one-use browser login URL (the URL expires in 60 s; the session is at most as wide as the token) | `--gateway-url` (req), `--token` (req), `--scope` (repeatable), `--ttl-mins`, `--json` |
 | `demo` | Built-in simulator demonstration | `--gateway`/`--token`, `--scratch`, `--keep`, `--timeout`, `--fixtures`, `--json` |
 | `report` | Run evidence from the store at rest | `--data-dir` (req), `--bench`, `--out`, `--json` |
@@ -1218,7 +1281,8 @@ vendored standards corpus a checkout carries):
 | `why` | Explain the current resolution: per standard, the rung that fired |
 
 Exit codes: 0 on success; 1 on any handled refusal (bad usage, unreachable
-gateway, rejected token, failed verify); 130 on Ctrl-C.
+gateway, rejected token, failed verify, a `doctor` row that is not
+`pass`); 130 on Ctrl-C.
 
 ## 11. Troubleshooting
 

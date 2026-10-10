@@ -428,6 +428,19 @@ def verify_gateway_identity(
     db_path = Path(db_path)
     record = read_pidfile(db_path)
     if record is None:
+        # W8: the absent cell names the real shape. A pidfile that EXISTS
+        # but names no pid (fieldless/legacy — unparseable or without an
+        # integer pid) is not "no pidfile"; the notice says so.
+        if pid_path(db_path).is_file():
+            return IdentityVerdict(
+                "absent",
+                None,
+                None,
+                None,
+                "a pidfile is present but names no pid — a fieldless or "
+                "legacy shape (unparseable, or without an integer pid); "
+                "verify it before acting",
+            )
         return IdentityVerdict("absent", None, None, None, "no pidfile")
     pid = int(record["pid"])
     file_ref = str(pid_path(db_path))

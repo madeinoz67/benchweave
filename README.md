@@ -51,8 +51,11 @@ keep a small file family beside the data directory: `<dir>.pid`,
 `<dir>.stop`, `<dir>.log` and `<dir>.supervision.jsonl`. Every file is
 mode 0600 and never secret-bearing. Logs land in `<dir>.log` under
 `benchweave start`, in the journal under systemd, and on your terminal
-under `serve`. The [operator guide](docs/operator-guide.md) carries the
-full verb reference.
+under `serve`. `benchweave logs --data-dir <dir>` tails that destination.
+`benchweave doctor --data-dir <dir>` runs seven read-only checks over
+the data directory. It exits 0 only when every check passes. The
+[operator guide](docs/operator-guide.md) carries the full verb
+reference.
 
 ## Development
 

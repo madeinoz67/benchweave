@@ -114,7 +114,7 @@ precedent) plus a summary. Row shape: `{"check", "verdict": "pass"|"fail"|"unkno
 
 | # | Check | Mechanism (all in-tree) | Verdict rules |
 |---|---|---|---|
-| D1 | store | `state.sqlite` present; `_integrity_problems`-shaped mode=ro `PRAGMA integrity_check` (same helper discipline, cited not imported-from-verify — a small local function over the same `as_uri()?mode=ro` idiom) | missing / unopenable / not-`ok` → **fail** (detail names perms when the open refuses); else **pass** |
+| D1 | store | `state.sqlite` present; `_integrity_problems`-shaped mode=ro `PRAGMA integrity_check` (same helper discipline, cited not imported-from-verify — a small local function over the same `as_uri()?mode=ro` idiom) | missing / unopenable / not-`ok` → **fail** (the detail surfaces SQLite's own raw error — it reports "unable to open database file", it does not name the permission; §11 W-addendum); else **pass** |
 | D2 | hold | `daemon_holds(db)` + `holder_info(db)` (the `status_lifecycle` block) | informational: held-or-free both **pass**; holder label carried (gateway label / at-rest label like `service-install` / `backup pid …`); held-with-unreadable-body → **pass** with note (the body is advisory; the flock is the truth — STO-3) |
 | D3 | pid | the full §2.4 lattice via `verify_gateway_identity` (`supervision.py:414-500`), embedded from `status_lifecycle`'s payload | `ours` → pass; `absent` → pass (note: never served or cleanly stopped — foreground writes a PRESENT stderr pidfile; a fresh `start`'s ≤30 s pidfile window can transiently read absent — R5 fold, lane-2); `dead` → pass (note: stale sidecars present, `stop` clears them); `not-ours` → **fail** (`supervision_stale_pid:` detail); `desync` → **fail** (`supervision_hold_desync:` detail naming both pids); `unknown` → **unknown** (`supervision_pid_unknown:` detail) |
 | D4 | env file | `<data-dir>/benchweave.env` (`atrest.CREDENTIAL_FILE`): if present, the SAME validation call serve makes — `parse_env_file(path, serve_env_file_keys(), excluded=ENV_FILE_EXCLUDED_KEYS)` (`cli/commands.py` serve body; `parse_env_file`, NOT `load_env_file` — the apply variant would put the secret into the doctor process's own env, R7 fold) — plus POSIX mode 0600 (Windows: ACL note, the atrest #137 posture — skip-with-disclosure) | absent → **pass** (note: autoload is optional; process env / unit EnvironmentFile is the deploy path); wrong perms / unparseable / non-allowlisted key → **fail** (the `env_file:` prefix family surfaces verbatim — doctor previews the next boot's own refusal). **Key NAMES only in output, never values** (the inc1 discipline) |
@@ -177,8 +177,12 @@ ladder, in order, from inputs only:
      secret (the env-FILE vector is closed — no such key in `serve_env_file_keys`
      — the process-env vector was open). Then: tail that file (`<dir>.log` under
      `start`); seek-based tail bounded by
-     `lines` (windowed read from `max(0, size - 64 KiB)`, doubling on undercount —
-     never a whole-file read; decode `errors="replace"`, the `_log_tail` DECODE
+     `lines` (windowed read from `max(0, size - 64 KiB)`, doubling on undercount
+     up to `TAIL_WINDOW_CAP_BYTES` — windowed WITH a cap: a whole-file read
+     happens only for a file inside the first window, the doubling never grows
+     past the cap, and a request the capped windowed read cannot serve is a
+     typed `logs_window_cap:` refusal — W1 fold; decode `errors="replace"`, the
+     `_log_tail` DECODE
      policy only, `cli/lifecycle.py:580-584` — that helper reads whole-file and
      slices; the windowed tail here improves on it, R8 fold). Unreadable → typed
      `logs_unreadable:` refusal.
@@ -284,7 +288,7 @@ the rider's literal text in invariants.md; the sidecar pair makes that claim fal
   is not an audit event.
 - **G0 discipline:** doctor/logs never print env-file VALUES or token material
   (key names and paths only); arms assert the secret/token strings are ABSENT from
-  combined output (D7-gateway, X6, S6-SDK).
+  combined output (G7, X6, S6).
 
 ## 5. Pre-committed acceptance rule for increment 4
 
@@ -467,8 +471,7 @@ real-subprocess arms and therefore does not aggravate the windows rollup it name
 > issue home (rendering `StandardErrorPath` under a root-run plist opens a
 > permissions fork this increment does not own). F3 ADOPTED — the SDK doctor
 > twin (one standard, per-surface application; four checks at fork time, widened
-> to five by the lane-2 R4 fold). Redirect open until the
-> build dispatches. before the record commits
+> to five by the lane-2 R4 fold). Redirect open until the build dispatches.
 
 - **Fork 1 — does `unknown` exit 1?** Recommended: YES (§1.2 — the conservative
   gate; scripts gating `start` on doctor must not read an unverifiable pidfile as
@@ -556,6 +559,94 @@ not this changelog, is the build's authority.
   int, typed `logs_lines_domain:` refusal otherwise — gateway and twin); the
   stale "Twelve commands" module docstring named on the build's docs-motion list
   in the SHIP obligations.
+
+---
+
+## 11. Fold changelog (2026-10-09, the build-fold wave: critic + gw1 + l2)
+
+Folded into BOTH branches (`cli/diagnose` gateway + SDK) after the build's
+own review battery. Row dispositions DECIDED by the owner; per-row RED
+evidence lives in the fold commits' messages. The arms added here extend
+the §5 table without retiring any of its rows.
+
+- **W1 — the tail cap (critic + gw1 F3, both surfaces).** The doubling
+  window is capped at `TAIL_WINDOW_CAP_BYTES` (8 MiB, a service parameter,
+  A02's class — never a bench envelope), and a request the capped windowed
+  read cannot serve is a typed `logs_window_cap:` refusal. Interpretation
+  the arms pin (disclosed): the refusal fires when the windowed ladder
+  ends — at the file start or the cap — still short of `lines` complete
+  rows AND the window grew past its first read window to get there. A file
+  that fits the first window and simply has fewer lines than requested
+  returns what it has — two pre-committed arms (X2: 5 lines at default
+  `--lines 50`; S8 rung 2: 1 line at default) pin that short-file tail, so
+  a blanket undercount-refusal would break them; the W1 blob arms are
+  exactly the grown-window cases. §2's "never a whole-file read" claim
+  reworded to what is true: windowed with a cap (a whole-file read happens
+  only for a file inside the first window). RED: the 300 KiB single-line
+  + `--lines 50` arm (today the whole file lands in memory and is
+  returned); the dense 5 MiB no-newline arm (refusal within one doubling
+  cycle of the cap — max single read ≤ the cap, cumulative reads ≤ 2× cap).
+- **W2 — the env-file stat race (critic).** `_check_env_file` catches
+  `OSError` around the parse seam: the `path.stat()` inside
+  `_check_owner_only` is unguarded outside `EnvFileError`, and a deletion
+  in the is_file→stat window crashed doctor with zero rows. Now a FAIL row
+  and triage continues. RED: the delete-in-window arm (a call-counted
+  `Path.stat` raising `FileNotFoundError` on the second stat of the env
+  file — today the crash, all-zero rows).
+- **W3 — the torn-final classifier (l2 F1, both surfaces, literal twin).**
+  Torn ONLY when the raw tail does not end `"\n"` — a single-write+fsync
+  append cannot end with its own newline, so a NEWLINE-TERMINATED
+  unparseable line (final or not) is TAMPERING (fail row), never the
+  crash-tear pass. RED: the journal `{"wall":"x"}\nGARBAGE-COMPLETE-LINE\n`
+  arm (today: pass with a false crash-tear note). The unterminated-final
+  crash-tear half is pinned unchanged (a new companion arm).
+- **W4 — the credential guard's remaining holes (l2 F2 + gw1 F4, both
+  surfaces).** (a) the compare now covers the POST-MORTEM rung too — a
+  `<dir>.log`/`<bindings>.log` symlink to the credential file leaked
+  today; (b) the compare is `(st_dev, st_ino)` AFTER resolve — identity,
+  not path equality — closing the hardlink and case-variant aliases.
+  Docstrings state the mechanism AND what it now covers (and what it does
+  not: a copied distinct-inode credential file named like a log). RED: the
+  post-mortem symlink arm (the secret ABSENT, typed refusal — today the
+  secret leaks) and the hardlink arm, both twins.
+- **W5 — the untested `log_destination` completion (gw1 F1).** Three unit
+  legs on `SupervisionSurface.log_destination()`: env+`JOURNAL_STREAM` →
+  env WINS (the R2-folded order); `JOURNAL_STREAM` only → `"journal"`;
+  neither → `"stderr"`. RED: with the rungs swapped back to journal-first
+  (one-site sabotage, restored after), exactly the first leg fails — the
+  mechanism shipped unguarded; no production change rides this row.
+- **W6 — the G2 pin-scope vs its own KILL (gw1 F2).** `<dir>.hold` joins
+  the enumerated family the read-only pin walks — a doctor that takes the
+  hold is the KILL criterion's own example, and the pin was green on it
+  (the path was outside the snapshot). RED: with `_check_store`
+  neutralized into a StoreHold acquire+release, the pin FAILS on the
+  appearing `.hold` (with `.hold` reverted from the family, the control's
+  catch is empty — that reverted run is the RED).
+- **W7 — `start` records an absolute `log_destination` (gw1 F5).**
+  DISCLOSED NON-RED: `start` now resolves `--data-dir` before deriving or
+  recording anything, so the recorded field is absolute by construction.
+  The property already held through `state.hold.sibling_path`'s resolve
+  (proven: capturing the spawn env with a relative `--data-dir` yields an
+  absolute value pre-fix), so the literal RED arm ("relative --data-dir →
+  the recorded field is absolute") is green before AND after — it lands as
+  a structural pin, not RED evidence. The reachable relative-field vector
+  is the operator-steered `BENCHWEAVE_LOG_DESTINATION` (R3's own
+  disclosure), which this row's mechanism does not close; a consumer-side
+  resolve would be the closure if the owner wants it.
+- **W8 — NITs + the two unarmed R7 cells.** The fieldless-pidfile notice
+  names the real shape (the lattice's absent detail distinguishes
+  "no pidfile" from "a pidfile is present but names no pid — a fieldless
+  or legacy shape", and doctor's D3 row carries it); the D6 out-of-vocab
+  cell and the D7 unreadable-journal cell get arms (both shipped in the R7
+  fold untested — the arms are PINS, green before and after, disclosed);
+  the twin pid not-ours/unknown legs get arms (pins); the SDK S6 skip
+  reason corrected to the file-chmod/ACL story (its own
+  `requires_posix_file_perms` marker — the shared marker kept inc3's
+  directory-chmod story, wrong for a file-chmod provocation).
+- **Record addendum.** D1's "detail names perms when the open refuses"
+  parenthetical corrected: SQLite reports "unable to open database file" —
+  the code surfaces the raw error honestly, and the row's parenthetical
+  now says so.
 
 ---
 
