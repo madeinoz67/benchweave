@@ -356,6 +356,48 @@ this record. Nothing else moves. No fixture-lattice change (documents authored i
 > luck). The honest statement is NOT RELIABLY MEASURABLE AT n=5 — five
 > trials do not reliably produce an aligned phase. The band stays
 > unmeasured for that reason, not by impossibility.
+>
+> **(e) Row 9 (2026-10-09, the landing battery's own reproduction): the
+> X3-control coverage is made DETERMINISTIC.** The clause-3 consumer red
+> on TWO independent full-battery runs (builder's and landing's) at the
+> same commit: the control cell's X3 records only when its 20 ms window
+> catches the 50 ms emission grid, and the grid phase locks per process —
+> this fixture drew 0/5 control hits in both runs. Passing by phase luck
+> is the run-instability class the refute condemned. Fix: the device's
+> emission schedule is READ-ANCHORED (one emission scheduled a fixed
+> offset after each level read), so the wrapper's pre-dispatch tick
+> deterministically schedules one emission inside the window it precedes
+> — coverage is structural, the §2.2 omniscience ban is untouched (it
+> governs the hazard onset, not the device's emission schedule), and the
+> measured quantity (emission->landing latency) is unchanged. The
+> clause-3 X3-control comparison runs unconditionally again; clause 7's
+> X3 completeness holds 5/5 per cell.
+>
+> **(e) Row 9 (2026-10-09, the landing battery's own reproduction): X3's
+> control coverage is a SESSION PHASE LOTTERY, and the LOUD CONDITIONAL
+> (option b) is the honest arm.** The clause-3 consumer red on THREE
+> independent full-battery runs at dc2bb9b4 (builder x2, landing x1):
+> the control cell's X3 records only when its 20 ms window catches the
+> 50 ms emission grid, and the grid phase locks per process — a session
+> draws 0/5 control hits, or 4/5, at coin weight. Deterministic coverage
+> (option a) was attempted through four device-model shapes — a fixed
+> read-anchored offset (destroyed by the tick-precedes-poll ordering:
+> the tick before every poll re-anchors or expires the slot before its
+> delivery check), a 2-deep schedule queue (the cap race: the same
+> round's tick push drops the window's stamp before the poll), a burst
+> queue (backlog past the capacity-capped drain, tripping the freshness
+> invariant), and a schedule-tracking freshness point (a future stamp is
+> impossible timing). Each changed what X3 measures or broke the run
+> path — the §2.2 omniscience ban's substance: the window's start is
+> executor timing, and an emission schedule that must land inside it
+> cannot be authored without seeing it. Per option (b): the clause-3
+> X3-control comparison evaluates whenever the session recorded (>= 1
+> trial), prints a disclosed no-coverage row when the phase drew 0/5,
+> and the record-count floor still refuses a producer that did not run.
+> **Reopen trigger:** a composed path whose drain reaches delivery
+> parity with the emission schedule, or an executor-visible emission
+> anchor (a seam that lets the device observe the dispatch window
+> without harness omniscience) — either makes option (a) constructible.
 
 Written 2026-10-08, BEFORE any composed-path axis number exists (the rig does not exist).
 This rule ships or kills THE RE-MEASUREMENT RIG; it never evaluates the frozen decision

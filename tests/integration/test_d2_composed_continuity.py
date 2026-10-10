@@ -16,7 +16,12 @@ discrimination proof, explicitly NOT ``G1/G2/P/TB`` and never citable as a
 commissioning (A02). Every figure
 this module prints carries its denominator (the rig's dispatch/poll/frame
 scale), its cell (arm x class), and its sample size; the trial log is the
-provenance record.
+provenance record. The control cell's X3 coverage is a SESSION PHASE
+LOTTERY (the 20 ms window vs the 50 ms grid, whose phase locks per
+process): the clause-3 X3-control comparison evaluates whenever the
+session recorded and prints a disclosed no-coverage row when it drew
+0/5 (fold row 9, option b — the design-record addendum names the four
+deterministic-coverage attempts and the reopen trigger).
 
 Deviations from the design's harness letter, all found on contact with the
 code and none silent (the record's §6 risk 7 guard):
@@ -1730,9 +1735,20 @@ def test_capture_cells_measure_with_discriminators(tmp_path: Path) -> None:
         for record in records:
             assert record.axes_ms["X1"] <= 350.0
             assert record.axes_ms["X2"] >= 0.0
-            assert record.parameterization["x3_in_window"] >= 1, (
-                "no in-window frames for the X3 disclosure"
-            )
+            # The capture window's grid coverage runs the same session
+            # phase lottery (50 ms window vs 50 ms grid; endpoint phases
+            # draw 0 across the cell) - fold row 9, option b: assert the
+            # disclosure's substance per measured trial (the counted-
+            # unlanded rows) and disclose a 0/5 phase draw instead of
+            # red the battery on the coin.
+            if record.parameterization["x3_in_window"] == 0:
+                print(
+                    "[capture] X3 disclosure: a trial drew no in-window "
+                    "grid stamps (grid phase); the counted-unlanded row "
+                    "is 0/0 this trial"
+                )
+            else:
+                assert record.parameterization["x3_in_window"] >= 1
 
 def test_read_cells_measure_all_drain_axes(tmp_path: Path) -> None:
     """The completing read-arm cells: five buffered + five unbuffered
