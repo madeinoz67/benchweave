@@ -10,6 +10,39 @@ premise corrected (see §1) and the SDK leg as a named, ordered follow-on.
 The standards-governor mandate applies (any `standards/` touch). Keyword-scan result in
 §11.
 
+> **Addendum 2026-10-12 (fold-in + build deviations).** Frozen-bytes rule: this note
+corrects; the body below is unchanged.
+>
+> - **Fold-in evidence (owner-supplied, 2026-10-12):** the decoder-system
+> interoperability record confirms the §2 extraction model across the board. Three
+> refinements: the wait-term alphabet is six terms (`h/l/r/f/e` plus `'n'` no-edge);
+> OUTPUT_LOGIC is a fifth, rare output type (2 corpus uses — outside this contract's
+> four-kind model, no motion); stacking input/output mismatch is a WARNING in the
+> host, not a hard error — recorded for D2's eventual stacking design (do not
+> hard-refuse a mismatch the host itself tolerates).
+> - **Grid fidelity resolved (owner, 2026-10-12):** timing-mode RLE columns ARE the
+> true uniform sample grid (exact materialization at the sample rate; timebase decode
+> exact to the device's ±0.005% timebase accuracy). State-mode captures are
+> external-clock events needing the synthesized uniform grid, with warn-or-refuse for
+> timebase-sensitive decoders. Strengthens §3.4's float64-seconds representation for
+> timing mode; the state-mode caveat belongs to the renderer/plugin layer, not this
+> contract.
+> - **§12 correction (from the build):** the "gateway-first stays green between
+> steps" claim is STALE in today's machinery — `make check-sdk-standards` reds any
+> main-side bump until the SDK leg lands (37 failures: served_set_drift +
+> sdk_version_mismatch + missing_asset rows). Structural since the #215-era
+> check/export comparison; the SDK train remains the healer (disclosed mid-sequence
+> red, the 340fda2d precedent).
+> - **Build deviations ratified (build/issue443-4731 @ 1f27c92d):** class-id charset
+> widened to hyphens (provider-lane precedent; extraction-forced — the onewire_link
+> control needed zero schema motion); `protocol-decoders.md` not corpus-rowed (no
+> `.md` file is); the declaring example lives in `class-logic_analyser.json`;
+> dataset status maps to the schema's existing complete/partial + status_reason;
+> retry rides prose (the catalog schema is closed); mutation rows in
+> `tests/contracts/test_architecture.py`. One real finding out of slice:
+> `resolve_otdp_contracts` validates pinned catalogs against the ACTIVE schema, not
+> per-pin — gateway scope, candidate tracker row in the review wave.
+
 ---
 
 ## 0. Summary
