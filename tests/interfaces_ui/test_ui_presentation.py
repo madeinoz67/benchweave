@@ -609,17 +609,26 @@ def test_a_served_document_cannot_shadow_a_plugin_ui_schema_id(
     from benchweave.vendoring import corpus_root
 
     planted_id = f"{_SCHEMA_PREFIX}/ui-manifest.schema.json"
+    planted_raw = json.dumps({"$id": planted_id, "planted": True}).encode()
     planted_dir = tmp_path / "otdp" / "9.9.9"
     planted_dir.mkdir(parents=True)
-    (planted_dir / "planted-catalog.json").write_text(
-        json.dumps({"$id": planted_id, "planted": True})
-    )
+    (planted_dir / "planted-catalog.json").write_bytes(planted_raw)
     documents: dict[str, dict[str, Any]] = {}
-    _serve_otdp_documents(documents, planted_dir, "otdp/9.9.9")
+    # The walk's contract carries the digest rows it verifies against —
+    # hand-built for the planted file (this arm exercises the ordering
+    # guard, not the gate).
+    _serve_otdp_documents(
+        documents,
+        planted_dir,
+        "otdp/9.9.9",
+        {"otdp/9.9.9/planted-catalog.json": _digest(planted_raw)},
+    )
     # The alias install is real — without the ordering guard the planted
     # document would sit at the manifest schema's key:
     assert documents[planted_id].get("planted") is True
-    _install_plugin_ui_schemas(documents, corpus_root())
+    # pins=None is the absent-manifest tolerance — this arm does not
+    # exercise the gate.
+    _install_plugin_ui_schemas(documents, corpus_root(), None)
     assert documents[planted_id].get("planted") is None
     assert "catalogue" in documents[planted_id]["$defs"]
 

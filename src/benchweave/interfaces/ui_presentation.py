@@ -5,11 +5,19 @@ ADMITTED DOCUMENTS — the envelope, its manifest, the binding catalogue
 and the manifest's assets, all content-addressed in the store — and
 validates the attachment through
 ``presentation.admission.validate_attachment``: the same bytes the SDK
-host validates with, against the same trusted document set — the ACTIVE
-plugin-ui schemas JOINED with every carried OTDP version's documents
-(``_presentation_documents``, issue #446's parity fix; the profile rows
-and action-schema urns an invoke-kind target binds resolve identically on
-both hosts). Nothing plugin-authored reaches the page unvalidated:
+host validates with, against the resolution-relevant subset of the SDK
+host's document set — the ACTIVE plugin-ui schemas JOINED with every
+carried OTDP version's documents (``_presentation_documents``, issue
+#446's parity fix; the profile rows and action-schema urns an
+invoke-kind target binds resolve identically on both hosts — a strict
+subset, not a set identity: the standard families this page never
+resolves are absent, and the keys the two sets share come from the same
+committed corpus bytes). Every served corpus file is digest-verified
+against its corpus-manifest row at build time — the
+``corpus_pin_mismatch`` gate (#446 slice-1 fold): a tampered or
+unrecorded file refuses the build, never silently becomes the schema an
+attachment validates against. Nothing plugin-authored reaches the page
+unvalidated:
 plugin presentation content is data (NFR-S9) — no plugin HTML/JS/CSS is
 ever rendered.
 
@@ -88,11 +96,19 @@ def _corpus_state(corpus: Path) -> tuple[str, str]:
     shape, kept local rather than importing a private control symbol):
     the cache key moves when the policy block or the retained version set
     moves, so a mid-process corpus change serves the NEXT composition from
-    the new bytes. Absence follows the loaders' own semantics: a missing
-    standards-manifest raises the same ``FileNotFoundError`` the active-
-    version read will; a missing corpus-manifest contributes the
-    empty-bytes sentinel (retained == () — an empty OTDP phase, the
-    plugin-ui-only document set, never a crash)."""
+    the new bytes. The key binds the two MANIFEST files, not per-document
+    bytes — the cache's true invalidation semantics (#446 slice-1 fold
+    F3): a warm process keeps serving the build-time-VERIFIED document set
+    until a manifest moves (an unrepinned in-place edit cannot smuggle
+    different bytes into a warm entry, but a COLD build of that tree
+    refuses with ``corpus_pin_mismatch``); the sanctioned edit flow is a
+    repin, which rewrites corpus-manifest.json and therefore the key.
+    Absence follows the loaders' own typed semantics: a missing
+    standards-manifest raises the same ``StandardsError``
+    (``standards_manifest_absent:``) the active-version read will; a
+    missing corpus-manifest contributes the empty-bytes sentinel
+    (retained == () — an empty OTDP phase, the plugin-ui-only document
+    set, never a crash)."""
 
     def _digest(name: str, *, absent_as_empty: bool = False) -> str:
         path = corpus / name
@@ -103,33 +119,94 @@ def _corpus_state(corpus: Path) -> tuple[str, str]:
             # real digest can collide with, so absence and a present
             # (even empty) file never share a cache entry.
             return ""
-        raise FileNotFoundError(path)
+        # F4 (#446 slice-1 fold): match the loader's typed refusal —
+        # ``_read_corpus_manifest`` wraps the same miss as StandardsError,
+        # and a raw FileNotFoundError here would name a class no caller
+        # greps for.
+        try:
+            raw = path.read_bytes()
+        except FileNotFoundError as exc:
+            raise StandardsError(
+                f"standards_manifest_absent: {path} ({exc})"
+            ) from exc
+        return hashlib.sha256(raw).hexdigest()
 
     return _digest("standards-manifest.json"), _digest(
         "corpus-manifest.json", absent_as_empty=True
     )
 
 
+def _corpus_pin_rows(corpus: Path) -> dict[str, str] | None:
+    """The corpus manifest's ``{path: sha256}`` digest rows, or ``None``
+    when the manifest is absent — the tolerance ``_corpus_state``
+    documents (no rows exist to verify against; retained == () empties
+    the OTDP phase). Same row shape as ``standards.manifest._corpus_pins``,
+    kept local rather than importing a private symbol (the
+    ``_corpus_state`` discipline)."""
+    path = corpus / "corpus-manifest.json"
+    if not path.is_file():
+        return None
+    document = json.loads(path.read_bytes())
+    return {
+        str(row["path"]): str(row["sha256"]) for row in document.get("files", [])
+    }
+
+
+def _verify_corpus_pin(raw: bytes, key: str, pins: dict[str, str] | None) -> None:
+    """The #446 slice-1 fold's digest gate (adversary F1): every file the
+    composition walks is verified against its corpus-manifest row BEFORE
+    it is parsed — the gateway's mirror of the SDK host's
+    ``vendored_digest_mismatch`` load refusal (#215 F1). ``pins`` is
+    ``None`` only under the absent-manifest tolerance; with the manifest
+    present the gate is mandatory and fail-closed: an unrecorded file and
+    a digest mismatch both refuse with ``corpus_pin_mismatch`` naming the
+    path, so a planted document cannot displace a corpus schema at a
+    shared ``$id``/urn key (the refute's hijack shape)."""
+    if pins is None:
+        return
+    pinned = pins.get(key)
+    if pinned is None:
+        raise StandardsError(
+            f"corpus_pin_mismatch: {key} is present in the corpus tree "
+            "but not recorded by the corpus manifest; record it through "
+            "a standards bump or restore the tree"
+        )
+    digest = hashlib.sha256(raw).hexdigest()
+    if digest != pinned:
+        raise StandardsError(
+            f"corpus_pin_mismatch: {key} hashes to {digest} but the "
+            f"manifest pins {pinned}"
+        )
+
+
 def _serve_otdp_documents(
-    documents: dict[str, dict[str, Any]], directory: Path, prefix: str
+    documents: dict[str, dict[str, Any]],
+    directory: Path,
+    prefix: str,
+    pins: dict[str, str] | None,
 ) -> None:
     """Install one served OTDP directory into the composition set: every
     ``*.json`` under it (recursively — the examples walk the SDK's
     ``contract_documents`` performs) keyed by its path-shaped
     ``otdp/<version>/<file>`` name, aliased by ``$id`` when it carries
     one, plus the per-action ``input_schema``/``output_schema`` subschema
-    expansion the SDK's ``schemas()`` performs. Keys are overwritten
-    within the OTDP phase: versions install in ascending carried order,
-    so an action urn shared across carried versions resolves to the
-    highest version's rows — the SDK host's own last-wins."""
+    expansion the SDK's ``schemas()`` performs. Every file is digest-
+    verified against its corpus-manifest row before it is parsed
+    (``_verify_corpus_pin`` — the #446 slice-1 fold's gate; a direct
+    caller owns the rows it passes). Keys are overwritten within the OTDP
+    phase: versions install in ascending carried order, so an action urn
+    shared across carried versions resolves to the highest version's
+    rows — the SDK host's own last-wins."""
     for path in sorted(directory.iterdir(), key=lambda item: item.name):
         key = f"{prefix}/{path.name}"
         if path.is_dir():
-            _serve_otdp_documents(documents, path, key)
+            _serve_otdp_documents(documents, path, key, pins)
             continue
         if not path.name.endswith(".json"):
             continue
-        document = json.loads(path.read_bytes())
+        raw = path.read_bytes()
+        _verify_corpus_pin(raw, key, pins)
+        document = json.loads(raw)
         documents[key] = document
         identifier = document.get("$id")
         if isinstance(identifier, str):
@@ -147,17 +224,22 @@ def _serve_otdp_documents(
 
 
 def _install_plugin_ui_schemas(
-    documents: dict[str, dict[str, Any]], corpus: Path
+    documents: dict[str, dict[str, Any]], corpus: Path, pins: dict[str, str] | None
 ) -> None:
     """The ACTIVE plugin-ui corpus schemas keyed by ``$id`` (derived from
-    the manifest, never a version literal) — installed AFTER the OTDP
-    phase so the attachment's own validating schemas cannot be displaced:
-    a served document whose ``$id`` collides with a plugin-ui schema id
-    loses the key; it never becomes the schema the envelope validates
-    against."""
+    the manifest, never a version literal), each digest-verified against
+    its corpus-manifest row (``_verify_corpus_pin`` — the same gate the
+    OTDP walk runs; a tampered schema file refuses the build rather than
+    becoming the attachment's validating schema) — installed AFTER the
+    OTDP phase so the attachment's own validating schemas cannot be
+    displaced: a served document whose ``$id`` collides with a plugin-ui
+    schema id loses the key; it never becomes the schema the envelope
+    validates against."""
     version = active_version_from_corpus(corpus, "plugin-ui")
     for path in sorted((corpus / "plugin-ui" / version).glob("*.schema.json")):
-        schema = json.loads(path.read_bytes())
+        raw = path.read_bytes()
+        _verify_corpus_pin(raw, f"plugin-ui/{version}/{path.name}", pins)
+        schema = json.loads(raw)
         documents[str(schema["$id"])] = schema
 
 
@@ -179,6 +261,10 @@ def _presentation_documents_cached(
             f"dependency_policy_invalid: no policy row for standard {_OTDP!r}"
         )
     documents: dict[str, dict[str, Any]] = {}
+    # The digest rows every walked file verifies against (None under the
+    # absent-manifest tolerance) — the #446 slice-1 fold's gate, inside
+    # the cached build so a serve never outlives its verification.
+    pins = _corpus_pin_rows(corpus)
     # The CARRIED set (retained ∧ in-range, yanked included) — the same
     # byte set the SDK lock carries: a descriptor pinning an older or a
     # yanked-in-interval OTDP version has version-suffixed urns that must
@@ -188,19 +274,26 @@ def _presentation_documents_cached(
         for candidate in retained_versions_from_corpus(corpus, _OTDP)
         if row.in_range(candidate)
     ):
-        _serve_otdp_documents(documents, corpus / _OTDP / version, f"{_OTDP}/{version}")
-    _install_plugin_ui_schemas(documents, corpus)
+        _serve_otdp_documents(
+            documents, corpus / _OTDP / version, f"{_OTDP}/{version}", pins
+        )
+    _install_plugin_ui_schemas(documents, corpus, pins)
     return documents
 
 
 def _presentation_documents() -> dict[str, dict[str, Any]]:
     """The trusted document set the device page validates against: the
     ACTIVE plugin-ui schemas JOINED with every carried OTDP version's
-    documents — the set the SDK host's ``schemas()`` composes (SW-41's
-    parity rule), so an invoke-kind target's profile rows and
-    action-schema urns resolve identically on both hosts. Callers treat
-    the set as read-only; the fresh shallow copy guards the cache's key
-    structure."""
+    documents — the resolution-relevant SUBSET of the SDK host's
+    ``schemas()`` set (SW-41's parity rule read as a resolution rule, not
+    a set identity: the families this page never resolves are absent, and
+    the keys the two sets share come from the same committed corpus
+    bytes), so an invoke-kind target's profile rows and action-schema
+    urns resolve identically on both hosts. Every walked file is
+    digest-verified against its corpus-manifest row inside the cached
+    build (``corpus_pin_mismatch`` refuses a tampered or unrecorded
+    file). Callers treat the set as read-only; the fresh shallow copy
+    guards the cache's key structure."""
     corpus = corpus_root()
     return dict(_presentation_documents_cached(str(corpus), _corpus_state(corpus)))
 
