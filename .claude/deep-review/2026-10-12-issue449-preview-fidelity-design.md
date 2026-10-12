@@ -101,6 +101,18 @@ capture-shaped fixture simply does not exist yet.
 
 ### 3.1 Slice 1 — the host renders through ui-html (SDK repo only; first increment)
 
+> **Addendum 2026-10-12 (post-refute; frozen-record rule — corrections live here, not in the text above).**
+> (1) §3.1.2's "the empty path is total" cites the wrong mechanism: `lanes.py:235` indexes
+> `member_states[spec.members[0]]` before `reduce_lane`'s empty-sequence guard, so an unbound
+> member KeyErrors even for an empty capture. The host's explicit `()` binding is the actual
+> enabler (confirmed independently by the mechanism-critic and code review).
+> (2) The §3.1.4 override cascade claim is order-only: "after the token stylesheets" wins at
+> equal specificity only; `standalone.css` carries (0,2,0) state-kind rules that beat a
+> plugin's (0,1,0) override regardless of order. The specificity floor is documented in the
+> fold (R1 docs) and pinned by a lint test.
+> (3) The 64 KiB cap is a chosen authoring-scale number, not a derived one. Its boundary is
+> now pinned by test (65536 admitted, 65537 refused).
+
 1. **Theme script.** `RENDERER_ASSETS` gains `bw-host.js` (`assets.py:31`); the asset
    route already serves any member of that set from the installed package's
    inventory-verified root (`web.py:1770-1784`), and the package's own
@@ -153,6 +165,15 @@ capture-shaped fixture simply does not exist yet.
    (`var(--bw-*)` only — no literals), no glow on normal readings.
 
 ### 3.2 Slice 2 — lane data in preview fixtures (plugin-ui-preview 0.2.1 PATCH train)
+
+> **Addendum 2026-10-12 (slice-2 constraints from the refute; binding at slice 2's build, each
+> with its own RED arm in slice 2's pre-committed acceptance rule).**
+> (1) Sample rate is REQUIRED whenever `trigger_s` or cursors are present: `compose_lanes`
+> maps `round(t * (rate or 0.0))`, so a rate-less trigger silently stacks at sample 0
+> (executed: trigger 2.5s, cursors (1.0, 4.0), rate None → all at sample 0).
+> (2) An OMITTED capture member must refuse loudly at load — "member missing from the capture"
+> must never launder into "member captured empty". The slice-1 empty-binding is correct only
+> because fixtures carry no captures.
 
 A new `plugin-ui-preview` corpus version 0.2.1 (copy-never-move of 0.2.0) whose
 `fixture.schema.json` gains an OPTIONAL `captures` member: a per-fixture array of
