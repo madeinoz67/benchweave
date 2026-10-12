@@ -61,7 +61,7 @@ The requesting developer or maintainer supplies:
 
 If inputs are missing, ask for specific evidence. Missing inputs need not stop independent static review. Record missing inputs in the verdict for the affected stage.
 
-The current project baseline is architecture 1.5, OTDP 0.2.2, adapter API 1.1, registry 0.1.2, execution 0.2.0 and interface 0.1.0. If a candidate declares another version, get the corresponding contract. Do not judge it silently against a different one.
+The current project baseline is architecture 1.5, OTDP 0.2.3, adapter API 1.1, registry 0.1.2, execution 0.2.0 and interface 0.1.0. If a candidate declares another version, get the corresponding contract. Do not judge it silently against a different one.
 
 ## Review matrix
 

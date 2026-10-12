@@ -707,8 +707,8 @@ def test_documents_ignores_markdown_links_inside_fenced_code_blocks(
         (
             "devices",
             _active_standard_dir("otdp") + "/examples/class-action-vectors.json",
-            '"values": [\n                "start",',
-            '"values": [\n                "ghost-class",',
+            '"values": [\n                  "start",',
+            '"values": [\n                  "ghost-class",',
             "annotation dataset semantics",
         ),
         (

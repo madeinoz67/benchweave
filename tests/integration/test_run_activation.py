@@ -52,7 +52,6 @@ from benchweave.registry.resolver import (
     PackageSource,
     Resolver,
 )
-from benchweave.standards.manifest import load_manifest
 from benchweave.state.store import Store
 
 REPO = Path(__file__).resolve().parents[2]
@@ -344,6 +343,28 @@ def _pin(document: dict[str, Any], path: Path) -> dict[str, str]:
     }
 
 
+def _repoint_contracts_to_active(descriptor: dict[str, Any]) -> dict[str, Any]:
+    """Repoint the fixture descriptor's OTDP contract pins to the ACTIVE
+    corpus. The activation seam's catalog validator is active-anchored
+    (registry.otdp_contracts derives the ACTIVE catalog schema), so a
+    published descriptor with retained-version pins fails ``contract_schema``
+    there. The committed fixture keeps its own-era pins for the admission
+    seams (per-pin, test_documents_perpin); the activation harnesses publish
+    against the corpus they ship — active, derived, never a literal."""
+    from benchweave.standards.manifest import load_manifest
+
+    active = next(
+        entry.version for entry in load_manifest(REPO).standards if entry.id == "otdp"
+    )
+    for contract in descriptor.get("contracts", []):
+        urn, _, _ = contract["id"].rpartition(":")
+        contract["id"] = f"{urn}:{active}"
+        contract["sha256"] = _sha(
+            (REPO / "standards" / "otdp" / active / contract["path"]).read_bytes()
+        )
+    return descriptor
+
+
 def _mutated_descriptor(
     tmp_path: Path,
     *,
@@ -360,6 +381,7 @@ def _mutated_descriptor(
     stays the committed, schema-valid content.
     """
     descriptor = json.loads((EXECUTION_FIXTURES / "descriptor-sim-psu.json").read_text())
+    _repoint_contracts_to_active(descriptor)
     adapter = descriptor["integration"]["adapter"]
     adapter["entry_point"] = "benchweave_sim_psu.plugin:create_plugin"
     if streaming:
@@ -394,11 +416,14 @@ def _write_plugin_source(tmp_path: Path, source: str | None = None) -> Path:
     # (catalog + measurement schema) at bundle-root paths, and #146 slice 2
     # resolves those pins against the verified inventory at load — so the
     # plugin source carries the corpus bytes and publish_dev ships them at
-    # exactly the pinned root paths.
+    # exactly the pinned root paths. The pins are ACTIVE (see
+    # _repoint_contracts_to_active): the activation seam validates the
+    # catalog against the active schema, so the shipped bytes must be the
+    # active corpus's, in step with the repointed pins.
+    from benchweave.standards.manifest import load_manifest
+
     active = next(
-        entry.version
-        for entry in load_manifest(REPO).standards
-        if entry.id == "otdp"
+        entry.version for entry in load_manifest(REPO).standards if entry.id == "otdp"
     )
     for name in ("device-profile-catalog.json", "otdp-measurement.schema.json"):
         (root / name).write_bytes(

@@ -65,9 +65,17 @@ class TestActiveVersionFromCorpus:
     """The fourth corpus-shaped twin loader (design §1.1)."""
 
     def test_happy_path_over_the_real_corpus(self) -> None:
-        """The committed manifest's active entries, read back per id."""
+        """The committed manifest's active entries, read back per id. The
+        otdp expectation derives from the manifest (the active version
+        moves with every bump; the literal form retired at 0.2.3)."""
+        import json
+
         corpus = ROOT / "standards"
-        assert active_version_from_corpus(corpus, "otdp") == "0.2.2"
+        committed = json.loads((corpus / "standards-manifest.json").read_bytes())
+        expected_otdp = next(
+            entry["version"] for entry in committed["standards"] if entry["id"] == "otdp"
+        )
+        assert active_version_from_corpus(corpus, "otdp") == expected_otdp
         assert active_version_from_corpus(corpus, "registry") == "0.1.2"
         assert active_version_from_corpus(corpus, "execution") == "0.2.0"
         assert active_version_from_corpus(corpus, "interface") == "0.1.0"
@@ -1131,8 +1139,17 @@ class TestScriptsScope:
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         derived = module.ACTIVE_OTDP_RUNTIME_SCHEMA
-        assert derived == "standards/otdp/0.2.2/otdp-runtime.schema.json", derived
-        assert active_version_from_corpus(ROOT / "standards", "otdp") == "0.2.2"
+        import json
+
+        committed = json.loads(
+            (ROOT / "standards" / "standards-manifest.json").read_bytes()
+        )
+        active = next(
+            entry["version"] for entry in committed["standards"] if entry["id"] == "otdp"
+        )
+        expected = f"standards/otdp/{active}/otdp-runtime.schema.json"
+        assert derived == expected, derived
+        assert active_version_from_corpus(ROOT / "standards", "otdp") == active
         # The derived path exists in the real corpus at the same
         # repo-relative path (and copy_standards_resources ships every
         # non-dev family beside the prose, so the built tree carries it by

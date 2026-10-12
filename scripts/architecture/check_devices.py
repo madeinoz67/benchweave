@@ -805,11 +805,12 @@ else:
         shadowed_kinds == ["stream_send"],
     )
 logic_analyser = descriptors.get("class-logic_analyser.json")
-if decoder_validator is None or not decoder_docs:
-    # The corpus's own decoder declarations (or their schema) are absent:
-    # the fault-injection arms below would KeyError on the missing
-    # documents, so they degrade to this named failure instead of crashing
-    # the suite — the reference-provider degrade pattern above.
+if decoder_validator is None or "i2c" not in decoder_docs:
+    # The corpus's own i2c declaration (or the schema) is absent or its pin
+    # is broken: the fault-injection arms below would KeyError on the
+    # missing document, so they degrade to this named failure instead of
+    # crashing the suite — the reference-provider degrade pattern above
+    # (a partial decoder_docs, one broken pin, degrades the same way).
     check("Reference decoder declarations admitted", False)
 elif logic_analyser is None or not logic_analyser.get("decoders"):
     check("Reference decoder declarations admitted", False)

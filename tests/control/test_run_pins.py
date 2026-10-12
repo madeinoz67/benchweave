@@ -161,7 +161,12 @@ def test_the_yank_warning_rides_the_run_record(tmp_path: Path) -> None:
     assert psu_view["otdp_version"] == "0.2.1"
     assert psu_view["conformance"] == "conforming"
     assert "yanked" in psu_view["deprecation"]
-    assert "0.2.2" in psu_view["deprecation"]
+    # The move-to is derived (highest served version), never a literal — a
+    # corpus bump moves it (the 0.2.3 bump's finding).
+    from benchweave.standards.manifest import load_dependency_policy, served_versions
+
+    move_to = max(served_versions(load_dependency_policy(ROOT), ROOT, "otdp"))
+    assert move_to in psu_view["deprecation"]
 
 
 def test_the_pins_event_is_digest_covered_run_evidence(tmp_path: Path) -> None:

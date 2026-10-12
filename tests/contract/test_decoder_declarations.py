@@ -107,6 +107,23 @@ def test_uppercase_decoder_id_is_refused() -> None:
     assert not _valid({**_minimal_declaration(), "id": "Reference-Capital"})
 
 
+def test_hyphenated_annotation_id_is_valid() -> None:
+    """The class-id family carries hyphens: the extracted public surfaces
+    use compound ids ('address-read', 'rx-data'), and the provider lane's
+    feature-name segment is the corpus's own hyphen-allowing precedent.
+    Decoder/option/channel ids stay snake-only."""
+    document = _minimal_declaration()
+    document["annotations"].append({"id": "parity-err", "label": "Parity error"})
+    document["annotation_rows"][0]["annotation_ids"].append("parity-err")
+    assert _valid(document)
+
+
+def test_hyphenated_decoder_id_is_refused() -> None:
+    document = _minimal_declaration()
+    document["id"] = "onewire-link"
+    assert not _valid(document)
+
+
 def test_option_value_type_disagreeing_with_default_is_refused() -> None:
     document = _minimal_declaration()
     document["options"][0]["values"] = [1, 2]
