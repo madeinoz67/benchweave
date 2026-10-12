@@ -622,3 +622,143 @@ def test_a_served_document_cannot_shadow_a_plugin_ui_schema_id(
     _install_plugin_ui_schemas(documents, corpus_root())
     assert documents[planted_id].get("planted") is None
     assert "catalogue" in documents[planted_id]["$defs"]
+
+
+# --- the #446 slice-1 fold: the corpus digest gate (adversary F1) -----------------
+#
+# F1 (MEDIUM): the corpus walk json.loads'd whatever the tree carried — no
+# digest verification. The refute reproduced three shapes: (a) a tampered
+# but manifest-recorded file served silently; (b) an unrecorded planted file
+# served; (c) blast radius — a planted examples/ document carrying the
+# daq.fetch output-schema urn DISPLACED the real schema at that urn. The SDK
+# host refuses all three at load (#215 F1's ``vendored_digest_mismatch``);
+# SW-41 parity says the gateway refuses at build with the typed
+# ``corpus_pin_mismatch`` finding.
+
+_HIJACK_URN = "urn:otdp:action:daq.fetch:1.0.0:output"
+
+
+@pytest.fixture()
+def cold_gate_cache() -> Any:
+    """The gate arms build from a /tmp corpus copy: clear the document
+    cache around each arm so a warm REAL-corpus entry can neither satisfy
+    nor shadow the patched-root build, and the tampered-tree arms leave
+    nothing behind for the real-corpus arms."""
+    from benchweave.interfaces.ui_presentation import _presentation_documents_cached
+
+    _presentation_documents_cached.cache_clear()
+    yield
+    _presentation_documents_cached.cache_clear()
+
+
+def _gate_corpus(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A /tmp copy of the real corpus with the seam's ``corpus_root``
+    monkeypatched at it — every arm edits the COPY, never the committed
+    tree."""
+    import shutil
+
+    from benchweave.interfaces import ui_presentation
+    from benchweave.vendoring import corpus_root
+
+    corpus = tmp_path / "standards"
+    shutil.copytree(corpus_root(), corpus)
+    monkeypatch.setattr(ui_presentation, "corpus_root", lambda: corpus)
+    return corpus
+
+
+def _highest_carried_otdp_version() -> str:
+    from benchweave.standards.manifest import (
+        load_dependency_policy_from_corpus,
+        retained_versions_from_corpus,
+    )
+    from benchweave.vendoring import corpus_root
+
+    corpus = corpus_root()
+    policy = load_dependency_policy_from_corpus(corpus)
+    row = policy.standards["otdp"]
+    carried = [
+        version
+        for version in retained_versions_from_corpus(corpus, "otdp")
+        if row.in_range(version)
+    ]
+    assert carried, "the corpus carries OTDP versions at all"
+    return carried[-1]
+
+
+def test_tampered_recorded_corpus_file_refuses_the_document_set_build(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, cold_gate_cache: Any
+) -> None:
+    """F1 shape (a): a manifest-RECORDED corpus document edited in place
+    (manifest untouched) refuses the build with the typed digest finding —
+    the tampered catalog never silently becomes the profile map an
+    invoke-kind target resolves against. RED pre-gate: the walk served
+    the tampered bytes."""
+    from benchweave.interfaces.ui_presentation import _presentation_documents
+    from benchweave.standards.manifest import StandardsError
+
+    corpus = _gate_corpus(tmp_path, monkeypatch)
+    version = _highest_carried_otdp_version()
+    target = corpus / "otdp" / version / "device-profile-catalog.json"
+    document = json.loads(target.read_text(encoding="utf-8"))
+    document["tampered_marker"] = "edited-in-place"
+    target.write_text(json.dumps(document), encoding="utf-8")
+    with pytest.raises(
+        StandardsError,
+        match=(
+            rf"corpus_pin_mismatch: otdp/{version}/device-profile-catalog\.json "
+            r"hashes to [0-9a-f]{64} but the manifest pins [0-9a-f]{64}"
+        ),
+    ):
+        _presentation_documents()
+
+
+def test_unrecorded_planted_corpus_file_refuses_the_document_set_build(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, cold_gate_cache: Any
+) -> None:
+    """F1 shape (b): a planted file the corpus manifest does not record
+    refuses the build — the walk serves recorded bytes only. RED pre-gate:
+    the planted file was served like any other."""
+    from benchweave.interfaces.ui_presentation import _presentation_documents
+    from benchweave.standards.manifest import StandardsError
+
+    corpus = _gate_corpus(tmp_path, monkeypatch)
+    version = _highest_carried_otdp_version()
+    planted = corpus / "otdp" / version / "examples" / "zz-planted.json"
+    planted.parent.mkdir(parents=True, exist_ok=True)
+    planted.write_text(json.dumps({"planted": True}), encoding="utf-8")
+    with pytest.raises(
+        StandardsError,
+        match=(
+            rf"corpus_pin_mismatch: otdp/{version}/examples/zz-planted\.json "
+            r"is present in the corpus tree but not recorded by the corpus "
+            r"manifest"
+        ),
+    ):
+        _presentation_documents()
+
+
+def test_planted_action_urn_hijack_refuses_instead_of_displacing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, cold_gate_cache: Any
+) -> None:
+    """F1 shape (c), the blast radius: a planted examples/ document whose
+    ``$id`` names the daq.fetch OUTPUT-schema urn used to DISPLACE the real
+    schema at that urn (the sorted walk visits zz-* last, so the planted
+    $id alias overwrote the catalog's subschema expansion) — an
+    attachment's documents would then resolve plugin-authored bytes. The
+    gate refuses the build before any displacement can install. RED
+    pre-gate: the hijack installed."""
+    from benchweave.interfaces.ui_presentation import _presentation_documents
+    from benchweave.standards.manifest import StandardsError
+
+    corpus = _gate_corpus(tmp_path, monkeypatch)
+    version = _highest_carried_otdp_version()
+    hijack = corpus / "otdp" / version / "examples" / "zz-hijack.json"
+    hijack.parent.mkdir(parents=True, exist_ok=True)
+    hijack.write_text(
+        json.dumps({"$id": _HIJACK_URN, "hijacked": True}), encoding="utf-8"
+    )
+    with pytest.raises(
+        StandardsError,
+        match=rf"corpus_pin_mismatch: otdp/{version}/examples/zz-hijack\.json",
+    ):
+        _presentation_documents()
