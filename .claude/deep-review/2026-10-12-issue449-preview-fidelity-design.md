@@ -112,6 +112,10 @@ capture-shaped fixture simply does not exist yet.
 > fold (R1 docs) and pinned by a lint test.
 > (3) The 64 KiB cap is a chosen authoring-scale number, not a derived one. Its boundary is
 > now pinned by test (65536 admitted, 65537 refused).
+> (4) Owner directive 6127477670 (2026-10-12, live preview review), binding the §3.1.5 page
+> composition: WAVEFORM FIRST. A capture page carrying digital_lanes leads with the lane
+> traces; reading tiles are the secondary surface in the console's layout. Pages without
+> lanes plots keep the tile-first shape. Folded as row F8 with its own DOM-order RED arm.
 
 1. **Theme script.** `RENDERER_ASSETS` gains `bw-host.js` (`assets.py:31`); the asset
    route already serves any member of that set from the installed package's
