@@ -553,22 +553,12 @@ def test_presentation_documents_serve_the_carried_otdp_corpus() -> None:
     offline), path-keyed, $id-aliased, with the per-action subschema
     expansion. RED on the pre-fix tree (the set carried plugin-ui schemas
     only)."""
-    import benchweave.interfaces.ui_presentation as presentation_module
+    from benchweave.interfaces.ui_presentation import _presentation_documents
     from benchweave.standards.manifest import (
         load_dependency_policy_from_corpus,
         retained_versions_from_corpus,
     )
     from benchweave.vendoring import corpus_root
-
-    # The RED commit precedes the mechanism: getattr (with a documented
-    # default) keeps this file mypy-clean while the builder is absent —
-    # the assertion below is the RED failure — and the FEAT commit that
-    # lands _presentation_documents restores the static import.
-    presentation_documents = getattr(presentation_module, "_presentation_documents", None)
-    assert presentation_documents is not None, (
-        "the composition module serves no document-set builder "
-        "(pre-fix: the active plugin-ui schemas only)"
-    )
 
     corpus = corpus_root()
     policy = load_dependency_policy_from_corpus(corpus)
@@ -579,7 +569,7 @@ def test_presentation_documents_serve_the_carried_otdp_corpus() -> None:
         if row.in_range(version)
     )
     assert carried, "the corpus carries OTDP versions at all"
-    documents = presentation_documents()
+    documents = _presentation_documents()
     for version in carried:
         assert f"otdp/{version}/device-profile-catalog.json" in documents
         assert f"urn:otdp:measurement:{version}" in documents
@@ -612,19 +602,11 @@ def test_a_served_document_cannot_shadow_a_plugin_ui_schema_id(
     schema. The OTDP install happens first; the plugin-ui schemas install
     LAST and overwrite — a fabricated colliding $id loses the key, so the
     attachment keeps validating against the true schema bytes."""
-    import benchweave.interfaces.ui_presentation as presentation_module
+    from benchweave.interfaces.ui_presentation import (
+        _install_plugin_ui_schemas,
+        _serve_otdp_documents,
+    )
     from benchweave.vendoring import corpus_root
-
-    # Same getattr posture as the served-set arm: the helpers are absent on
-    # the pre-fix tree and the FEAT commit restores the static imports.
-    serve_otdp_documents = getattr(presentation_module, "_serve_otdp_documents", None)
-    install_plugin_ui_schemas = getattr(
-        presentation_module, "_install_plugin_ui_schemas", None
-    )
-    assert serve_otdp_documents is not None and install_plugin_ui_schemas is not None, (
-        "the composition module exposes no served-document install seam "
-        "(pre-fix: the active plugin-ui schemas only)"
-    )
 
     planted_id = f"{_SCHEMA_PREFIX}/ui-manifest.schema.json"
     planted_dir = tmp_path / "otdp" / "9.9.9"
@@ -633,10 +615,10 @@ def test_a_served_document_cannot_shadow_a_plugin_ui_schema_id(
         json.dumps({"$id": planted_id, "planted": True})
     )
     documents: dict[str, dict[str, Any]] = {}
-    serve_otdp_documents(documents, planted_dir, "otdp/9.9.9")
+    _serve_otdp_documents(documents, planted_dir, "otdp/9.9.9")
     # The alias install is real — without the ordering guard the planted
     # document would sit at the manifest schema's key:
     assert documents[planted_id].get("planted") is True
-    install_plugin_ui_schemas(documents, corpus_root())
+    _install_plugin_ui_schemas(documents, corpus_root())
     assert documents[planted_id].get("planted") is None
     assert "catalogue" in documents[planted_id]["$defs"]
