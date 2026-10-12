@@ -495,6 +495,43 @@ for p in sorted((OUT / "examples").glob("*.json")):
             decoder_docs[pin["id"]] = doc
     check(p.name + " decoder declaration", not decoder_errors(d, decoder_docs))
 
+# The read side-effect surface (issue #445, S20): the example carries the
+# honest per-parameter declaration with the verb raised to its maximum, and
+# the schema conditional refuses the incoherent pairing one way only —
+# over-classification at the verb stays legal (the write-minimum rule's
+# dual). The arms degrade to a named failure while the example is absent
+# (the RED posture) instead of crashing on the missing document.
+mux = descriptors.get("reference-mux-counter.json")
+if mux is None:
+    check("Read side-effect example census", False)
+else:
+    check(
+        "Read side-effect example census",
+        mux["operations"]["read"]["side_effect"] == "state_change"
+        and sorted(
+            parameter["name"]
+            for parameter in mux["parameters"]
+            if parameter.get("read_policy", {}).get("side_effect") == "state_change"
+        )
+        == ["mux_count_a", "mux_count_b"],
+    )
+    d = copy.deepcopy(mux)
+    d["operations"]["read"]["side_effect"] = "none"
+    errors_at = [error.json_path for error in dv.iter_errors(d)]
+    check("Reject incoherent read side effect", not dv.is_valid(d))
+    check(
+        "Read side-effect refusal names the operations path",
+        any(path.startswith("$.operations") for path in errors_at),
+    )
+    d = copy.deepcopy(descriptors["reference-controller.json"])
+    d["operations"]["read"]["side_effect"] = "state_change"
+    check("Accept over-classified read verb", dv.is_valid(d))
+    local_actions = list(mux.get("actions", {}).values())
+    check(
+        "Read side-effect example local action declares state_change",
+        len(local_actions) == 1 and local_actions[0]["side_effect"] == "state_change",
+    )
+
 
 def dataset_errors(d):
     e = []
