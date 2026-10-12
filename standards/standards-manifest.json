@@ -43,13 +43,16 @@
         ]
       },
       "plugin-ui": {
-        "range": ">=0.3.0,<0.4.0",
+        "range": ">=0.3.1,<0.4.0",
         "yanked": {},
         "retired": [],
-        "note": "Below the two-release window floor by design (F1, issue #203): plugin-ui's normative bundle row lists the one live code object (src/benchweave/presentation/contracts.py) in every carried version's row, so carrying 0.2.0 beside 0.3.0 would serve 0.3.0 code bytes under a 0.2.0 pin \u2014 single-serving is the only honest posture until deferral D2 closes. The range slid narrow with the 0.3.0 digital_lanes bump (issue #244, ruling VR-43). 0.2.0 pins re-stamp to 0.3.0. The owner may overrule to serve 0.2.0's schemas.",
+        "note": "Below the two-release window floor by design (F1, issue #203): plugin-ui's normative bundle row lists the one live code object (src/benchweave/presentation/contracts.py) in every carried version's row, so carrying 0.3.0 beside 0.3.1 would serve 0.3.1 code bytes under a 0.3.0 pin \u2014 single-serving is the only honest posture until deferral D2 closes. The range slid narrow with the 0.3.1 commissioned-firmware gate (issue #444). 0.3.0 pins re-stamp to 0.3.1. The owner may overrule to serve 0.3.0's schemas.",
         "versions": {
           "0.3.0": {
             "migration_note": "standards/plugin-ui/0.3.0/MIGRATION.md"
+          },
+          "0.3.1": {
+            "migration_note": "standards/plugin-ui/0.3.1/MIGRATION.md"
           }
         }
       },
@@ -160,15 +163,15 @@
     },
     {
       "id": "plugin-ui",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "status": "stable",
-      "released": "2026-09-29",
-      "supersedes": "0.2.0",
+      "released": "2026-10-12",
+      "supersedes": "0.3.0",
       "normative": [
-        "standards/plugin-ui/0.3.0/binding-catalogue.schema.json",
-        "standards/plugin-ui/0.3.0/configuration-preset.schema.json",
-        "standards/plugin-ui/0.3.0/presentation-envelope.schema.json",
-        "standards/plugin-ui/0.3.0/ui-manifest.schema.json",
+        "standards/plugin-ui/0.3.1/binding-catalogue.schema.json",
+        "standards/plugin-ui/0.3.1/configuration-preset.schema.json",
+        "standards/plugin-ui/0.3.1/presentation-envelope.schema.json",
+        "standards/plugin-ui/0.3.1/ui-manifest.schema.json",
         "src/benchweave/presentation/contracts.py"
       ]
     },

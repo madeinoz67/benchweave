@@ -20,7 +20,7 @@ committed file is stale. Commit SHAs are not pinned here — run
 | registry | 0.1.2 | stable | 0.9.0 | >=0.1.0 | Supersedes 0.1.1 | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
 | execution | 0.2.0 | stable | 0.9.0 | >=0.1.0 | Supersedes 0.1.0 | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
 | interface | 0.1.0 | stable | 0.9.0 | >=0.1.0 | — | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
-| plugin-ui | 0.3.0 | stable | 0.9.0 | >=0.1.0 | Supersedes 0.2.0 | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
+| plugin-ui | 0.3.1 | stable | 0.9.0 | >=0.1.0 | Supersedes 0.3.0 | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
 | plugin-ui-preview | 0.2.0 | stable | 0.9.0 | >=0.1.0 | Supersedes 0.1.1 | [main repo](https://github.com/madeinoz67/benchweave) · [sdk repo](https://github.com/madeinoz67/benchweave-sdk) |
 
 ## Retained versions
@@ -49,7 +49,8 @@ adoption, design record D6).
 | plugin-ui | 0.1.0 | released | out of range | — | — |
 | plugin-ui | 0.1.1 | released | out of range | — | — |
 | plugin-ui | 0.2.0 | released | out of range | — | — |
-| plugin-ui | 0.3.0 | released | in range | — | standards/plugin-ui/0.3.0/MIGRATION.md |
+| plugin-ui | 0.3.0 | released | out of range | — | standards/plugin-ui/0.3.0/MIGRATION.md |
+| plugin-ui | 0.3.1 | released | in range | — | standards/plugin-ui/0.3.1/MIGRATION.md |
 | plugin-ui-preview | 0.1.0 | released | out of range | — | — |
 | plugin-ui-preview | 0.1.1 | released | in range | — | — |
 | plugin-ui-preview | 0.2.0 | released | in range | — | standards/plugin-ui-preview/0.2.0/MIGRATION.md |
