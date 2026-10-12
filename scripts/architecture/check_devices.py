@@ -186,6 +186,201 @@ for p in sorted((OUT / "examples").glob("*.json")):
 known_features |= {doc["feature_id"] for doc in provider_docs.values()}
 
 
+# Protocol decoders (OTDP 0.2.3): decoder declarations are digest-pinned
+# corpus documents validated by otdp-decoder.schema.json. The census loads
+# the declaration examples directly (they are corpus documents in their own
+# right) and every descriptor's ``decoders`` pins resolve before the vector
+# checks, so a declaration is admitted exactly when its pinned bytes pass
+# its schema and the PD2 coherence rules — the offline half of PD1
+# (protocol-decoders.md). The gateway's admission-seam mirrors are the
+# named slice-2 follow-on (design record section 3.2).
+decoder_schema_name = "otdp-decoder.schema.json"
+decoder_validator = (
+    validator(schemas[decoder_schema_name]) if decoder_schema_name in schemas else None
+)
+check("Decoder declaration schema present", decoder_validator is not None)
+DECODER_EXAMPLES = (
+    "decoder-i2c.json",
+    "decoder-onewire-link.json",
+    "decoder-spi.json",
+    "decoder-uart.json",
+)
+decoder_docs: dict[str, dict] = {}
+
+
+def _json_type_name(value):
+    """The JSON type name an option value carries (PD4's type arm).
+
+    ``bool`` is checked before the numeric branch because ``True`` is an
+    ``int`` in Python — without the order, a boolean option value would
+    type-check against a numeric default and the PD4 arm would be vacuous
+    for exactly one of the three declared types.
+    """
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, (int, float)):
+        return "number"
+    if isinstance(value, str):
+        return "string"
+    return "other"
+
+
+def decoder_declaration_errors(doc):
+    """Declaration self-coherence (protocol-decoders.md PD2): annotation
+    rows reference declared annotation ids BY ID, no annotation id appears
+    in two rows, and the identifier spaces (classes, rows, options,
+    channels) are unique. Binary classes are shape-carried by the schema
+    alone this revision — emission is out of scope (PD6's disclosure, not
+    a check).
+    """
+    errors = []
+    annotation_ids = [a["id"] for a in doc["annotations"]]
+    if len(set(annotation_ids)) != len(annotation_ids):
+        errors.append("duplicate annotation id")
+    row_ids = [row["id"] for row in doc["annotation_rows"]]
+    if len(set(row_ids)) != len(row_ids):
+        errors.append("duplicate row id")
+    row_classes = [c for row in doc["annotation_rows"] for c in row["annotation_ids"]]
+    for annotation_id in row_classes:
+        if annotation_id not in annotation_ids:
+            errors.append("row class unresolved")
+    if len(set(row_classes)) != len(row_classes):
+        errors.append("annotation in two rows")
+    if len({o["id"] for o in doc["options"]}) != len(doc["options"]):
+        errors.append("duplicate option id")
+    channel_ids = [c["id"] for c in doc["channels"]] + [
+        c["id"] for c in doc.get("optional_channels", [])
+    ]
+    if len(set(channel_ids)) != len(channel_ids):
+        errors.append("duplicate channel id")
+    return errors
+
+
+present_decoders = sorted(p.name for p in (OUT / "examples").glob("decoder-*.json"))
+check("Decoder declaration examples census", present_decoders == list(DECODER_EXAMPLES))
+for name in present_decoders:
+    if decoder_validator is None:
+        break  # the schema-present check above failed by name already
+    doc = json.loads((OUT / "examples" / name).read_text(encoding="utf-8"))
+    check(name + " declaration structure", not list(decoder_validator.iter_errors(doc)))
+    check(name + " declaration rows/coherence", not decoder_declaration_errors(doc))
+
+
+def decoder_pin_errors(d, base):
+    """PD1's descriptor half: every ``decoders`` pin resolves inside the
+    corpus, digest-matches its document, the document is schema-valid and
+    coherent, and its identity agrees with the pin. Returns the error list
+    plus the admitted documents keyed by decoder id.
+    """
+    errors = []
+    docs = {}
+    for pin in d.get("decoders", []):
+        doc_path = (base / pin["path"]).resolve()
+        if not doc_path.is_relative_to(OUT) or not doc_path.is_file():
+            errors.append("decoder declaration missing")
+            continue
+        if hashlib.sha256(doc_path.read_bytes()).hexdigest() != pin["sha256"]:
+            errors.append("decoder digest disagrees")
+            continue
+        doc = json.loads(doc_path.read_text(encoding="utf-8"))
+        if decoder_validator is None or list(decoder_validator.iter_errors(doc)):
+            errors.append("decoder declaration invalid")
+            continue
+        if decoder_declaration_errors(doc):
+            errors.append("decoder rows incoherent")
+            continue
+        if doc["id"] != pin["id"]:
+            errors.append("decoder identity disagrees")
+            continue
+        docs[pin["id"]] = doc
+    return errors, docs
+
+
+def decoder_errors(d, docs):
+    """Decoder declaration consistency (protocol-decoders.md PD1): pin ids
+    are unique across the descriptor's ``decoders`` array and every pin
+    resolved to an admitted document whose ``id`` agrees. Pin resolution
+    itself (containment, digest, schema) is ``decoder_pin_errors`` above.
+    """
+    errors = []
+    ids = [pin["id"] for pin in d.get("decoders", [])]
+    if len(set(ids)) != len(ids):
+        errors.append("duplicate decoder id")
+    for pin in d.get("decoders", []):
+        doc = docs.get(pin["id"])
+        if doc is None:
+            errors.append("decoder declaration missing")
+        elif doc.get("id") != pin["id"]:
+            errors.append("decoder identity disagrees")
+    return errors
+
+
+def decode_annotated_errors(inp, declaration, descriptor):
+    """PD3/PD4: the named decoder is declared, ``channel_map`` covers every
+    required declaration channel, mapped targets exist in the descriptor's
+    channels, and options resolve against the declaration's option specs
+    (existence, JSON type, declared values). Unmapped OPTIONAL channels are
+    legal — the spi/uart posture (protocol-decoders.md section 3).
+    """
+    errors = []
+    required = {c["id"] for c in declaration["channels"]}
+    mapped = inp.get("channel_map", {})
+    for channel_id in sorted(required - set(mapped)):
+        errors.append("required channel unmapped: " + channel_id)
+    device_channels = {c["id"] for c in descriptor.get("channels", [])}
+    for source, target in sorted(mapped.items()):
+        if target not in device_channels:
+            errors.append("channel map target absent: " + source)
+    specs = {o["id"]: o for o in declaration["options"]}
+    for key in sorted(set(inp.get("options", {})) - set(specs)):
+        errors.append("unknown option: " + key)
+    for key, value in sorted(inp.get("options", {}).items()):
+        spec = specs.get(key)
+        if spec is None:
+            continue
+        if _json_type_name(value) != _json_type_name(spec["default"]):
+            errors.append("option type disagrees: " + key)
+        elif "values" in spec and value not in spec["values"]:
+            errors.append("option value undeclared: " + key)
+    return errors
+
+
+def annotation_dataset_errors(dataset, declaration):
+    """PD5: kind event_log, the annotation variable set present, every
+    ``class`` value resolves against the declaration, event-axis length
+    equals the variable lengths (M02's shape), and start_s <= end_s.
+    """
+    errors = []
+    if dataset.get("kind") != "event_log":
+        errors.append("kind is not event_log")
+    variables = {v["id"]: v for v in dataset.get("variables", [])}
+    for variable_id in ("start_s", "end_s", "class", "text"):
+        if variable_id not in variables:
+            errors.append("annotation variable absent: " + variable_id)
+    annotation_ids = {a["id"] for a in declaration["annotations"]}
+    for value in variables.get("class", {}).get("values", []):
+        if value not in annotation_ids:
+            errors.append("class unresolved: " + str(value))
+    lengths = {
+        variable_id: len(v.get("values", []))
+        for variable_id, v in variables.items()
+        if v.get("dimensions") == ["event"]
+    }
+    if len(set(lengths.values())) > 1:
+        errors.append("variable lengths disagree")
+    axes = {a["id"]: a for a in dataset.get("axes", [])}
+    if "event" in axes and lengths and axes["event"]["length"] not in lengths.values():
+        errors.append("event axis length disagrees")
+    if "start_s" in variables and "end_s" in variables:
+        for start, end in zip(
+            variables["start_s"]["values"], variables["end_s"]["values"], strict=False
+        ):
+            if start > end:
+                errors.append("event end precedes start")
+                break
+    return errors
+
+
 def provider_errors(d, docs):
     """Provider declaration consistency (S04 extension, transport-providers.md).
 
@@ -277,6 +472,28 @@ for p in sorted((OUT / "examples").glob("*.json")):
         p.name + " provider declaration",
         not provider_errors(d, provider_docs) + provider_pin_failures.get(p.name, []),
     )
+    for pin in d.get("decoders", []):
+        doc_path = (p.parent / pin["path"]).resolve()
+        pinned = (
+            doc_path.is_relative_to(OUT)
+            and doc_path.is_file()
+            and hashlib.sha256(doc_path.read_bytes()).hexdigest() == pin["sha256"]
+        )
+        check(p.name + " pinned decoder " + pin["id"], pinned)
+        if not pinned:
+            continue
+        doc = json.loads(doc_path.read_text(encoding="utf-8"))
+        doc_errors = (
+            list(decoder_validator.iter_errors(doc)) if decoder_validator else ["absent"]
+        )
+        check(p.name + " decoder document " + pin["id"] + " structure", not doc_errors)
+        check(
+            p.name + " decoder document " + pin["id"] + " rows/coherence",
+            not decoder_declaration_errors(doc),
+        )
+        if not doc_errors and doc.get("id") == pin["id"]:
+            decoder_docs[pin["id"]] = doc
+    check(p.name + " decoder declaration", not decoder_errors(d, decoder_docs))
 
 
 def dataset_errors(d):
@@ -450,9 +667,23 @@ for v in vectors:
         v["id"] + " correlated identity",
         req["operation_id"] == res["operation_id"] and aid == res["data"]["action_id"],
     )
+    if aid == "otdp.logic_analyser.decode_annotated/1.0.0":
+        inp = req["arguments"]["input"]
+        declaration = decoder_docs.get(inp.get("decoder", ""))
+        check(v["id"] + " decoder declared", declaration is not None)
+        descriptor = descriptors.get(v.get("descriptor", ""))
+        if declaration is not None and descriptor is not None:
+            check(
+                v["id"] + " decode_annotated semantics",
+                not decode_annotated_errors(inp, declaration, descriptor),
+            )
+            check(
+                v["id"] + " annotation dataset semantics",
+                not annotation_dataset_errors(res["data"]["result"], declaration),
+            )
 check(
     "Every standard action has a positive contract vector",
-    covered == set(catalog["actions"]) and len(covered) == 50,
+    covered == set(catalog["actions"]) and len(covered) == 51,
 )
 base = descriptors["class-dc_psu.json"]
 d = copy.deepcopy(base)
@@ -573,6 +804,99 @@ else:
         "Reject provider grammar shadowing a generic kind",
         shadowed_kinds == ["stream_send"],
     )
+logic_analyser = descriptors.get("class-logic_analyser.json")
+if decoder_validator is None or not decoder_docs:
+    # The corpus's own decoder declarations (or their schema) are absent:
+    # the fault-injection arms below would KeyError on the missing
+    # documents, so they degrade to this named failure instead of crashing
+    # the suite — the reference-provider degrade pattern above.
+    check("Reference decoder declarations admitted", False)
+elif logic_analyser is None or not logic_analyser.get("decoders"):
+    check("Reference decoder declarations admitted", False)
+else:
+    i2c_declaration = decoder_docs["i2c"]
+    d = copy.deepcopy(logic_analyser)
+    for entry in d["decoders"]:
+        if entry["id"] == "i2c":
+            entry["sha256"] = "0" * 63 + "1"
+    pin_errors, _admitted = decoder_pin_errors(d, OUT / "examples")
+    check("Reject broken decoder pin", "decoder digest disagrees" in pin_errors)
+    d = copy.deepcopy(logic_analyser)
+    d["decoders"].append(copy.deepcopy(d["decoders"][0]))
+    check(
+        "Reject duplicate decoder id",
+        "duplicate decoder id" in decoder_errors(d, decoder_docs),
+    )
+    mutated_rows = copy.deepcopy(i2c_declaration)
+    mutated_rows["annotation_rows"][0]["annotation_ids"].append("ghost-class")
+    check(
+        "Reject unresolved row class",
+        "row class unresolved" in decoder_declaration_errors(mutated_rows),
+    )
+    base_input = {
+        "acquisition_id": "acq-1",
+        "decoder": "i2c",
+        "channel_map": {"scl": "ch1", "sda": "ch2"},
+        "options": {"address_format": "shifted"},
+    }
+    check(
+        "decode_annotated base input admits",
+        not decode_annotated_errors(base_input, i2c_declaration, logic_analyser),
+    )
+    check(
+        "Reject unknown decode option",
+        "unknown option: ghost_option"
+        in decode_annotated_errors(
+            {**base_input, "options": {"ghost_option": 1}}, i2c_declaration, logic_analyser
+        ),
+    )
+    check(
+        "Reject option value outside the declared set",
+        "option value undeclared: address_format"
+        in decode_annotated_errors(
+            {**base_input, "options": {"address_format": "unshifted-x"}},
+            i2c_declaration,
+            logic_analyser,
+        ),
+    )
+    check(
+        "Reject unmapped required decoder channel",
+        "required channel unmapped: sda"
+        in decode_annotated_errors(
+            {**base_input, "channel_map": {"scl": "ch1"}}, i2c_declaration, logic_analyser
+        ),
+    )
+    annotated = next(
+        (
+            vector
+            for vector in vectors
+            if vector["request"]["arguments"]["action_id"]
+            == "otdp.logic_analyser.decode_annotated/1.0.0"
+            and vector["request"]["arguments"]["input"].get("decoder") == "i2c"
+        ),
+        None,
+    )
+    if annotated is None:
+        check("Reference decode_annotated vector present", False)
+    else:
+        mutated_dataset = copy.deepcopy(annotated["result"]["data"]["result"])
+        class_variable = next(
+            v for v in mutated_dataset["variables"] if v["id"] == "class"
+        )
+        class_variable["values"][0] = "ghost-class"
+        check(
+            "Reject unresolvable dataset class",
+            "class unresolved: ghost-class"
+            in annotation_dataset_errors(mutated_dataset, i2c_declaration),
+        )
+        reordered = copy.deepcopy(annotated["result"]["data"]["result"])
+        end_variable = next(v for v in reordered["variables"] if v["id"] == "end_s")
+        end_variable["values"][0] = -1
+        check(
+            "Reject event end preceding start",
+            "event end precedes start"
+            in annotation_dataset_errors(reordered, i2c_declaration),
+        )
 for cls in ("dc_psu", "electronic_load", "smu", "function_generator"):
     v = validator(catalog["actions"][f"otdp.{cls}.output/1.0.0"]["input_schema"])
     check(cls + " enable requires config", not v.is_valid({"channel": "ch1", "enabled": True}))
@@ -644,7 +968,10 @@ REPORT_COVERAGE = (
     "declarations, pinned contract hashes, runtime envelopes, typed datasets and selected "
     "rejection/semantic boundaries were checked. Transport-provider declarations, their "
     "pinned contract documents and the provider grammar subschemas were checked; "
-    "connection-to-grant resolution is commissioned state and stays gateway-side."
+    "connection-to-grant resolution is commissioned state and stays gateway-side. "
+    "Protocol-decoder declarations, their digest-pinned documents and the "
+    "decode_annotated vectors were checked (PD1 through PD5); gateway admission mirrors "
+    "and binary-class emission are the named follow-on slices."
 )
 REPORT_LIMIT = (
     "**Limit:** These are document/schema checks. No gateway, plugin, device simulator, "

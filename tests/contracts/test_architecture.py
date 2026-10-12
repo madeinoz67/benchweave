@@ -651,6 +651,66 @@ def test_documents_ignores_markdown_links_inside_fenced_code_blocks(
             '    "otdp.core/0.1.0",\n    "otdp.transport.ghost/1.0.0",',
             "provider declaration",
         ),
+        # Decoder-declaration faults (issue #443, protocol-decoders.md
+        # PD1/PD2/PD4/PD5): each row breaks one offline-refusable rule and
+        # must be caught by name. The broken-pin row edits the DECLARATION
+        # bytes (the descriptor-side digest pin is written against the
+        # pristine bytes), so the digest mismatch is the named failure.
+        (
+            "devices",
+            _active_standard_dir("otdp") + "/examples/decoder-i2c.json",
+            '"longname": "Inter-Integrated Circuit"',
+            '"longname": "Inter-Integrated Circuit (revised)"',
+            "pinned decoder",
+        ),
+        (
+            "devices",
+            _active_standard_dir("otdp") + "/examples/decoder-i2c.json",
+            (
+                '"id": "warnings",\n      "label": "Warnings",\n'
+                '      "annotation_ids": [\n        "warning"\n      ]'
+            ),
+            (
+                '"id": "warnings",\n      "label": "Warnings",\n'
+                '      "annotation_ids": [\n        "ghost-warning"\n      ]'
+            ),
+            "declaration rows/coherence",
+        ),
+        (
+            "devices",
+            _active_standard_dir("otdp") + "/examples/class-logic_analyser.json",
+            (
+                '{\n      "id": "i2c",\n      "path": "decoder-i2c.json",\n'
+                '      "sha256": "e033023bd3a6d37486ae1093449200d7c41e3c8926e83690d'
+                '6468c135d77d7a7"\n    }'
+            ),
+            (
+                '{\n      "id": "i2c",\n      "path": "decoder-i2c.json",\n'
+                '      "sha256": "e033023bd3a6d37486ae1093449200d7c41e3c8926e83690d'
+                '6468c135d77d7a7"\n    },\n    {\n'
+                '      "id": "i2c",\n      "path": "decoder-i2c.json",\n'
+                '      "sha256": "e033023bd3a6d37486ae1093449200d7c41e3c8926e83690d'
+                '6468c135d77d7a7"\n    }'
+            ),
+            "decoder declaration",
+        ),
+        (
+            "devices",
+            _active_standard_dir("otdp") + "/examples/class-action-vectors.json",
+            '"options": {\n              "address_format": "shifted"\n            }',
+            (
+                '"options": {\n              "address_format": "shifted",\n'
+                '              "ghost_option": 1\n            }'
+            ),
+            "decode_annotated semantics",
+        ),
+        (
+            "devices",
+            _active_standard_dir("otdp") + "/examples/class-action-vectors.json",
+            '"values": [\n                "start",',
+            '"values": [\n                "ghost-class",',
+            "annotation dataset semantics",
+        ),
         (
             "registry",
             _active_standard_dir("registry") + "/examples/release-manifest.json",
