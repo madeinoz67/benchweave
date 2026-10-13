@@ -16,6 +16,10 @@ All notable changes to this project will be documented in this file.
 - Template header names all three placeholders; non-darwin --plist-output refuses typed (#422 inc3 fix wave 2)
 - #422 inc4 fold the critic/gw1/l2 review wave into doctor+logs
 - CRLF-honest tail rows (windows rollup catch) + windows lane timeout 30->45 (the lifecycle arms outgrew it; split-lane stays the retro row)
+- #446 slice 1 serve the SDK document set at the device page
+- #446 slice 1 fold — digest-gate the served corpus set (F1-F4)
+- Complete the pointer — move the sdk_compatibility mirror to 0.11.0
+- Link the front door's versioned standards pages where they render
 
 ### Documentation
 
@@ -36,6 +40,11 @@ All notable changes to this project will be documented in this file.
 - Doctor and logs triage pair in the operator guide; README names the verbs
 - Record the Q5 ruling — option 2, stdio shim proxies the running host (issue #285)
 - Delivery-scope ruling — the fork-deletion clause closes on our-repo evidence (issue #285)
+- #451 sync-completion pacing — mechanism, acceptance, tier call
+- Issue #446 — invoke binds UI targets to corpus profiles only
+- Issue #444 commissioned-preset firmware gate — localization, fork (b) recommendation, plugin-ui train
+- Fold the #444 refute NIT rows (row-call 1-3)
+- Issue #450 MCP-surface interface revision — design record
 
 ### Features
 
@@ -48,6 +57,13 @@ All notable changes to this project will be documented in this file.
 - #422 inc3 — supervision protocol, stop/start/status/service verbs, worker pickup gate
 - #422 inc4 doctor — the seven-check read-only triage probe
 - #422 inc4 logs + the log_destination journal completion
+- G-5 — sync-completion pacing replaces the bump time window (#451)
+- Commissioned-preset firmware gate — plugin-ui 0.3.1 PATCH, policy-aware validate_preset
+- Server instructions on the MCP surface (row 1a) + green arms
+
+### Miscellaneous
+
+- Advance the pointer to v0.11.0 — the plugin-ui train's release (#444)
 
 ### Testing
 
@@ -56,6 +72,10 @@ All notable changes to this project will be documented in this file.
 - L11 accepts both truthful interleavings — a refused-then-acted stop episode is legal (single-shot is per request, not per episode)
 - G4i gains the F14 wait-for-running (fourth-rollup catch — an accepted-not-running active run routes to the sweep, no cancel to name)
 - Outcome-mode scatter for the belt's forced-loose pin — recorded x-values, not input pacing (main-red fix, the #241 wall-time class)
+- #451 RED arms — sync-completion pacing fails the un-amended tree
+- RED — #446 slice 1 invoke-target composition arms
+- RED — #446 slice 1 fold, the corpus digest gate arms (F1)
+- Row-4 corpus-output mirror + row-1a instruction arms (RED state)
 
 ### Build
 
